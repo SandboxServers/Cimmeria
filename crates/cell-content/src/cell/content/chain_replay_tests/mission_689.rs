@@ -11,7 +11,7 @@
 //!   accepts mission 689 once per character.
 //! - Chain 1023 (`player_loaded`, `mission_status 689 neq completed`):
 //!   (re-)applies the movement hold at the stasis-room anchor (cellblock-
-//!   boot-lock D-BL3) and launches ability 1597 as a no-op. This is what
+//!   boot-lock D-BL3). This is what
 //!   makes "relog mid-lock re-holds" and "relog after clearing does NOT
 //!   re-hold" both fall out of one condition.
 //! - Chain 1024 (`interact_tag` on `Cellblock_PrisonBootControl`,
@@ -109,7 +109,7 @@ async fn live_db_chain_1022_does_not_refire_once_completed() {
 /// snapshot (mission_status defaults missing keys to `not_active`, which
 /// is `neq completed`).
 #[tokio::test]
-async fn live_db_chain_1023_launches_1597_when_not_active() {
+async fn live_db_chain_1023_holds_when_not_active() {
     assert_player_loaded_resolves(1023, "not_active", true).await;
 }
 
@@ -118,12 +118,12 @@ async fn live_db_chain_1023_launches_1597_when_not_active() {
 /// re-applies the lock on every relog. This is the acceptance criterion
 /// "relog mid-lock must re-apply the lock."
 #[tokio::test]
-async fn live_db_chain_1023_launches_1597_when_active() {
+async fn live_db_chain_1023_holds_when_active() {
     assert_player_loaded_resolves(1023, "active", true).await;
 }
 
 /// Negative: once mission 689 is completed (Livewire cleared, chain 1025
-/// ran), chain 1023 must NOT re-launch 1597. This is the acceptance
+/// ran), chain 1023 must NOT re-apply the hold. This is the acceptance
 /// criterion "relog after clearing must NOT re-apply it."
 #[tokio::test]
 async fn live_db_chain_1023_does_not_relaunch_once_completed() {

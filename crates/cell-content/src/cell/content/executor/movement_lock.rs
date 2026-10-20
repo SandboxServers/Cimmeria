@@ -53,22 +53,45 @@ pub(super) async fn run(
             client_flag,
             message,
         } => {
-            if space_mgr
+            // A hold left by a previous space is stale: drop it and fall
+            // through to the normal hold path, so the new anchor is used.
+            let current_space_id = space_mgr.get_entity_space_id(entity_id);
+            let held_space_id = space_mgr
                 .get_entity(entity_id)
-                .is_some_and(|e| e.extensions.contains::<MovementHold>())
-            {
-                tracing::debug!(
-                    target: "content",
-                    event,
-                    decision_outcome = "already_held",
-                    entity_id,
-                    entity_name = space_mgr.entity_label(entity_id),
-                    chain_id,
-                    chain_name = cimmeria_names::book().chain(chain_id),
-                    op = "hold",
-                    "movement_lock hold: already held; nothing changed"
-                );
-                return;
+                .and_then(|e| e.extensions.get::<MovementHold>())
+                .map(|h| h.space_id);
+            match held_space_id {
+                Some(space_id) if Some(space_id) == current_space_id => {
+                    tracing::debug!(
+                        target: "content",
+                        event,
+                        decision_outcome = "already_held",
+                        entity_id,
+                        entity_name = space_mgr.entity_label(entity_id),
+                        chain_id,
+                        chain_name = cimmeria_names::book().chain(chain_id),
+                        op = "hold",
+                        "movement_lock hold: already held; nothing changed"
+                    );
+                    return;
+                }
+                Some(_) => {
+                    if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                        entity.extensions.remove::<MovementHold>();
+                    }
+                    tracing::info!(
+                        target: "content",
+                        event,
+                        decision_outcome = "stale_hold_replaced",
+                        entity_id,
+                        entity_name = space_mgr.entity_label(entity_id),
+                        chain_id,
+                        chain_name = cimmeria_names::book().chain(chain_id),
+                        op = "hold",
+                        "movement_lock hold: dropped a stale hold from another space"
+                    );
+                }
+                None => {}
             }
             if space_mgr
                 .find_entity_by_tag(entity_id, &anchor_tag)

@@ -96,7 +96,8 @@ SET search_path = resources, pg_catalog;
 -- Chain 1047 sets the control's click bits on every load and chain 1025 clears
 -- them, so the control is clickable only while the lock is up.
 --
--- Abilities 1597 and 1598 are kept, but they are no-ops (README F3).
+-- Ability 1598 is kept on victory (a harmless cast). Ability 1597 is NOT
+-- launched: its effect 1939 sets BSF_MOVEMENT_LOCK (Layer A, OQ-3).
 --
 -- There is no archetype condition. Goa'uld (archetype 6) start on the same
 -- anchor and are held too (D-BL8, owner 2026-10-20).
@@ -124,9 +125,9 @@ VALUES (1022, 'accept_mission', 689, NULL, '{}', 0, 0);
 -- at the stasis-room anchor (cellblock-boot-lock D-BL3, D-BL4). `neq completed`
 -- covers the first load (`not_active`, same tick as chain 1022's accept) and
 -- every relog while still locked (`active`). Only `completed` (set by chain
--- 1025 on Livewire victory) stops it. Ability 1597 is kept as a no-op (README
--- F3); the hold does the work. There is no archetype condition: Goa'uld are
--- held too (D-BL8).
+-- 1025 on Livewire victory) stops it. Ability 1597 is not launched (its effect
+-- 1939 sets BSF_MOVEMENT_LOCK); the movement_lock hold below does the work.
+-- There is no archetype condition: Goa'uld are held too (D-BL8).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1023, '689 - Zone load: (re-)apply Prison Boot hold while not cleared', 'mission', 689, true, 0);
 
@@ -138,8 +139,7 @@ VALUES (1023, 'mission_status', 689, NULL, 'neq', 'completed', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  (1023, 'launch_ability', 1597, NULL, '{}', 0, 0),
-  (1023, 'movement_lock', NULL, NULL, '{"op": "hold", "anchor_tag": "Cellblock_PrisonBootControl", "at": [-334.231, 73.472, -228.026], "max_distance": 3.0, "client_flag": false, "message": "Your prison boot is locked to the floor. Right-click the boot control beside you and win the Livewire game to work it loose."}', 0, 1);
+  (1023, 'movement_lock', NULL, NULL, '{"op": "hold", "anchor_tag": "Cellblock_PrisonBootControl", "at": [-334.231, 73.472, -228.026], "max_distance": 3.0, "client_flag": false, "message": "Your prison boot is locked to the floor. Right-click the boot control beside you and win the Livewire game to work it loose."}', 0, 0);
 
 -- Chain 1024: right-click the Prison Boot Control (spawn 284, tag
 -- Cellblock_PrisonBootControl) while mission 689 is not completed -> start a

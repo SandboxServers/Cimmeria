@@ -162,6 +162,33 @@ async fn a_second_hold_does_not_double_count_the_flag() {
 }
 
 #[tokio::test]
+async fn a_stale_hold_from_another_space_is_replaced_on_reentry() {
+    let mut mgr = world();
+    fire(&mut mgr, hold([0.0; 3], false)).await;
+    let current = mgr
+        .get_entity_space_id(PLAYER)
+        .expect("the player has a space");
+    mgr.get_entity_mut(PLAYER)
+        .unwrap()
+        .extensions
+        .get_mut::<MovementHold>()
+        .unwrap()
+        .space_id = current.wrapping_add(1);
+
+    fire(&mut mgr, hold([0.0; 3], false)).await;
+    let held = mgr
+        .get_entity(PLAYER)
+        .unwrap()
+        .extensions
+        .get::<MovementHold>()
+        .expect("the player is held again");
+    assert_eq!(
+        held.space_id, current,
+        "the re-hold pins to the current space"
+    );
+}
+
+#[tokio::test]
 async fn release_leaves_another_holders_flag() {
     let mut mgr = world();
     fire(&mut mgr, hold([0.0; 3], true)).await;

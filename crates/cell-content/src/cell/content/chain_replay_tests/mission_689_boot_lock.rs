@@ -62,17 +62,17 @@ async fn fire_player_loaded(
 }
 
 /// Assert that `actions` holds the player at the stasis-room anchor (chain
-/// 1023's authored hold) and launches ability 1597.
-fn assert_hold_and_1597(actions: &[Action], who: &str) {
+/// 1023's authored hold) and does not launch ability 1597.
+fn assert_hold_only(actions: &[Action], who: &str) {
     assert!(
-        actions.iter().any(|a| matches!(
+        !actions.iter().any(|a| matches!(
             a,
             Action::LaunchAbility {
                 ability_id: 1597,
                 ..
             }
         )),
-        "{who}: chain 1023 must launch ability 1597; actions: {actions:?}"
+        "{who}: chain 1023 must not launch ability 1597 (it sets BSF_MOVEMENT_LOCK); actions: {actions:?}"
     );
     assert!(
         actions.iter().any(|a| matches!(
@@ -92,21 +92,21 @@ fn assert_hold_and_1597(actions: &[Action], who: &str) {
 }
 
 /// Chain 1023 holds a player whose mission 689 is still `active` (not yet
-/// cleared) at the stasis anchor on zone load, and launches ability 1597.
+/// cleared) at the stasis anchor on zone load, and does not launch ability 1597.
 #[tokio::test]
 async fn live_db_chain_1023_holds_at_the_stasis_anchor() {
     let pool = require_db_or_skip!();
     let actions = fire_player_loaded(&pool, 1023, "active", Some(1)).await;
-    assert_hold_and_1597(&actions, "archetype 1");
+    assert_hold_only(&actions, "archetype 1");
 }
 
 /// Goa'uld (archetype 6) are held too: chain 1023 has no archetype condition
-/// (D-BL8), so the same hold and ability fire for them.
+/// (D-BL8), so the same hold fires for them.
 #[tokio::test]
 async fn live_db_chain_1023_holds_goauld_too() {
     let pool = require_db_or_skip!();
     let actions = fire_player_loaded(&pool, 1023, "active", Some(6)).await;
-    assert_hold_and_1597(&actions, "archetype 6");
+    assert_hold_only(&actions, "archetype 6");
 }
 
 /// The masks of the `|` (set) click-bit operations on the Prison Boot

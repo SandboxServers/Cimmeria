@@ -310,14 +310,15 @@ rejection of bad input, so it is **not** one of the `reason` values of
 `movement_validation_rejects_total` and has no `movement.validation_reject`
 row. The throttled-away packets log nothing.
 
-**Interaction with the Prison Boot effect.** Chain 1023 also launches ability
-1597, whose effect 1939 runs the `MovementHold` effect script (MG-63b): it
-adds a movement-only ledger entry and sets `BSF_MOVEMENT_LOCK`, which row 0
-gates with its own 0.5 m slack measured from where that hold found the player.
-Both holds are live during the boot lock. A move beyond 1.0 m of the content
-anchor is `Locked` first; a move between the older anchor's 0.5 m and the
-content anchor's 1.0 m is refused by row 0 and counted as `movement_locked`.
-The two gates have not been run together against a client (see below).
+**Interaction with the Prison Boot effect.** Chain 1023 does not cast ability
+1597 (BL-06 N1). Its only hold is the content hold. Ability 1597's effect 1939
+runs the `MovementHold` effect script (MG-63b) and sets `BSF_MOVEMENT_LOCK`,
+which row 0 gates with its own 0.5 m slack; that is Layer A, still off in every
+seed until OQ-3. Were 1597 cast, both holds would be live during the boot lock:
+a move beyond 1.0 m of the content anchor is `Locked` first, and a move between
+the older anchor's 0.5 m and the content anchor's 1.0 m is refused by row 0 and
+counted as `movement_locked`. The two gates have not been run together against
+a client (see below).
 
 ### Content hold test status
 

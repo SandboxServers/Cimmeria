@@ -128,7 +128,7 @@ This is the quick pass. The Cellblock session's full guide, with 24+ numbered sc
 | A3 | Marsh | Talk to him | Exactly one briefing | Repeats, or none |
 | A4 | Hallway controllers | Use each once, then again | Each accepts once; the second use does not re-accept | Which controller, and what the second use did |
 | A5 | Region8 (the pistol guard's room) | Walk in | The pistol guard aggros on entry | Guard did not aggro, or aggroed early |
-| A6 | Any time on load | Watch the buff bar, then cure Stasis Sickness | Icon shows on load, clears on cure. **Note:** the Prison Boot lock and the Stasis Sickness effects are no-ops server-side, so this check depends on the client | Icon missing, stuck, or returns after relog |
+| A6 | Any time on load | Watch the buff bar, then cure Stasis Sickness | Icon shows on load, clears on cure. **Note:** the Stasis Sickness effect is a no-op server-side (the Prison Boot lock is a content movement hold and sends no buff icon), so this check depends on the client | Icon missing, stuck, or returns after relog |
 | A7 | Relog after A2-A6 | Log out and in | Every state above is unchanged | Which step regressed |
 | A8 | Vial pickup, then cover | Pick up the vial; take cover | Cover indicator shows on pickup and hides in cover (objective 2484) | Indicator never shows, or never hides |
 | A9 | Straegis scene | Accept each mission (640, 641, 680, 688), then trigger the scene | One prompt per accept. Camera plays once, control returns, Marsh is gone, dialog 2516 shows once, then 5859 about 10.6 s after the scene starts | Any repeated prompt, camera replay, Marsh still visible, or 5859 missing or early |

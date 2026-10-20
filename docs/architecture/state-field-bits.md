@@ -84,7 +84,7 @@ its set with exactly one unset.
 |---|---|---|
 | Death | `combat/state.rs`, `death/mod.rs` | Set on death, cleared on revive |
 | Stun and other incapacitating holders | `holds_incapacitating_flag` | One reference per holder |
-| Movement-only effect hold | `MovementHold` effect script (`cell-effect-scripts`, `effects/movement_hold.rs`) | Effect 1939 of ability 1597 sets it, effect 1942 of ability 1598 clears it (MG-63b). Chain 1023 launches 1597, so the Prison Boot lock sets the flag through this path today |
+| Movement-only effect hold | `MovementHold` effect script (`cell-effect-scripts`, `effects/movement_hold.rs`) | Effect 1939 of ability 1597 sets it, effect 1942 of ability 1598 clears it (MG-63b). Chain 1023 does not launch 1597 (BL-06 N1), so the Prison Boot lock does not set the flag; it stays off in every seed until OQ-3 |
 | Ring transport | `ring_transport/dispatch.rs` | Held for the ceremony |
 | Minigame hold | minigame start and end | Held while a minigame is open |
 | `movement_lock` content verb, `client_flag: true` | [`executor/movement_lock.rs`](../../crates/cell-content/src/cell/content/executor/movement_lock.rs) | Counted once on `hold`, cleared on `release` only if that hold set it. **Off in every seed row** (`client_flag: false`) |

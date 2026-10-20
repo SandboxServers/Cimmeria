@@ -733,8 +733,8 @@ cell entity without it, so the seed re-applies it from a `player_loaded` chain
 dropped the first time the player moves in another.
 
 **Seeded uses** (all in `castle_cellblock_chains.sql`): chain 1023 `hold` with
-`anchor_tag = Cellblock_PrisonBootControl` (sort 1, after the kept
-`launch_ability 1597`); chain 1025 `release` with the unlock line (sort 1, on a
+`anchor_tag = Cellblock_PrisonBootControl` (sort 0; ability 1597 is not
+launched, its effect 1939 sets `BSF_MOVEMENT_LOCK`); chain 1025 `release` with the unlock line (sort 1, on a
 Livewire win); chain 1048 silent `release` on `mission_completed 689`, which
 covers a GM completing the mission.
 
