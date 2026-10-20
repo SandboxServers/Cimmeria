@@ -8,7 +8,7 @@ last_updated: 2026-10-10
 # Minigame System
 
 > **Last updated**: 2026-10-10
-> **Status**: Content-triggered minigames work end-to-end — SmartFoxServer host, ticket handshake, Livewire, six auto-win placeholders, and victory-chain callback. The player-facing `MinigamePlayer` cell methods (helpers, spectating, manual start) are all stubs.
+> **Status**: Content-triggered minigames work end-to-end — SmartFoxServer host, ticket handshake, Livewire, six placeholder shells (60 s countdown, then defeat), and victory-chain callback. The player-facing `MinigamePlayer` cell methods (helpers, spectating, manual start) are all stubs.
 
 ## Overview
 
@@ -48,8 +48,8 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
 | Content-triggered start | DONE | `Action::StartMinigame` → `CellToBaseMsg::StartMinigame` → `onStartMinigame(URL)` |
 | Victory-chain callback | DONE | `MinigameResult` forwards to the cell, which runs `on_victory_chains` |
 | Livewire | DONE | Fully ported in `minigame/games/livewire/` |
-| Hack, Activate, Analyze, Bypass, Converse, ConverseBasicHumanoid | PLACEHOLDER | `games/placeholder.rs` — the only accepted client message is `victory`, which is an instant win. Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
-| Alignment, GoauldCrystals | NOT IMPL | Still Python-only; the factory has commented-out arms awaiting a port. An unrecognised game name silently falls back to the auto-win placeholder |
+| Hack, Activate, Analyze, Bypass, Converse, ConverseBasicHumanoid | PLACEHOLDER | `games/placeholder.rs` — the shell shows a 60 s countdown (`fullgamestate` then `timerupdate`, MG-64); a client `victory` counts only after 5 s (D-MG13); when 240 ticks (60 s) pass with no `victory` the server sends `failure` and the game ends as a defeat (result code 2, `on_failure_chains` fire). Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
+| Alignment, GoauldCrystals | NOT IMPL | Still Python-only; the factory has commented-out arms awaiting a port. An unrecognised game name falls back to the placeholder shell (60 s countdown, then defeat) and logs WARN `Unknown minigame type`; a content `start_minigame` row with such a name never reaches it, because the loader drops it (MG-64) |
 | `startMinigame` | STUB | Cell method 24 logs `UNIMPLEMENTED` |
 | `endCurrentMinigame` | DONE | Cell method 25 cancels the current session and closes SmartFox |
 | Debug start / spectate / join / instance | STUB | Cell methods 20–23 log `UNIMPLEMENTED` |
@@ -321,12 +321,13 @@ Either player:
 ## Data References
 
 - **Game-name dispatch**: `minigame/games/mod.rs::create` — the authoritative list of which names resolve to real logic versus the placeholder
+- **Load-time name check**: `content-engine/src/loader/action.rs::MINIGAME_TYPE_NAMES` copies `GameKind::name`; a `start_minigame` row whose target is not an exact, case-sensitive match is dropped at load with WARN `reason=unknown_minigame_type` (MG-64). Keep it in step with `games/kind.rs`.
 - **Result codes**: `MINIGAME_RESULT_*` constants
 - **Archetypes**: Bitmask of `EArchetype` values
 
 ## Remaining Work
 
-1. **Port Alignment and GoauldCrystals** — the factory has commented-out arms; today an unknown or unported name silently resolves to the auto-win placeholder, which is indistinguishable from a real win to the rest of the server
+1. **Port Alignment and GoauldCrystals** — the factory has commented-out arms; today an unported name resolves to the placeholder shell, which counts down 60 s and ends as a defeat (an unknown name is dropped earlier, at content load)
 2. **Tech competency** — read it from the player entity instead of the hardcoded `1`; the same applies to `abilities`, `intelligence`, and `player_level`
 3. **Player-initiated start** — `startMinigame` (24) and the debug starts (20–23) are stubs, so a player can only enter a minigame that a content chain launched for them
 4. **Helper call protocol** — the whole request → PhaseTwo → accept/decline flow, including tip cash movement

@@ -589,3 +589,44 @@ fn grant_stargate_address_without_a_target_id_drops_the_row() {
     let row = make_row("grant_stargate_address", None, serde_json::json!({}));
     assert!(convert_action(&row).is_none());
 }
+
+// ── start_minigame type name (MG-64) ─────────────────────────────────
+
+/// Whether a `start_minigame` row naming `target` survives the loader.
+fn minigame_row_loads(target: &str) -> bool {
+    use crate::actions::Action;
+    let row = make_row("start_minigame", Some(target), serde_json::json!({}));
+    match convert_action(&row) {
+        Some(Action::StartMinigame { minigame_type, .. }) => {
+            assert_eq!(minigame_type, target, "the converted row keeps its name");
+            true
+        }
+        Some(other) => panic!("start_minigame must convert to StartMinigame, got {other:?}"),
+        None => false,
+    }
+}
+
+/// A name that is not a registered minigame type must drop the row at load.
+/// `hack` and `NoSuchGame` would otherwise only fail at launch.
+#[test]
+fn start_minigame_drops_unknown_type_names() {
+    assert!(
+        !minigame_row_loads("hack"),
+        "a lower-case name must drop the row"
+    );
+    assert!(
+        !minigame_row_loads("NoSuchGame"),
+        "an unknown name must drop the row"
+    );
+}
+
+/// Registered names load with their case intact. `Hack` and `Livewire` are
+/// both on the client type table.
+#[test]
+fn start_minigame_keeps_registered_type_names() {
+    assert!(minigame_row_loads("Hack"), "Hack is a registered type");
+    assert!(
+        minigame_row_loads("Livewire"),
+        "Livewire is a registered type"
+    );
+}
