@@ -38,7 +38,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 | [Crafting](#crafting) | KM | (SGWPlayer direct) | `base/crafting/` (state only) | MEDIUM |
 | [Vendors](#vendors) | IM | SGWInventoryManager | `base/world_entry/methods/vendor/` | MEDIUM |
 | [Organizations](#organizations) | KM | OrganizationMember | `cell/cell_methods/organization.rs` (stubs) | MEDIUM |
-| [Minigames](#minigames) | IM | MinigamePlayer | `minigame/` | LOW |
+| [Minigames](#minigames) | NT | MinigamePlayer | `minigame/` | LOW |
 | [Mail](#mail) | NT | SGWMailManager | `cell/mail.rs`, `base/world_entry/methods/mail/` | MEDIUM |
 | [Trading](#trading) | IM | SGWPlayer | `cell/cell_methods/player/trade/`, `base/world_entry/methods/trade/` | LOW |
 | [Black Market](#black-market) | IM | SGWBlackMarketManager | `base/world_entry/methods/black_market/` (base-methods), `cell/cell_methods/black_market/` | LOW |
@@ -224,7 +224,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 
 ## Minigames
 
-**Status**: IM — The SmartFoxServer 1.x host, session-ticket handshake, and content-chain launch/victory callback all work. Livewire is fully ported; six game types use an auto-win placeholder (matching the original server); Alignment and GoauldCrystals are not yet ported, and an unrecognised name silently falls back to the placeholder. The player-facing `MinigamePlayer` cell methods (manual start, spectating, helper calls) are stubs. See [minigame-system.md](minigame-system.md).
+**Status**: NT — The SmartFoxServer 1.x host, session-ticket handshake, and content-chain launch/victory callback all work. Livewire, CrystalGame, Alignment, GoauldCrystals and ConverseBasicHumanoid are ported and server-validated (the four new ports are not yet client-tested); the five shells (Hack, Activate, Analyze, Bypass, Converse) stay client-declared with a 5 s minimum play time and a 60 s server timer. The player-facing `MinigamePlayer` cell methods (manual start, spectating, helper calls) are stubs. See [minigame-system.md](minigame-system.md).
 
 **Known minigames**: 10 minigame types referenced in data
 **Architecture**: MinigamePlayer interface (25 properties, 78 methods) — the largest interface by method count

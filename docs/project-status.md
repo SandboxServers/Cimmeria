@@ -2,14 +2,14 @@
 title: "Project Status"
 type: reference
 audience: anyone tracking the project
-last_updated: 2026-10-19
+last_updated: 2026-10-20
 ---
 
 # Project Status
 
 Where the Cimmeria server emulator stands today and what's ahead.
 
-> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which tracks **512 individual features across 45 systems** (37 gameplay + 8 infrastructure) against the active Rust codebase on `main`.
+> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which tracks **514 individual features across 45 systems** (37 gameplay + 8 infrastructure) against the active Rust codebase on `main`.
 >
 > **Re-verified 2026-09-25** against the code at `acbcc22e`, after about 160 PRs landed since the previous (2026-07-25) edition. Every row was re-read, and a feature counts as Confirmed Working only when there is a written record of an in-client test: the 2026-09-18 colo playtest, the 2026-09-25 NPC AI UAT, a PR or issue note, or a recorded confirmation. That stricter bar moved some rows down (vendors, spawn population, mission cash, mail sending, effect clear-flags) while the playtest moved others up (character creation, minigames, ring trips, damage, loot). The previous edition's headline also did not match its own table: it printed 443 / CW 159 / KM 128 against rows that summed to 444 / CW 164 / KM 124. The figures below are recomputed from the rows.
 >
@@ -31,6 +31,8 @@ Where the Cimmeria server emulator stands today and what's ahead.
 >
 > **2026-10-19 update (Union Beta E1)**: the Union Beta E1 close-out (UB-99, [ledger](analysis/union-beta-e1-continuation/README.md)) built the first visit of world 23 for Human, Free Jaffa and Asgard players on the `uzp-e1` campaign branch. It is not on `main`, so no gap-analysis row changes yet. Database tests cover it; nothing has run in the lab or client ([unified-uat.md § Beta_Site_Evo_1](guides/unified-uat.md#beta_site_evo_1)).
 >
+> **2026-10-20 update**: the headline and the Minigames row follow the minigames close-out (MG-99, [ledger](analysis/minigames/README.md)): 514 features, NT 148.
+>
 > **Scope note**: only work merged to `main` is counted. The black-market implementation on `feat/571-black-market-phase1` (PR #586) is real but unmerged, and is counted as missing until it lands.
 
 ## Status Taxonomy
@@ -47,18 +49,18 @@ Where the Cimmeria server emulator stands today and what's ahead.
 
 | Status | Features | Percentage |
 |--------|----------|-----------|
-| Confirmed Working (CW) | 167 | 32.6% |
-| Needs Test (NT) | 146 | 28.5% |
-| Implemented (IM) | 102 | 19.9% |
-| Known/Missing (KM) | 94 | 18.4% |
+| Confirmed Working (CW) | 167 | 32.5% |
+| Needs Test (NT) | 148 | 28.8% |
+| Implemented (IM) | 102 | 19.8% |
+| Known/Missing (KM) | 94 | 18.3% |
 | Needed/Unknown (NU) | 3 | 0.6% |
-| **Total** | **512** | |
+| **Total** | **514** | |
 
-**Code exists (CW + NT + IM)**: 415 features (81.1%)  
+**Code exists (CW + NT + IM)**: 417 features (81.1%)  
 **Missing (KM + NU)**: 97 features (18.9%)  
-**Tested end-to-end (CW)**: 167 features (32.6%)
+**Tested end-to-end (CW)**: 167 features (32.5%)
 
-The story of this quarter is the Needs Test column, which tripled from 18 to 58 by 2026-09-25 and reached 121 on 2026-09-27, when the social-systems, pets, organizations, bank and crafting campaigns merged, 125 on 2026-09-28 with the ammo campaign, 127 on 2026-10-05 with named telemetry, 138 the same day with the Debug Area and starter kit, and 146 on 2026-10-11 with the telemetry-gaps campaign. Castle Cellblock and Castle were rebuilt and played end to end in the 2026-09-18 colo playtest, Harset was rebuilt, and the NPC AI restoration campaign replaced aggro, leash, cover and line of sight. Most of that merged with unit, live-DB and wire-format coverage but has not yet been run in a client. A tester working through the NT rows is now the fastest way to move the headline.
+The story of this quarter is the Needs Test column, which tripled from 18 to 58 by 2026-09-25 and reached 121 on 2026-09-27, when the social-systems, pets, organizations, bank and crafting campaigns merged, 125 on 2026-09-28 with the ammo campaign, 127 on 2026-10-05 with named telemetry, 138 the same day with the Debug Area and starter kit, and 146 on 2026-10-11 with the telemetry-gaps campaign, 148 on 2026-10-20 with the minigames campaign. Castle Cellblock and Castle were rebuilt and played end to end in the 2026-09-18 colo playtest, Harset was rebuilt, and the NPC AI restoration campaign replaced aggro, leash, cover and line of sight. Most of that merged with unit, live-DB and wire-format coverage but has not yet been run in a client. A tester working through the NT rows is now the fastest way to move the headline.
 
 ## System Status
 
@@ -219,13 +221,13 @@ The crafting campaign restored the whole activity layer on the Phase 1 state (#4
 
 ### September landings await client verification
 
-146 rows are Needs Test: the eight telemetry-gaps rows (the [unified UAT § Telemetry gaps](guides/unified-uat.md#telemetry-gaps), plus the client DLL lab load check before the next launcher release), the eleven Debug Area and starter-kit rows (the [DA-06 live-client checks](analysis/debug-area/README.md#da-06-live-client-checks) and the [unified UAT § Debug Area](guides/unified-uat.md#debug-area)), the named-telemetry rows (a first session read in SigNoz and Discord covers them), the NPC AI changes merged after the 2026-09-25 UAT, the four special-ammo rows (the [unified UAT guide § Special ammo](guides/unified-uat.md#special-ammo)), the social-systems rows (mail, chat, duels; the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers them), the organizations and bank rows, the nine crafting rows (the owner's [CR-14](analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist)), gate dial/open/cross with a second observer, the dialog-UI buttons and barks, two-client chat and player visibility, relog position and objectives, and vendors (untested since #609). The per-row tester actions are in the [Gap Analysis](gap-analysis.md).
+148 rows are Needs Test: the two minigames rows (the [unified UAT § Minigames](guides/unified-uat.md#minigames)), the eight telemetry-gaps rows (the [unified UAT § Telemetry gaps](guides/unified-uat.md#telemetry-gaps), plus the client DLL lab load check before the next launcher release), the eleven Debug Area and starter-kit rows (the [DA-06 live-client checks](analysis/debug-area/README.md#da-06-live-client-checks) and the [unified UAT § Debug Area](guides/unified-uat.md#debug-area)), the named-telemetry rows (a first session read in SigNoz and Discord covers them), the NPC AI changes merged after the 2026-09-25 UAT, the four special-ammo rows (the [unified UAT guide § Special ammo](guides/unified-uat.md#special-ammo)), the social-systems rows (mail, chat, duels; the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers them), the organizations and bank rows, the nine crafting rows (the owner's [CR-14](analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist)), gate dial/open/cross with a second observer, the dialog-UI buttons and barks, two-client chat and player visibility, relog position and objectives, and vendors (untested since #609). The per-row tester actions are in the [Gap Analysis](gap-analysis.md).
 
 ## Critical Path for Playability
 
 Re-ranked 2026-09-25.
 
-1. **Client-test the September landings** — the 146 NT rows above; the cheapest way to move the headline
+1. **Client-test the September landings** — the 148 NT rows above; the cheapest way to move the headline
 2. **Effect-script content coverage** — the 3,216 effect rows need script authoring for the long tail, plus the missing clear-on flags
 3. **AoI entity-introduction drop** — needs an in-game look at the #747 hold, not more code
 4. **Mission rewards** — a reward formula for XP, and cash and item dispatch (#310)

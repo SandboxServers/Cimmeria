@@ -88,7 +88,7 @@ What the client never shipped, or the seeds never authored.
 | M5 | Failure or defeat outcomes | No authored failure chains; D-MG5 adds the hook | MG-R5 (confirmed) | The hook shipped (D-MG5). No authored failure outcome exists beyond the Debug Area terminals' shared win and loss bark chains. |
 | M6 | Social-layer design data (help, call, spectate) | Out of scope, D-MG4 | none | Out of scope (D-MG4). Follow-up campaign. |
 | M7 | Hidden objects for "Reveal Mini-Games" (802; event set 1132; sequence 2304) | The reveal ability has nothing to reveal | MG-R7 (confirmed) | Stays missing. Nothing was built for "Reveal Mini-Games". |
-| M8 | A source for the cheat consumables | Confirmed unobtainable in play. Item cheats are not ported (D-MG17) | MG-R7 (confirmed) | Final: unobtainable. Item cheats are not ported (D-MG17); every port sends `instcc = -1` and answers `activateitemcheat` with WARN `item_cheat_unavailable`. Alignment and GoauldCrystals do implement the ability cheats. |
+| M8 | A source for the cheat consumables | Confirmed unobtainable in play. Item cheats are not ported (D-MG17) | MG-R7 (confirmed) | Final: unobtainable. Item cheats are not ported (D-MG17); every port sends `instcc = -1` and refuses `activateitemcheat` with a WARN (reason `item_cheat_unavailable` in CrystalGame, ConverseBasicHumanoid and Livewire, `unknown_command` in Alignment and GoauldCrystals). Alignment and GoauldCrystals do implement the ability cheats. |
 | M9 | The original tech-competency table | Accepted: `techcomp` stays 1 (D-MG18) | MG-R7 (confirmed) | Accepted: `techcomp` stays 1 (D-MG18). |
 | M10 | An offer path for mission 582 | Its giver Blackstock (NPC 948) has no spawn and dialog set 530 is unbound, so step 2307 is reachable only by GM. Follow-up after the campaign | content-map.md § 10 (G1) | **Open.** Mission 582 is reachable only by GM. Owner follow-up: spawn Blackstock or bind set 530. |
 
@@ -120,7 +120,7 @@ None blocks the PR. Everything below needs the owner or a later campaign.
 
 **Housekeeping**
 
-- `server/listener_tests.rs` is 692 lines and cell-world `space_manager/entities.rs` is 700: split both before they grow.
+- `server/listener_tests.rs` is 692 lines and cell-world `space_manager/entities.rs` is 700: split both before they grow; also session.rs (694), tests.rs (690) and session_tests.rs (674) in crates/minigame.
 - Leftover `sgw_*` test databases are unverified (`psql` was not on the ops PATH).
 - Delete branch `backup/mg-al3a-rules-pre-reset` at PR time.
 - After the PR merges: retire every packet worktree, then `mg-integration` (`rm-worktree.ps1 --merged-into <PR> <name>...`), and empty `.claude/state/active-campaign`.

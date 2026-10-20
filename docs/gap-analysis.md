@@ -2,7 +2,7 @@
 title: "Gameplay Systems Gap Analysis"
 type: explanation
 audience: engineers
-last_updated: 2026-10-11
+last_updated: 2026-10-20
 ---
 
 # Gameplay Systems Gap Analysis
@@ -174,10 +174,12 @@ The TOTALS line above and every number in this section are generated from the ma
 | 2026-10-05 (named-telemetry close-out) | 167 | 127 | 102 | 94 | 3 | 493 |
 | 2026-10-05 (Debug Area close-out) | 167 | 138 | 102 | 94 | 3 | 504 |
 | 2026-10-11 (telemetry-gaps close-out) | 167 | 146 | 102 | 94 | 3 | 512 |
-| **Delta** (2026-09-25 to now) | **-2** | **+88** | **+4** | **-48** | **-1** | **+41** |
+| 2026-10-20 (minigames close-out) | 167 | 148 | 102 | 94 | 3 | 514 |
+| **Delta** (2026-09-25 to now) | **-2** | **+90** | **+4** | **-48** | **-1** | **+43** |
 
 - **Social systems (mail, chat, 1v1 duels).** The social-systems campaign ([ledger](analysis/social-systems/README.md), PRs #873 to #937) moved Chat to 7 NT / 1 IM / 3 KM (tells, Ignore, flood limit, GM broadcast, GM mute), Mail to 15 NT / 2 KM with four new rows (server-generated mail, GM mail tools, quarantined-mail recovery, vault and organization aliases), and Dueling to 5 IM / 1 KM. Rate Limiting's chat row also covers the mail and duel buckets. Every one of these rows waits on the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release).
 - **Other campaigns.** Crafting (CR-07 to CR-09), pets, organizations (ORG-03, ORG-04) and the ability-tree campaign changed feature rows in their sections. Four of those sections had been edited without their matrix row: World Entry (10 → 12 rows), XP and Leveling (11 → 12 rows, two CW rows now NT until the ability-tree UAT), Organizations (15 → 17 rows, 3 NT) and Anti-Cheat (7 → 8 rows). The close-out recount brought those matrix rows back in line with their tables.
+- **Minigames.** The minigames campaign ([ledger](analysis/minigames/README.md)) moved section 29 from IM to NT: 11 features (5 CW, 2 NT, 1 IM, 3 KM), with two new NT rows (launch plumbing, server-validated games) and the shells row IM. Livewire stays the only client-proven game.
 - **Organizations (Squads, Teams, Commands).** The organizations campaign ([ledger](analysis/organizations/README.md), PRs #861 to #954) moved §23 from 3 NT / 14 KM to 16 NT / 1 IM / 4 KM, with four new rows (kick, login restore and presence, disband, GM commands); the four KM rows left are the Bank campaign's cash and vault, and the two strike-team responses, which are refused because no strike-team feature exists. §30 now counts the squad as the group (3 NT / 1 IM / 3 KM), and §21's pre-defined channels row is NT now that team, command and officer lines are delivered (ORG-09). Every one of these rows waits on the owner's [ORG-UAT](analysis/organizations/work-packets.md#org-uat-owner-two-client-uat-colo).
 - **Bank and vault.** The Bank and Vault campaign ([ledger](analysis/bank-vault/README.md), PRs #860 to #966) moved §23's two Bank rows, the treasury and the organization vault, from KM to NT (§23: 18 NT / 1 IM / 2 KM). The personal bank changed no row count: §12's bag row already counted the bank. Every one of these rows waits on the owner's bank UAT ([checklist](analysis/bank-vault/handoffs/session-resume.md#uat-checklist)).
 - **Crafting.** The crafting campaign ([ledger](analysis/crafting/README.md), PRs #851 to #979) moved every §19 row to NT: the eight IM rows (craft, research, reverse engineering, alloy, learning, expertise, paradigms, blueprints) and respec (KM). It also changed rows without moving their status: §14's loot take-all and table content (a refused pickup stays on the corpse; the debug crate drops guides and a Blueprint item, CR-16) and §22's item swap (trade from the crafting bag, CR-17). Every §19 row waits on the owner's [CR-14 UAT](analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist).

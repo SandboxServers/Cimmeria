@@ -17,4 +17,4 @@
 
 ## Owner list
 
-The full list, with the reasons, is [README § Open owner items at close-out](README.md#open-owner-items-at-close-out). In short: D-MG11 default on after lab UAT; an offer path for mission 582 (M10); lab UAT of the terminals (placement, click, game window); the social layer; deferred authority finding 3; and two files to split (`listener_tests.rs` at 692 lines, cell-world `entities.rs` at 700).
+The full list, with the reasons, is [README § Open owner items at close-out](README.md#open-owner-items-at-close-out). In short: D-MG11 default on after lab UAT; an offer path for mission 582 (M10); lab UAT of the terminals (placement, click, game window); the social layer; deferred authority finding 3; and two files to split (`listener_tests.rs` at 692 lines, cell-world `entities.rs` at 700), plus session.rs (694), tests.rs (690) and session_tests.rs (674) in crates/minigame to watch.

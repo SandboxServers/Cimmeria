@@ -240,7 +240,7 @@ Per-system breakdowns of game mechanics, derived from RE analysis, entity defini
 | [crafting-system.md](gameplay/crafting-system.md) | Blueprints, material requirements, crafting stations, 499 recipes | Complete |
 | [mission-system.md](gameplay/mission-system.md) | Quest objectives, step advancement, rewards, mission scripts | Complete |
 | [gate-travel.md](gameplay/gate-travel.md) | Stargate dialing, 29 defined gates, zone transitions | Complete |
-| [minigame-system.md](gameplay/minigame-system.md) | 10 minigames (3 implemented, 7 remaining), lockpicking, hacking, etc. | Complete |
+| [minigame-system.md](gameplay/minigame-system.md) | 10 minigame types (5 server-validated games, 5 client-declared shells), lockpicking, hacking, etc. | Complete |
 | [organization-system.md](gameplay/organization-system.md) | Guilds/organizations, ranks, permissions, roster management | Complete |
 | [group-system.md](gameplay/group-system.md) | Party formation, loot rules, group chat | Complete |
 | [contact-list.md](gameplay/contact-list.md) | Contact list management, named lists, flags, event notifications | Complete |

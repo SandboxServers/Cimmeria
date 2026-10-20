@@ -160,7 +160,7 @@ An extensive minigame framework with 10 types:
 
 Features matchmaking, spectating, and helper systems.
 
-**Server:** The SmartFoxServer 1.x host the Flash minigame SWFs connect to is reimplemented in-process (`crates/minigame/src/minigame/`), along with the session-ticket handshake. Content chains launch minigames via `Action::StartMinigame` and receive a victory callback that runs follow-on chains. Livewire is fully ported; six game types (Hack, Activate, Analyze, Bypass, Converse, ConverseBasicHumanoid) use an auto-win placeholder, matching the original server. Alignment and GoauldCrystals are not yet ported — and an unrecognised game name falls back to the auto-win placeholder, so a missing port looks like a win. The player-facing `MinigamePlayer` cell methods (manual start, spectating, helper calls) are all stubs. See [minigame-system.md](gameplay/minigame-system.md).
+**Server:** The SmartFoxServer 1.x host the Flash minigame SWFs connect to is reimplemented in-process (`crates/minigame/src/minigame/`), along with the session-ticket handshake. Content chains launch minigames via `Action::StartMinigame` and receive a victory callback that runs follow-on chains. Livewire, CrystalGame, Alignment, GoauldCrystals and ConverseBasicHumanoid are server-validated (the server builds the board, checks every move and decides the result; a client "victory" is refused). The five shells with no rules in the client (Hack, Activate, Analyze, Bypass, Converse) stay client-declared with a 5 s minimum play time and a 60 s server timer. The player-facing `MinigamePlayer` cell methods (manual start, spectating, helper calls) are all stubs. See [minigame-system.md](gameplay/minigame-system.md).
 
 ## Dueling
 
