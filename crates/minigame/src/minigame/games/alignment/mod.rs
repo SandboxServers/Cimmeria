@@ -146,6 +146,21 @@ impl AlignmentGame {
         Self::build(session, rng, board)
     }
 
+    /// Offline replay and golden runs only: seeds the RNG from `session.seed`
+    /// so a recorded script reproduces its board. Reached only through
+    /// `create_seeded`, which only the REPL calls; the live path uses `new`,
+    /// whose OS entropy is the F2 guard and must never be weakened.
+    pub(crate) fn with_seed(session: &MinigameSession) -> Self {
+        let tier = setup::clamp_tier(
+            session.difficulty,
+            session.entity_id,
+            session.player_name.as_deref(),
+        );
+        let mut rng = StdRng::seed_from_u64(u64::from(session.seed));
+        let board = setup::select_icons(&mut rng, tier);
+        Self::build(session, rng, board)
+    }
+
     /// Test-only: builds the game with an injected board of plain piece ids, so
     /// tests can predict every move (spec section 9).
     #[cfg(test)]
@@ -447,6 +462,11 @@ impl MinigameInstance for AlignmentGame {
     fn needs_tick(&self) -> bool {
         self.outcome.is_none()
     }
+}
+
+/// The offline-replay twin of `create`: a seeded board (see `with_seed`).
+pub(crate) fn create_seeded(session: &MinigameSession) -> Box<dyn MinigameInstance> {
+    Box::new(AlignmentGame::with_seed(session))
 }
 
 /// Create a minigame instance for the given session: the real game once

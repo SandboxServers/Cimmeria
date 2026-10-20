@@ -448,3 +448,40 @@ fn a_callhint_below_zero_ends_the_game_on_the_next_message() {
     assert_eq!(game.outcome, Some("failure"));
     assert!(!game.needs_tick());
 }
+
+#[test]
+fn goldens_check_clean() {
+    for golden in [
+        include_str!("../../../../tests/scripts/alignment/a_scoring_swap.mgs"),
+        include_str!("../../../../tests/scripts/alignment/b_reset.mgs"),
+    ] {
+        assert_eq!(crate::minigame::repl::check_script(golden), Ok(()));
+    }
+}
+
+/// The first output of `started()` (the `fullgamestate`), rendered.
+fn opening_frame(mut game: Box<dyn MinigameInstance>) -> String {
+    crate::minigame::repl::render(&game.started()[0])
+}
+
+/// Authority F2: only the offline replay path may seed the board. The live
+/// `create` keeps OS entropy, so one session seed gives different boards.
+#[test]
+fn the_live_create_path_ignores_the_session_seed() {
+    let session = make_session(7);
+    let live: Vec<String> = (0..6)
+        .map(|_| opening_frame(crate::minigame::games::create(&session).unwrap()))
+        .collect();
+    assert!(
+        live.iter().any(|frame| frame != &live[0]),
+        "six live games from one seed drew the same board"
+    );
+}
+
+#[test]
+fn the_offline_create_path_is_seeded() {
+    let frame =
+        |seed| opening_frame(crate::minigame::games::create_seeded(&make_session(seed)).unwrap());
+    assert_eq!(frame(7), frame(7));
+    assert_ne!(frame(7), frame(8));
+}
