@@ -1,6 +1,6 @@
 # GoauldCrystals rules spec (MG-R3)
 
-Status: draft for review. Source: the SmartFoxServer 1.x AS1 extension embedded in `GoauldCrystals.gfx`, read with the MG-R0 disassembler (`tools/minigame-swf/as2dis.py`) and a scratch stack decompiler kept outside the repo. Nothing here was run in the lab or against a live client. Offsets cited as `@NNNNN` are byte offsets inside the frame-3 `DoAction` block of the movie, which holds both the extension and the client code.
+Status: draft for review. Source: the SmartFoxServer 1.x AS1 extension embedded in `GoauldCrystals.gfx`, read with the MG-R0 disassembler (`tools/minigame-swf/as2dis.py`) and a scratch stack decompiler kept outside the repo. Nothing here was run in the lab or against a live client. Offsets cited as `@NNNNN` are byte positions in the output of a scratch decompiler that is not committed; every function named here can be re-read with `python -I tools/minigame-swf/list_functions.py <GoauldCrystals.gfx> --function <name>`, which is the evidence of record.
 
 ## 1. Verdict
 
@@ -32,7 +32,7 @@ CrystalGame (`CrystalGame.gfx`, 233 functions) is a different game, and the two 
 | | GoauldCrystals | CrystalGame |
 |---|---|---|
 | Rule | connect two edge goals with a green path | "lights out" mod 6: a click adds 2 to the cell and 1 to each 4-neighbour; win when every cell is 3 |
-| Board | `gameArray[x][y] = {color, var, power}`, 4x4 to 14x12 by tier | flat int array, fixed 14x13 |
+| Board | `gameArray[x][y] = {color, var, power}`, 4x4 to 14x12 by tier | `gameArray[x][y]` ints 0-5, fixed 14x13 |
 | Generation | random goals, then random crystal counts | all cells 3, then 2 random moves |
 | Client sends | `playfieldclick`, cheats, `processreset` | `processmove`, cheats, `processreset` |
 | Server sends | `squarestate`, `powerstatus`, `selectedupdate`, ... | `updateslot {x,y,num}`, ... |
@@ -221,6 +221,8 @@ All are broadcast to every user in the room (`room.getAllUsers()`); one player p
 
 `fullgamestate` without a non-spectator in the room sends `instcc=-1`, `CA0..CA4=0`, `abilityBitfield=0`. With `instcc`, `CA0..4` and `abilityBitfield` the port sends the session values (section 2). `timerState`: 0 stopped (not started), 1 running, 2 paused, 3 running backwards.
 
+`processreset` in full: send `resetgame {}` to every user (the client has no handler), then `numResets += 1`, then `initGame(firstTime = false)`: new board, new goals, `timerState = 0`, `timeRemaining = maxTime`, cheat inventory restored as in section 3 (`CA` not restored). The port does the same; `numResets` starts at 0 and is reported as `numResets + 1` in the completion call.
+
 Sound names: `select`, `action`, `invalid`, and the cheat sounds `crystalMG/time/chng`, `crystalMG/time/xchng`, `crystalMG/time/stop`, `crystalMG/time/alter`, `crystalMG/plyfld/addremSpc`, `crystalMG/plyfld/addremCont`, `crystalMG/plyfld/alter`, `crystalMG/mvprts/addrem`, `crystalMG/mvprts/alter`, `crystalMG/mvprts/xchng`, `crystalMG/tools/alter`, `crystalMG/tools/apply`, `crystalMG/obst/addrem`, `crystalMG/obst/alter`, `crystalMG/obst/xchng`.
 
 ### `playfieldclick` in full
@@ -287,11 +289,11 @@ Victory can be reached by a path move, an adjacent swap, item cheats 3 and 4, ab
 
 The client runs its own display timer from `timerupdate` and `fullgamestate`.
 
-**Result codes for the port.** Victory is `GameOutput::Victory` (server result 1). Timeout is `GameOutput::Failure`, which the session loop reports as defeat. Whether that is code 2 or 4 is MG-02's mapping, not this game's.
+**Result codes for the port.** Victory is `GameOutput::Victory` (server result 1). Timeout is `GameOutput::Failure`, which the session loop reports as defeat. Timeout is `GameOutput::Failure`, reported to the cell as result 2 (spec-protocol-common Q4: extension code 4 maps to cell 2).
 
 ### Shipped bugs the port does not copy
 
-| Bug | Effect in 2009 | Port |
+| Bug | Effect in the original | Port |
 |---|---|---|
 | `updatePowerStatus` passes the undefined global `userlist` | online, the victory `fullgamestate` would go nowhere; offline the stub ignores recipients | broadcast |
 | `fullgamestate` is sent twice | double redraw | send once (open question 3) |
@@ -363,7 +365,7 @@ The port runs on the session loop's 250 ms tick (`game.rs`) and should subtract 
 
 ## 9. Golden transcripts
 
-Both use the tutorial board: `game GoauldCrystals difficulty 2 seed 1` with techcomp 1-5 gives 4x4, 16 s, and `seed == 1` pins the board and goals (section 3), so no rng draw affects the outputs. The port sends `fullgamestate` once (open question 3). `C` below stands for the full `gameArray`.
+All three use the tutorial board: `game GoauldCrystals difficulty 2 seed 1` with techcomp 1-5 gives 4x4, 16 s, and `seed == 1` pins the board and goals (section 3), so no rng draw affects the outputs. The port sends `fullgamestate` once (open question 3). `C` below stands for the full `gameArray`.
 
 Start state: start (0,0) side 3 offset 0, finish (3,2) side 1 offset 2, powered cells (0,0), (0,1), (1,1), (2,1), (3,1). Finish not powered.
 
@@ -377,7 +379,7 @@ Start state: start (0,0) side 3 offset 0, finish (3,2) side 1 offset 2, powered 
 | 4 | `playfieldclick x=3 y=3` | `selectedupdate {xPos 3, yPos 3}`; `triggersound {soundName select}` |
 | 5 | `playfieldclick x=3 y=2` | path move: green (3,3) into empty (3,2), found as the `y-1` neighbour. `fullgamestate {..., timerState 0, finish powered}`; `victory`. The game ends here. |
 
-In the 2009 extension, step 5 then also sent `squarestate` (3,2) and (3,3), `triggersound action` and `selectedupdate {-1,-1}`, and reported `minigameCompleteGame(user, 3, ratio, 1, true, false)`, where `instrumentsUsed` is true because `instcc` went from 0 to -1. The port stops at `victory`: the client is on its victory frame by then.
+In the original extension, step 5 then also sent `squarestate` (3,2) and (3,3), `triggersound action` and `selectedupdate {-1,-1}`, and reported `minigameCompleteGame(user, 3, ratio, 1, true, false)`, where `instrumentsUsed` is true because `instcc` went from 0 to -1. The port stops at `victory`: the client is on its victory frame by then.
 
 ### B: no cheats, a move, an invalid move, timeout
 
@@ -392,6 +394,19 @@ In the 2009 extension, step 5 then also sent `squarestate` (3,2) and (3,3), `tri
 
 Step 3 shows why the path is now cut: (2,1) is orange, so power stops at (1,1). The `powerArray` order is the breadth-first visit order.
 
+### C: no cheats, a path move, the clock runs down
+
+Derived from `processPlayfieldClick` steps 5-8 on the same board: the selected green (2,1) moves into the empty (2,2) by a one-cell path search (the `y+1` neighbour matches the destination at once). The move cuts nothing that powers the finish, so the game goes on.
+
+| Step | Input | Expected outputs, in order |
+|---|---|---|
+| 1 | join | `fullgamestate {..., timerState 0, timeRemaining 16}` |
+| 2 | `playfieldclick x=2 y=1` | `timerupdate {timeRemaining 16, timerState 1}`; `selectedupdate {xPos 2, yPos 1}`; `triggersound {soundName select}` |
+| 3 | `playfieldclick x=2 y=2` | path move, green (2,1) into empty (2,2). `powerstatus {powerArray [{xPos 0, yPos 0}, {xPos 0, yPos 1}, {xPos 1, yPos 1}]}`; `squarestate {xPos 2, yPos 2, info {color 1, power false, var 0}}`; `squarestate {xPos 2, yPos 1, info {color 0, power false, var 0}}`; `triggersound {soundName action}`; `selectedupdate {xPos -1, yPos -1}` |
+| 4 | `tick 8` | nothing is sent (state 1 is silent); `timeRemaining` is 14 |
+
+Finish (3,2) stays unpowered, so no `victory`. The tutorial board sets `var 0` on every cell, so the `var` values above are exact.
+
 ## 10. Port slicing
 
 Layout per C4: `crates/minigame/src/minigame/games/goauld_crystals/`. Estimates are modelled on Livewire (`mod.rs` 444, `setup.rs` 402, `tests.rs` 272 lines).
@@ -399,14 +414,14 @@ Layout per C4: `crates/minigame/src/minigame/games/goauld_crystals/`. Estimates 
 | Packet | Files | Lines (est.) | Content |
 |---|---|---|---|
 | MG-GC1 | `mod.rs` | 230 | `GoauldCrystalsGame` (session fields as Livewire, `rng: StdRng`, board, goals, selection, clock, cheat state, `outcome`), `MinigameInstance` impl with `message` dispatch stubs, `pub const PORTED: bool = false`, `create()` |
-| | `setup.rs` | 420 | difficulty table and clamp; `place_goals`; `randomize_crystals` with fractional counts and the capacity loop; tutorial board; `update_power` breadth-first search returning the visit list; builders for `fullgamestate`, `squarestate`, `timerupdate`; `init_game(first_time)` |
+| | `setup.rs` | 350 | difficulty table and clamp; `place_goals`; `randomize_crystals` with fractional counts and the capacity loop; tutorial board; `update_power` breadth-first search returning the visit list; builders for `fullgamestate`, `timerupdate`; `init_game(first_time)` |
 | | `tests_setup.rs` | 300 | table spot checks (both ends of every column), tutorial board and power set, generated boards never start solved, goal distance, capacity loop on the smallest and largest tiers, `fullgamestate` field set and types |
-| MG-GC2 | `moves.rs` | 380 | `playfieldclick` steps 1-9: bounds validation, clock start, armed item modes on click, `redsToYellows` and `redsToRemove`, select, path search and swap, adjacent swap with the yellow-to-orange rule, invalid, `redsToRevert` remap and revert; victory hand-off to one `after_board_change()` |
+| MG-GC2 | `moves.rs` | 440 | `playfieldclick` steps 1-9: bounds validation, clock start, armed item modes on click, `redsToYellows` and `redsToRemove`, select, path search and swap, adjacent swap with the yellow-to-orange rule, invalid, `redsToRevert` remap and revert; victory hand-off to one `after_board_change()`; builders for `squarestate` and `powerstatus` (first used by `playfieldclick`) |
 | | `tests_moves.rs` | 340 | transcript B steps 1-5; path search reaches through empties only; path mode never falls back to an adjacent swap; yellow to orange with and without `yellowsWithoutOrange`; out-of-bounds and non-integer clicks dropped |
 | MG-GC3 | `rules.rs` | 460 | victory (terminal guard, one `victory` + `GameOutput::Victory`), timer states 0-3 on the 0.25 s tick, timeout, item-cheat payment (`instcc`, `CA` deduction) and `processItemCheat`, ability bits 0-14, one parametrised edge-removal function for the four sides, `add_random_greens`, `processreset`; flips `PORTED` to `true` |
-| | `tests_rules.rs` | 380 | transcript A; timeout at `tick 64`; pause and reverse; each ability bit; CA deduction table; input after victory is ignored; golden `.mgs` scripts for A and B (`crates/minigame/tests/scripts/goauld_crystals/`) |
+| | `tests_rules.rs` | 380 | transcript A; timeout at `tick 64`; pause and reverse; each ability bit; CA deduction table; input after victory is ignored; golden `.mgs` script for B (`crates/minigame/tests/scripts/goauld_crystals/b_move_timeout.mgs`); transcript A is a Rust unit test that sets `instcc = 0` on the session before `started()` and becomes an `.mgs` once MG-05 or MG-22 adds an inventory directive (open question 5) |
 
-Each slice is roughly 750-840 lines of new code, inside the 40k-token budget. If `rules.rs` passes 500 lines, split the ability cheats into a `cheats.rs` beside it (open question 4). MG-GC3 also adds `GoauldCrystals` to `kind.rs`'s ported list.
+Slices are about 880 (GC1), 780 (GC2) and 840 (GC3) lines including tests; GC1 is the largest because it holds the table, generation, power search and two message builders. If `rules.rs` passes 500 lines, split the ability cheats into a `cheats.rs` beside it (open question 4). MG-GC3 also adds `GoauldCrystals` to `kind.rs`'s ported list.
 
 ## 11. Open questions
 
@@ -415,5 +430,4 @@ Each slice is roughly 750-840 lines of new code, inside the 40k-token budget. If
 3. **Double `fullgamestate`.** The extension always sends it twice. The proposal sends once; the client redraws idempotently, but this has not been checked in the lab.
 4. **`rules.rs` size.** If the estimate holds, C4's layout fits; otherwise add `cheats.rs`. The architect decides.
 5. **`instcc` and `CA` in the session.** Rust's `joinOK` sends `instcc=-1` and `CA0..4=0`, so no item cheat can ever be paid for. Transcript A needs `instcc = 0`, which the C6 REPL header cannot set today. MG-05 or MG-22 should add a way to set the cheat inventory in a REPL script.
-6. **Result-code mapping for timeout.** The extension reports host code 4. Whether the cell sees 2 (failure) or 4 (defeated) is MG-02's decision; GoauldCrystals only emits `GameOutput::Failure`.
-7. **Not verified live.** No transcript here was run against the client. Lab confirmation of the double-send, of the `resetgame` no-op, and of a mid-game `fullgamestate` while the client timer runs is still owed.
+6. **Not verified live.** No transcript here was run against the client. Lab confirmation of the double-send, of the `resetgame` no-op, and of a mid-game `fullgamestate` while the client timer runs is still owed.
