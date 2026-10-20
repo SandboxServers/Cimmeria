@@ -46,7 +46,7 @@ pub trait MinigameInstance: Send {
     fn board_snapshot(&self) -> Option<BoardSnapshot>;
     fn started(&mut self) -> Vec<GameOutput>;
     fn message(&mut self, cmd: &str, params: &HashMap<String, SfsValue>) -> Vec<GameOutput>;
-    fn tick(&mut self) -> Vec<GameOutput>;      // every 250 ms while needs_tick()
+    fn tick(&mut self) -> Vec<GameOutput>;      // every 250 ms if needs_tick() was true at game start (read once)
     fn aborted(&mut self) -> Vec<GameOutput>;
     fn needs_tick(&self) -> bool;
 }
@@ -106,7 +106,7 @@ Spec [spec-alignment.md](../spec-alignment.md). Folder `games/alignment/`, name 
 
 - Agent: packet-coder · Host: windows · Wave 5 · Depends on: MG-AL2b · Status BlockedDependency · Extra pass: server-authority-enforcer
 - Worktree `mg-al3a` · Branch `minigames/mg-al3a-rules` · Commit `MG-AL3a: Alignment score, victory, timer and hints`
-- **Files:** `alignment/rules.rs` (~300) and `alignment/tests_rules.rs` (~300); route `doscore`, `dovictory`, `callhint` in `mod.rs`; `needs_tick()` true while running.
+- **Files:** `alignment/rules.rs` (~300) and `alignment/tests_rules.rs` (~300); route `doscore`, `dovictory`, `callhint` in `mod.rs`; `needs_tick()` true from the start until the game ends (the session loop reads it once, before the first click).
 - **Content:** `do_score` (§ 6 lines 392-410: the multiplier and bonus per `cascadeCount`, power-ups and type 7 never score, `updatescore` then `timerupdate`); `check_for_victory` sends `activate` once all goals are met (§ 6 Win, line 411); `dovictory` before `activate` is refused (WARN `reason = "victory_not_earned"`), after it sends `victory` and returns `GameOutput::Victory`; the countdown (§ 8 lines 500-505) with `failure` plus `GameOutput::Failure` at 0 (§ 6 Loss, line 418); the idle prompt `clicktohint` (§ 8 lines 507-516, first at 5 s); `get_hint` with the four scan orders (lines 518-532), the n1 bounds fix, `callhint` costing 5 s with `timerupdate` even when no hint is found.
 - **Tests (type 1):** transcript A step 6 (`updatescore {goalScores [5,0,0], goalTotals [45,15,6], goalIcons [4,5,6]}` then `timerupdate {timeRemaining 120, timerState 1}`); multiplier per `cascadeCount`; power-ups and type 7 unscored; `activate` sent once; the `dovictory` gate; the hint on the fixture with (2,2)=4 is `hex1 (1,1,4), hex2 (0,1,6), hex3 (1,2,5)` (§ 9 step 2); the hint index rotates through the four orders; transcript B step 2 (`callhint` on the plain fixture: no `hint`, then `timerupdate {timeRemaining 115}`); the idle prompt at tick 20 and 10 s later; `tick` to 0 gives `failure` and `Failure`, then any command returns nothing.
 
@@ -147,7 +147,7 @@ Spec [spec-crystalgame.md](../spec-crystalgame.md). Folder `games/crystal_game/`
 - Agent: packet-coder · Host: windows · Wave 5 · Depends on: MG-CG2 · Status BlockedDependency · Extra pass: server-authority-enforcer
 - Worktree `mg-cg3` · Branch `minigames/mg-cg3-rules` · Commit `MG-CG3: CrystalGame timer and victory; server-validated`
 - **Files:** `crystal_game/rules.rs` (~120), `mod.rs` (+40), `crystal_game/tests_rules.rs` (~160); goldens `crates/minigame/tests/scripts/crystal_game/t1_solved.mgs`, `t2_timeout.mgs`, `t3_validation.mgs`; `PORTED = true`.
-- **Content** (§ 6 lines 175-182, § 8 lines 226-232): state 0 idle until the first valid click, 1 counting; `tick` subtracts 0.25 and at `<= 0` sends `failure` and returns `GameOutput::Failure` (tick 64 after the first click); after every click, if every cell is 3: set the timer state to 0, send `victory`, return `GameOutput::Victory` (the original's missing timer stop is fixed); `needs_tick()` only while counting; nothing after the end.
+- **Content** (§ 6 lines 175-182, § 8 lines 226-232): state 0 idle until the first valid click, 1 counting; `tick` subtracts 0.25 and at `<= 0` sends `failure` and returns `GameOutput::Failure` (tick 64 after the first click); after every click, if every cell is 3: set the timer state to 0, send `victory`, return `GameOutput::Victory` (the original's missing timer stop is fixed); `needs_tick()` true from the start until the game ends (the session loop reads it once, before the first click); nothing after the end.
 - **Goldens:** T1 and T2 exactly as spec § 9 lines 245-288, using CG1's `T1_SEED` and `T2_SEED` in the `game CrystalGame difficulty N seed <n>` header. T3 as § 9 lines 290-292, including `> processreset` as an ignored command. Record each, then check by eye that the recorded lines equal the spec's.
 - **Carried notes:** set `outcome` on victory and on timeout, and stop the timer on victory; the session layer must route only the playing user's packets to `message()` before `PORTED` flips.
 - **Tests (type 1):** the three goldens through `check_script`; no timer before the first click (`tick 100` silent); no `failure` after `victory` (fails if the stop is reverted); timeout at tick 64; a client `victory` gives no output; `validation("CrystalGame")` is `"server"` and `ability_bits()` is 0.
@@ -186,9 +186,9 @@ Spec [spec-goauldcrystals.md](../spec-goauldcrystals.md). Folder `games/goauld_c
 
 - Agent: packet-coder · Host: windows · Wave 5 · Depends on: MG-GC2 · Status BlockedDependency · Extra pass: server-authority-enforcer
 - Worktree `mg-gc3a` · Branch `minigames/mg-gc3a-rules` · Commit `MG-GC3a: GoauldCrystals clock and reset`
-- **Files:** `goauld_crystals/rules.rs` (~200), `goauld_crystals/tests_rules.rs` (~200); route `processreset` in `mod.rs`; `needs_tick()` true while the clock runs.
-- **Content** (§ 6 lines 281-292, § 8 lines 356-364): timer states 0-3 on the 0.25 s tick (state 2 pause and 3 reverse each 20 ticks, then back to 1 with `timerupdate`); at `<= 0` send `failure` and return `GameOutput::Failure`; `processreset` (§ 5 line 224): send `resetgame {}`, `num_resets += 1`, `init_game(false)` (new board and goals, clock stopped at `max_time`, `ability_bitfield` restored to the session value), `fullgamestate`.
-- **Tests (type 1):** transcript B step 6 (`tick 64` gives `failure`); transcript C step 4 (`tick 8` is silent and leaves `timeRemaining` 14); pause and reverse each end with one `timerupdate`; `processreset` sends `resetgame` then `fullgamestate` with `timerState 0` and restores a spent ability bit; nothing after the end.
+- **Files:** `goauld_crystals/rules.rs` (~200), `goauld_crystals/tests_rules.rs` (~200); refuse `processreset` in `rules.rs`; `needs_tick()` true from the start until the game ends (the session loop reads it once, before the first click).
+- **Content** (§ 6 lines 281-292, § 8 lines 356-364): timer states 0-3 on the 0.25 s tick (state 2 pause and 3 reverse each 20 ticks, then back to 1 with `timerupdate`); at `<= 0` send `failure` and return `GameOutput::Failure`; `processreset` is refused: WARN `reset_refused`, no reply, state unchanged. This is a deliberate deviation from § 5 line 224 (which sends `resetgame` and a new board), for owner confirmation: a reset refills the clock and the ability bits, the same server-authority hole the CrystalGame ruling refuses.
+- **Tests (type 1):** transcript B step 6 (`tick 64` gives `failure`); transcript C step 4 (`tick 8` is silent and leaves `timeRemaining` 14); pause and reverse each end with one `timerupdate`; `processreset` gives no output and changes nothing; a reset after the deadline ends the game as `failure`; nothing after the end; refusals are logged in full for the first eight, then one in a hundred.
 
 ### MG-GC3b: ability cheats, goldens, ported
 

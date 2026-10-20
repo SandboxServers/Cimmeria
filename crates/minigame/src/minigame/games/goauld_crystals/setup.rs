@@ -351,7 +351,6 @@ impl GoauldCrystalsGame {
     }
 
     /// Spec 5 `timerupdate`: the clock value and its state.
-    #[allow(dead_code)] // first sent by the MG-GC3a clock; tested here
     pub(super) fn build_timer_update(&self) -> HashMap<String, SfsValue> {
         sfs_vars! {
             "_cmd" => SfsValue::String("timerupdate".to_string()),

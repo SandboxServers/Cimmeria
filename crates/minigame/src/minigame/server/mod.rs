@@ -31,6 +31,8 @@ mod converse_loop_tests;
 #[cfg(test)]
 mod crystal_game_loop_tests;
 #[cfg(test)]
+mod goauld_loop_tests;
+#[cfg(test)]
 mod listener_tests;
 #[cfg(test)]
 mod livewire_abort_tests;

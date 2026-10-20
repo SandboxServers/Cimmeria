@@ -283,3 +283,31 @@ async fn accepted_sockets_get_tcp_keepalive() {
         .keepalive()
         .expect("SO_KEEPALIVE readable"));
 }
+
+/// An unparseable frame does not push the idle deadline back: a junk frame at
+/// 20 s of a 30 s idle timeout still ends the session at 30 s. Resetting the
+/// idle timer before the parse ends it at 50 s and fails this.
+#[tokio::test(start_paused = true)]
+async fn an_unparseable_frame_does_not_reset_the_idle_deadline() {
+    let idle = Duration::from_secs(30);
+    let (mut client, _rx, handle) = spawn_placeholder_session_with_idle(4324, idle).await;
+    // Taken after the helper: its loopback connect can move the paused clock.
+    let start = Instant::now();
+
+    tokio::time::sleep_until(start + Duration::from_secs(20)).await;
+    send_null_terminated(&mut client, "junk")
+        .await
+        .expect("send");
+
+    let end = tokio::time::timeout(Duration::from_secs(3600), handle)
+        .await
+        .expect("the idle deadline must end the session")
+        .expect("session task must not panic");
+
+    assert_eq!(end.reason, EndReason::IdleTimeout);
+    assert!(
+        start.elapsed() < Duration::from_secs(40),
+        "a junk frame must not extend the idle deadline; ended at {:?}",
+        start.elapsed(),
+    );
+}

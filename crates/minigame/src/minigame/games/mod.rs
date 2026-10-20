@@ -7,6 +7,8 @@ mod alignment;
 mod converse_humanoid;
 mod crystal_game;
 mod goauld_crystals;
+#[cfg(test)]
+pub(crate) use goauld_crystals::create_unported_for_test;
 mod livewire;
 mod placeholder;
 

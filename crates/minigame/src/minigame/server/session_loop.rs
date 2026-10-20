@@ -301,7 +301,7 @@ pub(super) async fn run_session(
         let mut game_complete = false;
         let mut tick_interval = tick_interval;
 
-        // Reset on every inbound frame. Outbound ticks don't count: a
+        // Reset on every parsed request. Junk frames and outbound ticks don't count: a
         // Livewire board keeps sending timer updates to a client that left.
         let idle = tokio::time::sleep(idle_timeout);
         tokio::pin!(idle);
@@ -315,14 +315,101 @@ pub(super) async fn run_session(
                     end_reason = EndReason::PlayerCanceled;
                     game_complete = true;
                 }
+                // Tick timer. Polled before the reads, so a flood of inbound frames cannot starve the deadline.
+                _ = async {
+                    if let Some(ref mut interval) = tick_interval {
+                        interval.tick().await;
+                    } else {
+                        // No tick needed — sleep forever
+                        std::future::pending::<()>().await;
+                    }
+                } => {
+                    let outputs = game.tick();
+                    if let Some(board) = game.board_snapshot() {
+                        registry.publish_board(entity_id, &session.ticket, board).await;
+                    }
+                    let mut send_failed = false;
+                    for output in outputs {
+                        match output {
+                            GameOutput::Send(vars) => {
+                                // A failed send must not drop the result that follows it in this batch.
+                                if !send_failed && send_extension(&mut out, registry, &session, &vars).await.is_err() {
+                                    send_failed = true;
+                                    if !result_reported {
+                                        end_reason = EndReason::SendFailed;
+                                    }
+                                    game_complete = true;
+                                }
+                            }
+                            GameOutput::Victory => {
+                                registry.record_event(entity_id, &session.ticket, "result_victory", None).await;
+                                tracing::info!(
+                                    entity_id,
+                                    entity_name = player.name(),
+                                    player_id = player.id,
+                                    player_name = player.name(),
+                                    game = %game_name,
+                                    validation = games::validation(&game_name),
+                                    "Minigame victory (tick)",
+                                );
+                                end_reason = EndReason::Victory;
+                                game_complete = true;
+                                result_reported = true;
+                                send_minigame_result(
+                                    result_tx,
+                                    entity_id,
+                                    &session.ticket,
+                                    &game_name,
+                                    &player,
+                                    RESULT_VICTORY,
+                                    on_victory_chains.clone(),
+                                    vec![],
+                                    "victory_tick",
+                                    true,
+                                )
+                                .await;
+                            }
+                            GameOutput::Failure => {
+                                registry.record_event(entity_id, &session.ticket, "result_defeat", None).await;
+                                tracing::info!(
+                                    entity_id,
+                                    entity_name = player.name(),
+                                    player_id = player.id,
+                                    player_name = player.name(),
+                                    game = %game_name,
+                                    validation = games::validation(&game_name),
+                                    "Minigame timeout",
+                                );
+                                end_reason = EndReason::Defeat;
+                                game_complete = true;
+                                result_reported = true;
+                                send_minigame_result(
+                                    result_tx,
+                                    entity_id,
+                                    &session.ticket,
+                                    &game_name,
+                                    &player,
+                                    RESULT_DEFEAT,
+                                    vec![],
+                                    on_failure_chains.clone(),
+                                    "failure_tick",
+                                    true,
+                                )
+                                .await;
+                            }
+                        }
+                    }
+                }
+
                 // Read incoming messages
                 result = read_null_terminated(&mut out.stream, &mut buf, &mut buf_len) => {
                     match result {
                         Ok(msg) => {
-                            idle.as_mut().reset(tokio::time::Instant::now() + idle_timeout);
                             let parsed = protocol::parse_message(&msg);
                             match parsed {
                                 Ok(SfsMessage::ExtensionRequest { cmd, params }) => {
+                                    // Only a parsed request resets the idle deadline; junk frames do not.
+                                    idle.as_mut().reset(tokio::time::Instant::now() + idle_timeout);
                                     registry.record_traffic(entity_id, &session.ticket, "in", &cmd, tap_params(&params)).await;
                                     let outputs = game.message(&cmd, &params);
                                     if let Some(board) = game.board_snapshot() {
@@ -334,6 +421,7 @@ pub(super) async fn run_session(
                                     for output in outputs {
                                         match output {
                                             GameOutput::Send(vars) => {
+                                                // A failed send must not drop the result that follows it in this batch.
                                                 if !send_failed && send_extension(&mut out, registry, &session, &vars).await.is_err() {
                                                     send_failed = true;
                                                     if !result_reported {
@@ -475,92 +563,6 @@ pub(super) async fn run_session(
                     );
                     end_reason = EndReason::IdleTimeout;
                     game_complete = true;
-                }
-
-                // Tick timer
-                _ = async {
-                    if let Some(ref mut interval) = tick_interval {
-                        interval.tick().await;
-                    } else {
-                        // No tick needed — sleep forever
-                        std::future::pending::<()>().await;
-                    }
-                } => {
-                    let outputs = game.tick();
-                    if let Some(board) = game.board_snapshot() {
-                        registry.publish_board(entity_id, &session.ticket, board).await;
-                    }
-                    // As in the message arm: a failed send does not stop a terminal output (MG-CG3 F4).
-                    let mut send_failed = false;
-                    for output in outputs {
-                        match output {
-                            GameOutput::Send(vars) => {
-                                if !send_failed && send_extension(&mut out, registry, &session, &vars).await.is_err() {
-                                    send_failed = true;
-                                    if !result_reported {
-                                        end_reason = EndReason::SendFailed;
-                                    }
-                                    game_complete = true;
-                                }
-                            }
-                            GameOutput::Victory => {
-                                registry.record_event(entity_id, &session.ticket, "result_victory", None).await;
-                                tracing::info!(
-                                    entity_id,
-                                    entity_name = player.name(),
-                                    player_id = player.id,
-                                    player_name = player.name(),
-                                    game = %game_name,
-                                    validation = games::validation(&game_name),
-                                    "Minigame victory (tick)",
-                                );
-                                end_reason = EndReason::Victory;
-                                game_complete = true;
-                                result_reported = true;
-                                send_minigame_result(
-                                    result_tx,
-                                    entity_id,
-                                    &session.ticket,
-                                    &game_name,
-                                    &player,
-                                    RESULT_VICTORY,
-                                    on_victory_chains.clone(),
-                                    vec![],
-                                    "victory_tick",
-                                                    true,
-                                )
-                                .await;
-                            }
-                            GameOutput::Failure => {
-                                registry.record_event(entity_id, &session.ticket, "result_defeat", None).await;
-                                tracing::info!(
-                                    entity_id,
-                                    entity_name = player.name(),
-                                    player_id = player.id,
-                                    player_name = player.name(),
-                                    game = %game_name,
-                                    validation = games::validation(&game_name),
-                                    "Minigame timeout",
-                                );
-                                end_reason = EndReason::Defeat;
-                                game_complete = true;
-                                result_reported = true;
-                                send_minigame_result(
-                                    result_tx,
-                                    entity_id,
-                                    &session.ticket,
-                                    &game_name,
-                                    &player,
-                                    RESULT_DEFEAT,
-                                    vec![],
-                                    on_failure_chains.clone(),
-                                    "failure_tick",
-                                                    true,
-                                )
-                                .await;
-                            }
-                        }
-                    }
                 }
             }
 
