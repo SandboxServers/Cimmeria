@@ -23,7 +23,8 @@
 //! **A hard reset forfeits the holds.** `clear_all_state_flags` (respawn,
 //! revive) zeroes every counter; entries that outlive it stop holding their
 //! bits, so their later removal cannot release a reference a newer holder
-//! took.
+//! took. A movement-only entry (the Prison Boot) is re-held instead, so a
+//! respawn does not free its wearer.
 
 use super::CellEntity;
 
@@ -80,11 +81,38 @@ impl CellEntity {
             .any(|e| e.state_flags & mask != 0)
     }
 
+    /// Whether a live ledger entry holds any bit of `mask` that stops item and
+    /// ability use: [`CellEntity::holds_ledger_flag`] without the
+    /// movement-only entries (the Prison Boot, MG-63b), which hold the lock
+    /// for movement alone.
+    pub fn holds_incapacitating_flag(&self, mask: u32) -> bool {
+        self.stat_buffs
+            .entries
+            .iter()
+            .any(|e| !e.movement_only && e.state_flags & mask != 0)
+    }
+
+    /// Whether a live movement-only entry (the Prison Boot) holds the wearer
+    /// in place.
+    pub fn holds_movement_only_entry(&self) -> bool {
+        self.stat_buffs.entries.iter().any(|e| e.movement_only)
+    }
+
     /// Drop every entry's flag holds without touching the counters: the
     /// counters were just reset by [`CellEntity::clear_all_state_flags`].
+    /// A movement-only entry (the Prison Boot) is the exception: the wearer
+    /// stays held through a respawn, so its references are taken again.
     pub(super) fn forfeit_ledger_flag_holds(&mut self) {
+        let mut rehold = Vec::new();
         for e in &mut self.stat_buffs.entries {
-            e.state_flags = 0;
+            if e.movement_only {
+                rehold.push(e.state_flags);
+            } else {
+                e.state_flags = 0;
+            }
+        }
+        for flags in rehold {
+            self.hold_ledger_flags(flags);
         }
         self.stat_buffs.state_field_before = None;
     }
@@ -209,6 +237,33 @@ mod tests {
         e.apply_timed_effect(stun(2, 2736), now).unwrap();
         e.remove_timed_effects_where(|t| t.invoker_id == 1);
         assert!(e.has_state_flag(LOCK), "the newer stun still holds it");
+    }
+
+    /// **Regression guard (the respawn escape).** A respawn's hard reset keeps
+    /// the Prison Boot's movement hold: the bit and its reference come back,
+    /// and the boot's removal still clears them. Forfeiting the hold (the old
+    /// rule) leaves `has_state_flag` false (`lock after respawn` fails).
+    #[test]
+    fn a_hard_reset_keeps_a_movement_only_hold() {
+        let mut e = entity();
+        let boot = TimedEffectSpec {
+            effect_id: 1939,
+            ability_id: 1597,
+            invoker_id: 1,
+            state_flags: LOCK,
+            movement_only: true,
+            duration_secs: None,
+            stacking: TimedStacking::PerEffect,
+            ..Default::default()
+        };
+        e.apply_timed_effect(boot, Instant::now()).unwrap();
+        e.clear_all_state_flags();
+        assert!(e.has_state_flag(LOCK), "lock after respawn");
+        assert!(e.holds_movement_only_entry());
+        assert_eq!(refs(&e), 1);
+        e.remove_timed_effects_where(|t| t.effect_id == 1939);
+        assert!(!e.has_state_flag(LOCK), "the boot's removal clears it");
+        assert_eq!(refs(&e), 0);
     }
 
     /// `PerEffect`: a second invoker's entry of the same effect replaces the

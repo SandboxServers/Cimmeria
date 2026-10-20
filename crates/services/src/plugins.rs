@@ -225,6 +225,8 @@ mod tests {
                 "Knockdown",
                 "Interrupt",
                 "StartMinigame",
+                "MovementHold",
+                "MovementRelease",
             ]
         );
     }

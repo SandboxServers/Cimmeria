@@ -31,9 +31,11 @@ pub(crate) const INCAPACITATED_TEXT: &str = "You cannot do that while stunned.";
 /// is what the player reads.
 pub(crate) const INCAPACITATED_ERROR_CODE: u16 = 15;
 
-/// Whether a stun or knockdown entry holds `entity`'s movement lock.
+/// Whether a stun or knockdown entry holds `entity`'s movement lock. A
+/// movement-only hold (the Prison Boot) does not count: its wearer may still
+/// use abilities and items.
 pub(crate) fn is_incapacitated(entity: &CellEntity) -> bool {
-    entity.holds_ledger_flag(BSF_MOVEMENT_LOCK)
+    entity.holds_incapacitating_flag(BSF_MOVEMENT_LOCK)
 }
 
 /// Refuse `entity_id`'s launch of `ability_id`: the row, then (for a

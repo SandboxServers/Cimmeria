@@ -17,7 +17,7 @@ pub use cimmeria_cell_world::cell::effects::registry::*;
 use super::EffectScript;
 use super::{
     ammo_dart_cc, ammo_dart_support, ammo_dart_tech, ammo_emp, cover_stance, crowd_control,
-    pet_scripts, scripts, start_minigame, stat_buff,
+    movement_hold, pet_scripts, scripts, start_minigame, stat_buff,
 };
 
 /// Every effect script, in registration order. The order is the order
@@ -66,6 +66,9 @@ pub static EFFECT_SCRIPTS: &[(&str, &dyn EffectScript)] = &[
     // Ability launch of a minigame (MG-24, D-MG20): queues a launch the cell
     // starts once the ability's effects have resolved.
     ("StartMinigame", &start_minigame::StartMinigame),
+    // The Prison Boot (MG-63b): a movement-only hold, and its release.
+    ("MovementHold", &movement_hold::MovementHold),
+    ("MovementRelease", &movement_hold::MovementRelease),
 ];
 
 /// The cell's registry, built from [`EFFECT_SCRIPTS`]: `Err` when two rows

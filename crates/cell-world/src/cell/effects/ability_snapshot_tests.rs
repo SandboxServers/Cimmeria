@@ -28,6 +28,7 @@ fn world() -> SpaceManager {
         .start_ability_cooldown(592, Duration::from_secs(30));
     e.apply_timed_effect(
         TimedEffectSpec {
+            movement_only: false,
             cast_id: Some(41),
             effect_id: 700,
             ability_id: 637,

@@ -92,6 +92,7 @@ fn timed(
     mgr.apply_timed_effect(
         target,
         TimedEffectSpec {
+            movement_only: false,
             cast_id: None,
             effect_id,
             ability_id: effect_id + 10_000,

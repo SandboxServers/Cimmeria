@@ -147,6 +147,7 @@ async fn a_timed_effect_logs_its_timer_start_clear_and_state_flag() {
     mgr.apply_timed_effect(
         PLAYER,
         TimedEffectSpec {
+            movement_only: false,
             cast_id: None,
             effect_id: 700,
             ability_id: 637,

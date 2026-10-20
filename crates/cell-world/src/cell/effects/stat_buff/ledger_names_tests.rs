@@ -65,6 +65,7 @@ fn world() -> SpaceManager {
 
 fn spec() -> TimedEffectSpec {
     TimedEffectSpec {
+        movement_only: false,
         cast_id: None,
         effect_id: EFFECT,
         ability_id: ABILITY,

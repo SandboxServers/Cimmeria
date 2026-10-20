@@ -43,6 +43,11 @@ mod crowd_control_seed_live_db_tests;
 pub mod heal;
 #[cfg(test)]
 mod heal_seed_live_db_tests;
+pub mod movement_hold;
+#[cfg(test)]
+mod movement_hold_seed_live_db_tests;
+#[cfg(test)]
+mod movement_hold_tests;
 pub mod pet_scripts;
 pub mod registry;
 mod script_rows;

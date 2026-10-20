@@ -10,6 +10,7 @@
 use std::time::{Duration, Instant};
 
 use cimmeria_common::Vector3;
+use cimmeria_entity::cell_entity::TimedEffectSpec;
 use cimmeria_entity::movement_validation::MovementReject;
 use cimmeria_wire::state_field::{BSF_MOVEMENT_LOCK, BSF_PLAYING_MINIGAME};
 
@@ -95,6 +96,116 @@ fn held_move_beyond_slack_is_rejected_and_position_stays() {
         mgr.get_entity(100).unwrap().position,
         Vector3::new(SPAWN_POS[0], SPAWN_POS[1], SPAWN_POS[2]),
         "a rejected held move must not write the proposed position"
+    );
+}
+
+/// The Prison Boot (MG-63b) is a movement-only entry, and it holds the wearer
+/// the same way: a booted player walking 2 m is rejected as `MovementLocked`.
+/// Dropping the boot from `movement_held` makes this move pass.
+#[test]
+fn booted_move_beyond_slack_is_rejected() {
+    let (mut mgr, t0) = held_manager(0);
+    mgr.get_entity_mut(100).unwrap().apply_timed_effect(
+        TimedEffectSpec {
+            effect_id: 1939,
+            state_flags: BSF_MOVEMENT_LOCK,
+            movement_only: true,
+            duration_secs: None,
+            ..Default::default()
+        },
+        t0,
+    );
+    let far = [SPAWN_POS[0] + 2.0, SPAWN_POS[1], SPAWN_POS[2]];
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(100),
+        100,
+        far,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(
+            outcome,
+            ClientMoveOutcome::Rejected {
+                reason: MovementReject::MovementLocked,
+                ..
+            }
+        ),
+        "a booted move of 2 m must be rejected as MovementLocked, got {outcome:?}"
+    );
+}
+
+/// Death-then-respawn (authority finding 1): the respawn's hard reset keeps the
+/// boot, so a booted move of 2 m is still rejected as `MovementLocked`. Forfeiting
+/// the hold on reset makes this move pass.
+#[test]
+fn respawned_booted_move_is_still_held() {
+    let (mut mgr, t0) = held_manager(0);
+    mgr.get_entity_mut(100).unwrap().apply_timed_effect(
+        TimedEffectSpec {
+            effect_id: 1939,
+            state_flags: BSF_MOVEMENT_LOCK,
+            movement_only: true,
+            duration_secs: None,
+            ..Default::default()
+        },
+        t0,
+    );
+    mgr.get_entity_mut(100).unwrap().clear_all_state_flags();
+    let far = [SPAWN_POS[0] + 2.0, SPAWN_POS[1], SPAWN_POS[2]];
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(100),
+        100,
+        far,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(
+            outcome,
+            ClientMoveOutcome::Rejected {
+                reason: MovementReject::MovementLocked,
+                ..
+            }
+        ),
+        "a respawned booted move of 2 m must be rejected as MovementLocked, got {outcome:?}"
+    );
+}
+
+/// Authorized displacement (authority finding 2): `note_authorized_teleport`
+/// drops the hold anchor but not the boot, so a booted move of 2 m is still
+/// rejected afterwards. Any future displacement must keep this invariant.
+#[test]
+fn authorized_teleport_keeps_the_boot_hold() {
+    let (mut mgr, t0) = held_manager(0);
+    mgr.get_entity_mut(100).unwrap().apply_timed_effect(
+        TimedEffectSpec {
+            effect_id: 1939,
+            state_flags: BSF_MOVEMENT_LOCK,
+            movement_only: true,
+            duration_secs: None,
+            ..Default::default()
+        },
+        t0,
+    );
+    mgr.note_authorized_teleport(100);
+    let far = [SPAWN_POS[0] + 2.0, SPAWN_POS[1], SPAWN_POS[2]];
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(100),
+        100,
+        far,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(
+            outcome,
+            ClientMoveOutcome::Rejected {
+                reason: MovementReject::MovementLocked,
+                ..
+            }
+        ),
+        "a booted move of 2 m after an authorized teleport must be rejected, got {outcome:?}"
     );
 }
 
