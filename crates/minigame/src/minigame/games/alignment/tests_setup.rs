@@ -309,7 +309,7 @@ fn abort_is_silent_and_ends_the_game() {
 }
 
 #[test]
-fn port_stays_off_and_the_shell_never_ticks() {
+fn port_stays_off_and_the_game_ticks_until_it_ends() {
     const { assert!(!PORTED) };
-    assert!(!AlignmentGame::new(&make_session(1, 1, 7)).needs_tick());
+    assert!(AlignmentGame::new(&make_session(1, 1, 7)).needs_tick());
 }
