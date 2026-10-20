@@ -328,15 +328,18 @@ pub(super) async fn run_session(
                                     if let Some(board) = game.board_snapshot() {
                                         registry.publish_board(entity_id, &session.ticket, board).await;
                                     }
+                                    // A failed send ends the session, but a terminal output after
+                                    // it still reports its result (MG-CG3 F4), so no `break` here.
+                                    let mut send_failed = false;
                                     for output in outputs {
                                         match output {
                                             GameOutput::Send(vars) => {
-                                                if send_extension(&mut out, registry, &session, &vars).await.is_err() {
+                                                if !send_failed && send_extension(&mut out, registry, &session, &vars).await.is_err() {
+                                                    send_failed = true;
                                                     if !result_reported {
                                                         end_reason = EndReason::SendFailed;
                                                     }
                                                     game_complete = true;
-                                                    break;
                                                 }
                                             }
                                             GameOutput::Victory => {
@@ -487,15 +490,17 @@ pub(super) async fn run_session(
                     if let Some(board) = game.board_snapshot() {
                         registry.publish_board(entity_id, &session.ticket, board).await;
                     }
+                    // As in the message arm: a failed send does not stop a terminal output (MG-CG3 F4).
+                    let mut send_failed = false;
                     for output in outputs {
                         match output {
                             GameOutput::Send(vars) => {
-                                if send_extension(&mut out, registry, &session, &vars).await.is_err() {
+                                if !send_failed && send_extension(&mut out, registry, &session, &vars).await.is_err() {
+                                    send_failed = true;
                                     if !result_reported {
                                         end_reason = EndReason::SendFailed;
                                     }
                                     game_complete = true;
-                                    break;
                                 }
                             }
                             GameOutput::Victory => {

@@ -58,6 +58,7 @@ Two deviations from the original flow: the movement and state hold is taken at l
 | Content-triggered start | DONE | `Action::StartMinigame` → `CellToBaseMsg::StartMinigame` → `onStartMinigame(URL)` |
 | Victory-chain callback | DONE | `MinigameResult` forwards to the cell, which runs `on_victory_chains` |
 | Livewire | DONE | Fully ported in `minigame/games/livewire/`; an abort sends nothing, the client has closed |
+| CrystalGame | DONE | Fully ported in `minigame/games/crystal_game/`; validation `server`: the server decides victory and the 16 s timeout, and a client `victory` is refused (WARN `client_victory_refused`). See [CrystalGame rules](#crystalgame-rules) |
 | ConverseBasicHumanoid | SERVER (MG-CH3) | `games/converse_humanoid/`: the server deals, plays, scores and decides victory; a client `victory` is refused and a client `failure` is a defeat. See the rules below |
 | Hack, Activate, Analyze, Bypass, Converse | PLACEHOLDER | `games/placeholder.rs` — the shell shows a 60 s countdown (`fullgamestate` then `timerupdate`, MG-64); a client `victory` counts only after 5 s (D-MG13); when 240 ticks (60 s) pass with no `victory` the server sends `failure` and the game ends as a defeat (result code 2, `on_failure_chains` fire). Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
 | Alignment, GoauldCrystals | NOT IMPL | Still Python-only; the factory has commented-out arms awaiting a port. An unrecognised game name falls back to the placeholder shell (60 s countdown, then defeat) and logs WARN `Unknown minigame type`; a content `start_minigame` row with such a name never reaches it, because the loader drops it (MG-64) |
@@ -73,6 +74,14 @@ Two deviations from the original flow: the movement and state hold is taken at l
 | Mob/item attempt tracking | NOT IMPL | `minigameMobAttemptTracker`, `minigameItemAttemptTracker` unused |
 | Item integration | NOT IMPL | `addItemToMinigame`, `consumeItemByMinigame` unused |
 | Cheat detection | NOT IMPL | `updateMinigameItemCheats` unused |
+
+### CrystalGame rules
+- Lights-out mod 6 on a fixed 14x13 board at every tier; two scramble clicks are drawn from the session seed. A click adds 2 to its crystal and 1 to each neighbour (mod 6); the goal is every cell 3.
+- The 16 s clock starts on the first valid click (`timerupdate`, then one `updateslot` per changed cell) and loses 0.25 s per 250 ms tick; at 0 the server sends `failure` (defeat). It also ends on the wall clock 16 s after that click, so a stalled client cannot outrun it. A game with no click within 60 s of starting is lost the same way.
+- The server decides victory: a solved board sends `victory` and stops the clock. A client `victory` is refused.
+- `processreset` is ignored (WARN `reset_refused`, no reply), as in the original; a reset would let a player idle a running clock.
+- No cheats: `abilityBitfield` 0, `instcc` -1; both cheat commands get a WARN and no reply. Refusals are logged at WARN for the first 32 per session only.
+- Out-of-range, fractional or missing coordinates, and any click after the end, are dropped with a WARN and no reply.
 
 ### ConverseBasicHumanoid rules
 

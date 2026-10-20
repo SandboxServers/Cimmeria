@@ -7,6 +7,7 @@
 //! command logs a WARN and sends nothing.
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use super::setup::{HEIGHT, TIME_LIMIT, WIDTH};
 use super::CrystalGame;
@@ -60,6 +61,7 @@ impl CrystalGame {
         let mut out = Vec::new();
         if self.timer_state == 0 {
             self.timer_state = 1;
+            self.clock_deadline = Some(Instant::now() + Duration::from_secs(u64::from(TIME_LIMIT)));
             out.push(GameOutput::Send(timerupdate(TIME_LIMIT, 1)));
         }
         out.extend(
@@ -75,8 +77,8 @@ impl CrystalGame {
     /// as they are. The original ignores it (spec-crystalgame.md, CG2 row and
     /// open question 11.3). A reset would let a player idle a running clock or
     /// re-roll the board without limit.
-    pub(super) fn process_reset(&self) -> Vec<GameOutput> {
-        self.reject("processreset", "reset_unsupported");
+    pub(super) fn process_reset(&mut self) -> Vec<GameOutput> {
+        self.reject("processreset", "reset_refused");
         vec![]
     }
 }
