@@ -88,6 +88,8 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- [UO-31] end
 
 -- [UO-32] begin: spawns 63819
+-- CIMMERIA_RECONSTRUCTION, navmesh-sealed (UO-19); stock template 305 (RESTORED_SOURCE moniker 7133); D-UO19 c, D-UO36
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63819, 30.00, -44.91, -8.00, 0.5124, 18, 305, 'UnionOmega_Auctioneer', NULL, true);
 -- [UO-32] end
 
 -- [UO-33] begin: spawns 63818
