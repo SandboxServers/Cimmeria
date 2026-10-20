@@ -12,14 +12,14 @@ use crate::minigame::protocol::SfsValue;
 use crate::sfs_vars;
 
 /// Cell colours, as stored in `Cell::color`.
-const EMPTY: u8 = 0;
-const GREEN: u8 = 1;
-const YELLOW: u8 = 2;
-const ORANGE: u8 = 3;
-const RED: u8 = 4;
+pub(super) const EMPTY: u8 = 0;
+pub(super) const GREEN: u8 = 1;
+pub(super) const YELLOW: u8 = 2;
+pub(super) const ORANGE: u8 = 3;
+pub(super) const RED: u8 = 4;
 
 /// A board position as `(x, y)`.
-type Pos = (usize, usize);
+pub(super) type Pos = (usize, usize);
 
 impl GoauldCrystalsGame {
     /// Spec 5 `playfieldclick`. Validates the click, then runs steps 1 and
@@ -171,7 +171,7 @@ impl GoauldCrystalsGame {
     /// path. A powered finish ends the game: the clock stops, `fullgamestate`
     /// and `victory` go out and the game returns `GameOutput::Victory`.
     /// Otherwise the new path goes out as `powerstatus`.
-    fn after_board_change(&mut self) -> Vec<GameOutput> {
+    pub(super) fn after_board_change(&mut self) -> Vec<GameOutput> {
         let visited = update_power(&mut self.board, self.start);
         if !finish_powered(&self.board, self.finish) {
             return vec![GameOutput::Send(build_power_status(&visited))];
@@ -229,7 +229,11 @@ impl GoauldCrystalsGame {
 
 /// Reads a board coordinate. The value must be an integer in `0..limit`;
 /// anything else (missing, fractional, negative, outside the board) is `None`.
-fn read_coordinate(params: &HashMap<String, SfsValue>, key: &str, limit: usize) -> Option<usize> {
+pub(super) fn read_coordinate(
+    params: &HashMap<String, SfsValue>,
+    key: &str,
+    limit: usize,
+) -> Option<usize> {
     let value = params.get(key)?.as_f64()?;
     if value.fract() != 0.0 || value < 0.0 {
         return None;
@@ -239,7 +243,7 @@ fn read_coordinate(params: &HashMap<String, SfsValue>, key: &str, limit: usize) 
 }
 
 /// `squarestate {xPos, yPos, info}` for one cell.
-fn square_state(pos: Pos, cell: &Cell) -> GameOutput {
+pub(super) fn square_state(pos: Pos, cell: &Cell) -> GameOutput {
     let info = sfs_vars! {
         "color" => SfsValue::Number(cell.color as f64),
         "var" => SfsValue::Number(cell.var as f64),
@@ -254,7 +258,7 @@ fn square_state(pos: Pos, cell: &Cell) -> GameOutput {
 }
 
 /// `selectedupdate {xPos, yPos}`; `-1, -1` when nothing is selected.
-fn selected_update(selected: Option<Pos>) -> GameOutput {
+pub(super) fn selected_update(selected: Option<Pos>) -> GameOutput {
     let (x, y) = selected.map_or((-1.0, -1.0), |(x, y)| (x as f64, y as f64));
     GameOutput::Send(sfs_vars! {
         "_cmd" => SfsValue::String("selectedupdate".to_string()),
@@ -264,7 +268,7 @@ fn selected_update(selected: Option<Pos>) -> GameOutput {
 }
 
 /// `triggersound {soundName}`.
-fn trigger_sound(name: &str) -> GameOutput {
+pub(super) fn trigger_sound(name: &str) -> GameOutput {
     GameOutput::Send(sfs_vars! {
         "_cmd" => SfsValue::String("triggersound".to_string()),
         "soundName" => SfsValue::String(name.to_string()),

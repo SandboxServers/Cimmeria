@@ -15,11 +15,14 @@ use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
 use crate::minigame::session::MinigameSession;
 
+mod cheats;
 mod moves;
 mod power;
 mod rules;
 mod setup;
 
+#[cfg(test)]
+mod tests_cheats;
 #[cfg(test)]
 mod tests_log;
 #[cfg(test)]
@@ -31,8 +34,9 @@ mod tests_rules;
 #[cfg(test)]
 mod tests_setup;
 
-/// Flipped to `true` by MG-GC3 only, once victory is server-decided.
-pub(crate) const PORTED: bool = false;
+/// Set by MG-GC3b, once every input is server-validated and victory is decided
+/// by the server.
+pub(crate) const PORTED: bool = true;
 
 /// The GoauldCrystals game for a session, ported or not. Only loop tests use
 /// this, so the session loop can run the real game before [`PORTED`] is set.

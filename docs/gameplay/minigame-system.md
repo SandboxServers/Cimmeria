@@ -61,7 +61,8 @@ Two deviations from the original flow: the movement and state hold is taken at l
 | CrystalGame | DONE | Fully ported in `minigame/games/crystal_game/`; validation `server`: the server decides victory and the 16 s timeout, and a client `victory` is refused (WARN `client_victory_refused`). See [CrystalGame rules](#crystalgame-rules) |
 | ConverseBasicHumanoid | SERVER (MG-CH3) | `games/converse_humanoid/`: the server deals, plays, scores and decides victory; a client `victory` is refused and a client `failure` is a defeat. See the rules below |
 | Hack, Activate, Analyze, Bypass, Converse | PLACEHOLDER | `games/placeholder.rs` — the shell shows a 60 s countdown (`fullgamestate` then `timerupdate`, MG-64); a client `victory` counts only after 5 s (D-MG13); when 240 ticks (60 s) pass with no `victory` the server sends `failure` and the game ends as a defeat (result code 2, `on_failure_chains` fire). Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
-| Alignment, GoauldCrystals | NOT IMPL | Still Python-only; the factory has commented-out arms awaiting a port. An unrecognised game name falls back to the placeholder shell (60 s countdown, then defeat) and logs WARN `Unknown minigame type`; a content `start_minigame` row with such a name never reaches it, because the loader drops it (MG-64) |
+| Alignment | NOT IMPL | Still Python-only; the factory has commented-out arms awaiting a port. An unrecognised game name falls back to the placeholder shell (60 s countdown, then defeat) and logs WARN `Unknown minigame type`; a content `start_minigame` row with such a name never reaches it, because the loader drops it (MG-64) |
+| GoauldCrystals | SERVER (MG-GC3b) | `games/goauld_crystals/`: a path-building puzzle; the server decides victory and the clock, checks every ability cheat bit before it spends it, and refuses `processreset`. Item cheats are not ported. See [GoauldCrystals rules](#goauldcrystals-rules) |
 | `startMinigame` | STUB | Cell method 24 logs `UNIMPLEMENTED` |
 | `endCurrentMinigame` | DONE | Cell method 25 cancels the current session and closes SmartFox |
 | Debug start / spectate / join / instance | STUB | Cell methods 20–23 log `UNIMPLEMENTED` |
@@ -91,6 +92,14 @@ Two deviations from the original flow: the movement and state hold is taken at l
 - **NPC.** Every 1.5 s the NPC plays the card that scores best against the player's hand. It answers a play into an empty NPC container within 0.5 s.
 - **Trump passives.** Ability bits 15-18 add +5, +10, +15 and +25 to the accord bonus (spec section 7).
 - **Victory.** `activatevictory` spends the points of a listed condition (focusdamage1 costs 3, focusdamage2 costs 4). At zero seconds a tie or a lead is a victory; the NPC ahead is a defeat.
+
+### GoauldCrystals rules
+- **Board.** A path-building puzzle: move greens through empty cells until a green path from the start goal powers the finish goal. Yellows and oranges swap with a neighbour; reds stay put. The seed 1, 4x4 tutorial board is kept (spec section 3).
+- **Clock.** The countdown starts on the first click (`timerupdate`) and loses 0.25 s per 250 ms tick. A monotonic deadline is checked in the click handler as well as on the tick, so a late tick cannot hide a timeout. At 0 the server sends `failure` (defeat).
+- **Victory.** After every board change the server recomputes the powered path. A powered finish sends `fullgamestate` and `victory`, stops the clock and ends the game. A client `victory` gets no reply.
+- **Ability cheats.** `activateabilitycheat` takes `cheatNum` as an integer 0-14, and its bit must still be set in the session mask. The server clears the bit before the effect and returns the new mask in `abilitycheatstate`. A bad number or a bit not held is refused with no reply.
+- **Reset.** `processreset` is refused (WARN `reset_refused`, no reply, state unchanged). A reset would refill the clock and the ability bits: a deliberate deviation from the original, for owner confirmation.
+- **Refusals.** Every refused command is counted; the first eight are logged at WARN, then one in a hundred. Input after the end is dropped.
 
 ## Entity Definition (MinigamePlayer.def)
 

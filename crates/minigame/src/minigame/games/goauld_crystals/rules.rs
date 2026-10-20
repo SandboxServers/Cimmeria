@@ -51,7 +51,8 @@ impl GoauldCrystalsGame {
                 self.warn_refused(cmd, "reset_refused");
                 vec![]
             }
-            // Cheat commands are ported by MG-GC3b.
+            "activateabilitycheat" => self.activate_ability_cheat(params),
+            // Item cheats are not ported (M8): they are unknown commands here.
             _ => {
                 self.warn_refused(cmd, "unknown_command");
                 vec![]
@@ -128,7 +129,7 @@ impl GoauldCrystalsGame {
     /// line can be traced to a session. The first `REFUSAL_LOG_FULL` refusals
     /// are logged, then one in `REFUSAL_LOG_EVERY`, so a flood of refused
     /// frames cannot flood the log. Every row carries the running count.
-    fn warn_refused(&mut self, cmd: &str, reason: &'static str) {
+    pub(super) fn warn_refused(&mut self, cmd: &str, reason: &'static str) {
         self.refusals = self.refusals.saturating_add(1);
         let count = self.refusals;
         if count > REFUSAL_LOG_FULL && !count.is_multiple_of(REFUSAL_LOG_EVERY) {
