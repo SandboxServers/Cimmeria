@@ -28,9 +28,9 @@
 | `fj.consumable.1` | 63871 | 63828 | `UnionOmega_Consumables_Jaffa1` | 306.00 | -61.23 | -100.00 | 3.1416 | ring, 4.0 m from trainer | exit 0 (h 0.00, dy 0.00) | exit 0 (h 0.00, dy 0.00) | 4.00 (trainer) | 273.9 | 7.20 | Consumable (782,634) | free_jaffa | partly (north yes) |
 | `fj.consumable.2` | 63872 | 63828 | `UnionOmega_Consumables_Jaffa2` | 310.00 | -61.23 | -104.00 | 4.7124 | ring, 4.0 m from trainer | exit 0 (h 0.00, dy 0.00) | exit 0 (h 0.00, dy 0.00) | 4.00 (trainer) | 277.4 | 9.36 | Consumable (882,670) | free_jaffa | partly (east yes) |
 
-Distances in metres. Nearest NPC and nearest ambient are the closest world-18 row by x/z (ambient 63880-63897 are the nearest rows for every key). Heading rule: weapons and armor copy their UO-01 reuse heading; the four crafting vendors copy the biomedical heading (1.5708); the trainer faces the wing entrance and teleporter side (west, 4.7124); consumable.1 faces the trainer (3.1416) and consumable.2 faces the trainer (4.7124). No prop was found to face, so these are the walkway-facing choices; the W9 coder may change a heading without moving a point.
+Distances in metres. Nearest NPC and nearest ambient are the closest world-18 row by x/z (ambient 63880-63897 are the nearest rows for every key). Heading rule: weapons and armor copy their UO-01 reuse heading; the four crafting vendors copy the biomedical heading (1.5708); the trainer faces the wing entrance and teleporter side (west, 4.7124); consumable.1 faces the trainer (3.1416) and consumable.2 faces the trainer (4.7124). No prop in the landmark table is a vendor counter, so these are walkway-facing choices; the W9 coder may change a heading without moving a point.
 
-Spacing results: every key is at least 2.5 m from every seeded world-18 row and from every UO-01 point; every key is at least 3.0 m from every ambient spawn 63880-63901 (minimum 3.84 m, materials); the respawner 180 is at least 187 m away.
+Spacing results: every key is at least 2.5 m from every seeded world-18 row and from every UO-01 point; every key is at least 3.0 m from every ambient spawn 63880-63897 (63898-63901 are world 80) (minimum 3.84 m, materials); the respawner 180 is at least 187 m away.
 
 ## SQL
 
@@ -76,7 +76,19 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 ## Landmarks
 
-Not written. No Omega_Site `.umap` was found on disk (the earlier search timed out), so `extract_actors` did not run. The wing points are placed on the mesh from the art spots and the probes, not from props. The shipped Jaffa props sit north of the gate while the art puts the wing south (F34), so the art spot to landmark table is still owed.
+Scanned the Omega_Site map in the cooked root (`SGW\Stargate Worlds-QA\Working\SGWGame\CookedPC\Maps\Omega_Site`, 132 chunks): `extract_actors` on the map directory (13,091 actors, `--json`) and `archetype_census` (261 positioned meshes, 47 inside x 150..420, z -160..0; `CIMMERIA_PACKAGE_INDEX` = a copy of the UO-19 package index). Names are generic, so a landmark is named only where a census prop origin lies within 3 m of the placed point. The art is not scaled, so each art spot is matched by its placed point. The shipped Jaffa props sit north of the gate while the art puts the wing south (F34).
+
+| Art spot | World landmark used | x, z | Source |
+|---|---|---|---|
+| Teleporter (717,661) | `ASG-Buildings:ASG-TeleportBase00`, exact | 191.96, -122.66 | census row `Omega_Site-fffe0001`; region 16 Right is (191.98, -122.78) |
+| Weapon (690,724) | `JF-Buildings:JF-MilitaryTent00` (t1 1.43 m, t2 2.75 m) | 390.21, -45.98 | census row `Omega_Site-ffff0003` |
+| Armor (797,695) | none named; nearest open walkway (216.50, -66.17) | 216.50, -66.17 | nearest prop `JF-Tent03`, 5.08 m |
+| Consumable (782,634) | none named; nearest open walkway (306.00, -100.00) | 306.00, -100.00 | nearest prop `JF-MedBuilding01`, 23.04 m |
+| Consumable (882,670) | none named; nearest open walkway (310.00, -104.00) | 310.00, -104.00 | nearest prop `JF-MedBuilding01`, 19.93 m |
+| Jaffa trainer (819,664) | none named; nearest open walkway (306.00, -104.00) | 306.00, -104.00 | nearest prop `JF-MedBuilding01`, 19.06 m |
+| Crafting group (biomedical, electronics, power, materials) | none named; nearest open walkway (291.14, -109.35) | 291.14, -109.35 | nearest prop `JF-MedBuilding01`, 18.58 m (biomedical); 13.80 m (power) |
+
+Only the weapon row names a landmark within 3 m. No point was moved; the mesh still decides (see § Art conflicts).
 
 ## Rejected
 
