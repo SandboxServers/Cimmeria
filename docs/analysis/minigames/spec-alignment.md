@@ -2,7 +2,7 @@
 
 Packet MG-R1. This spec is in the C5 format from [work-packets.md](work-packets.md#c5-spec-doc-format-every-research-packet-writes-to-it), and feeds the Alignment ports MG-AL1 to MG-AL3.
 
-**Evidence base.** The extension's ActionScript in `Alignment.upk`, disassembled and decompiled with the MG-R0 tools (`tools/minigame-swf/`). Everything here is static analysis: no claim was checked against a live client or a live SFS server. The golden transcripts in section 9 come from a Python model of the decompiled rules, not from a capture.
+**Evidence base.** The extension's ActionScript in `Alignment.upk`, disassembled and decompiled with the MG-R0 tools (`tools/minigame-swf/`). Everything here is static analysis: no claim was checked against a live client or a live SFS server. The transcripts in section 9 come from a Python model of the decompiled rules, not from a capture.
 
 **Confidence tags:**
 
@@ -129,11 +129,11 @@ for x in 0..width: for y in 0..height:          # x outer, no shuffle
     board[x][y] = t; k += 1
 while (m = checkForMatches(board)) not empty:
     for cell in m:
-        board[cell] = randIndex(rng, bonusIcons if floor(cell.type) in 1..3 else goalIcons)
+        board[cell] = randIndex(rng, bonusIcons if cell.type in {1, 2, 3} else goalIcons)
 gameArrayInit = copy(board); gameArray = board
 ```
 
-So the first quarter of the cells, in row-major `x` then `y` order, holds bonus icons and the rest holds goal icons. Re-rolled cells lose their `+0.1`.
+So the first quarter of the cells, in row-major `x` then `y` order, holds bonus icons and the rest holds goal icons. Re-rolled cells lose their `+0.1`. The comparison is exact (no floor), so a fractional bonus type is re-rolled from `goalIcons`.
 
 **Does the client reproduce anything from `seed`?** No (confirmed). The client renders `gameArray` from `fullgamestate`, and every later change arrives as a message. No `java.util.Random` port is needed for client compatibility.
 
@@ -186,13 +186,13 @@ The extension's table (confirmed, `initGame`) is shown beside the Python table i
 
 | Cmd | Fields (`SfsValue`) | Sent by the client when | Original handler | Port validation | Reply |
 |---|---|---|---|---|---|
-| `swappieces` | `type1`, `type2`, `type3` (Number); `row1`-`row3`, `col1`-`col3` (Number); `xPos`, `yPos` (Number); `orientation` (String, the clicked clip name) | A click on a hex edge (`hexClick`) while `validMove` | Sets `hintTimerPause = true`, then `swapPieces` | Phase `Ready`. The three cells are in bounds, distinct and an adjacent pair triangle (cell 1 plus neighbours `n_a`, `n_b` from section 3's pair list). Ignore the client `type*` and use the board types. No cell is type 9. | `hexspinner`, then possibly `feedback` and `timerupdate` |
+| `swappieces` | `type1`, `type2`, `type3` (Number); `row1`-`row3`, `col1`-`col3` (Number); `xPos`, `yPos` (Number); `orientation` (String, the clicked clip name) | A click on a hex edge (`hexClick`) while `validMove` | Sets `hintTimerPause = true`, then `swapPieces` | Phase `Ready`. The three cells are in bounds, distinct and an adjacent pair triangle (cell 1 plus neighbours `n_a`, `n_b` from section 3's pair list). Ignore the client `type*` and use the board types. No cell is type 9. | `feedback` (on a match only), then `hexspinner`, possibly `timerupdate` |
 | `cascade` | none | The last removal tween finishes (`destroyHex`) | `doCascade` | Phase `AwaitCascade` | `hexmove` |
 | `checkForCascade` | none | `hexmove` animation done (`checkForMoreMatches`) | `checkForCascade` | Phase `AwaitCheck` | `bypasshexspinner` or `cascadecheckcomplete` |
 | `doscore` | none | `cascadeCheckComplete` | `doScore` | Phase `AwaitScore` | `updatescore`, `timerupdate`, maybe `activate` |
 | `processreset` | none | Reset button (`resetGame`) | `numResets++`, `initGame(false)` | Phase `Ready` | `fullgamestate` |
-| `callhint` | none | **Never sent by this movie** | `getHint`, then `timeRemaining -= 5`, `timerupdate` | Phase `Ready` | `hint` (if found), `timerupdate` |
-| `resethinttimer` | none | **Never sent by this movie** | `hintLastTime = timeRemaining`, `hintTimer = 10` | Any phase but `Ended` | none |
+| `callhint` | none | Sent by the client: hint bubble click (`callhint`); end of `hintHelpOut`, so before every `swappieces` (`resethinttimer`) | `getHint`, then `timeRemaining -= 5`, `timerupdate` | Phase `Ready` | `hint` (if found), `timerupdate` |
+| `resethinttimer` | none | Sent by the client: hint bubble click (`callhint`); end of `hintHelpOut`, so before every `swappieces` (`resethinttimer`) | `hintLastTime = timeRemaining`, `hintTimer = 10` | Any phase but `Ended` | none |
 | `processmove` | `cardType`, `target`, `current` | **Never sent by this movie** | Calls `processMove`, which is undefined: a no-op | Reject | none |
 | `dovictory` | none | `activate_btn` click after `activate` | `doVictory`, unconditionally | Goals met **and** phase `Ready`. Otherwise ignore it. | `victory`, end code 1 |
 | `activateitemcheat` | `cheatNum` (Number 0-4) | Item cheat button | `activateItemCheatRequest` | Phase `Ready`, slot available (section 7) | per cheat, then `itemcheatstate` |
@@ -217,7 +217,7 @@ any --dovictory (goals met) / timeout / abort--> Ended
 |---|---|---|---|
 | `fullgamestate` | `numResets`, `timeRemaining` (minus 0.25), `timerState`, `isSpectator` (Bool), `gameArray` (list of lists of Number), `playfieldWidth`, `playfieldHeight`, `goalIcons` (list), `goalTotals` (list), `goalScores` (list), `techcomp`, `difficulty`, `minigamelevel`, `instcc`, `CA0`-`CA4`, `abilityBitfield` | `initGame` (start and reset); spectator join | Rebuilds the board, scores and cheats. The first one starts the client timer. |
 | `hexspinner` | `matches` (list of cells), `spinCount` (1, 2 or 3), plus `xPos`, `yPos`, `orientation`, `row1`-`row3`, `col1`-`col3` echoed from the request | `swapPieces` | Animates `spinCount` rotations, applies the rotation locally, removes `matches`. 3 means no match. |
-| `feedback` | `spinCount`, `powerUpValues` (list of Number) | `checkPowerUpMatches`, when a power-up was in the match | Power-up popups |
+| `feedback` | `spinCount`, `powerUpValues` (list of Number) | `checkPowerUpMatches`, every call (`powerUpValues` empty when no power-up was in the match) | Power-up popups |
 | `powerupconvert` | `x`, `y`, `powerUp` (Number, e.g. 0.3) | Cheats | Adds `powerUp` to that cell's type |
 | `bypasshexspinner` | `matches` (list of cells) | `checkForCascade`, board-clearing cheats | Removes the cells, then sends `cascade` |
 | `hexmove` | `direction` (Number 0-5), `hexesToMove` (list of `{moveTotal, x, y, type}`), `newHexes` (list of cells) | `doCascade` | Slides and refills, then sends `checkForCascade` |
@@ -279,7 +279,7 @@ For each matched cell whose type has a fraction:
 | 4 or 6 | One diagonal, walked both ways with a parity toggle, cells > 0 |
 | 5 or 6 | The other diagonal |
 
-`p = 6` is therefore the full star. If any power-up fired, the server sends `feedback {spinCount, powerUpValues}`.
+`p = 6` is therefore the full star. The expansion is one loop over the match set that re-reads the set's length on every pass (listing: the loop bound is read at each iteration and the loop jumps back to it). Cells appended during the expansion are therefore visited too, so a power-up cell that another power-up pulls in fires its own effect: its own shape, its `timeRemaining += 2` when `powerUpAddTime` is set, and its `powerUpValues` entry. A candidate is appended only when no cell with the same `x` and `y` is already in the set, so no cell is added twice, including one appended earlier in the same expansion. The server always sends `feedback {spinCount, powerUpValues}` from `checkPowerUpMatches`, before `hexspinner` or `bypasshexspinner`; `powerUpValues` is `[]` when nothing fired.
 
 `getMatchPower(type, mp)` decides which power a new cell gets:
 
@@ -292,8 +292,10 @@ For each matched cell whose type has a fraction:
 | 12 | 5 | 0.4 |
 | 12 | 6 | 0.5 |
 | 12 | 8 | 0.6 |
-| 12 | 1-3 | Unclear in the decompile (section 11) |
+| 12 | 1-3 | 0.6 |
 | 12 | 7 | Undefined, giving `NaN` (shipped bug) |
+
+Types 1-3 and 8 share the `mp = 12` branch, which tests `(t >= 1 && t <= 3) || t == 8` and returns 0.6; type 7 has no branch.
 
 ### `checkForCascade` and `doCascade` (confirmed)
 
@@ -325,7 +327,7 @@ The drop direction therefore rotates 0, 1, 2, 3, 4, 5, 0 once per scored turn. O
 | 4 | Starts (s, H) for s = W-1..-4; `y` -1 per step, `x` +1 every second step | even y: (x-1, y+1); odd y: (x, y+1) |
 | 5 | Starts (s, **8**) for s = W+3..0; `y` -1 per step, `x` -1 every second step | even y: (x, y+1); odd y: (x+1, y+1) |
 
-Out-of-range positions on a line are skipped. Direction 5 starts every line at `y = 8`, so on a 10x10 board column 9 never slides in direction 5. Its gaps are refilled in place (shipped bug). The toggle phase for direction 4 depends on the board's parity. Directions 1, 2, 4 and 5 should be ported line for line from the listing; this table is the map, not the spec.
+Out-of-range positions on a line are skipped. Direction 5 starts every line at `y = 8`, so on a 10x10 board column 9 never slides in direction 5. Its gaps are refilled in place (shipped bug). The toggle phase for direction 4 depends on the board's parity. Directions 1, 2, 4 and 5 should be ported line for line from the listing; this table is the map, not the spec. `hexesToMove` entries are appended in this walk order, so for `d = 0` they run `y` descending and, within a row, `x` descending.
 
 **Refill** (confirmed, same in every direction except the scan order and the clone source):
 
@@ -343,7 +345,7 @@ for each cell == 0, in the direction's scan order:
     board[cell] = t; newHexes.push({x, y, type: t})
 ```
 
-A match of 8 or more of one type therefore earns exactly one power-up in the refill.
+A match of 8 or more of one type therefore earns exactly one power-up in the refill. `A` and `B` are built by scanning the types 1 to 8 in ascending order, so each list is sorted by type, and `A.pop(0)` (`splice(0, 1)` in the listing) takes the first element.
 
 **Scan order and clone source** (the clone source is out of bounds, so no clone, at the edges):
 
@@ -476,7 +478,7 @@ elif CA<cheatNum> > 0:                     # consumable
 - **`checkForMatchCheat`** runs after every matching swap and applies bits 2, 3 and 8 (above), each only while `timeRemaining > 0`.
 - **The hoisting bug in both processors** (inferred, not run). The board-copy loop compares against `playfieldWidth` and `playfieldHeight` before the `var playfieldWidth = ...` statements run. Under AS1 function scoping those are `undefined` at that point, so the copy is empty and board-touching cheats work on an empty array. The port reads the dimensions first.
 
-**The bit-to-ability mapping** (which ability grants which bit) is MG-R7's: spec-launch-flow section 4. The cheat sounds are in spec-launch-flow line 281 onward.
+**The bit-to-ability mapping** (which ability grants which bit) is MG-R7's: spec-launch-flow section 4. The cheat sounds are in [spec-launch-flow, cheat sounds section](spec-launch-flow.md#bit-to-cheat-category-confirmed-goauldcrystals-processabilitycheat).
 
 ### Timer cheats `stct`, `upct` and `osct`
 
@@ -508,7 +510,7 @@ When all of these hold, the server sends `clicktohint`, then sets `hintLastTime 
 - `timerState == 1`
 - `!hintTimerPause`
 
-`initGame` sets `hintTimer = 5`, so the first prompt comes 5 s after start; each later one comes 10 s after the last score, prompt or reset. `swappieces` pauses the prompt, and a no-match or `doscore` unpauses it. The client shows the bubble only while its own `timeRemaining > 0`.
+`initGame` sets `hintTimer = 5`, so the first prompt comes 5 s after start; each later one comes 10 s after the last score, prompt or reset. `swappieces` pauses the prompt, and a no-match or `doscore` unpauses it. The client shows the bubble only while its own `timeRemaining > 0`. Every `swappieces` is preceded by a `resethinttimer`.
 
 ### `getHint` (`callhint`, item cheat 0)
 
@@ -530,7 +532,7 @@ When all of these hold, the server sends `clicktohint`, then sets `hintLastTime 
 
 Nothing reshuffles a board with no legal move. The port keeps that by default, as shipped behaviour; section 11 asks whether to add one.
 
-## 9. Golden transcripts
+## 9. Transcripts (fixture board, RNG values frozen on first port run)
 
 These are derived from a Python model of the decompiled rules (static, not captured).
 
@@ -552,11 +554,12 @@ Setup: tier 1, `goalTotals [45, 15, 6]`, time 120, `seed` 7, and the fixture boa
 
 1. **Start.** `fullgamestate` has `timeRemaining 120`, `timerState 1`, `goalScores [0,0,0]`, `goalTotals [45,15,6]`, `goalIcons [4,5,6]`, `difficulty 1`, `minigamelevel 0` and the board.
 2. **Hint check** (no message sent). On this board `getHint` with `hintIndex 0` would return `hex1 (1,1,4)`, `hex2 (0,1,6)`, `hex3 (1,2,5)`.
-3. **Swap.** `> swappieces row1=1 col1=1 type1=4 row2=2 col2=1 type2=5 row3=2 col3=0 type3=6 xPos=0 yPos=0 orientation=e`. This is cell 1 plus its n3 and n4; the triangle is legal.
+3. **Swap.** `> resethinttimer`, then `> swappieces row1=1 col1=1 type1=4 row2=2 col2=1 type2=5 row3=2 col3=0 type3=6 xPos=0 yPos=0 orientation=e`. This is cell 1 plus its n3 and n4; the triangle is legal.
+   - `< feedback` with `spinCount 1` and `powerUpValues []` precedes `< hexspinner`.
    - `< hexspinner` with `spinCount 1` and `matches [(1,3,4), (2,1,4), (2,2,4), (3,0,4), (3,2,4)]` (in BFS order; the test compares as a set), plus the echoed fields.
-   - No `feedback`, because there are no power-ups. No `timerupdate`, because no cheat flags are set.
+   - No `timerupdate`, because no cheat flags are set.
 4. **Cascade.** `> cascade` gives `< hexmove` with `direction 0` and:
-   - `hexesToMove [{1,0,3,6}, {2,1,2,5}, {2,0,2,4}, {1,1,1,6}, {1,0,1,6}, {1,2,0,5}, {1,1,0,5}, {1,0,0,4}]`, each entry `{moveTotal, x, y, type}`.
+   - `hexesToMove [{1,0,3,6}, {2,1,2,5}, {2,0,2,4}, {1,1,1,6}, {1,0,1,6}, {1,2,0,5}, {1,1,0,5}, {1,0,0,4}]`, each entry `{moveTotal, x, y, type}`, in walk order for `d = 0` (section 6).
    - `newHexes` at (0,0), (0,1), (0,2), (0,3) and (1,2), each `type <rng>`. With no re-roll needed (`cascadeCount 0`), the refill draws two rolls per cell.
 5. **Check.** `> checkForCascade` gives `< cascadecheckcomplete`. This holds only if the frozen refill makes no triangle; if it does, re-pick the seed. `dropIndex` becomes 1.
 6. **Score.** `> doscore` gives `< updatescore` with `goalScores [5,0,0]`, `goalTotals [45,15,6]`, `goalIcons [4,5,6]`, then `< timerupdate` with `timeRemaining 120`, `timerState 1` (bonus 0).
@@ -566,7 +569,7 @@ Setup: tier 1, `goalTotals [45, 15, 6]`, time 120, `seed` 7, and the fixture boa
 
 Setup: the plain fixture board.
 
-1. `> swappieces row1=1 col1=1 type1=4 row2=1 col2=0 type2=5 row3=0 col3=1 type3=6 ...` gives `< hexspinner` with `spinCount 3`, `matches []` and the echo. The board is unchanged and the phase stays `Ready`.
+1. `> resethinttimer`, then `> swappieces row1=1 col1=1 type1=4 row2=1 col2=0 type2=5 row3=0 col3=1 type3=6 ...` gives `< hexspinner` with `spinCount 3`, `matches []` and the echo. The board is unchanged and the phase stays `Ready`.
 2. `> callhint`: the plain board has no move, so there is no `hint`. Then `< timerupdate` with `timeRemaining 115`, `timerState 1`.
 3. `> processreset` gives `< fullgamestate` with `numResets 1`, `timeRemaining 120` and the initial board. The board is the injected fixture, because reset copies `gameArrayInit` back.
 
@@ -601,7 +604,7 @@ Files:
 
 | File | Contents | Lines |
 |---|---|---|
-| `alignment/moves.rs` | Neighbours; `check_for_matches`; flood; `spin_check`; the power-up expansion and `get_match_power`; `swap_pieces` with the D-MG2 triangle validation; `check_for_cascade`; refill with A/B lists, blocker and clone rolls; `get_new_type` (tier override behind `const NEW_TYPE_USES_TIER: bool = false`); re-roll pass; `hexspinner`, `feedback`, `bypasshexspinner`, `hexmove`, `cascadecheckcomplete`; wire into `message` with phase checks | ~450 |
+| `alignment/moves.rs` | Neighbours; `check_for_matches`; flood; `spin_check`; the power-up expansion and `get_match_power`; `swap_pieces` with the D-MG2 triangle validation; `check_for_cascade`; refill with A/B lists, blocker and clone rolls; `get_new_type` (tier override behind `const NEW_TYPE_USES_TIER: bool = false`); re-roll pass; `feedback` (sent first, before `hexspinner` or `bypasshexspinner`), `hexspinner`, `bypasshexspinner`, `hexmove`, `cascadecheckcomplete`; wire into `message` with phase checks; unit test: a power-up pulled in by another power-up fires its own effect, and no cell is added twice | ~450 |
 | `alignment/moves_gravity.rs` | The six `doCascade` slide walks (section 6), split off to keep `moves.rs` under the 500-line cap | ~150 |
 | `alignment/tests_moves.rs` | The neighbour table for both parities; the match pair rule; transcript A steps 3-5 against the fixture; one test per gravity direction on a small hand board; power-up shapes p = 1-6; refill A/B power-up grant; swap validation rejects; phase order rejects | ~350 |
 
@@ -622,7 +625,7 @@ Files:
 ## 11. Open questions
 
 1. **The `getNewType` tier override.** Should refills use the tier tables? The shipped extension forces tier 1, which keeps protocol (7) and cipher (8) out of refills and makes tier 4 cipher totals close to unreachable. The port ships the original behaviour behind `NEW_TYPE_USES_TIER = false`. **Owner decision.**
-2. **`getMatchPower` with `mp = 12` for types 1-3.** The decompile of that branch is unclear: the stack is carried across a switch. The current reading is that 1-3 fall through with no power, which adds `undefined` and gives `NaN`. Moot unless 12 or more of a bonus type are matched in one turn. AL2 should re-list `getMatchPower` and pin it down; the safe default is 0.1.
+2. **Resolved:** `getMatchPower` with `mp = 12` gives 0.6 for types 1-3 (the same branch as type 8; section 6).
 3. **Deadlock reshuffle.** The original has none. Should the port add one, as a server-side improvement, or keep the run-out-the-clock behaviour?
 4. **Cheat 3 with no blockers.** It returns without any message. The client put up its `disable` overlay when it sent the cheat, and it is not clear what removes it; the client may stay locked. The port sends `itemcheatstate` regardless. A lab check is needed once cheats are reachable.
 5. **`consUsed` and item validation.** The online path relies on the host (`__mg.minigameValidateItem`) to consume the item. Cimmeria has no item-validation call into the cell yet. AL3 treats a granted `CA` slot as validated. A real consumable spend belongs to the launch-flow and items work (spec-launch-flow section 5).
