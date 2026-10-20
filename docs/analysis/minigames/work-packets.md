@@ -6,21 +6,22 @@
 Packet status lives in **one place**: the [README packet table](README.md#packets). This file holds the dispatch rules, the contract, the wave plan, and the packet text for waves 0 and 1. The later waves live in [packets/](packets/):
 
 - [wave 2: launch and modifiers](packets/wave2-launch.md);
-- [waves 3-5: per-game ports](packets/wave3-5-ports.md), filled in at gate G1;
+- [waves 3-5: per-game ports](packets/wave3-5-ports.md), filled in at gate G1 (D-MG21);
 - [waves 6-7: content, UAT and close-out](packets/wave6-7-content-close.md).
 
 ## Dispatch rules
 
 1. **Peer check first.** Before any dispatch, ops reports `git log --since="1 hour ago"` on `minigames/*` branches, the board's `minigames` subcategory, and any `.claude/worktrees/mg-*` folder. A live peer means stand down.
 2. **One worktree per packet.** Ops runs `pwsh tools/build-lane/mk-worktree.ps1 minigames/<packet-lower>-<slug> <worktree>`; each packet header gives the branch and the worktree name. The test database is `sgw_<worktree>`. Never put two workers in one checkout. A stacked packet passes `--base <branch>` to its PR.
-3. **Roles.** `packet-coder` (Haiku) takes the fully specified code, seed and test packets. Research, RE and design-heavy packets go to the named domain agent with the same brief shape. Reviews run per the skill § 4: a fresh read-only `packet-reviewer` per pass, fix notes to a fresh `packet-coder`, at most 3 passes. Add `server-authority-enforcer` as a parallel read-only pass on MG-02, MG-04, every `<G>2` and `<G>3` port, MG-23 and MG-24.
+3. **Roles.** `packet-coder` (Haiku) takes the fully specified code, seed and test packets. Research, RE and design-heavy packets go to the named domain agent with the same brief shape. Reviews run per the skill § 4: a fresh read-only `packet-reviewer` per pass, fix notes to a fresh `packet-coder`, at most 3 passes. Add `server-authority-enforcer` as a parallel read-only pass on MG-22, MG-24, MG-63a and every `<G>2` and `<G>3` port slice; each packet header names any other advisor pass.
 4. **Brief** (under 25 lines): the worktree path, this file's packet section path (the agent reads it), the report path, the commit attribution lines, and the return line. Never paste the packet into the brief.
 5. **Report path:** `<worktree>\.claude\reports\minigames\<packet>-<role>.md`, where role is `coder`, `review-<N>` or `fix-<N>`; for example `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\mg-01\.claude\reports\minigames\MG-01-coder.md`. Never the root checkout. Copy anything worth keeping to `docs/analysis/minigames/worknotes/` before the worktree is retired.
 6. **Return**, exactly one line: `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`.
 7. **Escalation** follows the skill. A context stop leaves `worknotes/<packet>.md`, and a fresh coder continues (at most 3 sessions). Next comes one Sonnet implementer (`rust-gameserver-dev` for code and seeds, `documentation-writer` for docs), then the architect re-slices. A `decision` verdict, or `fix` after pass 3, goes to the architect for a ruling note.
-8. **Owner decisions** are `BlockedDecision` in the README (D-MG3, D-MG6, D-MG11). The orchestrator asks the owner; no packet guesses an answer.
+8. **Owner decisions.** D-MG3, D-MG6 and D-MG11 were decided at G1 under the owner's autonomy directive (README § Decisions). A new owner call is `BlockedDecision` in the README; no packet guesses an answer.
 9. **Lab use is ask-user-first** (D-MG16). No packet starts the client, the launcher or a lab session. MG-73 writes the lab recipes; the orchestrator asks the user before any `lab-driver` run.
-10. **Gate G1.** No port packet (waves 3-5) and no wave-2 packet dispatches before the architect has run G1 ([README § Gates](README.md#gates)).
+10. **Gate G1 is done** (2026-10-19, [README § Gates](README.md#gates)). Waves 2-7 are prescriptive; a packet whose text still looks open stops and returns `blocked`.
+11. **Integration branch.** Every packet from wave 2 on branches from `minigames/integration` (worktree `mg-integration`). Ops merges it back with `merge-noff.ps1` once its review loop says `ship`, then retires the packet worktree and its target dir. A chained packet's worktree is made only after its predecessor has merged. The campaign ships one PR at the end (owner directive).
 
 ## Waves
 
@@ -30,14 +31,14 @@ Packet status lives in **one place**: the [README packet table](README.md#packet
 | 0B research | MG-R1, MG-R2, MG-R3, MG-R4, MG-R5 | after 0A merges | one PR from integration worktree `mg-wave0b` (branch `minigames/wave0b`) | R5, R1, R2, R3, R4 |
 | G1 | architect gate | after 0B merges | ledger and packet-text PR by the architect's worktree | none |
 | 1 foundations | MG-01, MG-02, MG-03, MG-04, MG-05, MG-06 | now (in parallel with 0A) | one PR per packet; MG-05 stacks on MG-03 and MG-06 on MG-02 | MG-01, MG-03, MG-04, MG-05, MG-02, MG-06 |
-| 2 launch | MG-21..MG-26 | after G1 and wave 1 | one PR per packet; MG-23 stacks on MG-22 | MG-22, MG-23, MG-24, MG-21, MG-25, MG-26 |
-| 3 ports, setup | MG-AL1, MG-CG1, MG-GC1, MG-CH1, MG-LW1 | after G1, MG-01, MG-03 | one PR per packet (disjoint folders) | any |
-| 4 ports, moves | MG-AL2, MG-CG2, MG-GC2, MG-CH2 | each after its `<G>1` | one PR per packet | any |
-| 5 ports, rules | MG-AL3, MG-CG3, MG-GC3, MG-CH3 | each after its `<G>2`, MG-05, MG-22 | one PR per packet | any |
-| 6 content | MG-61..MG-65 | per row dependencies | one PR per packet (each owns one seed file) | MG-62, MG-63, MG-61, MG-64, MG-65 |
-| 7 close | MG-71, MG-72, MG-73, campaign review, MG-99 | after wave 6 | one PR per packet; MG-99 last | MG-71, MG-73, MG-72, review fixes, MG-99 |
+| 2 launch | MG-22, MG-63a, MG-21, MG-24, MG-63b (MG-23, 25, 26 not applicable) | now: MG-22 and MG-63a; the rest chained | merged into `minigames/integration` | MG-22, MG-63a, MG-21, MG-24, MG-63b |
+| 3 ports, setup | MG-AL1, MG-CG1, MG-GC1a, MG-GC1b, MG-CH1, MG-LW1 | now (GC1b after GC1a) | merged into `minigames/integration` (disjoint folders) | any; GC1a before GC1b |
+| 4 ports, moves | MG-AL2a, MG-AL2b, MG-CG2, MG-GC2, MG-CH2 | each after its predecessor slice | merged into `minigames/integration` | chain order within a game |
+| 5 ports, rules | MG-AL3a, MG-AL3b, MG-CG3, MG-GC3a, MG-GC3b, MG-CH3 | each after its predecessor slice; AL3b, GC3b and CH3 also after MG-22 | merged into `minigames/integration` | chain order within a game |
+| 6 content | MG-62, MG-61, MG-64 (MG-63 replaced, MG-65 not applicable) | MG-64 now; the rest per row dependencies | merged into `minigames/integration` | MG-62, MG-61, MG-64 |
+| 7 close | MG-71, MG-73, MG-72, campaign review, MG-99 | after wave 6 | merged into `minigames/integration`, then one campaign PR | MG-71, MG-73, MG-72, review fixes, MG-99 |
 
-Waves 0 and 1 dispatch together: research does not touch code, and the wave-1 packets do not depend on it. Waves 3 to 5 run as three per-game chains. A game's `<G>2` can start once its `<G>1` merges, without waiting for the other games.
+Waves 0 and 1 dispatched together and are integrated. Waves 3 to 5 run as four per-game chains plus MG-LW1; a game's next slice can start once its predecessor merges, without waiting for the other games. Wave 3 may run beside wave 2: the ports touch only their own game folders.
 
 ## Contract
 
@@ -69,7 +70,10 @@ These are repeated in short form in each packet, because packet-coder does not r
 | `crates/cell-effect-scripts` | `cimmeria-cell-effect-scripts` | |
 | `crates/base-world-entry` | `cimmeria-base-world-entry` | |
 | `crates/wire` | `cimmeria-wire` | |
-| `crates/cell-world` | `cimmeria-cell-world` | `EffectContext`, `SpaceManager` |
+| `crates/cell-world` | `cimmeria-cell-world` | `EffectContext`, `SpaceManager`, `minigame_launch` (MG-22) |
+| `crates/entity` | `cimmeria-entity` | `minigame_feature`, the stat-buff ledger (MG-21, MG-63b) |
+| `crates/cell-combat` | `cimmeria-cell-combat` | the effect-queue drain (MG-24) |
+| `crates/server` | `cimmeria-server` | the env switch init (MG-21) |
 
 The check order for each crate the packet touches:
 
@@ -122,6 +126,8 @@ crates/minigame/src/minigame/games/
   <game>/tests_setup.rs, tests_moves.rs, tests_rules.rs
 ```
 
+G1 adds files where a slice would pass the soft cap: `alignment/cascade.rs` and `alignment/moves_gravity.rs` (AL2b), `alignment/cheats.rs` (AL3b), `goauld_crystals/power.rs` (GC1b) and `goauld_crystals/cheats.rs` (GC3b), each with a matching `tests_<name>.rs`. Livewire's parity tests may go in `livewire/tests_parity.rs` (MG-LW1).
+
 | Game (`target_key`, case-sensitive) | Folder | Port prefix |
 |---|---|---|
 | `Alignment` | `alignment` | MG-AL |
@@ -172,7 +178,7 @@ abort
 
 ### C7. Seed ids for content packets
 
-Minigame content chains use **24000-24049** (free on `main` @ `0d71b3b30`). Each packet re-checks its range with Grep before writing: MG-61 takes 24000-24009, MG-62 24010-24019, MG-63 24020-24029, MG-64 24030-24039, MG-65 24040-24049. One packet owns one seed file (see each packet).
+Minigame content chains use **24000-24049** (free on `main` @ `0d71b3b30`). Each packet re-checks its range with Grep before writing. Since G1 only MG-61 takes chains (24000-24001); 24002-24049 stay unused. Hand-authored effect NVPs use **25500-25509**: MG-63b takes 25500, MG-62 25501-25504. One packet owns one seed file (see each packet).
 
 ## Wave 0A: research, cross-cutting
 

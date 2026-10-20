@@ -1,7 +1,7 @@
 # Waves 6-7: content, UAT and close-out
 
 > Type: how-to. Part of the [minigames work packets](../work-packets.md); the contract (C1-C7) and the dispatch rules live there.
-> Content packets read [content-map.md](../content-map.md) (MG-R5) and [spec-launch-flow.md](../spec-launch-flow.md) (MG-R7). The architect confirms every `<from MG-R5>` and `<from MG-R7>` value at G1, or at the latest before the packet dispatches.
+> Content packets read [content-map.md](../content-map.md) (MG-R5) and [spec-launch-flow.md](../spec-launch-flow.md) (MG-R7). Every input below was confirmed against them at G1 (D-MG22); a coder still re-reads the named seed line before editing it.
 
 ## Content rules (inline for every wave-6 packet)
 
@@ -10,9 +10,9 @@
 - **Seeds are the source of truth.** Edit `db/resources/` only; never add `db/scripts/*.sql` migrations.
 - A new seed file gets its `\ir resources/Content/Seed/<file>.sql` line in `db/database.sql`, after the last `Content/Seed` line.
 - Chain ids come from the packet's C7 block only. Grep the range in `db/resources/` first; if any id is taken, stop and return `blocked`.
-- The chain row shape follows the existing minigame pairs in `db/resources/Content/Seed/castle_cellblock_chains.sql`: a launcher chain with a trigger, conditions and a `start_minigame` action, plus a victory chain with no trigger row. Read one pair before writing.
-- **Tests:** type 6 chain-replay, in `crates/cell-content/src/cell/content/chain_replay_tests/`, following `livewire_pairs.rs`. That means four assertions: the launcher resolves exactly one `StartMinigame`, it resolves nothing at the wrong step, `execute_actions` emits one `CellToBaseMsg::StartMinigame` with the authored fields, and the victory and failure chain action lists match the seed. Register the module in `chain_replay_tests/mod.rs`.
-- Docs are CRLF. No `git stash`, prune or push; make one local commit with the brief's attribution. No lab.
+- The chain row shape follows the existing pairs: the `start_minigame` rows in `db/resources/Content/Seed/castle_cellblock_chains.sql` (line 198: `(1024, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1025]}', 0, 0)`) and the `interact_tag` and step-condition rows in `db/resources/Content/Seed/beta_e1_m1147_chains.sql` (chains 23391 and 23393). Read both before writing.
+- **Tests:** type 6 chain-replay, in `crates/cell-content/src/cell/content/chain_replay_tests/`, following `livewire_pairs.rs`. That means four assertions: the launcher resolves exactly one `StartMinigame`, it resolves nothing at the wrong step, `execute_actions` emits one `CellToBaseMsg::StartMinigame` with the authored fields, and the victory chain's action list matches the seed. Register the module in `chain_replay_tests/mod.rs`.
+- Files: soft cap 500 lines, hard cap 700. Docs are CRLF. No `git stash`, prune or push; make one local commit with the brief's attribution. No lab.
 - **Lanes:**
 
   ```powershell
@@ -23,79 +23,77 @@
 
 - **Docs.** Add a row to [mission-chains.md](../../../content/mission-chains.md) for each mission touched, and update [zone-audit.md](../../../content/zone-audit.md) if a zone row changes. Doc-update-map row "Seeds / content chains".
 
-Ships one PR per packet. Merge order: MG-62, MG-63, MG-61, MG-64, MG-65.
+Wave 6 ships like every other wave: `ops` merges each packet branch into `minigames/integration` with `merge-noff.ps1`, and the campaign ships one PR at the end. Merge order: MG-62, MG-61, MG-64. MG-62 goes after MG-63b (wave 2) because both append to the same hand-authored `effect_nvps` block.
 
 ## MG-61: mission 582 step 2307, Converse with Marsh
 
-- Agent: packet-coder · Host: windows · Wave 6 · Depends on: MG-R5, MG-CH3 (or the G1 target game's `<G>3`)
+- Agent: packet-coder · Host: windows · Wave 6 · Depends on: MG-CH3 merged into `minigames/integration` · Status BlockedDependency
 - Worktree `mg-61` · Branch `minigames/mg-61-m582-marsh` · Commit `MG-61: mission 582 step 2307 plays the Marsh conversation minigame`
-- **Ids:** chains 24000-24009.
-- **Inputs (from MG-R5, confirmed at G1):** the NPC `<from MG-R5>` (template id and spawn), the dialog `<from MG-R5>`, the game `<from MG-R5, expected ConverseBasicHumanoid>`, the tier `<from MG-R5>`, the objective(s) of step 2307 `<from MG-R5>`, and the next step `<from MG-R5>`.
+- **Ids:** chains 24000-24001 (C7 reserves 24000-24009; the rest stay unused).
+- **Inputs (content-map.md §6 and §10, confirmed at G1):** Marsh is spawn 344 in world 68, interact tag `CmdCenter_Marsh`. Dialog 2433 is the step's prompt. The game is `ConverseBasicHumanoid` at difficulty 1. Step 2307's objective is 2675 and the next step is 3274. Marsh's existing chains 6501 and 6527 fire on the same tag while missions 1360 (step 4038) and 1361 (step 4694) are active; the launcher must not steal those clicks.
 - **Files:**
-  - `db/resources/Missions/Seed/mission_steps.sql:5335`: change row 2307's disabled flag to enabled. Copy the column order from the row; G1 names the exact column.
-  - New `db/resources/Content/Seed/minigames_m582_chains.sql`:
-    - launcher 24000: on the Marsh dialog choice (or interact) while step 2307 is active, it runs `start_minigame { minigame_type, difficulty, on_victory_chains: [24001], on_failure_chains: [24002] }`;
-    - victory chain 24001: complete objective `<id>`, then advance the step;
-    - failure chain 24002: a player message (`<from MG-R5 dialog text, else "Marsh loses interest. Try again.">`); the step stays open.
-  - The `\ir` line in `db/database.sql`.
-- **Test:** new `chain_replay_tests/minigames_m582.rs` with the four assertions, plus "a step-2307 row is enabled" read from the seeded DB. On revert, the launcher resolves nothing because the step is disabled.
-- **Docs:** [mission-chains.md](../../../content/mission-chains.md), mission 582.
+  1. `db/resources/Missions/Seed/mission_steps.sql:5335`: row 2307 `step_enabled` goes from `false` to `true`. Change nothing else on the row.
+  2. New `db/resources/Content/Seed/minigames_m582_chains.sql` (header comment naming D-MG22 and MG-61):
+     - launcher **24000**: trigger `interact_tag 'CmdCenter_Marsh'`; conditions `world 68` (Grep `'world',` under `db/resources/Content/Seed/` for the row shape), `mission_status 582 eq active`, `step_status 582 '2307' eq active`, `step_status 1360 '4038' neq active`, `step_status 1361 '4694' neq active`; actions in order `display_dialog 2433`, then `start_minigame` with target key `'ConverseBasicHumanoid'` and params `{"difficulty": 1, "on_victory_chains": [24001]}`.
+     - victory chain **24001** (no trigger row): `complete_objective 582 '2675'`, then `advance_step 582 '3274'`. Grep both action names in `db/resources/Content/Seed/` and copy the column use of an existing row; if either action name differs, use the seeded spelling and say so in the report.
+     - No failure chain: a loss leaves step 2307 active, and the player clicks Marsh again. The session's own `failure` result is the feedback.
+  3. The `\ir resources/Content/Seed/minigames_m582_chains.sql` line in `db/database.sql`.
+- **Not in scope.** Mission 582 cannot be offered today: its giver Blackstock (NPC 948) has no spawn and set 530 is unbound (M10, content-map §10). Do not add an offer path; the test sets the mission and step active directly. Dialog 2431 (`accepts_mission_id = 582`, `dialogs.sql:4345`) stays as is.
+- **Test:** new `chain_replay_tests/minigames_m582.rs` with the four assertions, plus: the launcher resolves nothing while step 4038 of mission 1360 is active (the guard), and the seeded step 2307 row has `step_enabled = true`. On revert of the seed edit the step-enabled assertion fails; on revert of the chain file the launcher resolves nothing. Lane filter `minigames_m582`.
+- **Docs:** [mission-chains.md](../../../content/mission-chains.md), a mission 582 row naming the offer gap (M10).
 
 ## MG-62: Converse abilities 1327 and 2089
 
-- Agent: packet-coder · Host: windows · Wave 6 · Depends on: MG-24, MG-CH3, G1
+- Agent: packet-coder · Host: windows · Wave 6 · Depends on: MG-24, MG-63b and MG-CH3 merged into `minigames/integration` · Status BlockedDependency
 - Worktree `mg-62` · Branch `minigames/mg-62-converse-abilities` · Commit `MG-62: Converse abilities launch the conversation minigame`
-- **Ids:** chains 24010-24019 (victory and failure outcomes, if MG-R7 names any).
-- **Inputs (from MG-R7):**
-  - effect 1643 (ability 1327) and effect 2813 (ability 2089): their `script_name` → `StartMinigame`, with the NVP params `minigame_type=<from MG-R7>` and `difficulty=<from MG-R7>`;
-  - their victory and failure outcomes `<from MG-R7>`. Where the outcome is "none", no chain is needed.
+- **Ids:** NVPs 25501-25504 in the hand-authored block MG-63b opened (25500-25509). No chains: spec-launch-flow names no victory or failure outcome for either ability, so the session result is the only outcome.
+- **Inputs (spec-launch-flow.md §6, D-MG20):** effect 1643 (ability 1327) and effect 2813 (ability 2089). The `StartMinigame` script (MG-24) reads `minigame_type` and `difficulty` from the effect's NVPs; the caster plays.
 - **Files:**
-  - the effects seed (Grep `1643` under `db/resources/` for the file holding effect rows): set `script_name` and the NVP params, following an existing scripted effect row's shape;
-  - if outcomes exist, new `db/resources/Content/Seed/minigames_converse_chains.sql` and its `\ir` line.
-- **Test:** a type 3 live-DB guard in `crates/cell-effect-scripts/` beside `registry.rs`'s seeded-names test, or a new `start_minigame_seed_live_db_tests.rs` there: effects 1643 and 2813 load with `script_name = "StartMinigame"` and the expected params, and the registry resolves them. On revert, the script name is unset. Lane: `live-db-test.ps1 start_minigame_seed`, plus clippy on `cimmeria-cell-effect-scripts`.
-- **Docs:** [minigame-system.md](../../../gameplay/minigame-system.md) § ability launch, the seeded abilities list.
+  1. `db/resources/Effects/Seed/effects.sql`: `script_name` (the last column, NULL today) becomes `'StartMinigame'` on effect 1643 (line 2915) and effect 2813 (line 4144). Re-read each line first; change only that column.
+  2. `db/resources/Effects/Seed/effect_nvps.sql`, in the `-- minigames hand-authored (25500-25509)` block, after MG-63b's 25500 row:
 
-## MG-63: Prison Boot 1597
+     ```sql
+     INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25501, 1643, 'minigame_type', 'ConverseBasicHumanoid');
+     INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25502, 1643, 'difficulty', '1');
+     INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25503, 2813, 'minigame_type', 'ConverseBasicHumanoid');
+     INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25504, 2813, 'difficulty', '1');
+     ```
 
-- Agent: rust-gameserver-dev · Host: windows · Wave 6 · Depends on: MG-R7, MG-24, G1 · Reviewer pass: plus combat-systems-advisor
-- Worktree `mg-63` · Branch `minigames/mg-63-prison-boot` · Commit `MG-63: Prison Boot 1597 is escaped through its minigame`
-- **Ids:** chains 24020-24029.
-- **Design:** G1 copies MG-R7's design here: who applies 1597 and effect 1939; what the minigame removes on victory (the effect, the root or the stun); what happens on failure; and whether the target or the caster plays.
-- **Files (expected):**
-  - the effect seed row for 1939: `script_name`, plus params for the escape game;
-  - if removal on victory needs a content action that does not exist (for example `remove_effect`), add it to the content-engine `Action` enum, its loader and the executor, with a loader test. Name it in the report.
-  - new `db/resources/Content/Seed/minigames_prison_boot_chains.sql` and its `\ir` line.
+     Grep `25501` first; if taken, stop and return `blocked`. If the block header is missing, MG-63b has not merged: return `blocked`.
+- **Test (type 3 live-DB):** new `crates/cell-effect-scripts/src/cell/effects/start_minigame_seed_live_db_tests.rs`, copying the shape of MG-63b's `movement_hold_seed_live_db_tests.rs`: effects 1643 and 2813 load with `script_name = "StartMinigame"`, the registry resolves it, and each carries `minigame_type = ConverseBasicHumanoid` and `difficulty = 1`. Register it beside MG-63b's module. On revert the script name is NULL and the first assertion fails.
+- **Lanes:** `cargo fmt -p cimmeria-cell-effect-scripts`; `lane.ps1 cargo clippy -p cimmeria-cell-effect-scripts --all-targets -- -D warnings`; `live-db-test.ps1 start_minigame_seed`.
+- **Docs:** [minigame-system.md](../../../gameplay/minigame-system.md) § ability launch: the two seeded abilities.
+
+## MG-63: Prison Boot 1597 (replaced)
+
+Replaced at G1 by **MG-63a** (movement lock while a minigame or hold is active) and **MG-63b** (the boot's `MovementHold`/`MovementRelease` scripts and seeds), both in wave 2: [wave2-launch.md](wave2-launch.md). Chains 24020-24029 stay unused; chains 1022-1025 already carry the boot.
+
+## MG-64: shell placeholder timer and unknown-name rejection
+
+- Agent: packet-coder · Host: windows · Wave 6 · Depends on: MG-04 (integrated) · Status Ready
+- Worktree `mg-64` · Branch `minigames/mg-64-shell-timer` · Commit `MG-64: shell minigames show a countdown and bad game names fail at load`
+- **Decision (D-MG3 = A, D-MG22, spec-shells.md §8 and §10).** The shells stay client-declared; no content is wired (content-map finds no seeded objective that names a shell). Two server fixes only: the shells get a timer they can show, and an unknown or wrong-case minigame name is caught at content load, not at launch.
+- **Files:**
+  1. `crates/minigame/src/minigame/games/placeholder.rs`:
+     - `started()` sends `fullgamestate {timerState: 0, timeRemaining: 60}` (replacing `{gameStarted: 'false'}`), then `timerupdate {timerState: 1, timeRemaining: 60}`. Numbers go as `SfsValue::Number`.
+     - `needs_tick()` returns true; count ticks (250 ms each). At 240 ticks (60 s), send `failure` and return `GameOutput::Failure`, once.
+     - Keep the D-MG13 5 s floor on a client `victory` unchanged.
+  2. `crates/content-engine/src/loader/action.rs`, the `"start_minigame"` arm (lines 124-163): a `const MINIGAME_TYPE_NAMES: &[&str]` holding the exact names `cimmeria_minigame` registers (copy them from `crates/minigame/src/minigame/games/kind.rs`; do not add a crate dependency). A target key not in the list (case-sensitive) logs WARN `reason = "unknown_minigame_type"` with the chain id and drops the row, like the existing difficulty check at line 151.
 - **Tests:**
-  - type 6: the victory chain removes the effect;
-  - type 1: the new action's loader parses it (if one was added);
-  - type 3: the effect seed row resolves to `StartMinigame`.
+  - type 1 in `crates/minigame/src/minigame/games/placeholder_tests.rs`: `started()` emits `timerState` and `timeRemaining` (spec-shells §10 item 4); 239 ticks send nothing and the 240th sends `failure` and returns `Failure`; a `victory` at 4 s is still refused.
+  - type 1 in `crates/content-engine/src/loader/tests/action_conversion.rs`, beside the difficulty tests (line 476): `'hack'` and `'NoSuchGame'` are dropped; `'Hack'` and `'Livewire'` load.
 
-  On revert, the effect stays applied after a victory.
-- **Lanes:** the content rules' lanes, plus C2 for `cimmeria-content-engine` and `cimmeria-cell-effect-scripts` if they are touched.
-- **Docs:** [minigame-system.md](../../../gameplay/minigame-system.md) § ability launch; the content-action reference row if a new action was added.
+  Revert `started()` and the first test fails; revert the name check and `'hack'` loads.
+- **Lanes:** `fmt`, `clippy`, then `lane.ps1 cargo nextest run -p <crate>` for `cimmeria-minigame` and `cimmeria-content-engine`, each in turn. No live DB.
+- **Docs:** [minigame-system.md](../../../gameplay/minigame-system.md), the shell rows (60 s server timeout, failure at expiry) and the loader's name check.
 
-## MG-64: shell-game content per D-MG3 (BlockedDecision)
+## MG-65: objective 4203 upgrade (not applicable)
 
-- Agent: packet-coder · Host: windows · Wave 6 · Depends on: D-MG3, MG-R5, MG-04 (and MG-26 under B)
-- Worktree `mg-64` · Branch `minigames/mg-64-shell-content` · Commit `MG-64: wire the shell minigames into their seeded content`
-- **Ids:** chains 24030-24039.
-- **Under A:** wire only what `content-map.md` names: objectives 4963 (mission 4291) and 789 (mission 652), and any template with interaction bits 512-4096 that a mission uses. Each gets a launcher chain naming the shell game, at tier `<from MG-R5>`, with a victory chain completing the objective. The shells stay client-declared (MG-04: 5 s minimum play).
-- **Under B:** the same rows, but they name the aliased game.
-- **Test:** type 6, as in the content rules, in `chain_replay_tests/minigames_shells.rs`.
-- **Docs:** [mission-chains.md](../../../content/mission-chains.md) rows for 4291 and 652.
-
-## MG-65: objective 4203 upgrade (only under D-MG6 B)
-
-- Agent: packet-coder · Host: windows · Wave 6 · Depends on: D-MG6 = B, a ported game · **BlockedDecision**
-- Worktree `mg-65` · Branch `minigames/mg-65-obj-4203` · Commit `MG-65: objective 4203 plays a real minigame instead of the interact`
-- **Ids:** chains 24040-24049.
-- **Change.** Replace Harset's D-H13 interact route for mission 1244, step 3619, objective 4203 with a launcher (game and tier named by the owner's answer) and a victory chain that completes 4203. Remove the D-H13 interact chain; Grep `4203` in `db/resources/Content/Seed/` to find it.
-- **Test:** type 6. The old interact no longer completes 4203, and the minigame victory does. Update the existing Harset chain-replay test that pins D-H13, and name it in the report.
-- **Docs:** [mission-chains.md](../../../content/mission-chains.md), mission 1244; a superseded note on Harset's D-H13 in `docs/analysis/` (Grep `D-H13`).
+D-MG6 = A: objective 4203 keeps Harset's D-H13 interact route. Nothing to build; chains 24040-24049 stay unused.
 
 ## Wave 7: UAT, docs and close-out
 
-Order: MG-71, MG-73, MG-72, the campaign review loop (skill § 4), then MG-99. One PR per packet.
+Order: MG-71, MG-73, MG-72, the campaign review loop (skill § 4), then MG-99. Each packet merges into `minigames/integration`; the campaign's one PR opens after MG-99.
 
 ### MG-71: cross-game TCP session test and REPL UAT index
 
@@ -115,6 +113,7 @@ Order: MG-71, MG-73, MG-72, the campaign review loop (skill § 4), then MG-99. O
   - [CAT-K-minigame.md](../../../security-audit/2026-05-31-server-authority/findings/CAT-K-minigame.md): the status of each finding.
   - `crates/minigame/README.md`, if one exists, or the crate docs in [crates/README.md](../../../../crates/README.md).
   - The `minigame-systems-advisor` memory: `game-implementation-status.md`.
+  - The spec fixes the G1 report lists as owed at close-out.
   - Then `python tools/docs-gen/regen.py --skip-crate-graph` and `--check`, and `pwsh tools/lint-md.ps1` on every touched file.
 - **Not here:** `docs/gap-analysis*` and `docs/project-status.md` (MG-99 only).
 
@@ -125,10 +124,11 @@ Order: MG-71, MG-73, MG-72, the campaign review loop (skill § 4), then MG-99. O
 - **Files:** new `docs/analysis/minigames/uat-lab.md` (CRLF). Add one recipe per playable path:
   - the Livewire cellblock pair;
   - each ported game through a GM launch (Grep the GM commands for a minigame launcher; if there is none, record that as a gap rather than inventing one);
-  - mission 582/2307;
+  - mission 582/2307 (GM-set the mission active: it has no offer path, M10);
   - ability 1327 or 2089;
-  - Prison Boot;
-  - the shell 5 s refusal.
+  - Prison Boot: on zone load while mission 689 is open the wearer cannot walk but can use item 3438; a Livewire win frees them; a minigame window holds movement (MG-63a);
+  - the shell 5 s refusal and the 60 s server timeout (MG-64);
+  - D-MG11's dialog switch, on and off.
 
   Each recipe gives the steps, the expected client view, the server-log lines (`reason=` values), and the SigNoz query. It is written for a Haiku `lab-driver`, with the gotchas first: stand 4-6 m from targets, clear dialogs first, and verify the driver's claims against the server log.
 - **Rule:** the first line of the file says **"Ask the user before any lab use."** This packet writes recipes only and runs nothing.
@@ -136,7 +136,7 @@ Order: MG-71, MG-73, MG-72, the campaign review loop (skill § 4), then MG-99. O
 
 ### Campaign review
 
-Run per the skill § 4, in an `ops` worktree named `minigames-review`, over everything the campaign merged. Fixes ship as one PR before MG-99.
+Run per the skill § 4 over `minigames/integration` against `main`, in an `ops` worktree named `minigames-review`. Its fixes merge into `minigames/integration` before MG-99.
 
 ### MG-99: close-out
 
@@ -147,4 +147,4 @@ Run per the skill § 4, in an `ops` worktree named `minigames-review`, over ever
   - [unified-uat.md](../../../guides/unified-uat.md): a "Minigames" section pointing at `uat-repl.md` and `uat-lab.md`, with the owner-run lab steps marked ask-first;
   - this campaign's README: every row's final status, the missing-content register with its final verdicts, and the open owner decisions;
   - `RESUME.md`: phase closed.
-- **Then (ops):** retire the worktrees (`rm-worktree.ps1 --merged`, and `--merged-into <PR>` for the wave-0 integration worktrees); empty `.claude/state/active-campaign`; post the board handoff.
+- **Then (ops):** one PR from `minigames/integration`; after it merges, retire the worktrees (`rm-worktree.ps1 --merged-into <PR> <name>...` for every packet worktree, then `mg-integration`); empty `.claude/state/active-campaign`; post the board handoff.
