@@ -1582,6 +1582,18 @@ Four things worth knowing before you touch this file:
 
 There are **no relog-restore chains** in this file, and the reserved 6008-6020 block is deliberately unused: no chain here sets an interaction bit or binds a dialog set, and the ring switches' `INT_RingNetwork` bit comes from the template column that the spawner re-reads on every spawn, so it survives a restart by construction.
 
+#### Mission 582: "Conversation Minigame With Marsh" (MG-61)
+
+Step 2307 (objective 2675, next step 3274) is enabled by `mission_steps.sql`. Chains live in [`db/resources/Content/Seed/minigames_m582_chains.sql`](../../db/resources/Content/Seed/minigames_m582_chains.sql), block 24000-24001.
+
+| Chain | Trigger | Condition | Action |
+|---|---|---|---|
+| 24000 | `interact_tag` `CmdCenter_Marsh` | `world eq 68`; `mission 582 active`; `step 2307 active`; `step 1360/4038` and `step 1361/4694` not active | `display_dialog 2433`; `start_minigame ConverseBasicHumanoid` (difficulty 1, victory 24001) |
+| 24001 | `on_victory_chains` of 24000 (no trigger) | none | `complete_objective 582 2675`; `advance_step 582 3274` |
+
+**Offer gap (M10).** Mission 582 cannot be offered today. Its giver Blackstock (NPC 948) has no spawn and set 530 is unbound, so the replay test sets the mission and step active directly. Dialog 2431 (`accepts_mission_id = 582`) stays as is. There is no failure chain: a loss leaves step 2307 active.
+
+**Caveat, objective 2675.** It is the only required objective of step 2307, so `complete_objective` ends the mission rather than only the step (the F19 trap, `progression.rs`). Chain 24001 follows the packet as written; revisit it before mission 582 is offered.
 #### Mission 742: "Giving the Walls Ears" [CONFIRMED]
 
 | Field | Value |

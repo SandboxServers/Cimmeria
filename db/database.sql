@@ -481,6 +481,7 @@
 \ir resources/Content/Seed/union_omega_human_chains.sql
 \ir resources/Content/Seed/union_omega_jaffa_chains.sql
 \ir resources/Content/Seed/union_omega_reoffer_chains.sql
+\ir resources/Content/Seed/minigames_m582_chains.sql
 
 \ir resources/_foreign_keys.sql
 
