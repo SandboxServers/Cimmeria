@@ -61,6 +61,12 @@ in their own seed files:
   (templates 1410-1570) and `spawnlist_debug_area_lineup.sql` (spawns
   13870-14030), inside DA-10's block (templates 1410-1599, spawns
   13870-14099). See [Visual NPC Lineup](#visual-npc-lineup).
+- MG-74 (the minigame terminal row, minigames campaign):
+  `entity_templates_debug_area_minigames.sql` (templates 1600-1605),
+  `spawnlist_debug_area_minigames.sql` (spawns 14100-14105) and
+  `debug_area_minigames_chains.sql` (chains 24050-24057), with dialog 60120
+  and screens 200020-200021, inside the block templates 1600-1609, spawns
+  14100-14109, chains 24050-24069. See [Minigame terminals](#minigame-terminals).
 
 Heading 0 faces +Z and -1.5708 faces -X.
 
@@ -83,7 +89,7 @@ DA-05's map from each restored system to the station that tests it. The step ids
 | Ability trees, ability mechanics | Z2 ability granter and reset NPC, trainer; Z3 dummies; `.effects`, `.cooldowns` | DA-U3 to DA-U5, DA-U19 to DA-U21 |
 | Vendors, special ammo, consumables | Z2 vendor and munitions vendor | DA-U6 to DA-U8 |
 | Dialog UI | Z2 Airman Lance (dialog 5738) | DA-U9 |
-| Minigames | Z2 Livewire terminal | DA-U10 |
+| Minigames | Z2 Livewire terminal; Z2 minigame terminal row (MG-74) | DA-U10; the minigames lab recipes |
 | Loot | Z2 crate, any Z7 or Z9 kill | DA-U11, DA-U31, DA-U37 |
 | Bank and vault, organizations | Z2 Bankers and registrars | DA-U12, DA-U13, DA-U15 |
 | Mail | Z2 Sgt. Harriman | DA-U14 |
@@ -1013,6 +1019,32 @@ reset NPC use the original developers' own test trainers, "Train Testing
 Abilities" (21666) and "Jay Test Abilities" (22555). The granter wears
 General Hammond's look and the reset NPC Sam Carter's, so neither is mistaken
 for the trainer beside them.
+
+### Minigame terminals
+
+Six wall terminals on the plaza's north edge (z -903, facing south) start
+each minigame the minigames campaign ported, plus the Hack shell. A click
+fires the terminal's `interact_tag` chain, which starts the game at
+difficulty 1. A win speaks "Minigame round trip complete: the server
+recorded your win." in chat (chain 24056), a loss or the shell's 60 s
+timeout the matching loss line (chain 24057). The terminals belong to no
+mission; the cursor bit is INT_MinigameLivewire (256) on every one, because
+that is the only minigame bit whose click path is confirmed.
+
+| Spawn | Position (x, y, z) | Template | Tag | Game | Launcher chain |
+|---|---|---|---|---|---|
+| 14100 | (234.0, 6.66, -903.0) | 1600 | `DebugArea_Minigame_CrystalGame` | CrystalGame | 24050 |
+| 14101 | (239.0, 6.73, -903.0) | 1601 | `DebugArea_Minigame_Alignment` | Alignment | 24051 |
+| 14102 | (244.0, 6.78, -903.0) | 1602 | `DebugArea_Minigame_GoauldCrystals` | GoauldCrystals | 24052 |
+| 14103 | (257.0, 6.86, -903.0) | 1603 | `DebugArea_Minigame_ConverseBasicHumanoid` | ConverseBasicHumanoid | 24053 |
+| 14104 | (262.0, 6.90, -903.0) | 1604 | `DebugArea_Minigame_Livewire` | Livewire | 24054 |
+| 14105 | (267.0, 6.82, -903.0) | 1605 | `DebugArea_Minigame_Hack` | Hack (shell) | 24055 |
+
+> **Placement is unchecked in the client.** The row was probed on
+> `ihpet_crater_light.nav` (every terminal on the plaza's floor, x 252 left
+> free as the walkway to the dummies), not walked in the client. The
+> `display_name` labels are also unverified on a `being`-class object; the
+> lab recipes check both.
 
 ### Services copied from the hub
 

@@ -112,6 +112,7 @@ least 86 m apart with a wall between, against an 18 m default aggro radius and
 | Spawn 13818, ring region 43, event set / point set / point / chain 13818, sequences 10205-10206 | DA-11 |
 | Templates 1400-1409, spawns 13850-13869, ambient chatter group 1 | DA-09 |
 | Templates 1410-1599, spawns 13870-14099, spawn sets 1301-1399, chains 14090-14095 | DA-10 |
+| Templates 1600-1609, spawns 14100-14109, chains 24050-24069, dialog 60120, screens 200020-200029 | MG-74 (minigames campaign) |
 
 Check each range is free in the seed before using it; raise a clash with the
 coordinator instead of moving into another packet's block.
