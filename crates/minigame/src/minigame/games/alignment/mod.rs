@@ -1,7 +1,8 @@
 //! Alignment: the port lands in MG-AL1..3 (docs/analysis/minigames/spec-alignment.md).
 //!
-//! MG-AL1 is the setup and the state shell. `create()` still hands the name to
-//! the placeholder: `PORTED` stays `false` until MG-AL3, so nothing here is
+//! MG-AL1 is the setup and the state shell; MG-AL2a adds the server-validated
+//! swap and matching (`moves.rs`). `create()` still hands the name to the
+//! placeholder: `PORTED` stays `false` until MG-AL3, so nothing here is
 //! reachable from content yet. The shell is exercised by the tests only.
 #![allow(dead_code)] // unreachable until MG-AL3 flips PORTED; the tests build it
 
@@ -14,8 +15,11 @@ use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
 use crate::minigame::session::MinigameSession;
 
+mod moves;
 mod piece;
 mod setup;
+#[cfg(test)]
+mod tests_moves;
 #[cfg(test)]
 mod tests_setup;
 
@@ -24,11 +28,13 @@ use piece::Piece;
 /// Flipped to `true` by MG-AL3 only, once victory is server-decided.
 pub(crate) const PORTED: bool = false;
 
-/// Where the game is in the port's phase machine (spec section 5). MG-AL1
-/// only reaches `Ready`; `Ended` is set by `aborted()` and closes the game.
+/// Where the game is in the port's phase machine (spec section 5). `Ready`
+/// takes a swap; a match moves to `AwaitCascade` until the cascade slice
+/// (MG-AL2b) takes over. `Ended` is set by `aborted()` and closes the game.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Phase {
     Ready,
+    AwaitCascade,
     Ended,
 }
 
@@ -144,6 +150,53 @@ impl AlignmentGame {
         self.phase = Phase::Ready;
         vec![GameOutput::Send(self.full_game_state())]
     }
+
+    /// `swappieces` (spec section 5): validates the triangle (D-MG2), then
+    /// replies `feedback` and `hexspinner` on a match, or a `hexspinner` with
+    /// `spinCount 3` and no cells when no rotation matches.
+    fn swap(&mut self, params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
+        if self.phase != Phase::Ready {
+            self.refuse("swappieces", "not_ready");
+            return vec![];
+        }
+        let checked = moves::read_cells(params)
+            .and_then(|cells| moves::check_swap(&self.board, cells, params).map(|()| cells));
+        let cells = match checked {
+            Ok(cells) => cells,
+            Err(reject) => {
+                self.refuse("swappieces", reject.reason());
+                return vec![];
+            }
+        };
+        match moves::swap_pieces(&self.board, cells) {
+            Some((board, outcome)) => {
+                self.board = board;
+                self.phase = Phase::AwaitCascade;
+                vec![
+                    GameOutput::Send(moves::feedback(&outcome)),
+                    GameOutput::Send(moves::hexspinner(
+                        params,
+                        &outcome.matches,
+                        outcome.spin_count,
+                    )),
+                ]
+            }
+            None => vec![GameOutput::Send(moves::hexspinner(params, &[], 3))],
+        }
+    }
+
+    /// Logs a refused client command at WARN (the board is left as it was).
+    fn refuse(&self, cmd: &str, reason: &str) {
+        tracing::warn!(
+            entity_id = self.entity_id,
+            entity_name = self.player_name.as_deref(),
+            player_id = self.player_id,
+            player_name = self.player_name.as_deref(),
+            cmd,
+            reason,
+            "Alignment: command refused"
+        );
+    }
 }
 
 impl MinigameInstance for AlignmentGame {
@@ -158,7 +211,7 @@ impl MinigameInstance for AlignmentGame {
         vec![GameOutput::Send(self.full_game_state())]
     }
 
-    fn message(&mut self, cmd: &str, _params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
+    fn message(&mut self, cmd: &str, params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
         if self.phase == Phase::Ended {
             tracing::warn!(
                 entity_id = self.entity_id,
@@ -173,6 +226,10 @@ impl MinigameInstance for AlignmentGame {
         }
         match cmd {
             "processreset" => self.reset(),
+            "swappieces" => self.swap(params),
+            // The hint timer (`resethinttimer`) only feeds the hint, which is
+            // MG-AL3's; the client expects no reply.
+            "resethinttimer" => vec![],
             _ => {
                 // Every other command belongs to a later slice (AL2, AL3). A
                 // client `victory` lands here too: the server decides victory.

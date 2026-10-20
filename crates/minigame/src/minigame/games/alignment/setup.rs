@@ -137,7 +137,12 @@ const OFFSETS_EVEN: [(i32, i32); 6] = [(-1, 0), (-1, 1), (0, 1), (1, 0), (0, -1)
 const OFFSETS_ODD: [(i32, i32); 6] = [(-1, 0), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1)];
 
 /// Neighbour `n` (0-5) of cell `(x, y)`, or `None` when it is off the board.
-fn neighbour(board: &[Vec<Piece>], x: usize, y: usize, n: usize) -> Option<(usize, usize)> {
+pub(super) fn neighbour(
+    board: &[Vec<Piece>],
+    x: usize,
+    y: usize,
+    n: usize,
+) -> Option<(usize, usize)> {
     let offsets = if y.is_multiple_of(2) {
         OFFSETS_EVEN
     } else {
@@ -275,12 +280,12 @@ pub(super) fn select_icons(rng: &mut StdRng, tier: u8) -> Vec<Vec<Piece>> {
 }
 
 /// A number value; every SFS number is a double.
-fn number<T: Into<f64>>(value: T) -> SfsValue {
+pub(super) fn number<T: Into<f64>>(value: T) -> SfsValue {
     SfsValue::Number(value.into())
 }
 
 /// A list of numbers.
-fn number_list<T: Into<f64> + Copy>(items: &[T]) -> SfsValue {
+pub(super) fn number_list<T: Into<f64> + Copy>(items: &[T]) -> SfsValue {
     SfsValue::list(items.iter().map(|&item| number(item)))
 }
 
