@@ -221,6 +221,9 @@ impl GoauldCrystalsGame {
             if draws == FINISH_DRAWS {
                 tracing::warn!(
                     entity_id = self.entity_id,
+                    entity_name = self.player_name.as_deref(),
+                    player_id = self.player_id,
+                    player_name = self.player_name.as_deref(),
                     w = self.w,
                     h = self.h,
                     reason = "goal_distance_unmet",

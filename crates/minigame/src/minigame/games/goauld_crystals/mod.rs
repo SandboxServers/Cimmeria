@@ -144,6 +144,7 @@ impl MinigameInstance for GoauldCrystalsGame {
         // Click, cheat and reset commands are ported by MG-GC2 and MG-GC3.
         tracing::warn!(
             entity_id = self.entity_id,
+            entity_name = self.player_name.as_deref(),
             player_id = self.player_id,
             player_name = self.player_name.as_deref(),
             cmd,
