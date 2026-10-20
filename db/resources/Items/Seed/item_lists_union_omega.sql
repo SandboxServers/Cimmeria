@@ -572,6 +572,70 @@ INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquada
 -- [UO-39] end
 
 -- [UO-40] begin: lists 63825-63828
+-- CIMMERIA_AUTHORING (D-UO8 B, D-UO29, D-UO38, UO-38 ruling R1): Asgard Armor tier 1, 100 x tech_comp
+INSERT INTO item_lists (item_list_id, name) VALUES (63825, 'Omega Asgard Armor Tier 1');
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639250, 63825, 7958, 1, 500); -- Fyrstyr Absorption Vest, Absorption, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639251, 63825, 7983, 1, 500); -- Fyrstyr Absorption Helmet, Absorption, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639252, 63825, 8008, 1, 500); -- Fyrstyr Absorption Pants, Absorption, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639253, 63825, 8058, 1, 500); -- Fyrstyr Absorption Boots, Absorption, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639254, 63825, 8083, 1, 500); -- Fyrstyr Phasic Helmet, Phasic, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639255, 63825, 8108, 1, 500); -- Fyrstyr Phasic Vest, Phasic, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639256, 63825, 8133, 1, 500); -- Fyrstyr Phasic Pants, Phasic, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639257, 63825, 8158, 1, 500); -- Fyrstyr Phasic Gloves, Phasic, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639258, 63825, 8183, 1, 500); -- Fyrstyr Phasic Boots, Phasic, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639259, 63825, 8208, 1, 500); -- Fyrstyr Regeneration Helmet, Regeneration, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639260, 63825, 8233, 1, 500); -- Fyrstyr Regeneration Vest, Regeneration, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639261, 63825, 8258, 1, 500); -- Fyrstyr Regeneration Pants, Regeneration, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639262, 63825, 8283, 1, 500); -- Fyrstyr Regeneration Gloves, Regeneration, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639263, 63825, 8308, 1, 500); -- Fyrstyr Regeneration Boots, Regeneration, tc 5
+-- CIMMERIA_AUTHORING (D-UO8 B, D-UO29, D-UO38, UO-38 ruling R1): Asgard Armor tier 2, 100 x tech_comp
+INSERT INTO item_lists (item_list_id, name) VALUES (63826, 'Omega Asgard Armor Tier 2');
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639300, 63826, 7965, 1, 2000); -- Annarr Absorption Vest, Absorption, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639301, 63826, 7990, 1, 2000); -- Annarr Absorption Helmet, Absorption, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639302, 63826, 8015, 1, 2000); -- Annarr Absorption Pants, Absorption, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639303, 63826, 8065, 1, 2000); -- Annarr Absorption Boots, Absorption, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639304, 63826, 8090, 1, 2000); -- Annarr Phasic Helmet, Phasic, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639305, 63826, 8115, 1, 2000); -- Annarr Phasic Vest, Phasic, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639306, 63826, 8140, 1, 2000); -- Annarr Phasic Pants, Phasic, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639307, 63826, 8165, 1, 2000); -- Annarr Phasic Gloves, Phasic, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639308, 63826, 8190, 1, 2000); -- Annarr Phasic Boots, Phasic, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639309, 63826, 8215, 1, 2000); -- Annarr Regeneration Helmet, Regeneration, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639310, 63826, 8240, 1, 2000); -- Annarr Regeneration Vest, Regeneration, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639311, 63826, 8265, 1, 2000); -- Annarr Regeneration Pants, Regeneration, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639312, 63826, 8290, 1, 2000); -- Annarr Regeneration Gloves, Regeneration, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639313, 63826, 8315, 1, 2000); -- Annarr Regeneration Boots, Regeneration, tc 20
+-- CIMMERIA_AUTHORING (D-UO8 B, D-UO29, D-UO38, UO-38 ruling R1): Asgard Armor tier 3, 100 x tech_comp
+INSERT INTO item_lists (item_list_id, name) VALUES (63827, 'Omega Asgard Armor Tier 3');
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639350, 63827, 7971, 1, 3300); -- Pridi Absorption Vest, Absorption, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639351, 63827, 7996, 1, 3300); -- Pridi Absorption Helmet, Absorption, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639352, 63827, 8021, 1, 3300); -- Pridi Absorption Pants, Absorption, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639353, 63827, 8046, 1, 3300); -- Pridi Absorption Gloves, Absorption, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639354, 63827, 8071, 1, 3300); -- Pridi Absorption Boots, Absorption, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639355, 63827, 8096, 1, 3300); -- Pridi Phasic Helmet, Phasic, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639356, 63827, 8121, 1, 3300); -- Pridi Phasic Vest, Phasic, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639357, 63827, 8146, 1, 3300); -- Pridi Phasic Pants, Phasic, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639358, 63827, 8171, 1, 3300); -- Pridi Phasic Gloves, Phasic, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639359, 63827, 8196, 1, 3300); -- Pridi Phasic Boots, Phasic, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639360, 63827, 8221, 1, 3300); -- Pridi Regeneration Helmet, Regeneration, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639361, 63827, 8246, 1, 3300); -- Pridi Regeneration Vest, Regeneration, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639362, 63827, 8296, 1, 3300); -- Pridi Regeneration Gloves, Regeneration, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639363, 63827, 8321, 1, 3300); -- Pridi Regeneration Boots, Regeneration, tc 33
+-- CIMMERIA_AUTHORING (D-UO8 B, D-UO29, D-UO38, UO-38 ruling R1): Asgard Armor tier 4, 100 x tech_comp
+INSERT INTO item_lists (item_list_id, name) VALUES (63828, 'Omega Asgard Armor Tier 4');
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639400, 63828, 7977, 1, 4500); -- Fjordi Absorption Vest, Absorption, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639401, 63828, 8002, 1, 4500); -- Fjordi Absorption Helmet, Absorption, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639402, 63828, 8027, 1, 4500); -- Fjordi Absorption Pants, Absorption, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639403, 63828, 8077, 1, 4500); -- Fjordi Absorption Boots, Absorption, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639404, 63828, 8102, 1, 4500); -- Fjordi Phasic Helmet, Phasic, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639405, 63828, 8127, 1, 4500); -- Fjordi Phasic Vest, Phasic, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639406, 63828, 8152, 1, 4500); -- Fjordi Phasic Pants, Phasic, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639407, 63828, 8177, 1, 4500); -- Fjordi Phasic Gloves, Phasic, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639408, 63828, 8202, 1, 4500); -- Fjordi Phasic Boots, Phasic, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639409, 63828, 8227, 1, 4500); -- Fjordi Regeneration Helmet, Regeneration, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639410, 63828, 8252, 1, 4500); -- Fjordi Regeneration Vest, Regeneration, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639411, 63828, 8277, 1, 4500); -- Fjordi Regeneration Pants, Regeneration, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639412, 63828, 8302, 1, 4500); -- Fjordi Regeneration Gloves, Regeneration, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639413, 63828, 8327, 1, 4500); -- Fjordi Regeneration Boots, Regeneration, tc 45
 -- [UO-40] end
 
 --

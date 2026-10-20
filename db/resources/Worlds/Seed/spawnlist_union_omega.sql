@@ -135,6 +135,15 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- [UO-39] end
 
 -- [UO-40] begin: spawns 63828-63835
+-- CIMMERIA_RECONSTRUCTION, navmesh-sealed (UO-37)
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63828, -39.00, -45.02, 27.00, 1.8491, 18, 63847, 'UnionOmega_AsgardArmorT1', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63829, -36.00, -45.02, 27.00, 1.8925, 18, 63848, 'UnionOmega_AsgardArmorT2', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63830, -36.00, -45.02, 24.00, 1.7359, 18, 63849, 'UnionOmega_AsgardArmorT3', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63831, -39.00, -45.02, 24.00, 1.7127, 18, 63850, 'UnionOmega_AsgardArmorT4', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63832, -36.00, -45.02, 21.00, 1.5708, 18, 63851, 'UnionOmega_AsgardCraftingBiomed', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63833, -33.00, -45.02, 21.00, 1.5708, 18, 63852, 'UnionOmega_AsgardCraftingElec', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63834, -30.00, -45.02, 21.00, 1.5708, 18, 63853, 'UnionOmega_AsgardCraftingPowerSys', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63835, -33.00, -45.02, 24.00, 1.7682, 18, 63854, 'UnionOmega_AsgardCraftingMat', NULL, true);
 -- [UO-40] end
 
 -- [UO-42] begin: spawns 63836-63839
