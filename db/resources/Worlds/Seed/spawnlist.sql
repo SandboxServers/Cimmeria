@@ -1114,6 +1114,11 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (404, -330.72, 73.472, -235.64, -0.271, 12, 304, 'DebugHub_LootCrate', NULL, true);
 
+-- The Prison Boot Control is at the stasis-room centre, about 1.4 u from the
+-- player's spawn (respawner 8); it is cellblock-boot-lock D-BL1; it must stay
+-- `is_stationary`.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (284, -333.03, 73.472, -227.32, 0.0, 12, 1250, 'Cellblock_PrisonBootControl', NULL, true);
+
 -- Pets campaign, PT-07: spawn 450, the debug hub's pet trainer (template 360,
 -- docs/content/debug-hub.md). Pets own spawns 450-469. It takes the next slot
 -- on the hub line after the crate: 3 units in from the A-B wall, 3 units past

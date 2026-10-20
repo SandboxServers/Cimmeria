@@ -23,7 +23,8 @@ const KNOWN_CONSUMABLES: &[i32] = &[19, 2893];
 /// Item design ids expected to be **reused** on use — no `item_use` chain
 /// for these ids may `remove_item` the used item. Removing a *different* item
 /// (a turn-in token consumed alongside a reusable tool) is legitimate.
-const KNOWN_REUSABLES: &[i32] = &[3438, 5168, 2819];
+/// 3438 is not listed: chain 1024 no longer uses `item_use` (cellblock-boot-lock).
+const KNOWN_REUSABLES: &[i32] = &[5168, 2819];
 
 fn workspace_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

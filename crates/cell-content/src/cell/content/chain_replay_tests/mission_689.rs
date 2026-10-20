@@ -10,14 +10,16 @@
 //! - Chain 1022 (`player_loaded`, `mission_status 689 eq not_active`):
 //!   accepts mission 689 once per character.
 //! - Chain 1023 (`player_loaded`, `mission_status 689 neq completed`):
-//!   (re-)launches ability 1597 (Prison Boot lock) — this is what makes
-//!   "relog mid-lock re-applies the lock" and "relog after clearing does
-//!   NOT re-apply it" both fall out of one condition.
-//! - Chain 1024 (`item_use` on item 3438, `mission_status 689 neq
-//!   completed`): starts a Livewire session, `on_victory_chains: [1025]`.
+//!   (re-)applies the movement hold at the stasis-room anchor (cellblock-
+//!   boot-lock D-BL3) and launches ability 1597 as a no-op. This is what
+//!   makes "relog mid-lock re-holds" and "relog after clearing does NOT
+//!   re-hold" both fall out of one condition.
+//! - Chain 1024 (`interact_tag` on `Cellblock_PrisonBootControl`,
+//!   `mission_status 689 neq completed`): starts a Livewire session,
+//!   `on_victory_chains: [1025]`. The old `item_use 3438` trigger is gone.
 //! - Chain 1025 (no trigger — invoked directly by 1024's minigame
-//!   callback, same shape as chain 1017/638): launches ability 1598
-//!   (Disable Your Prison Boot) and completes mission 689.
+//!   callback, same shape as chain 1017/638): releases the hold, clears the
+//!   click bits, launches ability 1598 and completes mission 689.
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::ChainEngine;
@@ -25,6 +27,7 @@ use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 
 use super::super::engine_loader::load_single_chain_for_test;
+use super::livewire_pairs::resolve_interact;
 use crate::test_support::require_db_or_skip;
 
 /// Fire `player_loaded('Castle_CellBlock')` against `chain_id` with the
@@ -127,77 +130,47 @@ async fn live_db_chain_1023_does_not_relaunch_once_completed() {
     assert_player_loaded_resolves(1023, "completed", false).await;
 }
 
-/// Fire `item_use(3438)` against chain 1024 with the given
-/// `mission_689_status` and assert whether it fires.
-async fn assert_item_use_3438_resolves(mission_689_status: &str, should_fire: bool) {
+/// Right-click on the Prison Boot Control (`interact_tag`) while the lock is
+/// up starts the Livewire session, with chain 1025 as the victory chain.
+#[tokio::test]
+async fn live_db_chain_1024_starts_livewire_on_right_click_while_locked() {
     let pool = require_db_or_skip!();
-    let chain = load_single_chain_for_test(&pool, 1024)
-        .await
-        .expect("DB query for chain 1024 must succeed")
-        .expect("chain 1024 must exist in seeded content_chains");
-
-    let mut engine = ChainEngine::new();
-    engine.register_chain(chain);
-
-    let mut ctx = ExecutionContext::new();
-    ctx.set_param("item_id".to_string(), serde_json::json!(3438));
-    ctx.set_param(
-        "mission_689_status".to_string(),
-        serde_json::json!(mission_689_status),
-    );
-
-    let event = TriggerEvent {
-        trigger_type: TriggerType::ItemUse,
-        source_entity: None,
-        target_entity: None,
-        params: ctx.params.clone(),
-    };
-
-    let resolved = engine.resolve_event(&event, &ctx);
-    let fired: Vec<&Action> = resolved
-        .actions
-        .iter()
-        .filter(|(id, _)| *id == 1024)
-        .map(|(_, a)| a)
-        .collect();
-
-    if should_fire {
-        let starts_livewire = fired.iter().any(|a| {
-            matches!(
+    let actions = resolve_interact(
+        &pool,
+        1024,
+        "Cellblock_PrisonBootControl",
+        &[("mission_689_status", "active")],
+    )
+    .await;
+    assert!(
+        actions.iter().any(|(id, a)| *id == 1024
+            && matches!(
                 a,
-                Action::StartMinigame { minigame_type, on_victory_chains, .. }
-                    if minigame_type == "Livewire" && on_victory_chains == &vec![1025]
-            )
-        });
-        assert!(
-            starts_livewire,
-            "chain 1024 must start a Livewire session with on_victory_chains \
-             [1025] while mission_689_status={mission_689_status:?}; got {fired:?}"
-        );
-    } else {
-        assert!(
-            fired.is_empty(),
-            "chain 1024 must not resolve while mission_689_status={mission_689_status:?}; \
-             got {fired:?}"
-        );
-    }
+                Action::StartMinigame {
+                    minigame_type,
+                    on_victory_chains,
+                    ..
+                } if minigame_type == "Livewire" && on_victory_chains == &vec![1025]
+            )),
+        "chain 1024 must start Livewire with victory chain 1025; actions: {actions:?}",
+    );
 }
 
-/// Positive: using item 3438 (the worn Prison Boots) while mission 689 is
-/// active starts a Livewire session with `on_victory_chains: [1025]`.
+/// Once mission 689 is completed, the right-click resolves nothing.
 #[tokio::test]
-async fn live_db_chain_1024_starts_livewire_while_locked() {
-    assert_item_use_3438_resolves("active", true).await;
-}
-
-/// Negative: once mission 689 is completed, using item 3438 again must
-/// NOT start another Livewire session (the item has already been swapped
-/// by ability 1598's effect 3081 by this point in the real flow, but the
-/// chain gate is defense-in-depth against a stale/duplicate item
-/// instance).
-#[tokio::test]
-async fn live_db_chain_1024_does_not_start_livewire_once_completed() {
-    assert_item_use_3438_resolves("completed", false).await;
+async fn live_db_chain_1024_does_not_start_once_completed() {
+    let pool = require_db_or_skip!();
+    let actions = resolve_interact(
+        &pool,
+        1024,
+        "Cellblock_PrisonBootControl",
+        &[("mission_689_status", "completed")],
+    )
+    .await;
+    assert!(
+        actions.is_empty(),
+        "chain 1024 must not start a minigame once 689 is completed; actions: {actions:?}",
+    );
 }
 
 /// Chain 1025 has no trigger row (invoked directly by chain 1024's

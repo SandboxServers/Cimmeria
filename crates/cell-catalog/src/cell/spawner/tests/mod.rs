@@ -137,6 +137,7 @@ mod live_db_ability_sets;
 mod live_db_ambient_chatter;
 mod live_db_ammo_catalog;
 mod live_db_ammo_loot;
+mod live_db_boot_control_spawn;
 mod live_db_castle_hub;
 mod live_db_castle_loot;
 mod live_db_castle_population;
