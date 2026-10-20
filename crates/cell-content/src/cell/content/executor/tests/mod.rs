@@ -19,6 +19,8 @@
 //! - [`inventory_counter`] — `Action::RemoveItem`, increment / reset counter.
 //! - [`teleport`]         — `Action::CrossWorldTeleport` gate-travel sends.
 //! - [`mission`]          — accept / complete mission, completion-event gate.
+//! - [`movement_lock`]    — `Action::MovementLock` (D-BL3): the hold's gates, the
+//!   ref-counted flag and the release line.
 //! - [`npc_state`]        — set aggression, generate threat, NPC POI /
 //!   follow-target / AI-state actions.
 //! - [`negative_logging`] — cell→base send-failure WARN guards.
@@ -60,6 +62,7 @@ mod inventory_counter;
 mod letter_turn_in;
 mod mail;
 mod mission;
+mod movement_lock;
 mod negative_logging;
 mod npc_state;
 mod once_gate;

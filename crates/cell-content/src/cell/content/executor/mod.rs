@@ -55,6 +55,7 @@ pub(crate) mod letter_turn_in;
 mod loot;
 mod mail;
 mod mission;
+mod movement_lock;
 mod once_gate;
 mod spawn;
 mod spawn_set;

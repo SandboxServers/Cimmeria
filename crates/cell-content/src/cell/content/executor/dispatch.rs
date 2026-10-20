@@ -12,8 +12,8 @@ use cimmeria_content_engine::actions::Action;
 
 use super::{
     ability_grant, ability_granter, bark, black_market, cash, counter, dialog, inventory,
-    letter_turn_in, loot, mail, mission, spawn, spawn_set, stargate, stats, transport, tutorial,
-    world,
+    letter_turn_in, loot, mail, mission, movement_lock, spawn, spawn_set, stargate, stats,
+    transport, tutorial, world,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -467,6 +467,9 @@ pub(super) async fn execute_one(
         }
         Action::SpawnSet(op) => {
             spawn_set::run(op, entity_id, chain_id, tx, space_mgr).await;
+        }
+        Action::MovementLock(op) => {
+            movement_lock::run(op, entity_id, chain_id, tx, space_mgr).await;
         }
         Action::GrantAbility(grant) => {
             ability_grant::run(grant, entity_id, chain_id, tx, space_mgr).await;
