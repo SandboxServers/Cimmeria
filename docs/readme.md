@@ -38,16 +38,10 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->1,531<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,319<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,707<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,812<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,637<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,531<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,319<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,707<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,812<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,637<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,531<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,531<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,319<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,707<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,812<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,637<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,513<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,513<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->15,879<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,660<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,372<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,626<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
