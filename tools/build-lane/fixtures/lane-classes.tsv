@@ -1,0 +1,58 @@
+# The lane's class rules, one command per row: <class>TAB<command line>, words split on spaces.
+# Both lanes must classify every row the same way: test-lane-classes.ps1 (lane-class.ps1) and
+# test_lane_classes_sh.py (lane-class.sh) read this file. Light and heavy are what the
+# classifier returns without --class; db is only ever asked for, so no row has it.
+# Design: docs/analysis/lane-classes/design.md § 4.2.
+light	cargo fmt
+light	cargo fmt --check
+light	cargo +nightly fmt
+light	cargo --color never fmt --check
+light	cargo.exe fmt
+light	C:\Users\x\.cargo\bin\cargo.exe fmt --all
+light	rustfmt x.rs
+light	rustfmt.exe --check x.rs
+light	cargo metadata --format-version 1
+light	cargo tree -p a
+light	cargo version
+light	cargo --version
+light	cargo locate-project
+light	cargo pkgid -p a
+light	cargo verify-project
+light	cargo search serde
+light	cargo help build
+light	cargo update -p a
+light	cargo generate-lockfile
+light	cargo fetch
+light	cargo hakari generate
+light	cargo machete
+light	cargo check -p a
+light	cargo check --package a
+light	cargo check --package=a
+light	cargo c -p a
+light	cargo --config x=1 check -p a
+light	cargo -Z unstable-options check -p a
+light	cargo +stable check --package a
+heavy	cargo check
+heavy	cargo check --workspace -p a
+heavy	cargo check --all -p a
+heavy	cargo check --workspace
+heavy	cargo c --all
+heavy	cargo clippy -p a
+heavy	cargo clippy --all-targets
+heavy	cargo build
+heavy	cargo build -p a
+heavy	cargo test -p a -- --nocapture
+heavy	cargo t -p a
+heavy	cargo nextest run -p a
+heavy	cargo run -p a
+heavy	cargo r -p a
+heavy	cargo doc --no-deps
+heavy	cargo bench
+heavy	cargo llvm-cov -p a
+heavy	cargo frobnicate
+heavy	cargo +nightly test
+heavy	cargo --color never build
+heavy	pwsh -File x.ps1
+heavy	pwsh -NoProfile -File tools/test-live-db.ps1
+heavy	git status
+heavy	python tools/x.py

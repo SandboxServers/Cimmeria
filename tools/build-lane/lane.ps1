@@ -1,7 +1,12 @@
 # Cimmeria build lane, PowerShell 7 twin of lane.sh: run a cargo command inside the
 # machine-wide counting semaphore, so Windows sessions never need a bash.
 #
-# Usage:  pwsh tools/build-lane/lane.ps1 [--exclusive] <command> [args...]
+# Usage:  pwsh tools/build-lane/lane.ps1 [--exclusive] [--class heavy|light|db] <command> [args...]
+#
+# Three classes (heavy slot.N, light slot.light.N, db slot.db.N) with their own counts;
+# the classifier, the counts and nesting are in lane-class.ps1 (design: docs/analysis/
+# lane-classes/design.md). Without --class the command decides: fmt and `cargo check -p X`
+# are light, the rest heavy. --exclusive takes the heavy slots only.
 #
 # Call it through `pwsh` (as above), not with `&` from inside a PowerShell session: the
 # in-session parser swallows a bare `--` (`cargo test -p x -- --nocapture`), `pwsh` keeps it.
@@ -23,6 +28,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 . (Join-Path $PSScriptRoot 'lane-slots.ps1')
+. (Join-Path $PSScriptRoot 'lane-class.ps1')
 
 $LaneDir = $PSScriptRoot
 $LaneRoot = if ($env:LANE_ROOT) { $env:LANE_ROOT }
@@ -30,15 +36,31 @@ $LaneRoot = if ($env:LANE_ROOT) { $env:LANE_ROOT }
             else { Join-Path $HOME '.local/share/cimmeria-build' }
 $LockDir = Join-Path $LaneRoot 'lane'
 [void][System.IO.Directory]::CreateDirectory($LockDir)
-$Slots = 2
-if ($env:LANE_SLOTS) { $Slots = [int]$env:LANE_SLOTS }
-else { try { $Slots = [int]([System.IO.File]::ReadAllText((Join-Path $LockDir 'SLOTS')).Trim()) } catch { } }
+# The heavy count; the job's own class count is read below, once its class is known.
+$Slots = Get-LaneClassCount $LockDir 'heavy'
 
+$Usage = 'usage: lane.ps1 [--exclusive] [--class heavy|light|db] <command> [args...]'
 $Cmd = @($args)
 $Exclusive = $false
-if ($Cmd.Count -gt 0 -and $Cmd[0] -eq '--exclusive') { $Exclusive = $true; $Cmd = @($Cmd | Select-Object -Skip 1) }
-if ($Cmd.Count -eq 0) { [Console]::Error.WriteLine('usage: lane.ps1 [--exclusive] <command> [args...]'); exit 2 }
+$ClassFlag = ''; $ClassGiven = $false
+# Flags come first, in any order: --exclusive, --class X and --class=X.
+while ($Cmd.Count -gt 0) {
+    if ($Cmd[0] -eq '--exclusive') { $Exclusive = $true; $Cmd = @($Cmd | Select-Object -Skip 1) }
+    elseif ($Cmd[0] -eq '--class') { $ClassFlag = if ($Cmd.Count -gt 1) { $Cmd[1] } else { '' }; $ClassGiven = $true; $Cmd = @($Cmd | Select-Object -Skip ([math]::Min(2, $Cmd.Count))) }
+    elseif ($Cmd[0] -match '^--class=(.*)$') { $ClassFlag = $Matches[1]; $ClassGiven = $true; $Cmd = @($Cmd | Select-Object -Skip 1) }
+    else { break }
+}
+if ($Cmd.Count -eq 0) { [Console]::Error.WriteLine($Usage); exit 2 }
+if ($ClassGiven -and $ClassFlag -notin 'heavy', 'light', 'db') { [Console]::Error.WriteLine($Usage); exit 2 }
+if ($Exclusive -and $ClassGiven -and $ClassFlag -ne 'heavy') { [Console]::Error.WriteLine($Usage); exit 2 }
 $CmdStr = $Cmd -join ' '
+
+# The class asked for (the flag, else the classifier; --exclusive is heavy only), and the
+# class that runs it: a light or db count of 0 sends the job to heavy (the kill switch).
+$ClassReq = if ($ClassGiven) { $ClassFlag } elseif ($Exclusive) { 'heavy' } else { Get-LaneClass $Cmd }
+$Class = $ClassReq
+$ClassSlots = Get-LaneClassCount $LockDir $Class
+if ($ClassSlots -eq 0) { $Class = 'heavy'; $ClassSlots = $Slots }
 
 function NowMs { [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
 function Secs([long]$ms) { '{0}.{1:d3}' -f [math]::Floor($ms / 1000), ($ms % 1000) }
@@ -125,7 +147,7 @@ if ($SccacheBin -and -not (Test-Path Env:RUSTC_WRAPPER)) {
     }
 }
 if (-not $env:CARGO_BUILD_JOBS) {
-    $env:CARGO_BUILD_JOBS = [string][math]::Max(4, [math]::Floor([Environment]::ProcessorCount / $Slots))
+    $env:CARGO_BUILD_JOBS = [string](Get-LaneClassJobs $Class $Slots)
 }
 
 # --- quiet output --------------------------------------------------------------------
@@ -188,35 +210,46 @@ $Held = [System.Collections.Generic.List[string]]::new()
 $Sampler = $null
 $Rc = 1
 $SavedOutputEncoding = $null
+# A lane call inside a lane job runs in its parent's slot and takes none (design § 4.6).
+$NestedIn = Test-LaneNested
+$Nested = $null -ne $NestedIn
 try {
     Clear-StaleStaging $LockDir
     $what = '{0} {1} :: {2}' -f (Get-Date -Format 'HH:mm:ss'), $Name, $CmdStr
     $tRequest = NowMs
     $waited = 0
-    while ($true) {
+    if ($Nested) { [Console]::Error.WriteLine("[lane] nested in $(Split-Path -Leaf $NestedIn); not taking a slot") }
+    while (-not $Nested) {
         if ($Exclusive) {
             for ($i = 1; $i -le $Slots; $i++) {
-                $s = Join-Path $LockDir "slot.$i"
+                $s = Get-LaneSlotPath $LockDir 'heavy' $i
                 if (Enter-LaneSlot $s $what) { $Held.Add($s) }
             }
             if ($Held.Count -eq $Slots) { break }
             foreach ($s in $Held) { Exit-LaneSlot $s }
             $Held.Clear()
         } else {
-            for ($i = 1; $i -le $Slots; $i++) {
-                $s = Join-Path $LockDir "slot.$i"
+            for ($i = 1; $i -le $ClassSlots; $i++) {
+                $s = Get-LaneSlotPath $LockDir $Class $i
                 if (Enter-LaneSlot $s $what) { $Held.Add($s); break }
             }
             if ($Held.Count -gt 0) { break }
         }
         if ($waited % 60 -eq 0) {
-            $busy = foreach ($d in Get-SlotDirs $LockDir) {
+            $busy = foreach ($d in Get-LaneClassDirs $LockDir $Class) {
                 $w = Read-SlotFile $d.FullName 'what'
                 if ($w) { '[{0}]' -f ($w.Substring(0, [math]::Min(120, $w.Length))) }
             }
-            [Console]::Error.WriteLine("[lane] all $Slots slots busy: $($busy -join ' ') ... ${waited}s")
+            [Console]::Error.WriteLine("[lane] all $ClassSlots $Class slots busy: $($busy -join ' ') ... ${waited}s")
         }
         Start-Sleep -Seconds 5; $waited += 5
+    }
+    # Nested lane calls find the job's slot and token here (lane-class.ps1, Test-LaneNested).
+    if ($Held.Count -gt 0) {
+        $Token = [guid]::NewGuid().ToString('N')
+        [System.IO.File]::WriteAllText((Join-Path $Held[0] 'token'), "$Token`n")
+        $env:CIMMERIA_LANE_SLOT = ConvertTo-LanePath $Held[0]
+        $env:CIMMERIA_LANE_TOKEN = $Token
     }
 
     # rm-worktree marks a worktree before it checks the slots; this checks for the mark
@@ -304,7 +337,8 @@ try {
     $tStart = NowMs
     $freeShown = if ($null -ne $FreeStart) { $FreeStart } else { '?' }
     $incr = if ($env:CARGO_INCREMENTAL) { $env:CARGO_INCREMENTAL } else { 'default' }
-    $acquired = "[lane] acquired $($Held.Count)/$Slots slot(s) after ${waited}s; target=$TargetDir; free=${freeShown}GB; jobs=$($env:CARGO_BUILD_JOBS); incremental=$incr :: $CmdStr"
+    $slotNote = if ($Nested) { 'nested, no slot' } else { "acquired $($Held.Count)/$ClassSlots $Class slot(s) after ${waited}s" }
+    $acquired = "[lane] $slotNote; target=$TargetDir; free=${freeShown}GB; jobs=$($env:CARGO_BUILD_JOBS); incremental=$incr :: $CmdStr"
     if ($Quiet) {
         Initialize-JobLog
         [System.IO.File]::WriteAllText($JobLog, "$acquired`n")
@@ -332,6 +366,7 @@ try {
         $commit = git rev-parse --short=10 HEAD 2>$null
         $branch = git rev-parse --abbrev-ref HEAD 2>$null
         $busyAtStart = @(Get-SlotDirs $LockDir).Count - $Held.Count
+        $busyClassAtStart = @(Get-LaneClassDirs $LockDir $Class).Count - $Held.Count
         $sc0 = if ($UseSccache) { Get-SccacheCounts } else { @($null, $null) }
         # Lowest free RAM during the job, every 2 s (lane.sh reads MemFree from /proc/meminfo).
         $memState = [hashtable]::Synchronized(@{ Min = $null; Stop = $false })
@@ -408,7 +443,9 @@ try {
             v = 1; t = [long][math]::Floor($tStart / 1000); start = $startIso
             worktree = $Name; branch = [string]$branch; commit = [string]$commit
             cmd = $CmdStr; exit = $Rc; wait_s = [double](Secs $waitMs); run_s = [double](Secs $runMs)
-            exclusive = $Exclusive; slots = $Held.Count; slots_total = $Slots; busy_at_start = $busyAtStart
+            exclusive = $Exclusive; slots = $Held.Count; slots_total = $Slots
+            class = $Class; class_req = $ClassReq; class_slots_total = $ClassSlots; busy_class_at_start = $busyClassAtStart; nested = $Nested
+            busy_at_start = $busyAtStart
             jobs = [int]$env:CARGO_BUILD_JOBS; incremental = $incr
             dev_drive = $UseDevDrive; target = $TargetDir
             sccache = $UseSccache; sccache_hits = $dh; sccache_misses = $dm
