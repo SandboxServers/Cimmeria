@@ -193,9 +193,47 @@ fn junk_frames_do_not_extend_the_wait_for_a_first_click() {
 
 #[test]
 fn refusals_are_logged_only_up_to_the_cap() {
+    // Through `message` and `reject`, so the gate in `reject` is what is
+    // counted: the WARN rows, not the refusal counter.
+    let capture = crate::test_support::LogCapture::install();
     let mut game = game_on(Board::solved());
-    let logged = (0..REFUSAL_LOG_CAP + 8)
-        .filter(|_| game.count_refusal())
+    for _ in 0..REFUSAL_LOG_CAP + 8 {
+        assert!(game.message("bogus", &HashMap::new()).is_empty());
+    }
+    let rows = capture
+        .all()
+        .iter()
+        .filter(|row| row.level == tracing::Level::WARN && row.message_contains("command refused"))
         .count();
-    assert_eq!(logged, REFUSAL_LOG_CAP as usize);
+    assert_eq!(rows, REFUSAL_LOG_CAP as usize);
+}
+
+#[test]
+fn the_first_click_sets_the_16_s_deadline_and_started_sets_the_60_s_wait() {
+    // Nothing here sets the deadlines by hand: they come from `started` and
+    // from the first valid click, so deleting either assignment fails.
+    let mut game = game_on(Board::solved());
+    assert!(game.clock_deadline.is_none());
+    assert!(game.idle_deadline.is_none());
+    game.started();
+    let idle = game.idle_deadline.expect("started sets the pre-click wait");
+    assert!(idle > Instant::now() + Duration::from_secs(59));
+    assert!(idle <= Instant::now() + Duration::from_secs(60));
+    game.message("processmove", &click(14.0, 0.0));
+    assert!(
+        game.clock_deadline.is_none(),
+        "a refused click must not start the clock"
+    );
+    game.message("processmove", &click(0.0, 0.0));
+    let first = game
+        .clock_deadline
+        .expect("the first valid click sets the deadline");
+    assert!(first > Instant::now() + Duration::from_secs(15));
+    assert!(first <= Instant::now() + Duration::from_secs(16));
+    game.message("processmove", &click(1.0, 0.0));
+    assert_eq!(
+        game.clock_deadline,
+        Some(first),
+        "a later click must not move the deadline"
+    );
 }
