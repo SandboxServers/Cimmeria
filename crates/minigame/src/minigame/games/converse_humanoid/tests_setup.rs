@@ -3,6 +3,9 @@
 
 use std::collections::HashMap;
 
+use rand::rngs::StdRng;
+use rand::{RngExt, SeedableRng};
+
 use super::setup::{next_game_type, trump_bonus, FIRST_GAME_TYPE, GAME_TYPES, PLAYER_VICTORIES};
 use super::*;
 use crate::minigame::game::GameOutput;
@@ -178,6 +181,30 @@ fn fixed_seed_gives_fixed_deal() {
         hands.len() > 1,
         "different seeds should not all deal one hand"
     );
+}
+
+#[test]
+fn npc_hand_is_drawn_before_the_player_hand() {
+    // Offline stats are 0, so neither side holds an accord and a hand is three
+    // plain draws from the shared six-card logic3 deck.
+    let mut game =
+        ConverseHumanoidGame::new(&MinigameSession::offline("ConverseBasicHumanoid", 1, 7));
+    assert_eq!(game.get_accords(), (false, false));
+    game.deal();
+
+    let mut rng = StdRng::seed_from_u64(7);
+    let mut deck: Vec<f64> = vec![0.0, 0.0, 4.0, 4.0, 8.0, 8.0];
+    let mut expect = |n: usize| -> Vec<f64> {
+        let mut hand: Vec<f64> = (0..n)
+            .map(|_| deck.remove(rng.random_range(0..deck.len())))
+            .collect();
+        hand.sort_by(f64::total_cmp);
+        hand
+    };
+    let npc = expect(3);
+    let player = expect(3);
+    assert_eq!(game.npc_hand, npc, "the NPC draws first");
+    assert_eq!(game.player_hand, player);
 }
 
 #[test]
