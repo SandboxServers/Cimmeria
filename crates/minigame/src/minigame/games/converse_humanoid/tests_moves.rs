@@ -123,7 +123,7 @@ fn npc_ties_go_to_the_lowest_index() {
 #[test]
 fn npc_full_contest_gives_no_output() {
     let mut game = fresh();
-    game.npc_contest_plays = vec![0.0, 0.0, 0.0];
+    game.npc_contest_plays = vec![0.0];
     assert!(game.npc_move().is_empty());
     assert_eq!(game.npc_hand.len(), 3);
 }
@@ -171,7 +171,7 @@ fn player_move_refuses_a_suit_not_in_hand_and_bad_containers() {
 fn player_move_refuses_a_full_contest_or_a_finished_game() {
     let mut game = fresh();
     game.player_hand = vec![0.0, 4.0, 8.0];
-    game.player_contest_plays = vec![0.0, 4.0, 8.0];
+    game.player_contest_plays = vec![0.0];
     assert!(game.player_move(0.0, 0.0, None).is_empty(), "contest full");
     game.player_contest_plays.clear();
     game.outcome = Some(Outcome::Victory);
@@ -255,4 +255,96 @@ fn hand_end_otherwise_scores_resets_containers_and_sends_emptyhand() {
     assert!(game.npc_contest_plays.is_empty());
     assert_eq!(game.npc_focus, None);
     assert_eq!(game.outcome, None);
+}
+
+#[test]
+fn logic3_second_play_in_one_hand_is_refused() {
+    let mut game = fresh();
+    game.player_hand = vec![0.0, 4.0, 8.0];
+    assert_eq!(game.player_move(0.0, 8.0, None).len(), 1);
+    assert!(game.player_move(0.0, 4.0, None).is_empty());
+    assert_eq!(game.player_hand, vec![0.0, 4.0]);
+    assert_eq!(game.player_contest_plays, vec![8.0]);
+}
+
+#[test]
+fn logic3_npc_plays_once_per_hand() {
+    let mut game = fresh();
+    game.npc_hand = vec![0.0, 4.0, 8.0];
+    game.player_hand = vec![0.0, 4.0, 8.0];
+    assert_eq!(game.npc_move().len(), 1);
+    assert!(game.npc_move().is_empty());
+    assert_eq!(game.npc_hand.len(), 2);
+}
+
+#[test]
+fn courtesy7_hand_holds_two_plays_not_three() {
+    // courtesy7 has 2 containers and 3 contests: a hand is full at 2 plays.
+    let mut game = fresh();
+    game.game_type = 2;
+    game.player_empty = vec![true; 2];
+    game.npc_empty = vec![true; 2];
+    game.player_hand = vec![0.0, 4.0, 8.0];
+    game.npc_hand = vec![0.0, 4.0, 8.0];
+    game.player_contest_plays = vec![8.0, 4.0];
+    game.npc_contest_plays = vec![0.0, 4.0];
+    assert!(game.player_move(0.0, 0.0, None).is_empty());
+    assert!(game.npc_move().is_empty());
+    assert_eq!(game.player_hand.len(), 3);
+    assert_eq!(game.npc_hand.len(), 3);
+}
+
+#[test]
+fn player_absent_container_with_no_free_container_is_refused() {
+    let mut game = fresh();
+    game.player_hand = vec![0.0, 4.0, 8.0];
+    game.player_empty[0] = false;
+    assert!(game.player_move(0.0, 4.0, None).is_empty());
+    assert_eq!(game.player_hand.len(), 3);
+    assert_eq!(game.player_total_plays, 0);
+    assert!(game.player_contest_plays.is_empty());
+}
+
+#[test]
+fn player_move_refuses_a_non_finite_num() {
+    let mut game = fresh();
+    game.player_hand = vec![0.0];
+    assert!(game.player_move(f64::NAN, 0.0, None).is_empty());
+    assert!(game.player_move(f64::INFINITY, 0.0, None).is_empty());
+    assert_eq!(game.player_hand, vec![0.0]);
+}
+
+#[test]
+fn newhand_before_the_npc_answers_is_refused() {
+    let mut game = fresh();
+    game.player_hand = vec![0.0, 4.0, 8.0];
+    // The player fills the only container; the NPC has not answered yet.
+    game.player_move(0.0, 8.0, Some(0.0));
+    assert!(game.new_hand().is_empty());
+    assert_eq!((game.player_score, game.npc_score), (0.0, 0.0));
+    assert_eq!(game.player_empty, vec![false]);
+    assert_eq!(game.player_contest_plays, vec![8.0]);
+    assert_eq!(game.timer_state, 1);
+    assert_eq!(game.outcome, None);
+    // Once the NPC has answered, the client may end the hand.
+    game.npc_move();
+    let out = game.new_hand();
+    assert_eq!(text(&out[1], "_cmd"), "emptyhand");
+}
+
+#[test]
+fn unanswered_pair_scores_for_the_player_either_way() {
+    // The original's fall-through (spec section 11, question 3): a pair with
+    // one side missing is the player's point. mediation5 has 2 containers, so
+    // one point is not a sweep.
+    let mut game = fresh();
+    game.game_type = 1;
+    game.player_contest_plays = vec![8.0];
+    game.process_score();
+    assert_eq!((game.player_score, game.npc_score), (1.0, 0.0));
+    let mut game = fresh();
+    game.game_type = 1;
+    game.npc_contest_plays = vec![0.0];
+    game.process_score();
+    assert_eq!((game.player_score, game.npc_score), (1.0, 0.0));
 }

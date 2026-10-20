@@ -96,34 +96,38 @@ impl ConverseHumanoidGame {
         if !self.is_running() {
             return self.refuse("playermove", "not_running");
         }
+        if !num.is_finite() {
+            return self.refuse("playermove", "num_not_finite");
+        }
         let row = &GAME_TYPES[self.game_type];
-        if self.player_contest_plays.len() >= row.contest_total {
+        // A hand fills each container once, so it holds `container_total` plays.
+        if self.player_contest_plays.len() >= row.container_total {
             return self.refuse("playermove", "contest_full");
         }
         let Some(index) = self.player_hand.iter().position(|&card| card == suit) else {
             return self.refuse("playermove", "suit_not_in_hand");
         };
-        let slot = match container {
+        let c = match container {
             Some(value) => match container_index(value, row.container_total) {
-                Some(c) if self.player_empty[c] => Some(c),
+                Some(c) if self.player_empty[c] => c,
                 _ => return self.refuse("playermove", "container_unavailable"),
             },
-            None => self.player_empty.iter().position(|&empty| empty),
+            None => match self.player_empty.iter().position(|&empty| empty) {
+                Some(c) => c,
+                None => return self.refuse("playermove", "no_free_container"),
+            },
         };
 
         self.player_hand.remove(index);
         self.player_contest_plays.push(suit);
         self.player_total_plays += 1;
-        let shown = slot.unwrap_or(0);
-        if let Some(c) = slot {
-            self.player_empty[c] = false;
-            // The NPC answers at once when it has not filled this container.
-            if self.npc_empty[c] {
-                self.npc_focus = Some((c, suit));
-                self.npc_timer = FOCUS_NPC_TIMER;
-            }
+        self.player_empty[c] = false;
+        // The NPC answers at once when it has not filled this container.
+        if self.npc_empty[c] {
+            self.npc_focus = Some((c, suit));
+            self.npc_timer = FOCUS_NPC_TIMER;
         }
-        vec![self.update_cards("player", num, suit, shown)]
+        vec![self.update_cards("player", num, suit, c)]
     }
 
     /// `npcMove` (spec section 8). A pending focus is answered with the NPC
@@ -132,7 +136,7 @@ impl ConverseHumanoidGame {
     /// container. Nothing happens when the NPC contest is full.
     pub(super) fn npc_move(&mut self) -> Vec<GameOutput> {
         let row = &GAME_TYPES[self.game_type];
-        if self.npc_contest_plays.len() >= row.contest_total || self.npc_hand.is_empty() {
+        if self.npc_contest_plays.len() >= row.container_total || self.npc_hand.is_empty() {
             return Vec::new();
         }
         let (index, slot) = match self.npc_focus.take() {
@@ -165,10 +169,10 @@ impl ConverseHumanoidGame {
     }
 
     /// `processScore` (spec section 6). The two contests are paired by play
-    /// order over the first `container_total` plays. A side that played and
-    /// the other did not takes the point; a tie or two empty slots score
-    /// nothing. A side that won every container adds one more point. Returns
-    /// `updatescore`.
+    /// order over the first `container_total` plays. A pair with one side
+    /// missing goes to the player, as the original's fall-through does (spec
+    /// section 11, question 3). A tie or two empty slots score nothing. A side
+    /// that won every container adds one more point. Returns `updatescore`.
     pub(super) fn process_score(&mut self) -> Vec<GameOutput> {
         let total = GAME_TYPES[self.game_type].container_total;
         let mut player_wins = 0;
@@ -179,8 +183,7 @@ impl ConverseHumanoidGame {
                 self.npc_contest_plays.get(i),
             ) {
                 (None, None) => {}
-                (Some(_), None) => player_wins += 1,
-                (None, Some(_)) => npc_wins += 1,
+                (Some(_), None) | (None, Some(_)) => player_wins += 1,
                 (Some(&player), Some(&npc)) => match dominance(player, npc) {
                     8 => {}
                     d if d < 4 => npc_wins += 1,
@@ -224,6 +227,26 @@ impl ConverseHumanoidGame {
             }),
             GameOutput::Failure,
         ]
+    }
+
+    /// `newhand` from the client (spec section 5). It ends the hand now, but
+    /// only once the NPC has answered every container the player filled this
+    /// hand, or the NPC can no longer answer (its contest is full or its hand
+    /// is empty). Otherwise it is refused, so a client cannot end a hand
+    /// before the NPC has moved and gain a point it did not earn. The hand
+    /// timer calls `end_hand` directly.
+    pub(super) fn new_hand(&mut self) -> Vec<GameOutput> {
+        if !self.is_running() {
+            return self.refuse("newhand", "not_running");
+        }
+        let row = &GAME_TYPES[self.game_type];
+        let npc_can_answer =
+            self.npc_contest_plays.len() < row.container_total && !self.npc_hand.is_empty();
+        let answered = (0..row.container_total).all(|c| self.player_empty[c] || !self.npc_empty[c]);
+        if npc_can_answer && !answered {
+            return self.refuse("newhand", "npc_not_answered");
+        }
+        self.end_hand()
     }
 
     /// The hand ends, by `newhand` or the hand timer (spec section 6). In
