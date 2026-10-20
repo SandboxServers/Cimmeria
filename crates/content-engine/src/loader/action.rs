@@ -7,6 +7,22 @@ use crate::actions::Action;
 
 use super::DbActionRow;
 
+/// The minigame type names the client's type table registers (MG-64). This
+/// copies `GameKind::name` in `cimmeria_minigame`: the crates share no
+/// dependency, so keep the two lists in step. The match is case-sensitive.
+const MINIGAME_TYPE_NAMES: &[&str] = &[
+    "Livewire",
+    "Alignment",
+    "CrystalGame",
+    "GoauldCrystals",
+    "ConverseBasicHumanoid",
+    "Hack",
+    "Activate",
+    "Analyze",
+    "Bypass",
+    "Converse",
+];
+
 /// Convert a DB action row to an Action enum variant.
 pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
     let params = &row.params;
@@ -123,6 +139,18 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         }
         "start_minigame" => {
             let minigame_type = row.target_key.as_deref().unwrap_or("").to_string();
+            // An unknown name would only fail at launch, so catch it at load
+            // (MG-64) and drop the row, as the difficulty check below does.
+            if !MINIGAME_TYPE_NAMES.contains(&minigame_type.as_str()) {
+                warn!(
+                    chain_id = row.chain_id,
+                    chain_name = cimmeria_names::book().chain(row.chain_id),
+                    %minigame_type,
+                    reason = "unknown_minigame_type",
+                    "start_minigame: unknown minigame type; dropping the action row"
+                );
+                return None;
+            }
             let chains = params
                 .get("on_victory_chains")
                 .and_then(|v| v.as_array())

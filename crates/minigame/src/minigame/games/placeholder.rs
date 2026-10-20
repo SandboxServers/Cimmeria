@@ -6,6 +6,9 @@
 //! has run for [`CLIENT_DECLARED_MIN_PLAY`] (D-MG13). An earlier `victory` is
 //! refused and the session stays open.
 //!
+//! The shell shows a 60 s countdown (MG-64). When it runs out with no
+//! `victory`, the server sends `failure` and the game is a defeat.
+//!
 //! Reference: `python/base/minigame/Placeholder.py`
 
 use std::collections::HashMap;
@@ -22,6 +25,13 @@ use crate::sfs_vars;
 /// client from winning the instant the game starts.
 pub(crate) const CLIENT_DECLARED_MIN_PLAY: Duration = Duration::from_secs(5);
 
+/// The shell's countdown in seconds (MG-64). The value is sent as
+/// `timeRemaining`, and the server times the game out when it reaches zero.
+const TIME_LIMIT_SECS: u32 = 60;
+
+/// Session ticks in the countdown: 60 s at the 250 ms tick is 240 ticks.
+const TIMEOUT_TICKS: u32 = 240;
+
 #[cfg(test)]
 #[path = "placeholder_tests.rs"]
 mod tests;
@@ -29,6 +39,8 @@ mod tests;
 pub(super) struct PlaceholderGame {
     game_name: String,
     started_at: Option<Instant>,
+    ticks: u32,
+    timed_out: bool,
 }
 
 impl PlaceholderGame {
@@ -36,6 +48,8 @@ impl PlaceholderGame {
         Self {
             game_name: game_name.to_string(),
             started_at: None,
+            ticks: 0,
+            timed_out: false,
         }
     }
 }
@@ -53,11 +67,19 @@ impl MinigameInstance for PlaceholderGame {
     fn started(&mut self) -> Vec<GameOutput> {
         tracing::info!(game = %self.game_name, "Placeholder minigame started");
         self.started_at = Some(Instant::now());
-        // Send a minimal fullgamestate so the SWF doesn't crash
-        vec![GameOutput::Send(sfs_vars! {
-            "_cmd" => SfsValue::String("fullgamestate".to_string()),
-            "gameStarted" => SfsValue::String("false".to_string()),
-        })]
+        // The shell reads the timer from fullgamestate, then starts it running.
+        vec![
+            GameOutput::Send(sfs_vars! {
+                "_cmd" => SfsValue::String("fullgamestate".to_string()),
+                "timerState" => SfsValue::Number(0.0),
+                "timeRemaining" => SfsValue::Number(f64::from(TIME_LIMIT_SECS)),
+            }),
+            GameOutput::Send(sfs_vars! {
+                "_cmd" => SfsValue::String("timerupdate".to_string()),
+                "timerState" => SfsValue::Number(1.0),
+                "timeRemaining" => SfsValue::Number(f64::from(TIME_LIMIT_SECS)),
+            }),
+        ]
     }
 
     fn message(&mut self, cmd: &str, _params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
@@ -92,7 +114,25 @@ impl MinigameInstance for PlaceholderGame {
     }
 
     fn tick(&mut self) -> Vec<GameOutput> {
-        vec![]
+        if self.started_at.is_none() || self.timed_out {
+            return vec![];
+        }
+        self.ticks += 1;
+        if self.ticks < TIMEOUT_TICKS {
+            return vec![];
+        }
+        self.timed_out = true;
+        tracing::warn!(
+            game = %self.game_name,
+            reason = "timeout",
+            "Placeholder minigame timed out after the 60 s countdown"
+        );
+        vec![
+            GameOutput::Send(sfs_vars! {
+                "_cmd" => SfsValue::String("failure".to_string()),
+            }),
+            GameOutput::Failure,
+        ]
     }
 
     fn aborted(&mut self) -> Vec<GameOutput> {
@@ -102,6 +142,6 @@ impl MinigameInstance for PlaceholderGame {
     }
 
     fn needs_tick(&self) -> bool {
-        false
+        true
     }
 }
