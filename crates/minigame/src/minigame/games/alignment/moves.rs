@@ -19,6 +19,7 @@ pub(super) enum SwapReject {
     OutOfBounds,
     NotTriangle,
     Blocker,
+    Empty,
     TypeMismatch,
 }
 
@@ -29,6 +30,7 @@ impl SwapReject {
             Self::OutOfBounds => "swap_out_of_bounds",
             Self::NotTriangle => "swap_not_triangle",
             Self::Blocker => "swap_blocker",
+            Self::Empty => "swap_empty",
             Self::TypeMismatch => "swap_type_mismatch",
         }
     }
@@ -75,8 +77,9 @@ fn coordinate(params: &HashMap<String, SfsValue>, key: &str) -> Result<usize, Sw
 
 /// The D-MG2 checks of a swap, in the spec's order: the cells are on the
 /// board, form a triangle (the first cell with two neighbours that neighbour
-/// each other), hold no blocker, and the client's `type1`-`type3` equal the
-/// board's pieces. The client types are only compared, never used.
+/// each other), hold no blocker, hold no empty cell (kind 0, F4), and the
+/// client's `type1`-`type3` equal the board's pieces. The client types are only
+/// compared, never used.
 pub(super) fn check_swap(
     board: &[Vec<Piece>],
     cells: [Cell; 3],
@@ -100,6 +103,9 @@ pub(super) fn check_swap(
     }
     if cells.iter().any(|&(x, y)| board[x][y].kind == 9) {
         return Err(SwapReject::Blocker);
+    }
+    if cells.iter().any(|&(x, y)| board[x][y].kind == 0) {
+        return Err(SwapReject::Empty);
     }
     for (n, &(x, y)) in cells.iter().enumerate() {
         let client = params
@@ -305,14 +311,7 @@ pub(super) fn hexspinner(
             .iter()
             .map(|&((x, y), piece)| cell_value(x, y, piece)),
     );
-    let mut vars: HashMap<String, SfsValue> = ECHO_KEYS
-        .iter()
-        .filter_map(|&key| {
-            params
-                .get(key)
-                .map(|value| (key.to_string(), value.clone()))
-        })
-        .collect();
+    let mut vars = echo_fields(params);
     vars.extend(sfs_vars! {
         "_cmd" => SfsValue::String("hexspinner".to_string()),
         "matches" => cells,
@@ -321,21 +320,30 @@ pub(super) fn hexspinner(
     vars
 }
 
-/// The request fields `hexspinner` echoes (spec section 5).
-const ECHO_KEYS: [&str; 9] = [
-    "xPos",
-    "yPos",
-    "orientation",
-    "row1",
-    "row2",
-    "row3",
-    "col1",
-    "col2",
-    "col3",
-];
+/// The request fields `hexspinner` echoes (spec section 5), typed (F5): the
+/// cell fields `row1`-`row3`, `col1`-`col3`, `xPos` and `yPos` are echoed as
+/// Numbers only when they pass `coordinate`; `orientation` only when it is a
+/// String. Anything else is dropped rather than echoed back as client text.
+fn echo_fields(params: &HashMap<String, SfsValue>) -> HashMap<String, SfsValue> {
+    let mut vars = HashMap::new();
+    for key in [
+        "row1", "row2", "row3", "col1", "col2", "col3", "xPos", "yPos",
+    ] {
+        if let Ok(value) = coordinate(params, key) {
+            vars.insert(key.to_string(), number(value as u16));
+        }
+    }
+    if let Some(SfsValue::String(orientation)) = params.get("orientation") {
+        vars.insert(
+            "orientation".to_string(),
+            SfsValue::String(orientation.clone()),
+        );
+    }
+    vars
+}
 
 /// A board cell as `{x, y, type}`, all Numbers.
-fn cell_value(x: usize, y: usize, piece: Piece) -> SfsValue {
+pub(super) fn cell_value(x: usize, y: usize, piece: Piece) -> SfsValue {
     SfsValue::Object(sfs_vars! {
         "x" => number(x as u32),
         "y" => number(y as u32),

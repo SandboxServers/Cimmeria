@@ -1,9 +1,10 @@
 //! Alignment: the port lands in MG-AL1..3 (docs/analysis/minigames/spec-alignment.md).
 //!
 //! MG-AL1 is the setup and the state shell; MG-AL2a adds the server-validated
-//! swap and matching (`moves.rs`). `create()` still hands the name to the
-//! placeholder: `PORTED` stays `false` until MG-AL3, so nothing here is
-//! reachable from content yet. The shell is exercised by the tests only.
+//! swap and matching (`moves.rs`); MG-AL2b adds the cascade, the gravity and
+//! the refill (`cascade.rs`, `moves_gravity.rs`). `create()` still hands the
+//! name to the placeholder: `PORTED` stays `false` until MG-AL3, so nothing
+//! here is reachable from content yet. The shell is exercised by the tests only.
 #![allow(dead_code)] // unreachable until MG-AL3 flips PORTED; the tests build it
 
 use std::collections::HashMap;
@@ -15,9 +16,13 @@ use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
 use crate::minigame::session::MinigameSession;
 
+mod cascade;
 mod moves;
+mod moves_gravity;
 mod piece;
 mod setup;
+#[cfg(test)]
+mod tests_cascade;
 #[cfg(test)]
 mod tests_moves;
 #[cfg(test)]
@@ -40,12 +45,16 @@ fn log_text(text: &str) -> &str {
 }
 
 /// Where the game is in the port's phase machine (spec section 5). `Ready`
-/// takes a swap; a match moves to `AwaitCascade` until the cascade slice
-/// (MG-AL2b) takes over. `Ended` is set by `aborted()` and closes the game.
+/// takes a swap; a match moves to `AwaitCascade`, `cascade` moves to
+/// `AwaitCheck`, and `checkForCascade` either loops back to `AwaitCascade` or
+/// moves to `AwaitScore` (`doscore` is MG-AL3a's). `Ended` is set by
+/// `aborted()` and closes the game.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Phase {
     Ready,
     AwaitCascade,
+    AwaitCheck,
+    AwaitScore,
     Ended,
 }
 
@@ -76,6 +85,15 @@ pub(crate) struct AlignmentGame {
     hint_index: u8,
     phase: Phase,
     outcome: Option<&'static str>,
+    /// The cells of the current match, power-up-expanded (spec section 6).
+    current_matches: Vec<(moves::Cell, Piece)>,
+    /// The piece types scored so far in this turn (`currentScores`).
+    current_scores: Vec<u8>,
+    /// Cascade steps taken after the swap; the re-roll pass runs when it is
+    /// above 0.
+    cascade_count: u32,
+    /// The gravity direction index, 0-5 (`dropIndex`).
+    drop_index: u8,
 }
 
 impl AlignmentGame {
@@ -143,6 +161,10 @@ impl AlignmentGame {
             hint_index: 0,
             phase: Phase::Ready,
             outcome: None,
+            current_matches: Vec::new(),
+            current_scores: Vec::new(),
+            cascade_count: 0,
+            drop_index: 0,
         }
     }
 
@@ -167,6 +189,9 @@ impl AlignmentGame {
             Some((board, outcome)) => {
                 self.board = board;
                 self.phase = Phase::AwaitCascade;
+                self.current_matches = outcome.matches.clone();
+                self.current_scores.clear();
+                self.cascade_count = 0;
                 vec![
                     GameOutput::Send(moves::feedback(&outcome)),
                     GameOutput::Send(moves::hexspinner(
@@ -178,6 +203,72 @@ impl AlignmentGame {
             }
             None => vec![GameOutput::Send(moves::hexspinner(params, &[], 3))],
         }
+    }
+
+    /// `cascade` (spec section 6, `doCascade`): the gravity slide and the refill
+    /// of drop direction `dropIndex`, then the re-roll pass after a scored step.
+    /// Replies `hexmove` and waits for `checkForCascade`.
+    fn cascade(&mut self) -> Vec<GameOutput> {
+        if self.phase != Phase::AwaitCascade {
+            self.refuse("cascade", "not_ready");
+            return vec![];
+        }
+        let d = self.drop_index;
+        let slides = moves_gravity::gravity(&mut self.board, d);
+        let mut new_hexes = cascade::refill(
+            &mut self.rng,
+            &mut self.board,
+            &self.current_matches,
+            d,
+            self.tier,
+        );
+        if self.cascade_count > 0 {
+            let goal_icons = setup::tier_spec(self.tier).goal_icons;
+            cascade::reroll(
+                &mut self.rng,
+                &mut self.board,
+                &mut new_hexes,
+                self.cascade_count,
+                goal_icons,
+            );
+        }
+        self.phase = Phase::AwaitCheck;
+        vec![GameOutput::Send(cascade::hexmove(d, &slides, &new_hexes))]
+    }
+
+    /// `checkForCascade` (spec section 6): a board with a match removes it with
+    /// `bypasshexspinner` and waits for the next `cascade`. Without a match the
+    /// drop index moves on and `cascadecheckcomplete` ends the step; the score
+    /// is awaited next.
+    fn check_for_cascade(&mut self) -> Vec<GameOutput> {
+        if self.phase != Phase::AwaitCheck {
+            self.refuse("checkForCascade", "not_ready");
+            return vec![];
+        }
+        let mut scores = self.current_scores.clone();
+        scores.extend(cascade::types(&self.current_matches));
+        let seeds = setup::check_for_matches(&self.board);
+        self.current_scores = scores;
+        if seeds.is_empty() {
+            let turned = !self.current_scores.is_empty();
+            self.drop_index = match self.drop_index {
+                5 => 0,
+                index if turned => index + 1,
+                index => index,
+            };
+            self.phase = Phase::AwaitScore;
+            return vec![GameOutput::Send(cascade::cascadecheckcomplete())];
+        }
+        let matches = cascade::expanded_matches(&self.board, &seeds);
+        for &((x, y), _) in &matches {
+            self.board[x][y] = Piece::plain(0);
+        }
+        self.current_matches = matches;
+        self.cascade_count += 1;
+        self.phase = Phase::AwaitCascade;
+        vec![GameOutput::Send(cascade::bypasshexspinner(
+            &self.current_matches,
+        ))]
     }
 
     /// Logs a refused client command at WARN (the board is left as it was).
@@ -229,6 +320,8 @@ impl MinigameInstance for AlignmentGame {
                 vec![]
             }
             "swappieces" => self.swap(params),
+            "cascade" => self.cascade(),
+            "checkForCascade" => self.check_for_cascade(),
             // The hint timer (`resethinttimer`) only feeds the hint, which is
             // MG-AL3's; the client expects no reply.
             "resethinttimer" => vec![],
