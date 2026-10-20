@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 use rand::RngExt;
 
+use super::power::{finish_powered, update_power};
 use super::{Cell, Goal, GoauldCrystalsGame};
 use crate::minigame::protocol::SfsValue;
 use crate::sfs_vars;
@@ -200,8 +201,20 @@ impl GoauldCrystalsGame {
         self.reds_to_revert = None;
         self.item_cheats_add_time = false;
         self.outcome = None;
+        self.populate_game_board(tier.obstacles);
+    }
+
+    /// Spec 3 `populateGameBoard`: the goals once, then boards until the
+    /// finish is not powered, so a game never starts already won.
+    fn populate_game_board(&mut self, obstacles: u32) {
         self.place_goals();
-        self.randomize_crystals(tier.obstacles);
+        loop {
+            self.randomize_crystals(obstacles);
+            update_power(&mut self.board, self.start);
+            if !finish_powered(&self.board, self.finish) {
+                break;
+            }
+        }
     }
 
     /// Spec 3 `placeGoals`. Seed 1 on 4x4 uses the fixed tutorial goals.
