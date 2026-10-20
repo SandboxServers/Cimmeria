@@ -623,3 +623,34 @@ fn header_guarded_bundle_reservation_matches_finalize_and_client_accepts_it() {
     assert_eq!(got.abort, None);
     assert_eq!(got.messages.len(), expected_messages);
 }
+
+/// A short first fragment leaves only one message cursor exposed while the
+/// rest of the same logical bundle still reserves and emits contiguous seqs.
+#[test]
+fn isolated_first_message_plan_matches_finalized_fragment_group() {
+    use crate::client_model::unpack_plaintext_packets;
+
+    let mut bundle = ChannelBundle::new(true);
+    bundle.append_entity_method(5, IDBASE_SGW_PLAYER, 1, &[0x22; 96]);
+    bundle.append_entity_method(6, IDBASE_SGW_PLAYER, 2, &[0x33; 2600]);
+    let first_len = 7 + 96;
+    assert!(bundle.body_len() > FRAGMENT_BODY_SIZE);
+    bundle.isolate_first_fragment_message();
+    let plan = bundle.fragment_plan();
+    assert_eq!(plan.ranges[0], 0..first_len);
+    let estimated = bundle.estimated_packet_count();
+    assert_eq!(estimated, plan.ranges.len());
+    let (packets, consumed) = bundle.finalize(FLAG_RELIABLE, 41, passthrough);
+    assert_eq!(packets.len(), estimated);
+    assert_eq!(consumed as usize, estimated);
+    for (i, packet) in packets.iter().enumerate() {
+        let parsed = parse_incoming(packet).unwrap();
+        assert_eq!(parsed.body.len(), plan.ranges[i].len());
+        assert_eq!(parsed.seq_id, Some(41 + i as u32));
+        assert_eq!(parsed.frag_begin, Some(41));
+        assert_eq!(parsed.frag_end, Some(41 + estimated as u32 - 1));
+    }
+    let decoded = unpack_plaintext_packets(&packets);
+    assert_eq!(decoded.abort, None);
+    assert_eq!(decoded.messages.len(), 2);
+}

@@ -294,7 +294,7 @@ async fn cancel_movie_with_delay_returns_at_once_and_delays_once() {
     assert!(!hold_active(&connected, addr));
     assert_eq!(
         typed.len(),
-        2,
-        "phase-1 and phase-2 bundles after one delay"
+        4,
+        "create, avatar and two cascade fragments after one delay"
     );
 }
