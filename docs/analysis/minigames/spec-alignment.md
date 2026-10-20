@@ -215,7 +215,7 @@ any --dovictory (goals met) / timeout / abort--> Ended
 
 | Cmd | Fields | Sent by | Client action |
 |---|---|---|---|
-| `fullgamestate` | `numResets`, `timeRemaining` (minus 0.25), `timerState`, `isSpectator` (Bool), `gameArray` (list of lists of Number), `playfieldWidth`, `playfieldHeight`, `goalIcons` (list), `goalTotals` (list), `goalScores` (list), `techcomp`, `difficulty`, `minigamelevel`, `instcc`, `CA0`-`CA4`, `abilityBitfield` | `initGame` (start and reset); spectator join | Rebuilds the board, scores and cheats. The first one starts the client timer. |
+| `fullgamestate` | `numResets`, `timeRemaining` (minus 0.25), `timerState`, `isSpectator` (Bool), `gameArray` (list of lists of Number), `playfieldWidth`, `playfieldHeight`, `goalIcons` (list), `goalTotals` (list), `goalScores` (list), `techcomp`, `difficulty`, `minigamelevel`, `instcc`, `CA0`-`CA4`, `abilityBitfield` | `initGame` (start only; `processreset` is refused and sends nothing); spectator join | Rebuilds the board, scores and cheats. The first one starts the client timer. |
 | `hexspinner` | `matches` (list of cells), `spinCount` (1, 2 or 3), plus `xPos`, `yPos`, `orientation`, `row1`-`row3`, `col1`-`col3` echoed from the request | `swapPieces` | Animates `spinCount` rotations, applies the rotation locally, removes `matches`. 3 means no match. |
 | `feedback` | `spinCount`, `powerUpValues` (list of Number) | `checkPowerUpMatches`, every call (`powerUpValues` empty when no power-up was in the match) | Power-up popups |
 | `powerupconvert` | `x`, `y`, `powerUp` (Number, e.g. 0.3) | Cheats | Adds `powerUp` to that cell's type |
@@ -597,7 +597,7 @@ Files:
 |---|---|---|
 | `alignment/mod.rs` | `AlignmentGame`; the `Phase` enum (section 5); `MinigameInstance` with `started` (`fullgamestate`), `needs_tick`, `aborted`; `message` dispatch with `processreset` refused in every phase (port deviation from the original reset, section 5) and every other command rejected as not-yet-ported; `with_board` for tests; `PORTED` stays `false` | ~200 |
 | `alignment/setup.rs` | Tier table and goal totals (section 4); clamp tier to 1-4 and level to 0-10; `select_icons` (section 3) on `StdRng`; the `fullgamestate` builder; board to `SfsValue` | ~250 |
-| `alignment/tests_setup.rs` | The tables match section 4 (spot rows per tier, level clamping); the first quarter of cells is bonus icons; no initial matches; seed determinism; `fullgamestate` keys and `timeRemaining` minus 0.25; reset returns the initial board and counts `numResets` | ~200 |
+| `alignment/tests_setup.rs` | The tables match section 4 (spot rows per tier, level clamping); the first quarter of cells is bonus icons; no initial matches; seed determinism; `fullgamestate` keys and `timeRemaining` minus 0.25; `processreset` is refused: no reply, no board change, `numResets` stays 0 | ~200 |
 
 Fits comfortably.
 
@@ -621,7 +621,7 @@ Files:
 |---|---|---|
 | `alignment/rules.rs` | `do_score` and `check_for_victory` (`activate`); `dovictory` gated on goals, giving `victory` and `GameOutput::Victory`; `tick` (countdown, timeout `failure` and `GameOutput::Failure`, the `clicktohint` idle prompt); `get_hint` with the n1 bounds fix; `callhint` and `resethinttimer`; item cheats 0-4 with `instcc`/`CA` bookkeeping (online path: treat a granted slot as validated, set `consUsed`); ability cheats; `check_for_match_cheat`; terminal end state; **flip `PORTED = true`** | ~400 |
 | `alignment/tests_rules.rs` | Multiplier and bonus per `cascadeCount`; power-ups not scored; type 7 not scored; `activate` once at goals; `dovictory` gate; timeout; idle prompt timing; hint order rotation; each cheat's effect and its state message; cheat clears not scored; `stopTimerMatch` pause and resume | ~300 |
-| `crates/minigame/tests/scripts/alignment/{a_scoring_swap,b_reset}.mgs` | Transcripts A and B (C6), with `<rng>` values frozen from the port | ~40 |
+| `crates/minigame/tests/scripts/alignment/{a_scoring_swap,b_reset}.mgs` | Transcripts A and B (C6), with `<rng>` values frozen from the port; `b_reset` ends on a refused `processreset` (no reply, no change) | ~40 |
 
 `GameKind::validation()` reaches Alignment only after AL3. The Activate alias (D-MG3 option B) is a separate content and kind packet; it is not part of AL3.
 

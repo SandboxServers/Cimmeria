@@ -68,13 +68,15 @@ impl AlignmentGame {
         self.clock_budget = self.shown_time() + CLOCK_GRACE;
     }
 
-    /// Whether the server's wall clock has run out, whatever the ticks say.
+    /// Whether the server's wall clock has run out, whatever the ticks say. A
+    /// paused clock (`timerState` 0, bit 2) cannot expire; it is re-anchored on
+    /// resume.
     pub(super) fn clock_expired(&self) -> bool {
-        self.clock_start.elapsed().as_secs_f64() >= self.clock_budget
+        self.timer_state == 1 && self.clock_start.elapsed().as_secs_f64() >= self.clock_budget
     }
 
     /// The `timerupdate` frame: the shown time and the timer state.
-    fn timer_update(&self) -> GameOutput {
+    pub(super) fn timer_update(&self) -> GameOutput {
         GameOutput::Send(sfs_vars! {
             "_cmd" => SfsValue::String("timerupdate".to_string()),
             "timeRemaining" => number(self.shown_time()),
@@ -183,6 +185,11 @@ impl AlignmentGame {
         self.current_matches.clear();
         self.cascade_count = 0;
         self.adjust_time(BONUS[step]);
+        // A pause from bit 2 ends with the score: the clock resumes and is re-anchored.
+        if self.timer_state == 0 {
+            self.timer_state = 1;
+            self.start_clock();
+        }
         out.push(self.timer_update());
         self.reset_hint_timer();
         self.hint_pause = false;
