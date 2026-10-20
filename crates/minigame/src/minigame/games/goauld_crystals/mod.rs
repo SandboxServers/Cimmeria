@@ -14,8 +14,11 @@ use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
 use crate::minigame::session::MinigameSession;
 
+mod power;
 mod setup;
 
+#[cfg(test)]
+mod tests_power;
 #[cfg(test)]
 mod tests_setup;
 
