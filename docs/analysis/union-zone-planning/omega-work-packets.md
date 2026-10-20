@@ -3,7 +3,7 @@
 > **Type:** How-to (dispatch contract and ledger)
 > **Audience:** the Union Omega coordinator, packet-coders, review-fixers, mission, movement and items advisors
 > **Last updated:** 2026-10-19 (owner decisions and the services re-slice, F36-F44, D-UO27..D-UO37), first written 2026-10-18 against `origin/main` @ `d1bba0400`; developer concept art added the same day @ `eb29b0c2c` (F27-F35, D-UO15..D-UO20)
-> **Status:** W1-W5 merged (PRs #1890, #1902, #1908, #1911 and the close-out PR); never walked in a client. On 2026-10-19 the owner answered D-UO8, D-UO11, D-UO16..D-UO19, U-D07, H-LBL, U-D08 and U-D11 (§ Owner decisions 2026-10-19). The services and Asgard work is re-sliced into waves W6-W11 (§ Packets, § Waves): W6 is Ready. Still open for the owner: D-UO32 (inn and battlemaster), D-UO33 (medic name), D-UO34 (1522 and Otin, after the UO-16 seal). Not run: the UO-U1 lab UAT, which the owner runs. This file replaces the 2026-10-14 table (UO-00..UO-08); see § Renumbering.
+> **Status:** W1-W5 merged (PRs #1890, #1902, #1908, #1911 and the close-out PR); never walked in a client. On 2026-10-19 the owner answered D-UO8, D-UO11, D-UO16..D-UO19, U-D07, H-LBL, U-D08 and U-D11 (§ Owner decisions 2026-10-19). The services and Asgard work is re-sliced into waves W6-W11 (§ Packets, § Waves). D-UO32 and D-UO33 are decided (owner); D-UO34 (1522 and Otin) has an architect default the owner may overrule (2026-10-19, W11). W6-W9 and UO-37..UO-40 are merged into the campaign branch; UO-41/UO-42 stay stubs. Not run: the UO-U1 lab UAT, which the owner runs. This file replaces the 2026-10-14 table (UO-00..UO-08); see § Renumbering.
 > **Companions:** [Omega campaign](omega.md), [Union execution contract](execution-contract.md), [SGC packets](sgc-work-packets.md), [Dakara packets](dakara-work-packets.md), [Beta packets](beta-work-packets.md), [Asgard route](asgard-route.md), [developer concept art](omega-concept-art.md), [packet folder](omega-packets/), [resume card](omega-packets/RESUME.md)
 
 ## Short answer
@@ -21,7 +21,7 @@ The owner's [developer concept art](omega-concept-art.md) (RESTORED_SOURCE layou
 - **Vendors (D-UO8 = B, D-UO16 = B):** every tier the client names (Tiers 1-4 of Human and Jaffa weapons and armor, four crafting specialties for Human, Common and Jaffa, and Consumables), on the shipped monikers, with extra spawns at the art's spots. Wave W8.
 - **Trainers (D-UO17 = c):** five class trainers on the global monikers, plus eight crafting "guides" (no crafting-trainer mechanic exists, so they speak one line each; D-UO31). Wave W9.
 - **Hub services (D-UO19 = c):** wherever an engine service exists. The Auction House gets the Black Market auctioneer and the Infirmary a healer plus a respawner. The Inn and Battlemaster have no engine service (D-UO32, BlockedDecision). Wave W9.
-- **Asgard (U-D08, U-D11, D-UO18 = b):** a remote Council hearing in the Council Chamber, with a databank prologue that issues item 3399. It starts with a design seal (UO-16, W6); its seeds (W10) wait on that seal, on D-UO34 and on a playable Asgard start.
+- **Asgard (U-D08, U-D11, D-UO18 = b):** a remote Council hearing in the Council Chamber, with a databank prologue that issues item 3399. It starts with a design seal (UO-16, W6); its W10 placements and stores are merged (UO-37..UO-40); the hearing and the 481 offer (UO-41, UO-42) follow the D-UO34 default, and only their lab run waits on a playable Asgard start.
 
 Everything still uses existing engine primitives. Nothing needs a client patch, a new opcode or a code change: the packets are seeds, chain SQL and tests. The Black Market window needs the Cimmeria client patch to draw, but its first-press chat line works without it (D-UO36). Every code packet is Haiku-sized (at most 40k working tokens).
 
@@ -97,7 +97,7 @@ Every finding was checked against the planning baseline `d1bba0400` (an ancestor
 | D-UO15 | The concept art is layout intent only. UO-01 tags every placement key with its art area (`common_area`, `sgc`, `free_jaffa`, `council`, `world_80`) and lists each disagreement in its worknote's § Art conflicts. The art never moves a coordinate, and a disagreement goes to the orchestrator, never to a coder. | Decided | F27, F34: the art is schematic and undated. The navmesh stays the coordinate source. |
 | D-UO16 | Vendor roster: **option B.** The moniker-led vendors stand in their faction's art area, with extra spawns of the same templates at the art's other spots of that kind. `svc.consumables` and `svc.common_crafting` are re-picked in the Common Area. | **Decided** (owner, 2026-10-19) | F29. D-UO28 places the tiers; UO-17..UO-20 seal the points. |
 | D-UO17 | Trainers: **(c)**, class trainers (clones of template 301 on monikers 7988/7989/7992/7993/7990) plus crafting trainers. | **Decided** (owner, 2026-10-19) | F30, F36, F37. D-UO30 gives the class trainers list 1; D-UO31 makes the crafting trainers guides, since no crafting-trainer mechanic exists. W9 builds both (UO-31, UO-35). |
-| D-UO18 | The Council Chamber: **(b)**, the venue for the Asgard remote hearing. The three combat instances stay out of scope. | **Decided** (owner, 2026-10-19) | F32. UO-16 seals the hearing; UO-41/UO-42 build it after D-UO34. |
+| D-UO18 | The Council Chamber: **(b)**, the venue for the Asgard remote hearing. The three combat instances stay out of scope. | **Decided** (owner, 2026-10-19) | F32. UO-16 seals the hearing; UO-41/UO-42 build it per the D-UO34 default. |
 | D-UO19 | Inn, Infirmary, Battlemaster and Auction House: **(c)**, authored service NPCs wherever an engine service exists. | **Decided** (owner, 2026-10-19) | F31, F38-F40. The auction house (Black Market) and the infirmary (heal plus respawner) have an engine service; the inn and the battlemaster have none (D-UO32). |
 | D-UO20 | The art's hub "Command Center" is read as the region-14 beam. The cast stays in world 80. | **Accepted** (owner, 2026-10-19) | F33: the shipped mission, dialog and ring rows all put the Command Center in world 80. |
 
@@ -120,7 +120,7 @@ D-UO21..D-UO26 are in § Overnight autonomous run 2026-10-18. D-UO27..D-UO38 fol
 | D-UO32 | **Decided (owner, 2026-10-19): (a).** Build nothing for the inn and the battlemaster. | UO-36 skipped |
 | D-UO33 | **Decided (owner, 2026-10-19):** 6964 `Castle Medic`. | UO-33 |
 | UO-98 | **Accepted (owner, 2026-10-19):** an additional status-doc change, beyond the close-out's one. | UO-98 |
-| D-UO34 | **Still deferred** (BlockedDecision). Default per UO-38 ruling R4 and UO-16 ruling R1: mission 1522 and Otin stay deferred; 63838-63839 stay reserved and unsealed. | UO-41, UO-42 |
+| D-UO34 | Not asked: the architect set a default on 2026-10-19 (owner may overrule; see the architect table). | UO-41, UO-42 |
 
 Decisions the architect made to slice the work. The owner may overrule each one; the cost is in the last column.
 
@@ -133,7 +133,7 @@ Decisions the architect made to slice the work. The owner may overrule each one;
 | D-UO31 | **Crafting trainers are guides.** No crafting-trainer mechanic exists (F37). Each of the eight art spots gets a guide (moniker 7952 `SGC Scientist`, interaction 128) whose click runs an `npc_bark` chain naming the vendors of that specialty. Mapping (inferred): Biology → Biomedical, Electronics → Electronics, Engineering → Power Systems, Physics → Materials. | Decided (architect, owner may overrule) | The owner asked for crafting trainers; this is the nearest thing the engine serves with first-press feedback and no code. | drop UO-35, or a code campaign for a crafting mechanic |
 | D-UO32 | **Inn and battlemaster.** No engine service and no moniker exists (F39). Recommend **BlockedDependency**: build nothing until a rest or PvP-queue service exists. UO-36 is written for the alternative, a bark-only placeholder on moniker 8360 `Airman` that says what the building is. | **Decided** (owner, 2026-10-19): (a), UO-36 skipped | D-UO19 (c) says "wherever an engine service exists", which excludes both. A placeholder could look like a broken service. | - |
 | D-UO33 | **Medic name.** Default moniker 6964 `Castle Medic` (an existing, shipped name). Alternatives: 7000 `Nurse Collins`, 7952 `SGC Scientist`. | **Decided** (owner, 2026-10-19): 6964 | F41. | change one `name_id` |
-| D-UO34 | **Mission 1522 and Otin.** After the UO-16 seal: is 1522 sealed (left as shipped, unreachable) or replaced by the hearing, and does Otin (28544) speak at the hearing? | **BlockedDecision** (owner), asked after UO-16 merges | F42. The seal lists the options with evidence. | - |
+| D-UO34 | **Mission 1522 and Otin.** (1) 1522 is **sealed as shipped** (UO-16 option a): never offered, no seed edit; Asgard players reach 481 through the prologue and the hearing P5 (63805). (2) **Otin does not speak.** Thor (63858) is the only hearing speaker; authored text may name "High Councillor Otin", as shipped screen 5779 does, never as a speaker and never with speaker 2509. Template 63859 and spawn 63837 are not built and stay reserved, like 63838-63839. | **Architect default, owner may overrule** (2026-10-19, W11) | Server-authoritative, no client patch, no shipped-row edit. No shipped screen has speaker 28544 (UO-16 seal S14, S17); 1522's steps 4480 and 4773 are disabled and nothing offers it (S18); world 59 has no map, so (c) cannot play. | Otin speaks: UO-42 adds 63859 and spawn 63837 (point sealed in UO-37) and UO-41 adds his lines. Option (b): fix the S6 objective collision, then edit step 4480 |
 | D-UO35 | **Service interaction bits.** Medic, inn and battlemaster use `NON_A_STORY_MISSION_AVAILABLE` (134217728), as template 390 does; guides use `TRAINER` (128), as template 1300 does; the auctioneer keeps `AUCTION` (4). UO-U1 checks the icon each one shows. | Decided (architect, owner may overrule) | These bits make the client show a use prompt; the chain answers the click. | change one column |
 | D-UO36 | **The Auction House is the Black Market auctioneer** (a spawn of stock template 305). The Black Market window needs the Cimmeria client patch; without it the chat line is the first-press feedback. | Decided (architect, owner may overrule) | F38: the only auction service the engine has. | drop UO-32 |
 | D-UO37 | **Bodies and rewards.** Every service template copies template 1302's row and column list. Human vendors, trainers, guides, the medic, the inn and the battlemaster keep 1302's body without `,WP-Human.WP_SMG_1A`; only the Human Weapons vendors keep the SMG. Jaffa templates take template 100's `body_set` and `components` with `skin_tint` 0. Asgard templates take template 64's `body_set` and `components` with `skin_tint` 0. Trainers take 301's trainer columns: `interaction_type` 128, `trainer_ability_list_id` 1, all four item lists NULL. Hub services give no XP, items or naquadah. | Decided (architect, owner may overrule; body rule refined 2026-10-19) | One body rule keeps 40-odd templates reviewable. U-D07's numbers apply to quests, not to services. | a seed-only follow-up |
@@ -176,7 +176,7 @@ Re-carved 2026-10-19 (D-UO27). Merged rows are marked (merged); every other row 
 | | 63851-63854 | Asgard Crafting, 27260-27263 (UO-40) |
 | | 63855 | medic 6964 (UO-33, D-UO33) |
 | | 63856, 63857 | inn, battlemaster (UO-36, D-UO32) |
-| | 63858, 63859 | Thor (Hologram) 28128, High Councillor Otin 28544 (UO-42, D-UO34) |
+| | 63858, 63859 | Thor (Hologram) 28128 (UO-42); 63859 High Councillor Otin 28544 reserved, unused (D-UO34 default) |
 | | 63860-63861 | ambient Airman (clone of 31), Free Jaffa Warrior (clone of 34, name 26723) (merged) |
 | | 63862 | Thor (Hologram) 28128, hub 481 offer (UO-42, UO-16 ruling R1) |
 | | 63863-63899 | spare |
@@ -189,7 +189,7 @@ Re-carved 2026-10-19 (D-UO27). Merged rows are marked (merged); every other row 
 | | 63820, 63821 | banker, Team registrar (merged) |
 | | 63822, 63823 | inn, battlemaster (UO-36) |
 | | 63824-63835 | Asgard vendors (UO-39, UO-40) |
-| | 63836-63839 | Council cast (UO-42): 63836 Thor, 63837 Otin (D-UO34); 63838-63839 reserved, unsealed (UO-38 ruling R4) |
+| | 63836-63839 | Council cast (UO-42): 63836 Thor; 63837 (Otin) reserved, unused (D-UO34 default); 63838-63839 reserved, unsealed (UO-38 ruling R4) |
 | | 63840 | Command registrar (merged) |
 | | 63841-63846 | Human Weapons: T1-T4 in the SGC wing, T1 at the east pod Weapon spot, T4 at the NW pod Adv. Weapon spot (UO-11) |
 | | 63847-63852 | Human Armor: the same pattern at the east pod Armor and NW pod Adv. Armor spots (UO-27) |
@@ -249,7 +249,7 @@ Flags are 16777216 = `INT_A_STORY_MISSION_ACTIVE` and 8388608 = `INT_A_STORY_MIS
 |---|---|---|---|
 | Human | 1655 completed; 1423 active at S4223 | gate 6 address granted | Beta 23020 on arrival in world 23 |
 | Free Jaffa | 1655 completed; 1500 active at S4369 | gate 6 | Beta 23220 |
-| Asgard | 481 at S1760 with item 3399 (design sealed by UO-16; built by UO-42, BlockedDependency on D-UO34 and a playable Asgard start) | gate 6 | Beta 23310 |
+| Asgard | 481 at S1760 with item 3399 (design sealed by UO-16; built by UO-42 per the D-UO34 default; its lab run waits on a playable Asgard start) | gate 6 | Beta 23310 |
 
 Omega fires no Beta step (D-UO2). Beta chain 23001 grants Omega's gate 5 to a player who reaches Beta first. A player who abandons 1423/1500 gets it back from Jackson or Bra'tac in world 80 (UO-09). UO-13 exports `pub(super)` departure-state fixtures in `chain_replay_tests/union_omega/handoff.rs`, so Beta's replay tests start from Omega's exact output. **Fixture ownership (settled with Beta):** UO-13 owns and exports the *departure* fixtures; Beta's UB-10, UB-20 and UB-30 build the *receiver* fixtures (the inbound state staged, Beta's chain asserted). Beta's wave B2 can run before UO-13 merges, so Beta stages the state itself and may switch to the `handoff` import once UO-13 is on `main`. Both sides assert the same table row above.
 
@@ -315,8 +315,8 @@ Beta's old "UO-07/08 receiver fixtures" citation now means the departure fixture
 | UO-38 | W10 | `items-systems-advisor` | ~30k | Asgard stock seal: lists 63821-63828 | BlockedDependency (UO-16) | [UO-38](omega-packets/UO-38.md) |
 | UO-39 | W10 | `packet-coder` | ~40k | Asgard trainer 63809 and Programs vendors 63843-63846 | BlockedDependency (UO-37, UO-38) | [UO-39](omega-packets/UO-39.md) |
 | UO-40 | W10 | `packet-coder` | ~40k | Asgard Armor and Crafting vendors 63847-63854 | BlockedDependency (UO-39's commit; W8 merged for lists 63817-63820) | [UO-40](omega-packets/UO-40.md) |
-| UO-41 | W10 | stub | - | The hearing chains (63950-63999), sliced by the UO-16 seal | BlockedDependency (D-UO34, a playable Asgard start) | [UO-41](omega-packets/UO-41.md) |
-| UO-42 | W10 | stub | - | Thor and Otin templates, 481 offer, gate 6, the `asgard_departure` fixture | BlockedDependency (D-UO34, a playable Asgard start) | [UO-42](omega-packets/UO-42.md) |
+| UO-41 | W10 | stub | - | The hearing chains (63950-63999), sliced by the UO-16 seal | stub, written in the W10 packet pass (needs UO-48's P5 rows); D-UO34 default applied | [UO-41](omega-packets/UO-41.md) |
+| UO-42 | W10 | stub | - | Thor templates (Otin reserved, unused), 481 offer, gate 6, the `asgard_departure` fixture | stub, written in the W10 packet pass (needs UO-41); D-UO34 default applied | [UO-42](omega-packets/UO-42.md) |
 | UO-98 | W11 | `documentation-writer` | ~35k | Close-out 2: chains, zone audit, UAT checklist, status docs (once) | BlockedDependency (W8, W9 merged) | [UO-98](omega-packets/UO-98.md) |
 
 ## Waves
@@ -337,7 +337,7 @@ Waves W6-W11 (2026-10-19) follow the current review loops (the `campaign-packet`
 | W7, stock seals and scaffold | UO-24, UO-25, UO-26, UO-21, UO-22, UO-23 | none; Ready now, may run beside W6 | UO-25 and UO-26 branch from UO-24's commit (`ops` branches at that SHA). The seals need no W6 output. |
 | W8, vendors | UO-11, UO-12, UO-27, UO-28, UO-29, UO-30 | W6 and W7 merged | Each reads its rows from the UO-17..UO-19 placement worknotes and the UO-21..UO-23 stock worknotes. |
 | W9, services | UO-31, UO-32, UO-33, UO-34, UO-35, then UO-36 if D-UO32 says build | W6 and W7 merged; ships after the W8 PR merges | May code beside W8; the integration branch rebases on `main` after W8 lands. UO-33 uses moniker 6964 unless D-UO33 is answered first. |
-| W10, Asgard | UO-37, UO-38, UO-39, UO-40; UO-41, UO-42 are stubs | UO-37 and UO-38: the UO-16 seal merged. `uo-w10` is cut from `main` after the W8 PR merges (UO-40 needs lists 63817-63820); UO-39 branches from `uo-w10` once UO-37 and UO-38 are in it, and UO-40 branches at UO-39's commit (`ops` branches at that SHA). UO-41/UO-42 also wait on D-UO34 and a playable Asgard start | UO-24 made no Asgard test stub, so UO-39 adds two `mod` lines (the only W8-W10 `mod.rs` edit). UO-43..UO-49 are reserved for the prologue packets the UO-16 seal slices. |
+| W10, Asgard | UO-37, UO-38, UO-39, UO-40; UO-41, UO-42 are stubs | UO-37 and UO-38: the UO-16 seal merged. `uo-w10` is cut from `main` after the W8 PR merges (UO-40 needs lists 63817-63820); UO-39 branches from `uo-w10` once UO-37 and UO-38 are in it, and UO-40 branches at UO-39's commit (`ops` branches at that SHA). UO-41/UO-42 follow the D-UO34 default; only the owner's lab run waits on a playable Asgard start | UO-24 made no Asgard test stub, so UO-39 adds two `mod` lines (the only W8-W10 `mod.rs` edit). UO-43..UO-49 are reserved for the prologue packets the UO-16 seal slices. |
 | W11, close | UO-U1 § R5 (the owner's lab run), then UO-98 | W8 and W9 merged | UO-98 is close-out 2: the reopened phase's one status-doc change, plus UO-99's deferred rows. |
 
 The U-D04 and U-D07 merge holds were lifted (D-UO25, D-UO26, decided by the architect overnight 2026-10-18 and accepted by the owner on 2026-10-19), and UO-04, UO-07, UO-08 and UO-14 merged on the normal gate. If the owner overrules D-UO26 later, revert UO-14's one commit (or trim spawns to the new cap).
@@ -355,7 +355,7 @@ Every packet inlines its rules, the chain contract (chain packets) and its lane 
 | U-D04 | **Decided (D-UO25)** by the architect overnight 2026-10-18: yes to both; Omega receives at S4940 with O6055 done and owns S4940 → S4942 and the S4942 completion. The owner may overrule. | architect (owner may overrule) | nothing |
 | **D-UO32** | **Decided (a), 2026-10-19.** The inn and the battlemaster have no engine service and no moniker (F39). **(a)** BlockedDependency: build nothing until a rest or PvP-queue service exists (recommended). **(b)** A bark-only placeholder each (UO-36: moniker 8360 `Airman`, one authored line saying what the building is, no service). | owner | UO-36 |
 | **D-UO33** | **Decided: 6964.** Which shipped name does the Omega medic wear: 6964 `Castle Medic` (default), 7000 `Nurse Collins` or 7952 `SGC Scientist`? | owner | UO-33 (uses 6964 if unanswered when W9 starts) |
-| **D-UO34** | **Open, asked after UO-16 merges.** Is mission 1522 sealed (left as shipped and unreachable) or replaced by the hearing, and does High Councillor Otin (28544) speak at the hearing? | owner | UO-41, UO-42 |
+| **D-UO34** | **Architect default (2026-10-19), owner may overrule:** 1522 sealed as shipped; Otin does not speak (63859, 63837 reserved, unused). | owner may overrule | UO-41, UO-42 |
 | U-D07 (rest) | **Decided 2026-10-19:** authored copy is allowed; authored missions pay XP 50 × level × factor and naquadah 10 × level × factor, side activities 50 %. Services pay nothing (D-UO37). | owner (answered) | nothing |
 | H-LBL | **Decided 2026-10-19:** no visible label; provenance in SQL comments only. | owner (answered) | nothing |
 | D-UO8 | **Decided 2026-10-19:** option B, every tier. | owner (answered) | nothing |
@@ -364,7 +364,7 @@ Every packet inlines its rules, the chain contract (chain packets) and its lane 
 | D-UO17 | The art draws six class trainers and eight crafting trainers; the plan has none. **(a)** None. **(b)** Class trainers only: Soldier, Scientist, Commando and Archaeologist in the SGC wing, Jaffa in the Free Jaffa wing, cloned from template 301 on the global monikers 7988/7989/7992/7993/7990. **(c)** Also the eight crafting trainers, which have no moniker anywhere and may need a mechanic the tree lacks. The Asgard trainer waits on UO-16. | owner (answered 2026-10-19: **c**) | nothing |
 | D-UO18 | The art draws a Council Chamber with three combat instances north of the hub. **(a)** Out of scope (the plan; worlds 81/82 and the physical Council stay held). **(b)** It is the venue for the Asgard remote hearing (folds into U-D08 / UO-16). **(c)** A later instance campaign. | owner (answered 2026-10-19: **b**) | nothing |
 | D-UO19 | The art draws an Inn, Infirmary, Battlemaster and Auction House in the hub, which § Rejected additions excludes for lack of a moniker. **(a)** Keep them rejected. **(b)** Location only: ambient or set dressing at those buildings, no service NPC. **(c)** Authored service NPCs wherever an engine service exists. | owner (answered 2026-10-19: **c**) | nothing; the inn and battlemaster half is D-UO32 |
-| U-D08 / U-D11 | **Decided 2026-10-19:** a remote hearing in the Council Chamber plus a databank prologue that issues item 3399. The open half is D-UO34. | owner (answered) | nothing |
+| U-D08 / U-D11 | **Decided 2026-10-19:** a remote hearing in the Council Chamber plus a databank prologue that issues item 3399. The other half is D-UO34 (architect default, owner may overrule). | owner (answered) | nothing |
 | U-D03 | **Lifted 2026-10-18** by the owner: the Union campaigns were held until FZ-99; Omega was built overnight. | owner (answered) | nothing |
 
 These items are HELD and block nothing:
@@ -376,7 +376,7 @@ These items are HELD and block nothing:
 - **Gate 5:** its row sits 0.41 m under the dais.
 - **1425 S4244:** the Jackson tail (D-UB5 / HELD-B4).
 - **1655:** the `step_enabled` flags.
-- **Otin:** moniker 28544 ships (F42); whether he speaks at the hearing is D-UO34. **Heimdall:** no evidence.
+- **Otin:** moniker 28544 ships (F42); by the D-UO34 default he does not speak at the hearing and is named in text only. **Heimdall:** no evidence.
 - **Worlds 81/82:** out of scope; D-UO18 (b) uses the Council Chamber only as the hearing venue, not its combat instances.
 - **The art's General vendor spots:** no General moniker ships; they stay unserved (D-UO28).
 - **Concept-art pod labels (F35):** the Common Area enlargement and the overview disagree on three small pods.
@@ -390,7 +390,7 @@ Each of these was rejected for lack of evidence, or because it would break a rul
 - **Woolsey at Omega:** 5025 says he must not discover the operation.
 - **Mission 631** on Omega.
 - **A "Stargate Plaza" area** from 1513.
-- **Otin** with speaker 2509 (an unnamed speaker). His moniker 28544 is a different matter: D-UO34.
+- **Otin** with speaker 2509 (an unnamed speaker). His moniker 28544 is a different matter: D-UO34 (default: unused).
 - **Any content** in worlds 81/82. The Council Chamber is now the hearing venue (D-UO18 b); its combat instances stay rejected.
 - **Ambient VO or barks** with no shipped line, on the ambient crowd. *Reopened for services:* U-D07 allows authored copy, so the guides, medic and (if D-UO32 says so) inn and battlemaster speak UO-15's lines.
 - **A guild registrar:** the Guild Center is served by the registrars (29068, UO-10). *Reopened:* the auctioneer (UO-32, D-UO36). The inn and battlemaster are D-UO32.
@@ -461,15 +461,15 @@ The owner answered the 2026-10-18 list on 2026-10-19 (§ Owner decisions 2026-10
 
 1. **D-UO32, inn and battlemaster.** Decided (a), 2026-10-19: build nothing. UO-36 is skipped.
 2. **D-UO33, the medic's name.** Decided: 6964 `Castle Medic`.
-3. **D-UO34, mission 1522 and Otin.** Asked after the UO-16 seal merges, with the seal's options. Blocks UO-41 and UO-42.
+3. **D-UO34, mission 1522 and Otin.** Architect default, 2026-10-19 (owner may overrule): 1522 sealed as shipped, Otin does not speak. Blocks nothing; UO-41 and UO-42 are written to it.
 4. **Owner review, optional:** D-UO28 (tier placement), D-UO29 (price rule), D-UO30 (list 1 for class trainers), D-UO31 (crafting guides), D-UO35 (interaction bits), D-UO36 (auction is the Black Market) and D-UO37 (bodies, no service rewards). Each is decided and each lists its cost if overruled.
-5. **External dependency:** a playable Asgard start (character-creation row 9 is `NON_CANONICAL_BLOCKED_LEGACY`, asgard-route AS-E1). Blocks UO-41/UO-42 and any Asgard UAT row.
+5. **External dependency:** a playable Asgard start (character-creation row 9 is `NON_CANONICAL_BLOCKED_LEGACY`, asgard-route AS-E1). Blocks every Asgard UAT row (UO-U1 § R5 Asgard rows, the UO-41/UO-42 lab run); chain-replay tests stage archetype 5 and do not wait on it.
 
 These HELD items block nothing built: O5646 waypoints, the H1 DHD dial-back, H2, H6, gate 5 under the dais, F35 and F28.
 
 ## UO-U1 live UAT
 
-The lab UAT has not run, and the lab is shared, so ask the user before using it. The recipe is the [`lab-uat` skill](../../../.claude/skills/lab-uat/SKILL.md), [live-research-lab.md](../../guides/live-research-lab.md) and the [UO-U1 packet](omega-packets/UO-U1.md) (fixtures R1 to R4 through `server_stage_fixture`). The checklist form is [unified-uat.md § Union Omega](../../guides/unified-uat.md#union-omega). Results go to `omega-packets/worknotes/UO-U1-results.md`, which does not exist yet. The vendor and service rows (§ R4 S3 and § R5) cannot run until W8 and W9 merge. UO-U1 stays a lab UAT the owner runs; agents never use the lab.
+The lab UAT has not run, and the lab is shared, so ask the user before using it. The recipe is the [`lab-uat` skill](../../../.claude/skills/lab-uat/SKILL.md), [live-research-lab.md](../../guides/live-research-lab.md) and the [UO-U1 packet](omega-packets/UO-U1.md) (fixtures R1 to R4 through `server_stage_fixture`). The checklist form is [unified-uat.md § Union Omega](../../guides/unified-uat.md#union-omega). Results go to `omega-packets/worknotes/UO-U1-results.md`, which does not exist yet. § R5 (refreshed in W11 from the merged seeds) lists every hub NPC with its point, `buy_count` and log line; its Asgard rows wait on F42. Selling back is refused by design: every Omega vendor's sell list is list 2, which buys only designs 21, 55 and 3437 (R5 S14). UO-U1 stays a lab UAT the owner runs; agents never use the lab.
 
 The lab owes two observations that only a client run can settle. Both came from the UO-13 reviews:
 
