@@ -286,6 +286,17 @@ mod tests {
     use super::*;
     use crate::test_support::LogCapture;
 
+    /// The held-gate reject keeps its own token: the label feeds both the
+    /// `movement.validation_reject` event and the `movement_validation_rejects_total`
+    /// counter, so a change to the arm would silently rename the series.
+    #[test]
+    fn movement_locked_reject_has_its_own_label() {
+        assert_eq!(
+            movement_reject_label(MovementReject::MovementLocked),
+            "movement_locked"
+        );
+    }
+
     /// TG-MOV-11: the 10 Hz path emits no per-packet `EntityMove` row. The
     /// sampled `movement.player` row and `movement.position_sample` cover it.
     /// Restoring the trace fails this test.

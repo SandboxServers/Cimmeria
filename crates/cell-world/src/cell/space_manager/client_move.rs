@@ -169,7 +169,7 @@ impl SpaceManager {
         // navmesh (most non-Castle zones today). The fallback is wider
         // than any legitimate world by an order of magnitude — see
         // `SpaceBounds::FALLBACK`.
-        let (bounds, last_valid, movement_unrestricted, is_gm, top_speed) = {
+        let (bounds, last_valid, movement_unrestricted, is_gm, top_speed, held) = {
             let space = match self.spaces.get(&space_id) {
                 Some(s) => s,
                 None => return ClientMoveOutcome::EntityMissing,
@@ -202,6 +202,7 @@ impl SpaceManager {
                 // the server itself authorised — and would hard-reject it once
                 // the speed layer is promoted past warn-only.
                 MovementValidator::DEFAULT_TOP_SPEED * entity.stats.movement_speed_scale(),
+                movement_lock::movement_held(entity),
             )
         };
 
@@ -257,15 +258,17 @@ impl SpaceManager {
             return self.accept(now, entity_id, position, direction, velocity);
         }
 
-        // Server hold (minigame, `BSF_PLAYING_MINIGAME`): a held player may
-        // not walk away from the spot the server put them on, whatever the
-        // client reports. Checked after the GM bypass, before any layer that
-        // could still accept the position.
-        if let Some(reason) = self
-            .get_entity(entity_id)
-            .and_then(|entity| movement_lock::check(entity, position, last_valid))
+        // Server hold (minigame, prison boot): the slack is measured from the
+        // anchor taken when the hold was first seen, not from `last_valid`, which
+        // every accepted packet moves; per-packet slack would let a modified
+        // client creep. Game masters are exempt (no anchor is kept for them).
+        if let Some(anchor) =
+            self.movement_validator
+                .hold_anchor(entity_id, held && !is_gm, last_valid)
         {
-            return self.reject_outcome(entity_id, reason, last_valid, space_id, bounds, is_gm);
+            if let Some(reason) = movement_lock::check(position, anchor) {
+                return self.reject_outcome(entity_id, reason, last_valid, space_id, bounds, is_gm);
+            }
         }
 
         // Layer 1 — bounds (also the Z-axis floor-clip / NaN / infinity gate).

@@ -1,10 +1,11 @@
 //! Server-held movement lock tests (`BSF_PLAYING_MINIGAME`).
 //!
 //! These exercise `movement_lock::check` through the cell seam: a held
-//! player may move at most 0.5 m (`HELD_SLACK_M`) horizontally from its last
-//! valid position, a game master is not gated, and a stun's movement lock
-//! alone is left to its existing paths. Reverting the gate in `client_move.rs` makes
-//! the moving-2-m test accept the move and fail.
+//! player may move at most 0.5 m (`HELD_SLACK_M`) horizontally from its hold
+//! anchor (where the hold found it; an authorized teleport moves it), a game
+//! master is not gated, and a stun's movement lock alone is left to its
+//! existing paths. Reverting the gate in `client_move.rs` makes the
+//! moving-2-m test accept the move and fail.
 
 use std::time::{Duration, Instant};
 
@@ -12,6 +13,7 @@ use cimmeria_common::Vector3;
 use cimmeria_entity::movement_validation::MovementReject;
 use cimmeria_wire::state_field::{BSF_MOVEMENT_LOCK, BSF_PLAYING_MINIGAME};
 
+use crate::cell::space_manager::movement_lock::HELD_SLACK_M;
 use crate::cell::space_manager::ClientMoveOutcome;
 
 use super::super::make_manager;
@@ -138,5 +140,131 @@ fn stun_lock_alone_does_not_gate_movement() {
             }
         ),
         "a stun lock without the minigame bit must not raise MovementLocked, got {outcome:?}"
+    );
+}
+
+/// A modified client walking in 0.4 m steps, each inside the per-packet
+/// slack, is stopped once the total walk from the hold anchor passes 0.5 m.
+/// Without the anchor the steps would be accepted one by one and the player
+/// would creep away.
+#[test]
+fn held_creeping_client_is_stopped_at_the_anchor() {
+    let (mut mgr, t0) = held_manager(BSF_PLAYING_MINIGAME);
+    let outcomes: Vec<ClientMoveOutcome> = (1..=8u64)
+        .map(|i| {
+            let x = SPAWN_POS[0] + 0.4 * i as f32;
+            mgr.apply_client_position_update_at(
+                t0 + Duration::from_millis(100 * i),
+                100,
+                [x, SPAWN_POS[1], SPAWN_POS[2]],
+                [0, 0, 0],
+                [0.0; 3],
+            )
+        })
+        .collect();
+    assert!(
+        matches!(outcomes[0], ClientMoveOutcome::Accepted { .. }),
+        "the first 0.4 m step is inside the slack, got {outcomes:?}"
+    );
+    let first_reject = outcomes
+        .iter()
+        .position(|o| {
+            matches!(
+                o,
+                ClientMoveOutcome::Rejected {
+                    reason: MovementReject::MovementLocked,
+                    ..
+                }
+            )
+        })
+        .unwrap_or_else(|| panic!("the creep must be rejected at the anchor, got {outcomes:?}"));
+    assert!(
+        outcomes[first_reject + 1..]
+            .iter()
+            .all(|o| !matches!(o, ClientMoveOutcome::Accepted { .. })),
+        "no step after the first reject may be accepted, got {outcomes:?}"
+    );
+    let pos = mgr.get_entity(100).unwrap().position;
+    let dx = pos.x - SPAWN_POS[0];
+    let dz = pos.z - SPAWN_POS[2];
+    assert!(
+        (dx * dx + dz * dz).sqrt() <= HELD_SLACK_M,
+        "the held player must stay within the slack of the anchor, at x={}",
+        pos.x
+    );
+}
+
+/// An authorized teleport during the hold moves the anchor with the player:
+/// the server put the player 5 m away, so a step from the new spot is judged
+/// from there and accepted.
+#[test]
+fn held_anchor_moves_with_an_authorized_teleport() {
+    let (mut mgr, t0) = held_manager(BSF_PLAYING_MINIGAME);
+    let at_anchor = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(100),
+        100,
+        SPAWN_POS,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(at_anchor, ClientMoveOutcome::Accepted { .. }),
+        "the held packet at the anchor must be accepted, got {at_anchor:?}"
+    );
+    let moved = [SPAWN_POS[0] + 5.0, SPAWN_POS[1], SPAWN_POS[2]];
+    mgr.update_position_preserving_facing(100, moved, [0.0; 3]);
+    mgr.note_authorized_teleport(100);
+    let step = [SPAWN_POS[0] + 5.3, SPAWN_POS[1], SPAWN_POS[2]];
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(300),
+        100,
+        step,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(outcome, ClientMoveOutcome::Accepted { .. }),
+        "a step from the post-teleport spot must be judged from it, got {outcome:?}"
+    );
+}
+
+/// A released hold leaves no stale anchor: once the bit is cleared the player
+/// may move freely, and the next hold anchors where they now stand.
+#[test]
+fn released_hold_leaves_no_stale_anchor() {
+    let (mut mgr, t0) = held_manager(BSF_PLAYING_MINIGAME);
+    let at_anchor = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(100),
+        100,
+        SPAWN_POS,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(matches!(at_anchor, ClientMoveOutcome::Accepted { .. }));
+    mgr.get_entity_mut(100).unwrap().state_field &= !BSF_PLAYING_MINIGAME;
+    let free = [SPAWN_POS[0] + 2.0, SPAWN_POS[1], SPAWN_POS[2]];
+    let released = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(1000),
+        100,
+        free,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(released, ClientMoveOutcome::Accepted { .. }),
+        "an unheld player must move freely, got {released:?}"
+    );
+    mgr.get_entity_mut(100).unwrap().state_field |= BSF_PLAYING_MINIGAME;
+    let rehold = [SPAWN_POS[0] + 2.3, SPAWN_POS[1], SPAWN_POS[2]];
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(1100),
+        100,
+        rehold,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(outcome, ClientMoveOutcome::Accepted { .. }),
+        "a new hold must anchor at the released spot, not the old one, got {outcome:?}"
     );
 }
