@@ -224,7 +224,21 @@ mod tests {
                 "MovementSlow",
                 "Knockdown",
                 "Interrupt",
+                "StartMinigame",
             ]
+        );
+    }
+
+    /// MG-24 review N5: the `StartMinigame` name list is a copy of the game
+    /// kinds, so this test fails when the two drift apart (a renamed or added
+    /// kind, or a reordered list).
+    #[test]
+    fn the_start_minigame_script_names_every_minigame_kind() {
+        use cimmeria_minigame::minigame::games::GameKind;
+        let kinds: Vec<&str> = GameKind::ALL.iter().map(|k| k.name()).collect();
+        assert_eq!(
+            cimmeria_cell_effect_scripts::cell::effects::start_minigame::MINIGAME_TYPE_NAMES,
+            kinds.as_slice()
         );
     }
 

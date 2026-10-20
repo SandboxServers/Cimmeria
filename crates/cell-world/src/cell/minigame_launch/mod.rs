@@ -44,22 +44,15 @@ pub const MINIGAME_TECH_COMPETENCY: u32 = 1;
 ///
 /// The player's level, intelligence and ability mask are read from the live
 /// entity, so a levelled or buffed player is not served 1/0. Fails closed: an
-/// entity the cell no longer holds (its id may already be recycled) gets no
-/// send and no hold, and the call returns false.
+/// entity the cell no longer holds gets no send and no hold, and the call
+/// returns false. So does an entity whose live player id is not the request's
+/// (its id was recycled to another player, MG-24 review F1).
 pub async fn launch_minigame(
     req: MinigameLaunchRequest,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
-    let Some((player_level, intelligence, abilities_mask)) =
-        space_mgr.get_entity(req.entity_id).map(|e| {
-            let int = e
-                .stats
-                .get(cimmeria_entity::stats::INTELLIGENCE)
-                .map_or(0, |s| s.cur.max(0) as u32);
-            (e.level, int, modifiers::abilities_mask(e))
-        })
-    else {
+    let Some(entity) = space_mgr.get_entity(req.entity_id) else {
         tracing::warn!(
             entity_id = req.entity_id,
             entity_name = space_mgr.entity_names(req.entity_id).entity_name,
@@ -71,6 +64,23 @@ pub async fn launch_minigame(
         );
         return false;
     };
+    if entity.player_id != Some(req.player_id) {
+        tracing::warn!(
+            entity_id = req.entity_id,
+            entity_name = space_mgr.entity_names(req.entity_id).entity_name,
+            player_id = req.player_id, // nt:id-only the player's name is not held on this path
+            game_name = %req.game_name,
+            source = req.source,
+            reason = "player_mismatch",
+            "StartMinigame: entity no longer holds the requested player -- minigame not launched"
+        );
+        return false;
+    }
+    let intelligence = entity
+        .stats
+        .get(cimmeria_entity::stats::INTELLIGENCE)
+        .map_or(0, |s| s.cur.max(0) as u32);
+    let (player_level, abilities_mask) = (entity.level, modifiers::abilities_mask(entity));
     if let Err(e) = tx
         .send(CellToBaseMsg::StartMinigame {
             entity_id: req.entity_id,

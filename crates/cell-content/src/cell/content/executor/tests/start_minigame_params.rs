@@ -29,6 +29,8 @@ async fn start_minigame_holds_playing_bit_and_movement_lock() {
     let mut mgr = make_space_mgr();
     mgr.create_entity(8, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
     mgr.get_entity_mut(8).unwrap().is_player = true;
+    // The launch names player 42, so the entity must hold it (MG-24 F1).
+    mgr.get_entity_mut(8).unwrap().player_id = Some(42);
 
     let (tx, mut rx) = mpsc::channel(8);
     let engine = ChainEngine::new();

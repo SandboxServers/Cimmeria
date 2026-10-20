@@ -44,7 +44,36 @@ fn mgr_with_player() -> SpaceManager {
     .unwrap();
     mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
     mgr.get_entity_mut(1).unwrap().is_player = true;
+    mgr.get_entity_mut(1).unwrap().player_id = Some(7);
     mgr
+}
+
+/// MG-24 review F1: a launch for a player id the entity no longer holds (its
+/// id was recycled to another player) sends nothing and takes no hold.
+/// Revert: without the `player_mismatch` check the new occupant is launched
+/// for the departed player.
+#[tokio::test]
+async fn launch_refuses_a_recycled_entity_id() {
+    let mut mgr = mgr_with_player();
+    mgr.get_entity_mut(1).unwrap().player_id = Some(9);
+    let (tx, mut rx) = mpsc::channel(8);
+    let req = MinigameLaunchRequest {
+        entity_id: 1,
+        player_id: 7,
+        game_name: "Livewire".into(),
+        difficulty: 1,
+        on_victory_chains: vec![],
+        on_failure_chains: vec![],
+        source: "effect_script",
+    };
+
+    assert!(!launch_minigame(req, &tx, &mut mgr).await);
+
+    assert!(rx.try_recv().is_err());
+    assert_eq!(
+        mgr.get_entity(1).unwrap().state_field & BSF_PLAYING_MINIGAME,
+        0
+    );
 }
 
 /// The launch carries the player's known ability as bit 0 and sets the hold.

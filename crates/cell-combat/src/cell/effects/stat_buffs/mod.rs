@@ -69,6 +69,9 @@ use crate::cell::space_manager::SpaceManager;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod minigame_drain_tests;
+
 /// The horizon a held toggle's icon counts down from: a day, longer than
 /// any play session. The client shows it as the time remaining in the
 /// icon's tooltip; nothing on the server expires at the end of it.
