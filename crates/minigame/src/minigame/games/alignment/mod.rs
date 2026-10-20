@@ -13,11 +13,13 @@ use rand::SeedableRng;
 use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
 use crate::minigame::session::MinigameSession;
-use crate::sfs_vars;
 
+mod piece;
 mod setup;
 #[cfg(test)]
 mod tests_setup;
+
+use piece::Piece;
 
 /// Flipped to `true` by MG-AL3 only, once victory is server-decided.
 pub(crate) const PORTED: bool = false;
@@ -33,6 +35,8 @@ pub(crate) enum Phase {
 /// Alignment game state for one session.
 pub(crate) struct AlignmentGame {
     entity_id: u32,
+    player_id: i32,
+    player_name: Option<String>,
     tech_competency: u32,
     abilities_mask: u32,
     /// Tier 1-4, clamped from the session's difficulty.
@@ -40,10 +44,10 @@ pub(crate) struct AlignmentGame {
     /// Goal level 0-10, from `techcomp`.
     level: u8,
     rng: StdRng,
-    /// Piece ids indexed `[x][y]`.
-    board: Vec<Vec<u8>>,
+    /// Pieces indexed `[x][y]`.
+    board: Vec<Vec<Piece>>,
     /// The board the copy reset restores.
-    board_init: Vec<Vec<u8>>,
+    board_init: Vec<Vec<Piece>>,
     goal_scores: Vec<u32>,
     goal_totals: Vec<u32>,
     goal_icons: Vec<u8>,
@@ -62,27 +66,51 @@ pub(crate) struct AlignmentGame {
 impl AlignmentGame {
     /// Builds the game for a session and draws its board from the session seed.
     pub(crate) fn new(session: &MinigameSession) -> Self {
-        let tier = setup::clamp_tier(session.difficulty);
+        let tier = setup::clamp_tier(
+            session.difficulty,
+            session.entity_id,
+            session.player_name.as_deref(),
+        );
         let mut rng = StdRng::seed_from_u64(u64::from(session.seed));
         let board = setup::select_icons(&mut rng, tier);
         Self::build(session, rng, board)
     }
 
-    /// Test-only: builds the game with an injected board, so tests can predict
-    /// every move (spec section 9).
+    /// Test-only: builds the game with an injected board of plain piece ids, so
+    /// tests can predict every move (spec section 9).
     #[cfg(test)]
     pub(crate) fn with_board(session: &MinigameSession, board: Vec<Vec<u8>>) -> Self {
+        let pieces = board
+            .iter()
+            .map(|column| column.iter().map(|&kind| Piece::plain(kind)).collect())
+            .collect();
+        Self::with_pieces(session, pieces)
+    }
+
+    /// Test-only: builds the game with an injected board that may hold power-ups.
+    #[cfg(test)]
+    pub(crate) fn with_pieces(session: &MinigameSession, board: Vec<Vec<Piece>>) -> Self {
         let rng = StdRng::seed_from_u64(u64::from(session.seed));
         Self::build(session, rng, board)
     }
 
-    fn build(session: &MinigameSession, rng: StdRng, board: Vec<Vec<u8>>) -> Self {
-        let tier = setup::clamp_tier(session.difficulty);
-        let level = setup::level_for(session.tech_competency);
+    fn build(session: &MinigameSession, rng: StdRng, board: Vec<Vec<Piece>>) -> Self {
+        let tier = setup::clamp_tier(
+            session.difficulty,
+            session.entity_id,
+            session.player_name.as_deref(),
+        );
+        let level = setup::level_for(
+            session.tech_competency,
+            session.entity_id,
+            session.player_name.as_deref(),
+        );
         let spec = setup::tier_spec(tier);
         let goal_totals = setup::goal_totals(tier, level);
         Self {
             entity_id: session.entity_id,
+            player_id: session.player_id,
+            player_name: session.player_name.clone(),
             tech_competency: session.tech_competency,
             abilities_mask: session.abilities_mask,
             tier,
@@ -122,6 +150,7 @@ impl MinigameInstance for AlignmentGame {
     fn started(&mut self) -> Vec<GameOutput> {
         tracing::info!(
             entity_id = self.entity_id,
+            entity_name = self.player_name.as_deref(),
             tier = self.tier,
             level = self.level,
             "Alignment started"
@@ -131,6 +160,15 @@ impl MinigameInstance for AlignmentGame {
 
     fn message(&mut self, cmd: &str, _params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
         if self.phase == Phase::Ended {
+            tracing::warn!(
+                entity_id = self.entity_id,
+                entity_name = self.player_name.as_deref(),
+                player_id = self.player_id,
+                player_name = self.player_name.as_deref(),
+                cmd,
+                reason = "game_ended",
+                "Alignment: command after the end"
+            );
             return vec![];
         }
         match cmd {
@@ -138,10 +176,19 @@ impl MinigameInstance for AlignmentGame {
             _ => {
                 // Every other command belongs to a later slice (AL2, AL3). A
                 // client `victory` lands here too: the server decides victory.
-                tracing::debug!(
+                let reason = if cmd == "victory" {
+                    "client_victory_refused"
+                } else {
+                    "unknown_command"
+                };
+                tracing::warn!(
                     entity_id = self.entity_id,
+                    entity_name = self.player_name.as_deref(),
+                    player_id = self.player_id,
+                    player_name = self.player_name.as_deref(),
                     cmd,
-                    "Alignment: command not handled yet"
+                    reason,
+                    "Alignment: command refused"
                 );
                 vec![]
             }
@@ -152,15 +199,15 @@ impl MinigameInstance for AlignmentGame {
         vec![]
     }
 
+    /// The client socket is already gone when an abort arrives, so the game
+    /// ends silently (D-MG17): no frame is sent.
     fn aborted(&mut self) -> Vec<GameOutput> {
         if self.phase == Phase::Ended {
             return vec![];
         }
         self.phase = Phase::Ended;
         self.outcome = Some("canceled");
-        vec![GameOutput::Send(sfs_vars! {
-            "_cmd" => SfsValue::String("failure".to_string()),
-        })]
+        vec![]
     }
 
     fn needs_tick(&self) -> bool {

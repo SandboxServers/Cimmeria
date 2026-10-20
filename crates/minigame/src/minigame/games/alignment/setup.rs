@@ -1,11 +1,12 @@
 //! Alignment setup: the tier and goal tables (spec section 4), the board
 //! generation (section 3) and the `fullgamestate` builder (section 5).
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 use rand::rngs::StdRng;
 use rand::RngExt;
 
+use super::piece::Piece;
 use super::AlignmentGame;
 use crate::minigame::protocol::SfsValue;
 use crate::sfs_vars;
@@ -85,21 +86,33 @@ pub(super) fn tier_spec(tier: u8) -> TierSpec {
 }
 
 /// Clamps a difficulty to the tier range 1-4, logging when it clamps.
-pub(super) fn clamp_tier(difficulty: u32) -> u8 {
+pub(super) fn clamp_tier(difficulty: u32, entity_id: u32, entity_name: Option<&str>) -> u8 {
     let tier = difficulty.clamp(1, 4);
     if tier != difficulty {
-        tracing::info!(difficulty, tier, "Alignment: difficulty clamped to a tier");
+        tracing::info!(
+            entity_id,
+            entity_name,
+            difficulty,
+            tier,
+            "Alignment: difficulty clamped to a tier"
+        );
     }
     tier as u8
 }
 
 /// The goal level for a `techcomp`, `floor((techcomp - 1) / 5)` clamped to
 /// 0-10, logging when it clamps.
-pub(super) fn level_for(techcomp: u32) -> u8 {
+pub(super) fn level_for(techcomp: u32, entity_id: u32, entity_name: Option<&str>) -> u8 {
     let raw = (i64::from(techcomp) - 1).div_euclid(5);
     let level = raw.clamp(0, 10);
     if level != raw {
-        tracing::info!(techcomp, level, "Alignment: goal level clamped");
+        tracing::info!(
+            entity_id,
+            entity_name,
+            techcomp,
+            level,
+            "Alignment: goal level clamped"
+        );
     }
     level as u8
 }
@@ -124,7 +137,7 @@ const OFFSETS_EVEN: [(i32, i32); 6] = [(-1, 0), (-1, 1), (0, 1), (1, 0), (0, -1)
 const OFFSETS_ODD: [(i32, i32); 6] = [(-1, 0), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1)];
 
 /// Neighbour `n` (0-5) of cell `(x, y)`, or `None` when it is off the board.
-fn neighbour(board: &[Vec<u8>], x: usize, y: usize, n: usize) -> Option<(usize, usize)> {
+fn neighbour(board: &[Vec<Piece>], x: usize, y: usize, n: usize) -> Option<(usize, usize)> {
     let offsets = if y.is_multiple_of(2) {
         OFFSETS_EVEN
     } else {
@@ -140,106 +153,125 @@ fn neighbour(board: &[Vec<u8>], x: usize, y: usize, n: usize) -> Option<(usize, 
     (ny < column.len()).then_some((nx, ny))
 }
 
-/// The two neighbours that make a triangle with cell `(x, y)`, when both are
-/// on the board and share its type (spec section 3, `checkForMatches`).
-fn triangle_partners(
-    board: &[Vec<u8>],
-    x: usize,
-    y: usize,
-) -> Option<((usize, usize), (usize, usize))> {
-    let kind = board[x][y];
+/// Whether cell `(x, y)` sits in a triangle of three equal types: some pair of
+/// its neighbours is on the board and shares its type. Blockers never match.
+fn in_triangle(board: &[Vec<Piece>], x: usize, y: usize) -> bool {
+    let kind = board[x][y].kind;
     if kind == 9 {
-        return None;
+        return false;
     }
-    TRIANGLE_PAIRS.iter().find_map(|&(a, b)| {
-        let first = neighbour(board, x, y, a)?;
-        let second = neighbour(board, x, y, b)?;
-        let same = board[first.0][first.1] == kind && board[second.0][second.1] == kind;
-        same.then_some((first, second))
+    TRIANGLE_PAIRS.iter().any(|&(a, b)| {
+        let (Some(first), Some(second)) = (neighbour(board, x, y, a), neighbour(board, x, y, b))
+        else {
+            return false;
+        };
+        board[first.0][first.1].kind == kind && board[second.0][second.1].kind == kind
     })
 }
 
-/// Every cell that is matched on the board, in `x` then `y` order (spec section
-/// 3). A triangle of three equal hexes is a seed, and a breadth-first flood
-/// takes its whole connected group of the same type.
-pub(super) fn check_for_matches(board: &[Vec<u8>]) -> Vec<(usize, usize)> {
-    let mut matched: Vec<Vec<bool>> = board
-        .iter()
-        .map(|column| vec![false; column.len()])
-        .collect();
-    let mut queue = VecDeque::new();
+/// The triangle seeds of spec section 3 (`checkForMatches`): every cell in a
+/// triangle, in `x` then `y` order, each once. Matching uses the piece type, so
+/// a power-up matches its base type.
+pub(super) fn check_for_matches(board: &[Vec<Piece>]) -> Vec<(usize, usize)> {
+    let mut seeds = Vec::new();
     for x in 0..board.len() {
         for y in 0..board[x].len() {
-            let Some((first, second)) = triangle_partners(board, x, y) else {
-                continue;
-            };
-            for cell in [(x, y), first, second] {
-                if !matched[cell.0][cell.1] {
-                    matched[cell.0][cell.1] = true;
-                    queue.push_back(cell);
-                }
+            if in_triangle(board, x, y) {
+                seeds.push((x, y));
             }
         }
     }
-    while let Some((x, y)) = queue.pop_front() {
-        let kind = board[x][y];
+    seeds
+}
+
+/// The flood of spec section 3 (`checkNeighborMatches`): a breadth-first walk
+/// from `seeds` through every neighbour of the same type. Returns the cells in
+/// visit order, seeds first.
+pub(super) fn check_neighbor_matches(
+    board: &[Vec<Piece>],
+    seeds: &[(usize, usize)],
+) -> Vec<(usize, usize)> {
+    let mut seen: Vec<Vec<bool>> = board
+        .iter()
+        .map(|column| vec![false; column.len()])
+        .collect();
+    let mut group = Vec::new();
+    for &(x, y) in seeds {
+        if !seen[x][y] {
+            seen[x][y] = true;
+            group.push((x, y));
+        }
+    }
+    // `group` doubles as the queue: `head` is the next cell to expand.
+    let mut head = 0;
+    while head < group.len() {
+        let (x, y) = group[head];
+        head += 1;
+        let kind = board[x][y].kind;
         for n in 0..6 {
             let Some((nx, ny)) = neighbour(board, x, y, n) else {
                 continue;
             };
-            if !matched[nx][ny] && board[nx][ny] == kind {
-                matched[nx][ny] = true;
-                queue.push_back((nx, ny));
+            if !seen[nx][ny] && board[nx][ny].kind == kind {
+                seen[nx][ny] = true;
+                group.push((nx, ny));
             }
         }
     }
-    let mut cells = Vec::new();
-    for (x, column) in matched.iter().enumerate() {
-        for (y, &hit) in column.iter().enumerate() {
-            if hit {
-                cells.push((x, y));
-            }
-        }
-    }
-    cells
+    group
 }
 
-/// Fills a square board for a tier with no initial match (spec section 3).
-/// The first quarter of the cells, in `x` then `y` order, are bonus icons; the
-/// rest are goal icons. Matched cells are re-rolled until none remain.
-///
-/// The 5% power-up roll (`t + 0.p`) is not drawn: the board holds `u8` piece ids
-/// (the packet's board type), which cannot carry a fractional power-up.
-pub(super) fn select_icons(rng: &mut StdRng, tier: u8) -> Vec<Vec<u8>> {
+/// Fills a square board for a tier, before any re-roll (spec section 3). The
+/// first quarter of the cells, in `x` then `y` order, are bonus icons; the rest
+/// are goal icons. Each bonus cell draws its type, then a 5% roll for a
+/// power-up (`t + 0.1`); goal cells draw no roll.
+pub(super) fn fill_board(rng: &mut StdRng, tier: u8) -> Vec<Vec<Piece>> {
     let size = TIER_SIZE[usize::from(tier) - 1];
     let goal_icons = tier_spec(tier).goal_icons;
     let bonus_count = ((size * size) as f64 * 0.25).round() as usize;
-    let mut board = vec![vec![0u8; size]; size];
+    let mut board = vec![vec![Piece::plain(0); size]; size];
     let mut k = 0;
     for column in board.iter_mut() {
         for cell in column.iter_mut() {
             *cell = if k < bonus_count {
-                BONUS_ICONS[rng.random_range(0..BONUS_ICONS.len())]
+                let kind = BONUS_ICONS[rng.random_range(0..BONUS_ICONS.len())];
+                let power = u8::from(rng.random_range(1..=100) <= 5);
+                Piece { kind, power }
             } else {
-                goal_icons[rng.random_range(0..goal_icons.len())]
+                Piece::plain(goal_icons[rng.random_range(0..goal_icons.len())])
             };
             k += 1;
         }
     }
+    board
+}
+
+/// Re-rolls the triangle seeds until no match remains (spec section 3). A seed
+/// that is a plain bonus icon is re-rolled from the bonus icons; anything else,
+/// including a power-up, is re-rolled from the goal icons and loses its power.
+pub(super) fn reroll_matches(rng: &mut StdRng, board: &mut [Vec<Piece>], goal_icons: &[u8]) {
     loop {
-        let matches = check_for_matches(&board);
-        if matches.is_empty() {
-            return board;
+        let seeds = check_for_matches(board);
+        if seeds.is_empty() {
+            return;
         }
-        for (x, y) in matches {
-            let pool: &[u8] = if BONUS_ICONS.contains(&board[x][y]) {
+        for (x, y) in seeds {
+            let cell = board[x][y];
+            let pool: &[u8] = if cell.power == 0 && BONUS_ICONS.contains(&cell.kind) {
                 &BONUS_ICONS
             } else {
                 goal_icons
             };
-            board[x][y] = pool[rng.random_range(0..pool.len())];
+            board[x][y] = Piece::plain(pool[rng.random_range(0..pool.len())]);
         }
     }
+}
+
+/// Generates the initial board for a tier with no match left on it.
+pub(super) fn select_icons(rng: &mut StdRng, tier: u8) -> Vec<Vec<Piece>> {
+    let mut board = fill_board(rng, tier);
+    reroll_matches(rng, &mut board, tier_spec(tier).goal_icons);
+    board
 }
 
 /// A number value; every SFS number is a double.
@@ -257,7 +289,11 @@ impl AlignmentGame {
     /// The item cheats are off (`instcc -1`, `CA0`-`CA4 0`) until AL3b.
     pub(super) fn full_game_state(&self) -> HashMap<String, SfsValue> {
         let size = self.board.len();
-        let game_array = SfsValue::list(self.board.iter().map(|column| number_list(column)));
+        let game_array = SfsValue::list(
+            self.board
+                .iter()
+                .map(|column| SfsValue::list(column.iter().map(|piece| number(piece.wire())))),
+        );
         sfs_vars! {
             "_cmd" => SfsValue::String("fullgamestate".to_string()),
             "numResets" => number(self.num_resets),
