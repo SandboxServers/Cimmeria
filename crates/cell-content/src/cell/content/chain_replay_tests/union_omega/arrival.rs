@@ -210,13 +210,19 @@ async fn live_db_every_omega_bind_removes_before_it_adds() {
 
 /// Service tags of the hub services (chains 63850-63869, `interact_tag`). Each
 /// names spawns of a template that carries its interaction bit as a default.
-const SERVICE_TAGS: [&str; 8] = [
+/// Each crafting guide has its own tag (`spawnlist.tag` is unique), so guide
+/// chains 63852-63855 carry two triggers each, plain and Adv. (UO-35).
+const SERVICE_TAGS: [&str; 12] = [
     "UnionOmega_Auctioneer",
     "UnionOmega_Medic",
     "UnionOmega_Guide_Biology",
+    "UnionOmega_Guide_AdvBiology",
     "UnionOmega_Guide_Electronics",
+    "UnionOmega_Guide_AdvElectronics",
     "UnionOmega_Guide_Engineering",
+    "UnionOmega_Guide_AdvEngineering",
     "UnionOmega_Guide_Physics",
+    "UnionOmega_Guide_AdvPhysics",
     "UnionOmega_Inn",
     "UnionOmega_Battlemaster",
 ];
