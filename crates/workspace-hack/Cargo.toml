@@ -41,9 +41,7 @@ memchr = { version = "2" }
 num-traits = { version = "0.2", features = ["libm"] }
 once_cell = { version = "1" }
 percent-encoding = { version = "2" }
-rand-274715c4dabd11b0 = { package = "rand", version = "0.9" }
-rand-93f6ce9d446188ac = { package = "rand", version = "0.10" }
-rand_chacha = { version = "0.9", default-features = false, features = ["std"] }
+rand = { version = "0.10" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-build", "dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
 reqwest = { version = "0.13", features = ["blocking", "json"] }
@@ -93,7 +91,7 @@ memchr = { version = "2" }
 num-traits = { version = "0.2", features = ["libm"] }
 once_cell = { version = "1" }
 percent-encoding = { version = "2" }
-rand-93f6ce9d446188ac = { package = "rand", version = "0.10" }
+rand = { version = "0.10" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-build", "dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf-inline", "perf-literal", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }

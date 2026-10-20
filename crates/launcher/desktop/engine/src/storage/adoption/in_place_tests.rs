@@ -271,7 +271,7 @@ fn rar_seed(zip_bytes: &[u8], path: &Path) -> Vec<u8> {
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).unwrap();
         // RAR names use `\` on Windows, as the stock client's archive does.
-        let name = entry.name().replace('/', "\\");
+        let name = entry.name().unwrap().replace('/', "\\");
         let mut data = Vec::new();
         entry.read_to_end(&mut data).unwrap();
         entries.push((name, data));

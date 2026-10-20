@@ -127,7 +127,10 @@ pub(in crate::storage::updater) fn extract(
         let entry = archive
             .by_index(index)
             .map_err(|_| refuse("unreadable_entry", ""))?;
-        let name = entry.name().to_owned();
+        let name = entry
+            .name()
+            .map_err(|_| refuse("unreadable_entry", ""))?
+            .into_owned();
         if entry.is_symlink() {
             return Err(refuse("link_entry", &name));
         }
