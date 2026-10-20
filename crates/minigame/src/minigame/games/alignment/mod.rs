@@ -2,9 +2,10 @@
 //!
 //! MG-AL1 is the setup and the state shell; MG-AL2a adds the server-validated
 //! swap and matching (`moves.rs`); MG-AL2b adds the cascade, the gravity and
-//! the refill (`cascade.rs`, `moves_gravity.rs`). `create()` still hands the
-//! name to the placeholder: `PORTED` stays `false` until MG-AL3, so nothing
-//! here is reachable from content yet. The shell is exercised by the tests only.
+//! the refill (`cascade.rs`, `moves_gravity.rs`); MG-AL3a adds the score, the
+//! victory, the countdown with its wall clock, and the hints (`rules.rs`).
+//! `create()` still hands the name to the placeholder: `PORTED` stays `false`
+//! until MG-AL3b, so nothing here is reachable from content yet.
 #![allow(dead_code)] // unreachable until MG-AL3 flips PORTED; the tests build it
 
 use std::collections::HashMap;
@@ -20,6 +21,7 @@ mod cascade;
 mod moves;
 mod moves_gravity;
 mod piece;
+mod rules;
 mod setup;
 #[cfg(test)]
 mod tests_cascade;
@@ -28,7 +30,11 @@ mod tests_moves;
 #[cfg(test)]
 mod tests_refill;
 #[cfg(test)]
+mod tests_rules;
+#[cfg(test)]
 mod tests_setup;
+
+use std::time::Instant;
 
 use piece::Piece;
 
@@ -98,6 +104,20 @@ pub(crate) struct AlignmentGame {
     cascade_count: u32,
     /// The gravity direction index, 0-5 (`dropIndex`).
     drop_index: u8,
+    /// Set once `checkForVictory` has sent `activate`; `dovictory` needs it.
+    armed: bool,
+    /// Set by an accepted swap and cleared by a no-match or `doscore`: the idle
+    /// hint prompt waits meanwhile (`hintTimerPause`).
+    hint_pause: bool,
+    /// The countdown value at the last hint prompt, reset, or score
+    /// (`hintLastTime`).
+    hint_last_time: f64,
+    /// The idle gap in seconds before the next prompt (`hintTimer`).
+    hint_timer: f64,
+    /// The server's wall clock: when it started and how many seconds it allows.
+    /// Enforced with the countdown, so a late tick cannot keep a game alive.
+    clock_start: Instant,
+    clock_budget: f64,
 }
 
 impl AlignmentGame {
@@ -146,6 +166,7 @@ impl AlignmentGame {
         );
         let spec = setup::tier_spec(tier);
         let goal_totals = setup::goal_totals(tier, level);
+        let shown = f64::from(spec.time);
         Self {
             entity_id: session.entity_id,
             player_id: session.player_id,
@@ -172,6 +193,12 @@ impl AlignmentGame {
             refusals: 0,
             cascade_count: 0,
             drop_index: 0,
+            armed: false,
+            hint_pause: false,
+            hint_last_time: shown,
+            hint_timer: rules::FIRST_HINT_GAP,
+            clock_start: Instant::now(),
+            clock_budget: shown,
         }
     }
 
@@ -195,6 +222,7 @@ impl AlignmentGame {
         match moves::swap_pieces(&self.board, cells) {
             Some((board, outcome)) => {
                 self.board = board;
+                self.hint_pause = true;
                 self.phase = Phase::AwaitCascade;
                 self.current_matches = outcome.flood.clone();
                 self.current_scores.clear();
@@ -208,7 +236,11 @@ impl AlignmentGame {
                     )),
                 ]
             }
-            None => vec![GameOutput::Send(moves::hexspinner(params, &[], 3))],
+            None => {
+                // A no-match swap leaves the board alone and unpauses the hints.
+                self.hint_pause = false;
+                vec![GameOutput::Send(moves::hexspinner(params, &[], 3))]
+            }
         }
     }
 
@@ -310,6 +342,7 @@ fn logs_refusal(n: u32) -> bool {
 
 impl MinigameInstance for AlignmentGame {
     fn started(&mut self) -> Vec<GameOutput> {
+        self.start_clock();
         tracing::info!(
             entity_id = self.entity_id,
             entity_name = self.player_name.as_deref(),
@@ -323,9 +356,18 @@ impl MinigameInstance for AlignmentGame {
     fn message(&mut self, cmd: &str, params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
         // The command is client text: it is cut before it reaches a log line.
         let logged = log_text(cmd);
-        if self.phase == Phase::Ended {
+        if self.outcome.is_some() {
             self.refuse(logged, "game_ended");
             return vec![];
+        }
+        // The wall clock is checked before any command is acted on.
+        if self.clock_expired() {
+            return self.time_out();
+        }
+        // The countdown too: a `callhint` may leave the shown time at or below
+        // zero until the next tick, so the game ends here (authority F1).
+        if self.timer_state >= 1 && self.shown_time() <= 0.0 {
+            return self.time_out();
         }
         match cmd {
             // The reset is refused, as the CrystalGame ruling does: no reply
@@ -337,9 +379,14 @@ impl MinigameInstance for AlignmentGame {
             "swappieces" => self.swap(params),
             "cascade" => self.cascade(),
             "checkForCascade" => self.check_for_cascade(),
-            // The hint timer (`resethinttimer`) only feeds the hint, which is
-            // MG-AL3's; the client expects no reply.
-            "resethinttimer" => vec![],
+            "doscore" => self.do_score(),
+            "dovictory" => self.do_victory(),
+            "callhint" => self.call_hint(),
+            // The client expects no reply to the hint timer reset.
+            "resethinttimer" => {
+                self.reset_hint_timer();
+                vec![]
+            }
             _ => {
                 // Every other command belongs to a later slice (AL2, AL3). A
                 // client `victory` lands here too: the server decides victory.
@@ -355,7 +402,10 @@ impl MinigameInstance for AlignmentGame {
     }
 
     fn tick(&mut self) -> Vec<GameOutput> {
-        vec![]
+        if self.outcome.is_some() {
+            return vec![];
+        }
+        self.run_tick()
     }
 
     /// The client socket is already gone when an abort arrives, so the game
@@ -370,7 +420,7 @@ impl MinigameInstance for AlignmentGame {
     }
 
     fn needs_tick(&self) -> bool {
-        false
+        self.outcome.is_none()
     }
 }
 
