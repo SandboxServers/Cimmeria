@@ -56,7 +56,7 @@ fn log_text(text: &str) -> &str {
 /// Where the game is in the port's phase machine (spec section 5). `Ready`
 /// takes a swap; a match moves to `AwaitCascade`, `cascade` moves to
 /// `AwaitCheck`, and `checkForCascade` either loops back to `AwaitCascade` or
-/// moves to `AwaitScore` (`doscore` is MG-AL3a's). `Ended` is set by
+/// moves to `AwaitScore`, where `doscore` is handled by this game. `Ended` is set by
 /// `aborted()` and closes the game.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Phase {
@@ -116,6 +116,9 @@ pub(crate) struct AlignmentGame {
     /// Enforced with the countdown, so a late tick cannot keep a game alive.
     clock_start: Instant,
     clock_budget: f64,
+    /// Ticks the countdown has been paused by bit 2; the pause ends as a Loss
+    /// once it passes `rules::PAUSE_CAP_TICKS` (authority F1).
+    paused_ticks: u32,
     /// Ability bit 2: a matching swap pauses the countdown until `doscore`.
     stop_timer_match: bool,
     /// Ability bit 3: each matching swap adds 0.5 s.
@@ -223,6 +226,7 @@ impl AlignmentGame {
             hint_timer: rules::FIRST_HINT_GAP,
             clock_start: Instant::now(),
             clock_budget: shown,
+            paused_ticks: 0,
             stop_timer_match: false,
             add_timer_match: false,
             add_timer_match_move: false,

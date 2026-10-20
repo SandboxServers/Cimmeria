@@ -94,6 +94,7 @@ Two deviations from the original flow: the movement and state hold is taken at l
 - **Victory.** Meeting every goal sends `activate`; the server sends `victory` on `dovictory` only after that. A client `victory` is refused (WARN `client_victory_refused`).
 - **Ability cheats.** `activateabilitycheat` takes `cheatNum` 0-14 and its bit must still be set in the session mask (`0x7FFF` is implemented). The bit is cleared first, `abilitycheatstate` returns the new mask, and cheat clears never score. Bit 10 has nothing to restore. An unset bit or `cheatNum` 15 is refused with no reply; `activateitemcheat` gets no reply.
 - **Reset.** `processreset` is refused (WARN `reset_refused`, no reply, state unchanged), as for CrystalGame: a reset would refill the clock and the ability bits.
+
 ### ConverseBasicHumanoid rules
 
 - **Dominance.** Two cards compare by `(p - n + 8) % 9` over the nine suit values: below 4 is the NPC's point, 4 to 7 the player's, 8 a tie (spec section 6).

@@ -84,8 +84,10 @@ fn powered_cells(game: &AlignmentGame) -> usize {
 fn bit_zero_adds_five_seconds_and_reports_the_state() {
     let mut game = game(1 << 0, plain_board());
     let before = game.shown_time();
+    let budget = game.clock_budget;
     let outputs = game.message("activateabilitycheat", &cheat(0.0));
     assert_eq!(game.shown_time(), before + 5.0);
+    assert_eq!(game.clock_budget, budget + 5.0, "the wall clock moves too");
     assert_eq!(names(&outputs), ["timerupdate", "abilitycheatstate"]);
     assert_eq!(game.abilities_mask, 0);
 }
@@ -94,8 +96,10 @@ fn bit_zero_adds_five_seconds_and_reports_the_state() {
 fn bit_one_takes_ten_seconds_and_converts_three_cells() {
     let mut game = game(1 << 1, plain_board());
     let before = game.shown_time();
+    let budget = game.clock_budget;
     let outputs = game.message("activateabilitycheat", &cheat(1.0));
     assert_eq!(game.shown_time(), before - 10.0);
+    assert_eq!(game.clock_budget, budget - 10.0, "the wall clock moves too");
     assert_eq!(
         names(&outputs),
         [
@@ -178,6 +182,61 @@ fn bit_thirteen_grants_two_seconds_per_power_up() {
     let outputs = game.power_up_time(2);
     assert_eq!(game.shown_time(), before + 4.0);
     assert_eq!(names(&outputs), ["timerupdate", "timerupdate"]);
+}
+
+/// Counts the `timerupdate` frames in `outputs`.
+fn timer_updates(outputs: &[GameOutput]) -> usize {
+    names(outputs)
+        .iter()
+        .filter(|name| *name == "timerupdate")
+        .count()
+}
+
+#[test]
+fn a_swap_that_matches_a_power_up_grants_two_seconds_under_bit_thirteen() {
+    let mut game = game(1 << 13, transcript_a_board());
+    game.board[2][2].power = 1;
+    game.message("activateabilitycheat", &cheat(13.0));
+    let before = game.shown_time();
+    let outputs = game.message("swappieces", &transcript_a_params());
+    assert_eq!(game.shown_time(), before + 2.0);
+    assert_eq!(timer_updates(&outputs), 1);
+}
+
+#[test]
+fn a_cascade_match_with_a_power_up_grants_two_seconds_under_bit_thirteen() {
+    let mut game = game(1 << 13, plain_board());
+    for (x, y) in [(1, 1), (2, 1), (2, 0)] {
+        game.board[x][y].kind = 7;
+    }
+    game.board[1][1].power = 1;
+    game.message("activateabilitycheat", &cheat(13.0));
+    game.phase = Phase::AwaitCheck;
+    let before = game.shown_time();
+    let outputs = game.message("checkForCascade", &HashMap::new());
+    assert_eq!(game.shown_time(), before + 2.0);
+    assert_eq!(timer_updates(&outputs), 1);
+}
+
+#[test]
+fn a_power_up_clear_grants_two_seconds_per_power_up_under_bit_thirteen() {
+    let mut game = game((1 << 13) | (1 << 5), plain_board());
+    game.board[0][0].power = 2;
+    game.board[3][3].power = 2;
+    game.message("activateabilitycheat", &cheat(13.0));
+    let before = game.shown_time();
+    let outputs = game.message("activateabilitycheat", &cheat(5.0));
+    assert_eq!(game.shown_time(), before + 4.0);
+    assert_eq!(timer_updates(&outputs), 2);
+}
+
+#[test]
+fn a_clear_with_no_power_up_clears_nothing_and_waits_for_no_cascade() {
+    let mut game = game(1 << 5, plain_board());
+    let outputs = game.message("activateabilitycheat", &cheat(5.0));
+    assert_eq!(game.phase, Phase::Ready);
+    assert!(!game.cheat_cleared);
+    assert_eq!(names(&outputs), ["abilitycheatstate"]);
 }
 
 #[test]
@@ -302,4 +361,30 @@ fn a_pause_never_expires_and_a_score_resumes_with_a_fresh_deadline() {
     assert!(game.clock_budget > game.shown_time());
     game.run_tick();
     assert_ne!(game.phase, Phase::Ended, "the resumed clock is re-anchored");
+}
+
+#[test]
+fn a_pause_ends_as_a_loss_after_the_paused_tick_cap() {
+    // Bit 2 pauses the countdown; no `doscore` ever comes. The pause is capped
+    // in ticks (authority F1), so the session cannot be held open forever.
+    let mut game = game(1 << 2, transcript_a_board());
+    game.message("activateabilitycheat", &cheat(2.0));
+    game.message("swappieces", &transcript_a_params());
+    for _ in 1..rules::PAUSE_CAP_TICKS {
+        game.run_tick();
+    }
+    assert_ne!(game.phase, Phase::Ended, "the cap is not reached yet");
+    game.run_tick();
+    assert_eq!(game.phase, Phase::Ended);
+    assert_eq!(game.outcome, Some("failure"));
+}
+
+#[test]
+fn the_port_publishes_its_ability_bits_and_server_validation() {
+    assert_eq!(
+        crate::minigame::games::GameKind::Alignment.ability_bits(),
+        0x7FFF
+    );
+    assert_eq!(crate::minigame::games::ability_bits("Alignment"), 0x7FFF);
+    assert_eq!(crate::minigame::games::validation("Alignment"), "server");
 }

@@ -176,8 +176,12 @@ impl AlignmentGame {
 
     /// Expands `flood` as `checkPowerUpMatches` does, zeroes the matched cells
     /// and sends `bypasshexspinner`. The cascade that follows is armed with
-    /// `cheat_cleared`, so these types never reach `currentScores`.
+    /// `cheat_cleared`, so these types never reach `currentScores`. An empty
+    /// flood clears nothing: no reply, and no cascade to wait for.
     fn clear_flood(&mut self, flood: &[Cell]) -> Vec<GameOutput> {
+        if flood.is_empty() {
+            return Vec::new();
+        }
         let (set, values) = moves::check_power_up_matches(&self.board, flood);
         let matches: Vec<(Cell, Piece)> = set
             .into_iter()

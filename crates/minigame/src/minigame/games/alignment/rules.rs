@@ -15,6 +15,10 @@ use crate::sfs_vars;
 
 /// One countdown step: the stored time drops by a quarter second per tick.
 const TICK: f64 = 0.25;
+/// The most ticks a bit 2 pause may last (60 s). Past it the game ends as a
+/// Loss, so a client that never answers cannot hold the session open
+/// (authority F1).
+pub(super) const PAUSE_CAP_TICKS: u32 = 240;
 /// The offset of the stored time: every outbound copy subtracts it.
 const TIME_OFFSET: f64 = 0.25;
 /// Seconds the wall clock allows past the countdown, for the client's latency.
@@ -108,6 +112,11 @@ impl AlignmentGame {
         }
         if self.timer_state == 1 {
             self.time_remaining -= TICK;
+        } else {
+            self.paused_ticks += 1;
+            if self.paused_ticks >= PAUSE_CAP_TICKS {
+                return self.time_out();
+            }
         }
         if self.timer_state >= 1 && self.shown_time() <= 0.0 {
             return self.time_out();
@@ -188,6 +197,7 @@ impl AlignmentGame {
         // A pause from bit 2 ends with the score: the clock resumes and is re-anchored.
         if self.timer_state == 0 {
             self.timer_state = 1;
+            self.paused_ticks = 0;
             self.start_clock();
         }
         out.push(self.timer_update());
