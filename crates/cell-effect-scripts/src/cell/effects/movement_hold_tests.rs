@@ -50,17 +50,30 @@ fn release(mgr: &mut SpaceManager) {
     );
 }
 
-/// After the boot the wearer is locked for movement, and item and ability use
-/// stay open (the incapacitated gates skip a movement-only entry). Reverting
-/// the gate switch makes the last assertion fail.
+/// After the boot the wearer is locked for movement and is not incapacitated
+/// (the incapacitated gates skip a movement-only entry). Reverting the
+/// predicate's `!e.movement_only` makes the last assertion fail.
 #[test]
-fn boot_locks_movement_but_not_item_or_ability_use() {
+fn boot_locks_movement_and_is_not_incapacitating() {
     let mut mgr = make_mgr_with_target();
     boot(&mut mgr);
     let e = mgr.get_entity(1).unwrap();
     assert!(e.has_state_flag(BSF_MOVEMENT_LOCK));
     assert!(e.holds_movement_only_entry());
     assert!(!e.holds_incapacitating_flag(BSF_MOVEMENT_LOCK));
+}
+
+/// A respawn's hard reset keeps the boot: the wearer stays held and the lock
+/// comes back with it (authority finding 1). Forfeiting the hold on reset
+/// makes both assertions fail.
+#[test]
+fn respawn_keeps_the_wearer_held() {
+    let mut mgr = make_mgr_with_target();
+    boot(&mut mgr);
+    mgr.get_entity_mut(1).unwrap().clear_all_state_flags();
+    let e = mgr.get_entity(1).unwrap();
+    assert!(e.holds_movement_only_entry());
+    assert!(e.has_state_flag(BSF_MOVEMENT_LOCK));
 }
 
 /// The release removes the boot's entry and the lock clears with it.

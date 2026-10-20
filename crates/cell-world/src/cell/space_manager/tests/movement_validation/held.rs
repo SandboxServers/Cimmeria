@@ -135,6 +135,80 @@ fn booted_move_beyond_slack_is_rejected() {
     );
 }
 
+/// Death-then-respawn (authority finding 1): the respawn's hard reset keeps the
+/// boot, so a booted move of 2 m is still rejected as `MovementLocked`. Forfeiting
+/// the hold on reset makes this move pass.
+#[test]
+fn respawned_booted_move_is_still_held() {
+    let (mut mgr, t0) = held_manager(0);
+    mgr.get_entity_mut(100).unwrap().apply_timed_effect(
+        TimedEffectSpec {
+            effect_id: 1939,
+            state_flags: BSF_MOVEMENT_LOCK,
+            movement_only: true,
+            duration_secs: None,
+            ..Default::default()
+        },
+        t0,
+    );
+    mgr.get_entity_mut(100).unwrap().clear_all_state_flags();
+    let far = [SPAWN_POS[0] + 2.0, SPAWN_POS[1], SPAWN_POS[2]];
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(100),
+        100,
+        far,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(
+            outcome,
+            ClientMoveOutcome::Rejected {
+                reason: MovementReject::MovementLocked,
+                ..
+            }
+        ),
+        "a respawned booted move of 2 m must be rejected as MovementLocked, got {outcome:?}"
+    );
+}
+
+/// Authorized displacement (authority finding 2): `note_authorized_teleport`
+/// drops the hold anchor but not the boot, so a booted move of 2 m is still
+/// rejected afterwards. Any future displacement must keep this invariant.
+#[test]
+fn authorized_teleport_keeps_the_boot_hold() {
+    let (mut mgr, t0) = held_manager(0);
+    mgr.get_entity_mut(100).unwrap().apply_timed_effect(
+        TimedEffectSpec {
+            effect_id: 1939,
+            state_flags: BSF_MOVEMENT_LOCK,
+            movement_only: true,
+            duration_secs: None,
+            ..Default::default()
+        },
+        t0,
+    );
+    mgr.note_authorized_teleport(100);
+    let far = [SPAWN_POS[0] + 2.0, SPAWN_POS[1], SPAWN_POS[2]];
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(100),
+        100,
+        far,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(
+            outcome,
+            ClientMoveOutcome::Rejected {
+                reason: MovementReject::MovementLocked,
+                ..
+            }
+        ),
+        "a booted move of 2 m after an authorized teleport must be rejected, got {outcome:?}"
+    );
+}
+
 /// A game master is not gated, even while held: the GM allowance keys on
 /// `CellEntity::access_level` (2 = GameMaster, as in `gm_navmesh`).
 #[test]

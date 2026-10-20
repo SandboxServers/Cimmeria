@@ -11,8 +11,9 @@
 //!
 //! The hold is a counted reference like a stun's: a minigame hold taken and
 //! released while the boot is on leaves the lock set until the boot comes
-//! off. Death clears the ledger, so a respawn frees the wearer until the next
-//! zone load re-casts 1597 (accepted; see the packet).
+//! off. Death leaves the entry (effect 1939 has no `EF_ClearOnDeath`), and a
+//! respawn's hard reset keeps its hold, so the wearer stays held until the
+//! minigame's release.
 //!
 //! Log target `abilities`.
 

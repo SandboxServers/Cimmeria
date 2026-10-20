@@ -125,3 +125,34 @@ async fn auto_cycle_tick_waits_silently_while_stunned_then_resumes() {
         "the loop resumes once the stun is off"
     );
 }
+
+/// **Regression guard (the Prison Boot is not incapacitating).** A booted
+/// player's auto-cycle loop still fires: the boot is movement-only. Reverting
+/// the `auto_cycle` gate to `holds_ledger_flag` skips the tick (`booted tick
+/// fires` fails).
+#[tokio::test]
+async fn auto_cycle_tick_fires_while_booted() {
+    use cimmeria_entity::cell_entity::{TimedEffectSpec, TimedStacking};
+
+    let mut mgr = make_auto_cycle_mgr();
+    let boot = TimedEffectSpec {
+        effect_id: 1939,
+        ability_id: 1597,
+        invoker_id: 50,
+        state_flags: cimmeria_wire::state_field::BSF_MOVEMENT_LOCK,
+        movement_only: true,
+        duration_secs: None,
+        stacking: TimedStacking::PerEffect,
+        ..Default::default()
+    };
+    mgr.apply_timed_effect(1, boot, std::time::Instant::now())
+        .unwrap();
+    let _ = mgr.get_entity_mut(1).unwrap().take_ledger_state_change();
+
+    let (tx, _rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+    assert!(
+        mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7),
+        "booted tick fires"
+    );
+}
