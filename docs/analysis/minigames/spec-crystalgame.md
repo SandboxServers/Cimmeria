@@ -13,7 +13,7 @@ CrystalGame is a 14 by 13 "lights out" puzzle over six colours. Clicking a cryst
 | Package | `CookedPC\UI\Flash\CrystalGame.upk`, 1,814,466 bytes |
 | GFX | offset 7508, length 94203, SWF version 8 |
 | md5 (GFX) | `9c1930c0818222986678cecaf280d581` |
-| Functions | 233 (`list_functions.py`); 15 extension functions in root frame 3, 37 client functions after them, `finalCallback` in frame 4 |
+| Functions | 233 (`list_functions.py`); 15 extension functions in root frame 3, 47 client functions after them, `finalCallback` in frame 4 |
 
 Locators. Every claim can be rerun with:
 
@@ -50,7 +50,7 @@ Any other value draws White and traces an error. The numbers-mode checkbox (`onP
 
 **No shared rules core. G1 should not slice a shared rules module.** Compared function by function against the GoauldCrystals movie (`GoauldCrystals.upk`, same tool):
 
-- GoauldCrystals has a different and much larger model: `processPlayfieldClick` with a selected-crystal swap (`selectedupdate`), goals (`placeGoals`, `goalIsPowered`, `powerstatus`), `populateGameBoard`, `randomizeCrystals` with a seeded `java.util.Random`, per-square state (`squarestate`), `processReset`, and real cheat handlers (`processItemCheat`, `processAbilityCheat`, `removeBottomRow`, `removeTopRow`, `removeLeftColumn`, `removeRightColumn`, `addRandomGreenCrystals`).
+- GoauldCrystals has a different and much larger model: `processPlayfieldClick` with a selected-crystal swap (`selectedupdate`), goals (`placeGoals`, `goalIsPowered`, `powerstatus`), `populateGameBoard`, `randomizeCrystals` with an unseeded `Math.random` rng (see [spec-goauldcrystals.md](spec-goauldcrystals.md) section 2; only `seed == 1` on a 4x4 board is special), per-square state (`squarestate`), `processReset`, and real cheat handlers (`processItemCheat`, `processAbilityCheat`, `removeBottomRow`, `removeTopRow`, `removeLeftColumn`, `removeRightColumn`, `addRandomGreenCrystals`).
 - CrystalGame has none of those. Its whole rule is `processMove`'s modular increment and `checkForVictory`'s all-green scan; GoauldCrystals has no modular-increment move and no all-green test.
 - What they do share is scaffolding every embedded-extension movie has: the frame-2 online/offline stub, the `setInterval(tick, 100)` countdown, `sendTimerUpdate`, the client 50 ms timer and `decimalFormat`, the cheat-button UI pattern, and the crystal art naming. That is generic minigame plumbing (timer, result, cheat inventory) and belongs with the shared session code, not with a "crystal" module.
 
@@ -166,7 +166,7 @@ Field types use the Rust `SfsValue` names. All server messages go to every user 
 
 The client also handles `itemcheatstate`, `abilitycheatstate {abilityBitfield}` and `resetgame`, which this extension never sends.
 
-Original `fullgamestate` cheat fields are hardcoded debug values: `instcc = 1`, `CA0 = 10`, `CA1 = 5`, `CA2 = 2`, `CA3 = 1`, `CA4 = 0`, `abilityBitfield = 32767` (all 15 ability buttons). The port must not copy them: they would show every cheat button, and none of them works. Send the same "no cheats" values the Rust `joinOK` uses (`instcc = -1`, `CA0`-`CA4 = 0`, `abilityBitfield = 0`); confirm the display in the lab (11.2).
+Original `fullgamestate` cheat fields are hardcoded debug values: `instcc = 1`, `CA0 = 10`, `CA1 = 5`, `CA2 = 2`, `CA3 = 1`, `CA4 = 0`, `abilityBitfield = 32767` (all 15 ability buttons). The port must not copy them: they would show every cheat button, and none of them works. Send the same "no cheats" values the Rust `joinOK` uses (`instcc = -1`, `CA0`-`CA4 = 0`, `abilityBitfield = 0`). With these values the ability bar is empty and the item bar shows five greyed slots labelled 0 that do nothing when pressed (`setupItemCheat`, total 0 branch); that is the intended no-cheat look, confirm in the lab (11.2).
 
 ### Spectators
 
@@ -178,7 +178,7 @@ Original `fullgamestate` cheat fields are hardcoded debug values: `instcc = 1`, 
 - **Timer**: 16 seconds, starting on the first player click, not on join. No pause, no score, no move limit.
 - **Victory** (original): send `victory {}` to all users, then `__mg.minigameCompleteGame(user0, 30.5, 1, false, false)`. That call has five arguments where every other game passes six (`(user, code, timeRatio, numResets, instrumentsUsed, consumablesUsed)`); hypothesis: a missing comma in `3, 0.5`. It also **does not stop the timer**: `timerState` stays 1, so the original `tick` later sends `failure` and the timeout call as well. Both are original bugs.
 - **Timeout** (original `tick`): `timerState = 0`, send `failure {}`, then `minigameCompleteGame(user, 4, 0, 1, false, false)` for each non-spectator.
-- **Port**: on victory, stop the timer, send `victory {}` and report extension code 3, which maps to cell result 1 (Victory). On timeout send `failure {}` and report extension code 4, which maps to cell result 2 (Defeat) under the [spec-protocol-common.md](spec-protocol-common.md) Q4 mapping (C3 code 4, defeated, if the consumer distinguishes it). After either, ignore further `processmove`.
+- **Port**: on victory, stop the timer, send `victory {}` and report extension code 3, which maps to cell result 1 (Victory). On timeout send `failure {}` and report extension code 4, which maps to cell result 2 (Defeat) under the [spec-protocol-common.md](spec-protocol-common.md) Q4 mapping (spec-protocol-common Q4: extension code 4 maps to cell 2; C3 code 4 stays reserved; the same rule applies to [spec-goauldcrystals.md](spec-goauldcrystals.md)). After either, ignore further `processmove`.
 - **Client**: `onVictory` and `onFailure` stop the local timer and go to frame 4, which shows `WinText` or `LoseText` and after 2000 ms calls `getURL('FSCommand:closewindow', '')`. The window close drops the socket. Online, the client never declares failure itself at 0 (its `timerCallback` calls `onFailure` only offline), so there is no Livewire-style client/server race.
 
 ## 7. Cheats
@@ -194,20 +194,20 @@ The client draws one button per set bit and sends `activateabilitycheat {cheatNu
 | 0 | Time | +20 s |
 | 1 | Time | -10 s, and remove the bottom row |
 | 2 | Time | Stop the timer for 15 s |
-| 3 | Playfield | Timer counts up for 10 s |
+| 3 | Time | Timer counts up for 10 s |
 | 4 | Playfield | Remove the bottom row |
 | 5 | Playfield | Remove the right column |
-| 6 | Moving Parts | For 10 s, a click changes only the clicked crystal, by 1 |
+| 6 | Playfield | For 10 s, a click changes only the clicked crystal, by 1 |
 | 7 | Moving Parts | Remove the right column |
 | 8 | Moving Parts | As bit 6 |
-| 9 | Tools | Replace some non-green crystals with green |
+| 9 | Moving Parts | Replace some non-green crystals with green |
 | 10 | Tools | Use the instrument a second time |
 | 11 | Tools | Consumables also add 5 s |
 | 12 | Obstacles | Replace some crystals with green |
 | 13 | Obstacles | As bit 6 |
 | 14 | Obstacles | Replace many crystals with green, lose 10 s |
 
-The group order (Time, Playfield, Moving Parts, Tools, Obstacles, three bits each) is the client's layout; the help text does not always fit its group.
+The groups are the client's own labels in each help string: Time bits 0-3, Playfield 4-6, Moving Parts 7-9, Tools 10-11, Obstacles 12-14. The three-per-group layout does not hold; the help text of bit 3 is a Time effect.
 
 ### Item cheats (`instcc`, `CA0`-`CA4`)
 
@@ -233,14 +233,21 @@ Five slots; the client sends `activateitemcheat {cheatNum: slot}`. The displayed
 
 ## 9. Golden transcripts
 
-The coordinates of the two scramble clicks depend on the `StdRng` stream, which only the Rust port can compute. So these transcripts fix the scramble clicks rather than the seed: CG1 picks a seed whose first four draws produce them (or the test injects the clicks), records it in the `.mgs` header, and the rest of the transcript is exact. Grids are given as the non-green cells only; every other cell is 3.
+The two scramble clicks come from `StdRng::seed_from_u64(seed)` in the order x1, y1, x2, y2 (`gen_range(0..14)`, `gen_range(0..13)`), a stream only the Rust port can compute. The seeds below are therefore **placeholders to be resolved by MG-CG1**: its test `tests_setup.rs::finds_seed_for_clicks` searches seeds 0..100000 for the first seed whose scramble clicks are the ones named in T1 and T2 and writes the numbers it finds into the `game CrystalGame difficulty N seed <n>` headers of `crates/minigame/tests/scripts/crystal_game/*.mgs` and into this table:
+
+| Transcript | Seed |
+|---|---|
+| T1 | `TBD (CG1)` |
+| T2 | `TBD (CG1)` |
+
+The clicks can collide (T2 clicks the same cell twice, probability 1/182 per seed), so 100k seeds is ample for both. Grids are given as the non-green cells only; every other cell is 3.
 
 ### T1: corner and interior, solved
 
 Scramble clicks (0, 0) and (6, 6). After the scramble: (0,0) = 5, (1,0) = 4, (0,1) = 4; (6,6) = 5, (5,6) = 4, (6,5) = 4, (7,6) = 4, (6,7) = 4.
 
 ```text
-game CrystalGame difficulty 1 seed S1
+game CrystalGame difficulty 1 seed <T1 seed>
 start
 < fullgamestate {CA0:0, CA1:0, CA2:0, CA3:0, CA4:0, abilityBitfield:0, gameArray:[...], instcc:-1, playfieldHeight:13, playfieldWidth:14, timeRemaining:16, timerState:0}
 > processmove x=0 y=0
@@ -263,7 +270,7 @@ No `failure` follows, however many ticks pass (the port stops the timer; the ori
 Scramble clicks (13, 5) and (13, 5): the same cell twice. After the scramble: (13,5) = 1, (12,5) = 5, (13,4) = 5, (13,6) = 5.
 
 ```text
-game CrystalGame difficulty 3 seed S2
+game CrystalGame difficulty 3 seed <T2 seed>
 start
 < fullgamestate {..., timeRemaining:16, timerState:0}
 tick 100
@@ -290,7 +297,7 @@ Module layout per C4: `crates/minigame/src/minigame/games/crystal_game/`. Line e
 
 | Slice | Files | Content | Lines |
 |---|---|---|---|
-| CG1 setup | `setup.rs` (~110), `mod.rs` (~110), `tests_setup.rs` (~130) | `Board { w: 14, h: 13, cells: Vec<u8> }` indexed `[x][y]`; `press(x, y) -> Vec<(x, y, num)>` (the pure move, returning changed cells in the original order; shared with CG2); `scramble(rng)` drawing x, y, x, y; `fullgamestate` builder with `SfsValue::list` of lists and the "no cheats" fields; `CrystalGame` implementing `MinigameInstance` with `started()` emitting `fullgamestate`. Tests: dimensions, all-3 then two presses, draw order against a fixed seed, never-solved after scramble, list shape `[x][y]` | ~350 |
+| CG1 setup | `setup.rs` (~110), `mod.rs` (~110), `tests_setup.rs` (~130) | `Board { w: 14, h: 13, cells: Vec<u8> }` indexed `[x][y]`; `press(x, y) -> Vec<(x, y, num)>` (the pure move, returning changed cells in the original order; shared with CG2); `scramble(rng)` drawing x, y, x, y; `fullgamestate` builder with `SfsValue::list` of lists and the "no cheats" fields; `CrystalGame` implementing `MinigameInstance` with `started()` emitting `fullgamestate`. Tests: dimensions, all-3 then two presses, draw order against a fixed seed, never-solved after scramble, list shape `[x][y]`, seed search for the T1 and T2 scramble clicks (`finds_seed_for_clicks`) | ~350 |
 | CG2 moves | `moves.rs` (~100), `mod.rs` (+30), `tests_moves.rs` (~150) | `processmove` parsing and validation (integers, bounds, game running, playing user only); `updateslot` emission in centre, left, up, right, down order; corner, edge and interior counts (3/4/5); silently ignore `processreset` and both cheat commands. Tests: per-position message counts and order, `(v+2)%6` and `(v+1)%6` wrap, six presses are the identity, out-of-bounds and malformed input ignored | ~280 |
 | CG3 rules | `rules.rs` (~120), `mod.rs` (+40), `tests_rules.rs` (~160), goldens T1-T3 as `.mgs` | Countdown state machine (0 idle, 1 counting), `timerupdate` on first click, `tick` at 250 ms, `failure` at 0; `checkForVictory` with the timer stopped; result codes (extension 3 to cell 1, 4 to cell 2); moves ignored after the end; `needs_tick`; flip `PORTED = true`. Tests: T1-T3 transcripts, no timer before first click, no `failure` after `victory` (fails if the stop is reverted), tick-64 timeout | ~320 |
 
@@ -299,7 +306,7 @@ Each slice fits about 40k working tokens. CG2 depends on CG1's `press`; CG3 on C
 ## 11. Open questions
 
 1. **Victory call arguments.** `(user0, 30.5, 1, false, false)` is read here as a typo for `(user, 3, 0.5, 1, false, false)`. The port does not need the answer (it reports victory directly), but a host-call-compatible port would. Unresolvable from the movie alone.
-2. **"No cheats" display.** Does `instcc = -1`, `CA0`-`CA4 = 0`, `abilityBitfield = 0` in `fullgamestate` hide both cheat bars? Read from `setupItemCheats`, a slot with count 0 and no border is expected to draw nothing, but it was not run. One lab look settles it.
+2. **"No cheats" display.** `abilityBitfield = 0` draws no ability buttons (read from `setupAbilityCheats`). The item bar always draws five slots; with count 0 they are the greyed `CGCheat<i>0` clips with quantity 0 and no click handler. Does a lab look show that acceptable, or does a real value need `fullgamestate` to omit `CA0-4`? One lab look settles it.
 3. **Reset.** The client has a reset button that sends `processreset`, which the original ignores, so the button does nothing. Faithful is "ignore"; a server-authoritative improvement would rescramble (new `fullgamestate` or `resetgame`) and count `numResets`. Needs an advisor call before CG2.
 4. **Cheats.** The client UI for 15 ability and 5 item cheats exists with help text, but no recovered behaviour. Implementing them is a design decision (D-MG series), not part of CG1-CG3.
 5. **Difficulty.** The original is one fixed puzzle (two scramble clicks, 16 s) at every tier. Whether to add a tier table (for example more scramble clicks at higher tiers) is a design decision; this spec recommends faithful for the port.
