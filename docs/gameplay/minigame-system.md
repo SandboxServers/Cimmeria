@@ -104,7 +104,7 @@ Two deviations from the original flow: the movement and state hold is taken at l
 | Livewire | server | 1-4 (5 uses the tier 4 table) | `0` | None yet: item and ability cheats are ignored | Accepted: resets the game and sends `resetgame` and `fullgamestate` |
 | CrystalGame | server | One board at every tier | `0` | None | Refused |
 | Alignment | server | 1-4 | `0x7FFF` | Ability cheats only | Refused |
-| GoauldCrystals | server | 1-4 (clamped) | `0x7FFF` | Ability cheats only | Refused |
+| GoauldCrystals | server | 1-4 (clamped); tech level 0-10 (clamped) | `0x7FFF` | Ability cheats only | Refused |
 | ConverseBasicHumanoid | server | Ignored: Logic3 then mediation5 | `0x78000` (Trump bits 15-18) | Trump passives | Refused until a deal ends, then accepted after `newdeal` |
 | Hack, Activate, Analyze, Bypass, Converse | client-declared | Not used | `0` | None | n/a |
 
@@ -224,6 +224,7 @@ A ticket is minted by `SessionRegistry::register` when the content chain starts 
 | `abilities` | The player's known-ability mask (MG-22), filtered to the bits the game implements (`GameKind::ability_bits`) |
 | `intelligence`, `player_level` | Read from the player entity at launch |
 | `on_victory_chains` | The chains to run when the game is won |
+| `on_failure_chains` | The chains to run when the game ends in result 2 or 4 |
 
 ## Session lifecycle
 

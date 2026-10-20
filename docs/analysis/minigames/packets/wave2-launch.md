@@ -135,7 +135,7 @@ Result codes: 0 canceled, 1 victory, 2 failure, 3 interrupted or not started, 4 
      ```rust
      if let Some(anchor) = self.movement_validator.hold_anchor(entity_id, held && !is_gm, last_valid) {
          if let Some(reason) = movement_lock::check(position, anchor) {
-         return self.reject_outcome(entity_id, reason, last_valid, space_id, bounds, is_gm);
+             return self.reject_outcome(entity_id, reason, last_valid, space_id, bounds, is_gm);
          }
      }
      ```

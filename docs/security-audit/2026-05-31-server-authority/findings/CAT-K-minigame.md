@@ -7,7 +7,7 @@
 > | Finding | Status |
 > |---|---|
 > | CAT-K-01 shells instant-victory | Mitigated (5 s minimum play for the shells; the five full games are server-validated) |
-> | CAT-K-02 `debug*` methods on SGWPlayer | Open, latent (still stubs 20-23) |
+> | CAT-K-02 `debug*` methods on SGWPlayer | Mitigated (dispatch-gated to GMs; handlers still stubs 20-23) |
 > | CAT-K-03 session no TTL | Fixed |
 > | CAT-K-04 cancel/end actor | Fixed (server derives the session from the caller) |
 > | CAT-K-05 spectate | Open, latent (stub) |
@@ -17,7 +17,7 @@
 > | CAT-K-09 helper registration | Open, latent (stub) |
 >
 > File and line references in the finding bodies are from the 2026-05-31
-> audit snapshot. The minigame code moved from `crates/minigame/src/minigame/`
+> audit snapshot. The minigame code moved from `crates/services/src/minigame/`
 > to `crates/minigame/src/minigame/` and the cell methods to
 > `crates/cell-methods/src/cell/cell_methods/minigame.rs`; the paths below use
 > the new locations, but the line numbers are stale. Re-locate by symbol.
@@ -44,7 +44,7 @@
 
 The minigame system has a deliberately **good** architecture for server authority — content
 chains issue 256-bit random tickets, the client connects to an in-process SmartFoxServer-
-compatible TCP server with the ticket, and the SFS server (`crates/minigame/src/minigame/server.rs`)
+compatible TCP server with the ticket, and the SFS server (`crates/minigame/src/minigame/server/mod.rs`)
 is the **only** producer of `CellToBaseMsg::MinigameResult` that fires victory chains.
 The client never directly asserts "I won." All seventeen `Event_NetOut_Minigame*` and
 `Event_NetOut_debug*Minigame` wire messages currently land in cell-method handlers that
@@ -131,7 +131,7 @@ Python TCP client, not a debugger session.
 ### CAT-K-02 — MinigamePlayer "debug*" cell methods exposed on regular SGWPlayer
 
 **Severity**: High (latent — currently UNIMPLEMENTED)
-**Status**: Open, latent. Cell methods 20-23 are still `UNIMPLEMENTED` stubs and are not in the GM gate allow-list. Remove the four `<Exposed/>` entries or gate the handlers before anyone implements them.
+**Status**: Mitigated. Cell methods 20-23 are dispatch-gated to game masters (`requires_gm` in `crates/cell-world/src/cell/dispatch/gm_gate.rs`, pinned by the test `debug_methods_below_the_gm_base_are_individually_gated`). The handlers are still `UNIMPLEMENTED` stubs and the four `<Exposed/>` entries remain in the def. Keep the gate when implementing them.
 **Class**: GM-only command exposed on non-GM entity
 **Wire surface**: `Event_NetOut_debugStartMinigame`, `Event_NetOut_debugSpectateMinigame`,
 `Event_NetOut_debugJoinMinigame`, `Event_NetOut_debugMinigameInstance`
@@ -185,7 +185,7 @@ interface; the def file is the authority.
 ### CAT-K-03 — Minigame session has no TTL → mission stall via no-connect
 
 **Severity**: Medium
-**Status**: Fixed. `PENDING_SESSION_TTL` (180 s) evicts a session nobody connected to, `spawn_sweep` runs every 60 s, and registering again for the same entity supersedes the stale session. Tests: `session_tests.rs` (`expire_pending`, `spawn_sweep_*`).
+**Status**: Fixed. `PENDING_SESSION_TTL` (180 s) evicts a session nobody connected to, `spawn_sweep` runs every 60 s, and register evicts the expired session before the duplicate check (a duplicate inside the TTL is still rejected). Tests: `session_tests.rs` (`pending_session_expires_after_ttl`, `connected_session_is_never_expired_by_age`, `sweep_only_evicts_the_stale_entity`, `spawn_sweep_evicts_a_stale_session_on_its_own`, `spawn_sweep_leaves_a_connected_session_alone`, `duplicate_register_still_rejected_inside_the_ttl`).
 **Class**: DoS / TOCTOU
 **Wire surface**: Any chain action that fires `Action::StartMinigame` (player has no direct
 control over the trigger, but can refuse to follow through)
@@ -197,7 +197,7 @@ but never reads it)
 second registration for the same `entity_id`, but **never evicts stale sessions**.
 `created_at` is captured but `register()` and `authenticate()` don't consult it. A session
 is removed only when the SFS connection lifecycle completes
-(`crates/minigame/src/minigame/server.rs:356`). If the player never connects to the
+(`run_connection` in `crates/minigame/src/minigame/server/mod.rs`). If the player never connects to the
 minigame port — which they can choose to do by simply ignoring the `onStartMinigame(URL)`
 client method — the session lives forever, and every subsequent `StartMinigame` chain
 action for that entity logs `Failed to register minigame session (duplicate?)` and
@@ -408,7 +408,7 @@ the stub unmarshals would help the implementing contributor.
 **Trust violation**
 `SessionRegistry::authenticate` (`crates/minigame/src/minigame/session.rs:99-121`)
 validates the ticket and the requested game name but not the client IP. The `handle_connection`
-function (`crates/minigame/src/minigame/server.rs:94-358`) accepts the connection's `peer`
+function (`crates/minigame/src/minigame/server/mod.rs`, `handle_connection`) accepts the connection's `peer`
 address only for tracing, never for binding. The `onStartMinigame(URL)` push to the player
 goes over UDP Mercury without encryption, so any path that exposes that packet (a MITM,
 shoulder-surfing, debug log, future telemetry stream) lets a third party who learns the
@@ -432,7 +432,7 @@ connection close.
 - Cross-ref to Rust handler:
   `crates/minigame/src/minigame/session.rs:99-121` (authenticate doesn't burn the ticket,
   doesn't check IP),
-  `crates/minigame/src/minigame/server.rs:81-90` (peer captured for tracing only).
+  `crates/minigame/src/minigame/server/mod.rs` `handle_connection` (peer captured for tracing only).
 
 **Attack scenario**
 1. Attacker obtains a ticket by any means (intercept the UDP packet carrying
@@ -469,7 +469,7 @@ result_code, on_victory_chains }` and unconditionally calls `fire_chain_by_id` f
 chain on victory. `fire_chain_by_id` (`event_dispatch/mod.rs:51-80`) "bypasses trigger
 matching" — it has no mission-state check, no "has this chain already fired for this
 entity" record. The current implementation is safe because the only producer
-(`minigame/server.rs:39-45`) sends one message per session and removes the session before
+(`send` in `crates/minigame/src/minigame/server/session_loop.rs`) sends one message per session and removes the session before
 exiting. But:
 - A future cell handler implementing client-side `endCurrentMinigame` or
   `minigameContactRequest` may also need to fire chains, and if it routes through the
