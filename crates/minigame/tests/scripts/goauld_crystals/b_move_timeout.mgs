@@ -1,0 +1,22 @@
+game GoauldCrystals difficulty 2 seed 1
+start
+< fullgamestate {CA0=0, CA1=0, CA2=0, CA3=0, CA4=0, abilityBitfield=0, activeItemCheat=-1, finishGoalOffset=2, finishGoalSide=1, finishGoalX=3, finishGoalY=2, gameArray={0={0={color=1, power=true, var=0}, 1={color=1, power=true, var=0}, 2={color=0, power=false, var=0}, 3={color=0, power=false, var=0}}, 1={0={color=4, power=false, var=0}, 1={color=1, power=true, var=0}, 2={color=0, power=false, var=0}, 3={color=0, power=false, var=0}}, 2={0={color=2, power=false, var=0}, 1={color=1, power=true, var=0}, 2={color=0, power=false, var=0}, 3={color=0, power=false, var=0}}, 3={0={color=2, power=false, var=0}, 1={color=1, power=true, var=0}, 2={color=4, power=false, var=0}, 3={color=1, power=false, var=0}}}, instcc=-1, maxTime=16, playfieldHeight=4, playfieldWidth=4, selectedXPos=-1, selectedYPos=-1, startGoalOffset=0, startGoalSide=3, startGoalX=0, startGoalY=0, timeRemaining=16, timerState=0}
+> playfieldclick x=2 y=0
+< timerupdate {timeRemaining=16, timerState=1}
+< selectedupdate {xPos=2, yPos=0}
+< triggersound {soundName=select}
+> playfieldclick x=2 y=1
+< powerstatus {powerArray={0={xPos=0, yPos=0}, 1={xPos=0, yPos=1}, 2={xPos=1, yPos=1}}}
+< squarestate {info={color=3, power=false, var=0}, xPos=2, yPos=1}
+< squarestate {info={color=1, power=false, var=0}, xPos=2, yPos=0}
+< triggersound {soundName=action}
+< selectedupdate {xPos=-1, yPos=-1}
+> playfieldclick x=0 y=0
+< selectedupdate {xPos=0, yPos=0}
+< triggersound {soundName=select}
+> playfieldclick x=3 y=3
+< selectedupdate {xPos=-1, yPos=-1}
+< triggersound {soundName=invalid}
+tick 64
+< failure
+< failure

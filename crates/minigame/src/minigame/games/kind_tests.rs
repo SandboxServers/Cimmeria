@@ -22,7 +22,8 @@ fn every_kind_round_trips_through_its_name() {
 fn every_kind_has_no_ability_bits_until_its_port_is_live() {
     for kind in GameKind::ALL {
         // ConverseBasicHumanoid is live (MG-CH3): its bits are in tests_rules.rs.
-        if kind == GameKind::ConverseBasicHumanoid {
+        // GoauldCrystals is live (MG-GC3b): its bits are in goauld_crystals/tests_cheats.rs.
+        if kind == GameKind::ConverseBasicHumanoid || kind == GameKind::GoauldCrystals {
             continue;
         }
         assert_eq!(kind.ability_bits(), 0, "{}", kind.name());

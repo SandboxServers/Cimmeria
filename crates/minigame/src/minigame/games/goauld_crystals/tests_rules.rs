@@ -222,6 +222,25 @@ fn refused_commands_are_logged_in_full_then_sampled() {
     assert_eq!(rows, 8 + 10);
 }
 
+/// A bad `playfieldclick` is refused through `warn_refused`, so it is counted
+/// and sampled like every other refusal. Reverting it to a bare warn leaves
+/// `refusals` at 0 and logs all 1000 rows, and this fails.
+#[test]
+fn bad_click_coordinates_are_counted_and_sampled() {
+    let capture = LogCapture::install();
+    let mut game = started(0);
+    for _ in 0..1000 {
+        assert!(click(&mut game, -1.0, 0.0).is_empty());
+    }
+    assert_eq!(game.refusals, 1000);
+    let rows = capture
+        .all()
+        .iter()
+        .filter(|row| row.message_contains("GoauldCrystals: command refused"))
+        .count();
+    assert_eq!(rows, 8 + 10);
+}
+
 #[test]
 fn the_ticker_is_requested_from_the_start_until_the_end() {
     let mut game = started(0);

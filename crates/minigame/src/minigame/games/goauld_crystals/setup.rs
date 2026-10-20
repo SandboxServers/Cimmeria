@@ -138,7 +138,7 @@ pub(super) fn clamp_difficulty(difficulty: u32) -> u32 {
 }
 
 /// Goal on `side` at `offset`, placed on the edge of a `w` x `h` board.
-fn goal_on(side: u8, offset: usize, w: usize, h: usize) -> Goal {
+pub(super) fn goal_on(side: u8, offset: usize, w: usize, h: usize) -> Goal {
     let (x, y) = match side {
         0 => (offset, 0),
         1 => (w - 1, offset),
