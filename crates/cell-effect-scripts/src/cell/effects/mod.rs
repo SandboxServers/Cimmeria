@@ -48,6 +48,9 @@ pub mod registry;
 mod script_rows;
 pub mod scripts;
 pub mod shield;
+pub mod start_minigame;
+#[cfg(test)]
+mod start_minigame_tests;
 pub mod stat_buff;
 #[cfg(test)]
 mod test_fixtures;

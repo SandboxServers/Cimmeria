@@ -1,6 +1,7 @@
 //! Tests for the pre-game dialog (MG-21). Each test passes `start_dialog`
 //! explicitly, never the global switch.
 
+use super::state::drain_refusal;
 use super::*;
 use std::time::{Duration, Instant};
 
@@ -293,4 +294,168 @@ async fn accept_refuses_an_entity_that_left_its_space() {
     assert!(!accept_offer(1, Instant::now(), &tx, &mut mgr).await);
 
     assert_refused(&drain(&mut rx));
+}
+
+/// MG-24: two launches queued by effect scripts start in queue order with the
+/// switch off, and the queue is empty after the drain.
+/// Revert: a drain that leaves the queue in place, or sends nothing, fails this.
+#[tokio::test]
+async fn drain_starts_queued_launches_in_order_and_empties_the_queue() {
+    let mut mgr = mgr_with_player();
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.get_entity_mut(2).unwrap().player_id = Some(8);
+    let (tx, mut rx) = mpsc::channel(8);
+    mgr.minigame_launch.queue.push(request());
+    mgr.minigame_launch.queue.push(MinigameLaunchRequest {
+        entity_id: 2,
+        player_id: 8,
+        difficulty: 4,
+        ..request()
+    });
+
+    drain_launch_queue(&tx, &mut mgr).await;
+
+    let sent = drain(&mut rx);
+    let difficulties: Vec<u32> = sent
+        .iter()
+        .filter_map(|m| match m {
+            CellToBaseMsg::StartMinigame { difficulty, .. } => Some(*difficulty),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(difficulties, vec![3, 4], "{sent:?}");
+    assert!(mgr.minigame_launch.queue.is_empty());
+}
+
+/// MG-24 review F2: two launches queued for one entity start one game. The
+/// first takes the hold, so the second is refused at drain time.
+/// Revert: without the `already_playing` drain check both sends go out.
+#[tokio::test]
+async fn two_queued_launches_for_one_entity_start_one_game() {
+    let mut mgr = mgr_with_player();
+    let (tx, mut rx) = mpsc::channel(8);
+    mgr.minigame_launch.queue.push(request());
+    mgr.minigame_launch.queue.push(MinigameLaunchRequest {
+        difficulty: 4,
+        ..request()
+    });
+
+    drain_launch_queue(&tx, &mut mgr).await;
+
+    assert_eq!(start_minigame_count(&drain(&mut rx)), 1);
+    assert!(mgr.minigame_launch.queue.is_empty());
+}
+
+/// MG-24 review F2: a launch whose entity already has an open offer waits,
+/// so a second offer never replaces the first.
+/// Revert: without the `offer_pending` check the second offer overwrites it.
+#[test]
+fn drain_refusal_names_an_open_offer() {
+    let mut mgr = mgr_with_player();
+    mgr.minigame_launch.offers.insert(
+        1,
+        PendingOffer {
+            req: request(),
+            space_id: 0,
+            expires_at: Instant::now() + OFFER_TTL,
+        },
+    );
+
+    assert_eq!(drain_refusal(&request(), None, &mgr), Some("offer_pending"));
+}
+
+/// MG-24 review F1: the drain names a recycled entity id before any dialog is
+/// offered to the new occupant. The launch path refuses too, but with the
+/// dialog on only this check stands between the new occupant and the offer.
+/// Revert: without the `player_mismatch` check the drain returns no refusal.
+#[test]
+fn drain_refusal_names_a_recycled_entity_id() {
+    let mut mgr = mgr_with_player();
+    mgr.get_entity_mut(1).unwrap().player_id = Some(9);
+
+    assert_eq!(
+        drain_refusal(&request(), None, &mgr),
+        Some("player_mismatch")
+    );
+}
+
+/// MG-24 review F3: a caster killed after the cast does not start a game.
+/// Revert: without the `caster_dead` check the launch starts and holds.
+#[tokio::test]
+async fn drain_refuses_a_caster_that_died_after_the_cast() {
+    let mut mgr = mgr_with_player();
+    let (tx, mut rx) = mpsc::channel(8);
+    let space = *mgr.entity_space.get(&1).unwrap();
+    mgr.minigame_launch.enqueue(request(), space).unwrap();
+    mgr.get_entity_mut(1).unwrap().state_field |= BSF_DEAD;
+
+    drain_launch_queue(&tx, &mut mgr).await;
+
+    assert_eq!(start_minigame_count(&drain(&mut rx)), 0);
+    assert!(mgr.minigame_launch.queue.is_empty());
+}
+
+/// MG-24 review F3: a caster who left the space it queued in does not start a
+/// game in the new one. The queued space is one the entity is no longer in
+/// (its live space is the fixture's). `drain_refusal` is called directly: a
+/// moved entity moved between real spaces, and the fixture has one.
+/// Revert: without the `stale_queue` check the drain names no refusal.
+#[test]
+fn drain_refuses_a_caster_that_left_its_queued_space() {
+    let mgr = mgr_with_player();
+    let live = *mgr.entity_space.get(&1).unwrap();
+
+    assert_eq!(
+        drain_refusal(&request(), Some(live + 1), &mgr),
+        Some("stale_queue")
+    );
+    assert_eq!(drain_refusal(&request(), Some(live), &mgr), None);
+}
+
+/// MG-24 review F1: a queued launch for a player id the entity no longer
+/// holds (its id was recycled) does not start.
+/// Revert: without the `player_mismatch` check the new occupant is launched.
+#[tokio::test]
+async fn drain_refuses_a_recycled_entity_id() {
+    let mut mgr = mgr_with_player();
+    let (tx, mut rx) = mpsc::channel(8);
+    mgr.minigame_launch.queue.push(request());
+    mgr.get_entity_mut(1).unwrap().player_id = Some(9);
+
+    drain_launch_queue(&tx, &mut mgr).await;
+
+    assert_eq!(start_minigame_count(&drain(&mut rx)), 0);
+}
+
+/// MG-24 review F3: the queue is bounded. A full queue refuses the next
+/// launch, and the refused one is not queued.
+/// Revert: an `enqueue` without the bound grows the queue past it.
+#[test]
+fn enqueue_bounds_the_queue() {
+    let mut mgr = mgr_with_player();
+    let state = &mut mgr.minigame_launch;
+    for id in 0..MAX_QUEUED_LAUNCHES as u32 {
+        let req = MinigameLaunchRequest {
+            entity_id: 100 + id,
+            ..request()
+        };
+        assert_eq!(state.enqueue(req, 0), Ok(()));
+    }
+    let extra = MinigameLaunchRequest {
+        entity_id: 999,
+        ..request()
+    };
+    assert_eq!(state.enqueue(extra, 0), Err("queue_full"));
+    assert_eq!(state.queue.len(), MAX_QUEUED_LAUNCHES);
+}
+
+/// MG-24: a drain with nothing queued sends nothing.
+#[tokio::test]
+async fn drain_of_an_empty_queue_sends_nothing() {
+    let mut mgr = mgr_with_player();
+    let (tx, mut rx) = mpsc::channel(8);
+
+    drain_launch_queue(&tx, &mut mgr).await;
+
+    assert!(drain(&mut rx).is_empty());
 }

@@ -28,6 +28,11 @@ use crate::cell::space_manager::SpaceManager;
 /// How long an offer waits for the player's answer.
 pub const OFFER_TTL: Duration = Duration::from_secs(60);
 
+/// The most launches the queue holds at once (MG-24 review, F3). One entity
+/// queues at most one (see [`MinigameLaunchState::enqueue`]), so this bounds
+/// a burst of casts across many entities between two drains.
+pub const MAX_QUEUED_LAUNCHES: usize = 64;
+
 /// The offers waiting on a player's answer, and the launches queued behind
 /// them (MG-24 fills the queue).
 #[derive(Debug, Default)]
@@ -36,6 +41,29 @@ pub struct MinigameLaunchState {
     pub offers: HashMap<u32, PendingOffer>,
     /// Launches waiting their turn.
     pub queue: Vec<MinigameLaunchRequest>,
+    /// The space each queued launch's entity was in when it was queued, by
+    /// entity id. The drain refuses a launch whose entity has since moved.
+    pub queued_spaces: HashMap<u32, u32>,
+}
+
+impl MinigameLaunchState {
+    /// Queue `req` for the entity it names, made while the entity was in
+    /// `space_id`. Refused with `queue_full` when the queue holds
+    /// [`MAX_QUEUED_LAUNCHES`]; nothing is queued then. The one-launch-per-
+    /// caster rule is the effect script's (it checks the queue before it
+    /// calls this), and the drain re-checks each launch.
+    pub fn enqueue(
+        &mut self,
+        req: MinigameLaunchRequest,
+        space_id: u32,
+    ) -> Result<(), &'static str> {
+        if self.queue.len() >= MAX_QUEUED_LAUNCHES {
+            return Err("queue_full");
+        }
+        self.queued_spaces.insert(req.entity_id, space_id);
+        self.queue.push(req);
+        Ok(())
+    }
 }
 
 /// A launch the player has been asked to confirm. `space_id` is the space the
@@ -194,6 +222,69 @@ async fn refuse_offer(
         );
     }
     false
+}
+
+/// Start every launch an effect script queued (MG-24), in queue order, through
+/// [`start_or_offer`], so the dialog switch applies to ability launches too.
+/// The queue is taken first: a launch queued while draining waits for the
+/// next drain. Called by combat after the effects of a tick or flush resolve.
+/// A launch is checked again here, when it starts: see [`drain_refusal`].
+pub async fn drain_launch_queue(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
+    let queued = std::mem::take(&mut space_mgr.minigame_launch.queue);
+    let spaces = std::mem::take(&mut space_mgr.minigame_launch.queued_spaces);
+    let start_dialog = cimmeria_entity::minigame_feature::start_dialog();
+    for req in queued {
+        let queued_space = spaces.get(&req.entity_id).copied();
+        if let Some(reason) = drain_refusal(&req, queued_space, space_mgr) {
+            tracing::warn!(
+                entity_id = req.entity_id,
+                entity_name = space_mgr.entity_names(req.entity_id).entity_name,
+                player_id = req.player_id, // nt:id-only the player's name is not held on this path
+                game_name = %req.game_name,
+                source = req.source,
+                reason,
+                "StartMinigame: queued launch refused when it came to start"
+            );
+            continue;
+        }
+        start_or_offer(req, start_dialog, tx, space_mgr).await;
+    }
+}
+
+/// Why a queued launch must not start now (MG-24 review, F2 and F3), or
+/// `None` to start it. The queue is checked at queue time, but a launch can
+/// wait for the next drain: a caster may have died, moved, or left the
+/// player's entity id to someone else, and an earlier launch in the same
+/// drain may have taken the hold or the open offer. `queued_space` is the
+/// space the launch was queued in, when it was queued through
+/// [`MinigameLaunchState::enqueue`]. A missing entity is left to
+/// [`launch_minigame`], which refuses it.
+pub(super) fn drain_refusal(
+    req: &MinigameLaunchRequest,
+    queued_space: Option<u32>,
+    space_mgr: &SpaceManager,
+) -> Option<&'static str> {
+    let entity = space_mgr.get_entity(req.entity_id)?;
+    if entity.player_id != Some(req.player_id) {
+        return Some("player_mismatch");
+    }
+    if entity.state_field & BSF_DEAD != 0 {
+        return Some("caster_dead");
+    }
+    if queued_space.is_some_and(|s| space_mgr.entity_space.get(&req.entity_id) != Some(&s)) {
+        return Some("stale_queue");
+    }
+    if entity.state_field & BSF_PLAYING_MINIGAME != 0 {
+        return Some("already_playing");
+    }
+    if space_mgr
+        .minigame_launch
+        .offers
+        .contains_key(&req.entity_id)
+    {
+        return Some("offer_pending");
+    }
+    None
 }
 
 /// The client 53 arguments in the order `onStartMinigameDialog` declares them:

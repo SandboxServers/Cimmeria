@@ -46,6 +46,8 @@ With `CIMMERIA_MINIGAME_START_DIALOG` on (default off; see the table in `crates/
 
 Two deviations from the original flow: the movement and state hold is taken at launch, not when the dialog opens, so an unanswered dialog never locks a player; and expiry is checked lazily when cell 24 arrives.
 
+**From an ability (MG-24).** An effect whose `script_name` is `StartMinigame` (params `minigame_type` and `difficulty`) queues a launch for the caster, and the cell starts it once the ability's effects have resolved. It takes the same path as a content launch, so the dialog switch applies here too. A non-player caster, or one already playing, queues nothing (WARN `reason=npc_caster` or `already_playing`). Script: `start_minigame.rs` in `cimmeria-cell-effect-scripts`.
+
 ## Implementation Status
 
 | Feature | Status | Notes |

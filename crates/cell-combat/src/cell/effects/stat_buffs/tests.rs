@@ -14,9 +14,9 @@ use super::*;
 use crate::cell::client_methods::being::ON_TIMER_UPDATE;
 use crate::mercury::game_clock::{game_time_secs, init};
 
-const PLAYER: u32 = 1;
+pub(super) const PLAYER: u32 = 1;
 
-fn make_mgr() -> SpaceManager {
+pub(super) fn make_mgr() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#;
     let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#;
