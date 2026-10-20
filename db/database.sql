@@ -324,6 +324,7 @@
 \ir resources/Entities/Seed/entity_templates_debug_area_combat.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_lineup.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_lords.sql
+\ir resources/Entities/Seed/entity_templates_debug_area_minigames.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_npcs.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_plaza.sql
 \ir resources/Entities/Seed/entity_templates_union_omega.sql
@@ -404,6 +405,7 @@
 \ir resources/Worlds/Seed/spawnlist_debug_area_combat.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_lineup.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_lords.sql
+\ir resources/Worlds/Seed/spawnlist_debug_area_minigames.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_npcs.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_plaza.sql
 \ir resources/Worlds/Seed/spawnlist_union_omega.sql
@@ -439,6 +441,7 @@
 \ir resources/Content/Seed/debug_area_plaza_chains.sql
 \ir resources/Content/Seed/debug_area_lineup_chains.sql
 \ir resources/Content/Seed/debug_area_ring_chains.sql
+\ir resources/Content/Seed/debug_area_minigames_chains.sql
 \ir resources/Content/Seed/dakara_e1_space_chains.sql
 -- Beta Site E1 (world 23), Union first visit: 23000-23499 (docs/analysis/union-zone-planning/beta-work-packets.md)
 \ir resources/Content/Seed/beta_e1_travel_chains.sql

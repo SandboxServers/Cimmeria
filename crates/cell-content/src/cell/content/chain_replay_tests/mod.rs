@@ -54,6 +54,7 @@ mod harset_spawn_entity;
 mod live_db_beta_e1;
 mod livewire_pairs;
 mod marsh_barks;
+mod minigames_debug_area;
 mod minigames_m582;
 mod mission_1200;
 mod mission_1324;
