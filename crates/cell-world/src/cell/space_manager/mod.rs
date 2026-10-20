@@ -561,6 +561,8 @@ pub struct SpaceManager {
     /// Black Market sessions (BM-02): the auctioneer each player was sent
     /// to, keyed by `player_id`; see `cell::black_market`.
     pub black_market: super::black_market::BlackMarketSessions,
+    /// Pending minigame start-dialog offers and queued launches (MG-21, MG-22).
+    pub minigame_launch: crate::cell::minigame_launch::MinigameLaunchState,
     /// Space-wide feature state keyed by type (#962,
     /// `docs/architecture/plugin-architecture.md` §3.5): one value per
     /// feature type, so a feature adds no field here. The duel registry
@@ -659,6 +661,7 @@ impl SpaceManager {
             pending_gate_dials: HashMap::new(),
             pending_crossings: HashMap::new(),
             black_market: super::black_market::BlackMarketSessions::new(),
+            minigame_launch: Default::default(),
             resources: SpaceResources::new(),
             plugins: super::plugin::CellPlugins::empty(),
             effect_scripts: super::effects::registry::EffectScripts::empty(),
