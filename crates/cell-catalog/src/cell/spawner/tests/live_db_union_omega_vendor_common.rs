@@ -327,13 +327,52 @@ mod tests {
 
     /// The helpers accept the rows the seeds already ship: the Debug Area
     /// munitions vendor (two bits, list 1300), the Omega banker, and list
-    /// 63800, empty until UO-31 fills it.
+    /// 63800, which must pass `assert_list` once UO-11 fills it (empty before
+    /// then).
     #[tokio::test]
     async fn live_db_vendor_helpers_accept_known_rows() {
         let pool = require_db_or_skip!();
         assert_vendor_template(&pool, 1302, 49152, 27264, 1300).await;
         assert_spawns(&pool, &[(63820, 63810, "UnionOmega_Banker")]).await;
         let rows = load_list(&pool, 63800).await;
-        assert_eq!(rows.len(), 0, "list 63800 is empty until W8 fills it");
+        if !rows.is_empty() {
+            assert_list(63800, &rows, Price::Weapon, Some(1));
+        }
+    }
+
+    fn list_row(design: i32, naquadah: i32) -> ListRow {
+        ListRow {
+            item_id: 638000,
+            design_id: design,
+            quantity: 1,
+            naquadah,
+            name: Some("x".to_string()),
+            tier: Some(1),
+            tech_comp: Some(2),
+            flags: Some(CAN_BE_SOLD),
+        }
+    }
+
+    #[test]
+    fn assert_list_accepts_a_priced_row() {
+        assert_list(63800, &[list_row(100, 400)], Price::Weapon, Some(1));
+    }
+
+    #[test]
+    #[should_panic(expected = "price")]
+    fn assert_list_rejects_a_wrong_price() {
+        assert_list(63800, &[list_row(100, 401)], Price::Weapon, Some(1));
+    }
+
+    #[test]
+    #[should_panic(expected = "arbitrage design")]
+    fn assert_list_rejects_an_arbitrage_design() {
+        assert_list(63800, &[list_row(21, 400)], Price::Weapon, Some(1));
+    }
+
+    #[test]
+    #[should_panic(expected = "heavy weapon")]
+    fn assert_list_rejects_tier_one_heavy() {
+        assert_list(63800, &[list_row(4990, 400)], Price::Weapon, Some(1));
     }
 }
