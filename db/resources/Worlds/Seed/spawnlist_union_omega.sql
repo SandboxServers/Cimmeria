@@ -57,6 +57,19 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- [UO-28] end
 
 -- [UO-29] begin: spawns 63960-63971
+-- CIMMERIA_RECONSTRUCTION, navmesh-sealed (UO-17, UO-18, UO-19); D-UO16 B
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63960, -87.97, -48.02, -99.76, 4.7124, 18, 63820, 'UnionOmega_HumanCraftingBiomed', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63961, -85.00, -48.02, -100.00, 4.3472, 18, 63821, 'UnionOmega_HumanCraftingElec', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63962, -83.00, -48.02, -98.00, 4.1527, 18, 63822, 'UnionOmega_HumanCraftingPowerSys', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63963, -78.00, -48.20, -99.00, 4.4999, 18, 63823, 'UnionOmega_HumanCraftingMat', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63964, 24.00, -37.17, -28.00, 0.3588, 18, 63824, 'UnionOmega_CommonCraftingBiomed', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63965, 26.00, -37.72, -30.00, 0.2761, 18, 63825, 'UnionOmega_CommonCraftingElec', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63966, 28.00, -37.12, -28.00, 0.2281, 18, 63826, 'UnionOmega_CommonCraftingPowerSys', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63967, 26.00, -36.52, -26.00, 0.3160, 18, 63827, 'UnionOmega_CommonCraftingMat', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63968, 291.14, -60.90, -109.35, 1.5708, 18, 63839, 'UnionOmega_JaffaCraftingBiomed', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63969, 294.14, -61.23, -109.35, 1.5708, 18, 63840, 'UnionOmega_JaffaCraftingElec', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63970, 297.14, -61.17, -110.85, 1.5708, 18, 63841, 'UnionOmega_JaffaCraftingPowerSys', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63971, 300.14, -61.23, -109.35, 1.5708, 18, 63842, 'UnionOmega_JaffaCraftingMat', NULL, true);
 -- [UO-29] end
 
 -- [UO-30] begin: spawns 63865-63872
