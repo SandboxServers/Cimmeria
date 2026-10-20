@@ -415,6 +415,8 @@ pub(super) async fn run_session(
                                     if let Some(board) = game.board_snapshot() {
                                         registry.publish_board(entity_id, &session.ticket, board).await;
                                     }
+                                    // A failed send ends the session, but a terminal output after
+                                    // it still reports its result (MG-CG3 F4), so no `break` here.
                                     let mut send_failed = false;
                                     for output in outputs {
                                         match output {

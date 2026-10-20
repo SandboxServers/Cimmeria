@@ -14,6 +14,12 @@ use crate::cell::minigame_hold::hold_for_minigame;
 use crate::cell::space_manager::SpaceManager;
 
 pub mod modifiers;
+pub mod state;
+
+pub use state::*;
+
+#[cfg(test)]
+mod state_tests;
 
 #[cfg(test)]
 mod tests;

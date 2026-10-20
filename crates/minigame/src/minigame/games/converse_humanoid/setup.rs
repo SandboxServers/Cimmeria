@@ -17,6 +17,7 @@ pub(super) struct GameTypeRow {
     /// Cards per side for the whole deal: `contest_total * container_total`.
     pub(super) card_total: usize,
     pub(super) container_total: usize,
+    #[allow(dead_code)] // read by no slice; kept for the spec table
     pub(super) contest_total: usize,
     /// The deck suits, each dealt twice per side pool.
     pub(super) suits: &'static [u8],
@@ -199,6 +200,13 @@ impl ConverseHumanoidGame {
                     .map(|(name, _)| SfsValue::String(name.to_string())),
             ),
             "gameType" => SfsValue::String(row.name.to_string()),
+            // Conformance only: the CBH client never reads these (D-MG17).
+            "instcc" => SfsValue::Number(-1.0),
+            "CA0" => SfsValue::Number(0.0),
+            "CA1" => SfsValue::Number(0.0),
+            "CA2" => SfsValue::Number(0.0),
+            "CA3" => SfsValue::Number(0.0),
+            "CA4" => SfsValue::Number(0.0),
         }
     }
 }

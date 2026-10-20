@@ -1,0 +1,27 @@
+game ConverseBasicHumanoid difficulty 1 seed 2
+start
+< fullgamestate {CA0=0, CA1=0, CA2=0, CA3=0, CA4=0, cardTotal=3, containerTotal=1, gameType=logic3, instcc=-1, isSpectator=false, npcCardsArray={0=0, 1=4, 2=8}, npcContestPlays={}, npcScore=0, npcTotalPlays=0, npcType=humanoid, numResets=0, playerCardsArray={0=0, 1=4, 2=8}, playerContestPlays={}, playerScore=0, playerTotalPlays=0, playerVictoryConditions={0=focusdamage1, 1=focusdamage2}, timeRemaining=30, timerState=1}
+tick 12
+< updatecards {container=0, npcTotalPlays=1, num=0, playerTotalPlays=0, suit=0, user=npc}
+> playermove num=2 suit=8
+< updatecards {container=0, npcTotalPlays=1, num=2, playerTotalPlays=1, suit=8, user=player}
+tick 12
+< updatescore {npcScore=0, playerScore=2}
+< emptyhand
+tick 6
+< updatecards {container=0, npcTotalPlays=2, num=1, playerTotalPlays=1, suit=8, user=npc}
+> playermove num=1 suit=4
+< updatecards {container=0, npcTotalPlays=2, num=1, playerTotalPlays=2, suit=4, user=player}
+tick 18
+< updatescore {npcScore=0, playerScore=4}
+< emptyhand
+tick 6
+< updatecards {container=0, npcTotalPlays=3, num=0, playerTotalPlays=2, suit=4, user=npc}
+> playermove num=0 suit=0
+< updatecards {container=0, npcTotalPlays=3, num=0, playerTotalPlays=3, suit=0, user=player}
+tick 18
+< updatescore {npcScore=0, playerScore=6}
+< newdeal
+> processreset
+< fullgamestate {CA0=0, CA1=0, CA2=0, CA3=0, CA4=0, cardTotal=4, containerTotal=2, gameType=mediation5, instcc=-1, isSpectator=false, npcCardsArray={0=0, 1=3, 2=4, 3=4}, npcContestPlays={}, npcScore=0, npcTotalPlays=0, npcType=humanoid, numResets=1, playerCardsArray={0=3, 1=5, 2=8, 3=8}, playerContestPlays={}, playerScore=6, playerTotalPlays=0, playerVictoryConditions={0=focusdamage1, 1=focusdamage2}, timeRemaining=12, timerState=1}
+abort

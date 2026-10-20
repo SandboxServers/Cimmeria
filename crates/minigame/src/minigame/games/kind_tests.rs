@@ -16,11 +16,15 @@ fn every_kind_round_trips_through_its_name() {
     }
 }
 
-/// No port has flipped `PORTED`, so every kind (Livewire included) implements
-/// no ability bits yet, and an unknown name has none either.
+/// No kind implements an ability bit yet: Livewire's cheats are deferred and
+/// the ported CrystalGame has none (MG-CG2 ruling). An unknown name has none either.
 #[test]
 fn every_kind_has_no_ability_bits_until_its_port_is_live() {
     for kind in GameKind::ALL {
+        // ConverseBasicHumanoid is live (MG-CH3): its bits are in tests_rules.rs.
+        if kind == GameKind::ConverseBasicHumanoid {
+            continue;
+        }
         assert_eq!(kind.ability_bits(), 0, "{}", kind.name());
     }
     assert_eq!(crate::minigame::games::ability_bits("Nope"), 0);
@@ -83,14 +87,7 @@ fn create_resolves_every_kind_and_unknown_names() {
 #[test]
 fn validation_names_the_validator() {
     assert_eq!(validation("Livewire"), "server");
-    for name in [
-        "Hack",
-        "Activate",
-        "Analyze",
-        "Bypass",
-        "Converse",
-        "ConverseBasicHumanoid",
-    ] {
+    for name in ["Hack", "Activate", "Analyze", "Bypass", "Converse"] {
         assert_eq!(validation(name), "client_declared", "{name}");
     }
     assert_eq!(validation("NoSuchGame"), "client_declared");
