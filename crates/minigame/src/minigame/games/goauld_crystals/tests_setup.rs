@@ -282,9 +282,11 @@ fn timer_update_carries_clock_and_state() {
 }
 
 #[test]
-fn unported_commands_are_ignored_and_no_tick_is_needed() {
+fn unported_commands_are_ignored_and_the_clock_stays_stopped() {
     let mut game = started_game(1, 1, 7);
     assert!(game.message("playfieldclick", &HashMap::new()).is_empty());
     assert!(game.tick().is_empty());
-    assert!(!game.needs_tick());
+    assert_eq!(game.timer_state, 0);
+    // The ticker is armed from the start, as the session loop reads it once.
+    assert!(game.needs_tick());
 }

@@ -13,6 +13,7 @@ use super::GoauldCrystalsGame;
 use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
 use crate::minigame::session::MinigameSession;
+use crate::test_support::LogCapture;
 
 fn make_session(abilities_mask: u32) -> MinigameSession {
     MinigameSession {
@@ -154,17 +155,31 @@ async fn a_pause_holds_no_deadline_and_a_resume_sets_a_fresh_one() {
 }
 
 #[test]
-fn processreset_sends_resetgame_then_a_fresh_game_and_restores_the_ability_bits() {
+fn processreset_is_refused_and_leaves_the_clock_and_the_ability_bits_alone() {
     let mut game = started(0b100);
     click(&mut game, 0.0, 0.0);
     game.ability_bitfield = 0;
     let out = game.message("processreset", &HashMap::new());
-    assert_eq!(names(&out), ["resetgame", "fullgamestate"]);
-    assert_eq!(game.num_resets, 1);
-    assert_eq!(game.timer_state, 0);
-    assert_eq!(game.time_remaining, game.max_time);
-    assert_eq!(game.ability_bitfield, 0b100);
-    assert!(game.deadline.is_none());
+    assert!(out.is_empty());
+    assert_eq!(game.timer_state, 1);
+    assert_eq!(game.selected, Some((0, 0)));
+    assert_eq!(game.ability_bitfield, 0);
+    assert!(game.deadline.is_some());
+}
+
+/// A reset after the wall-clock end is still refused: the deadline ends the
+/// game first, and the clock is not refilled. Moving the `processreset` arm
+/// above the deadline check gives no output here, and this fails.
+#[tokio::test(start_paused = true)]
+async fn a_reset_after_the_deadline_is_refused_with_a_failure() {
+    let mut game = started(0);
+    click(&mut game, 0.0, 0.0);
+    tokio::time::advance(Duration::from_secs(16)).await;
+    // No tick has run, so only the deadline can end the game here.
+    let out = game.message("processreset", &HashMap::new());
+    assert_eq!(names(&out), ["failure", "Failure"]);
+    assert_eq!(game.outcome, Some("failure"));
+    assert_eq!(game.time_remaining, 16.0);
 }
 
 #[test]
@@ -177,7 +192,6 @@ fn nothing_is_acted_on_after_a_timeout() {
     assert!(game.message("processreset", &none).is_empty());
     assert!(game.message("cheat", &none).is_empty());
     assert!(click(&mut game, 1.0, 0.0).is_empty());
-    assert_eq!(game.num_resets, 0);
     assert_eq!(game.selected, Some((0, 0)));
 }
 
@@ -186,21 +200,35 @@ fn a_reset_is_refused_after_a_victory() {
     let mut game = started(0);
     game.outcome = Some("victory");
     assert!(game.message("processreset", &HashMap::new()).is_empty());
-    assert_eq!(game.num_resets, 0);
+    assert_eq!(game.refusals, 1);
+}
+
+/// Refusals are logged in full for the first eight, then one in a hundred.
+/// Dropping the sampling logs all 1000 and fails this.
+#[test]
+fn refused_commands_are_logged_in_full_then_sampled() {
+    let capture = LogCapture::install();
+    let mut game = started(0);
+    for _ in 0..1000 {
+        assert!(game.message("cheat", &HashMap::new()).is_empty());
+    }
+    assert_eq!(game.refusals, 1000);
+    let rows = capture
+        .all()
+        .iter()
+        .filter(|row| row.message_contains("GoauldCrystals: command refused"))
+        .count();
+    // The first eight, then the hundreds 100 to 1000.
+    assert_eq!(rows, 8 + 10);
 }
 
 #[test]
-fn the_reset_count_saturates_instead_of_wrapping() {
+fn the_ticker_is_requested_from_the_start_until_the_end() {
     let mut game = started(0);
-    game.num_resets = u32::MAX;
-    game.message("processreset", &HashMap::new());
-    assert_eq!(game.num_resets, u32::MAX);
-}
-
-#[test]
-fn the_tick_runs_only_while_the_clock_runs() {
-    let mut game = started(0);
-    assert!(!game.needs_tick());
+    assert!(
+        game.needs_tick(),
+        "the loop samples this before the first click"
+    );
     click(&mut game, 0.0, 0.0);
     assert!(game.needs_tick());
     game.time_remaining = 0.25;

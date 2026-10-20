@@ -1,11 +1,12 @@
-//! GoauldCrystals clock, timeout and reset (spec sections 5, 6 and 8).
+//! GoauldCrystals clock and timeout (spec sections 5, 6 and 8).
 //!
 //! The countdown runs on the session tick: each tick takes 0.25 s off
 //! `time_remaining`, or adds it back while the clock runs backwards, so
 //! scripted runs are exact. A monotonic deadline, set when the clock starts or
 //! resumes, is checked on the tick and before every command, so a click that
 //! arrives after the wall-clock end is refused even if the tick is late. Once
-//! `outcome` is set the game takes no further input.
+//! `outcome` is set the game takes no further input. `processreset` is refused
+//! (deliberate deviation from spec 5, for owner confirmation).
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -19,6 +20,12 @@ use crate::sfs_vars;
 
 /// Seconds the clock moves on each session tick (spec 8).
 const TICK_SECS: f64 = 0.25;
+
+/// Refused commands logged in full before the WARN is sampled.
+const REFUSAL_LOG_FULL: u32 = 8;
+
+/// After the full run, one refused command in this many is logged.
+const REFUSAL_LOG_EVERY: u32 = 100;
 
 impl GoauldCrystalsGame {
     /// Routes one inbound command. After the end nothing is acted on; a clock
@@ -38,7 +45,12 @@ impl GoauldCrystalsGame {
         }
         match cmd {
             "playfieldclick" => self.playfield_click(params),
-            "processreset" => self.process_reset(),
+            // Server-authoritative: a reset would refill the clock and the
+            // ability bits. Deliberate deviation from spec 5, owner to confirm.
+            "processreset" => {
+                self.warn_refused(cmd, "reset_refused");
+                vec![]
+            }
             // Cheat commands are ported by MG-GC3b.
             _ => {
                 self.warn_refused(cmd, "unknown_command");
@@ -112,25 +124,16 @@ impl GoauldCrystalsGame {
         ]
     }
 
-    /// Spec 5 `processreset`: `resetgame` goes out, the reset count rises,
-    /// then a new game starts with the clock stopped at the table time and
-    /// the cheat inventory back to the session value. Refused after the end.
-    fn process_reset(&mut self) -> Vec<GameOutput> {
-        let reset = sfs_vars! {
-            "_cmd" => SfsValue::String("resetgame".to_string()),
-        };
-        self.num_resets = self.num_resets.saturating_add(1);
-        self.timer_ticks_left = 0;
-        self.init_game();
-        vec![
-            GameOutput::Send(reset),
-            GameOutput::Send(self.build_full_game_state()),
-        ]
-    }
-
     /// Warns about a refused command. Every warning names the player, so the
-    /// line can be traced to a session.
-    fn warn_refused(&self, cmd: &str, reason: &'static str) {
+    /// line can be traced to a session. The first `REFUSAL_LOG_FULL` refusals
+    /// are logged, then one in `REFUSAL_LOG_EVERY`, so a flood of refused
+    /// frames cannot flood the log. Every row carries the running count.
+    fn warn_refused(&mut self, cmd: &str, reason: &'static str) {
+        self.refusals = self.refusals.saturating_add(1);
+        let count = self.refusals;
+        if count > REFUSAL_LOG_FULL && !count.is_multiple_of(REFUSAL_LOG_EVERY) {
+            return;
+        }
         tracing::warn!(
             entity_id = self.entity_id,
             entity_name = self.player_name.as_deref(),
@@ -138,6 +141,7 @@ impl GoauldCrystalsGame {
             player_name = self.player_name.as_deref(),
             cmd = %loggable(cmd),
             reason = reason,
+            refusals = count,
             "GoauldCrystals: command refused"
         );
     }

@@ -186,9 +186,9 @@ Spec [spec-goauldcrystals.md](../spec-goauldcrystals.md). Folder `games/goauld_c
 
 - Agent: packet-coder · Host: windows · Wave 5 · Depends on: MG-GC2 · Status BlockedDependency · Extra pass: server-authority-enforcer
 - Worktree `mg-gc3a` · Branch `minigames/mg-gc3a-rules` · Commit `MG-GC3a: GoauldCrystals clock and reset`
-- **Files:** `goauld_crystals/rules.rs` (~200), `goauld_crystals/tests_rules.rs` (~200); route `processreset` in `mod.rs`; `needs_tick()` true while the clock runs.
-- **Content** (§ 6 lines 281-292, § 8 lines 356-364): timer states 0-3 on the 0.25 s tick (state 2 pause and 3 reverse each 20 ticks, then back to 1 with `timerupdate`); at `<= 0` send `failure` and return `GameOutput::Failure`; `processreset` (§ 5 line 224): send `resetgame {}`, `num_resets += 1`, `init_game(false)` (new board and goals, clock stopped at `max_time`, `ability_bitfield` restored to the session value), `fullgamestate`.
-- **Tests (type 1):** transcript B step 6 (`tick 64` gives `failure`); transcript C step 4 (`tick 8` is silent and leaves `timeRemaining` 14); pause and reverse each end with one `timerupdate`; `processreset` sends `resetgame` then `fullgamestate` with `timerState 0` and restores a spent ability bit; nothing after the end.
+- **Files:** `goauld_crystals/rules.rs` (~200), `goauld_crystals/tests_rules.rs` (~200); refuse `processreset` in `rules.rs`; `needs_tick()` true from the start until the game ends (the session loop reads it once, before the first click).
+- **Content** (§ 6 lines 281-292, § 8 lines 356-364): timer states 0-3 on the 0.25 s tick (state 2 pause and 3 reverse each 20 ticks, then back to 1 with `timerupdate`); at `<= 0` send `failure` and return `GameOutput::Failure`; `processreset` is refused: WARN `reset_refused`, no reply, state unchanged. This is a deliberate deviation from § 5 line 224 (which sends `resetgame` and a new board), for owner confirmation: a reset refills the clock and the ability bits, the same server-authority hole the CrystalGame and Alignment rulings refuse.
+- **Tests (type 1):** transcript B step 6 (`tick 64` gives `failure`); transcript C step 4 (`tick 8` is silent and leaves `timeRemaining` 14); pause and reverse each end with one `timerupdate`; `processreset` gives no output and changes nothing; a reset after the deadline ends the game as `failure`; nothing after the end; refusals are logged in full for the first eight, then one in a hundred.
 
 ### MG-GC3b: ability cheats, goldens, ported
 

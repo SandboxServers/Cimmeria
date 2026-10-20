@@ -36,6 +36,15 @@ pub(crate) const PORTED: bool = false;
 
 /// Builds the game for a session. Until [`PORTED`] is set the placeholder
 /// answers, so a half-ported game is never reachable from content.
+
+/// The GoauldCrystals game for a session, ported or not. Only loop tests use this, so the session loop can run the real game before [`PORTED`] is set.
+#[cfg(test)]
+pub(crate) fn create_unported_for_test(
+    session: &MinigameSession,
+) -> Option<Box<dyn MinigameInstance>> {
+    Some(Box::new(GoauldCrystalsGame::new(session)))
+}
+
 pub(crate) fn create(session: &MinigameSession) -> Box<dyn MinigameInstance> {
     if PORTED {
         Box::new(GoauldCrystalsGame::new(session))
@@ -123,8 +132,8 @@ pub(super) struct GoauldCrystalsGame {
     pub(super) reds_to_remove: u32,
     pub(super) reds_to_revert: Option<Vec<(usize, usize)>>,
     pub(super) item_cheats_add_time: bool,
-    /// Kept across resets; the reset count is reported on completion.
-    pub(super) num_resets: u32,
+    /// Refused commands so far. Every refusal counts; the WARN is sampled.
+    pub(super) refusals: u32,
     pub(super) outcome: Option<&'static str>,
 
     // RNG (seeded, Send-safe)
@@ -158,7 +167,7 @@ impl GoauldCrystalsGame {
             reds_to_remove: 0,
             reds_to_revert: None,
             item_cheats_add_time: false,
-            num_resets: 0,
+            refusals: 0,
             outcome: None,
             rng: StdRng::seed_from_u64(session.seed as u64),
         }
@@ -189,7 +198,9 @@ impl MinigameInstance for GoauldCrystalsGame {
         vec![]
     }
 
+    // The session loop reads this once at start, before the first click, so it
+    // must be true from the start. A tick with the clock stopped does nothing.
     fn needs_tick(&self) -> bool {
-        self.timer_state != 0 && self.outcome.is_none()
+        self.outcome.is_none()
     }
 }
