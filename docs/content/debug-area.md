@@ -89,7 +89,7 @@ DA-05's map from each restored system to the station that tests it. The step ids
 | Ability trees, ability mechanics | Z2 ability granter and reset NPC, trainer; Z3 dummies; `.effects`, `.cooldowns` | DA-U3 to DA-U5, DA-U19 to DA-U21 |
 | Vendors, special ammo, consumables | Z2 vendor and munitions vendor | DA-U6 to DA-U8 |
 | Dialog UI | Z2 Airman Lance (dialog 5738) | DA-U9 |
-| Minigames | Z2 Livewire terminal; Z2 minigame terminal row (MG-74) | DA-U10; the minigames lab recipes |
+| Minigames | Z2 Livewire terminal; Z2 minigame terminal row (MG-74) | DA-U10; the [minigames lab recipes](../analysis/minigames/uat-lab.md) |
 | Loot | Z2 crate, any Z7 or Z9 kill | DA-U11, DA-U31, DA-U37 |
 | Bank and vault, organizations | Z2 Bankers and registrars | DA-U12, DA-U13, DA-U15 |
 | Mail | Z2 Sgt. Harriman | DA-U14 |
