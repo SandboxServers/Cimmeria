@@ -49,3 +49,9 @@ pub fn create(session: &MinigameSession) -> Option<Box<dyn MinigameInstance>> {
 pub fn validation(game_name: &str) -> &'static str {
     GameKind::from_name(game_name).map_or("client_declared", |kind| kind.validation().as_str())
 }
+
+/// The abilityBitfield bits the named game implements (MG-22, D-MG18). 0 for
+/// an unknown name, and 0 for every game until its port sets `PORTED`.
+pub fn ability_bits(game_name: &str) -> u32 {
+    GameKind::from_name(game_name).map_or(0, GameKind::ability_bits)
+}

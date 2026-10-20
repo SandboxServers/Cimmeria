@@ -16,6 +16,16 @@ fn every_kind_round_trips_through_its_name() {
     }
 }
 
+/// No port has flipped `PORTED`, so every kind (Livewire included) implements
+/// no ability bits yet, and an unknown name has none either.
+#[test]
+fn every_kind_has_no_ability_bits_until_its_port_is_live() {
+    for kind in GameKind::ALL {
+        assert_eq!(kind.ability_bits(), 0, "{}", kind.name());
+    }
+    assert_eq!(crate::minigame::games::ability_bits("Nope"), 0);
+}
+
 #[test]
 fn from_name_is_exact_and_case_sensitive() {
     assert_eq!(GameKind::from_name("livewire"), None);
