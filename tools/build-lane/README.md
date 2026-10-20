@@ -4,11 +4,12 @@ The machine-wide build lane every agent `cargo` call goes through, and the workt
 
 | Entry point | What it does |
 |---|---|
-| `lane.sh` / `lane.ps1` | Run a compiling `cargo` command in a lane slot (`--exclusive` takes every slot), with a per-worktree target dir and sccache; prints a summary when stdout is not a terminal |
-| `lane_stats.py` | Report on the lane's job log (`--recent N`, `--html`, `--csv`) |
+| `lane.sh` / `lane.ps1` | Run a `cargo` command in a slot of its class (`--class heavy\|light\|db`, else the classifier: builds, tests and clippy are heavy, fmt and `cargo check -p` light; `--exclusive` takes every heavy slot), with a per-worktree target dir and sccache; prints a summary when stdout is not a terminal |
+| `lane-class.sh` / `lane-class.ps1` | The lane's class rules: the classifier, the slot counts and the jobs cap for each class. The two twins are held equal by `fixtures/lane-classes.tsv` (one `<class>\t<command line>` row per case) |
+| `lane_stats.py` | Report on the lane's job log (`--recent N`, `--html`, `--csv`, `--class heavy\|light\|db`; slot-hours by class) |
 | `mk-worktree.sh` / `.ps1` | Create a buildable worktree under `.claude/worktrees/` |
 | `rm-worktree.sh` / `.ps1` | Retire a merged worktree: target dir, test database, branch (`--merged` for all) |
-| `reload-db.sh` / `.ps1`, `live-db-test.sh` / `.ps1` | Reload the worktree's `sgw_<worktree>` database; run the live-DB tier against it in a slot |
+| `reload-db.sh` / `.ps1`, `live-db-test.sh` / `.ps1` | Reload the worktree's `sgw_<worktree>` database; run the live-DB tier against it. Two phases: the tier builds in a heavy slot (`--build-only`), then reloads and runs in a db slot |
 | `ship.sh` / `.ps1` (`ship.py`) | `pr -C <worktree> -m <msg>` commits, pushes and opens the PR; `merge <PR> --retire <name>` merges and retires |
 | `rebase-pr.sh` / `.ps1` (`rebase_pr.py`) | Rebase a PR branch onto `origin/main`, resolving only mechanical conflicts |
 | `commit-paths.sh` / `.ps1` | Commit exactly the named files in one worktree for `ops` (`-Paths a,b` comma list, `-Trailers 'x;;y'`, optional `-ExpectBranch`; refuses absolute paths, `.`, `-A`, globs, directories, paths below a junction, any already-staged file (renames included) and an add that would stage an unnamed file (a deleted directory name); whitespace errors refuse only where the repo sets `core.whitespace` or a whitespace attribute, else they warn; unstages again on a failed check or hook, so the index ends empty; the .sh takes full option names only (no abbreviations)) |
