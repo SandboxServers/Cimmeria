@@ -121,7 +121,9 @@ Messages from a spectator are ignored.
 | `newhand` | none | `newHandMessage` (ends the hand now) | Running. Reply as for a hand timeout. |
 | `processreset` | none | `processReset` | Only after `newdeal`. Reply `fullgamestate`. Otherwise ignore. |
 | `activatevictory` | `victoryNum` Number, `pointCost` Number | `activateVictory(..., 'player')` | See section 7. |
-| `failure` | none | none (dead branch) | Ignore. |
+| `failure` | none | `failMessage`: sends `failure`, completes with code 4 | The client never sends it. Port: treat as Defeat (code 4, cell result 2), or drop it with a stated reason. |
+
+Correction to MG-R6: the CBH row of `spec-protocol-common.md`'s message table leaves `failure` out of "Client sends". `handleRequest` accepts it (Confirmed).
 
 The original validates nothing in `playerMove`. A bad `num` or `suit` splices the wrong card or nothing.
 
@@ -167,11 +169,12 @@ So each suit beats the next four suits round the circle: s beats s+1 to s+4 (mod
 The hand ends when `handTimer` (6 s) runs out or the client sends `newhand`. In order:
 
 1. Deal over (both sides' `TotalPlays` equal `cardTotal`): reply `newdeal`.
-2. The NPC has no cards and the player played nothing this hand: `failMessage`.
-3. The NPC played this hand and the player did not: `failMessage`. An idle hand loses the game.
-4. Otherwise: reply `emptyhand`.
+2. The player's `TotalPlays` list is empty: `failMessage`. (The test is `playerTotalPlays.length == 0 && contestTotal >= 1`; `contestTotal` is always 2 or more, so the second half is always true.)
+3. The NPC has no cards and the player played nothing this hand: `failMessage`.
+4. The NPC played this hand and the player did not: `failMessage`. An idle hand loses the game.
+5. Otherwise: reply `emptyhand`.
 
-For 1 and 4, before the reply: `processScore`, then `clearContainers`.
+For 1 and 5, before the reply: `processScore`, then `clearContainers`.
 
 `processScore` pairs the two `ContestPlays` arrays by play order, index 0 to `containerTotal - 1`, not by container:
 
@@ -182,7 +185,7 @@ For 1 and 4, before the reply: `processScore`, then `clearContainers`.
 
 It then sends `updatescore`. Scores carry over across deals.
 
-A missing card on the other side is `undefined`, not -1, so the "one side did not play" tests compare against -1 and miss. The comparison falls through to "player wins" (Inferred from AS2 NaN rules). In practice: if the NPC did not answer, the player scores; if the player did not answer, rule 3 fails the game first.
+A missing card on the other side is `undefined`, not -1, so the "one side did not play" tests compare against -1 and miss. The comparison falls through to "player wins" (Inferred from AS2 NaN rules). In practice: if the NPC did not answer, the player scores; if the player did not answer, rule 2 (no play yet this deal) or rule 4 fails the game first.
 
 ### Deal end
 
@@ -211,11 +214,11 @@ Port result: extension code 3 maps to cell result 1 (Victory), code 4 to cell re
 
 ## 7. Cheats
 
-### Trump passives 778, 779, 792 and 793 (Confirmed bits, Inferred names)
+### Trump passives 778, 779, 792 and 793 (Confirmed bits, Confirmed names)
 
 They enter through `abilityBitfield`, in `getAccords`:
 
-| Bit | Mask | Accord bonus (percent points) | Ability (Inferred, by bonus order) |
+| Bit | Mask | Accord bonus (percent points) | Ability (Confirmed, abilities.sql descriptions) |
 |---|---|---|---|
 | 15 | 32768 | +5 | 778 Mediator |
 | 16 | 65536 | +10 | 779 Negotiator |
@@ -224,7 +227,9 @@ They enter through `abilityBitfield`, in `getAccords`:
 
 The bonuses add up. The four bits sit above the 0-14 cheat mask (`spec-launch-flow.md` section 4), so other games' `setupAbilityCheats` never see them.
 
-For MG-22: OR bit 15 into `abilities_mask` when the player knows 778, bit 16 for 779, bit 17 for 792 and bit 18 for 793. The ability-to-bit order is Inferred from the ascending bonuses; check it against the ability rows (open question 2).
+For MG-22: OR bit 15 into `abilities_mask` when the player knows 778, bit 16 for 779, bit 17 for 792 and bit 18 for 793. The order follows the bonuses in the ability descriptions (abilities.sql ids 778, 779, 792, 793; Confirmed): each description's "+N% for Trump in Converse" matches exactly one bit's bonus in `getAccords`.
+
+Correction to MG-R7: `spec-launch-flow.md` section 4 says "The Trump passives are not bits". They are bits 15 to 18 of `abilityBitfield`, read by this extension's `getAccords`.
 
 ### Accords (Confirmed, `getAccords`)
 
@@ -262,7 +267,7 @@ No hints. The server runs one 100 ms tick (the port uses the 250 ms session tick
 ```text
 tick(dt):
   if timerState == 1: timeRemaining -= dt
-  if timeRemaining <= 0 and timerState >= 1: timerState = 0; checkForVictory; stop
+  if timeRemaining <= 0 and timerState >= 1: timerState = 0; checkForVictory; (the original keeps the interval running; the port stops, see the end-of-game rule)
   if timeRemaining <= npcLastTime - npcTimer:
     npcMove; npcLastTime = timeRemaining; npcTimer = 1.5   # even if npcMove did nothing
   if timeRemaining <= handLastTime - handTimer:
@@ -302,14 +307,16 @@ game ConverseBasicHumanoid difficulty 1 seed 7
 start
 < fullgamestate {...gameType=logic3, numResets=0, timeRemaining=30, ...}
 tick 12
-< updatecards {container=0, npcTotalPlays=[<n>], num=<i>, playerTotalPlays=[], suit=<n>, user=npc}
+< updatecards {container=0, npcTotalPlays={0=<n>}, num=<i>, playerTotalPlays={}, suit=<n>, user=npc}
 tick 12
 < failure
 ```
 
-Asserts rule 3 of the hand end and result code 4 (cell Defeat).
+Asserts rule 2 of the hand end (the player has no play this deal, checked before rule 4) and result code 4 (cell Defeat).
 
 ### B. Player wins the first deal (seed found by recording, tier 1)
+
+B has no seed yet: MG-CH3 must find one; until then only A is a golden.
 
 Needs a deal of NPC `[0, 4, 8]` and player `[0, 4, 8]` with no accords.
 
@@ -318,23 +325,23 @@ game ConverseBasicHumanoid difficulty 1 seed <s>
 start
 < fullgamestate {...}
 tick 12
-< updatecards {container=0, npcTotalPlays=[0], num=0, playerTotalPlays=[], suit=0, user=npc}
+< updatecards {container=0, npcTotalPlays={0=0}, num=0, playerTotalPlays={}, suit=0, user=npc}
 > playermove num=2 suit=8
-< updatecards {container=0, npcTotalPlays=[0], num=2, playerTotalPlays=[8], suit=8, user=player}
+< updatecards {container=0, npcTotalPlays={0=0}, num=2, playerTotalPlays={0=8}, suit=8, user=player}
 tick 12
 < updatescore {npcScore=0, playerScore=2}
 < emptyhand
 tick 6
-< updatecards {container=0, npcTotalPlays=[0, 8], num=1, playerTotalPlays=[8], suit=8, user=npc}
+< updatecards {container=0, npcTotalPlays={0=0, 1=8}, num=1, playerTotalPlays={0=8}, suit=8, user=npc}
 > playermove num=1 suit=4
-< updatecards {container=0, npcTotalPlays=[0, 8], num=1, playerTotalPlays=[8, 4], suit=4, user=player}
+< updatecards {container=0, npcTotalPlays={0=0, 1=8}, num=1, playerTotalPlays={0=8, 1=4}, suit=4, user=player}
 tick 18
 < updatescore {npcScore=0, playerScore=4}
 < emptyhand
 tick 6
-< updatecards {container=0, npcTotalPlays=[0, 8, 4], num=0, playerTotalPlays=[8, 4], suit=4, user=npc}
+< updatecards {container=0, npcTotalPlays={0=0, 1=8, 2=4}, num=0, playerTotalPlays={0=8, 1=4}, suit=4, user=npc}
 > playermove num=0 suit=0
-< updatecards {container=0, npcTotalPlays=[0, 8, 4], num=0, playerTotalPlays=[8, 4, 0], suit=0, user=player}
+< updatecards {container=0, npcTotalPlays={0=0, 1=8, 2=4}, num=0, playerTotalPlays={0=8, 1=4, 2=0}, suit=0, user=player}
 tick 18
 < updatescore {npcScore=0, playerScore=6}
 < newdeal
@@ -377,9 +384,8 @@ Order: CH1, then CH2, then CH3. CH2 and CH3 both touch `mod.rs` dispatch; give C
 ## 11. Open questions
 
 1. `FSCommand:ConvEffTarget` and `ConvEffSelf`: what the host client does with them (a combat effect on the conversation NPC?). No repo match. Needs Ghidra on the GFx FSCommand handler.
-2. The order of 778, 779, 792 and 793 against bits 15 to 18 is Inferred from bonus size. Confirm from the ability rows or Ghidra.
-3. Units of `intelligence` and `tech_competency`. If either is a large stat, the threshold makes an accord certain (or impossible) every deal. Check the values Rust sends in `joinOK`.
-4. Keep or drop the "unanswered card scores for the player" fall-through, and the `newhand` command that ends a hand early (both favour the player)? This spec keeps both as the original behaves.
-5. The pairing by play order, not by container, matters only in mediation5. Keep it (faithful) or pair by container (as the client draws it)?
-6. The time ratio at a timeout is 0 or below; this spec clamps it to 0.
-7. After `newdeal`, if the client never sends `processreset`, the original's tick keeps ending empty hands, and the NaN fall-through scores them for the player (Inferred). The port should hold the timers until `processreset`, or end the game at the countdown.
+2. Units of `intelligence` and `tech_competency`. If either is a large stat, the threshold makes an accord certain (or impossible) every deal. Check the values Rust sends in `joinOK`.
+3. Keep or drop the "unanswered card scores for the player" fall-through, and the `newhand` command that ends a hand early (both favour the player)? This spec keeps both as the original behaves.
+4. The pairing by play order, not by container, matters only in mediation5. Keep it (faithful) or pair by container (as the client draws it)?
+5. The time ratio at a timeout is 0 or below; this spec clamps it to 0.
+6. After `newdeal`, if the client never sends `processreset`, the original's tick keeps ending empty hands, and the NaN fall-through scores them for the player (Inferred). The port should hold the timers until `processreset`, or end the game at the countdown.
