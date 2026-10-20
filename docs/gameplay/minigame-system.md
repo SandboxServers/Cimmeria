@@ -36,6 +36,16 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
   |-> Cell: runs the chain from on_victory_chains
 ```
 
+### Optional pre-game dialog (MG-21)
+
+With `CIMMERIA_MINIGAME_START_DIALOG` on (default off; see the table in `crates/server/src/main.rs`), a launch first shows the pre-game dialog instead of sending `StartMinigame` at once:
+
+- Cell sends client method 53 (`onStartMinigameDialog`) with `Name`, `Difficulty`, `TCLevel`, `Verb`, `ArchetypeBitfield`, `CanPlay`, `CanCall`, `CanSpectate`. The offer waits 60 s.
+- Play sends cell 24 (`startMinigame`). A live offer launches with source `start_dialog`. A missing or expired offer, or a player already in a minigame, sends client 54 (`onStartMinigameDialogClose`) and logs a WARN.
+- Cancel sends cell 30 (`minigameStartCancel`). It drops the offer and sends nothing.
+
+Two deviations from the original flow: the movement and state hold is taken at launch, not when the dialog opens, so an unanswered dialog never locks a player; and expiry is checked lazily when cell 24 arrives.
+
 ## Implementation Status
 
 | Feature | Status | Notes |

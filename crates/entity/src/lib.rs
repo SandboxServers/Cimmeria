@@ -24,6 +24,7 @@ pub mod inventory;
 pub mod known_names;
 pub mod mailbox;
 pub mod manager;
+pub mod minigame_feature;
 pub mod missions;
 pub mod movement;
 pub mod movement_validation;
