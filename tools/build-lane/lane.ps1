@@ -51,6 +51,7 @@ while ($Cmd.Count -gt 0) {
     else { break }
 }
 if ($Cmd.Count -eq 0) { [Console]::Error.WriteLine($Usage); exit 2 }
+if ($ClassGiven) { $ClassFlag = $ClassFlag.ToLowerInvariant() }
 if ($ClassGiven -and $ClassFlag -notin 'heavy', 'light', 'db') { [Console]::Error.WriteLine($Usage); exit 2 }
 if ($Exclusive -and $ClassGiven -and $ClassFlag -ne 'heavy') { [Console]::Error.WriteLine($Usage); exit 2 }
 $CmdStr = $Cmd -join ' '

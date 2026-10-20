@@ -154,6 +154,18 @@ try {
     $last = (Read-Jobs)[-1]
     Check ($last.class -eq 'heavy' -and $last.class_req -eq 'light') "and logs class=heavy, class_req=light (got $($last.class), $($last.class_req))"
 
+    # --- 5b. a db job runs through the real lane on slot.db.1, and a db count of 0 sends it to heavy
+    $c5 = Join-Path $tmp 'c5.json'
+    $r = Invoke-Pwsh @('-NoProfile', '-File', $lane, '--class', 'db', 'pwsh', '-NoProfile', '-File', $probe, $c5, (Join-Path $lock 'slot.db.1')) @{} 60
+    Check ($r.Exit -eq 0 -and (Read-Probe $c5).exists) 'a db job takes slot.db.1'
+    $j = (Read-Jobs)[-1]
+    Check ($j.class -eq 'db' -and $j.class_slots_total -eq 3 -and $j.jobs -eq 4) 'and logs class=db, class_slots_total=3, jobs=4'
+    $c5b = Join-Path $tmp 'c5b.json'
+    $r = Invoke-Pwsh @('-NoProfile', '-File', $lane, '--class', 'db', 'pwsh', '-NoProfile', '-File', $probe, $c5b, (Join-Path $lock 'slot.1')) @{ LANE_DB_SLOTS = '0'; LANE_SLOTS = '1' } 60
+    Check ($r.Exit -eq 0 -and (Read-Probe $c5b).exists) 'with LANE_DB_SLOTS=0 the db job takes slot.1'
+    $j = (Read-Jobs)[-1]
+    Check ($j.class -eq 'heavy' -and $j.class_req -eq 'db') "and logs class=heavy, class_req=db (got $($j.class), $($j.class_req))"
+
     # --- 6. a lane call inside a lane job is nested: LANE_SLOTS=1 must not hang ----------
     $outer = @('-NoProfile', '-File', $lane, 'pwsh', '-NoProfile', '-File', $lane, 'pwsh', '-NoProfile', '-File', $exit7)
     $r = Invoke-Pwsh $outer @{ LANE_SLOTS = '1' } 45
@@ -182,6 +194,8 @@ try {
     Check ($r.Exit -eq 2) "--exclusive --class light exits 2 (got $($r.Exit))"
     $r = Invoke-Pwsh @('-NoProfile', '-File', $lane, '--class=light', 'pwsh', '-NoProfile', '-Command', 'exit 0') @{} 60
     Check ($r.Exit -eq 0) "--class=light is accepted (exit $($r.Exit))"
+    $r = Invoke-Pwsh @('-NoProfile', '-File', $lane, '--class', 'LIGHT', 'pwsh', '-NoProfile', '-Command', 'exit 0') @{} 60
+    Check ((Read-Jobs)[-1].class -ceq 'light') '--class LIGHT is logged as light'
 } finally {
     foreach ($c in $children) { if (-not $c.HasExited) { Stop-Process -Id $c.Id -Force -ErrorAction SilentlyContinue } }
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
