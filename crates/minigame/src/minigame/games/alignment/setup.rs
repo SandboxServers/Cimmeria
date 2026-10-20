@@ -128,7 +128,8 @@ pub(super) fn goal_totals(tier: u8, level: u8) -> Vec<u32> {
 }
 
 /// The triangle partner pairs of spec section 3, as neighbour indices.
-const TRIANGLE_PAIRS: [(usize, usize); 6] = [(5, 0), (4, 5), (3, 4), (0, 1), (1, 2), (2, 3)];
+pub(super) const TRIANGLE_PAIRS: [(usize, usize); 6] =
+    [(5, 0), (4, 5), (3, 4), (0, 1), (1, 2), (2, 3)];
 
 /// Neighbour offsets n0-n5 for an even column `y`.
 const OFFSETS_EVEN: [(i32, i32); 6] = [(-1, 0), (-1, 1), (0, 1), (1, 0), (0, -1), (-1, -1)];

@@ -36,13 +36,16 @@ impl SwapReject {
     }
 }
 
-/// What a match produced: the spin count, the power-up values in visit order
-/// and the removed cells with the piece each held.
+/// What a match produced: the spin count, the power-up values in visit order,
+/// the removed cells with the piece each held, and the flood alone (before the
+/// power-ups grow it). The swap step scores and counts the flood only (spec
+/// section 6, the shipped inconsistency).
 #[derive(Debug, PartialEq)]
 pub(super) struct SwapOutcome {
     pub(super) spin_count: u8,
     pub(super) power_values: Vec<u8>,
     pub(super) matches: Vec<(Cell, Piece)>,
+    pub(super) flood: Vec<(Cell, Piece)>,
 }
 
 /// Reads the three cells of a `swappieces` request. `row<n>` is the board `x`
@@ -165,6 +168,8 @@ pub(super) fn swap_pieces(
     let mut trial = board.to_vec();
     apply_spin(&mut trial, cells, spin);
     let flood = check_neighbor_matches(&trial, &check_for_matches(&trial));
+    let flood_cells: Vec<(Cell, Piece)> =
+        flood.iter().map(|&(x, y)| ((x, y), trial[x][y])).collect();
     let (matched, power_values) = check_power_up_matches(&trial, &flood);
     let matches: Vec<(Cell, Piece)> = matched
         .iter()
@@ -177,6 +182,7 @@ pub(super) fn swap_pieces(
         spin_count: spin,
         power_values,
         matches,
+        flood: flood_cells,
     };
     Some((trial, outcome))
 }

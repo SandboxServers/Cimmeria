@@ -11,7 +11,7 @@ use rand::RngExt;
 use super::moves::{cell_value, check_power_up_matches, get_match_power, Cell};
 use super::moves_gravity::{cell_at, Pos, Slide};
 use super::piece::Piece;
-use super::setup::{check_for_matches, check_neighbor_matches, number, BONUS_ICONS};
+use super::setup::{check_neighbor_matches, neighbour, number, BONUS_ICONS, TRIANGLE_PAIRS};
 use crate::minigame::protocol::SfsValue;
 use crate::sfs_vars;
 
@@ -49,13 +49,15 @@ fn grant(kind: u8, mp: u8) -> Piece {
 
 /// The refill grants (spec section 6): `A` holds the types matched 8 to 11
 /// times and `B` the types matched 12 or more, each in ascending type order.
+/// Only plain pieces count: the listing switches on the exact type, so a
+/// power-up (`4.1`) is not a `4`.
 fn grant_lists(matches: &[(Cell, Piece)]) -> (Vec<Piece>, Vec<Piece>) {
     let mut a = Vec::new();
     let mut b = Vec::new();
     for kind in 1..=8u8 {
         let count = matches
             .iter()
-            .filter(|(_, piece)| piece.kind == kind)
+            .filter(|(_, piece)| piece.kind == kind && piece.power == 0)
             .count();
         if (8..=11).contains(&count) {
             a.push(grant(kind, 8));
@@ -163,10 +165,15 @@ pub(super) fn refill(
     new_hexes
 }
 
+/// The draws one re-roll may take before the last draw is kept (authority F1),
+/// so a pool that always completes a triangle cannot hang the session task.
+pub(super) const REROLL_DRAWS: usize = 64;
+
 /// The re-roll pass (spec section 6, only after a scored step): a new cell that
-/// completes a match is re-rolled from the bonus and goal icons, and the board
-/// takes the new type too. The pass stops early when the first new cell needed
-/// no re-roll, which the listing does and the port keeps.
+/// sits in a triangle of its own type is re-rolled from the bonus and goal
+/// icons, and the board takes the new type too. A cell that only touches a
+/// match is left alone. Each cell is re-rolled once, as the listing does. The
+/// pass stops early when the first new cell needed no re-roll.
 pub(super) fn reroll(
     rng: &mut StdRng,
     board: &mut [Vec<Piece>],
@@ -179,13 +186,14 @@ pub(super) fn reroll(
         let mut rerolled_first = false;
         for i in (0..new_hexes.len()).rev() {
             let (x, y) = new_hexes[i].0;
-            while completes_match(board, (x, y)) {
-                let piece = Piece::plain(pool[rng.random_range(0..pool.len())]);
-                board[x][y] = piece;
-                new_hexes[i].1 = piece;
-                if i == 0 {
-                    rerolled_first = true;
-                }
+            if !in_neighbour_triangle(board, (x, y)) {
+                continue;
+            }
+            let piece = reroll_cell(|| pool[rng.random_range(0..pool.len())], board, (x, y));
+            board[x][y] = piece;
+            new_hexes[i].1 = piece;
+            if i == 0 {
+                rerolled_first = true;
             }
         }
         if !rerolled_first {
@@ -194,10 +202,43 @@ pub(super) fn reroll(
     }
 }
 
-/// Whether `cell` is part of a match on the current board.
-fn completes_match(board: &[Vec<Piece>], cell: Cell) -> bool {
-    let seeds = check_for_matches(board);
-    check_neighbor_matches(board, &seeds).contains(&cell)
+/// The new piece of a re-rolled cell: the first draw that differs from both
+/// neighbours of some triangle pair of `cell`, or the last draw once
+/// `REROLL_DRAWS` draws are spent.
+pub(super) fn reroll_cell(mut draw: impl FnMut() -> u8, board: &[Vec<Piece>], cell: Cell) -> Piece {
+    let mut kind = draw();
+    for _ in 1..REROLL_DRAWS {
+        if neighbour_pairs(board, cell)
+            .iter()
+            .any(|&(a, b)| a != kind && b != kind)
+        {
+            break;
+        }
+        kind = draw();
+    }
+    Piece::plain(kind)
+}
+
+/// Whether the cell at `cell` sits in a triangle of its own type: some pair of
+/// its neighbours on the board holds the cell's type (blockers count).
+fn in_neighbour_triangle(board: &[Vec<Piece>], cell: Cell) -> bool {
+    let kind = board[cell.0][cell.1].kind;
+    neighbour_pairs(board, cell)
+        .iter()
+        .any(|&(a, b)| a == kind && b == kind)
+}
+
+/// The types of the two neighbours of `cell` in each triangle pair of spec
+/// section 3, for the pairs whose two neighbours are both on the board.
+fn neighbour_pairs(board: &[Vec<Piece>], (x, y): Cell) -> Vec<(u8, u8)> {
+    TRIANGLE_PAIRS
+        .iter()
+        .filter_map(|&(a, b)| {
+            let first = neighbour(board, x, y, a)?;
+            let second = neighbour(board, x, y, b)?;
+            Some((board[first.0][first.1].kind, board[second.0][second.1].kind))
+        })
+        .collect()
 }
 
 /// The `hexmove` reply to `cascade` (spec section 5): the slides in walk order
@@ -245,9 +286,10 @@ fn cell_list(cells: &[(Cell, Piece)]) -> SfsValue {
     SfsValue::list(cells.iter().map(|&((x, y), piece)| cell_value(x, y, piece)))
 }
 
-/// The piece types of `matches`, in order: the `scores` list of spec section 6.
-pub(super) fn types(matches: &[(Cell, Piece)]) -> Vec<u8> {
-    matches.iter().map(|(_, piece)| piece.kind).collect()
+/// The pieces of `matches`, in order: the `scores` list of spec section 6. The
+/// power is kept, so a power-up is told apart from its base type when scored.
+pub(super) fn types(matches: &[(Cell, Piece)]) -> Vec<Piece> {
+    matches.iter().map(|(_, piece)| *piece).collect()
 }
 
 /// The expanded cascade set (spec section 6): the flood of the seeds, grown by

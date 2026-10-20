@@ -26,6 +26,8 @@ mod tests_cascade;
 #[cfg(test)]
 mod tests_moves;
 #[cfg(test)]
+mod tests_refill;
+#[cfg(test)]
 mod tests_setup;
 
 use piece::Piece;
@@ -87,8 +89,10 @@ pub(crate) struct AlignmentGame {
     outcome: Option<&'static str>,
     /// The cells of the current match, power-up-expanded (spec section 6).
     current_matches: Vec<(moves::Cell, Piece)>,
-    /// The piece types scored so far in this turn (`currentScores`).
-    current_scores: Vec<u8>,
+    /// The pieces scored so far in this turn (`currentScores`).
+    current_scores: Vec<Piece>,
+    /// Refused commands so far in this game; only some are logged (F4).
+    refusals: u32,
     /// Cascade steps taken after the swap; the re-roll pass runs when it is
     /// above 0.
     cascade_count: u32,
@@ -97,14 +101,16 @@ pub(crate) struct AlignmentGame {
 }
 
 impl AlignmentGame {
-    /// Builds the game for a session and draws its board from the session seed.
+    /// Builds the game for a session and draws its board. The RNG is seeded from
+    /// the OS, not from the session seed: a 32-bit seed would let a client solve
+    /// the board by brute force (authority F2).
     pub(crate) fn new(session: &MinigameSession) -> Self {
         let tier = setup::clamp_tier(
             session.difficulty,
             session.entity_id,
             session.player_name.as_deref(),
         );
-        let mut rng = StdRng::seed_from_u64(u64::from(session.seed));
+        let mut rng = StdRng::from_rng(&mut rand::rng());
         let board = setup::select_icons(&mut rng, tier);
         Self::build(session, rng, board)
     }
@@ -163,6 +169,7 @@ impl AlignmentGame {
             outcome: None,
             current_matches: Vec::new(),
             current_scores: Vec::new(),
+            refusals: 0,
             cascade_count: 0,
             drop_index: 0,
         }
@@ -189,7 +196,7 @@ impl AlignmentGame {
             Some((board, outcome)) => {
                 self.board = board;
                 self.phase = Phase::AwaitCascade;
-                self.current_matches = outcome.matches.clone();
+                self.current_matches = outcome.flood.clone();
                 self.current_scores.clear();
                 self.cascade_count = 0;
                 vec![
@@ -271,8 +278,13 @@ impl AlignmentGame {
         ))]
     }
 
-    /// Logs a refused client command at WARN (the board is left as it was).
-    fn refuse(&self, cmd: &str, reason: &str) {
+    /// Counts a refused client command and logs it at WARN when `logs_refusal`
+    /// says so (the board is left as it was).
+    fn refuse(&mut self, cmd: &str, reason: &str) {
+        self.refusals = self.refusals.saturating_add(1);
+        if !logs_refusal(self.refusals) {
+            return;
+        }
         tracing::warn!(
             entity_id = self.entity_id,
             entity_name = self.player_name.as_deref(),
@@ -280,9 +292,20 @@ impl AlignmentGame {
             player_name = self.player_name.as_deref(),
             cmd,
             reason,
+            refusals = self.refusals,
             "Alignment: command refused"
         );
     }
+}
+
+/// The first refusals of a game are logged; after that one in every
+/// `REFUSAL_LOG_EVERY` is, so a client cannot flood the log (authority F4).
+const REFUSAL_LOG_FIRST: u32 = 16;
+const REFUSAL_LOG_EVERY: u32 = 256;
+
+/// Whether the refusal numbered `n` (counted from 1) is logged.
+fn logs_refusal(n: u32) -> bool {
+    n <= REFUSAL_LOG_FIRST || n.is_multiple_of(REFUSAL_LOG_EVERY)
 }
 
 impl MinigameInstance for AlignmentGame {
@@ -301,15 +324,7 @@ impl MinigameInstance for AlignmentGame {
         // The command is client text: it is cut before it reaches a log line.
         let logged = log_text(cmd);
         if self.phase == Phase::Ended {
-            tracing::warn!(
-                entity_id = self.entity_id,
-                entity_name = self.player_name.as_deref(),
-                player_id = self.player_id,
-                player_name = self.player_name.as_deref(),
-                cmd = logged,
-                reason = "game_ended",
-                "Alignment: command after the end"
-            );
+            self.refuse(logged, "game_ended");
             return vec![];
         }
         match cmd {
@@ -333,15 +348,7 @@ impl MinigameInstance for AlignmentGame {
                 } else {
                     "unknown_command"
                 };
-                tracing::warn!(
-                    entity_id = self.entity_id,
-                    entity_name = self.player_name.as_deref(),
-                    player_id = self.player_id,
-                    player_name = self.player_name.as_deref(),
-                    cmd = logged,
-                    reason,
-                    "Alignment: command refused"
-                );
+                self.refuse(logged, reason);
                 vec![]
             }
         }

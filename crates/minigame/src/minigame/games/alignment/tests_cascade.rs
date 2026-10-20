@@ -51,6 +51,36 @@ fn transcript_a_board() -> Vec<Vec<u8>> {
         .collect()
 }
 
+/// An 8x8 board of types 4-6 with no triangle (transcript B's plain board).
+fn plain_board() -> Vec<Vec<u8>> {
+    (0..8)
+        .map(|x| {
+            (0..8)
+                .map(|y| [4, 5, 6][(x + 2 * (y % 2)) % 3] as u8)
+                .collect()
+        })
+        .collect()
+}
+
+/// A plain-piece board from the injected type ids.
+fn to_pieces(board: &[Vec<u8>]) -> Vec<Vec<Piece>> {
+    board
+        .iter()
+        .map(|column| column.iter().map(|&kind| Piece::plain(kind)).collect())
+        .collect()
+}
+
+/// The cells `(x, y)` of a `matches` list, in list order.
+fn cells_of(value: &SfsValue) -> Vec<(u32, u32)> {
+    items(value)
+        .iter()
+        .map(|entry| {
+            let xy = fields(entry, &["x", "y"]);
+            (xy[0] as u32, xy[1] as u32)
+        })
+        .collect()
+}
+
 /// An 8x8 board of type 4 pieces with the listed cells emptied.
 fn board_with_gaps(gaps: &[Cell]) -> Vec<Vec<Piece>> {
     let mut board = vec![vec![Piece::plain(4); 8]; 8];
@@ -323,36 +353,109 @@ fn second_cascade_is_refused_until_the_check() {
     assert!(game.message("cascade", &HashMap::new()).is_empty());
 }
 
-/// A match on the board after the refill sends `bypasshexspinner` and waits
+/// A type-7 triangle on the board at `(1, 1)`, `(2, 1)` and `(2, 0)`.
+fn board_with_seven_triangle() -> Vec<Vec<u8>> {
+    let mut board = plain_board();
+    for (x, y) in [(1, 1), (2, 1), (2, 0)] {
+        board[x][y] = 7;
+    }
+    board
+}
+
+/// A match on the board sends `bypasshexspinner`, removes the match and waits
 /// for the next `cascade`.
 #[test]
-fn check_for_cascade_with_a_match_loops_to_cascade() {
+fn check_for_cascade_with_a_match_sends_bypasshexspinner() {
+    let mut game = AlignmentGame::with_board(&make_session(7), board_with_seven_triangle());
+    game.phase = Phase::AwaitCheck;
+    let outputs = game.message("checkForCascade", &HashMap::new());
+    let vars = sent(&outputs, 0);
+    assert_eq!(text(&vars["_cmd"]), "bypasshexspinner");
+    assert!(cells_of(&vars["matches"]).contains(&(1, 1)));
+    assert_eq!(game.phase, Phase::AwaitCascade);
+    assert_eq!(game.cascade_count, 1);
+    assert_eq!(game.board[1][1], Piece::plain(0));
+}
+
+/// Transcript A's refill with seed 7 makes no triangle, so `checkForCascade`
+/// sends `cascadecheckcomplete`, moves the drop index on and awaits the score.
+#[test]
+fn check_for_cascade_after_the_refill_awaits_the_score() {
     let mut game = game_after_swap();
     game.message("cascade", &HashMap::new());
     let outputs = game.message("checkForCascade", &HashMap::new());
-    if game.phase == Phase::AwaitCascade {
-        let vars = sent(&outputs, 0);
-        assert_eq!(text(&vars["_cmd"]), "bypasshexspinner");
-        assert_eq!(game.cascade_count, 1);
-    } else {
-        assert_eq!(game.phase, Phase::AwaitScore);
-        assert_eq!(game.drop_index, 1);
+    assert_eq!(text(&sent(&outputs, 0)["_cmd"]), "cascadecheckcomplete");
+    assert_eq!(game.phase, Phase::AwaitScore);
+    assert_eq!(game.drop_index, 1);
+}
+
+/// Step 7 of transcript A: after a step with no match the drop index is 1, so
+/// the second swap's `hexmove` carries direction 1.
+#[test]
+fn second_swap_hexmove_carries_direction_one() {
+    let mut game = game_after_swap();
+    game.message("cascade", &HashMap::new());
+    game.message("checkForCascade", &HashMap::new());
+    assert_eq!(game.drop_index, 1);
+    game.phase = Phase::Ready;
+    game.board = to_pieces(&transcript_a_board());
+    game.message("swappieces", &transcript_a_params());
+    let outputs = game.message("cascade", &HashMap::new());
+    assert_eq!(sent(&outputs, 0)["direction"].as_f64(), Some(1.0));
+}
+
+/// Each match's pieces are scored once: the cascade's matched cells are scored
+/// at the check that follows, and nothing is scored twice.
+#[test]
+fn current_scores_hold_each_match_once() {
+    let mut game = AlignmentGame::with_board(&make_session(7), board_with_seven_triangle());
+    game.phase = Phase::AwaitCheck;
+    game.current_matches = vec![((5, 5), Piece::plain(3))];
+    game.message("checkForCascade", &HashMap::new());
+    let sevens = game.current_matches.clone();
+    assert_eq!(game.phase, Phase::AwaitCascade);
+    // The refill is simulated with three distinct types, which make no triangle.
+    for (n, ((x, y), _)) in sevens.iter().enumerate() {
+        game.board[*x][*y] = Piece::plain(1 + n as u8);
     }
+    game.phase = Phase::AwaitCheck;
+    let outputs = game.message("checkForCascade", &HashMap::new());
+    assert_eq!(text(&sent(&outputs, 0)["_cmd"]), "cascadecheckcomplete");
+    let mut expected = vec![Piece::plain(3)];
+    expected.extend(sevens.iter().map(|_| Piece::plain(7)));
+    assert_eq!(game.current_scores, expected);
+    assert_eq!(game.phase, Phase::AwaitScore);
+}
+
+/// A power-up in a scored match keeps its power in `currentScores`, so AL3a can
+/// tell it from its base type.
+#[test]
+fn current_scores_keep_the_power_of_a_power_up() {
+    let mut game = AlignmentGame::with_board(&make_session(7), plain_board());
+    game.phase = Phase::AwaitCheck;
+    game.current_matches = vec![((0, 0), Piece { kind: 4, power: 1 })];
+    game.message("checkForCascade", &HashMap::new());
+    assert_eq!(game.current_scores, vec![Piece { kind: 4, power: 1 }]);
+    assert_eq!(game.drop_index, 1);
+}
+
+/// The swap step counts the flood only: the power-up that the match holds at
+/// `(2, 2)` adds cells to the reply, but not to `current_matches`.
+#[test]
+fn swap_step_keeps_the_flood_not_the_power_up_expansion() {
+    let mut pieces = to_pieces(&transcript_a_board());
+    pieces[2][2].power = 1;
+    let mut game = AlignmentGame::with_pieces(&make_session(7), pieces);
+    let outputs = game.message("swappieces", &transcript_a_params());
+    let replied = cells_of(&sent(&outputs, 1)["matches"]).len();
+    assert!(game.current_matches.len() < replied, "{replied}");
 }
 
 /// Without a match `checkForCascade` sends `cascadecheckcomplete`, moves the
 /// drop index on and awaits the score.
 #[test]
 fn check_for_cascade_without_a_match_awaits_the_score() {
-    // The spec section 9 fixture has no triangle (transcript B's plain board).
-    let plain: Vec<Vec<u8>> = (0..8)
-        .map(|x| {
-            (0..8)
-                .map(|y| [4, 5, 6][(x + 2 * (y % 2)) % 3] as u8)
-                .collect()
-        })
-        .collect();
-    let mut game = AlignmentGame::with_board(&make_session(7), plain);
+    let mut game = AlignmentGame::with_board(&make_session(7), plain_board());
     game.phase = Phase::AwaitCheck;
     game.current_matches = vec![((0, 0), Piece::plain(4))];
     let outputs = game.message("checkForCascade", &HashMap::new());
@@ -360,7 +463,55 @@ fn check_for_cascade_without_a_match_awaits_the_score() {
     assert_eq!(text(&vars["_cmd"]), "cascadecheckcomplete");
     assert_eq!(game.phase, Phase::AwaitScore);
     assert_eq!(game.drop_index, 1);
-    assert_eq!(game.current_scores, vec![4]);
+    assert_eq!(game.current_scores, vec![Piece::plain(4)]);
+}
+
+/// F5: `checkForCascade` is refused in `Ready`, and a replay after the score is
+/// refused too, leaving the scores, the drop index and the phase unchanged.
+#[test]
+fn check_for_cascade_is_refused_in_ready_and_on_replay() {
+    let mut game = AlignmentGame::with_board(&make_session(7), transcript_a_board());
+    assert!(game.message("checkForCascade", &HashMap::new()).is_empty());
+    assert_eq!(game.phase, Phase::Ready);
+    game.phase = Phase::AwaitCheck;
+    game.current_matches = vec![((0, 0), Piece::plain(4))];
+    game.message("checkForCascade", &HashMap::new());
+    let scores = game.current_scores.clone();
+    assert!(game.message("checkForCascade", &HashMap::new()).is_empty());
+    assert_eq!(game.current_scores, scores);
+    assert_eq!(game.drop_index, 1);
+    assert_eq!(game.phase, Phase::AwaitScore);
+}
+
+/// F5: `cascade` is refused in `AwaitCheck` and `AwaitScore`, and the board is
+/// left as it was.
+#[test]
+fn cascade_is_refused_in_await_check_and_await_score() {
+    let mut game = game_after_swap();
+    game.message("cascade", &HashMap::new());
+    let board = game.board.clone();
+    assert_eq!(game.phase, Phase::AwaitCheck);
+    assert!(game.message("cascade", &HashMap::new()).is_empty());
+    game.phase = Phase::AwaitScore;
+    assert!(game.message("cascade", &HashMap::new()).is_empty());
+    assert_eq!(game.phase, Phase::AwaitScore);
+    assert_eq!(game.board, board);
+}
+
+/// F5: `swappieces` is refused in `AwaitCascade`, `AwaitCheck` and `AwaitScore`,
+/// and the board is byte-identical afterwards.
+#[test]
+fn swap_is_refused_outside_ready() {
+    let mut game = game_after_swap();
+    let board = game.board.clone();
+    for phase in [Phase::AwaitCascade, Phase::AwaitCheck, Phase::AwaitScore] {
+        game.phase = phase;
+        assert!(game
+            .message("swappieces", &transcript_a_params())
+            .is_empty());
+        assert_eq!(game.phase, phase);
+        assert_eq!(game.board, board, "{phase:?}");
+    }
 }
 
 /// F4: a swap whose triangle holds an empty cell is refused, even when the
