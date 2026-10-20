@@ -253,6 +253,14 @@ impl AlignmentGame {
                     continue;
                 };
                 let cells = [(x, y), n0, n1];
+                // `swappieces` refuses a blocker (9) or an empty cell (0), so a
+                // hint must never name one.
+                if cells
+                    .iter()
+                    .any(|&(cx, cy)| matches!(self.board[cx][cy].kind, 0 | 9))
+                {
+                    continue;
+                }
                 if moves::spin_check(&self.board, cells).is_some() {
                     return Some(cells);
                 }

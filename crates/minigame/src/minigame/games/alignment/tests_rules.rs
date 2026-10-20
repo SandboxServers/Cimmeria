@@ -2,6 +2,7 @@
 //! and 8): the score and its multiplier, the one-shot `doscore`, the victory
 //! gate, the countdown and its wall clock, the idle hint prompt and `callhint`.
 
+use super::tests_moves::{swap_params, transcript_a_params};
 use super::*;
 
 fn make_session(seed: u32) -> MinigameSession {
@@ -245,16 +246,34 @@ fn hint_index_rotates_through_the_four_orders() {
 }
 
 #[test]
-fn every_hint_scan_order_keeps_n1_in_bounds() {
+fn each_hint_scan_order_finds_its_own_first_triangle() {
     let game = AlignmentGame::with_board(&make_session(1), transcript_a_board());
-    for index in 0..4 {
-        if let Some([_, _, (x, y)]) = game.find_hint(index) {
-            assert!(
-                y < game.board[x].len(),
-                "order {index} returned n1 off the board"
-            );
-        }
-    }
+    let first: Vec<(usize, usize)> = (0..4).map(|i| game.find_hint(i).unwrap()[0]).collect();
+    assert_eq!(first, [(1, 1), (1, 2), (3, 3), (3, 0)]);
+}
+
+#[test]
+fn successive_callhints_walk_the_scan_orders() {
+    let mut game = AlignmentGame::with_board(&make_session(1), transcript_a_board());
+    let firsts: Vec<(f64, f64)> = (0..4)
+        .map(|_| {
+            let out = game.call_hint();
+            let c = cell(&sends(&out)[0]["hex1"]);
+            (c.0, c.1)
+        })
+        .collect();
+    assert_eq!(firsts, [(1.0, 1.0), (1.0, 2.0), (3.0, 3.0), (3.0, 0.0)]);
+}
+
+#[test]
+fn a_hint_never_names_a_blocker_or_empty_cell() {
+    let mut pieces: Vec<Vec<Piece>> = transcript_a_board()
+        .iter()
+        .map(|column| column.iter().map(|&kind| Piece::plain(kind)).collect())
+        .collect();
+    pieces[0][1] = Piece::plain(9);
+    let game = AlignmentGame::with_pieces(&make_session(1), pieces);
+    assert_eq!(game.find_hint(0), Some([(1, 2), (0, 2), (0, 3)]));
 }
 
 #[test]
@@ -284,6 +303,46 @@ fn idle_prompt_is_paused_by_a_swap_until_the_score() {
     game.hint_pause = true;
     for _ in 0..40 {
         assert!(game.tick().is_empty());
+    }
+}
+
+#[test]
+fn a_matching_swap_pauses_the_hints_and_doscore_resumes_them() {
+    let mut game = AlignmentGame::with_board(&make_session(1), transcript_a_board());
+    game.message("swappieces", &transcript_a_params());
+    assert!(game.hint_pause);
+    game.phase = Phase::AwaitScore;
+    game.do_score();
+    assert!(!game.hint_pause);
+}
+
+#[test]
+fn a_no_match_swap_unpauses_the_hints() {
+    let mut game = AlignmentGame::with_board(&make_session(1), plain_board());
+    game.hint_pause = true;
+    let out = game.message(
+        "swappieces",
+        &swap_params([(1, 1, 4), (1, 0, 5), (0, 1, 6)]),
+    );
+    assert_eq!(names(&out), ["hexspinner"]);
+    assert!(!game.hint_pause);
+}
+
+#[test]
+fn resethinttimer_and_doscore_restart_the_hint_gap() {
+    let mut reset = AlignmentGame::with_board(&make_session(1), plain_board());
+    let mut scored = await_score(vec![], 0);
+    for _ in 0..16 {
+        reset.tick();
+        scored.tick();
+    }
+    assert!(reset.message("resethinttimer", &HashMap::new()).is_empty());
+    scored.do_score();
+    for game in [&mut reset, &mut scored] {
+        for tick in 1..=39 {
+            assert!(game.tick().is_empty(), "tick {tick}");
+        }
+        assert_eq!(names(&game.tick()), ["clicktohint"]);
     }
 }
 
@@ -342,4 +401,50 @@ fn abort_ends_the_game_and_the_clock_stops() {
     assert!(!game.needs_tick());
     assert!(game.message("callhint", &HashMap::new()).is_empty());
     assert!(game.tick().is_empty());
+}
+
+#[test]
+fn a_score_bonus_and_a_hint_cost_move_the_wall_clock_budget() {
+    let mut game = await_score(vec![Piece::plain(4); 4], 4);
+    let before = game.clock_budget;
+    game.do_score();
+    assert_eq!(game.clock_budget, before + 12.0);
+    game.call_hint();
+    assert_eq!(game.clock_budget, before + 7.0);
+}
+
+#[test]
+fn started_anchors_the_wall_clock_with_the_grace() {
+    let mut game = AlignmentGame::with_board(&make_session(1), plain_board());
+    game.clock_budget = 0.0;
+    game.started();
+    assert_eq!(game.clock_budget, 122.0);
+}
+
+#[test]
+fn dovictory_and_callhint_are_refused_outside_ready() {
+    let mut game = await_score(goal_pieces(), 0);
+    game.do_score();
+    assert!(game.armed);
+    game.phase = Phase::AwaitCascade;
+    assert!(game.do_victory().is_empty());
+    assert_eq!(game.outcome, None);
+    let time = game.shown_time();
+    assert!(game.call_hint().is_empty());
+    assert_eq!(game.shown_time(), time);
+}
+
+#[test]
+fn a_callhint_below_zero_ends_the_game_on_the_next_message() {
+    let mut game = AlignmentGame::with_board(&make_session(1), plain_board());
+    game.time_remaining = 4.25;
+    game.clock_budget = 6.0;
+    let out = game.call_hint();
+    assert_eq!(names(&out), ["timerupdate"]);
+    assert!(game.shown_time() < 0.0);
+    let out = game.message("swappieces", &HashMap::new());
+    assert_eq!(names(&out), ["failure"]);
+    assert!(out.iter().any(|o| matches!(o, GameOutput::Failure)));
+    assert_eq!(game.outcome, Some("failure"));
+    assert!(!game.needs_tick());
 }

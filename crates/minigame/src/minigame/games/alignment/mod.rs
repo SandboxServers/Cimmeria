@@ -364,6 +364,11 @@ impl MinigameInstance for AlignmentGame {
         if self.clock_expired() {
             return self.time_out();
         }
+        // The countdown too: a `callhint` may leave the shown time at or below
+        // zero until the next tick, so the game ends here (authority F1).
+        if self.timer_state >= 1 && self.shown_time() <= 0.0 {
+            return self.time_out();
+        }
         match cmd {
             // The reset is refused, as the CrystalGame ruling does: no reply
             // and no change, so a reset cannot abort a cascade or add time.

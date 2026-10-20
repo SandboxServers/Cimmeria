@@ -51,7 +51,7 @@ fn transcript_a_board() -> Vec<Vec<u8>> {
 
 /// A `swappieces` request: `cells` are `(x, y, type)`, sent as `row<n>` = x,
 /// `col<n>` = y, `type<n>` = type.
-fn swap_params(cells: [(i32, i32, u8); 3]) -> HashMap<String, SfsValue> {
+pub(super) fn swap_params(cells: [(i32, i32, u8); 3]) -> HashMap<String, SfsValue> {
     let mut params = HashMap::new();
     for (n, &(x, y, kind)) in cells.iter().enumerate() {
         let n = n + 1;
@@ -67,7 +67,7 @@ fn swap_params(cells: [(i32, i32, u8); 3]) -> HashMap<String, SfsValue> {
 
 /// Transcript A's request: cell 1 `(1, 1)` with its neighbours `(2, 1)` and
 /// `(2, 0)`.
-fn transcript_a_params() -> HashMap<String, SfsValue> {
+pub(super) fn transcript_a_params() -> HashMap<String, SfsValue> {
     swap_params([(1, 1, 4), (2, 1, 5), (2, 0, 6)])
 }
 
