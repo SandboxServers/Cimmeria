@@ -10,7 +10,9 @@ use tokio::sync::mpsc;
 
 use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::movement_validation::MovementReject;
+use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
+use crate::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{
     ClientMoveOutcome, HardReject, RecoveryReport, RejectReport, SpaceManager, SuppressionReport,
@@ -217,8 +219,67 @@ pub(super) async fn handle_entity_move(
                 Instant::now(),
             );
         }
-        // BL-03 replaces this with the snap-back and feedback line.
-        ClientMoveOutcome::Locked { .. } => {}
+        ClientMoveOutcome::Locked {
+            anchor,
+            space_id,
+            snap,
+            feedback,
+        } => {
+            // Content movement hold (cellblock-boot-lock D-BL4): the player is
+            // pinned to `anchor` until the hold is released. Throttled in the
+            // gate, so this runs at most every 500 ms per player.
+            if snap {
+                cimmeria_observability::counter!(
+                    "movement_hold_snaps_total",
+                    "reason" => "content_hold",
+                );
+                let id = space_mgr.player_identity(entity_id);
+                let world = space_mgr.world_name_for_space(space_id);
+                tracing::info!(
+                    target: "movement.validation",
+                    event = "movement.hold_snap",
+                    entity_id,
+                    entity_name = id.player_name,
+                    account_id = id.account_id,
+                    account_name = id.account_name,
+                    player_id = id.player_id,
+                    player_name = id.player_name,
+                    space_id,
+                    world,
+                    client_x = position[0],
+                    client_z = position[2],
+                    anchor_x = anchor[0],
+                    anchor_z = anchor[2],
+                    reason = "content_hold",
+                    "movement.hold_snap: a content hold pinned the player; snapping back to the anchor"
+                );
+                send_snap_back(entity_id, space_id, world, anchor, id, tx).await;
+            }
+            if let Some(text) = feedback {
+                send_feedback_line(entity_id, &text, tx).await;
+            }
+        }
+    }
+}
+
+/// One `SYSTEM` feedback line to the player (the content hold message).
+async fn send_feedback_line(entity_id: u32, text: &str, tx: &mpsc::Sender<CellToBaseMsg>) {
+    let args = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text);
+    if let Err(e) = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: ON_PLAYER_COMMUNICATION,
+            args,
+        })
+        .await
+    {
+        tracing::warn!(
+            entity_id,
+            error = %e,
+            reason = "hold_feedback_send_failed",
+            "movement.hold_feedback_send_failed: hold feedback line send to \
+             base failed — the player was not told why they are held"
+        );
     }
 }
 
