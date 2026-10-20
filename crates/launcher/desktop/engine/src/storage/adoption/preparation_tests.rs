@@ -241,7 +241,7 @@ async fn wine_case(cabinet: bool) {
     let entries: Vec<(String, Vec<u8>)> = (0..zip.len())
         .map(|i| {
             let mut file = zip.by_index(i).unwrap();
-            let name = file.name().to_string();
+            let name = file.name().unwrap().into_owned();
             let mut bytes = Vec::new();
             file.read_to_end(&mut bytes).unwrap();
             (name, bytes)

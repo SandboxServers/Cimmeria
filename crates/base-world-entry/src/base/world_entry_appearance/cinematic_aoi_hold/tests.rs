@@ -38,6 +38,7 @@ fn session(addr: SocketAddr, state: ConnectedClientState) -> (Connected, EntityT
 fn pre_ready_session(addr: SocketAddr, first_login: i32) -> (Connected, EntityToAddr) {
     let mut state = test_default_connected_client_state();
     state.player_entity_id = Some(PLAYER);
+    state.active_player_id = Some(42);
     state.player_name = Some("Tester".to_string());
     state.pending_client_ready = Some(PendingClientReadyInfo {
         entity_id: PLAYER,
@@ -118,8 +119,8 @@ async fn first_login_holds_entity_intro_until_the_movie_has_run_out() {
     assert_eq!(buffered(&connected, addr), 0);
     assert_eq!(
         typed_transport.len() - sent_at_ready,
-        2,
-        "the held introduction flushes as its phase-1 + phase-2 bundles"
+        4,
+        "the held introduction flushes as create, avatar and two cascade fragments"
     );
     let released = capture
         .find_message(Level::INFO, "Cinematic AoI hold: released")
@@ -180,8 +181,8 @@ async fn cancel_movie_releases_the_hold_and_flushes_in_order() {
     assert_eq!(buffered(&connected, addr), 0);
     assert_eq!(
         typed_transport.len(),
-        3,
-        "phase-1 bundle, phase-2 bundle, then the held witness method \
+        5,
+        "create, avatar, two cascade fragments, then the held witness method \
          (no cached appearance in this fixture, so no resend packet)"
     );
     let released = capture

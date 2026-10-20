@@ -195,6 +195,7 @@ async fn a_send_error_row_sits_under_the_connection_span() {
             vec![],
             Some("Tess".into()),
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            1,
         )
         .await
         .expect("fresh registry must accept the session");

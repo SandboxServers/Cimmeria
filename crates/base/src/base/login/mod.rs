@@ -271,6 +271,7 @@ pub(crate) async fn handle_login_with_issuer(
         clients.insert(
             addr,
             ConnectedClientState {
+                session_instance_id: cimmeria_base_session::base::mint_session_instance_id(),
                 enc: MercuryEncryption::from_session_key_versioned(key, enc_version),
                 key,
                 enc_version,
@@ -287,6 +288,7 @@ pub(crate) async fn handle_login_with_issuer(
                 pending_player_entity_id: None,
                 player_entity_id: None,
                 next_seq,
+                reliable_seq_gate: Arc::new(Mutex::new(())),
                 next_seq_unreliable,
                 pending_acks,
                 last_recv,

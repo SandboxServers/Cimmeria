@@ -6,6 +6,9 @@
 ALTER TABLE ONLY sgw_mission
     ADD CONSTRAINT missions_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
 
+ALTER TABLE ONLY sgw_mission_1360_receipt
+    ADD CONSTRAINT sgw_mission_1360_receipt_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
 --
 -- TOC entry 2683 (class 2606 OID 63881)
 -- Name: sgw_gate_mail_character_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

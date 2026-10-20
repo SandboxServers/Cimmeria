@@ -20,6 +20,7 @@ async fn register_filters_the_mask_to_the_games_ability_bits() {
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            1,
         )
         .await
         .unwrap();

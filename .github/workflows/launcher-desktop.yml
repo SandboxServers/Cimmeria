@@ -85,7 +85,7 @@ jobs:
         run: bash tools/build-lane/lane.sh cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop --all-targets -- -D warnings
       - name: Test native storage and operation contracts
         run: bash tools/build-lane/lane.sh cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Check Effect workflow
@@ -157,7 +157,7 @@ jobs:
           workspaces: |
             . -> target
             crates/launcher/desktop -> ../../../target/desktop
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: build the i686 launch worker and game DLLs

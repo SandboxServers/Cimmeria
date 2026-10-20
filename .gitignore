@@ -164,6 +164,7 @@ tools/ServerEd/Makefile.Release
 tools/ServerEd/ui_*.h
 cimmeria-server.exe
 notify.log
+/lab-server*.log
 src-tauri/gen/schemas/windows-schema.json
 
 frontend/node_modules/*

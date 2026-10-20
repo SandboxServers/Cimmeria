@@ -30,13 +30,8 @@ const EXPECTED_UNENTERABLE: [i32; 14] = [1, 9, 11, 12, 13, 14, 16, 17, 18, 19, 2
 /// playable surface.
 const EXPECTED_EXCLUDED: [i32; 1] = [22];
 
-/// Offered gates whose arrival is off their world's mesh with no respawner
-/// to fall back on (measured 2026-10-04 on the NA28 meshes):
-/// - 27 `SGC W1` / SGC_W1: nearest mesh 3.4 m away, 1.3 m below.
-///
-/// SGC_W1 is `advisory`, so the dial is accepted and the GM lands at the
-/// gate row, a little above the floor beside it.
-const EXPECTED_OFF_MESH: [i32; 1] = [27];
+/// No offered gate's arrival is off its mesh: gate 27 `SGC W1` was the last, pinned by DK-SGC-01 (2026-10-19).
+const EXPECTED_OFF_MESH: [i32; 0] = [];
 
 fn repo_file(rel: &str) -> String {
     let path = format!("{}/../../{rel}", env!("CARGO_MANIFEST_DIR"));

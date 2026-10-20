@@ -38,9 +38,12 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->1,293<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->15,647<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,547<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,140<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,231<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,531<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,319<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,707<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,812<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,637<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,531<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,319<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,707<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,812<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,637<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
@@ -71,6 +74,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [Slash Commands](commands.md) | Player-friendly guide to all 266 in-game `/commands` (the real typed names captured live), with what each does, whether it works on our server yet, access level, parameters, and examples |
 | [Legacy Dot Command Parity](analysis/legacy-command-parity/README.md) | Static 116-command emulator audit, approved restoration contracts, and Claude Code coordinator handoff with bounded work packets |
 | [Castle Cellblock Rebuild](analysis/castle-cellblock-rebuild/README.md) | Audit of the Castle_CellBlock rebuild spreadsheet against the original Python scripts and the live chain seed, proposed decisions, and a bounded packet ledger for the remaining work |
+| [Cellblock Continuation](analysis/cellblock-continuation/README.md) Â· [CB-N05 design seal](analysis/cellblock-continuation/worknotes/cb-n05-seal.md) | World-12 source and route evidence, presentation ownership handoff, decision gates and packet status; first authored mission design passed review, while fresh client acceptance remains pending |
 | [Castle Cellblock Autoplay](analysis/cellblock-autoplay/README.md) | Campaign to drive the whole Castle Cellblock tutorial from the live research lab as one repeatable, evidence-graded run: scenario map, Livewire auto-solve design, decisions and work packets for the runner, the missing MCP tools and the walkthrough spec |
 | [Lab UAT reliability (13 October 2026)](analysis/lab-uat-reliability/README.md) | Luna-sized fixes for lab MCP failures found during the hub-pass and Cellblock runs; issue ledger and work packets. |
 | [CellBlock Asset Audit and Restoration](analysis/cellblock-asset-audit/README.md) | Evidence-backed campaign for World 12 props, original Kismet/state bindings, cinematic aftermath and full in-game UAT; package census and current-source reconciliation |
@@ -78,9 +82,13 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [Launcher Consolidation announcement](analysis/launcher-consolidation/announcement.md) | The Discord and release-notes text that tells players the old launcher is retired (D-LX2), and the checks to make before posting it |
 | [Any-Install Adoption](analysis/any-install-adoption/README.md) | Campaign to adopt any existing game folder into the desktop launcher (stock 2009 installs, hand-extracted archives, modified files) without a legacy import, verify it against a signed per-file index instead of the 4.1 GB seed, and use a player's own downloaded game archive in place of the seed download. [Work packets](analysis/any-install-adoption/work-packets.md) |
 | [Castle Rebuild](analysis/castle-rebuild/README.md) | Audit of the World 8 Castle rebuild spreadsheet (missions 701-708) against `Castle.py`, the original gate code, the seed and the local client maps; the Cellblock-branch items Castle depends on; proposed decisions and a parallel packet ledger |
+| [Castle Continuation](analysis/castle-continuation/README.md) | World-8 continuation evidence, mission and item reconciliation, unresolved implementation gates and packet status |
+| [Castle CS-01 client probe](analysis/castle-continuation/uat/CS-01.md) | Bounded Castle load and Ogilvie observation; exact unrun route and mission UAT rows |
 | [Castle Population](analysis/castle-population/README.md) | World 8 ambient population: Op-CORE marines, prisoners and Praxis Jaffa, level 2-4 NID guard templates and patrols; placement table with navmesh results, decisions, UAT checklist CP1-CP16 |
 | [Harset Rebuild](analysis/harset-rebuild/README.md) | Audit of the Harset hub rebuild spreadsheet (worlds 57/68/69/70, 36 missions) against the three surviving scripts, the seed, the content engine and the navmesh; the Cellblock-branch and open-PR plumbing Harset depends on; proposed decisions and a parallel packet ledger |
+| [Harset continuation](analysis/harset-continuation/README.md) | Current restoration evidence, placement and inactive ID proposals; HA-00c authored/repeatable allocation gate and cross-zone dependencies |
 | [Four-zone campaign plans](analysis/four-zone-planning/README.md) | Source-checked continuation packets for Cellblock, Castle, Harset and Tollana; shared Haiku budget, wave integration, review and final PR contract |
+| [Tollana continuation](analysis/tollana-continuation/README.md) | T-00 source matrix and T-01 source/map/ID contract: 51 chronology holds, bounded OPC 568-570 candidate, placement and cross-zone gates |
 | [Four-zone content planning](analysis/four-zone-planning/README.md) | Evidence-backed, planning-only continuations for Cellblock, Castle, Harset and Tollana, with owner decisions and proposed implementation packet sequence |
 | [Union zone campaign plans](analysis/union-zone-planning/README.md) | Four independent SGC, Dakara E1, Omega and Beta E1 restoration campaigns covering Human, Free Jaffa and Asgard starts through their first shared Beta visit; race-route briefs and Lomiada review handoff |
 | [Dialog UI Redesign](analysis/dialog-ui-redesign/work-packets.md) | Client-grounded contract for dialog window types, buttons, close events and lures (CEGUI Lua, Ghidra trace of SGW.exe, cooked PAK census, colo telemetry), plus the parallel packet ledger for the Castle_CellBlock and Castle dialog cleanup, Radio lures and non-modal Marsh barks |
@@ -217,6 +225,7 @@ Network protocol internals: packet structures, Mercury reliable messaging, entit
 | [entity-property-sync.md](protocol/entity-property-sync.md) | How entity properties are serialized, delta-compressed, and synchronized client/server | Complete |
 | [login-handshake.md](protocol/login-handshake.md) | HTTP auth, SOAP schemas, session key exchange, baseAppLogin binary format, error recovery | Complete |
 | [position-updates.md](protocol/position-updates.md) | 32 avatarUpdate variants, packed formats, SVID aliasing, client prediction/reconciliation | Complete (legacy summary). Canonical authoritative source is the bible chapter at [`drafts/spec/position-updates.md`](drafts/spec/position-updates.md). |
+| [internal-cell-to-base.md](protocol/internal-cell-to-base.md) | In-process CellApp to BaseApp message contract, separate from client Mercury wire messages | Reference |
 
 See also: [technical/mercury-protocol.md](technical/mercury-protocol.md), [technical/mercury-audit.md](technical/mercury-audit.md), [technical/login-auth-flow.md](technical/login-auth-flow.md), [technical/post-auth-sequence.md](technical/post-auth-sequence.md), [technical/network-messages.md](technical/network-messages.md)
 

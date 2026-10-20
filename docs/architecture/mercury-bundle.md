@@ -37,9 +37,15 @@ decision sits with the caller, not with a per-channel auto-accumulator.
   bundle to the session UDP socket + Channel TX-window registration. ✅
 - **Layer B (conservative slice for #356)**: the AoI EnteredAoI burst in
   [base/world_entry/cell_dispatch/deferred_flush.rs](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/deferred_flush.rs)
-  now bundles into 2 cross-entity bundles (phase-1, phase-2) instead of
-  2 packets per NPC. Pinned by a regression test at 28 NPCs ≤ 15 packets
-  (was 56 pre-bundle). ✅
+  ordinarily bundles into 2 cross-entity bundles (phase-1, phase-2) instead
+  of 2 packets per NPC. Pinned by a regression test at 28 NPCs ≤ 15 packets
+  (was 56 pre-bundle). The first-login cinematic release uses one packet per
+  phase-1 *message* to avoid the client's stale request-cursor collision;
+  phase 2 remains bundled with its first fragment limited to the first
+  complete message when it fits in one packet. Even a sparse multi-message
+  cascade under 1300 bytes uses two fragments at that boundary; a single
+  message remains one packet. The short first fragment still needs
+  live-client validation. ✅
 - **Layer C**: regression guards in place (compose↔build byte-equivalence,
   28-NPC burst budget). ✅
 - **#360 follow-up — world_entry_appearance migration**: the
@@ -166,14 +172,16 @@ The bundle body is the same byte layout the services-layer
 Multiple messages concatenate in append order. On `finalize`, the body
 goes through `crate::packet::build_fragmented_bundle` which:
 
-- emits one non-fragmented packet for bodies ≤ `FRAGMENT_BODY_SIZE`
+- ordinarily emits one non-fragmented packet for bodies ≤ `FRAGMENT_BODY_SIZE`
   (1300 bytes — Mercury's `MAX_BODY_LENGTH` is 1411, minus per-packet
   footer overhead of flags(1) + seq(4) + frag_begin(4) + frag_end(4) +
   ack headroom, and AES-256-CBC encryption overhead of up to 16 bytes
   PKCS7 padding + 16-byte HMAC. The 111-byte slack on `MAX_BODY_LENGTH`
   is what keeps the encrypted datagram under the 1472-byte
   PACKET_MAX_SIZE = UDP MTU-safe size. See the constant doc in
-  [crates/mercury/src/packet/build.rs](../../crates/mercury/src/packet/build.rs).);
+  [crates/mercury/src/packet/build.rs](../../crates/mercury/src/packet/build.rs)).
+  The cinematic cascade's requested first-message cut is an exception: a
+  multi-message body of this size emits two fragments;
 - otherwise cuts the body into fragments of at most 1300 bytes, each
   carrying `FLAG_FRAGMENTED` + matching `frag_begin` / `frag_end` footers.
   The cuts are **message-aware**: a cut that would land inside a message
@@ -270,7 +278,7 @@ because ACKs ride only the first fragment.
 ## Observed win
 
 The conservative Layer B slice migrates only the AoI `EnteredAoI` burst.
-For a Castle_CellBlock instance with 28 NPCs:
+For an ordinary pre-ready flush of a Castle_CellBlock instance with 28 NPCs:
 
 | Pre-bundle | Post-bundle |
 |---:|---:|
@@ -282,6 +290,14 @@ Regression-guarded at "≤ 15 packets" in
 [base/world_entry/cell_dispatch/tests.rs](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/tests.rs)
 (`flush_deferred_aoi_bundles_28_npc_burst_under_packet_budget`) with
 comfortable headroom for cascade-payload growth.
+
+The first-login cinematic-hold release has a different phase-1 budget:
+28 NPCs yield 56 single-message packets before the phase-2 fragments.
+The client treats `CREATE_ENTITY` and `UPDATE_AVATAR` as two messages even
+though the composer returns one 37-byte record per NPC. A byte-exact
+flush test guards the split, and a near-full TX-window test guards queued
+reliable entries and ACK promotion. See
+[first-login-cinematic-aoi-hold.md](first-login-cinematic-aoi-hold.md).
 
 The #360 follow-up extends the same shape to the post-`onClientReady`
 appearance / chat / welcome burst on every world entry:

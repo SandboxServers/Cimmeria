@@ -185,8 +185,11 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 
 -- 457 Vocuum: the projector of Ba'al's image (mission 1653, objective 5643).
 --   name_id 26733 `DN_ob_DakaraE1_int_Vocuum`: ORIGINAL_DATA, "Vocuum".
--- look: RECONSTRUCTION, copied from 245 Anat's Symbiote Tank.
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, use_cover, respawn_secs, display_name) VALUES (457, 'Ga-Props.GA-PuzzleStation00', 'GLB_Components.WorldObject_Small', NULL, 4, 0, NULL, 1, 0, 1, 26733, NULL, NULL, NULL, 'Dakara E1 - Vocuum', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL, 300, NULL);
+-- look: NAME-INFERENCE, D-DK45 (owner-delegated 2026-10-19): the hologram pad
+--   GA-Props.GA-Hologram_Platform00, the map's own pad under Ba'al's image in
+--   the StoryRm (PL-DK-B-07). No other template wears it, so the look guard
+--   exempts 457 by id until the owner's UAT (DK-U34) sees it in a client.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, use_cover, respawn_secs, display_name) VALUES (457, 'GA-Props.GA-Hologram_Platform00', 'GLB_Components.WorldObject_Small', NULL, 4, 0, NULL, 1, 0, 1, 26733, NULL, NULL, NULL, 'Dakara E1 - Vocuum', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL, 300, NULL);
 
 -- 458-461 Drop Location #2 to #5 (DK-09, D-DK16): clones of 449, so each of
 --   mission 1646's five drop sites holds its own per-player bind (dsm 6739 on

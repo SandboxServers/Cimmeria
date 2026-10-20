@@ -7,6 +7,7 @@ fn make_session(difficulty: u32, tech: u32) -> MinigameSession {
     MinigameSession {
         entity_id: 1,
         player_id: 100,
+        session_instance_id: 0,
         game_name: "livewire".to_string(),
         difficulty,
         tech_competency: tech,
@@ -21,6 +22,7 @@ fn make_session(difficulty: u32, tech: u32) -> MinigameSession {
         client_ip: None,
         created_at: tokio::time::Instant::now(),
         connected: false,
+        terminal_reported: false,
         cancel: tokio::sync::watch::channel(false).0,
     }
 }

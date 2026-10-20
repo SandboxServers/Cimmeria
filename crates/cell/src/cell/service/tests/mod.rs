@@ -25,6 +25,7 @@ mod npc_ai_cover;
 mod npc_ai_cover_behaviour;
 mod npc_ai_cover_peek;
 mod npc_ai_cover_seed;
+mod npc_ai_cover_seed_guards;
 mod npc_ai_follow;
 mod npc_ai_investigate;
 mod npc_ai_patrol;

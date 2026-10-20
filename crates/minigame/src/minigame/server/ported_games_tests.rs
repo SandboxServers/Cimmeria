@@ -10,7 +10,8 @@
 use crate::minigame::games::{GameKind, Validation};
 
 use super::listener_tests::connect_to;
-use super::tests::drain_results;
+use super::result_dispatch::RESULT_CANCELED;
+use super::tests::drain_redeemed;
 use super::*;
 
 /// The client's own victory command, sent after the first move.
@@ -157,11 +158,13 @@ async fn refuses_client_victory(golden: &GoldenStart) {
             vec![4243],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            1,
         )
         .await
         .unwrap_or_else(|| panic!("{}: fresh registry must accept the session", golden.game));
 
-    let (mut client, mut rx, handle) = connect_to(registry, ListenerLimits::default()).await;
+    let (mut client, mut rx, handle) =
+        connect_to(registry.clone(), ListenerLimits::default()).await;
     login(&mut client, golden.game, 4400, &ticket).await;
     let joined = read_until(&mut client, "onGameBegin").await;
     assert!(
@@ -195,11 +198,11 @@ async fn refuses_client_victory(golden: &GoldenStart) {
     // The only result allowed is the canceled one that the socket close
     // itself produces (the abandon path). A victory would report its own
     // code and its victory chains, and fails here.
-    let results = drain_results(&mut rx);
+    let results = drain_redeemed(&mut rx, &registry).await;
     assert!(
         results
             .iter()
-            .all(|(code, chains)| *code == RESULT_CANCELED && chains.is_empty()),
+            .all(|(code, chains, _)| *code == RESULT_CANCELED && chains.is_empty()),
         "{}: a client victory must be refused; only the canceled result of the close is allowed, got {results:?}",
         golden.game,
     );

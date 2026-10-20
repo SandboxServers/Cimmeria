@@ -16,6 +16,7 @@ fn make_session() -> MinigameSession {
     MinigameSession {
         entity_id: 1,
         player_id: 100,
+        session_instance_id: 0,
         game_name: "GoauldCrystals".to_string(),
         difficulty: 2,
         tech_competency: 1,
@@ -30,6 +31,7 @@ fn make_session() -> MinigameSession {
         client_ip: None,
         created_at: tokio::time::Instant::now(),
         connected: false,
+        terminal_reported: false,
         cancel: tokio::sync::watch::channel(false).0,
     }
 }

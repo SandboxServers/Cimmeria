@@ -158,6 +158,7 @@ async fn delay_holds_aoi_traffic_without_stalling_client_ready() {
     let addr: SocketAddr = "127.0.0.1:55831".parse().unwrap();
     let mut state = test_default_connected_client_state();
     state.player_entity_id = Some(PLAYER);
+    state.active_player_id = Some(42);
     state.player_name = Some("Tester".to_string());
     state.pending_client_ready = Some(PendingClientReadyInfo {
         entity_id: PLAYER,
@@ -294,7 +295,7 @@ async fn cancel_movie_with_delay_returns_at_once_and_delays_once() {
     assert!(!hold_active(&connected, addr));
     assert_eq!(
         typed.len(),
-        2,
-        "phase-1 and phase-2 bundles after one delay"
+        4,
+        "create, avatar and two cascade fragments after one delay"
     );
 }

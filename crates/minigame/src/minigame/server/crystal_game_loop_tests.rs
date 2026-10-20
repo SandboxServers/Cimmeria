@@ -5,7 +5,7 @@
 use tokio::net::TcpListener;
 
 use super::result_dispatch::RESULT_DEFEAT;
-use super::tests::read_until_game_begin;
+use super::tests::{drain_redeemed, read_until_game_begin};
 use super::*;
 use crate::minigame::game::create_game;
 
@@ -66,6 +66,7 @@ async fn the_tick_interval_alone_loses_a_clock_that_was_started() {
             vec![4243],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            1,
         )
         .await
         .expect("fresh registry must accept the session");
@@ -76,6 +77,7 @@ async fn the_tick_interval_alone_loses_a_clock_that_was_started() {
     let game = create_game(&session).expect("CrystalGame instance");
 
     let (tx, mut rx) = mpsc::channel(16);
+    let kept = registry.clone();
     let handle = tokio::spawn(async move {
         run_session(
             server,
@@ -114,20 +116,11 @@ async fn the_tick_interval_alone_loses_a_clock_that_was_started() {
     tokio::time::advance(Duration::from_secs(17)).await;
     handle.await.expect("session task must not panic");
 
-    // `drain_results` keeps only the victory chains, so read the failure chains
-    // from the message itself.
-    let mut results = Vec::new();
-    while let Ok(CellToBaseMsg::MinigameResult {
-        result_code,
-        on_failure_chains,
-        ..
-    }) = rx.try_recv()
-    {
-        results.push((result_code, on_failure_chains));
-    }
+    // The wire carries the ticket only; the failure chains ride the receipt.
+    let results = drain_redeemed(&mut rx, &kept).await;
     assert_eq!(
         results,
-        vec![(RESULT_DEFEAT, vec![4243])],
+        vec![(RESULT_DEFEAT, vec![], vec![4243])],
         "the clock running out must report one defeat with the failure chains",
     );
     let stream = read_to_eof(client).await;

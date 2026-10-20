@@ -14,6 +14,8 @@ use super::*;
 
 fn make_session(difficulty: u32, tech: u32, level: u32) -> MinigameSession {
     MinigameSession {
+        session_instance_id: 1,
+        terminal_reported: false,
         entity_id: 1,
         player_id: 100,
         game_name: "livewire".to_string(),

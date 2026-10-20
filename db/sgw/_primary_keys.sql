@@ -14,6 +14,9 @@ ALTER TABLE ONLY account
 ALTER TABLE ONLY sgw_mission
     ADD CONSTRAINT missions_pkey PRIMARY KEY (player_id, mission_id);
 
+ALTER TABLE ONLY sgw_mission_1360_receipt
+    ADD CONSTRAINT sgw_mission_1360_receipt_pkey PRIMARY KEY (player_id, mission_id);
+
 --
 -- TOC entry 2670 (class 2606 OID 63860)
 -- Name: sgw_gate_mail_pkey; Type: CONSTRAINT; Schema: public; Owner: -; Tablespace: 

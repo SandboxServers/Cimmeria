@@ -183,7 +183,8 @@ pub(super) fn strict_zip(path: &Path) -> Result<(), Error> {
         let entry = zip.by_index(i).map_err(|_| Error::InvalidArtifact)?;
         entry.enclosed_name().ok_or(Error::InvalidArtifact)?;
         // The stored name, not `enclosed_name`, which uses `\` on Windows.
-        let original = entry.name();
+        let original = entry.name().map_err(|_| Error::InvalidArtifact)?;
+        let original: &str = &original;
         let name = if entry.is_dir() {
             original.trim_end_matches('/')
         } else {

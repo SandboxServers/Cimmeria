@@ -311,3 +311,72 @@ async fn live_db_chain_1032_seven_actions_match_python_ordering() {
         "chain 1032 DisplayDialog must reference dialog 2297 (Net'an reaction)",
     );
 }
+
+/// Chain 1036: chain 1031 sets the vial's interact bit only on the Region11
+/// edge at step 2117. A relog at step 2145 must re-paint it; chain 1032
+/// destroys the vial at 2145 -> 2144, so no other step may.
+#[tokio::test]
+async fn live_db_chain_1036_restores_vial_bit_only_at_step_2145() {
+    use cimmeria_content_engine::actions::Action;
+    use cimmeria_content_engine::chain::ChainEngine;
+    use cimmeria_content_engine::context::ExecutionContext;
+    use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
+
+    let pool = require_db_or_skip!();
+    let mut engine = ChainEngine::new();
+    engine.register_chain(
+        load_single_chain_for_test(&pool, 1036)
+            .await
+            .expect("DB query for chain 1036 must succeed")
+            .expect("vial restore chain 1036 must exist"),
+    );
+
+    for (params, expect_restore) in [
+        (vec![("mission_639_step_2145_status", "active")], true),
+        (vec![("mission_639_step_2117_status", "active")], false),
+        (
+            vec![
+                ("mission_639_step_2145_status", "completed"),
+                ("mission_639_step_2144_status", "active"),
+            ],
+            false,
+        ),
+    ] {
+        let mut ctx = ExecutionContext::new();
+        ctx.set_param(
+            "world_name".to_string(),
+            serde_json::json!("Castle_CellBlock"),
+        );
+        for (key, value) in &params {
+            ctx.set_param((*key).to_string(), serde_json::json!(*value));
+        }
+        let event = TriggerEvent {
+            trigger_type: TriggerType::PlayerLoaded,
+            source_entity: None,
+            target_entity: None,
+            params: ctx.params.clone(),
+        };
+        let resolved = engine.resolve_event(&event, &ctx);
+        let actions: Vec<&Action> = resolved
+            .actions
+            .iter()
+            .filter(|(id, _)| *id == 1036)
+            .map(|(_, action)| action)
+            .collect();
+        if expect_restore {
+            assert!(
+                matches!(
+                    actions.as_slice(),
+                    [Action::SetInteractionType { entity_tag, operation, mask: 1_073_741_824 }]
+                    if entity_tag == "ArmYourself_AmbernolVial" && operation == "|"
+                ),
+                "{params:?}: expected exactly the vial bit; got {actions:?}"
+            );
+        } else {
+            assert!(
+                actions.is_empty(),
+                "{params:?}: chain 1036 must not fire; got {actions:?}"
+            );
+        }
+    }
+}

@@ -172,7 +172,17 @@ Steps 80623 ("Search the NID Guard's body for a weapon.") and 80622 ("Equip the 
 
 **Mission 1360 — Frost's Letter (C04, new content)** [CONFIRMED]
 
-`ArmYourself.py` grants the letter item (3730) but never accepted a mission for it — mission 1360 is spec-optional new content (decision D-CB03, answered: accept; see `docs/analysis/castle-cellblock-rebuild/README.md#decision-answers` and `work-packets.md#c04`). Chain 1121 is a sibling to chain 1003 (identical trigger and step gate) rather than an extension of it, so 1360's own `mission_status = 'not_active'` offer-guard condition doesn't also gate Frost's unrelated item-grant/Guard-unlock/step-advance actions. Mission 1360's step 4037 ("Find a way to get Cpl. Frost's Letter to his family") stays active for the rest of the zone; step 4038 ("Give Cpl. Frost's Letter to Col. Marsh") is Castle-side and out of scope for this chain (tracked under the Castle-side handoff, C09). Mission state persistence across the eventual Cellblock → Castle cross-world hop (chain 1109's `cross_world_teleport`) is covered by a live-DB round-trip test, `frosts_letter_accept_round_trips_cell_to_base_to_db` in `crates/services/src/mission_round_trip_tests.rs`, rather than by anything specific to the teleport path itself — `cross_world_teleport` does not touch mission state; missions are rebuilt on the far side from `sgw_mission` via the same `InitPlayerState` restore path an ordinary relog uses.
+`ArmYourself.py` grants the letter item (3730) but never accepted a mission for it — mission 1360 is optional Cimmeria content (decision D-CB03, answered: accept; see `docs/analysis/castle-cellblock-rebuild/README.md#decision-answers`). Chain 1121 accepts it alongside chain 1003's grant on the first Frost search at 622/2113. The grant requests container 0; the production item resolver selects mission bag **2** from the letter's `container_sets`.
+
+CS-08a1 adds chain **1366** in `db/resources/Content/Seed/castle_carry_in_chains.sql`: `stargate_crossed('Harset')`, originating in Castle world **8**, with mission 1360 active and step 4037 active, advances to **4038**. Both steps and objectives 4650/4651 are enabled. This is **CIMMERIA_RECONSTRUCTION**, approved 2026-10-14; no original Castle bridge event was recovered. The bridge emits one step advance and retains the letter. Chain 1360 separately completes mission **708** on that same event; neither is a prerequisite for the other, and their actions work in either order.
+
+Crossing credit precedes destination hydration. A later travel failure can leave 4038 active in Castle. GM teleport and entering Harset already at 4037 do not catch up this step. Saved mission and step guards prevent repeated credit across crossing/relog; the trigger's `once=false` is intentional.
+
+The live-DB guards in `crates/cell-content/src/cell/content/chain_replay_tests/mission_1360.rs` exercise production crossing dispatch and executor traffic. `live_db_frosts_letter_seeded_bridge_round_trip` in `crates/services/src/mission_round_trip_tests.rs` executes seeded 1003/1121, persists their actual messages through the base handlers, hydrates fresh Castle state with the production mission restorer, crosses, persists 4038, and hydrates fresh Harset state while the same letter instance remains in bag 2. Inventory is read through the public production player-load query. The restorer is exposed only by `cimmeria-cell`'s doc-hidden `test-support` wrapper; services enables it as a dev-dependency.
+
+The [CS-08a seal](../analysis/castle-continuation/worknotes/CS-08a.md) keeps Marsh receipt blocked on **HA-1360a/b**: possession must be required and consumption must succeed before completion. Existing receipt chain 6501 can warn on removal failure and still complete; CS-08a1 does not validate that behavior. Client journal rendering, ordinary travel, Marsh dialogs and full playable delivery remain **UATPending**. The mission-lifecycle Bible chapter is still pending; this packet adds no engine primitive or wire format.
+
+**HA-1360b1 receipt seed.** Chain 6501 now holds one `complete_mission_with_item` action. The executor in `crates/content-engine/src/loader/action_letter_turn_in.rs` accepts only its fixed tuple (`expected_step_id` 4038, item 3730, quantity 1, dialog 4576, DSM 120101, slot 10, zero delay). The receipt is the only route that consumes 3730, clears the letter indicator and completes 1360, as one committed result. A missing, foreign or storage-only letter is refused and the mission stays active. A malformed receipt row drops the whole chain (A3a). The `remove_item` warn-and-continue path described above no longer exists. Chains 6502 and 6505 bind DSM 120101 (`dialog_id` NULL, interaction flag only) instead of stock 5356, which stays untouched. Mission 1360 has `num_repeats = 0`, so a replayed completion is refused. Cross-service replay and client acceptance remain **UATPending** (HA-1360b2 and owner lab).
 
 **Link to next**: Mission 622 does NOT explicitly call `missions.accept(638)`. The link is handled by the space script -- when the player enters `Castle_Cellblock.Region2`, mission 638 is accepted if not already active. [CONFIRMED -- `Castle_CellBlock.py` line 338-348]
 
@@ -746,6 +756,66 @@ This is an orphaned hidden mission with step text that parallels missions 641 an
 
 ---
 
+#### Cellblock ambient cast (CB-N04a)
+
+**Confidence**: HIGH for the seeded rows (spawns, chain, screen); UNTESTED in the client (owner lab not run).
+
+| Chain | Trigger | Conditions | Actions |
+|---|---|---|---|
+| 11010 | `enter_region('Castle_Cellblock.Region2')` (once) | `step_status(639, 2117) = 'active'` | `npc_bark(200160)`: one line in chat, speaker `Op-CORE Soldier` |
+
+The cast is two stationary Op-CORE prisoners (template 176, spawns 520 and 521, tags `Cellblock_Ambient_Prisoner1` and `Cellblock_Ambient_Prisoner2`) in the north cell blocks of Region2. Placement, nav probe and guard clearance are sealed in [cb-n04-seal.md](../analysis/cellblock-continuation/worknotes/cb-n04-seal.md).
+
+#### Mission 62050: "The Remaining Pods" (CB-N05, CIMMERIA_AUTHORING)
+
+**Confidence**: HIGH for the seeded rows; CIMMERIA_AUTHORING (new Cimmeria content under D-CC18, not 2009 data); UNTESTED in the client (owner lab not run).
+
+An optional, one-time story after 638, with no reward. Prisoner 329 offers the mission through dialog-set-map 2795 at slot 17, and accepting it moves the player to the Marsh step.
+
+| Chain | Trigger | Conditions | Actions |
+|---|---|---|---|
+| 11000 | `mission_completed('638')` | `world = 12`; `mission_status(638) = completed`; `mission_status(641) = not_active`; `mission_status(62050) = not_active` | `add_dialog_set(2795, slot 17)` |
+| 11001 | `player_loaded('Castle_CellBlock')` (once) | same as 11000 | `add_dialog_set(2795, slot 17)` |
+| 11002 | `mission_abandoned('62050')` | same as 11000 | `add_dialog_set(2795, slot 17)` |
+| 11003 | `interact_tag('Prisoner_329')` | same as 11000 | `accept_mission(62050)` |
+| 11004 | `mission_accepted('62050')` | `world = 12`; `step_status(62050, 62051) = 'active'` | `advance_step(62050, 62054)`; `remove_dialog_set(2795, slot 17)`; `display_dialog(60150)` |
+| 11005 | `interact_tag('Preparation_ColMarsh')` | `world = 12`; `mission_status(640) = completed`; `step_status(62050, 62054) = 'active'` | `complete_objective(62050, 62055)` |
+
+Marsh's core chains 1051/1052 still fire beside 11005; 1152 is unchanged. Seal: [cb-n05-seal.md](../analysis/cellblock-continuation/worknotes/cb-n05-seal.md).
+
+#### Cellblock barracks response (CB-N07a)
+
+**Confidence**: HIGH for the seeded row; UNTESTED in the client (owner lab not run).
+
+| Chain | Trigger | Conditions | Actions |
+|---|---|---|---|
+| 11020 | `enter_region('Castle_Cellblock.Region12')` (once) | `step_status(687, 2355) = 'active'` | `npc_bark(200170)`: one line in chat, speaker `NID Guard` |
+
+One alarm line as the player enters the barracks to fight its three guards (spawns 25, 26, 36). It changes no AI, spawn or objective state. Sealed in [cb-n07-seal.md](../analysis/cellblock-continuation/worknotes/cb-n07-seal.md).
+
+#### Mission 62060: "Before the Patrol Returns" (CB-N06, CIMMERIA_AUTHORING)
+
+**Confidence**: HIGH for the seeded rows; CIMMERIA_AUTHORING (new Cimmeria content under D-CC18, not 2009 data); UNTESTED in the client (owner lab not run).
+
+An optional, one-time choice after 638, with no XP, naquadah or mission reward. Both Op-CORE prisoners offer it: helping one hide (a second click on a prisoner) or jamming the cell-door panel beside Prisoner 329 completes the mission and gives two Health Slappacks (item 2893).
+
+| Chain | Trigger | Gate | Actions |
+|---|---|---|---|
+| 11030 | `MissionCompleted`, `mission_id` 638 | 638 `completed`, 641 `not_active`, 62060 `not_active` | `AddDialogSet { dialog_set_id: 3862, slot: 176, mission_id: None }` |
+| 11031 | `PlayerLoaded`, `world_name` `Castle_CellBlock` | same | same |
+| 11032 | `PlayerLoaded`, `world_name` `Castle_CellBlock` | step 62061 `active` | `AddDialogSet { 3862, 176, None }`, `AddDialogSet { dialog_set_id: 7509, slot: 22, mission_id: None }` |
+| 11033 | `InteractTag`, `entity_tag` `Cellblock_Ambient_Prisoner1` | 638 `completed`, 641 `not_active`, 62060 `not_active` | `AcceptMission { mission_id: 62060 }` |
+| 11034 | `InteractTag`, `entity_tag` `Cellblock_Ambient_Prisoner2` | same | same |
+| 11035 | `MissionAccepted`, `mission_id` 62060 | step 62061 `active` | `AddDialogSet { 7509, 22, None }`, `DisplayDialog { dialog_id: 60151 }` |
+| 11036 | `InteractTag`, `Cellblock_Ambient_Prisoner1` | step 62061 `active` | `GrantItem { item_id: 2893, count: 2, container_id: Some(0) }`, `RemoveDialogSet { dialog_set_id: 7509, slot: 22 }`, `RemoveDialogSet { dialog_set_id: 3862, slot: 176 }`, `CompleteObjective { mission_id: 62060, objective_id: 62062 }` |
+| 11037 | `InteractTag`, `Cellblock_Ambient_Prisoner2` | same | same as 11036 |
+| 11038 | `InteractTag`, `329_CellDoorButton` | same | same as 11036 |
+| 11039 | `MissionAbandoned`, `mission_id` 62060 | none | `RemoveDialogSet { 7509, 22 }` |
+| 11040 | `MissionAccepted`, `mission_id` 641 | 62060 `not_active` | `RemoveDialogSet { 3862, 176 }` |
+| 11041 | `MissionAbandoned`, `mission_id` 62060 | 641 `neq not_active` | `RemoveDialogSet { 3862, 176 }` |
+
+Stock chains 1016/1017/1028 on the panel are gated on 638 step 2115 and stay disjoint; 1152 co-fires with 11040. Seal: `docs/analysis/cellblock-continuation/worknotes/cb-n06-seal.md`.
+
 ### Castle (Persistent Zone)
 
 **Confidence**: CONFIRMED for 701 and for every mission's DB data; RECONSTRUCTION for the 702/703/704/706/708 chains
@@ -1165,6 +1235,460 @@ The cost is a stale cue over an NPC or prop the player has finished with; the al
 
 ---
 
+#### Mission 1520: Ambernol medical-dispenser quest (working title) [RECONSTRUCTION, sealed]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 1520 (ships in `CookedDataMissions.pak`; no catalog insertion) |
+| **Steps / objectives** | 4452 (5171, hidden 5172), 4453 (5173), 4454 (5174) |
+| **Seed** | `db/resources/Content/Seed/castle_1520_chains.sql` (new, chains 1367, 1368, 1371-1373, 1378-1383); included after `db/database.sql:397`. Seeded by packet CS-02c1. |
+| **Ledger** | [CS-02S seal](../analysis/castle-continuation/worknotes/CS-02S.md), [G-MED evidence](../analysis/castle-continuation/evidence/g-med.md), [end-UAT rows](../analysis/castle-continuation/uat/end-uat.md#mission-1520-med-dispenser) |
+
+**Status**: the CS-02S verdict is `SEALED`. The rows below were frozen in the worknote, then seeded by CS-02c1 and replay-tested by CS-02c1 and CS-02c2 (`mission_1520_entry.rs`, `mission_1520.rs`; the 1521 tests are listed in its own section). None of it is live-tested. Provenance is `CIMMERIA_RECONSTRUCTION` (O14-03): the original script is not recovered, and the game choice and difficulty stay `UNRESOLVED (G-MED game)`.
+
+**How it starts**: chain 1367 offers the mission on `enter_region Castle.Infirmary` (world 8, mission 704 completed, 1520 not active, archetypes 1-4 and 6 only). Chain 1368 credits objective 5171 while step 4452 is active.
+
+**Chains**:
+
+| Chain | Trigger | Conditions (besides `world 8`) | Actions |
+|-------|---------|-------------------------------|---------|
+| 1367 | `enter_region('Castle.Infirmary')` | `mission_status(704) = completed`; `mission_status(1520) = not_active`; archetype 1-6, not 5 | `accept_mission(1520)` |
+| 1368 | `enter_region('Castle.Infirmary')` | `mission_status(1520) = active`; `step_status(1520, 4452) = active` | `complete_objective(1520, 5171)` |
+| 1380 | `mission_accepted('1520')` | `step_status(1520, 4452) = active` | `add_dialog_set(5827, slot 179)`: Ogilvie's `!` |
+| 1378 | `dialog_choice('4983')` | 1520 active; step 4452 active | `remove_dialog_set(5827)`; `advance_step(1520, 4453)`; `add_dialog_set(5828, slot 412)` |
+| 1371 | `interact_tag('Castle_MedDispenser')` | 1520 active; step 4453 active | `start_minigame(Livewire, {"difficulty": 1, "on_victory_chains": [1372]})` |
+| 1372 | none (minigame victory) | 1520 active; step 4453 active | `remove_dialog_set(5828)`; `advance_step(1520, 4454)`; `display_dialog(4984)` |
+| 1379 | `dialog_choice('4984')` | 1520 active; step 4454 active | `display_dialog(4985)` |
+| 1373 | `dialog_choice('4985')` | 1520 active; step 4454 active | `complete_mission(1520)` |
+| 1381-1383 | `player_loaded('Castle')` | 1520 active; one chain per step 4452 / 4453 / 4454 | rebind Ogilvie / rebind the dispenser / `complete_mission(1520)` |
+
+Every action row has `delay_ms = 0`.
+
+**Entity rows**: template 412 `Castle_MedDispenser` (a clone of template 147, mesh `Ga-Props.GA-PuzzleStation00`, `interaction_type 0`) and spawn 13801 at world 8 `(356.0, 70.18, 892.0)`, region 2051 `Castle.Infirmary`. Ogilvie is the existing spawn 197 (template 179).
+
+**Design decisions** (why, not only what):
+
+- **Per-player glow uses dialog-set binds, not `set_interaction_type`.** `set_interaction_type` mutates the one tagged entity and fans out to every witness, so two players on different steps would see each other's glow. `add_dialog_set` and `remove_dialog_set` edit only the calling player's `available_interactions`. The server-side gate for a forged click is the step condition on 1371.
+- **No `complete_objective` for 5172, 5173 or 5174.** `advance_step` force-completes the open objectives of the step it leaves, and `complete_mission` does the same for the final step. A `complete_objective` on a sole required objective would complete the mission early.
+- **Advancing past the last step does not complete a mission.** Chain 1373 needs the explicit `complete_mission`.
+- **Chain 1372 is only safe behind the b2-lite guarded callback seam** (CS-MGF1/CS-MGF2). Until it lands, a victory callback runs unconditioned, so 1371 must not ship without it. The seed guard `mission_1520_seed_guard` pins the world and step conditions, `delay_ms = 0`, no trigger row, and 1371's game name, difficulty and `on_victory_chains`.
+- **Relog chain 1383 is a deliberate recovery.** A relog between the 4984 and 4985 closes loses the speaker pin, so 4985 cannot be shown. The mission completes at once instead of stranding the player.
+- **The interact-tag linter passes vacuously for 1371** because it reads only lines starting with `(` or `VALUES`. Keep each frozen row on one line.
+
+**Tested versus not tested**:
+
+| State | What |
+|-------|------|
+| Checked by tooling | `nav_inspect` (exit 0): the dispenser spot, Ogilvie and the region box sit in navmesh component 250. The collision audit for template 412, spawn 13801 and chains 1367-1383 found no hit on the base ref, `content/cellblock-campaign`, `content/harset-campaign` or `content/tollana-campaign`. |
+| Replay-tested (not live-tested) | Seeds and replay tests exist from CS-02c1 (entry, population guard, `find_path` Ogilvie to dispenser) and CS-02c2 (the graph, relog, two-player independence). Victory runs only through the guarded minigame callback seam. Neither the seal nor this doc re-ran them; run the live-DB tests on the integrated SHA before citing a count. |
+| Never tested | The `!` and bit-30 glow, the Ogilvie portrait, the Livewire UI, defeat-and-retry, journal text, the "Med Dispenser" speaker label on 4985, and the full walk in the client (the server-side walk is replay-tested). All are `UATPending (end UAT, D-CA11)`. |
+
+---
+
+#### Mission 1521: Symbiote tank quest, Option B skeleton (working title) [RECONSTRUCTION, sealed]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 1521 (ships in `CookedDataMissions.pak`; no catalog insertion) |
+| **Steps / objectives** | 4455 (5175), 4456 (5176), 4457 (5177), 4458 (5178) |
+| **Seed** | `db/resources/Content/Seed/castle_symbiote_chains.sql` (new, chains 1369, 1370, 1374-1377); included after the CS-02c1 line in `db/database.sql`. Seeded by packet CS-03c1, stacked on CS-02c1. |
+| **Ledger** | [CS-03S seal](../analysis/castle-continuation/worknotes/CS-03S.md), [G-SYM evidence](../analysis/castle-continuation/evidence/g-sym.md), [end-UAT rows](../analysis/castle-continuation/uat/end-uat.md#mission-1521-symbiote-tank) |
+
+**Status**: the CS-03S verdict is `SEALED` for Option B (D-CA-SYM): world prop and mission state only. There is no item grant (5169), no debuff (1926) and no consumption. Option A's deltas are listed in the worknote and are not frozen. The rows were frozen in the worknote, then seeded by CS-03c1 and replay-tested by CS-03c2; none of it is live-tested.
+
+**How it starts**: chain 1369 offers the mission on `enter_region Castle.Infirmary` to archetype 8 (Jaffa) only, once 704 is completed. Chain 1370 then advances 4455 to 4456 on `mission_accepted`.
+
+**Chains**:
+
+| Chain | Trigger | Conditions (besides `world 8`) | Actions |
+|-------|---------|-------------------------------|---------|
+| 1369 | `enter_region('Castle.Infirmary')` | `mission_status(704) = completed`; `mission_status(1521) = not_active`; `archetype = 8` | `accept_mission(1521)` |
+| 1370 | `mission_accepted('1521')` | `step_status(1521, 4455) = active` | `advance_step(1521, 4456)` |
+| 1374 | `interact_tag('Castle_SymbioteTank')` | `step_status(1521, 4456) = active` | `start_minigame(Livewire, {"difficulty": 1, "on_victory_chains": [1375]})` |
+| 1375 | none (minigame victory) | `step_status(1521, 4456) = active` | `advance_step(1521, 4457)`; `display_dialog(4990)` |
+| 1376 | `interact_tag('Castle_SymbioteTank')` | `step_status(1521, 4457) = active` | `advance_step(1521, 4458)`; `display_dialog(4991)` |
+| 1377 | `dialog_choice('4991')` | `step_status(1521, 4458) = active` | `complete_mission(1521)` |
+
+Every action row has `delay_ms = 0`. There is no relog restore chain, and that is a **known gap, not a design choice** (see the next paragraph). CS-03S §4 says none is needed because the tank's `interaction_type` is static and the click gates are step-status; that holds for relog at 4456 and 4457 only.
+
+**Known gap, relog at step 4458 (UNRESOLVED (owner decision; no ledger decision ID exists yet))**: after the second tank click the player is at 4458 with dialog 4991 open. Relogging before closing it loses the open dialog, chain 1376 no longer matches (it needs 4457), and no chain re-offers 4991, so 1377 never fires and 1521 cannot complete. The CS-03c2 test `mission_1521.rs` (`live_db_1521_relog_resumes_the_click_path`) pins this as a `KNOWN GAP` assertion. Fixing it needs a seed restore chain (`player_loaded` on Castle, world 8, `step_status(1521, 4458) = active`, then `complete_mission(1521)` or a 4991 re-offer), which is an owner decision. CS-02S solved the same problem for 1520 with chain 1383.
+
+**Entity rows**: template 413 (`CA-Props.CA-SymbioteChamber00`, flags 4, static `interaction_type 256`) and spawn 13802 at world 8 `(356.0, 70.18, 896.0)`, in the Infirmary, exactly 4.0 u from the dispenser 13801.
+
+**Design decisions**:
+
+- **The tank sits in the Infirmary, not the chamber.** The chamber spots `(391..399, 55.38, 925..941)` are navmesh component 468, isolated from the Infirmary (component 250); a probe across both exits 3. The chamber placement is `BlockedEvidence (G-ROUTE)` and is never treated as playable.
+- **Static `interaction_type 256`, unlike the dispenser's per-player bind.** The hack cursor shows to every player at every step; the step-gated chains make an early click a no-op. This is a recorded deviation from the Harset template 245 precedent, not a defect.
+- **The 4991 close completes the mission.** `advance_step` credits 5175-5177; 5178 closes through `complete_mission` in chain 1377. 4991 is a plain dialog, so it takes the tank as speaker.
+- **Never `complete_objective 5175`.** The 4455-to-4456 move is `advance_step` only.
+- **Chains 1374 and 1376 share a trigger key** and are pairwise disjoint by step (4456 vs 4457). Chain 1375 is guarded the same way as 1372 (b2-lite seam, `mission_1521_seed_guard`).
+- **Dialog 4989 stays unreferenced**: no chain offers it.
+
+**Tested versus not tested**:
+
+| State | What |
+|-------|------|
+| Checked by tooling | `nav_inspect`: the tank spot, Ogilvie and the medic sit in component 250. The collision audit for template 413, spawn 13802 and chains 1369-1377 and 1386-1393 found no hit on the four refs. |
+| Replay-tested (not live-tested) | Seeds and replay tests exist from CS-03c1 (1369 archetype gate, 1370 advance, tank load, 1374 at 4456 and no-op elsewhere) and CS-03c2 (1374/1376 disjointness, 1375, 1376, 1377, relog, the accept-to-complete walk, `find_path` Ogilvie to tank). Victory needs the guarded minigame seam (CS-MGF2). The 4458 relog case is a known gap (above). |
+| Never tested | The tank highlight, the Livewire UI, the 4990 monologue, the 4991 speaker label, journal text for steps 4456-4458, and that non-Jaffa archetypes never see the offer in the client. All are `UATPending (end UAT, D-CA11)`. |
+
+#### Mission 10300: Triage Rounds (`medical_q1`) [RECONSTRUCTION, sealed]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 10300 (authored; a `MissionAddition`, 1,692-byte XML, no stock key) |
+| **Steps / objectives** | 10340 (10460), 10341 (10461) |
+| **Seed** | `db/resources/Content/Seed/castle_side_stories_chains.sql` (chains 10000-10006); included after `castle_symbiote_chains.sql` in `db/database.sql` |
+| **Ledger** | [CS-04aD seal](../analysis/castle-continuation/worknotes/CS-04aD.md), [end-UAT rows](../analysis/castle-continuation/uat/end-uat.md#medical_q1-triage-rounds) |
+
+**Status**: sealed in CS-04aD, seeded by CS-04a1c1 and checked by the replay, live-DB, services and cooked-sync tests below. Nothing has run on a client.
+
+**How it starts**: once 704 is completed, the medic (`Castle_Pop_Infirmary_Medic1`, template-slot 177) carries a per-player dialog-set binding. Clicking the medic fires chain 10003, which accepts 10300 and nothing else. Chain 10004 then runs on the real `mission_accepted` transition, so a repeat click cannot replay the advance.
+
+**Chains** (every row also needs `world 8`; every action has `delay_ms = 0`):
+
+| Chain | Trigger | Further conditions | Actions |
+|-------|---------|--------------------|---------|
+| 10000 | `mission_completed('704')` | `mission_status(704) = completed`; `mission_status(10300) = not_active` | `add_dialog_set(1000001, slot 177)` |
+| 10001 | `player_loaded('Castle')` | same as 10000 | `add_dialog_set(1000001, slot 177)` |
+| 10002 | `mission_abandoned('10300')` | same as 10000 | `add_dialog_set(1000001, slot 177)` |
+| 10003 | `interact_tag('Castle_Pop_Infirmary_Medic1')` | same as 10000 | `accept_mission(10300)` |
+| 10004 | `mission_accepted('10300')` | `step_status(10300, 10340) = active` | `advance_step(10341)`; `remove_dialog_set(1000001, slot 177)`; `display_dialog(10700)` |
+| 10005 | `enter_region('Castle.CastleFrontCourtyard')` | `mission_status(10300) = active`; `step_status(10300, 10341) = active` | `complete_objective(10461)` |
+| 10006 | `player_loaded('Castle')` | `mission_status(10300) = active`; `step_status(10300, 10340) = active` | `advance_step(10341)` (heals a crash between accept and the advance) |
+
+**Design decisions**:
+
+- **No `dialog_choice` chain.** Dialog 10700 has zero buttons, so a forged close or button ordinal cannot accept or complete anything.
+- **Siblings are disjoint per event key.** 10001 (`not_active`) and 10006 (`active`) share `player_loaded Castle` and split on the 10300 status. The 1520 relog chains 1381-1383 share the key and gate on 1520.
+- **Open to every archetype.** The offer has no archetype gate, unlike 1367. Whether archetype 5 (excluded from 1520) behaves is `UATPending (end UAT, D-CA11)`.
+- **Zero reward.** `reward_naq = reward_xp = 0`, no reward-group rows.
+- **A relog at B needs no chain.** State restores from `sgw_mission`. The player must step out of the courtyard and back in, because `enter_region` fires on entry only.
+- **Q2 and Q3 are not here.** `medical_q2` and `medical_q3` are `BlockedEvidence (nav proof)` in the worknote.
+
+**Tested versus not tested**:
+
+| State | What |
+|-------|------|
+| Unit and seed-agreement tested | `castle_side_medical_q1_xml_admitted`, `_ids_unique_and_in_block`, `_registers_one_addition`, `_xml_matches_seed`, `_no_reward_rows` (`crates/resources`, mission additions); `castle_side_medical_q1_dialog_override_matches_seed` (dialog 10700 against the seed rows). |
+| Live-DB, loader | `live_db_castle_side_medical_q1_seed_loads` (`cell-catalog`): mission, steps, objectives and tasks load. |
+| Replay-tested | `live_db_castle_side_medical_q1_chains_load` (chains 10000-10006, exact triggers, conditions and action order), `_accept_advances_and_shows_dialog` (accept, advance to 10341, binding removed, dialog 10700, in that order), `_repeat_click_noop`. |
+| Replay-tested in the R3c packets (not in this packet's base; integrated with it at CS-INT3) | CS-04a1c2: `live_db_castle_side_medical_q1_courtyard_completes_only_at_b`, `_relog_each_step`, `_abandon_rebinds`, `_704_completion_offers_the_medic` (chains 10000, 10001, 10002, 10005, 10006; the last is a review addition). CS-04a1c4: `_wrong_world_and_missing_704_refused`, `_forged_close_is_inert`, `_siblings_disjoint`, and the cell-methods `live_db_castle_medic_click_out_of_range_reaches_no_chain` (the range gate in front of chain 10003). Without those commits the lifecycle chains and every refusal path have no test. |
+| Services round trip | `live_db_castle_side_medical_q1_round_trip_persists_per_character` (accept, advance and complete persist for one character; accept and abandon leave nothing for another) and `live_db_castle_side_medical_q1_relog_at_step_b_restores_b`, both in `crates/services`. |
+| Cooked-sync | `castle_side_medical_q1_mission_reaches_a_stock_client` and `_dialog_reaches_a_stock_client` (`base-session`): the 1,692-byte mission and the 400-byte dialog reassemble byte for byte through the stock-client resync path. |
+| Never tested | The journal entry and step text, the dialog window rendering with no buttons, the medic marker and first-press feedback, the courtyard walk, the relog and abandon flow on a client. All are `UATPending (end UAT, D-CA11)`: rows Q1-U1 to Q1-U9. |
+
+#### Castle hub quartermaster (template 415, spawn 13804) [RECONSTRUCTION, sealed]
+
+This is a service, not a mission: no chain, dialog, set or screen row exists for it.
+
+| Field | Value |
+|-------|-------|
+| **Rows** | template 415 (`Castle_Quartermaster`, `interaction_type 65536`, faction 1, lists 1300/2/2/2); spawn 13804, world 8, `(440.0, 70.22, 992.0)`, stationary |
+| **Seed** | `db/resources/Entities/Seed/entity_templates.sql`, `db/resources/Worlds/Seed/spawnlist.sql` |
+| **Ledger** | [CS-05S2a seal](../analysis/castle-continuation/worknotes/CS-05S2a.md) |
+
+**Services note**: the quartermaster sells the 19 rows of buy list 1300 and buys back through lists 2/2/2. No hostile sits inside its aggro radius, and it is stationary. The hub medic (template 414, spawn 13803) is **not** shipped; it is BlockedDecision (OD-4, it needs a new medical item list). The vendor range and liveness gate that finding R1 asked for is CS-05R1 in `store_ops.rs`: a purchase, sell, buyback, repair or recharge from beyond range is refused with "You are too far from the vendor.", and a dead player gets nothing. The vendor stays open after the refusal, on purpose, so walking back works.
+
+| State | What |
+|-------|------|
+| Live-DB tested | `live_db_castle_hub_service_is_seeded_safe_and_stocked`, `live_db_castle_quartermaster_lists_match_the_sealed_stock`, `live_db_castle_medic_is_absent` (`cell-catalog`). Existing guards `live_db_castle_population` and `live_db_vendor_arbitrage` cover counts and prices. |
+| Navmesh tested | `castle_navmesh` reads every world-8 spawn row, so it covers 13804. |
+| Unit tested | CS-05R1: `purchase_from_a_vendor_out_of_range_is_refused_with_feedback`, `sell_buyback_repair_recharge_out_of_range_are_refused`, `purchase_while_dead_sends_nothing`, `out_of_range_refusal_logs_the_reason` (`store_ops_tests.rs`). |
+| Never tested | The vendor window with 19 rows on a client, a buy and a sell-back, and that nothing aggroes at the spot. Rows S1 to S5 under the hub heading in the end-UAT file. A vendor round trip on template 415 was dropped (CD-4). |
+
+#### Castle hub barks (chains 10200 and 10201) [RECONSTRUCTION, sealed]
+
+| Field | Value |
+|-------|-------|
+| **Seed** | `db/resources/Content/Seed/castle_hub_barks_chains.sql`; dialogs 10740/10741 and screens 10900/10901 in `db/resources/Dialogs/Seed/` |
+| **Ledger** | [CS-05S2b seal](../analysis/castle-continuation/worknotes/CS-05S2b.md) |
+
+Both barks are one chat line in the say channel with no dialog window and no state change. Both fire once per session on `enter_region('Castle.Infirmary')`; a relog replays the bark (accepted limitation).
+
+| Chain | Speaker | Conditions (besides `world 8`) |
+|-------|---------|--------------------------------|
+| 10200 | Ogilvie | `mission_status(1520) = completed`; `archetype <= 6` |
+| 10201 | Castle Medic | `mission_status(1521) = completed`; `mission_status(1520) = not_active`; `archetype = 8` |
+
+10200 and 10201 are disjoint from each other and from the 1367/1368/1369 offer chains on the same key.
+
+| State | What |
+|-------|------|
+| Replay-tested | `live_db_castle_hub_barks_b1_fires_once_for_1520_completed_low_archetype`, `_b1_does_not_repeat_on_reentry`, `_b1_gates_hold_on_1520_archetype_and_world`, `_b2_fires_once_for_archetype_8_after_1521`, `_b2_gates_hold_on_archetype_1521_1520_and_world`, `_are_disjoint_from_the_infirmary_offers`, `_seed_screens_match_the_frozen_text` (`chain_replay_tests/castle_hub_barks.rs`; each decodes the `onPlayerCommunication`). |
+| Never tested | The chat line on a client screen, its speaker label and the say channel. Rows HB1 and HB2 in the end-UAT file. |
+
+#### Round 4 quests (built; nothing has run on a client)
+
+The eight sections below cover the R4 Ship packets, at the reviewed tips of the c1 (chains), s (seeds), d (dialogs) and c2 (lifecycle: relog, abandon, refusals, sibling disjointness, persistence round trip) stages. Every behavior is marked tested (the test is named) or never tested. "Structural only" means a `*_chains_load` test pins the chain's trigger, conditions and actions but no test fires it. A name that starts with `_` resolves against the prefix named earlier in the same cell. Every row is `UATPending (end UAT, D-CA11)` for the client side; the rows live in the [end-UAT file](../analysis/castle-continuation/uat/end-uat.md).
+
+#### Mission 10301: Overlooked in the Cells (`medical_q2`) [RECONSTRUCTION, built]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 10301 (authored `MissionAddition`) |
+| **Steps / objectives** | 10342 (offer, accept), 10343 (objective 10463, report to the medic) |
+| **Seed** | `db/resources/Content/Seed/castle_side_stories_chains.sql` (chains 10010-10017); prisoner template 417, spawn 13806 at (270, 66.98, 1050), tag `Castle_Pop_Prisoner5`, navmesh component 250; set maps 1000002 (offer, slot 417) and 1000003 (turn-in, medic slot 177); dialogs 10701 and 10702 |
+| **Ledger** | [CS-04aD2 seal](../analysis/castle-continuation/worknotes/CS-04aD2.md), [end-UAT rows](../analysis/castle-continuation/uat/end-uat.md#medical_q2-overlooked-in-the-cells) |
+
+**Status**: built; the prerequisite is 10300 completed. Nothing has run on a client.
+
+**How it starts**: once 10300 is completed, the prisoner carries a per-player dialog-set binding. Clicking it fires 10013, which accepts 10301; 10014 then runs on the real `mission_accepted` transition, advances to 10343, swaps the binding to the medic and shows dialog 10701. `remove_dialog_set` runs before the accept and complete actions because dispatch nests.
+
+**Chains** (every row also needs `world 8`; every action has `delay_ms = 0`):
+
+| Chain | Trigger | Further conditions | Actions |
+|-------|---------|--------------------|---------|
+| 10010 | `mission_completed('10300')` | `mission_status(10300) = completed`; `mission_status(10301) = not_active` | `add_dialog_set(1000002, slot 417)` |
+| 10011 | `player_loaded('Castle')` | same as 10010 | `add_dialog_set(1000002, slot 417)` |
+| 10012 | `mission_abandoned('10301')` | same as 10010 | `add_dialog_set(1000002, slot 417)`; `remove_dialog_set(1000003, slot 177)` |
+| 10013 | `interact_tag('Castle_Pop_Prisoner5')` | same as 10010 | `accept_mission(10301)` |
+| 10014 | `mission_accepted('10301')` | `step_status(10301, 10342) = active` | `advance_step(10343)`; `remove_dialog_set(1000002, slot 417)`; `add_dialog_set(1000003, slot 177)`; `display_dialog(10701)` |
+| 10015 | `interact_tag('Castle_Pop_Infirmary_Medic1')` | 10300 completed; 10301 active; step 10343 active | `remove_dialog_set(1000003, slot 177)`; `display_dialog(10702)`; `complete_objective(10463)` |
+| 10016 | `player_loaded('Castle')` | 10300 completed; 10301 active; step 10342 active | `advance_step(10343)`; `add_dialog_set(1000003, slot 177)` |
+| 10017 | `player_loaded('Castle')` | 10300 completed; 10301 active; step 10343 active | `add_dialog_set(1000003, slot 177)` |
+
+**Design decisions**: the medic keeps one binding per state (slot 177 swaps between the 10300 and 10301 maps); sibling chains on `player_loaded Castle` split on mission and step status so they stay disjoint; zero reward (`_no_reward_rows`).
+
+**Tested versus not tested**:
+
+| State | What |
+|-------|------|
+| Unit and seed-agreement tested | `castle_side_medical_q2_xml_admitted`, `_ids_unique_and_in_block`, `_registers_addition`, `_xml_matches_seed`, `_no_reward_rows`; `castle_side_medical_q2_dialog_override_matches_seed_10701`, `_10702`; `castle_side_medical_q2_set_maps_are_flag_carriers`, `castle_side_medical_q2_dialogs_not_reachable_from_maps`. |
+| Live-DB | `live_db_castle_side_medical_q2_seed_loads`, `live_db_castle_side_medical_q2_prisoner_seeded`, `live_db_castle_side_medical_q2_relog_at_step_b_restores_b`, `live_db_castle_side_medical_q2_round_trip_persists_per_character` (services; two characters keep separate saved state, and A's completion persists). |
+| Replay-tested | `live_db_castle_side_medical_q2_prisoner_click_accepts_and_shows_dialog` (chains 10013, 10014), `_offer_needs_10300_completed`, `_medic_click_completes_only_at_b` (10015), `_repeat_click_noop`. Lifecycle: `_relog_each_state` (10011, 10016, 10017), `_abandon_rebinds` (10012), `_wrong_world_refused`, `_forged_close_is_inert`, `_siblings_disjoint_with_q1`, and `live_db_castle_side_medical_q2_out_of_range_click_refused` (a far click reaches no chain; cell-methods). |
+| Structural only | `live_db_castle_side_medical_q2_chains_load` pins all eight chains. Chain 10010 (offer on the 10300 completion) is the one chain no test executes: `_siblings_disjoint_with_q1` only resolves it. Chains 10011, 10012, 10016 and 10017 are fired by the lifecycle tests above. |
+| Never tested | On a client: the journal entry, dialogs 10701 and 10702, the prisoner and medic markers, the slot 177 swap, relog, abandon, the walk from the Infirmary and click races. All are `UATPending (end UAT, D-CA11)`: rows MQ2-U1 to MQ2-U9. |
+
+#### Mission 10310: Change of Watch (`defense_q1`) [RECONSTRUCTION, built]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 10310 (authored `MissionAddition`) |
+| **Steps / objectives** | 10354 (accept), 10355 (objective 10475, reach the Infirmary) |
+| **Seed** | `castle_side_stories_chains.sql` (chains 10100-10106); sentry template 419, spawn 13808 at (518, 28.18, 640), tag `Castle_DefenseQ1_Sentry`; set map 1000006, slot 419; dialog 10709 |
+| **Ledger** | [CS-04bD2a seal](../analysis/castle-continuation/worknotes/CS-04bD2a.md), [end-UAT rows](../analysis/castle-continuation/uat/end-uat.md#defense_q1-change-of-watch) |
+
+**Status**: built; the prerequisite is 10300 completed. Nothing has run on a client.
+
+**Chains** (every row also needs `world 8`; every action has `delay_ms = 0`):
+
+| Chain | Trigger | Further conditions | Actions |
+|-------|---------|--------------------|---------|
+| 10100 | `mission_completed('10300')` | 10300 completed; 10310 not_active | `add_dialog_set(1000006, slot 419)` |
+| 10101 | `player_loaded('Castle')` | same as 10100 | `add_dialog_set(1000006, slot 419)` |
+| 10102 | `mission_abandoned('10310')` | same as 10100 | `add_dialog_set(1000006, slot 419)` |
+| 10103 | `interact_tag('Castle_DefenseQ1_Sentry')` | same as 10100 | `accept_mission(10310)` |
+| 10104 | `mission_accepted('10310')` | `step_status(10310, 10354) = active` | `advance_step(10355)`; `remove_dialog_set(1000006, slot 419)`; `display_dialog(10709)` |
+| 10105 | `enter_region('Castle.Infirmary')` | 10310 active; step 10355 active | `complete_objective(10475)` |
+| 10106 | `player_loaded('Castle')` | 10310 active; step 10354 active | `advance_step(10355)` |
+
+**Tested versus not tested**:
+
+| State | What |
+|-------|------|
+| Unit and seed-agreement tested | `castle_side_defense_q1_xml_admitted`, `_ids_unique_and_in_block`, `_is_registered_once`, `_xml_matches_seed`, `_reward_matches_seal`; `castle_side_defense_q1_dialog_override_matches_seed`, `_dialog_ids_fit_16_bits`, `_dialog_set_map_is_flag_carrier`. |
+| Live-DB | `live_db_castle_side_defense_q1_seed_loads`, `_sentry_loads`, `live_db_castle_side_defense_q1_giver`; `live_db_castle_side_defense_q1_slot_419_only_bound_here`; `live_db_castle_side_defense_q1_relog_at_step_b_restores_b`, `live_db_castle_side_defense_q1_round_trip_persists_per_character` (services; A's completion persists, per character). |
+| Replay-tested | `live_db_castle_side_defense_q1_accept_advances_and_shows_dialog` (10103, 10104), `_repeat_click_noop`, `_infirmary_completes_only_at_b` (10105). Lifecycle: `_q1_completion_offers_sentry` (10100), `_relog_each_step` (10101, 10106), `_abandon_rebinds` (10102), `_wrong_world_and_missing_prerequisite_refused`, `_already_active_completed_and_wrong_step_refused`, `_forged_close_is_inert`, `_siblings_disjoint`, `_out_of_range_click_refused` (cell-methods). |
+| Structural only | `live_db_castle_side_defense_q1_chains_load` pins all seven chains; every one is also fired by a replay test above. |
+| Never tested | On a client: the journal, dialog 10709, the sentry marker, the sentry's look, the nav_path route from the Infirmary (component 250; the arrival at component 116 is G-ROUTE, open), relog, abandon and races. `UATPending (end UAT, D-CA11)`: rows DQ1-U1 to DQ1-U10. |
+
+#### Mission 10312: Hold the Bravo Route (`defense_q3`) [RECONSTRUCTION, built]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 10312 (authored `MissionAddition`) |
+| **Steps / objectives** | 10366 with four objectives 10486 to 10489 (three Bravo officers and Muelbach) |
+| **Seed** | `castle_side_stories_chains.sql` (chains 10120-10129); giver template 425, spawn 14096 at (790, 59.7, 530), tag `Castle_DefenseQ3_Giver`; set map 1000010, slot 425; dialogs 10717 (accept) and 10718 (completion) |
+| **Ledger** | [CS-04bD2b seal](../analysis/castle-continuation/worknotes/CS-04bD2b.md), [end-UAT rows](../analysis/castle-continuation/uat/end-uat.md#defense_q3-hold-the-bravo-route) |
+
+**Status**: built; the prerequisite is 10310 completed. Nothing has run on a client.
+
+**Chains** (every row also needs `world 8`; every action has `delay_ms = 0`):
+
+| Chain | Trigger | Further conditions | Actions |
+|-------|---------|--------------------|---------|
+| 10120 | `mission_completed('10310')` | 10310 completed; 10312 not_active | `add_dialog_set(1000010, slot 425)` |
+| 10121 | `player_loaded('Castle')` | same as 10120 | `add_dialog_set(1000010, slot 425)` |
+| 10122 | `mission_abandoned('10312')` | same as 10120 | `add_dialog_set(1000010, slot 425)` |
+| 10123 | `interact_tag('Castle_DefenseQ3_Giver')` | same as 10120 | `accept_mission(10312)` |
+| 10124 | `mission_accepted('10312')` | step 10366 active | `remove_dialog_set(1000010, slot 425)`; `display_dialog(10717)` |
+| 10125 | `entity_dead_tag('Castle_BravoOfficer1')` | 10312 active; step 10366 active; objective 10486 `neq` completed | `complete_objective(10486)` |
+| 10126 | `entity_dead_tag('Castle_BravoOfficer2')` | same pattern, objective 10487 | `complete_objective(10487)` |
+| 10127 | `entity_dead_tag('Castle_BravoOfficer3')` | same pattern, objective 10488 | `complete_objective(10488)` |
+| 10128 | `entity_dead_tag('Castle_Muelbach')` | same pattern, objective 10489 | `complete_objective(10489)` |
+| 10129 | `mission_completed('10312')` | 10312 completed | `display_dialog(10718)` |
+
+**Design decisions**: each kill chain refuses a completed objective, so a re-kill is inert; the fourth completion finishes the mission through the step's required objectives, not through a chain.
+
+**Tested versus not tested**:
+
+| State | What |
+|-------|------|
+| Unit and seed-agreement tested | `castle_side_defense_q3_xml_admitted`, `_ids_in_block`, `_is_registered_once`, `_xml_matches_seed`, `_four_required_objectives`, `_reward_matches_seal`, `_giver_rows_frozen`; `castle_side_defense_q3_dialog_override_matches_seed`, `_dialog_set_seed`, `_overrides_registered`. |
+| Live-DB | `live_db_castle_side_defense_q3_seed_loads`, `_giver_loads`, `live_db_castle_side_defense_q3_round_trip_persists_per_character` (services); `castle_side_defense_q3_giver_clearance` (cell-catalog: no idle hostile in World 8 reaches the giver). |
+| Replay-tested | `live_db_castle_side_defense_q3_offer_binds_after_prereq`, `_accept_unbinds_and_shows_dialog`, `_repeat_click_noop`, `_each_target_completes_its_objective`, `_fourth_kill_completes_and_shows_dialog`, `_rekill_is_inert`, `_kill_outside_window_is_inert`, `_coexists_with_708`. Lifecycle: `_relog_each_stage` (10121), `_abandon_rebinds_and_resets` (10122), `_refusals`, `_forged_close_is_inert`, `_siblings_disjoint`, `_two_player_credit` (one kill credits only the killer; the second player's objectives stay empty). |
+| Structural only | `live_db_castle_side_defense_q3_chains_load`; every chain is also fired by a replay test above. There is no out-of-range click test for the giver (the seal's c2 list has none). |
+| Never tested | On a client: the journal, the offer dialog, the marker, the per-kill journal tick, the route (`nav_path`, CD-9), relog, abandon, a second character, shared actors, races, and killing Bravo officer 2 on its island (component 214; if it cannot be reached the packet is blocked). `UATPending (end UAT, D-CA11)`: rows DQ3-U1 to DQ3-U12. |
+
+#### Mission 10320: Report from Harset (`return_q1`) [RECONSTRUCTION, built]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 10320 (authored `MissionAddition`) |
+| **Steps / objectives** | 10372 (objective 10492, report to Colonel Marsh) |
+| **Seed** | `castle_side_stories_chains.sql` (chains 10130-10133); set map 1000012 on slot 10 (Marsh, tag `Castle_ColMarsh`); dialog 10721 |
+| **Ledger** | [CS-04cS2 seal](../analysis/castle-continuation/worknotes/CS-04cS2.md), [end-UAT rows](../analysis/castle-continuation/uat/end-uat.md#return_q1-and-return_q2-report-from-harset-and-confirm-the-gate-address) |
+
+**Status**: built. The offer fires on the Harset to Castle crossing once 708 is completed.
+
+**Chains**:
+
+| Chain | Trigger | Further conditions | Actions |
+|-------|---------|--------------------|---------|
+| 10130 | `stargate_crossed('Castle')` | **`world 57`** (the crossing fires from Harset); 708 completed; 10320 not_active | `accept_mission(10320)` |
+| 10131 | `player_loaded('Castle')` | `world 8`; 10320 active; step 10372 active | `add_dialog_set(1000012, slot 10)` |
+| 10132 | `interact_tag('Castle_ColMarsh')` | `world 8`; 10320 active; step 10372 active | `display_dialog(10721)`; `remove_dialog_set(1000012, slot 10)`; `complete_objective(10492)` |
+| 10133 | `mission_abandoned('10320')` | `world 8`; 10320 not_active | `remove_dialog_set(1000012, slot 10)` |
+
+**Tested versus not tested**:
+
+| State | What |
+|-------|------|
+| Unit and seed-agreement tested | `castle_side_return_q1_xml_admitted`, `_ids_unique_and_in_block`, `_is_registered_once`, `_xml_matches_seed`, `_no_reward_rows`; `castle_side_return_q1_dialog_override_matches_seed`. |
+| Live-DB | `live_db_castle_side_return_q1_seed_loads`, `live_db_castle_side_return_q1_crossing_round_trip`; `live_db_castle_return_marsh_click_out_of_range_reaches_no_chain` (cell-methods: a far click reaches no chain, a near click does). |
+| Replay-tested | `live_db_castle_side_return_q1_crossing_accepts_once`, `_crossing_gates` (10130), `_marsh_click_reports_and_completes` (10132). Lifecycle (`castle_side_return_c2_`): `relog_each_state` (10131), `abandon_rebinds` (10133), `no_bind_outside_world_8`, `wrong_world_and_missing_prereq`, `forged_close_is_inert`, `siblings_disjoint` (against 708 and the four shared keys), `world_gates_frozen`. |
+| Structural only | `live_db_castle_side_return_q1_chains_load`; all four chains are also fired by a replay test above. |
+| Never tested | On a client: the journal, persistence across a relog, the Marsh marker, dialog 10721, abandon, the 708 regression, and the `nav_path` walk from the arrival to Marsh. `UATPending (end UAT, D-CA11)`: rows RQ1-U1 to RQ1-U9, RQ-R1, RQ-R2 and the per-actor rows RQ-R1-Marsh and RQ-R1-Mohkatan (CD-9). |
+
+#### Mission 10321: Confirm the Gate Address (`return_q2`) [RECONSTRUCTION, built]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 10321 (authored `MissionAddition`) |
+| **Steps / objectives** | 10378 (accept), 10379 (objective 10499, dial the Harset address) |
+| **Seed** | `castle_side_stories_chains.sql` (chains 10140-10146); set map 1000014 on slot 54 (Moh'katan, tag `Castle_Mohkatan`); dialog 10725 |
+| **Ledger** | [CS-04cS2 seal](../analysis/castle-continuation/worknotes/CS-04cS2.md), [end-UAT rows](../analysis/castle-continuation/uat/end-uat.md#return_q1-and-return_q2-report-from-harset-and-confirm-the-gate-address) |
+
+**Status**: built; the prerequisite is 10320 completed. The mission completes on dialing Harset at the Castle gate.
+
+**Chains** (every row also needs `world 8`):
+
+| Chain | Trigger | Further conditions | Actions |
+|-------|---------|--------------------|---------|
+| 10140 | `mission_completed('10320')` | 10320 completed; 10321 not_active | `add_dialog_set(1000014, slot 54)` |
+| 10141 | `player_loaded('Castle')` | same as 10140 | `add_dialog_set(1000014, slot 54)` |
+| 10142 | `interact_tag('Castle_Mohkatan')` | same as 10140 | `accept_mission(10321)` |
+| 10143 | `mission_accepted('10321')` | step 10378 active | `advance_step(10379)`; `remove_dialog_set(1000014, slot 54)`; `display_dialog(10725)` |
+| 10144 | `stargate_dialed('Harset')` | 10321 active; step 10379 active | `complete_objective(10499)` |
+| 10145 | `player_loaded('Castle')` | 10320 completed; 10321 active; step 10378 active | `advance_step(10379)` |
+| 10146 | `mission_abandoned('10321')` | 10320 completed; 10321 not_active | `add_dialog_set(1000014, slot 54)` |
+
+**Tested versus not tested**:
+
+| State | What |
+|-------|------|
+| Unit and seed-agreement tested | `castle_side_return_q2_xml_admitted`, `_ids_unique_and_in_block`, `_is_registered_once`, `_xml_matches_seed`, `_steps_in_declaration_order`, `_no_reward_rows`; `castle_side_return_q2_dialog_override_matches_seed`. |
+| Live-DB | `live_db_castle_side_return_q2_seed_loads`, `live_db_castle_side_return_q2_relog_at_step_b_restores_b`, `live_db_castle_side_return_q2_round_trip_persists_per_character` (services), `live_db_castle_side_return_q2_click_out_of_range_reaches_no_chain` (cell-methods). |
+| Replay-tested | `live_db_castle_side_return_q2_offer_on_q1_completion` (10140), `_click_accepts_then_shows_dialog` (10142, 10143), `_repeat_click_noop`, `_dial_completes_only_at_b` (10144). Lifecycle: `_relog_each_state` (10141, 10145), `_abandon_rebinds` (10146), `_refusals_fire_nothing`, `_crossing_from_the_wrong_world_fires_nothing`, `_no_bind_outside_world_8`, `_every_chain_names_a_world`, `_forged_close_is_inert`, `_siblings_disjoint`. |
+| Structural only | `live_db_castle_side_return_q2_chains_load`; all seven chains are also fired by a replay test above. Chain 10130 is seeded, so the q1 half of `_crossing_from_the_wrong_world_fires_nothing` (chains 10130-10133) runs with it. |
+| Never tested | On a client: the offer marker, dialog 10725, the dial, relog, abandon, races, the archetype check and the slot 54 no-leak check. `UATPending (end UAT, D-CA11)`: rows RQ2-U1 to RQ2-U8. |
+
+#### Mission 10330: Supply Run (`repeatable_q1`) [RECONSTRUCTION, built]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 10330 (authored `MissionAddition`, `NumRepeats="2"`: three completions in total) |
+| **Steps / objectives** | 10384 (objective 10504, reach the Infirmary), 10385 (objective 10505, report to the supply officer); tasks 10624 and 10625 |
+| **Seed** | `db/resources/Content/Seed/castle_repeatable_chains.sql` (chains 10230-10237); supply officer template 424, spawn 13809 at (440, 70.22, 984), tag `Castle_HubSupplyOfficer`; set maps 1000016 (offer) and 1000017 (turn-in); dialogs 10729 and 10730 |
+| **Ledger** | [CS-05S3 seal](../analysis/castle-continuation/worknotes/CS-05S3.md), [end-UAT rows](../analysis/castle-continuation/uat/end-uat.md#repeatable_q1-supply-run) |
+
+**Status**: built; the prerequisite is 704 completed. Zero reward. The repeat cap is tested (`_three_runs_then_refused` and the other cap tests below); the client side is not.
+
+**Chains** (every row also needs `world 8`):
+
+| Chain | Trigger | Further conditions | Actions |
+|-------|---------|--------------------|---------|
+| 10230 | `mission_completed('704')` | 704 completed; 10330 `neq` active | `add_dialog_set(1000016)` |
+| 10231 | `player_loaded('Castle')` | same as 10230 | `add_dialog_set(1000016)` |
+| 10232 | `mission_abandoned('10330')` | 704 completed | `remove_dialog_set(1000017)`; `add_dialog_set(1000016)` |
+| 10233 | `mission_completed('10330')` | 704 completed | `add_dialog_set(1000016)` |
+| 10234 | `interact_tag('Castle_HubSupplyOfficer')` | 704 completed; 10330 `neq` active | `remove_dialog_set(1000016)`; `accept_mission(10330)`; `display_dialog(10729)` |
+| 10235 | `enter_region('Castle.Infirmary')` | 10330 active; step 10384 active | `advance_step(10385)`; `add_dialog_set(1000017)` |
+| 10236 | `interact_tag('Castle_HubSupplyOfficer')` | 10330 active; step 10385 active | `remove_dialog_set(1000017)`; `display_dialog(10730)`; `complete_mission(10330)` |
+| 10237 | `player_loaded('Castle')` | 10330 active; step 10385 active | `add_dialog_set(1000017)` |
+
+**Design decisions**: 10234 and 10236 share one `interact_tag` key and split on the 10330 status, so they stay disjoint (`_siblings_disjoint`). Both `remove_dialog_set` actions run before `accept_mission` and `complete_mission`.
+
+**Tested versus not tested**:
+
+| State | What |
+|-------|------|
+| Unit and seed-agreement tested | `castle_side_repeatable_q1_xml_admitted`, `_ids_unique_and_in_block`, `_is_registered_once`, `_xml_matches_seed`, `_reward_matches_seal`, `_template_and_spawn_rows`; `castle_side_repeatable_q1_dialog_override_matches_seed_10729`, `_10730`, `_dialog_set_maps_load`, `_monologues_have_no_buttons`, `_slot_424_has_one_spawn`. |
+| Live-DB | `live_db_castle_side_repeatable_q1_seed_loads`, `live_db_castle_side_repeatable_q1_round_trip` (services; three runs persist, the fourth is refused), `live_db_castle_side_repeatable_q1_out_of_range_click_refused` (services). |
+| Replay-tested | `live_db_castle_side_repeatable_q1_accept_then_dialog_order`, `_repeat_click_noop`, `_region_advances_only_at_a`, `_turn_in_completes_and_rebinds`, `_relog_each_step`, `_abandon_rebinds`, `_wrong_world_and_missing_704_refused`, `_siblings_disjoint`. Cap: `_three_runs_then_refused` (the fourth click is refused), `_refused_click_still_shows_dialog_and_unbinds`, `_repeats_survive_relog_and_abandon` (a completed record cannot be abandoned or reset), `_cap_unreadable_state_cannot_reset`, `_two_characters_independent`. |
+| Structural only | `live_db_castle_side_repeatable_q1_chains_load` pins all eight chains. Chain 10230 (offer on the 704 completion) is the one chain no test executes: `_siblings_disjoint` only resolves it. |
+| Never tested | On a client: the three-completion cap (the fourth click removing the marker with a neutral dialog), the journal, the giver with no store break, the advance, the turn-in, the route, a second character, races, and the name label `Op-CORE Soldier`. `UATPending (end UAT, D-CA11)`: rows RP1-U1 to RP1-U11. |
+
+#### Mission 567: Romney's Files, Castle leg [RECONSTRUCTION, built; ships ENABLED with Harset 6503/6504; FZ-12]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 567 (stock mission; steps 2000, 2012 and 4039; item 2698) |
+| **Seed** | `db/resources/Content/Seed/castle_567_chains.sql` (chains 1394-1397, 1400, 10240-10243); cabinet template 416, spawn 13805 at (232, 66.79, 1036), tag `Castle_FileCabinet`, component 250; offer map 1000018 on slot 48 (Copplemann) binding dialog 2043; dialogs 10733 and 10734, screens 10865 and 10866 |
+| **Ledger** | [CS-08bS seal](../analysis/castle-continuation/worknotes/CS-08bS.md), [end-UAT rows](../analysis/castle-continuation/uat/end-uat.md#mission-567-romneys-files-castle-leg) |
+
+**Status**: all nine Castle chains and Harset 6503/6504 ship enabled (FZ-12, D-FZ1). Chain 1397 grants item 2698 at step 2000 and Harset 6503 takes it back at step 4039; disable both legs together or not at all. The live-DB pins are `live_db_castle_567_chains_ship_enabled` and `live_db_chains_6503_and_6504_ship_enabled`. Zero reward. Completion is therefore not a Castle claim.
+
+**Chains** (all nine ship enabled):
+
+| Chain | Trigger | Further conditions | Actions |
+|-------|---------|--------------------|---------|
+| 1394 | `mission_completed('703')` | `world 8`; 701 and 703 completed; 567 not_active | `add_dialog_set(1000018, slot 48)` |
+| 1395 | `player_loaded('Castle')` | same as 1394 | `add_dialog_set(1000018, slot 48)` |
+| 1396 | `dialog_choice('2043')` | same as 1394 | `remove_dialog_set(1000018)`; `accept_mission(567)` |
+| 1397 | `interact_tag('Castle_FileCabinet')` | `world 8`; 567 active; step 2000 active | `add_item(2698, qty 1, container 2)`; `advance_step(2012)`; `display_dialog(10733)` |
+| 1400 | `interact_tag('Castle_FileCabinet')` | `world 8`; step 2000 `neq` active | `display_dialog(10734)` |
+| 10240 | `stargate_crossed` (any key) | `world 8`; 567 not_active | `remove_dialog_set(1000018, slot 48)` |
+| 10241 | `stargate_crossed('Harset')` | `world 8`; 567 active; step 2012 active | `advance_step(4039)` |
+| 10242 | `mission_abandoned('567')` | no world condition; 567 not_active | `remove_dialog_set(2817, slot 48)`; `remove_item(2698)` |
+| 10243 | `mission_abandoned('567')` | `world 8`; 701 and 703 completed; 567 not_active | `add_dialog_set(1000018, slot 48)` |
+
+**Design decisions**: 1397 and 1400 are disjoint on the step condition because conditions freeze at resolve time. 10242 carries no world condition on purpose, so abandoning in Harset clears the turn-in binding.
+
+**Known open items**: OPEN-5, the cabinet sits 6.0 u inside Romney's 18 u aggro ring. OPEN-1, whether closing dialog 2043 with X fires `dialog_choice`. OPEN-7, a grant failure leaves the player at 2012 without the item.
+
+**Tested versus not tested**:
+
+| State | What |
+|-------|------|
+| Registration | `castle_567_monologues_are_registered`, `castle_567_offer_map_binds_2043`. |
+| Shipped state | `live_db_castle_567_chains_ship_enabled` loads each of the nine chains as shipped and asserts all nine are `enabled = true`; `live_db_chains_6503_and_6504_ship_enabled` pins Harset 6503/6504. The replay tests below load every chain as shipped, with no override. |
+| Replay-tested | `live_db_mission_567_castle_chains_load`, `_offer_binds_and_accept_removes_it`, `_cabinet_grants_then_advances`, `_repeat_click_at_2012_grants_nothing`, `_cabinet_chains_are_disjoint`, `_crossing_advances_to_4039`; refusals: `_relog_refuses_without_the_offer_gate`, `_cabinet_refuses_wrong_world_and_state`, `_accept_refuses_outside_the_offer`, `_crossing_refuses_the_wrong_step`. |
+| Relog and abandon | `live_db_mission_567_castle_relog_at_2000_and_2012_restores_nothing`, `_relog_at_4039_binds_nothing_in_castle`, `_crossing_with_567_running_keeps_the_offer_bound`, `_abandon_in_castle_reopens_the_offer`, `_abandon_in_world_68_clears_turn_in_only`, `_offer_is_never_live_in_world_68`. |
+| Harset contract | `live_db_mission_567_castle_meets_the_harset_contract`. |
+| Never tested | Completion on a client (the 6503 turn-in, FZ-U1 step 4), the offer dialog and X-close, the cabinet reach under Romney's pull, the item 2698 icon and monologue 10733 on a client, the crossing, abandon and the re-accept loop. `UATPending (end UAT, D-CA11)`: rows 567-U1 to 567-U8. The full path is lab row FZ-U1 in the [unified UAT guide](../guides/unified-uat.md). |
+
+#### Mission 1521 implant grant (chain 1386) [RECONSTRUCTION, built]
+
+| Field | Value |
+|-------|-------|
+| **Seed** | `db/resources/Content/Seed/castle_symbiote_chains.sql` (chain 1386, added after 1377) |
+| **Ledger** | [CS-03dS seal](../analysis/castle-continuation/worknotes/CS-03dS.md), [end-UAT rows](../analysis/castle-continuation/uat/end-uat.md#mission-1521-implant-chain-1386) |
+
+**Chain**: trigger `mission_completed('1521')`; conditions `world 8` and `mission_status(1521) = completed`; action `add_item(5169, {"container": 2})`. Chains 1369, 1370 and 1374-1377 are unchanged.
+
+Item 5169 "Immature Goa'uld Symbiote" is not sellable and not deletable, stack 1. Using it is silent: no consume, no debuff (G-SYM-CONSUME is closed by repo evidence; G-SYM-GAME, G-SYM-DEBUFF and G-SYM-RADIO stay open). With a full bag the base mails the item with the line "Your bag was full. Your item is in your mailbox." A second `mission_completed` after a GM reset grants a second copy; this is accepted.
+
+| State | What |
+|-------|------|
+| Live-DB | `live_db_chain_1386_loads_with_the_implant_grant`; the generic `live_db_full_bag_content_grant_is_escrowed_in_mail` covers the full-bag mail path (not a 5169 test). |
+| Replay-tested | `live_db_chain_1386_grants_5169_once_on_completion`, `_grants_nothing_for_the_wrong_world_or_mission_or_state`, `live_db_chain_1386_follows_the_1377_close_and_never_reopens_1521`, `live_db_chain_1386_second_completion_event_grants_a_second_copy`. |
+| Not found by name | A 5169-specific full-bag test and a static test that 1369, 1370 and 1374-1377 are unchanged were named in the seal but do not exist under those names; neither is claimed. |
+| Never tested | The item in the mission bag on a client, the silent double-click, the full-bag mail, relog and the absence of a debuff icon. `UATPending (end UAT, D-CA11)`: rows CS-03d-U1 to CS-03d-U5. |
+
+---
+
 ### SGC_W1 (SGU Starting Zone)
 
 **Confidence**: CONFIRMED
@@ -1200,7 +1724,7 @@ Chain-replay tests: [`chain_replay_tests/class_start_sgc/`](../../crates/cell-co
 
 #### Union continuation (`sgc_w1_union_*.sql`, chains 3051-3199)
 
-Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to Dakara (C1) and Omega (C4). Campaign: `docs/analysis/union-sgc-continuation/`. Each line below belongs to one packet; that packet rewrites only its own line.
+Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to Dakara (C1) and Omega (C4). Campaign: `docs/analysis/union-sgc-continuation/`. **Status (2026-10-19, SGC_W1 close-out):** chains 3051-3175 are authored and covered by database and executor tests; nothing has been played in a client ([UAT steps](../analysis/union-sgc-continuation/uat-U1.md)). Missions 1563 to 1568, 1571, 1654 and 1655 are mission-scoped chains; 1569, 1570 and most of the 1651 chains are space-scoped. Four crossings: C1 to Dakara_E1 (1570), C2 and C2b with Dakara (1651), C3 from Dakara (1654) and C4 to Omega_Site (1655). Human classes (archetype 1 to 4) play the whole tutorial arc; a Free Jaffa (archetype 7) gets none of 1563 to 1571 and only the letter-free 1654 and 1655 route, enforced by the disjointness suite. SGC_W1 is a per-player instance rebuilt on entry, so relogs and returns restore markers and Jaffa from state, not from the world. Shipped under the defaults: D-US4 (dial both sequences), D-US5 (no Gate Room Jaffa after 1568), D-US6 (cross on Harriman's interact), D-US7 (plain interact), D-US8 (flank objective untracked), D-US10 = B, D-US11 = Humans only, D-US13 = escort stall accepted. Not shipped: US-40 authored ambience (HELD on the label policy). Open: D-US2 and D-US3 (label policy and scale), HELD-A (hidden objectives left uncredited), the F4 re-press note. Each line below belongs to one packet.
 
 - **1563 Virus (US-12, chains 3051-3057):** Carter (`SGC_W1_SamCarter`) offers it ("?") to a Human who finished 1562, marks it "!" on accept, and on the next press hands over her notes (step 4629), which lights her terminal (`SGC_W1_CarterTerminal`); pressing the terminal completes objective 5369 and the mission, and relog restores each marker.
 
@@ -1226,9 +1750,9 @@ Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to 
 
 - **1655 Human and crossing C4 (US-32, chains 3156-3165):** Woolsey offers 1655 to Humans on 5854, Hammond's 5856 grants letter 6786 (Humans only), Harriman's 5857 dials Omega Site for both races (dial 10047/10060, then 3 s to Omega_Site with step 4940), with relog and recovery chains on 4943, 4944 and 4941.
 
-- **1655 Free Jaffa (US-33, chains 3166-3169):** planned.
+- **1655 Free Jaffa (US-33, chains 3166-3169):** the Free Jaffa path (archetype 7 only, eq '7' on 3166) runs the letter-free route: Harriman's 5857 is shown after 5875 and the Omega dial (4944) without the letter 6786; the disjointness suite checks that Human and Free Jaffa chains never share a gate.
 
-- **Return state and relogs (US-34, chains 3171-3175):** planned.
+- **Return state and relogs (US-34, chains 3171-3175):** SGC_W1 is a per-player instance rebuilt on entry; spent story Jaffa are despawned on load; a Free Jaffa sees none; route pairs stay while a mission needs them.
 
 #### Mission 1559: "Welcome to Stargate Command" [CONFIRMED]
 
@@ -1527,9 +2051,9 @@ Race gates are D-UB1: Human `archetype gte 1` and `lte 4`, Free Jaffa `eq 7`, As
 
 ### Union Omega (worlds 18 and 80)
 
-**Status:** merged ([#1902](https://github.com/SandboxServers/Cimmeria/pull/1902), [#1908](https://github.com/SandboxServers/Cimmeria/pull/1908), [#1911](https://github.com/SandboxServers/Cimmeria/pull/1911)) and covered by resolve-only and executor-level tests; never walked in a client. The live walk (UO-U1) has not run. Mission 1655 reaches Omega at step S4940 and leaves it at S4942; the Human offer is 1423 and the Free Jaffa offer is 1500. Everything is `CIMMERIA_RECONSTRUCTION`; the decisions behind it are in the [campaign ledger](../analysis/union-zone-planning/omega-work-packets.md#overnight-run-2026-10-1819).
+**Status:** merged ([#1902](https://github.com/SandboxServers/Cimmeria/pull/1902), [#1908](https://github.com/SandboxServers/Cimmeria/pull/1908), [#1911](https://github.com/SandboxServers/Cimmeria/pull/1911)) and covered by resolve-only and executor-level tests; never walked in a client. The live walk (UO-U1) has not run. The hub service chains 63850-63855 (below) are merged on the campaign branch `union-omega/decisions-2026-10-19` and not yet on `main`; they are covered by live-database and executor tests, and no lab UAT has run (UO-U1 § R5 is the owner's and is pending). Mission 1655 reaches Omega at step S4940 and leaves it at S4942; the Human offer is 1423 and the Free Jaffa offer is 1500. Everything is `CIMMERIA_RECONSTRUCTION`; the decisions behind it are in the [campaign ledger](../analysis/union-zone-planning/omega-work-packets.md#overnight-run-2026-10-1819).
 
-Seeds: [arrival](../../db/resources/Content/Seed/union_omega_arrival_chains.sql), [Human](../../db/resources/Content/Seed/union_omega_human_chains.sql), [Free Jaffa](../../db/resources/Content/Seed/union_omega_jaffa_chains.sql), [re-offer](../../db/resources/Content/Seed/union_omega_reoffer_chains.sql). Every delivery chain carries `mission_status 1655 eq active`; every re-offer chain carries `mission_status 1655 eq completed`.
+Seeds: [arrival](../../db/resources/Content/Seed/union_omega_arrival_chains.sql), [Human](../../db/resources/Content/Seed/union_omega_human_chains.sql), [Free Jaffa](../../db/resources/Content/Seed/union_omega_jaffa_chains.sql), [re-offer](../../db/resources/Content/Seed/union_omega_reoffer_chains.sql), [hub services](../../db/resources/Content/Seed/union_omega_services_chains.sql). Every delivery chain carries `mission_status 1655 eq active`; every re-offer chain carries `mission_status 1655 eq completed`.
 
 | Chain | Trigger | World | Effect |
 |---|---|---|---|
@@ -1541,14 +2065,18 @@ Seeds: [arrival](../../db/resources/Content/Seed/union_omega_arrival_chains.sql)
 | 63822 | `dialog_choice 4641` | 80 | `remove_dialog_set`, `complete_mission` 1655, `accept_mission` 1423, `grant_stargate_address` 6 |
 | 63830-63832 | the same three triggers, archetype `eq 7` | 80 | Free Jaffa twin: map 63801, dialog 5025, mission 1500 |
 | 63840-63845 | `player_loaded`, `mission_abandoned`, `dialog_choice`, per faction (63840-63842 Jackson and 1423, 63843-63845 Bra'tac and 1500) | 80 | Re-offer after an abandon; maps 63802 and 63803 (flags 8388608); abandon chains 63841 and 63844 require world 80 |
+| 63850 | `interact_tag UnionOmega_Auctioneer` | 18 | `open_black_market`. A copy of chain 13008 on Omega's tag (`CIMMERIA_RECONSTRUCTION`, D-UO36). The window needs the Cimmeria client patch; the chat line is the first-press feedback |
+| 63851 | `interact_tag UnionOmega_Medic` | 18 | `change_stat` (stat 7, `set_to_max`), then `npc_bark` screen 63905 from "Castle Medic" on `say`. No reward (D-UO37) |
+| 63852-63855 | two `interact_tag` triggers each: the plain and the Adv. guide spot (`UnionOmega_Guide_Biology` / `_AdvBiology`, `_Electronics`, `_Engineering`, `_Physics`) | 18 | `npc_bark` screens 63901-63904 from "SGC Scientist": the Biomedical, Electronics, Power Systems and Materials vendors (D-UO31). Two triggers because `spawnlist.tag` is unique (UO-35 ruling) |
+| 63856-63857 | none | - | Reserved for the inn and battlemaster, never built (UO-36 skipped, D-UO32 (a)) |
 
-The Human gate is archetype `gte 1` and `lte 4`. The tests are `chain_replay_tests::union_omega` in [`crates/cell-content`](../../crates/cell-content/src/cell/content/chain_replay_tests/union_omega/); `executed.rs` there runs the chains through the executor.
+The Human gate is archetype `gte 1` and `lte 4`. The service chains carry no `mission_status` gate and `once` is false: every click answers. The service tests are `live_db_omega_auctioneer_opens_the_black_market`, `live_db_omega_medic_heals_and_speaks`, `live_db_each_omega_guide_speaks_its_specialty` and the seed guards in `arrival.rs` (`live_db_omega_interact_tag_chains_are_services_only`, `live_db_omega_service_tags_name_npcs_with_no_dialog`); the coders ran revert proofs for each packet and the wave reviews checked them (the reviews list two guide proofs and one UO-27 proof as not run). The tests are `chain_replay_tests::union_omega` in [`crates/cell-content`](../../crates/cell-content/src/cell/content/chain_replay_tests/union_omega/); `executed.rs` there runs the chains through the executor. The Asgard hearing chains (63950-63999, UO-41) and the 481 offer (UO-42) are not built: both packets are stubs, and the D-UO34 default (1522 sealed as shipped; Otin does not speak) is what they will follow.
 
 Rules these chains follow:
 
 1. `remove_dialog_set` runs before `add_dialog_set`, because the engine does not dedupe (F3).
 2. `remove_dialog_set` runs before `complete_mission` (F5).
-3. There are no `interact_tag` chains; NPC clicks reach the player's dialog set instead (F4).
+3. Only the hub services (63850-63869) key on `interact_tag`; their NPCs carry no dialog set. Every other Omega NPC click reaches the player's dialog set instead (F4). The guard in `arrival.rs` (UO-24 amended it from "no `interact_tag` chains") fails if an `interact_tag` chain in 63800-63999 falls outside 63850-63869 or keys on a tag outside the service list, and a second test fails if a service-tagged spawn has a dialog set or an `add_dialog_set` binds its template.
 4. No chain calls `complete_objective` on 1655 (F21). S4940 already requires O5647 and O5644, and Omega owns only the S4940 to S4942 move and the S4942 completion.
 
 ---
@@ -1561,7 +2089,7 @@ Rules these chains follow:
 
 #### Harset space chains (worlds 57, 68) — chains 6001-6007
 
-Not mission chains: permanent space furniture, ported line-for-line from the two surviving 2009 space scripts (`deprecated/python/cell/spaces/Harset.py`, 70 lines, and `Harset_CmdCenter.py`, 31 lines). Those two files are the *only* surviving Harset space logic — they hold ring switches and one door, nothing else. Seeded in [`db/resources/Content/Seed/harset_space_chains.sql`](../../db/resources/Content/Seed/harset_space_chains.sql), which owns chain ids 6001-6099.
+Not mission chains: permanent space furniture, ported line-for-line from the two surviving 2009 space scripts (`deprecated/python/cell/spaces/Harset.py`, 70 lines, and `Harset_CmdCenter.py`, 31 lines). Those two files are the *only* surviving Harset space logic — they hold ring switches and one door, nothing else. Seeded in [`db/resources/Content/Seed/harset_space_chains.sql`](../../db/resources/Content/Seed/harset_space_chains.sql), which owns chain ids 6001-6099 except 6008-6020 and 6033-6034 (both moved to `harset_1664_chains.sql`).
 
 | Chain | Trigger | Condition | Action |
 |---|---|---|---|
@@ -1580,7 +2108,24 @@ Four things worth knowing before you touch this file:
 - **Chain 6007 ships disabled.** Its recovered arrival point `(0, -67.6, -231)` is off the shipped `harset.nav` mesh — verified by a replay guard that loads the real `.nav` and asserts the verdict — and world 57 has no seeded respawner yet, so an enabled 6007 would strand the player: they would move on their own screen, never move for witnesses, and get no error. A visibly one-way door is a strictly better failure. The in-client placement session must replace the coordinate **and** flip `enabled` in the same change, keeping ~8 units of clearance from point set 2078 so the door does not ping-pong. The replay guard asserts both halves, so they cannot drift apart. Chain 6006's destination needs no pin: world 68 has no navmesh at all, so there is no off-mesh failure mode to guard against and the raw 2009 coordinate ships as recovered.
 - **The `world` conditions are defence in depth, not the gate.** The two region keys are world-prefixed and byte-distinct, so a player in one world cannot trip the other's chain by accident. The residual hole is that `SpaceManager::get_region` is a world-global map keyed on a **client-supplied** region id. Here that buys an attacker nothing (both doors are unconditionally open to everyone), but the next `enter_region` chain that grants or completes something will need a dispatch-site check, not just a condition.
 
-There are **no relog-restore chains** in this file, and the reserved 6008-6020 block is deliberately unused: no chain here sets an interaction bit or binds a dialog set, and the ring switches' `INT_RingNetwork` bit comes from the template column that the spawner re-reads on every spawn, so it survives a restart by construction.
+There are **no relog-restore chains** in this file, and its reserved 6008-6020 block moved to `harset_1664_chains.sql` (mission 1664, below); no chain here sets an interaction bit or binds a dialog set, and the ring switches' `INT_RingNetwork` bit comes from the template column that the spawner re-reads on every spawn, so it survives a restart by construction.
+
+#### Mission 1664: "Debriefing" [RECONSTRUCTION, built; never run on a client]
+
+Castle hands the player to Harset. Chain 1398 (`castle_1664_chains.sql`) accepts 1664 when 708 completes in Castle; there is no chain 1399, and nothing re-grants 1664 after an abandon (owner decision O18-02; what an abandoner gets instead, O18-02a-c, is pending, and the build is option P0, the orchestrator's call in [decisions](../analysis/four-zone-review/decisions.md) O18-02a, made 2026-10-19 under the owner's delegation and reversible by the owner). The Harset chains live in `harset_1664_chains.sql` (6008-6019, plus the debrief cue restores 6033-6034; 6020 reserved).
+
+| Step | Text | Credit | Chains |
+|---|---|---|---|
+| 5224 | Speak to Sgt. Kaerlia by the Stargate | Click Kaerlia (spawn 360, template 260): `advance_step` 5225, dialog 6169, the cue moves to the door | 6008; 6014 restores her cue on login |
+| 5225 | Make your way to the Command Center | Click the door control (spawn 380, template 261): `advance_step` 5226, then travel to Harset_CmdCenter | 6012; 6015 restores the door cue on login |
+| 5226 | Report for debriefing | In the Command Center, click Col. Marsh (template 10) and Moh'katan (template 54) in either order: each barks a line, drops its cue and runs `complete_objective` (6061 Marsh, 6062 Moh'katan); the second credit completes 1664 | 6018, 6019; 6033 and 6034 restore the unreported NPC's cue on login |
+
+- Other Kaerlia clicks bark: 6009 (1664 active past 5224, screen 117162), 6010 (no 1664, 117158), 6011 (completed, 117158). The door control always travels (6013) outside step 5225.
+- 6016 drops every cue on abandon (Kaerlia, the door, Marsh, Moh'katan). The 5224/5225 click and login chains are gated on world 57, the 5226 chains on world 68 (the Command Center).
+- Steps 5224 and 5225 credit with `advance_step` (`complete_objective` on 6060 or 6063 would auto-complete the mission). Step 5226 credits with `complete_objective` 6061 and 6062, because the second one is meant to complete it.
+- The bark lines (screens 200180 and 200181, holder dialog 60170) are provisional text (D-FZ15). While 1664 is on step 5226, the Praxis offer on Marsh (opcore chains 6511/6512, mission 1361) stands down so its dialog does not bury the report; 6511 also fires on 1664's completion and abandon, so the "?" comes back at once (D-FZ14).
+- The door control's position is a placeholder (D-PU6); walking through the walk-in door (6006) on step 5225 also credits the step (6017, D-PU4). Spawn 380 is outside Harset's 360-379 reservation (see the [id-allocation note](../analysis/harset-continuation/id-allocation.md)) and is a placeholder prop until pinned in the lab.
+- Tests: `chain_replay_tests::castle_1664`, `harset_1664`, `harset_1664_lifecycle`, `mission_1664_flow`, `harset_1664_debrief`, `mission_1664_debrief_flow`; `spawner_tests::harset::mission_1664_actors`. Lab UAT: [unified UAT](../guides/unified-uat.md#harset) FZ-U2.
 
 #### Mission 582: "Conversation Minigame With Marsh" (MG-61)
 
@@ -1658,6 +2203,39 @@ Step 2307 (objective 2675, next step 3274) has `step_enabled` set to true by `mi
 **Dialog IDs**: 2636 (DB accept trigger), 2638, 2637, 2639, 2640
 
 **Link to next**: **END OF CHAIN**. Standalone mission with no next mission accepted. This is the only scripted mission in Harset.
+
+---
+
+### Tollana (World 19)
+
+**Confidence**: RECONSTRUCTION (seed chains and executor-rig tests only; no client run)
+
+Mission 568 "Finding Tollan Technology" and its food-unit props. Chains 9001-9018 live in `db/resources/Content/Seed/tollana_568_chains.sql`. Slot 420 holds at most one bind: offer 2656 (not active), progress 4959 (1964 and 1965), turn-in 6393 (1966), none when done.
+
+| Chain | Trigger | Gate | Effect |
+|-------|---------|------|--------|
+| 9001 | `InteractTag` `Tollana_Copplemann` | S0 | Display dialog 2153 |
+| 9002 | `InteractTag` `Tollana_Copplemann` | S1964, S1965 | Display dialog 2153 |
+| 9003 | `InteractTag` `Tollana_Copplemann` | S1966 | Display dialog 2154 |
+| 9004 | `DialogChoice` 2153 | S0 | Remove bind 2656; accept 568; advance to 1964 |
+| 9005 | `DialogChoice` 2154 | S1966 | Remove bind 6393; complete 568 |
+| 9006 | `MissionAccepted` 568 | any | Add bind 4959 |
+| 9007 | `PlayerLoaded` Tollana | S0 | Add bind 2656 |
+| 9008 | `PlayerLoaded` Tollana | S1964, S1965 | Add bind 4959 |
+| 9009 | `PlayerLoaded` Tollana | S1966 | Add bind 6393 |
+| 9010 | `MissionAbandoned` 568 | S0 (after the drop) | Remove binds 4959 and 6393; add bind 2656 |
+| 9011 | `InteractTag` `Tollana_FoodUnit_Core` | S1964 | Advance to 1965, then 1966; swap bind 4959 for 6393; display dialog 4211 |
+| 9012 | `InteractTag` `Tollana_FoodUnit_Core` | S1965 | Advance to 1966; swap bind 4959 for 6393; display dialog 4211 |
+| 9013 | `InteractTag` `Tollana_FoodUnit_Core` | S0, S1966, Done | Display dialog 4211 |
+| 9014 | `InteractTag` `Tollana_FoodUnit_Nest` | S1964 | Advance to 1965; complete optional objective 2312; display dialog 4213 |
+| 9015 | `InteractTag` `Tollana_FoodUnit_Nest` | S1965 | Complete optional objective 2312; display dialog 4213 |
+| 9016 | `InteractTag` `Tollana_FoodUnit_Nest` | S0, S1966, Done | Display dialog 4213 |
+| 9017 | `InteractTag` `Tollana_FoodUnit_Fungus` | S1964 | Advance to 1965; display dialog 4214 |
+| 9018 | `InteractTag` `Tollana_FoodUnit_Fungus` | S0, S1965, S1966, Done | Display dialog 4214 |
+
+All CIMMERIA_RECONSTRUCTION; item-less pilot; no reward (owner O1); never `complete_objective 2311`. Not covered by tests: double-click on the offer before closing 2153 (T18). Client UAT U1-U7 pending (owner).
+
+Spec: [w1-packets.md](../analysis/tollana-continuation/w1-packets.md) (T-03a1 to T-03a4). Frozen literals: [w1-frozen.md](../analysis/tollana-continuation/w1-frozen.md) (F5).
 
 ---
 

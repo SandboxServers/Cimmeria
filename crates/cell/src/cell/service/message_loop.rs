@@ -135,6 +135,7 @@ pub(super) async fn run_cell_loop(
                 // a dialog". Same tick-drain shape as the two calls
                 // above; short-circuits when the queue is empty.
                 content::deferred_content_action_tick(tx, &mut space_mgr, &engine).await;
+                content::letter_turn_in_retry_tick(tx, &mut space_mgr);
 
                 // Open any stargate whose dial timer has elapsed: fires
                 // `Stargate_MakeGate` to the dialer and their witnesses

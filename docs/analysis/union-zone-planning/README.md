@@ -28,7 +28,7 @@ These are **four independent zone-owner main sessions**, not four consecutive Hu
 |---|---|---|
 | Union SGC | `BlockedDependency` | First four-zone close-out, then US-00 source and map seal. |
 | Union Dakara_E1 | `BlockedDependency` | First four-zone close-out and current DK ledger reconciliation, then UD-00. |
-| Union Omega | `BlockedDependency` | First four-zone close-out, then UO-00; runtime packets await upstream receiving contracts. |
+| Union Omega | `Integrated` (all packets merged locally on the campaign branch; PR to `main` pending; UO-U1 `UATPending`) | W1-W5 merged (#1890, #1902, #1908, #1911, close-out PR). Re-sliced 2026-10-19 into W6-W11; W6-W9, UO-37..UO-40 and the UO-98 docs are merged on the campaign branch `union-omega/decisions-2026-10-19` (UO-36 skipped, D-UO32). D-UO32 and D-UO33 decided by the owner; D-UO34 is the architect default (1522 sealed, Otin silent; the owner may overrule). UO-41/UO-42 are stubs, not built. Owner UO-U1 (R1-R5, lab) pending; Asgard has no playable start (F42), so the Asgard rows cannot run. See the [ledger](omega-work-packets.md) and [resume card](omega-packets/RESUME.md). |
 | Union Beta E1 | `UATPending` | Code merged (#1916, UB-99). Lab rows UB-U1 to UB-U10 remain. H-LBL, U-D08/U-D11 and U-D07 are decided (2026-10-19). Reward packets UB-50a (XP) and UB-50b1 (`grant_cash` action) are Ready, UB-50b2 (naq) follows them; HELD-B16 waits on Omega UO-16. See the [ledger](../union-beta-e1-continuation/README.md) and [beta-site-e1.md](../../content/beta-site-e1.md). |
 
 ## Planning decisions and open gates

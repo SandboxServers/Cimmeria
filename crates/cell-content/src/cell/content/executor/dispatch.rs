@@ -11,8 +11,9 @@ use tokio::sync::mpsc;
 use cimmeria_content_engine::actions::Action;
 
 use super::{
-    ability_grant, ability_granter, bark, black_market, cash, counter, dialog, inventory, loot,
-    mail, mission, spawn, spawn_set, stargate, stats, transport, tutorial, world,
+    ability_grant, ability_granter, bark, black_market, cash, counter, dialog, inventory,
+    letter_turn_in, loot, mail, mission, spawn, spawn_set, stargate, stats, transport, tutorial,
+    world,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -42,6 +43,12 @@ pub(super) async fn execute_one(
         Action::CompleteMission { mission_id } => {
             mission::complete(
                 mission_id, entity_id, player_id, chain_id, tx, space_mgr, engine,
+            )
+            .await;
+        }
+        action @ Action::CompleteMissionWithItem { .. } => {
+            letter_turn_in::request(
+                action, entity_id, player_id, chain_id, params, tx, space_mgr,
             )
             .await;
         }
@@ -597,12 +604,6 @@ pub(super) async fn execute_one(
             // loader and the effect's own `pulse_count` /
             // `pulse_duration` already carry the duration, so there
             // is nothing to honour here yet.
-            //
-            // This arm is correct but currently unreachable: the only
-            // seeded `apply_effect` row is on an `effect`-scoped
-            // chain, and no `effect_*` trigger is dispatched anywhere
-            // in the cell service. It fires as soon as that
-            // dispatch lands.
             super::super::effect_apply::apply_effect(
                 effect_id, entity_id, entity_id, chain_id, tx, space_mgr,
             )
@@ -620,6 +621,13 @@ pub(super) async fn execute_one(
                 chain_name = cimmeria_names::book().chain(chain_id),
                 "Content: trigger chain (caller must re-dispatch)"
             );
+        }
+        Action::RemoveEffect { effect_id } => {
+            // Self-only: the chain's entity. Idempotent; the helper logs.
+            super::super::effect_apply::remove_effect(
+                effect_id, entity_id, chain_id, tx, space_mgr,
+            )
+            .await;
         }
         other => {
             tracing::debug!(

@@ -17,9 +17,9 @@ use super::framing::{
 use super::result_dispatch::{
     send_minigame_result, RESULT_CANCELED, RESULT_DEFEAT, RESULT_VICTORY,
 };
+use super::terminal_outcome::report_terminal;
 use super::{EndReason, ReadState, SessionEnd};
 use crate::minigame::game::{GameOutput, MinigameInstance};
-use crate::minigame::games;
 use crate::minigame::protocol::{self, SfsMessage, SfsValue};
 use crate::minigame::session::{MinigameSession, SessionRegistry};
 
@@ -150,8 +150,6 @@ pub(super) async fn run_session(
 
     // Send login success sequence (matching C++ exactly)
     let game_name = session.game_name.clone();
-    let on_victory_chains = session.on_victory_chains.clone();
-    let on_failure_chains = session.on_failure_chains.clone();
     // Who the Discord result names: the character's `player_id` and the
     // name the base handed over at registration.
     let player = session.discord_player();
@@ -342,60 +340,22 @@ pub(super) async fn run_session(
                                 }
                             }
                             GameOutput::Victory => {
-                                registry.record_event(entity_id, &session.ticket, "result_victory", None).await;
-                                tracing::info!(
-                                    entity_id,
-                                    entity_name = player.name(),
-                                    player_id = player.id,
-                                    player_name = player.name(),
-                                    game = %game_name,
-                                    validation = games::validation(&game_name),
-                                    "Minigame victory (tick)",
-                                );
-                                end_reason = EndReason::Victory;
+                                if !result_reported {
+                                    result_reported = true;
+                                    end_reason = report_terminal(registry, result_tx, &session,
+                                        RESULT_VICTORY, "victory_tick").await;
+                                }
                                 game_complete = true;
-                                result_reported = true;
-                                send_minigame_result(
-                                    result_tx,
-                                    entity_id,
-                                    &session.ticket,
-                                    &game_name,
-                                    &player,
-                                    RESULT_VICTORY,
-                                    on_victory_chains.clone(),
-                                    vec![],
-                                    "victory_tick",
-                                    true,
-                                )
-                                .await;
+                                break;
                             }
                             GameOutput::Failure => {
-                                registry.record_event(entity_id, &session.ticket, "result_defeat", None).await;
-                                tracing::info!(
-                                    entity_id,
-                                    entity_name = player.name(),
-                                    player_id = player.id,
-                                    player_name = player.name(),
-                                    game = %game_name,
-                                    validation = games::validation(&game_name),
-                                    "Minigame timeout",
-                                );
-                                end_reason = EndReason::Defeat;
+                                if !result_reported {
+                                    result_reported = true;
+                                    end_reason = report_terminal(registry, result_tx, &session,
+                                        RESULT_DEFEAT, "failure_tick").await;
+                                }
                                 game_complete = true;
-                                result_reported = true;
-                                send_minigame_result(
-                                    result_tx,
-                                    entity_id,
-                                    &session.ticket,
-                                    &game_name,
-                                    &player,
-                                    RESULT_DEFEAT,
-                                    vec![],
-                                    on_failure_chains.clone(),
-                                    "failure_tick",
-                                    true,
-                                )
-                                .await;
+                                break;
                             }
                         }
                     }
@@ -431,61 +391,22 @@ pub(super) async fn run_session(
                                                 }
                                             }
                                             GameOutput::Victory => {
-                                                registry.record_event(entity_id, &session.ticket, "result_victory", None).await;
-                                                tracing::info!(
-                                                    entity_id,
-                                                    entity_name = player.name(),
-                                                    player_id = player.id,
-                                                    player_name = player.name(),
-                                                    game = %game_name,
-                                                    validation = games::validation(&game_name),
-                                                    "Minigame victory",
-                                                );
-                                                end_reason = EndReason::Victory;
+                                                if !result_reported {
+                                                    result_reported = true;
+                                                    end_reason = report_terminal(registry, result_tx, &session,
+                                                        RESULT_VICTORY, "victory_message").await;
+                                                }
                                                 game_complete = true;
-                                                result_reported = true;
-                                                // Fire victory chains
-                                                send_minigame_result(
-                                                    result_tx,
-                                                    entity_id,
-                                                    &session.ticket,
-                                                    &game_name,
-                                                    &player,
-                                                    RESULT_VICTORY,
-                                                    on_victory_chains.clone(),
-                                                    vec![],
-                                                    "victory_message",
-                                                    true,
-                                                )
-                                                .await;
+                                                break;
                                             }
                                             GameOutput::Failure => {
-                                                registry.record_event(entity_id, &session.ticket, "result_defeat", None).await;
-                                                tracing::info!(
-                                                    entity_id,
-                                                    entity_name = player.name(),
-                                                    player_id = player.id,
-                                                    player_name = player.name(),
-                                                    game = %game_name,
-                                                    validation = games::validation(&game_name),
-                                                    "Minigame failure",
-                                                );
-                                                end_reason = EndReason::Defeat;
+                                                if !result_reported {
+                                                    result_reported = true;
+                                                    end_reason = report_terminal(registry, result_tx, &session,
+                                                        RESULT_DEFEAT, "failure_message").await;
+                                                }
                                                 game_complete = true;
-                                                result_reported = true;
-                                                send_minigame_result(
-                                                    result_tx,
-                                                    entity_id,
-                                                    &session.ticket,
-                                                    &game_name,
-                                                    &player,
-                                                    RESULT_DEFEAT,
-                                                    vec![],
-                                                    on_failure_chains.clone(),
-                                                    "failure_message",
-                                                    true,
-                                                )
-                                                .await;
+                                                break;
                                             }
                                         }
                                     }
@@ -611,24 +532,28 @@ pub(super) async fn run_session(
                 .publish_board(entity_id, &session.ticket, board)
                 .await;
         }
-        registry
-            .record_event(entity_id, &session.ticket, "result_canceled", None)
-            .await;
-        send_minigame_result(
+        result_reported = true;
+        if send_minigame_result(
+            registry,
             result_tx,
-            entity_id,
-            &session.ticket,
-            &game_name,
-            &player,
+            &session,
             RESULT_CANCELED,
-            vec![],
-            vec![],
             "aborted",
             end_reason != EndReason::PlayerCanceled,
         )
-        .await;
+        .await
+            == super::result_dispatch::DispatchOutcome::Delivered
+        {
+            registry
+                .record_event(entity_id, &session.ticket, "result_canceled", None)
+                .await;
+        }
     }
 
+    debug_assert!(
+        result_reported,
+        "every teardown attempts one terminal result"
+    );
     // Cleanup: send close sequence
     let leave = protocol::encode_extension_raw(&format!(
         "<var n='_cmd' t='s'>onPlayerLeaveGame</var><var n='PlayerId' t='s'>{user_id}</var>"

@@ -10,10 +10,10 @@
 //! scripts crate stays a leaf only this crate names.
 //!
 //! And the base plugin table ([`base_plugin_table`], #962 step 5): the same
-//! shape on the base track. Crafting (`cimmeria-base-crafting`) is its first
-//! plugin.
+//! shape on the base track. Crafting and Frost letter turn-in register here.
 
 use cimmeria_base_crafting::CraftingPlugin;
+use cimmeria_base_methods::base::world_entry::methods::missions::LetterTurnInPlugin;
 use cimmeria_base_session::base::plugin::{BasePlugin, BasePluginError, BasePlugins};
 use cimmeria_cell_chatter::ChatterPlugin;
 use cimmeria_cell_duel::DuelPlugin;
@@ -47,11 +47,11 @@ pub fn cell_plugins() -> Result<CellPlugins, PluginError> {
 
 /// Every base plugin, in hook-firing order (#962 step 5, ADR §4.5).
 ///
-/// Crafting alone for now, so no two plugins share a hook point and the
-/// order reaches no wire output; a plugin that joins one of crafting's
-/// points must pin its order with a test (ADR §3.2).
-pub fn base_plugin_table() -> [&'static dyn BasePlugin; 1] {
-    [&CraftingPlugin]
+/// Crafting and Frost letter turn-in register disjoint message payloads, so
+/// their order does not affect wire output. A plugin joining a shared hook
+/// point must pin its order with a test (ADR §3.2).
+pub fn base_plugin_table() -> [&'static dyn BasePlugin; 2] {
+    [&CraftingPlugin, &LetterTurnInPlugin]
 }
 
 /// The built and checked base plugin registry the orchestrator installs on
@@ -156,7 +156,7 @@ mod tests {
         };
 
         let plugins = base_plugins().expect("the shipped base plugin table must build");
-        assert_eq!(plugins.plugin_names(), &["crafting"]);
+        assert_eq!(plugins.plugin_names(), &["crafting", "letter_turn_in"]);
         assert_eq!(
             plugins.base_method_indices().collect::<Vec<_>>(),
             PLUGIN_OWNED_BASE_METHODS.to_vec()
@@ -185,7 +185,7 @@ mod tests {
                 assert!(missing
                     .iter()
                     .any(|t| t.ends_with("crafting::request::CraftRequest")));
-                assert_eq!(missing.len(), 7);
+                assert_eq!(missing.len(), 8);
             }
             other => panic!("a table without CraftingPlugin must fail check_complete: {other:?}"),
         }

@@ -1105,9 +1105,9 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (439, 136, false, 1, false, 'Report back to Capt. Coppelmann.', 6);
 
-INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (4037, 1360, false, 1, false, 'Find a way to get Cpl. Frost''s Letter to his family.', 0);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (4037, 1360, false, 1, true, 'Find a way to get Cpl. Frost''s Letter to his family.', 0);
 
-INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (4038, 1360, false, 1, false, 'Give Cpl. Frost''s Letter to Col. Marsh.', 1);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (4038, 1360, false, 1, true, 'Give Cpl. Frost''s Letter to Col. Marsh.', 1);
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (4040, 1361, false, 1, false, 'Talk to Moh''katan.', 0);
 
@@ -7325,4 +7325,25 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2721, 99, false, 2, true, 'Deliver the new slave to the pens as well', 4);
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2722, 99, false, 2, true, 'Get Opheltes to live up to his end of the bargain', 5);
+
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (10340, 10300, false, 1, false, 'Speak with the medic in the Castle Infirmary.', 0);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (10341, 10300, false, 1, false, 'Check the Castle front courtyard for wounded.', 1);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (10342, 10301, false, 1, false, 'Find the overlooked prisoner in the Castle cells.', 0);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (10343, 10301, false, 1, false, 'Report the overlooked prisoner to the Castle medic.', 1);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (10354, 10310, false, 1, false, 'Speak with the Castle sentry.', 0);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (10355, 10310, false, 1, false, 'Report the guard rota at the Castle Infirmary.', 1);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (10366, 10312, false, 1, false, 'Put down the hostile officers on the Bravo route.', 0);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (10372, 10320, false, 1, false, 'Report to Colonel Marsh at the Castle Stargate.', 0);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (10378, 10321, false, 1, false, 'Speak with Moh''katan at the Castle Stargate.', 0);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (10379, 10321, false, 1, false, 'Dial Harset on the Castle Stargate.', 1);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (10384, 10330, false, 1, false, 'Carry the requisition slips to the Castle Infirmary.', 0);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (10385, 10330, false, 1, false, 'Report back to the supply officer in the Armory.', 1);
+
+-- Cellblock continuation CB-N05 (CIMMERIA_AUTHORING): mission 62050 steps A and B.
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (62051, 62050, false, 1, false, 'Ask Prisoner 329 about the other pods.', 0);
+
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (62054, 62050, false, 1, false, 'Tell Col. Marsh there may be prisoners in the other pods.', 1);
+
+-- Cellblock continuation CB-N06 (CIMMERIA_AUTHORING): mission 62060 step.
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (62061, 62060, false, 1, false, 'Help the prisoners hide, or jam the cell-door panel.', 0);
 

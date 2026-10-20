@@ -11,20 +11,17 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use cimmeria_base_session::base::plugin::{BaseCtx, WorldEntryCall, WorldEntryHookPoint};
 use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::{BaseToCellMsg, WorldEntryCause};
 
-use super::super::helpers::send_bundle_to_witness_reliable;
 use super::super::world_entry::handle_map_loaded;
-use super::super::world_entry_chat::build_welcome_message_args;
 use super::super::ConnectedClientState;
-use super::builders::build_on_client_ready_burst_bundle;
-use super::cinematic::send_cinematic;
 use super::cinematic_aoi_hold;
 
+mod cell_handoff;
+mod continuation;
 mod mission_lock;
 mod player_init_row;
 
@@ -49,17 +46,8 @@ pub async fn handle_on_client_ready(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<sqlx::PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Cross-world transition fallback: the SGW client sends `mapLoaded`
-    // (cell method 0x99) on initial logins and same-instance respawns,
-    // but skips it on cross-world transitions via `gate_travel`
-    // (RESET_ENTITIES → ENABLE_ENTITIES → CREATE_BASE_PLAYER + onClientMapLoad).
-    // The client jumps straight to `onClientReady` instead. If the
-    // transition is mid-flight (`pending_map_loaded` still set, meaning
-    // the `mapLoaded` cell-method handler never ran), drive the
-    // enter-world bundle from here so the destination world finishes
-    // setup. After this synth call, `pending_client_ready` will be
-    // populated by `handle_map_loaded` and the rest of this function
-    // proceeds normally.
+    // Cross-world gate travel can skip mapLoaded. Synthesize it before
+    // taking pending_client_ready so destination setup completes.
     let pending_map_loaded_present = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         clients
@@ -114,17 +102,7 @@ pub async fn handle_on_client_ready(
         }
     }
 
-    // Take the pending finalization AND copy out the player_name in the
-    // same lock so the welcome-message send below doesn't need a second
-    // round-trip. `player_name` is set during `playCharacter` and stays
-    // for the session, so reading it here is safe.
-    //
-    // The first-login cinematic hold starts in this same critical section.
-    // Taking `pending_client_ready` opens the pre-ready AoI gate, and the
-    // cell answers `ConnectEntity` with `EnteredAoI` while this function is
-    // still awaiting DB reads — a hold armed any later (say, next to
-    // `send_cinematic`) lets those creates reach a client that is about to
-    // play a fullscreen movie. See `cinematic_aoi_hold`.
+    // Arm the cinematic hold before DB reads open the pre-ready AoI gate.
     let (
         pending,
         player_name,
@@ -135,6 +113,7 @@ pub async fn handle_on_client_ready(
         account_name,
         entry_cause,
         session_kind,
+        session,
     ) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let entry = clients.get_mut(&addr);
@@ -146,6 +125,10 @@ pub async fn handle_on_client_ready(
             // without trusting any client byte (#475 / CAT-N-03).
             Some(c) => {
                 let pending = c.pending_client_ready.take();
+                if pending.is_some() {
+                    let _ = cell_handoff::assign_entry_epoch(c);
+                }
+                let session = cell_handoff::SessionSnapshot::capture(c, pending.as_ref());
                 // Read before the listing below sets the flag: a character
                 // already listed is finishing a cross-world hop, not a login
                 // (TG-NET-15). `logOff` and teardown clear it, so the next
@@ -186,6 +169,7 @@ pub async fn handle_on_client_ready(
                     // Lab or player, resolved at Phase 3 from the account
                     // flag (TG-NET-16); the cell stamps it on its rows.
                     c.session_kind,
+                    session,
                 )
             }
             // No session for this addr: `pending` is `None` so we bail below
@@ -201,6 +185,7 @@ pub async fn handle_on_client_ready(
                 None,
                 WorldEntryCause::Login,
                 None,
+                None,
             ),
         }
     };
@@ -211,9 +196,10 @@ pub async fn handle_on_client_ready(
     };
 
     let entity_id = pending.entity_id;
-    // The character name for this function's lines: the entity is the
-    // player's own, so it names `entity_id` and `player_id` alike.
     let name = player_name.as_deref();
+
+    #[cfg(test)]
+    session_token_tests::pause_after_pending(addr).await;
 
     tracing::info!(
         %addr,
@@ -370,37 +356,37 @@ pub async fn handle_on_client_ready(
         )
     };
 
-    // Cross-world ring transport carry-through: take the pending ring id
-    // BEFORE we drop the connected lock so a concurrent disconnect can't
-    // strand it. Set in `gate_travel::handle_gate_travel` only when
-    // `Effect::TeleportCrossWorld` produced this hop — stargate dial
-    // travel leaves it None.
+    // Carry the ring destination only for this still-current session.
     let advance_ring_destination_id: Option<i32> = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        clients
-            .get_mut(&addr)
-            .and_then(|c| c.pending_destination_ring_id.take())
+        clients.get_mut(&addr).and_then(|c| {
+            session
+                .as_ref()
+                .is_some_and(|session| session.matches(c, entity_id, pending.player_id))
+                .then(|| c.pending_destination_ring_id.take())
+                .flatten()
+        })
     };
 
     if let Some(ref tx) = cell_tx {
-        if let Err(e) = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await {
-            // ConnectEntity drop leaves the cell with no
-            // record of the new player — every subsequent AoI / method
-            // call for this entity would silently drop. error! because
-            // recovery requires the player to log out and back in.
-            tracing::error!(
+        let Some(ref session) = session else {
+            tracing::warn!(%addr, "onClientReady pending finalization lacks a live player session");
+            return Ok(());
+        };
+        if !cell_handoff::send_handoff(
+            cell_handoff::HandoffContext {
+                addr,
+                connected,
+                tx,
+                session,
                 entity_id,
-                entity_name = name,
+                player_id: pending.player_id,
                 account_id,
                 account_name,
-                player_id = pending.player_id,
-                player_name = name,
-                "ConnectEntity: base→cell send failed -- cell will not see this player, all AoI traffic will drop: {e}"
-            );
-        }
-
-        if let Err(e) = tx
-            .send(BaseToCellMsg::InitPlayerState {
+                player_name: name,
+                world_name: &pending.world_name,
+            },
+            BaseToCellMsg::InitPlayerState {
                 entity_id,
                 player_id: pending.player_id,
                 account_id,
@@ -421,318 +407,43 @@ pub async fn handle_on_client_ready(
                 shown_tutorials,
                 entry_cause,
                 session_kind,
-            })
-            .await
-        {
-            // same shape as the ConnectEntity error above —
-            // missing InitPlayerState leaves the cell with a connected
-            // entity but no mission/ability/bandolier state. Player
-            // will appear loaded but quests / hotbar will be empty.
-            tracing::error!(
-                entity_id,
-                entity_name = name,
-                account_id,
-                account_name,
-                player_id = pending.player_id,
-                player_name = name,
-                world = %pending.world_name,
-                "InitPlayerState: base→cell send failed -- player loaded with empty mission/ability state: {e}"
-            );
-        }
-
-        if let Some(region_id) = advance_ring_destination_id {
-            // Wake the destination ring's FSM. Sent AFTER InitPlayerState
-            // so the cell-side handler runs against the fully-initialised
-            // entity (player_id, missions, etc.) — `mark_player_loaded`
-            // doesn't need that state directly, but downstream chain
-            // events fired by the unlock cascade do.
-            if let Err(e) = tx
-                .send(BaseToCellMsg::AdvanceRingDestination {
-                    entity_id,
-                    region_id,
-                })
-                .await
-            {
-                // ring-destination drop strands the player
-                // mid-transport — they arrive at the destination but
-                // the ring FSM stays in RemoteLoadWait forever.
-                tracing::error!(
-                    entity_id,
-                    entity_name = name,
-                    region_id, // nt:id-only ring destination region; region names live on the cell
-                    "AdvanceRingDestination: base→cell send failed -- ring FSM stuck, player invisible to other ring riders: {e}"
-                );
-            }
-        }
-    }
-
-    // Bundle the post-onClientReady burst: BeingAppearance resend +
-    // onEntityTint resend + onPlayerCommunication welcome. No onChatJoined:
-    // the client hardcodes every built-in channel (SS-C4, D-ORG14; see the
-    // `world_entry_chat` module doc).
-    //
-    // **Transaction-state audit** (see
-    // [docs/architecture/mercury-bundle.md](../../../docs/architecture/mercury-bundle.md)):
-    // every message below targets the player's own `entity_id`, which was
-    // created in `handle_map_loaded`'s prior bundle. The CREATE_BASE_PLAYER
-    // transaction released at that bundle's end-of-frame, so same-entity
-    // messages in THIS bundle bind to the now-live entity and are NOT
-    // HOLD-FOR-TRANSACTION dropped. No CREATE_ENTITY / CELL_PLAYER fires
-    // inside this handler, so the bundle is exclusively post-transaction
-    // property/method updates — the canonical "safe to combine" case.
-    //
-    // Pre-bundle: 11 reliable packets (1 appearance + 1 tint + 8 chat-joined
-    // + 1 welcome), each consuming a TX-window slot. Post-bundle: 1 reliable
-    // packet; since SS-C4 it holds 3 messages, well under FRAGMENT_BODY_SIZE,
-    // pinned by [`super::builders::tests::on_client_ready_burst_bundles_to_single_packet`].
-    //
-    // `speaker` resolution mirrors the pre-bundle path: prefer the session's
-    // `player_name`, fall back to "Server" with a WARN so the unexpected
-    // missing-name case stays visible.
-    let appearance_args = pending.appearance_args;
-    let tint_args = pending.tint_args;
-    let speaker = player_name.as_deref().unwrap_or_else(|| {
-        tracing::warn!(
-            %addr,
-            entity_id,
-            entity_name = name,
-            "onClientReady: player_name not set on connected state — \
-             sending welcome with generic Server speaker"
-        );
-        "Server"
-    });
-    let welcome_args = build_welcome_message_args(speaker, entity_id);
-
-    let bundle =
-        build_on_client_ready_burst_bundle(entity_id, &appearance_args, &tint_args, &welcome_args);
-    send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
-
-    // A non-GM refused a GM-only world (D-DA4) arrives here at their
-    // faction's start: tell them why, now that the world has loaded.
-    if let Some(line) = cimmeria_base_session::base::world_entry::gm_only_worlds::take_redirect_line(
-        pending.player_id,
-    ) {
-        cimmeria_base_session::base::gm_feedback::send_gm_feedback_to_client(
-            entity_id,
-            line,
-            transport,
-            connected,
-            entity_to_addr,
+            },
+            advance_ring_destination_id,
         )
-        .await;
+        .await
+        {
+            return Ok(());
+        }
     }
-
-    // Push contact lists (Friends / Ignore + any custom lists) to the client.
-    // Runs after the burst bundle so the entity is fully live on the client
-    // before we start sending list-method packets. Also creates the system
-    // lists on first login (idempotent via ensure_system_lists).
-    super::super::contact_list::handlers::push_contact_lists_on_login(
+    let Some(session) = session
+        .as_ref()
+        .filter(|s| s.is_current(connected, addr, entity_id, pending.player_id))
+    else {
+        return Ok(());
+    };
+    continuation::run_continuation(continuation::ContinuationCtx {
+        addr,
         entity_id,
-        pending.player_id,
-        db_pool,
+        pending,
+        player_name,
+        account_id,
+        aoi_hold,
+        plugins: &plugins,
         transport,
         connected,
         entity_to_addr,
-    )
-    .await;
-
-    // Teams and Commands (ORG-06): each organization's header, ranks and
-    // roster, then its online members marked Online; and the other online
-    // members told this character is online. Every world entry, so gate
-    // travel refreshes the entity id their rosters hold.
-    cimmeria_base_session::base::organization::handlers::restore_on_login(
-        &cimmeria_base_session::base::organization::handlers::OrgCtx {
-            db_pool,
-            transport,
-            connected,
-            entity_to_addr,
-            cell_tx,
-        },
-        &cimmeria_base_session::base::organization::handlers::OrgPlayer {
-            account_id: Some(account_id),
-            player_id: pending.player_id,
-            entity_id,
-        },
-    )
-    .await;
-
-    // The base plugins' world-entry work (#962 step 5). Crafting sends its
-    // state here: disciplines, paradigm levels, blueprints, the ASP total and
-    // the crafting options (140: the window's machine and tool), owner-only,
-    // in one bundle. After the burst for the same reason as the contact
-    // lists: the entity is live and the crafting UI has loaded. Runs on every
-    // onClientReady, so a world change resends it too.
-    plugins
-        .run_world_entry_hook(
-            WorldEntryHookPoint::ClientReadyAfterOrgRestore,
-            WorldEntryCall {
-                addr,
-                entity_id,
-                player_id: pending.player_id,
-                ctx: BaseCtx {
-                    db_pool,
-                    cell_tx,
-                    transport,
-                    connected,
-                    entity_to_addr,
-                },
-            },
-        )
-        .await;
-
-    // Cache this character's Ignore list on the session (tells) and push it
-    // to the cell entity (spatial chat), D-SS15. Here, after InitPlayerState,
-    // so every world entry re-seeds it: gate travel creates a fresh cell
-    // entity whose set would otherwise be empty.
-    super::super::contact_list::ignore::resync_ignore_cache(
-        super::super::contact_list::ignore::IgnoreSyncCtx {
-            db_pool,
-            connected,
-            cell_tx,
-        },
-        addr,
-        pending.player_id,
-        entity_id,
-        "world_entry",
-    )
-    .await;
-
-    // Gate-mail expiry for this player's own mailbox (SS-M4, D-SS04), so
-    // mail that expired while they were away has taken its path before
-    // they can open the mailbox.
-    if let Some(pool) = db_pool {
-        super::super::world_entry::methods::mail::expiry::spawn_login_sweep(
-            Arc::clone(pool),
-            Arc::clone(transport),
-            Arc::clone(connected),
-            pending.player_id,
-        );
-    }
-
-    // Fan out online status (CM 89, eventId=LoggedInStatus, data=1) to all
-    // online players who have this character in any of their contact lists.
-    // Runs after the list-push so the player is fully set up before watchers
-    // are notified. Fire-and-forget via tokio::spawn — the login burst is
-    // already complete and we must not block it on per-watcher DB + sends.
-    if let Some(ref name) = player_name {
-        let name_owned = name.clone();
-        let player_id_owned = pending.player_id;
-        let pool_c = db_pool.clone();
-        let transport_c = transport.clone();
-        let connected_c = connected.clone();
-        let entity_to_addr_c = entity_to_addr.clone();
-        tokio::spawn(async move {
-            super::super::contact_list::handlers::fanout_login_status(
-                &name_owned,
-                player_id_owned,
-                true, // online
-                &pool_c,
-                &transport_c,
-                &connected_c,
-                &entity_to_addr_c,
-            )
-            .await;
-        });
-    }
-
-    // First-login cinematic — fires AFTER appearance is bound to the now-live
-    // possessed pawn. Sending it inside the mapLoaded bundle (before this
-    // gate) lets the cinematic-exit CollectGarbage reclaim the in-flight
-    // appearance asset and produces a "dev cube" flash. Issue #288.
-    if pending.first_login != 0 {
-        send_cinematic(
-            transport,
-            addr,
-            entity_id,
-            "Cine-SGWLogo.SGWLogo",
-            true, // fullscreen
-            connected,
-            entity_to_addr,
-        )
-        .await;
-
-        if let Some(pool) = db_pool {
-            match sqlx::query("UPDATE sgw_player SET first_login = 0 WHERE player_id = $1")
-                .bind(pending.player_id)
-                .execute(pool.as_ref())
-                .await
-            {
-                Ok(r) if r.rows_affected() == 0 => {
-                    // silent rows_affected==0 was the
-                    // original-Python ghost bug — UPDATE succeeds but
-                    // touches nothing, flag stays set, cinematic
-                    // re-fires every login. error! so a single ops query
-                    // (rows_affected != expected) surfaces it.
-                    tracing::error!(
-                        player_id = pending.player_id,
-                        player_name = name,
-                        rows_affected = 0,
-                        expected = 1,
-                        "first_login flag NOT cleared — cinematic will re-fire on next login (no matching player row?)"
-                    );
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::warn!(
-                        player_id = pending.player_id,
-                        player_name = name,
-                        error = %e,
-                        "Failed to clear first_login flag after cinematic dispatch; player will see intro again next login",
-                    );
-                }
-            }
-        }
-
-        tracing::info!(
-            %addr,
-            entity_id,
-            entity_name = name,
-            "First-login cinematic dispatched after onClientReady gate"
-        );
-    }
-
-    // Flush any AoI messages the cell tried to dispatch while the client
-    // was still loading terrain. The client is now ready to receive
-    // entity-state traffic; the Channel's deferred-send queue absorbs
-    // any overflow past the 32-slot TX window.
-    //
-    // On first login only the player-self method calls go now. Entity
-    // introductions stay buffered until the movie is cancelled or runs out.
-    // A hold with no cinematic (lab chaos `Delay`) is released here, and the
-    // release keeps it up for the delay from a spawned timer.
-    if let Some(hold) = aoi_hold {
-        cinematic_aoi_hold::on_client_ready(
-            hold,
-            pending.first_login != 0,
-            entity_id,
-            addr,
-            transport,
-            connected,
-            entity_to_addr,
-        )
-        .await;
-    } else {
-        super::super::world_entry::cell_dispatch::flush_deferred_aoi(
-            entity_id,
-            addr,
-            "on_client_ready",
-            transport,
-            connected,
-            entity_to_addr,
-        )
-        .await;
-    }
-
-    tracing::info!(
-        %addr,
-        entity_id,
-        entity_name = name,
-        "World entry finalized (BeingAppearance resent)"
-    );
-    Ok(())
+        db_pool,
+        cell_tx,
+        session,
+    })
+    .await
 }
 
 #[cfg(test)]
+mod continuation_tests;
+#[cfg(test)]
 mod plugin_hook_tests;
+#[cfg(test)]
+mod session_token_tests;
 #[cfg(test)]
 mod tests;

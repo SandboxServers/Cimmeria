@@ -20,7 +20,8 @@ pub struct StepAnchors {
     /// the step by a `step_status <mission>/<step> eq active` condition,
     /// **and** carrying an action that progresses the same mission
     /// (`advance_step`, `advance_mission`, `complete_objective` or
-    /// `complete_mission`), **and** not held to another world by a `world`
+    /// `complete_mission` or `complete_mission_with_item`), **and** not held
+    /// to another world by a `world`
     /// condition.
     pub advancers: Vec<i64>,
     /// Spawn tags the advancers' triggers name (`interact_tag`,
@@ -36,6 +37,14 @@ pub struct StepAnchors {
 }
 
 impl ChainEngine {
+    /// Whether chain `chain_id` has at least one condition row. `false` for an unknown id.
+    pub fn chain_has_conditions(&self, chain_id: i64) -> bool {
+        self.chains_by_trigger
+            .values()
+            .flatten()
+            .any(|c| c.id == chain_id && !c.conditions.is_empty())
+    }
+
     /// The [`StepAnchors`] of `step_id` of `mission_id`, for a player in
     /// world `world_id` (`resources.worlds.world_id`; `None` when unknown).
     ///
@@ -115,7 +124,8 @@ fn progresses_mission(chain: &Chain, mission_id: i32) -> bool {
         Action::AdvanceStep { mission_id: m, .. }
         | Action::AdvanceMission { mission_id: m }
         | Action::CompleteObjective { mission_id: m, .. }
-        | Action::CompleteMission { mission_id: m } => *m == mission_id,
+        | Action::CompleteMission { mission_id: m }
+        | Action::CompleteMissionWithItem { mission_id: m, .. } => *m == mission_id,
         _ => false,
     })
 }

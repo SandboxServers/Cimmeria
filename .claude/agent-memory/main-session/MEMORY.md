@@ -4,8 +4,14 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [reference_castle_continuation_evidence_2026_10_14.md](reference_castle_continuation_evidence_2026_10_14.md) - dated CS-00 snapshot, narrow entry seal, stock prop names, dormant CS-02a guard, integrated b1 Base receipt boundary, pending b2 Cell presence/travel and launch gates, partial CS-01 client evidence
+- [project_cellblock_continuation_closeout.md](project_cellblock_continuation_closeout.md) — Cellblock continuation closed out 2026-10-17: ID claims, bark and choice-bind patterns, `CIMMERIA_AUTHORING`, owner-run lab rule, ledger location
+- [reference_cellblock_lab_binding_2026_10_15.md](reference_cellblock_lab_binding_2026_10_15.md) — bind server evidence to the client's actual lab server; Livewire/screenshot stall invalidated fresh timing, and a verified post-relog Prisoner interaction received no dialog
+- [reference_cellblock_n05_authority_2026_10_14.md](reference_cellblock_n05_authority_2026_10_14.md) — CB-N05 authority review uses validated `interact_tag` for authored mission acceptance; native marker/dialog proof remains pending
+- [reference_cellblock_continuation_evidence_2026_10_14.md](reference_cellblock_continuation_evidence_2026_10_14.md) - World-12 source/route evidence locations; payload hashes do not seal historical mission lineage or fresh client acceptance
 - [reference_dev_workbench_slash_3b_2026_10_16.md](reference_dev_workbench_slash_3b_2026_10_16.md) — DW-27B final 27 patch slash words: all six slices reconciled; pet/ring/queue signature and native binding limits remain
 
+- [reference_dev_workbench_stock_slash_2026_10_16.md](reference_dev_workbench_stock_slash_2026_10_16.md) — DW-24A-S stock XML hashes, 98+4 rows, `/reload Access=qd` QA/Designer and unresolved GM binding
 - [reference_dev_workbench_slash_3a_2026_10_16.md](reference_dev_workbench_slash_3a_2026_10_16.md) — DW-27A 109–135: cover methods lack handlers/readback and safe inverse; fly/ghost share onPhysics, while PvP remains duel-gated
 - [reference_dev_workbench_overlay_2026_10_16.md](reference_dev_workbench_overlay_2026_10_16.md) — DW-16 D3D9 COM slot evidence, lab gate, bounded clear panel and static-only validation
 
@@ -34,9 +40,13 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_rasa_gui_injection_2026_10_15.md](reference_rasa_gui_injection_2026_10_15.md) — source-only comparison of Rasa's D3D9/ImGui, Python bridge, target-to-editor and save-verification patterns with Cimmeria's lab bridge
 - [project_union_zone_planning_2026_10_14.md](project_union_zone_planning_2026_10_14.md) — Union SGC/Dakara/Omega/Beta E1 plans for three starting races; authored Free Jaffa bridge and post-Pertho Asgard entry; execution deferred behind first four-zone close-out
 
+- [reference_tollana_t00_evidence_2026_10_14.md](reference_tollana_t00_evidence_2026_10_14.md) — 2026-10-14 Tollana T-00: 51 chronology holds with restoration intent preserved separately; sourced district/dependency fields and canonical LF blob hash
+- [reference_tollana_t01_contract_2026_10_14.md](reference_tollana_t01_contract_2026_10_14.md) — 2026-10-14 Tollana T-01: OPC 568-570 bounded candidate, 58674 map hash match, individual ID claims and unresolved placement/client gates
+- [project_harset_continuation_2026_10_14.md](project_harset_continuation_2026_10_14.md) — continuation ledger and owner decisions; HA-1360a1/a2a integrated, a2b/a3/b and client proof open; general a2c race tracked separately
 - [reference_cb_n05a_catalog_seal_2026_10_14.md](reference_cb_n05a_catalog_seal_2026_10_14.md) — authored mission catalog seal: full resync/empty InvalidKeys, conservative key guard, test-only 61000–61003; live new-ID presentation pending
 
 - [reference_lab_login_foreground_lanes_2026_10_14.md](reference_lab_login_foreground_lanes_2026_10_14.md) — shared lab daemon serializes credential entry across instances; native two-client UAT pending
+- [First-login AoI phase-2 fragment](../rust-gameserver-dev/mercury-aoi-intro.md) — cinematic release now limits the cascade's first fragment to its first framed message when it fits; wire and lab-chaos suites pass, short-fragment client acceptance is pending
 
 - [reference_lab_transition_click_2026_10_13.md](reference_lab_transition_click_2026_10_13.md) — report-only native click survives an immediate world load; live click passed, Castle transition replay remains pending
 - [project_cellblock_aftermath_dwell_2026_10_13.md](project_cellblock_aftermath_dwell_2026_10_13.md) — #1721: 2516 was evicted after 422 ms; chain 1172 now gives it 16 seconds before blurb 5859; live recheck pending
@@ -48,7 +58,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_livewire_solver_2026_10_13.md](reference_livewire_solver_2026_10_13.md) — the installed atlas lives in labd, while the board and SmartFox tap live in the server; the solver plans stage points from a supplied board and requires rollover confirmation before clicks
 - [reference_cellblock_routes_2026_10_13.md](reference_cellblock_routes_2026_10_13.md) — AP-11 route recorder/catalog implementation; prisoner-to-med-station recorded and replayed twice, other legs pending
 
-- [project_four_zone_planning_2026_10_13.md](project_four_zone_planning_2026_10_13.md) — four-zone packet planning; source checks, missing handoff SQLite, owner story and zone decisions, client mission-catalog gate
+- [project_four_zone_planning_2026_10_13.md](project_four_zone_planning_2026_10_13.md) — four-zone packet planning and active execution; source checks, missing handoff SQLite, owner decision register, client mission-catalog gate
 
 - [project_cellblock_681_hidden_2026_10_13.md](project_cellblock_681_hidden_2026_10_13.md) — 2026-10-13 Cellblock 681 tracker leak: lab baseline, hidden seed fix, live-DB guard; local client acceptance passed
 - [reference_lab_point_click_matching_2026_10_13.md](reference_lab_point_click_matching_2026_10_13.md) — Cellblock point clicks can hover the player's avatar over a rendered corpse; match nearby entity ID and require verified hover before input
@@ -94,7 +104,9 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_castle_letter_bridge_2026_10_14.md](reference_castle_letter_bridge_2026_10_14.md) — chain 1366 advances mission 1360; mission bag 2 letter retention and production cross-service hydration seam
 - [reference_codex_workflow_uat_2026_10_16.md](reference_codex_workflow_uat_2026_10_16.md) — Codex C1-C4 written workflow checks passed; hooks failed to enforce; NO_PR cleanup needed force and exact branch deletion; ledger holds evidence
+- [reference_castle_letter_bridge_2026_10_14.md](reference_castle_letter_bridge_2026_10_14.md) — chain 1366 advances mission 1360; mission bag 2 letter retention and production cross-service hydration seam
 - [reference_lab_uat_capture_ids_2026_10_13.md](reference_lab_uat_capture_ids_2026_10_13.md) — UAT AP-03 id sources: server_sessions has optional player_id; client_player_state omits entity_id, so client_entity_find /player/id supplies it
 - [reference_lab_dialog_close_2026_10_13.md](reference_lab_dialog_close_2026_10_13.md) — one-page Cellblock Done click can leave DialogWin visible; verify closure and use the native close fallback
 - [reference_lab_hub_pass_lessons_2026_10_13.md](reference_lab_hub_pass_lessons_2026_10_13.md) — 2026-10-13 hub-pass lessons include the confirmed CEGUI top-child hit-test binding and covering-window refusal rule

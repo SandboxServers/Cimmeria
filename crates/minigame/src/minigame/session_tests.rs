@@ -18,6 +18,7 @@ async fn register_and_authenticate() {
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            1,
         )
         .await
         .unwrap();
@@ -44,6 +45,7 @@ async fn wrong_ticket_fails() {
         vec![],
         None,
         Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+        1,
     )
     .await;
 
@@ -68,6 +70,7 @@ async fn wrong_game_name_fails() {
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            1,
         )
         .await
         .unwrap();
@@ -92,6 +95,7 @@ async fn duplicate_session_rejected() {
         vec![],
         None,
         Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+        1,
     )
     .await
     .unwrap();
@@ -110,7 +114,8 @@ async fn duplicate_session_rejected() {
             vec![],
             vec![],
             None,
-            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST))
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            1
         )
         .await
         .is_none());
@@ -133,6 +138,7 @@ async fn remove_allows_re_register() {
         vec![],
         None,
         Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+        1,
     )
     .await
     .unwrap();
@@ -153,7 +159,8 @@ async fn remove_allows_re_register() {
             vec![],
             vec![],
             None,
-            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST))
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            1
         )
         .await
         .is_some());
@@ -183,6 +190,7 @@ async fn expects_peer_matches_only_registered_ip() {
         vec![],
         None,
         Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 5))),
+        1,
     )
     .await
     .unwrap();
@@ -214,6 +222,7 @@ async fn expects_peer_normalises_v4_mapped() {
         vec![],
         None,
         Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 5))),
+        1,
     )
     .await
     .unwrap();
@@ -254,6 +263,7 @@ pub(super) async fn register_livewire(reg: &SessionRegistry, entity_id: u32) -> 
         vec![],
         None,
         Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+        1,
     )
     .await
 }

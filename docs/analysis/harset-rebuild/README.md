@@ -1,5 +1,7 @@
 # Harset Rebuild Handoff
 
+Current continuation dispatch ledger: [Harset continuation](../harset-continuation/README.md).
+
 > Type: how-to. Audience: Claude Code coordinator and implementing engineers.
 > Updated: 2026-09-17. Companions: [audit.md](audit.md), [work-packets.md](work-packets.md), [Castle Cellblock campaign](../castle-cellblock-rebuild/README.md), [parity campaign protocol](../legacy-command-parity/README.md), [documentation index](../../readme.md).
 

@@ -22,7 +22,7 @@ Stargate zone transition is implemented in [`base/world_entry/gate_travel/`](../
 
 A `resources.stargates` row's `x_pos` / `y_pos` / `z_pos` / `yaw` is the **stargate prop's own transform** — the `GLB-Stargate_Prefab_Seq` origin lifted out of the cooked map. The 2009 server arrived travellers on exactly that point and never validated it (`deprecated/python/cell/SGWPlayer.py:2129`). On a navmesh-backed world the prefab origin is usually inside the prefab's own footprint carve-out: at Harset it sits ~1.5 units above the floor with the nearest walkable vertex ~5 units away in XZ, well outside the ±3.0 search extents. An arriving player therefore lands off-mesh, every position update they send is suppressed, and witnesses see a frozen avatar while the only log is a `CorrectionSuppressed` with no obvious cause.
 
-`resources.stargates` now carries four nullable columns — `arrival_x`, `arrival_y`, `arrival_z`, `arrival_yaw` — holding an absolute "stand here on arrival" point pinned in-game. All four are set or all four are `NULL`, enforced by the `stargates_arrival_all_or_nothing` CHECK; when `NULL` the arrival falls back to the gate row, `yaw` included. Three gates are pinned: 15 `Agnos` (its row is all zeros; the pin is the map's PlayerStart), 29 `Debug Area` (the Z1 arrival) and 25 `Dakara E1` (below). Harset's gate 3 carried a pin placed from map data (PL-A-01) from 2026-09-19 until 2026-09-25, when NPC-AI NA29 dropped it: the NA26 `harset.nav` has the gate dais, so the gate row is standable and travellers arrive on it, the way the 2009 server did (see [the ledger](../analysis/harset-rebuild/placements/A-arrival-and-travel.md#pl-a-01--the-pin-was-dropped-na29)).
+`resources.stargates` now carries four nullable columns — `arrival_x`, `arrival_y`, `arrival_z`, `arrival_yaw` — holding an absolute "stand here on arrival" point pinned in-game. All four are set or all four are `NULL`, enforced by the `stargates_arrival_all_or_nothing` CHECK; when `NULL` the arrival falls back to the gate row, `yaw` included. Five gates are pinned: 15 `Agnos` (its row is all zeros; the pin is the map's PlayerStart), 29 `Debug Area` (the Z1 arrival), 6 `Beta Site E1`, 25 `Dakara E1` and 27 `SGC W1` (both below). Harset's gate 3 carried a pin placed from map data (PL-A-01) from 2026-09-19 until 2026-09-25, when NPC-AI NA29 dropped it: the NA26 `harset.nav` has the gate dais, so the gate row is standable and travellers arrive on it, the way the 2009 server did (see [the ledger](../analysis/harset-rebuild/placements/A-arrival-and-travel.md#pl-a-01--the-pin-was-dropped-na29)).
 
 [`cell/arrival.rs`](../../crates/cell-world/src/cell/arrival.rs) resolves the final placement. `validate_gate_arrival` is the gate-specific wrapper; `resolve_arrival` is the gate-agnostic core. (Ring transport calls the *validate-only* half, `check_arrival`, and never the respawner substitution — a ring pad is a pad the client is animating at, not a pin on a prop transform. See [ring-transport-system.md](ring-transport-system.md#bounded-aborts-cimmeria-not-2009).) The order is:
 
@@ -51,6 +51,21 @@ Gate 25's row is the gate prefab's origin on top of the gate dais, and it lies i
 | DHD | 6.0 m further along the same line |
 
 Placement class MAP-GEOMETRY on an AUTHORED axis, confidence MEDIUM until a client has walked it; the 10 m is this project's choice. World 61 is `navmesh_mode = 'advisory'`, so step 2 above does not run and the pin is accepted as written. `.gotolocation Dakara_E1` with no coordinates lands on the same point. Guard: `gate_dakara_e1_tests.rs` in `cimmeria-cell-world`.
+
+### SGC W1 (gate 27)
+
+Gate 27's row is the gate prefab's origin. It lies inside the gate's own volume (point set 1008 `SGC_W1.Stargate`, radius 2.5), 3.4 m off the mesh and 1.3 m above the floor. Dakara rebuild DK-SGC-01 pins the arrival to P13, the Union SGC campaign's sealed point (US-01): `(167.00, -10.80, 18.00)`, yaw 0.0, facing into the Gate Room toward the Control Room (D-DK44, D-DK47).
+
+| Check | Result |
+|---|---|
+| Navmesh | `sgc_w1.nav` component 47, with the Gate Room and the Control Room (P01, beside spawn 68): a path reaches P01, and discs of r 0.6 and 1.2 m are fully on the mesh |
+| Gate volume | Outside it, 13.3 m from the row. The pin is off the axis strip (x 172-175, z 8-18), which has no floor polygon, so it is 26 degrees off the gate's facing |
+
+Guard: `gate_sgc_w1_tests.rs` in `cimmeria-cell-world`.
+
+#### Union crossings at SGC_W1
+
+SGC_W1 is an instanced world, and `validate_gate_arrival` skips instanced worlds, so its SGC-to-Dakara and SGC-to-Omega crossings carry their own coordinates in the chain; the returns from Dakara use the gate 27 row (D-US9 was revised by option C); the pinned Gate Room floor point is P13 (167.00, -10.80, 18.00), 2.4 m below the gate row. Arrivals from Dakara (missions 1651 and 1654) cross by real gate travel and land on the gate 27 arrival pin, which is P13 (DK-SGC-01, above); 1651's return trip carries item 6784 and leaves the mission on step 5171; Harriman's press after 1570 is accepted dials and sends the player to the Dakara gate 25 pin, and his 5857 close sends both races to Omega's published pin (34.70, -51.28, -142.00) on step 4940, where only Humans carry letter 6786. None of it has run in a client, and the heading of a crossing is dropped because `cross_world_teleport` carries no heading. The `stargates` row pin for gate 27 is Dakara's DK-SGC-01 (above). Steps: [uat-U1](../analysis/union-sgc-continuation/uat-U1.md), [uat-U2](../analysis/union-sgc-continuation/uat-U2.md), [uat-U3](../analysis/union-sgc-continuation/uat-U3.md).
 
 ## Implementation Status
 
@@ -93,6 +108,8 @@ Three things are easy to get wrong here:
 - **Two gates on one world resolve deterministically** by lowest `stargate_id`, because `stargates` is a `HashMap` and an unordered pick would hand the client a different glyph across restarts.
 
 Template 1 (`GLB-DHD_00`, every DHD prop but the Castle's) shipped with `interaction_type = 0`, so until DA-07 those props were not right-clickable and only the Castle's template 162 opened the dialling UI. Template 1 now carries `INT_DHD` too, which makes the DHDs at Harset, Tollana, Lucia, Omega Site, Beta Site E1, Dakara E1, both Ihpet Craters, Men'fa (Praxis) and the Debug Area open. A live-DB guard checks that every spawned DHD prop can be clicked and stands on a world with a gate row.
+
+SGC_W1 has no DHD prop on its map, so the Gate Control screen in the Control Room (template 37, spawn 68) carries `INT_DHD` instead (Dakara DK-SGC-02, owner option C). A right-click opens the dial window with gate 27's glyph. At Union SGC mission 1568 step 4638 the same press shuts the gate (chain 3102), because a matching interact chain takes the click first. Two live-DB guards in `gate_sgc_w1_tests.rs` pin this: `live_db_sgc_w1_has_one_dial_terminal_beside_harriman` for the terminal, and `live_db_every_granted_address_has_a_way_back`, which covers every content address grant and not only `player_loaded` ones.
 
 A DHD prop on a world with no `stargates` row logs `reason = "no_stargate_for_world"` and shows the player nothing. The 2009 server sent a free-text `onError` here; Cimmeria's `onErrorCode` is an enum-coded surface with no free-text arm, so there is nowhere for that string to go. Acceptable while every seeded DHD has a gate.
 
@@ -210,13 +227,7 @@ All 28 other gates are offered except the 14 on worlds this server cannot load. 
 
 One more gate is left out although its world loads: **22 `Men'fa (SGU)`** (`HUB_EXCLUDED_GATES` in `dial_hub.rs`, named with its reason in the grant log). Its row, and the client's own cooked entry, put the gate at y -191.9, but `menfa_light.nav` has no polygon within 3 m of that point and its playable surface at the same XZ is near y 0, about 192 m higher. Men'fa (Praxis), gate 7, has the identical row and stands on `menfa_dark.nav`, so the Light map differs and only an in-client look can place its pad. World 78 has no respawner to fall back on. The same row is what any player who dials Men'fa (SGU) from elsewhere arrives on; an `arrival_*` pin from DA-06 fixes both, and then the entry comes off the list (a live-DB test fails when the arrival becomes usable, to say so).
 
-The 13 offered gates are The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis), Ihpet Crater (Praxis), Lucia, Agnos, Ihpet Crater (SGU), SGC, Dakara E1 and SGC W1. No dial from the Debug Area is refused for `arrival_unrecoverable`: every one of those worlds is navmesh `advisory`, so the arrival rules accept the authored point. Applied as if each world enforced its mesh, one would fail, and a live-DB test pins it:
-
-| Gate | World | Measured (NA28 mesh) |
-|---|---|---|
-| 27 `SGC W1` | SGC_W1 | Gate row off-mesh, nearest walkable point 3.4 m away and 1.3 m lower. No respawner |
-
-A GM dialling it lands on the gate row and the client settles them onto the floor beside it. The other twelve arrivals are on their world's mesh.
+The 13 offered gates are The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis), Ihpet Crater (Praxis), Lucia, Agnos, Ihpet Crater (SGU), SGC, Dakara E1 and SGC W1. No dial from the Debug Area is refused for `arrival_unrecoverable`: every one of those worlds is navmesh `advisory`, so the arrival rules accept the authored point. Applied as if each world enforced its mesh, every arrival would still pass. Gate 27 `SGC W1` was the last off-mesh row and is pinned since DK-SGC-01. A live-DB test fails if one stops passing.
 
 ## Entity Definition (GateTravel.def)
 

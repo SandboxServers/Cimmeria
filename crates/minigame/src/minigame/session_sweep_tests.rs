@@ -23,22 +23,25 @@ async fn spawn_sweep_reporting_sends_result_3_for_an_expired_session() {
     let_spawned_task_start().await;
 
     match rx.try_recv() {
-        Ok(CellToBaseMsg::MinigameResult {
-            entity_id,
-            ticket: reported,
-            result_code,
-            on_victory_chains,
-            on_failure_chains,
-            ..
-        }) => {
-            assert_eq!(entity_id, 42);
+        Ok(CellToBaseMsg::MinigameResult { ticket: reported }) => {
             assert_eq!(reported, ticket);
-            assert_eq!(result_code, 3);
-            assert!(on_victory_chains.is_empty() && on_failure_chains.is_empty());
         }
         other => panic!("expected the expiry report, got {other:?}"),
     }
     assert!(rx.try_recv().is_err(), "one report per expired session");
+    // The report is ticket-only; the Base redeems the receipt the sweep minted.
+    let receipt = reg
+        .redeem_result(&ticket)
+        .await
+        .expect("the sweep must mint a receipt for the expired session");
+    assert_eq!(receipt.entity_id, 42);
+    assert_eq!(receipt.result_code, 3);
+    assert!(receipt.notify_client);
+    assert!(receipt.on_victory_chains.is_empty() && receipt.on_failure_chains.is_empty());
+    assert!(
+        reg.redeem_result(&ticket).await.is_none(),
+        "the expiry receipt is one-use"
+    );
 }
 
 /// A connected session is never reported: its connection task owns the end.

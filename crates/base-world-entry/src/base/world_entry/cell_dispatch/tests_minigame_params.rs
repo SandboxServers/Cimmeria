@@ -14,10 +14,10 @@ async fn start_minigame_registers_player_params_and_failure_chains() {
 
     let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let addr: SocketAddr = "10.0.0.5:5000".parse().unwrap();
-    let connected = Arc::new(Mutex::new(HashMap::from([(
-        addr,
-        test_default_connected_client_state(),
-    )])));
+    let mut state = test_default_connected_client_state();
+    state.player_entity_id = Some(10);
+    state.active_player_id = Some(1);
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
     let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(10u32, addr)])));
     let registry = SessionRegistry::new();
 

@@ -227,6 +227,10 @@ async fn send_logged_off(
                     &mut c.pending_acks.lock().unwrap(),
                     c.enc_version,
                 );
+                let _seq_gate = c
+                    .reliable_seq_gate
+                    .lock()
+                    .map_err(|_| "sequence gate poisoned")?;
                 let seq = c
                     .next_seq
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
@@ -306,6 +310,10 @@ pub(crate) async fn handle_log_off(
             &mut client.pending_acks.lock().unwrap(),
             client.enc_version,
         );
+        let _seq_gate = client
+            .reliable_seq_gate
+            .lock()
+            .map_err(|_| "sequence gate poisoned")?;
         let seq = client
             .next_seq
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)

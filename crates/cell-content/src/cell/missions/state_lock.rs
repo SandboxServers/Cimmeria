@@ -190,6 +190,7 @@ fn mission_of(action: &Action) -> Option<i32> {
         Action::AcceptMission { mission_id }
         | Action::AdvanceMission { mission_id }
         | Action::CompleteMission { mission_id }
+        | Action::CompleteMissionWithItem { mission_id, .. }
         | Action::AdvanceStep { mission_id, .. }
         | Action::AbandonMission { mission_id }
         | Action::FailObjective { mission_id, .. }

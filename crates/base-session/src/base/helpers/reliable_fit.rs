@@ -20,120 +20,18 @@ use cimmeria_mercury::encryption::{EncryptionVersion, MercuryEncryption};
 use cimmeria_mercury::packet::{
     Bytes, FLAG_FRAGMENTED, FLAG_HAS_REQUESTS, FLAG_ON_CHANNEL, FLAG_RELIABLE, SEQUENCE_MASK,
 };
-use cimmeria_mercury::transport::{SendOrigin, Transport};
+use cimmeria_mercury::transport::Transport;
 
 use super::bundle_manifest::{log_bundle_manifest, BundleManifestEntry, ManifestSend};
-use super::reliable_send::{shadow_register_reliable_send_with_details, ReliableSendDetails};
+use super::entry_guard::superseded;
+use super::reliable_send::{
+    shadow_register_reliable_send_with_details, ReliableRegistrationOutcome, ReliableSendDetails,
+};
+use super::session_bound::RecipientSnapshot;
 use super::{
     origin_still_current, send_with_origin, BundleSendOutcome, ConnectedClientState,
     WitnessSendOutcome,
 };
-
-/// Cached encrypted datagram and the origin of the channel that yielded it.
-/// Test fixtures without a Phase 3 seed retain the legacy untagged path.
-pub struct PendingRetransmit {
-    /// Exactly the bytes cached by the reliable channel.
-    pub bytes: cimmeria_mercury::packet::Bytes,
-    /// Immutable origin copied while the matching channel was locked.
-    pub origin: Option<SendOrigin>,
-}
-
-impl std::ops::Deref for PendingRetransmit {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        &self.bytes
-    }
-}
-
-/// Scan the current channel's timed-out TX entries for encrypted resend bytes.
-/// The Channel keeps its own retransmit budget and exponential backoff.
-/// Missing sessions and poisoned locks produce an empty batch.
-pub fn collect_pending_retransmits(
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    addr: SocketAddr,
-) -> Vec<PendingRetransmit> {
-    collect_pending_retransmits_for_session(connected, addr, None)
-}
-
-/// Scan only the session that started a tick loop, never a same-peer replacement.
-pub(crate) fn collect_pending_retransmits_for_session(
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    addr: SocketAddr,
-    expected_cancelled: Option<&Arc<std::sync::atomic::AtomicBool>>,
-) -> Vec<PendingRetransmit> {
-    let Ok(clients) = connected.lock() else {
-        return Vec::new();
-    };
-    let Some(state) = clients.get(&addr) else {
-        return Vec::new();
-    };
-    if expected_cancelled.is_some_and(|expected| !Arc::ptr_eq(expected, &state.cancelled)) {
-        return Vec::new();
-    }
-    let Ok(mut channel) = state.channel.lock() else {
-        return Vec::new();
-    };
-    let origin = state.wire_send_origin();
-    // The channel's rows name the session (TG-MER-03); resynced each tick
-    // because login and character select change it.
-    channel.set_log_identity(crate::base::session_identity::channel_log_identity(state));
-    // Receive-stall watchdog, on the same 100 ms tick as the retransmit
-    // scan: a client reliable packet the client never resent is blocking
-    // everything it sent after it (NA38). The WARN is logged inside.
-    if let Some(stall) = channel.check_rx_stall() {
-        if stall.first_warning {
-            cimmeria_observability::counter!("mercury_rx_stalls_total");
-        }
-    }
-    // Transmit-hole watchdog, the other direction: the client has acked
-    // reliable packets we sent after one it never acked, so it is holding
-    // everything behind that one (no entity creates, leaves or method
-    // calls reach it) until a resend lands. The WARN is logged inside.
-    if let Some(stall) = channel.check_tx_hole_named(|entry| {
-        super::reliable_send::name_stalled_entry(&clients, &state.enc, entry)
-    }) {
-        if stall.first_warning {
-            cimmeria_observability::counter!("mercury_tx_hole_stalls_total");
-        }
-    }
-    let retransmits = channel.check_timeouts();
-    for dropped in channel.take_abandoned() {
-        // One row per packet, once: the channel has stopped resending it.
-        // For the login handshake this is a client that ignored both the
-        // original and every resend of seq 1 or 2 (#842).
-        tracing::warn!(
-            %addr,
-            account_id = state.account_id,
-            account_name = state.account_name.as_deref(),
-            seq = dropped.seq,
-            retransmit_count = dropped.retransmit_count,
-            event = "reliable_resend_abandoned",
-            reason = "retransmit_cap_reached",
-            "reliable packet reached its retransmit cap unacked; the channel stopped resending it"
-        );
-    }
-    retransmits
-        .into_iter()
-        .map(|bytes| {
-            let matching: Vec<_> = channel
-                .tx_window
-                .iter()
-                .filter(|entry| entry.raw_bytes == bytes)
-                .collect();
-            let proven = !matching.is_empty()
-                && matching.iter().all(|entry| {
-                    !entry
-                        .send_kind
-                        .is_some_and(|kind| kind.ends_with("_unproven"))
-                });
-            PendingRetransmit {
-                bytes,
-                origin: proven.then(|| origin.clone()).flatten(),
-            }
-        })
-        .collect()
-}
 
 /// Sequence number the measuring build uses. Any value frames to the same
 /// size; the packet is never sent.
@@ -154,7 +52,46 @@ pub async fn send_reliable_to_addr<F>(
 where
     F: Fn(&[u8; 32], EncryptionVersion, u32, &[u32]) -> Vec<u8>,
 {
-    send_reliable_to_addr_owned(transport, connected, addr, log_id, kind, build_packet, None).await
+    send_reliable_to_addr_owned(
+        transport,
+        connected,
+        addr,
+        log_id,
+        kind,
+        build_packet,
+        None,
+        None,
+    )
+    .await
+}
+
+/// Send only while the connection still belongs to the character in
+/// `expected` (entity, player id and Base connection instance). The check
+/// repeats in every lock window that reserves a seq, takes ACKs or registers
+/// the datagram, so a relaunch on the same address cannot receive old content.
+pub(super) async fn send_reliable_to_addr_matching<F>(
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    log_id: u32,
+    kind: &'static str,
+    expected: Option<RecipientSnapshot>,
+    build_packet: F,
+) -> WitnessSendOutcome
+where
+    F: Fn(&[u8; 32], EncryptionVersion, u32, &[u32]) -> Vec<u8>,
+{
+    send_reliable_to_addr_owned(
+        transport,
+        connected,
+        addr,
+        log_id,
+        kind,
+        build_packet,
+        None,
+        expected,
+    )
+    .await
 }
 
 /// Send content only if its original session still owns the peer before
@@ -179,6 +116,7 @@ where
         kind,
         build_packet,
         Some(expected_seq),
+        None,
     )
     .await
 }
@@ -191,6 +129,7 @@ async fn send_reliable_to_addr_owned<F>(
     kind: &'static str,
     build_packet: F,
     expected_seq: Option<&Arc<std::sync::atomic::AtomicU32>>,
+    expected: Option<RecipientSnapshot>,
 ) -> WitnessSendOutcome
 where
     F: Fn(&[u8; 32], EncryptionVersion, u32, &[u32]) -> Vec<u8>,
@@ -199,6 +138,8 @@ where
         clients
             .get(&addr)
             .filter(|c| expected_seq.is_none_or(|expected| Arc::ptr_eq(&c.next_seq, expected)))
+            .filter(|c| !superseded(addr, c))
+            .filter(|c| owner_matches(expected, c))
             .map(|c| (c.key, c.enc_version, Arc::clone(&c.next_seq)))
     });
     let Some((key, version, session_seq)) = session else {
@@ -219,6 +160,7 @@ where
                     probe.len(),
                     &body,
                     &session_seq,
+                    expected,
                 )
                 .await;
             }
@@ -251,7 +193,10 @@ where
         clients
             .get(&addr)
             .filter(|c| Arc::ptr_eq(&c.next_seq, &session_seq))
+            .filter(|c| !superseded(addr, c))
+            .filter(|c| owner_matches(expected, c))
             .map(|c| {
+                let _seq_gate = c.reliable_seq_gate.lock().unwrap();
                 let raw_seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
                 let acks: Vec<u32> = cimmeria_mercury::packet::take_acks_for_plaintext(
                     &mut c.pending_acks.lock().unwrap(),
@@ -297,6 +242,9 @@ where
                     .get(&addr)
                     .filter(|c| Arc::ptr_eq(&c.next_seq, &session_seq))
                     .is_some_and(|c| {
+                        let Ok(_seq_gate) = c.reliable_seq_gate.lock() else {
+                            return false;
+                        };
                         c.next_seq
                             .compare_exchange(
                                 raw_seq.wrapping_add(1),
@@ -317,6 +265,7 @@ where
                     packet.len(),
                     &body,
                     &session_seq,
+                    expected,
                 )
                 .await;
             }
@@ -359,7 +308,7 @@ where
             packets: 1,
         };
     }
-    shadow_register_reliable_send_with_details(
+    let registration = shadow_register_reliable_send_with_details(
         connected,
         addr,
         seq,
@@ -373,6 +322,15 @@ where
         },
         Some((&session_seq, origin.as_ref())),
     );
+    if expected.is_some() {
+        match registration {
+            ReliableRegistrationOutcome::Registered => {}
+            ReliableRegistrationOutcome::SessionChanged => {
+                return WitnessSendOutcome::ClientDisconnected;
+            }
+            ReliableRegistrationOutcome::Rejected => return WitnessSendOutcome::SendError,
+        }
+    }
     WitnessSendOutcome::Sent {
         addr,
         seq,
@@ -399,6 +357,10 @@ where
     })
 }
 
+fn owner_matches(expected: Option<RecipientSnapshot>, state: &ConnectedClientState) -> bool {
+    expected.is_none_or(|snapshot| snapshot.matches(state))
+}
+
 /// The body of a measured packet, if it is a plain one-packet frame whose
 /// body can be refragmented without losing anything (no request offset, not
 /// already a fragment).
@@ -420,6 +382,7 @@ async fn send_oversize_as_bundle(
     wire_len: usize,
     body: &[u8],
     session_seq: &Arc<std::sync::atomic::AtomicU32>,
+    expected: Option<RecipientSnapshot>,
 ) -> WitnessSendOutcome {
     let names = cimmeria_mercury::packet::first_message_head(body).map(|head| {
         connected.lock().map_or_else(
@@ -459,6 +422,7 @@ async fn send_oversize_as_bundle(
         kind,
         &[],
         Some(session_seq),
+        expected,
     )
     .await
     {
@@ -500,7 +464,7 @@ pub(super) async fn send_bundle_reliable_to_addr(
     manifest: &[BundleManifestEntry],
 ) -> BundleSendOutcome {
     send_bundle_reliable_to_addr_owned(
-        transport, connected, addr, witness_id, bundle, kind, manifest, None,
+        transport, connected, addr, witness_id, bundle, kind, manifest, None, None,
     )
     .await
 }
@@ -514,13 +478,17 @@ async fn send_bundle_reliable_to_addr_owned(
     kind: &'static str,
     manifest: &[BundleManifestEntry],
     expected_seq: Option<&Arc<std::sync::atomic::AtomicU32>>,
+    expected: Option<RecipientSnapshot>,
 ) -> BundleSendOutcome {
     let send_data = {
         let clients = connected.lock().unwrap();
         let c = match clients
             .get(&addr)
             .filter(|c| expected_seq.is_none_or(|expected| Arc::ptr_eq(&c.next_seq, expected)))
+            .filter(|c| owner_matches(expected, c))
         {
+            // Replaced by a new entry: nothing drains, nothing is reserved.
+            Some(c) if superseded(addr, c) => return BundleSendOutcome::ClientDisconnected,
             Some(c) => c,
             None => {
                 tracing::debug!(
@@ -554,6 +522,7 @@ async fn send_bundle_reliable_to_addr_owned(
         // Mask the base to the 28-bit Mercury space; per-fragment seqs
         // (base+1, base+2, ...) inherit the contiguous reservation and are
         // re-masked by build_fragmented_bundle internally.
+        let _seq_gate = c.reliable_seq_gate.lock().unwrap();
         let base_seq = c.next_seq.fetch_add(packet_count as u32, Ordering::Relaxed) & SEQUENCE_MASK;
         let key = c.key;
         let version = c.enc_version;
@@ -672,7 +641,7 @@ async fn send_bundle_reliable_to_addr_owned(
         if !origin_still_current(connected, addr, origin.as_ref()) {
             return BundleSendOutcome::SendError;
         }
-        shadow_register_reliable_send_with_details(
+        let registration = shadow_register_reliable_send_with_details(
             connected,
             addr,
             frag_seq,
@@ -687,6 +656,15 @@ async fn send_bundle_reliable_to_addr_owned(
             },
             Some((&session_seq, origin.as_ref())),
         );
+        if expected.is_some() {
+            match registration {
+                ReliableRegistrationOutcome::Registered => {}
+                ReliableRegistrationOutcome::SessionChanged => {
+                    return BundleSendOutcome::ClientDisconnected;
+                }
+                ReliableRegistrationOutcome::Rejected => return BundleSendOutcome::SendError,
+            }
+        }
     }
 
     BundleSendOutcome::Sent {

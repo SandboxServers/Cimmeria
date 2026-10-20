@@ -60,6 +60,7 @@ mod duel_base_to_cell;
 mod entity_labels;
 mod item_use;
 mod lab;
+mod letter_turn_in;
 mod loot_grant;
 mod mail_gm_cell_to_base;
 mod org_base_to_cell;
@@ -96,6 +97,11 @@ pub use item_use::{ConsumeItemForUse, ItemUseConsumed};
 pub use lab::{
     LabEntityFilter, LabEntityNames, LabEntityRef, LabEntitySnapshot, LabQuery, LabQueryReply,
     LabQueryResult, LabRadius, LabRadiusCenter, LabWitnessReport, LAB_ENTITY_QUERY_CAP,
+};
+pub use letter_turn_in::{
+    CommittedLetterTurnIn, LetterTurnInAttempt, LetterTurnInEntryEpoch, LetterTurnInOutcome,
+    LetterTurnInRefusal, LetterTurnInRequest, LetterTurnInResult, LetterTurnInSession,
+    LetterTurnInToken,
 };
 pub use loot_grant::{GrantRefusal, LootGrantSource};
 pub use mail_gm_cell_to_base::{MailGmActor, MailGmCellToBase};

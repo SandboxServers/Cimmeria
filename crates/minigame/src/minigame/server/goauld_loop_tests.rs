@@ -7,7 +7,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
 use super::result_dispatch::RESULT_DEFEAT;
-use super::tests::{drain_results, read_until_game_begin};
+use super::tests::{drain_redeemed, read_until_game_begin};
 use super::*;
 use crate::minigame::games::create_unported_for_test;
 use crate::test_support::LogCapture;
@@ -32,6 +32,7 @@ async fn spawn_goauld_session(
     TcpStream,
     mpsc::Receiver<CellToBaseMsg>,
     tokio::task::JoinHandle<SessionEnd>,
+    SessionRegistry,
 ) {
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
@@ -56,6 +57,7 @@ async fn spawn_goauld_session(
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            1,
         )
         .await
         .expect("fresh registry must accept the session");
@@ -66,6 +68,7 @@ async fn spawn_goauld_session(
     let game = create_unported_for_test(&session).expect("GoauldCrystals instance");
 
     let (tx, rx) = mpsc::channel(16);
+    let kept = registry.clone();
     let handle = tokio::spawn(async move {
         run_session(
             server,
@@ -78,7 +81,7 @@ async fn spawn_goauld_session(
         )
         .await
     });
-    (client, rx, handle)
+    (client, rx, handle, kept)
 }
 
 /// The session loop asks `needs_tick()` once, before the first click, so a
@@ -90,7 +93,8 @@ async fn spawn_goauld_session(
 #[tokio::test(start_paused = true)]
 async fn a_silent_goauld_game_ends_in_defeat_at_its_deadline() {
     let capture = LogCapture::install();
-    let (mut client, mut rx, handle) = spawn_goauld_session(4330, Duration::from_secs(600)).await;
+    let (mut client, mut rx, handle, registry) =
+        spawn_goauld_session(4330, Duration::from_secs(600)).await;
     send_null_terminated(&mut client, &playfield_click_frame(0, 0))
         .await
         .expect("send");
@@ -106,7 +110,8 @@ async fn a_silent_goauld_game_ends_in_defeat_at_its_deadline() {
         .expect("session task must not panic");
 
     assert_eq!(end.reason, EndReason::Defeat);
-    let kinds: Vec<u8> = drain_results(&mut rx)
+    let kinds: Vec<u8> = drain_redeemed(&mut rx, &registry)
+        .await
         .iter()
         .map(|result| result.0)
         .collect();
@@ -126,7 +131,8 @@ async fn a_silent_goauld_game_ends_in_defeat_at_its_deadline() {
 /// so the biased select runs the tick first.
 #[tokio::test(start_paused = true)]
 async fn a_failed_failure_frame_still_reports_defeat() {
-    let (mut client, mut rx, handle) = spawn_goauld_session(4331, Duration::from_secs(600)).await;
+    let (mut client, mut rx, handle, registry) =
+        spawn_goauld_session(4331, Duration::from_secs(600)).await;
     read_until_game_begin(&mut client).await;
     send_null_terminated(&mut client, &playfield_click_frame(0, 0))
         .await
@@ -154,7 +160,8 @@ async fn a_failed_failure_frame_still_reports_defeat() {
         EndReason::Defeat,
         "a failed failure frame must still end the game as a defeat",
     );
-    let kinds: Vec<u8> = drain_results(&mut rx)
+    let kinds: Vec<u8> = drain_redeemed(&mut rx, &registry)
+        .await
         .iter()
         .map(|result| result.0)
         .collect();

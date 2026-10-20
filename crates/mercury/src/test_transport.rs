@@ -125,6 +125,11 @@ impl Transport for TestTransport {
         Ok(bytes.len())
     }
 
+    fn try_send_to(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize> {
+        self.sent.lock().unwrap().push((addr, bytes.to_vec()));
+        Ok(bytes.len())
+    }
+
     fn local_addr(&self) -> io::Result<SocketAddr> {
         Ok(self.local)
     }
@@ -164,6 +169,14 @@ mod tests {
         let t = TestTransport::new();
         let n = t.send_to(b"abcd", addr("127.0.0.1:1000")).await.unwrap();
         assert_eq!(n, 4);
+    }
+
+    #[test]
+    fn try_send_to_records_immediately() {
+        let t = TestTransport::new();
+        let target = addr("127.0.0.1:1000");
+        assert_eq!(t.try_send_to(b"item", target).unwrap(), 4);
+        assert_eq!(t.filter_to(target), vec![b"item".to_vec()]);
     }
 
     #[tokio::test]

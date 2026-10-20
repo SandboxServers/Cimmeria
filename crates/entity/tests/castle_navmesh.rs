@@ -246,3 +246,50 @@ fn every_castle_patrol_leg_is_routable() {
     }
     assert!(failures.is_empty(), "unroutable patrol legs: {failures:#?}");
 }
+
+/// Mission 1520 sends the player from Ogilvie to the Infirmary med dispenser
+/// (spawn 13801, `Castle_MedDispenser`). CS-02S proved only that both stand
+/// in navmesh component 250; component equality is not a route. A polygon
+/// island between them would ship a dispenser the player cannot reach and
+/// strand step 4453, so this runs the A* itself (CS-02S row E8). Revert
+/// proof: move the dispenser into the Symbiote Chamber at (386, 55.38, 940),
+/// an isolated component, and the route comes back partial.
+#[test]
+fn the_1520_dispenser_is_routable_from_ogilvie() {
+    let Some(mesh) = castle_nav() else { return };
+    let ogilvie = v(362.0, 70.18, 886.0); // spawn 197, Castle_Ogilvie
+                                          // Read from the seed, not copied, so moving the spawn re-runs the proof.
+    let sql = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../db/resources/Worlds/Seed/spawnlist.sql"),
+    )
+    .expect("spawnlist seed");
+    let line = sql
+        .lines()
+        .find(|l| l.starts_with("INSERT INTO spawnlist") && l.contains("VALUES (13801, "))
+        .expect("spawn 13801 (Castle_MedDispenser) must be seeded");
+    let f: Vec<&str> = line
+        .split("VALUES (")
+        .nth(1)
+        .expect("VALUES list")
+        .split(", ")
+        .collect();
+    let num = |i: usize| f[i].trim().parse::<f32>().expect("numeric column");
+    let dispenser = v(num(1), num(2), num(3));
+    assert!(
+        mesh.is_point_valid(&dispenser),
+        "the dispenser must stand on the mesh"
+    );
+    let outcome = mesh.find_path(&ogilvie, &dispenser);
+    let status = outcome.status.label();
+    let path = outcome
+        .into_waypoints()
+        .unwrap_or_else(|| panic!("Ogilvie -> dispenser has no route (status {status})"));
+    let end = path.last().expect("a route has waypoints");
+    assert!(
+        end.distance_to(&dispenser) < 2.0,
+        "route must arrive (a partial path ends at the component boundary); \
+         ended {:.1} m short at {end:?}",
+        end.distance_to(&dispenser)
+    );
+}

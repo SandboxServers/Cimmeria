@@ -20,6 +20,9 @@ const WEST: i32 = 5642;
 const EAST: i32 = 5641;
 const SUPPLY_WEST: &str = "Dakara_E1_PowerSupply1";
 const SUPPLY_EAST: &str = "Dakara_E1_PowerSupply2";
+const VOCUUM: &str = "Dakara_E1_Vocuum";
+/// Optional objective of the Vocuum (DK-32c).
+const VOCUUM_OBJ: i32 = 5643;
 const BRATAC: &str = "Dakara_E1_StoryRm_Bratac";
 const COURTYARD: &str = "Dakara_E1.SuperweaponCourtyard";
 const MOHKATAN_TENT: &str = "Dakara_E1.MohkatanTent";
@@ -67,7 +70,7 @@ async fn live_db_accept_on_1652_done_only_while_not_active() {
 }
 
 #[tokio::test]
-async fn live_db_courtyard_enter_advances_and_binds_both_supplies() {
+async fn live_db_courtyard_enter_advances_and_binds_supplies_and_vocuum() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
     let r = fire_enter_region(&engine, &at(Some(DAKARA), STEP_COURTYARD), COURTYARD);
@@ -77,6 +80,7 @@ async fn live_db_courtyard_enter_advances_and_binds_both_supplies() {
             "8351:advance_step(1653->4938)",
             "8351:add_dialog_set(6892@456)",
             "8351:add_dialog_set(6892@463)",
+            "8351:add_dialog_set(6892@457)",
         ])
     );
     assert_no_deferred_actions(&r, 8351);
@@ -89,7 +93,7 @@ async fn live_db_courtyard_enter_advances_and_binds_both_supplies() {
 }
 
 #[tokio::test]
-async fn live_db_supply_restore_binds_only_the_open_supply() {
+async fn live_db_restore_binds_only_the_open_props() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
     let r = fire_player_loaded(&engine, &supplies(&[]), DAKARA_NAME);
@@ -98,23 +102,43 @@ async fn live_db_supply_restore_binds_only_the_open_supply() {
         want(&[
             "8352:add_dialog_set(6892@456)",
             "8353:add_dialog_set(6892@463)",
+            "8364:add_dialog_set(6892@457)",
         ])
     );
     assert_no_deferred_actions(&r, 8352);
     assert_no_deferred_actions(&r, 8353);
+    assert_no_deferred_actions(&r, 8364);
 
     let r = fire_player_loaded(&engine, &supplies(&[EAST]), DAKARA_NAME);
     assert_eq!(
         labels_in(&r, M1653_CHAINS),
-        want(&["8352:add_dialog_set(6892@456)"])
+        want(&[
+            "8352:add_dialog_set(6892@456)",
+            "8364:add_dialog_set(6892@457)",
+        ])
     );
     let r = fire_player_loaded(&engine, &supplies(&[WEST]), DAKARA_NAME);
     assert_eq!(
         labels_in(&r, M1653_CHAINS),
-        want(&["8353:add_dialog_set(6892@463)"])
+        want(&[
+            "8353:add_dialog_set(6892@463)",
+            "8364:add_dialog_set(6892@457)",
+        ])
     );
     let r = fire_player_loaded(&engine, &supplies(&[WEST, EAST]), DAKARA_NAME);
-    assert!(labels_in(&r, M1653_CHAINS).is_empty());
+    assert_eq!(
+        labels_in(&r, M1653_CHAINS),
+        want(&["8364:add_dialog_set(6892@457)"])
+    );
+    // The Vocuum done: only the supplies restore.
+    let r = fire_player_loaded(&engine, &supplies(&[VOCUUM_OBJ]), DAKARA_NAME);
+    assert_eq!(
+        labels_in(&r, M1653_CHAINS),
+        want(&[
+            "8352:add_dialog_set(6892@456)",
+            "8353:add_dialog_set(6892@463)",
+        ])
+    );
     // Not on Dakara, or not at 4938: no restore.
     let r = fire_player_loaded(&engine, &at(Some(STORY_RM), STEP_SUPPLIES), STORY_RM_NAME);
     assert!(labels_in(&r, M1653_CHAINS).is_empty());
@@ -144,6 +168,7 @@ async fn live_db_supply_clicks_in_both_orders_resolve_one_chain_each() {
         labels_in(&r, M1653_CHAINS),
         want(&[
             "8357:remove_dialog_set(6892@463)",
+            "8357:remove_dialog_set(6892@457)",
             "8357:advance_step(1653->4937)",
             "8357:display_radio_dialog(5849)",
         ])
@@ -168,12 +193,63 @@ async fn live_db_supply_clicks_in_both_orders_resolve_one_chain_each() {
         labels_in(&r, M1653_CHAINS),
         want(&[
             "8355:remove_dialog_set(6892@456)",
+            "8355:remove_dialog_set(6892@457)",
             "8355:advance_step(1653->4937)",
             "8355:display_radio_dialog(5849)",
         ])
     );
     assert_eq!(radio_count(&r), 1);
     assert_no_deferred_actions(&r, 8355);
+}
+
+#[tokio::test]
+async fn live_db_vocuum_click_completes_5643_once_and_never_moves_the_step() {
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+    let vocuum_labels = want(&[
+        "8365:complete_objective(1653/5643)",
+        "8365:remove_dialog_set(6892@457)",
+    ]);
+    let dones: [&[i32]; 3] = [&[], &[WEST], &[EAST]];
+    for done in dones {
+        let r = fire_interact_tag(&engine, &supplies(done), VOCUUM);
+        assert_eq!(labels_in(&r, M1653_CHAINS), vocuum_labels);
+        assert_eq!(display_dialog_count(&r), 0);
+        assert_eq!(radio_count(&r), 0);
+        assert_no_deferred_actions(&r, 8365);
+    }
+
+    // Optional objective already done, or not at 4938 in Dakara_E1: no Vocuum chain.
+    let no_vocuum = [
+        supplies(&[VOCUUM_OBJ]),
+        at(Some(DAKARA), STEP_COURTYARD),
+        at(Some(DAKARA), STEP_RADIO),
+        at(Some(STORY_RM), STEP_SUPPLIES),
+    ];
+    for ctx in no_vocuum {
+        let r = fire_interact_tag(&engine, &ctx, VOCUUM);
+        assert!(labels_in(&r, M1653_CHAINS).is_empty());
+    }
+
+    // The supplies ignore the Vocuum; the step still advances with it done.
+    let r = fire_interact_tag(&engine, &supplies(&[VOCUUM_OBJ]), SUPPLY_WEST);
+    assert_eq!(
+        labels_in(&r, M1653_CHAINS),
+        want(&[
+            "8354:complete_objective(1653/5642)",
+            "8354:remove_dialog_set(6892@456)",
+        ])
+    );
+    let r = fire_interact_tag(&engine, &supplies(&[VOCUUM_OBJ, EAST]), SUPPLY_WEST);
+    assert_eq!(
+        labels_in(&r, M1653_CHAINS),
+        want(&[
+            "8355:remove_dialog_set(6892@456)",
+            "8355:remove_dialog_set(6892@457)",
+            "8355:advance_step(1653->4937)",
+            "8355:display_radio_dialog(5849)",
+        ])
+    );
 }
 
 #[tokio::test]

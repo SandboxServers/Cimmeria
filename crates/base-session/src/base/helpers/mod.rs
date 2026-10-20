@@ -238,6 +238,10 @@ pub fn drain_acks_and_seq(
         &mut c.pending_acks.lock().unwrap(),
         c.enc_version,
     );
+    let _seq_gate = c
+        .reliable_seq_gate
+        .lock()
+        .map_err(|_| "sequence gate poisoned")?;
     let seq = c.next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
     Ok((acks, seq))
 }
@@ -340,6 +344,17 @@ where
 
         let clients = connected.lock().unwrap();
         match clients.get(&addr) {
+            Some(c) if entry_guard::superseded(addr, c) => {
+                // The session at `addr` was replaced by a new entry while this
+                // continuation was in flight: the old entry's packet is dropped.
+                tracing::debug!(
+                    witness_id, // nt:id-only the session was replaced mid-send, so nothing names it
+                    %addr,
+                    reason = "entry_superseded",
+                    "AoI: session entry superseded mid-send -- packet dropped"
+                );
+                None
+            }
             Some(c) => {
                 let key = c.key;
                 let version = c.enc_version;
@@ -588,15 +603,33 @@ mod bundle_manifest;
 pub use bundle_manifest::{BundleManifest, BundleManifestEntry, BUNDLE_MANIFEST_CAP};
 
 mod reliable_fit;
-pub(crate) use reliable_fit::collect_pending_retransmits_for_session;
-pub use reliable_fit::{
-    collect_pending_retransmits, send_reliable_to_addr, send_reliable_to_addr_for_owner,
-    PendingRetransmit,
-};
+pub use reliable_fit::{send_reliable_to_addr, send_reliable_to_addr_for_owner};
+
+mod retransmit_scan;
+pub(crate) use retransmit_scan::collect_pending_retransmits_for_session;
+pub use retransmit_scan::{collect_pending_retransmits, PendingRetransmit};
+
+mod session_bound;
+pub use session_bound::{send_to_session_bound_reliable, snapshot_recipient, RecipientSnapshot};
 
 mod reliable_send;
 pub use reliable_send::shadow_register_reliable_send;
 pub(crate) use reliable_send::shadow_register_reliable_send_for_session;
+
+mod letter_turn_in_send;
+pub use letter_turn_in_send::{
+    derive_letter_turn_in_token, send_letter_turn_in_method, ExpectedLetterTurnInEntry,
+    LetterTurnInSendOutcome,
+};
+
+#[cfg(test)]
+mod letter_turn_in_send_tests;
+
+mod entry_guard;
+pub use entry_guard::{scoped, EntryGuard};
+
+#[cfg(test)]
+mod entry_guard_tests;
 
 mod departed_witnesses;
 pub use departed_witnesses::{
@@ -625,6 +658,9 @@ mod departed_witnesses_tests;
 
 #[cfg(test)]
 mod reliable_fit_tests;
+
+#[cfg(test)]
+mod session_bound_tests;
 
 #[cfg(test)]
 mod retransmit_row_tests;

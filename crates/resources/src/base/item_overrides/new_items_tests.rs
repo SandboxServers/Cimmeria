@@ -189,7 +189,10 @@ fn served_items_category_carries_the_additions_and_the_old_overrides() {
         cache.get(CATEGORY_ITEMS, 1086),
         shipped_entry(&mut pak, "_1086").as_ref()
     );
-    let shipped_count = pak.file_names().filter(|n| n.starts_with('_')).count();
+    let shipped_count = pak
+        .file_names()
+        .filter(|n| n.as_ref().is_ok_and(|n| n.starts_with('_')))
+        .count();
     assert_eq!(served.elements.len(), shipped_count + ITEM_ADDITIONS.len());
 
     // A client holding the shipped category must see a mismatch.

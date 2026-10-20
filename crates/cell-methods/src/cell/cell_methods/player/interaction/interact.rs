@@ -291,6 +291,9 @@ pub(super) fn chain_player_id(entity_id: u32, space_mgr: &SpaceManager, call: &'
 }
 
 #[cfg(test)]
+mod mission_62050_tests;
+
+#[cfg(test)]
 mod liveness_tests {
     use super::*;
     use crate::cell::combat::BSF_DEAD;

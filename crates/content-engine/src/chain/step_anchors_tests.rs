@@ -149,3 +149,28 @@ fn step_anchors_skip_advancers_held_to_another_world() {
         "an unknown world fails every world-gated chain closed"
     );
 }
+
+/// A registered chain with one condition reports `true`. It fails if the
+/// accessor ignores `conditions`.
+#[test]
+fn chain_has_conditions_true_for_gated_chain() {
+    let mut engine = ChainEngine::new();
+    engine.register_chain(gated(30, tag("Frost_Terminal"), 4038, vec![advance()]));
+    assert!(engine.chain_has_conditions(30));
+}
+
+/// A registered chain with no conditions reports `false`.
+#[test]
+fn chain_has_conditions_false_for_unconditioned_chain() {
+    let mut engine = ChainEngine::new();
+    engine.register_chain(make_chain(31, tag("Frost_Terminal"), vec![advance()], 0));
+    assert!(!engine.chain_has_conditions(31));
+}
+
+/// An id no chain was registered under reports `false`.
+#[test]
+fn chain_has_conditions_false_for_unknown_id() {
+    let mut engine = ChainEngine::new();
+    engine.register_chain(gated(32, tag("Frost_Terminal"), 4038, vec![advance()]));
+    assert!(!engine.chain_has_conditions(999));
+}

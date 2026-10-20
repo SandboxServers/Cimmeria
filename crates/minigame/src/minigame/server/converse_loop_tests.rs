@@ -9,7 +9,6 @@
 use tokio::net::TcpListener;
 use tokio::time::Instant;
 
-use super::result_dispatch::RESULT_DEFEAT;
 use super::tests::drain_results;
 use super::*;
 use crate::minigame::game::create_game;
@@ -49,6 +48,7 @@ async fn spawn_converse_session(
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            1,
         )
         .await
         .expect("fresh registry must accept the session");
@@ -109,5 +109,7 @@ async fn a_silent_converse_game_ends_on_the_hand_timer_in_the_loop() {
         elapsed >= Duration::from_secs(5) && elapsed < Duration::from_secs(10),
         "the first hand timer runs at 6 s, ended after {elapsed:?}",
     );
-    assert_eq!(drain_results(&mut rx), vec![(RESULT_DEFEAT, vec![])]);
+    // The defeat is pinned by `end.reason` (from the accepted receipt); the
+    // wire carries the ticket only.
+    assert_eq!(drain_results(&mut rx).len(), 1, "exactly one result");
 }

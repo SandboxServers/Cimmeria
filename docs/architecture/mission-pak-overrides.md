@@ -15,12 +15,15 @@ Items (category 4) also have two kinds. The Slappack `ItemOverride` rows patch a
 
 `MissionAddition { mission_id, xml }` in
 `crates/resources/src/base/mission_additions.rs` extends this path to wholly new
-mission IDs. `MISSION_ADDITIONS` holds sealed production XML only: the first
-entry is Dakara_E1's mission 63100 (DK-10fs, docs/analysis/dakara-e1-rebuild/),
-whose XML lives in `mission_additions_dakara.rs`. The
-[CB-N05a seal](../analysis/four-zone-planning/cb-n05a-seal.md)
+mission IDs. `MISSION_ADDITIONS` carries ten production entries, in ascending mission-id order. Seven are Castle quests, each frozen in its design seal:
+mission 10300 (medical_q1, [CS-04aD seal](../analysis/castle-continuation/worknotes/CS-04aD.md)), 10301 (medical_q2, [CS-04aD2 seal](../analysis/castle-continuation/worknotes/CS-04aD2.md)), 10310 (defense_q1, [CS-04bD2a seal](../analysis/castle-continuation/worknotes/CS-04bD2a.md)), 10312 (defense_q3, [CS-04bD2b seal](../analysis/castle-continuation/worknotes/CS-04bD2b.md)), 10320 and 10321 (return_q1 and return_q2, both in the [CS-04cS2 seal](../analysis/castle-continuation/worknotes/CS-04cS2.md)) and 10330 (repeatable_q1, [CS-05S3 seal](../analysis/castle-continuation/worknotes/CS-05S3.md)). The next two are Cell Block content: mission 62050
+(*The Remaining Pods*, CB-N05, see the
+[CB-N05 seal](../analysis/cellblock-continuation/worknotes/cb-n05-seal.md)) and
+mission 62060 (*Before the Patrol Returns*, CB-N06, new Cimmeria content, see the
+[CB-N06 seal](../analysis/cellblock-continuation/worknotes/cb-n06-seal.md)). Mission 63100 (*DK-10fs*, Dakara_E1 rebuild, `docs/analysis/dakara-e1-rebuild/`) is the tenth entry, and its XML lives in `mission_additions_dakara.rs`. The Cell Block pair
+still need an owner client run (CB-U10, CB-U12). The [CB-N05a seal](../analysis/four-zone-planning/cb-n05a-seal.md)
 freezes the supported stock `_1624` schema and exact test-only 61000 fixture.
-The fixture is never seeded, offered or persisted.
+The fixture is never seeded, offered or persisted. `tests/mission_additions.rs` checks 10300, 62050 and 62060 by id and that no fixture id is in production; the other Castle ids are checked in `tests/mission_additions_castle*.rs`.
 
 Whole-batch admission runs before any mission mutation, including old step/text
 patches. It validates XML/scalars/entities, required children and order, positive

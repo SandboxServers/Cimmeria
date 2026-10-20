@@ -5,17 +5,24 @@
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
 
-use cimmeria_wire::cell::messages::CellToBaseMsg;
 use rand::RngExt;
-use tokio::sync::{mpsc, watch, Mutex};
+use tokio::sync::{watch, Mutex};
 use tokio::time::Instant;
 
 pub use super::session_claim::ClaimRejection;
+#[path = "session_result.rs"]
+mod session_result;
+#[path = "session_sweep.rs"]
+mod session_sweep;
 use super::session_snapshot::PublishedBoard;
 pub use super::session_snapshot::{BoardSnapshot, WireSnapshot};
+pub(crate) use session_result::DepositOutcome;
+pub use session_result::ResultReceipt;
+use session_sweep::expire_pending_locked;
 
 /// How long a session may sit in the registry after `register` before the
 /// sweep drops it, *if its SWF client never connected*.
@@ -54,6 +61,8 @@ const DOUBLE_INTERACT_WINDOW: Duration = Duration::from_secs(2);
 pub struct MinigameSession {
     pub entity_id: u32,
     pub player_id: i32,
+    /// Original Base connection, captured when the launch URL was sent.
+    pub session_instance_id: u64,
     pub game_name: String,
     pub difficulty: u32,
     pub tech_competency: u32,
@@ -84,6 +93,8 @@ pub struct MinigameSession {
     /// task removes it when the socket closes, and a long Livewire round can
     /// easily outlive [`PENDING_SESSION_TTL`].
     pub connected: bool,
+    /// Persists while this registration is live even after its receipt is spent.
+    pub terminal_reported: bool,
     /// The cell's explicit close request reaches the connection task even if
     /// the SWF leaves its SmartFox socket open after hiding the window.
     pub cancel: watch::Sender<bool>,
@@ -99,6 +110,8 @@ struct SessionRegistryInner {
     /// entity_id → session
     sessions: HashMap<u32, MinigameSession>,
     boards: HashMap<u32, PublishedBoard>,
+    receipts: HashMap<String, ResultReceipt>,
+    receipt_order: VecDeque<String>,
     /// Next room ID (auto-incrementing from 1001)
     next_room_id: u32,
 }
@@ -123,12 +136,15 @@ impl SessionRegistry {
             inner: Arc::new(Mutex::new(SessionRegistryInner {
                 sessions: HashMap::new(),
                 boards: HashMap::new(),
+                receipts: HashMap::new(),
+                receipt_order: VecDeque::new(),
                 next_room_id: 1001,
             })),
         }
     }
 
     /// Register a new minigame session. Returns the generated ticket.
+    #[allow(clippy::too_many_arguments)]
     pub async fn register(
         &self,
         entity_id: u32,
@@ -144,6 +160,7 @@ impl SessionRegistry {
         on_failure_chains: Vec<i64>,
         player_name: Option<String>,
         client_ip: Option<std::net::IpAddr>,
+        session_instance_id: u64,
     ) -> Option<String> {
         let abilities_mask = abilities_mask & crate::minigame::games::ability_bits(&game_name);
         let ticket = generate_ticket();
@@ -151,6 +168,7 @@ impl SessionRegistry {
         let session = MinigameSession {
             entity_id,
             player_id,
+            session_instance_id,
             game_name,
             difficulty,
             tech_competency,
@@ -165,6 +183,7 @@ impl SessionRegistry {
             client_ip,
             created_at: Instant::now(),
             connected: false,
+            terminal_reported: false,
             cancel,
         };
 
@@ -176,6 +195,7 @@ impl SessionRegistry {
         // means the *next* interaction is the one that recovers, rather
         // than the player having to wait out a sweep tick.
         expire_pending_locked(&mut inner, PENDING_SESSION_TTL);
+        inner.expire_receipts(Instant::now());
         if let Some(existing) = inner.sessions.get(&entity_id) {
             // A second interact while the first launch is still loading is a
             // double click: INFO. A live game, or a launch that has sat past
@@ -211,6 +231,7 @@ impl SessionRegistry {
             entity_id,
             PublishedBoard::new(ticket.clone(), session.created_at),
         );
+        inner.invalidate_entity_receipts(entity_id);
         inner
             .boards
             .get_mut(&entity_id)
@@ -303,73 +324,6 @@ impl SessionRegistry {
             return None;
         }
         board.read()
-    }
-
-    /// Drop every registered-but-never-connected session older than `ttl`.
-    /// Returns the evicted entity ids.
-    pub async fn expire_pending(&self, ttl: Duration) -> Vec<u32> {
-        self.expire_pending_sessions(ttl)
-            .await
-            .into_iter()
-            .map(|(entity_id, _)| entity_id)
-            .collect()
-    }
-
-    /// [`Self::expire_pending`], with each evicted session's ticket so the
-    /// caller can report it to the cell.
-    pub async fn expire_pending_sessions(&self, ttl: Duration) -> Vec<(u32, String)> {
-        let mut inner = self.inner.lock().await;
-        expire_pending_locked(&mut inner, ttl)
-    }
-
-    /// Spawn the background expiry sweep without reporting to the cell. Tests
-    /// that only care about registry state use this; the server uses
-    /// [`Self::spawn_sweep_reporting`].
-    pub fn spawn_sweep(&self, ttl: Duration, interval: Duration) {
-        self.spawn_sweep_inner(ttl, interval, None);
-    }
-
-    /// Spawn the background expiry sweep and report every evicted session to
-    /// the cell as result 3 (D-MG15). The cell took the minigame hold when it
-    /// launched, and a session whose SWF never connected has no connection
-    /// task to send the result, so without this report the player stays
-    /// locked with BSF_PlayingMinigame set.
-    ///
-    /// Called once from [`crate::minigame::server::run`]; the task lives as
-    /// long as the process.
-    pub fn spawn_sweep_reporting(
-        &self,
-        ttl: Duration,
-        interval: Duration,
-        result_tx: mpsc::Sender<CellToBaseMsg>,
-    ) {
-        self.spawn_sweep_inner(ttl, interval, Some(result_tx));
-    }
-
-    fn spawn_sweep_inner(
-        &self,
-        ttl: Duration,
-        interval: Duration,
-        result_tx: Option<mpsc::Sender<CellToBaseMsg>>,
-    ) {
-        let registry = self.clone();
-        tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(interval);
-            // The first `tick()` completes immediately; burn it so the
-            // first real sweep happens one interval in, not at startup
-            // (where there is nothing to sweep anyway).
-            ticker.tick().await;
-            loop {
-                ticker.tick().await;
-                let expired = registry.expire_pending_sessions(ttl).await;
-                let Some(result_tx) = &result_tx else {
-                    continue;
-                };
-                for (entity_id, ticket) in expired {
-                    report_expired(result_tx, entity_id, ticket).await;
-                }
-            }
-        });
     }
 
     /// Authenticate a login attempt **and claim the matched session**, in one
@@ -519,6 +473,7 @@ impl SessionRegistry {
         let mut inner = self.inner.lock().await;
         inner.sessions.remove(&entity_id);
         inner.boards.remove(&entity_id);
+        inner.invalidate_entity_receipts(entity_id);
     }
 
     /// Cancel the entity's current session and release its registration.
@@ -534,11 +489,44 @@ impl SessionRegistry {
     /// tell the cell itself (the TTL sweep cannot see a removed session).
     pub async fn cancel_reporting_connected(&self, entity_id: u32) -> Option<bool> {
         let mut inner = self.inner.lock().await;
-        let session = inner.sessions.remove(&entity_id)?;
-        let connected = session.connected;
-        session.cancel.send_replace(true);
+        let session = inner.sessions.remove(&entity_id);
+        if let Some(ref session) = session {
+            session.cancel.send_replace(true);
+        }
         inner.boards.remove(&entity_id);
-        Some(connected)
+        inner.invalidate_entity_receipts(entity_id);
+        session.map(|session| session.connected)
+    }
+
+    /// Cancel only the launch that minted this ticket. A stale failed send
+    /// cannot erase a replacement board for the same entity.
+    pub async fn cancel_if_ticket(&self, entity_id: u32, ticket: &str) -> bool {
+        let mut inner = self.inner.lock().await;
+        let matches_session = inner
+            .sessions
+            .get(&entity_id)
+            .is_some_and(|session| session.ticket == ticket);
+        let matches_receipt = inner
+            .receipts
+            .get(ticket)
+            .is_some_and(|receipt| receipt.entity_id == entity_id);
+        if !matches_session && !matches_receipt {
+            return false;
+        }
+        if matches_session {
+            if let Some(session) = inner.sessions.remove(&entity_id) {
+                session.cancel.send_replace(true);
+            }
+        }
+        if inner
+            .boards
+            .get(&entity_id)
+            .is_some_and(|board| board.ticket == ticket)
+        {
+            inner.boards.remove(&entity_id);
+        }
+        inner.invalidate_ticket_receipt(ticket);
+        true
     }
 
     /// Whether the current registration belongs to this SmartFox ticket.
@@ -603,71 +591,6 @@ impl SessionRegistry {
     }
 }
 
-/// Expiry pass over an already-locked registry.
-///
-/// Split out so [`SessionRegistry::register`] can sweep inside the lock it
-/// already holds without re-entering `Mutex::lock` (which would deadlock on
-/// the non-reentrant `tokio::sync::Mutex`).
-///
-/// The inline call from `register` discards the evicted list on purpose: that
-/// `register` is a new launch for the same entity, so the cell's hold is still
-/// wanted and the new board's own result releases it.
-fn expire_pending_locked(inner: &mut SessionRegistryInner, ttl: Duration) -> Vec<(u32, String)> {
-    let now = Instant::now();
-    inner.boards.retain(|_, board| !board.is_expired(now));
-    let expired: Vec<u32> = inner
-        .sessions
-        .iter()
-        .filter(|(_, s)| !s.connected && now.saturating_duration_since(s.created_at) >= ttl)
-        .map(|(id, _)| *id)
-        .collect();
-
-    let mut evicted = Vec::with_capacity(expired.len());
-    for entity_id in &expired {
-        if let Some(session) = inner.sessions.remove(entity_id) {
-            inner.boards.remove(entity_id);
-            evicted.push((*entity_id, session.ticket.clone()));
-            // info!, not warn!: an abandoned launch is a player closing a
-            // window, not a server fault. It is logged at all because a
-            // "minigame won't start" report correlates directly with
-            // whether this line fired for that entity.
-            tracing::info!(
-                entity_id = *entity_id,
-                entity_name = session.player_name.as_deref(),
-                game = %session.game_name,
-                ttl_secs = ttl.as_secs(),
-                "Minigame: expiring session whose client never connected",
-            );
-        }
-    }
-    evicted
-}
-
-/// Result code 3: interrupted or never started.
-const RESULT_NOT_STARTED: u8 = 3;
-
-/// Tell the cell an expired session will never run, so it drops the hold.
-async fn report_expired(result_tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, ticket: String) {
-    if let Err(e) = result_tx
-        .send(CellToBaseMsg::MinigameResult {
-            entity_id,
-            ticket,
-            result_code: RESULT_NOT_STARTED,
-            on_victory_chains: Vec::new(),
-            on_failure_chains: Vec::new(),
-            notify_client: true,
-        })
-        .await
-    {
-        tracing::error!(
-            entity_id, // nt:id-only the session is already evicted, so its player name is gone
-            error = %e,
-            reason = "result_channel_closed",
-            "Minigame: expiry report failed, the player keeps the minigame hold until the cell restarts"
-        );
-    }
-}
-
 /// Generate a 64-character hex ticket (matching C++ implementation).
 fn generate_ticket() -> String {
     const HEX: &[u8] = b"0123456789ABCDEF";
@@ -684,6 +607,14 @@ mod tests;
 #[cfg(test)]
 #[path = "session_sweep_tests.rs"]
 mod sweep_tests;
+
+#[cfg(test)]
+#[path = "session_result_tests.rs"]
+mod result_tests;
+
+#[cfg(test)]
+#[path = "session_cancel_tests.rs"]
+mod cancel_tests;
 
 #[cfg(test)]
 #[path = "session_board_tests.rs"]

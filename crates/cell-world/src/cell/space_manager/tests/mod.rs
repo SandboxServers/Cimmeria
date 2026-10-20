@@ -18,6 +18,7 @@ mod historical_cellblocks;
 mod instances;
 mod movement_validation;
 mod npc_spawn;
+mod phase;
 mod player_name_lookup;
 mod spaces;
 mod target_lifetime;

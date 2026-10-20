@@ -13,6 +13,14 @@ use crate::cell::messages::BaseToCellMsg;
 use crate::minigame::SessionRegistry;
 use crate::test_support::{test_default_connected_client_state, TestTransport};
 
+/// A connection that owns entity 77 as character 1, as `snapshot_recipient` requires.
+fn owner_state() -> crate::base::ConnectedClientState {
+    let mut state = test_default_connected_client_state();
+    state.player_entity_id = Some(77);
+    state.active_player_id = Some(1);
+    state
+}
+
 const TEST_PARAMS: MinigamePlayerParams = MinigamePlayerParams {
     player_level: 1,
     intelligence: 0,
@@ -32,10 +40,7 @@ async fn pending_session() -> (
     String,
 ) {
     let addr: SocketAddr = "10.0.0.5:5000".parse().unwrap();
-    let connected = Arc::new(Mutex::new(HashMap::from([(
-        addr,
-        test_default_connected_client_state(),
-    )])));
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, owner_state())])));
     let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(77u32, addr)])));
     let registry = SessionRegistry::new();
     let ticket = registry
@@ -53,6 +58,7 @@ async fn pending_session() -> (
             vec![],
             None,
             Some(addr.ip()),
+            1,
         )
         .await
         .unwrap();
@@ -87,12 +93,14 @@ async fn cancel_before_connect_frees_the_player() {
     ));
 }
 
-/// A connected session's own task reports Canceled; a second report here
-/// would double-release.
+/// The cancel invalidates the board's receipts, so the connection task's own
+/// Canceled deposit is refused and its ticket redeems nothing. The base sends
+/// the one release itself: code 0, for the owning character. Removing that
+/// send leaves the channel empty and the cell keeps the lock until relog.
 #[tokio::test]
-async fn cancel_after_connect_leaves_the_report_to_the_task() {
+async fn cancel_after_connect_releases_the_hold_once_from_the_base() {
     let (registry, _addr, connected, entity_to_addr, tx, mut rx, ticket) = pending_session().await;
-    registry
+    let claimed = registry
         .authenticate_and_claim(77, &ticket, "Livewire")
         .await
         .expect("claim must succeed");
@@ -106,8 +114,22 @@ async fn cancel_after_connect_leaves_the_report_to_the_task() {
     )
     .await;
 
-    assert!(rx.try_recv().is_err(), "the connection task reports it");
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(BaseToCellMsg::MinigameResult {
+            entity_id: 77,
+            player_id: 1,
+            result_code: 0,
+            ..
+        })
+    ));
+    assert!(rx.try_recv().is_err(), "exactly one release");
+    assert!(
+        !registry.deposit_result(&claimed, 0, true).await,
+        "the task's Canceled report must be refused after the cancel"
+    );
 }
+
 /// MG-06: the cell took the minigame hold when it sent StartMinigame, so a
 /// launch the base cannot carry out must send result 3 back or the player
 /// stays locked with BSF_PlayingMinigame set.
@@ -115,10 +137,7 @@ async fn cancel_after_connect_leaves_the_report_to_the_task() {
 async fn launch_failure_with_server_disabled_frees_the_player() {
     let addr: SocketAddr = "10.0.0.5:5000".parse().unwrap();
     let transport = Arc::new(TestTransport::new());
-    let connected = Arc::new(Mutex::new(HashMap::from([(
-        addr,
-        test_default_connected_client_state(),
-    )])));
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, owner_state())])));
     let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(77u32, addr)])));
     let (cell_tx, mut cell_rx) = mpsc::channel(2);
 
@@ -189,10 +208,7 @@ async fn launch_failure_without_client_addr_frees_the_player() {
 async fn duplicate_refusal_does_not_free_the_running_games_hold() {
     let addr: SocketAddr = "10.0.0.5:5000".parse().unwrap();
     let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
-    let connected = Arc::new(Mutex::new(HashMap::from([(
-        addr,
-        test_default_connected_client_state(),
-    )])));
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, owner_state())])));
     let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(77u32, addr)])));
     let registry = Some(SessionRegistry::new());
     let (cell_tx, mut cell_rx) = mpsc::channel(2);

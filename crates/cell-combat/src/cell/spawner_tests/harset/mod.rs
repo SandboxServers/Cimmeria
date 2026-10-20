@@ -45,11 +45,13 @@
 //!   named regions placed by pass B (packets H14 and H15) -- tags the merged
 //!   mission chains already dispatch on, the D-H03 no-hostiles rule, the
 //!   recorded on-mesh/off-mesh verdict per row, and the region volumes.
+//! - [`mission_1664_actors`]: the two FZ-19 rows for mission 1664 (Kaerlia, the door control) and their spawns.
 
 mod ability_sets;
 mod cmdcenter_population;
 mod factions;
 mod interior_regions;
+mod mission_1664_actors;
 mod templates;
 mod world57_placement;
 
@@ -96,7 +98,7 @@ const HARSET_SET_PROBE_TEMPLATES: [(i32, [i32; 2], i32); 2] = [
 ];
 
 /// Every `class = 'mob'` template H11 seeds, as `(template_id, name)`.
-const MOB_TEMPLATES: [(i32, &str); 24] = [
+const MOB_TEMPLATES: [(i32, &str); 25] = [
     (200, "Mala'c"),
     (201, "Lo'rak"),
     (202, "Bra'hin"),
@@ -121,12 +123,13 @@ const MOB_TEMPLATES: [(i32, &str); 24] = [
     (221, "Petbe (hostile)"),
     (222, "Lance Corporal Grogan (hostile)"),
     (223, "Dawson (hostile)"),
+    (260, "Harset - Sgt. Kaerlia (PROVISIONAL)"),
 ];
 
 /// Every prop template H11 seeds. Props are `class = 'being'`: they never
 /// AI-tick (`all_npc_entity_ids` admits only class_id `0x04`) so they carry
 /// no ability set and no respawn.
-const PROP_TEMPLATES: [(i32, &str); 9] = [
+const PROP_TEMPLATES: [(i32, &str); 10] = [
     (240, "Harset Camera Location"),
     (241, "Replitech Crate"),
     (242, "Harset Storage Crate"),
@@ -136,6 +139,7 @@ const PROP_TEMPLATES: [(i32, &str); 9] = [
     (246, "Strange Beacon Technology"),
     (247, "Devlin's Device"),
     (248, "Harset Monitoring Device Anchor"),
+    (261, "Harset Command Center Door Control (PROVISIONAL)"),
 ];
 
 /// Harset templates that predate this packet: Ba'al, Anat, Lethander,

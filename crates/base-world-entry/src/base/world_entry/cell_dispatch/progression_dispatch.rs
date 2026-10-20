@@ -335,21 +335,9 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             )
             .await
         }
-        CellToBaseMsg::MinigameResult {
-            entity_id,
-            ticket,
-            result_code,
-            on_victory_chains,
-            on_failure_chains,
-            notify_client,
-        } => {
+        CellToBaseMsg::MinigameResult { ticket } => {
             minigame_result(
-                entity_id,
                 &ticket,
-                result_code,
-                on_victory_chains,
-                on_failure_chains,
-                notify_client,
                 ctx.minigame_registry,
                 ctx.transport,
                 ctx.connected,
@@ -610,12 +598,7 @@ pub(super) async fn start_minigame(
 
 /// `CellToBaseMsg::MinigameResult`.
 pub(super) async fn minigame_result(
-    entity_id: u32,
     ticket: &str,
-    result_code: u8,
-    on_victory_chains: Vec<i64>,
-    on_failure_chains: Vec<i64>,
-    notify_client: bool,
     registry: &Option<crate::minigame::SessionRegistry>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -623,12 +606,7 @@ pub(super) async fn minigame_result(
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
     minigame::minigame_result(
-        entity_id,
         ticket,
-        result_code,
-        on_victory_chains,
-        on_failure_chains,
-        notify_client,
         registry,
         transport,
         connected,

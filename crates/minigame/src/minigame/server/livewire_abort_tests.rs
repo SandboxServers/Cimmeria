@@ -3,7 +3,8 @@
 
 use tokio::net::TcpListener;
 
-use super::tests::{drain_results, read_until_game_begin};
+use super::result_dispatch::RESULT_CANCELED;
+use super::tests::{drain_redeemed, read_until_game_begin};
 use super::*;
 use crate::minigame::game::create_game;
 
@@ -57,6 +58,7 @@ async fn livewire_abort_reports_canceled_with_no_failure_frame() {
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            1,
         )
         .await
         .expect("fresh registry must accept the session");
@@ -67,6 +69,7 @@ async fn livewire_abort_reports_canceled_with_no_failure_frame() {
     let game = create_game(&session).expect("livewire instance");
 
     let (tx, mut rx) = mpsc::channel(16);
+    let kept = registry.clone();
     let handle = tokio::spawn(async move {
         run_session(
             server,
@@ -86,8 +89,8 @@ async fn livewire_abort_reports_canceled_with_no_failure_frame() {
     handle.await.expect("session task must not panic");
 
     assert_eq!(
-        drain_results(&mut rx),
-        vec![(RESULT_CANCELED, vec![])],
+        drain_redeemed(&mut rx, &kept).await,
+        vec![(RESULT_CANCELED, vec![], vec![])],
         "an abandoned Livewire game must report Canceled exactly once",
     );
     assert_eq!(

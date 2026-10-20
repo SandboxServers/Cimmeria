@@ -6,6 +6,7 @@ use super::data::SavedMission;
 use super::duel_base_to_cell::DuelBaseToCell;
 use super::item_use::ItemUseConsumed;
 use super::lab::{LabQuery, LabQueryResult};
+use super::letter_turn_in::{LetterTurnInResult, LetterTurnInSession};
 use super::org_base_to_cell::OrgBaseToCell;
 
 /// Result of a [`BaseToCellMsg::LabConsoleExec`]: on success, the GM-feedback
@@ -67,6 +68,15 @@ pub enum BaseToCellMsg {
     /// Mark an entity as having a client controller (player).
     /// Sent after world entry packets are delivered to the client.
     ConnectEntity { entity_id: u32 },
+
+    /// Bind the live player's turn-in token before `InitPlayerState`.
+    LetterTurnInSession {
+        entity_id: u32,
+        session: LetterTurnInSession,
+    },
+
+    /// Persisted turn-in verdict; A3 will correlate and apply its cell effects.
+    LetterTurnInResult(LetterTurnInResult),
 
     /// Remove client controller from an entity (player disconnected).
     ///
@@ -459,6 +469,8 @@ pub enum BaseToCellMsg {
     /// Minigame result callback (forwarded from BaseApp after minigame server reports).
     MinigameResult {
         entity_id: u32,
+        /// Character id the Base receipt was minted for.
+        player_id: i32,
         result_code: u8,
         on_victory_chains: Vec<i64>,
         on_failure_chains: Vec<i64>,

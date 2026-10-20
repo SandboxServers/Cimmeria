@@ -50,12 +50,32 @@
 //! contract this module implements.
 
 pub mod emit;
+mod overrides_castle;
+mod overrides_cellblock;
 pub mod parse;
 pub mod patch;
 mod patches_beta_e1;
 mod patches_castle;
 mod patches_cellblock;
 
+#[cfg(test)]
+mod override_seed_agreement_castle_10700;
+#[cfg(test)]
+mod override_seed_agreement_castle_10709;
+#[cfg(test)]
+mod override_seed_agreement_castle_10725;
+#[cfg(test)]
+mod override_seed_agreement_castle_defense_q3;
+#[cfg(test)]
+mod override_seed_agreement_castle_medical_q2;
+#[cfg(test)]
+mod override_seed_agreement_castle_repeatable_q1;
+#[cfg(test)]
+mod override_seed_agreement_castle_return_q1;
+#[cfg(test)]
+mod override_seed_agreement_cellblock_62050;
+#[cfg(test)]
+mod override_seed_agreement_cellblock_62060;
 #[cfg(test)]
 mod override_seed_agreement_debug_hub;
 #[cfg(test)]
@@ -204,6 +224,25 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
             buttons: &[],
         }],
     },
+    // Castle medical_q1 dialog 10700, the Medic's monologue (CS-04aD).
+    overrides_castle::MEDICAL_Q1_DIALOG,
+    overrides_castle::MEDICAL_Q2_PRISONER_DIALOG,
+    overrides_castle::MEDICAL_Q2_MEDIC_DIALOG,
+    overrides_castle::DEFENSE_Q1_DIALOG,
+    overrides_castle::DEFENSE_Q3_OFFER_DIALOG,
+    overrides_castle::DEFENSE_Q3_DONE_DIALOG,
+    overrides_castle::RETURN_Q1_DIALOG,
+    overrides_castle::RETURN_Q2_DIALOG,
+    overrides_castle::REPEATABLE_Q1_DIALOG,
+    overrides_castle::REPEATABLE_Q1_TURN_IN_DIALOG,
+    overrides_castle::ROMNEY_CABINET_DIALOG,
+    overrides_castle::ROMNEY_CABINET_EMPTY_DIALOG,
+    // CB-N05 mission 62050: Prisoner 329's report (dialog 60150), the
+    // served one-screen speaker-0 shape. See overrides_cellblock.rs.
+    overrides_cellblock::REMAINING_PODS_DIALOG,
+    // CB-N06 mission 62060: the patrol choice (dialog 60151), the served
+    // one-screen speaker-0 shape. See overrides_cellblock.rs.
+    overrides_cellblock::PRISONER_CHOICE_DIALOG,
 ];
 
 /// Cimmeria-authored overrides that are defined but NOT served: nothing

@@ -12,6 +12,7 @@ use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 use tokio::sync::mpsc;
 use tracing::Level;
 
+use crate::cell::combat::BSF_DEAD;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::test_support::{make_space_manager, LogCapture};
@@ -20,7 +21,7 @@ use super::super::constants::{
     BUYBACK_ITEMS, PURCHASE_ITEMS, RECHARGE_ITEMS, REPAIR_ITEMS, SELL_ITEMS,
 };
 use super::dispatch;
-use super::store_ops::NO_VENDOR_TEXT;
+use super::store_ops::{NO_VENDOR_TEXT, TOO_FAR_TEXT};
 
 const ENTITY: u32 = 1;
 const ACCOUNT: u32 = 7;
@@ -304,4 +305,69 @@ async fn mismatched_arrays_and_short_counts_send_nothing() {
         let msgs = send(&mut mgr, method, &bytes).await;
         assert!(msgs.is_empty(), "method {method}: {msgs:?}");
     }
+}
+
+/// Finding R1: the vendor stays open after the player walks away, so a
+/// purchase from 40 u is refused with one feedback line and nothing else.
+#[tokio::test]
+async fn purchase_from_a_vendor_out_of_range_is_refused_with_feedback() {
+    let (mut mgr, vendor) = player(true, true);
+    mgr.update_entity_position(vendor, [40.0, 0.0, 0.0], [0, 0, 0], [0.0; 3]);
+    let msgs = send(&mut mgr, PURCHASE_ITEMS, &two_arrays(&[4], &[1])).await;
+    assert_eq!(only_feedback_text(&msgs), TOO_FAR_TEXT);
+}
+
+#[tokio::test]
+async fn sell_buyback_repair_recharge_out_of_range_are_refused() {
+    let (mut mgr, vendor) = player(true, true);
+    mgr.update_entity_position(vendor, [40.0, 0.0, 0.0], [0, 0, 0], [0.0; 3]);
+    for (method, bytes) in [
+        (SELL_ITEMS, two_arrays(&[555], &[10])),
+        (BUYBACK_ITEMS, two_arrays(&[901], &[1])),
+        (REPAIR_ITEMS, array(&[42])),
+        (RECHARGE_ITEMS, array(&[77])),
+    ] {
+        let msgs = send(&mut mgr, method, &bytes).await;
+        assert_eq!(only_feedback_text(&msgs), TOO_FAR_TEXT, "method {method}");
+    }
+}
+
+/// A dead player gets no feedback and nothing reaches the base.
+#[tokio::test]
+async fn purchase_while_dead_sends_nothing() {
+    let (mut mgr, _) = player(true, true);
+    mgr.get_entity_mut(ENTITY).unwrap().state_field |= BSF_DEAD;
+    let msgs = send(&mut mgr, PURCHASE_ITEMS, &two_arrays(&[4], &[1])).await;
+    assert!(msgs.is_empty(), "{msgs:?}");
+}
+
+#[tokio::test]
+async fn out_of_range_refusal_logs_the_reason() {
+    let (mut mgr, vendor) = player(true, true);
+    mgr.update_entity_position(vendor, [40.0, 0.0, 0.0], [0, 0, 0], [0.0; 3]);
+    let capture = LogCapture::install();
+    let msgs = send(&mut mgr, PURCHASE_ITEMS, &two_arrays(&[4], &[1])).await;
+    assert_eq!(only_feedback_text(&msgs), TOO_FAR_TEXT);
+    let row = capture
+        .find_event(Level::WARN, "vendor op refused", "out_of_range")
+        .expect("refusal row");
+    assert_eq!(row.target, "vendor");
+    assert!(row.has_field("action", "buy"), "{row:#?}");
+    assert!(row.has_field("item_count", "1"), "{row:#?}");
+}
+
+/// The gate is the interact range (5 u), not tighter: a purchase from 4.9 u
+/// still reaches the base, and one from 5.2 u is refused.
+#[tokio::test]
+async fn purchase_at_the_edge_of_interact_range_is_forwarded_just_past_it_refused() {
+    let (mut mgr, vendor) = player(true, true);
+    mgr.update_entity_position(vendor, [4.9, 0.0, 0.0], [0, 0, 0], [0.0; 3]);
+    let msgs = send(&mut mgr, PURCHASE_ITEMS, &two_arrays(&[4], &[1])).await;
+    assert!(
+        matches!(msgs.as_slice(), [CellToBaseMsg::PurchaseVendorItems { .. }]),
+        "{msgs:?}"
+    );
+    mgr.update_entity_position(vendor, [5.2, 0.0, 0.0], [0, 0, 0], [0.0; 3]);
+    let msgs = send(&mut mgr, PURCHASE_ITEMS, &two_arrays(&[4], &[1])).await;
+    assert_eq!(only_feedback_text(&msgs), TOO_FAR_TEXT);
 }

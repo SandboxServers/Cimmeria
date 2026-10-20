@@ -13,6 +13,7 @@ impl MinigameSession {
         MinigameSession {
             entity_id: 1,
             player_id: 100,
+            session_instance_id: 0,
             game_name: game_name.to_string(),
             difficulty,
             tech_competency: 1,
@@ -27,6 +28,7 @@ impl MinigameSession {
             client_ip: None,
             created_at: Instant::now(),
             connected: false,
+            terminal_reported: false,
             cancel: watch::channel(false).0,
         }
     }

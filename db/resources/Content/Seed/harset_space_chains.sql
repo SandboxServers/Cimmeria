@@ -17,8 +17,8 @@
 -- sensitivity; this file owns 6001-6099):
 --   Ring switches:        6001-6005  (all five used)
 --   Command Center doors: 6006-6007  (both used)
---   Relog restore:        6008-6020  (RESERVED, deliberately unused —
---     see "No relog-restore chains" below)
+--   6008-6020: moved to harset_1664_chains.sql (mission 1664, FZ-20)
+--   6033-6034: also in harset_1664_chains.sql (mission 1664 debrief cue restores, FZ-27)
 --
 -- Evidence class: RECOVERED_SCRIPT for every row in this file — the seven
 -- chains, their triggers and actions, the five tag/region-id pairings and
@@ -285,7 +285,7 @@ VALUES (6007, 'cross_world_teleport', NULL, 'Harset',
         '{"x": 0.0, "y": -67.6, "z": -231.0}', 0, 0);
 
 -- ============================================================
--- No relog-restore chains (range 6008-6020 stays unused)
+-- No relog-restore chains in this file
 -- ============================================================
 --
 -- The campaign rule is "every chain that sets an interaction bit or
@@ -298,5 +298,4 @@ VALUES (6007, 'cross_world_teleport', NULL, 'Harset',
 -- switches' INT_RingNetwork bit comes from entity template 3's
 -- `interaction_type` column, which the spawner re-reads from the DB on
 -- every spawn — it survives restart by construction. So H10 needs zero
--- restore chains, and the reserved 6008-6020 block is left free for a
--- later packet in this file's range.
+-- restore chains. The reserved 6008-6020 block went to harset_1664_chains.sql.

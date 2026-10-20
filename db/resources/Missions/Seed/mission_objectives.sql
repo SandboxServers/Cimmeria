@@ -1166,9 +1166,9 @@ INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_
 
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (528, 439, false, 1, false, false, false, ' ');
 
-INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (4650, 4037, false, 1, false, false, false, ' ');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (4650, 4037, false, 1, true, false, false, ' ');
 
-INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (4651, 4038, false, 1, false, false, false, ' ');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (4651, 4038, false, 1, true, false, false, ' ');
 
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (4654, 4040, false, 1, false, false, false, ' ');
 
@@ -8119,4 +8119,28 @@ INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (340, 2721, false, 2, true, false, false, ' ');
 
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (3214, 2722, false, 2, false, false, false, ' ');
+
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10460, 10340, false, 1, false, false, false, 'Speak with the medic.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10461, 10341, false, 1, false, false, false, 'Reach the Castle front courtyard.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10462, 10342, false, 1, false, false, false, 'Speak with the overlooked prisoner.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10463, 10343, false, 1, false, false, false, 'Report to the medic in the Castle Infirmary.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10474, 10354, false, 1, false, false, false, 'Speak with the sentry.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10475, 10355, false, 1, false, false, false, 'Reach the Castle Infirmary.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10486, 10366, false, 1, false, false, false, 'Defeat the first Bravo officer.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10487, 10366, false, 1, false, false, false, 'Defeat the second Bravo officer.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10488, 10366, false, 1, false, false, false, 'Defeat the third Bravo officer.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10489, 10366, false, 1, false, false, false, 'Defeat Muelbach.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10492, 10372, false, 1, false, false, false, 'Report to Colonel Marsh.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10498, 10378, false, 1, false, false, false, 'Speak with Moh''katan.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10499, 10379, false, 1, false, false, false, 'Dial the Harset address.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10504, 10384, false, 1, false, false, false, 'Reach the Castle Infirmary.');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (10505, 10385, false, 1, false, false, false, 'Report to the supply officer.');
+
+-- Cellblock continuation CB-N05 (CIMMERIA_AUTHORING): mission 62050 objectives A and B.
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (62052, 62051, false, 1, false, false, false, 'Speak to Prisoner 329.');
+
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (62055, 62054, false, 1, false, false, false, 'Warn Col. Marsh.');
+
+-- Cellblock continuation CB-N06 (CIMMERIA_AUTHORING): mission 62060 objective.
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (62062, 62061, false, 1, false, false, false, 'Help the prisoners or jam the panel.');
 

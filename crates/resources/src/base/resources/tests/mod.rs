@@ -9,13 +9,24 @@
 //! - [`dialog_overrides`]: dialog override application and metadata bumps.
 //! - [`world_info_overrides`]: the historical CellBlock worlds on category 12.
 //! - [`stargate_overrides`]: the Debug Area gate (29) on category 13.
+//! - [`seed_id_uniqueness`]: template and spawn ids unique across the per-zone seed splits.
 
 mod category_map;
 mod committed_paks;
 mod dialog_overrides;
 mod inventory_slots;
 mod mission_additions;
+mod mission_additions_castle;
+mod mission_additions_castle_defense_q1;
+mod mission_additions_castle_defense_q3;
+mod mission_additions_castle_medical_q2;
+mod mission_additions_castle_repeatable_q1;
+mod mission_additions_castle_return_q1;
+mod mission_additions_castle_return_q2;
+mod mission_additions_cellblock;
+mod mission_additions_cellblock_62060;
 mod mission_additions_dakara;
 mod overrides;
+mod seed_id_uniqueness;
 mod stargate_overrides;
 mod world_info_overrides;

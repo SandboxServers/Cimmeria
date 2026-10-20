@@ -46,6 +46,9 @@ mod cover_flank_tests;
 mod dialog;
 #[cfg(test)]
 mod dialog_archetype_tests;
+mod direct_invoke;
+#[cfg(test)]
+mod direct_invoke_tests;
 mod interaction;
 mod inventory;
 mod lifecycle;
@@ -64,6 +67,7 @@ pub use cover::{
     fire_player_flanked_npc,
 };
 pub use dialog::{fire_dialog_choice, fire_dialog_open};
+pub use direct_invoke::fire_guarded_minigame_chain_by_id;
 pub use interaction::{fire_interact_tag, fire_interact_template};
 pub use inventory::{fire_item_equipped, fire_item_use};
 pub use lifecycle::{

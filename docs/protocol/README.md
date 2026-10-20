@@ -19,6 +19,7 @@ Wire formats, Mercury messaging, and client-server protocol documentation.
 | [sgwplayer-base-method-dispatch-table.md](sgwplayer-base-method-dispatch-table.md) | SGWPlayer exposed BaseMethod dispatch table (client → base), by method index | Complete |
 | [client-verified-wire-formats.md](client-verified-wire-formats.md) | Wire formats verified byte-exact against the live client | Complete |
 | [world-entry-phases.md](world-entry-phases.md) | World entry phase sequence: the ordered steps from baseAppLogin to in-world | Complete |
+| [internal-cell-to-base.md](internal-cell-to-base.md) | In-process CellApp to BaseApp message ownership, ordering and failure contracts; not client wire opcodes | Reference |
 | [auto-cycle-button.md](auto-cycle-button.md) | Auto-cycle (auto-fire) button: protocol and behavior reference | Complete |
 | [item-sequence-lookup.md](item-sequence-lookup.md) | Item sequence lookup: `items_event_sets` archaeology, item-id → sequence resolution | Complete |
 

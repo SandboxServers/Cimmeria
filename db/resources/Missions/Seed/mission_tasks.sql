@@ -8720,3 +8720,27 @@ INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabl
 
 INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (3899, 3214, false, 2, true, 1);
 
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10580, 10460, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10581, 10461, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10582, 10462, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10583, 10463, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10594, 10474, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10595, 10475, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10606, 10486, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10607, 10487, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10608, 10488, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10609, 10489, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10612, 10492, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10618, 10498, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10619, 10499, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10624, 10504, false, 1, true, 1);
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (10625, 10505, false, 1, true, 1);
+
+-- Cellblock continuation CB-N05 (CIMMERIA_AUTHORING): mission 62050 tasks A and B.
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (62053, 62052, false, 1, true, 1);
+
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (62056, 62055, false, 1, true, 1);
+
+-- Cellblock continuation CB-N06 (CIMMERIA_AUTHORING): mission 62060 task.
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (62063, 62062, false, 1, true, 1);
+

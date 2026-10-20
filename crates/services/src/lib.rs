@@ -96,6 +96,53 @@ mod mission_round_trip_tests;
 #[cfg(test)]
 mod mission_abandon_round_trip_tests;
 
+/// CS-04aD item 10: the Castle side story `medical_q1` persists per
+/// character (accept, advance, complete, abandon, relog). Test-only.
+#[cfg(test)]
+mod castle_side_medical_q1_round_trip_tests;
+/// CS-04c2c2: the Castle return_q2 mission (10321) persisting per character
+/// (accept, advance, complete, abandon, relog). Test-only.
+#[cfg(test)]
+mod castle_side_return_q2_round_trip_tests;
+
+/// CS-04a2c2 (seal CS-04aD2 c2 item 7): the Castle side story `medical_q2`
+/// persists per character (accept, advance, complete, abandon). Test-only.
+#[cfg(test)]
+mod castle_side_medical_q2_round_trip_tests;
+
+/// CS-04bD2a item 7: the Castle side story `defense_q1` persists per
+/// character (accept, advance, complete, abandon, relog). Test-only.
+#[cfg(test)]
+mod castle_side_defense_q1_round_trip_tests;
+
+/// CS-04b3c2: the Castle side story `defense_q3` persists per character
+/// (accept, kills, relog, completion). Test-only.
+#[cfg(test)]
+mod castle_side_defense_q3_round_trip_tests;
+
+/// CS-04c1c1 item 5: the Harset to Castle crossing persists the `return_q1`
+/// accept before the `GateTravel` (G10). Test-only.
+#[cfg(test)]
+mod castle_side_return_q1_round_trip_tests;
+
+/// CS-05b1c2: the Castle side story `repeatable_q1` persists `repeats` per
+/// character through the production dispatch, and its officer refuses a far
+/// click. Test-only.
+#[cfg(test)]
+mod castle_side_repeatable_q1_round_trip_tests;
+
+#[cfg(test)]
+mod mission_62050_round_trip_tests;
+
+#[cfg(test)]
+mod mission_62060_round_trip_tests;
+
+/// The Marsh letter receipt end to end (HA-1360b2): the Cellblock grant, the
+/// Castle crossing, the Harset bind and the Marsh `CM_INTERACT` click, routed
+/// through the shipped base plugin table. Test-only.
+#[cfg(test)]
+mod mission_letter_receipt_tests;
+
 /// TG-DB-12: unreadable saved missions lock instead of letting a re-accept
 /// overwrite a completed row. Test-only.
 #[cfg(test)]

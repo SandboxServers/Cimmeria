@@ -16,13 +16,23 @@
 //! - [`executed`]: UO-13, the same chains run through the executor, so a
 //!   relog or ring round trip that stacks a second bind (F3) shows.
 //! - [`handoff`]: UO-13, the departure fixtures Beta's tests start from.
+//! - [`auctioneer`]: UO-32, the auctioneer chain (63850).
+//! - [`medic`]: UO-33, the medic chain (63851).
+//! - [`guides`]: UO-35, the four guide chains (63852-63855).
+//! - [`hub_placeholders`]: UO-36, the inn and battlemaster chains (63856-63857).
+//! - [`services_common`]: UO-26, the checks every hub service chain shares.
 
 mod arrival;
+mod auctioneer;
 mod executed;
+mod guides;
 pub(super) mod handoff;
+mod hub_placeholders;
 mod human;
 mod jaffa;
+mod medic;
 mod reoffer;
+pub(super) mod services_common;
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::{ChainEngine, ResolvedActions};
@@ -43,7 +53,7 @@ const CMD_NAME: &str = "Omega_Site_CmdCenter";
 const REGION_CMD_PAD: i32 = 17;
 
 const M_1655: i32 = 1655;
-/// "Beam to the Command Center": both objectives optional (F21).
+/// "Beam to the Command Center": O5645/O5646 optional, O5647/O5644 required (F21).
 const S_4940: i32 = 4940;
 /// "Deliver Hammond's letter".
 const S_4942: i32 = 4942;

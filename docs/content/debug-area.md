@@ -1267,9 +1267,8 @@ still checks again and grants anything missing.
   192 m below the map's playable surface. It comes back once its arrival is
   pinned from an in-client look.
 
-**Known arrival problem.** SGC W1's gate row is 3.4 m from the navmesh and
-1.3 m above the floor beside it. You land on the gate and the client drops
-you onto the floor. Report anything worse.
+**SGC W1 arrival.** Gate 27 lands on its pin on the Gate Room floor, 13 m in
+front of the gate (DK-SGC-01). Report it if you arrive in or under the gate.
 
 **Landing spot.** `.gotolocation DebugArea` without coordinates lands on the
 gate's arrival point, the Z1 arrival (251.0, 8.0, -962.0), in front of the

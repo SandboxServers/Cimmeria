@@ -185,6 +185,87 @@ async fn live_db_chain_1012_does_not_match_non_jaffa_archetype() {
     assert_region_enter_does_not_resolve(1012, ARCHETYPE_SOLDIER).await;
 }
 
+/// A relog recreates the cell entity with an empty available_interactions map.
+/// The Region2 accept edge has already passed, so the active mission must
+/// restore exactly its own archetype's Prisoner 329 dialog on player_loaded.
+/// Completed mission 638 must not regain the topic.
+#[tokio::test]
+async fn live_db_mission_638_login_restores_only_active_archetype_dialog() {
+    use cimmeria_content_engine::actions::Action;
+
+    let pool = require_db_or_skip!();
+    let mut engine = ChainEngine::new();
+    for chain_id in [1026, 1027] {
+        engine.register_chain(
+            load_single_chain_for_test(&pool, chain_id)
+                .await
+                .unwrap_or_else(|e| panic!("DB query for chain {chain_id} failed: {e}"))
+                .unwrap_or_else(|| panic!("login restore chain {chain_id} must exist")),
+        );
+    }
+
+    for (archetype, status, expected) in [
+        (1, "active", vec![(1026, 2794)]),
+        (8, "active", vec![(1027, 5866)]),
+        (1, "completed", vec![]),
+        (8, "completed", vec![]),
+        // Not yet accepted: Region2 entry (chains 1011/1012) binds it, not login.
+        (1, "not_active", vec![]),
+        (8, "not_active", vec![]),
+    ] {
+        let mut ctx = ExecutionContext::new();
+        ctx.set_param(
+            "world_name".to_string(),
+            serde_json::json!("Castle_CellBlock"),
+        );
+        ctx.set_param("mission_638_status".to_string(), serde_json::json!(status));
+        ctx.set_param("archetype".to_string(), serde_json::json!(archetype));
+        let event = TriggerEvent {
+            trigger_type: TriggerType::PlayerLoaded,
+            source_entity: None,
+            target_entity: None,
+            params: ctx.params.clone(),
+        };
+        let resolved = engine.resolve_event(&event, &ctx);
+        let bindings: Vec<_> = resolved
+            .actions
+            .iter()
+            .filter_map(|(chain_id, action)| match action {
+                Action::AddDialogSet {
+                    dialog_set_id,
+                    slot: 17,
+                    ..
+                } => Some((*chain_id, *dialog_set_id)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            bindings, expected,
+            "archetype={archetype}, mission_638_status={status}"
+        );
+    }
+
+    // The world key gates the restore: an active 638 loading into another
+    // world must not get the Cellblock dialog.
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param("world_name".to_string(), serde_json::json!("SGC_W1"));
+    ctx.set_param(
+        "mission_638_status".to_string(),
+        serde_json::json!("active"),
+    );
+    ctx.set_param("archetype".to_string(), serde_json::json!(1));
+    let event = TriggerEvent {
+        trigger_type: TriggerType::PlayerLoaded,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+    assert!(
+        engine.resolve_event(&event, &ctx).actions.is_empty(),
+        "login restore must not fire outside Castle_CellBlock"
+    );
+}
+
 /// Full-seed regression guard for audit.md defect B1 (the purged
 /// `space_castle_cellblock_chains.sql` auto-export). Unlike the helpers
 /// above, which load ONE named chain and so can never observe a second,
@@ -323,4 +404,70 @@ async fn live_db_human_region2_entry_resolves_only_human_dialog_bind() {
         "Human entering Region2 must resolve exactly one dialog-set bind, \
          2794, and never the Jaffa one ({JAFFA_DIALOG_SET_MAP}); got {dialog_set_ids:?}",
     );
+}
+
+/// Chain 1028: the cell door button's Livewire bit (mask 256) is set only on
+/// the 1014/1015 dialog edge and lives in cell memory. A relog at step 2115
+/// must re-paint it; step 2114 and steps after 2115 must not.
+#[tokio::test]
+async fn live_db_mission_638_login_restores_door_button_bit_only_at_step_2115() {
+    use cimmeria_content_engine::actions::Action;
+
+    let pool = require_db_or_skip!();
+    let mut engine = ChainEngine::new();
+    engine.register_chain(
+        load_single_chain_for_test(&pool, 1028)
+            .await
+            .expect("DB query for chain 1028 must succeed")
+            .expect("door button restore chain 1028 must exist"),
+    );
+
+    for (params, expect_restore) in [
+        (vec![("mission_638_step_2115_status", "active")], true),
+        (vec![("mission_638_step_2114_status", "active")], false),
+        (
+            vec![
+                ("mission_638_step_2115_status", "completed"),
+                ("mission_638_step_2116_status", "active"),
+            ],
+            false,
+        ),
+    ] {
+        let mut ctx = ExecutionContext::new();
+        ctx.set_param(
+            "world_name".to_string(),
+            serde_json::json!("Castle_CellBlock"),
+        );
+        for (key, value) in &params {
+            ctx.set_param((*key).to_string(), serde_json::json!(*value));
+        }
+        let event = TriggerEvent {
+            trigger_type: TriggerType::PlayerLoaded,
+            source_entity: None,
+            target_entity: None,
+            params: ctx.params.clone(),
+        };
+        let resolved = engine.resolve_event(&event, &ctx);
+        let actions: Vec<&Action> = resolved
+            .actions
+            .iter()
+            .filter(|(id, _)| *id == 1028)
+            .map(|(_, action)| action)
+            .collect();
+        if expect_restore {
+            assert!(
+                matches!(
+                    actions.as_slice(),
+                    [Action::SetInteractionType { entity_tag, operation, mask: 256 }]
+                    if entity_tag == "329_CellDoorButton" && operation == "|"
+                ),
+                "{params:?}: expected exactly the door button bit; got {actions:?}"
+            );
+        } else {
+            assert!(
+                actions.is_empty(),
+                "{params:?}: chain 1028 must not fire; got {actions:?}"
+            );
+        }
+    }
 }
