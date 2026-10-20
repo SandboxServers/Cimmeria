@@ -27,6 +27,12 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- [UO-11] end
 
 -- [UO-12] begin: spawns 63853-63857
+-- CIMMERIA_RECONSTRUCTION, navmesh-sealed (UO-18, UO-19); D-UO16 B, D-UO28
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63853, 390.35, -84.80, -44.56, 4.7124, 18, 63831, 'UnionOmega_JaffaWeaponsT1', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63854, 387.85, -85.02, -44.56, 4.7124, 18, 63832, 'UnionOmega_JaffaWeaponsT2', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63855, 384.85, -85.02, -45.56, 4.7124, 18, 63833, 'UnionOmega_JaffaWeaponsT3', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63856, 381.85, -84.80, -44.56, 4.7124, 18, 63834, 'UnionOmega_JaffaWeaponsT4', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63857, 30.00, -45.02, 0.00, 1.5708, 18, 63831, 'UnionOmega_JaffaWeaponsT1_Common', NULL, true);
 -- [UO-12] end
 
 -- [UO-27] begin: spawns 63847-63852
