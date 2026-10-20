@@ -1,42 +1,142 @@
-# UO-19: Common Area vendor placements (partial worknote, part 2)
+# UO-19: Common Area vendor placements (worknote, part 3)
 
-> **Type:** Reference (worknote, handoff) · **Packet:** [UO-19](../UO-19.md) · **Status:** in progress; no point sealed yet, no SQL yet
+> **Type:** Reference (worknote, handoff) · **Packet:** [UO-19](../UO-19.md) · **Status:** all 14 points sealed; SQL and sections written
 
 ## Done
 
-- Read UO-19 and UO-01's worknote and `.claude/agent-memory/movement-teleport-advisor/omega-placements.md`.
-- Built `extract_actors` (`cimmeria-upk`), `archetype_census` (`cimmeria-navmesh-extractor`), `build-package-index` (`cimmeria-upk-objects`) and `nav_inspect` (`cimmeria-navmesh-extractor`, part 2) through `lane.ps1`. Built exes are under `B:\targets\uo-19\debug\`.
-- Client data: the cooked client is at `C:\Program Files (x86)\FireSky\Stargate Worlds-QA\Working\SGWGame\CookedPC`. `CIMMERIA_COOKED_PC` is not set on this machine.
-- Package index: `.claude\reports\union-omega\probes\package_index.bin` (5019 packages). Not committed.
-- `extract_actors` output: `probes\omega_actors.json`. Generic names, UE units. Do not use for coordinates.
-- `archetype_census` output (BigWorld metres): `probes\census_meshes.tsv` and `probes\census_positions.tsv` (261 rows; only hub-adjacent meshes, no counters, consoles aside, no vendors). Inside the hub box (x -110..170, z -230..70) there are 106 rows: consoles (`ASG-ComputerConsole01/02`, `ASG-Hologram_Console00`), `ASG-Sign00/01`, `ASG-Post00`, `ASG-Light02`, `ASG-TeleportBase00` (pad 14 prop at 34.56, -36.48, 55.68), `EM-Quartermaster01` (bank prop at -88.06, -48.29, -101.17), `EM-Tent_*`, `JF-Tent03` (24 instances, not on the hub box). The census does not name the Auction House, the counters or the pods, so no world landmark exists for them in the census.
-- `nav_inspect` built. Anchor check (both anchors): component 60, `h` 0.00, exit 0. `data/spaces/omega_site.nav` has 247 components; component 60 is the main walkable mesh (6224 polys, bounds x[-434.9, 419.5] z[-252.7, 104.9]).
-- Grid probe over the hub box (2 m grid, x -110..170, z -230..70, probe y -40): `probes\grid_out.txt` (not committed, 21291 probes, about 177 s). Rendered to `scratchpad\hub_map.png`. Findings from the render:
-  - The hub walkable ring (component 60, grey) spans roughly x -50..122, z -42..70, centred on x about 36 (the N-S axis). Pad 14 (34.56, 55.68) sits at the north end, next to the Stargate.
-  - A non-60 teal component (about x 18..54, z 0..40) fills the middle of the hub, round the Stargate/Battlemaster area. It is not on Modi's component, so points there fail the anchors.
-  - The north-west and east pods are on other components (east pod is brown, about x 75..90, z 0..30), or are off the grid entirely (nothing walkable within 15 m of the NW pod approx, x -96..-100, z -36..-41).
-- Art → world (approximate linear map, used only to pick a start for the search; the art does not affine-map, F34): `x = 36 + (px - 570) * 0.17`, `z = 70 - (py - 140) * 0.17`, from the enlargement `omega-site-common-area.webp`.
-- First candidate pass (2 m grid cells, component 60, `h` ≤ 0.5, 2 m clearance on the 4 orthogonal cells, 2.5 m from each other and from the fixed beams (34.575, 55.698) and (34.41, -75.46)). Picks in `scratchpad\pick.txt`:
-  - `ca.hweap.t1` (80, -8), `ca.harmor.t1` (72, 8), `ca.jweap.t1` (32, -2), `ca.jarmor.t1` (52, -8), `ca.consumable.1` (58, 18), `ca.consumable.2` (32, -6), `ca.consumable.3` (50, -10), `ca.auctioneer` (32, -10).
-  - The picks are 5-10 m from their art spots: the art is denser than the mesh allows. Several picks sit on the same walkway, so the spacing rule needs a second pass.
-  - `ca.hweap.t4` and `ca.harmor.t4` (NW large pod): no cell within 15 m. Per the packet, move them to the nearest hub walkway toward the pod (not yet searched).
-  - Craft group (biomedical, electronics, power, materials) west of the Science Center pod (approx (38, -28)): not yet searched. Guides must sit at approx (32, -21) Biology and (44, -21) Physics.
-- Seeded world-18 rows (`spawnlist.sql`, `spawnlist_union_omega.sql`, grep `, 18, [0-9]+, '`): beams 135 (34.575, 55.698, pad14 end), 132 (34.41, -75.46), 133 (-18.56, -207.52), 134 (-210.15, -92.33), 136 (191.98, -122.78); Modi 78 (39.54, -129.92); DHD 41 (42.60, -134.31); UO-01 banker 63820 (-88.06, -102.92), team registrar 63821 (30, -130), command registrar 63840 (28, -126). Ambients 63880-63901 are all x ≤ -79 or z ≤ -230 or x ≥ 215, so none is within 3 m of the hub. Respawner 180 (34.70, -138.00) and arrival (34.70, -142.00) are far south of the hub box.
+- Builds from earlier sessions: `extract_actors`, `archetype_census`, `build-package-index`, `nav_inspect` (built exe `B:\targets\uo-19\debug\nav_inspect.exe`).
+- Grid probe (2 m, x -110..170, z -230..70, probe y -40): `probes\grid_out.txt`, parsed in PowerShell. Floor y = -40 - dy. Walkable = component 60 and h ≤ 0.5.
+- Picks by greedy search in spec order on comp-60 cells with 2 m clearance (the 4 orthogonal cells walkable), Euclidean spacing ≥ 2.5 m from every chosen key, from both fixed beams (34.575, 55.698) and (34.41, -75.46), and from the Science Center guide spots.
+- NW pod keys moved (see § Rejected): no comp-60 walkway within 19 m of the overview pod; the nearest comp-60 walkways (-98,-60) and (-100,-60) are nearest-anchor `sgc`, so the keys moved to the nearest `common_area` walkway toward the pod.
+- Probes: `probes\ca_vendors_modi_first.txt` and `probes\ca_vendors_pad_first.txt` (anchors first, 14 points). Both exit 0; all 16 rows `component=60 h=0.00 ok`. Not committed.
+- Science Center guide spots probed: `probes\ca_guides.txt`, exit 0, all four candidates `component=60 h=0.00 ok`.
+- Seeded world-18 check: `git grep ", 18, [0-9]+, '"` over `db/resources/Worlds/Seed/`. The row `(3, 22, 4, 20)` in `stargates.sql` is a stargate address, not a spawn, and is excluded from the spawn checks.
 
-## Left
+## § Points
 
-1. **Pods.** Search the nearest comp-60 walkway toward `ca.hweap.t4` (-96, -41) and `ca.harmor.t4` (-100, -36) (the art's NW large pod). Record the key, the walkway and the distance. Repeat for the east pod keys if the pick (80, -8) is not on the east walkway.
-2. **Crafting group.** Search the west side of the pod (x 14..30, z -40..-18) for four cells 2.5-3.5 m apart in the order biomedical, electronics, power, materials. Keep Biology (32, -21) and Physics (44, -21) free (2.5 m).
-3. **Spacing pass.** Re-run the picks with the crowding rule (each key at least 2.5 m from every other key and the fixed beams). Pick the closer alternative if a key moves.
-4. **Probe file.** Write `probes\ca_vendors.txt` (not committed): anchors first, then the 14 points, `NAME X Y Z`, Y = floor (`-40 - dy` from `grid_out.txt`). Run `nav_inspect` (built exe `B:\targets\uo-19\debug\nav_inspect.exe`) with stderr sent to a file (the component list is long). Run twice: once with `modi_seed78` first, once with `pad14` first. Keep only exit 0 with `h` 0.00. Re-snap any y that fails, then re-probe.
-5. **Headings.** `atan2(dx, dz)` from the NPC to the hub axis point (34.5, z) that the vendor faces (a deviation: no prop is named for the counters). Normalise to [0, 2π), 4 decimals.
-6. **Spacing check.** Against the rows above (2.5 m) and the ambients (3.0 m).
-7. Write §§ Points, SQL (one `sql` block per consumer), Science Center, Landmarks, Rejected, Art conflicts, nav_inspect summaries (packet § Steps 6).
+Key, Spawn, Template, Tag, x, y, z, Heading, Candidate, Exit (Modi), Exit (pad 14), Nearest NPC, Nearest respawner (180), Nearest ambient, Art spot, Art area, Art agrees. Heading = atan2(34.5 - x, 0 - z) (see § Landmarks). Exits: `nav_inspect` h 0.00, component 60, both anchors, exit 0.
+
+| Key | Spawn | Template | Tag | x | y | z | Heading | Candidate | Exit (Modi) | Exit (pad 14) | Nearest NPC | Nearest respawner | Nearest ambient | Art spot | Art area | Art agrees |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `ca.hweap.t1` | 63845 | 63812 | `UnionOmega_HumanWeaponsT1_Common` | 82.00 | -44.19 | -2.00 | 4.7545 | 82,-2 | ok | ok | 135 (74.7) | 144.0 | 136.0 (63896) | east pod Weapon (842,541) → (82.2, 1.8) | common_area | yes, 3.8 m |
+| `ca.hweap.t4` | 63846 | 63815 | `UnionOmega_HumanWeaponsT4_Common` | -62.00 | -45.84 | -64.00 | 0.9852 | -62,-64 | ok | ok | 63820 (46.8) | 121.8 | 130.0 (63881) | NW pod Adv. Weapon, overview (-96, -41) | common_area | no, moved 41.0 m (F35) |
+| `ca.harmor.t1` | 63851 | 63816 | `UnionOmega_HumanArmorT1_Common` | 78.00 | -44.12 | 8.00 | 4.5305 | 78,8 | ok | ok | 135 (64.5) | 152.3 | 142.0 (63896) | east pod Armor (825,513) → (79.2, 6.6) | common_area | yes, 1.8 m |
+| `ca.harmor.t4` | 63852 | 63819 | `UnionOmega_HumanArmorT4_Common` | -64.00 | -45.75 | -68.00 | 0.9666 | -64,-68 | ok | ok | 63820 (42.4) | 121.0 | 125.6 (63881) | NW pod Adv. Armor, overview (-100, -36) | common_area | no, moved 48.2 m (F35) |
+| `ca.jweap.t1` | 63857 | 63831 | `UnionOmega_JaffaWeaponsT1_Common` | 30.00 | -45.02 | 0.00 | 1.5708 | 30,0 | ok | ok | 135 (55.9) | 138.1 | 187.7 (63896) | hub Weapon (510,531) → (25.8, 3.5) | common_area | yes, 5.0 m |
+| `ca.jarmor.t1` | 63863 | 63835 | `UnionOmega_JaffaArmorT1_Common` | 48.00 | -44.46 | -2.00 | 4.8595 | 48,-2 | ok | ok | 135 (59.2) | 136.6 | 169.6 (63896) | hub Armor (646,532) → (48.9, 3.4) | common_area | yes, 5.5 m |
+| `ca.consumable.1` | 63865 | 63828 | `UnionOmega_Consumables_Common1` | 56.00 | -39.68 | 20.00 | 3.9631 | 56,20 | ok | ok | 135 (41.6) | 159.4 | 166.4 (63896) | Consumable (672,429) → (53.3, 20.9) | common_area | yes, 2.8 m |
+| `ca.consumable.2` | 63866 | 63828 | `UnionOmega_Consumables_Common2` | 24.00 | -44.57 | -2.00 | 1.3826 | 24,-2 | ok | ok | 135 (58.7) | 136.4 | 193.4 (63896) | Consumable (497,555) → (23.6, -0.6) | common_area | yes, 1.5 m |
+| `ca.consumable.3` | 63867 | 63828 | `UnionOmega_Consumables_Common3` | 52.00 | -44.17 | -2.00 | 4.8262 | 52,-2 | ok | ok | 135 (60.3) | 137.1 | 165.6 (63896) | Consumable (668,557) → (52.7, -0.9) | common_area | yes, 1.3 m |
+| `ca.craft.biomedical` | 63964 | 63824 | `UnionOmega_CommonCraftingBiomed` | 24.00 | -37.17 | -28.00 | 0.3588 | 24,-28 | ok | ok | 132 (48.6) | 110.5 | 191.9 (63896) | none (group W of Science Center pod (582,717) → (38, -28)) | common_area | n/a |
+| `ca.craft.electronics` | 63965 | 63825 | `UnionOmega_CommonCraftingElec` | 26.00 | -37.72 | -30.00 | 0.2761 | 26,-30 | ok | ok | 132 (46.2) | 108.3 | 189.9 (63896) | none (group) | common_area | n/a |
+| `ca.craft.power` | 63966 | 63826 | `UnionOmega_CommonCraftingPowerSys` | 28.00 | -37.12 | -28.00 | 0.2281 | 28,-28 | ok | ok | 132 (47.9) | 110.2 | 187.9 (63896) | none (group) | common_area | n/a |
+| `ca.craft.materials` | 63967 | 63827 | `UnionOmega_CommonCraftingMat` | 26.00 | -36.52 | -26.00 | 0.3160 | 26,-26 | ok | ok | 132 (50.2) | 112.3 | 189.9 (63896) | none (group) | common_area | n/a |
+| `ca.auctioneer` | 63819 | 305 | `UnionOmega_Auctioneer` | 30.00 | -44.91 | -8.00 | 0.5124 | 30,-8 | ok | ok | 135 (63.9) | 130.1 | 186.7 (63896) | Auction House (540,594) → (30.9, -7.2) | common_area | yes, 1.2 m |
+
+Spacing: smallest key-to-key distance 2.83 m (craft biomed/electronics, consecutive diagonal step). Fixed beams 135 and 132, respawner 180, arrival (34.70, -142.00), Modi 78, DHD 41 and the seeded NPCs are all ≥ 40 m away. Ambients 63880-63901 are ≥ 125 m away. Heading of the two NW keys and the other twelve is from the probe-verified positions.
+
+## § SQL
+
+One block per consumer, rows in spawn order.
+
+### For UO-11
+
+```sql
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63845, 82.00, -44.19, -2.00, 4.7545, 18, 63812, 'UnionOmega_HumanWeaponsT1_Common', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63846, -62.00, -45.84, -64.00, 0.9852, 18, 63815, 'UnionOmega_HumanWeaponsT4_Common', NULL, true);
+```
+
+### For UO-12
+
+```sql
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63857, 30.00, -45.02, 0.00, 1.5708, 18, 63831, 'UnionOmega_JaffaWeaponsT1_Common', NULL, true);
+```
+
+### For UO-27
+
+```sql
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63851, 78.00, -44.12, 8.00, 4.5305, 18, 63816, 'UnionOmega_HumanArmorT1_Common', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63852, -64.00, -45.75, -68.00, 0.9666, 18, 63819, 'UnionOmega_HumanArmorT4_Common', NULL, true);
+```
+
+### For UO-28
+
+```sql
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63863, 48.00, -44.46, -2.00, 4.8595, 18, 63835, 'UnionOmega_JaffaArmorT1_Common', NULL, true);
+```
+
+### For UO-29
+
+```sql
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63964, 24.00, -37.17, -28.00, 0.3588, 18, 63824, 'UnionOmega_CommonCraftingBiomed', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63965, 26.00, -37.72, -30.00, 0.2761, 18, 63825, 'UnionOmega_CommonCraftingElec', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63966, 28.00, -37.12, -28.00, 0.2281, 18, 63826, 'UnionOmega_CommonCraftingPowerSys', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63967, 26.00, -36.52, -26.00, 0.3160, 18, 63827, 'UnionOmega_CommonCraftingMat', NULL, true);
+```
+
+### For UO-30
+
+```sql
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63865, 56.00, -39.68, 20.00, 3.9631, 18, 63828, 'UnionOmega_Consumables_Common1', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63866, 24.00, -44.57, -2.00, 1.3826, 18, 63828, 'UnionOmega_Consumables_Common2', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63867, 52.00, -44.17, -2.00, 4.8262, 18, 63828, 'UnionOmega_Consumables_Common3', NULL, true);
+```
+
+### For UO-32
+
+```sql
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63819, 30.00, -44.91, -8.00, 0.5124, 18, 305, 'UnionOmega_Auctioneer', NULL, true);
+```
+
+## § Science Center
+
+- The four crafting vendors take the **west** side of the Science Center pod (38, -28): biomedical (24, -28), electronics (26, -30), power (28, -28), materials (26, -26). Consecutive steps are 2.83 m (diagonal), all pairs ≥ 2.83 m. Nearest group member to the pod centre is 10 m.
+- Free guide spots for UO-20 (probed, exit 0, component 60, h 0.00, both anchors): **Biology (32, -22)**, y -35.97, and **Physics (44, -22)**, y -36.06. Both are ≥ 7.2 m from the nearest crafting vendor (28, -28) and 1 m south of the art spots (32,-21) and (44,-21), which fall between grid rows -22 and -20 (both rows walkable: (32,-20) y -35.89, (44,-20) y -36.02).
+
+## § Landmarks
+
+The census and the actor list name no Auction House, no Weapon or Armor counter, no Consumable prop and no pod within the hub box, so no landmark matches these art spots. The mapping used is the approximate linear map from the Common Area enlargement (F34: the art does not affine-map, so it is only a search start):
+
+`x = 36 + (px - 570) * 0.17`, `z = 70 - (py - 140) * 0.17`
+
+Landmark anchors used for orientation:
+
+| Art spot | World landmark used | x, z | Source |
+|---|---|---|---|
+| East pod Weapon / Armor | comp-60 walkway east of the hub centre | 82.2, 1.8 / 79.2, 6.6 | art map; mesh picks 3.8 m / 1.8 m away |
+| NW pod Adv. Weapon / Adv. Armor | nearest `common_area` comp-60 walkway toward the pod | -62, -64 / -64, -68 | overview pod (-96, -41) and (-100, -36), F35 |
+| Hub Weapon / Armor | hub walkway west / east of the N-S axis | 25.8, 3.5 / 48.9, 3.4 | art map |
+| Consumables 1/2/3 | art map | 53.3, 20.9 / 23.6, -0.6 / 52.7, -0.9 | art map |
+| Auction House | art map | 30.9, -7.2 | art map |
+| Science Center pod | art map | 38, -28 | art map |
+| Hub axis / pad 14 | pad 14 prop (34.56, -36.48, 55.68), beam 135 (34.575, 55.698) | 34.5, 0 (facing point) | census, seed |
+
+Heading facing point: (34.5, 0), the hub centre. No counter prop is named for the Weapon or Armor counters, so each vendor faces the hub centre (a deviation from "counter or prop": none is named).
+
+## § Rejected
+
+- **NW pod, original picks (-98,-62) and (-102,-62)** (and (-98,-60), (-100,-60), the nearest comp-60 cells, 19-24 m from the pod): these are comp 60 and pass the anchors, but their nearest-anchor area is `sgc` (Ring region 12 Left (-210.15, -92.33) at about 116 m; Ring region 10 Center at about 133 m). Rejected by the art-area rule.
+- **NW pod cells on comp 133** (for example (-106, -74), 34.5 m from the pod): fail the Modi anchor (component 133).
+- **Pod cells within 15 m of the overview pod**: none exist on comp 60 (grid).
+- **Non-60 teal component** in the hub middle (about x 18..54, z 0..40): fails the anchors.
+- **pick.txt grid picks** (80,-8), (72,8), (32,-2), (52,-8), (58,18), (32,-6), (50,-10), (32,-10): replaced by spacing-aware picks (82,-2), (78,8), (30,0), (48,-2), (56,20), (24,-2), (52,-2), (30,-8) after the 2.5 m rule.
+- **Craft cells east of the Science Center pod**: they would sit between the pod and the guides; the chosen group is west only.
+- **stargate address row (3, 22, 4, 20)**: not a spawn; excluded from the spacing set.
+
+## § Art conflicts
+
+- NW pods: the overview spots (-96, -41) and (-100, -36) have no comp-60 walkway within 19 m, and the nearest comp-60 walkways are `sgc` by the nearest-anchor rule. The NW keys sit 41.0 m and 48.2 m from the overview spots, on the nearest `common_area` walkway. The art's pod position is therefore not a sealed point; the mesh decides (rule 8).
+- Hub Weapon, Armor, Consumables and Auction House spots: mesh picks are 1.2-5.5 m from the mapped art spot. The art is denser than the mesh allows.
+- Biology and Physics art spots (32, -21) and (44, -21) fall between grid rows; the guide spots are (32, -22) and (44, -22), probed exit 0.
+
+## § nav_inspect summaries
+
+- `ca_vendors_modi_first.txt` (`modi_seed78`, then `pad14`, then 14 points): exit 0. All 16 rows `component=60 h=0.00 m ok`.
+- `ca_vendors_pad_first.txt` (`pad14`, then `modi_seed78`, then 14 points): exit 0. All 16 rows `component=60 h=0.00 m ok`.
+- `ca_guides.txt` (both anchors, then four Science Center guide candidates): exit 0, all `component=60 h=0.00 m ok`.
+- Probe files, stdout and stderr: `.claude\reports\union-omega\probes\`, not committed.
+- Lane status: no cargo run; `nav_inspect` run directly from `B:\targets\uo-19\debug\` (built earlier through `lane.ps1`). No `status=` line is produced for these runs.
 
 ## Next step
 
-Left 1 (pods). Use `scratchpad\hub_map.png` only as a visual check. The grid picks in `scratchpad\pick.txt` are a start, not sealed points. Do not reuse the pick script's output without the probe run.
-
-## Lane status
-
-No `status=` check line has been run yet for this packet's checks (nav_inspect probe sets are not run yet). Builds only: `extract_actors`, `archetype_census`, `build-package-index`, `nav_inspect` each `status=ok exit=0`.
+None for UO-19. The coder reports and commits this worknote. A reviewer may check the § Points rows against `probes\ca_run_*.txt`.
