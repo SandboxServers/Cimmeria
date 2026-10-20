@@ -92,6 +92,12 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- [UO-30] end
 
 -- [UO-31] begin: spawns 63804-63808
+-- CIMMERIA_RECONSTRUCTION, navmesh-sealed (UO-17, UO-18)
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63804, -80.00, -48.02, -125.00, 4.4621, 18, 63804, 'UnionOmega_SoldierTrainer', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63805, -80.00, -48.02, -128.00, 4.6464, 18, 63805, 'UnionOmega_ScientistTrainer', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63806, -80.00, -48.02, -131.00, 4.8353, 18, 63806, 'UnionOmega_CommandoTrainer', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63807, -80.00, -48.02, -134.00, 5.0158, 18, 63807, 'UnionOmega_ArchaeologistTrainer', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63808, 306.00, -61.23, -104.00, 4.7124, 18, 63808, 'UnionOmega_JaffaTrainer', NULL, true);
 -- [UO-31] end
 
 -- [UO-32] begin: spawns 63819
