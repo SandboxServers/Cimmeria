@@ -30,6 +30,13 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- [UO-12] end
 
 -- [UO-27] begin: spawns 63847-63852
+-- CIMMERIA_RECONSTRUCTION, navmesh-sealed (UO-17, UO-19); D-UO16 B, D-UO28
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63847, -169.59, -36.42, -168.97, 3.1416, 18, 63816, 'UnionOmega_HumanArmorT1', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63848, -166.00, -36.42, -169.00, 5.7364, 18, 63817, 'UnionOmega_HumanArmorT2', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63849, -108.00, -47.82, -92.00, 3.7390, 18, 63818, 'UnionOmega_HumanArmorT3', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63850, -108.00, -47.82, -95.00, 4.5152, 18, 63819, 'UnionOmega_HumanArmorT4', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63851, 78.00, -44.12, 8.00, 4.5305, 18, 63816, 'UnionOmega_HumanArmorT1_Common', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63852, -64.00, -45.75, -68.00, 0.9666, 18, 63819, 'UnionOmega_HumanArmorT4_Common', NULL, true);
 -- [UO-27] end
 
 -- [UO-28] begin: spawns 63859-63863
