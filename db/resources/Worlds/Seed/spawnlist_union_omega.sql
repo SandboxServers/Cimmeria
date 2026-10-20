@@ -93,6 +93,8 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- [UO-32] end
 
 -- [UO-33] begin: spawns 63818
+-- CIMMERIA_RECONSTRUCTION, navmesh-sealed (UO-20)
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63818, 39.00, -44.56, 7.00, 3.7129, 18, 63855, 'UnionOmega_Medic', NULL, true); -- ca.medic
 -- [UO-33] end
 
 -- [UO-35] begin: spawns 63810-63817

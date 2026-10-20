@@ -78,6 +78,8 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- [UO-31] end
 
 -- [UO-33] begin: medic (template 63855)
+-- RESTORED_SOURCE moniker 6964; CIMMERIA_RECONSTRUCTION body (template 1302, unarmed); D-UO19 c, D-UO33, D-UO35, D-UO37
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, use_cover, training_dummy) VALUES (63855, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01}', 0, 134217728, 570, 1, 0, 1, 6964, NULL, NULL, NULL, 'Union Omega - Medic', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL, false, false);
 -- [UO-33] end
 
 -- [UO-35] begin: guide (template 63829)

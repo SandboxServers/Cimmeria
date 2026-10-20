@@ -18,6 +18,8 @@ SET search_path = resources, pg_catalog;
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (63900, 0, NULL, 'DUIST_None', NULL, NULL, 'Union Omega authored barks (never displayed)');
 
 -- [UO-33] begin: medic line, screen 63905
+-- CIMMERIA_AUTHORING (UO-15; H-LBL: no visible label)
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (63900, 63905, 'Your injuries have been seen to, and you are patched up and ready to go.', 0, 4);
 -- [UO-33] end
 
 -- [UO-35] begin: guide lines, screens 63901-63904
