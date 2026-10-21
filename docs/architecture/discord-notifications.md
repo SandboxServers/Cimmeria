@@ -287,8 +287,10 @@ by design.
 validator emits warn-only telemetry (`movement.speed_warning`,
 `movement.validation_reject`) under `target: "movement.validation"`. It's
 calibration data destined for SigNoz (to compute the legitimate p99.9 speed
-before the speed layer is ever promoted to snap-back) and it fires during
-normal play — sub-tick deltas produce huge / infinite implied-speed ratios.
+before the speed layer is ever promoted to snap-back) and it can fire during
+normal play. The validator measures speed over a 250 ms per-entity window
+(#1249), so sub-tick deltas no longer read as huge implied-speed ratios,
+but real drift still warns.
 [`DiscordLayer::on_event`](../../crates/discord/src/layer/mod.rs) drops this target
 outright (same mechanism as the recursion guard) so it never floods the errors
 channel; the data still flows to logs and SigNoz. Pinned by
