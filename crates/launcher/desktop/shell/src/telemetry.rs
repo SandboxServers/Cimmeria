@@ -3,6 +3,7 @@
 //! forwarder thread. Nothing here blocks: the file writer is non-blocking and the
 //! forward layer only `try_send`s.
 use crate::host::NativeHost;
+use cimmeria_launcher_engine::game_telemetry::launcher_event::wire_target;
 use cimmeria_launcher_engine::game_telemetry::launcher_session::LauncherSender;
 use std::fmt;
 use std::io;
@@ -23,7 +24,6 @@ pub(crate) use cimmeria_launcher_engine::game_telemetry::launcher_event::{
     LauncherRecord, Redaction,
 };
 
-pub(crate) const FORWARD_TARGET: &str = "adoption";
 pub(crate) const LOG_FILE_PREFIX: &str = "launcher"; // launcher.<yyyy-mm-dd>.log
 pub(crate) const LOG_FILES_KEPT: usize = 7;
 pub(crate) const FORWARD_CAPACITY: usize = 512; // sync_channel bound
@@ -80,14 +80,16 @@ where
     Some((layer, guard))
 }
 
-/// INFO for the launcher crates and `adoption`; WARN for everything else.
+/// INFO for the launcher crates, `adoption` and the `launcher` prefix (the file-only
+/// `launcher.pipeline` target); WARN for everything else.
 fn file_filter() -> Targets {
     Targets::new()
         .with_default(LevelFilter::WARN)
         .with_target("cimmeria_launcher_engine", LevelFilter::INFO)
         .with_target("cimmeria_launcher_core", LevelFilter::INFO)
         .with_target(SHELL_TARGET, LevelFilter::INFO)
-        .with_target(FORWARD_TARGET, LevelFilter::INFO)
+        .with_target("adoption", LevelFilter::INFO)
+        .with_target("launcher", LevelFilter::INFO)
 }
 
 /// A writer that takes the home folder out of every line before it goes on.
@@ -109,8 +111,8 @@ impl<W: io::Write> io::Write for Redacting<W> {
     }
 }
 
-/// Queues `adoption` records of INFO and above for the forwarder. A full queue
-/// drops the record: this layer never blocks the UI.
+/// Queues records on a launcher wire target (C1) at INFO and above for the forwarder.
+/// A full queue drops the record: this layer never blocks the UI.
 pub(crate) struct ForwardLayer {
     tx: SyncSender<LauncherRecord>,
 }
@@ -124,7 +126,10 @@ impl ForwardLayer {
 impl<S: Subscriber> Layer<S> for ForwardLayer {
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
         let metadata = event.metadata();
-        if metadata.target() != FORWARD_TARGET || *metadata.level() > Level::INFO {
+        let Some(wire) = wire_target(metadata.target()) else {
+            return;
+        };
+        if *metadata.level() > Level::INFO {
             return;
         }
         let mut visitor = FieldVisitor::default();
@@ -132,6 +137,7 @@ impl<S: Subscriber> Layer<S> for ForwardLayer {
         let record = LauncherRecord {
             ts_ms: now_ms(),
             level: metadata.level().to_string().to_ascii_lowercase(),
+            target: wire,
             fields: visitor.fields,
         };
         let _ = self.tx.try_send(record);
@@ -203,4 +209,42 @@ pub(crate) fn spawn_forwarder(
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc::sync_channel;
+    use tracing::subscriber::with_default;
+    use tracing::{debug, info};
+
+    #[test]
+    fn a_launcher_install_info_event_is_forwarded_on_its_wire_target() {
+        let (tx, rx) = sync_channel(16);
+        with_default(Registry::default().with(ForwardLayer::new(tx)), || {
+            info!(target: "launcher.install", operation = 7u64, "install finished");
+        });
+        let records: Vec<LauncherRecord> = rx.try_iter().collect();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].target, "client.launcher.install");
+        assert_eq!(records[0].level, "info");
+        assert_eq!(records[0].fields["operation"], 7);
+    }
+
+    #[test]
+    fn a_file_only_target_and_a_debug_event_are_not_forwarded() {
+        let (tx, rx) = sync_channel(16);
+        with_default(Registry::default().with(ForwardLayer::new(tx)), || {
+            info!(target: "launcher.pipeline", "file only");
+            debug!(target: "launcher.install", "debug only");
+        });
+        assert_eq!(rx.try_iter().count(), 0);
+    }
+
+    #[test]
+    fn the_file_filter_keeps_launcher_info_in_the_local_log() {
+        let filter = file_filter();
+        assert!(filter.would_enable("launcher.pipeline", &Level::INFO));
+        assert!(!filter.would_enable("launcher.pipeline", &Level::DEBUG));
+    }
 }

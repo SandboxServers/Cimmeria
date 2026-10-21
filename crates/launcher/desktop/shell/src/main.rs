@@ -6,8 +6,12 @@ mod host;
 #[cfg(test)]
 mod release_version;
 mod telemetry;
+// The C9 capture helper; LT-06 onward drive it from the event helpers.
 #[cfg(test)]
 mod telemetry_tests;
+#[cfg(test)]
+#[allow(dead_code)]
+mod test_capture;
 mod updater_restart;
 mod webview2;
 
@@ -389,7 +393,13 @@ async fn choose_existing_game_folder(
     // Only the fixed, signed catalog names the release; the webview cannot.
     let release = cimmeria_launcher_engine::catalog::fetch_release()
         .await
-        .map_err(|_| AdoptionError::ReleaseUnavailable)?;
+        .map_err(|_| {
+            crate::host::adoption_refusal(
+                AdoptionError::ReleaseUnavailable,
+                "release_unavailable",
+                "catalog_unavailable",
+            )
+        })?;
     crate::host::adoption_events::folder_chosen(in_place, true);
     tauri::async_runtime::spawn_blocking(move || {
         host.begin_folder_adoption(selected, location, mode, release)

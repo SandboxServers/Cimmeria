@@ -492,6 +492,43 @@ async fn the_replay_places_the_seeds_bundled_cooked_data() {
     assert_eq!(std::fs::read(&replaced[PLACED_PAK]).unwrap(), SEED_PAK);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_replay_output_the_release_does_not_sign_is_named_as_a_mismatch() {
+    let (mut index, release, blobs) = real_artifacts();
+    // The index promises an overlay that patch 0 does not write.
+    index.patches[0].outputs = vec![file(OVERLAY, b"overlay the release never signed")];
+    let server = serve(&blobs).await;
+    let (folder, scanned, found) =
+        classify_folder(&index, &[(LEVELS, SEED_LEVELS), (OVERLAY, SEED_OVERLAY)]);
+    let planned = plan(&index, &found, &scanned);
+    let state = tempfile::tempdir().unwrap();
+    let fetched = fetch(
+        state.path(),
+        &server,
+        &release,
+        &planned,
+        &SeedSourceHandle::download(),
+    );
+    let prep = tempfile::tempdir().unwrap();
+    let (result, record) = rejection::scope(|| {
+        super::replay::replay(
+            &planned,
+            &index,
+            &release,
+            &fetched,
+            folder.path(),
+            &scanned,
+            prep.path(),
+            &CancellationToken::new(),
+            &sink(),
+        )
+    });
+    assert_eq!(result.err(), Some(Error::InvalidArtifact));
+    let record = record.unwrap();
+    assert_eq!(record.check, "patch_replay_mismatch");
+    assert_eq!(record.entry.as_deref(), Some(OVERLAY));
+}
+
 async fn serve(blobs: &[(&str, Vec<u8>)]) -> MockServer {
     let server = MockServer::start().await;
     for (name, bytes) in blobs {

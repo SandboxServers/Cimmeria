@@ -50,6 +50,7 @@ wiremock = "0.6"
 crc32fast = "1"
 # The dev manifest signing key and the archive fixtures the storage tests use.
 cimmeria-launcher-core = { path = "../../../launcher-core", features = ["test-fixtures"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
 
 [[test]]
 name = "helper_supervisor_process"

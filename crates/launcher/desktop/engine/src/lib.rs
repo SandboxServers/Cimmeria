@@ -32,6 +32,11 @@ pub use cimmeria_launcher_core::install_progress;
 pub use cimmeria_launcher_core::telemetry_endpoint;
 pub use cimmeria_launcher_core::telemetry_session;
 
+// The C9 capture helper; LT-06 onward drive it from the event helpers.
+#[cfg(test)]
+#[allow(dead_code)]
+mod test_capture;
+
 pub mod archive_worker;
 
 pub mod helper_supervisor;

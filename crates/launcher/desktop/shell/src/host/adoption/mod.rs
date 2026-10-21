@@ -14,6 +14,8 @@ use cimmeria_launcher_engine::{OperationKind, OperationState};
 use uuid::Uuid;
 mod contract;
 pub(crate) mod events;
+pub(crate) mod refusal;
+mod rejection_dto;
 mod review;
 mod status;
 #[cfg(all(test, target_os = "macos"))]
@@ -22,6 +24,7 @@ use contract::{Activity, Backend};
 pub use contract::{AdoptionCommand, AdoptionError, AdoptionStatus};
 #[cfg(test)]
 use contract::{Completed, Phase, Reconciliation};
+use refusal::refusal;
 use review::Review;
 #[cfg(all(test, not(target_os = "macos")))]
 mod copy_tests;
@@ -34,6 +37,8 @@ mod in_place_tests;
 mod lifecycle_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod play_tests;
+#[cfg(test)]
+mod rejection_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod tests;
 #[cfg(all(test, target_os = "macos"))]
@@ -53,8 +58,20 @@ fn legacy_import(
 ) -> Result<cimmeria_launcher_engine::migration::LegacyImport, AdoptionError> {
     state
         .legacy_import()
-        .map_err(|_| AdoptionError::CorruptState)?
-        .ok_or(AdoptionError::ImportRequired)
+        .map_err(|_| {
+            refusal(
+                AdoptionError::CorruptState,
+                "state_corrupt",
+                "legacy_import_unreadable",
+            )
+        })?
+        .ok_or_else(|| {
+            refusal(
+                AdoptionError::ImportRequired,
+                "import_required",
+                "no_saved_import",
+            )
+        })
 }
 
 /// The new folder a verified copy is created in, inside the folder the player picked.
@@ -62,10 +79,20 @@ fn legacy_import(
 fn copy_destination(location: PathBuf) -> Result<PathBuf, AdoptionError> {
     let destination = location
         .canonicalize()
-        .map_err(|_| AdoptionError::InvalidDirectory)?
+        .map_err(|_| {
+            refusal(
+                AdoptionError::InvalidDirectory,
+                "invalid_directory",
+                "location_unresolvable",
+            )
+        })?
         .join(COPY_FOLDER);
     if std::fs::symlink_metadata(&destination).is_ok() {
-        return Err(AdoptionError::InvalidDirectory);
+        return Err(refusal(
+            AdoptionError::InvalidDirectory,
+            "invalid_directory",
+            "copy_folder_exists",
+        ));
     }
     Ok(destination)
 }
@@ -77,6 +104,7 @@ pub(crate) struct Adoption {
     confirm: Option<ConfirmJob>,
     last_error: Option<AdoptionError>,
     last_unsafe: Option<adoption::UnsafeReport>,
+    last_rejection: Option<rejection_dto::AdoptionRejection>,
     // Served, with live progress, while publication holds the store.
     facts: Option<status::Facts>,
 }
@@ -139,16 +167,32 @@ impl NativeHost {
     pub fn adoption_choice_allowed(&self) -> Result<(), AdoptionError> {
         let status = self.adoption_status()?;
         if !matches!(status.backend, Backend::Available | Backend::InPlace) {
-            return Err(AdoptionError::PlatformUnavailable);
+            return Err(refusal(
+                AdoptionError::PlatformUnavailable,
+                "platform_unavailable",
+                "no_backend",
+            ));
         }
         if status.native.requires_reopen {
-            return Err(AdoptionError::PersistenceUncertain);
+            return Err(refusal(
+                AdoptionError::PersistenceUncertain,
+                "recovery_required",
+                "reopen_required",
+            ));
         }
         if status.reconciliation.is_some() {
-            return Err(AdoptionError::RecoveryRequired);
+            return Err(refusal(
+                AdoptionError::RecoveryRequired,
+                "recovery_required",
+                "reconciliation_pending",
+            ));
         }
         if status.owned {
-            return Err(AdoptionError::IdentityConflict);
+            return Err(refusal(
+                AdoptionError::IdentityConflict,
+                "identity_conflict",
+                "owned_installation",
+            ));
         }
         if status.activity != Activity::Idle
             || status
@@ -157,7 +201,7 @@ impl NativeHost {
                 .operation
                 .is_some_and(|op| !op.state.terminal())
         {
-            return Err(AdoptionError::Busy);
+            return Err(refusal(AdoptionError::Busy, "busy", "operation_running"));
         }
         Ok(())
     }
@@ -232,7 +276,13 @@ impl NativeHost {
                 return Err(AdoptionError::UnsupportedMode)
             }
             (adoption::AdoptionMode::Copy, Some(location)) => copy_destination(location)?,
-            (adoption::AdoptionMode::Copy, None) => return Err(AdoptionError::InvalidDirectory),
+            (adoption::AdoptionMode::Copy, None) => {
+                return Err(refusal(
+                    AdoptionError::InvalidDirectory,
+                    "invalid_directory",
+                    "no_location",
+                ))
+            }
         };
         self.admit_adoption_preview(release, mode, |_| {
             Ok((adoption::SourceRequest::Folder { selected }, destination))
@@ -250,7 +300,7 @@ impl NativeHost {
                 || adoption.session.is_some()
                 || adoption.confirm.is_some()
             {
-                return Err(AdoptionError::Busy);
+                return Err(refusal(AdoptionError::Busy, "busy", "adoption_active"));
             }
             let store = self.store()?;
             let request = {

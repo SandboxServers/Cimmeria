@@ -246,7 +246,11 @@ pub(super) fn hash(path: &Path, cancel: &CancellationToken) -> Result<Entry, Err
         size += n as u64;
     }
     if identity(path)? != before || file_identity(&file)? != before || size != before.length {
-        return Err(Error::SourceChanged);
+        let check = rejection::Rejection::new("folder_changed_during_check")
+            .entry(rejection::relative(path.parent().unwrap_or(path), path))
+            .expected(before.length.to_string())
+            .found(size.to_string());
+        return Err(rejection::reject(Error::SourceChanged, check));
     }
     Ok(Entry {
         sha256: sha.finalize().into(),
@@ -264,13 +268,20 @@ pub(super) fn scan(root: &Path, cancel: &CancellationToken) -> Result<Index, Err
         cancel: &CancellationToken,
     ) -> Result<(), Error> {
         check_cancel(cancel)?;
-        if depth > MAX_DEPTH || out.len() > MAX_FILES {
-            return Err(StorageError::TooLarge.into());
+        if depth > MAX_DEPTH {
+            let check = rejection::Rejection::new("folder_too_deep")
+                .entry(rejection::relative(root, path))
+                .expected(MAX_DEPTH.to_string())
+                .found(depth.to_string());
+            return Err(rejection::reject(StorageError::TooLarge.into(), check));
+        }
+        if out.len() > MAX_FILES {
+            return Err(too_large(root, path, out.len()));
         }
         identity(path)?;
         for child in std::fs::read_dir(path)? {
             if out.len() >= MAX_FILES || folded.len() >= MAX_FILES {
-                return Err(StorageError::TooLarge.into());
+                return Err(too_large(root, path, folded.len()));
             }
             let child = child?;
             let path = child.path();
@@ -312,9 +323,28 @@ pub(super) fn scan(root: &Path, cancel: &CancellationToken) -> Result<Index, Err
     let mut index = Index::new();
     walk(root, root, 0, &mut index, &mut BTreeMap::new(), cancel)?;
     if identity(root)? != before {
-        return Err(Error::SourceChanged);
+        let check = rejection::Rejection::new("folder_changed_during_check")
+            .entry(".")
+            .expected("same folder")
+            .found("replaced");
+        return Err(rejection::reject(Error::SourceChanged, check));
     }
     Ok(index)
+}
+
+/// `TooLarge` for a folder past the file cap: the walked folder and the count seen.
+fn too_large(root: &Path, path: &Path, count: usize) -> Error {
+    let check = rejection::Rejection::new("folder_too_large")
+        .entry(rejection::relative(root, path))
+        .expected(MAX_FILES.to_string())
+        .found(count.to_string());
+    rejection::reject(StorageError::TooLarge.into(), check)
+}
+
+/// The size and digest of `entry` in the C14 `digest()` form.
+fn entry_digest(size: u64, sha256: &[u8]) -> String {
+    let hex: String = sha256.iter().map(|b| format!("{b:02x}")).collect();
+    rejection::digest(size, &hex)
 }
 pub(super) fn content_digest(index: &Index) -> Result<[u8; 32], Error> {
     digest(
@@ -332,7 +362,14 @@ pub(super) fn copy(
 ) -> Result<(), Error> {
     let mut input = open(source)?;
     if file_identity(&input)? != expected.identity {
-        return Err(Error::SourceChanged);
+        let check = rejection::Rejection::new("folder_changed_during_check")
+            .entry(rejection::relative(
+                source.parent().unwrap_or(source),
+                source,
+            ))
+            .expected(entry_digest(expected.size, &expected.sha256))
+            .found("replaced");
+        return Err(rejection::reject(Error::SourceChanged, check));
     }
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)?;
@@ -351,11 +388,17 @@ pub(super) fn copy(
         sha.update(&buffer[..n]);
         size += n as u64;
     }
-    if size != expected.size
-        || <[u8; 32]>::from(sha.finalize()) != expected.sha256
-        || identity(source)? != expected.identity
+    let actual: [u8; 32] = sha.finalize().into();
+    if size != expected.size || actual != expected.sha256 || identity(source)? != expected.identity
     {
-        return Err(Error::SourceChanged);
+        let check = rejection::Rejection::new("folder_changed_during_check")
+            .entry(rejection::relative(
+                source.parent().unwrap_or(source),
+                source,
+            ))
+            .expected(entry_digest(expected.size, &expected.sha256))
+            .found(entry_digest(size, &actual));
+        return Err(rejection::reject(Error::SourceChanged, check));
     }
     output.set_times(std::fs::FileTimes::new().set_modified(input.metadata()?.modified()?))?;
     output.sync_all()?;
@@ -366,5 +409,22 @@ pub(super) fn check_cancel(cancel: &CancellationToken) -> Result<(), Error> {
         Err(Error::Cancelled)
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn too_large_records_the_walked_folder_and_the_count() {
+        let root = Path::new("base");
+        let (error, first) = rejection::scope(|| too_large(root, &root.join("sub"), 200_001));
+        let first = first.expect("the too-large check is recorded");
+        assert_eq!(first.check, "folder_too_large");
+        assert_eq!(first.entry.as_deref(), Some("sub"));
+        assert_eq!(first.expected.as_deref(), Some("200000"));
+        assert_eq!(first.found.as_deref(), Some("200001"));
+        assert_eq!(rejection::code(&error), "corrupt_state");
     }
 }

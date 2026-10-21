@@ -665,6 +665,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
  "unrar",
  "uuid",
  "windows-sys 0.61.2",

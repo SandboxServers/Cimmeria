@@ -8,6 +8,7 @@ fn record(level: &str, fields: Value) -> LauncherRecord {
     LauncherRecord {
         ts_ms: 1_000,
         level: level.to_string(),
+        target: "client.launcher.adoption",
         fields: fields.as_object().cloned().unwrap_or_else(Map::new),
     }
 }

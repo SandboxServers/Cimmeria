@@ -1,7 +1,18 @@
 //! Index acquisition against a loopback origin: a published index is used, a
 //! refused one falls back to the build, and a verified cache is not refetched.
 //! Runs on every OS; the signed fixtures are tiny and built here.
+use super::index_source::IndexFallback;
 use super::verification::{acquire_index, classify, download_for, IndexOrigin};
+
+/// A refused-index fallback for the origin-only tests.
+fn fallback() -> IndexFallback {
+    IndexFallback {
+        reason: "index_not_published",
+        check: None,
+        http_status: None,
+        seed_bytes: 0,
+    }
+}
 use super::*;
 use cimmeria_launcher_core::file_index::FileIndex;
 use cimmeria_launcher_core::seed_source::SeedSourceHandle;
@@ -151,8 +162,18 @@ async fn a_published_index_with_the_wrong_digest_falls_back_to_the_build() {
     let signed = release(&seed, Some(reference(&index, Some(wrong.clone()))));
     let server = origin(&seed, &index).await;
     let state = tempfile::tempdir().unwrap();
-    let (found, origin) = acquire(state.path(), &signed, &server).unwrap();
-    assert_eq!(origin, IndexOrigin::Built);
+    let (result, logs) = crate::test_capture::capture(|| acquire(state.path(), &signed, &server));
+    let (found, origin) = result.unwrap();
+    let IndexOrigin::Built(fallback) = origin else {
+        panic!("a digest mismatch must fall back to the build, got {origin:?}");
+    };
+    assert_eq!(fallback.reason, "index_digest_mismatch");
+    assert_eq!(fallback.seed_bytes, signed.manifest().seed.size);
+    let events = logs
+        .iter()
+        .filter(|row| row.field("event") == Some("adoption_index_fallback"))
+        .count();
+    assert_eq!(events, 1);
     assert_eq!(found.seed.sha256, hex(&Sha256::digest(&seed)));
     let seen = requests(&server).await;
     assert_eq!(seen.iter().filter(|p| *p == "/seed.zip").count(), 1);
@@ -160,6 +181,45 @@ async fn a_published_index_with_the_wrong_digest_falls_back_to_the_build() {
         .path()
         .join(format!("file-index-{wrong}.json"))
         .exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_manifest_without_a_file_index_is_built_with_index_not_published() {
+    let seed = seed_bytes();
+    let signed = release(&seed, None);
+    let server = origin(&seed, &[]).await;
+    let state = tempfile::tempdir().unwrap();
+    let (_, origin) = acquire(state.path(), &signed, &server).unwrap();
+    let IndexOrigin::Built(fallback) = origin else {
+        panic!("a manifest with no file index must build, got {origin:?}");
+    };
+    assert_eq!(fallback.reason, "index_not_published");
+    assert_eq!(fallback.seed_bytes, signed.manifest().seed.size);
+    assert!(!requests(&server).await.contains(&format!("/{INDEX_BLOB}")));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_404_for_the_signed_index_is_index_download_failed() {
+    let seed = seed_bytes();
+    let index = published_index(&seed);
+    let signed = release(&seed, Some(reference(&index, None)));
+    let server = MockServer::start().await;
+    Mock::given(path("/seed.zip"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(seed.clone()))
+        .mount(&server)
+        .await;
+    Mock::given(path(format!("/{INDEX_BLOB}")))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let state = tempfile::tempdir().unwrap();
+    let (_, origin) = acquire(state.path(), &signed, &server).unwrap();
+    let IndexOrigin::Built(fallback) = origin else {
+        panic!("a 404 for the signed index must build, got {origin:?}");
+    };
+    assert_eq!(fallback.reason, "index_download_failed");
+    // LT-31 records the HTTP status of a refused download, so the 404 is carried.
+    assert_eq!(fallback.http_status, Some(404));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -179,6 +239,52 @@ async fn a_verified_cache_is_read_without_another_index_request() {
     assert_eq!(requests(&server).await, vec![format!("/{INDEX_BLOB}")]);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_published_event_says_whether_the_cache_served_the_index() {
+    let seed = seed_bytes();
+    let index = published_index(&seed);
+    let signed = release(&seed, Some(reference(&index, None)));
+    let server = origin(&seed, &index).await;
+    let state = tempfile::tempdir().unwrap();
+    let (first, logs) = crate::test_capture::capture(|| acquire(state.path(), &signed, &server));
+    first.unwrap();
+    let cached: Vec<String> = logs
+        .iter()
+        .filter(|row| row.field("event") == Some("adoption_index_published"))
+        .filter_map(|row| row.field("cached"))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(cached, vec!["false"]);
+    let (second, logs) = crate::test_capture::capture(|| acquire(state.path(), &signed, &server));
+    second.unwrap();
+    let cached: Vec<String> = logs
+        .iter()
+        .filter(|row| row.field("event") == Some("adoption_index_published"))
+        .filter_map(|row| row.field("cached"))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(cached, vec!["true"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_index_bound_to_another_seed_falls_back_with_index_bind_failed() {
+    let seed = seed_bytes();
+    let index = published_index(&seed);
+    // The index verifies against its own digest but names a different seed than the release.
+    let other = archive(&[
+        ("Working/Binaries/SGW.exe", minimal_pe().as_slice()),
+        ("later.txt", b"another entry"),
+    ]);
+    let signed = release(&other, Some(reference(&index, None)));
+    let server = origin(&other, &index).await;
+    let state = tempfile::tempdir().unwrap();
+    let (_, origin) = acquire(state.path(), &signed, &server).unwrap();
+    let IndexOrigin::Built(fallback) = origin else {
+        panic!("an index bound to another seed must build, got {origin:?}");
+    };
+    assert_eq!(fallback.reason, "index_bind_failed");
+}
+
 #[test]
 fn a_built_index_estimate_downloads_nothing() {
     let estimate = DownloadEstimate {
@@ -187,7 +293,7 @@ fn a_built_index_estimate_downloads_nothing() {
         bytes: 1100,
         local_seed: false,
     };
-    let built = download_for(&IndexOrigin::Built, estimate.clone());
+    let built = download_for(&IndexOrigin::Built(fallback()), estimate.clone());
     assert_eq!(built.bytes, 0);
     assert!(!built.seed);
     assert!(built.patches.is_empty());
@@ -232,7 +338,7 @@ async fn a_built_index_with_a_chosen_local_archive_never_requests_the_seed() {
         )
     })
     .unwrap();
-    assert_eq!(found, IndexOrigin::Built);
+    assert!(matches!(found, IndexOrigin::Built(_)));
     assert!(!requests(&server).await.contains(&"/seed.zip".to_string()));
     assert_eq!(std::fs::read(&archive_path).unwrap(), before);
 }

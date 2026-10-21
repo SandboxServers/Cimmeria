@@ -4,21 +4,13 @@
 //! so its adoption fetches only what the replay needs. The game directory is
 //! `Folder.root` for a folder source or the imported game folder for a legacy
 //! one; only a legacy source has an import to verify.
+use super::setup_digest::setup_bytes;
 use super::*;
-use crate::{
-    install_progress::ProgressSink,
-    manifest::{Manifest, PatchEntry},
-    unpack::UnpackSink,
-};
-use cimmeria_launcher_core::file_index::{
-    self, FileIndex, FileIndexError, FileIndexRef, Origin, SetupRule, MAX_FILE_INDEX_BYTES,
-};
+use crate::{install_progress::ProgressSink, unpack::UnpackSink};
+use cimmeria_launcher_core::file_index::{FileIndex, Origin, SetupRule};
 use cimmeria_launcher_core::seed_source::SeedSourceHandle;
 use sha2::{Digest, Sha256};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    path::PathBuf,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// A file's size and lower-case SHA-256 hex.
 type Bytes = (u64, String);
@@ -73,7 +65,7 @@ pub(super) fn reference_and_comparison(
     )?;
     let reference = match origin {
         IndexOrigin::Published => None,
-        IndexOrigin::Built => Some(reconstructed(
+        IndexOrigin::Built(_) => Some(reconstructed(
             state,
             request,
             backend,
@@ -90,7 +82,7 @@ pub(super) fn reference_and_comparison(
     // is left to download and no held set is read.
     let held = match origin {
         IndexOrigin::Published => Some(artifacts::held(&root, &request.release, cancel)?),
-        IndexOrigin::Built => None,
+        IndexOrigin::Built(_) => None,
     };
     let is_held = |sha: &str| held.as_ref().is_none_or(|held| held.contains(sha));
     let (expected_digest, expected_paths): ([u8; 32], Vec<String>) = match &reference {
@@ -114,10 +106,18 @@ pub(super) fn reference_and_comparison(
             Classification::Matched | Classification::KnownTransform
         )
     }) {
-        return Err(Error::NoReusableFiles);
+        return Err(rejection::reject(
+            Error::NoReusableFiles,
+            Rejection::new("no_reusable_files")
+                .expected("at least 1 matching file")
+                .found(format!("0 of {}", files.len())),
+        ));
     }
     if inventory::scan(folder, cancel)? != *scanned {
-        return Err(Error::SourceChanged);
+        return Err(rejection::reject(
+            Error::SourceChanged,
+            Rejection::new("folder_changed_during_check"),
+        ));
     }
     if let Some(imported) = legacy {
         source::verify_import(imported)?;
@@ -177,7 +177,12 @@ pub(super) fn reference_and_comparison(
                 .iter()
                 .find(|d| d.path == path)
                 .map(|d| d.classification)
-                .ok_or(Error::InvalidArtifact)?;
+                .ok_or_else(|| {
+                    rejection::reject(
+                        Error::InvalidArtifact,
+                        Rejection::new("file_unclassified").entry(&path),
+                    )
+                })?;
             replacements.push(Replacement {
                 path,
                 size: entry.size,
@@ -195,7 +200,11 @@ pub(super) fn reference_and_comparison(
             .file_index
             .as_ref()
             .map(|reference| reference.sha256.to_ascii_lowercase()),
-        IndexOrigin::Built => None,
+        IndexOrigin::Built(_) => None,
+    };
+    let index_fallback = match origin {
+        IndexOrigin::Published => None,
+        IndexOrigin::Built(fallback) => Some(fallback),
     };
     Ok(Compared {
         reference,
@@ -206,6 +215,7 @@ pub(super) fn reference_and_comparison(
         replacements,
         login_replaced,
         file_index_sha256,
+        index_fallback,
     })
 }
 
@@ -293,7 +303,7 @@ fn expected_tree(
             continue;
         };
         let bytes = match setup.get(&key) {
-            Some((size, sha)) => (*size, unhex(sha).ok_or(Error::InvalidArtifact)?),
+            Some((size, sha)) => (*size, setup_bytes(sha, &history.path)?),
             None => (release.size, release.sha256),
         };
         tree.insert(history.path.clone(), bytes);
@@ -308,10 +318,7 @@ fn expected_tree(
             continue;
         }
         if let Some((size, sha)) = setup.get(&path.to_ascii_lowercase()) {
-            tree.insert(
-                path.clone(),
-                (*size, unhex(sha).ok_or(Error::InvalidArtifact)?),
-            );
+            tree.insert(path.clone(), (*size, setup_bytes(sha, path)?));
         }
     }
     Ok(tree)
@@ -334,15 +341,6 @@ fn published_digest(tree: &Tree, release: &VerifiedRelease) -> Result<[u8; 32], 
     digest(&rows)
 }
 
-/// Decodes exactly 64 hex digits into a digest; `None` for any other text.
-fn unhex(hex: &str) -> Option<[u8; 32]> {
-    let mut out = [0u8; 32];
-    for (i, byte) in out.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()?;
-    }
-    (hex.len() == 64).then_some(out)
-}
-
 /// What a preview learns from the signed reference and the folder: the reference
 /// for the moves when the index was built, the digest and paths the adopted tree
 /// must have, the per-file review, the download the replay implies, and the files
@@ -361,6 +359,8 @@ pub(super) struct Compared {
     pub login_replaced: bool,
     /// The signed index's digest when the index was published; a built index has none.
     pub file_index_sha256: Option<String>,
+    /// Why the signed index was not used; `None` when it was published (C15).
+    pub index_fallback: Option<super::index_source::IndexFallback>,
 }
 
 /// Classifies every path of the index's histories against the folder scan, then
@@ -511,187 +511,4 @@ fn replaces_login(
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
-
-/// Where the per-file index came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum IndexOrigin {
-    /// The signed blob, verified against the manifest.
-    Published,
-    /// Built locally from the seed and patches.
-    Built,
-}
-
-/// The per-file index for `release`: the signed blob when the manifest names one
-/// and it verifies, otherwise the index built from the seed and patches. Blocking,
-/// like [`artifacts::fetch`]: call it from a retained worker. `prefetched` are the
-/// seed and patches already fetched; without them the build fetches its own.
-pub(super) fn acquire_index(
-    state_root: &Path,
-    release: &VerifiedRelease,
-    transport: &artifacts::Transport,
-    seed_source: &SeedSourceHandle,
-    prefetched: Option<&Artifacts>,
-    cancel: &CancellationToken,
-    progress: &ProgressSink,
-) -> Result<(FileIndex, IndexOrigin), Error> {
-    let reason = match &release.manifest().file_index {
-        None => "the manifest names no file index".to_string(),
-        Some(reference) => {
-            match published(state_root, release, transport, reference, cancel, progress)? {
-                Ok(index) => return Ok((index, IndexOrigin::Published)),
-                Err(reason) => reason,
-            }
-        }
-    };
-    tracing::warn!(target: "adoption", reason = %reason, "file index unavailable; building it from the seed and patches");
-    let index = built(
-        state_root,
-        release,
-        transport,
-        seed_source,
-        prefetched,
-        cancel,
-        progress,
-    )?;
-    Ok((index, IndexOrigin::Built))
-}
-
-/// The download a comparison reports. A built index fetched every blob it used,
-/// so nothing is left to download; a chosen local archive is still named.
-pub(super) fn download_for(origin: &IndexOrigin, estimate: DownloadEstimate) -> DownloadEstimate {
-    match origin {
-        IndexOrigin::Published => estimate,
-        IndexOrigin::Built => DownloadEstimate {
-            seed: false,
-            patches: Vec::new(),
-            bytes: 0,
-            local_seed: estimate.local_seed,
-        },
-    }
-}
-
-/// The signed blob, from the cache when it verifies, else downloaded and cached.
-/// The outer error aborts; the inner one is a refusal that falls back to the build.
-fn published(
-    state_root: &Path,
-    release: &VerifiedRelease,
-    transport: &artifacts::Transport,
-    reference: &FileIndexRef,
-    cancel: &CancellationToken,
-    progress: &ProgressSink,
-) -> Result<Result<FileIndex, String>, Error> {
-    let manifest = release.manifest();
-    if reference.size > MAX_FILE_INDEX_BYTES || !is_sha256(&reference.sha256) {
-        return Ok(Err(
-            "the manifest's file index reference is malformed".into()
-        ));
-    }
-    let name = format!("file-index-{}.json", reference.sha256.to_ascii_lowercase());
-    let cache = state_root.join(&name);
-    if let Some(index) = read_cache(&cache, reference, manifest) {
-        return Ok(Ok(index));
-    }
-    let partial = state_root.join(format!("{name}.download"));
-    let bytes = match artifacts::index_blob(
-        transport,
-        &reference.blob,
-        reference.size,
-        &partial,
-        cancel,
-        progress,
-    ) {
-        Ok(bytes) => bytes,
-        Err(Error::Cancelled) => return Err(Error::Cancelled),
-        Err(error) => return Ok(Err(format!("the index did not download: {error:?}"))),
-    };
-    let index = match verify(&bytes, reference, manifest) {
-        Ok(index) => index,
-        Err(error) => return Ok(Err(error.to_string())),
-    };
-    let staging = state_root.join(format!("{name}.staging"));
-    let stored = std::fs::write(&staging, &bytes).and_then(|()| std::fs::rename(&staging, &cache));
-    if stored.is_err() {
-        let _ = std::fs::remove_file(&staging);
-    }
-    stored?;
-    Ok(Ok(index))
-}
-
-/// The cached copy, if it still verifies against the signed reference and manifest.
-fn read_cache(cache: &Path, reference: &FileIndexRef, manifest: &Manifest) -> Option<FileIndex> {
-    if std::fs::metadata(cache).ok()?.len() > MAX_FILE_INDEX_BYTES {
-        return None;
-    }
-    let bytes = std::fs::read(cache).ok()?;
-    verify(&bytes, reference, manifest).ok()
-}
-
-/// Size and digest first, then parse, then the binding to the manifest.
-fn verify(
-    bytes: &[u8],
-    reference: &FileIndexRef,
-    manifest: &Manifest,
-) -> Result<FileIndex, FileIndexError> {
-    let index = FileIndex::parse_verified(bytes, reference)?;
-    index.bind(manifest)?;
-    Ok(index)
-}
-
-/// Fetches the seed and patches, then builds the index in a temp dir under the state root.
-fn built(
-    state_root: &Path,
-    release: &VerifiedRelease,
-    transport: &artifacts::Transport,
-    seed_source: &SeedSourceHandle,
-    prefetched: Option<&Artifacts>,
-    cancel: &CancellationToken,
-    progress: &ProgressSink,
-) -> Result<FileIndex, Error> {
-    let fetched;
-    let artifacts = match prefetched {
-        Some(artifacts) => artifacts,
-        None => {
-            fetched = artifacts::fetch(
-                state_root,
-                transport,
-                release,
-                seed_source,
-                cancel,
-                progress,
-            )?;
-            &fetched
-        }
-    };
-    let manifest = release.manifest();
-    // A seed that does not match the signed release is an invalid artifact, not
-    // an I/O failure, whichever path supplied it.
-    let seed = inventory::hash(&artifacts.seed, cancel)?;
-    let seed_hex: String = seed.sha256.iter().map(|b| format!("{b:02x}")).collect();
-    if seed.size != manifest.seed.size || !seed_hex.eq_ignore_ascii_case(&manifest.seed.sha256) {
-        return Err(Error::InvalidArtifact);
-    }
-    let patches: Vec<(PatchEntry, PathBuf)> = manifest
-        .patches
-        .iter()
-        .cloned()
-        .zip(artifacts.patches.iter().cloned())
-        .collect();
-    let work = tempfile::tempdir_in(state_root)?;
-    let sink = UnpackSink {
-        progress: progress.clone(),
-        label: "File index".into(),
-        cancel: cancel.clone(),
-    };
-    file_index::build(&artifacts.seed, &patches, manifest, work.path(), &sink).map_err(build_error)
-}
-
-fn build_error(error: FileIndexError) -> Error {
-    match error {
-        FileIndexError::Io(_) => Error::Storage(StorageError::Io),
-        _ => Error::InvalidArtifact,
-    }
-}
-
-fn is_sha256(hex: &str) -> bool {
-    hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit())
-}
+pub(super) use super::index_source::{acquire_index, download_for, IndexOrigin};
