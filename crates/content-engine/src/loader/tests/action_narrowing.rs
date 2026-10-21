@@ -7,6 +7,9 @@ use super::super::*;
 /// One past `i32::MAX`: `as i32` would wrap this to `i32::MIN`.
 const OVER_I32: i64 = i32::MAX as i64 + 1;
 
+/// One below `i32::MIN`: `as i32` would wrap this to `i32::MAX`.
+const UNDER_I32: i64 = i32::MIN as i64 - 1;
+
 /// `(action_type, target_id, target_key, key)`, one row per integer param
 /// that the loader reads as `i32`.
 const CASES: &[(&str, Option<i32>, Option<&str>, &str)] = &[
@@ -68,6 +71,24 @@ fn out_of_range_i32_param_drops_the_action() {
             target_id,
             target_key,
             params_with(key, OVER_I32),
+        );
+        assert!(
+            convert_action(&r).is_none(),
+            "{action_type}.{key} wrapped instead of dropping the action"
+        );
+    }
+}
+
+/// The negative side of `i32::try_from`: `as i32` would wrap this to
+/// `i32::MAX`, which is a valid value and so would be kept.
+#[test]
+fn below_i32_min_param_drops_the_action() {
+    for &(action_type, target_id, target_key, key) in CASES {
+        let r = row(
+            action_type,
+            target_id,
+            target_key,
+            params_with(key, UNDER_I32),
         );
         assert!(
             convert_action(&r).is_none(),
