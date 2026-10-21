@@ -146,7 +146,12 @@ cargo run -p cimmeria-launcher-core --bin build-file-index -- `
 - Paste the printed `file_index` entry into `manifest.json` before signing, and set its `blob` to the attached asset name.
 - `pack-client-overlay` drops a stale index: when it appends a patch, it sets `file_index` to `None` and prints a reminder. Rebuild the index after adding patches, before signing.
 - A missing or mismatched index makes the launcher build one from the seed. That is a fallback, never a wrong verdict.
-- Publishing the index is an owner step, signed with the offline signing key, and waits on owner decision D-AI8 (see [any-install adoption](../analysis/any-install-adoption/README.md)).
+- Publishing is an owner step: no agent signs, uploads or reads the release key. The runbook, in order:
+  1. Build the tools with a lane build: `$env:LANE_VERBOSE='1'; pwsh tools/build-lane/lane.ps1 cargo build --locked -p cimmeria-launcher-core --bins -p cimmeria-patchset --bin cimmeria-patchset`. The lane log prints `target=<dir>`; the exes are in `<dir>\debug`.
+  2. Prepare: `pwsh tools/content-release/prepare-file-index.ps1 -Seed seed.zip -Patch <id>=<zip> ... -Current manifest.json -Out <dir> -BlobPath <blob name> -PubKey <release public key, hex> -BuildExe <dir>\debug\build-file-index.exe -VerifyExe <dir>\debug\verify-file-index.exe`. It verifies the current manifest, builds `file-index.json`, writes `manifest.candidate.json` (the current manifest plus its `file_index` entry, nothing else changed) and runs `verify-file-index`. It stops on any FAIL and never signs or uploads.
+  3. Chain rule: the candidate only appends. The seed and every patch keep their order, `id`, `after`, `size`, `sha256` and `blob`. `after` links are never remapped; a reordered patch or a changed `after` fails `append_only`, so a changed patch list is a new publication.
+  4. Parity: the same run rebuilds the index from the local seed and patches and compares the parsed values with the candidate's. This is the launcher-verify step before signing; it matches the launcher's own fallback build (above).
+  5. Owner only, with the offline release key on the owner's machine: `cimmeria-patchset sign manifest.json --key <offline key file>`, then `cimmeria-patchset verify manifest.json --pubkey <hex>`. Upload `file-index.json` to the immutable per-publication release first, then upload `manifest.json` and `manifest.json.sig` to `content-current` with `--clobber`. Then run LT-27 U7 on a laptop that would not adopt.
 - The index carries only paths, sizes and hashes. The seed is never rehosted.
 
 ### Initial setup
