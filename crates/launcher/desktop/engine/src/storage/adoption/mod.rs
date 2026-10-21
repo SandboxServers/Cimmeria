@@ -44,6 +44,8 @@ mod artifacts_tests;
 mod cab_fixture;
 // Every platform: it needs no copy, only a persisted plan and its journal.
 #[cfg(test)]
+mod confirmation_tests;
+#[cfg(test)]
 mod digest_tests;
 #[cfg(test)]
 mod golden_tests;
@@ -82,7 +84,8 @@ pub(super) enum Backend {
     #[cfg(target_os = "macos")]
     Wine(crate::mac_wine::HelperResource),
 }
-use rejection::Rejection;
+pub use index_source::IndexFallback;
+pub use rejection::{refuse, Rejection};
 use uuid::Uuid;
 
 /// This handle cannot be serialized or fabricated by an IPC caller. It retains
