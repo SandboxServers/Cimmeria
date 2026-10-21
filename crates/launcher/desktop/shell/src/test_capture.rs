@@ -1,5 +1,6 @@
 //! Test-only tracing capture (launcher-telemetry C9). Thread-local: run async code
 //! inside `capture` on a current-thread runtime.
+use cimmeria_launcher_engine::game_telemetry::ip_scrub::contains_ip;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::{layer::Context, prelude::*, Layer, Registry};
@@ -14,6 +15,17 @@ pub(crate) struct Captured {
 impl Captured {
     pub(crate) fn field(&self, key: &str) -> Option<&str> {
         self.fields.get(key).map(String::as_str)
+    }
+
+    /// LT-40: panics when the message or any field value holds an IP literal.
+    /// The panic names the event and the field key, never the address.
+    fn assert_no_ip(&self) {
+        for (key, value) in &self.fields {
+            if contains_ip(value) {
+                let event = self.field("event").unwrap_or(self.target.as_str());
+                panic!("captured event {event} holds an IP literal in field {key}");
+            }
+        }
     }
 }
 
@@ -45,5 +57,27 @@ pub(crate) fn capture<R>(f: impl FnOnce() -> R) -> (R, Vec<Captured>) {
     let store = Arc::new(Mutex::new(Vec::new()));
     let r = tracing::subscriber::with_default(Registry::default().with(Cap(store.clone())), f);
     let v = store.lock().unwrap().clone();
+    for event in &v {
+        event.assert_no_ip();
+    }
     (r, v)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    #[should_panic(expected = "holds an IP literal")]
+    fn capture_panics_on_an_ip_in_a_field() {
+        let _ = super::capture(|| {
+            tracing::info!(target: "launcher.install", event = "x_finished", x = "198.51.100.7");
+        });
+    }
+
+    #[test]
+    fn capture_returns_clean_events() {
+        let ((), events) = super::capture(|| {
+            tracing::info!(target: "launcher.install", event = "x_finished", x = "ok");
+        });
+        assert_eq!(events[0].field("x"), Some("ok"));
+    }
 }

@@ -8,6 +8,7 @@ pub mod endpoint_sanity;
 #[cfg(test)]
 mod event_tests;
 pub(crate) mod install_event;
+pub mod ip_scrub;
 pub mod launcher_event;
 #[cfg(test)]
 mod launcher_event_tests;
