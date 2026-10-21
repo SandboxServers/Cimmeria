@@ -6,6 +6,7 @@ use std::{
 };
 
 mod adoption;
+pub(crate) use adoption::events as adoption_events;
 mod client_changes;
 mod client_maintenance;
 mod game_telemetry;

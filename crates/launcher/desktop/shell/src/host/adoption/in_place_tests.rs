@@ -236,3 +236,58 @@ async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_in_place() {
         b"untrusted plugin"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn adoption_steps_are_logged_for_a_refusal_and_an_adoption() {
+    use tracing_subscriber::layer::SubscriberExt;
+    let (tx, rx) = std::sync::mpsc::sync_channel(256);
+    let _guard = tracing::subscriber::set_default(
+        tracing_subscriber::registry().with(crate::telemetry::ForwardLayer::new(tx)),
+    );
+    let mut f = Fixture::new(serde_json::json!({}));
+    let _origin = f.serve().await;
+    let folder = f.source.game_directory.clone();
+
+    // The refusal is logged once the preview has failed on the hard link.
+    std::fs::hard_link(folder.join("later.txt"), folder.join("later-link.txt")).unwrap();
+    f.host.begin_adoption_in_place(f.release()).unwrap();
+    until(
+        &f.host,
+        "the unsafe refusal",
+        Duration::from_secs(30),
+        |s| s.activity == Activity::Idle && s.last_error.is_some(),
+    )
+    .await;
+
+    // Once the link is gone, the review is shown and then confirmed and adopted.
+    std::fs::remove_file(folder.join("later-link.txt")).unwrap();
+    f.host.adoption_command(DISMISS).unwrap();
+    f.host.begin_adoption_in_place(f.release()).unwrap();
+    let review = reviewed(&f.host).await;
+    // The player's edited file is replaced with consent, as in the test above.
+    let mut command = confirmation(&review);
+    if let AdoptionCommand::Confirm {
+        replace_modified_files,
+        ..
+    } = &mut command
+    {
+        *replace_modified_files = true;
+    }
+    f.host.adoption_command(command).unwrap();
+    let status = until(&f.host, "publication", Duration::from_secs(30), |status| {
+        status.activity == Activity::Idle
+    })
+    .await;
+    assert_eq!(status.last_error, None);
+
+    let records: Vec<_> = rx.try_iter().collect();
+    let steps: Vec<&str> = records
+        .iter()
+        .map(|record| record.fields["step"].as_str().unwrap())
+        .collect();
+    assert_eq!(steps, ["refused", "review_ready", "confirmed", "finished"]);
+    assert_eq!(records[0].fields["error"], "unsafe_file");
+    assert_eq!(records[0].fields["unsafe_total"], 2);
+    assert_eq!(records[3].fields["decision_outcome"], "adopted");
+    assert_eq!(records[3].fields["mode"], "in_place");
+}

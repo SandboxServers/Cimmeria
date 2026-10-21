@@ -13,6 +13,7 @@ use cimmeria_launcher_engine::{
 use cimmeria_launcher_engine::{OperationKind, OperationState};
 use uuid::Uuid;
 mod contract;
+pub(crate) mod events;
 mod review;
 mod status;
 #[cfg(all(test, target_os = "macos"))]
@@ -464,6 +465,8 @@ impl NativeHost {
             in_place,
         });
         adoption.clear_failure();
+        // Recorded here, under the lock, where the job's mode is known.
+        events::confirmed(in_place);
         Ok(())
     }
     /// Explicit recovery and cleanup run on this command's blocking worker. The
