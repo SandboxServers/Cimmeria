@@ -5,6 +5,7 @@ use tracing::warn;
 
 use crate::actions::Action;
 
+use super::action_params::opt_i32;
 use super::DbActionRow;
 
 /// The minigame type names the client's type table registers (MG-64). This
@@ -41,11 +42,8 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         }),
         "add_dialog_set" => {
             let dialog_set_id = row.target_id?;
-            let slot = params.get("slot").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            let mission_id = params
-                .get("mission_id")
-                .and_then(|v| v.as_i64())
-                .map(|v| v as i32);
+            let slot = opt_i32(row, "slot").ok()?.unwrap_or(0);
+            let mission_id = opt_i32(row, "mission_id").ok()?;
             Some(Action::AddDialogSet {
                 dialog_set_id,
                 slot,
@@ -54,7 +52,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         }
         "remove_dialog_set" => {
             let dialog_set_id = row.target_id?;
-            let slot = params.get("slot").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let slot = opt_i32(row, "slot").ok()?.unwrap_or(0);
             Some(Action::RemoveDialogSet {
                 dialog_set_id,
                 slot,
@@ -62,11 +60,8 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         }
         "add_item" => {
             let item_id = row.target_id?;
-            let qty = params.get("qty").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
-            let container = params
-                .get("container")
-                .and_then(|v| v.as_i64())
-                .map(|v| v as i32);
+            let qty = opt_i32(row, "qty").ok()?.unwrap_or(1);
+            let container = opt_i32(row, "container").ok()?;
             Some(Action::GrantItem {
                 item_id,
                 count: qty,
@@ -85,7 +80,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         "grant_cash" => super::action_cash::convert_grant_cash(row),
         "remove_item" => {
             let item_id = row.target_id?;
-            let qty = params.get("qty").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
+            let qty = opt_i32(row, "qty").ok()?.unwrap_or(1);
             Some(Action::RemoveItem {
                 item_id,
                 count: qty,
@@ -191,7 +186,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         }
         "set_aggression" => {
             let entity_tag = row.target_key.as_deref()?.to_string();
-            let level = params.get("level").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let level = opt_i32(row, "level").ok()?.unwrap_or(0);
             Some(Action::SetAggression { entity_tag, level })
         }
         "set_npc_poi" => {
@@ -286,7 +281,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
             Some(Action::DestroyTaggedEntity { entity_tag })
         }
         "trigger_transporter" => {
-            let region_id = params.get("regionId").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let region_id = opt_i32(row, "regionId").ok()?.unwrap_or(0);
             Some(Action::TriggerTransporter { region_id })
         }
         "cross_world_teleport" => {
@@ -339,11 +334,8 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         "send_system_mail" => super::action_mail::convert_send_system_mail(row),
         "open_loot" => super::action_loot::convert_open_loot(row),
         "qr_combat_damage" => {
-            let stat_id = params.get("stat_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            let source_id = params
-                .get("source_id")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0) as i32;
+            let stat_id = opt_i32(row, "stat_id").ok()?.unwrap_or(0);
+            let source_id = opt_i32(row, "source_id").ok()?.unwrap_or(0);
             let amount_nvp = params
                 .get("amount_nvp")
                 .and_then(|v| v.as_str())
@@ -356,9 +348,9 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
             })
         }
         "change_stat" => {
-            let stat_id = params.get("stat_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            let min = params.get("min").and_then(|v| v.as_i64()).map(|v| v as i32);
-            let max = params.get("max").and_then(|v| v.as_i64()).map(|v| v as i32);
+            let stat_id = opt_i32(row, "stat_id").ok()?.unwrap_or(0);
+            let min = opt_i32(row, "min").ok()?;
+            let max = opt_i32(row, "max").ok()?;
             let use_ammo_stat = params.get("use_ammo_stat").and_then(|v| v.as_bool());
             let set_to_max = params.get("set_to_max").and_then(|v| v.as_bool());
             // Reject out-of-i32-range `amount` values at this system
@@ -416,7 +408,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         }
         "increment_counter" => {
             let counter_name = row.target_key.as_deref()?.to_string();
-            let amount = params.get("amount").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
+            let amount = opt_i32(row, "amount").ok()?.unwrap_or(1);
             Some(Action::IncrementCounter {
                 counter_name,
                 amount,
@@ -479,8 +471,8 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
             })
         }
         "set_active_slot" => {
-            let bag_id = params.get("bag_id").and_then(|v| v.as_i64()).unwrap_or(3) as i32;
-            let slot = params.get("slot").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let bag_id = opt_i32(row, "bag_id").ok()?.unwrap_or(3);
+            let slot = opt_i32(row, "slot").ok()?.unwrap_or(0);
             Some(Action::SetActiveSlot { bag_id, slot })
         }
         "launch_ability" => {
@@ -493,14 +485,8 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         }
         "add_dialog" => {
             let dialog_set_id = row.target_id?;
-            let entity_template = params
-                .get("entity_template")
-                .and_then(|v| v.as_i64())
-                .map(|v| v as i32);
-            let mission_id = params
-                .get("mission_id")
-                .and_then(|v| v.as_i64())
-                .map(|v| v as i32);
+            let entity_template = opt_i32(row, "entity_template").ok()?;
+            let mission_id = opt_i32(row, "mission_id").ok()?;
             Some(Action::AddDialog {
                 dialog_set_id,
                 entity_template,
@@ -509,10 +495,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         }
         "generate_threat" => {
             let entity_tag = row.target_key.as_deref().map(|s| s.to_string());
-            let threat_level = params
-                .get("threat_level")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0) as i32;
+            let threat_level = opt_i32(row, "threat_level").ok()?.unwrap_or(0);
             Some(Action::GenerateThreat {
                 entity_tag,
                 threat_level,
