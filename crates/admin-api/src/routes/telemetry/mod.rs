@@ -86,6 +86,10 @@ mod client_symbols;
 mod dto;
 mod entity_labels;
 mod field_caps;
+mod launcher_gate;
+// wired in by AU-15
+#[cfg_attr(not(test), allow(dead_code))]
+mod launcher_rows;
 mod launcher_summary;
 mod refusal_log;
 mod replay;
@@ -99,6 +103,8 @@ mod upload_slots;
 mod client_pid_tests;
 #[cfg(test)]
 mod entity_labels_tests;
+#[cfg(test)]
+mod launcher_rows_tests;
 #[cfg(test)]
 mod replay_camera_tests;
 #[cfg(test)]
@@ -186,6 +192,11 @@ const MAX_BUNDLE_PARTS: usize = 8;
 /// Chunks buffered, expanded or replayed at once, server-wide. Past it a
 /// chunk is refused with 503 and retried on the uploader's next flush.
 const CHUNK_SLOTS: usize = 4;
+
+/// Launcher chunks buffered at once, server-wide. Launcher tokens are free,
+/// so they get their own small pool and never hold the slots the game DLL
+/// needs.
+const LAUNCHER_CHUNK_SLOTS: usize = 2;
 
 /// Bundles buffered or expanded at once, server-wide.
 const BUNDLE_SLOTS: usize = 2;

@@ -20,19 +20,19 @@ use axum::http::HeaderMap;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
 
+use crate::routes::dev_session::launcher_kind::launcher_disabled_from_env;
 use crate::routes::dev_session::quota::{install_key, ip_key, WindowTable};
-use crate::routes::dev_session::{
-    decode_token, env_u32, kill_switch_active, AuthError, TokenClaims, SCOPE_TELEMETRY_WRITE,
-};
+use crate::routes::dev_session::{env_u32, kill_switch_active, AuthError, TokenClaims};
 
 use super::dto::IngestError;
+use super::launcher_gate::{charge_launcher_chunk, verify_bearer_for};
 use super::refusal_log::RefusalLog;
 #[cfg(test)]
 use super::upload_slots::PeerSlot;
 use super::upload_slots::{take_slot, PeerSlots, UploadSlot};
 use super::{
-    BODY_TIMEOUT, BUNDLE_SLOTS, CHUNK_SLOTS, MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRIES,
-    MAX_BUNDLE_ENTRIES_HARD, MAX_BUNDLE_EXPANDED_BYTES, MAX_BUNDLE_LINES,
+    BODY_TIMEOUT, BUNDLE_SLOTS, CHUNK_SLOTS, LAUNCHER_CHUNK_SLOTS, MAX_BUNDLE_BYTES,
+    MAX_BUNDLE_ENTRIES, MAX_BUNDLE_ENTRIES_HARD, MAX_BUNDLE_EXPANDED_BYTES, MAX_BUNDLE_LINES,
     MAX_BUNDLE_METADATA_BYTES, MAX_BUNDLE_PARTS, MAX_CHUNK_BYTES, MAX_CHUNK_DECOMPRESSED_BYTES,
     MAX_CHUNK_ROWS, MAX_CHUNK_ROW_BYTES, SLOTS_PER_PEER,
 };
@@ -56,7 +56,7 @@ impl Route {
 
 /// The chunk rate window. A launcher and its DLL each post about every
 /// 2 s on one token, so a session sends about 60 chunks a minute.
-const CHUNK_QUOTA_WINDOW: Duration = Duration::from_secs(60);
+pub(super) const CHUNK_QUOTA_WINDOW: Duration = Duration::from_secs(60);
 
 /// The bundle rate window. A launcher sends one bundle when the game
 /// exits.
@@ -69,6 +69,16 @@ const DEFAULT_CHUNK_PER_SESSION: u32 = 120;
 /// Chunks per peer address per minute: ten sessions' worth, for a lab
 /// machine or a household behind one address.
 const DEFAULT_CHUNK_PER_IP: u32 = 600;
+
+/// Launcher chunks per session per minute: a launcher posts about one every
+/// 2 s, so this is a minute of posts with room for a retry.
+const DEFAULT_LAUNCHER_CHUNK_PER_SESSION: u32 = 10;
+
+/// Launcher chunks per install per minute, across all its sessions.
+const DEFAULT_LAUNCHER_CHUNK_PER_INSTALL: u32 = 20;
+
+/// Launcher chunks per peer address per minute.
+const DEFAULT_LAUNCHER_CHUNK_PER_IP: u32 = 60;
 
 /// Bundles per session per hour: the one at exit and a few retries.
 const DEFAULT_BUNDLE_PER_SESSION: u32 = 6;
@@ -92,6 +102,15 @@ pub(super) struct UploadPolicy {
     pub bundle_per_session: u32,
     /// `CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP`, per hour.
     pub bundle_per_ip: u32,
+    /// `CIMMERIA_TELEMETRY_LAUNCHER_CHUNK_QUOTA_PER_SESSION`, per minute.
+    pub launcher_chunk_per_session: u32,
+    /// `CIMMERIA_TELEMETRY_LAUNCHER_CHUNK_QUOTA_PER_INSTALL`, per minute.
+    pub launcher_chunk_per_install: u32,
+    /// `CIMMERIA_TELEMETRY_LAUNCHER_CHUNK_QUOTA_PER_IP`, per minute.
+    pub launcher_chunk_per_ip: u32,
+    /// `CIMMERIA_TELEMETRY_LAUNCHER_DISABLED=1`: launcher tokens are refused
+    /// with 503. Player and lab tokens are not affected.
+    pub launcher_disabled: bool,
 }
 
 impl UploadPolicy {
@@ -114,6 +133,19 @@ impl UploadPolicy {
                 "CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP",
                 DEFAULT_BUNDLE_PER_IP,
             ),
+            launcher_chunk_per_session: env_u32(
+                "CIMMERIA_TELEMETRY_LAUNCHER_CHUNK_QUOTA_PER_SESSION",
+                DEFAULT_LAUNCHER_CHUNK_PER_SESSION,
+            ),
+            launcher_chunk_per_install: env_u32(
+                "CIMMERIA_TELEMETRY_LAUNCHER_CHUNK_QUOTA_PER_INSTALL",
+                DEFAULT_LAUNCHER_CHUNK_PER_INSTALL,
+            ),
+            launcher_chunk_per_ip: env_u32(
+                "CIMMERIA_TELEMETRY_LAUNCHER_CHUNK_QUOTA_PER_IP",
+                DEFAULT_LAUNCHER_CHUNK_PER_IP,
+            ),
+            launcher_disabled: launcher_disabled_from_env(),
         }
     }
 
@@ -126,6 +158,10 @@ impl UploadPolicy {
             chunk_per_ip: DEFAULT_CHUNK_PER_IP,
             bundle_per_session: DEFAULT_BUNDLE_PER_SESSION,
             bundle_per_ip: DEFAULT_BUNDLE_PER_IP,
+            launcher_chunk_per_session: DEFAULT_LAUNCHER_CHUNK_PER_SESSION,
+            launcher_chunk_per_install: DEFAULT_LAUNCHER_CHUNK_PER_INSTALL,
+            launcher_chunk_per_ip: DEFAULT_LAUNCHER_CHUNK_PER_IP,
+            launcher_disabled: false,
         }
     }
 }
@@ -151,6 +187,8 @@ pub(super) struct UploadLimits {
     pub bundle_entries_hard: usize,
     pub chunk_slots: usize,
     pub bundle_slots: usize,
+    /// Launcher chunks in flight at once, server-wide, from their own pool.
+    pub launcher_chunk_slots: usize,
     pub chunk_slots_per_peer: usize,
     pub bundle_slots_per_peer: usize,
     /// How long one request may take to deliver its body.
@@ -173,6 +211,7 @@ impl Default for UploadLimits {
             bundle_entries_hard: MAX_BUNDLE_ENTRIES_HARD,
             chunk_slots: CHUNK_SLOTS,
             bundle_slots: BUNDLE_SLOTS,
+            launcher_chunk_slots: LAUNCHER_CHUNK_SLOTS,
             chunk_slots_per_peer: SLOTS_PER_PEER,
             bundle_slots_per_peer: SLOTS_PER_PEER,
             body_timeout: BODY_TIMEOUT,
@@ -188,8 +227,13 @@ pub(super) struct UploadState {
     chunk_ip: WindowTable,
     bundle_session: WindowTable,
     bundle_ip: WindowTable,
+    /// Launcher chunks, by the launcher's session, install and address.
+    pub(super) launcher_chunk_session: WindowTable,
+    pub(super) launcher_chunk_install: WindowTable,
+    pub(super) launcher_chunk_ip: WindowTable,
     chunk_slots: Arc<Semaphore>,
     bundle_slots: Arc<Semaphore>,
+    pub(super) launcher_chunk_slots: Arc<Semaphore>,
     peer_slots: Arc<PeerSlots>,
     pub refusals: RefusalLog,
 }
@@ -199,12 +243,16 @@ impl UploadState {
         Self {
             chunk_slots: Arc::new(Semaphore::new(limits.chunk_slots)),
             bundle_slots: Arc::new(Semaphore::new(limits.bundle_slots)),
+            launcher_chunk_slots: Arc::new(Semaphore::new(limits.launcher_chunk_slots)),
             peer_slots: Arc::default(),
             limits,
             chunk_session: WindowTable::new(),
             chunk_ip: WindowTable::new(),
             bundle_session: WindowTable::new(),
             bundle_ip: WindowTable::new(),
+            launcher_chunk_session: WindowTable::new(),
+            launcher_chunk_install: WindowTable::new(),
+            launcher_chunk_ip: WindowTable::new(),
             refusals: RefusalLog::new(),
         }
     }
@@ -289,7 +337,10 @@ pub(super) fn admit(
     if policy.kill_switch {
         return Err(IngestError::Auth(AuthError::KillSwitchActive));
     }
-    let claims = verify_bearer(headers)?;
+    let claims = verify_bearer_for(headers, route)?;
+    if claims.is_launcher() && policy.launcher_disabled {
+        return Err(IngestError::Auth(AuthError::KillSwitchActive));
+    }
     who.session_id = Some(claims.sid.clone());
     who.install_id = Some(claims.sub.clone());
     who.session_kind = Some(claims.session_kind().to_string());
@@ -314,20 +365,35 @@ pub(super) fn admit(
             state.limits.bundle_slots,
         ),
     };
-    // `install_key` is a seeded hash of any caller string; the session id
-    // is one, and is the token's own.
-    session_table
-        .check_and_record(
-            install_key(&claims.sid),
-            per_session,
-            window,
-            "upload/session",
-            now,
+    // A launcher chunk is charged on the launcher's own windows, and takes
+    // its slot from the launcher's pool, instead of the player's chunk ones.
+    let launcher = claims.is_launcher();
+    let (slots, pool_size) = if launcher {
+        (
+            &state.launcher_chunk_slots,
+            state.limits.launcher_chunk_slots,
         )
-        .map_err(|q| IngestError::Auth(AuthError::QuotaExceeded(q)))?;
-    ip_table
-        .check_and_record(ip_key(who.peer), per_ip, window, "upload/ip", now)
-        .map_err(|q| IngestError::Auth(AuthError::QuotaExceeded(q)))?;
+    } else {
+        (slots, pool_size)
+    };
+    if launcher {
+        charge_launcher_chunk(state, policy, &claims, who.peer, now)?;
+    } else {
+        // `install_key` is a seeded hash of any caller string; the session
+        // id is one, and is the token's own.
+        session_table
+            .check_and_record(
+                install_key(&claims.sid),
+                per_session,
+                window,
+                "upload/session",
+                now,
+            )
+            .map_err(|q| IngestError::Auth(AuthError::QuotaExceeded(q)))?;
+        ip_table
+            .check_and_record(ip_key(who.peer), per_ip, window, "upload/ip", now)
+            .map_err(|q| IngestError::Auth(AuthError::QuotaExceeded(q)))?;
+    }
     // Refuse rather than queue: a queued request would still hold its
     // connection and, for a bundle, a body the client keeps sending. The
     // uploaders retry on their next flush.
@@ -382,37 +448,9 @@ pub(super) async fn read_body_capped(body: Body, cap: usize) -> Result<Vec<u8>, 
     Ok(bytes)
 }
 
+/// The bundle route's bearer check, for the tests that drive it directly.
+/// The gate itself calls [`verify_bearer_for`] with the route it serves.
+#[cfg(test)]
 pub(super) fn verify_bearer(headers: &HeaderMap) -> Result<TokenClaims, IngestError> {
-    let raw = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
-        .ok_or(IngestError::MissingAuth)?;
-    let token = raw
-        .strip_prefix("Bearer ")
-        .ok_or(IngestError::MissingAuth)?
-        .trim();
-    if token.is_empty() {
-        return Err(IngestError::MissingAuth);
-    }
-    // Single source of truth for the HMAC secret — `dev_session::mint`
-    // signs with this same loader, so any drift between the two paths
-    // would cause every launcher upload to fail HMAC verification.
-    let secret = crate::routes::dev_session::load_secret().map_err(IngestError::Auth)?;
-    let claims = decode_token(token, &secret).map_err(IngestError::Auth)?;
-    let now = chrono::Utc::now().timestamp();
-    if claims.exp <= now {
-        return Err(IngestError::Auth(AuthError::Expired {
-            exp: claims.exp,
-            now,
-        }));
-    }
-    // The scope is the only thing that keeps a minted token from
-    // being a general-purpose credential, so it has to be checked
-    // here rather than assumed from the mint path.
-    if !claims.has_scope(SCOPE_TELEMETRY_WRITE) {
-        return Err(IngestError::Auth(AuthError::MissingScope {
-            wanted: SCOPE_TELEMETRY_WRITE,
-        }));
-    }
-    Ok(claims)
+    verify_bearer_for(headers, Route::Bundle)
 }

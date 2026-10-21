@@ -133,7 +133,7 @@ fn launcher_summary_is_refused_as_an_unknown_session_kind() {
     assert_eq!(err.to_string(), unknown.to_string());
     assert_eq!(
         err.to_string(),
-        "Invalid session_kind: must be \"player\" or \"lab\""
+        "Invalid session_kind: must be \"player\", \"lab\" or \"launcher\""
     );
     assert_eq!(status(err), axum::http::StatusCode::BAD_REQUEST);
 
