@@ -55,6 +55,7 @@ pub mod token;
 
 mod handlers;
 pub(crate) mod launcher_kind;
+mod refusal_log;
 pub(crate) mod upload_endpoint;
 
 #[cfg(test)]

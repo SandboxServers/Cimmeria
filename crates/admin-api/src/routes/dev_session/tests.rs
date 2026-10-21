@@ -12,9 +12,10 @@ use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 
 use super::handlers::{
-    kill_switch_active, log_refusal, mint_inner, refresh_inner, DevSessionRequest, QuotaPolicy,
-    Tables, TOKEN_TTL_SECONDS,
+    kill_switch_active, mint_inner, refresh_inner, DevSessionRequest, QuotaPolicy, Tables,
+    TOKEN_TTL_SECONDS,
 };
+use super::refusal_log::{log_refusal_in, Throttle};
 use super::token::{decode_token, encode_token, env_lock, AuthError, TokenClaims};
 use super::SCOPE_TELEMETRY_WRITE;
 
@@ -526,10 +527,10 @@ fn exhausted_refresh_quota_leaves_mint_available() {
         .expect("the launcher's mint-a-fresh-session fallback must stay open");
 }
 
-type Row = (Level, BTreeMap<String, String>);
+pub(super) type Row = (Level, BTreeMap<String, String>);
 
 #[derive(Clone, Default)]
-struct Rows(Arc<Mutex<Vec<Row>>>);
+pub(super) struct Rows(pub(super) Arc<Mutex<Vec<Row>>>);
 
 struct FieldText<'a>(&'a mut BTreeMap<String, String>);
 
@@ -567,7 +568,7 @@ fn refused_refresh(
     let sub = tracing_subscriber::registry().with(rows.clone());
     let err = tracing::subscriber::with_default(sub, || {
         let err = refresh_inner(t, p, peer, token, Instant::now(), now_unix).unwrap_err();
-        log_refusal("refresh", peer, &err);
+        log_refusal_in(&Throttle::default(), "refresh", &err, Instant::now());
         err
     });
     let captured = rows.0.lock().unwrap().clone();
