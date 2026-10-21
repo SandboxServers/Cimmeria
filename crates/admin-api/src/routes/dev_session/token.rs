@@ -143,6 +143,11 @@ pub enum AuthError {
         field: &'static str,
         reason: &'static str,
     },
+    #[error(
+        "no_upload_endpoint: this server has no https telemetry upload endpoint to advertise; \
+         the operator must set CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT"
+    )]
+    NoUploadEndpoint,
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -153,7 +158,9 @@ impl AuthError {
             AuthError::SecretMissing | AuthError::SecretTooShort { .. } => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
-            AuthError::KillSwitchActive => StatusCode::SERVICE_UNAVAILABLE,
+            AuthError::KillSwitchActive | AuthError::NoUploadEndpoint => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
             AuthError::QuotaExceeded(_) => StatusCode::TOO_MANY_REQUESTS,
             AuthError::BadPayload(_)
             | AuthError::BadSignature

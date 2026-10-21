@@ -196,6 +196,7 @@ impl IngestError {
                 AuthError::SecretMissing
                 | AuthError::SecretTooShort { .. }
                 | AuthError::KillSwitchActive
+                | AuthError::NoUploadEndpoint
                 | AuthError::QuotaExceeded(_) => false,
             },
             IngestError::MissingAuth | IngestError::Forbidden(_) => true,

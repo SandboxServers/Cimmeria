@@ -30,6 +30,7 @@ pub(super) struct EnvGuard {
     _lock: std::sync::MutexGuard<'static, ()>,
     prev_secret: Option<String>,
     prev_kill: Option<String>,
+    prev_endpoint: Option<String>,
 }
 
 impl EnvGuard {
@@ -42,10 +43,17 @@ impl EnvGuard {
         let prev_kill = std::env::var("CIMMERIA_TELEMETRY_KILL_SWITCH").ok();
         std::env::set_var("CIMMERIA_TELEMETRY_HMAC_SECRET", TEST_SECRET_HEX);
         std::env::remove_var("CIMMERIA_TELEMETRY_KILL_SWITCH");
+        // Set explicitly: with no env and no Host the mint is refused (LT-01).
+        let prev_endpoint = std::env::var("CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT").ok();
+        std::env::set_var(
+            "CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT",
+            "https://telemetry.test.example/api/telemetry",
+        );
         Self {
             _lock: lock,
             prev_secret,
             prev_kill,
+            prev_endpoint,
         }
     }
 }
@@ -59,6 +67,10 @@ impl Drop for EnvGuard {
         match self.prev_kill.take() {
             Some(v) => std::env::set_var("CIMMERIA_TELEMETRY_KILL_SWITCH", v),
             None => std::env::remove_var("CIMMERIA_TELEMETRY_KILL_SWITCH"),
+        }
+        match self.prev_endpoint.take() {
+            Some(v) => std::env::set_var("CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT", v),
+            None => std::env::remove_var("CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT"),
         }
     }
 }
