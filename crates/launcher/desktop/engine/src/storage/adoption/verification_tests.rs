@@ -218,8 +218,8 @@ async fn a_404_for_the_signed_index_is_index_download_failed() {
         panic!("a 404 for the signed index must build, got {origin:?}");
     };
     assert_eq!(fallback.reason, "index_download_failed");
-    // LT-31 adds the HTTP status of a refused download; until then it is not recorded.
-    assert_eq!(fallback.http_status, None);
+    // LT-31 records the HTTP status of a refused download, so the 404 is carried.
+    assert_eq!(fallback.http_status, Some(404));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
