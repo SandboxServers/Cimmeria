@@ -4,6 +4,7 @@ mod bundle;
 #[cfg(feature = "test-support")]
 pub use apply::zip_swap::zip_fixture;
 pub use apply::{process::process_alive, InstalledTarget, RESTART_ARG};
+mod events;
 mod policy;
 mod release_check;
 mod transport;
