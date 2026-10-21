@@ -54,7 +54,7 @@ pub mod quota;
 pub mod token;
 
 mod handlers;
-mod launcher_kind;
+pub(crate) mod launcher_kind;
 
 #[cfg(test)]
 mod account_name_tests;
