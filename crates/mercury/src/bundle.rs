@@ -110,6 +110,7 @@ impl Bundle {
 
         for msg in &self.messages {
             buf.put_u8(msg.message_id);
+            // Cast is safe: the guard above refused every payload >= 0xFFFF.
             buf.put_u16_le(msg.payload.len() as u16);
             buf.put_slice(&msg.payload);
         }
@@ -237,6 +238,21 @@ mod tests {
         let mut buf = BytesMut::new();
         assert!(bundle.encode(&mut buf).is_err());
         assert!(buf.is_empty(), "a refused bundle must not touch buf");
+    }
+
+    #[test]
+    fn encode_refuses_a_later_oversize_message_without_partial_write() {
+        let mut bundle = Bundle::new();
+        bundle.add_message(0x01, Bytes::from_static(b"small"));
+        bundle.add_message(0x02, Bytes::from(vec![0u8; u16::MAX as usize]));
+
+        let mut buf = BytesMut::from(&b"keep"[..]);
+        assert!(bundle.encode(&mut buf).is_err());
+        assert_eq!(
+            &buf[..],
+            b"keep",
+            "the small first message must not be written before the refusal"
+        );
     }
 
     #[test]
