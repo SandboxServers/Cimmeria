@@ -90,7 +90,7 @@ impl Consent {
             return Ok(());
         }
         if DiskQueue::new(&self.queue_dir).discard().is_err() {
-            tracing::warn!("withdrawn game telemetry write not deleted");
+            super::events::queue_discard_failed("withdrawn_write");
         }
         Err(TransportError::NotOptedIn)
     }
@@ -160,12 +160,12 @@ pub(crate) fn discard_queue(root: &Path) -> bool {
     discards(root).fetch_add(1, Ordering::SeqCst);
     match DiskQueue::new(root).discard() {
         Ok(true) => {
-            tracing::info!("game telemetry queue deleted unsent");
+            super::events::queue_discarded();
             true
         }
         Ok(false) => false,
         Err(_) => {
-            tracing::warn!("game telemetry queue not deleted");
+            super::events::queue_discard_failed("choice_changed");
             false
         }
     }
