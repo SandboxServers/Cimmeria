@@ -5,8 +5,8 @@ use std::{
     io::{Read, Write},
 };
 
-const MAX_FILES: usize = 200_000;
-const MAX_DEPTH: usize = 64;
+pub(super) const MAX_FILES: usize = 200_000;
+pub(super) const MAX_DEPTH: usize = 64;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Identity {
     pub(super) device: u64,
@@ -119,6 +119,90 @@ fn identity_of(metadata: &std::fs::Metadata) -> Result<Identity, Error> {
             .as_nanos(),
     })
 }
+/// The scan's rule for an index name (one place, used by the scan and the survey).
+pub(super) fn index_name_allowed(name: &str) -> bool {
+    name.is_ascii() && name.len() <= 4096 && !name.contains(':') && !name.contains('\\')
+}
+/// Why `path` itself cannot be scanned, or `None` when it can. Read only: a
+/// Windows handle is opened with FILE_READ_ATTRIBUTES and
+/// FILE_FLAG_OPEN_REPARSE_POINT, so a cloud file is never recalled.
+pub(super) fn unsafe_reason(path: &Path) -> Option<UnsafeReason> {
+    let metadata = std::fs::symlink_metadata(path).ok()?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if metadata.file_type().is_symlink() || metadata.file_attributes() & 0x400 != 0 {
+            return Some(reparse_tag(path).map_or(UnsafeReason::Link, reparse_reason));
+        }
+    }
+    if metadata.file_type().is_symlink() {
+        return Some(UnsafeReason::Link);
+    }
+    if !metadata.is_file() && !metadata.is_dir() {
+        return Some(UnsafeReason::SpecialFile);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.is_file() && metadata.nlink() != 1 {
+            return Some(UnsafeReason::HardLink);
+        }
+    }
+    match identity(path) {
+        // On Windows, once reparse points are ruled out, `file_identity` refuses
+        // a plain file only for its link count.
+        #[cfg(windows)]
+        Err(Error::Storage(StorageError::UnsafeFile)) if metadata.is_file() => {
+            Some(UnsafeReason::HardLink)
+        }
+        Err(Error::Storage(StorageError::UnsafeFile)) => Some(UnsafeReason::SpecialFile),
+        _ => None,
+    }
+}
+/// The reason a Windows reparse tag stands for (D-AU6). Pure, tested on every host.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(super) fn reparse_reason(tag: u32) -> UnsafeReason {
+    const MOUNT_POINT: u32 = 0xA000_0003;
+    const SYMLINK: u32 = 0xA000_000C;
+    // IO_REPARSE_TAG_CLOUD .. CLOUD_F differ only in bits 12-15.
+    const CLOUD_MASK: u32 = 0xFFFF_0FFF;
+    const CLOUD: u32 = 0x9000_001A;
+    const ONEDRIVE: u32 = 0x8000_0021;
+    match tag {
+        MOUNT_POINT | SYMLINK => UnsafeReason::Link,
+        tag if tag & CLOUD_MASK == CLOUD || tag == ONEDRIVE => UnsafeReason::CloudFile,
+        _ => UnsafeReason::SpecialFile,
+    }
+}
+/// The reparse tag of `path` itself, read without following it. `None` when it
+/// cannot be read.
+#[cfg(windows)]
+fn reparse_tag(path: &Path) -> Option<u32> {
+    use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+    use windows_sys::Win32::Storage::FileSystem::{
+        FileAttributeTagInfo, GetFileInformationByHandleEx, FILE_ATTRIBUTE_TAG_INFO,
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    };
+    let file = OpenOptions::new()
+        .access_mode(FILE_READ_ATTRIBUTES)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+        .ok()?;
+    // SAFETY: plain-old-data out parameter, filled by the call below.
+    let mut info: FILE_ATTRIBUTE_TAG_INFO = unsafe { std::mem::zeroed() };
+    // SAFETY: the handle is owned by `file` and stays open; the size is `info`'s.
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FileAttributeTagInfo,
+            (&mut info as *mut FILE_ATTRIBUTE_TAG_INFO).cast(),
+            std::mem::size_of::<FILE_ATTRIBUTE_TAG_INFO>() as u32,
+        )
+    };
+    (ok != 0 && info.FileAttributes & 0x400 != 0).then_some(info.ReparseTag)
+}
 pub(super) fn same_directory(path: &Path, expected: &Identity) -> Result<(), Error> {
     let actual = identity(path)?;
     if !path.is_dir() || actual.device != expected.device || actual.inode != expected.inode {
@@ -207,7 +291,7 @@ pub(super) fn scan(root: &Path, cancel: &CancellationToken) -> Result<Index, Err
                 }
             }
             let name = parts.join("/");
-            if !name.is_ascii() || name.len() > 4096 || name.contains(':') || name.contains('\\') {
+            if !index_name_allowed(&name) {
                 return Err(StorageError::UnsafeFile.into());
             }
             if folded

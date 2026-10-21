@@ -145,7 +145,7 @@ pub struct Choices {
 fn is_false(value: &bool) -> bool {
     !*value
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     Storage(StorageError),
     Operation(ContractError),
@@ -182,6 +182,9 @@ pub enum Error {
     BackupConflict,
     /// This adoption mode is not available in this build.
     UnsupportedMode,
+    /// The folder holds entries that cannot be adopted safely; the report names
+    /// up to five of them by relative path.
+    Unsafe(Box<UnsafeReport>),
 }
 impl From<StorageError> for Error {
     fn from(e: StorageError) -> Self {
@@ -197,6 +200,39 @@ impl From<std::io::Error> for Error {
     fn from(_: std::io::Error) -> Self {
         Self::Storage(StorageError::Io)
     }
+}
+
+/// Why one entry of a refused folder cannot be adopted (launcher-adopt-ux D-AU4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnsafeReason {
+    /// A symbolic link, or on Windows a junction.
+    Link,
+    /// A OneDrive or other cloud-files placeholder (Windows reparse tag).
+    CloudFile,
+    /// A file with more than one name (hard link count above 1).
+    HardLink,
+    /// Not a plain file or folder: another reparse point, a socket, a device.
+    SpecialFile,
+    /// A name the file index cannot hold: not ASCII, over 4096 bytes, or with `:` or `\`.
+    Name,
+    /// Another entry has the same name apart from letter case.
+    CaseCollision,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnsafeEntry {
+    pub reason: UnsafeReason,
+    /// Relative to the chosen folder, `/`-separated, at most 200 chars plus `…`.
+    /// `"."` is the folder itself; `None` means the folder's own location is not
+    /// its canonical path. Never absolute.
+    pub path: Option<String>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnsafeReport {
+    /// At most `MAX_UNSAFE_SHOWN` (5), in walk order (children sorted by name).
+    pub entries: Vec<UnsafeEntry>,
+    /// Every offender the survey found, listed or not.
+    pub total: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

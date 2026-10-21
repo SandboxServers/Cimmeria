@@ -177,6 +177,7 @@ impl From<adoption::Error> for AdoptionError {
             adoption::Error::NotAGameFolder => Self::NotAGameFolder,
             adoption::Error::BackupConflict => Self::BackupConflict,
             adoption::Error::UnsupportedMode => Self::UnsupportedMode,
+            adoption::Error::Unsafe(_) => Self::UnsafeFile,
         }
     }
 }
