@@ -145,7 +145,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   get('adoption-status').textContent=adoptionText({...current,pending:busy});
   // The engine's refusal for the failure shown above it, when a worker recorded one.
   const rejection=lineAfter('adoption-rejection','adoption-status');
-  rejection.textContent=!busy&&s?.last_rejection?rejectionText(s.last_rejection):'';
+  rejection.textContent=!busy&&!current.error&&!review&&!working&&!r&&s?.last_error&&s.last_rejection?rejectionText(s.last_rejection):'';
   rejection.hidden=!rejection.textContent;
   const inPlace=s?.backend==='in_place';
   button('confirm-adoption').textContent=inPlace?'Adopt this folder':'Create verified copy';

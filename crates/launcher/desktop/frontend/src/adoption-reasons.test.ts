@@ -43,6 +43,14 @@ test('the index fallback names the archive size and the way to skip it',()=>{
  assert.equal(fallbackText({reason:'index_not_published',check:null,http_status:null,seed_bytes:4_100_000_000}),
   'This release has no published file index, so the launcher downloads the signed game archive (4.1 GB) to check your files. To skip that, use your game archive.');
 });
+test('a file index failure names the index, not the player folder',()=>{
+ assert.equal(rejectionText({check:'identity_conflict',entry:'file_index',expected:null,found:null,http_status:null}),
+  'The file index does not belong to this release. File: file_index.');
+ assert.equal(rejectionText({check:'identity_conflict',entry:null,expected:null,found:null,http_status:null}),
+  'A desktop-owned installation already exists, or this request was already used.');
+ assert.equal(rejectionText({check:'unsupported_configuration',entry:null,expected:null,found:'setup policy 9',http_status:null}),
+  'The file index uses a setup policy this launcher does not support. Found setup policy 9.');
+});
 test('an unknown fallback reason still says the archive is downloaded',()=>{
  assert.match(fallbackText({reason:'index_new_reason',check:null,http_status:null,seed_bytes:1}),/could not be used.*downloads the signed game archive \(0\.0 GB\)/);
 });

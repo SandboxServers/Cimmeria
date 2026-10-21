@@ -271,11 +271,11 @@ removes only what the launcher manages there and leaves your own files.
 #### Why adoption downloaded the game archive
 
 Adoption checks your files against the published file index for the release.
-When that index is available and verified, the launcher only reads the files
-you already have. It downloads the signed game archive instead, which is about
-4.1 GB for the current release, in two cases: the release has no published file
-index, or the index could not be fetched or verified. The launcher names the
-reason:
+When that index is available and verified, the launcher compares your files
+with it and downloads only the files it must replace. If the index is missing
+or cannot be used, the launcher has no file list to compare against, so it
+downloads the whole signed game archive instead, which is about 4.1 GB for the
+current release, and builds the list from it. The launcher names the reason:
 
 - This release has no published file index.
 - The published file index is malformed.

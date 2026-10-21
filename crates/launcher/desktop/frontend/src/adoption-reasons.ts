@@ -51,9 +51,21 @@ const checkTexts:Record<string,string>={
  platform_unavailable:'Verified copy adoption is not available in this build.',
  recovery_required:'An interrupted adoption must be resolved first.',
 };
+// Checks the engine raises for the file index, not for the player's folder (index_source.rs build_error).
+const indexTexts:Record<string,string>={
+ folder_unreadable:'The launcher could not read or store the file index it built.',
+ folder_too_large:'The file index is larger than this launcher will accept.',
+ identity_conflict:'The file index does not belong to this release.',
+ path_not_canonical:'The file index names a path the launcher cannot use safely.',
+ file_unclassified:'The file index lists the same file twice.',
+ artifact_hash_mismatch:'The file index did not match its signed digest.',
+};
 /** The sentence for a check, or `Check: <check>.` for one this build does not know. */
 export function rejectionText(r:Rejection):string {
- const parts=[Object.prototype.hasOwnProperty.call(checkTexts,r.check)?checkTexts[r.check]:`Check: ${r.check}.`];
+ const sentence=r.entry==='file_index'&&Object.prototype.hasOwnProperty.call(indexTexts,r.check)?indexTexts[r.check]
+  :r.check==='unsupported_configuration'&&r.found!==null&&r.found.startsWith('setup policy')?'The file index uses a setup policy this launcher does not support.'
+  :Object.prototype.hasOwnProperty.call(checkTexts,r.check)?checkTexts[r.check]:`Check: ${r.check}.`;
+ const parts=[sentence];
  if(r.entry!==null)parts.push(`File: ${r.entry}.`);
  if(r.expected!==null&&r.found!==null)parts.push(`Expected ${r.expected}, found ${r.found}.`);
  else if(r.expected!==null)parts.push(`Expected ${r.expected}.`);

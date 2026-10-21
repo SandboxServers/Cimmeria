@@ -300,6 +300,21 @@ test('each new failure code renders its own text',async()=>{
   assert.equal(ui.get('adoption-rejection').hidden,false);
  }finally{await ui.app.dispose();}
 });
+test('a worker refusal line is hidden while a review is shown',async()=>{
+ const rejected={check:'folder_not_writable' as const,entry:'Stargate Worlds',expected:null,found:null,http_status:null};
+ const ui=mount(()=>({...reviewing(),last_error:'folder_not_writable',last_rejection:rejected}));
+ try{await ui.app.ready;await ui.settle();assert.equal(ui.get('adoption-review').hidden,false);assert.equal(ui.get('adoption-rejection').hidden,true);
+ }finally{await ui.app.dispose();}
+});
+test('a worker refusal line is hidden after a synchronous error replaces the status text',async()=>{
+ const rejected={check:'folder_not_writable' as const,entry:'Stargate Worlds',expected:null,found:null,http_status:null};
+ let refuse=false;
+ const ui=mount(request=>{if(request!=='choose'&&request.command==='inspect'&&refuse)return Promise.reject('busy');return {...idle(),last_error:'folder_not_writable',last_rejection:rejected};});
+ try{await ui.app.ready;await ui.settle();assert.equal(ui.get('adoption-rejection').hidden,false);
+  refuse=true;await ui.click('inspect-adoption');
+  assert.equal(ui.get('adoption-rejection').hidden,true);
+ }finally{await ui.app.dispose();}
+});
 test('an unknown failure code names its code instead of the platform text',()=>{
  assert.equal(failureText('future_code'),'Adoption stopped: future_code.');
 });
