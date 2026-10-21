@@ -63,7 +63,7 @@ important to report.
 
 1. In **Settings**, **Local install directory** shows where the game goes.
    Leave it, or click **Choose folder…** and pick an empty folder.
-2. Turn on **Send game diagnostics while playing**. This is what lets us see a
+2. Turn on **Send game diagnostics**. This is what lets us see a
    Mac problem remotely without asking you for logs. It is off by default.
 3. Click **Install Stargate Worlds** and wait. The launcher downloads the Wine
    runtime once, then the original 2009 client from archive.org, unpacks it with

@@ -82,6 +82,14 @@ fn bridge() {
                     .unwrap();
                 Ok(serde_json::json!({}))
             }
+            "plant_hard_link" => {
+                fs::hard_link(folder.join("later.txt"), folder.join("later-link.txt")).unwrap();
+                Ok(serde_json::json!({}))
+            }
+            "remove_hard_link" => {
+                fs::remove_file(folder.join("later-link.txt")).unwrap();
+                Ok(serde_json::json!({}))
+            }
             _ => status(host.adoption_command(serde_json::from_value(value).unwrap())),
         };
         let reply = match result {

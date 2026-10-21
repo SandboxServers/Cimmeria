@@ -177,6 +177,7 @@ impl From<adoption::Error> for AdoptionError {
             adoption::Error::NotAGameFolder => Self::NotAGameFolder,
             adoption::Error::BackupConflict => Self::BackupConflict,
             adoption::Error::UnsupportedMode => Self::UnsupportedMode,
+            adoption::Error::Unsafe(_) => Self::UnsafeFile,
         }
     }
 }
@@ -260,4 +261,7 @@ pub struct AdoptionStatus {
     pub owned: bool,
     pub completed: Option<Completed>,
     pub last_error: Option<AdoptionError>,
+    /// The entries a `unsafe_file` refusal names (launcher-adopt-ux D-AU5);
+    /// `None` for every other state. Paths are relative to the chosen folder.
+    pub unsafe_entries: Option<adoption::UnsafeReport>,
 }

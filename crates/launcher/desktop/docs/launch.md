@@ -450,6 +450,18 @@ if none was logged, the final counts) after the last tail tick and before
 disk queue and ship with the next session's first flush. Either way they are
 reported only for a game that ran.
 
+**Adoption steps.** The shell's subscriber (`shell/src/telemetry.rs`) writes a
+rolling `logs/launcher.<date>.log`, 7 kept, with the home folder written as
+`~`. The `adoption` forward layer hands each step of **Use an existing game
+folder** to a bounded channel that drops when full, and
+`launcher_session::LauncherSender` sends it as a `client.launcher.adoption`
+event in a `launcher` session. That session is minted on the first step, lasts
+15 minutes and is re-minted when it runs out; events are posted at once and
+dropped silently when offline. The six steps are C10 of
+`docs/analysis/launcher-adopt-ux/work-packets-wave2.md`.
+Nothing leaves without the game-diagnostics opt-in, in a build with the module.
+`client.launcher.install_result` is unchanged and still waits for Play.
+
 **Not covered:**
 
 - An install result is queued only by the journal commit that ends the run.

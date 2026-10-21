@@ -68,6 +68,8 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 | `crates/launcher-core/src/telemetry/patch_log.rs` | Reads the client-patches DLL's `cimmeria-client-patches.log` and yields one `client.patches.boot` event per session. |
 | `crates/launcher-core/src/telemetry/patch_counts.rs` | Parses the same log's per-call lines into the DLL's claimed / delivered / dropped counters and yields `client.patches.counts` (at most once a minute when a count moved, and once at game exit). |
 | `crates/launcher-core/src/telemetry/install_result.rs` | Builds `client.launcher.install_result` from an `install_report::InstallReport` (one outcome per manifest patch), written to the on-disk queue after each Install, Repair or game Update run when the player opted in. |
+| `crates/launcher/desktop/engine/src/storage/game_telemetry/launcher_event.rs` | Builds `client.launcher.adoption` events from the desktop shell's `adoption` log target, scrubbed of the home folder, the user name and absolute paths. |
+| `crates/launcher/desktop/engine/src/storage/game_telemetry/launcher_session.rs` | Mints a short `launcher` session, without a game, for an opted-in player, and posts those events at once. Nothing is queued on disk. It re-mints only on 401 and holds after a 429 or 503. |
 | `crates/launcher-core/src/telemetry/runner.rs` | The egui launcher's per-session loop: tail → enqueue → flush → on-exit bundle. The desktop launcher runs the same steps in its own loop (next row). |
 | `crates/launcher-core/src/telemetry/mod.rs` | `Telemetry` orchestrator (`start_session` / `enqueue` / `flush` / `refresh_if_due` / `upload_bundle`). |
 | `crates/launcher/desktop/engine/src/storage/game_telemetry/` | The desktop launcher's side: `session.rs` mints the session and writes the marker before Play starts the game, `session_loop/` tails, flushes and sends the exit event and bundle, and `transport/` holds the queue, token refresh and back-off. |
@@ -75,6 +77,8 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 | `crates/admin-api/src/routes/telemetry/` | Server-side `/api/telemetry/upload-{chunk,bundle}` ingest. Validates the HMAC token, decompresses gzip(NDJSON) or unzips bundle, replays each event through `tracing::*` (`replay.rs`) so the OTLP layer ships it to SigNoz. The client-side rows go to the `cimmeria-client` service. |
 | `crates/client-telemetry/src/uploader.rs` | The injected DLL's own uploader: reads `current-session.json`, POSTs gzip(NDJSON) `client_native` batches to `<upload_endpoint>/upload-chunk`. When to retry a refused or failed POST, and with which token, is `upload_gate.rs`. |
 | `crates/lab/src/supervisor/telemetry_session.rs` | The Live Research Lab supervisor's mint: one lab session (`session_kind = "lab"`) per client launch, written into the session file the DLL reads. |
+
+The server side of the `launcher` kind is in `docs/operations/telemetry.md` § Upload size and rate limits.
 
 ## Where the rows land
 
@@ -182,8 +186,8 @@ then carries an empty token (the bridge still starts, because
 
 ## Session lifecycle
 
-**Play** runs a session when the player opted in ("Send game diagnostics
-while playing" in Settings, off by default). The session starts *before*
+**Play** runs a session when the player opted in ("Send game diagnostics"
+in Settings, off by default). The session starts *before*
 the game: the injected `cimmeria-client-telemetry` DLL reads its token and
 upload endpoint from `current-session.json` as it boots, so the file must
 exist first. The handshake is bounded to 8 s; a failed or slow one leaves

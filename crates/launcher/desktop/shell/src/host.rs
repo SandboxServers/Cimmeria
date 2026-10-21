@@ -6,6 +6,7 @@ use std::{
 };
 
 mod adoption;
+pub(crate) use adoption::events as adoption_events;
 mod client_changes;
 mod client_maintenance;
 mod game_telemetry;
@@ -13,6 +14,7 @@ mod game_update;
 #[cfg(test)]
 mod held_download;
 mod install;
+mod launcher_telemetry;
 pub use adoption::{AdoptionCommand, AdoptionError, AdoptionStatus};
 pub use game_telemetry::{GameTelemetryCommand, GameTelemetryStatus};
 pub use game_update::{GameUpdateCommand, GameUpdateStatus};

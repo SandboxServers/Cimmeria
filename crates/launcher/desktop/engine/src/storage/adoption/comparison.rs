@@ -11,6 +11,6 @@ pub(super) fn copy_layout(source_root: &Path, scanned: &inventory::Index) -> Res
     if super::in_place_preview::full_layout(source_root) {
         return Ok(());
     }
-    tracing::warn!(target: "adoption", folder = %source_root.display(), "copy adoption refused: the folder is not in the installer's Working\\Binaries layout");
+    tracing::warn!(target: "adoption", "copy adoption refused: the folder is not in the installer's Working\\Binaries layout");
     Err(Error::UnsupportedLayout)
 }

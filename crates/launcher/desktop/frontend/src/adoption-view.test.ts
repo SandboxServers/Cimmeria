@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseHTML} from 'linkedom';
 import {readFile} from 'node:fs/promises';
-import {mountAdoption} from './adoption-view';
+import {mountAdoption,unsafeItems} from './adoption-view';
 import type {AdoptionStatus,Request} from './adoption-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
 const native=(revision:number,operation:AdoptionStatus['native']['operation']['operation']=null,preferences=1)=>({schema_version:1 as const,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2 as const,revision:preferences,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1 as const,revision,operation}});
 const adopt=(state:'running'|'reconciliation_required'|'succeeded'|'cancelled')=>({id:'op',kind:'adopt' as const,intent_digest:Array(32).fill(0),state});
-const idle=(revision=1):AdoptionStatus=>({schema_version:1,native:native(revision),backend:'available',modes:['copy'],imported:{launcher_directory:'/old-launcher',game_directory:'/old-game',blocker:null},activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],owned:false,completed:null,last_error:null});
+const idle=(revision=1):AdoptionStatus=>({schema_version:1,native:native(revision),backend:'available',modes:['copy'],imported:{launcher_directory:'/old-launcher',game_directory:'/old-game',blocker:null},activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],owned:false,completed:null,last_error:null,unsafe_entries:null});
 const review=(handle='preview-1'):NonNullable<AdoptionStatus['review']>=>({preview_handle:handle,operation_revision:3,preferences_revision:1,source:'/old-game',destination:'/library/Stargate Worlds',source_kind:'legacy',
  release:{manifest_sha256:'ab'.repeat(32),seed_sha256:'cd'.repeat(32),patches:['first-patch','second-patch']},counts:{matched:40,known_transform:1,modified:2,needs_patching:0,missing:1,extra:3},requires_replacement:true,
  differences:[{path:'Working/Binaries/SGW.exe',source_path:'Working/Binaries/SGW.exe',classification:'known_transform'},{path:'<img src=x onerror=alert(1)>.lua',source_path:'x',classification:'modified'},{path:'mod.dll',source_path:'mod.dll',classification:'extra'}],differences_omitted:4,
@@ -16,11 +16,11 @@ const review=(handle='preview-1'):NonNullable<AdoptionStatus['review']>=>({previ
 const reviewing=(handle?:string):AdoptionStatus=>({...idle(3),native:native(3,adopt('running')),activity:'review',review:review(handle)});
 type Reply=AdoptionStatus|Promise<AdoptionStatus>;
 function mount(reply:(request:Request|'choose')=>Reply,onChange=()=>{}) {
- const {document,window}=parseHTML(html),calls:(Request|'choose')[]=[];
- const app=mountAdoption(document,async(command,args)=>{const request=command==='choose_existing_game_folder'?'choose' as const:(args as {request:Request}).request;calls.push(request);return reply(request);},onChange);
+ const {document,window}=parseHTML(html),calls:(Request|'choose')[]=[],modes:string[]=[];
+ const app=mountAdoption(document,async(command,args)=>{if(command==='choose_existing_game_folder')modes.push((args as {mode:string}).mode);const request=command==='choose_existing_game_folder'?'choose' as const:(args as {request:Request}).request;calls.push(request);return reply(request);},onChange);
  const get=(id:string)=>document.getElementById(id)!;
  const settle=async()=>{await app.settled();await new Promise(resolve=>setTimeout(resolve,5));await app.settled();};
- return {app,calls,get,settle,sent:(command:string)=>calls.filter(c=>c!=='choose'&&c.command===command) as Request[],
+ return {app,calls,modes,get,settle,sent:(command:string)=>calls.filter(c=>c!=='choose'&&c.command===command) as Request[],
   press:(id:string)=>{get(id).dispatchEvent(new window.Event('click'));},
   click:async(id:string)=>{get(id).dispatchEvent(new window.Event('click'));await settle();},
   tick:async(id:string,checked=true)=>{(get(id) as HTMLInputElement).checked=checked;get(id).dispatchEvent(new window.Event('change'));await settle();},
@@ -211,7 +211,7 @@ test('unavailable backends and unsupported imported settings are stated plainly'
   [{...idle(),backend:'in_place'},/Adopt your existing game folder \/old-game in place/],
   [{...idle(),backend:'in_place',last_error:'unsupported_layout'},/older layout.*cannot adopt in place.*Install the game fresh/],
   [{...idle(),backend:'in_place',last_error:'game_running'},/game is running from this folder\. Close the game first/],
-  [{...idle(),backend:'in_place',last_error:'duplicate_release_file'},/neither copy matches.*log names the file\. Nothing was deleted/],
+  [{...idle(),backend:'in_place',last_error:'duplicate_release_file'},/neither copy matches.*recovery stopped\. Nothing was deleted/],
   [{...idle(),backend:'in_place',last_error:'leftover_launcher_files'},/already holds launcher files.*cannot be adopted/],
   [{...idle(),imported:{...idle().imported!,blocker:'unsupported_catalog'}},/custom content catalog.*will not rewrite your settings/],
   [{...idle(),imported:{...idle().imported!,blocker:'unsupported_configuration'}},/custom patch DLL.*will not silently drop/],
@@ -294,12 +294,26 @@ test('each new failure code renders its own text',async()=>{
   try{await ui.app.ready;await ui.settle();assert.match(ui.text(),text,code as string);}finally{await ui.app.dispose();}
  }
 });
-test('the mode choice shows only when the build offers both modes',async()=>{
+test('the mode choice is one row per mode, shows the pick, and the button names it',async()=>{
  const both=mount(()=>({...idle(),modes:['in_place','copy'] as AdoptionStatus['modes']})),one=mount(()=>idle());
  try{await both.app.ready;await both.settle();await one.app.ready;await one.settle();
   assert.equal(both.get('adoption-modes').hidden,false);assert.equal(one.get('adoption-modes').hidden,true);
-  assert.match(both.get('adoption-modes').textContent!,/Adopt it in place: the folder becomes the launcher's installation.*Make a verified copy: your folder is left as it is/);
+  // The labels hold line breaks in the markup, so the match spans them.
+  assert.match(both.get('adoption-modes').textContent!,/Adopt it in place.*becomes the launcher’s installation[\s\S]*Make a verified copy[\s\S]*left as it is/);
+  assert.match(both.get('adoption-mode-in-place-row').className,/\bselected\b/);assert.doesNotMatch(both.get('adoption-mode-copy-row').className,/\bselected\b/);
+  assert.equal(both.get('choose-adoption-destination').textContent,'Choose the folder to adopt in place…');
+  // linkedom does not uncheck the other radio, so both are set explicitly.
+  await both.tick('adoption-mode-in-place',false);await both.tick('adoption-mode-copy');
+  assert.doesNotMatch(both.get('adoption-mode-in-place-row').className,/\bselected\b/);assert.match(both.get('adoption-mode-copy-row').className,/\bselected\b/);
+  assert.equal(both.get('choose-adoption-destination').textContent,'Choose the folder to copy…');
+  await both.click('choose-adoption-destination');
+  assert.deepEqual(both.modes,['copy']);
+  assert.equal(one.get('choose-adoption-destination').textContent,'Use an existing game folder…');
  }finally{await both.app.dispose();await one.app.dispose();}
+});
+test('the mode rows are laid out one per line',async()=>{
+ const css=await readFile(new URL('../ui/style.css',import.meta.url),'utf8');
+ assert.ok(css.includes('.mode-option{display:flex'));assert.ok(css.includes('.mode-option.selected{'));
 });
 test('every button shows busy on the first press',async()=>{
  let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
@@ -311,4 +325,46 @@ test('every button shows busy on the first press',async()=>{
   for(const id of ['dismiss-adoption','confirm-adoption','inspect-adoption','choose-adoption-destination','dismiss-adoption-maintenance'])assert.equal(ui.disabled(id),true,id);
   release();await ui.settle();
  }finally{release();await ui.app.dispose();}
+});
+test('an unsafe refusal lists each entry, its reason and the fix',async()=>{
+ const status:AdoptionStatus={...idle(),backend:'in_place',modes:['in_place','copy'],last_error:'unsafe_file',unsafe_entries:{entries:[{reason:'hard_link',path:'later.txt'},{reason:'cloud_file',path:'Working/a.pak'},{reason:'link',path:'.'},{reason:'link',path:null},{reason:'name',path:'<img src=x onerror=alert(1)>'}],total:7}};
+ const ui=mount(()=>status);
+ try{await ui.app.ready;await ui.settle();
+  assert.equal(ui.text(),'These files or folders in the game folder cannot be adopted safely. Fix each one as described below, then choose the folder again. Nothing was copied, moved or removed.');
+  const list=ui.get('adoption-unsafe');
+  assert.equal(list.hidden,false);
+  const items=Array.from(list.querySelectorAll('li'),li=>li.textContent??'');
+  assert.equal(items.length,6);
+  assert.equal(items[0],'later.txt: a hard link: the same file is stored under another name too. Replace it with a plain copy, or remove it, then try again.');
+  assert.match(items[2],/^The game folder itself:/);
+  assert.match(items[3],/^The game folder’s location:/);
+  assert.equal(items[5],'…and 2 more not listed here.');
+  assert.equal(list.querySelector('img'),null);
+ }finally{await ui.app.dispose();}
+});
+test('every unsafe reason has its own fix text',()=>{
+ const reasons=['link','cloud_file','hard_link','special_file','name','case_collision'] as const;
+ const texts=reasons.map(reason=>{const items=unsafeItems({...idle(),unsafe_entries:{entries:[{reason,path:'x'}],total:1}});assert.equal(items.length,1);return items[0];});
+ assert.equal(new Set(texts).size,6);
+ for(const text of texts)assert.match(text,/^x: \S/);
+});
+test('an unsafe refusal without entries shows the generic text and no list',async()=>{
+ const ui=mount(()=>({...idle(),last_error:'unsafe_file',unsafe_entries:null}));
+ try{await ui.app.ready;await ui.settle();
+  assert.match(ui.text(),/could not be checked safely, or it changed while it was checked.*Close the game and any program that syncs or backs up the folder/);
+  assert.equal(ui.get('adoption-unsafe').hidden,true);
+ }finally{await ui.app.dispose();}
+});
+test('the list is gone once a review is shown',async()=>{
+ const ui=mount(()=>({...reviewing(),last_error:'unsafe_file',unsafe_entries:{entries:[{reason:'link',path:'x'}],total:1}}));
+ try{await ui.app.ready;await ui.settle();
+  assert.equal(ui.get('adoption-unsafe').hidden,true);
+ }finally{await ui.app.dispose();}
+});
+test('no failure text points at a launcher log',async()=>{
+ for(const last_error of ['duplicate_release_file','leftover_launcher_files'] as const){
+  const ui=mount(()=>({...idle(),backend:'in_place',last_error}));
+  try{await ui.app.ready;await ui.settle();assert.doesNotMatch(ui.text(),/log/);
+  }finally{await ui.app.dispose();}
+ }
 });

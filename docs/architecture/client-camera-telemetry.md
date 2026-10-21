@@ -29,7 +29,7 @@ Details that trip readers:
 
 ## Scope and consent
 
-The camera read is part of the existing launcher opt-in, **Send game diagnostics while playing** (see [telemetry operations](../operations/telemetry.md)). The owner ruled on 2026-10-18 that this opt-in covers the camera, so the launcher wording is unchanged and this page adds no new consent.
+The camera read is part of the existing launcher opt-in, **Send game diagnostics** (see [telemetry operations](../operations/telemetry.md)). The owner ruled on 2026-10-18 that this opt-in covers the camera, so this page adds no new consent.
 
 - **Off means off.** The launcher injects the DLL only while the opt-in is on, so with it off nothing here runs.
 - **Ids only (D-PC2, D-PC14).** A camera row carries the entity id and no character name. The replay builds its own row shape for `client.camera.*` targets for this reason; the usual game shape would add names.

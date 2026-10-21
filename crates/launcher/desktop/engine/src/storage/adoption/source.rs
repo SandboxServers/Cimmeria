@@ -39,23 +39,26 @@ pub(super) fn request_source(
     };
     let SourceRequest::Folder { selected } = request else {
         let imported = saved_import(saved, request)?;
-        let scanned = inventory::scan(&imported.source.game_directory, &CancellationToken::new())?;
+        let scanned = survey::explained(
+            &imported.source.game_directory,
+            inventory::scan(&imported.source.game_directory, &CancellationToken::new()),
+        )?;
         return Ok((AdoptionSource::Legacy(imported), scanned));
     };
     let root = resolve_folder(selected)?;
     if let Some(imported) = saved.filter(|imported| imported.source.game_directory == root) {
-        let scanned = inventory::scan(&root, &CancellationToken::new())?;
+        let scanned = survey::explained(&root, inventory::scan(&root, &CancellationToken::new()))?;
         return Ok((AdoptionSource::Legacy(imported), scanned));
     }
     // A copy only reads the folder, so it needs no write access to it.
     if mode == AdoptionMode::InPlace {
-        refuse_links(&root)?;
+        survey::explained(&root, refuse_links(&root))?;
         check_writable(&root)?;
     }
     if root.starts_with(&state_root) || state_root.starts_with(&root) {
         return Err(StorageError::InvalidDirectory.into());
     }
-    let scanned = inventory::scan(&root, &CancellationToken::new())?;
+    let scanned = survey::explained(&root, inventory::scan(&root, &CancellationToken::new()))?;
     let source = AdoptionSource::Folder(FolderSource {
         selected: selected.clone(),
         root,
@@ -86,7 +89,7 @@ pub fn resolve_folder(selected: &Path) -> Result<PathBuf, Error> {
             return Ok(root.to_path_buf());
         }
     }
-    tracing::warn!(target: "adoption", folder = %selected.display(), "adoption refused: the folder is not a game folder");
+    tracing::warn!(target: "adoption", "adoption refused: the folder is not a game folder");
     Err(Error::NotAGameFolder)
 }
 
@@ -136,7 +139,6 @@ pub(super) fn refuse_links(root: &Path) -> Result<(), Error> {
     {
         let meta = std::fs::symlink_metadata(&path)?;
         if is_link(&meta) {
-            tracing::warn!(target: "adoption", path = %path.display(), "in-place adoption refused: a folder on the way is a link");
             return Err(StorageError::UnsafeFile.into());
         }
     }
@@ -161,7 +163,7 @@ fn is_link(meta: &std::fs::Metadata) -> bool {
 /// probes are removed on every path.
 pub(super) fn check_writable(root: &Path) -> Result<(), Error> {
     let Some(binaries) = working_binaries(root) else {
-        tracing::warn!(target: "adoption", folder = %root.display(), "in-place adoption refused: the folder has no Working\\Binaries to change");
+        tracing::warn!(target: "adoption", "in-place adoption refused: the folder has no Working\\Binaries to change");
         return Err(Error::FolderNotWritable);
     };
     let id = Uuid::new_v4();
@@ -179,7 +181,7 @@ pub(super) fn check_writable(root: &Path) -> Result<(), Error> {
     let _ = std::fs::remove_file(&binaries_probe);
     let _ = std::fs::remove_file(&renamed);
     result.map_err(|error| {
-        tracing::warn!(target: "adoption", folder = %root.display(), ?error, "in-place adoption refused: the folder is not writable");
+        tracing::warn!(target: "adoption", ?error, "in-place adoption refused: the folder is not writable");
         Error::FolderNotWritable
     })
 }
@@ -220,7 +222,14 @@ pub(super) fn directories(source: &AdoptionSource) -> Vec<&Path> {
 pub(super) fn canonical_paths(source: &AdoptionSource) -> Result<(), Error> {
     for path in directories(source) {
         if path.canonicalize()? != path {
-            return Err(StorageError::UnsafeFile.into());
+            tracing::warn!(target: "adoption", reason = ?UnsafeReason::Link, "adoption refused: a source folder is not at its canonical path");
+            return Err(Error::Unsafe(Box::new(UnsafeReport {
+                entries: vec![UnsafeEntry {
+                    reason: UnsafeReason::Link,
+                    path: None,
+                }],
+                total: 1,
+            })));
         }
     }
     Ok(())
