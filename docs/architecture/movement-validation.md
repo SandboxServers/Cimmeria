@@ -142,12 +142,12 @@ as 4x top speed. Each accepted move that had a time baseline calls
   near-zero-dt packets from reading as infinite speed.
 - A move under 0.01 u (`MIN_SPEED_DISTANCE`) adds its dt to the window but
   never warns.
-- The window is dropped on an authorized teleport and on `forget`.
+- The window is dropped on an authorized teleport, on `forget`, and on every packet accepted under the GM physics bypass (`movement_unrestricted`).
 
 The `distance` and `dt_secs` on the `movement.speed_warning` row are the
 window sums. The old `speed_bunched` DEBUG row is gone: the window absorbs
 bunched packets, so there is nothing separate to report. `check_kinematics`
-now only decides the teleport reject.
+now only decides the teleport reject. The row also carries `window_secs = max(dt_secs, SPEED_WINDOW)`, the divisor the verdict used, so `implied_speed = distance / window_secs` (they differ in the first 250 ms after a spawn or teleport).
 
 ### Time source — server clock, not client timestamp
 

@@ -505,7 +505,7 @@ fn jittered_packets_at_top_speed_do_not_warn_at_the_seam() {
 /// `window_secs = 0.25`; recomputing `distance / window_secs` reproduces the
 /// logged speed, which the calibration pipeline relies on.
 ///
-/// Reverting the `window_secs` field to `dt_secs` makes the final assertion fail.
+/// Reverting the `window_secs` field to `dt_secs` makes the first assertion fail.
 #[test]
 fn speed_warn_logs_the_window_the_verdict_was_made_on() {
     let capture = LogCapture::install();
