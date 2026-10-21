@@ -7,7 +7,7 @@ import type {AdoptionStatus,Request} from './adoption-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
 const native=(revision:number,operation:AdoptionStatus['native']['operation']['operation']=null,preferences=1)=>({schema_version:1 as const,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2 as const,revision:preferences,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1 as const,revision,operation}});
 const adopt=(state:'running'|'reconciliation_required'|'succeeded'|'cancelled')=>({id:'op',kind:'adopt' as const,intent_digest:Array(32).fill(0),state});
-const idle=(revision=1):AdoptionStatus=>({schema_version:1,native:native(revision),backend:'available',modes:['copy'],imported:{launcher_directory:'/old-launcher',game_directory:'/old-game',blocker:null},activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],owned:false,completed:null,last_error:null});
+const idle=(revision=1):AdoptionStatus=>({schema_version:1,native:native(revision),backend:'available',modes:['copy'],imported:{launcher_directory:'/old-launcher',game_directory:'/old-game',blocker:null},activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],owned:false,completed:null,last_error:null,unsafe_entries:null});
 const review=(handle='preview-1'):NonNullable<AdoptionStatus['review']>=>({preview_handle:handle,operation_revision:3,preferences_revision:1,source:'/old-game',destination:'/library/Stargate Worlds',source_kind:'legacy',
  release:{manifest_sha256:'ab'.repeat(32),seed_sha256:'cd'.repeat(32),patches:['first-patch','second-patch']},counts:{matched:40,known_transform:1,modified:2,needs_patching:0,missing:1,extra:3},requires_replacement:true,
  differences:[{path:'Working/Binaries/SGW.exe',source_path:'Working/Binaries/SGW.exe',classification:'known_transform'},{path:'<img src=x onerror=alert(1)>.lua',source_path:'x',classification:'modified'},{path:'mod.dll',source_path:'mod.dll',classification:'extra'}],differences_omitted:4,
@@ -16,11 +16,11 @@ const review=(handle='preview-1'):NonNullable<AdoptionStatus['review']>=>({previ
 const reviewing=(handle?:string):AdoptionStatus=>({...idle(3),native:native(3,adopt('running')),activity:'review',review:review(handle)});
 type Reply=AdoptionStatus|Promise<AdoptionStatus>;
 function mount(reply:(request:Request|'choose')=>Reply,onChange=()=>{}) {
- const {document,window}=parseHTML(html),calls:(Request|'choose')[]=[];
- const app=mountAdoption(document,async(command,args)=>{const request=command==='choose_existing_game_folder'?'choose' as const:(args as {request:Request}).request;calls.push(request);return reply(request);},onChange);
+ const {document,window}=parseHTML(html),calls:(Request|'choose')[]=[],modes:string[]=[];
+ const app=mountAdoption(document,async(command,args)=>{if(command==='choose_existing_game_folder')modes.push((args as {mode:string}).mode);const request=command==='choose_existing_game_folder'?'choose' as const:(args as {request:Request}).request;calls.push(request);return reply(request);},onChange);
  const get=(id:string)=>document.getElementById(id)!;
  const settle=async()=>{await app.settled();await new Promise(resolve=>setTimeout(resolve,5));await app.settled();};
- return {app,calls,get,settle,sent:(command:string)=>calls.filter(c=>c!=='choose'&&c.command===command) as Request[],
+ return {app,calls,modes,get,settle,sent:(command:string)=>calls.filter(c=>c!=='choose'&&c.command===command) as Request[],
   press:(id:string)=>{get(id).dispatchEvent(new window.Event('click'));},
   click:async(id:string)=>{get(id).dispatchEvent(new window.Event('click'));await settle();},
   tick:async(id:string,checked=true)=>{(get(id) as HTMLInputElement).checked=checked;get(id).dispatchEvent(new window.Event('change'));await settle();},
@@ -294,12 +294,26 @@ test('each new failure code renders its own text',async()=>{
   try{await ui.app.ready;await ui.settle();assert.match(ui.text(),text,code as string);}finally{await ui.app.dispose();}
  }
 });
-test('the mode choice shows only when the build offers both modes',async()=>{
+test('the mode choice is one row per mode, shows the pick, and the button names it',async()=>{
  const both=mount(()=>({...idle(),modes:['in_place','copy'] as AdoptionStatus['modes']})),one=mount(()=>idle());
  try{await both.app.ready;await both.settle();await one.app.ready;await one.settle();
   assert.equal(both.get('adoption-modes').hidden,false);assert.equal(one.get('adoption-modes').hidden,true);
-  assert.match(both.get('adoption-modes').textContent!,/Adopt it in place: the folder becomes the launcher's installation.*Make a verified copy: your folder is left as it is/);
+  // The labels hold line breaks in the markup, so the match spans them.
+  assert.match(both.get('adoption-modes').textContent!,/Adopt it in place.*becomes the launcher’s installation[\s\S]*Make a verified copy[\s\S]*left as it is/);
+  assert.match(both.get('adoption-mode-in-place-row').className,/\bselected\b/);assert.doesNotMatch(both.get('adoption-mode-copy-row').className,/\bselected\b/);
+  assert.equal(both.get('choose-adoption-destination').textContent,'Choose the folder to adopt in place…');
+  // linkedom does not uncheck the other radio, so both are set explicitly.
+  await both.tick('adoption-mode-in-place',false);await both.tick('adoption-mode-copy');
+  assert.doesNotMatch(both.get('adoption-mode-in-place-row').className,/\bselected\b/);assert.match(both.get('adoption-mode-copy-row').className,/\bselected\b/);
+  assert.equal(both.get('choose-adoption-destination').textContent,'Choose the folder to copy…');
+  await both.click('choose-adoption-destination');
+  assert.deepEqual(both.modes,['copy']);
+  assert.equal(one.get('choose-adoption-destination').textContent,'Use an existing game folder…');
  }finally{await both.app.dispose();await one.app.dispose();}
+});
+test('the mode rows are laid out one per line',async()=>{
+ const css=await readFile(new URL('../ui/style.css',import.meta.url),'utf8');
+ assert.ok(css.includes('.mode-option{display:flex'));assert.ok(css.includes('.mode-option.selected{'));
 });
 test('every button shows busy on the first press',async()=>{
  let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});

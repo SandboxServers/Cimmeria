@@ -107,6 +107,86 @@ async fn the_imported_folder_is_adopted_in_place_once_its_release_files_verify()
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_hard_linked_file_is_named_and_dismissed() {
+    let mut f = Fixture::new(serde_json::json!({}));
+    let _origin = f.serve().await;
+    let folder = f.source.game_directory.clone();
+
+    // A second name for the player's edited file makes the folder unsafe to adopt.
+    std::fs::hard_link(folder.join("later.txt"), folder.join("later-link.txt")).unwrap();
+    f.host.begin_adoption_in_place(f.release()).unwrap();
+    let status = until(
+        &f.host,
+        "the unsafe refusal",
+        Duration::from_secs(30),
+        |s| s.activity == Activity::Idle && s.last_error.is_some(),
+    )
+    .await;
+    assert_eq!(status.last_error, Some(AdoptionError::UnsafeFile));
+    assert_eq!(
+        status.unsafe_entries,
+        Some(adoption::UnsafeReport {
+            entries: vec![
+                adoption::UnsafeEntry {
+                    reason: adoption::UnsafeReason::HardLink,
+                    path: Some("later-link.txt".into()),
+                },
+                adoption::UnsafeEntry {
+                    reason: adoption::UnsafeReason::HardLink,
+                    path: Some("later.txt".into()),
+                },
+            ],
+            total: 2,
+        })
+    );
+    // The refusal changes nothing in the folder.
+    assert_eq!(
+        std::fs::read(folder.join("later.txt")).unwrap(),
+        b"edited by the user"
+    );
+    assert!(!folder.join(".cimmeria-install.json").exists());
+    assert!(!folder.join("game").exists());
+
+    // Removing the second name and dismissing clears the refusal and its entries.
+    std::fs::remove_file(folder.join("later-link.txt")).unwrap();
+    f.host.adoption_command(DISMISS).unwrap();
+    let status = f.host.adoption_status().unwrap();
+    assert_eq!(status.last_error, None);
+    assert_eq!(status.unsafe_entries, None);
+
+    // The folder is reviewed again once it is safe.
+    f.host.begin_adoption_in_place(f.release()).unwrap();
+    assert!(reviewed(&f.host).await.in_place);
+}
+
+#[test]
+fn unsafe_entries_serialize_as_the_contract_says() {
+    let report = adoption::UnsafeReport {
+        entries: vec![
+            adoption::UnsafeEntry {
+                reason: adoption::UnsafeReason::HardLink,
+                path: Some("later.txt".into()),
+            },
+            adoption::UnsafeEntry {
+                reason: adoption::UnsafeReason::Link,
+                path: None,
+            },
+        ],
+        total: 2,
+    };
+    assert_eq!(
+        serde_json::to_value(report).unwrap(),
+        serde_json::json!({
+            "entries": [
+                {"reason": "hard_link", "path": "later.txt"},
+                {"reason": "link", "path": null}
+            ],
+            "total": 2
+        })
+    );
+}
+
 /// A host whose state holds no saved import, so a picked folder is the source.
 pub(super) fn unimported_host(state_root: PathBuf) -> NativeHost {
     drop(DesktopState::open(&state_root).unwrap());

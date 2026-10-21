@@ -50,7 +50,12 @@ try {
  const before=await evidence();
  assert.equal(before.owner_marker,false);assert.equal(before.owned_directory,null);assert.equal(before.executable_in_old_place,true);
  assert.match(text(),/Adopt your existing game folder .* in place/);
- assert.equal(get('choose-adoption-destination').textContent,'Use an existing game folder…');
+ assert.equal(get('choose-adoption-destination').textContent,'Choose the folder to adopt in place…');
+ // Picking copy re-renders at once; picking in place again restores the adopt label (scenario 1 needs in_place).
+ get('adoption-mode-in-place').checked=false;get('adoption-mode-copy').checked=true;get('adoption-mode-copy').dispatchEvent(new window.Event('change'));await settle();
+ assert.match(get('adoption-mode-copy-row').className,/\bselected\b/);assert.equal(get('choose-adoption-destination').textContent,'Choose the folder to copy…');
+ get('adoption-mode-copy').checked=false;get('adoption-mode-in-place').checked=true;get('adoption-mode-in-place').dispatchEvent(new window.Event('change'));await settle();
+ assert.equal(get('choose-adoption-destination').textContent,'Choose the folder to adopt in place…');
 
  // 1. The player edited one release file: the review shows its replacement box.
  // Confirm stays disabled with every other box ticked, nothing changes until the
@@ -86,6 +91,6 @@ try {
  assert.equal(now.owner_marker,false);assert.equal(now.owned_directory,null);assert.equal(now.executable_in_game,false);
  assert.equal(now.player_file,'untrusted plugin');
  console.log('In-place adoption logic UAT passed: production Effect workflow and view against the production host with a real isolated store, imported old-launcher folder and signed loopback artifact origin.');
- console.log('Exercised: in-place offer text and button; a modified release file shows the replacement box, confirm held disabled until it is ticked and the folder unchanged until then; a single confirmation per double click; adoption published with owner marker, owned directory, uninstall target, executable moved into the owned tree and the unlisted file left in place; engine uninstall of the adopted folder keeping the unlisted file.');
+ console.log('Exercised: the mode rows show the pick and the choose button names it; in-place offer text and button; a modified release file shows the replacement box, confirm held disabled until it is ticked and the folder unchanged until then; a single confirmation per double click; adoption published with owner marker, owned directory, uninstall target, executable moved into the owned tree and the unlisted file left in place; engine uninstall of the adopted folder keeping the unlisted file.');
  console.log('Excluded: Tauri IPC and the absent folder dialog, the signed production catalog and HTTPS transport, the published client and its RAR/CAB seed, interrupted-move recovery and abandonment (engine tests), the Uninstall view (G-06, LX-26), Play on the adopted folder (LX-26), and packaged visual UAT.');
 } finally {await app.dispose();child.stdin.end();assert.equal(await exit,0,'native bridge exits cleanly');await rm(root,{recursive:true,force:true});}

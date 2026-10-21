@@ -429,10 +429,17 @@ fn corrupt_signed_artifact_and_nested_links_are_refused_without_source_changes()
     {
         let f = Fixture::new();
         std::os::unix::fs::symlink(&f.seed, f.source.game_directory.join("link")).unwrap();
-        assert!(matches!(
-            f.preview(),
-            Err(Error::Storage(StorageError::UnsafeFile))
-        ));
+        let Err(Error::Unsafe(report)) = f.preview() else {
+            panic!("expected an unsafe report");
+        };
+        assert_eq!(
+            report.entries,
+            [UnsafeEntry {
+                reason: UnsafeReason::Link,
+                path: Some("link".into()),
+            }]
+        );
+        assert_eq!(report.total, 1);
         assert!(!f.destination().exists());
     }
 }
@@ -444,10 +451,23 @@ fn hardlinks_and_ambiguous_layouts_fail_closed() {
         f.source.game_directory.join("other.txt"),
     )
     .unwrap();
-    assert!(matches!(
-        f.preview(),
-        Err(Error::Storage(StorageError::UnsafeFile))
-    ));
+    let Err(Error::Unsafe(report)) = f.preview() else {
+        panic!("expected an unsafe report");
+    };
+    assert_eq!(
+        report.entries,
+        [
+            UnsafeEntry {
+                reason: UnsafeReason::HardLink,
+                path: Some("later.txt".into()),
+            },
+            UnsafeEntry {
+                reason: UnsafeReason::HardLink,
+                path: Some("other.txt".into()),
+            },
+        ]
+    );
+    assert_eq!(report.total, 2);
     let f = Fixture::new();
     std::fs::write(f.source.game_directory.join("SGW.exe"), b"ambiguous").unwrap();
     assert!(matches!(
