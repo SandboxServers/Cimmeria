@@ -11,7 +11,9 @@ use axum::{
 use super::{LOGIN_NS, SELECT_NS, XML_DECL};
 
 /// Escape an interpolated value for a double-quoted XML attribute, so a value
-/// holding `"`, `<`, `>`, `&` or `'` cannot end the attribute or open an element.
+/// cannot end the attribute or open an element. Inside a double-quoted
+/// attribute at least `"` and `&` need escaping; `quick_xml::escape` also
+/// escapes `<`, `>` and `'`.
 fn attr(s: &str) -> std::borrow::Cow<'_, str> {
     quick_xml::escape::escape(s)
 }
