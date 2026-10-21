@@ -5,10 +5,7 @@
 //! `Folder.root` for a folder source or the imported game folder for a legacy
 //! one; only a legacy source has an import to verify.
 use super::*;
-use crate::{
-    install_progress::ProgressSink,
-    unpack::UnpackSink,
-};
+use crate::{install_progress::ProgressSink, unpack::UnpackSink};
 use cimmeria_launcher_core::file_index::{FileIndex, Origin, SetupRule};
 use cimmeria_launcher_core::seed_source::SeedSourceHandle;
 use sha2::{Digest, Sha256};
@@ -67,7 +64,7 @@ pub(super) fn reference_and_comparison(
     )?;
     let reference = match origin {
         IndexOrigin::Published => None,
-        IndexOrigin::Built => Some(reconstructed(
+        IndexOrigin::Built(_) => Some(reconstructed(
             state,
             request,
             backend,
@@ -84,7 +81,7 @@ pub(super) fn reference_and_comparison(
     // is left to download and no held set is read.
     let held = match origin {
         IndexOrigin::Published => Some(artifacts::held(&root, &request.release, cancel)?),
-        IndexOrigin::Built => None,
+        IndexOrigin::Built(_) => None,
     };
     let is_held = |sha: &str| held.as_ref().is_none_or(|held| held.contains(sha));
     let (expected_digest, expected_paths): ([u8; 32], Vec<String>) = match &reference {
@@ -189,7 +186,7 @@ pub(super) fn reference_and_comparison(
             .file_index
             .as_ref()
             .map(|reference| reference.sha256.to_ascii_lowercase()),
-        IndexOrigin::Built => None,
+        IndexOrigin::Built(_) => None,
     };
     Ok(Compared {
         reference,

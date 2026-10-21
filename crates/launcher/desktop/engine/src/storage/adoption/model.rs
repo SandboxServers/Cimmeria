@@ -93,6 +93,10 @@ pub struct Report {
     /// No game-local user data is migrated by policy version 1.
     pub user_data_remains_in_source: bool,
     pub game_telemetry_available: bool,
+    /// Why the signed file index was not used (C15). Not serialized: the frontend
+    /// decoder rejects unknown properties (R8); the reason goes to the log and telemetry.
+    #[serde(skip)]
+    pub index_fallback: Option<super::index_source::IndexFallback>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub download: Option<DownloadEstimate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

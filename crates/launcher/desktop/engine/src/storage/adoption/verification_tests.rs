@@ -1,7 +1,18 @@
 //! Index acquisition against a loopback origin: a published index is used, a
 //! refused one falls back to the build, and a verified cache is not refetched.
 //! Runs on every OS; the signed fixtures are tiny and built here.
+use super::index_source::IndexFallback;
 use super::verification::{acquire_index, classify, download_for, IndexOrigin};
+
+/// A refused-index fallback for the origin-only tests.
+fn fallback() -> IndexFallback {
+    IndexFallback {
+        reason: "index_not_published",
+        check: None,
+        http_status: None,
+        seed_bytes: 0,
+    }
+}
 use super::*;
 use cimmeria_launcher_core::file_index::FileIndex;
 use cimmeria_launcher_core::seed_source::SeedSourceHandle;
@@ -152,7 +163,7 @@ async fn a_published_index_with_the_wrong_digest_falls_back_to_the_build() {
     let server = origin(&seed, &index).await;
     let state = tempfile::tempdir().unwrap();
     let (found, origin) = acquire(state.path(), &signed, &server).unwrap();
-    assert_eq!(origin, IndexOrigin::Built);
+    assert!(matches!(origin, IndexOrigin::Built(_)));
     assert_eq!(found.seed.sha256, hex(&Sha256::digest(&seed)));
     let seen = requests(&server).await;
     assert_eq!(seen.iter().filter(|p| *p == "/seed.zip").count(), 1);
@@ -187,7 +198,7 @@ fn a_built_index_estimate_downloads_nothing() {
         bytes: 1100,
         local_seed: false,
     };
-    let built = download_for(&IndexOrigin::Built, estimate.clone());
+    let built = download_for(&IndexOrigin::Built(fallback()), estimate.clone());
     assert_eq!(built.bytes, 0);
     assert!(!built.seed);
     assert!(built.patches.is_empty());
@@ -232,7 +243,7 @@ async fn a_built_index_with_a_chosen_local_archive_never_requests_the_seed() {
         )
     })
     .unwrap();
-    assert_eq!(found, IndexOrigin::Built);
+    assert!(matches!(found, IndexOrigin::Built(_)));
     assert!(!requests(&server).await.contains(&"/seed.zip".to_string()));
     assert_eq!(std::fs::read(&archive_path).unwrap(), before);
 }

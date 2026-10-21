@@ -1,10 +1,13 @@
 //! The per-file index a verification compares against: the signed blob when the
 //! manifest names one and it verifies, else the index built from the seed and
-//! patches. [`acquire_index`] reports which one it used.
+//! patches. [`acquire_index`] reports which one it used and, for a build, why the
+//! signed one was refused (C15).
+use super::rejection::{self, Rejection};
 use super::*;
 use crate::{
     install_progress::ProgressSink,
     manifest::{Manifest, PatchEntry},
+    storage::game_telemetry::launcher_event,
     unpack::UnpackSink,
 };
 use cimmeria_launcher_core::file_index::{
@@ -13,13 +16,27 @@ use cimmeria_launcher_core::file_index::{
 use cimmeria_launcher_core::seed_source::SeedSourceHandle;
 use std::path::PathBuf;
 
+/// Why the signed index was not used, and what the build downloads instead.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct IndexFallback {
+    /// `index_not_published`, `index_reference_malformed`, `index_download_failed`,
+    /// `index_digest_mismatch` or `index_invalid`.
+    pub reason: &'static str,
+    /// The `check` of a rejection recorded while the signed index was fetched or verified.
+    pub check: Option<&'static str>,
+    /// The HTTP status a recorded rejection carried, if any.
+    pub http_status: Option<u16>,
+    /// The seed size the build downloads (`manifest.seed.size`).
+    pub seed_bytes: u64,
+}
+
 /// Where the per-file index came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum IndexOrigin {
     /// The signed blob, verified against the manifest.
     Published,
-    /// Built locally from the seed and patches.
-    Built,
+    /// Built locally from the seed and patches, for the given reason.
+    Built(IndexFallback),
 }
 
 /// The per-file index for `release`: the signed blob when the manifest names one
@@ -35,16 +52,20 @@ pub(super) fn acquire_index(
     cancel: &CancellationToken,
     progress: &ProgressSink,
 ) -> Result<(FileIndex, IndexOrigin), Error> {
-    let reason = match &release.manifest().file_index {
-        None => "the manifest names no file index".to_string(),
+    let manifest = release.manifest();
+    let fallback = match &manifest.file_index {
+        None => refusal("index_not_published", None, manifest.seed.size),
         Some(reference) => {
             match published(state_root, release, transport, reference, cancel, progress)? {
-                Ok(index) => return Ok((index, IndexOrigin::Published)),
-                Err(reason) => reason,
+                Ok(index) => {
+                    published_event(reference.size);
+                    return Ok((index, IndexOrigin::Published));
+                }
+                Err(fallback) => fallback,
             }
         }
     };
-    tracing::warn!(target: "adoption", reason = %reason, "file index unavailable; building it from the seed and patches");
+    fallback_event(&fallback);
     let index = built(
         state_root,
         release,
@@ -54,7 +75,7 @@ pub(super) fn acquire_index(
         cancel,
         progress,
     )?;
-    Ok((index, IndexOrigin::Built))
+    Ok((index, IndexOrigin::Built(fallback)))
 }
 
 /// The download a comparison reports. A built index fetched every blob it used,
@@ -62,7 +83,7 @@ pub(super) fn acquire_index(
 pub(super) fn download_for(origin: &IndexOrigin, estimate: DownloadEstimate) -> DownloadEstimate {
     match origin {
         IndexOrigin::Published => estimate,
-        IndexOrigin::Built => DownloadEstimate {
+        IndexOrigin::Built(_) => DownloadEstimate {
             seed: false,
             patches: Vec::new(),
             bytes: 0,
@@ -80,42 +101,77 @@ fn published(
     reference: &FileIndexRef,
     cancel: &CancellationToken,
     progress: &ProgressSink,
-) -> Result<Result<FileIndex, String>, Error> {
+) -> Result<Result<FileIndex, IndexFallback>, Error> {
     let manifest = release.manifest();
+    let seed_bytes = manifest.seed.size;
     if reference.size > MAX_FILE_INDEX_BYTES || !is_sha256(&reference.sha256) {
-        return Ok(Err(
-            "the manifest's file index reference is malformed".into()
-        ));
+        return Ok(Err(refusal("index_reference_malformed", None, seed_bytes)));
     }
     let name = format!("file-index-{}.json", reference.sha256.to_ascii_lowercase());
     let cache = state_root.join(&name);
     if let Some(index) = read_cache(&cache, reference, manifest) {
+        cached_event();
         return Ok(Ok(index));
     }
     let partial = state_root.join(format!("{name}.download"));
-    let bytes = match artifacts::index_blob(
-        transport,
-        &reference.blob,
-        reference.size,
-        &partial,
-        cancel,
-        progress,
-    ) {
+    // The nested scope keeps what the download recorded (a check, an HTTP status)
+    // for the fallback instead of letting it escape as this operation's cause.
+    let (fetched, recorded) = rejection::scope(|| {
+        artifacts::index_blob(
+            transport,
+            &reference.blob,
+            reference.size,
+            &partial,
+            cancel,
+            progress,
+        )
+    });
+    let bytes = match fetched {
         Ok(bytes) => bytes,
         Err(Error::Cancelled) => return Err(Error::Cancelled),
-        Err(error) => return Ok(Err(format!("the index did not download: {error:?}"))),
+        Err(_) => return Ok(Err(refusal("index_download_failed", recorded, seed_bytes))),
     };
-    let index = match verify(&bytes, reference, manifest) {
+    let (verified, recorded) = rejection::scope(|| verify(&bytes, reference, manifest));
+    let index = match verified {
         Ok(index) => index,
-        Err(error) => return Ok(Err(error.to_string())),
+        Err(error) => return Ok(Err(refusal(verify_reason(&error), recorded, seed_bytes))),
     };
     let staging = state_root.join(format!("{name}.staging"));
     let stored = std::fs::write(&staging, &bytes).and_then(|()| std::fs::rename(&staging, &cache));
-    if stored.is_err() {
+    if let Err(error) = stored {
         let _ = std::fs::remove_file(&staging);
+        return Err(rejection::reject(
+            Error::Storage(StorageError::Io),
+            Rejection::new("folder_unreadable")
+                .entry("file_index")
+                .found(launcher_event::kind(&error)),
+        ));
     }
-    stored?;
     Ok(Ok(index))
+}
+
+/// The fallback for a refused signed index, with what its nested scope recorded.
+fn refusal(reason: &'static str, recorded: Option<Rejection>, seed_bytes: u64) -> IndexFallback {
+    IndexFallback {
+        reason,
+        check: recorded.as_ref().map(|r| r.check),
+        http_status: recorded.and_then(|r| r.http_status),
+        seed_bytes,
+    }
+}
+
+/// The reason a signed index that fails [`verify`] is refused.
+fn verify_reason(error: &FileIndexError) -> &'static str {
+    match error {
+        FileIndexError::Digest => "index_digest_mismatch",
+        FileIndexError::TooLarge
+        | FileIndexError::Schema(_)
+        | FileIndexError::SetupPolicy(_)
+        | FileIndexError::Binding(_)
+        | FileIndexError::InvalidPath(_)
+        | FileIndexError::Duplicate(_)
+        | FileIndexError::Io(_) => "index_invalid",
+    }
 }
 
 /// The cached copy, if it still verifies against the signed reference and manifest.
@@ -169,7 +225,13 @@ fn built(
     let seed = inventory::hash(&artifacts.seed, cancel)?;
     let seed_hex: String = seed.sha256.iter().map(|b| format!("{b:02x}")).collect();
     if seed.size != manifest.seed.size || !seed_hex.eq_ignore_ascii_case(&manifest.seed.sha256) {
-        return Err(Error::InvalidArtifact);
+        return Err(rejection::reject(
+            Error::InvalidArtifact,
+            Rejection::new("seed_mismatch")
+                .entry("seed")
+                .expected(rejection::digest(manifest.seed.size, &manifest.seed.sha256))
+                .found(rejection::digest(seed.size, &seed_hex)),
+        ));
     }
     let patches: Vec<(PatchEntry, PathBuf)> = manifest
         .patches
@@ -186,11 +248,78 @@ fn built(
     file_index::build(&artifacts.seed, &patches, manifest, work.path(), &sink).map_err(build_error)
 }
 
+/// The refusal for a failed build; each `FileIndexError` names its own check.
 fn build_error(error: FileIndexError) -> Error {
     match error {
-        FileIndexError::Io(_) => Error::Storage(StorageError::Io),
-        _ => Error::InvalidArtifact,
+        FileIndexError::Io(_) => rejection::reject(
+            Error::Storage(StorageError::Io),
+            Rejection::new("folder_unreadable")
+                .entry("file_index")
+                .found("io"),
+        ),
+        FileIndexError::TooLarge => rejection::reject(
+            Error::InvalidArtifact,
+            Rejection::new("folder_too_large").entry("file_index"),
+        ),
+        FileIndexError::Digest => rejection::reject(
+            Error::InvalidArtifact,
+            Rejection::new("artifact_hash_mismatch").entry("file_index"),
+        ),
+        FileIndexError::Schema(version) => rejection::reject(
+            Error::InvalidArtifact,
+            Rejection::new("launcher_too_old").found(format!("schema {version}")),
+        ),
+        FileIndexError::SetupPolicy(policy) => rejection::reject(
+            Error::InvalidArtifact,
+            Rejection::new("unsupported_configuration").found(format!("setup policy {policy}")),
+        ),
+        FileIndexError::Binding(_) => rejection::reject(
+            Error::InvalidArtifact,
+            Rejection::new("identity_conflict").entry("file_index"),
+        ),
+        FileIndexError::InvalidPath(_) => rejection::reject(
+            Error::InvalidArtifact,
+            Rejection::new("path_not_canonical").entry("file_index"),
+        ),
+        FileIndexError::Duplicate(_) => rejection::reject(
+            Error::InvalidArtifact,
+            Rejection::new("file_unclassified").entry("file_index"),
+        ),
     }
+}
+
+/// The signed index is in use. Info: one per adoption.
+fn published_event(index_bytes: u64) {
+    tracing::info!(
+        target: "adoption",
+        event = "adoption_index_published",
+        index_bytes,
+        "adoption: the signed file index verified; using it, so only the replay's files are fetched"
+    );
+}
+
+/// The signed index was refused and the build replaces it. Warn: the player sees it.
+fn fallback_event(fallback: &IndexFallback) {
+    tracing::warn!(
+        target: "adoption",
+        event = "adoption_index_fallback",
+        reason = fallback.reason,
+        check = fallback.check,
+        http_status = fallback.http_status,
+        seed_bytes = fallback.seed_bytes,
+        "adoption: the signed file index was refused ({}); building it from the seed and patches, which downloads {} seed bytes",
+        fallback.reason,
+        fallback.seed_bytes
+    );
+}
+
+/// The cached index verifies, so nothing is downloaded. Debug: stays local.
+fn cached_event() {
+    tracing::debug!(
+        target: "adoption",
+        event = "adoption_index_cached",
+        "adoption: the cached file index verifies; not downloading it"
+    );
 }
 
 fn is_sha256(hex: &str) -> bool {

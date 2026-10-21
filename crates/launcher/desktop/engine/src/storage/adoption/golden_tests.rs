@@ -135,6 +135,7 @@ fn plan() -> Plan {
             }],
             user_data_remains_in_source: true,
             game_telemetry_available: false,
+            index_fallback: None,
             download: None,
             backup: None,
             login_replaced: false,

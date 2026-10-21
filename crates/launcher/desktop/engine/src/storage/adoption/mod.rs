@@ -341,6 +341,7 @@ fn copy_preview(
         files,
         user_data_remains_in_source: true,
         game_telemetry_available: false,
+        index_fallback: None,
         download: Some(download),
         backup: None,
         login_replaced: false,
