@@ -184,7 +184,7 @@ companion_docs:
 | Spectating | KM | -- | cell/cell_methods/minigame.rs | `requestSpectateList` / `spectateMinigame` log `UNIMPLEMENTED` |
 | Co-op / help | KM | -- | cell/cell_methods/minigame.rs | `registerToMinigameHelp`, call accept/decline/abort log `UNIMPLEMENTED` |
 | Contact system | KM | -- | cell/cell_methods/minigame.rs | `minigameContactRequest` logs `UNIMPLEMENTED` |
-| Minigame server (SmartFox 1.x) | CW | -- | minigame/server/ | In-process SFS listener (`API_VERSION = 154`) completed handshake and play with the real Flash SWF 12 times (playtest). Hardening in `server/limits.rs`: 256 connections, 8 per IP, a 30 s handshake timeout and a 30 min idle timeout (#532). A re-auth of a connected ticket is refused (`ticket_already_claimed`, #470) |
+| Minigame server (SmartFox 1.x) | CW | -- | minigame/server/ | In-process SFS listener (`API_VERSION = 154`) completed handshake and play with the real Flash SWF 12 times (playtest). Hardening in `server/limits.rs` and `server/accept.rs`: a 30 s handshake timeout and a 30 min idle timeout (#532), and one connection per valid ticket (#1119, ready-batch-2026-10, replacing the 256-total and 8-per-IP caps; non-public peers match as one class, so a household with two tickets connects both). A re-auth of a connected ticket is refused (`ticket_already_claimed`, #470) |
 
 ### 30. Groups / Parties --- NT (the squad is the group; see §23)
 

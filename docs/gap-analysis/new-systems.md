@@ -41,11 +41,11 @@ These didn't exist in the deprecated Python codebase and so weren't in the audit
 
 ### 32. Mercury Bundle / ChannelBundle --- CW
 
-- **Confidence**: HIGH (re-read 2026-09-25; the only post-July activity is open issue #733 against `bundle.rs`)
+- **Confidence**: HIGH (re-read 2026-09-25; the only post-July activity is #733 against `bundle.rs`, fixed 2026-10-21)
 - **Documentation**: [architecture/mercury-bundle.md](../architecture/mercury-bundle.md), [architecture/transport-trait.md](../architecture/transport-trait.md)
 - **Rust code**: [`crates/mercury/src/channel_bundle/`](../../crates/mercury/src/channel_bundle/mod.rs) (split into `bundle/` + `channel/` by #538), [`crates/mercury/src/bundle.rs`](../../crates/mercury/src/bundle.rs)
 - **Recent PRs**: #361 (ChannelBundle + AoI burst), #363 (bundle onClientReady), #365 (bundle progression + teleport), #410 (backpressure), #538 (module split)
-- **Path forward**: Fix the latent >64 KiB clamp in the legacy `Bundle::encode`/`decode` (#733). This is not the ChannelBundle path.
+- **Path forward**: None for the legacy `Bundle`: #733 made `encode` and `decode` refuse a payload at the `0xFFFF` length escape instead of clamping it. This is not the ChannelBundle path.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
