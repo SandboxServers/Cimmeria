@@ -1,6 +1,7 @@
 import {Context,Effect,Fiber,Layer,ManagedRuntime,Stream} from 'effect';
 import {AdoptionState,AdoptionStatus,Choice,Maintenance,adoptionBridgeLayer,consented,makeAdoptionWorkflow,unknownOutcome} from './adoption-workflow';
 import type {Invoke} from './view';
+import {fallbackText,rejectionText} from './adoption-reasons';
 class Adoption extends Context.Service<Adoption,Effect.Success<typeof makeAdoptionWorkflow>>()('launcher/Adoption') {}
 type Review=NonNullable<AdoptionStatus['review']>;
 const unchanged='The original game folder is unchanged.';
@@ -35,8 +36,13 @@ const failures:Record<string,string>={
  unsupported_mode:'This adoption mode is not available in this build. Nothing was changed.',
  leftover_launcher_files:'This folder already holds launcher files (“game”, “.cimmeria-install.json” or “content-ready.json”) from an earlier installation or adoption, so it cannot be adopted. Nothing was changed.',
  unsupported_schema:'This launcher build does not understand that adoption request.',
+ import_required:'Import the old launcher’s settings first, then choose the folder again. Nothing was changed.',
 };
-const failureText=(code:string)=>unknownOutcome(code)?'The result could not be confirmed, and nothing was retried. Recheck adoption status before continuing.':failures[code]??failures.platform_unavailable;
+// The archive is downloaded to check the files: the seed, a patch, or the index built from the seed.
+const archiveItems:readonly string[]=['seed','patch','index_build'];
+const archiveText='Downloading the signed game archive to check your files (no usable file index).';
+/** The workflow's Code schema is closed, so this branch guards codes added to the native side before this table. */
+export const failureText=(code:string)=>unknownOutcome(code)?'The result could not be confirmed, and nothing was retried. Recheck adoption status before continuing.':failures[code]??`Adoption stopped: ${code}.`;
 const unsafeLead='These files or folders in the game folder cannot be adopted safely. Fix each one as described below, then choose the folder again. Nothing was copied, moved or removed.';
 const unsafeReasons:Record<UnsafeReason,string>={
  link:'a link or junction to another place. Put the real folder or file here instead, then try again.',
@@ -59,6 +65,7 @@ const activityText=(status:AdoptionStatus)=>{
  const p=status.progress;
  if(status.activity==='copying'&&status.backend==='in_place')return !p||p.current<p.total?`Moving the verified release files into the launcher-owned game folder${p?`: ${p.current} of ${p.total}`:'…'}. Nothing is copied.`:'Verifying and publishing the adopted folder. This step cannot be cancelled.';
  if(status.activity==='copying')return !p?`Starting the verified copy… ${unchanged}`:p.current<p.total?`Copying verified files: ${p.current} of ${p.total}. ${unchanged}`:'Verifying and publishing the copy. This step cannot be cancelled.';
+ if(status.activity==='preparing'&&p?.item&&archiveItems.includes(p.item))return archiveText;
  if(p?.phase==='download')return `Downloading the signed reference: ${megabytes(p.current)} of ${megabytes(p.total)}.`;
  if(p?.phase==='extraction')return `Extracting the signed reference: ${p.current} of ${p.total}.`;
  return 'Preparing the signed reference and comparing your files…';
@@ -118,6 +125,12 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
  const get=(id:string)=>document.getElementById(id)!;
  const button=(id:string)=>get(id) as HTMLButtonElement;
  const box=(id:string)=>get(id) as HTMLInputElement;
+ // A status line placed right after its anchor, created once; the page markup stays as it is.
+ const lineAfter=(id:string,anchor:string)=>{
+  let line=document.getElementById(id);
+  if(!line){line=document.createElement('p');line.id=id;const at=get(anchor);at.parentNode?.insertBefore(line,at.nextSibling);}
+  return line;
+ };
  const choices:[string,Choice][]=[['adoption-normalize','normalize'],['adoption-closed','closed'],['adoption-telemetry','telemetry'],['adoption-replace','replace']];
  let current:AdoptionState={status:null,pending:false,uncertain:true,error:null,stale:false,maintenance:null,normalize:false,telemetry:false,closed:false,replace:false};
  let disposed=false,mutating=false,reading=false,pollable=true,notified:string|null=null;
@@ -130,6 +143,10 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   const working=s?.activity==='preparing'||s?.activity==='copying';
   // The press itself is acknowledged before the workflow publishes anything.
   get('adoption-status').textContent=adoptionText({...current,pending:busy});
+  // The engine's refusal for the failure shown above it, when a worker recorded one.
+  const rejection=lineAfter('adoption-rejection','adoption-status');
+  rejection.textContent=!busy&&s?.last_rejection?rejectionText(s.last_rejection):'';
+  rejection.hidden=!rejection.textContent;
   const inPlace=s?.backend==='in_place';
   button('confirm-adoption').textContent=inPlace?'Adopt this folder':'Create verified copy';
   const idle=!!s&&s.activity==='idle'&&!r&&!s.owned&&(s.backend==='available'||inPlace)&&(s.native.operation.operation?['succeeded','failed','cancelled'].includes(s.native.operation.operation.state):true);
@@ -176,6 +193,9 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
    list.replaceChildren(...items.map(text=>{const item=document.createElement('li');item.textContent=text;return item;}));
    list.hidden=!items.length;
    get('adoption-download').textContent=lines.download;
+   const fallback=lineAfter('adoption-index-fallback','adoption-download');
+   fallback.textContent=review.index_fallback?fallbackText(review.index_fallback):'';
+   fallback.hidden=!review.index_fallback;
    get('adoption-seed-archive').hidden=!review.download?.seed;
    get('adoption-replace-text').textContent=lines.replace;
    get('adoption-replace-row').hidden=!review.requires_replacement;

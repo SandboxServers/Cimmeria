@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseHTML} from 'linkedom';
 import {readFile} from 'node:fs/promises';
-import {mountAdoption,unsafeItems} from './adoption-view';
+import {failureText,mountAdoption,unsafeItems} from './adoption-view';
 import type {AdoptionStatus,Request} from './adoption-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
 const native=(revision:number,operation:AdoptionStatus['native']['operation']['operation']=null,preferences=1)=>({schema_version:1 as const,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2 as const,revision:preferences,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1 as const,revision,operation}});
@@ -288,11 +288,38 @@ test('a folder review imports nothing: only the launcher’s own settings line i
  }finally{await ui.app.dispose();}
 });
 test('each new failure code renders its own text',async()=>{
- const expected:[AdoptionStatus['last_error'],RegExp][]=[['folder_not_writable',/cannot write to this folder/],['not_a_game_folder',/not a Stargate Worlds game folder/],['backup_conflict',/backup folder for replaced files already exists/],['unsupported_mode',/adoption mode is not available/]];
+ const expected:[AdoptionStatus['last_error'],RegExp][]=[['folder_not_writable',/cannot write to this folder/],['not_a_game_folder',/not a Stargate Worlds game folder/],['backup_conflict',/backup folder for replaced files already exists/],['unsupported_mode',/adoption mode is not available/],['import_required',/Import the old launcher’s settings first/]];
  for(const [code,text] of expected){
   const ui=mount(()=>({...idle(),last_error:code}));
-  try{await ui.app.ready;await ui.settle();assert.match(ui.text(),text,code as string);}finally{await ui.app.dispose();}
+  try{await ui.app.ready;await ui.settle();assert.match(ui.text(),text,code as string);assert.equal(ui.get('adoption-rejection').hidden,true);}finally{await ui.app.dispose();}
  }
+ // A worker refusal is shown under the failure text: its check in words, and the file it named.
+ const ui=mount(()=>({...idle(),last_error:'folder_not_writable',last_rejection:{check:'folder_not_writable',entry:'Stargate Worlds',expected:null,found:null,http_status:null}}));
+ try{await ui.app.ready;await ui.settle();assert.match(ui.text(),/cannot write to this folder/);
+  assert.equal(ui.get('adoption-rejection').textContent,'The launcher cannot write to this folder, so it cannot adopt or copy into it. File: Stargate Worlds.');
+  assert.equal(ui.get('adoption-rejection').hidden,false);
+ }finally{await ui.app.dispose();}
+});
+test('an unknown failure code names its code instead of the platform text',()=>{
+ assert.equal(failureText('future_code'),'Adoption stopped: future_code.');
+});
+test('a preparing download says why the archive is downloaded, for the seed, a patch or the built index',async()=>{
+ for(const [item,phase,text] of [
+  ['seed','download',/^Downloading the signed game archive to check your files \(no usable file index\)\.$/],
+  ['patch','download',/^Downloading the signed game archive to check your files/],
+  ['index_build','extraction',/^Downloading the signed game archive to check your files/],
+  ['file_index','download',/^Downloading the signed reference: /],
+ ] as const){
+  const ui=mount(()=>({...idle(),activity:'preparing',progress:{phase,current:0,total:1,item}}));
+  try{await ui.app.ready;await ui.settle();assert.match(ui.text(),text,item);}finally{await ui.app.dispose();}
+ }
+});
+test('a review without a published file index says the launcher downloads the archive',async()=>{
+ const ui=mount(()=>({...reviewing(),review:{...review(),index_fallback:{reason:'index_not_published',check:null,http_status:null,seed_bytes:4_100_000_000}}}));
+ try{await ui.app.ready;await ui.settle();
+  assert.equal(ui.get('adoption-index-fallback').hidden,false);
+  assert.equal(ui.get('adoption-index-fallback').textContent,'This release has no published file index, so the launcher downloads the signed game archive (4.1 GB) to check your files. To skip that, use your game archive.');
+ }finally{await ui.app.dispose();}
 });
 test('the status decoder accepts a rejection, a progress item and an index fallback',async()=>{
  const ui=mount(()=>({...reviewing(),last_rejection:{check:'download_http_status',entry:'seed',expected:null,found:null,http_status:500},progress:{phase:'download',current:1,total:2,item:'seed'},review:{...review(),index_fallback:{reason:'index_not_published',check:null,http_status:null,seed_bytes:1}}}));
