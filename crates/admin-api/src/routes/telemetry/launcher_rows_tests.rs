@@ -188,3 +188,28 @@ fn allowed_target_cases() {
         assert!(!allowed_target(target), "{target:?} allowed");
     }
 }
+
+#[test]
+fn launcher_install_target_is_accepted() {
+    assert!(allowed_target("client.launcher.install"));
+}
+
+#[test]
+fn bogus_launcher_target_is_refused() {
+    assert!(!allowed_target("client.launcher.bogus"));
+}
+
+/// The server list is the canonical file, line for line (C1, D-LT5).
+#[test]
+fn launcher_targets_match_the_canonical_file() {
+    let text = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../launcher-core/src/telemetry/launcher_targets.txt"
+    ))
+    .unwrap();
+    let targets: Vec<&str> = text
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect();
+    assert_eq!(targets, LAUNCHER_TARGETS);
+}

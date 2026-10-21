@@ -13,8 +13,22 @@ use serde_json::{Map, Value};
 
 use super::dto::TelemetryEvent;
 
-/// The exact adoption event names a launcher token may post (R10).
-pub(super) const LAUNCHER_TARGETS: [&str; 1] = ["client.launcher.adoption"];
+/// The exact launcher event names a launcher token may post (R10). The same list as
+/// `crates/launcher-core/src/telemetry/launcher_targets.txt`, in the same order (D-LT5).
+pub(super) const LAUNCHER_TARGETS: [&str; 12] = [
+    "client.launcher.adoption",
+    "client.launcher.startup",
+    "client.launcher.crash",
+    "client.launcher.update",
+    "client.launcher.game_update",
+    "client.launcher.install",
+    "client.launcher.repair",
+    "client.launcher.launch",
+    "client.launcher.settings",
+    "client.launcher.telemetry",
+    "client.launcher.ui",
+    "client.launcher.login",
+];
 /// Fields kept per row (R12).
 pub(super) const MAX_FIELDS: usize = 16;
 /// Longest field key, in bytes (R12).
