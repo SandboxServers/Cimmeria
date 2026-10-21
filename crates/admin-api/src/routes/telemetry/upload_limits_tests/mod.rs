@@ -16,6 +16,7 @@ mod bundle;
 mod chunk;
 mod field_caps;
 mod gate;
+mod launcher_chunk;
 mod launcher_gate;
 mod refusal_log;
 mod refusal_log_pools;

@@ -86,9 +86,8 @@ mod client_symbols;
 mod dto;
 mod entity_labels;
 mod field_caps;
+mod launcher_budget;
 mod launcher_gate;
-// wired in by AU-15
-#[cfg_attr(not(test), allow(dead_code))]
 mod launcher_rows;
 mod launcher_summary;
 mod refusal_log;

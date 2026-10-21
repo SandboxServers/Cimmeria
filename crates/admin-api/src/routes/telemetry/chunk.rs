@@ -19,6 +19,11 @@
 //! skipped and counted (`bad_rows`, and a throttled `bad_rows` warn)
 //! rather than refusing the chunk; only a body that is not gzip at all is
 //! refused (400 `bad_gzip`).
+//!
+//! A launcher chunk (its token is a launcher kind) takes its limits and its
+//! row filter from [`super::launcher_rows`] and is charged to its own
+//! [`super::launcher_budget`]: it is never named and never spends a player's
+//! session budget.
 
 use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
@@ -30,12 +35,14 @@ use axum::Json;
 use flate2::bufread::GzDecoder;
 
 use super::dto::{ChunkResponse, IngestError, TelemetryEvent};
-use super::entity_labels::{self, name_chunk};
+use super::entity_labels::{self, name_chunk, EntityLabels};
 use super::field_caps::cap_event;
+use super::launcher_budget::{admit_launcher_chunk, LauncherBudget};
 use super::refusal_log::Truncation;
 use super::replay::replay_events_from_client;
 use super::session_budget::{
-    admit_budgeted, EVENTS_PER_WINDOW, PRIORITY_EVENTS_PER_WINDOW, WINDOW_SECS,
+    admit_budgeted, launcher_budget, SessionTotals, EVENTS_PER_WINDOW, PRIORITY_EVENTS_PER_WINDOW,
+    WINDOW_SECS,
 };
 use super::upload_gate::{
     admit, by_deadline, read_body_capped, upload_state, Admitted, Route, UploadLimits,
@@ -68,8 +75,20 @@ pub(super) async fn chunk_inner(
     request: Request,
     now: Instant,
 ) -> Result<ChunkResponse, IngestError> {
+    chunk_inner_with(state, policy, peer, request, now, launcher_budget()).await
+}
+
+/// [`chunk_inner`] with the launcher budget passed in too, for tests.
+pub(super) async fn chunk_inner_with(
+    state: &UploadState,
+    policy: &UploadPolicy,
+    peer: IpAddr,
+    request: Request,
+    now: Instant,
+    budget: &LauncherBudget,
+) -> Result<ChunkResponse, IngestError> {
     let mut who = Uploader::anonymous(peer);
-    let result = chunk_flow(state, policy, &mut who, request, now).await;
+    let result = chunk_flow(state, policy, &mut who, request, now, budget).await;
     if let Err(e) = &result {
         state.refusals.report(Route::Chunk, &who, e, now);
     }
@@ -82,15 +101,26 @@ async fn chunk_flow(
     who: &mut Uploader,
     request: Request,
     now: Instant,
+    budget: &LauncherBudget,
 ) -> Result<ChunkResponse, IngestError> {
     let (parts, body) = request.into_parts();
     let Admitted { claims, slot } = admit(state, policy, Route::Chunk, &parts.headers, who, now)?;
-    let client_pid = client_pid_header(&parts.headers);
+    let launcher = claims.is_launcher();
+    let client_pid = if launcher {
+        None
+    } else {
+        client_pid_header(&parts.headers)
+    };
     let client_sent_ms = client_sent_ms_header(&parts.headers);
     // Taken before the body is read, so the body transfer stays out of the
     // clock sample.
     let recv = SystemTime::now();
-    let limits = state.limits.clone();
+    let limits = if launcher {
+        state.limits.launcher()
+    } else {
+        state.limits.clone()
+    };
+    let row_cap = limits.chunk_rows;
 
     let deadline = tokio::time::Instant::now() + limits.body_timeout;
     let body = by_deadline(deadline, read_body_capped(body, limits.chunk_body_bytes)).await?;
@@ -107,28 +137,41 @@ async fn chunk_flow(
     .map_err(|e| IngestError::Gzip(format!("chunk decode join failed: {e}")))?;
     let _slot = slot;
     let DecodedChunk {
-        events,
+        mut events,
         truncation,
-        bad_rows,
+        mut bad_rows,
     } = decoded?;
 
-    // The runaway guard first: over the session's budget only priority
-    // events are replayed (the rest are counted and reported below, never
-    // dropped silently), and only those are named. Then entity IDs are
-    // named by asking the cell who held each slot when the row was written
-    // (NT-40); the rest of a row's names need no round trip.
-    let now_secs = chrono::Utc::now().timestamp();
-    let (admitted_rows, totals) = admit_budgeted(&claims, &events, now_secs);
-    let labels = name_chunk(
-        &claims.sid,
-        &claims.sub,
-        &events,
-        &admitted_rows,
-        recv,
-        client_sent_ms,
-        entity_labels::link(),
-    )
-    .await;
+    let (admitted_rows, labels, totals) = if launcher {
+        // The launcher rows only, charged to the launcher budget (AU-15).
+        let admission = admit_launcher_chunk(budget, &claims, &mut events, row_cap, now)
+            .map_err(IngestError::Auth)?;
+        bad_rows += admission.dropped;
+        (
+            admission.admitted,
+            EntityLabels::none(),
+            SessionTotals::default(),
+        )
+    } else {
+        // The runaway guard first: over the session's budget only priority
+        // events are replayed (the rest are counted and reported below, never
+        // dropped silently), and only those are named. Then entity IDs are
+        // named by asking the cell who held each slot when the row was written
+        // (NT-40); the rest of a row's names need no round trip.
+        let now_secs = chrono::Utc::now().timestamp();
+        let (admitted_rows, totals) = admit_budgeted(&claims, &events, now_secs);
+        let labels = name_chunk(
+            &claims.sid,
+            &claims.sub,
+            &events,
+            &admitted_rows,
+            recv,
+            client_sent_ms,
+            entity_labels::link(),
+        )
+        .await;
+        (admitted_rows, labels, totals)
+    };
     let counts = replay_events_from_client(&claims, events, &labels, &admitted_rows, client_pid);
     let (accepted, parsed, suppressed) = (counts.accepted, counts.parsed, counts.suppressed);
 
