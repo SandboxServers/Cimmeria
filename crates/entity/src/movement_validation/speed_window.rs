@@ -11,28 +11,44 @@ pub const SPEED_WINDOW: Duration = Duration::from_millis(250);
 /// rotating in place, float noise).
 pub const MIN_SPEED_DISTANCE: f32 = 0.01;
 /// Cap on samples kept, so a flood of zero-dt packets cannot grow the deque.
+///
+/// Deliberate bound: a sample ages out only once the samples after it cover
+/// SPEED_WINDOW of server-clock dt, so zero-dt packets (a burst released after
+/// a lag spike) stay in the window. The sum of such a burst is at most
+/// `MAX_SAMPLES` hops over the clamped 0.25 s divisor; the cap drops the
+/// oldest hops beyond that rather than growing without bound. The check only
+/// warns, it never rejects.
 const MAX_SAMPLES: usize = 32;
+
+/// One accepted move: its distance and the server-clock dt it covered.
+#[derive(Debug, Clone, Copy)]
+struct Sample {
+    distance: f32,
+    dt_secs: f32,
+}
 
 #[derive(Debug, Default)]
 pub(super) struct SpeedWindow {
-    samples: VecDeque<(f32, f32)>, // (distance, dt_secs)
+    samples: VecDeque<Sample>,
 }
 
 impl SpeedWindow {
     /// Add a sample and return (summed distance, summed dt) over the window.
     /// Drops the oldest samples while the rest still cover SPEED_WINDOW.
+    /// A negative dt counts as zero.
     pub(super) fn push(&mut self, distance: f32, dt_secs: f32) -> (f32, f32) {
-        self.samples.push_back((distance, dt_secs.max(0.0)));
+        self.samples.push_back(Sample {
+            distance,
+            dt_secs: dt_secs.max(0.0),
+        });
         while self.samples.len() > MAX_SAMPLES {
             self.samples.pop_front();
         }
         let window = SPEED_WINDOW.as_secs_f32();
-        loop {
-            let total: f32 = self.samples.iter().map(|s| s.1).sum();
-            let Some(&(_, front_dt)) = self.samples.front() else {
-                break;
-            };
-            if self.samples.len() > 1 && total - front_dt >= window {
+        let mut total: f32 = self.samples.iter().map(|s| s.dt_secs).sum();
+        while let Some(front) = self.samples.front() {
+            if self.samples.len() > 1 && total - front.dt_secs >= window {
+                total -= front.dt_secs;
                 self.samples.pop_front();
             } else {
                 break;
@@ -40,6 +56,6 @@ impl SpeedWindow {
         }
         self.samples
             .iter()
-            .fold((0.0, 0.0), |(d, t), s| (d + s.0, t + s.1))
+            .fold((0.0, 0.0), |(d, t), s| (d + s.distance, t + s.dt_secs))
     }
 }

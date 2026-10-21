@@ -296,3 +296,27 @@ fn teleport_and_forget_clear_the_window() {
     v.forget(1);
     assert!(v.observe_speed(1, 0.8125, 0.1, TOP).is_none());
 }
+
+#[test]
+fn zero_dt_flood_is_capped_at_the_sample_limit() {
+    // 100 zero-dt hops of 1.0 u: the window keeps only the newest 32, so the
+    // reported sum is 32.0, not 100.0 (memory bound, deliberate).
+    let mut v = MovementValidator::new();
+    let mut last = None;
+    for _ in 0..100 {
+        last = v.observe_speed(1, 1.0, 0.0, TOP);
+    }
+    let sample = last.expect("a zero-dt flood of 1 u hops must warn");
+    assert_eq!(sample.distance, 32.0);
+    assert_eq!(sample.dt_secs, 0.0);
+}
+
+#[test]
+fn negative_dt_counts_as_zero() {
+    let mut v = MovementValidator::new();
+    let sample = v
+        .observe_speed(1, 5.0, -5.0, TOP)
+        .expect("5 u over the clamped window must warn");
+    assert_eq!(sample.dt_secs, 0.0);
+    assert_eq!(sample.distance, 5.0);
+}
