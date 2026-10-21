@@ -76,8 +76,13 @@ pub(super) async fn run(
                     return;
                 }
                 Some(_) => {
-                    if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-                        entity.extensions.remove::<MovementHold>();
+                    // The stale hold's flag is cleared here, so the new hold
+                    // below sets it again only if it asks for the flag.
+                    let stale = space_mgr
+                        .get_entity_mut(entity_id)
+                        .and_then(|e| e.extensions.remove::<MovementHold>());
+                    if stale.is_some_and(|h| h.client_flag) {
+                        update_state_flag(entity_id, BSF_MOVEMENT_LOCK, false, tx, space_mgr).await;
                     }
                     tracing::info!(
                         target: "content",

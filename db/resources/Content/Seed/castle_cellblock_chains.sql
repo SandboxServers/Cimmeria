@@ -191,8 +191,8 @@ VALUES
   (1047, 'set_interaction_type', NULL, 'Cellblock_PrisonBootControl', '{"op": "|", "mask": 1073741824}', 0, 1);
 
 -- Chain 1048: a GM complete_mission 689 (or chain 1025's own completion)
--- releases any hold. The release is silent, because chain 1025 already said
--- its line.
+-- releases any hold, then clears the control's click bits the same way chain
+-- 1025 does. The release is silent, because chain 1025 already said its line.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1048, '689 - Mission completed: release any Prison Boot hold', 'mission', 689, true, 0);
 
@@ -200,7 +200,10 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (1048, 'mission_completed', '689', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1048, 'movement_lock', NULL, NULL, '{"op": "release"}', 0, 0);
+VALUES
+  (1048, 'movement_lock', NULL, NULL, '{"op": "release"}', 0, 0),
+  (1048, 'set_interaction_type', NULL, 'Cellblock_PrisonBootControl', '{"op": "~", "mask": 256}', 0, 1),
+  (1048, 'set_interaction_type', NULL, 'Cellblock_PrisonBootControl', '{"op": "~", "mask": 1073741824}', 0, 2);
 
 -- ============================================================
 -- MISSION 622 — Arm Yourself!

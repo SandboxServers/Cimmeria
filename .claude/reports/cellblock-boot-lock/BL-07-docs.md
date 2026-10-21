@@ -35,12 +35,12 @@ Not touched on purpose: `docs/gap-analysis*`, `docs/project-status.md` (BL-09), 
 
 ## Findings the orchestrator and architect need
 
-1. **Campaign README F3 and D-BL5 are stale in this tree.** They say abilities 1597 and 1598 are no-ops and the hold never sets `BSF_MOVEMENT_LOCK`. MG-63b (commit 1d97b5cd6, already in the base) gave effect 1939 the `MovementHold` script and 1942 `MovementRelease` (`crates/cell-effect-scripts/src/cell/effects/movement_hold.rs`, `db/resources/Effects/Seed/effects.sql`). Chain 1023 launches 1597, so the client-side bit is already set today even though the verb has `client_flag: false`. The BL-U2 risk (client refuses the right-click while the bit is set) is therefore live inside BL-U1, not a later opt-in. I documented the code as it is.
-2. **Two holds coexist**: the content hold (1.0 u slack, snap to the anchor) and the older effect hold (0.5 m slack from where it found the player, counted as `movement_locked`). Moves between 0.5 and 1.0 u are refused by the older gate. Documented in movement-validation.md and T25.
+1. **Campaign README F3 and D-BL5 are stale in this tree.** They say abilities 1597 and 1598 are no-ops and the hold never sets `BSF_MOVEMENT_LOCK`. MG-63b (commit 1d97b5cd6, already in the base) gave effect 1939 the `MovementHold` script and 1942 `MovementRelease` (`crates/cell-effect-scripts/src/cell/effects/movement_hold.rs`, `db/resources/Effects/Seed/effects.sql`). Chain 1023 does not launch 1597 and the verb has `client_flag: false`, so the boot lock does not set the client-side bit: effect 1939 is not cast there. The BL-U2 risk (client refuses the right-click while the bit is set) is not live from chain 1023; it stays open for BL-U2 if a later change sets the bit. I documented the code as it is.
+2. **One hold for the boot lock**: chain 1023 applies only the content hold (1.0 u slack, snap to the anchor). The older effect hold (effect 1939, 0.5 m slack, counted as `movement_locked`) is not applied by this chain, so the older gate does not refuse moves because of the boot lock.
 3. **Spec said the anchor is the room centre; the seed anchor is the respawner point** (-334.231, 73.472, -228.026). The prop (-333.03, 73.472, -227.32) is about 1.4 u away. Docs use the seed values.
-4. **Stale seed comment** in `castle_cellblock_chains.sql` ("they are no-ops (README F3)"). Seeds were out of scope; someone should fix it.
+4. **Stale seed comment**: fixed. The mission 689 section of `castle_cellblock_chains.sql` now says chain 1023 does not launch 1597.
 5. The packet said `mission-system.md` line 168 mentions chain 1024's `item_use 3438`; it does not. I added the correct statement instead of correcting a mention.
-6. Chain 1023 launches both 1597 and the verb, so disabling chain 1023 (the kill switch) removes both.
+6. Chain 1023 launches only the verb (no 1597), so disabling chain 1023 (the kill switch) removes the hold.
 
 ## Documentation debt
 

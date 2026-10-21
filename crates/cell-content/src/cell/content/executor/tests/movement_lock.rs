@@ -189,6 +189,51 @@ async fn a_stale_hold_from_another_space_is_replaced_on_reentry() {
 }
 
 #[tokio::test]
+async fn a_stale_flagged_hold_clears_its_flag_on_reentry() {
+    let mut mgr = world();
+    fire(&mut mgr, hold([0.0; 3], true)).await;
+    assert!(flag_set(&mgr), "the first hold sets the flag");
+    let current = mgr
+        .get_entity_space_id(PLAYER)
+        .expect("the player has a space");
+    mgr.get_entity_mut(PLAYER)
+        .unwrap()
+        .extensions
+        .get_mut::<MovementHold>()
+        .unwrap()
+        .space_id = current.wrapping_add(1);
+
+    fire(&mut mgr, hold([0.0; 3], false)).await;
+    assert!(
+        !flag_set(&mgr),
+        "replacing a stale flagged hold with an unflagged one clears the flag"
+    );
+}
+
+#[tokio::test]
+async fn a_stale_flagged_hold_resets_the_flag_once() {
+    let mut mgr = world();
+    fire(&mut mgr, hold([0.0; 3], true)).await;
+    let current = mgr
+        .get_entity_space_id(PLAYER)
+        .expect("the player has a space");
+    mgr.get_entity_mut(PLAYER)
+        .unwrap()
+        .extensions
+        .get_mut::<MovementHold>()
+        .unwrap()
+        .space_id = current.wrapping_add(1);
+
+    fire(&mut mgr, hold([0.0; 3], true)).await;
+    assert!(flag_set(&mgr), "the re-hold sets the flag");
+    fire(&mut mgr, release(None)).await;
+    assert!(
+        !flag_set(&mgr),
+        "one release clears the one flag: the stale hold's clear was not double counted"
+    );
+}
+
+#[tokio::test]
 async fn release_leaves_another_holders_flag() {
     let mut mgr = world();
     fire(&mut mgr, hold([0.0; 3], true)).await;

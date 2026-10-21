@@ -181,9 +181,10 @@ async fn live_db_chain_1025_releases_then_clears_then_completes() {
 }
 
 /// Mission 689 completed (chain 1025's own completion, or a GM
-/// `complete_mission 689`) releases any hold, silently.
+/// `complete_mission 689`) releases any hold, silently, then clears the click
+/// bits the same way chain 1025 does.
 #[tokio::test]
-async fn live_db_chain_1048_releases_on_mission_completed() {
+async fn live_db_chain_1048_releases_then_clears_on_mission_completed() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1048)
         .await
@@ -199,7 +200,17 @@ async fn live_db_chain_1048_releases_on_mission_completed() {
         chain.trigger,
     );
     match chain.actions.as_slice() {
-        [Action::MovementLock(MovementLockOp::Release { message: None })] => {}
-        other => panic!("chain 1048 must be one silent release; actions: {other:?}"),
+        [Action::MovementLock(MovementLockOp::Release { message: None }), Action::SetInteractionType {
+            entity_tag: clear_a,
+            operation: op_a,
+            mask: 256,
+        }, Action::SetInteractionType {
+            entity_tag: clear_b,
+            operation: op_b,
+            mask: 1073741824,
+        }] if clear_a == BOOT_TAG && clear_b == BOOT_TAG && op_a == "~" && op_b == "~" => {}
+        other => panic!(
+            "chain 1048 must be a silent release, then clear both click bits; actions: {other:?}"
+        ),
     }
 }

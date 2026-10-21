@@ -74,7 +74,7 @@ Archetype branching matters in four places (missions 638, 641, 687, and the Afte
 
 There is no GM command that resets mission state. `/gmmissionreset`, `/gmmissionclearactive` and `/gmmissionclearhistory` exist in the client's `SGWGmPlayer.def` but have no server handler. **Delete the character at character-select to start the tutorial over** — `sgw_mission` and `sgw_inventory` cascade off `sgw_player`, so a delete + reroll is a genuinely clean run. Per-mission surgery with `/gmmissionclear <id>` then `/gmmissionassign <id> 1` also works when you only need to redo one beat.
 
-For an automated fresh-character run, choose **Praxis Commando**: the current server starts Praxis in Castle_CellBlock and SGU in SGC_W1 (verified live 2026-10-13). Praxis characters take the **non-Jaffa** branch because Cimmeria's chains gate on `archetype neq 8` rather than the original Python's `archetype < 5`. The original client data's Tau'ri labels still describe that branch; they do not imply an SGU character will spawn here. Praxis Goa'uld (char defs 10 and 19) also start here and are excluded from the forced Prison Boots. Testing one is optional.
+For an automated fresh-character run, choose **Praxis Commando**: the current server starts Praxis in Castle_CellBlock and SGU in SGC_W1 (verified live 2026-10-13). Praxis characters take the **non-Jaffa** branch because Cimmeria's chains gate on `archetype neq 8` rather than the original Python's `archetype < 5`. The original client data's Tau'ri labels still describe that branch; they do not imply an SGU character will spawn here. Praxis Goa'uld (char defs 10 and 19) also start here and are held by the Prison Boot lock too (D-BL8). Testing one is optional.
 
 ### 5. GM commands you will actually use
 
@@ -142,18 +142,18 @@ Every seed account (`test`, `cady`, `tester`) is access level 2 = GameMaster, so
 - Mission 689 appearing in the visible quest log.
 - Any mission feedback for 689 on the client: a "mission accepted" or "mission complete" toast or sound, a tracker entry, a journal flash or an objective popup, either on first load (accept) or on Livewire victory (complete). Since #715 the server sends no mission frames for a hidden mission; if one of these still appears, report it with the time, because it means the client needs one of those frames after all.
 - The hold line on every step, or a snap on every packet (that means the throttles are not working).
-- Being unable to right-click the prop while held. **If this happens it is the BL-U2 finding**: the ability 1597 effect sets the client's movement-lock bit and the client may refuse interaction while it is set. Record exactly what the cursor and the prop do, and stop; do not work around it.
+- Being unable to right-click the prop while held. **If this happens it is the BL-U2 finding**: the client may refuse interaction while the movement-lock bit is set. Chain 1023 does not set that bit (`client_flag` is false and ability 1597 is not launched), so record it with the hold's log rows as a new finding. Record exactly what the cursor and the prop do, and stop; do not work around it.
 - The Livewire minigame opening a second time after the gate has cleared (chain 1024 gates on `mission_status 689 neq completed`).
 - Mission 689 being re-accepted on a later login, or the hold coming back after the win.
 
-**Two holds, one lock.** Chain 1023 launches ability 1597 *and* applies the content hold. Effect 1939 of 1597 also runs the older movement-only hold (0.5 m slack, `BSF_MOVEMENT_LOCK` set on the wire). Moves beyond 1 unit are snapped by the content hold; moves between 0.5 and 1 unit are refused by the older gate and counted as `movement_locked`. Both release on a win (ability 1598 clears the older one). Whether this feels right in a client is part of what this test shows.
+**One hold.** Chain 1023 applies only the content hold. It does not launch ability 1597, so the older movement-only hold (effect 1939) is not applied and no second gate runs. Moves beyond 1 unit are snapped by the content hold, and chain 1025 releases it on a win. Whether this feels right in a client is part of what this test shows.
 
 **Server evidence:**
 
 - `logs\content.log`, grep `movement_lock.hold`: `decision_outcome=held`, `chain_id=1023` on every load while 689 is not completed. If it says `hold_skipped_no_anchor` the prop is not in the player's space; if `hold_skipped_far_from_anchor` the character spawned more than 3 units from the anchor.
 - grep `movement.hold_snap` (target `movement.validation`): one row per snap, with `client_x/z` and `anchor_x/z`, never faster than 500 ms apart. The counter is `movement_hold_snaps_total{reason="content_hold"}`.
 - grep `movement_lock.release`: `decision_outcome=released`, `chain_id=1025` on the win. A GM-completed mission releases through chain 1048 (silent).
-- grep `Content: launched ability` with `ability_id=1597`, `chain_id=1023` on load and `ability_id=1598`, `chain_id=1025` on the win; `Content: accepting mission` with `mission_id=689`, `chain_id=1022`. The frame gate logs at DEBUG: in SigNoz, `body CONTAINS 'mission client frames suppressed'` with `mission_id=689` shows `site=accept` on load and `site=complete_mission_direct` on victory (#715).
+- grep `Content: launched ability` with `ability_id=1598`, `chain_id=1025` on the win (chain 1023 launches no ability on load); `Content: accepting mission` with `mission_id=689`, `chain_id=1022`. The frame gate logs at DEBUG: in SigNoz, `body CONTAINS 'mission client frames suppressed'` with `mission_id=689` shows `site=accept` on load and `site=complete_mission_direct` on victory (#715).
 - `movement_validation_rejects_total` does **not** count content-hold snaps; it counts only the older gate's `movement_locked` rejects.
 
 ### T01 / T02 — Zone entry, mission 622 and Stasis Sickness (C03)
@@ -898,7 +898,7 @@ This is not a separate playthrough — it is the discipline of logging out and b
 |---|---|---|
 | 1006 | 622 step 2113 | Frost's dialog binding |
 | 1007 | 622 step 80623 | Guard's dialog binding |
-| 1023 | 689 not completed | Prison Boot hold re-applied (ability 1597 and the content `movement_lock` hold) |
+| 1023 | 689 not completed | Prison Boot hold re-applied (the content `movement_lock` hold only) |
 | 1047 | 689 not completed | Prison Boot Control click bits (`\|256`, `\|1073741824`) |
 | 1045 | 640 step 2120 | Livewire wrench on the ring switch |
 | 1046 | 640 step 2215 | RingNetwork icon + quest highlight |

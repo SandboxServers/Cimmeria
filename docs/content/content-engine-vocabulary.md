@@ -704,7 +704,7 @@ applies ends the action:
 | Check | Outcome | Log (`target: "content"`, `event = "movement_lock.hold"`) |
 |---|---|---|
 | The entity is not a player | Nothing changes | WARN, `decision_outcome = "refused"`, `reason = "not_a_player"` |
-| The player already holds a hold | Nothing changes | DEBUG, `decision_outcome = "already_held"` |
+| The player already holds a hold in the current space | Nothing changes | DEBUG, `decision_outcome = "already_held"` |
 | No live entity with `anchor_tag` in the player's space | Skipped | INFO, `decision_outcome = "skipped"`, `reason = "hold_skipped_no_anchor"` |
 | The player is more than `max_distance` from `at` (horizontal) | Skipped | INFO, `reason = "hold_skipped_far_from_anchor"`, with `distance` and `max_distance` |
 | None of the above | Pinned | INFO, `decision_outcome = "held"` |

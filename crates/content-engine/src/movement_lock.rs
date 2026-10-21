@@ -15,6 +15,10 @@ pub const MAX_MESSAGE_CHARS: usize = 200;
 pub enum MovementLockOp {
     /// Pin the acting player to `at` while the prop tagged `anchor_tag` is live
     /// in their space and they stand within `max_distance` of `at`.
+    ///
+    /// `anchor_tag` is checked only when the hold is created. A live hold is
+    /// not released if the prop later goes away; only a `release` (or a stale
+    /// space change) removes it.
     Hold {
         anchor_tag: String,
         at: [f32; 3],
