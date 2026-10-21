@@ -135,7 +135,31 @@ async fn expired_pending_sessions_give_no_slot() {
     assert_eq!(refusal.reason, "unexpected_peer_with_sessions");
 }
 
+/// Poison the counter map, as a panic while it is locked would.
+fn poison(registry: &SessionRegistry) {
+    let admitted = Arc::clone(&registry.admitted);
+    let _ = std::thread::spawn(move || {
+        let _held = admitted.lock().unwrap();
+        panic!("poison the admission counters");
+    })
+    .join();
+    assert!(registry.admitted.is_poisoned());
+}
+
 #[tokio::test]
+async fn guard_drop_and_admission_survive_a_poisoned_counter() {
+    let registry = SessionRegistry::new();
+    register(&registry, 1, "203.0.113.5").await;
+    let guard = registry.try_admit(ip("203.0.113.5")).await.unwrap();
+    poison(&registry);
+    // Drop must not panic, and the slot must come back.
+    drop(guard);
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+
+// Multi-threaded, so the 16 admissions really run in parallel: a count taken
+// without holding the lock across the increment would admit more than one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn guard_drop_frees_the_slot_under_concurrency() {
     let registry = SessionRegistry::new();
     register(&registry, 1, "203.0.113.5").await;
