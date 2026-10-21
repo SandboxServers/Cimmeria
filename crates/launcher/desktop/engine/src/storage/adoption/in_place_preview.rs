@@ -46,7 +46,7 @@ pub(super) fn preview(
         let owner = state.lock().map_err(|_| StorageError::Io)?;
         let folder = match &adopted {
             AdoptionSource::Legacy(imported) => {
-                if let Some(blocker) = source::import_blocker(imported) {
+                if let Some(blocker) = source::refuse_blocker(imported) {
                     return Err(refused(blocker, "imported configuration"));
                 }
                 let folder = &imported.source.game_directory;

@@ -371,7 +371,9 @@ fn actual_legacy_lock_is_held_for_the_entire_review_and_released_on_cancel() {
     let f = Fixture::new();
     let before = f.source_snapshot();
     let preview = f.preview().unwrap();
-    assert!(source::lock_source(preview.legacy().unwrap()).is_err());
+    let (result, record) = rejection::scope(|| source::lock_source(preview.legacy().unwrap()));
+    assert!(result.is_err());
+    assert_eq!(record.map(|r| r.check), Some("folder_in_use"));
     drop(preview);
     assert!(
         source::lock_source(&f.state.lock().unwrap().legacy_import().unwrap().unwrap()).is_ok()

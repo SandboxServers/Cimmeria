@@ -57,6 +57,8 @@ mod recovery_tests;
 mod reference_tests;
 #[cfg(test)]
 mod replay_tests;
+#[cfg(all(test, not(target_os = "macos")))]
+mod source_tests;
 #[cfg(test)]
 mod survey_tests;
 #[cfg(test)]

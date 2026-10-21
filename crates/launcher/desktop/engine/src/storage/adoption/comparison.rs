@@ -21,3 +21,23 @@ pub(super) fn copy_layout(source_root: &Path, scanned: &inventory::Index) -> Res
     tracing::warn!(target: "adoption", "copy adoption refused: the folder is not in the installer's Working\\Binaries layout");
     Err(Error::UnsupportedLayout)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sgw_exe_at_the_root_is_refused_as_exe_at_root() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("SGW.exe"), b"not a game").unwrap();
+        let scanned = inventory::scan(dir.path(), &CancellationToken::new()).unwrap();
+        let (result, record) = rejection::scope(|| copy_layout(dir.path(), &scanned));
+        assert!(matches!(
+            result,
+            Err(Error::Storage(StorageError::InvalidDirectory))
+        ));
+        let record = record.expect("a recorded rejection");
+        assert_eq!(record.check, "exe_at_root");
+        assert_eq!(record.entry.as_deref(), Some("SGW.exe"));
+    }
+}
