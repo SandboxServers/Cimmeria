@@ -32,6 +32,12 @@ pub const SCOPE_TELEMETRY_WRITE: &str = "telemetry.write";
 pub const SESSION_KIND_LAB: &str = "lab";
 /// What a session without a `kind` claim is: a player's launcher.
 pub const SESSION_KIND_PLAYER: &str = "player";
+/// The value of [`TokenClaims::kind`] a launcher session carries when it
+/// sends telemetry before any game is played.
+pub const SESSION_KIND_LAUNCHER: &str = "launcher";
+/// The only scope a launcher token carries. It is not `telemetry.write`, so
+/// a launcher token cannot pass a game upload gate.
+pub const SCOPE_LAUNCHER_WRITE: &str = "telemetry.launcher.write";
 
 /// Wire format pinned: any field rename is a breaking change for the
 /// Functions-side verifier. `kind` is the one optional addition, and it is
@@ -45,10 +51,12 @@ pub struct TokenClaims {
     pub iat: i64,
     pub exp: i64,
     pub scope: Vec<String>,
-    /// Session kind: `Some("lab")` for a Live Research Lab session, absent
-    /// for a player's launcher. Signed with the rest of the payload, so an
-    /// upload cannot relabel itself; minting is unauthenticated, so it is a
-    /// label for filtering, never a privilege.
+    /// Session kind: `Some("lab")` for a Live Research Lab session,
+    /// `Some("launcher")` for a 15-minute launcher-only session that carries
+    /// `telemetry.launcher.write` and nothing else, and absent for a player's
+    /// launcher. Signed with the rest of the payload, so an upload cannot
+    /// relabel itself; minting is unauthenticated, so it is a label for
+    /// filtering, never a privilege.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
     /// The game account the launcher says it is playing (TG-NET-18, D-TG14),
@@ -80,6 +88,22 @@ impl TokenClaims {
     /// True for a Live Research Lab session.
     pub fn is_lab(&self) -> bool {
         self.session_kind() == SESSION_KIND_LAB
+    }
+
+    /// True for a launcher-only session (AU-11, README R1).
+    pub fn is_launcher(&self) -> bool {
+        self.session_kind() == SESSION_KIND_LAUNCHER
+    }
+
+    /// True when the kind and the scope agree (README R1): a launcher token
+    /// has exactly `[SCOPE_LAUNCHER_WRITE]`, and any other token has no
+    /// launcher scope at all. Every other combination is false.
+    pub fn kind_matches_scope(&self) -> bool {
+        if self.is_launcher() {
+            self.scope.len() == 1 && self.scope[0] == SCOPE_LAUNCHER_WRITE
+        } else {
+            !self.has_scope(SCOPE_LAUNCHER_WRITE)
+        }
     }
 }
 

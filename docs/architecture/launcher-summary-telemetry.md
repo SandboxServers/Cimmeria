@@ -253,6 +253,7 @@ The launcher keeps a summary until the server answers for it, so a lost response
 - **Absent means absent.** An optional value that is missing is a missing field, never a placeholder: `error_code` appears only on a failed row, and `duration_ms` and `duration_bucket` only when the launcher timed the attempt.
 - **`duration_bucket`** is derived by the server so a dashboard can chart durations with `count()` alone: `lt_1s`, `lt_10s`, `lt_1m`, `lt_5m`, `lt_30m`, `ge_30m`. A duration on a bound falls in the higher band.
 - **`cimmeria.session_kind`** is the constant `launcher_summary` on summary and phase rows.
+  It is a row label, not the `launcher` session kind (AU-11). A query for a player's game session filters `cimmeria.session_kind = 'player'`, not `!= 'lab'`; see [telemetry.md](../operations/telemetry.md#where-the-data-lives).
 - **`launcher_version`** is written from the parsed integers, and the ids from the parsed UUIDs.
 
 What one row stands for (a launch row's single `starting` phase, an `unknown` row, `phase = none`, a pre-admission row and its `retry_count`) is decided by the launcher and described in the [desktop-side contract](../../crates/launcher/desktop/docs/launcher-summaries.md#what-a-row-says). The reading notes for operators are in [launcher-summary-views.md](../operations/signoz/launcher-summary-views.md#what-a-launcher_summary-row-stands-for).

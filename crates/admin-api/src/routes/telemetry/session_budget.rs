@@ -26,11 +26,12 @@
 //! instead: bounded, and it never resets anyone's allowance.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, OnceLock, PoisonError};
 
 use crate::routes::dev_session::TokenClaims;
 
 use super::dto::TelemetryEvent;
+use super::launcher_budget::LauncherBudget;
 
 /// Budget window.
 pub(super) const WINDOW_SECS: i64 = 60;
@@ -186,6 +187,12 @@ impl SessionLedger {
 
 /// The process-wide ledger the upload handler uses.
 static LEDGER: Mutex<Option<SessionLedger>> = Mutex::new(None);
+
+/// The process-wide launcher budget, held beside [`LEDGER`] (AU-15).
+pub(super) fn launcher_budget() -> &'static LauncherBudget {
+    static BUDGET: OnceLock<LauncherBudget> = OnceLock::new();
+    BUDGET.get_or_init(LauncherBudget::from_env)
+}
 
 /// Run `f` on the process-wide ledger. Poisoning is ignored: the counters
 /// are advisory and must never take the ingest path down.
