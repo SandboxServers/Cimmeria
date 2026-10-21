@@ -255,6 +255,10 @@ pub(super) fn mint_inner(
         return Err(AuthError::KillSwitchActive);
     }
     let launcher = launcher_kind::admit(policy, &req)?;
+    // The launcher table is charged first, so a launcher mint that its own
+    // limit refuses never spends the shared `mint_ip` allowance (S1). A
+    // player mint is not charged there at all.
+    launcher_kind::charge_ip(tables, policy, peer_ip, launcher, now)?;
     // Charged before `install_id` is validated, so rotating or
     // malforming it buys nothing from one address. A body that fails
     // JSON extraction never reaches this function (axum rejects it in
@@ -267,7 +271,6 @@ pub(super) fn mint_inner(
         "mint/ip",
         now,
     )?;
-    launcher_kind::charge_ip(tables, policy, peer_ip, launcher, now)?;
     validate_install_id(&req.install_id).map_err(AuthError::BadInstallId)?;
     launcher_kind::check_request(&req, launcher)?;
     let kind = kind_claim(req.session_kind.as_deref())?;

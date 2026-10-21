@@ -150,7 +150,9 @@ fn clean_string(value: &str) -> String {
 /// drive or UNC path, a URL, an e-mail address or a `%VAR%`; otherwise the value (R14).
 pub(super) fn scrub_value(value: &str) -> String {
     let lower = value.to_ascii_lowercase();
-    if scrubbed(&lower) {
+    // Each piece between `:`, `;`, `,`, `=` and whitespace is checked too, so
+    // `ip:1.2.3.4` and `id=<guid>` are caught as well (S3).
+    if scrubbed(&lower) || lower.split(is_value_split).any(scrubbed) {
         REMOVED.to_string()
     } else {
         value.to_string()
@@ -173,6 +175,26 @@ fn scrubbed(lower: &str) -> bool {
         .iter()
         .any(|p| lower.contains(*p))
         || percent_var(lower)
+        || lower.split(is_separator).any(machine_id_like)
+}
+
+/// The characters that split a value into the pieces each is scrubbed as.
+fn is_value_split(c: char) -> bool {
+    c.is_whitespace() || matches!(c, ':' | ';' | ',' | '=')
+}
+
+/// A GUID (`8-4-4-4-12` hex) or at least 24 hex digits: a machine or install
+/// identifier, with surrounding punctuation ignored (S3).
+fn machine_id_like(token: &str) -> bool {
+    let token = token.trim_matches(|c: char| !c.is_ascii_alphanumeric());
+    let hex = |s: &str| s.bytes().all(|b| b.is_ascii_hexdigit());
+    let parts: Vec<&str> = token.split('-').collect();
+    let guid = parts.len() == 5
+        && [8, 4, 4, 4, 12]
+            .iter()
+            .zip(&parts)
+            .all(|(n, p)| p.len() == *n && hex(p));
+    guid || (token.len() >= 24 && hex(token))
 }
 
 /// Whitespace and the characters that split an address from its text.
@@ -184,7 +206,9 @@ fn is_separator(c: char) -> bool {
         )
 }
 
+/// Whether the token is an address, its trailing sentence punctuation ignored (S3).
 fn is_ip_token(token: &str) -> bool {
+    let token = token.trim_end_matches(['.', '!', '?', '}']);
     token.parse::<IpAddr>().is_ok() || token.parse::<SocketAddr>().is_ok()
 }
 

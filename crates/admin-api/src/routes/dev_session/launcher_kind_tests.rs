@@ -186,6 +186,58 @@ fn launcher_mints_have_their_own_ip_quota() {
     .expect("a player mint from the same address still passes");
 }
 
+/// A launcher mint its own limit refuses spends no shared mint allowance (S1):
+/// after 30 admitted and 10 refused launcher mints, a player mint from the
+/// same address still passes the shared 32-per-hour table.
+#[test]
+fn refused_launcher_mints_do_not_spend_the_shared_mint_allowance() {
+    let _g = EnvGuard::install();
+    let t = Tables::new();
+    let p = QuotaPolicy {
+        mint_launcher_per_install: 100,
+        mint_launcher_per_ip: 30,
+        ..policy(32, 10, 10)
+    };
+    let at = ip("203.0.113.40");
+    for n in 1..=40u32 {
+        let req = launcher_request(&format!("3f2504e0-4f89-41d3-9a0c-0305e82c{n:04}"));
+        let admitted = mint_inner(&t, &p, at, req, Instant::now(), NOW_UNIX).is_ok();
+        assert_eq!(admitted, n <= 30, "launcher mint {n}");
+    }
+    mint_inner(
+        &t,
+        &p,
+        at,
+        request("3f2504e0-4f89-41d3-9a0c-0305e82c9999"),
+        Instant::now(),
+        NOW_UNIX,
+    )
+    .expect("a player mint from the same address still passes");
+}
+
+/// A burst of player mints does not spend the launcher allowance: the launcher
+/// table's per-address limit of three still admits three launcher mints.
+#[test]
+fn a_player_mint_burst_does_not_spend_the_launcher_allowance() {
+    let _g = EnvGuard::install();
+    let t = Tables::new();
+    let p = QuotaPolicy {
+        mint_launcher_per_install: 100,
+        mint_launcher_per_ip: 3,
+        ..policy(100, 100, 100)
+    };
+    let at = ip("203.0.113.41");
+    for n in 1..=10u32 {
+        let req = request(&format!("3f2504e0-4f89-41d3-9a0c-0305e82d{n:04}"));
+        mint_inner(&t, &p, at, req, Instant::now(), NOW_UNIX).expect("player mint");
+    }
+    for n in 1..=3u32 {
+        let req = launcher_request(&format!("3f2504e0-4f89-41d3-9a0c-0305e82c{n:04}"));
+        mint_inner(&t, &p, at, req, Instant::now(), NOW_UNIX)
+            .unwrap_or_else(|e| panic!("launcher mint {n}: {e:?}"));
+    }
+}
+
 /// The launcher quota per install is its own table: the third launcher mint
 /// for one install is refused, while a player mint for it still passes.
 #[test]

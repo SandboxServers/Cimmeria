@@ -84,7 +84,7 @@ fn fields_are_an_allow_list() {
         "step": "refused\nFORGED=1",
         "uni": "caf\u{e9}",
         "n": 2,
-        "long": "a".repeat(300)
+        "long": "x".repeat(300)
     })
     .as_object()
     .unwrap()
@@ -131,6 +131,13 @@ fn scrub_value_cases() {
         "a/home/b",
         "a/users/b",
         "$HOME/x",
+        "ip:1.2.3.4",
+        "1.2.3.4:",
+        "1.2.3.4.",
+        "id=1.2.3.4;",
+        "12345678-1234-1234-1234-123456789abc",
+        "{12345678-1234-1234-1234-123456789ABC}",
+        "0123456789abcdef01234567",
     ];
     for value in removed {
         assert_eq!(scrub_value(value), REMOVED, "{value} kept");
@@ -145,6 +152,16 @@ fn scrub_value_cases() {
     for value in unchanged {
         assert_eq!(scrub_value(value), value, "{value} removed");
     }
+}
+
+/// A control character between `c:` and the rest of a path is mapped to a
+/// space before the scrub, and the path is still removed (S3).
+#[test]
+fn control_characters_do_not_hide_a_path() {
+    let mut fields = serde_json::Map::new();
+    fields.insert("step".into(), json!("c:\u{1}\\srv"));
+    clean_fields(&mut fields);
+    assert_eq!(fields["step"], json!(REMOVED));
 }
 
 #[test]

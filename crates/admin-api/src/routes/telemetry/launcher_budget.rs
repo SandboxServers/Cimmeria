@@ -8,7 +8,7 @@
 //! rows-per-minute ceiling ([`DEFAULT_LAUNCHER_ROWS_PER_MINUTE`]), which bounds
 //! a flood of fresh session ids. The session table holds at most
 //! [`LAUNCHER_LEDGER_SESSIONS`] entries; a new session the full table cannot
-//! take is suppressed (fail closed), never admitted unbudgeted.
+//! take is refused with a 429 (fail closed), never admitted unbudgeted.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -44,6 +44,13 @@ const MINUTE: Duration = Duration::from_secs(60);
 
 /// The scope string of a refusal by the global per-minute ceiling.
 const ROWS_SCOPE: &str = "upload/launcher_rows";
+
+/// The scope string of a refusal by a full session table.
+const LEDGER_SCOPE: &str = "upload/launcher_ledger";
+
+/// The wait a full-table refusal advertises: an idle entry frees a slot after
+/// a while, and a retry in a minute is a fair time to look again.
+const LEDGER_RETRY_SECS: u64 = 60;
 
 /// The launcher's budget: a lifetime allowance per session, and one
 /// per-minute ceiling over all of them.
@@ -96,14 +103,19 @@ impl LauncherBudget {
     /// global minute would pass `per_minute` (nothing is charged); otherwise
     /// `Ok(n)`, where `n <= rows` rows still fit the session's lifetime
     /// budget (those `n` are charged globally). A new session the full table
-    /// cannot take gets `Ok(0)`.
+    /// cannot take is `Err(QuotaExceeded)` with [`LEDGER_SCOPE`].
     pub(super) fn charge(&self, sid: &str, rows: usize, now: Instant) -> Result<usize, AuthError> {
         let mut sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
         if !sessions.contains_key(sid) {
             sessions
                 .retain(|_, (_, seen)| now.saturating_duration_since(*seen) <= LAUNCHER_LEDGER_TTL);
             if sessions.len() >= self.capacity {
-                return Ok(0);
+                // Refused with a 429, not admitted unbudgeted and not a silent
+                // 200 (S2): the launcher sees the refusal and retries.
+                return Err(AuthError::QuotaExceeded(QuotaExceeded {
+                    scope: LEDGER_SCOPE,
+                    retry_after_secs: LEDGER_RETRY_SECS,
+                }));
             }
         }
         let used = sessions.get(sid).map_or(0, |(used, _)| *used as usize);
@@ -172,10 +184,16 @@ mod tests {
         let t0 = Instant::now();
         assert_eq!(budget.charge("a", 1, t0).unwrap(), 1);
         assert_eq!(budget.charge("b", 1, t0).unwrap(), 1);
-        assert_eq!(
-            budget.charge("c", 1, t0).unwrap(),
-            0,
-            "a third session the full table cannot take is suppressed"
+        let refused = budget.charge("c", 1, t0).unwrap_err();
+        assert!(
+            matches!(
+                refused,
+                AuthError::QuotaExceeded(QuotaExceeded {
+                    scope: LEDGER_SCOPE,
+                    ..
+                })
+            ),
+            "a third session the full table cannot take is refused: {refused:?}"
         );
         let later = t0 + LAUNCHER_LEDGER_TTL + Duration::from_secs(1);
         assert_eq!(
