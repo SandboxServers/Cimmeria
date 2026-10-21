@@ -37,9 +37,9 @@ pub(crate) use cimmeria_wire::cell::chat::serialize_on_player_communication;
 
 // ── onPlayerCommunication client method index ──────────────────────────────
 
-/// Communicator interface ClientMethod: onPlayerCommunication
-/// Flat index 28 in SGWPlayer ClientMethods.
-const ON_PLAYER_COMMUNICATION: u16 = 28;
+// The Communicator ClientMethod `onPlayerCommunication` (flat index 28 in
+// SGWPlayer) is declared once, in the wire tables (#171).
+use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 
 /// The tracing target every chat log used before the split into `chat/`.
 /// Submodules pass it explicitly so SigNoz `scope_name` filters and

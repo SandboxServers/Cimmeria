@@ -198,7 +198,7 @@ Per the [doc-update map](../agents/doc-update-map.md), every PR that touches a m
 - [`docs/protocol/message-catalog.md`](../protocol/message-catalog.md) — add the new entry.
 - The relevant section README under [`docs/protocol/`](../protocol/).
 - The canonical entity definitions in [`entities/defs/`](../../entities/defs/) if you added a new method.
-- The `method_idx` module at `crates/wire/src/mercury/mod.rs:174` — the constants module that pins method indices.
+- The per-interface tables in `crates/wire/src/cell/client_methods/` — the one place each client method index is declared. `mercury::method_idx` only re-exports them.
 
 The maintainer reviewing your PR will check.
 
