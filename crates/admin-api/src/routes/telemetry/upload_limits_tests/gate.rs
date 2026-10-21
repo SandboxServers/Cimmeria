@@ -20,7 +20,7 @@ use crate::routes::telemetry::upload_gate::{
     admit, Admitted, Route, UploadLimits, UploadPolicy, UploadState, Uploader,
 };
 
-use super::{chunk_request, run, small_chunk, token, Env, PEER};
+use super::{chunk_request, launcher_token, run, small_chunk, token, Env, PEER};
 
 /// **A chunk with no token is answered before its body arrives.** The
 /// request declares a 1 MiB body and sends none of it. The 401 comes back
@@ -260,7 +260,7 @@ fn an_address_over_its_upload_rate_is_refused_whatever_the_session() {
     assert_eq!(err.reason(), "rate_limited");
 }
 
-/// One `admit` from `peer`, as the handler makes it: the bearer token for
+/// One `admit` from `peer`, as the handler makes it: the player bearer token for
 /// `sid` and, when given, an `X-Forwarded-For` header.
 fn admit_from(
     state: &UploadState,
@@ -270,8 +270,21 @@ fn admit_from(
     forwarded: Option<&str>,
     sid: &str,
 ) -> Result<Admitted, IngestError> {
+    admit_with_token(state, policy, route, peer, forwarded, &token(sid))
+}
+
+/// One `admit` from `peer` with the bearer `token` given, and when given an
+/// `X-Forwarded-For` header. A launcher caller passes its own token here.
+fn admit_with_token(
+    state: &UploadState,
+    policy: &UploadPolicy,
+    route: Route,
+    peer: IpAddr,
+    forwarded: Option<&str>,
+    token: &str,
+) -> Result<Admitted, IngestError> {
     let mut headers = HeaderMap::new();
-    let bearer = format!("Bearer {}", token(sid));
+    let bearer = format!("Bearer {token}");
     headers.insert(AUTHORIZATION, HeaderValue::from_str(&bearer).unwrap());
     if let Some(forwarded) = forwarded {
         headers.insert("x-forwarded-for", HeaderValue::from_str(forwarded).unwrap());
@@ -315,30 +328,96 @@ fn behind_a_loopback_proxy_each_forwarded_caller_holds_its_own_slot() {
 }
 
 /// A remote peer cannot choose its caller: its rotating `X-Forwarded-For` is
-/// ignored, so the third request from it is refused by the address quota.
+/// ignored, so the third request from it is refused by the address quota, on
+/// both the chunk and the bundle route.
 #[test]
 fn a_remote_peer_cannot_rotate_past_the_address_quota() {
     let _env = Env::install();
-    let state = UploadState::new(UploadLimits::default());
+    for route in [Route::Chunk, Route::Bundle] {
+        let state = UploadState::new(UploadLimits::default());
+        let policy = match route {
+            Route::Chunk => UploadPolicy {
+                chunk_per_session: 0,
+                chunk_per_ip: 2,
+                ..UploadPolicy::defaults()
+            },
+            Route::Bundle => UploadPolicy {
+                bundle_per_session: 0,
+                bundle_per_ip: 2,
+                ..UploadPolicy::defaults()
+            },
+        };
+        for (sid, caller) in ["sess-spoof-a", "sess-spoof-b"]
+            .iter()
+            .zip(["198.51.100.7", "198.51.100.8"])
+        {
+            let admitted = admit_from(&state, &policy, route, PEER, Some(caller), sid);
+            admitted.expect("within the address quota");
+        }
+        let err = admit_from(
+            &state,
+            &policy,
+            route,
+            PEER,
+            Some("198.51.100.9"),
+            "sess-spoof-c",
+        )
+        .unwrap_err();
+        assert_eq!(err.reason(), "rate_limited", "{route:?}");
+    }
+}
+
+/// A launcher chunk is keyed on the forwarded caller too (C18): behind a
+/// loopback proxy two callers each pass the launcher address quota, and a
+/// remote peer rotating its header is refused by it.
+#[test]
+fn a_launcher_chunk_keys_its_address_quota_on_the_forwarded_caller() {
+    let _env = Env::install();
+    let state = UploadState::new(UploadLimits {
+        launcher_chunk_slots: 8,
+        ..UploadLimits::default()
+    });
     let policy = UploadPolicy {
-        chunk_per_session: 0,
-        chunk_per_ip: 2,
+        launcher_chunk_per_session: 0,
+        launcher_chunk_per_install: 0,
+        launcher_chunk_per_ip: 1,
         ..UploadPolicy::defaults()
     };
-    for (sid, caller) in ["sess-spoof-a", "sess-spoof-b"]
+    let loopback: IpAddr = "127.0.0.1".parse().unwrap();
+    for (sid, caller) in ["sess-lx-a", "sess-lx-b"]
         .iter()
         .zip(["198.51.100.7", "198.51.100.8"])
     {
-        let admitted = admit_from(&state, &policy, Route::Chunk, PEER, Some(caller), sid);
-        admitted.expect("within the address quota");
+        let token = launcher_token(sid, "install-launcher-test");
+        let admitted = admit_with_token(
+            &state,
+            &policy,
+            Route::Chunk,
+            loopback,
+            Some(caller),
+            &token,
+        );
+        admitted.expect("a distinct forwarded caller is admitted");
     }
-    let err = admit_from(
+
+    let spoof = launcher_token("sess-lx-c", "install-launcher-test");
+    admit_with_token(
         &state,
         &policy,
         Route::Chunk,
         PEER,
         Some("198.51.100.9"),
-        "sess-spoof-c",
+        &spoof,
+    )
+    .expect("the remote peer's first chunk is within the address quota");
+    let spoof = launcher_token("sess-lx-d", "install-launcher-test");
+    let err = admit_with_token(
+        &state,
+        &policy,
+        Route::Chunk,
+        PEER,
+        Some("198.51.100.10"),
+        &spoof,
     )
     .unwrap_err();
     assert_eq!(err.reason(), "rate_limited");
@@ -399,4 +478,58 @@ fn an_address_holds_at_most_one_chunk_slot() {
         0,
         "finished uploads release their share"
     );
+}
+
+/// Directive 6 (D-LT19), the chunk leg: behind a loopback proxy that forwarded
+/// `198.51.100.7`, a chunk that is admitted and one refused on the address
+/// quota leave rows, and no row names the forwarded address.
+#[test]
+fn the_forwarded_address_is_in_no_chunk_row() {
+    const FORWARDED: &str = "198.51.100.7";
+    let _env = Env::install();
+    let state = UploadState::new(UploadLimits::default());
+    let policy = UploadPolicy {
+        chunk_per_session: 0,
+        chunk_per_ip: 1,
+        ..UploadPolicy::defaults()
+    };
+    let loopback: IpAddr = "127.0.0.1".parse().unwrap();
+    let forwarded_chunk = |sid: &str| {
+        let mut req = chunk_request(sid, small_chunk(1));
+        req.headers_mut()
+            .insert("x-forwarded-for", HeaderValue::from_static(FORWARDED));
+        req
+    };
+    let (first, mut rows) = run(capture_async(chunk_inner(
+        &state,
+        &policy,
+        loopback,
+        forwarded_chunk("sess-leak-a"),
+        Instant::now(),
+    )));
+    first.expect("the first chunk is admitted");
+    let (second, refused_rows) = run(capture_async(chunk_inner(
+        &state,
+        &policy,
+        loopback,
+        forwarded_chunk("sess-leak-b"),
+        Instant::now(),
+    )));
+    let err = second.unwrap_err();
+    assert_eq!(err.reason(), "rate_limited");
+    rows.extend(refused_rows);
+    assert!(!rows.is_empty(), "the refused chunk should leave a row");
+    for row in &rows {
+        assert!(
+            !row.target.contains(FORWARDED),
+            "a row target names the forwarded address: {}",
+            row.target
+        );
+        for (key, value) in &row.fields {
+            assert!(
+                !key.contains(FORWARDED) && !value.contains(FORWARDED),
+                "a chunk row carries the forwarded address: {key}={value}"
+            );
+        }
+    }
 }
