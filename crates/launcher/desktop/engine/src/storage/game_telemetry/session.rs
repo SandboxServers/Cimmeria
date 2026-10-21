@@ -75,26 +75,38 @@ fn mint_url(login_server: &str) -> String {
     format!("{}/auth/dev-session", auth_base_url(login_server))
 }
 
-/// Logs one `game_session_mint_failed` (C8) and returns the outcome to give back.
+/// One mint attempt: when it started, and whether it is a player (game) session.
+/// Only a game session logs `game_session_mint_failed`: the launcher's own
+/// adoption session has its own reporting (LT-07).
+#[derive(Clone, Copy)]
+struct Attempt {
+    started: Instant,
+    game: bool,
+}
+
+/// Logs one `game_session_mint_failed` (C8) for a game session and returns the
+/// outcome to give back.
 fn mint_refused(
     reason: &'static str,
     http_status: Option<u16>,
-    started: Instant,
+    attempt: Attempt,
     outcome: Outcome,
 ) -> Outcome {
-    let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    session_events::mint_failed(reason, http_status, duration_ms);
+    if attempt.game {
+        let duration_ms = u64::try_from(attempt.started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        session_events::mint_failed(reason, http_status, duration_ms);
+    }
     outcome
 }
 
 /// A request that never got a reply: a timeout, or any other transport failure.
-fn transport_refused(error: &reqwest::Error, started: Instant) -> Outcome {
+fn transport_refused(error: &reqwest::Error, attempt: Attempt) -> Outcome {
     let reason = if error.is_timeout() {
         "timeout"
     } else {
         "transport"
     };
-    mint_refused(reason, None, started, Outcome::SessionUnavailable)
+    mint_refused(reason, None, attempt, Outcome::SessionUnavailable)
 }
 
 /// C10 (D-LT7): the upload address the session is given. A loopback address from
@@ -137,15 +149,18 @@ pub(super) async fn start_kind(
     // https anywhere, plain http only to this machine or a login server: the
     // rule the Windows launcher applies, to the mint address and to whatever
     // upload address the server hands back.
-    let started = Instant::now();
+    let attempt = Attempt {
+        started: Instant::now(),
+        game: session_kind.is_none(),
+    };
     let policy = EndpointPolicy::from_login_servers(login_servers.iter().map(|s| s.url.as_str()));
     let server = login_servers
         .first()
-        .ok_or_else(|| mint_refused("transport", None, started, Outcome::SessionUnavailable))?;
+        .ok_or_else(|| mint_refused("transport", None, attempt, Outcome::SessionUnavailable))?;
     let url = mint_url(&server.url);
     policy
         .check(&url)
-        .map_err(|_| mint_refused("endpoint_refused", None, started, Outcome::EndpointRefused))?;
+        .map_err(|_| mint_refused("endpoint_refused", None, attempt, Outcome::EndpointRefused))?;
     let branch = option_env!("CIMMERIA_BUILD_BRANCH").unwrap_or("desktop");
     let git_sha = option_env!("CIMMERIA_BUILD_GIT_SHA").unwrap_or("unknown");
     let launcher_version = mint_launcher_version();
@@ -162,26 +177,26 @@ pub(super) async fn start_kind(
         tags,
         session_kind,
     })
-    .map_err(|_| mint_refused("transport", None, started, Outcome::SessionUnavailable))?;
+    .map_err(|_| mint_refused("transport", None, attempt, Outcome::SessionUnavailable))?;
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(CONNECT)
         .timeout(TOTAL)
         .build()
-        .map_err(|_| mint_refused("transport", None, started, Outcome::SessionUnavailable))?;
+        .map_err(|_| mint_refused("transport", None, attempt, Outcome::SessionUnavailable))?;
     let mut response = client
         .post(&url)
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .body(body)
         .send()
         .await
-        .map_err(|e| transport_refused(&e, started))?;
+        .map_err(|e| transport_refused(&e, attempt))?;
     if !response.status().is_success() {
         let status = response.status().as_u16();
         return Err(mint_refused(
             "http_status",
             Some(status),
-            started,
+            attempt,
             Outcome::SessionUnavailable,
         ));
     }
@@ -189,30 +204,37 @@ pub(super) async fn start_kind(
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|e| transport_refused(&e, started))?
+        .map_err(|e| transport_refused(&e, attempt))?
     {
         if bytes.len() + chunk.len() > MAX_REPLY {
             return Err(mint_refused(
                 "decode",
                 None,
-                started,
+                attempt,
                 Outcome::SessionUnavailable,
             ));
         }
         bytes.extend_from_slice(&chunk);
     }
     let reply: MintReply = serde_json::from_slice(&bytes)
-        .map_err(|_| mint_refused("decode", None, started, Outcome::SessionUnavailable))?;
+        .map_err(|_| mint_refused("decode", None, attempt, Outcome::SessionUnavailable))?;
     if reply.token.is_empty() || reply.session_id.is_empty() {
         return Err(mint_refused(
             "decode",
             None,
-            started,
+            attempt,
             Outcome::SessionUnavailable,
         ));
     }
-    let upload_endpoint = upload_for(&policy, &server.url, &reply.upload_endpoint)
-        .map_err(|reason| mint_refused(reason, None, started, Outcome::EndpointRefused))?;
+    let upload_endpoint = if attempt.game {
+        upload_for(&policy, &server.url, &reply.upload_endpoint)
+            .map_err(|reason| mint_refused(reason, None, attempt, Outcome::EndpointRefused))?
+    } else {
+        policy.check(&reply.upload_endpoint).map_err(|_| {
+            mint_refused("endpoint_refused", None, attempt, Outcome::EndpointRefused)
+        })?;
+        reply.upload_endpoint.clone()
+    };
     Ok(Session(CurrentSession {
         schema_version: CURRENT_SESSION_SCHEMA,
         install_id: identity.install_id.to_string(),
@@ -387,5 +409,34 @@ mod tests {
         assert_eq!(failed[0].level, tracing::Level::WARN);
         assert_eq!(failed[0].field("reason"), Some("http_status"));
         assert_eq!(failed[0].field("http_status"), Some("500"));
+    }
+
+    #[test]
+    fn a_launcher_kind_mint_failure_logs_no_game_event() {
+        let (result, events) = capture(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let server = MockServer::start().await;
+                    Mock::given(method("POST"))
+                        .and(path("/api/auth/dev-session"))
+                        .respond_with(ResponseTemplate::new(500))
+                        .mount(&server)
+                        .await;
+                    let servers = vec![LoginServer {
+                        name: "fixture".into(),
+                        url: server.uri(),
+                    }];
+                    start_kind(&fixture_identity(), &servers, &[], Some("launcher"))
+                        .await
+                        .map(|_| ())
+                })
+        });
+        assert_eq!(result, Err(Outcome::SessionUnavailable));
+        assert!(events
+            .iter()
+            .all(|e| e.field("event") != Some("game_session_mint_failed")));
     }
 }
