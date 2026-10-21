@@ -53,6 +53,7 @@ pub(super) fn dispatch(
             .lock()
             .map_err(|_| IntentError::from(StorageError::Io))
             .and_then(|mut state| discard(&mut state, id, revision, confirmed));
+        events::discarded(&result);
         let _ = send.send(result);
     });
     Ok(result)

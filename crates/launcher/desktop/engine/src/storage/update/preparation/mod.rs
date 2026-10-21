@@ -169,7 +169,9 @@ fn start_with_backend(
             // handoff. Preserve output; only explicit recovery may continue it.
             if let Ok(mut state) = owner.lock() {
                 if let Ok(operations) = state.operations_mut() {
-                    let _ = operations.mark_uncertain(id);
+                    if let Err(error) = operations.mark_uncertain(id) {
+                        events::mark_uncertain_failed(error);
+                    }
                 }
             }
         }
@@ -194,6 +196,7 @@ async fn reconstruct(
     if cancel.is_cancelled() {
         return Err(Failure::Cancelled);
     }
+    let started = std::time::Instant::now();
     let candidate = plan.clone();
     let mut prepared = tokio::task::spawn_blocking(move || claim(candidate))
         .await
@@ -270,6 +273,10 @@ async fn reconstruct(
             Failure::Failed
         }
     })?;
+    let size_root = stage.clone();
+    let (files, bytes) = tokio::task::spawn_blocking(move || events::tree_size(&size_root, 0))
+        .await
+        .unwrap_or((0, 0));
     let mut owner = state.lock().map_err(|_| Failure::ReconciliationRequired)?;
     if owner
         .update_plan()
@@ -290,6 +297,7 @@ async fn reconstruct(
     owner.preferences_uncertain |= result == Err(StorageError::PersistenceUncertain);
     result.map_err(|_| Failure::ReconciliationRequired)?;
     drop(owner);
+    events::staged(files, bytes, started.elapsed());
     let (handoff, abandoned) = oneshot::channel();
     let observed_state = state.clone();
     let id = plan.id;
