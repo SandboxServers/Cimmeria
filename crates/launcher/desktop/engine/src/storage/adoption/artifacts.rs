@@ -80,15 +80,22 @@ pub(super) fn fetch(
         cancel,
         progress,
     )?;
+    let seed = fetched.seed.ok_or_else(|| artifact_missing("seed"))?;
     let patches = fetched
         .patches
         .into_iter()
-        .collect::<Option<Vec<_>>>()
-        .ok_or(Error::InvalidArtifact)?;
-    Ok(Artifacts {
-        seed: fetched.seed.ok_or(Error::InvalidArtifact)?,
-        patches,
-    })
+        .zip(&release.manifest().patches)
+        .map(|(path, patch)| path.ok_or_else(|| artifact_missing(&format!("patch:{}", patch.id))))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Artifacts { seed, patches })
+}
+
+/// The refusal for a blob the fetch did not hold; `label` is `seed` or `patch:<id>`.
+fn artifact_missing(label: &str) -> Error {
+    rejection::reject(
+        Error::InvalidArtifact,
+        Rejection::new("artifact_missing").entry(label),
+    )
 }
 
 /// The SHA-256 of each signed blob of `release` already in the store and
@@ -194,8 +201,15 @@ pub(super) fn fetch_some(
             match result {
                 Ok(true) => std::fs::rename(&partial, &path)?,
                 Ok(false) => {
+                    let found = found_digest(&partial, cancel);
                     let _ = std::fs::remove_file(&partial);
-                    return Err(Error::InvalidArtifact);
+                    return Err(rejection::reject(
+                        Error::InvalidArtifact,
+                        Rejection::new("artifact_hash_mismatch")
+                            .entry(entry_label(label))
+                            .expected(rejection::digest(*size, sha))
+                            .found(found),
+                    ));
                 }
                 Err(error) => {
                     let _ = std::fs::remove_file(&partial);
@@ -213,11 +227,74 @@ pub(super) fn fetch_some(
 
 /// A refused local archive is not retried by a download: the review names it.
 fn local_seed_error(error: LocalSeedError) -> Error {
-    match error {
-        LocalSeedError::Cancelled => Error::Cancelled,
-        LocalSeedError::Io => StorageError::Io.into(),
-        _ => Error::InvalidArtifact,
+    let (error, found) = match error {
+        LocalSeedError::Cancelled => return Error::Cancelled,
+        LocalSeedError::NotAFile => (Error::InvalidArtifact, "not_a_file"),
+        LocalSeedError::SizeMismatch { .. } => (Error::InvalidArtifact, "size_mismatch"),
+        LocalSeedError::HashMismatch => (Error::InvalidArtifact, "hash_mismatch"),
+        LocalSeedError::Changed => (Error::InvalidArtifact, "changed"),
+        LocalSeedError::Io => (StorageError::Io.into(), "io"),
+    };
+    rejection::reject(
+        error,
+        Rejection::new("local_seed_invalid")
+            .entry("seed")
+            .found(found),
+    )
+}
+
+/// The R5a label of a progress label: `seed`, `patch:<id>` or `file_index`.
+fn entry_label(label: &str) -> String {
+    match label.strip_prefix("patch ") {
+        Some(id) => format!("patch:{id}"),
+        None => label.replace(' ', "_"),
     }
+}
+
+/// The `digest()` form of the file at `path`, or `unreadable` when it cannot be hashed.
+fn found_digest(path: &Path, cancel: &CancellationToken) -> String {
+    match inventory::hash(path, cancel) {
+        Ok(entry) => {
+            let sha: String = entry.sha256.iter().map(|b| format!("{b:02x}")).collect();
+            rejection::digest(entry.size, &sha)
+        }
+        Err(_) => "unreadable".to_string(),
+    }
+}
+
+/// The refusal for a folder-held or local copy of a signed blob that does not match it.
+fn local_mismatch(
+    path: &Path,
+    label: &str,
+    (size, sha256): (u64, &str),
+    cancel: &CancellationToken,
+) -> Error {
+    rejection::reject(
+        Error::InvalidArtifact,
+        Rejection::new("local_artifact_mismatch")
+            .entry(label)
+            .expected(rejection::digest(size, sha256))
+            .found(found_digest(path, cancel)),
+    )
+}
+
+/// The refusal for a failed transfer: the `reqwest` predicate that matched, never its text.
+fn transfer_refused(error: &reqwest::Error, label: &str) -> Error {
+    let found = if error.is_timeout() {
+        "timeout"
+    } else if error.is_connect() {
+        "connect"
+    } else if error.is_body() {
+        "body"
+    } else {
+        "other"
+    };
+    rejection::reject(
+        Error::Network,
+        Rejection::new("download_failed")
+            .entry(entry_label(label))
+            .found(found),
+    )
 }
 
 /// Blocking, like [`fetch`]: the signed file index, bounded by its signed size
@@ -258,7 +335,12 @@ pub(super) fn discard_store(state_root: &Path) {
 
 fn name(sha256: &str) -> Result<String, Error> {
     if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err(Error::InvalidArtifact);
+        return Err(rejection::reject(
+            Error::InvalidArtifact,
+            Rejection::new("manifest_digest_malformed")
+                .expected("64 hex digits")
+                .found(format!("{} characters", sha256.len())),
+        ));
     }
     Ok(format!("{}.artifact", sha256.to_ascii_lowercase()))
 }
@@ -322,7 +404,12 @@ pub(super) fn local_some(
             &manifest.seed.sha256,
             cancel,
         )? {
-            return Err(Error::InvalidArtifact);
+            return Err(local_mismatch(
+                &local.seed,
+                "seed",
+                (manifest.seed.size, &manifest.seed.sha256),
+                cancel,
+            ));
         }
         fetched.seed = Some(local.seed.clone());
     }
@@ -330,7 +417,12 @@ pub(super) fn local_some(
         let path = local.patches.get(k).ok_or(Error::InvalidArtifact)?;
         let patch = manifest.patches.get(k).ok_or(Error::InvalidArtifact)?;
         if !matches(path, patch.size, &patch.sha256, cancel)? {
-            return Err(Error::InvalidArtifact);
+            return Err(local_mismatch(
+                path,
+                &format!("patch:{}", patch.id),
+                (patch.size, &patch.sha256),
+                cancel,
+            ));
         }
         fetched.patches[k] = Some(path.clone());
     }
@@ -363,16 +455,27 @@ async fn download(
     let response = tokio::select! {
         biased;
         _ = cancel.cancelled() => return Err(Error::Cancelled),
-        response = http.get(url).send() => response.map_err(|_| Error::Network)?,
+        response = http.get(url).send() => response.map_err(|e| transfer_refused(&e, label))?,
     };
     if response.status() != reqwest::StatusCode::OK {
-        return Err(Error::Network);
+        return Err(rejection::reject(
+            Error::Network,
+            Rejection::new("download_http_status")
+                .entry(entry_label(label))
+                .http_status(response.status().as_u16()),
+        ));
     }
-    if response
+    if let Some(declared) = response
         .content_length()
-        .is_some_and(|declared| declared != size)
+        .filter(|declared| *declared != size)
     {
-        return Err(Error::InvalidArtifact);
+        return Err(rejection::reject(
+            Error::InvalidArtifact,
+            Rejection::new("artifact_size_mismatch")
+                .entry(entry_label(label))
+                .expected(size.to_string())
+                .found(declared.to_string()),
+        ));
     }
     let mut output = OpenOptions::new()
         .write(true)
@@ -390,10 +493,16 @@ async fn download(
         let Some(chunk) = next else {
             break;
         };
-        let chunk = chunk.map_err(|_| Error::Network)?;
+        let chunk = chunk.map_err(|e| transfer_refused(&e, label))?;
         received += chunk.len() as u64;
         if received > size {
-            return Err(Error::InvalidArtifact);
+            return Err(rejection::reject(
+                Error::InvalidArtifact,
+                Rejection::new("artifact_size_mismatch")
+                    .entry(entry_label(label))
+                    .expected(size.to_string())
+                    .found(received.to_string()),
+            ));
         }
         output.write_all(&chunk)?;
         if reported.elapsed() >= Duration::from_millis(33) {

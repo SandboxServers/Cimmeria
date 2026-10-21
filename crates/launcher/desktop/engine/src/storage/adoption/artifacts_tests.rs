@@ -51,6 +51,18 @@ async fn outcome(f: &Fixture, manifest_url: String) -> Result<Preview, Error> {
         .wait()
         .await
 }
+/// The refusal a failed preview recorded, read through its worker.
+async fn refusal(f: &Fixture, manifest_url: String) -> Option<Rejection> {
+    let mut worker = test_support::start_preview(f.state.clone(), remote(f), manifest_url).unwrap();
+    assert!(worker.wait().await.is_err());
+    worker.last_rejection().cloned()
+}
+fn sha_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
 /// A failed fetch must leave nothing behind and a terminal, retryable journal.
 fn assert_clean_failure(f: &Fixture, before: &(inventory::Index, inventory::Index)) {
     assert_eq!(store(f), Vec::<String>::new());
@@ -253,6 +265,39 @@ async fn substituted_bytes_of_the_signed_size_are_rejected_and_not_kept() {
         Some(Error::InvalidArtifact)
     );
     assert_clean_failure(&f, &before);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_http_error_status_is_recorded_as_the_refusal_code() {
+    let f = Fixture::new();
+    let server = origin(ResponseTemplate::new(500)).await;
+    let record = refusal(&f, format!("{}/manifest.json", server.uri()))
+        .await
+        .unwrap();
+    assert_eq!(record.check, "download_http_status");
+    assert_eq!(record.http_status, Some(500));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn substituted_bytes_name_the_signed_and_the_received_digest() {
+    let f = Fixture::new();
+    let seed = std::fs::read(&f.seed).unwrap();
+    let mut body = seed.clone();
+    let last = body.len() - 1;
+    body[last] ^= 1;
+    let server = origin(ResponseTemplate::new(200).set_body_bytes(body.clone())).await;
+    let record = refusal(&f, format!("{}/manifest.json", server.uri()))
+        .await
+        .unwrap();
+    assert_eq!(record.check, "artifact_hash_mismatch");
+    assert_eq!(
+        record.expected,
+        Some(rejection::digest(seed.len() as u64, &sha_hex(&seed)))
+    );
+    assert_eq!(
+        record.found,
+        Some(rejection::digest(body.len() as u64, &sha_hex(&body)))
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
