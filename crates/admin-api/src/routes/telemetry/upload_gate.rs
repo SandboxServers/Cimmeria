@@ -31,8 +31,8 @@ use super::refusal_log::RefusalLog;
 use super::upload_slots::PeerSlot;
 use super::upload_slots::{take_slot, PeerSlots, UploadSlot};
 use super::{
-    BODY_TIMEOUT, BUNDLE_SLOTS, CHUNK_SLOTS, LAUNCHER_CHUNK_SLOTS, MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRIES,
-    MAX_BUNDLE_ENTRIES_HARD, MAX_BUNDLE_EXPANDED_BYTES, MAX_BUNDLE_LINES,
+    BODY_TIMEOUT, BUNDLE_SLOTS, CHUNK_SLOTS, LAUNCHER_CHUNK_SLOTS, MAX_BUNDLE_BYTES,
+    MAX_BUNDLE_ENTRIES, MAX_BUNDLE_ENTRIES_HARD, MAX_BUNDLE_EXPANDED_BYTES, MAX_BUNDLE_LINES,
     MAX_BUNDLE_METADATA_BYTES, MAX_BUNDLE_PARTS, MAX_CHUNK_BYTES, MAX_CHUNK_DECOMPRESSED_BYTES,
     MAX_CHUNK_ROWS, MAX_CHUNK_ROW_BYTES, SLOTS_PER_PEER,
 };
@@ -369,7 +369,10 @@ pub(super) fn admit(
     // its slot from the launcher's pool, instead of the player's chunk ones.
     let launcher = claims.is_launcher();
     let (slots, pool_size) = if launcher {
-        (&state.launcher_chunk_slots, state.limits.launcher_chunk_slots)
+        (
+            &state.launcher_chunk_slots,
+            state.limits.launcher_chunk_slots,
+        )
     } else {
         (slots, pool_size)
     };

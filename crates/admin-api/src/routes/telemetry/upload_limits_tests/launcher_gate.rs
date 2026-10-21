@@ -16,7 +16,9 @@ use crate::routes::telemetry::upload_gate::{
     admit, Route, UploadLimits, UploadPolicy, UploadState, Uploader,
 };
 
-use super::{launcher_chunk_request, launcher_claims, launcher_token, small_chunk, token, Env, PEER};
+use super::{
+    launcher_chunk_request, launcher_claims, launcher_token, small_chunk, token, Env, PEER,
+};
 
 /// A second address, for the tests that need one not already in flight.
 const OTHER_PEER: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 8));
@@ -63,7 +65,10 @@ fn a_launcher_token_cannot_upload_a_bundle() {
         bundle_per_session: 1,
         ..UploadPolicy::defaults()
     };
-    let launcher = bearer(&launcher_token("sess-launcher-bundle", "install-launcher-bundle"));
+    let launcher = bearer(&launcher_token(
+        "sess-launcher-bundle",
+        "install-launcher-bundle",
+    ));
     let err = outcome(&state, &policy, Route::Bundle, &launcher, PEER).unwrap_err();
     assert!(matches!(err, IngestError::Forbidden(_)), "{err:?}");
     assert_eq!(err.into_response().status(), StatusCode::FORBIDDEN);
@@ -122,7 +127,10 @@ fn launcher_chunks_have_their_own_session_quota() {
         launcher_chunk_per_session: 2,
         ..UploadPolicy::defaults()
     };
-    let launcher = bearer(&launcher_token("sess-launcher-quota", "install-launcher-quota"));
+    let launcher = bearer(&launcher_token(
+        "sess-launcher-quota",
+        "install-launcher-quota",
+    ));
     assert!(outcome(&state, &policy, Route::Chunk, &launcher, PEER).is_ok());
     assert!(outcome(&state, &policy, Route::Chunk, &launcher, PEER).is_ok());
     let err = outcome(&state, &policy, Route::Chunk, &launcher, PEER).unwrap_err();
@@ -231,7 +239,10 @@ fn err_pool(err: &IngestError) -> &'static str {
 fn the_kill_switches_refuse_a_launcher_chunk() {
     let _env = Env::install();
     let state = UploadState::new(UploadLimits::default());
-    let launcher = bearer(&launcher_token("sess-kill-launcher", "install-kill-launcher"));
+    let launcher = bearer(&launcher_token(
+        "sess-kill-launcher",
+        "install-kill-launcher",
+    ));
 
     let global = UploadPolicy {
         kill_switch: true,
