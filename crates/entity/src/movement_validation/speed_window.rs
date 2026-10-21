@@ -34,7 +34,8 @@ pub(super) struct SpeedWindow {
 
 impl SpeedWindow {
     /// Add a sample and return (summed distance, summed dt) over the window.
-    /// Drops the oldest samples while the rest still cover SPEED_WINDOW; past\n    /// the sample cap the oldest is folded into the next, not dropped.
+    /// Drops the oldest samples while the rest still cover SPEED_WINDOW; past
+    /// the sample cap the oldest is folded into the next, not dropped.
     /// A negative dt counts as zero.
     pub(super) fn push(&mut self, distance: f32, dt_secs: f32) -> (f32, f32) {
         self.samples.push_back(Sample {

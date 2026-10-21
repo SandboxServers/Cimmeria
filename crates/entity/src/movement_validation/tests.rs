@@ -302,6 +302,7 @@ fn lag_stall_then_queued_burst_past_the_cap_does_not_warn() {
         assert!(v.observe_speed(1, 0.8125, 0.0, TOP).is_none(), "hop {i}");
     }
 }
+
 #[test]
 fn negative_dt_counts_as_zero() {
     let mut v = MovementValidator::new();
