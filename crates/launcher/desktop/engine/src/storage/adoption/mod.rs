@@ -27,8 +27,6 @@ pub use preparation::{
 };
 mod reference;
 mod source;
-// AU-02 calls the survey from the scan; until then only the tests use it.
-#[allow(dead_code)]
 mod survey;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

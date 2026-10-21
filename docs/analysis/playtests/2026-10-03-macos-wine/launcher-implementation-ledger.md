@@ -780,5 +780,5 @@ macOS app from a fresh Mac; that is LX-26 step 13.
 
 An in-place adoption that the scan refuses now lists up to five offending files or
 folders with what to do, and the mode choice is a row with a selected state that the
-choose button names. The logs name offenders by relative path only. See the
+choose button names. Both modes name the entries that make the launcher refuse a folder; the survey logs them by relative path only. See the
 [launcher-adopt-ux README](../../launcher-adopt-ux/README.md).

@@ -107,7 +107,7 @@ pub(super) fn preview(
         other => other,
     };
     if !full_layout(&folder) {
-        tracing::warn!(target: "adoption", folder = %folder.display(), binaries = %crate::install_layout::binaries_dir(&folder).display(), "in-place adoption refused: the folder is not in the installer's Working\\Binaries layout");
+        tracing::warn!(target: "adoption", "in-place adoption refused: the folder is not in the installer's Working\\Binaries layout");
         return Err(Error::UnsupportedLayout);
     }
     let (adopted, legacy_lock) = source::resolve(adopted)?;
@@ -213,7 +213,7 @@ fn clear_unbegun_admission(state: &DesktopState, folder: &Path) -> Result<bool, 
         return Ok(false);
     }
     let leftover = |why: &str| {
-        tracing::warn!(target: "adoption", folder = %folder.display(), "in-place adoption refused: launcher-owned names are already in the folder ({why})");
+        tracing::warn!(target: "adoption", "in-place adoption refused: launcher-owned names are already in the folder ({why})");
         Err(Error::LeftoverLauncherFiles)
     };
     if has(&folder.join("content-ready.json")) {

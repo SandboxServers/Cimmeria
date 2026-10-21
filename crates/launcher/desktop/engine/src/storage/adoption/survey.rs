@@ -96,7 +96,7 @@ fn walk(root: &Path, dir: &Path, depth: usize, survey: &mut Survey) {
     }
 }
 /// `relative`, `/`-joined, lossy, cut to MAX_PATH_SHOWN chars plus `…`.
-fn shown(relative: &Path) -> String {
+pub(super) fn shown(relative: &Path) -> String {
     let joined = relative
         .components()
         .map(|part| part.as_os_str().to_string_lossy().into_owned())

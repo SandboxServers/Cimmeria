@@ -175,3 +175,14 @@ fn sockets_and_case_collisions() {
         }
     );
 }
+
+#[test]
+fn shown_cuts_a_long_path() {
+    // MAX_PATH_SHOWN is 200 chars, then the `…` marker.
+    let long = "a".repeat(201);
+    let cut = shown(Path::new(&long));
+    assert!(cut.ends_with('…'));
+    assert_eq!(cut.chars().count(), 201);
+    let short = "a".repeat(10);
+    assert_eq!(shown(Path::new(&short)), short);
+}
