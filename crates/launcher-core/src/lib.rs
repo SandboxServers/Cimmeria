@@ -14,6 +14,7 @@ pub mod client_paths;
 pub mod client_setup;
 pub mod file_index;
 pub mod install;
+mod install_codes;
 pub mod install_layout;
 pub mod install_progress;
 pub mod install_report;
