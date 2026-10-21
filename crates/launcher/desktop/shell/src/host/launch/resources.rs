@@ -9,6 +9,10 @@ pub(super) struct Digests<'a> {
     pub rosetta_x87: Option<&'a str>,
     pub rosetta_x87_library: Option<&'a str>,
 }
+/// Whether this build pins a client telemetry DLL: the digest `bundled` reads.
+pub(crate) fn dll_bundled() -> bool {
+    option_env!("CIMMERIA_CLIENT_TELEMETRY_SHA256").is_some()
+}
 pub(super) fn bundled(root: &Path) -> Option<Resources> {
     bundled_with(
         root,
