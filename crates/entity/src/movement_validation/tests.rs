@@ -239,10 +239,12 @@ fn forget_clears_clock_so_next_sample_has_no_baseline() {
 
 #[test]
 fn zero_distance_at_zero_dt_never_warns() {
+    // Seed the window first so the zero-distance and zero-dt samples below
+    // actually exercise the window bookkeeping, not only the early exit.
     let mut v = MovementValidator::new();
-    for _ in 0..20 {
-        assert!(v.observe_speed(1, 0.0, 0.0, TOP).is_none());
-    }
+    assert!(v.observe_speed(1, 0.8125, 0.4, TOP).is_none());
+    assert!(v.observe_speed(1, 0.0, 0.0, TOP).is_none());
+    assert!(v.observe_speed(1, 0.8125, 0.0, TOP).is_none());
 }
 
 #[test]
