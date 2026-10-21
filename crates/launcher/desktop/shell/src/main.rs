@@ -3,8 +3,10 @@
 //! engine.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod host;
+mod panic_hook;
 #[cfg(test)]
 mod release_version;
+mod startup_event;
 mod telemetry;
 // The C9 capture helper; LT-06 onward drive it from the event helpers.
 #[cfg(test)]
@@ -544,9 +546,10 @@ fn main() {
         std::thread::sleep,
         updater_restart::OLD_LAUNCHER_WAIT,
     );
-    if let updater_restart::OldLauncher::StillRunning { pid } = startup.old_launcher {
-        eprintln!("updated launcher: process {pid} still running after the restart wait");
-    }
+    let old_launcher_still_running = matches!(
+        startup.old_launcher,
+        updater_restart::OldLauncher::StillRunning { .. }
+    );
     let builder = tauri::Builder::default();
     // First, so a second launch never reaches setup or the state lock. The plugin
     // exits the second process with status 0 after this callback focuses the first.
@@ -563,7 +566,7 @@ fn main() {
     };
     builder
         .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
+        .setup(move |app| {
             if LauncherBuild::current().tag.is_none() {
                 if let Some(window) = app.get_webview_window("main") {
                     if let Err(error) = window.set_title(DEVELOPMENT_TITLE) {
@@ -574,9 +577,17 @@ fn main() {
             let app_data = app.path().app_data_dir()?;
             let redaction = telemetry::Redaction::from_env();
             let telemetry = telemetry::init(&app_data.join("logs"), redaction.clone());
-            let host = NativeHost::new(app_data.join("state")).with_default_install_directory(
-                app.path().app_local_data_dir()?.join("Stargate Worlds"),
-            );
+            let log_file_ok = telemetry.guard.is_some();
+            let state_dir = app_data.join("state");
+            panic_hook::install(state_dir.clone());
+            if old_launcher_still_running {
+                startup_event::old_launcher_still_running();
+            }
+            let host = NativeHost::new(state_dir)
+                .with_log_file(log_file_ok)
+                .with_default_install_directory(
+                    app.path().app_local_data_dir()?.join("Stargate Worlds"),
+                );
             #[cfg(target_os = "macos")]
             let host = host.with_bundled_helper(app.path().resource_dir()?);
             let app_handle = app.handle().clone();

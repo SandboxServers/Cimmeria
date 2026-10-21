@@ -4,6 +4,7 @@ use cimmeria_launcher_engine::launch;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 mod resources;
+pub(crate) use resources::dll_bundled;
 #[derive(Debug, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LaunchCommand {
