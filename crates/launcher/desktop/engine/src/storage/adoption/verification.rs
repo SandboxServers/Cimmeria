@@ -105,10 +105,18 @@ pub(super) fn reference_and_comparison(
             Classification::Matched | Classification::KnownTransform
         )
     }) {
-        return Err(Error::NoReusableFiles);
+        return Err(rejection::reject(
+            Error::NoReusableFiles,
+            Rejection::new("no_reusable_files")
+                .expected("at least 1 matching file")
+                .found(format!("0 of {}", files.len())),
+        ));
     }
     if inventory::scan(folder, cancel)? != *scanned {
-        return Err(Error::SourceChanged);
+        return Err(rejection::reject(
+            Error::SourceChanged,
+            Rejection::new("folder_changed_during_check"),
+        ));
     }
     if let Some(imported) = legacy {
         source::verify_import(imported)?;
@@ -168,7 +176,12 @@ pub(super) fn reference_and_comparison(
                 .iter()
                 .find(|d| d.path == path)
                 .map(|d| d.classification)
-                .ok_or(Error::InvalidArtifact)?;
+                .ok_or_else(|| {
+                    rejection::reject(
+                        Error::InvalidArtifact,
+                        Rejection::new("file_unclassified").entry(&path),
+                    )
+                })?;
             replacements.push(Replacement {
                 path,
                 size: entry.size,
@@ -188,6 +201,10 @@ pub(super) fn reference_and_comparison(
             .map(|reference| reference.sha256.to_ascii_lowercase()),
         IndexOrigin::Built(_) => None,
     };
+    let index_fallback = match origin {
+        IndexOrigin::Published => None,
+        IndexOrigin::Built(fallback) => Some(fallback),
+    };
     Ok(Compared {
         reference,
         expected_digest,
@@ -197,6 +214,7 @@ pub(super) fn reference_and_comparison(
         replacements,
         login_replaced,
         file_index_sha256,
+        index_fallback,
     })
 }
 
@@ -284,7 +302,7 @@ fn expected_tree(
             continue;
         };
         let bytes = match setup.get(&key) {
-            Some((size, sha)) => (*size, unhex(sha).ok_or(Error::InvalidArtifact)?),
+            Some((size, sha)) => (*size, setup_bytes(sha, &history.path)?),
             None => (release.size, release.sha256),
         };
         tree.insert(history.path.clone(), bytes);
@@ -299,10 +317,7 @@ fn expected_tree(
             continue;
         }
         if let Some((size, sha)) = setup.get(&path.to_ascii_lowercase()) {
-            tree.insert(
-                path.clone(),
-                (*size, unhex(sha).ok_or(Error::InvalidArtifact)?),
-            );
+            tree.insert(path.clone(), (*size, setup_bytes(sha, path)?));
         }
     }
     Ok(tree)
@@ -334,6 +349,17 @@ fn unhex(hex: &str) -> Option<[u8; 32]> {
     (hex.len() == 64).then_some(out)
 }
 
+/// The digest a setup rule's expected bytes name; undecodable text refuses the
+/// rule at `path` (`setup_rule_invalid`).
+fn setup_bytes(hex: &str, path: &str) -> Result<[u8; 32], Error> {
+    unhex(hex).ok_or_else(|| {
+        rejection::reject(
+            Error::InvalidArtifact,
+            Rejection::new("setup_rule_invalid").entry(path),
+        )
+    })
+}
+
 /// What a preview learns from the signed reference and the folder: the reference
 /// for the moves when the index was built, the digest and paths the adopted tree
 /// must have, the per-file review, the download the replay implies, and the files
@@ -352,6 +378,8 @@ pub(super) struct Compared {
     pub login_replaced: bool,
     /// The signed index's digest when the index was published; a built index has none.
     pub file_index_sha256: Option<String>,
+    /// Why the signed index was not used; `None` when it was published (C15).
+    pub index_fallback: Option<super::index_source::IndexFallback>,
 }
 
 /// Classifies every path of the index's histories against the folder scan, then

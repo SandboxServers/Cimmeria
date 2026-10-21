@@ -162,8 +162,18 @@ async fn a_published_index_with_the_wrong_digest_falls_back_to_the_build() {
     let signed = release(&seed, Some(reference(&index, Some(wrong.clone()))));
     let server = origin(&seed, &index).await;
     let state = tempfile::tempdir().unwrap();
-    let (found, origin) = acquire(state.path(), &signed, &server).unwrap();
-    assert!(matches!(origin, IndexOrigin::Built(_)));
+    let (result, logs) = crate::test_capture::capture(|| acquire(state.path(), &signed, &server));
+    let (found, origin) = result.unwrap();
+    let IndexOrigin::Built(fallback) = origin else {
+        panic!("a digest mismatch must fall back to the build, got {origin:?}");
+    };
+    assert_eq!(fallback.reason, "index_digest_mismatch");
+    assert_eq!(fallback.seed_bytes, signed.manifest().seed.size);
+    let events = logs
+        .iter()
+        .filter(|row| row.field("event") == Some("adoption_index_fallback"))
+        .count();
+    assert_eq!(events, 1);
     assert_eq!(found.seed.sha256, hex(&Sha256::digest(&seed)));
     let seen = requests(&server).await;
     assert_eq!(seen.iter().filter(|p| *p == "/seed.zip").count(), 1);
@@ -171,6 +181,45 @@ async fn a_published_index_with_the_wrong_digest_falls_back_to_the_build() {
         .path()
         .join(format!("file-index-{wrong}.json"))
         .exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_manifest_without_a_file_index_is_built_with_index_not_published() {
+    let seed = seed_bytes();
+    let signed = release(&seed, None);
+    let server = origin(&seed, &[]).await;
+    let state = tempfile::tempdir().unwrap();
+    let (_, origin) = acquire(state.path(), &signed, &server).unwrap();
+    let IndexOrigin::Built(fallback) = origin else {
+        panic!("a manifest with no file index must build, got {origin:?}");
+    };
+    assert_eq!(fallback.reason, "index_not_published");
+    assert_eq!(fallback.seed_bytes, signed.manifest().seed.size);
+    assert!(!requests(&server).await.contains(&format!("/{INDEX_BLOB}")));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_404_for_the_signed_index_is_index_download_failed() {
+    let seed = seed_bytes();
+    let index = published_index(&seed);
+    let signed = release(&seed, Some(reference(&index, None)));
+    let server = MockServer::start().await;
+    Mock::given(path("/seed.zip"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(seed.clone()))
+        .mount(&server)
+        .await;
+    Mock::given(path(format!("/{INDEX_BLOB}")))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let state = tempfile::tempdir().unwrap();
+    let (_, origin) = acquire(state.path(), &signed, &server).unwrap();
+    let IndexOrigin::Built(fallback) = origin else {
+        panic!("a 404 for the signed index must build, got {origin:?}");
+    };
+    assert_eq!(fallback.reason, "index_download_failed");
+    // LT-31 adds the HTTP status of a refused download; until then it is not recorded.
+    assert_eq!(fallback.http_status, None);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

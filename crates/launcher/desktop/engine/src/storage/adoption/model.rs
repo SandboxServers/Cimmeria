@@ -77,7 +77,7 @@ pub struct Replacement {
     pub sha256: [u8; 32],
     pub reason: Classification,
 }
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Report {
     pub preview_handle: Uuid,
     pub source: PathBuf,
@@ -106,6 +106,41 @@ pub struct Report {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub login_replaced: bool,
 }
+/// Plan identity. `index_fallback` is informational and is never serialized, so a
+/// reloaded record cannot carry it; it is left out so the stored plan still matches.
+/// Every other field is destructured here, so a new field must be compared explicitly.
+impl PartialEq for Report {
+    fn eq(&self, other: &Self) -> bool {
+        let Report {
+            preview_handle,
+            source,
+            destination,
+            release_digest,
+            imported_identity,
+            requested_config,
+            files,
+            user_data_remains_in_source,
+            game_telemetry_available,
+            index_fallback: _,
+            download,
+            backup,
+            login_replaced,
+        } = self;
+        *preview_handle == other.preview_handle
+            && *source == other.source
+            && *destination == other.destination
+            && *release_digest == other.release_digest
+            && *imported_identity == other.imported_identity
+            && *requested_config == other.requested_config
+            && *files == other.files
+            && *user_data_remains_in_source == other.user_data_remains_in_source
+            && *game_telemetry_available == other.game_telemetry_available
+            && *download == other.download
+            && *backup == other.backup
+            && *login_replaced == other.login_replaced
+    }
+}
+impl Eq for Report {}
 impl Report {
     /// Adopted in place (D-LX12): the reviewed folder becomes the owner root.
     /// A verified copy always refuses a destination equal to its source.
@@ -366,4 +401,49 @@ pub struct Record {
 
 pub(super) fn digest(value: &impl Serialize) -> Result<[u8; 32], Error> {
     Ok(Sha256::digest(serde_json::to_vec(value).map_err(|_| StorageError::Corrupt)?).into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn report() -> Report {
+        Report {
+            preview_handle: Uuid::nil(),
+            source: PathBuf::from("source"),
+            destination: PathBuf::from("destination"),
+            release_digest: [7; 32],
+            imported_identity: None,
+            requested_config: None,
+            files: Vec::new(),
+            user_data_remains_in_source: true,
+            game_telemetry_available: false,
+            index_fallback: None,
+            download: None,
+            backup: None,
+            login_replaced: false,
+        }
+    }
+
+    #[test]
+    fn index_fallback_is_not_plan_identity() {
+        let mut reloaded = report();
+        reloaded.index_fallback = Some(super::super::index_source::IndexFallback {
+            reason: "index_not_published",
+            check: None,
+            http_status: None,
+            seed_bytes: 42,
+        });
+        assert_eq!(report(), reloaded);
+    }
+
+    #[test]
+    fn other_fields_are_plan_identity() {
+        let mut changed = report();
+        changed.login_replaced = true;
+        assert_ne!(report(), changed);
+        let mut moved = report();
+        moved.destination = PathBuf::from("elsewhere");
+        assert_ne!(report(), moved);
+    }
 }
