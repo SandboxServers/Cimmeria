@@ -62,7 +62,7 @@ pub(super) async fn run(
                 .map(|h| h.space_id);
             match held_space_id {
                 Some(space_id) if Some(space_id) == current_space_id => {
-                    tracing::debug!(
+                    tracing::info!(
                         target: "content",
                         event,
                         decision_outcome = "already_held",

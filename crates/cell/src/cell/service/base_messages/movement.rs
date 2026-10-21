@@ -274,7 +274,7 @@ async fn send_feedback_line(entity_id: u32, text: &str, tx: &mpsc::Sender<CellTo
         .await
     {
         tracing::warn!(
-            entity_id,
+            entity_id, // nt:id-only feedback send failed; no live name in scope
             error = %e,
             reason = "hold_feedback_send_failed",
             "movement.hold_feedback_send_failed: hold feedback line send to \
