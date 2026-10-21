@@ -113,6 +113,33 @@ fn above_i64_max_param_drops_the_action() {
     }
 }
 
+/// Negative control for the `u64` fallthrough in `opt_i32`: a negative
+/// in-range integer is kept, and a float or string reads as absent, so the
+/// action converts exactly as it does with the param missing. Only a
+/// `u64` above `i64::MAX` may take the drop path.
+#[test]
+fn negative_and_non_integer_params_are_not_out_of_range() {
+    for &(action_type, target_id, target_key, key) in CASES {
+        let build = |params: serde_json::Value| row(action_type, target_id, target_key, params);
+        let absent = format!("{:?}", convert_action(&build(serde_json::json!({}))));
+
+        for value in [serde_json::json!(1.5), serde_json::json!("7")] {
+            let mut params = serde_json::json!({});
+            params[key] = value.clone();
+            let got = format!("{:?}", convert_action(&build(params)));
+            assert_eq!(
+                got, absent,
+                "{action_type}.{key}={value} should read as absent"
+            );
+        }
+
+        assert!(
+            convert_action(&build(params_with(key, -1))).is_some(),
+            "{action_type}.{key} dropped at -1"
+        );
+    }
+}
+
 #[test]
 fn in_range_i32_param_keeps_the_action() {
     for &(action_type, target_id, target_key, key) in CASES {
