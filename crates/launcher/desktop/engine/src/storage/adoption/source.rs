@@ -16,9 +16,22 @@ pub(super) fn saved_import(
     };
     let imported = saved.ok_or(StorageError::Corrupt)?;
     if imported.confirmation != *import_digest {
-        return Err(Error::SourceChanged);
+        let check = rejection::Rejection::new("import_changed")
+            .expected(digest_prefix(&imported.confirmation))
+            .found(digest_prefix(import_digest));
+        return Err(rejection::reject(Error::SourceChanged, check));
     }
     Ok(imported)
+}
+
+/// The first 12 characters of a confirmation digest, the closed form C14 keeps.
+fn digest_prefix(confirmation: &str) -> String {
+    confirmation.chars().take(12).collect()
+}
+
+/// `check` with `found` set to the I/O error kind, as a closed snake_case code (C6).
+fn with_io_kind(check: rejection::Rejection, error: &std::io::Error) -> rejection::Rejection {
+    check.found(crate::storage::game_telemetry::launcher_event::kind(error))
 }
 
 /// The source a request names, and the scan of its folder. The state guard is
@@ -56,7 +69,14 @@ pub(super) fn request_source(
         check_writable(&root)?;
     }
     if root.starts_with(&state_root) || state_root.starts_with(&root) {
-        return Err(StorageError::InvalidDirectory.into());
+        let check = rejection::Rejection::new("folder_overlaps_launcher")
+            .entry(".")
+            .expected("outside the launcher folder")
+            .found("overlaps the launcher folder");
+        return Err(rejection::reject(
+            StorageError::InvalidDirectory.into(),
+            check,
+        ));
     }
     let scanned = survey::explained(&root, inventory::scan(&root, &CancellationToken::new()))?;
     let source = AdoptionSource::Folder(FolderSource {
@@ -71,7 +91,13 @@ pub(super) fn request_source(
 /// its `Working\Binaries`. A flat folder (`SGW.exe` beside `SGWGame`) is not a
 /// root in either mode: copy cannot map its layout. Names match case-blind.
 pub fn resolve_folder(selected: &Path) -> Result<PathBuf, Error> {
-    let selected = selected.canonicalize()?;
+    let selected = selected.canonicalize().map_err(|error| {
+        let check = with_io_kind(
+            rejection::Rejection::new("folder_unreadable").entry("."),
+            &error,
+        );
+        rejection::reject(error.into(), check)
+    })?;
     if working_binaries(&selected).is_some() {
         return Ok(selected);
     }
@@ -90,7 +116,11 @@ pub fn resolve_folder(selected: &Path) -> Result<PathBuf, Error> {
         }
     }
     tracing::warn!(target: "adoption", "adoption refused: the folder is not a game folder");
-    Err(Error::NotAGameFolder)
+    let check = rejection::Rejection::new("not_a_game_folder")
+        .entry(".")
+        .expected("SGW.exe and the game folders")
+        .found("no game layout");
+    Err(rejection::reject(Error::NotAGameFolder, check))
 }
 
 /// Whether the last component of `path` is `name`, case-blind.
@@ -164,7 +194,11 @@ fn is_link(meta: &std::fs::Metadata) -> bool {
 pub(super) fn check_writable(root: &Path) -> Result<(), Error> {
     let Some(binaries) = working_binaries(root) else {
         tracing::warn!(target: "adoption", "in-place adoption refused: the folder has no Working\\Binaries to change");
-        return Err(Error::FolderNotWritable);
+        let check = rejection::Rejection::new("folder_not_writable")
+            .entry("Working/Binaries")
+            .expected("present")
+            .found("missing");
+        return Err(rejection::reject(Error::FolderNotWritable, check));
     };
     let id = Uuid::new_v4();
     let root_probe = root.join(format!(".cimmeria-write-probe-{id}"));
@@ -182,17 +216,27 @@ pub(super) fn check_writable(root: &Path) -> Result<(), Error> {
     let _ = std::fs::remove_file(&renamed);
     result.map_err(|error| {
         tracing::warn!(target: "adoption", ?error, "in-place adoption refused: the folder is not writable");
-        Error::FolderNotWritable
+        let check = rejection::Rejection::new("folder_not_writable")
+            .entry(".")
+            .expected("writable");
+        rejection::reject(Error::FolderNotWritable, with_io_kind(check, &error))
     })
 }
 
 /// Imported configuration this copy cannot honour. It is refused, never rewritten.
 pub fn import_blocker(imported: &migration::LegacyImport) -> Option<Error> {
     if imported.config.manifest_url != crate::catalog::URL {
-        return Some(Error::UnsupportedCatalog);
+        let check = rejection::Rejection::new("unsupported_catalog")
+            .entry("manifest")
+            .expected("built-in catalog")
+            .found("custom manifest URL");
+        return Some(rejection::reject(Error::UnsupportedCatalog, check));
     }
     if imported.config.client_patches.dll_override.is_some() {
-        return Some(Error::UnsupportedConfiguration);
+        let check = rejection::Rejection::new("unsupported_configuration")
+            .expected("no diagnostics module")
+            .found("custom diagnostics module");
+        return Some(rejection::reject(Error::UnsupportedConfiguration, check));
     }
     None
 }
@@ -293,7 +337,13 @@ pub(super) fn lock_source(imported: &migration::LegacyImport) -> Result<File, Er
     // Import already created the same executable-adjacent legacy lock. Adoption
     // never creates or replaces anything in either legacy folder.
     let file = inventory::open(&imported.source.launcher_directory.join("launcher.lock"))?;
-    file.try_lock().map_err(|_| StorageError::InUse)?;
+    file.try_lock().map_err(|_| {
+        let check = rejection::Rejection::new("folder_in_use")
+            .entry("launcher.lock")
+            .expected("unlocked")
+            .found("locked");
+        rejection::reject(StorageError::InUse.into(), check)
+    })?;
     Ok(file)
 }
 
@@ -325,7 +375,11 @@ pub(super) fn verify_import(imported: &migration::LegacyImport) -> Result<(), Er
     }
     let actual: String = hash.finalize().iter().map(|b| format!("{b:02x}")).collect();
     if actual != imported.confirmation {
-        return Err(Error::SourceChanged);
+        // The three files are hashed together, so no single file can be named.
+        let check = rejection::Rejection::new("folder_changed_during_check")
+            .expected(digest_prefix(&imported.confirmation))
+            .found(digest_prefix(&actual));
+        return Err(rejection::reject(Error::SourceChanged, check));
     }
     Ok(())
 }
@@ -386,10 +440,15 @@ mod tests {
     fn folder_without_sgw_is_not_a_game_folder() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("Working")).unwrap();
-        assert!(matches!(
-            resolve_folder(dir.path()),
-            Err(Error::NotAGameFolder)
-        ));
+        let (result, record) = rejection::scope(|| resolve_folder(dir.path()));
+        assert!(matches!(result, Err(Error::NotAGameFolder)));
+        let record = record.expect("a recorded rejection");
+        assert_eq!(record.check, "not_a_game_folder");
+        assert_eq!(record.entry.as_deref(), Some("."));
+        assert_eq!(
+            record.expected.as_deref(),
+            Some("SGW.exe and the game folders")
+        );
     }
 
     #[test]
@@ -412,10 +471,10 @@ mod tests {
         let request = SourceRequest::Folder {
             selected: picked.path().to_path_buf(),
         };
-        assert!(matches!(
-            request_source(&f.state, &request, AdoptionMode::Copy),
-            Err(Error::NotAGameFolder)
-        ));
+        let (result, record) =
+            rejection::scope(|| request_source(&f.state, &request, AdoptionMode::Copy));
+        assert!(matches!(result, Err(Error::NotAGameFolder)));
+        assert_eq!(record.map(|r| r.check), Some("not_a_game_folder"));
     }
 
     #[test]
@@ -456,24 +515,29 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn root_denied_write_is_folder_not_writable() {
+    fn denied_write_is_folder_not_writable() {
         let dir = tempfile::tempdir().unwrap();
         layout(dir.path());
+        // `(WD)` only refuses file creation: a `(W)` deny also blocks listing
+        // the folder, which hides `SGW.exe` before the probe runs.
+        let binaries = dir.path().join("Working").join("Binaries");
         let user = std::env::var("USERNAME").unwrap();
         let status = std::process::Command::new("icacls")
-            .arg(dir.path())
+            .arg(&binaries)
             .arg("/deny")
-            .arg(format!("{user}:(W)"))
+            .arg(format!("{user}:(WD)"))
             .status()
             .unwrap();
         assert!(status.success());
         let _restore = RestoreWrite {
             user,
-            folder: dir.path().to_path_buf(),
+            folder: binaries,
         };
-        assert!(matches!(
-            check_writable(dir.path()),
-            Err(Error::FolderNotWritable)
-        ));
+        let (result, record) = rejection::scope(|| check_writable(dir.path()));
+        assert!(matches!(result, Err(Error::FolderNotWritable)));
+        let record = record.expect("a recorded rejection");
+        assert_eq!(record.check, "folder_not_writable");
+        assert_eq!(record.expected.as_deref(), Some("writable"));
+        assert!(record.found.is_some(), "the I/O kind is named");
     }
 }
