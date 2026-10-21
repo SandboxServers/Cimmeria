@@ -21,29 +21,6 @@ pub(super) fn reconstruct(
     progress: ProgressSink,
     extractor: Option<&dyn crate::install::SeedExtractor>,
 ) -> Result<Reference, Error> {
-    build(
-        parent, release, artifacts, servers, cancel, progress, extractor,
-    )
-    .map_err(|error| match error {
-        Error::UnsupportedArchive
-        | Error::InvalidArtifact
-        | Error::Storage(StorageError::TooLarge) => rejection::reject(
-            error,
-            Rejection::new("reference_zip_invalid").entry("reference"),
-        ),
-        other => other,
-    })
-}
-
-fn build(
-    parent: &Path,
-    release: &VerifiedRelease,
-    artifacts: &Artifacts,
-    servers: &[crate::client_setup::LoginServer],
-    cancel: &CancellationToken,
-    progress: ProgressSink,
-    extractor: Option<&dyn crate::install::SeedExtractor>,
-) -> Result<Reference, Error> {
     let manifest = release.manifest();
     if artifacts.patches.len() != manifest.patches.len() {
         return Err(Error::InvalidArtifact);
@@ -152,7 +129,7 @@ fn seed(
     if crate::unpack::detect(archive).map_err(|_| Error::UnsupportedArchive)?
         == crate::unpack::ArchiveKind::Zip
     {
-        strict_zip(archive)?;
+        zip_checked(archive)?;
     }
     crate::unpack::unpack(archive, destination, sink).map_err(|_| Error::InvalidArtifact)?;
     std::fs::remove_file(archive)?;
@@ -169,7 +146,7 @@ fn extract(
     sink: &UnpackSink,
 ) -> Result<(), Error> {
     authenticated_copy(source, archive, size, sha, cancel)?;
-    strict_zip(archive)?;
+    zip_checked(archive)?;
     crate::unpack::unpack(archive, destination, sink).map_err(|_| Error::InvalidArtifact)?;
     std::fs::remove_file(archive)?;
     Ok(())
@@ -188,6 +165,15 @@ fn authenticated_copy(
     }
     inventory::copy(source, archive, &entry, cancel)?;
     Ok(())
+}
+/// `strict_zip` for a seed or patch zip; a failure is recorded as `reference_zip_invalid`.
+fn zip_checked(path: &Path) -> Result<(), Error> {
+    strict_zip(path).map_err(|e| {
+        rejection::reject(
+            e,
+            Rejection::new("reference_zip_invalid").entry("reference"),
+        )
+    })
 }
 pub(super) fn strict_zip(path: &Path) -> Result<(), Error> {
     if crate::unpack::detect(path).map_err(|_| Error::UnsupportedArchive)?
