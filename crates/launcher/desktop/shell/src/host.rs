@@ -31,6 +31,7 @@ pub use migration::{MigrationCommand, MigrationStatus};
 mod repair;
 mod runtime_setup;
 mod seed_archive;
+mod setup_events;
 mod summary;
 pub(crate) mod telemetry_status;
 pub(crate) mod ui_event;

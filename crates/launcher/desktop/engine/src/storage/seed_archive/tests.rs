@@ -160,4 +160,23 @@ mod downloads_offer {
         std::fs::write(sub.join("Stargate Worlds Game.rar"), b"0123456789").unwrap();
         assert_eq!(find_downloads_offer(dir.path(), &seed(10)), None);
     }
+
+    /// LT-15: a Downloads path that cannot be listed is one closed warn row, and
+    /// no offer is made.
+    #[test]
+    fn unlistable_downloads_folder_is_logged_and_not_offered() {
+        let dir = tempfile::tempdir().unwrap();
+        let not_a_folder = dir.path().join("file");
+        std::fs::write(&not_a_folder, b"0123456789").unwrap();
+        let (offer, events) = crate::test_capture::capture(|| {
+            tracing::callsite::rebuild_interest_cache();
+            find_downloads_offer(&not_a_folder, &seed(10))
+        });
+        assert_eq!(offer, None);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].target, "launcher.install");
+        assert_eq!(events[0].level, tracing::Level::WARN);
+        assert_eq!(events[0].field("event"), Some("seed_archive_failed"));
+        assert_eq!(events[0].field("reason"), Some("offer_unreadable"));
+    }
 }

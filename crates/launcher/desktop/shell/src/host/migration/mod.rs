@@ -1,10 +1,12 @@
 //! Native-selected preview capability; web requests never carry source paths.
+use super::setup_events;
 use super::NativeHost;
 use cimmeria_launcher_engine::{
     migration::{LegacyImport, LegacySource, MigrationError},
     NativeCommand, NativeSnapshot, StorageError,
 };
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 #[cfg(test)]
 mod tests;
 
@@ -61,10 +63,41 @@ impl NativeHost {
             preview: pending.clone(),
         })
     }
+    /// One migration command, logged as `migration_started`, then
+    /// `migration_finished` or `migration_failed` (LT-15).
     pub fn migration_command(
         &self,
         request: MigrationCommand,
     ) -> Result<MigrationStatus, MigrationError> {
+        let action = match &request {
+            MigrationCommand::Inspect { .. } => "inspect",
+            MigrationCommand::Dismiss { .. } => "dismiss",
+            MigrationCommand::Confirm { .. } => "confirm",
+        };
+        // Inspect is polled: only its failure is logged.
+        let polled = action == "inspect";
+        let started = Instant::now();
+        if !polled {
+            setup_events::migration_started(action);
+        }
+        let result = self.migration_run(request);
+        let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        match &result {
+            Ok(_) if polled => {}
+            Ok(_) => setup_events::migration_finished(action, "ok", duration_ms),
+            Err(error) => {
+                // A storage failure serializes as an object: its inner code is the reason.
+                let reason = match error {
+                    MigrationError::Storage(inner) => setup_events::code(inner),
+                    other => setup_events::code(other),
+                };
+                setup_events::migration_failed(action, &reason, "other");
+            }
+        }
+        result
+    }
+
+    fn migration_run(&self, request: MigrationCommand) -> Result<MigrationStatus, MigrationError> {
         let version = match &request {
             MigrationCommand::Inspect { schema_version }
             | MigrationCommand::Dismiss { schema_version }

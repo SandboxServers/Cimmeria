@@ -21,11 +21,72 @@ pub enum Outcome {
     ReconciliationRequired(Fault),
 }
 
+/// Runs one prepare request and logs its start and its end as `launcher.install`
+/// rows (LT-15). A reconciliation gate is unrecoverable, so it is logged at `error`.
+pub async fn run(
+    spec: HelperCommand,
+    request: PrepareRequest,
+    cancel: CancellationToken,
+    limits: Deadlines,
+    record_host: impl FnOnce(u32) -> Result<(), ()>,
+) -> Outcome {
+    let started = std::time::Instant::now();
+    tracing::info!(
+        target: "launcher.install",
+        event = "prerequisite_started",
+        action = "prepare",
+        "prerequisite helper started"
+    );
+    let outcome = run_helper(spec, request, cancel, limits, record_host).await;
+    let duration_ms = started.elapsed().as_millis() as u64;
+    match &outcome {
+        Outcome::Observed(_) => tracing::info!(
+            target: "launcher.install",
+            event = "prerequisite_finished",
+            action = "prepare",
+            outcome = "observed",
+            duration_ms,
+            "prerequisite helper finished and its result was observed"
+        ),
+        Outcome::NotStarted(fault) => tracing::warn!(
+            target: "launcher.install",
+            event = "prerequisite_failed",
+            action = "prepare",
+            reason = fault_name(fault),
+            duration_ms,
+            "prerequisite helper did not start: the prerequisites are not prepared"
+        ),
+        Outcome::ReconciliationRequired(fault) => tracing::error!(
+            target: "launcher.install",
+            event = "prerequisite_failed",
+            action = "prepare",
+            reason = fault_name(fault),
+            duration_ms,
+            "prerequisite helper ended without a known result: reconciliation is required"
+        ),
+    }
+    outcome
+}
+
+/// The closed snake_case name of a helper fault, for the `launcher.install` log.
+fn fault_name(fault: &Fault) -> &'static str {
+    match fault {
+        Fault::InvalidRequest => "invalid_request",
+        Fault::Spawn => "spawn_failed",
+        Fault::Ownership => "ownership_failed",
+        Fault::Transport => "transport_failed",
+        Fault::Protocol => "protocol_failed",
+        Fault::Deadline => "deadline",
+        Fault::Cancelled => "cancelled",
+        Fault::Exit => "exit_failed",
+    }
+}
+
 /// The caller must own the prefix and record launch intent before invoking this
 /// retained native task. `record_host` must persist identity before request bytes
 /// are sent. No caller may infer Wine guest death from this function stopping its
 /// host child. Cancel/timeout after dispatch always retain a reconciliation gate.
-pub async fn run(
+async fn run_helper(
     spec: HelperCommand,
     request: PrepareRequest,
     cancel: CancellationToken,
@@ -104,5 +165,57 @@ pub async fn run(
             let _ = timeout(limits.exit, child.kill()).await;
             Outcome::ReconciliationRequired(fault)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// LT-15: a relative helper path is refused before anything spawns, and the
+    /// run logs one closed `prerequisite_failed` row next to its start row.
+    #[test]
+    fn a_relative_helper_path_is_logged_as_a_closed_failure() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let spec = HelperCommand {
+            executable: PathBuf::from("helper.exe"),
+            arguments: Vec::new(),
+            directory: PathBuf::from("relative"),
+            environment: Default::default(),
+        };
+        let request = PrepareRequest {
+            schema_version: 1,
+            operation_id: uuid::Uuid::nil(),
+            prefix_generation: uuid::Uuid::nil(),
+            game_binaries: PathBuf::from("game"),
+            package: PathBuf::from("package"),
+            scratch: PathBuf::from("scratch"),
+        };
+        let (outcome, events) = crate::test_capture::capture(|| {
+            tracing::callsite::rebuild_interest_cache();
+            runtime.block_on(run(
+                spec,
+                request,
+                CancellationToken::new(),
+                Deadlines::default(),
+                |_| Ok(()),
+            ))
+        });
+        assert!(matches!(
+            outcome,
+            Outcome::NotStarted(Fault::InvalidRequest)
+        ));
+        let failed: Vec<_> = events
+            .iter()
+            .filter(|e| e.field("event") == Some("prerequisite_failed"))
+            .collect();
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].target, "launcher.install");
+        assert_eq!(failed[0].level, tracing::Level::WARN);
+        assert_eq!(failed[0].field("reason"), Some("invalid_request"));
     }
 }
