@@ -10,14 +10,13 @@
 //! [`default_grant_container`] is what the cell asks for when nothing
 //! names one.
 
+use cimmeria_entity::inventory::INV_MISSION;
+
 /// The player's main bag (`INV_Main`).
 pub const INV_MAIN: i32 = 1;
 
 /// The crafting bag (`INV_Crafting`).
 pub const INV_CRAFTING: i32 = 15;
-
-/// The mission bag (`INV_Mission`).
-pub const INV_MISSION: i32 = 2;
 
 /// Storage containers: the bank (17) and the other stores up to 20. A grant
 /// never places an item into one of them.

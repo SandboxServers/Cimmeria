@@ -249,7 +249,9 @@ async fn live_db_allowed_requests_keep_their_container() {
 }
 
 /// A mission-only item (`{2}`) given into the main bag, as `gmGiveItem`
-/// and loot do, lands in the mission bag, not the backpack (#1675).
+/// does, lands in the mission bag, not the backpack (#1675). Loot and
+/// content grants do not rely on this path: they ask for the cell cache's
+/// container, which is already 2 for such an item.
 #[tokio::test]
 async fn live_db_mission_only_item_given_into_the_main_bag_lands_in_the_mission_bag() {
     let pool = require_db_or_skip!();
