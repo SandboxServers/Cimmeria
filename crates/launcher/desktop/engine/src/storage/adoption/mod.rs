@@ -319,6 +319,13 @@ fn copy_preview(
             // This worker holds no state guard, so settle the owner now rather
             // than leave a Running operation that nothing is working on.
             preparation.release();
+            // Unsafe sources and user cancels are owned by other checks (AU-02, cancel), not C14.
+            if matches!(
+                error,
+                Error::Unsafe(_) | Error::Cancelled | Error::Storage(StorageError::UnsafeFile)
+            ) {
+                return Err(error);
+            }
             let check = Rejection::new("comparison_failed").found(rejection::code(&error));
             return Err(rejection::reject(error, check));
         }

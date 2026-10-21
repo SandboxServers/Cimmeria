@@ -1,27 +1,22 @@
-//! Why an adoption was refused (launcher-telemetry C14). A refusal records one `Rejection` in the scope it runs in and logs it on the `adoption` target;
-//! only closed codes, sizes, digests and the folder-relative entry are kept.
+//! Why an adoption was refused (C14): one `Rejection` per scope, logged on `adoption`, with closed codes and no paths.
 use super::*;
 use std::cell::RefCell;
 
 /// Closed list; the frontend text table (C17) and the shell keep the same codes.
 #[rustfmt::skip]
 pub const REJECTION_CHECKS: &[&str] = &[
-    // source and folder (LT-28, LT-29)
     "not_a_game_folder", "folder_not_writable", "folder_in_use", "folder_overlaps_launcher",
     "folder_unreadable", "import_changed", "folder_changed_during_check", "folder_too_large",
     "folder_too_deep", "path_not_canonical", "unsupported_catalog", "unsupported_configuration",
     "stale_revision", "busy", "destination_exists", "destination_overlaps", "launcher_too_old",
     "identity_conflict", "comparison_failed", "exe_at_root",
-    // verification and artifacts (LT-30, LT-31)
     "no_reusable_files", "seed_mismatch", "setup_rule_invalid", "file_unclassified",
     "artifact_missing", "artifact_hash_mismatch", "artifact_size_mismatch",
     "download_http_status", "download_failed", "local_seed_invalid", "local_artifact_mismatch",
     "manifest_digest_malformed", "patch_replay_mismatch", "patch_archive_unsupported",
     "patch_input_unexpected", "patch_layout_unsupported",
-    // in place, reference, worker, consent (LT-32)
     "leftover_launcher_files", "unsupported_layout", "invalid_directory", "reference_zip_invalid",
     "worker_stopped", "blocking_files",
-    // shell (LT-33)
     "import_required", "state_corrupt", "release_unavailable", "platform_unavailable",
     "recovery_required",
 ];
@@ -30,10 +25,10 @@ pub const REJECTION_CHECKS: &[&str] = &[
 const MAX_FIELD: usize = 120;
 
 thread_local! {
-    /// The record of the innermost open scope on this thread.
     static SLOT: RefCell<Option<Rejection>> = const { RefCell::new(None) };
 }
 
+/// Why one adoption step refused: a closed check plus an optional entry, expected and found text, and HTTP status.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Rejection {
     /// One of `REJECTION_CHECKS` (debug_assert in new()).
@@ -53,18 +48,22 @@ impl Rejection {
         debug_assert!(REJECTION_CHECKS.contains(&check), "unlisted rejection check {check}");
         Self { check, entry: None, expected: None, found: None, http_status: None }
     }
+    /// Sets the entry: a folder-relative path or a label, keeping its last `MAX_FIELD` bytes.
     pub fn entry(mut self, e: impl Into<String>) -> Self {
         self.entry = Some(keep_tail(e.into()));
         self
     }
+    /// Sets the expected value, in a closed form.
     pub fn expected(mut self, e: impl Into<String>) -> Self {
         self.expected = Some(keep_tail(e.into()));
         self
     }
+    /// Sets the found value, in a closed form.
     pub fn found(mut self, f: impl Into<String>) -> Self {
         self.found = Some(keep_tail(f.into()));
         self
     }
+    /// Sets the HTTP status of a failed download.
     pub fn http_status(mut self, s: u16) -> Self {
         self.http_status = Some(s);
         self
@@ -89,8 +88,7 @@ pub fn digest(size: u64, sha256_hex: &str) -> String {
     format!("size {size}, sha256 {prefix}")
 }
 
-/// `path` relative to `root`, '/'-separated, "." for the root. A path outside
-/// `root` yields only its last component, never the full path.
+/// `path` relative to `root`, '/'-separated, "." for the root; outside `root`, only the last component.
 pub fn relative(root: &std::path::Path, path: &std::path::Path) -> String {
     let Ok(rest) = path.strip_prefix(root) else {
         return path
@@ -107,6 +105,7 @@ pub fn relative(root: &std::path::Path, path: &std::path::Path) -> String {
         parts.join("/")
     }
 }
+
 /// The snake_case code of `error`, identical to the shell's `AdoptionError` serde name.
 #[rustfmt::skip]
 pub fn code(error: &Error) -> &'static str {
@@ -149,8 +148,7 @@ pub fn code(error: &Error) -> &'static str {
         Error::Unsafe(_) => "unsafe_file",
     }
 }
-/// Records `r` as the scope's rejection if none is recorded yet (the first is the
-/// cause, later ones are consequences), WARN-logs it, and returns `error` unchanged.
+/// Records `r` as the scope's first rejection (the cause; later ones are consequences), WARN-logs it, returns `error`.
 pub fn reject(error: Error, r: Rejection) -> Error {
     tracing::warn!(
         target: "adoption",
@@ -161,8 +159,9 @@ pub fn reject(error: Error, r: Rejection) -> Error {
         expected = r.expected.as_deref(),
         found = r.found.as_deref(),
         http_status = r.http_status,
-        "adoption: check {} failed: expected {}, found {}; the folder was not adopted",
+        "adoption: check {} failed for {}: expected {}, found {}; the folder was not adopted",
         r.check,
+        r.entry.as_deref().unwrap_or("the folder"),
         r.expected.as_deref().unwrap_or("none"),
         r.found.as_deref().unwrap_or("none"),
     );
@@ -185,13 +184,13 @@ impl Drop for Restore {
     }
 }
 
-/// Runs `f` with a fresh slot and returns what it recorded. Nested scopes get
-/// their own slot and restore the outer one on exit (used by the index fallback).
+/// Runs `f` with a fresh slot and returns what it recorded; nested scopes keep their own.
 pub fn scope<R>(f: impl FnOnce() -> R) -> (R, Option<Rejection>) {
     let _restore = Restore(SLOT.with(|slot| slot.borrow_mut().take()));
     let value = f();
     (value, SLOT.with(|slot| slot.borrow_mut().take()))
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,7 +238,8 @@ mod tests {
             (Error::LeftoverLauncherFiles, "leftover_launcher_files"), (Error::FolderNotWritable, "folder_not_writable"),
             (Error::NotAGameFolder, "not_a_game_folder"), (Error::BackupConflict, "backup_conflict"),
             (Error::UnsupportedMode, "unsupported_mode"), (Error::Unsafe(Box::new(UnsafeReport { entries: Vec::new(), total: 0 })), "unsafe_file"),
-        ];        for (error, expected) in cases {
+        ];
+        for (error, expected) in cases {
             assert_eq!(code(&error), expected);
         }
     }
@@ -278,6 +278,7 @@ mod tests {
         let row = logs.iter().find(|row| row.field("event") == Some("adoption_rejected")).expect("an adoption_rejected row");
         assert_eq!(row.target, "adoption");
         assert_eq!(row.level, Level::WARN);
+        assert!(row.field("message").unwrap_or("").contains("desktop-copy"));
         assert_eq!(row.field("check"), Some("download_failed"));
         assert_eq!(row.field("code"), Some("network"));
         assert_eq!(row.field("entry"), Some("desktop-copy"));
