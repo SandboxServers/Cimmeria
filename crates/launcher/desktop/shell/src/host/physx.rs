@@ -1,12 +1,14 @@
 //! PhysX System Software on native Windows (LX-12, D-LX13). The engine half
 //! verifies the package and maps results; this file owns the one-at-a-time
 //! guard and the last result, so a lost reply can be read back by Inspect.
+use super::setup_events;
 use super::NativeHost;
 use cimmeria_launcher_engine::runtime_setup::windows_physx::{
     self, Elevate, PhysxCommand, PhysxError, PhysxStatus, Probe,
 };
 use cimmeria_launcher_engine::StorageError;
 use std::sync::atomic::Ordering;
+use std::time::Instant;
 
 impl NativeHost {
     pub fn physx_command(&self, request: PhysxCommand) -> Result<PhysxStatus, PhysxError> {
@@ -38,8 +40,34 @@ impl NativeHost {
         }
     }
 
+    /// One PhysX command, logged as `physx_started`, then `physx_finished` or
+    /// `physx_failed` (LT-15).
     #[cfg_attr(not(any(windows, test)), allow(dead_code))]
     pub(super) fn physx_command_with(
+        &self,
+        request: PhysxCommand,
+        probe: &dyn Probe,
+        elevate: &dyn Elevate,
+    ) -> Result<PhysxStatus, PhysxError> {
+        let action = match &request {
+            PhysxCommand::Inspect { .. } => "inspect",
+            PhysxCommand::Install { .. } => "install",
+        };
+        let started = Instant::now();
+        setup_events::physx_started(action);
+        let result = self.physx_run(request, probe, elevate);
+        let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        match &result {
+            Ok(_) => setup_events::physx_finished(action, "ok", duration_ms),
+            Err(error) => {
+                let reason = setup_events::code(error);
+                setup_events::physx_failed(action, &reason, "other");
+            }
+        }
+        result
+    }
+
+    fn physx_run(
         &self,
         request: PhysxCommand,
         probe: &dyn Probe,

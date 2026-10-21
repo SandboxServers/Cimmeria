@@ -1,5 +1,6 @@
 //! Native-chosen seed archive: the webview names commands only, never a path.
 use super::install::contract::{progress, JobProgress};
+use super::setup_events;
 use super::NativeHost;
 use cimmeria_launcher_engine::{
     catalog::VerifiedRelease,
@@ -98,7 +99,14 @@ impl From<StorageError> for SeedArchiveError {
 /// The webview's view of an offer: its name and size, never its folder.
 fn offered_archive(path: &Path) -> Option<OfferedSeedArchive> {
     let file_name = path.file_name()?.to_str()?.to_string();
-    let size = std::fs::metadata(path).ok()?.len();
+    let size = match std::fs::metadata(path) {
+        Ok(meta) => meta.len(),
+        Err(error) => {
+            let kind = setup_events::io_kind(&error);
+            setup_events::seed_archive_failed("inspect", "offer_unreadable", kind);
+            return None;
+        }
+    };
     Some(OfferedSeedArchive { file_name, size })
 }
 
@@ -174,7 +182,34 @@ impl NativeHost {
     /// Inspect, cancel, forget or accept the offer for the remembered archive.
     /// `release` is the signed release when the shell could fetch it; `Inspect`
     /// looks for a Downloads offer only when it is present. `AcceptOffer` needs it.
+    /// One seed archive command, logged as `seed_archive_started`, then as
+    /// `seed_archive_finished` or `seed_archive_failed` (LT-15).
     pub fn seed_archive_command(
+        &self,
+        command: SeedArchiveCommand,
+        release: Option<VerifiedRelease>,
+    ) -> Result<SeedArchiveStatus, SeedArchiveError> {
+        let action = match &command {
+            SeedArchiveCommand::Inspect { .. } => "inspect",
+            SeedArchiveCommand::AcceptOffer { .. } => "accept_offer",
+            SeedArchiveCommand::Cancel { .. } => "cancel",
+            SeedArchiveCommand::Forget { .. } => "forget",
+        };
+        let started = Instant::now();
+        setup_events::seed_archive_started(action);
+        let result = self.seed_archive_run(command, release);
+        let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        match &result {
+            Ok(_) => setup_events::seed_archive_finished(action, "ok", duration_ms),
+            Err(error) => {
+                let reason = setup_events::code(error);
+                setup_events::seed_archive_failed(action, &reason, "other");
+            }
+        }
+        result
+    }
+
+    fn seed_archive_run(
         &self,
         command: SeedArchiveCommand,
         release: Option<VerifiedRelease>,
@@ -245,6 +280,7 @@ impl NativeHost {
 
     /// Records a failed release fetch, so the next one waits `RELEASE_RETRY`.
     pub fn seed_archive_release_failed(&self) {
+        setup_events::seed_archive_release_failed("fetch_failed", None);
         if let Ok(mut archive) = self.seed_archive.lock() {
             archive.release_failed_at = Some(Instant::now());
             archive.release_in_flight = false;
@@ -359,6 +395,23 @@ fn verifying_progress(archive: &SeedArchive) -> Option<JobProgress> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_capture::capture;
+
+    /// An offer whose file cannot be read is logged once and not offered.
+    #[test]
+    fn unreadable_offer_is_logged_and_not_offered() {
+        let (offer, records) = capture(|| offered_archive(Path::new("missing-seed.zip")));
+        assert!(offer.is_none());
+        let failed: Vec<_> = records
+            .iter()
+            .filter(|r| r.field("event") == Some("seed_archive_failed"))
+            .collect();
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].target, "launcher.install");
+        assert_eq!(failed[0].level, tracing::Level::WARN);
+        assert_eq!(failed[0].field("reason"), Some("offer_unreadable"));
+        assert_eq!(failed[0].field("error_kind"), Some("not_found"));
+    }
 
     #[test]
     fn command_with_unknown_field_is_refused() {
