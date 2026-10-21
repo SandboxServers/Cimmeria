@@ -32,6 +32,7 @@ mod repair;
 mod runtime_setup;
 mod seed_archive;
 mod summary;
+pub(crate) mod telemetry_status;
 pub(crate) mod ui_event;
 pub use install::{InstallCommand, InstallStatus, JobError};
 pub use seed_archive::{SeedArchiveCommand, SeedArchiveError, SeedArchiveStatus};

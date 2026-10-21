@@ -621,7 +621,8 @@ fn main() {
             choose_existing_game_folder,
             seed_archive_command,
             choose_seed_archive,
-            host::ui_event::ui_event
+            host::ui_event::ui_event,
+            host::telemetry_status::telemetry_status
         ])
         .run(tauri::generate_context!())
         .expect("desktop launcher could not initialize");
