@@ -18,8 +18,13 @@ impl Captured {
     }
 
     /// LT-40: panics when the message or any field value holds an IP literal.
-    /// The panic names the event and the field key, never the address.
+    /// Only forwarded targets count (`launcher*` and `cimmeria*`, the telemetry
+    /// layer's rule): a third-party event such as hyper's loopback pool log is not a
+    /// row. The panic names the event and the field key, never the address.
     fn assert_no_ip(&self) {
+        if !(self.target.starts_with("launcher") || self.target.starts_with("cimmeria")) {
+            return;
+        }
         for (key, value) in &self.fields {
             if contains_ip(value) {
                 let event = self.field("event").unwrap_or(self.target.as_str());
@@ -74,10 +79,23 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "holds an IP literal")]
+    fn capture_panics_on_an_ip_after_a_key_and_a_port() {
+        let _ = super::capture(|| {
+            tracing::info!(target: "launcher.install", event = "x_failed", x = "peer:198.51.100.7:8081");
+        });
+    }
+
+    #[test]
     fn capture_returns_clean_events() {
         let ((), events) = super::capture(|| {
             tracing::info!(target: "launcher.install", event = "x_finished", x = "ok");
+            tracing::info!(target: "launcher.install", event = "x_error", x = "reqwest::Error { kind: Request }");
         });
         assert_eq!(events[0].field("x"), Some("ok"));
+        assert_eq!(
+            events[1].field("x"),
+            Some("reqwest::Error { kind: Request }")
+        );
     }
 }

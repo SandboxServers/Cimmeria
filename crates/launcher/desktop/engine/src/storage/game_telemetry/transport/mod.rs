@@ -75,6 +75,7 @@ pub use queue::{queue_without_session, recover_now, recover_on_startup, Consent,
 
 use super::{endpoint_sanity, session, Session};
 use crate::client_setup::login_servers::LoginServer;
+use crate::game_telemetry::ip_scrub::scrub_event;
 use crate::telemetry_endpoint::EndpointPolicy;
 use cimmeria_launcher_core::telemetry::auth::{AuthError, DevSessionResponse};
 use cimmeria_launcher_core::telemetry::bundle::BundleError;
@@ -221,10 +222,12 @@ impl Transport {
     /// Stamp the next `seq` (and `ts_ms` when 0) and append to the queue.
     /// Never waits on a flush in progress.
     /// After an opt-out: Err(NotOptedIn), and nothing is written.
-    pub async fn enqueue(&self, event: TelemetryEvent) -> Result<(), TransportError> {
+    pub async fn enqueue(&self, mut event: TelemetryEvent) -> Result<(), TransportError> {
         if !self.consent.current() {
             return Err(TransportError::NotOptedIn);
         }
+        // LT-40: no IP literal reaches the queue, whichever builder made the row.
+        scrub_event(&mut event);
         let result = self
             .telemetry
             .enqueue(event)
