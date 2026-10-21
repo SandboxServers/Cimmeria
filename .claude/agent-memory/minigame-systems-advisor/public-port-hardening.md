@@ -19,9 +19,12 @@ never logs. Pre-login rejects log DEBUG with `reason=non_sfs_preauth` + `peer`; 
 sessions WARN with entity/player pairs and the type fields. DEBUG still reaches SigNoz
 (`cimmeria_minigame=debug` OTLP row). Only WARN/ERROR reach Discord.
 
-**Limits (`server/limits.rs`, `ListenerLimits::default()`):** 256 total, 8 per source
-IP, 30 s accept-to-login, 4096-byte frames (unchanged, C++ parity), 30 min inbound idle.
-Idle expiry reports Canceled (0). The original C++ had none of these.
+**Limits (`server/limits.rs`, `ListenerLimits::default()`):** 30 s accept-to-login, 4096-byte
+frames (unchanged, C++ parity), 30 min inbound idle. Idle expiry reports Canceled (0). The
+original C++ had none of these. The 256-total and 8-per-IP caps are gone (#1119, owner
+decision 2026-09-30): the accept loop calls `SessionRegistry::try_admit`, one connection per
+valid ticket, all non-public peers one class; refusals are INFO `unexpected_peer`,
+`unexpected_peer_with_sessions`, `no_free_ticket`.
 
 Also 10 s per send (`SEND_TIMEOUT`; a timed-out send ends the connection and skips the
 teardown frames) and TCP keepalive 60 s / 10 s / 3 probes on accepted sockets (socket2).
@@ -34,6 +37,6 @@ server has noticed the old socket is gone (FIN/RST, failed or timed-out send, ke
 ~90 s for an idle connection; with data in flight, retransmit and SEND_TIMEOUT govern instead;
 idle 30 min). A half-open drop is refused as `ticket_already_claimed` until then.
 
-Still open from #532: Flash policy `domain='*'`, accept-rate limiting, ticket-to-IP binding.
+Still open from #532: Flash policy `domain='*'`, accept-rate limiting.
 
 See also [[session-lifecycle-original]].

@@ -98,7 +98,7 @@ Two deviations from the original flow: the movement and state hold is taken at l
 | Feature | Status | Notes |
 |---------|--------|-------|
 | SmartFoxServer 1.x host | DONE | `minigame/server/` (`mod.rs` lifecycle, `accept.rs`, `limits.rs`, `framing.rs`, `handshake.rs`, `result_dispatch.rs`) + `protocol.rs` |
-| Connection limits | DONE | Total and per-address connection caps, a login deadline, a 4 KiB frame cap and an idle timeout on the public port. See [Connection limits](#connection-limits) |
+| Connection admission | DONE | One connection per valid ticket (non-public peers match as one class), a login deadline, a 4 KiB frame cap and an idle timeout on the public port. See [Connection admission](#connection-admission) |
 | Session / ticket registry | DONE | `minigame/session.rs`; registration captures seed, difficulty, victory chains and original Base connection instance |
 | One-use result receipt | DONE | Claimed terminal result deposits once; Base atomically redeems the ticket and checks original owner before client send and Cell forward. Expiry: 180 s; cap: 4,096. Does not prove puzzle success or Cell launch identity |
 | Session expiry | DONE | A registered session whose SWF never connects is swept after `PENDING_SESSION_TTL` (180 s). See [Session lifecycle](#session-lifecycle) |
@@ -275,7 +275,7 @@ the connection task finishes or the owner closes the window. Three things end it
    (about 90 s for an idle connection whose peer vanished), or the 30-minute
    idle timeout. Until then a SWF that reconnects after a half-open drop is
    refused as `ticket_already_claimed`. See
-   [Connection limits](#connection-limits).
+   [Connection admission](#connection-admission).
 2. **The window-close RPC.** `endCurrentMinigame` releases the registry entry
    and signals the SmartFox task. That task reports Canceled (0), sends its
    close sequence and closes the socket. A new interaction can register a
@@ -327,51 +327,67 @@ old board cannot free the new board's hold. Open items: a `create_game` failure
 after the claim, and a logout or world change while a session is registered, do
 not report yet.
 
-### Connection limits
+### Connection admission
 
 The SmartFox port (TCP 30000 by default) is published on every host
 interface, so anyone can open a socket to it. The original C++ host had no
-connection cap and no read timeout. Cimmeria adds limits sized to how the
-client behaves: one character runs at most one minigame at a time, and the
-SWF sends `verChk` and `login` on its own as soon as it loads, so a player
-holds one socket (briefly two while a closed SWF's socket drains) and logs
-in within a second.
+read timeout and no admission rule. Cimmeria admits **one connection per
+valid ticket** (#1119) and adds timeouts sized to how the client behaves: one
+character runs at most one minigame at a time, and the SWF sends `verChk` and
+`login` on its own as soon as it loads, so a player holds one socket and logs
+in within a second. There is no global or per-address connection cap; the
+number of registered sessions is the only bound.
+
+`SessionRegistry::try_admit(peer_ip)` decides, in the accept loop, before a
+byte is read. A session is a free ticket for a peer when its recorded client
+address (set when the session starts) matches the peer and it is either
+connected or still pending inside `PENDING_SESSION_TTL`. The peer is admitted
+while its in-flight connections are fewer than those tickets, so N tickets from
+one address admit exactly N connections. The returned `AdmissionGuard` is held
+by the connection task for its whole life and frees the slot on every exit,
+including a failed or timed-out handshake.
+
+Matching is by address, with one rule for private networks: every non-public
+peer (loopback, 10/8, 172.16/12, 192.168/16, CGNAT 100.64/10, IPv4 link-local,
+IPv6 ULA and link-local) is one class. On a LAN or a Docker host the TCP peer
+can show a different private address from the one recorded at
+`start_minigame`, so a non-public peer matches any non-public ticket. IPv4-mapped
+IPv6 peers are canonicalized first.
+
+A refused socket is closed with no byte sent. Three INFO rows record why:
+
+| `reason` | When | Logging |
+|---|---|---|
+| `unexpected_peer` | No session is registered at all (most likely a scanner) | At most once a minute, with a `suppressed` count |
+| `unexpected_peer_with_sessions` | Sessions are registered but none expects this address; a real player behind NAT or multiple WAN links may be the one refused | Not throttled; carries `pending_sessions` |
+| `no_free_ticket` | The address has tickets, and every one already has a live connection | At most once a minute, with `suppressed`; carries `pending_sessions` |
+
+Each refusal is INFO, never WARN: only WARN and ERROR reach Discord. A
+session is not registered without the player's client address: the start is
+refused with a WARN row `reason=no_client_addr`, and no `onStartMinigame` is
+sent.
+
+Other limits on the public port (`ListenerLimits::default()` in
+[`server/limits.rs`](../../crates/minigame/src/minigame/server/limits.rs) holds
+the two timeouts):
 
 | Limit | Default | On breach |
 |---|---|---|
-| Open connections, all peers | 256 | The new socket is closed at once. INFO row `reason=total_connection_cap`, at most once a minute, with a `suppressed` count |
-| Open connections per source address | 8 | The new socket is closed at once. DEBUG row `reason=per_ip_connection_cap` |
 | Accept to successful `login` | 30 s | Closed. DEBUG row `reason=handshake_timeout` |
 | Frame size (`MAX_MESSAGE_LEN`, the read buffer) | 4096 bytes | Closed. Before login, DEBUG `reason=preauth_message_too_long`; in a session, WARN `reason=message_too_long` and result code 0 |
 | No inbound frame in a logged-in session | 30 min | The session ends as a cancel (result code 0). INFO row `reason=idle_timeout` |
 | One send to the client | 10 s (`SEND_TIMEOUT`) | The connection is treated as gone: no further frames are sent, and a session ends as a cancel. DEBUG row `reason=send_timeout` |
 | TCP keepalive on accepted sockets | First probe after 60 s of silence, then every 10 s, 3 probes | The OS resets the socket and the session ends as a cancel, about 90 s for an idle connection. With data in flight, TCP retransmission and the 10 s send timeout apply instead |
 
-Ahead of these, the listener admits only peers whose IP address matches a
-registered minigame session: the source address of the player's game
-connection, recorded when the session starts. Any other socket is closed
-before a byte is read and before a connection slot is taken. Two INFO rows
-record these refusals. `reason=unexpected_peer` is written when no session
-is registered at all, throttled to at most once a minute with a `suppressed`
-count. `reason=unexpected_peer_with_sessions` is written when sessions are
-registered but none expects the address, and it is not throttled: a real
-player behind NAT or multiple WAN links may be the one refused. Each refusal
-also writes a TRACE row, since `cimmeria_minigame=debug` is exported. A
-session is not registered without the player's client address: the start
-is refused with a WARN row `reason=no_client_addr`, and no `onStartMinigame`
-is sent.
+`server::run_with_limits` takes other timeouts; the server configuration has
+no keys for them yet. The idle timeout counts inbound frames only, because a
+Livewire board keeps sending timer updates to a client that has gone. It is
+long on purpose: the board can sit unstarted while the player reads it.
+Keepalive frees a vanished peer well before that, and the send timeout keeps a
+client that stopped reading from parking the game loop where neither would be
+noticed.
 
-The defaults are `ListenerLimits::default()` in
-[`server/limits.rs`](../../crates/minigame/src/minigame/server/limits.rs).
-`server::run_with_limits` takes other values; the server configuration has
-no keys for them yet. A cap of 0 is raised to 1 with a WARN. The idle
-timeout counts inbound frames only, because a Livewire board keeps sending
-timer updates to a client that has gone. It is long on purpose: the board
-can sit unstarted while the player reads it. Keepalive frees a vanished
-peer well before that, and the send timeout keeps a client that stopped
-reading from parking the game loop where neither would be noticed.
-
-The per-address cap needs the real client address. On Linux, Docker's
+Admission by address needs the real client address. On Linux, Docker's
 default (iptables) port publishing keeps it for traffic from other hosts.
 Where something in front of the port replaces it (Docker's userland proxy,
 Docker Desktop, a TCP proxy), every peer shares one address and that cap

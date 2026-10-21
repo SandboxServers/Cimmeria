@@ -5,7 +5,8 @@
 //! the siblings hold the pieces it leans on:
 //!
 //! - [`accept`] — the listener and its accept loop.
-//! - [`limits`] — connection caps and timeouts for the public port.
+//! - [`limits`] — handshake and idle timeouts for the public port. Who may
+//!   connect is per-ticket admission in the session registry.
 //! - [`framing`] — null-terminated message framing over the socket.
 //! - [`handshake`] — the pre-game version check and ticket login.
 //! - [`result_dispatch`] — the single seam every outcome leaves through.
@@ -25,6 +26,8 @@ mod result_dispatch;
 mod session_loop;
 mod terminal_outcome;
 
+#[cfg(test)]
+mod admission_tests;
 #[cfg(test)]
 mod connection_span_tests;
 #[cfg(test)]
@@ -65,13 +68,12 @@ pub use self::limits::ListenerLimits;
 
 use self::framing::MAX_MESSAGE_LEN;
 use self::handshake::{read_and_handle_login, read_and_handle_version};
-use self::limits::ConnectionPermit;
 use self::session_loop::run_session;
 // The test modules reach these through `use super::*`; they lived here
 // before the session loop moved to `session_loop`.
 #[cfg(test)]
 use self::framing::send_null_terminated;
-use super::session::SessionRegistry;
+use super::session::{AdmissionGuard, SessionRegistry};
 
 /// Handle a single minigame connection through the full lifecycle.
 ///
@@ -82,12 +84,12 @@ use super::session::SessionRegistry;
 /// session. The span is attached with `.instrument`, never an entered
 /// guard, because the body awaits throughout.
 ///
-/// `_permit` is this connection's slot in the listener's caps; holding it
-/// for the whole function gives the slot back on every exit path.
+/// `_admission` is this connection's ticket slot; holding it for the whole
+/// function gives the slot back on every exit path.
 async fn handle_connection(
     stream: TcpStream,
     peer: SocketAddr,
-    permit: ConnectionPermit,
+    admission: AdmissionGuard,
     registry: SessionRegistry,
     result_tx: mpsc::Sender<CellToBaseMsg>,
     external_port: u16,
@@ -105,7 +107,7 @@ async fn handle_connection(
     run_connection(
         stream,
         peer,
-        permit,
+        admission,
         registry,
         result_tx,
         external_port,
@@ -119,7 +121,7 @@ async fn handle_connection(
 async fn run_connection(
     mut stream: TcpStream,
     peer: SocketAddr,
-    _permit: ConnectionPermit,
+    _admission: AdmissionGuard,
     registry: SessionRegistry,
     result_tx: mpsc::Sender<CellToBaseMsg>,
     external_port: u16,

@@ -1,6 +1,6 @@
-//! The accept loop: bind, close sockets from peers no minigame session
-//! expects, admit or refuse the rest against [`ListenerLimits`], and hand
-//! admitted ones to a connection task.
+//! The accept loop: bind, admit one connection per valid ticket through
+//! `SessionRegistry::try_admit` (every other socket is closed before a byte
+//! is read), and hand admitted ones to a connection task.
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -11,10 +11,10 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 
 use super::handle_connection;
-use super::limits::{ConnectionTracker, ListenerLimits, Refusal};
+use super::limits::ListenerLimits;
 use crate::minigame::session::{SessionRegistry, PENDING_SESSION_TTL, SWEEP_INTERVAL};
 
-/// How often a throttled row (a full-server refusal, an accept error) may
+/// How often a throttled row (a scanner refusal, an accept error) may
 /// be written. Occurrences in between are counted and reported on the next
 /// row as `suppressed` (negative-logging Pattern D).
 pub(super) const LOG_WINDOW: Duration = Duration::from_secs(60);
@@ -62,8 +62,6 @@ pub async fn run_with_limits(
         Ok(l) => {
             tracing::info!(
                 addr = %listen_addr,
-                max_connections = limits.max_connections,
-                max_connections_per_ip = limits.max_connections_per_ip,
                 handshake_timeout_s = limits.handshake_timeout.as_secs(),
                 idle_timeout_s = limits.idle_timeout.as_secs(),
                 "Minigame server listening",
@@ -95,65 +93,57 @@ pub(super) async fn serve(
     result_tx: mpsc::Sender<CellToBaseMsg>,
     limits: ListenerLimits,
 ) {
-    let tracker = ConnectionTracker::new(&limits);
-    let mut total_cap_log = LogThrottle::new(LOG_WINDOW);
     let mut accept_error_log = LogThrottle::new(LOG_WINDOW);
     let mut unexpected_peer_log = LogThrottle::new(LOG_WINDOW);
+    let mut no_free_ticket_log = LogThrottle::new(LOG_WINDOW);
 
     loop {
         match listener.accept().await {
             Ok((stream, peer)) => {
-                // Before any byte is read and before a connection slot is
-                // taken: a scanner gets a closed socket and nothing else.
-                if !registry.expects_peer(peer.ip()).await {
-                    drop(stream);
-                    // With sessions registered, a real player may be the one
-                    // refused (NAT, multi-WAN, a TTL sweep race), so that row
-                    // is unthrottled. With none, it is most likely a scanner.
-                    let registered_sessions = registry.session_count().await;
-                    if registered_sessions > 0 {
-                        let pending_sessions = registry.pending_count().await;
-                        tracing::info!(
-                            %peer,
-                            reason = "unexpected_peer_with_sessions",
-                            registered_sessions,
-                            pending_sessions,
-                            "Minigame connection refused: sessions are registered but none expects this address",
-                        );
-                    } else if let Some(suppressed) = unexpected_peer_log.admit(Instant::now()) {
-                        tracing::info!(
-                            %peer,
-                            reason = "unexpected_peer",
-                            suppressed,
-                            "Minigame connection refused: no minigame session expects this address",
-                        );
-                    }
-                    continue;
-                }
-                let permit = match tracker.try_acquire(peer.ip()) {
-                    Ok(permit) => permit,
+                // Before any byte is read: a scanner, or a second socket for
+                // a ticket already in use, gets a closed socket and nothing
+                // else. The guard is the ticket slot and lives exactly as
+                // long as the connection task.
+                let admission = match registry.try_admit(peer.ip()).await {
+                    Ok(guard) => guard,
                     Err(refusal) => {
-                        // Closing the socket is the whole refusal: SFS has
-                        // no "server full" frame the SWF would show.
                         drop(stream);
-                        match refusal {
-                            Refusal::PerIpCap => tracing::debug!(
+                        let pending_sessions = refusal.pending_sessions;
+                        match refusal.reason {
+                            // With sessions registered, a real player may be
+                            // the one refused (NAT, multi-WAN, a TTL sweep
+                            // race), so that row is unthrottled. With none,
+                            // it is most likely a scanner.
+                            "unexpected_peer_with_sessions" => tracing::info!(
                                 %peer,
-                                reason = refusal.reason(),
-                                limit = tracker.max_per_ip(),
-                                "Minigame connection refused",
+                                reason = refusal.reason,
+                                pending_sessions,
+                                "Minigame connection refused: sessions are registered but none expects this address",
                             ),
-                            // A full server can turn away a real player, so
-                            // INFO rather than DEBUG, but once a window.
-                            Refusal::TotalCap => {
-                                if let Some(suppressed) = total_cap_log.admit(Instant::now()) {
+                            "unexpected_peer" => {
+                                if let Some(suppressed) = unexpected_peer_log.admit(Instant::now())
+                                {
                                     tracing::info!(
                                         %peer,
-                                        reason = refusal.reason(),
-                                        open = tracker.open(),
-                                        limit = tracker.max_total(),
+                                        reason = refusal.reason,
                                         suppressed,
-                                        "Minigame connection refused: server at its connection cap",
+                                        "Minigame connection refused: no minigame session expects this address",
+                                    );
+                                }
+                            }
+                            // Every ticket for this address is in use or
+                            // expired: a real player may be the one turned
+                            // away (a reconnect racing its old socket), so
+                            // INFO, but once a window since a peer who holds
+                            // no ticket can repeat this at socket rate.
+                            _ => {
+                                if let Some(suppressed) = no_free_ticket_log.admit(Instant::now()) {
+                                    tracing::info!(
+                                        %peer,
+                                        reason = refusal.reason,
+                                        pending_sessions,
+                                        suppressed,
+                                        "Minigame connection refused: no free ticket for this address",
                                     );
                                 }
                             }
@@ -166,7 +156,7 @@ pub(super) async fn serve(
                 tokio::spawn(handle_connection(
                     stream,
                     peer,
-                    permit,
+                    admission,
                     registry.clone(),
                     result_tx.clone(),
                     external_port,
