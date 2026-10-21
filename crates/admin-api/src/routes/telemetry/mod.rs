@@ -86,6 +86,9 @@ mod client_symbols;
 mod dto;
 mod entity_labels;
 mod field_caps;
+// wired in by AU-15
+#[cfg_attr(not(test), allow(dead_code))]
+mod launcher_rows;
 mod launcher_summary;
 mod refusal_log;
 mod replay;
@@ -99,6 +102,8 @@ mod upload_slots;
 mod client_pid_tests;
 #[cfg(test)]
 mod entity_labels_tests;
+#[cfg(test)]
+mod launcher_rows_tests;
 #[cfg(test)]
 mod replay_camera_tests;
 #[cfg(test)]
