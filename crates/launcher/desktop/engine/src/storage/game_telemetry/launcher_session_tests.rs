@@ -48,7 +48,7 @@ async fn mount_mint(server: &MockServer, times: u64) {
     Mock::given(method("POST"))
         .and(path("/api/auth/dev-session"))
         .and(body_partial_json(
-            serde_json::json!({"session_kind": "launcher"}),
+            serde_json::json!({"session_kind": "launcher", "machine_id": ""}),
         ))
         .respond_with(reply(&format!("{}/api/telemetry", server.uri())))
         .expect(times)
@@ -76,6 +76,11 @@ fn a_player_mint_body_has_no_session_kind() {
         mint_body_for_test(Some(LAUNCHER_SESSION_KIND))["session_kind"],
         "launcher"
     );
+    assert_eq!(
+        mint_body_for_test(Some(LAUNCHER_SESSION_KIND))["machine_id"],
+        ""
+    );
+    assert_eq!(mint_body_for_test(None)["machine_id"], "0123456789abcdef");
 }
 
 #[test]
@@ -88,6 +93,11 @@ fn the_target_needs_the_opt_in() {
         .launcher_target()
         .expect("an opted-in player has a target");
     assert!(!found.servers.is_empty());
+    state.set_game_telemetry(false).unwrap();
+    assert!(
+        state.launcher_target().is_none(),
+        "an opted-out player has no target"
+    );
 }
 
 #[tokio::test]

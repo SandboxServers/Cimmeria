@@ -89,3 +89,28 @@ fn file_layer_writes_a_launcher_log() {
     assert!(text.contains(r"~\\x"));
     assert!(!text.contains("alice"));
 }
+
+#[test]
+fn old_daily_logs_are_pruned_to_the_kept_count() {
+    let dir = tempfile::tempdir().unwrap();
+    for day in 1..=10 {
+        let name = format!("{LOG_FILE_PREFIX}.2026-01-{day:02}.log");
+        std::fs::write(dir.path().join(name), b"old").unwrap();
+    }
+    let (layer, guard) = file_layer(dir.path(), Redaction::default()).unwrap();
+    with_default(Registry::default().with(layer), || {
+        warn!(target: "adoption", "x");
+    });
+    drop(guard);
+    let count = std::fs::read_dir(dir.path())
+        .unwrap()
+        .filter(|entry| {
+            let name = entry.as_ref().unwrap().file_name();
+            let name = name.to_string_lossy();
+            name.starts_with("launcher.") && name.ends_with(".log")
+        })
+        .count();
+    // Pruning at build keeps LOG_FILES_KEPT - 1 old files, plus today's file.
+    assert!(count <= LOG_FILES_KEPT);
+    assert!(count >= LOG_FILES_KEPT - 1);
+}

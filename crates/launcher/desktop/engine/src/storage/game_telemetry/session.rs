@@ -105,7 +105,11 @@ pub(super) async fn start_kind(
     let launcher_version = mint_launcher_version();
     let body = serde_json::to_vec(&MintRequest {
         install_id: identity.install_id.to_string(),
-        machine_id: &identity.machine_id,
+        machine_id: if session_kind.is_some() {
+            ""
+        } else {
+            &identity.machine_id
+        },
         branch,
         git_sha,
         launcher_version: &launcher_version,
@@ -172,7 +176,11 @@ pub(super) async fn start_kind(
 pub(super) fn mint_body_for_test(kind: Option<&str>) -> serde_json::Value {
     serde_json::to_value(MintRequest {
         install_id: Uuid::from_u128(7).to_string(),
-        machine_id: "0123456789abcdef",
+        machine_id: if kind.is_some() {
+            ""
+        } else {
+            "0123456789abcdef"
+        },
         branch: "desktop",
         git_sha: "unknown",
         launcher_version: "desktop-test",

@@ -46,8 +46,8 @@ mod tests {
             .collect();
         Artifact::open(path, &digest).unwrap()
     }
-    fn host(root: &std::path::Path, with_dll: bool) -> NativeHost {
-        let mut host = NativeHost::new(root.join("state"));
+    fn host(root: &std::path::Path, with_dll: bool, tag: &str) -> NativeHost {
+        let mut host = NativeHost::new(root.join(format!("state-{tag}")));
         host.launch_resources = Some(Resources {
             helper: artifact(root, "helper.exe"),
             client_patches: None,
@@ -67,10 +67,17 @@ mod tests {
             fields: serde_json::Map::new(),
         }];
         let redaction = Redaction::default();
-        assert!(host(&root, false)
-            .launcher_batch(&records, &redaction)
-            .is_none());
-        let host = host(&root, true);
+        // The command refuses an opt-in without the module, so the choice is saved directly.
+        let no_module = host(&root, false, "a");
+        no_module
+            .store()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .set_game_telemetry(true)
+            .unwrap();
+        assert!(no_module.launcher_batch(&records, &redaction).is_none());
+        let host = host(&root, true, "b");
         assert!(host.launcher_batch(&records, &redaction).is_none());
         host.game_telemetry_command(GameTelemetryCommand::Set {
             schema_version: 1,

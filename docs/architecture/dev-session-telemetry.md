@@ -186,8 +186,8 @@ then carries an empty token (the bridge still starts, because
 
 ## Session lifecycle
 
-**Play** runs a session when the player opted in ("Send game diagnostics
-" in Settings, off by default). The session starts *before*
+**Play** runs a session when the player opted in ("Send game diagnostics"
+in Settings, off by default). The session starts *before*
 the game: the injected `cimmeria-client-telemetry` DLL reads its token and
 upload endpoint from `current-session.json` as it boots, so the file must
 exist first. The handshake is bounded to 8 s; a failed or slow one leaves

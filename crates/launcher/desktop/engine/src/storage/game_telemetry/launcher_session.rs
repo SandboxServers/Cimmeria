@@ -27,7 +27,9 @@ const LAUNCHER_TAGS: [&str; 3] = ["desktop-launcher", std::env::consts::OS, "lau
 /// What a launcher send needs: the opted-in identity and the login servers to mint on.
 #[derive(Debug, Clone)]
 pub struct LauncherTarget {
+    /// The opted-in install and machine identity the session is minted for.
     pub identity: Identity,
+    /// The login servers to mint on, in preference order.
     pub servers: Vec<LoginServer>,
 }
 
@@ -51,10 +53,15 @@ impl DesktopState {
 /// What one `send` did. The player never sees it; `Held` and `Dropped` are normal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SendOutcome {
+    /// The batch had no events; nothing was posted.
     Empty,
+    /// Every chunk was accepted.
     Sent,
+    /// A hold from an earlier failure is still running; nothing was posted.
     Held,
+    /// No session could be minted; a hold now follows.
     MintFailed,
+    /// Some events were not posted and were discarded.
     Dropped,
 }
 
@@ -97,13 +104,16 @@ impl LauncherSender {
             return SendOutcome::Empty;
         }
         if self.held() {
+            tracing::debug!(reason = "held", "launcher telemetry batch not sent");
             return SendOutcome::Held;
         }
         let Some(mut current) = self.usable_session(target).await else {
+            tracing::debug!(reason = "mint_failed", "launcher telemetry batch not sent");
             return SendOutcome::MintFailed;
         };
         let max_bytes = current.marker().telemetry.chunk_max_bytes;
         let Ok(batches) = chunk::split_batches(events, max_bytes, LAUNCHER_MAX_ROWS) else {
+            tracing::debug!(reason = "dropped", "launcher telemetry batch not sent");
             return SendOutcome::Dropped;
         };
         for range in batches {
@@ -113,6 +123,7 @@ impl LauncherSender {
                 // A 401 is the only error that mints again, and only once.
                 *locked(&self.session) = None;
                 let Some(fresh) = self.mint(target).await else {
+                    tracing::debug!(reason = "dropped", "launcher telemetry batch not sent");
                     return SendOutcome::Dropped;
                 };
                 current = fresh;
@@ -123,9 +134,13 @@ impl LauncherSender {
                 Err(err @ (ChunkError::KillSwitch { .. } | ChunkError::RateLimited { .. })) => {
                     let asked = err.retry_after_secs().unwrap_or(60);
                     self.hold(Duration::from_secs(asked).clamp(MIN_RETRY_HOLD, MAX_HOLD));
+                    tracing::debug!(reason = "dropped", "launcher telemetry batch not sent");
                     return SendOutcome::Dropped;
                 }
-                Err(_) => return SendOutcome::Dropped,
+                Err(_) => {
+                    tracing::debug!(reason = "dropped", "launcher telemetry batch not sent");
+                    return SendOutcome::Dropped;
+                }
             }
         }
         SendOutcome::Sent
