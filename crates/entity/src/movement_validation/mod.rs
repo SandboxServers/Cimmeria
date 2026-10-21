@@ -336,17 +336,16 @@ impl MovementValidator {
         KinematicsOutcome { reject: None }
     }
 
-    /// Reseed an entity's speed/teleport clock **and** clear its snap-back
-    /// correction budget after a server-authoritative position write (ring
-    /// transport, respawn, gate travel arrival, content-engine teleport, GM
-    /// travel). The next client packet's `dt` is then measured from the
-    /// teleport instant, which suppresses a spurious speed warn when an
-    /// authoritative move interrupts the client's update stream. It does
-    /// **not** suppress hard rejects — a stale in-flight packet pointing at
-    /// the old location *should* be snapped to the new one. See
+    /// After a server-authoritative position write (ring transport, respawn,
+    /// gate travel arrival, content-engine teleport, GM travel): reseed the
+    /// entity's clock, clear its snap-back correction budget, and drop its
+    /// speed window and hold anchor. The next client packet's `dt` is
+    /// measured from the teleport instant and the old window's distance
+    /// cannot count against the new spot, so no spurious speed warn follows
+    /// the move; the next held packet re-anchors there. It does **not**
+    /// suppress hard rejects — a stale in-flight packet pointing at the old
+    /// location *should* be snapped to the new one. See
     /// `.claude/agent-memory/movement-teleport-advisor/authorized-teleport-paths.md`.
-    /// It also drops any hold anchor: the server chose the new spot, so the
-    /// next held packet re-anchors there.
     ///
     /// The budget reset is folded in here rather than left to each caller
     /// because a fresh authoritative placement is exactly the event that

@@ -38,10 +38,10 @@ construction instead of by each caller capturing and restoring it.
 The validator (`cimmeria_entity::movement_validation::MovementValidator`)
 runs five layers. The table is in **execution order** as wired in
 `apply_client_position_update_at` — cheapest spatial gate first, then the
-stateful kinematics. Four layers hard-reject (snap-back); the speed
-sub-layer is **warn-only** until calibrated. Speed and teleport share one
-`check_kinematics` call (the kinematics layer); they are listed as two
-rows because they have different actions.
+stateful checks. Four layers hard-reject (snap-back); the speed layer is
+**warn-only** until calibrated. Speed (`observe_speed`, a per-entity
+window) and teleport (`check_kinematics`, one packet) are separate calls
+with different actions.
 
 | Order | Layer | Action | Catches |
 |-------|-------|--------|---------|
@@ -116,11 +116,12 @@ layer.
 The legitimate-traffic speed distribution under real RTT is unknown
 ahead of telemetry. Snapping on a guessed tolerance would rubber-band
 players on bad connections. The speed layer therefore **logs + counts but
-accepts**, emitting the full `(distance, dt_secs, implied_speed,
-top_speed)` triple on `movement.speed_warning` /
+accepts**, emitting the window's `(distance, dt_secs, implied_speed,
+top_speed)` triple (window sums, see "The speed window") on
+`movement.speed_warning` /
 `movement_validation_warns_total{reason="speed"}`. Calibrate the
 production tolerance from the SigNoz p99.9 of legitimate
-`(distance/dt)/top_speed` (bucketed by RTT) before promoting it to
+`implied_speed/top_speed` (bucketed by RTT) before promoting it to
 snap-back.
 
 ### The speed window
@@ -132,7 +133,10 @@ as 4x top speed. Each accepted move that had a time baseline calls
 `MovementValidator::observe_speed` with its distance and server-clock dt:
 
 - The window keeps the newest samples that cover at least 250 ms
-  (`SPEED_WINDOW`), at most 32 of them.
+  (`SPEED_WINDOW`), at most 32 of them. Past 32 the oldest sample is
+  folded into the next (distance and dt both), so the window totals are
+  kept: a lag stall's dt is not lost to a burst of zero-dt packets that
+  follows it.
 - It warns when `sum(distance) / max(sum(dt), SPEED_WINDOW)` exceeds
   `top_speed x 1.5`. The 250 ms floor on the divisor stops a burst of
   near-zero-dt packets from reading as infinite speed.
@@ -163,8 +167,9 @@ move can't produce a self-inflicted false reject: the next client packet
 is measured from the destination, not the source. Each authoritative path
 additionally calls `SpaceManager::note_authorized_teleport(entity_id)`,
 which reseeds the per-entity clock so the first post-teleport packet's
-`dt` is measured from the teleport instant (suppressing a spurious speed
-warn when an authoritative move interrupts the client's stream). It does
+`dt` is measured from the teleport instant, and drops the speed window and
+any hold anchor (suppressing a spurious speed warn when an authoritative
+move interrupts the client's stream). It does
 **not** suppress hard rejects — a stale in-flight packet pointing at the
 old location *should* snap to the new one. Paths are catalogued in
 `.claude/agent-memory/movement-teleport-advisor/authorized-teleport-paths.md`.

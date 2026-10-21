@@ -278,19 +278,30 @@ fn teleport_and_forget_clear_the_window() {
 }
 
 #[test]
-fn zero_dt_flood_is_capped_at_the_sample_limit() {
-    // 100 zero-dt hops of 1.0 u: the window keeps only the newest 32, so the
-    // reported sum is 32.0, not 100.0 (memory bound, deliberate).
+fn zero_dt_flood_keeps_its_distance_past_the_sample_limit() {
+    // 100 zero-dt hops of 1.0 u: the cap folds the oldest samples into the
+    // next, so memory stays bounded but the sum is the full 100.0.
     let mut v = MovementValidator::new();
     let mut last = None;
     for _ in 0..100 {
         last = v.observe_speed(1, 1.0, 0.0, TOP);
     }
     let sample = last.expect("a zero-dt flood of 1 u hops must warn");
-    assert_eq!(sample.distance, 32.0);
+    assert_eq!(sample.distance, 100.0);
     assert_eq!(sample.dt_secs, 0.0);
 }
 
+#[test]
+fn lag_stall_then_queued_burst_past_the_cap_does_not_warn() {
+    // A 3.3 s stall, then 40 queued packets at zero dt: 41 hops of top-speed
+    // steps over 3.3 s is ~10 u/s, under the 1.5x warn. Evicting the stall's
+    // sample at the 32-sample cap would drop its dt and read ~104 u/s.
+    let mut v = MovementValidator::new();
+    assert!(v.observe_speed(1, 0.8125, 3.3, TOP).is_none());
+    for i in 0..40 {
+        assert!(v.observe_speed(1, 0.8125, 0.0, TOP).is_none(), "hop {i}");
+    }
+}
 #[test]
 fn negative_dt_counts_as_zero() {
     let mut v = MovementValidator::new();
