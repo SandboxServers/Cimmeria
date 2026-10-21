@@ -45,6 +45,7 @@
 //! rewrites past its old length between two ticks is read from the old
 //! length, so its first bytes are missed.
 use super::patch_events::PatchEvents;
+use super::transport::events::reason as transport_reason;
 use super::transport::{Transport, TransportError};
 use cimmeria_launcher_core::install_layout::binaries_dir;
 use cimmeria_launcher_core::telemetry::events::{
@@ -58,6 +59,8 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 use tokio::sync::oneshot;
 use tokio::task::{AbortHandle, JoinHandle};
+
+pub(super) mod events;
 
 /// The last flush of the whole backlog at game exit. Whatever it has not
 /// sent by then stays queued for the next session.
@@ -82,6 +85,8 @@ pub struct SessionEnd {
     pub bundle_sent: bool,
     /// The player opted out while it ran: it stopped sending.
     pub withdrawn: bool,
+    /// Events that could not be queued (lost).
+    pub not_queued: u64,
 }
 
 /// How long a new Play waits for the previous session to finish its bundle
@@ -176,10 +181,7 @@ async fn settle_previous(queue_dir: &Path, bound: Duration) {
     let deadline = tokio::time::Instant::now() + bound;
     while !previous.is_finished() {
         if tokio::time::Instant::now() >= deadline {
-            tracing::warn!(
-                bound_s = bound.as_secs(),
-                "previous game telemetry session still sending; stopped it"
-            );
+            events::previous_session_stopped(bound);
             previous.abort();
             // An abort lands at the task's next await point.
             while !previous.is_finished() {
@@ -206,6 +208,7 @@ async fn run(
     mut patches: Option<PatchEvents>,
     mut exited: oneshot::Receiver<Option<GameExit>>,
 ) -> SessionEnd {
+    let started = std::time::Instant::now();
     let mut end = SessionEnd::default();
     let mut ticker = tokio::time::interval(transport.flush_interval().await);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -263,28 +266,24 @@ async fn run(
     match transport.upload_bundle(end.events).await {
         Ok(sent) => end.bundle_sent = sent.is_some(),
         Err(TransportError::NotOptedIn) => return withdrawn(end),
-        Err(code) => tracing::warn!(?code, "game session log bundle not sent"),
+        Err(code) => events::bundle_not_sent(code),
     }
-    let shutdown = tokio::time::timeout(SHUTDOWN_BOUND, transport.shutdown()).await;
-    if !matches!(shutdown, Ok(Ok(_))) {
-        tracing::info!("game telemetry left events queued for the next session");
+    match tokio::time::timeout(SHUTDOWN_BOUND, transport.shutdown()).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(code)) => events::final_flush_failed(transport_reason(code)),
+        Err(_) => events::final_flush_failed("timeout"),
     }
-    tracing::info!(
-        events = end.events,
-        bundle_sent = end.bundle_sent,
-        exit_code = ?end.exit.map(|exit| exit.code),
-        pid = ?end.exit.map(|exit| exit.guest_pid),
-        "game telemetry session finished"
-    );
+    if end.not_queued > 0 {
+        events::session_events_lost(end.not_queued);
+    }
+    let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    events::game_session_finished(&end, duration_ms);
     end
 }
 
 fn withdrawn(mut end: SessionEnd) -> SessionEnd {
     end.withdrawn = true;
-    tracing::info!(
-        events = end.events,
-        "game telemetry turned off during the session; stopped sending"
-    );
+    events::game_session_withdrawn(end.events);
     end
 }
 
@@ -334,7 +333,7 @@ async fn queue_patches(
     })
     .await;
     let Ok((events, owed)) = read else {
-        tracing::warn!("client-patches log read failed; its events are not sent");
+        events::client_patches_read_failed();
         return Ok(());
     };
     *patches = Some(events);
@@ -356,7 +355,8 @@ async fn queue(
         }
         Err(TransportError::NotOptedIn) => Err(()),
         Err(code) => {
-            tracing::warn!(?code, "game telemetry event not queued");
+            end.not_queued += 1;
+            events::event_queue_failed(code, end.not_queued);
             Ok(())
         }
     }
