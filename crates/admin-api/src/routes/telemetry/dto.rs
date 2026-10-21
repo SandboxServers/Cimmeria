@@ -156,6 +156,7 @@ impl IngestError {
                 "secret_unusable"
             }
             IngestError::Auth(AuthError::Expired { .. }) => "token_expired",
+            IngestError::Auth(AuthError::NoUploadEndpoint) => "no_upload_endpoint",
             IngestError::Auth(_) => "bad_token",
             IngestError::MissingAuth => "missing_token",
             IngestError::Forbidden(_) => "forbidden",

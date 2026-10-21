@@ -143,10 +143,9 @@ pub enum AuthError {
         field: &'static str,
         reason: &'static str,
     },
-    #[error(
-        "no_upload_endpoint: this server has no https telemetry upload endpoint to advertise; \
-         the operator must set CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT"
-    )]
+    // The body goes to any caller on the public port, so it names no env var;
+    // the operator hint is in the boot WARN.
+    #[error("no_upload_endpoint: no https telemetry upload endpoint is available")]
     NoUploadEndpoint,
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),

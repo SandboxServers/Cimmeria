@@ -143,6 +143,26 @@ fn boot_warning_reasons() {
         boot_warning(Some("https://play.example/api/telemetry")),
         None
     );
+    // A4: the scheme is read case-insensitively, and any other env warns.
+    assert_eq!(
+        boot_warning(Some("HTTP://play.example:8081/api/telemetry")),
+        Some("upload_endpoint_plain_http")
+    );
+    assert_eq!(
+        boot_warning(Some("HTTPS://play.example/api/telemetry")),
+        None
+    );
+    for not_https in [
+        "play.example",
+        "play.example/api/telemetry",
+        "ftp://play.example",
+    ] {
+        assert_eq!(
+            boot_warning(Some(not_https)),
+            Some("upload_endpoint_not_https"),
+            "{not_https}"
+        );
+    }
 }
 
 #[test]
@@ -225,6 +245,24 @@ fn boot_lines_carry_the_right_level_and_reason_and_no_ip() {
     assert_eq!(rows[0].1["upload_endpoint_source"], "env");
 }
 
+// A1: a credential, path or query in the env URL never reaches a boot row.
+#[test]
+fn boot_lines_never_print_userinfo_path_or_query() {
+    for env in [
+        "https://user:secret@play.example/x?k=v",
+        "http://user:secret@play.example/x?k=v",
+        "user:secret@play.example/x?k=v",
+    ] {
+        let (_, rows) = capture(|| log_boot(Some(env)));
+        assert_eq!(rows.len(), 1, "{env}");
+        let text = format!("{rows:?}");
+        assert!(!text.contains("secret"), "{env}: {text}");
+        assert!(!text.contains("k=v"), "{env}: {text}");
+    }
+    let (_, rows) = capture(|| log_boot(Some("https://user:secret@play.example/x?k=v")));
+    assert_eq!(rows[0].1["upload_endpoint"], "https://play.example");
+}
+
 #[test]
 fn the_unreachable_warn_is_throttled_and_carries_no_url() {
     let throttle = WarnThrottle::new();
@@ -281,22 +319,44 @@ fn mint_without_a_resolvable_endpoint_is_refused_with_503_and_no_token() {
     let _g = EnvGuard::install();
     std::env::remove_var(ENV_NAME);
     let t = Tables::new();
-    let err = mint_with_headers(
-        &t,
-        &policy(10, 10, 10),
-        ip("198.51.100.7"),
-        &headers(Some("play.example"), None),
-        request("3f2504e0-4f89-41d3-9a0c-0305e82c3301"),
-        Instant::now(),
-        NOW_UNIX,
-    )
-    .unwrap_err();
+    // One mint per IP and one per install. A refusal that spent either would
+    // make the second mint below fail with a quota error.
+    let p = policy(1, 1, 1);
+    let (err, rows) = capture(|| {
+        mint_with_headers(
+            &t,
+            &p,
+            ip("198.51.100.7"),
+            &headers(Some("play.example"), None),
+            request("3f2504e0-4f89-41d3-9a0c-0305e82c3301"),
+            Instant::now(),
+            NOW_UNIX,
+        )
+        .unwrap_err()
+    });
     assert!(matches!(err, AuthError::NoUploadEndpoint), "{err:?}");
     assert!(err.to_string().starts_with("no_upload_endpoint"));
     assert_eq!(
         axum::response::IntoResponse::into_response(err).status(),
         axum::http::StatusCode::SERVICE_UNAVAILABLE
     );
+    let text = format!("{rows:?}");
+    assert!(
+        !text.contains("Minted dev-session telemetry token"),
+        "a refused mint logged a token row: {text}"
+    );
+    // The refusal charged nothing, so the same IP and install mint again.
+    let resp = mint_with_headers(
+        &t,
+        &p,
+        ip("198.51.100.7"),
+        &headers(Some("play.example"), Some("https")),
+        request("3f2504e0-4f89-41d3-9a0c-0305e82c3301"),
+        Instant::now(),
+        NOW_UNIX,
+    )
+    .unwrap();
+    assert_eq!(resp.upload_endpoint, "https://play.example/api/telemetry");
 }
 
 #[test]

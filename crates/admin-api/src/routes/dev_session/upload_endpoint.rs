@@ -41,8 +41,15 @@ pub(crate) struct ResolvedEndpoint {
 
 impl ResolvedEndpoint {
     pub(crate) fn is_https(&self) -> bool {
-        self.url.starts_with("https://")
+        has_scheme(&self.url, "https://")
     }
+}
+
+/// True when `url` starts with `scheme` (`"https://"`), ignoring ASCII case,
+/// so `HTTPS://` is read as https and `HTTP://` as plain http.
+fn has_scheme(url: &str, scheme: &str) -> bool {
+    url.get(..scheme.len())
+        .is_some_and(|s| s.eq_ignore_ascii_case(scheme))
 }
 
 /// Directives 1 and 5: the built-in https Cimmeria URL. `None` until LT-41
@@ -164,31 +171,43 @@ pub(crate) fn is_loopback_url(url: &str) -> bool {
             .is_ok_and(|ip| ip.to_canonical().is_loopback())
 }
 
-/// The URL may be printed only when its host is a DNS name (directive 6).
-fn printable(url: &str) -> Option<&str> {
+/// The URL may be printed only when its host is a DNS name (directive 6), and
+/// then only as `scheme://host[:port]`. Userinfo, path, query and fragment are
+/// dropped, so a credential or token in the env value never reaches a log.
+fn printable(url: &str) -> Option<String> {
     let host = host_of(url)?;
     let bare = host.trim_start_matches('[').trim_end_matches(']');
-    (host == bare && bare.parse::<std::net::IpAddr>().is_err()).then_some(url)
+    if host != bare || bare.parse::<std::net::IpAddr>().is_ok() {
+        return None;
+    }
+    let (scheme, rest) = url.split_once("://")?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let hostport = authority.rsplit('@').next()?;
+    Some(format!("{scheme}://{hostport}"))
 }
 
 /// The boot WARN reason for the env value, else `None`. An unset env with a
-/// `Some` default is normal and INFO only.
+/// `Some` default is normal and INFO only. Any non-blank env that is not an
+/// https URL warns, so a mistyped scheme cannot pass silently.
 pub(crate) fn boot_warning(env: Option<&str>) -> Option<&'static str> {
     match env.map(str::trim).filter(|v| !v.is_empty()) {
         None => DEFAULT_UPLOAD_ENDPOINT
             .is_none()
             .then_some("upload_endpoint_unset"),
         Some(url) if is_loopback_url(url) => Some("upload_endpoint_loopback"),
-        Some(url) if url.starts_with("http://") => Some("upload_endpoint_plain_http"),
-        Some(_) => None,
+        Some(url) if has_scheme(url, "http://") => Some("upload_endpoint_plain_http"),
+        Some(url) if has_scheme(url, "https://") => None,
+        Some(_) => Some("upload_endpoint_not_https"),
     }
 }
 
 /// The boot line(s) for the upload endpoint. The env URL is printed only
-/// when its host is a DNS name; otherwise only the source is.
+/// when its host is a DNS name, and then without userinfo, path or query;
+/// otherwise only the source is.
 pub(super) fn log_boot(env: Option<&str>) {
     let source = if env.is_some() { "env" } else { "default" };
     let shown = env.and_then(printable);
+    let shown = shown.as_deref();
     match boot_warning(env) {
         Some(reason @ "upload_endpoint_unset") => tracing::warn!(
             reason,
@@ -200,6 +219,12 @@ pub(super) fn log_boot(env: Option<&str>) {
             upload_endpoint_source = source,
             upload_endpoint = shown,
             "dev-session telemetry: CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT is loopback; expected a public https URL; remote launchers will replace it"
+        ),
+        Some(reason @ "upload_endpoint_not_https") => tracing::warn!(
+            reason,
+            upload_endpoint_source = source,
+            upload_endpoint = shown,
+            "dev-session telemetry: CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT is not an https URL; the override is used as given; expected https://"
         ),
         Some(reason) => tracing::warn!(
             reason,
