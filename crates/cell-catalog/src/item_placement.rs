@@ -16,6 +16,9 @@ pub const INV_MAIN: i32 = 1;
 /// The crafting bag (`INV_Crafting`).
 pub const INV_CRAFTING: i32 = 15;
 
+/// The mission bag (`INV_Mission`).
+pub const INV_MISSION: i32 = 2;
+
 /// Storage containers: the bank (17) and the other stores up to 20. A grant
 /// never places an item into one of them.
 pub const STORAGE_CONTAINERS: std::ops::RangeInclusive<i32> = 17..=20;
@@ -60,12 +63,13 @@ pub fn first_player_container(container_sets: &[i32]) -> Option<i32> {
 /// - A carried bag (1 or 15) is kept when the item may sit there (it is
 ///   listed, or the list is empty and the bag is the main bag). Otherwise
 ///   [`first_player_container`] picks the bag; an item that lists no
-///   carried bag (a mission item, say) keeps the request.
+///   carried bag goes to the mission bag when it lists one, else keeps the
+///   request.
 /// - Any other container (mission bag, bandolier, equipment slot) is the
 ///   caller's explicit choice and is kept.
 ///
 /// `({17,15}, 17)` and `({17,15}, 1)` give 15; `({3,1,17}, 1)` gives 1;
-/// `({3,1,17}, 3)` gives 3; `({17}, 17)` gives `None`.
+/// `({3,1,17}, 3)` gives 3; `({17}, 17)` gives `None`; `({2}, 1)` gives 2.
 pub fn grant_container(container_sets: &[i32], requested: i32) -> Option<i32> {
     if never_granted(requested) {
         return first_player_container(container_sets);
@@ -81,7 +85,13 @@ pub fn grant_container(container_sets: &[i32], requested: i32) -> Option<i32> {
     if allowed {
         return Some(requested);
     }
-    Some(first_player_container(container_sets).unwrap_or(requested))
+    // An item that lists no carried bag but may sit in the mission bag (a
+    // mission item given into the main bag, #1675) goes to the mission bag.
+    Some(
+        first_player_container(container_sets)
+            .or_else(|| container_sets.contains(&INV_MISSION).then_some(INV_MISSION))
+            .unwrap_or(requested),
+    )
 }
 
 /// The container a cell-side grant asks for when nothing names one: the
@@ -227,11 +237,24 @@ mod tests {
         assert_eq!(grant_container(&[2], 2), Some(2));
     }
 
-    /// A mission item given into the main bag keeps the main bag: it lists
-    /// no carried bag to fall through to.
+    /// A mission-only item given into a carried bag (#1675) goes to the
+    /// mission bag: it lists no carried bag, but it lists the mission bag.
     #[test]
-    fn carried_request_with_no_carried_bag_listed_is_kept() {
-        assert_eq!(grant_container(&[2], INV_MAIN), Some(INV_MAIN));
+    fn mission_only_item_given_into_a_carried_bag_goes_to_the_mission_bag() {
+        assert_eq!(grant_container(&[2], INV_MAIN), Some(INV_MISSION));
+        assert_eq!(grant_container(&[2], INV_CRAFTING), Some(INV_MISSION));
+    }
+
+    /// Neither a carried bag nor the mission bag is listed: the request stays.
+    #[test]
+    fn carried_request_with_no_carried_or_mission_bag_is_kept() {
+        assert_eq!(grant_container(&[3], INV_MAIN), Some(INV_MAIN));
+    }
+
+    /// The mission bag asked for directly is an explicit choice and is kept.
+    #[test]
+    fn mission_bag_request_is_kept() {
+        assert_eq!(grant_container(&[2], 2), Some(2));
     }
 
     #[test]

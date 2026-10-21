@@ -8,8 +8,8 @@
 //! to the vault guard (refused, no row) and the 1 request into the main
 //! bag, and fails the first test.
 //!
-//! Sentinels: accounts/players `0x7000_C400..=0x7000_C405`, entities
-//! `0x7000_C4E0..=0x7000_C4E2`.
+//! Sentinels: accounts/players `0x7000_C400..=0x7000_C407`, entities
+//! `0x7000_C4E0..=0x7000_C4E3`.
 
 use tracing::Level;
 
@@ -243,6 +243,40 @@ async fn live_db_allowed_requests_keep_their_container() {
     assert_eq!(
         event.fields.get("skipped_storage").map(String::as_str),
         Some("false")
+    );
+
+    cleanup(&pool, account_id, player_id, entity_id).await;
+}
+
+/// A mission-only item (`{2}`) given into the main bag, as `gmGiveItem`
+/// and loot do, lands in the mission bag, not the backpack (#1675).
+#[tokio::test]
+async fn live_db_mission_only_item_given_into_the_main_bag_lands_in_the_mission_bag() {
+    let pool = require_db_or_skip!();
+    let (account_id, player_id, entity_id) = (0x7000_C406, 0x7000_C407, 0x7000_C4E3_u32);
+    cleanup(&pool, account_id, player_id, entity_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+    let type_id = seeded_item(&pool, "{2}", false).await;
+    let (transport, conn, e2a) = state();
+    let db_pool = Some(Arc::new(pool.clone()));
+    let capture = LogCapture::install();
+
+    handle_grant_item(
+        entity_id, player_id, type_id, 1, 1, false, &db_pool, &None, &transport, &conn, &e2a,
+    )
+    .await;
+
+    assert_eq!(
+        bags(&pool, player_id).await,
+        vec![(2, 1, 1)],
+        "a {{2}} item must land in the mission bag, not the backpack"
+    );
+    let event = capture
+        .find_message(Level::INFO, "grant_container_chosen")
+        .expect("the grant must log grant_container_chosen");
+    assert_eq!(
+        event.fields.get("container_id").map(String::as_str),
+        Some("2")
     );
 
     cleanup(&pool, account_id, player_id, entity_id).await;
