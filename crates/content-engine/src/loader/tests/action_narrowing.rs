@@ -97,6 +97,21 @@ fn below_i32_min_param_drops_the_action() {
     }
 }
 
+/// Integers above `i64::MAX` parse as u64; they must drop the action too,
+/// not fall back to the param default.
+#[test]
+fn above_i64_max_param_drops_the_action() {
+    for &(action_type, target_id, target_key, key) in CASES {
+        let mut params = serde_json::json!({});
+        params[key] = serde_json::json!(u64::MAX);
+        let r = row(action_type, target_id, target_key, params);
+        assert!(
+            convert_action(&r).is_none(),
+            "{action_type}.{key} applied a default for a u64 value"
+        );
+    }
+}
+
 #[test]
 fn in_range_i32_param_keeps_the_action() {
     for &(action_type, target_id, target_key, key) in CASES {

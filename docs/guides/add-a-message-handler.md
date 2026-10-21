@@ -150,7 +150,8 @@ Replies go out as entity-method calls on the player's own entity. Don't hand-rol
 
 ```rust
 use crate::base::helpers::send_to_witness_reliable;
-use crate::mercury::{build_player_entity_method_packet, method_idx};
+use cimmeria_wire::cell::client_methods::player as client_method;
+use crate::mercury::build_player_entity_method_packet;
 
 let args = wire::serialize_your_reply(/* ... */);
 
@@ -162,7 +163,7 @@ send_to_witness_reliable(
     |key, version, seq, acks| {
         build_player_entity_method_packet(
             key, seq, acks, entity_id,
-            method_idx::YOUR_REPLY_METHOD,
+            client_method::YOUR_REPLY_METHOD,
             &args,
             version,
         )
@@ -171,7 +172,7 @@ send_to_witness_reliable(
 .await;
 ```
 
-[`crates/base-session/src/base/contact_list/handlers/presence_fanout.rs`](../../crates/base-session/src/base/contact_list/handlers/presence_fanout.rs) is a good file to copy from — see the `send_to_witness_reliable` call around line 117. The method-index constants (`method_idx::*`) are declared in the inline `method_idx` module at [`crates/wire/src/mercury/mod.rs:174`](../../crates/wire/src/mercury/mod.rs). For the framing itself, see [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md).
+[`crates/base-session/src/base/contact_list/handlers/presence_fanout.rs`](../../crates/base-session/src/base/contact_list/handlers/presence_fanout.rs) is a good file to copy from — see the `send_to_witness_reliable` call around line 117. The method-index constants live in the per-interface tables under [`crates/wire/src/cell/client_methods/`](../../crates/wire/src/cell/client_methods/); add a new index there, not as a literal in `mercury::method_idx`, which only re-exports them (the `method_idx_declares_no_literal_constants` conformance test rejects a literal). For the framing itself, see [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md).
 
 ---
 

@@ -48,6 +48,20 @@ fn event_type_string_is_stable() {
     );
 }
 
+/// `(position, persisted tag)` for each variant, as an exhaustive match with
+/// no wildcard: adding a `CellOutboxPayload` variant fails to compile here
+/// until it is given the next position and a tag. Positions are 0..VARIANTS.
+fn pinned(p: &CellOutboxPayload) -> (usize, &'static str) {
+    match p {
+        CellOutboxPayload::ItemUsed { .. } => (0, "item_used"),
+        CellOutboxPayload::InventoryItemGranted { .. } => (1, "inventory_item_granted"),
+        CellOutboxPayload::InventoryItemRemoved { .. } => (2, "inventory_item_removed"),
+    }
+}
+
+/// Keep equal to the number of arms in `pinned`.
+const VARIANTS: usize = 3;
+
 #[test]
 fn persistence_contract_strings_are_stable_for_all_variants() {
     // Each variant has TWO persistence contracts that must agree:
@@ -58,64 +72,7 @@ fn persistence_contract_strings_are_stable_for_all_variants() {
     // `row_to_message` matches on (event_type, payload) so both must
     // line up; pin them together here. Changing either string breaks
     // every in-flight row on existing databases.
-    let cases: &[(CellOutboxPayload, &str)] = &[
-        (
-            CellOutboxPayload::ItemUsed {
-                instance_id: 0,
-                type_id: 0,
-                target_id: 0,
-            },
-            "item_used",
-        ),
-        (
-            CellOutboxPayload::InventoryItemGranted {
-                item_id: 0,
-                container_id: 0,
-                slot_id: 0,
-                quantity: 0,
-            },
-            "inventory_item_granted",
-        ),
-        (
-            CellOutboxPayload::InventoryItemRemoved {
-                item_id: 0,
-                source_container_id: 0,
-            },
-            "inventory_item_removed",
-        ),
-    ];
-
-    for (variant, expected) in cases {
-        assert_eq!(
-            variant.event_type(),
-            *expected,
-            "event_type() drift for {variant:?}",
-        );
-        let json = serde_json::to_value(variant).unwrap();
-        assert_eq!(
-            json["kind"], *expected,
-            "JSON `kind` tag drift for {variant:?}",
-        );
-    }
-}
-
-/// The persisted tag for each variant, as an exhaustive match: adding a
-/// `CellOutboxPayload` variant fails to compile here until its tag is pinned.
-/// The test below then checks the runtime `event_type()` and JSON `kind`
-/// against this pin, so a renamed tag fails too.
-fn pinned_tag(p: &CellOutboxPayload) -> &'static str {
-    match p {
-        CellOutboxPayload::ItemUsed { .. } => "item_used",
-        CellOutboxPayload::InventoryItemGranted { .. } => "inventory_item_granted",
-        CellOutboxPayload::InventoryItemRemoved { .. } => "inventory_item_removed",
-    }
-}
-
-#[test]
-fn every_variant_event_type_matches_its_pinned_tag() {
-    // Compile-time guard: fails when a variant is added without a pinned tag.
-    // Runtime guard (the loop below): fails when a tag drifts from its pin.
-    let values = [
+    let cases = [
         CellOutboxPayload::ItemUsed {
             instance_id: 0,
             type_id: 0,
@@ -132,11 +89,29 @@ fn every_variant_event_type_matches_its_pinned_tag() {
             source_container_id: 0,
         },
     ];
-    for v in &values {
-        let tag = pinned_tag(v);
-        assert_eq!(v.event_type(), tag, "event_type() drift for {v:?}");
-        let json = serde_json::to_value(v).unwrap();
-        assert_eq!(json["kind"], tag, "JSON `kind` tag drift for {v:?}");
+
+    // A new variant breaks `pinned` at compile time; this makes sure it is
+    // also added to `cases`, so its tags are actually compared below.
+    let mut seen: Vec<usize> = cases.iter().map(|v| pinned(v).0).collect();
+    seen.sort_unstable();
+    assert_eq!(
+        seen,
+        (0..VARIANTS).collect::<Vec<_>>(),
+        "`cases` must hold exactly one value of every variant"
+    );
+
+    for variant in &cases {
+        let (_, expected) = pinned(variant);
+        assert_eq!(
+            variant.event_type(),
+            expected,
+            "event_type() drift for {variant:?}",
+        );
+        let json = serde_json::to_value(variant).unwrap();
+        assert_eq!(
+            json["kind"], expected,
+            "JSON `kind` tag drift for {variant:?}",
+        );
     }
 }
 
