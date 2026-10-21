@@ -65,5 +65,5 @@ Closed 2026-10-21 by P12. "UATPending" means the code is shipped (or awaiting me
 
 - #1675: vendor purchases still put a mission-only item in the main bag (`vendor/purchase/placement.rs::purchase_container` uses `first_player_container(..).unwrap_or(INV_MAIN)` and does not call `grant_container`).
 - #1675: `{2}` rows already sitting in bag 1 stay there; there is no data migration. Trades of them are refused (D-08), and the owner can drag them into the mission bag. Mention this in the #1675 close-out comment.
-- #1249: `docs/architecture/discord-notifications.md:291` still says "infinite implied-speed ratios". That is stale after P10 and is a one-line P12 docs fix.
+- #1249: `docs/architecture/discord-notifications.md:291` still says "infinite implied-speed ratios". That is stale after P10. PR #1966 (P10) fixes that line, not P12, to avoid a merge conflict.
 - #171: other test-local index copies in `wireclient`, `base-session`, the cell dispatch and `respec_burst` tests, and the production literals 80/81/82 in `crates/cell-content/src/cell/missions/mod.rs:134-138`.
