@@ -29,3 +29,59 @@ impl NativeHost {
         Some((target, launcher_events(records, redaction)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::host::GameTelemetryCommand;
+    use cimmeria_launcher_engine::launch::{Artifact, Resources};
+    use sha2::{Digest, Sha256};
+
+    fn artifact(root: &std::path::Path, name: &str) -> Artifact {
+        let path = root.join(name);
+        std::fs::write(&path, b"fixture").unwrap();
+        let digest: String = Sha256::digest(b"fixture")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        Artifact::open(path, &digest).unwrap()
+    }
+    fn host(root: &std::path::Path, with_dll: bool) -> NativeHost {
+        let mut host = NativeHost::new(root.join("state"));
+        host.launch_resources = Some(Resources {
+            helper: artifact(root, "helper.exe"),
+            client_patches: None,
+            client_telemetry: with_dll.then(|| artifact(root, "telemetry.dll")),
+            graphics: None,
+        });
+        host
+    }
+
+    #[test]
+    fn a_batch_needs_the_module_and_the_opt_in() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let records = [LauncherRecord {
+            ts_ms: 1,
+            level: "info".into(),
+            fields: serde_json::Map::new(),
+        }];
+        let redaction = Redaction::default();
+        assert!(host(&root, false)
+            .launcher_batch(&records, &redaction)
+            .is_none());
+        let host = host(&root, true);
+        assert!(host.launcher_batch(&records, &redaction).is_none());
+        host.game_telemetry_command(GameTelemetryCommand::Set {
+            schema_version: 1,
+            opted_in: true,
+        })
+        .unwrap();
+        let (_, events) = host.launcher_batch(&records, &redaction).unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            TelemetryEvent::ClientNative(event) if event.target == "client.launcher.adoption"
+        ));
+    }
+}
