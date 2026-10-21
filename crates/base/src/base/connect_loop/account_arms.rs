@@ -133,11 +133,7 @@ pub(super) async fn dispatch_base_method(
             .await?;
         }
         0xC4 => {
-            let player_id = if payload.len() >= 4 {
-                i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
-            } else {
-                0
-            };
+            let player_id = payload_player_id(payload);
             tracing::info!(
                 %addr,
                 account_id,
@@ -174,11 +170,7 @@ pub(super) async fn dispatch_base_method(
             }
         }
         0xC5 => {
-            let player_id = if payload.len() >= 4 {
-                i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
-            } else {
-                0
-            };
+            let player_id = payload_player_id(payload);
             tracing::info!(
                 %addr,
                 account_id,
@@ -192,11 +184,7 @@ pub(super) async fn dispatch_base_method(
             .await?;
         }
         0xC6 => {
-            let player_id = if payload.len() >= 4 {
-                i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
-            } else {
-                0
-            };
+            let player_id = payload_player_id(payload);
             tracing::debug!(
                 %addr,
                 player_id, // nt:id-only requested character; select screen has no name cached
@@ -316,11 +304,29 @@ async fn hold_play_character(
     Ok(())
 }
 
+/// The little-endian player id at the front of a character-slot payload;
+/// 0 when the payload is shorter than 4 bytes (the arms treat 0 as "none").
+fn payload_player_id(payload: &[u8]) -> i32 {
+    payload
+        .get(..4)
+        .map_or(0, |b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
     use tracing::Level;
+
+    /// `payload_player_id` reads the first 4 bytes little-endian and falls
+    /// back to 0 for short payloads. Fails if the bounds check is removed.
+    #[test]
+    fn payload_player_id_decodes_or_defaults_to_zero() {
+        assert_eq!(payload_player_id(&[]), 0);
+        assert_eq!(payload_player_id(&[1, 2, 3]), 0);
+        assert_eq!(payload_player_id(&[0x2A, 0, 0, 0, 0xFF]), 42);
+        assert_eq!(payload_player_id(&(-5i32).to_le_bytes()), -5);
+    }
 
     /// Rule 6 guard for the character-select rows: `createCharacter` names the
     /// account next to its ID. Fails with `account_id` or `account_name`

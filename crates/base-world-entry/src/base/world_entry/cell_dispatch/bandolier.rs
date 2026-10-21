@@ -32,9 +32,7 @@ pub(super) async fn active_slot_update(
     cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
 ) {
     if let Some(pool) = db_pool {
-        // The schema column is `bandolier_slot` (see sgw_player.sql);
-        // an earlier draft used `active_bandolier_slot` which never
-        // existed and would hard-fail at runtime.
+        // The schema column is `bandolier_slot` (see sgw_player.sql).
         let updated =
             match sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
                 .bind(slot_id)
