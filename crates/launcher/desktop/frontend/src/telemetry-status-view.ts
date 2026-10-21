@@ -1,5 +1,6 @@
 import {Effect,Schema} from 'effect';
 import type {Invoke} from './view';
+import {reportUiEvent} from './ui-event';
 
 /** The `telemetry_status` answer (C13). Decoded strictly, so a new field is a visible error. */
 export const TelemetryStatus=Schema.Struct({
@@ -29,8 +30,8 @@ export function telemetryStatusText(status:TelemetryStatus,optedIn:boolean):stri
  const outcome=status.last_outcome;
  if(outcome===null)return 'Diagnostics on. Nothing sent yet this run.';
  if(outcome==='sent')return `Diagnostics sent ${Math.floor((status.last_success_age_s??0)/60)} min ago.`;
- const known=status.last_reason===null?undefined:reasonTexts[status.last_reason];
- const reason=known??(outcome==='dropped'?reasonTexts.dropped:'the launcher could not send them');
+ const known=outcome==='dropped'?reasonTexts.dropped:(status.last_reason===null?undefined:reasonTexts[status.last_reason]);
+ const reason=known??'the launcher could not send them';
  return `Diagnostics not sent: ${reason}. The launcher will retry.`;
 }
 
@@ -42,14 +43,17 @@ export function telemetryStatusText(status:TelemetryStatus,optedIn:boolean):stri
 export function mountTelemetryStatus(document:Document,invoke:Invoke) {
  const line=document.getElementById('telemetry-status');
  const checkbox=document.getElementById('game-telemetry') as HTMLInputElement | null;
- let last:TelemetryStatus|null=null;let disposed=false;
+ let last:TelemetryStatus|null=null;let disposed=false;let failing=false;
  const render=()=>{if(line&&last&&!disposed)line.textContent=telemetryStatusText(last,checkbox?.checked??false);};
  const refresh=async()=>{
+  let code='read';
   try{
    const value=await invoke('telemetry_status');
+   code='schema';
    const status=await Effect.runPromise(Schema.decodeUnknownEffect(TelemetryStatus,{onExcessProperty:'error'})(value));
+   failing=false;
    if(!disposed){last=status;render();}
-  }catch{/* The line keeps its last text; the next refresh tries again. */}
+  }catch{/* The line keeps its last text; the next refresh tries again. */if(!failing){failing=true;reportUiEvent('telemetry','status_read_failed',code,'warn');}}
  };
  const change=()=>{render();void refresh();};
  checkbox?.addEventListener('change',change);
