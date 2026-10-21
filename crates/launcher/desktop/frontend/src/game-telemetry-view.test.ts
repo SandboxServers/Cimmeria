@@ -51,6 +51,13 @@ test('a lost reply is never replayed: the choice stays unconfirmed until recheck
  }finally{await app.dispose();}
 });
 
+test('the privacy note names what game-folder events carry',()=>{
+ // The note sits under the label, so removing it or renaming the label fails here.
+ assert.match(html,/id="game-telemetry-privacy"/);
+ assert.ok(html.includes('Game-folder events name files only by their place inside the game folder, never your user name, home folder or address. The launcher also keeps its own log on this computer for 7 days.'));
+ assert.ok(html.includes('Send game diagnostics <span'));
+});
+
 test('the status line reports what the last Play did, without claiming an upload',()=>{
  const on=(last_outcome:Outcome)=>gameTelemetryText({status:{schema_version:1,available:true,opted_in:true,last_outcome},pending:false,uncertain:false,error:null});
  assert.match(on('attached'),/loaded the diagnostics module with a server session/);assert.doesNotMatch(on('attached'),/upload|received|sent/i);
