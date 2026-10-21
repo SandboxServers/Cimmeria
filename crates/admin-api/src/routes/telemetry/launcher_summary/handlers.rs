@@ -101,7 +101,7 @@ pub(super) async fn ingest(
         Instant::now(),
     )
     .await
-    .inspect_err(|refused| refusal::note(refused.code(), refused.status()))
+    .inspect_err(|refused| refusal::note(refusal::log_reason(refused.code()), refused.status()))
     .map(Json)
 }
 

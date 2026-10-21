@@ -17,7 +17,7 @@ const WINDOW: Duration = Duration::from_secs(60);
 /// back since. The keys are two closed sets of literals, so the table stays
 /// a handful of entries and holds no address.
 #[derive(Debug, Default)]
-pub(super) struct Throttle(Mutex<HashMap<(&'static str, &'static str), Slot>>);
+pub(crate) struct Throttle(Mutex<HashMap<(&'static str, &'static str), Slot>>);
 
 #[derive(Debug, Clone, Copy)]
 struct Slot {
@@ -27,8 +27,14 @@ struct Slot {
 
 impl Throttle {
     /// `Some(suppressed)` when a row for `(route, reason)` is written at
-    /// `now`, `None` when the row is held back and counted.
-    fn admit(&self, route: &'static str, reason: &'static str, now: Instant) -> Option<u64> {
+    /// `now`, `None` when the row is held back and counted. The launcher
+    /// summary route shares this table under its own route name.
+    pub(crate) fn admit(
+        &self,
+        route: &'static str,
+        reason: &'static str,
+        now: Instant,
+    ) -> Option<u64> {
         // Released before the caller writes the row: emitting runs the log pipeline.
         let mut slots = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         let key = (route, reason);
@@ -73,8 +79,10 @@ pub(super) fn log_refusal_in(
 ) {
     match err {
         AuthError::QuotaExceeded(q) => {
+            // Keyed on the scope, so one flooded budget cannot hold back the
+            // first row of another scope in the same window.
             let reason = "dev_session_quota_exceeded";
-            if let Some(suppressed) = throttle.admit(route, reason, now) {
+            if let Some(suppressed) = throttle.admit(route, q.scope, now) {
                 tracing::warn!(
                     route,
                     scope = q.scope,
@@ -176,23 +184,13 @@ pub(super) fn log_refusal_in(
 #[cfg(test)]
 mod tests {
     use tracing::Level;
-    use tracing_subscriber::layer::SubscriberExt;
 
     use axum::extract::ConnectInfo;
 
     use super::super::handlers::{mint, mint_inner, Tables};
     use super::super::quota::QuotaExceeded;
-    use super::super::tests::{ip, policy, request, EnvGuard, Row, Rows};
+    use super::super::tests::{capture, ip, policy, request, EnvGuard, Row};
     use super::*;
-
-    /// Runs `f` with a fresh capture and returns the rows it emitted.
-    fn capture(f: impl FnOnce()) -> Vec<Row> {
-        let rows = Rows::default();
-        let sub = tracing_subscriber::registry().with(rows.clone());
-        tracing::subscriber::with_default(sub, f);
-        let captured = rows.0.lock().unwrap().clone();
-        captured
-    }
 
     fn reason(row: &Row) -> &str {
         &row.1["reason"]
@@ -203,7 +201,7 @@ mod tests {
         let t = Throttle::default();
         let t0 = Instant::now();
         let expired = AuthError::Expired { exp: 1, now: 2 };
-        let rows = capture(|| {
+        let ((), rows) = capture(|| {
             log_refusal_in(&t, "mint", &AuthError::KillSwitchActive, t0);
             log_refusal_in(
                 &t,
@@ -245,6 +243,35 @@ mod tests {
             .all(|r| r.0 == Level::WARN || r.0 == Level::INFO));
     }
 
+    /// Two scopes in one window each write their first row; the same scope
+    /// twice writes one, and the next window carries the held-back count.
+    /// Keyed on the reason string instead, the `mint/install` row is lost.
+    #[test]
+    fn each_quota_scope_has_its_own_first_row() {
+        let t = Throttle::default();
+        let t0 = Instant::now();
+        let quota = |scope: &'static str| {
+            AuthError::QuotaExceeded(QuotaExceeded {
+                scope,
+                retry_after_secs: 5,
+            })
+        };
+        let ((), rows) = capture(|| {
+            log_refusal_in(&t, "mint", &quota("mint/ip"), t0);
+            log_refusal_in(
+                &t,
+                "mint",
+                &quota("mint/install"),
+                t0 + Duration::from_secs(1),
+            );
+            log_refusal_in(&t, "mint", &quota("mint/ip"), t0 + Duration::from_secs(2));
+            log_refusal_in(&t, "mint", &quota("mint/ip"), t0 + Duration::from_secs(61));
+        });
+        let scopes: Vec<&str> = rows.iter().map(|r| r.1["scope"].as_str()).collect();
+        assert_eq!(scopes, ["mint/ip", "mint/install", "mint/ip"], "{rows:#?}");
+        assert_eq!(rows[2].1["suppressed"], "1", "{rows:#?}");
+    }
+
     /// The real mint path, refused by its per-address quota: one WARN with
     /// the reason, no `peer` key, and the address appears nowhere in the row.
     /// Reverted to a row that carries the peer, this fails.
@@ -257,7 +284,7 @@ mod tests {
         let now_unix = chrono::Utc::now().timestamp();
         let attacker = ip("198.51.100.7");
         mint_inner(&t, &p, attacker, request("first"), now, now_unix).unwrap();
-        let rows = capture(|| {
+        let ((), rows) = capture(|| {
             let err = mint_inner(&t, &p, attacker, request("second"), now, now_unix).unwrap_err();
             log_refusal_in(&Throttle::default(), "mint", &err, now);
         });
@@ -277,7 +304,7 @@ mod tests {
         let t = Tables::new();
         let p = policy(10, 10, 10);
         let peer = ip("203.0.113.7");
-        let rows = capture(|| {
+        let ((), rows) = capture(|| {
             let err = mint_inner(
                 &t,
                 &p,
@@ -305,7 +332,7 @@ mod tests {
         let _g = EnvGuard::install();
         std::env::remove_var("CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT");
         let peer: std::net::SocketAddr = "203.0.113.8:4000".parse().unwrap();
-        let rows = capture(|| {
+        let ((), rows) = capture(|| {
             let fut = mint(
                 ConnectInfo(peer),
                 axum::http::HeaderMap::new(),
@@ -348,7 +375,7 @@ mod tests {
             },
             AuthError::NoUploadEndpoint,
         ];
-        let rows = capture(|| {
+        let ((), rows) = capture(|| {
             for err in &errors {
                 log_refusal_in(&Throttle::default(), "mint", err, Instant::now());
             }

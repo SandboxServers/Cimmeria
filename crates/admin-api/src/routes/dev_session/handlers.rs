@@ -292,7 +292,7 @@ pub(super) fn refresh_inner(
 fn endpoint_for(peer_ip: IpAddr, headers: &HeaderMap) -> Result<ResolvedEndpoint, AuthError> {
     let env = upload_endpoint::upload_endpoint_env();
     let peer_is_loopback = peer_ip.to_canonical().is_loopback();
-    // LT-38 logs this refusal.
+    // Logged by refusal_log::log_refusal (reason dev_session_no_upload_endpoint).
     let resolved = upload_endpoint::resolve(env.as_deref(), headers, peer_is_loopback)
         .ok_or(AuthError::NoUploadEndpoint)?;
     upload_endpoint::warn_if_unreachable(&resolved, peer_is_loopback);

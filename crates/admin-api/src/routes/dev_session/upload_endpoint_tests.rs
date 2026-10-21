@@ -1,17 +1,13 @@
 //! Tests for the https-only upload endpoint resolution (LT-01, owner
 //! directives 1, 5 and 6).
 
-use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use axum::http::{header, HeaderMap, HeaderValue};
-use tracing::field::{Field, Visit};
-use tracing::{Event, Level, Subscriber};
-use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
+use tracing::Level;
 
 use super::handlers::{mint_with_headers, refresh_with_headers, Tables};
-use super::tests::{ip, policy, request, secret, EnvGuard, NOW_UNIX};
+use super::tests::{capture, ip, policy, request, secret, EnvGuard, NOW_UNIX};
 use super::token::{decode_token, AuthError};
 use super::upload_endpoint::{
     boot_warning, is_loopback_url, log_boot, resolve, valid_host, warn_unreachable_at,
@@ -29,41 +25,6 @@ fn headers(host: Option<&str>, proto: Option<&str>) -> HeaderMap {
         h.insert("x-forwarded-proto", HeaderValue::from_str(proto).unwrap());
     }
     h
-}
-
-#[derive(Clone, Default)]
-struct Rows(Arc<Mutex<Vec<(Level, BTreeMap<String, String>)>>>);
-
-struct FieldText<'a>(&'a mut BTreeMap<String, String>);
-
-impl Visit for FieldText<'_> {
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        self.0
-            .insert(field.name().to_string(), format!("{value:?}"));
-    }
-    fn record_str(&mut self, field: &Field, value: &str) {
-        self.0.insert(field.name().to_string(), value.to_string());
-    }
-}
-
-impl<S: Subscriber> Layer<S> for Rows {
-    fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
-        let mut fields = BTreeMap::new();
-        event.record(&mut FieldText(&mut fields));
-        // The message is a field named `message`, so it is searched too.
-        self.0
-            .lock()
-            .unwrap()
-            .push((*event.metadata().level(), fields));
-    }
-}
-
-fn capture<R>(f: impl FnOnce() -> R) -> (R, Vec<(Level, BTreeMap<String, String>)>) {
-    let rows = Rows::default();
-    let sub = tracing_subscriber::registry().with(rows.clone());
-    let out = tracing::subscriber::with_default(sub, f);
-    let captured = rows.0.lock().unwrap().clone();
-    (out, captured)
 }
 
 #[test]

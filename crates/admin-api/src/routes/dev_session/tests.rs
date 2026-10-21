@@ -555,6 +555,16 @@ impl<S: Subscriber> Layer<S> for Rows {
     }
 }
 
+/// Runs `f` with a fresh capture and returns its result and the rows it
+/// emitted. The one capture helper for the dev-session test modules.
+pub(super) fn capture<R>(f: impl FnOnce() -> R) -> (R, Vec<Row>) {
+    let rows = Rows::default();
+    let sub = tracing_subscriber::registry().with(rows.clone());
+    let out = tracing::subscriber::with_default(sub, f);
+    let captured = rows.0.lock().unwrap().clone();
+    (out, captured)
+}
+
 /// Runs one refresh and logs its refusal the way the `refresh` handler
 /// does, returning the refusal and the rows that were emitted.
 fn refused_refresh(
@@ -564,15 +574,11 @@ fn refused_refresh(
     now_unix: i64,
 ) -> (AuthError, Vec<Row>) {
     let peer = ip("203.0.113.5");
-    let rows = Rows::default();
-    let sub = tracing_subscriber::registry().with(rows.clone());
-    let err = tracing::subscriber::with_default(sub, || {
+    capture(|| {
         let err = refresh_inner(t, p, peer, token, Instant::now(), now_unix).unwrap_err();
         log_refusal_in(&Throttle::default(), "refresh", &err, Instant::now());
         err
-    });
-    let captured = rows.0.lock().unwrap().clone();
-    (err, captured)
+    })
 }
 
 // Each refused refresh leaves one row whose `reason` names the cause, so

@@ -5,6 +5,7 @@
 //!
 //! - `gate` — kill switch, token before body, rate limits, slots.
 //! - `launcher_gate` — the launcher token's scope, quotas, slots and kill switch.
+//! - `forwarded` — the per-address keys behind a loopback proxy (C18).
 //! - `chunk` — the chunk budgets and the priority allowance.
 //! - `bundle` — the bundle budgets.
 //! - `field_caps` — the string caps.
@@ -15,6 +16,7 @@
 mod bundle;
 mod chunk;
 mod field_caps;
+mod forwarded;
 mod gate;
 mod launcher_chunk;
 mod launcher_gate;

@@ -63,6 +63,11 @@ pub const SIGNOZ_ONLY_EVENTS: &[(&str, &str)] = &[
     // refusals (`event = "upload_refused"`: rate limit, budgets, kill
     // switch, unusable secret) and its truncations still post.
     ("launcher.ingest", "upload_auth_refused"),
+    // The anonymous launcher-summary route's refusals (rate limit, pause,
+    // size, media type) are driven by any caller with no token, so a flood of
+    // them would post on every refusal. They stay in SigNoz (one row per
+    // reason per minute, with `suppressed`).
+    ("launcher.ingest", "launcher_summary_refused"),
 ];
 
 pub struct DiscordLayer {
