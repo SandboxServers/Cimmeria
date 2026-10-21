@@ -116,6 +116,10 @@ pub(super) enum IngestError {
     Auth(#[from] AuthError),
     #[error("Missing or malformed Authorization header")]
     MissingAuth,
+    /// The token is valid but may not do this: a launcher token on the bundle
+    /// route.
+    #[error("Forbidden: {0}")]
+    Forbidden(&'static str),
     #[error("Payload too large: {0} bytes (cap {1})")]
     TooLarge(usize, usize),
     #[error("gzip decode failed: {0}")]
@@ -154,6 +158,7 @@ impl IngestError {
             IngestError::Auth(AuthError::Expired { .. }) => "token_expired",
             IngestError::Auth(_) => "bad_token",
             IngestError::MissingAuth => "missing_token",
+            IngestError::Forbidden(_) => "forbidden",
             IngestError::TooLarge(_, _) => "body_too_large",
             IngestError::Gzip(_) => "bad_gzip",
             IngestError::Zip(_) => "bad_zip",
@@ -193,7 +198,7 @@ impl IngestError {
                 | AuthError::KillSwitchActive
                 | AuthError::QuotaExceeded(_) => false,
             },
-            IngestError::MissingAuth => true,
+            IngestError::MissingAuth | IngestError::Forbidden(_) => true,
             IngestError::TooLarge(_, _)
             | IngestError::Gzip(_)
             | IngestError::Zip(_)
@@ -238,6 +243,7 @@ impl IntoResponse for IngestError {
         let status = match &self {
             IngestError::Auth(e) => return e.to_response(),
             IngestError::MissingAuth => StatusCode::UNAUTHORIZED,
+            IngestError::Forbidden(_) => StatusCode::FORBIDDEN,
             IngestError::TooLarge(_, _) => StatusCode::PAYLOAD_TOO_LARGE,
             IngestError::Gzip(_) | IngestError::Zip(_) | IngestError::Multipart(_) => {
                 StatusCode::BAD_REQUEST
