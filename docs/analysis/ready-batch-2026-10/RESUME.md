@@ -1,6 +1,6 @@
 # ready-batch-2026-10: resume card
 
-Closed 2026-10-21. There is nothing to resume.
+Closed 2026-10-21. Nothing in the packets is left to build. The one open step is the #1675 close-out comment, listed under State.
 
 Ledger: [README.md](README.md). Packets: [work-packets.md](work-packets.md).
 
