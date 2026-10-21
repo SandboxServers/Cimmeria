@@ -57,12 +57,18 @@ pub struct ConfirmationWorker {
     pub work_id: Uuid,
     pub progress: watch::Receiver<Option<crate::install::Progress>>,
     pub result: watch::Receiver<Option<Result<Provenance, Error>>>,
+    /// The refusal the worker recorded, sent before `result`.
+    rejection: watch::Receiver<Option<Rejection>>,
 }
 impl ConfirmationWorker {
     /// A request only; the retained worker persists cancellation when observed.
     /// Once promotion starts, publication must finish or require reconciliation.
     pub fn request_cancel(&self) {
         self.cancel.cancel();
+    }
+    /// The check that refused the confirmation, once `result` is set; `None` when nothing was recorded.
+    pub fn last_rejection(&self) -> Option<Rejection> {
+        self.rejection.borrow().clone()
     }
 }
 pub fn start_preview(
@@ -135,19 +141,29 @@ pub(super) fn start_confirmation_with(
     let owned_cancel = cancel.clone();
     let (progress, observed) = crate::install_progress::ProgressSink::latest();
     let (send, result) = watch::channel(None);
+    let (rejection_send, rejection) = watch::channel(None);
     runtime.spawn_blocking(move || {
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            publication::confirm(
-                preview,
-                work_id,
-                preview_handle,
-                choices,
-                owned_cancel,
-                &progress,
-                hook,
-            )
-        }))
-        .unwrap_or(Err(StorageError::PersistenceUncertain.into()));
+        let (outcome, recorded) = rejection::scope(|| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                publication::confirm(
+                    preview,
+                    work_id,
+                    preview_handle,
+                    choices,
+                    owned_cancel,
+                    &progress,
+                    hook,
+                )
+            }))
+            .unwrap_or_else(|_| {
+                Err(rejection::reject(
+                    StorageError::PersistenceUncertain.into(),
+                    Rejection::new("worker_stopped").found("panic"),
+                ))
+            })
+        });
+        // The rejection goes first: a reader that sees the result must see its cause.
+        rejection_send.send_replace(recorded);
         send.send_replace(Some(outcome));
     });
     Ok(ConfirmationWorker {
@@ -155,5 +171,6 @@ pub(super) fn start_confirmation_with(
         work_id,
         progress: observed,
         result,
+        rejection,
     })
 }

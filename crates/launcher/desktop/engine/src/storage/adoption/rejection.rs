@@ -148,13 +148,13 @@ pub fn code(error: &Error) -> &'static str {
         Error::Unsafe(_) => "unsafe_file",
     }
 }
-/// Records `r` as the scope's first rejection (the cause; later ones are consequences), WARN-logs it, returns `error`.
-pub fn reject(error: Error, r: Rejection) -> Error {
+/// WARN-logs `r` as an `adoption_rejected` row carrying the failing `code`.
+fn warn(code: &str, r: &Rejection) {
     tracing::warn!(
         target: "adoption",
         event = "adoption_rejected",
         check = r.check,
-        code = code(&error),
+        code = code,
         entry = r.entry.as_deref(),
         expected = r.expected.as_deref(),
         found = r.found.as_deref(),
@@ -165,6 +165,16 @@ pub fn reject(error: Error, r: Rejection) -> Error {
         r.expected.as_deref().unwrap_or("none"),
         r.found.as_deref().unwrap_or("none"),
     );
+}
+
+/// Logs a shell-originated refusal like `reject`; records nothing.
+pub fn refuse(code: &str, r: &Rejection) {
+    warn(code, r);
+}
+
+/// Records `r` as the scope's first rejection (the cause; later ones are consequences), WARN-logs it, returns `error`.
+pub fn reject(error: Error, r: Rejection) -> Error {
+    warn(code(&error), &r);
     SLOT.with(|slot| {
         let mut slot = slot.borrow_mut();
         if slot.is_none() {
@@ -284,6 +294,30 @@ mod tests {
         assert_eq!(row.field("entry"), Some("desktop-copy"));
         assert_eq!(row.field("expected"), None);
         assert_eq!(row.field("http_status"), None);
+    }
+
+    #[test]
+    fn refuse_logs_the_shell_code_and_records_nothing() {
+        let ((), recorded) = scope(|| {
+            let (_, logs) = capture(|| {
+                refuse(
+                    "import_required",
+                    &Rejection::new("import_required").found("no_saved_import"),
+                )
+            });
+            let rows: Vec<_> = logs
+                .iter()
+                .filter(|row| row.field("event") == Some("adoption_rejected"))
+                .collect();
+            assert_eq!(rows.len(), 1);
+            let row = rows[0];
+            assert_eq!(row.target, "adoption");
+            assert_eq!(row.level, Level::WARN);
+            assert_eq!(row.field("check"), Some("import_required"));
+            assert_eq!(row.field("code"), Some("import_required"));
+            assert_eq!(row.field("found"), Some("no_saved_import"));
+        });
+        assert_eq!(recorded, None);
     }
 
     #[test]
