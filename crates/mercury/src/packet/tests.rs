@@ -382,3 +382,51 @@ fn packet_flags_name_every_bit_of_the_flag_byte() {
          FLAG_FRAGMENTED|FLAG_HAS_SEQUENCE|FLAG_INDEXED"
     );
 }
+
+/// Wire pin: with FLAG_HAS_SEQUENCE set, `Packet::encode` writes the flags
+/// byte, the body, then the sequence as a u32 little-endian footer.
+#[test]
+fn legacy_packet_encode_appends_the_sequence_footer() {
+    let packet = Packet::new(
+        PacketFlags(FLAG_HAS_SEQUENCE),
+        0x0102_0304,
+        Bytes::from_static(b"ab"),
+    );
+    assert_eq!(
+        &packet.encode()[..],
+        &[0x40, b'a', b'b', 0x04, 0x03, 0x02, 0x01][..]
+    );
+}
+
+/// Wire pin: without FLAG_HAS_SEQUENCE, `Packet::encode` writes no footer,
+/// so the sequence number is not on the wire.
+#[test]
+fn legacy_packet_encode_without_sequence_flag_has_no_footer() {
+    let packet = Packet::new(PacketFlags(0), 7, Bytes::from_static(b"ab"));
+    assert_eq!(&packet.encode()[..], &[0x00, b'a', b'b'][..]);
+}
+
+/// Wire pin: the footer decision depends on `FLAG_HAS_SEQUENCE` alone. With
+/// other flag bits set and an empty body, the output is the flags byte, then
+/// the sequence footer.
+#[test]
+fn legacy_packet_encode_keeps_other_flag_bits_and_footers_an_empty_body() {
+    let packet = Packet::new(
+        PacketFlags(FLAG_RELIABLE | FLAG_ON_CHANNEL | FLAG_HAS_SEQUENCE),
+        0x0102_0304,
+        Bytes::new(),
+    );
+    assert_eq!(&packet.encode()[..], &[0x58, 0x04, 0x03, 0x02, 0x01][..]);
+}
+
+/// Wire pin: other flag bits without `FLAG_HAS_SEQUENCE` add no footer, even
+/// with a nonzero sequence number and an empty body.
+#[test]
+fn legacy_packet_encode_other_flag_bits_alone_add_no_footer() {
+    let packet = Packet::new(
+        PacketFlags(FLAG_RELIABLE | FLAG_ON_CHANNEL | FLAG_INDEXED),
+        0x0102_0304,
+        Bytes::new(),
+    );
+    assert_eq!(&packet.encode()[..], &[0x98][..]);
+}

@@ -14,6 +14,7 @@ use tracing::warn;
 
 use crate::actions::Action;
 
+use super::action_params::opt_i32;
 use super::DbActionRow;
 
 /// Convert a `spawn_entity` / `despawn_entity` row. Returns `None` for any
@@ -112,10 +113,7 @@ pub(super) fn convert_spawn_action(row: &DbActionRow) -> Option<Action> {
             // nothing". Both are `spawnlist` columns, not template ones.
             // `aggression: None` means "derive from faction" (NA13).
             let is_stationary = params.get("is_stationary").and_then(|v| v.as_bool());
-            let aggression = params
-                .get("aggression")
-                .and_then(|v| v.as_i64())
-                .map(|v| v as i32);
+            let aggression = opt_i32(row, "aggression").ok()?;
             let allow_shared = params.get("allow_shared").and_then(|v| v.as_bool());
 
             Some(Action::SpawnEntity {

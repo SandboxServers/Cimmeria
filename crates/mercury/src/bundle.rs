@@ -12,6 +12,9 @@
 //!   [u16 LE payload_length]
 //!   [payload_length bytes of payload]
 //! ```
+//!
+//! A payload length of 0xFFFF is refused in both directions: BigWorld uses it
+//! as an escape for a wider length, which this crate does not implement.
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use cimmeria_common::{CimmeriaError, Result};
@@ -87,16 +90,31 @@ impl Bundle {
     /// Encode the entire bundle into `buf`.
     ///
     /// Format: `[message_id, u16 len, payload]...` (messages concatenated directly)
-    pub fn encode(&self, buf: &mut BytesMut) {
+    ///
+    /// Refuses (and leaves `buf` untouched) when any payload is 0xFFFF bytes or
+    /// longer: BigWorld reserves a 0xFFFF length as an escape for a wider length,
+    /// which this encoder does not implement.
+    pub fn encode(&self, buf: &mut BytesMut) -> Result<()> {
+        if let Some(m) = self
+            .messages
+            .iter()
+            .find(|m| m.payload.len() >= u16::MAX as usize)
+        {
+            return Err(CimmeriaError::Protocol(format!(
+                "bundle message {:#04x}: payload of {} bytes needs the unsupported 0xFFFF length escape",
+                m.message_id,
+                m.payload.len()
+            )));
+        }
         buf.reserve(self.wire_size());
 
         for msg in &self.messages {
             buf.put_u8(msg.message_id);
-            // Payload length as u16 LE — payloads > 65535 bytes must be fragmented.
-            let len = msg.payload.len().min(u16::MAX as usize) as u16;
-            buf.put_u16_le(len);
-            buf.put_slice(&msg.payload[..len as usize]);
+            // Cast is safe: the guard above refused every payload >= 0xFFFF.
+            buf.put_u16_le(msg.payload.len() as u16);
+            buf.put_slice(&msg.payload);
         }
+        Ok(())
     }
 
     /// Decode a bundle from `buf`, reading messages until the buffer is exhausted.
@@ -114,6 +132,11 @@ impl Bundle {
 
             let message_id = cursor.get_u8();
             let payload_len = cursor.get_u16_le() as usize;
+            if payload_len == u16::MAX as usize {
+                return Err(CimmeriaError::PacketDecode(
+                    "bundle message: 0xFFFF length escape is not supported".into(),
+                ));
+            }
 
             if cursor.remaining() < payload_len {
                 return Err(CimmeriaError::PacketDecode(format!(
@@ -150,7 +173,7 @@ mod tests {
         bundle.add_message(2, Bytes::from_static(b"world"));
 
         let mut buf = BytesMut::new();
-        bundle.encode(&mut buf);
+        bundle.encode(&mut buf).unwrap();
 
         let decoded = Bundle::decode(&buf.freeze()).unwrap();
         assert_eq!(decoded.messages.len(), 2);
@@ -164,7 +187,7 @@ mod tests {
     fn empty_bundle() {
         let bundle = Bundle::new();
         let mut buf = BytesMut::new();
-        bundle.encode(&mut buf);
+        bundle.encode(&mut buf).unwrap();
         assert!(buf.is_empty(), "empty bundle should encode to zero bytes");
 
         let decoded = Bundle::decode(&buf.freeze()).unwrap();
@@ -184,7 +207,7 @@ mod tests {
         bundle.add_message(0x42, Bytes::from_static(b"test"));
 
         let mut buf = BytesMut::new();
-        bundle.encode(&mut buf);
+        bundle.encode(&mut buf).unwrap();
         let encoded = buf.freeze();
 
         // Wire format must be [msg_id][u16 LE length][payload] with NO count prefix.
@@ -205,5 +228,49 @@ mod tests {
             1 + 2 + 4,
             "total size: 1 (id) + 2 (len) + 4 (payload)"
         );
+    }
+
+    #[test]
+    fn encode_refuses_a_0xffff_payload_and_leaves_buf_empty() {
+        let mut bundle = Bundle::new();
+        bundle.add_message(0x10, Bytes::from(vec![0u8; u16::MAX as usize]));
+
+        let mut buf = BytesMut::new();
+        assert!(bundle.encode(&mut buf).is_err());
+        assert!(buf.is_empty(), "a refused bundle must not touch buf");
+    }
+
+    #[test]
+    fn encode_refuses_a_later_oversize_message_without_partial_write() {
+        let mut bundle = Bundle::new();
+        bundle.add_message(0x01, Bytes::from_static(b"small"));
+        bundle.add_message(0x02, Bytes::from(vec![0u8; u16::MAX as usize]));
+
+        let mut buf = BytesMut::from(&b"keep"[..]);
+        assert!(bundle.encode(&mut buf).is_err());
+        assert_eq!(
+            &buf[..],
+            b"keep",
+            "the small first message must not be written before the refusal"
+        );
+    }
+
+    #[test]
+    fn encode_frames_a_0xfffe_payload_byte_exact() {
+        let mut bundle = Bundle::new();
+        bundle.add_message(0x10, Bytes::from(vec![0xABu8; u16::MAX as usize - 1]));
+
+        let mut buf = BytesMut::new();
+        bundle.encode(&mut buf).unwrap();
+        assert_eq!(&buf[0..3], &[0x10, 0xFE, 0xFF]);
+        assert_eq!(buf.len(), 3 + 65534);
+        assert_eq!(buf[buf.len() - 1], 0xAB);
+    }
+
+    #[test]
+    fn decode_refuses_the_0xffff_length_escape() {
+        let mut wire = vec![0x10, 0xFF, 0xFF];
+        wire.extend(vec![0u8; u16::MAX as usize]);
+        assert!(Bundle::decode(&Bytes::from(wire)).is_err());
     }
 }

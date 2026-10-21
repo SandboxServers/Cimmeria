@@ -2,80 +2,97 @@
 
 use std::collections::BTreeMap;
 
-use super::source::{block_consts, file_consts, rust_files_under};
+use super::source::{block_consts, crate_file, file_consts, rust_files_under};
 use super::{assert_no_mismatches, flatten, mismatches, Section};
 
-/// A: `mercury::method_idx`. `pub use` re-exports carry no literal and are
-/// checked where they are declared (B).
+/// A: `mercury::method_idx`. It holds re-exports only; each constant is
+/// checked where the table declares it (B).
 const METHOD_IDX: &str = "wire/src/mercury/mod.rs";
-/// SGWMob's own methods in `method_idx` (27/28 on a player are Communicator).
-const MOB_ONLY: &[&str] = &[
-    "ON_AGGRESSION_OVERRIDE_UPDATE",
-    "ON_AGGRESSION_OVERRIDE_CLEARED",
-];
-const METHOD_IDX_ALIASES: &[(&str, &str)] =
-    &[("CLEAR_HINTED_REGIONS", "clearClientHintedGenericRegions")];
 
 /// B: the per-interface tables, the authoritative ClientMethod constants.
 const CLIENT_METHODS_DIR: &str = "wire/src/cell/client_methods";
 /// SGWPet's own three methods; every other file numbers SGWPlayer.
 const PET_FILE: &str = "wire/src/cell/client_methods/pet.rs";
+/// SGWMob's own two methods (27/28 on a player are Communicator).
+const MOB_FILE: &str = "wire/src/cell/client_methods/mob.rs";
 /// `u16` consts in B that are enum values, not method indices.
 const NOT_METHOD_INDICES: &[&str] = &["CONDITION_FEEDBACK_INVALID_ENTITY"];
 
-/// C: local copies outside the tables (#171 removes the console ones).
-const LOCAL_COPIES: &[&str] = &[
+/// C: the console tree. No file in it may declare a local `u16` copy of a
+/// ClientMethod index; it imports them from the tables (#171).
+const CONSOLE_DIR: &str = "cell-console/src/cell/console";
+/// Files in C that hold `u16` ids which are not ClientMethod indices: the
+/// inbound GM method ids (client to server) and the test pinning their range.
+const NOT_CLIENT_METHODS: &[&str] = &[
+    "cell-console/src/cell/console/gm/mod.rs",
+    "cell-console/src/cell/console/gm/tests/mod.rs",
+];
+/// Files C must reach; a walker that stops short would pass on nothing.
+const MUST_SCAN: &[&str] = &[
     "cell-console/src/cell/console/net.rs",
+    "cell-console/src/cell/console/chat/mod.rs",
     "cell-console/src/cell/console/tests/p38.rs",
     "cell-console/src/cell/console/tests/ss_u2_duel.rs",
 ];
-const LOCAL_COPY_ALIASES: &[(&str, &str)] = &[
-    // The PvP flag rides onEntityProperty(GENERICPROPERTY_PvPFlag, ...).
-    ("PVP_FLAG", "onEntityProperty"),
-    ("DUEL_CLEAR", "onDuelEntitiesClear"),
-];
+
+/// Every `.rs` file under `crates/<dir>`, test directories included, sorted.
+fn all_rust_files_under(dir: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_string()];
+    while let Some(rel) = stack.pop() {
+        let entries = std::fs::read_dir(crate_file(&rel))
+            .unwrap_or_else(|e| panic!("crates/{rel} is gone ({e})"));
+        for entry in entries.flatten() {
+            let child = format!("{rel}/{}", entry.file_name().to_string_lossy());
+            if entry.path().is_dir() {
+                stack.push(child);
+            } else if child.ends_with(".rs") {
+                out.push(child);
+            }
+        }
+    }
+    out.sort();
+    out
+}
 
 #[test]
-fn method_idx_constants_match_the_flattened_client_methods() {
-    let player = flatten("SGWPlayer", Section::Client);
-    let mob = flatten("SGWMob", Section::Client);
+fn method_idx_declares_no_literal_constants() {
     let consts = block_consts(METHOD_IDX, "pub mod method_idx", &["u16"]);
     assert!(
-        consts.len() >= 60,
-        "method_idx yielded {} consts; the scan is broken",
-        consts.len()
+        consts.is_empty(),
+        "method_idx declares literals {:?}: add the constant to \
+         `cell::client_methods` and re-export it from method_idx",
+        consts.iter().map(|c| &c.name).collect::<Vec<_>>()
     );
-    let (mob_consts, player_consts): (Vec<_>, Vec<_>) = consts
-        .into_iter()
-        .partition(|c| MOB_ONLY.contains(&c.name.as_str()));
-    assert_eq!(mob_consts.len(), MOB_ONLY.len(), "SGWMob consts not found");
-    let mut found = mismatches(&player_consts, &player, 0, METHOD_IDX_ALIASES, "");
-    found.extend(mismatches(&mob_consts, &mob, 0, &[], ""));
-    assert_no_mismatches("mercury::method_idx", found);
 }
 
 #[test]
 fn client_method_tables_cover_every_sgwplayer_index_exactly_once() {
     let player = flatten("SGWPlayer", Section::Client);
     let pet = flatten("SGWPet", Section::Client);
+    let mob = flatten("SGWMob", Section::Client);
     let files = rust_files_under(CLIENT_METHODS_DIR);
     assert!(files.len() >= 15, "found only {} files", files.len());
 
-    let (mut player_consts, mut pet_consts) = (Vec::new(), Vec::new());
+    let (mut player_consts, mut pet_consts, mut mob_consts) = (Vec::new(), Vec::new(), Vec::new());
     for file in &files {
         let consts = file_consts(file, &["u16"])
             .into_iter()
             .filter(|c| !NOT_METHOD_INDICES.contains(&c.name.as_str()));
         if file == PET_FILE {
             pet_consts.extend(consts);
+        } else if file == MOB_FILE {
+            mob_consts.extend(consts);
         } else {
             player_consts.extend(consts);
         }
     }
     assert_eq!(pet_consts.len(), 3, "SGWPet's three consts: {pet_consts:?}");
+    assert_eq!(mob_consts.len(), 2, "SGWMob's two consts: {mob_consts:?}");
 
     let mut found = mismatches(&player_consts, &player, 0, &[], "");
     found.extend(mismatches(&pet_consts, &pet, 0, &[], ""));
+    found.extend(mismatches(&mob_consts, &mob, 0, &[], ""));
     assert_no_mismatches("cell::client_methods", found);
 
     // Complete and unique: the tables are the one place every index lives.
@@ -103,13 +120,24 @@ fn client_method_tables_cover_every_sgwplayer_index_exactly_once() {
 }
 
 #[test]
-fn local_client_method_copies_match_the_flattened_client_methods() {
-    let player = flatten("SGWPlayer", Section::Client);
-    let mut found = Vec::new();
-    for file in LOCAL_COPIES {
-        let consts = file_consts(file, &["u16"]);
-        assert!(!consts.is_empty(), "{file} yielded no consts");
-        found.extend(mismatches(&consts, &player, 0, LOCAL_COPY_ALIASES, ""));
+fn console_files_keep_no_local_client_method_copies() {
+    let files = all_rust_files_under(CONSOLE_DIR);
+    for must in MUST_SCAN {
+        assert!(
+            files.iter().any(|f| f == must),
+            "the console scan did not reach {must}"
+        );
     }
-    assert_no_mismatches("local ClientMethod copies", found);
+    for file in files
+        .iter()
+        .filter(|f| !NOT_CLIENT_METHODS.contains(&f.as_str()))
+    {
+        let consts = file_consts(file, &["u16"]);
+        assert!(
+            consts.is_empty(),
+            "{file} declares local ClientMethod copies {:?}: import them from \
+             cell::client_methods instead",
+            consts.iter().map(|c| &c.name).collect::<Vec<_>>()
+        );
+    }
 }
