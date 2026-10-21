@@ -125,20 +125,31 @@ impl NativeHost {
                     drop(state);
                     adoption.session = Some(Session { preview, review });
                     adoption.clear_failure();
+                    events::review_ready();
                 }
-                Err(error) => adoption.fail(error),
+                Err(error) => {
+                    adoption.fail(error);
+                    if let Some(code) = adoption.last_error {
+                        events::refused(code, adoption.last_unsafe.as_ref());
+                    }
+                }
             }
         }
-        let finished = adoption
-            .confirm
-            .as_ref()
-            .and_then(|job| job.worker.result.borrow().clone());
-        if let Some(outcome) = finished {
+        // The job's mode is copied out before the job is dropped.
+        let finished = adoption.confirm.as_ref().and_then(|job| {
+            job.worker
+                .result
+                .borrow()
+                .clone()
+                .map(|outcome| (job.in_place, outcome))
+        });
+        if let Some((in_place, outcome)) = finished {
             adoption.confirm = None;
             match outcome.err() {
                 Some(error) => adoption.fail(error),
                 None => adoption.clear_failure(),
             }
+            events::finished(in_place, adoption.last_error);
         }
         Ok(())
     }

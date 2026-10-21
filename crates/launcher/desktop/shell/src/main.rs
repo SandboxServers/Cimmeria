@@ -362,6 +362,8 @@ async fn choose_existing_game_folder(
     tauri::async_runtime::spawn_blocking(move || checking.adoption_mode_allowed(mode))
         .await
         .map_err(|_| AdoptionError::Io)??;
+    let in_place = mode == cimmeria_launcher_engine::adoption::AdoptionMode::InPlace;
+    crate::host::adoption_events::mode_chosen(in_place);
     let Some(selected) = pick_folder(
         app.clone(),
         window.clone(),
@@ -369,6 +371,7 @@ async fn choose_existing_game_folder(
     )
     .await?
     else {
+        crate::host::adoption_events::folder_chosen(in_place, false);
         return cancelled(host).await;
     };
     // A copy also needs the folder it goes into; in place there is none.
@@ -376,6 +379,7 @@ async fn choose_existing_game_folder(
         let Some(location) =
             pick_folder(app, window, "Choose where to put the verified copy").await?
         else {
+            crate::host::adoption_events::folder_chosen(in_place, false);
             return cancelled(host).await;
         };
         Some(location)
@@ -386,6 +390,7 @@ async fn choose_existing_game_folder(
     let release = cimmeria_launcher_engine::catalog::fetch_release()
         .await
         .map_err(|_| AdoptionError::ReleaseUnavailable)?;
+    crate::host::adoption_events::folder_chosen(in_place, true);
     tauri::async_runtime::spawn_blocking(move || {
         host.begin_folder_adoption(selected, location, mode, release)
     })
