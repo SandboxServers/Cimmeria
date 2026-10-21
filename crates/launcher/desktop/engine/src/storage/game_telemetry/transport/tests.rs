@@ -535,6 +535,37 @@ async fn a_refresh_to_an_unchecked_http_endpoint_is_refused() {
     );
 }
 
+/// C10 survives a refresh: a refresh reply that advertises the loopback address
+/// again is replaced by the login server's `/api/telemetry`, as at mint.
+#[tokio::test]
+async fn a_refresh_keeps_the_login_servers_upload_address() {
+    let root = tempfile::tempdir().unwrap();
+    let install = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_mint(&server, "tok-1").await;
+    let expires = chrono::Utc::now().timestamp_millis() + 8 * 60 * 60 * 1000;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/dev-session/refresh"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "session_id": "session-1", "token": "tok-2", "expires_at_ms": expires,
+            "upload_endpoint": "http://127.0.0.1:8081/api/telemetry",
+            "chunk_max_bytes": 1_048_576, "flush_interval_ms": 2_000,
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let state = opted_in(root.path());
+    let mut transport = open(&state, &server, install.path()).await;
+    // A remote https login server: the loopback address in the refresh reply is misconfigured.
+    transport.login_servers[0].url = "https://play.example".to_string();
+    transport.renew().await.unwrap();
+    assert_eq!(
+        transport.telemetry.session.read().await.upload_endpoint,
+        "https://play.example/api/telemetry"
+    );
+}
+
 /// **A server that keeps refusing tokens is not hammered.** A refused
 /// refresh and a re-mint the server answers 503 hold flushes off: the next
 /// flush sends nothing to any route.

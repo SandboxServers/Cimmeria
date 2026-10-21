@@ -16,11 +16,11 @@ pub(super) fn mint_failed(reason: &'static str, http_status: Option<u16>, durati
 
 /// The login server handed out a loopback upload address and the session uploads
 /// to the login server's own telemetry route instead (C10).
-pub(super) fn endpoint_overridden() {
+pub(super) fn endpoint_overridden(kind: &'static str) {
     tracing::info!(
         target: "launcher.telemetry",
         event = "upload_endpoint_overridden",
-        kind = "game",
+        kind,
         "game telemetry: the login server gave a loopback upload address; uploads go to the login server instead"
     );
 }
@@ -53,12 +53,19 @@ mod tests {
 
     #[test]
     fn an_overridden_upload_is_one_info_for_the_game_kind() {
-        let ((), events) = capture(endpoint_overridden);
+        let ((), events) = capture(|| endpoint_overridden("game"));
         assert_eq!(events.len(), 1);
         let event = &events[0];
         assert_eq!(event.target, "launcher.telemetry");
         assert_eq!(event.level, tracing::Level::INFO);
         assert_eq!(event.field("event"), Some("upload_endpoint_overridden"));
         assert_eq!(event.field("kind"), Some("game"));
+    }
+
+    #[test]
+    fn an_overridden_upload_names_its_session_kind() {
+        let ((), events) = capture(|| endpoint_overridden("launcher"));
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].field("kind"), Some("launcher"));
     }
 }

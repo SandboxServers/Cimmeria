@@ -21,7 +21,7 @@ test('each status text branch',()=>{
  assert.equal(telemetryStatusText(failed('decode'),true),`Diagnostics not sent: the server's answer was unreadable.${tail}`);
  assert.equal(telemetryStatusText(failed(null,'dropped'),true),`Diagnostics not sent: the server's limit was reached.${tail}`);
  assert.equal(telemetryStatusText(failed('transport','dropped'),true),`Diagnostics not sent: the server's limit was reached.${tail}`);
- assert.equal(telemetryStatusText(failed('no_https_endpoint'),true),`Diagnostics not sent: the launcher could not send them.${tail}`);
+ assert.equal(telemetryStatusText(failed('no_https_endpoint'),true),`Diagnostics not sent: the server has no secure upload address.${tail}`);
  assert.equal(telemetryStatusText(failed(null,'held'),true),`Diagnostics not sent: the launcher could not send them.${tail}`);
  assert.equal(telemetryStatusText(failed('transport','held'),true),`Diagnostics not sent: the server could not be reached.${tail}`);
 });

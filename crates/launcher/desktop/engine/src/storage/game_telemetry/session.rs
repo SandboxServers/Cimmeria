@@ -84,23 +84,30 @@ struct Attempt {
     game: bool,
 }
 
+/// A failed mint: the coarse outcome, and the C8 reason the session module
+/// recorded for it (launcher-side callers report the reason).
+pub(super) struct MintFailure {
+    pub(super) outcome: Outcome,
+    pub(super) reason: &'static str,
+}
+
 /// Logs one `game_session_mint_failed` (C8) for a game session and returns the
-/// outcome to give back.
+/// failure to give back.
 fn mint_refused(
     reason: &'static str,
     http_status: Option<u16>,
     attempt: Attempt,
     outcome: Outcome,
-) -> Outcome {
+) -> MintFailure {
     if attempt.game {
         let duration_ms = u64::try_from(attempt.started.elapsed().as_millis()).unwrap_or(u64::MAX);
         session_events::mint_failed(reason, http_status, duration_ms);
     }
-    outcome
+    MintFailure { outcome, reason }
 }
 
 /// A request that never got a reply: a timeout, or any other transport failure.
-fn transport_refused(error: &reqwest::Error, attempt: Attempt) -> Outcome {
+fn transport_refused(error: &reqwest::Error, attempt: Attempt) -> MintFailure {
     let reason = if error.is_timeout() {
         "timeout"
     } else {
@@ -110,12 +117,13 @@ fn transport_refused(error: &reqwest::Error, attempt: Attempt) -> Outcome {
 }
 
 /// C10 (D-LT7): the upload address the session is given. A loopback address from
-/// a remote login server is replaced and the replacement is logged once. `Err`
-/// carries the C8 reason when no usable address is left.
-fn upload_for(
+/// a remote login server is replaced and the replacement is logged once, with
+/// the session `kind`. `Err` carries the C8 reason when no usable address is left.
+pub(super) fn upload_for(
     policy: &EndpointPolicy,
     login_server: &str,
     advertised: &str,
+    kind: &'static str,
 ) -> Result<String, &'static str> {
     let effective = endpoint_sanity::effective_upload_endpoint(login_server, advertised)
         .ok_or("no_https_endpoint")?;
@@ -123,7 +131,7 @@ fn upload_for(
         .check(&effective.url)
         .map_err(|_| "endpoint_refused")?;
     if effective.overridden {
-        session_events::endpoint_overridden();
+        session_events::endpoint_overridden(kind);
     }
     Ok(effective.url)
 }
@@ -135,17 +143,19 @@ pub async fn start(
     login_servers: &[LoginServer],
     tags: &[&str],
 ) -> Result<Session, Outcome> {
-    start_kind(identity, login_servers, tags, None).await
+    start_kind(identity, login_servers, tags, None)
+        .await
+        .map_err(|failure| failure.outcome)
 }
 
 /// `start` for a named session kind; `None` is a player session, sent without
-/// a `session_kind` key.
+/// a `session_kind` key. A failure keeps its C8 reason.
 pub(super) async fn start_kind(
     identity: &Identity,
     login_servers: &[LoginServer],
     tags: &[&str],
     session_kind: Option<&str>,
-) -> Result<Session, Outcome> {
+) -> Result<Session, MintFailure> {
     // https anywhere, plain http only to this machine or a login server: the
     // rule the Windows launcher applies, to the mint address and to whatever
     // upload address the server hands back.
@@ -227,7 +237,7 @@ pub(super) async fn start_kind(
         ));
     }
     let upload_endpoint = if attempt.game {
-        upload_for(&policy, &server.url, &reply.upload_endpoint)
+        upload_for(&policy, &server.url, &reply.upload_endpoint, "game")
             .map_err(|reason| mint_refused(reason, None, attempt, Outcome::EndpointRefused))?
     } else {
         policy.check(&reply.upload_endpoint).map_err(|_| {
@@ -347,6 +357,7 @@ mod tests {
                 &policy,
                 "https://play.example",
                 "http://localhost:8443/api/telemetry",
+                "game",
             )
         });
         assert_eq!(result, Ok("https://play.example/api/telemetry".to_string()));
@@ -368,12 +379,59 @@ mod tests {
                 &policy,
                 "http://play.example:8081",
                 "http://localhost:8443/api/telemetry",
+                "game",
             )
         });
         assert_eq!(result, Err("no_https_endpoint"));
         assert!(events
             .iter()
             .all(|e| e.field("event") != Some("upload_endpoint_overridden")));
+    }
+
+    #[test]
+    fn a_launcher_kind_replacement_is_logged_with_its_kind() {
+        let policy = EndpointPolicy::from_login_servers(["https://play.example"]);
+        let (result, events) = capture(|| {
+            upload_for(
+                &policy,
+                "https://play.example",
+                "http://127.0.0.1:8443/api/telemetry",
+                "launcher",
+            )
+        });
+        assert_eq!(result, Ok("https://play.example/api/telemetry".to_string()));
+        let overridden: Vec<_> = events
+            .iter()
+            .filter(|e| e.field("event") == Some("upload_endpoint_overridden"))
+            .collect();
+        assert_eq!(overridden.len(), 1);
+        assert_eq!(overridden[0].field("kind"), Some("launcher"));
+    }
+
+    #[test]
+    fn a_launcher_kind_503_keeps_the_http_status_reason() {
+        let failure = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let server = MockServer::start().await;
+                Mock::given(method("POST"))
+                    .and(path("/api/auth/dev-session"))
+                    .respond_with(ResponseTemplate::new(503))
+                    .mount(&server)
+                    .await;
+                let servers = vec![LoginServer {
+                    name: "fixture".into(),
+                    url: server.uri(),
+                }];
+                start_kind(&fixture_identity(), &servers, &[], Some("launcher"))
+                    .await
+                    .err()
+            })
+            .expect("a 503 is a failed mint");
+        assert_eq!(failure.reason, "http_status");
+        assert_eq!(failure.outcome, Outcome::SessionUnavailable);
     }
 
     #[test]
@@ -397,6 +455,7 @@ mod tests {
                     start_kind(&fixture_identity(), &servers, &[], None)
                         .await
                         .map(|_| ())
+                        .map_err(|failure| failure.outcome)
                 })
         });
         assert_eq!(result, Err(Outcome::SessionUnavailable));
@@ -432,6 +491,7 @@ mod tests {
                     start_kind(&fixture_identity(), &servers, &[], Some("launcher"))
                         .await
                         .map(|_| ())
+                        .map_err(|failure| failure.outcome)
                 })
         });
         assert_eq!(result, Err(Outcome::SessionUnavailable));

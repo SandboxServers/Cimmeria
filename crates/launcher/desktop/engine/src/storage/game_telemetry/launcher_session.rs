@@ -1,10 +1,10 @@
 //! The launcher's own adoption events, sent at once under a `launcher` session
 //! (C11). Nothing is queued on disk and the upload queue is never touched: a
 //! send that cannot post drops its events (README D-AU21).
-use super::endpoint_sanity::effective_upload_endpoint;
-use super::session::{self, Session};
+use super::session::{self, MintFailure, Session};
 use super::*;
 use crate::client_setup::login_servers::{self, LoginServer};
+use crate::telemetry_endpoint::EndpointPolicy;
 use cimmeria_launcher_core::telemetry::chunk::{self, ChunkError};
 use cimmeria_launcher_core::telemetry::events::TelemetryEvent;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -201,13 +201,24 @@ impl LauncherSender {
             Some(LAUNCHER_SESSION_KIND),
         )
         .await;
+        let policy =
+            EndpointPolicy::from_login_servers(target.servers.iter().map(|s| s.url.as_str()));
         let login_server = target
             .servers
             .first()
             .map_or("", |server| server.url.as_str());
-        let live = minted
-            .map_err(mint_reason)
-            .and_then(|session| upload_for(login_server, session));
+        let live = minted.map_err(mint_reason).and_then(|session| {
+            let url = session::upload_for(
+                &policy,
+                login_server,
+                &session.marker().telemetry.upload_endpoint,
+                LAUNCHER_SESSION_KIND,
+            )?;
+            Ok(Live {
+                session,
+                upload_url: url,
+            })
+        });
         match live {
             Ok(live) => {
                 *locked(&self.mint_failures) = 0;
@@ -263,82 +274,21 @@ fn expiring(session: &Session) -> bool {
     left < REMINT_MARGIN_MS
 }
 
-/// The C8 reason for a failed mint. A plain transport or reply failure is
-/// `transport`; the session module does not split it further.
-fn mint_reason(outcome: Outcome) -> &'static str {
-    match outcome {
-        Outcome::EndpointRefused => "endpoint_refused",
-        _ => "transport",
-    }
-}
-
-/// The upload URL for a minted session (C10). When the advertised address is
-/// replaced, one info is logged for this session. `Err` is a C8 reason.
-fn upload_for(login_server: &str, session: Session) -> Result<Live, &'static str> {
-    let advertised = &session.marker().telemetry.upload_endpoint;
-    let effective =
-        effective_upload_endpoint(login_server, advertised).ok_or("no_https_endpoint")?;
-    if effective.overridden {
-        endpoint_overridden();
-    }
-    Ok(Live {
-        session,
-        upload_url: effective.url,
-    })
-}
-
-/// The advertised loopback upload address was replaced by the login server's own
-/// `/api/telemetry` (launcher-telemetry C10). Logged once per minted session.
-fn endpoint_overridden() {
-    tracing::info!(
-        target: "launcher.telemetry",
-        event = "upload_endpoint_overridden",
-        kind = "launcher",
-        "launcher telemetry: the server advertised a loopback upload address; expected its public address; using the login server's /api/telemetry instead"
-    );
+/// The C8 reason the session module recorded for a failed mint.
+fn mint_reason(failure: MintFailure) -> &'static str {
+    failure.reason
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_capture::capture;
-
-    fn overridden_events(captured: &[crate::test_capture::Captured]) -> usize {
-        captured
-            .iter()
-            .filter(|c| c.target == "launcher.telemetry")
-            .filter(|c| c.field("event") == Some("upload_endpoint_overridden"))
-            .count()
-    }
 
     #[test]
-    fn a_loopback_advertised_endpoint_from_an_https_login_is_replaced_and_logged_once() {
-        let (live, captured) = capture(|| upload_for("https://play.example", Session::fixture()));
-        let live = live.expect("an https login gives a URL");
-        assert_eq!(live.upload_url, "https://play.example/api/telemetry");
-        assert_eq!(overridden_events(&captured), 1);
-        assert_eq!(captured[0].field("kind"), Some("launcher"));
-    }
-
-    #[test]
-    fn a_plain_http_login_with_a_loopback_advertised_endpoint_gives_no_url() {
-        let (reason, captured) =
-            capture(|| upload_for("http://play.example:8081", Session::fixture()).err());
-        assert_eq!(reason, Some("no_https_endpoint"));
-        assert_eq!(overridden_events(&captured), 0);
-    }
-
-    #[test]
-    fn a_loopback_login_keeps_the_advertised_endpoint_without_a_log() {
-        let (live, captured) = capture(|| upload_for("http://127.0.0.1:8081", Session::fixture()));
-        let live = live.expect("a loopback login keeps its endpoint");
-        assert_eq!(live.upload_url, "http://localhost:8081/api/telemetry");
-        assert_eq!(overridden_events(&captured), 0);
-    }
-
-    #[test]
-    fn mint_failures_map_to_c8_reasons() {
-        assert_eq!(mint_reason(Outcome::EndpointRefused), "endpoint_refused");
-        assert_eq!(mint_reason(Outcome::SessionUnavailable), "transport");
+    fn mint_failures_keep_the_c8_reason() {
+        let failure = MintFailure {
+            outcome: Outcome::SessionUnavailable,
+            reason: "http_status",
+        };
+        assert_eq!(mint_reason(failure), "http_status");
     }
 }

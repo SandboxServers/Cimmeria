@@ -73,7 +73,7 @@ pub use cimmeria_launcher_core::telemetry::events::TelemetryEvent;
 pub(crate) use queue::{discard_queue, queue_now};
 pub use queue::{queue_without_session, recover_now, recover_on_startup, Consent, Recovery};
 
-use super::{session, Session};
+use super::{endpoint_sanity, session, Session};
 use crate::client_setup::login_servers::LoginServer;
 use crate::telemetry_endpoint::EndpointPolicy;
 use cimmeria_launcher_core::telemetry::auth::{AuthError, DevSessionResponse};
@@ -376,9 +376,17 @@ impl Transport {
     /// and ends this flush.
     async fn refresh_if_due(&self) -> Result<(), TransportError> {
         let (code, status) = match self.telemetry.refresh_if_due(&self.auth).await {
-            Ok(_) => {
+            Ok(refreshed) => {
                 self.streaks.refresh.reset();
-                return Ok(());
+                let pinned = if refreshed {
+                    self.pin_endpoint().await
+                } else {
+                    Ok(())
+                };
+                return pinned.inspect_err(|code| {
+                    events::token_refresh_failed("refresh", *code, None);
+                    self.hold_auth();
+                });
             }
             Err(e) => (TransportError::of(&e), events::http_status(&e)),
         };
@@ -403,6 +411,22 @@ impl Transport {
         }
     }
 
+    /// Keep the C10 upload address after a refresh: the refresh reply may
+    /// advertise the loopback address again, so it is replaced as at mint.
+    /// Logs nothing; the mint's `upload_endpoint_overridden` row stands.
+    async fn pin_endpoint(&self) -> Result<(), TransportError> {
+        let server = self
+            .login_servers
+            .first()
+            .ok_or(TransportError::SessionUnavailable)?;
+        let mut session = self.telemetry.session.write().await;
+        let effective =
+            endpoint_sanity::effective_upload_endpoint(&server.url, &session.upload_endpoint)
+                .ok_or(TransportError::EndpointRefused)?;
+        session.upload_endpoint = effective.url;
+        Ok(())
+    }
+
     /// After a 401: refresh, or mint a new session when the refresh is
     /// refused too. Any failure starts the token back-off. A success leaves
     /// the back-off's next step alone: only an upload the server takes
@@ -411,7 +435,7 @@ impl Transport {
     async fn renew(&self) -> Result<(), TransportError> {
         let mut status = None;
         let result = match self.telemetry.refresh_now(&self.auth).await {
-            Ok(()) => Ok(()),
+            Ok(()) => self.pin_endpoint().await,
             Err(e) => match TransportError::of(&e) {
                 TransportError::TokenRejected => self.remint().await,
                 code => {

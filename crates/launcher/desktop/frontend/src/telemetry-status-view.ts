@@ -20,6 +20,7 @@ const reasonTexts:Record<string,string>={
  timeout:'the server could not be reached',
  http_status:'the server refused the request',
  endpoint_refused:'the server refused the request',
+ no_https_endpoint:'the server has no secure upload address',
  decode:'the server\'s answer was unreadable',
  dropped:'the server\'s limit was reached',
 };
