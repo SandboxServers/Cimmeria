@@ -5,6 +5,7 @@ use cimmeria_launcher_engine::{
     StorageError,
 };
 use serde::Deserialize;
+use std::time::Instant;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +31,17 @@ pub enum UpdaterCommand {
         operation_revision: u64,
         offer_id: Uuid,
     },
+}
+impl UpdaterCommand {
+    /// The closed action name for the C6 `action` field.
+    fn action(&self) -> &'static str {
+        match self {
+            UpdaterCommand::Inspect { .. } => "inspect",
+            UpdaterCommand::Check { .. } => "check",
+            UpdaterCommand::Prepare { .. } => "prepare",
+            UpdaterCommand::Apply { .. } => "apply",
+        }
+    }
 }
 /// Both the "is this newer" check and the startup acknowledgment compare
 /// against the one compiled launcher version (D-LX8), so they never disagree.
@@ -57,7 +69,12 @@ fn updater_config_from(
         Ok(config) => Some(config),
         Err(error) => {
             // A release built with a bad key must not look like "no updates".
-            eprintln!("launcher updater disabled: compiled configuration refused ({error:?})");
+            tracing::warn!(
+                target: "launcher.update",
+                event = "updater_config_refused",
+                reason = error.code(),
+                "launcher updater disabled: compiled configuration refused; expected a release key and feed; this build never offers an update"
+            );
             None
         }
     }
@@ -76,7 +93,16 @@ impl NativeHost {
         self
     }
 
+    /// One updater command, logged once as `update_action_finished` (C6).
     pub async fn updater_command(&self, request: UpdaterCommand) -> Result<Snapshot, Error> {
+        let action = request.action();
+        let started = Instant::now();
+        let result = self.run_updater_command(request).await;
+        action_finished(action, &result, started);
+        result
+    }
+
+    async fn run_updater_command(&self, request: UpdaterCommand) -> Result<Snapshot, Error> {
         let schema = match &request {
             UpdaterCommand::Inspect { schema_version }
             | UpdaterCommand::Check { schema_version, .. }
@@ -125,7 +151,10 @@ impl NativeHost {
             match request {
                 UpdaterCommand::Apply { .. } => unreachable!(),
                 UpdaterCommand::Inspect { .. } => {
-                    return state.launcher_update_snapshot(config.as_ref())
+                    if config.is_none() {
+                        updater_disabled();
+                    }
+                    return state.launcher_update_snapshot(config.as_ref());
                 }
                 UpdaterCommand::Check {
                     revision,
@@ -189,6 +218,32 @@ impl NativeHost {
         .await
         .map_err(|_| Error::Interrupted)?
     }
+}
+
+/// Inspect found no release configuration: the updater is off in this build.
+fn updater_disabled() {
+    tracing::info!(
+        target: "launcher.update",
+        event = "updater_disabled",
+        reason = "not_configured",
+        "launcher updater disabled: this build has no release key or Windows feed; expected a configured updater; no update is offered"
+    );
+}
+
+/// One updater command finished; `outcome` is `ok` or the error's closed code.
+fn action_finished(action: &'static str, result: &Result<Snapshot, Error>, started: Instant) {
+    let outcome = match result {
+        Ok(_) => "ok",
+        Err(error) => error.code(),
+    };
+    tracing::info!(
+        target: "launcher.update",
+        event = "update_action_finished",
+        action,
+        outcome,
+        duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        "launcher updater: command finished; expected the requested step to complete; the renderer shows the snapshot it returns"
+    );
 }
 
 // Dropping the request future drops only its JoinHandle, never the already

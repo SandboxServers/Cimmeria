@@ -90,7 +90,14 @@ fn signed_old_artifact_cannot_be_relabelled_as_new_and_tampered_payload_fails() 
     let (config, mut offer) = fixture("0.9.0");
     offer.version = "9.0.0".into();
     assert_eq!(config.verify(&offer, PAYLOAD), Err(Error::SignedVersion));
-    assert_eq!(config.verify(&offer, b"tampered"), Err(Error::Signature));
+    let (refused, events) = crate::test_capture::capture(|| config.verify(&offer, b"tampered"));
+    assert_eq!(refused, Err(Error::Signature));
+    let verify = events
+        .iter()
+        .find(|event| event.field("event") == Some("update_verify_failed"))
+        .unwrap();
+    assert_eq!(verify.level, tracing::Level::WARN);
+    assert_eq!(verify.field("reason"), Some("signature"));
     offer.version = "0.9.0".into();
     assert_eq!(config.verify(&offer, PAYLOAD), Err(Error::NotNewer));
     // Altering the trusted comment without re-signing fails the global signature.
