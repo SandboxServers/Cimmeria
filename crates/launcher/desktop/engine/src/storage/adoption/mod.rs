@@ -15,6 +15,7 @@ mod in_place_recovery_tests;
 mod in_place_replace_tests;
 #[cfg(all(test, not(target_os = "macos")))]
 mod in_place_tests;
+mod index_source;
 mod inventory;
 mod model;
 pub(crate) mod preparation;
