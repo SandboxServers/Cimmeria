@@ -274,7 +274,7 @@ the connection task finishes or the owner closes the window. Three things end it
    RST, a send that fails or blocks past 10 s, TCP keepalive giving up
    (about 90 s for an idle connection whose peer vanished), or the 30-minute
    idle timeout. Until then a SWF that reconnects after a half-open drop is
-   refused as `ticket_already_claimed`. See
+   refused at accept as `no_free_ticket` until the session is released. See
    [Connection admission](#connection-admission).
 2. **The window-close RPC.** `endCurrentMinigame` releases the registry entry
    and signals the SmartFox task. That task reports Canceled (0), sends its

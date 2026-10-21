@@ -81,8 +81,8 @@ pub struct MinigameSession {
     /// game. The minigame server only ever sees the entity id; this is what
     /// names the player in the Discord result (NT-10).
     pub player_name: Option<String>,
-    /// The IP of the player's game connection, the only address the minigame
-    /// listener admits for this session.
+    /// The IP the session was created for; `try_admit` uses it as the
+    /// admission key (non-public addresses share one class).
     pub client_ip: Option<std::net::IpAddr>,
     /// `tokio::time::Instant` rather than `std::time::Instant` so
     /// `tokio::time::pause()` / `advance()` drive the TTL deterministically
@@ -382,8 +382,7 @@ impl SessionRegistry {
         // chains. The session leaves the registry when its connection task
         // ends, which needs the server to see the first socket go: a FIN or
         // RST, a failed or timed-out send, TCP keepalive giving up, or the
-        // idle timeout. Until one of those, a SWF reconnecting after a
-        // half-open drop lands here and is refused.
+        // idle timeout.
         if session.connected {
             return Err(ClaimRejection::AlreadyClaimed {
                 player_name: session.player_name.clone(),
