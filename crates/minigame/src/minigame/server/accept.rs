@@ -135,12 +135,19 @@ pub(super) async fn serve(
                             // expired: a real player may be the one turned
                             // away (a reconnect racing its old socket), so
                             // INFO, but once a window since a peer who holds
-                            // no ticket can repeat this at socket rate.
-                            _ => {
+                            // no ticket can repeat this at socket rate. The arm is a
+                            // catch-all so a new reason is still logged, under its own
+                            // name; the assert makes a typo in a reason string fail
+                            // in tests instead of logging as `no_free_ticket`.
+                            reason => {
+                                debug_assert_eq!(
+                                    reason, "no_free_ticket",
+                                    "unknown refusal reason"
+                                );
                                 if let Some(suppressed) = no_free_ticket_log.admit(Instant::now()) {
                                     tracing::info!(
                                         %peer,
-                                        reason = refusal.reason,
+                                        reason,
                                         pending_sessions,
                                         suppressed,
                                         "Minigame connection refused: no free ticket for this address",

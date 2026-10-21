@@ -336,7 +336,9 @@ valid ticket** (#1119) and adds timeouts sized to how the client behaves: one
 character runs at most one minigame at a time, and the SWF sends `verChk` and
 `login` on its own as soon as it loads, so a player holds one socket and logs
 in within a second. There is no global or per-address connection cap; the
-number of registered sessions is the only bound.
+number of registered sessions is the only bound. Open connections never exceed
+the tickets issued (each held by one character's single minigame), and a socket
+with no free ticket is closed before a byte is read.
 
 `SessionRegistry::try_admit(peer_ip)` decides, in the accept loop, before a
 byte is read. A session is a free ticket for a peer when its recorded client
