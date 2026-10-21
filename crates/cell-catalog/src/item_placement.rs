@@ -245,12 +245,14 @@ mod tests {
     }
 
     /// Neither a carried bag nor the mission bag is listed: the request stays.
+    // Pin: passes before and after #1675 (it pins behaviour the fix did not change).
     #[test]
     fn carried_request_with_no_carried_or_mission_bag_is_kept() {
         assert_eq!(grant_container(&[3], INV_MAIN), Some(INV_MAIN));
     }
 
     /// The mission bag asked for directly is an explicit choice and is kept.
+    // Pin: passes before and after #1675 (it pins behaviour the fix did not change).
     #[test]
     fn mission_bag_request_is_kept() {
         assert_eq!(grant_container(&[2], 2), Some(2));

@@ -264,7 +264,7 @@ XP, money, items, abilities, and more.
 | `/gmgivefaction` | Give faction standing | ❌ Not yet | `<factionId> <amount>` | `/gmgivefaction` |
 | `/gmgivegearset` | Give a full gear set | ❌ Not yet | `<gearsetId>` | `/gmgivegearset` |
 | `/gmgiveinventory` | Give a full inventory loadout | ❌ Not yet | `<inventoryId>` | `/gmgiveinventory` |
-| `/gmgiveitem` | Give an item to your inventory | ✅ Yes | `<designId> <quantity>` (numeric id; qty clamped 1–1000) | `/gmgiveitem 8800 5` |
+| `/gmgiveitem` | Give an item to your inventory; mission-only items go to the mission bag | ✅ Yes | `<designId> <quantity>` (numeric id; qty clamped 1–1000) | `/gmgiveitem 8800 5` |
 | `/gmgiveracialparadigmlevels` | Give racial paradigm levels | ❌ Not yet | `<id> <levels>` | `/gmgiveracialparadigmlevels` |
 | `/gmgiverespawner` | Give a player respawner | ❌ Not yet | `<mobId>` | `/gmgiverespawner` |
 | `/gmgivestargateaddress` | Give a stargate address | ❌ Not yet | `<address> <target> <hidden>` | `/gmgivestargateaddress` |
