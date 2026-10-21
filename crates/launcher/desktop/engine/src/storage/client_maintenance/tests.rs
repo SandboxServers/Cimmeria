@@ -279,9 +279,9 @@ fn a_junction_counts_as_a_link() {
 }
 
 #[test]
-fn a_reset_that_stops_part_way_returns_io_and_logs_the_path() {
+fn a_reset_that_stops_part_way_returns_io_and_logs_the_error_kind_without_a_path() {
     let profile = profile();
-    // Spelled as `cache_dir` joins it, so the logged path matches.
+    // Spelled as `cache_dir` joins it, so a logged path would match.
     let cache = profile.firesky.join("SGWGame").join("Cache.en-US");
     let held = cache.join("nested/deep.pak");
     let Some(_hold) = hold_undeletable(&held) else {
@@ -295,11 +295,19 @@ fn a_reset_that_stops_part_way_returns_io_and_logs_the_path() {
         Err(ClientMaintenanceError::Storage(StorageError::Io))
     );
     assert!(held.exists());
-    let cache_text = cache.display().to_string();
     assert!(
         logs.iter().any(|line| line.starts_with("WARN")
-            && line.contains("removal stopped part-way")
-            && line.contains(&cache_text)),
+            && line.contains("event=\"client_maintenance_removal_failed\"")
+            && line.contains("error_kind=")),
+        "{logs:#?}"
+    );
+    // R5: no field or message carries a path, so none of the profile's text appears.
+    let cache_text = cache.display().to_string();
+    let root_text = profile._root.path().display().to_string();
+    assert!(
+        !logs
+            .iter()
+            .any(|line| line.contains(&cache_text) || line.contains(&root_text)),
         "{logs:#?}"
     );
     assert!(
@@ -309,17 +317,29 @@ fn a_reset_that_stops_part_way_returns_io_and_logs_the_path() {
 }
 
 #[test]
-fn a_successful_reset_logs_what_it_deleted() {
+fn a_successful_reset_logs_the_outcome_without_a_path() {
     let profile = profile();
     let mut state = DesktopState::open(&profile._root.path().join("state")).unwrap();
+    // Through the fixture, so the `client_maintenance_at` wrapper logs the outcome.
     let (result, logs) =
-        capture_logs(|| state.client_maintenance_in(reset_all(true), &profile.firesky));
+        capture_logs(|| state.client_maintenance_fixture(reset_all(true), &profile.firesky));
     assert_eq!(result.unwrap().removed, Some(true));
-    let firesky_text = profile.firesky.display().to_string();
     assert!(
         logs.iter().any(|line| line.starts_with("INFO")
-            && line.contains("deleted")
-            && line.contains(&firesky_text)),
+            && line.contains("event=\"client_maintenance_finished\"")
+            && line.contains("action=\"reset_all_client_state\"")
+            && line.contains("removed=true")
+            && line.contains("outcome=\"ok\"")
+            && line.contains("duration_ms=")),
+        "{logs:#?}"
+    );
+    // R5: the removed folder's path must not reach any row.
+    let firesky_text = profile.firesky.display().to_string();
+    let root_text = profile._root.path().display().to_string();
+    assert!(
+        !logs
+            .iter()
+            .any(|line| line.contains(&firesky_text) || line.contains(&root_text)),
         "{logs:#?}"
     );
 }

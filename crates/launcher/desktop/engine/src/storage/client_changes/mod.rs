@@ -175,7 +175,10 @@ impl DesktopState {
             &crate::state::InstalledState::path(&game),
         ) {
             Ok(ledger) => (ledger.unwrap_or_default(), false),
-            Err(_) => (crate::state::InstalledState::default(), true),
+            Err(error) => {
+                super::client_maintenance::events::client_changes_ledger_unreadable(error.code());
+                (crate::state::InstalledState::default(), true)
+            }
         };
         let policy = self.injection_policy()?;
         let changes = core_changes::list(&core_changes::ChangeInputs {
