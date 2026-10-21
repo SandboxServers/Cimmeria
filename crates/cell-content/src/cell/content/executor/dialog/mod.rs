@@ -327,7 +327,7 @@ pub(super) async fn remove_dialog_set(
         "Content: removing dialog set"
     );
 
-    let removed_flags = if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+    let remaining_flags = if let Some(player) = space_mgr.get_entity_mut(entity_id) {
         if let Some(entries) = player.available_interactions.get_mut(&slot) {
             entries.retain(|&(dsm_id, _, _)| dsm_id != dialog_set_id);
             if entries.is_empty() {
@@ -356,7 +356,7 @@ pub(super) async fn remove_dialog_set(
                 .get_entity(target_id)
                 .map(|e| e.interaction_type_flags)
                 .unwrap_or(0);
-            let merged = base_flags | removed_flags.unwrap_or(0);
+            let merged = base_flags | remaining_flags.unwrap_or(0);
 
             let target_is_player = space_mgr.get_entity(target_id).is_some_and(|e| e.is_player);
             if let Err(e) = tx
