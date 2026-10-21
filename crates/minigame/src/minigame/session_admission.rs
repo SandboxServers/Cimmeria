@@ -218,7 +218,14 @@ impl SessionRegistry {
     ///
     /// If the ticket is already gone (cancelled between the claim and now),
     /// the slot frees at once.
-    pub async fn bind_slot(&self, entity_id: u32, ticket: &str, guard: &AdmissionGuard) {
+    ///
+    /// Crate-private: the caller must pass the ticket its own login claimed,
+    /// and only the connection task in this crate does.
+    ///
+    /// Only a connected session is ever bound, and the TTL sweep removes only
+    /// unconnected ones, so the sweep never leaves a stale entry here. Every
+    /// path that ends a session calls `release_bound_slot`.
+    pub(crate) async fn bind_slot(&self, entity_id: u32, ticket: &str, guard: &AdmissionGuard) {
         let mut inner = self.inner.lock().await;
         if inner
             .sessions

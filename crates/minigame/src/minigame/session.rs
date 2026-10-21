@@ -405,6 +405,8 @@ impl SessionRegistry {
     /// [`Self::try_admit`], which treats every non-public address as one
     /// class and counts free tickets. This exact-address check is left over
     /// from the pre-ticket listener (follow-up #1968).
+    ///
+    /// TODO(#1968): kept alive only by tests; remove or gate behind `cfg(test)`.
     pub async fn expects_peer(&self, ip: std::net::IpAddr) -> bool {
         let ip = ip.to_canonical();
         let inner = self.inner.lock().await;
@@ -417,6 +419,8 @@ impl SessionRegistry {
     /// How many sessions are registered (pending or connected). Only tests
     /// call it; the listener does not, because [`Self::try_admit`] picks the
     /// refusal reason under its own lock.
+    ///
+    /// TODO(#1968): kept alive only by tests; remove or gate behind `cfg(test)`.
     pub async fn session_count(&self) -> usize {
         self.inner.lock().await.sessions.len()
     }
@@ -436,6 +440,8 @@ impl SessionRegistry {
     /// their SWF client connect. The listener does not read it: [`Self::try_admit`]
     /// counts pending sessions under its own lock and reports the number in
     /// [`AdmissionRefusal`]. No caller in the tree uses this one today.
+    ///
+    /// TODO(#1968): kept alive only by tests; remove or gate behind `cfg(test)`.
     pub async fn pending_count(&self) -> usize {
         self.inner
             .lock()

@@ -1,4 +1,5 @@
 use std::net::IpAddr;
+use std::time::Duration;
 
 use super::*;
 
@@ -432,6 +433,7 @@ async fn blunt_remove_frees_the_slot_at_once() {
 
     assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
 }
+
 /// The connection's own teardown (`remove_if_ticket`) also frees a bound
 /// slot, and a stale ticket's teardown frees nothing.
 #[tokio::test]
@@ -446,4 +448,26 @@ async fn remove_if_ticket_frees_only_its_own_slot() {
     registry.remove_if_ticket(1, &old).await;
     register(&registry, 1, "203.0.113.5").await;
     assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+
+/// The TTL sweep evicts only unconnected sessions, so it never strands a bound
+/// slot: with a zero TTL a pending session is evicted, a bound (connected) one
+/// stays, keeps its slot and keeps refusing a second connection. If the sweep
+/// ever removed connected sessions it would have to release their slots too.
+#[tokio::test]
+async fn sweep_evicts_pending_sessions_but_never_a_bound_one() {
+    let registry = SessionRegistry::new();
+    let bound = register(&registry, 1, "203.0.113.5").await;
+    let _guard = live_connection(&registry, &bound).await;
+    register(&registry, 2, "203.0.113.5").await;
+
+    let evicted = registry.expire_pending_sessions(Duration::ZERO).await;
+
+    assert_eq!(evicted.len(), 1);
+    assert_eq!(evicted[0].0, 2, "only the pending session is evicted");
+    assert_eq!(registry.session_count().await, 1);
+    assert!(registry.peek_session(1).await.is_some());
+    // The bound slot still counts: one ticket left, one connection on it.
+    let refusal = registry.try_admit(ip("203.0.113.5")).await.unwrap_err();
+    assert_eq!(refusal.reason, AdmissionRefusalReason::NoFreeTicket);
 }
