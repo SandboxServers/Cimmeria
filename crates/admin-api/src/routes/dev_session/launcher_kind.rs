@@ -6,7 +6,9 @@
 use std::net::IpAddr;
 use std::time::Instant;
 
-use super::handlers::{DevSessionRequest, QuotaPolicy, Tables, DEFAULT_CHUNK_MAX_BYTES};
+use super::handlers::{
+    env_u32, DevSessionRequest, QuotaPolicy, Tables, DEFAULT_CHUNK_MAX_BYTES, TOKEN_TTL_SECONDS,
+};
 use super::quota::{install_key, ip_key, validate_metadata};
 use super::token::{
     AuthError, TokenClaims, SCOPE_LAUNCHER_WRITE, SCOPE_TELEMETRY_WRITE, SESSION_KIND_LAUNCHER,
@@ -57,28 +59,58 @@ pub(super) fn validate_launcher_metadata(req: &DevSessionRequest) -> Result<(), 
     Ok(())
 }
 
-/// The launcher-only request checks, run after the shared validation: the
-/// metadata rule, then the refusal of a non-blank account name (C12). A
-/// non-launcher request passes untouched.
+/// The launcher flag for a request, after the launcher-only kill switch,
+/// checked before any quota is charged (C12 order step 2). A launcher's
+/// `machine_id` is ignored, not validated.
+pub(super) fn admit(policy: &QuotaPolicy, req: &DevSessionRequest) -> Result<bool, AuthError> {
+    let launcher = is_launcher_request(req);
+    if launcher && policy.launcher_disabled {
+        return Err(AuthError::KillSwitchActive);
+    }
+    Ok(launcher)
+}
+
+/// The quota reads for the launcher kind, from the C12 env names:
+/// `(per IP, per install, disabled)`.
+pub(super) fn quota_from_env() -> (u32, u32, bool) {
+    (
+        env_u32(LAUNCHER_MINT_IP_ENV, DEFAULT_LAUNCHER_MINT_PER_IP),
+        env_u32(LAUNCHER_MINT_INSTALL_ENV, DEFAULT_LAUNCHER_MINT_PER_INSTALL),
+        launcher_disabled_from_env(),
+    )
+}
+
+/// The request checks, run after the install id: the `machine_id` rule
+/// (skipped for a launcher), the printable metadata every kind must pass,
+/// then the launcher-only rules (C12): printable metadata and the refusal
+/// of a non-blank account name.
 pub(super) fn check_request(req: &DevSessionRequest, launcher: bool) -> Result<(), AuthError> {
+    if !launcher {
+        validate_metadata(&req.machine_id).map_err(|reason| AuthError::BadField {
+            field: "machine_id",
+            reason,
+        })?;
+    }
+    for (field, value) in [
+        ("branch", &req.branch),
+        ("git_sha", &req.git_sha),
+        ("launcher_version", &req.launcher_version),
+    ] {
+        validate_metadata(value).map_err(|reason| AuthError::BadField { field, reason })?;
+    }
     if !launcher {
         return Ok(());
     }
     validate_launcher_metadata(req)?;
-    if req.account_name.as_deref().is_some_and(|n| !n.trim().is_empty()) {
+    if req
+        .account_name
+        .as_deref()
+        .is_some_and(|n| !n.trim().is_empty())
+    {
         return Err(AuthError::BadField {
             field: "account_name",
             reason: "not allowed for a launcher session",
         });
-    }
-    Ok(())
-}
-
-/// The kill switch for the launcher kind alone, checked before any quota is
-/// charged (C12 order step 2).
-pub(super) fn refuse_if_disabled(policy: &QuotaPolicy, launcher: bool) -> Result<(), AuthError> {
-    if launcher && policy.launcher_disabled {
-        return Err(AuthError::KillSwitchActive);
     }
     Ok(())
 }
@@ -143,6 +175,14 @@ pub(super) fn machine_claim(launcher: bool, machine_id: &str) -> Option<String> 
         .map(str::to_string)
 }
 
+/// Records the stream of a player or lab mint. A launcher session records
+/// none: it has no game to join (R4).
+pub(super) fn record_unless_launcher(launcher: bool, claims: &TokenClaims, peer_ip: IpAddr) {
+    if !launcher {
+        super::handlers::record_stream(claims, peer_ip);
+    }
+}
+
 /// The `machine_id` a debug line may print: never for a launcher mint.
 pub(super) fn machine_id_for_log(launcher: bool, machine_id: &str) -> &str {
     if launcher {
@@ -150,18 +190,6 @@ pub(super) fn machine_id_for_log(launcher: bool, machine_id: &str) -> &str {
     } else {
         machine_id
     }
-}
-
-/// The `machine_id` rule for a player or lab request: checked as before. A
-/// launcher's `machine_id` is ignored, not validated.
-pub(super) fn check_machine_id(launcher: bool, machine_id: &str) -> Result<(), AuthError> {
-    if launcher {
-        return Ok(());
-    }
-    validate_metadata(machine_id).map_err(|reason| AuthError::BadField {
-        field: "machine_id",
-        reason,
-    })
 }
 
 /// The scopes a mint grants: `telemetry.launcher.write` for a launcher, the
@@ -173,6 +201,15 @@ pub(super) fn scope_for(launcher: bool) -> Vec<String> {
         SCOPE_TELEMETRY_WRITE
     };
     vec![scope.into()]
+}
+
+/// The lifetime of a mint: 15 minutes for a launcher, 8 hours otherwise.
+pub(super) fn token_ttl(launcher: bool) -> i64 {
+    if launcher {
+        LAUNCHER_TOKEN_TTL_SECONDS
+    } else {
+        TOKEN_TTL_SECONDS
+    }
 }
 
 /// The `chunk_max_bytes` a mint replies with.

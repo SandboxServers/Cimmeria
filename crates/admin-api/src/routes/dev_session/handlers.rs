@@ -9,7 +9,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use super::launcher_kind;
-use super::quota::{ip_key, validate_install_id, validate_metadata, WindowTable};
+use super::quota::{ip_key, validate_install_id, WindowTable};
 use super::token::{
     encode_token, load_secret, AuthError, TokenClaims, SESSION_KIND_LAB, SESSION_KIND_LAUNCHER,
     SESSION_KIND_PLAYER,
@@ -152,6 +152,7 @@ pub struct QuotaPolicy {
 
 impl QuotaPolicy {
     pub fn from_env() -> Self {
+        let (launcher_ip, launcher_install, launcher_disabled) = launcher_kind::quota_from_env();
         Self {
             window: Duration::from_secs(env_u64(
                 "CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS",
@@ -174,15 +175,9 @@ impl QuotaPolicy {
                 "CIMMERIA_TELEMETRY_MAX_SESSION_SECS",
                 DEFAULT_MAX_SESSION_SECS,
             ),
-            mint_launcher_per_ip: env_u32(
-                launcher_kind::LAUNCHER_MINT_IP_ENV,
-                launcher_kind::DEFAULT_LAUNCHER_MINT_PER_IP,
-            ),
-            mint_launcher_per_install: env_u32(
-                launcher_kind::LAUNCHER_MINT_INSTALL_ENV,
-                launcher_kind::DEFAULT_LAUNCHER_MINT_PER_INSTALL,
-            ),
-            launcher_disabled: launcher_kind::launcher_disabled_from_env(),
+            mint_launcher_per_ip: launcher_ip,
+            mint_launcher_per_install: launcher_install,
+            launcher_disabled,
         }
     }
 }
@@ -259,8 +254,7 @@ pub(super) fn mint_inner(
     if kill_switch_active() {
         return Err(AuthError::KillSwitchActive);
     }
-    let launcher = launcher_kind::is_launcher_request(&req);
-    launcher_kind::refuse_if_disabled(policy, launcher)?;
+    let launcher = launcher_kind::admit(policy, &req)?;
     // Charged before `install_id` is validated, so rotating or
     // malforming it buys nothing from one address. A body that fails
     // JSON extraction never reaches this function (axum rejects it in
@@ -275,26 +269,13 @@ pub(super) fn mint_inner(
     )?;
     launcher_kind::charge_ip(tables, policy, peer_ip, launcher, now)?;
     validate_install_id(&req.install_id).map_err(AuthError::BadInstallId)?;
-    launcher_kind::check_machine_id(launcher, &req.machine_id)?;
-    for (field, value) in [
-        ("branch", &req.branch),
-        ("git_sha", &req.git_sha),
-        ("launcher_version", &req.launcher_version),
-    ] {
-        validate_metadata(value).map_err(|reason| AuthError::BadField { field, reason })?;
-    }
     launcher_kind::check_request(&req, launcher)?;
     let kind = kind_claim(req.session_kind.as_deref())?;
     let acct = account_claim(req.account_name.as_deref())?;
     launcher_kind::charge_install(tables, policy, &req.install_id, launcher, now)?;
     let secret = load_secret()?;
     let session_id = uuid::Uuid::new_v4().to_string();
-    let ttl = if launcher {
-        launcher_kind::LAUNCHER_TOKEN_TTL_SECONDS
-    } else {
-        TOKEN_TTL_SECONDS
-    };
-    let exp = now_unix + ttl;
+    let exp = now_unix + launcher_kind::token_ttl(launcher);
     let claims = TokenClaims {
         iss: "cimmeria-server".into(),
         sub: req.install_id,
@@ -304,16 +285,11 @@ pub(super) fn mint_inner(
         scope: launcher_kind::scope_for(launcher),
         kind,
         acct,
-        // Every launcher already sends its hashed machine id; signing it
-        // lets a refresh, which sees only the token, re-record the stream.
-        // A launcher mint signs none (C12).
+        // Signed so a refresh, which sees only the token, can re-record the stream.
         mid: launcher_kind::machine_claim(launcher, &req.machine_id),
     };
     let token = encode_token(&claims, &secret)?;
-    // A launcher session records no stream: it has no game to join (R4).
-    if !launcher {
-        record_stream(&claims, peer_ip);
-    }
+    launcher_kind::record_unless_launcher(launcher, &claims, peer_ip);
     // install_id / machine_id stay at debug to avoid leaking
     // persistent fingerprints into info-level pipelines. The token itself
     // is never logged.
@@ -448,7 +424,7 @@ pub(super) fn refresh_inner(
 /// refresh records the address it came from, the launcher's latest. Called
 /// after the token is signed, so a refused mint or refresh leaves no stream
 /// behind.
-fn record_stream(claims: &TokenClaims, peer_ip: IpAddr) {
+pub(super) fn record_stream(claims: &TokenClaims, peer_ip: IpAddr) {
     use cimmeria_services::auth::client_telemetry::{record_client_telemetry_stream, StreamRecord};
     record_client_telemetry_stream(StreamRecord {
         session_id: &claims.sid,
