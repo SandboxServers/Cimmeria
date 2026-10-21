@@ -372,6 +372,14 @@ impl MovementValidator {
         self.speed_windows.remove(&entity_id);
     }
 
+    /// Drop an entity's speed window and nothing else. Call on the
+    /// movement-bypass path (fly/ghost): the bypassed packets are not judged,
+    /// so samples recorded before the bypass must not mix with the first
+    /// judged packet after it.
+    pub fn clear_speed_window(&mut self, entity_id: u32) {
+        self.speed_windows.remove(&entity_id);
+    }
+
     /// Windowed speed check (#1249). Call once per accepted move that had a
     /// time baseline, with the move's distance and server-clock dt. Returns
     /// the window's sample when the averaged speed is over

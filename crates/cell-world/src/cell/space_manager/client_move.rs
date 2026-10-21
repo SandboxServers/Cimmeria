@@ -30,7 +30,7 @@ use std::time::Instant;
 use cimmeria_commands::permissions::AccessLevel;
 use cimmeria_common::Vector3;
 use cimmeria_entity::movement_validation::{
-    position_within_bounds, MovementReject, MovementValidator, SpaceBounds,
+    position_within_bounds, MovementReject, MovementValidator, SpaceBounds, SPEED_WINDOW,
 };
 
 use super::movement_lock;
@@ -255,6 +255,7 @@ impl SpaceManager {
         // validation resumes cleanly (no stale `last_valid`) once physics
         // is restored.
         if movement_unrestricted {
+            self.movement_validator.clear_speed_window(entity_id);
             return self.accept(now, entity_id, position, direction, velocity);
         }
 
@@ -440,6 +441,7 @@ impl SpaceManager {
                 distance = sample.distance,
                 dt_secs = sample.dt_secs,
                 implied_speed = sample.implied_speed,
+                window_secs = sample.dt_secs.max(SPEED_WINDOW.as_secs_f32()),
                 top_speed = sample.top_speed,
                 ratio = sample.implied_speed / sample.top_speed,
                 reason = "speed",

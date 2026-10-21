@@ -498,3 +498,43 @@ fn jittered_packets_at_top_speed_do_not_warn_at_the_seam() {
         capture.all()
     );
 }
+
+/// The speed WARN row carries the denominator the verdict used.
+/// `implied_speed` is `distance / max(dt_secs, SPEED_WINDOW)`, so a window
+/// shorter than 250 ms (the packets right after a spawn or teleport) logs
+/// `window_secs = 0.25`; recomputing `distance / window_secs` reproduces the
+/// logged speed, which the calibration pipeline relies on.
+///
+/// Reverting the `window_secs` field to `dt_secs` makes the final assertion fail.
+#[test]
+fn speed_warn_logs_the_window_the_verdict_was_made_on() {
+    let capture = LogCapture::install();
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+
+    // 1 u per 50 ms: the window first clears 12.19 u/s on the fourth packet,
+    // while only 200 ms of summed dt is in it.
+    run_packets(&mut mgr, t0, SPAWN_POS[0], 1.0, &[50; 4]);
+    let warn = capture
+        .find_event(Level::WARN, "movement.speed_warning", "speed")
+        .expect("four 1 u packets in 200 ms are 20 u/s and must warn");
+    let num = |key: &str| -> f32 {
+        warn.fields
+            .get(key)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| panic!("numeric `{key}` missing from {warn:#?}"))
+    };
+    let (distance, implied, window_secs) =
+        (num("distance"), num("implied_speed"), num("window_secs"));
+    assert!(
+        (window_secs - 0.25).abs() < 1e-6,
+        "a sub-250 ms window must log the 0.25 s denominator, got {window_secs}"
+    );
+    assert!(
+        (implied - distance / window_secs).abs() < 1e-3 * implied,
+        "implied_speed must equal distance / window_secs: {implied} vs {distance} / {window_secs}"
+    );
+}

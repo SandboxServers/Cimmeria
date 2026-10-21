@@ -11,8 +11,10 @@ use std::time::{Duration, Instant};
 use cimmeria_common::Vector3;
 use cimmeria_entity::movement_validation::MovementReject;
 use cimmeria_entity::navigation::NavMesh;
+use tracing::Level;
 
 use crate::cell::space_manager::ClientMoveOutcome;
+use crate::test_support::LogCapture;
 
 use super::super::make_manager;
 use super::{seed_clock, SPAWN_POS};
@@ -268,5 +270,74 @@ fn feat_onphysics_bypass_does_not_leak_to_other_entities_in_same_space() {
         entity_200.position,
         Vector3::new(SPAWN_POS[0], SPAWN_POS[1], SPAWN_POS[2]),
         "unflagged entity's position must not have advanced"
+    );
+}
+
+/// One ordinary client move to `x` at clock `t`.
+fn move_to(
+    mgr: &mut crate::cell::space_manager::SpaceManager,
+    t: Instant,
+    x: f32,
+) -> ClientMoveOutcome {
+    mgr.apply_client_position_update_at(t, 100, [x, 0.0, SPAWN_POS[2]], [0, 0, 0], [0.0; 3])
+}
+
+/// **Speed-window seam guard.** Samples recorded before a fly/ghost bypass
+/// must not survive it: the bypassed packets are not judged, so the first
+/// judged packet after the bypass would otherwise be summed with the pre-fly
+/// run and read as speed the GM never moved at.
+///
+/// Reverting the `clear_speed_window` call in the bypass branch makes the
+/// final assertion fail.
+#[test]
+fn speed_window_is_cleared_by_the_onphysics_bypass() {
+    let capture = LogCapture::install();
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+
+    // 1 u per 50 ms (20 u/s) for eight packets fills the window with fast samples.
+    let mut x = SPAWN_POS[0];
+    let mut t = t0;
+    for _ in 0..8 {
+        t += Duration::from_millis(50);
+        x += 1.0;
+        move_to(&mut mgr, t, x);
+    }
+    assert!(
+        capture
+            .find_message(Level::WARN, "movement.speed_warning")
+            .is_some(),
+        "control: the pre-fly run must warn, or the test proves nothing"
+    );
+
+    // Fly on: one bypassed packet, then fly off.
+    mgr.get_entity_mut(100).unwrap().movement_unrestricted = true;
+    t += Duration::from_millis(50);
+    assert!(matches!(
+        move_to(&mut mgr, t, x),
+        ClientMoveOutcome::Accepted { .. }
+    ));
+    mgr.get_entity_mut(100).unwrap().movement_unrestricted = false;
+
+    // One top-speed packet (0.8125 u per 100 ms) after the bypass.
+    let warns_before = capture
+        .all()
+        .iter()
+        .filter(|c| c.message_contains("movement.speed_warning"))
+        .count();
+    t += Duration::from_millis(100);
+    let outcome = move_to(&mut mgr, t, x + 0.8125);
+    assert!(matches!(outcome, ClientMoveOutcome::Accepted { .. }));
+    let warns_after = capture
+        .all()
+        .iter()
+        .filter(|c| c.message_contains("movement.speed_warning"))
+        .count();
+    assert_eq!(
+        warns_after, warns_before,
+        "a top-speed packet after a fly bypass must not inherit the pre-fly run's window"
     );
 }
