@@ -173,7 +173,9 @@ copied nor downloaded a second time.
 
 - **Windows and Linux** offer two choices. **Adopt it in place** moves the release
   files into `game\` inside your folder. **Make a verified copy** asks for a second
-  folder and writes the copy to `<chosen>\Stargate Worlds`; your folder is untouched.
+  folder and writes the copy to `<chosen>\Stargate Worlds`; your folder is untouched. The two modes are rows with a selected state, and the choose
+  button names the selected mode; the native picker that follows is the confirm step
+  (D-AU8).
 - **macOS** offers the copy only. The copy is extracted by the build-pinned Windows
   helper under Wine, so the adopted installation records the Wine backend that
   prerequisite setup and Play require.
@@ -196,6 +198,20 @@ copied nor downloaded a second time.
 - The folder must not contain the old launcher's own folder.
 - An out-of-date folder is not refused. Files that only lack a patch are listed as
   needing patching.
+- A folder that holds a link, a junction or another reparse point (including OneDrive
+  and other cloud-files placeholders), a hard-linked file, a special file, an index name
+  that is not ASCII, over 4096 bytes or holding `:` or `\`, or two names equal apart from
+  case, is refused (`unsafe_file`), anywhere in the folder tree. On a refusal, a
+  read-only survey (`engine/src/storage/adoption/survey.rs`) names up to five offenders
+  in `AdoptionStatus.unsafe_entries` (`reason`, a `/`-separated path relative to the
+  folder, `"."` for the folder itself, `null` when the folder's own location is not
+  canonical) and a `total`. It reads Windows reparse tags without recalling cloud files,
+  never descends into an offender, stops at the scan's 200 000-entry and 64-level
+  bounds, and warn-logs at most 100 offenders under target `adoption` with relative
+  paths only. A survey that finds nothing leaves the generic `unsafe_file` text (a
+  race). Owner questions OQ-1..OQ-3 of the
+  [launcher-adopt-ux README](../../../../docs/analysis/launcher-adopt-ux/README.md)
+  keep these refusals hard for now.
 
 **Verification.** With a published release index, the launcher fetches
 `file-index.json` first (paths, sizes, SHA-256) and checks it against the manifest's
@@ -325,7 +341,10 @@ production Effect workflow; on Windows it runs `adoption-in-place-uat.mjs` again
 extracts through the pinned helper under Wine. Every archive in these checks is a small
 inert fixture; no game is started. Native Windows power-loss behavior and the
 adopted-folder Play, Repair, Update and Uninstall views are checked by the LX-26
-Windows UAT (G-06, G-10).
+Windows UAT (G-06, G-10). `survey_tests.rs` and `unsafe_source_tests.rs` cover the
+reasons, the caps and the junction and hard-link refusals; the shell's `in_place_tests.rs`
+checks `unsafe_entries` end to end; scenario 0 of `adoption-in-place-uat.mjs` plants a
+hard link and checks the on-screen list.
 
 ## Permanent owner and current release
 
