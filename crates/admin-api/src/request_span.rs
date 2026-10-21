@@ -56,9 +56,10 @@ pub(crate) fn request_span(request: &Request<Body>) -> Span {
 /// inside the request span by [`admin_request_row`]'s middleware.
 ///
 /// `path` is the matched route (`"unmatched"` when no route matched, so a
-/// probe cannot write free text), `peer` is the IP alone, and a 5xx status
-/// is a WARN. Tower-http's own events are off, so this row is the only
-/// request row the admin router writes.
+/// probe cannot write free text), `peer` is the IP alone (absent on a
+/// telemetry or dev-session path, see [`is_telemetry_path`]), and a 5xx
+/// status is a WARN. Tower-http's own events are off, so this row is the
+/// only request row the admin router writes.
 ///
 /// A middleware rather than a `TraceLayer` `on_response` closure: that
 /// closure gets the response and the span but not the request, so it has
@@ -70,10 +71,16 @@ pub(crate) async fn admin_request_row(request: Request<Body>, next: Next) -> Res
         .get::<MatchedPath>()
         .map_or("unmatched", MatchedPath::as_str)
         .to_owned();
-    let peer = request
-        .extensions()
-        .get::<ConnectInfo<SocketAddr>>()
-        .map(|ConnectInfo(addr)| addr.ip().to_string());
+    // A telemetry uploader is named by its token's ids, so its row never
+    // carries the address; other admin paths are operator traffic and keep it.
+    let peer = if is_telemetry_path(&path) {
+        None
+    } else {
+        request
+            .extensions()
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|ConnectInfo(addr)| addr.ip().to_string())
+    };
     let started = Instant::now();
     let response = next.run(request).await;
     let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -111,6 +118,12 @@ pub(crate) fn row_level(status: u16) -> Level {
     } else {
         Level::INFO
     }
+}
+
+/// Whether a matched `path` is a telemetry or dev-session route, whose
+/// `admin.request` rows carry no peer address.
+pub(crate) fn is_telemetry_path(path: &str) -> bool {
+    path.starts_with("/api/telemetry") || path.starts_with("/api/auth/dev-session")
 }
 
 /// The recorder the request-span tests share.
@@ -184,7 +197,7 @@ mod tests {
     use tracing_subscriber::layer::SubscriberExt;
 
     use super::recorder::Shown;
-    use super::row_level;
+    use super::{is_telemetry_path, row_level};
     use crate::ws::broadcast_layer::LogBuffer;
     use cimmeria_services::audit::LoginEventBuffer;
     use cimmeria_services::orchestrator::Orchestrator;
@@ -295,6 +308,52 @@ mod tests {
             .collect();
         assert_eq!(probes, [&"uri=/zz-probe".to_owned()], "{lines:#?}");
         assert!(lines.iter().all(|line| !line.contains("x=1")), "{lines:#?}");
+    }
+
+    /// A telemetry request's row has no `peer`, though the connect-info peer
+    /// is there. The `GET` reaches the route's method guard (405), which is
+    /// enough for the matched path to be the telemetry route.
+    #[tokio::test]
+    async fn telemetry_request_row_has_no_peer() {
+        let (addr, shown, _guards) = serve_recorded().await;
+
+        let response = get(addr, "/api/telemetry/upload-chunk").await;
+        assert!(response.starts_with("HTTP/1.1 405"), "{response:?}");
+
+        let lines = shown.lines();
+        let row = lines
+            .iter()
+            .position(|line| line == "event target=admin.request")
+            .unwrap_or_else(|| panic!("no admin.request row in {lines:#?}"));
+        let fields = &lines[row..];
+        assert!(
+            fields
+                .iter()
+                .any(|line| line == "path=/api/telemetry/upload-chunk"),
+            "{lines:#?}"
+        );
+        assert!(fields.iter().any(|line| line == "status=405"), "{lines:#?}");
+        assert!(
+            fields.iter().all(|line| !line.starts_with("peer=")),
+            "{lines:#?}"
+        );
+        assert!(
+            fields.iter().all(|line| !line.contains("127.0.0.1")),
+            "{lines:#?}"
+        );
+    }
+
+    /// The telemetry and dev-session prefixes are the only paths without a
+    /// peer; the rest of the admin router keeps it.
+    #[test]
+    fn only_telemetry_and_dev_session_paths_drop_the_peer() {
+        assert!(is_telemetry_path("/api/telemetry/upload-chunk"));
+        assert!(is_telemetry_path("/api/telemetry/launcher-summary"));
+        assert!(is_telemetry_path("/api/auth/dev-session"));
+        assert!(is_telemetry_path("/api/auth/dev-session/refresh"));
+        assert!(!is_telemetry_path("/api/players"));
+        assert!(!is_telemetry_path("/api/auth/login-audit"));
+        assert!(!is_telemetry_path("unmatched"));
     }
 
     /// The row level is INFO below 500 and WARN from 500 up.

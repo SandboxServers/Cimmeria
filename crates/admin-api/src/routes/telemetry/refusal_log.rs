@@ -37,8 +37,8 @@
 //! fault. Both stay at their level, so SigNoz sees every row.
 //!
 //! The rows carry the route, the reason, the budget and limit that refused
-//! the upload, and the uploader's identity (the token's ids once it
-//! verified, and the peer address). Never the payload or the parser's error
+//! the upload, and the uploader's identity: the token's ids once it
+//! verified. Never the peer address, the payload or the parser's error
 //! text.
 //!
 //! The table has a fixed number of slots; each pair hashes to two of them.
@@ -329,7 +329,6 @@ impl RefusalLog {
                     session_id = who.session_id.as_deref(), // nt:id-only telemetry session UUID from the token; it names nothing
                     install_id = who.install_id.as_deref(), // nt:id-only launcher install UUID from the token; it names nothing
                     cimmeria.session_kind = who.session_kind.as_deref(),
-                    peer = %who.peer,
                     suppressed,
                     "telemetry upload refused: {reason}"
                 )
@@ -372,7 +371,6 @@ impl RefusalLog {
             dropped_estimate = t.dropped_estimate,
             session_id = who.session_id.as_deref(), // nt:id-only telemetry session UUID from the token; it names nothing
             install_id = who.install_id.as_deref(), // nt:id-only launcher install UUID from the token; it names nothing
-            peer = %who.peer,
             suppressed,
             "telemetry upload truncated at its {} budget",
             t.budget
@@ -398,7 +396,6 @@ impl RefusalLog {
             bad_rows = bad,
             session_id = who.session_id.as_deref(), // nt:id-only telemetry session UUID from the token; it names nothing
             install_id = who.install_id.as_deref(), // nt:id-only launcher install UUID from the token; it names nothing
-            peer = %who.peer,
             suppressed,
             "telemetry upload-chunk skipped rows that did not parse"
         );
