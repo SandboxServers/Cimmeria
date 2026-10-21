@@ -10,6 +10,9 @@ pub(crate) mod install_event;
 pub mod launcher_event;
 #[cfg(test)]
 mod launcher_event_tests;
+pub mod launcher_session;
+#[cfg(test)]
+mod launcher_session_tests;
 pub mod patch_events;
 mod session;
 pub use session::{passthrough_environment, start, Session};
