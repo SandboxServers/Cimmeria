@@ -104,6 +104,7 @@ impl NativeHost {
             owned: facts.owned,
             completed: facts.completed,
             last_error: adoption.last_error,
+            unsafe_entries: adoption.last_unsafe.clone(),
         })
     }
     /// Collect finished workers. The preview stays native-held as the session.
@@ -123,9 +124,9 @@ impl NativeHost {
                     )?;
                     drop(state);
                     adoption.session = Some(Session { preview, review });
-                    adoption.last_error = None;
+                    adoption.clear_failure();
                 }
-                Err(error) => adoption.last_error = Some(error.into()),
+                Err(error) => adoption.fail(error),
             }
         }
         let finished = adoption
@@ -134,9 +135,27 @@ impl NativeHost {
             .and_then(|job| job.worker.result.borrow().clone());
         if let Some(outcome) = finished {
             adoption.confirm = None;
-            adoption.last_error = outcome.err().map(Into::into);
+            match outcome.err() {
+                Some(error) => adoption.fail(error),
+                None => adoption.clear_failure(),
+            }
         }
         Ok(())
+    }
+}
+impl Adoption {
+    /// No failure is shown.
+    pub(super) fn clear_failure(&mut self) {
+        self.last_error = None;
+        self.last_unsafe = None;
+    }
+    /// `error` is shown; an unsafe refusal keeps its named entries.
+    pub(super) fn fail(&mut self, error: adoption::Error) {
+        self.last_unsafe = match &error {
+            adoption::Error::Unsafe(report) => Some((**report).clone()),
+            _ => None,
+        };
+        self.last_error = Some(error.into());
     }
 }
 fn counts(observed: &Observed) -> (u64, u64) {
