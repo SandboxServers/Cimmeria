@@ -251,6 +251,26 @@ async fn a_declared_length_other_than_the_signed_size_is_refused() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_chunked_body_ending_short_of_the_signed_size_names_the_size_mismatch() {
+    let f = Fixture::new();
+    let before = f.source_snapshot();
+    let seed_len = std::fs::metadata(&f.seed).unwrap().len();
+    // The stream ends cleanly after three bytes, so only the final length check sees it.
+    let server = RawOrigin::new(
+        "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".into(),
+        b"3\r\nabc\r\n0\r\n\r\n".to_vec(),
+        1,
+        Duration::ZERO,
+    );
+    let record = refusal(&f, server.url.clone()).await.unwrap();
+    assert_eq!(record.check, "artifact_size_mismatch");
+    assert_eq!(record.entry.as_deref(), Some("seed"));
+    assert_eq!(record.expected, Some(seed_len.to_string()));
+    assert_eq!(record.found, Some("3".to_string()));
+    assert_clean_failure(&f, &before);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn substituted_bytes_of_the_signed_size_are_rejected_and_not_kept() {
     let f = Fixture::new();
     let before = f.source_snapshot();

@@ -515,7 +515,13 @@ async fn download(
         }
     }
     if received != size {
-        return Err(Error::InvalidArtifact);
+        return Err(rejection::reject(
+            Error::InvalidArtifact,
+            Rejection::new("artifact_size_mismatch")
+                .entry(entry_label(label))
+                .expected(size.to_string())
+                .found(received.to_string()),
+        ));
     }
     output.sync_all()?;
     progress.report(Progress::Downloading {
