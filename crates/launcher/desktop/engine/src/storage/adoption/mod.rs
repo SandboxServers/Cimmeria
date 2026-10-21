@@ -20,6 +20,7 @@ mod inventory;
 mod model;
 pub(crate) mod preparation;
 mod publication;
+mod setup_digest;
 // LT-29 onward use `digest`, `relative` and `http_status`.
 #[allow(dead_code)]
 mod rejection;

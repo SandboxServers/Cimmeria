@@ -4,6 +4,7 @@
 //! so its adoption fetches only what the replay needs. The game directory is
 //! `Folder.root` for a folder source or the imported game folder for a legacy
 //! one; only a legacy source has an import to verify.
+use super::setup_digest::setup_bytes;
 use super::*;
 use crate::{install_progress::ProgressSink, unpack::UnpackSink};
 use cimmeria_launcher_core::file_index::{FileIndex, Origin, SetupRule};
@@ -338,26 +339,6 @@ fn published_digest(tree: &Tree, release: &VerifiedRelease) -> Result<[u8; 32], 
         .map(|(path, (size, sha))| (path, *size, *sha))
         .collect();
     digest(&rows)
-}
-
-/// Decodes exactly 64 hex digits into a digest; `None` for any other text.
-fn unhex(hex: &str) -> Option<[u8; 32]> {
-    let mut out = [0u8; 32];
-    for (i, byte) in out.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()?;
-    }
-    (hex.len() == 64).then_some(out)
-}
-
-/// The digest a setup rule's expected bytes name; undecodable text refuses the
-/// rule at `path` (`setup_rule_invalid`).
-fn setup_bytes(hex: &str, path: &str) -> Result<[u8; 32], Error> {
-    unhex(hex).ok_or_else(|| {
-        rejection::reject(
-            Error::InvalidArtifact,
-            Rejection::new("setup_rule_invalid").entry(path),
-        )
-    })
 }
 
 /// What a preview learns from the signed reference and the folder: the reference

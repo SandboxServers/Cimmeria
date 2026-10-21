@@ -239,6 +239,52 @@ async fn a_verified_cache_is_read_without_another_index_request() {
     assert_eq!(requests(&server).await, vec![format!("/{INDEX_BLOB}")]);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_published_event_says_whether_the_cache_served_the_index() {
+    let seed = seed_bytes();
+    let index = published_index(&seed);
+    let signed = release(&seed, Some(reference(&index, None)));
+    let server = origin(&seed, &index).await;
+    let state = tempfile::tempdir().unwrap();
+    let (first, logs) = crate::test_capture::capture(|| acquire(state.path(), &signed, &server));
+    first.unwrap();
+    let cached: Vec<String> = logs
+        .iter()
+        .filter(|row| row.field("event") == Some("adoption_index_published"))
+        .filter_map(|row| row.field("cached"))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(cached, vec!["false"]);
+    let (second, logs) = crate::test_capture::capture(|| acquire(state.path(), &signed, &server));
+    second.unwrap();
+    let cached: Vec<String> = logs
+        .iter()
+        .filter(|row| row.field("event") == Some("adoption_index_published"))
+        .filter_map(|row| row.field("cached"))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(cached, vec!["true"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_index_bound_to_another_seed_falls_back_with_index_bind_failed() {
+    let seed = seed_bytes();
+    let index = published_index(&seed);
+    // The index verifies against its own digest but names a different seed than the release.
+    let other = archive(&[
+        ("Working/Binaries/SGW.exe", minimal_pe().as_slice()),
+        ("later.txt", b"another entry"),
+    ]);
+    let signed = release(&other, Some(reference(&index, None)));
+    let server = origin(&other, &index).await;
+    let state = tempfile::tempdir().unwrap();
+    let (_, origin) = acquire(state.path(), &signed, &server).unwrap();
+    let IndexOrigin::Built(fallback) = origin else {
+        panic!("an index bound to another seed must build, got {origin:?}");
+    };
+    assert_eq!(fallback.reason, "index_bind_failed");
+}
+
 #[test]
 fn a_built_index_estimate_downloads_nothing() {
     let estimate = DownloadEstimate {
