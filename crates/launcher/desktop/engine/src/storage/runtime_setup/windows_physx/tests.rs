@@ -86,6 +86,30 @@ fn read_package_refuses_a_wrong_size_file_itself() {
     assert_eq!(read_package(&package).unwrap().len(), PHYSX_EXE_BYTES);
 }
 
+/// LT-15: a wrong-size installer is one closed `physx_failed` row on the install
+/// target, with the reason and no path or error text.
+#[test]
+fn a_wrong_size_installer_logs_a_closed_failure_row() {
+    let root = tempfile::tempdir().unwrap();
+    let package = root.path().join("PhysX_7.11.13_SystemSoftware.exe");
+    std::fs::write(&package, b"not the vendor installer").unwrap();
+    // An untraced test may have cached this call site as silent; rebuild so it is seen.
+    let (result, events) = crate::test_capture::capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        read_package(&package)
+    });
+    assert_eq!(result, Err(PhysxError::PackageMismatch));
+    let failed: Vec<_> = events
+        .iter()
+        .filter(|e| e.field("event") == Some("physx_failed"))
+        .collect();
+    assert_eq!(failed.len(), 1, "{events:?}");
+    assert_eq!(failed[0].target, "launcher.install");
+    assert_eq!(failed[0].level, tracing::Level::WARN);
+    assert_eq!(failed[0].field("reason"), Some("package_mismatch"));
+    assert_eq!(failed[0].field("error_kind"), None);
+}
+
 /// The returned guard denies writers while msiexec reads the MSI; once it is
 /// dropped a writer can open the file again.
 #[cfg(windows)]
