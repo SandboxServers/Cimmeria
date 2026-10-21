@@ -194,28 +194,52 @@ fn bounds_reject_spam_cannot_inflate_dt_to_slip_a_teleport() {
     );
 }
 
+/// Drive `intervals_ms.len()` accepted packets, each `step` units further along
+/// +X, arriving after each interval in turn. Returns the final x and clock.
+fn run_packets(
+    mgr: &mut super::super::super::SpaceManager,
+    mut t: Instant,
+    mut x: f32,
+    step: f32,
+    intervals_ms: &[u64],
+) -> (f32, Instant) {
+    for &ms in intervals_ms {
+        t += Duration::from_millis(ms);
+        x += step;
+        let out = mgr.apply_client_position_update_at(
+            t,
+            100,
+            [x, 0.0, SPAWN_POS[2]],
+            [0, 0, 0],
+            [0.0; 3],
+        );
+        assert!(
+            matches!(out, ClientMoveOutcome::Accepted { .. }),
+            "sub-teleport packet must be accepted, got {out:?}"
+        );
+    }
+    (x, t)
+}
+
 /// The speed layer must measure a player against *their own* top speed, not
 /// the class constant.
 ///
 /// `movementSpeedMod` is a two-sided contract: the client scales its own
 /// local prediction by `cur/100` the moment it receives the stat in an
 /// `onStatUpdate`, and the NPC path-stepping tick already scales by it
-/// server-side. The client-position gate was the one place still comparing
-/// against the flat `DEFAULT_TOP_SPEED`, so a player the server itself sped
-/// up — a GM `.speed 500`, and any future haste effect writing the same stat
-/// — warned on every packet of movement the server had authorised. Warn-only
-/// today, but the layer's own doc comment says snap-back is the plan, at
-/// which point this becomes a hard reject on legitimate movement.
+/// server-side. A player the server itself sped up (a GM `.speed 500`, any
+/// future haste effect) must not warn on movement the server authorised.
 ///
-/// Shape: one hop, fast enough to warn at the baseline and slow enough not
-/// to at 5×. The control case pins that the hop really is warn-worthy
+/// Shape: a sustained run (8 packets, 50 ms apart = 400 ms, longer than the
+/// 250 ms speed window), fast enough to warn at the baseline and slow enough
+/// not to at 5x. The control case pins that the run really is warn-worthy
 /// unscaled, so reverting the fix trips the boosted assertion rather than
 /// silently passing a test that never warned either way.
 #[test]
 fn speed_warn_is_measured_against_the_entitys_own_movement_speed_mod() {
-    // 1 u in 50 ms = 20 u/s. Baseline warn threshold is
-    // 8.125 × 1.5 = 12.19 u/s; at `movementSpeedMod = 500` it is 60.94 u/s.
-    let hop = [SPAWN_POS[0] + 1.0, 0.0, SPAWN_POS[2]];
+    // 1 u per 50 ms = 20 u/s sustained. Baseline warn threshold is
+    // 8.125 x 1.5 = 12.19 u/s; at `movementSpeedMod = 500` it is 60.94 u/s.
+    let run = [50u64; 8];
 
     {
         let capture = LogCapture::install();
@@ -224,18 +248,12 @@ fn speed_warn_is_measured_against_the_entitys_own_movement_speed_mod() {
             .unwrap();
         let t0 = Instant::now();
         seed_clock(&mut mgr, 100, t0);
-        mgr.apply_client_position_update_at(
-            t0 + Duration::from_millis(50),
-            100,
-            hop,
-            [0, 0, 0],
-            [0.0; 3],
-        );
+        run_packets(&mut mgr, t0, SPAWN_POS[0], 1.0, &run);
         assert!(
             capture
                 .find_event(Level::WARN, "movement.speed_warning", "speed")
                 .is_some(),
-            "control: at the default speed mod this hop must warn — otherwise the \
+            "control: at the default speed mod this run must warn - otherwise the \
              boosted case below proves nothing"
         );
     }
@@ -253,43 +271,26 @@ fn speed_warn_is_measured_against_the_entitys_own_movement_speed_mod() {
     let t0 = Instant::now();
     seed_clock(&mut mgr, 100, t0);
 
-    let outcome = mgr.apply_client_position_update_at(
-        t0 + Duration::from_millis(50),
-        100,
-        hop,
-        [0, 0, 0],
-        [0.0; 3],
-    );
-    assert!(
-        matches!(outcome, ClientMoveOutcome::Accepted { position } if position == hop),
-        "the hop is sub-teleport either way and must be accepted, got {outcome:?}"
-    );
+    let (x, t) = run_packets(&mut mgr, t0, SPAWN_POS[0], 1.0, &run);
     assert!(
         capture
             .find_event(Level::WARN, "movement.speed_warning", "speed")
             .is_none(),
         "a player the server itself sped up must not warn at a speed their own \
-         movementSpeedMod permits — comparing against the flat class constant \
+         movementSpeedMod permits - comparing against the flat class constant \
          warns on every packet of authorised movement"
     );
 
-    // …but the gate still exists: past their *personal* threshold it fires.
-    // 5 u in 50 ms = 100 u/s, over the boosted 60.94 u/s tolerance.
-    let sprint = [SPAWN_POS[0] + 5.0, 0.0, SPAWN_POS[2]];
-    mgr.apply_client_position_update_at(
-        t0 + Duration::from_millis(100),
-        100,
-        sprint,
-        [0, 0, 0],
-        [0.0; 3],
-    );
+    // ...but the gate still exists: past their *personal* threshold it fires.
+    // 5 u per 50 ms = 100 u/s sustained, over the boosted 60.94 u/s tolerance.
+    run_packets(&mut mgr, t, x, 5.0, &[50; 8]);
     let warn = capture
         .find_event(Level::WARN, "movement.speed_warning", "speed")
         .expect("past the boosted tolerance the speed layer must still warn");
     assert!(
         warn.has_field("top_speed", "40.625"),
         "the warn must report the scaled baseline it actually compared against, \
-         not the class constant — the SigNoz tolerance-calibration pipeline reads \
+         not the class constant - the SigNoz tolerance-calibration pipeline reads \
          this field; got {warn:#?}"
     );
     assert!(
@@ -300,13 +301,13 @@ fn speed_warn_is_measured_against_the_entitys_own_movement_speed_mod() {
     );
 }
 
-/// A packet that lands on the same clock instant as the previous one has an
-/// infinite implied speed. That is bunching, not speed: it must log one DEBUG
-/// `speed_bunched` row and no WARN. A later packet with a real gap still
-/// warns, with a finite ratio.
+/// Packets that land on the same clock instant have dt = 0. The window absorbs
+/// them: a burst of slow-moving bunched packets raises neither a WARN nor a
+/// `speed_bunched` row (that DEBUG arm is gone). A later sustained run at
+/// real speed still warns, with a finite ratio.
 ///
-/// Reverting the `speed_bunched` arm in `client_move.rs` puts the WARN back on
-/// the bunched packet and the first assertion fails.
+/// Reverting to a per-packet rule makes the dt = 0 packets read as infinite
+/// speed and the first assertion fails.
 #[test]
 fn bunched_packets_do_not_speed_warn() {
     let capture = LogCapture::install();
@@ -316,45 +317,58 @@ fn bunched_packets_do_not_speed_warn() {
     let t0 = Instant::now();
     seed_clock(&mut mgr, 100, t0);
 
-    // 0.3 u away, same instant as the seed sample: dt = 0.
-    let bunched = [SPAWN_POS[0] + 0.3, 0.0, SPAWN_POS[2]];
-    let outcome = mgr.apply_client_position_update_at(t0, 100, bunched, [0, 0, 0], [0.0; 3]);
-    assert!(
-        matches!(outcome, ClientMoveOutcome::Accepted { position } if position == bunched),
-        "a bunched packet is accepted, got {outcome:?}"
-    );
+    // Five 0.3 u packets all on the seed instant: 1.5 u over the 250 ms
+    // window floor = 6 u/s, under the 12.19 u/s warn threshold.
+    let (x, _) = run_packets(&mut mgr, t0, SPAWN_POS[0], 0.3, &[0; 5]);
     assert!(
         capture
             .find_message(Level::WARN, "movement.speed_warning")
             .is_none(),
-        "a bunched packet must not WARN"
+        "a bunched burst must not WARN"
     );
-    let debug_rows = capture
-        .all()
-        .iter()
-        .filter(|c| c.level == Level::DEBUG && c.has_field("reason", "speed_bunched"))
-        .count();
-    assert_eq!(
-        debug_rows, 1,
-        "one DEBUG speed_bunched row per bunched packet"
+    assert!(
+        !capture
+            .all()
+            .iter()
+            .any(|c| c.has_field("reason", "speed_bunched")),
+        "the speed_bunched row is gone; the window absorbs bunching"
     );
 
-    // 5 u in 0.1 s = 50 u/s, over the 12.19 u/s warn threshold: a real warn.
-    let sprint = [SPAWN_POS[0] + 5.3, 0.0, SPAWN_POS[2]];
-    mgr.apply_client_position_update_at(
-        t0 + Duration::from_millis(100),
-        100,
-        sprint,
-        [0, 0, 0],
-        [0.0; 3],
-    );
+    // 5 u per 100 ms = 50 u/s sustained, over the 12.19 u/s warn threshold.
+    run_packets(&mut mgr, t0, x, 5.0, &[100; 6]);
     let warn = capture
         .find_event(Level::WARN, "movement.speed_warning", "speed")
-        .expect("a real 50 u/s move must still WARN after the bunched packet");
+        .expect("a real sustained 50 u/s run must still WARN after the bunched burst");
     let ratio: f32 = warn
         .fields
         .get("ratio")
         .and_then(|r| r.parse().ok())
         .expect("the speed warn carries a numeric ratio");
     assert!(ratio.is_finite(), "ratio must be finite, got {ratio}");
+}
+
+/// Client send jitter: the player runs at exactly top speed (0.8125 u per
+/// 100 ms) but packets arrive 25 ms then 175 ms apart. Judged per packet, the
+/// 25 ms ones imply 32 u/s (4x top speed) and warn; over the window the
+/// average is top speed and nothing warns.
+///
+/// Reverting the seam to the single-packet rule makes this fail.
+#[test]
+fn jittered_packets_at_top_speed_do_not_warn_at_the_seam() {
+    let capture = LogCapture::install();
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+
+    let intervals: Vec<u64> = (0..40).map(|i| if i % 2 == 0 { 25 } else { 175 }).collect();
+    run_packets(&mut mgr, t0, SPAWN_POS[0], 0.8125, &intervals);
+    assert!(
+        capture
+            .find_message(Level::WARN, "movement.speed_warning")
+            .is_none(),
+        "jittered packets averaging top speed must not raise movement.speed_warning: {:#?}",
+        capture.all()
+    );
 }

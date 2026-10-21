@@ -55,7 +55,7 @@ fn no_baseline_large_first_move_is_teleport_rejected() {
 }
 
 #[test]
-fn small_legitimate_move_neither_warns_nor_rejects() {
+fn small_legitimate_move_is_not_rejected() {
     let v = MovementValidator::new();
     let t0 = Instant::now();
     // ~0.8 u over 100 ms = top speed exactly — under the 1.5× warn.
@@ -67,7 +67,6 @@ fn small_legitimate_move_neither_warns_nor_rejects() {
         TOP,
     );
     assert!(out.reject.is_none(), "legit move must not reject");
-    assert!(out.speed_warn.is_none(), "legit move must not warn");
 }
 
 /// Canonical teleport shape: 100 units in 50 ms → 2000 u/s,
@@ -107,24 +106,6 @@ fn far_but_slow_catchup_is_not_teleport() {
     );
 }
 
-/// Sub-teleport but over-tolerance speed (5 u in 50 ms = 100 u/s,
-/// distance under the 50 u gate) → warn, still accepted.
-#[test]
-fn over_tolerance_short_hop_warns_but_accepts() {
-    let v = MovementValidator::new();
-    let t0 = Instant::now();
-    let out = v.check_kinematics(
-        t0 + Duration::from_millis(50),
-        Some(t0),
-        Vector3::zero(),
-        Vector3::new(5.0, 0.0, 0.0),
-        TOP,
-    );
-    assert!(out.reject.is_none(), "short hop must not reject");
-    let sample = out.speed_warn.expect("100 u/s must warn");
-    assert!(sample.implied_speed > 90.0 && sample.implied_speed < 110.0);
-}
-
 /// `touch_clock` advances the per-entity clock and hands back the
 /// previous sample, which is what feeds `check_kinematics`'s `prev`.
 #[test]
@@ -158,7 +139,7 @@ fn sustained_teleport_spam_keeps_rejecting() {
 }
 
 #[test]
-fn note_authorized_teleport_reseeds_clock_and_suppresses_followup_warn() {
+fn note_authorized_teleport_reseeds_clock_and_suppresses_followup_reject() {
     let mut v = MovementValidator::new();
     let t0 = Instant::now();
     // Player moving normally, last sample at t0.
@@ -178,9 +159,8 @@ fn note_authorized_teleport_reseeds_clock_and_suppresses_followup_warn() {
     );
     let dst = Vector3::new(500.0, 0.0, 500.0);
     let out = v.check_kinematics(t_pkt, prev, dst, Vector3::new(500.5, 0.0, 500.0), TOP);
-    assert!(out.reject.is_none());
     assert!(
-        out.speed_warn.is_none(),
+        out.reject.is_none(),
         "reseeded clock must make the post-teleport packet look slow"
     );
 }

@@ -71,7 +71,7 @@ for the cardinality ruling.
 |---|---|---|
 | `validation_reject`, `validation_recovered`, `correction_suppressed` | yes | resolved from the reject's `space_id` |
 | `space_mismatch` | yes | the **server's** binding — the claimed id is by definition not one this process can resolve |
-| `navmesh_gm_bypass`, `speed_warning` | yes | resolved from the entity's space |
+| `navmesh_gm_bypass`, `speed_warning` | yes | resolved from the entity's space. On `speed_warning`, `distance` and `dt_secs` are the speed window's sums, not one packet's |
 | `entity_missing` | **no** | the entity is in no space at all. That is the whole finding: a stale packet arrived after destroy/disconnect, so there is no binding left to resolve a world from |
 
 A world-filtered dashboard therefore sees everything except

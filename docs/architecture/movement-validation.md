@@ -48,7 +48,7 @@ rows because they have different actions.
 | 0 | **Minigame hold** (`movement_lock::check`) | reject | a player held by `BSF_PLAYING_MINIGAME` moving more than 0.5 m horizontally from its hold anchor (where the hold found it; reset by an authorized teleport), so small steps cannot add up (`reason=movement_locked`); game masters exempt; a stun's lock alone is not gated |
 | 1 | **Bounds** (`check_bounds`) | reject | NaN / ±∞ / absurd coords, **Z-axis floor-clip** (full X/Y/**Z** AABB test) |
 | 2 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded **or when the world is seeded `navmesh_mode = 'advisory'`** — see [navmesh-containment-modes.md](navmesh-containment-modes.md). Horizontal (X/Z) containment is tight (`agent_radius`-based) in both directions; vertical (Y) containment is asymmetric — up to `JUMP_HEIGHT_TOLERANCE` (4.0 units, physics-derived) *above* the surface so a legitimate jump apex isn't rejected, but only `agent_radius * 2.0` *below* it — see "Jump-height fix" below. |
-| 3 | **Speed** (`check_kinematics`) | **warn-only** | sustained over-tolerance velocity (`implied_speed > top_speed × 1.5`) |
+| 3 | **Speed** (`observe_speed`) | **warn-only** | sustained over-tolerance velocity: over a per-entity sliding window, `sum(distance) / max(sum(dt), 250 ms) > top_speed × 1.5` (see "The speed window" below) |
 | 4 | **Teleport** (`check_kinematics`) | reject | single update both `> 50 u` **and** `> top_speed × 10` (or, on the first packet with no time baseline, `> 50 u` from the authoritative spawn) |
 
 `top_speed` in rows 3 and 4 is **not** the flat `DEFAULT_TOP_SPEED`: it is
@@ -122,6 +122,28 @@ top_speed)` triple on `movement.speed_warning` /
 production tolerance from the SigNoz p99.9 of legitimate
 `(distance/dt)/top_speed` (bucketed by RTT) before promoting it to
 snap-back.
+
+### The speed window
+
+Speed is judged over a per-entity sliding window (#1249), not per packet.
+The client's send timing jitters (packets 25 ms then 175 ms apart while it
+runs at exactly top speed), so a single packet's `distance / dt` can read
+as 4x top speed. Each accepted move that had a time baseline calls
+`MovementValidator::observe_speed` with its distance and server-clock dt:
+
+- The window keeps the newest samples that cover at least 250 ms
+  (`SPEED_WINDOW`), at most 32 of them.
+- It warns when `sum(distance) / max(sum(dt), SPEED_WINDOW)` exceeds
+  `top_speed x 1.5`. The 250 ms floor on the divisor stops a burst of
+  near-zero-dt packets from reading as infinite speed.
+- A move under 0.01 u (`MIN_SPEED_DISTANCE`) adds its dt to the window but
+  never warns.
+- The window is dropped on an authorized teleport and on `forget`.
+
+The `distance` and `dt_secs` on the `movement.speed_warning` row are the
+window sums. The old `speed_bunched` DEBUG row is gone: the window absorbs
+bunched packets, so there is nothing separate to report. `check_kinematics`
+now only decides the teleport reject.
 
 ### Time source — server clock, not client timestamp
 
