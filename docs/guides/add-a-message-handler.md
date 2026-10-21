@@ -172,7 +172,7 @@ send_to_witness_reliable(
 .await;
 ```
 
-[`crates/base-session/src/base/contact_list/handlers/presence_fanout.rs`](../../crates/base-session/src/base/contact_list/handlers/presence_fanout.rs) is a good file to copy from — see the `send_to_witness_reliable` call around line 117. The method-index constants live in the per-interface tables under [`crates/wire/src/cell/client_methods/`](../../crates/wire/src/cell/client_methods/); add a new index there, not as a literal in `mercury::method_idx`, which only re-exports them (the `method_idx_declares_no_literal_constants` conformance test rejects a literal). For the framing itself, see [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md).
+[`crates/base-session/src/base/contact_list/handlers/presence_fanout.rs`](../../crates/base-session/src/base/contact_list/handlers/presence_fanout.rs) is a good file to copy the `send_to_witness_reliable` call from (around line 117), but import the method index from the per-interface table as shown above, not through `method_idx` as that file still does. The method-index constants live in the per-interface tables under [`crates/wire/src/cell/client_methods/`](../../crates/wire/src/cell/client_methods/); add a new index there, not as a literal in `mercury::method_idx`, which only re-exports them (the `method_idx_declares_no_literal_constants` conformance test rejects a literal). For the framing itself, see [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md).
 
 ---
 

@@ -26,6 +26,7 @@ const CASES: &[(&str, Option<i32>, Option<&str>, &str)] = &[
     ("change_stat", None, None, "stat_id"),
     ("change_stat", None, None, "min"),
     ("change_stat", None, None, "max"),
+    ("change_stat", None, None, "amount"),
     ("increment_counter", None, Some("counter_a"), "amount"),
     ("set_active_slot", None, None, "bag_id"),
     ("set_active_slot", None, None, "slot"),
