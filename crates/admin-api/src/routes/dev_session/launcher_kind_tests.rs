@@ -436,11 +436,24 @@ fn kind_and_scope_must_agree() {
 }
 
 /// A launcher mint records no stream: it has no game to join (R4). The
-/// address is one no other test uses, since the registry is process-wide.
+/// registry is process-wide and `unknown` until any stream is recorded, so
+/// the test first records a player's stream from another address (the
+/// state `absent` describes), then checks that the launcher mint at its own
+/// address adds nothing there. Both addresses are used by no other test.
 #[test]
 fn a_launcher_mint_records_no_stream() {
     let _g = EnvGuard::install();
     let t = Tables::new();
+    let player_at = ip("192.0.2.212");
+    mint_inner(
+        &t,
+        &policy(10, 10, 10),
+        player_at,
+        request("3f2504e0-4f89-41d3-9a0c-0305e82c3304"),
+        Instant::now(),
+        NOW_UNIX,
+    )
+    .unwrap();
     let at = ip("192.0.2.211");
     mint_inner(
         &t,
