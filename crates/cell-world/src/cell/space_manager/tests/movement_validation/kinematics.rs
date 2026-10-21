@@ -232,13 +232,13 @@ fn run_packets(
 ///
 /// Shape: a sustained run (8 packets, 50 ms apart = 400 ms, longer than the
 /// 250 ms speed window), fast enough to warn at the baseline and slow enough
-/// not to at 5x. The control case pins that the run really is warn-worthy
+/// not to at 5×. The control case pins that the run really is warn-worthy
 /// unscaled, so reverting the fix trips the boosted assertion rather than
 /// silently passing a test that never warned either way.
 #[test]
 fn speed_warn_is_measured_against_the_entitys_own_movement_speed_mod() {
     // 1 u per 50 ms = 20 u/s sustained. Baseline warn threshold is
-    // 8.125 x 1.5 = 12.19 u/s; at `movementSpeedMod = 500` it is 60.94 u/s.
+    // 8.125 × 1.5 = 12.19 u/s; at `movementSpeedMod = 500` it is 60.94 u/s.
     let run = [50u64; 8];
 
     {
@@ -253,7 +253,7 @@ fn speed_warn_is_measured_against_the_entitys_own_movement_speed_mod() {
             capture
                 .find_event(Level::WARN, "movement.speed_warning", "speed")
                 .is_some(),
-            "control: at the default speed mod this run must warn - otherwise the \
+            "control: at the default speed mod this run must warn — otherwise the \
              boosted case below proves nothing"
         );
     }
@@ -277,11 +277,11 @@ fn speed_warn_is_measured_against_the_entitys_own_movement_speed_mod() {
             .find_event(Level::WARN, "movement.speed_warning", "speed")
             .is_none(),
         "a player the server itself sped up must not warn at a speed their own \
-         movementSpeedMod permits - comparing against the flat class constant \
+         movementSpeedMod permits — comparing against the flat class constant \
          warns on every packet of authorised movement"
     );
 
-    // ...but the gate still exists: past their *personal* threshold it fires.
+    // …but the gate still exists: past their *personal* threshold it fires.
     // 5 u per 50 ms = 100 u/s sustained, over the boosted 60.94 u/s tolerance.
     run_packets(&mut mgr, t, x, 5.0, &[50; 8]);
     let warn = capture
@@ -290,7 +290,7 @@ fn speed_warn_is_measured_against_the_entitys_own_movement_speed_mod() {
     assert!(
         warn.has_field("top_speed", "40.625"),
         "the warn must report the scaled baseline it actually compared against, \
-         not the class constant - the SigNoz tolerance-calibration pipeline reads \
+         not the class constant — the SigNoz tolerance-calibration pipeline reads \
          this field; got {warn:#?}"
     );
     assert!(
@@ -375,14 +375,71 @@ fn authorized_teleport_resets_the_speed_window_at_the_seam() {
     let before = speed_warn_count(&capture);
     assert!(before > 0, "control: the 20 u/s run must warn");
 
+    // `note_authorized_teleport` reseeds the clock from the real `Instant::now()`,
+    // so the post-teleport packet is timed from that instant (not from the
+    // synthetic run clock, which is ahead of it).
+    let t_tp = Instant::now();
     mgr.note_authorized_teleport(100);
 
-    // One ordinary packet (top speed) after the teleport.
-    run_packets(&mut mgr, Instant::now(), x, 0.8125, &[100]);
+    // One ordinary packet (top speed) 100 ms after the teleport.
+    run_packets(&mut mgr, t_tp, x, 0.8125, &[100]);
     assert_eq!(
         speed_warn_count(&capture),
         before,
         "the pre-teleport run must not count against the first packet after it"
+    );
+}
+
+/// A teleport-rejected move never reaches the speed window. A client that
+/// jumps 90 u must be snapped back with no `movement.speed_warning` row, and
+/// the rejected 90 u must not sit in the window to warn on the honest packet
+/// that follows.
+///
+/// Feeding rejected moves to `observe_speed` (moving it above the reject
+/// check in `client_move.rs`) makes the final assertion fail.
+#[test]
+fn teleport_rejected_move_does_not_enter_the_speed_window() {
+    let capture = LogCapture::install();
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+
+    let (x, t) = run_packets(&mut mgr, t0, SPAWN_POS[0], 0.8125, &[100; 4]);
+    assert_eq!(speed_warn_count(&capture), 0, "control: top speed is quiet");
+
+    // 100 u from spawn, 50 ms later: a hard teleport reject.
+    let t_jump = t + Duration::from_millis(50);
+    let outcome = mgr.apply_client_position_update_at(
+        t_jump,
+        100,
+        [SPAWN_POS[0] + 100.0, 0.0, SPAWN_POS[2]],
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(
+            outcome,
+            ClientMoveOutcome::Rejected {
+                reason: MovementReject::Teleport,
+                ..
+            }
+        ),
+        "control: the jump must be a teleport reject, got {outcome:?}"
+    );
+    assert_eq!(
+        speed_warn_count(&capture),
+        0,
+        "a rejected teleport must not raise a speed warning"
+    );
+
+    // The next honest packet, from the unchanged authoritative position.
+    run_packets(&mut mgr, t_jump, x, 0.8125, &[100]);
+    assert_eq!(
+        speed_warn_count(&capture),
+        0,
+        "the rejected jump must not be counted in the window against the next packet"
     );
 }
 
