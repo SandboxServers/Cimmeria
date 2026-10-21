@@ -116,10 +116,12 @@ pub(super) fn check_request(req: &DevSessionRequest, launcher: bool) -> Result<(
 }
 
 /// Charges the launcher per-address quota, on its own table (C12 step 4).
+/// `rate_ip` is the quota key address (`forwarded_for::rate_limit_ip`), not the
+/// socket peer.
 pub(super) fn charge_ip(
     tables: &Tables,
     policy: &QuotaPolicy,
-    peer_ip: IpAddr,
+    rate_ip: IpAddr,
     launcher: bool,
     now: Instant,
 ) -> Result<(), AuthError> {
@@ -127,7 +129,7 @@ pub(super) fn charge_ip(
         return Ok(());
     }
     tables.mint_launcher_ip.check_and_record(
-        ip_key(peer_ip),
+        ip_key(rate_ip),
         policy.mint_launcher_per_ip,
         policy.window,
         "mint/launcher_ip",

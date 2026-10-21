@@ -11,7 +11,7 @@ use super::tests::{ip, policy, request, secret, status, EnvGuard, NOW_UNIX};
 use super::token::{decode_token, AuthError, TokenClaims, SCOPE_LAUNCHER_WRITE};
 use super::SCOPE_TELEMETRY_WRITE;
 
-fn launcher_request(install_id: &str) -> DevSessionRequest {
+pub(super) fn launcher_request(install_id: &str) -> DevSessionRequest {
     DevSessionRequest {
         session_kind: Some("launcher".into()),
         ..request(install_id)

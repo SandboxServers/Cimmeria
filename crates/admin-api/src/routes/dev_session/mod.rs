@@ -50,20 +50,28 @@
 //! - `handlers` — the two axum handlers and their operator-tunable
 //!   policy.
 
+pub(crate) mod forwarded_for;
 pub mod quota;
 pub mod token;
 
 mod handlers;
 pub(crate) mod launcher_kind;
+mod refusal_log;
+pub(crate) use refusal_log::Throttle;
+pub(crate) mod upload_endpoint;
 
 #[cfg(test)]
 mod account_name_tests;
+#[cfg(test)]
+mod forwarded_tests;
 #[cfg(test)]
 mod launcher_kind_tests;
 #[cfg(test)]
 mod session_kind_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod upload_endpoint_tests;
 
 use axum::extract::DefaultBodyLimit;
 use axum::routing::post;
@@ -96,10 +104,18 @@ pub use token::env_lock;
 /// mint issues. The caller holds [`env_lock`] and has set the HMAC secret.
 #[cfg(test)]
 pub(crate) fn mint_for_test(req: DevSessionRequest) -> Result<DevSessionResponse, AuthError> {
-    handlers::mint_inner(
+    // A loopback Host from a loopback peer is the one-host dev box, so this
+    // needs no upload-endpoint env.
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        axum::http::header::HOST,
+        axum::http::HeaderValue::from_static("localhost:8081"),
+    );
+    handlers::mint_with_headers(
         &handlers::Tables::new(),
         &QuotaPolicy::from_env(),
         std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        &headers,
         req,
         std::time::Instant::now(),
         chrono::Utc::now().timestamp(),
@@ -128,16 +144,14 @@ pub fn routes<S: Clone + Send + Sync + 'static>() -> Router<S> {
 /// `CIMMERIA_TELEMETRY_HMAC_SECRET` only ever showed as a 500 on the
 /// launcher's side and an empty `cimmeria-client` index here.
 pub fn log_boot_status() {
-    let upload_endpoint = handlers::upload_endpoint_env();
+    upload_endpoint::log_boot(upload_endpoint::upload_endpoint_env().as_deref());
     let kill_switch = handlers::kill_switch_active();
     match load_secret() {
         Ok(_) => tracing::info!(
-            upload_endpoint = %upload_endpoint,
             kill_switch,
             "dev-session telemetry: mint and ingest enabled"
         ),
         Err(e) => tracing::warn!(
-            upload_endpoint = %upload_endpoint,
             reason = "dev_session_secret_unusable",
             "dev-session telemetry: every mint and upload will be refused: {e}"
         ),

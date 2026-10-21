@@ -302,7 +302,7 @@ the client's own warn/error stream, so `DiscordLayer::on_event` drops them
 (`CLIENT_REPLAY_TARGETS`); a lab client in a repro campaign posted hundreds to
 the errors channel on 2026-09-29. They still reach SigNoz. The server's own
 ingest records (`launcher.ingest`, `launcher.bundle`) still post, except a
-refusal of the uploader's credential (see the SigNoz-only table below). Pinned by
+refusal of the uploader's credential and a refused launcher-summary request (see the SigNoz-only table below). `upload_refused` still posts. Pinned by
 `client_telemetry_replays_are_filtered`.
 
 **Content-quality events are SigNoz-only.** `SIGNOZ_ONLY_EVENTS` lists
@@ -315,6 +315,7 @@ or every instance and has nothing new for an operator to act on:
 |---|---|---|
 | `spawner.npc_behaviour` | `spawn_off_mesh` | Seed-placement data, read from the SigNoz views. It is deduplicated per spawn id per process, but the colo restarts on every deploy and Castle_CellBlock is instanced per login, so the same spawns posted all day (90 posts in 7 days, 2026-09-29). |
 | `launcher.ingest` | `upload_auth_refused` | A telemetry upload refused for the uploader's own credential (`reason` = `missing_token`, `bad_token` or `token_expired`). That is the uploader's state, not a server fault: an abandoned lab client retrying an expired token every ~12 s posted 1,363 rows in 6 h (2026-10-12). The ingest's other refusals (`event = "upload_refused"`: rate limit, budgets, body and archive errors, kill switch, unusable secret) and its truncations still post. Pinned by `ingest_credential_refusals_do_not_post` (discord) and, end to end from a real refused upload, `ingest_credential_refusals_never_post_to_discord` (server). |
+| `launcher.ingest` | `launcher_summary_refused` | A launcher-summary request refused as a whole (`reason` = `kill_switch`, `rate_limited`, `unsupported_media_type`, `body_too_large` or `bad_request`). The route is anonymous, so anyone who can reach it drives this row and could fill the errors channel at will; it is throttled to one row per reason per minute and has nothing for an operator to act on beyond the SigNoz count. Pinned by a test beside `SIGNOZ_ONLY_EVENTS` in `crates/discord/src/layer/`. |
 
 `effect_script_unregistered` now fires only for a real missing registration (TG-CMB-04), so it is no longer SigNoz-only and posts to Discord.
 

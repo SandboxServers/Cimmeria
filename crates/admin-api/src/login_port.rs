@@ -53,7 +53,8 @@ use crate::routes::{dev_session, telemetry};
 /// The mint, refresh and summary quotas read the peer
 /// address, so the listener must serve with
 /// `into_make_service_with_connect_info::<SocketAddr>()`, which both auth
-/// listeners already do.
+/// listeners already do. When the peer is a loopback proxy, the mint, refresh,
+/// summary and upload quotas key on the forwarded caller address instead (C18).
 pub fn login_port_telemetry_router() -> Router {
     Router::new()
         .nest(

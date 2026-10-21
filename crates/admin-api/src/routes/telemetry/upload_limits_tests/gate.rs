@@ -11,12 +11,13 @@ use axum::Router;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
+use super::forwarded::busy_row;
 use crate::routes::dev_session::AuthError;
 use crate::routes::telemetry;
 use crate::routes::telemetry::chunk::chunk_inner;
 use crate::routes::telemetry::dto::IngestError;
-use crate::routes::telemetry::replay_tests::{capture_async, Row};
-use crate::routes::telemetry::upload_gate::{Route, UploadLimits, UploadPolicy, UploadState};
+use crate::routes::telemetry::replay_tests::capture_async;
+use crate::routes::telemetry::upload_gate::{UploadLimits, UploadPolicy, UploadState};
 
 use super::{chunk_request, run, small_chunk, Env, PEER};
 
@@ -256,61 +257,4 @@ fn an_address_over_its_upload_rate_is_refused_whatever_the_session() {
     ))
     .unwrap_err();
     assert_eq!(err.reason(), "rate_limited");
-}
-
-/// The refusal row for a busy upload: the one `reason = "busy"` row logged.
-fn busy_row(rows: &[Row]) -> &Row {
-    rows.iter()
-        .find(|r| r.fields.get("reason").map(String::as_str) == Some("busy"))
-        .expect("a busy refusal is logged")
-}
-
-/// **One address holds at most one chunk slot.** While `PEER` has a chunk
-/// in flight its next one is refused as busy, another address's goes
-/// through, and once the first is done `PEER` is admitted again.
-#[test]
-fn an_address_holds_at_most_one_chunk_slot() {
-    let _env = Env::install();
-    let state = UploadState::new(UploadLimits::default());
-    let policy = UploadPolicy::defaults();
-    let other = std::net::IpAddr::V4(std::net::Ipv4Addr::new(198, 51, 100, 9));
-    let held = state.hold_peer_slot(Route::Chunk, PEER);
-    let (result, rows) = run(capture_async(chunk_inner(
-        &state,
-        &policy,
-        PEER,
-        chunk_request("sess-peer-a", small_chunk(1)),
-        Instant::now(),
-    )));
-    let err = result.unwrap_err();
-    assert!(matches!(err, IngestError::Busy { .. }), "{err:?}");
-    assert_eq!(busy_row(&rows).fields["pool"], "peer_share");
-    assert_eq!(
-        busy_row(&rows).level,
-        tracing::Level::INFO,
-        "busy is back-pressure, not a fault"
-    );
-    run(chunk_inner(
-        &state,
-        &policy,
-        other,
-        chunk_request("sess-peer-b", small_chunk(1)),
-        Instant::now(),
-    ))
-    .expect("another address has its own share");
-
-    drop(held);
-    run(chunk_inner(
-        &state,
-        &policy,
-        PEER,
-        chunk_request("sess-peer-a", small_chunk(1)),
-        Instant::now(),
-    ))
-    .expect("the address's slot is free again");
-    assert_eq!(
-        state.peers_in_flight(),
-        0,
-        "finished uploads release their share"
-    );
 }

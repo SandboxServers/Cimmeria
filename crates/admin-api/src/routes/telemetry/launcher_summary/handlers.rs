@@ -11,12 +11,14 @@ use axum::extract::{ConnectInfo, Request};
 use axum::http::header::CONTENT_TYPE;
 use axum::Json;
 
+use crate::routes::dev_session::forwarded_for;
 use crate::routes::dev_session::quota::{ip_key, WindowTable};
 use crate::routes::dev_session::{env_u32, kill_switch_active};
 
 use super::dedup::Dedup;
 use super::dto::{is_json_content_type, validate, SummaryError, SummaryResponse, Verdict};
 use super::envelope::parse_envelope;
+use super::refusal;
 use super::rows::{emit_batch, emit_summary};
 use super::MAX_SUMMARY_BODY_BYTES;
 
@@ -99,6 +101,7 @@ pub(super) async fn ingest(
         Instant::now(),
     )
     .await
+    .inspect_err(|refused| refusal::note(refusal::log_reason(refused.code()), refused.status()))
     .map(Json)
 }
 
@@ -166,9 +169,10 @@ pub(super) async fn ingest_inner(
         return Err(SummaryError::Paused);
     }
     // `ip_key` counts an IPv4-mapped peer (`::ffff:a.b.c.d`, an IPv4
-    // caller on a dual-stack listener) as its IPv4 address.
+    // caller on a dual-stack listener) as its IPv4 address. Behind a
+    // loopback proxy the quota counts the forwarded caller (C18).
     state.quota.check_and_record(
-        ip_key(peer_ip),
+        ip_key(forwarded_for::rate_limit_ip(peer_ip, request.headers())),
         policy.per_ip,
         SUMMARY_QUOTA_WINDOW,
         "summary/ip",

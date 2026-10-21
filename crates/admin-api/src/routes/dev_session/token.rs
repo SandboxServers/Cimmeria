@@ -143,6 +143,10 @@ pub enum AuthError {
         field: &'static str,
         reason: &'static str,
     },
+    // The body goes to any caller on the public port, so it names no env var;
+    // the operator hint is in the boot WARN.
+    #[error("no_upload_endpoint: no https telemetry upload endpoint is available")]
+    NoUploadEndpoint,
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }
@@ -153,7 +157,9 @@ impl AuthError {
             AuthError::SecretMissing | AuthError::SecretTooShort { .. } => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
-            AuthError::KillSwitchActive => StatusCode::SERVICE_UNAVAILABLE,
+            AuthError::KillSwitchActive | AuthError::NoUploadEndpoint => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
             AuthError::QuotaExceeded(_) => StatusCode::TOO_MANY_REQUESTS,
             AuthError::BadPayload(_)
             | AuthError::BadSignature
