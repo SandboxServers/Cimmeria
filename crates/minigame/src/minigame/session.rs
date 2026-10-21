@@ -14,6 +14,9 @@ use tokio::sync::{watch, Mutex};
 use tokio::time::Instant;
 
 pub use super::session_claim::ClaimRejection;
+#[path = "session_admission.rs"]
+mod admission;
+pub use admission::{AdmissionGuard, AdmissionRefusal};
 #[path = "session_result.rs"]
 mod session_result;
 #[path = "session_sweep.rs"]
@@ -104,6 +107,9 @@ pub struct MinigameSession {
 #[derive(Clone)]
 pub struct SessionRegistry {
     inner: Arc<Mutex<SessionRegistryInner>>,
+    /// In-flight admissions per peer key (#1119). A std mutex because the
+    /// guard's Drop cannot await. Lock order: `inner`, then this.
+    admitted: Arc<std::sync::Mutex<HashMap<admission::AdmissionKey, usize>>>,
 }
 
 struct SessionRegistryInner {
@@ -140,6 +146,7 @@ impl SessionRegistry {
                 receipt_order: VecDeque::new(),
                 next_room_id: 1001,
             })),
+            admitted: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
     }
 
