@@ -12,7 +12,7 @@
 > | CAT-K-04 cancel/end actor | Fixed (server derives the session from the caller) |
 > | CAT-K-05 spectate | Open, latent (stub) |
 > | CAT-K-06 call request | Open, latent (stub) |
-> | CAT-K-07 ticket binding | Fixed (single claim, expected-peer check, connection caps and timeouts) |
+> | CAT-K-07 ticket binding | Fixed (single claim, per-ticket connection admission, timeouts) |
 > | CAT-K-08 result idempotency | Partially mitigated |
 > | CAT-K-09 helper registration | Open, latent (stub) |
 >
@@ -399,7 +399,7 @@ the stub unmarshals would help the implementing contributor.
 ### CAT-K-07 — Minigame ticket has no IP / connection binding
 
 **Severity**: Low
-**Status**: Fixed. `authenticate_and_claim` lets one live connection claim a ticket (a second one is refused with `ticket_already_claimed`), the accept loop closes connections from any IP that no registered session expects, and it enforces global and per-IP connection caps plus handshake and idle timeouts. The variable-time ticket compare noted on 2026-07-25 is not part of this fix; treat it as residual.
+**Status**: Fixed. `authenticate_and_claim` lets one live connection claim a ticket (a second one is refused with `ticket_already_claimed`), the accept loop admits one connection per valid ticket and closes every other socket before a byte is read (a peer with no session, or whose tickets are all in use), and handshake and idle timeouts bound the rest. #1119 replaced the earlier 256-total and 8-per-IP connection caps (owner decision of 2026-09-30): the ticket count is the bound, so a household of N tickets is admitted in full and a scanner gets nothing. The variable-time ticket compare noted on 2026-07-25 is not part of this fix; treat it as residual.
 **Class**: Session hijack (defense in depth)
 **Wire surface**: SFS TCP login (`<msg t='sys'><body action='login'>`) on the minigame port
 **Demonstrable / Likely-theoretical**: Demonstrable (the auth check only validates

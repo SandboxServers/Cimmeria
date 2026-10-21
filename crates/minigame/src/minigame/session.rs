@@ -16,7 +16,7 @@ use tokio::time::Instant;
 pub use super::session_claim::ClaimRejection;
 #[path = "session_admission.rs"]
 mod admission;
-pub use admission::{AdmissionGuard, AdmissionRefusal};
+pub use admission::{AdmissionGuard, AdmissionRefusal, AdmissionRefusalReason};
 #[path = "session_result.rs"]
 mod session_result;
 #[path = "session_sweep.rs"]
@@ -81,8 +81,8 @@ pub struct MinigameSession {
     /// game. The minigame server only ever sees the entity id; this is what
     /// names the player in the Discord result (NT-10).
     pub player_name: Option<String>,
-    /// The IP of the player's game connection, the only address the minigame
-    /// listener admits for this session.
+    /// The IP the session was created for; `try_admit` uses it as the
+    /// admission key (non-public addresses share one class).
     pub client_ip: Option<std::net::IpAddr>,
     /// `tokio::time::Instant` rather than `std::time::Instant` so
     /// `tokio::time::pause()` / `advance()` drive the TTL deterministically
@@ -120,6 +120,10 @@ struct SessionRegistryInner {
     receipt_order: VecDeque<String>,
     /// Next room ID (auto-incrementing from 1001)
     next_room_id: u32,
+    /// The admission slot of each claimed connection, by entity: the ticket
+    /// it belongs to and a weak handle, so a cancel can free the slot at once
+    /// (see [`AdmissionGuard`]). At most one entry per entity.
+    bound_slots: HashMap<u32, (String, std::sync::Weak<admission::Slot>)>,
 }
 
 impl Default for SessionRegistry {
@@ -145,6 +149,7 @@ impl SessionRegistry {
                 receipts: HashMap::new(),
                 receipt_order: VecDeque::new(),
                 next_room_id: 1001,
+                bound_slots: HashMap::new(),
             })),
             admitted: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
@@ -377,8 +382,7 @@ impl SessionRegistry {
         // chains. The session leaves the registry when its connection task
         // ends, which needs the server to see the first socket go: a FIN or
         // RST, a failed or timed-out send, TCP keepalive giving up, or the
-        // idle timeout. Until one of those, a SWF reconnecting after a
-        // half-open drop lands here and is refused.
+        // idle timeout.
         if session.connected {
             return Err(ClaimRejection::AlreadyClaimed {
                 player_name: session.player_name.clone(),
@@ -393,9 +397,15 @@ impl SessionRegistry {
         Ok(claimed)
     }
 
-    /// Whether a registered session (pending or connected) belongs to a
-    /// player whose game connection comes from `ip`. The listener admits
-    /// only those peers (scanners never get a byte read).
+    /// Whether a registered session (pending or connected) records exactly
+    /// `ip` (after IPv4-mapped canonicalization) as its client address.
+    ///
+    /// The listener does not use this: it admits through
+    /// [`Self::try_admit`], which treats every non-public address as one
+    /// class and counts free tickets. This exact-address check is left over
+    /// from the pre-ticket listener (follow-up #1968).
+    ///
+    /// TODO(#1968): kept alive only by tests; remove or gate behind `cfg(test)`.
     pub async fn expects_peer(&self, ip: std::net::IpAddr) -> bool {
         let ip = ip.to_canonical();
         let inner = self.inner.lock().await;
@@ -405,9 +415,11 @@ impl SessionRegistry {
             .any(|s| s.client_ip.map(|c| c.to_canonical()) == Some(ip))
     }
 
-    /// How many sessions are registered (pending or connected). The listener
-    /// reads this when it refuses a peer, to tell a scanner from a player
-    /// behind an address no session recorded.
+    /// How many sessions are registered (pending or connected). Only tests
+    /// call it; the listener does not, because [`Self::try_admit`] picks the
+    /// refusal reason under its own lock.
+    ///
+    /// TODO(#1968): kept alive only by tests; remove or gate behind `cfg(test)`.
     pub async fn session_count(&self) -> usize {
         self.inner.lock().await.sessions.len()
     }
@@ -424,9 +436,11 @@ impl SessionRegistry {
     }
 
     /// How many registered sessions are still pending, that is, never had
-    /// their SWF client connect. The listener reports it with a refused peer,
-    /// since a pending session is the one a real player's connection is
-    /// expected to claim.
+    /// their SWF client connect. The listener does not read it: [`Self::try_admit`]
+    /// counts pending sessions under its own lock and reports the number in
+    /// [`AdmissionRefusal`]. No caller in the tree uses this one today.
+    ///
+    /// TODO(#1968): kept alive only by tests; remove or gate behind `cfg(test)`.
     pub async fn pending_count(&self) -> usize {
         self.inner
             .lock()
@@ -478,7 +492,10 @@ impl SessionRegistry {
     /// genuinely wants the entity's session gone whatever it is.
     pub async fn remove(&self, entity_id: u32) {
         let mut inner = self.inner.lock().await;
-        inner.sessions.remove(&entity_id);
+        if let Some(session) = inner.sessions.remove(&entity_id) {
+            // The session is gone, so a connection bound to it holds no ticket.
+            inner.release_bound_slot(entity_id, &session.ticket);
+        }
         inner.boards.remove(&entity_id);
         inner.invalidate_entity_receipts(entity_id);
     }
@@ -499,6 +516,9 @@ impl SessionRegistry {
         let session = inner.sessions.remove(&entity_id);
         if let Some(ref session) = session {
             session.cancel.send_replace(true);
+            // Release on cancel (owner ruling): the old connection may still
+            // be draining, but its ticket is gone and must not hold a slot.
+            inner.release_bound_slot(entity_id, &session.ticket);
         }
         inner.boards.remove(&entity_id);
         inner.invalidate_entity_receipts(entity_id);
@@ -523,6 +543,7 @@ impl SessionRegistry {
         if matches_session {
             if let Some(session) = inner.sessions.remove(&entity_id) {
                 session.cancel.send_replace(true);
+                inner.release_bound_slot(entity_id, &session.ticket);
             }
         }
         if inner
@@ -565,6 +586,7 @@ impl SessionRegistry {
         match inner.sessions.get(&entity_id) {
             Some(session) if session.ticket == ticket => {
                 inner.sessions.remove(&entity_id);
+                inner.release_bound_slot(entity_id, ticket);
                 if let Some(board) = inner.boards.get_mut(&entity_id) {
                     if board.ticket == ticket && board.snapshot.is_some() {
                         board.finish();

@@ -1,21 +1,22 @@
-//! Guards for the public-port limits ([`super::limits`]) and for how the
+//! Guards for the public-port timeouts ([`super::limits`]) and for how the
 //! listener logs what unauthenticated peers send.
 //!
 //! The port is reachable from the internet, so two things are pinned here:
-//! a peer cannot hold more than its share of sockets or hold one open
-//! without logging in, and bytes from a peer that never logged in never
-//! raise a WARN (only WARN and ERROR reach the Discord harvest). The
-//! authenticated case is the opposite: an unknown frame from a real
-//! session is a protocol gap and must still WARN, with its fields filled.
+//! a peer cannot hold a socket open without logging in, and bytes from a peer
+//! that never logged in never raise a WARN (only WARN and ERROR reach the
+//! Discord harvest). The authenticated case is the opposite: an unknown frame
+//! from a real session is a protocol gap and must still WARN, with its fields
+//! filled.
 
 use std::net::SocketAddr;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::Level;
 
+use super::admission_tests::test_permit;
 use super::tests::{
     drain_results, read_until_game_begin, spawn_placeholder_session,
-    spawn_placeholder_session_with_idle, test_permit,
+    spawn_placeholder_session_with_idle,
 };
 use super::*;
 use crate::test_support::LogCapture;
@@ -43,14 +44,9 @@ pub(super) async fn connect_to(
 ) {
     let (client, server, peer) = loopback_pair().await;
     let (tx, rx) = mpsc::channel(16);
+    let permit = test_permit(peer).await;
     let handle = tokio::spawn(handle_connection(
-        server,
-        peer,
-        test_permit(peer),
-        registry,
-        tx,
-        9339,
-        limits,
+        server, peer, permit, registry, tx, 9339, limits,
     ));
     (client, rx, handle)
 }
@@ -64,32 +60,6 @@ pub(super) async fn spawn_connection(
     tokio::task::JoinHandle<()>,
 ) {
     connect_to(SessionRegistry::new(), limits).await
-}
-
-/// Stand up [`accept::serve`] on an ephemeral port, with one loopback
-/// session registered so the expected-peer check admits the test's clients.
-async fn spawn_listener(limits: ListenerLimits) -> SocketAddr {
-    let registry = SessionRegistry::new();
-    registry
-        .register(
-            4399,
-            7,
-            "Hack".into(),
-            1,
-            1,
-            0,
-            0,
-            0,
-            1,
-            vec![],
-            vec![],
-            None,
-            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
-            1,
-        )
-        .await
-        .expect("register loopback session");
-    spawn_listener_on(registry, limits).await
 }
 
 /// Stand up [`accept::serve`] on an ephemeral port over `registry`.
@@ -147,7 +117,8 @@ async fn listener_closes_unexpected_peer() {
     );
 }
 
-/// A session registered for another address does not admit a loopback peer:
+/// A session registered for another public address does not admit a loopback
+/// peer (non-public peers only match other non-public ones, #1119):
 /// the socket is closed, and because a session is registered the refusal is
 /// the unthrottled `unexpected_peer_with_sessions` row rather than the
 /// throttled `unexpected_peer` one.
@@ -169,7 +140,9 @@ async fn listener_closes_peer_when_session_is_for_another_ip() {
             vec![],
             vec![],
             None,
-            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 5))),
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(
+                203, 0, 113, 5,
+            ))),
             1,
         )
         .await
@@ -216,7 +189,9 @@ async fn refused_peer_row_counts_pending_sessions() {
             vec![],
             vec![],
             None,
-            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 6))),
+            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(
+                203, 0, 113, 6,
+            ))),
             1,
         )
         .await
@@ -240,88 +215,6 @@ async fn refused_peer_row_counts_pending_sessions() {
         row.has_field("pending_sessions", "1"),
         "pending_sessions must be 1 with one pending session: {row:#?}",
     );
-}
-
-/// The per-IP cap closes the extra socket from one address, leaves the
-/// others open, and frees the slot when one of them goes away. Without the
-/// cap all three stay open and the refusal check times out.
-#[tokio::test]
-async fn per_ip_cap_refuses_the_extra_connection() {
-    let capture = LogCapture::install();
-    let addr = spawn_listener(ListenerLimits {
-        max_connections: 64,
-        max_connections_per_ip: 2,
-        ..ListenerLimits::default()
-    })
-    .await;
-
-    let mut first = TcpStream::connect(addr).await.expect("connect");
-    let mut second = TcpStream::connect(addr).await.expect("connect");
-    let mut third = TcpStream::connect(addr).await.expect("connect");
-
-    assert!(
-        closed_within(&mut third, Duration::from_secs(5)).await,
-        "the third connection from one address must be closed",
-    );
-    assert!(!closed_within(&mut first, Duration::from_millis(200)).await);
-    assert!(!closed_within(&mut second, Duration::from_millis(200)).await);
-    let refusal = capture
-        .find_event(
-            Level::DEBUG,
-            "Minigame connection refused",
-            "per_ip_connection_cap",
-        )
-        .expect("the refusal must log at DEBUG with its reason");
-    assert!(refusal.fields.contains_key("peer"), "{refusal:#?}");
-
-    // A closed connection gives its slot back.
-    drop(first);
-    let mut readmitted = false;
-    for _ in 0..50 {
-        let mut again = TcpStream::connect(addr).await.expect("connect");
-        if !closed_within(&mut again, Duration::from_millis(100)).await {
-            readmitted = true;
-            break;
-        }
-    }
-    assert!(readmitted, "a closed connection must free its per-IP slot");
-    assert_no_warn_or_error(&capture);
-}
-
-/// The total cap closes a connection once the server holds its maximum,
-/// whatever the address, and says so at INFO (never WARN).
-#[tokio::test]
-async fn total_cap_refuses_the_extra_connection() {
-    let capture = LogCapture::install();
-    let addr = spawn_listener(ListenerLimits {
-        max_connections: 2,
-        max_connections_per_ip: 8,
-        ..ListenerLimits::default()
-    })
-    .await;
-
-    let mut first = TcpStream::connect(addr).await.expect("connect");
-    let mut second = TcpStream::connect(addr).await.expect("connect");
-    let mut third = TcpStream::connect(addr).await.expect("connect");
-
-    assert!(
-        closed_within(&mut third, Duration::from_secs(5)).await,
-        "a connection past the total cap must be closed",
-    );
-    assert!(!closed_within(&mut first, Duration::from_millis(200)).await);
-    assert!(!closed_within(&mut second, Duration::from_millis(200)).await);
-    assert!(
-        capture
-            .find_event(
-                Level::INFO,
-                "server at its connection cap",
-                "total_connection_cap",
-            )
-            .is_some(),
-        "{:#?}",
-        capture.all()
-    );
-    assert_no_warn_or_error(&capture);
 }
 
 /// A peer that connects and says nothing is closed at the handshake

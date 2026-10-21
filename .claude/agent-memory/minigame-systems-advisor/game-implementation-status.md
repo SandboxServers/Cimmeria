@@ -24,7 +24,7 @@ metadata:
 - Still stubs: debug 20-23, spectate 26/27, helper register 28/29, call accept/decline/abort 31-33, contact request 34.
 - Level, intelligence and ability mask come from the player at launch (MG-22); tech competency stays 1 (D-MG18, M9).
 - `on_failure_chains` fire on result 2 and 4; 0 and 3 fire nothing (D-MG5). MG-24: an ability effect `StartMinigame` launches for the caster. MG-62: Converse abilities 1327 and 2089. MG-63a/b: the movement hold (`movement_lock::check(new_pos, anchor)`) and the Prison Boot movement-only hold. MG-64: load-time `MINIGAME_TYPE_NAMES` check. MG-74: six Debug Area terminals (`docs/content/debug-area.md#minigame-terminals`).
-- Sessions: `PENDING_SESSION_TTL` 180 s, sweep every 60 s, one live connection claims a ticket (`ticket_already_claimed`).
+- Sessions: `PENDING_SESSION_TTL` 180 s, sweep every 60 s, one connection per ticket (`no_free_ticket` at accept, `ticket_already_claimed` at login).
 - Docs: `docs/gameplay/minigame-system.md`, `docs/reverse-engineering/findings/minigame-wire-formats.md`, CAT-K statuses, campaign README `docs/analysis/minigames/`.
 
 ## Historical note: the Python reference (2026-09-17)
