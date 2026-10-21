@@ -7,6 +7,8 @@ use std::time::Instant;
 use cimmeria_common::Vector3;
 use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_wire::cell::client_methods::duel::TEXT_DUEL_ABORTED;
+use cimmeria_wire::cell::client_methods::player::ON_DUEL_ENTITIES_CLEAR;
+use cimmeria_wire::cell::client_methods::spawnable_entity::ON_ENTITY_PROPERTY;
 use tokio::sync::mpsc;
 use tracing::Level;
 
@@ -283,8 +285,6 @@ async fn help_duel_end_shows_argument_detail() {
 async fn duel_end_on_an_engaged_duel_clears_through_end_engaged() {
     use crate::cell::duel::limits::COUNTDOWN;
     use crate::cell::duel::DuelState;
-    const PVP_FLAG: u16 = 7;
-    const DUEL_CLEAR: u16 = 153;
 
     let capture = LogCapture::install();
     let (mut mgr, gm) = fixture();
@@ -325,8 +325,17 @@ async fn duel_end_on_an_engaged_duel_clears_through_end_engaged() {
             .count()
     };
     for eid in [ANA.0, BO.0] {
-        assert_eq!(own(eid, PVP_FLAG), 1, "PvP flag cleared once for {eid}");
-        assert_eq!(own(eid, DUEL_CLEAR), 1, "153 once to {eid}");
+        // The PvP flag rides onEntityProperty (GENERICPROPERTY_PvPFlag).
+        assert_eq!(
+            own(eid, ON_ENTITY_PROPERTY),
+            1,
+            "PvP flag cleared once for {eid}"
+        );
+        assert_eq!(
+            own(eid, ON_DUEL_ENTITIES_CLEAR),
+            1,
+            "onDuelEntitiesClear once to {eid}"
+        );
         assert_eq!(
             lines_to(&msgs, eid),
             vec![TEXT_DUEL_ABORTED.to_string()],
