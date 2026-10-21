@@ -51,6 +51,19 @@ try {
  assert.equal(before.owner_marker,false);assert.equal(before.owned_directory,null);assert.equal(before.executable_in_old_place,true);
  assert.match(text(),/Adopt your existing game folder .* in place/);
  assert.equal(get('choose-adoption-destination').textContent,'Choose the folder to adopt in place…');
+
+ // 0. A hard link in the folder: the refusal names both entries and the fix,
+ // nothing changes, and once the link is gone scenario 1 runs as before.
+ await send({command:'plant_hard_link'});
+ await click('choose-adoption-destination');
+ let refused=await until('the unsafe refusal',s=>s.last_error==='unsafe_file');
+ assert.equal(refused.unsafe_entries.total,2);
+ assert.match(text(),/^These files or folders in the game folder cannot be adopted safely/);
+ const items=[...get('adoption-unsafe').querySelectorAll('li')].map(li=>li.textContent);
+ assert.equal(items.length,2);for(const item of items)assert.match(item,/^later(-link)?\.txt: a hard link/);
+ let held=await evidence();assert.equal(held.owner_marker,false);assert.equal(held.executable_in_old_place,true);
+ await send({command:'remove_hard_link'});
+
  // Picking copy re-renders at once; picking in place again restores the adopt label (scenario 1 needs in_place).
  get('adoption-mode-in-place').checked=false;get('adoption-mode-copy').checked=true;get('adoption-mode-copy').dispatchEvent(new window.Event('change'));await settle();
  assert.match(get('adoption-mode-copy-row').className,/\bselected\b/);assert.equal(get('choose-adoption-destination').textContent,'Choose the folder to copy…');
@@ -64,6 +77,7 @@ try {
  let status=await until('the review',s=>{assert.equal(s.last_error,null,'preparation failed');return !!s.review;});
  assert.equal(status.review.in_place,true);assert.equal(status.review.requires_replacement,true);assert.deepEqual(status.review.blocked_files,[]);
  assert.match(text(),/Review the comparison and confirmations below\. Nothing is moved until you confirm\./);
+ assert.equal(get('adoption-unsafe').hidden,true,'the refusal list is gone in review');
  assert.equal(get('adoption-source-label').textContent,'Game folder to adopt:');assert.equal(get('adoption-source').textContent,before.folder);
  assert.equal(get('adoption-replace-row').hidden,false,'a modified release file shows the replacement box');
  assert.equal(get('adoption-replace').checked,false);
@@ -91,6 +105,6 @@ try {
  assert.equal(now.owner_marker,false);assert.equal(now.owned_directory,null);assert.equal(now.executable_in_game,false);
  assert.equal(now.player_file,'untrusted plugin');
  console.log('In-place adoption logic UAT passed: production Effect workflow and view against the production host with a real isolated store, imported old-launcher folder and signed loopback artifact origin.');
- console.log('Exercised: the mode rows show the pick and the choose button names it; in-place offer text and button; a modified release file shows the replacement box, confirm held disabled until it is ticked and the folder unchanged until then; a single confirmation per double click; adoption published with owner marker, owned directory, uninstall target, executable moved into the owned tree and the unlisted file left in place; engine uninstall of the adopted folder keeping the unlisted file.');
+ console.log('Exercised: a hard link in the folder refused with both entries, their reason and fix named, nothing changed; the mode rows show the pick and the choose button names it; in-place offer text and button; a modified release file shows the replacement box, confirm held disabled until it is ticked and the folder unchanged until then; a single confirmation per double click; adoption published with owner marker, owned directory, uninstall target, executable moved into the owned tree and the unlisted file left in place; engine uninstall of the adopted folder keeping the unlisted file.');
  console.log('Excluded: Tauri IPC and the absent folder dialog, the signed production catalog and HTTPS transport, the published client and its RAR/CAB seed, interrupted-move recovery and abandonment (engine tests), the Uninstall view (G-06, LX-26), Play on the adopted folder (LX-26), and packaged visual UAT.');
 } finally {await app.dispose();child.stdin.end();assert.equal(await exit,0,'native bridge exits cleanly');await rm(root,{recursive:true,force:true});}

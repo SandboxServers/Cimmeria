@@ -33,7 +33,7 @@
 <div id="migration-actions" hidden><button id="confirm-migration">Confirm settings import</button><button id="dismiss-migration">Cancel import</button></div></section>
 </section>
 <section aria-labelledby="adoption-title"><h3 id="adoption-title">Use an existing game folder</h3>
-<p id="adoption-status" role="status" aria-live="polite">Checking adoption availability…</p><progress id="adoption-progress" hidden aria-label="Adoption progress"></progress>
+<p id="adoption-status" role="status" aria-live="polite">Checking adoption availability…</p><progress id="adoption-progress" hidden aria-label="Adoption progress"></progress><ul id="adoption-unsafe" class="caption" hidden aria-label="Entries that cannot be adopted safely"></ul>
 <fieldset id="adoption-modes" class="adoption-modes" hidden><legend>How to use the folder</legend>
 <label class="mode-option selected" id="adoption-mode-in-place-row"><input type="radio" name="adoption-mode" id="adoption-mode-in-place" value="in_place" checked><span><strong>Adopt it in place</strong><small>The folder becomes the launcher’s installation. Its game files move into a “game” folder inside it.</small></span></label>
 <label class="mode-option" id="adoption-mode-copy-row"><input type="radio" name="adoption-mode" id="adoption-mode-copy" value="copy"><span><strong>Make a verified copy</strong><small>Your folder is left as it is. The launcher writes a checked copy to a second folder you pick.</small></span></label>
