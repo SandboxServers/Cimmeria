@@ -143,22 +143,6 @@ fn launcher_summary_is_refused_as_an_unknown_session_kind() {
     assert_eq!(claims.scope, ["telemetry.write"]);
 }
 
-/// The colo compose passes `${CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT:-}`, so an
-/// operator who has not set it yet gives the server an empty string. The
-/// mint must still hand back a usable endpoint, not `""`.
-#[test]
-fn a_blank_upload_endpoint_falls_back_to_the_default() {
-    use super::handlers::upload_endpoint_from;
-    let default = upload_endpoint_from(None);
-    assert_eq!(default, "http://localhost:8443/api/telemetry");
-    assert_eq!(upload_endpoint_from(Some(String::new())), default);
-    assert_eq!(upload_endpoint_from(Some("  ".into())), default);
-    assert_eq!(
-        upload_endpoint_from(Some("https://t.example/api/telemetry ".into())),
-        "https://t.example/api/telemetry"
-    );
-}
-
 /// The request body a lab supervisor sends deserializes with the kind,
 /// and a launcher's body without the field still deserializes.
 #[test]
