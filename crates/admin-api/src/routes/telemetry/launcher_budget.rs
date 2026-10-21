@@ -31,8 +31,7 @@ pub(super) const LAUNCHER_ROWS_PER_SESSION_ENV: &str =
 pub(super) const DEFAULT_LAUNCHER_ROWS_PER_MINUTE: u32 = 3_000;
 
 /// The env var that overrides [`DEFAULT_LAUNCHER_ROWS_PER_MINUTE`].
-pub(super) const LAUNCHER_ROWS_PER_MINUTE_ENV: &str =
-    "CIMMERIA_TELEMETRY_LAUNCHER_ROWS_PER_MINUTE";
+pub(super) const LAUNCHER_ROWS_PER_MINUTE_ENV: &str = "CIMMERIA_TELEMETRY_LAUNCHER_ROWS_PER_MINUTE";
 
 /// Sessions the launcher ledger tracks at once.
 pub(super) const LAUNCHER_LEDGER_SESSIONS: usize = 4_096;
@@ -75,8 +74,14 @@ impl LauncherBudget {
     /// The budget from the environment, or the defaults for what is unset.
     pub(super) fn from_env() -> Self {
         Self::new(
-            env_u32(LAUNCHER_ROWS_PER_SESSION_ENV, DEFAULT_LAUNCHER_ROWS_PER_SESSION),
-            env_u32(LAUNCHER_ROWS_PER_MINUTE_ENV, DEFAULT_LAUNCHER_ROWS_PER_MINUTE),
+            env_u32(
+                LAUNCHER_ROWS_PER_SESSION_ENV,
+                DEFAULT_LAUNCHER_ROWS_PER_SESSION,
+            ),
+            env_u32(
+                LAUNCHER_ROWS_PER_MINUTE_ENV,
+                DEFAULT_LAUNCHER_ROWS_PER_MINUTE,
+            ),
         )
     }
 
@@ -92,17 +97,11 @@ impl LauncherBudget {
     /// `Ok(n)`, where `n <= rows` rows still fit the session's lifetime
     /// budget (those `n` are charged globally). A new session the full table
     /// cannot take gets `Ok(0)`.
-    pub(super) fn charge(
-        &self,
-        sid: &str,
-        rows: usize,
-        now: Instant,
-    ) -> Result<usize, AuthError> {
+    pub(super) fn charge(&self, sid: &str, rows: usize, now: Instant) -> Result<usize, AuthError> {
         let mut sessions = self.sessions.lock().unwrap_or_else(|p| p.into_inner());
         if !sessions.contains_key(sid) {
-            sessions.retain(|_, (_, seen)| {
-                now.saturating_duration_since(*seen) <= LAUNCHER_LEDGER_TTL
-            });
+            sessions
+                .retain(|_, (_, seen)| now.saturating_duration_since(*seen) <= LAUNCHER_LEDGER_TTL);
             if sessions.len() >= self.capacity {
                 return Ok(0);
             }

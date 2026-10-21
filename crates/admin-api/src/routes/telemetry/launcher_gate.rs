@@ -136,8 +136,6 @@ impl UploadLimits {
     /// The limits a launcher chunk runs under: each chunk size is the smaller
     /// of this limit and the launcher's cap. Player and lab limits are not
     /// changed by it.
-    // wired in by AU-15
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn launcher(&self) -> UploadLimits {
         UploadLimits {
             chunk_body_bytes: self.chunk_body_bytes.min(LAUNCHER_CHUNK_BODY_BYTES),
