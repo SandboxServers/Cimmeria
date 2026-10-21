@@ -1,7 +1,7 @@
 use super::*;
 use crate::game_telemetry::start;
 use crate::storage::DesktopState;
-use cimmeria_launcher_core::telemetry::events::ClientLogEvent;
+use cimmeria_launcher_core::telemetry::events::{ClientLogEvent, ClientNativeEvent};
 use std::io::Read;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
@@ -326,6 +326,28 @@ fn queue_now_after_an_opt_out_writes_nothing() {
     let core = DiskQueue::new(root.path());
     assert_eq!(core.pending_count::<TelemetryEvent>().unwrap(), 0);
     assert!(!root.path().join("telemetry-queue.jsonl").exists());
+}
+
+/// LT-40: a row that core builds without `launcher_event` (an install result whose
+/// error holds an address) reaches the queue file with the address scrubbed.
+#[test]
+fn queue_now_scrubs_an_ip_literal_before_it_is_written() {
+    let root = tempfile::tempdir().unwrap();
+    let state = opted_in(root.path());
+    let consent = Consent::read(&state).unwrap().unwrap();
+    let mut fields = serde_json::Map::new();
+    fields.insert("error".into(), "connect to 198.51.100.7 failed".into());
+    let install = TelemetryEvent::ClientNative(ClientNativeEvent {
+        ts_ms: 0,
+        seq: 0,
+        target: "client.launcher.install".into(),
+        level: "info".into(),
+        fields,
+    });
+    queue_now(&consent, &install).unwrap();
+    let raw = std::fs::read_to_string(root.path().join("telemetry-queue.jsonl")).unwrap();
+    assert!(raw.contains("connect to [ip] failed"), "{raw}");
+    assert!(!raw.contains("198.51.100.7"), "{raw}");
 }
 
 /// Both writes refuse after an opt-out.
