@@ -9,6 +9,7 @@ use axum::http::HeaderMap;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
+use super::forwarded_for::rate_limit_ip;
 use super::launcher_kind;
 use super::quota::{ip_key, validate_install_id, WindowTable};
 use super::refusal_log;
@@ -310,19 +311,21 @@ pub(super) fn mint_with_headers(
     if kill_switch_active() {
         return Err(AuthError::KillSwitchActive);
     }
+    // The quotas count the forwarded caller behind a loopback proxy (C18).
+    let rate_ip = rate_limit_ip(peer_ip, headers);
     let endpoint = endpoint_for(peer_ip, headers)?;
     let launcher = launcher_kind::admit(policy, &req)?;
     // The launcher table is charged first, so a launcher mint that its own
     // limit refuses never spends the shared `mint_ip` allowance (S1). A
     // player mint is not charged there at all.
-    launcher_kind::charge_ip(tables, policy, peer_ip, launcher, now)?;
+    launcher_kind::charge_ip(tables, policy, rate_ip, launcher, now)?;
     // Charged before `install_id` is validated, so rotating or
     // malforming it buys nothing from one address. A body that fails
     // JSON extraction never reaches this function (axum rejects it in
     // the `Json` extractor) and is not charged; no token is issued on
     // that path either.
     tables.mint_ip.check_and_record(
-        ip_key(peer_ip),
+        ip_key(rate_ip),
         policy.mint_per_ip,
         policy.window,
         "mint/ip",
@@ -393,6 +396,8 @@ pub(super) fn refresh_with_headers(
     if kill_switch_active() {
         return Err(AuthError::KillSwitchActive);
     }
+    // The quotas count the forwarded caller behind a loopback proxy (C18).
+    let rate_ip = rate_limit_ip(peer_ip, headers);
     // Verify before charging the refresh quota. Charging first let
     // anyone who shares an egress address with real launchers (a
     // tunnel, an office NAT) burn the shared bucket with junk tokens
@@ -404,7 +409,7 @@ pub(super) fn refresh_with_headers(
         Ok(claims) => claims,
         Err(e) => {
             tables.refresh_bad.check_and_record(
-                ip_key(peer_ip),
+                ip_key(rate_ip),
                 policy.refresh_bad_per_ip,
                 policy.window,
                 "refresh/bad_token",
@@ -415,7 +420,7 @@ pub(super) fn refresh_with_headers(
     };
     launcher_kind::refuse_refresh(&claims)?;
     tables.refresh_ip.check_and_record(
-        ip_key(peer_ip),
+        ip_key(rate_ip),
         policy.refresh_per_ip,
         policy.window,
         "refresh/ip",

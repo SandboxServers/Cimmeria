@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 
+use axum::http::HeaderValue;
+
 use crate::routes::dev_session::QuotaPolicy;
 
 use super::super::dto::{SummaryError, Verdict::Accepted};
@@ -326,6 +328,84 @@ fn the_third_request_past_an_allowance_of_two_is_a_429() {
     assert_eq!(refusal(post(&h, 4).unwrap_err()).status, 429, "59 s in");
     h.now += Duration::from_secs(1);
     assert_eq!(post(&h, 4).unwrap().results, [Accepted], "a new window");
+}
+
+/// Behind the board proxy (C18) a loopback peer is the proxy, so its
+/// `X-Forwarded-For` names the caller: two callers each get their own
+/// allowance of one. Reverted, the second request is a 429.
+#[test]
+fn behind_a_loopback_proxy_the_forwarded_caller_is_the_key() {
+    let _env = Env::install();
+    let mut h = Harness::new();
+    h.policy.per_ip = 1;
+    h.peer = "127.0.0.1".parse().unwrap();
+
+    h.headers
+        .insert("x-forwarded-for", HeaderValue::from_static("198.51.100.7"));
+    assert_eq!(
+        h.post_json(&batch(vec![element(1)])).unwrap().results,
+        [Accepted]
+    );
+    h.headers
+        .insert("x-forwarded-for", HeaderValue::from_static("198.51.100.8"));
+    assert_eq!(
+        h.post_json(&batch(vec![element(2)])).unwrap().results,
+        [Accepted],
+        "another caller behind the same proxy"
+    );
+    h.headers
+        .insert("x-forwarded-for", HeaderValue::from_static("198.51.100.7"));
+    let err = h.post_json(&batch(vec![element(3)])).unwrap_err();
+    assert_eq!(refusal(err).status, 429, "the first caller again");
+}
+
+/// Directive 6 (D-LT19): the forwarded address is a quota key and nothing
+/// else. An admitted summary and a refused one, both from a loopback proxy
+/// that forwarded `198.51.100.7`, leave no row that names it. Reverted to
+/// log the key, a row names it and this fails.
+#[test]
+fn the_forwarded_address_is_in_no_summary_row() {
+    let _env = Env::install();
+    let mut h = Harness::new();
+    h.policy.per_ip = 1;
+    h.peer = "127.0.0.1".parse().unwrap();
+    h.headers
+        .insert("x-forwarded-for", HeaderValue::from_static("198.51.100.7"));
+    let (outcomes, rows) = capture(|| {
+        let admitted = h.post_json(&batch(vec![element(1)]));
+        let refused = h.post_json(&batch(vec![element(2)]));
+        (admitted, refused)
+    });
+    assert_eq!(outcomes.0.unwrap().results, [Accepted]);
+    assert_eq!(refusal(outcomes.1.unwrap_err()).status, 429);
+    assert!(!rows.is_empty(), "the summary should leave rows to check");
+    for row in &rows {
+        assert!(
+            !row.mentions("198.51.100.7"),
+            "a summary row names the forwarded address: {row:?}"
+        );
+    }
+}
+
+/// A remote peer cannot name its own caller: its `X-Forwarded-For` is
+/// ignored, so both requests count against the peer and the second is a 429.
+#[test]
+fn a_remote_peer_cannot_escape_its_quota_with_a_forwarded_header() {
+    let _env = Env::install();
+    let mut h = Harness::new();
+    h.policy.per_ip = 1;
+    h.peer = "203.0.113.9".parse().unwrap();
+
+    h.headers
+        .insert("x-forwarded-for", HeaderValue::from_static("198.51.100.7"));
+    assert_eq!(
+        h.post_json(&batch(vec![element(1)])).unwrap().results,
+        [Accepted]
+    );
+    h.headers
+        .insert("x-forwarded-for", HeaderValue::from_static("198.51.100.8"));
+    let err = h.post_json(&batch(vec![element(2)])).unwrap_err();
+    assert_eq!(refusal(err).status, 429, "the header is not trusted");
 }
 
 /// An allowance of 0 is the documented "disabled", not "refuse everything".

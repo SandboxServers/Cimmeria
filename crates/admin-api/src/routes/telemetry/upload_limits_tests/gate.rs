@@ -1,11 +1,11 @@
 //! The gate: the token before the body, the kill switch, the rate limits
 //! and the concurrency slots.
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
-use axum::http::header::RETRY_AFTER;
-use axum::http::StatusCode;
+use axum::http::header::{AUTHORIZATION, RETRY_AFTER};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
 use axum::Router;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -16,9 +16,11 @@ use crate::routes::telemetry;
 use crate::routes::telemetry::chunk::chunk_inner;
 use crate::routes::telemetry::dto::IngestError;
 use crate::routes::telemetry::replay_tests::{capture_async, Row};
-use crate::routes::telemetry::upload_gate::{Route, UploadLimits, UploadPolicy, UploadState};
+use crate::routes::telemetry::upload_gate::{
+    admit, Admitted, Route, UploadLimits, UploadPolicy, UploadState, Uploader,
+};
 
-use super::{chunk_request, run, small_chunk, Env, PEER};
+use super::{chunk_request, run, small_chunk, token, Env, PEER};
 
 /// **A chunk with no token is answered before its body arrives.** The
 /// request declares a 1 MiB body and sends none of it. The 401 comes back
@@ -254,6 +256,90 @@ fn an_address_over_its_upload_rate_is_refused_whatever_the_session() {
         chunk_request("sess-ip-c", small_chunk(1)),
         now,
     ))
+    .unwrap_err();
+    assert_eq!(err.reason(), "rate_limited");
+}
+
+/// One `admit` from `peer`, as the handler makes it: the bearer token for
+/// `sid` and, when given, an `X-Forwarded-For` header.
+fn admit_from(
+    state: &UploadState,
+    policy: &UploadPolicy,
+    route: Route,
+    peer: IpAddr,
+    forwarded: Option<&str>,
+    sid: &str,
+) -> Result<Admitted, IngestError> {
+    let mut headers = HeaderMap::new();
+    let bearer = format!("Bearer {}", token(sid));
+    headers.insert(AUTHORIZATION, HeaderValue::from_str(&bearer).unwrap());
+    if let Some(forwarded) = forwarded {
+        headers.insert("x-forwarded-for", HeaderValue::from_str(forwarded).unwrap());
+    }
+    let mut who = Uploader::anonymous(peer);
+    admit(state, policy, route, &headers, &mut who, Instant::now())
+}
+
+/// Behind the board proxy (C18) a loopback peer's `X-Forwarded-For` names the
+/// caller, so three callers behind one proxy address each pass the address
+/// quota and each hold a peer slot at once, on both routes. Reverted, all
+/// three share the proxy's slot and the second is refused `Busy`.
+#[test]
+fn behind_a_loopback_proxy_each_forwarded_caller_holds_its_own_slot() {
+    let _env = Env::install();
+    let loopback: IpAddr = "127.0.0.1".parse().unwrap();
+    for route in [Route::Chunk, Route::Bundle] {
+        // The route-wide pool stays out of the way: only the peer slot is
+        // under test.
+        let state = UploadState::new(UploadLimits {
+            chunk_slots: 8,
+            bundle_slots: 8,
+            ..UploadLimits::default()
+        });
+        let policy = UploadPolicy {
+            chunk_per_session: 0,
+            chunk_per_ip: 2,
+            ..UploadPolicy::defaults()
+        };
+        let callers = ["198.51.100.7", "198.51.100.8", "198.51.100.9"];
+        let mut held = Vec::new();
+        for (sid, caller) in ["sess-xff-a", "sess-xff-b", "sess-xff-c"]
+            .iter()
+            .zip(callers)
+        {
+            let admitted = admit_from(&state, &policy, route, loopback, Some(caller), sid);
+            held.push(admitted.expect("a distinct caller is admitted"));
+        }
+        assert_eq!(held.len(), 3, "{route:?}");
+    }
+}
+
+/// A remote peer cannot choose its caller: its rotating `X-Forwarded-For` is
+/// ignored, so the third request from it is refused by the address quota.
+#[test]
+fn a_remote_peer_cannot_rotate_past_the_address_quota() {
+    let _env = Env::install();
+    let state = UploadState::new(UploadLimits::default());
+    let policy = UploadPolicy {
+        chunk_per_session: 0,
+        chunk_per_ip: 2,
+        ..UploadPolicy::defaults()
+    };
+    for (sid, caller) in ["sess-spoof-a", "sess-spoof-b"]
+        .iter()
+        .zip(["198.51.100.7", "198.51.100.8"])
+    {
+        let admitted = admit_from(&state, &policy, Route::Chunk, PEER, Some(caller), sid);
+        admitted.expect("within the address quota");
+    }
+    let err = admit_from(
+        &state,
+        &policy,
+        Route::Chunk,
+        PEER,
+        Some("198.51.100.9"),
+        "sess-spoof-c",
+    )
     .unwrap_err();
     assert_eq!(err.reason(), "rate_limited");
 }

@@ -50,6 +50,7 @@
 //! - `handlers` — the two axum handlers and their operator-tunable
 //!   policy.
 
+pub(crate) mod forwarded_for;
 pub mod quota;
 pub mod token;
 
@@ -60,6 +61,8 @@ pub(crate) mod upload_endpoint;
 
 #[cfg(test)]
 mod account_name_tests;
+#[cfg(test)]
+mod forwarded_tests;
 #[cfg(test)]
 mod launcher_kind_tests;
 #[cfg(test)]
