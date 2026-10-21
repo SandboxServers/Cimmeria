@@ -418,3 +418,32 @@ async fn early_release_then_drop_frees_exactly_one_slot() {
     );
     drop(next);
 }
+
+/// The blunt `remove` also ends the ticket, so a connection bound to it must
+/// not keep a slot for a session that no longer exists.
+#[tokio::test]
+async fn blunt_remove_frees_the_slot_at_once() {
+    let registry = SessionRegistry::new();
+    let old = register(&registry, 1, "203.0.113.5").await;
+    let _old_guard = live_connection(&registry, &old).await;
+
+    registry.remove(1).await;
+    register(&registry, 1, "203.0.113.5").await;
+
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+/// The connection's own teardown (`remove_if_ticket`) also frees a bound
+/// slot, and a stale ticket's teardown frees nothing.
+#[tokio::test]
+async fn remove_if_ticket_frees_only_its_own_slot() {
+    let registry = SessionRegistry::new();
+    let old = register(&registry, 1, "203.0.113.5").await;
+    let _old_guard = live_connection(&registry, &old).await;
+
+    registry.remove_if_ticket(1, "not-this-ticket").await;
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_err());
+
+    registry.remove_if_ticket(1, &old).await;
+    register(&registry, 1, "203.0.113.5").await;
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}

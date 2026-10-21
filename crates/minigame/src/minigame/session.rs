@@ -487,7 +487,10 @@ impl SessionRegistry {
     /// genuinely wants the entity's session gone whatever it is.
     pub async fn remove(&self, entity_id: u32) {
         let mut inner = self.inner.lock().await;
-        inner.sessions.remove(&entity_id);
+        if let Some(session) = inner.sessions.remove(&entity_id) {
+            // The session is gone, so a connection bound to it holds no ticket.
+            inner.release_bound_slot(entity_id, &session.ticket);
+        }
         inner.boards.remove(&entity_id);
         inner.invalidate_entity_receipts(entity_id);
     }
