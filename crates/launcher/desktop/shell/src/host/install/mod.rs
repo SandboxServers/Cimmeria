@@ -298,7 +298,9 @@ fn start_install_with(
                 // rather than leaving a Starting operation stranded until restart.
                 if let Ok(mut state) = state.lock() {
                     if let Ok(operations) = state.operations_mut() {
-                        let _ = operations.mark_uncertain(id);
+                        if let Err(error) = operations.mark_uncertain(id) {
+                            install_worker::events::mark_uncertain_failed(error);
+                        }
                     }
                 }
                 return Err(error.into());

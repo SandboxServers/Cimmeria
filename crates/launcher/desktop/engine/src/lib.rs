@@ -1,6 +1,8 @@
 //! Native launcher operation ownership, verified content preparation and platform adapters.
 mod operations;
 pub use operations::*;
+mod error_codes;
+pub mod operation_numbers;
 
 mod storage;
 pub use storage::{
