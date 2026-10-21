@@ -17,6 +17,7 @@ use crate::routes::dev_session::{env_u32, kill_switch_active};
 use super::dedup::Dedup;
 use super::dto::{is_json_content_type, validate, SummaryError, SummaryResponse, Verdict};
 use super::envelope::parse_envelope;
+use super::refusal;
 use super::rows::{emit_batch, emit_summary};
 use super::MAX_SUMMARY_BODY_BYTES;
 
@@ -99,6 +100,7 @@ pub(super) async fn ingest(
         Instant::now(),
     )
     .await
+    .inspect_err(|refused| refusal::note(refused.code(), refused.status()))
     .map(Json)
 }
 

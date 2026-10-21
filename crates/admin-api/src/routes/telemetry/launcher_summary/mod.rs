@@ -86,6 +86,8 @@
 //! - `dedup` — the fixed-size set of accepted `event_id`s.
 //! - `rows` — the three log rows and the two tracing targets.
 //! - `handlers` — the axum handler and its synchronous, injectable core.
+//! - `refusal` — the throttled WARN row for a refused request: closed reason
+//!   and status, never the peer.
 //!
 //! Test-only: `tests/` covers the route, and `fixture_tests/` holds the
 //! operator fixtures in `docs/operations/signoz/` to the rows `rows`
@@ -95,6 +97,7 @@ mod dedup;
 mod dto;
 mod envelope;
 mod handlers;
+mod refusal;
 mod rows;
 
 #[cfg(test)]
