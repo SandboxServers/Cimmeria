@@ -38,11 +38,25 @@ pub(super) fn bundled_with(root: &Path, digests: &Digests) -> Option<Resources> 
     );
     // Opt-in and optional. A build that pins none, or whose DLL is replaced or
     // is a lab build, cannot offer game telemetry; Play is unaffected.
-    let client_telemetry = artifact(
-        "windows/cimmeria_client_telemetry.dll",
-        digests.client_telemetry,
-    )
-    .filter(|dll| dll.refuse_lab_build().is_ok());
+    let client_telemetry = match digests.client_telemetry {
+        // This build pins no telemetry DLL: nothing to report.
+        None => None,
+        Some(digest) => {
+            match Artifact::open(root.join("windows/cimmeria_client_telemetry.dll"), digest) {
+                Err(_) => {
+                    cimmeria_launcher_engine::launch::events::dll_artifact_unavailable(
+                        "unverified",
+                    );
+                    None
+                }
+                Ok(dll) if dll.refuse_lab_build().is_err() => {
+                    cimmeria_launcher_engine::launch::events::dll_artifact_unavailable("lab_build");
+                    None
+                }
+                Ok(dll) => Some(dll),
+            }
+        }
+    };
     let graphics = if cfg!(target_os = "macos") {
         let d3d9 = artifact("graphics/d3d9.dll", digests.d3d9)?;
         let rosetta_x87 = match (digests.rosetta_x87, digests.rosetta_x87_library) {

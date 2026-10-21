@@ -69,7 +69,11 @@ impl NativeHost {
                     Err(error) => {
                         if let Ok(mut state) = store.lock() {
                             if let Ok(operations) = state.operations_mut() {
-                                let _ = operations.mark_uncertain(operation_id);
+                                if let Err(error) = operations.mark_uncertain(operation_id) {
+                                    cimmeria_launcher_engine::launch::events::mark_uncertain_failed(
+                                        error,
+                                    );
+                                }
                             }
                         }
                         return Err(error.into());
