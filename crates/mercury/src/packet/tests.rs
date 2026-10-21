@@ -382,3 +382,26 @@ fn packet_flags_name_every_bit_of_the_flag_byte() {
          FLAG_FRAGMENTED|FLAG_HAS_SEQUENCE|FLAG_INDEXED"
     );
 }
+
+/// Wire pin: with FLAG_HAS_SEQUENCE set, `Packet::encode` writes the flags
+/// byte, the body, then the sequence as a u32 little-endian footer.
+#[test]
+fn legacy_packet_encode_appends_the_sequence_footer() {
+    let packet = Packet::new(
+        PacketFlags(FLAG_HAS_SEQUENCE),
+        0x0102_0304,
+        Bytes::from_static(b"ab"),
+    );
+    assert_eq!(
+        &packet.encode()[..],
+        &[0x40, b'a', b'b', 0x04, 0x03, 0x02, 0x01][..]
+    );
+}
+
+/// Wire pin: without FLAG_HAS_SEQUENCE, `Packet::encode` writes no footer,
+/// so the sequence number is not on the wire.
+#[test]
+fn legacy_packet_encode_without_sequence_flag_has_no_footer() {
+    let packet = Packet::new(PacketFlags(0), 7, Bytes::from_static(b"ab"));
+    assert_eq!(&packet.encode()[..], &[0x00, b'a', b'b'][..]);
+}
