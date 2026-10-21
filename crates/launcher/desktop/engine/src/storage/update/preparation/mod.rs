@@ -169,7 +169,9 @@ fn start_with_backend(
             // handoff. Preserve output; only explicit recovery may continue it.
             if let Ok(mut state) = owner.lock() {
                 if let Ok(operations) = state.operations_mut() {
-                    let _ = operations.mark_uncertain(id);
+                    if let Err(error) = operations.mark_uncertain(id) {
+                        events::mark_uncertain_failed(error);
+                    }
                 }
             }
         }
@@ -258,6 +260,7 @@ async fn reconstruct(
     }
     let scan_plan = plan.clone();
     let scan_cancel = cancel.clone();
+    let digest_started = std::time::Instant::now();
     let digest = tokio::task::spawn_blocking(move || {
         staged_content::digest(&scan_plan.stage(), &scan_plan, &scan_cancel)
     })
@@ -270,6 +273,7 @@ async fn reconstruct(
             Failure::Failed
         }
     })?;
+    events::staged(&stage, digest_started.elapsed());
     let mut owner = state.lock().map_err(|_| Failure::ReconciliationRequired)?;
     if owner
         .update_plan()

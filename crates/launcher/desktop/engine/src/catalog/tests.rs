@@ -50,6 +50,9 @@ fn no_unsigned_tampered_or_invalid_catalog_is_displayable() {
 
 #[tokio::test]
 async fn transport_bounds_declared_and_chunked_bodies_and_rejects_http_errors() {
+    // A scoped subscriber keeps the shared release_fetch_failed callsite from being
+    // cached as "never" when this test's thread races the capture test.
+    let _subscriber = tracing::subscriber::set_default(tracing_subscriber::Registry::default());
     for (response, expected) in [
         ("HTTP/1.1 200 OK\r\nContent-Length: 99\r\n\r\n", CatalogError::TooLarge),
         ("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n3\r\ndef\r\n0\r\n\r\n", CatalogError::TooLarge),
@@ -67,4 +70,36 @@ async fn transport_bounds_declared_and_chunked_bodies_and_rejects_http_errors() 
         assert_eq!(read_bounded(&client, &url, 5).await.unwrap_err(), expected);
         worker.join().unwrap();
     }
+}
+
+#[test]
+fn release_fetch_failed_reports_network_reason_for_closed_port() {
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let url = format!("http://127.0.0.1:{port}/manifest.json");
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(3))
+        .build()
+        .unwrap();
+    let (result, captured) = crate::test_capture::capture(|| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(read_bounded(&client, &url, 5))
+    });
+    assert_eq!(result.unwrap_err(), CatalogError::Network);
+    let failed: Vec<_> = captured
+        .iter()
+        .filter(|row| row.field("event") == Some("release_fetch_failed"))
+        .collect();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].target, "launcher.game_update");
+    assert_eq!(failed[0].level, tracing::Level::WARN);
+    assert_eq!(failed[0].field("reason"), Some("network"));
+    assert_eq!(failed[0].field("http_status"), None);
 }

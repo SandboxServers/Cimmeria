@@ -4,6 +4,7 @@ use cimmeria_launcher_engine::{catalog::VerifiedRelease, ReleaseIdentity};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 pub(super) mod dispatch;
+mod events;
 mod maintenance;
 use maintenance::{Maintenance, MaintenanceAction};
 

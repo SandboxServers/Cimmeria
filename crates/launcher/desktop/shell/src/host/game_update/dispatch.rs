@@ -1,6 +1,8 @@
 //! A retained preparation-to-commit handoff outlives the IPC observer.
+use super::events;
 use super::*;
 use cimmeria_launcher_engine::{update, IntentError};
+use std::time::Instant;
 
 pub(crate) struct Worker {
     pub(super) id: Uuid,
@@ -11,6 +13,17 @@ impl NativeHost {
         &self,
         request: GameUpdateCommand,
     ) -> Result<GameUpdateStatus, JobError> {
+        let action = if matches!(request, GameUpdateCommand::Cancel { .. }) {
+            "cancel"
+        } else {
+            "apply"
+        };
+        let started = Instant::now();
+        let result = self.apply_request(request);
+        events::action_finished(action, &result, started.elapsed());
+        result
+    }
+    fn apply_request(&self, request: GameUpdateCommand) -> Result<GameUpdateStatus, JobError> {
         request.validate()?;
         if let GameUpdateCommand::Cancel { operation_id, .. } = request {
             {
@@ -172,7 +185,9 @@ impl NativeHost {
 fn mark_uncertain(state: &Mutex<DesktopState>, id: Uuid) {
     if let Ok(mut state) = state.lock() {
         if let Ok(operations) = state.operations_mut() {
-            let _ = operations.mark_uncertain(id);
+            if let Err(error) = operations.mark_uncertain(id) {
+                events::mark_uncertain_failed(error);
+            }
         }
     }
 }
