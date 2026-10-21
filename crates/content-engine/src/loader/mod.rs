@@ -51,6 +51,7 @@ mod action_cash;
 mod action_letter_turn_in;
 mod action_loot;
 mod action_mail;
+mod action_params;
 mod action_spawn;
 mod action_tutorial;
 mod condition;
