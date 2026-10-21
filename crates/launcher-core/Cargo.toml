@@ -22,6 +22,14 @@ name = "build-file-index"
 path = "src/bin/build-file-index.rs"
 test = false
 
+# Release-side tool: checks a candidate manifest and its file index before
+# anyone signs them (LT-35). Its logic is src/file_index/check.rs and
+# src/manifest_chain.rs, whose tests run in this crate's library test binary.
+[[bin]]
+name = "verify-file-index"
+path = "src/bin/verify-file-index.rs"
+test = false
+
 [features]
 # Test fixtures other crates' tests build on: the archive fixtures in
 # `unpack::test_fixtures`, the dev manifest signing key and the
