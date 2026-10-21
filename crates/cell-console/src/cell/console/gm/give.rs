@@ -200,7 +200,8 @@ pub(super) async fn handle_give_item(
     // emits onUpdateItem. The request is INV_Main; the base keeps it when the
     // item allows the main bag and otherwise places the item by its
     // `container_sets` (a `{17,15}` crafting component lands in the crafting
-    // bag).
+    // bag). An item that lists no carried bag is rerouted too: a mission-only
+    // item (`{2}`) goes to the mission bag (#1675).
     // `notify_gm: true` — the base sends the definitive feedback line after the
     // inventory write commits. No optimistic "requested" line here.
     forward_to_base(

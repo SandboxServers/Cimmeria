@@ -44,7 +44,11 @@ mod tradeable_containers {
 }
 
 mod destination {
-    use super::super::placement::trade_destination;
+    use super::super::abort::{
+        refusal_lines, TradeAbort, LOCAL_UNTRADEABLE_ITEM, REMOTE_UNTRADEABLE_ITEM,
+    };
+    use super::super::placement::{plan_destinations, trade_destination};
+    use super::super::swap::TradeItemRow;
     use cimmeria_entity::inventory::{INV_CRAFTING, INV_MAIN};
 
     /// The crafting-component shape: `{17,15}` lands in the crafting bag
@@ -65,11 +69,53 @@ mod destination {
         assert_eq!(trade_destination(&[], INV_MAIN), Some(INV_MAIN));
     }
 
-    /// An item that lists no carried bag keeps the bag it was traded
-    /// from, as every backpack trade did before the crafting bag joined.
+    /// An item that lists neither a carried bag nor the mission bag keeps
+    /// the bag it was traded from. This pins the rule, not the #1675 fix.
     #[test]
-    fn item_listing_no_carried_bag_keeps_its_source_bag() {
-        assert_eq!(trade_destination(&[2], INV_MAIN), Some(INV_MAIN));
+    fn item_listing_no_carried_or_mission_bag_keeps_its_source_bag() {
+        assert_eq!(trade_destination(&[3], INV_MAIN), Some(INV_MAIN));
+        assert_eq!(trade_destination(&[17], INV_CRAFTING), Some(INV_CRAFTING));
+    }
+
+    /// A mission-only item has no tradeable destination (#1675): the grant
+    /// rule sends it to the mission bag (2), which is not a trade bag.
+    #[test]
+    fn mission_only_item_is_not_tradeable() {
+        assert_eq!(trade_destination(&[2], INV_MAIN), None);
+        assert_eq!(trade_destination(&[2], INV_CRAFTING), None);
+    }
+
+    /// End to end without a DB: a `{2}` row offered from the backpack makes
+    /// the plan fail with `NoDestination`, and the offerer is told the item
+    /// cannot be traded (#1675).
+    #[test]
+    fn mission_only_item_offered_from_the_backpack_is_refused_as_untradeable() {
+        let row = TradeItemRow {
+            item_id: 10_001,
+            type_id: 2610,
+            container_id: INV_MAIN,
+            slot_id: 0,
+            bound: false,
+            container_sets: Some(vec![2]),
+            known_type: true,
+        };
+        let err = plan_destinations(std::slice::from_ref(&row), 1000, "p1")
+            .expect_err("a mission-only item must not plan a destination");
+        assert!(
+            matches!(
+                err,
+                TradeAbort::NoDestination {
+                    which: "p1",
+                    item_id: 10_001,
+                    ..
+                }
+            ),
+            "got {err:?}"
+        );
+        assert_eq!(
+            refusal_lines(&err, 1000),
+            (Some(LOCAL_UNTRADEABLE_ITEM), Some(REMOTE_UNTRADEABLE_ITEM))
+        );
     }
 
     /// An unrestricted item found in the crafting bag goes to the
@@ -79,10 +125,12 @@ mod destination {
         assert_eq!(trade_destination(&[], INV_CRAFTING), Some(INV_MAIN));
     }
 
-    /// Whatever the item lists, a trade lands in 1 or 15.
+    /// Whatever the item lists, a trade lands in 1 or 15, except a
+    /// mission-only item, which is refused (see
+    /// `mission_only_item_is_not_tradeable`).
     #[test]
     fn destination_is_always_a_tradeable_bag() {
-        let shapes: &[&[i32]] = &[&[17, 15], &[17], &[16], &[2], &[3, 1, 17], &[15, 1], &[]];
+        let shapes: &[&[i32]] = &[&[17, 15], &[17], &[16], &[3], &[3, 1, 17], &[15, 1], &[]];
         for sets in shapes {
             for source in [INV_MAIN, INV_CRAFTING] {
                 let got = trade_destination(sets, source);

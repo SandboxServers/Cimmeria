@@ -6,8 +6,9 @@
 //! ([`grant_container`]) and the bag it came from as the request: a
 //! crafting component (`{17,15}`) goes from bag 15 to bag 15, a backpack
 //! item stays in the backpack, and a component someone still holds in
-//! the backpack moves to the crafting bag. The wire carries only instance
-//! ids, so nothing here is client-supplied.
+//! the backpack moves to the crafting bag. A mission-only item (`{2}`) has
+//! no tradeable destination and is refused (#1675). The wire carries only
+//! instance ids, so nothing here is client-supplied.
 //!
 //! Slots are reserved per (recipient, bag), lowest free first. A bag the
 //! recipient is trading items out of counts those slots as free, since
@@ -79,8 +80,10 @@ impl ItemMove {
 /// `container_sets`: always one of [`TRADEABLE_CONTAINERS`], or `None`.
 ///
 /// `({17,15}, 15)` and `({17,15}, 1)` give 15; `({3,1,17}, 1)` gives 1;
-/// `({2}, 1)` gives 1 (an item that lists no carried bag keeps the bag it
-/// was traded from); `({}, 15)` gives 1.
+/// `({3}, 1)` gives 1 (an item that lists neither a carried bag nor the
+/// mission bag keeps the bag it was traded from); `({2}, 1)` gives `None`
+/// (the grant rule sends a mission-only item to the mission bag, which is
+/// not tradeable, so the trade is refused, #1675); `({}, 15)` gives 1.
 pub(super) fn trade_destination(container_sets: &[i32], source_container: i32) -> Option<i32> {
     grant_container(container_sets, source_container)
         .filter(|dest| TRADEABLE_CONTAINERS.contains(dest))
