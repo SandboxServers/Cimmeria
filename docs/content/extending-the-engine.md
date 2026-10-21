@@ -63,17 +63,10 @@ Use this section as the canonical walkthrough. The `Action::ChangeStat` addition
    ```rust
    "change_stat" => {
        let stat_id = row.target_id?;
-       let params = row.params.as_object()?;
-       let amount = params.get("amount").and_then(|v| v.as_i64());
-       // Validate at the boundary — out-of-range values get warn!+drop, not silent wrap
-       let amount = match amount {
-           Some(a) if a >= i32::MIN as i64 && a <= i32::MAX as i64 => Some(a as i32),
-           Some(a) => {
-               warn!("change_stat.amount {a} out of i32 range; dropping action");
-               return None;
-           }
-           None => None,
-       };
+       // Validate at the boundary: opt_i32 WARNs and returns Err for a
+       // value outside i32 (including integers above i64::MAX), so
+       // .ok()? drops the action instead of wrapping or defaulting.
+       let amount = opt_i32(row, "amount").ok()?;
        Some(Action::ChangeStat { stat_id, amount, /* ... */ })
    }
    ```
