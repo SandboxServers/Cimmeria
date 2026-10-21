@@ -113,6 +113,7 @@ impl Config {
             .filter_map(|field| field.strip_prefix("version:"))
             .collect();
         if versions.len() != 1 {
+            events::verify_failed("signed_version");
             return Err(Error::SignedVersion);
         }
         let signed = Version::parse(versions[0].trim_start_matches('v')).map_err(|_| {
@@ -120,14 +121,19 @@ impl Config {
             Error::SignedVersion
         })?;
         if signed != announced {
+            events::verify_failed("signed_version");
             return Err(Error::SignedVersion);
         }
         Ok(())
     }
 }
 fn decode(value: &str) -> Result<String, Error> {
-    let bytes = STANDARD.decode(value).map_err(|_| Error::Signature)?;
-    String::from_utf8(bytes).map_err(|_| Error::Signature)
+    let fail = || {
+        events::verify_failed("signature");
+        Error::Signature
+    };
+    let bytes = STANDARD.decode(value).map_err(|_| fail())?;
+    String::from_utf8(bytes).map_err(|_| fail())
 }
 #[derive(Deserialize)]
 struct Feed {
@@ -150,6 +156,7 @@ pub(crate) fn parse(config: &Config, bytes: &[u8]) -> Result<Option<Offer>, Erro
         Error::Feed
     })?;
     if feed.version.len() > 128 || feed.notes.len() > 4096 {
+        events::verify_failed("feed");
         return Err(Error::Feed);
     }
     match config.newer(&feed.version) {
@@ -162,6 +169,7 @@ pub(crate) fn parse(config: &Config, bytes: &[u8]) -> Result<Option<Offer>, Erro
         .get(&config.platform)
         .ok_or(Error::Platform)?;
     if artifact.signature.len() > 8192 || artifact.url.len() > 2048 {
+        events::verify_failed("feed");
         return Err(Error::Feed);
     }
     config.allow(&Url::parse(&artifact.url).map_err(|_| Error::Policy)?)?;
