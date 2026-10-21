@@ -54,9 +54,12 @@ pub mod quota;
 pub mod token;
 
 mod handlers;
+mod launcher_kind;
 
 #[cfg(test)]
 mod account_name_tests;
+#[cfg(test)]
+mod launcher_kind_tests;
 #[cfg(test)]
 mod session_kind_tests;
 #[cfg(test)]
