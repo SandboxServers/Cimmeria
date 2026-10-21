@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use super::launcher_kind;
 use super::quota::{ip_key, validate_install_id, WindowTable};
+use super::refusal_log;
 use super::token::{
     encode_token, load_secret, AuthError, TokenClaims, SESSION_KIND_LAB, SESSION_KIND_LAUNCHER,
     SESSION_KIND_PLAYER,
@@ -219,7 +220,7 @@ pub async fn mint(
         Instant::now(),
         chrono::Utc::now().timestamp(),
     )
-    .inspect_err(|e| log_refusal("mint", peer.ip(), e))
+    .inspect_err(|e| refusal_log::log_refusal("mint", e))
     .map(Json)
 }
 
@@ -237,7 +238,7 @@ pub async fn refresh(
         Instant::now(),
         chrono::Utc::now().timestamp(),
     )
-    .inspect_err(|e| log_refusal("refresh", peer.ip(), e))
+    .inspect_err(|e| refusal_log::log_refusal("refresh", e))
     .map(Json)
 }
 
@@ -496,68 +497,6 @@ pub(super) fn record_stream(claims: &TokenClaims, peer_ip: IpAddr) {
         account_name: claims.acct.as_deref(),
         peer_ip: Some(peer_ip),
     });
-}
-
-/// Every refusal the operator can act on leaves a row with its `reason`
-/// (see docs/operations/telemetry.md): quota limits need tuning, a paused
-/// ingest or an expired token explains a launcher's telemetry stream
-/// going quiet. Refusals a caller can't fix are logged at INFO or below.
-pub(super) fn log_refusal(route: &'static str, peer: IpAddr, err: &AuthError) {
-    match err {
-        AuthError::QuotaExceeded(q) => tracing::warn!(
-            route,
-            peer = %peer,
-            scope = q.scope,
-            retry_after_secs = q.retry_after_secs,
-            reason = "dev_session_quota_exceeded",
-            "dev-session request refused: {}",
-            q
-        ),
-        AuthError::BadInstallId(_) | AuthError::BadField { .. } => tracing::debug!(
-            route,
-            peer = %peer,
-            reason = "dev_session_bad_request",
-            "dev-session request refused: {err}"
-        ),
-        // The operator's misconfiguration, not the caller's: every launcher
-        // and lab session is refused until it is fixed, and before this row
-        // the only trace of it was a 500 on the caller's side.
-        AuthError::SecretMissing | AuthError::SecretTooShort { .. } => tracing::error!(
-            route,
-            peer = %peer,
-            reason = "dev_session_secret_unusable",
-            "dev-session request refused: {err}"
-        ),
-        AuthError::KillSwitchActive => tracing::warn!(
-            route,
-            peer = %peer,
-            reason = "dev_session_kill_switch",
-            "dev-session request refused: {err}"
-        ),
-        AuthError::SessionLifetimeExceeded { elapsed, cap } => tracing::info!(
-            route,
-            peer = %peer,
-            elapsed,
-            cap,
-            reason = "dev_session_lifetime_exceeded",
-            "dev-session request refused: {err}"
-        ),
-        AuthError::Expired { exp, now } => tracing::info!(
-            route,
-            peer = %peer,
-            exp,
-            now,
-            reason = "dev_session_expired",
-            "dev-session request refused: {err}"
-        ),
-        AuthError::BadPayload(_) | AuthError::BadSignature => tracing::info!(
-            route,
-            peer = %peer,
-            reason = "dev_session_bad_token",
-            "dev-session request refused: {err}"
-        ),
-        _ => {}
-    }
 }
 
 pub(crate) fn kill_switch_active() -> bool {
