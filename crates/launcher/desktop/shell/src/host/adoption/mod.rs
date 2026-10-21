@@ -75,6 +75,7 @@ pub(crate) struct Adoption {
     session: Option<Session>,
     confirm: Option<ConfirmJob>,
     last_error: Option<AdoptionError>,
+    last_unsafe: Option<adoption::UnsafeReport>,
     // Served, with live progress, while publication holds the store.
     facts: Option<status::Facts>,
 }
@@ -265,7 +266,7 @@ impl NativeHost {
                 }
             };
             adoption.preview = Some(self.start_adoption_preview(store, request)?);
-            adoption.last_error = None;
+            adoption.clear_failure();
         }
         self.adoption_status()
     }
@@ -322,7 +323,7 @@ impl NativeHost {
                     if let Some(worker) = &adoption.preview {
                         worker.request_cancel();
                     }
-                    adoption.last_error = None;
+                    adoption.clear_failure();
                     adoption.session.take()
                 };
                 if let Some(session) = dismissed {
@@ -462,7 +463,7 @@ impl NativeHost {
             preview_handle,
             in_place,
         });
-        adoption.last_error = None;
+        adoption.clear_failure();
         Ok(())
     }
     /// Explicit recovery and cleanup run on this command's blocking worker. The
@@ -484,7 +485,7 @@ impl NativeHost {
             {
                 return Err(AdoptionError::Busy);
             }
-            adoption.last_error = None;
+            adoption.clear_failure();
         }
         let store = self.store()?;
         let mut state = store.lock().map_err(|_| AdoptionError::Io)?;
