@@ -296,7 +296,7 @@ pub(super) struct Uploader {
     pub peer: IpAddr,
     pub session_id: Option<String>,
     pub install_id: Option<String>,
-    /// The token's `kind` (`player` or `lab`), once it verifies.
+    /// The token's `kind` (`player`, `lab` or `launcher`), once it verifies.
     pub session_kind: Option<String>,
 }
 

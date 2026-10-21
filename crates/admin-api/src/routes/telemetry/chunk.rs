@@ -181,7 +181,19 @@ async fn chunk_flow(
     if bad_rows > 0 {
         state.refusals.report_bad_rows(who, bad_rows, now);
     }
-    if suppressed > 0 {
+    if suppressed > 0 && launcher {
+        tracing::warn!(
+            target: "launcher.ingest",
+            session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
+            install_id = %claims.sub, // nt:id-only launcher install UUID from the token; it names nothing
+            session_kind = claims.session_kind(),
+            accepted,
+            parsed,
+            suppressed,
+            reason = "launcher_over_budget",
+            "launcher upload-chunk over the launcher row budget; the rows past it were not replayed"
+        );
+    } else if suppressed > 0 {
         tracing::warn!(
             target: "launcher.ingest",
             session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing

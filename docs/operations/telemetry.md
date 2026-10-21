@@ -540,7 +540,7 @@ session.
 
 A `launcher` session has its own limits, all refused before the body is
 read where the route allows it. Its chunks take 2 reserved upload slots
-(launcher chunks never hold the slots the game DLL needs), and a launcher
+(so launcher chunks never use up the route's slots the game DLL needs; the per-address limit of one chunk in flight is shared, so a game chunk from the same address waits for a launcher chunk in flight), and a launcher
 token is refused on the bundle route (403, `reason = forbidden`); bundles
 are not part of the launcher kind.
 

@@ -109,6 +109,12 @@ impl LauncherBudget {
         let used = sessions.get(sid).map_or(0, |(used, _)| *used as usize);
         let room = (self.per_session as usize).saturating_sub(used);
         let n = rows.min(room);
+        // A zero-row charge takes no ledger slot: a junk-only chunk from a
+        // fresh session id must not fill the table. A tracked session keeps
+        // its refresh below, so an exhausted one is not reset.
+        if n == 0 && !sessions.contains_key(sid) {
+            return Ok(0);
+        }
 
         let mut minute = self.minute.lock().unwrap_or_else(|p| p.into_inner());
         if now.saturating_duration_since(minute.0) >= MINUTE {
@@ -176,6 +182,18 @@ mod tests {
             budget.charge("c", 1, later).unwrap(),
             1,
             "the idle entries are pruned, so the new session gets its rows"
+        );
+    }
+
+    #[test]
+    fn zero_row_charges_do_not_take_a_ledger_slot() {
+        let budget = LauncherBudget::new(10, 1_000).with_capacity(1);
+        let t0 = Instant::now();
+        assert_eq!(budget.charge("a", 0, t0).unwrap(), 0);
+        assert_eq!(
+            budget.charge("b", 1, t0).unwrap(),
+            1,
+            "a junk-only chunk left no entry, so the next session fits"
         );
     }
 }

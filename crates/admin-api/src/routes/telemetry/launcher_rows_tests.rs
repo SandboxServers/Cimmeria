@@ -128,6 +128,9 @@ fn scrub_value_cases() {
         "%USERPROFILE%\\x",
         "x\\Users\\y",
         "/home/y",
+        "a/home/b",
+        "a/users/b",
+        "$HOME/x",
     ];
     for value in removed {
         assert_eq!(scrub_value(value), REMOVED, "{value} kept");
@@ -141,6 +144,17 @@ fn scrub_value_cases() {
     ];
     for value in unchanged {
         assert_eq!(scrub_value(value), value, "{value} removed");
+    }
+}
+
+#[test]
+fn launcher_rows_are_not_named() {
+    use super::entity_labels::ENTITY_KEYS;
+    for key in ENTITY_KEYS {
+        assert!(
+            super::launcher_rows::DENIED_KEYS.contains(&key),
+            "{key} can name an entity but is not denied"
+        );
     }
 }
 
