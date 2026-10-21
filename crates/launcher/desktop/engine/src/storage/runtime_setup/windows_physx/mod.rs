@@ -173,12 +173,11 @@ pub fn install(
     let result = install_package(source, elevate, probe);
     let duration_ms = started.elapsed().as_millis() as u64;
     match &result {
-        Ok(InstallResult::Installed { restart_required }) => tracing::info!(
+        Ok(InstallResult::Installed { .. }) => tracing::info!(
             target: "launcher.install",
             event = "physx_finished",
             action = "install",
             outcome = "installed",
-            restart_required,
             duration_ms,
             "PhysX System Software installed"
         ),

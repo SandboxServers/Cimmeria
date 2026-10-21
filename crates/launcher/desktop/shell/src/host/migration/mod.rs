@@ -74,14 +74,23 @@ impl NativeHost {
             MigrationCommand::Dismiss { .. } => "dismiss",
             MigrationCommand::Confirm { .. } => "confirm",
         };
+        // Inspect is polled: only its failure is logged.
+        let polled = action == "inspect";
         let started = Instant::now();
-        setup_events::migration_started(action);
+        if !polled {
+            setup_events::migration_started(action);
+        }
         let result = self.migration_run(request);
         let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         match &result {
+            Ok(_) if polled => {}
             Ok(_) => setup_events::migration_finished(action, "ok", duration_ms),
             Err(error) => {
-                let reason = setup_events::code(error);
+                // A storage failure serializes as an object: its inner code is the reason.
+                let reason = match error {
+                    MigrationError::Storage(inner) => setup_events::code(inner),
+                    other => setup_events::code(other),
+                };
                 setup_events::migration_failed(action, &reason, "other");
             }
         }

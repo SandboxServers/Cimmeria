@@ -280,7 +280,11 @@ async fn adoption_steps_are_logged_for_a_refusal_and_an_adoption() {
     .await;
     assert_eq!(status.last_error, None);
 
-    let records: Vec<_> = rx.try_iter().collect();
+    // Only the adoption target: the setup-area events share the channel.
+    let records: Vec<_> = rx
+        .try_iter()
+        .filter(|record| record.target == "client.launcher.adoption")
+        .collect();
     let steps: Vec<&str> = records
         .iter()
         .map(|record| record.fields["step"].as_str().unwrap())

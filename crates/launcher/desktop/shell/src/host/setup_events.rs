@@ -4,32 +4,18 @@
 //! is a closed code or a number: no path, URL, host, IP or error text (R5).
 
 use serde::Serialize;
-use std::io;
 
 const TARGET: &str = "launcher.install";
+
+// The closed code of an I/O error kind (C6), or `"other"`: the engine's one
+// vocabulary, so a field means the same in both halves.
+pub(crate) use cimmeria_launcher_engine::game_telemetry::launcher_event::kind as io_kind;
 
 /// The serde code of `value` (snake_case), or `"unknown"` when it has none.
 pub(crate) fn code<T: Serialize>(value: &T) -> String {
     match serde_json::to_value(value) {
         Ok(serde_json::Value::String(text)) => text,
         _ => "unknown".to_owned(),
-    }
-}
-
-/// The closed code of an I/O error kind (C6), or `"other"`.
-pub(crate) fn io_kind(error: &io::Error) -> &'static str {
-    match error.kind() {
-        io::ErrorKind::NotFound => "not_found",
-        io::ErrorKind::PermissionDenied => "permission_denied",
-        io::ErrorKind::AlreadyExists => "already_exists",
-        io::ErrorKind::WouldBlock => "would_block",
-        io::ErrorKind::InvalidInput => "invalid_input",
-        io::ErrorKind::InvalidData => "invalid_data",
-        io::ErrorKind::TimedOut => "timed_out",
-        io::ErrorKind::WriteZero => "write_zero",
-        io::ErrorKind::Interrupted => "interrupted",
-        io::ErrorKind::UnexpectedEof => "unexpected_eof",
-        _ => "other",
     }
 }
 
@@ -53,16 +39,8 @@ pub(crate) fn seed_archive_release_failed(reason: &str, http_status: Option<u16>
     tracing::warn!(target: TARGET, event = "seed_archive_release_failed", reason, http_status, "seed release fetch failed");
 }
 
-/// A PhysX command started.
-pub(crate) fn physx_started(action: &str) {
-    tracing::info!(target: TARGET, event = "physx_started", action, "PhysX command started");
-}
-
-/// A PhysX command finished with `outcome` (`ok` or a closed code).
-pub(crate) fn physx_finished(action: &str, outcome: &str, duration_ms: u64) {
-    tracing::info!(target: TARGET, event = "physx_finished", action, outcome, duration_ms, "PhysX command finished");
-}
-
+// PhysX install start and outcome are logged by the engine's `install()`; the shell
+// logs only an Inspect failure and the install refusal that never reaches it.
 /// A PhysX command failed; `reason` is its closed error code.
 pub(crate) fn physx_failed(action: &str, reason: &str, error_kind: &str) {
     tracing::warn!(target: TARGET, event = "physx_failed", action, reason, error_kind, "PhysX command failed");
@@ -87,17 +65,17 @@ pub(crate) fn migration_failed(action: &str, reason: &str, error_kind: &str) {
 mod tests {
     use super::*;
     use crate::test_capture::capture;
+    use std::io;
 
     /// Each helper logs one record on `launcher.install` with its `event` field.
     #[test]
     fn every_helper_logs_on_the_install_target() {
         let ((), records) = capture(|| {
+            tracing::callsite::rebuild_interest_cache();
             seed_archive_started("inspect");
             seed_archive_finished("inspect", "ok", 3);
             seed_archive_failed("inspect", "io", "not_found");
             seed_archive_release_failed("fetch_failed", Some(503));
-            physx_started("install");
-            physx_finished("install", "ok", 4);
             physx_failed("install", "package_mismatch", "other");
             migration_started("confirm");
             migration_finished("confirm", "ok", 5);
@@ -107,7 +85,7 @@ mod tests {
             .iter()
             .map(|r| (r.target.as_str(), r.level, r.field("event").unwrap_or("")))
             .collect();
-        assert_eq!(events.len(), 10);
+        assert_eq!(events.len(), 8);
         assert!(events.iter().all(|(target, _, _)| *target == TARGET));
         assert_eq!(
             events[2],

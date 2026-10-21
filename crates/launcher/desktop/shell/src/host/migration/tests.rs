@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_capture::capture;
 use std::fs;
 fn fixture() -> (tempfile::TempDir, NativeHost, LegacySource) {
     let root = tempfile::tempdir().unwrap();
@@ -145,6 +146,48 @@ fn changed_preferences_cannot_be_overwritten_by_a_previous_preview() {
         Err(MigrationError::Storage(StorageError::StaleRevision))
     ));
     assert!(!host.root.join("legacy-import.json").exists());
+}
+
+/// A storage failure logs its inner code as the reason, not `unknown`.
+#[test]
+fn storage_failure_logs_its_inner_reason() {
+    let (_root, host, source) = fixture();
+    let preview = host.preview_migration(source).unwrap().preview.unwrap();
+    host.dispatch(NativeCommand::SavePreferences {
+        schema_version: 1,
+        expected_revision: 0,
+        install_directory: None,
+        launcher_summary_consent: true,
+    })
+    .unwrap();
+    let (result, records) = capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        host.migration_command(confirm(&preview))
+    });
+    assert!(matches!(
+        result,
+        Err(MigrationError::Storage(StorageError::StaleRevision))
+    ));
+    let failed = records
+        .iter()
+        .find(|r| r.field("event") == Some("migration_failed"))
+        .unwrap();
+    assert!(failed
+        .field("reason")
+        .is_some_and(|reason| reason != "unknown"));
+}
+
+/// A failing command logs `migration_started`, then `migration_failed`.
+#[test]
+fn failing_command_logs_started_then_failed() {
+    let (_root, host, _source) = fixture();
+    let (result, records) = capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        host.migration_command(MigrationCommand::Dismiss { schema_version: 2 })
+    });
+    assert!(matches!(result, Err(MigrationError::UnsupportedSchema)));
+    let events: Vec<_> = records.iter().filter_map(|r| r.field("event")).collect();
+    assert_eq!(events, ["migration_started", "migration_failed"]);
 }
 
 /// The JS harness selects fixture folders natively; production IPC accepts no paths.
