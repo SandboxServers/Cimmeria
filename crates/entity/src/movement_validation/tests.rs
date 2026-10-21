@@ -55,7 +55,7 @@ fn no_baseline_large_first_move_is_teleport_rejected() {
 }
 
 #[test]
-fn small_legitimate_move_neither_warns_nor_rejects() {
+fn small_legitimate_move_is_not_rejected() {
     let v = MovementValidator::new();
     let t0 = Instant::now();
     // ~0.8 u over 100 ms = top speed exactly — under the 1.5× warn.
@@ -67,7 +67,6 @@ fn small_legitimate_move_neither_warns_nor_rejects() {
         TOP,
     );
     assert!(out.reject.is_none(), "legit move must not reject");
-    assert!(out.speed_warn.is_none(), "legit move must not warn");
 }
 
 /// Canonical teleport shape: 100 units in 50 ms → 2000 u/s,
@@ -107,24 +106,6 @@ fn far_but_slow_catchup_is_not_teleport() {
     );
 }
 
-/// Sub-teleport but over-tolerance speed (5 u in 50 ms = 100 u/s,
-/// distance under the 50 u gate) → warn, still accepted.
-#[test]
-fn over_tolerance_short_hop_warns_but_accepts() {
-    let v = MovementValidator::new();
-    let t0 = Instant::now();
-    let out = v.check_kinematics(
-        t0 + Duration::from_millis(50),
-        Some(t0),
-        Vector3::zero(),
-        Vector3::new(5.0, 0.0, 0.0),
-        TOP,
-    );
-    assert!(out.reject.is_none(), "short hop must not reject");
-    let sample = out.speed_warn.expect("100 u/s must warn");
-    assert!(sample.implied_speed > 90.0 && sample.implied_speed < 110.0);
-}
-
 /// `touch_clock` advances the per-entity clock and hands back the
 /// previous sample, which is what feeds `check_kinematics`'s `prev`.
 #[test]
@@ -158,7 +139,7 @@ fn sustained_teleport_spam_keeps_rejecting() {
 }
 
 #[test]
-fn note_authorized_teleport_reseeds_clock_and_suppresses_followup_warn() {
+fn note_authorized_teleport_reseeds_clock_and_suppresses_followup_reject() {
     let mut v = MovementValidator::new();
     let t0 = Instant::now();
     // Player moving normally, last sample at t0.
@@ -178,9 +159,8 @@ fn note_authorized_teleport_reseeds_clock_and_suppresses_followup_warn() {
     );
     let dst = Vector3::new(500.0, 0.0, 500.0);
     let out = v.check_kinematics(t_pkt, prev, dst, Vector3::new(500.5, 0.0, 500.0), TOP);
-    assert!(out.reject.is_none());
     assert!(
-        out.speed_warn.is_none(),
+        out.reject.is_none(),
         "reseeded clock must make the post-teleport packet look slow"
     );
 }
@@ -298,17 +278,29 @@ fn teleport_and_forget_clear_the_window() {
 }
 
 #[test]
-fn zero_dt_flood_is_capped_at_the_sample_limit() {
-    // 100 zero-dt hops of 1.0 u: the window keeps only the newest 32, so the
-    // reported sum is 32.0, not 100.0 (memory bound, deliberate).
+fn zero_dt_flood_keeps_its_distance_past_the_sample_limit() {
+    // 100 zero-dt hops of 1.0 u: the cap folds the oldest samples into the
+    // next, so memory stays bounded but the sum is the full 100.0.
     let mut v = MovementValidator::new();
     let mut last = None;
     for _ in 0..100 {
         last = v.observe_speed(1, 1.0, 0.0, TOP);
     }
     let sample = last.expect("a zero-dt flood of 1 u hops must warn");
-    assert_eq!(sample.distance, 32.0);
+    assert_eq!(sample.distance, 100.0);
     assert_eq!(sample.dt_secs, 0.0);
+}
+
+#[test]
+fn lag_stall_then_queued_burst_past_the_cap_does_not_warn() {
+    // A 3.3 s stall, then 40 queued packets at zero dt: 41 hops of top-speed
+    // steps over 3.3 s is ~10 u/s, under the 1.5x warn. Evicting the stall's
+    // sample at the 32-sample cap would drop its dt and read ~104 u/s.
+    let mut v = MovementValidator::new();
+    assert!(v.observe_speed(1, 0.8125, 3.3, TOP).is_none());
+    for i in 0..40 {
+        assert!(v.observe_speed(1, 0.8125, 0.0, TOP).is_none(), "hop {i}");
+    }
 }
 
 #[test]

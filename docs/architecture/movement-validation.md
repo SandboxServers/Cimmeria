@@ -38,17 +38,17 @@ construction instead of by each caller capturing and restoring it.
 The validator (`cimmeria_entity::movement_validation::MovementValidator`)
 runs five layers. The table is in **execution order** as wired in
 `apply_client_position_update_at` — cheapest spatial gate first, then the
-stateful kinematics. Four layers hard-reject (snap-back); the speed
-sub-layer is **warn-only** until calibrated. Speed and teleport share one
-`check_kinematics` call (the kinematics layer); they are listed as two
-rows because they have different actions.
+stateful checks. Four layers hard-reject (snap-back); the speed layer is
+**warn-only** until calibrated. Speed (`observe_speed`, a per-entity
+window) and teleport (`check_kinematics`, one packet) are separate calls
+with different actions.
 
 | Order | Layer | Action | Catches |
 |-------|-------|--------|---------|
 | 0 | **Minigame hold** (`movement_lock::check`) | reject | a player held by `BSF_PLAYING_MINIGAME` moving more than 0.5 m horizontally from its hold anchor (where the hold found it; reset by an authorized teleport), so small steps cannot add up (`reason=movement_locked`); game masters exempt; a stun's lock alone is not gated |
 | 1 | **Bounds** (`check_bounds`) | reject | NaN / ±∞ / absurd coords, **Z-axis floor-clip** (full X/Y/**Z** AABB test) |
 | 2 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded **or when the world is seeded `navmesh_mode = 'advisory'`** — see [navmesh-containment-modes.md](navmesh-containment-modes.md). Horizontal (X/Z) containment is tight (`agent_radius`-based) in both directions; vertical (Y) containment is asymmetric — up to `JUMP_HEIGHT_TOLERANCE` (4.0 units, physics-derived) *above* the surface so a legitimate jump apex isn't rejected, but only `agent_radius * 2.0` *below* it — see "Jump-height fix" below. |
-| 3 | **Speed** (`check_kinematics`) | **warn-only** | sustained over-tolerance velocity (`implied_speed > top_speed × 1.5`) |
+| 3 | **Speed** (`observe_speed`) | **warn-only** | sustained over-tolerance velocity: over a per-entity sliding window, `sum(distance) / max(sum(dt), 250 ms) > top_speed × 1.5` (see "The speed window" below) |
 | 4 | **Teleport** (`check_kinematics`) | reject | single update both `> 50 u` **and** `> top_speed × 10` (or, on the first packet with no time baseline, `> 50 u` from the authoritative spawn) |
 
 `top_speed` in rows 3 and 4 is **not** the flat `DEFAULT_TOP_SPEED`: it is
@@ -116,12 +116,38 @@ layer.
 The legitimate-traffic speed distribution under real RTT is unknown
 ahead of telemetry. Snapping on a guessed tolerance would rubber-band
 players on bad connections. The speed layer therefore **logs + counts but
-accepts**, emitting the full `(distance, dt_secs, implied_speed,
-top_speed)` triple on `movement.speed_warning` /
+accepts**, emitting the window's `(distance, dt_secs, implied_speed,
+top_speed)` triple (window sums, see "The speed window") on
+`movement.speed_warning` /
 `movement_validation_warns_total{reason="speed"}`. Calibrate the
 production tolerance from the SigNoz p99.9 of legitimate
-`(distance/dt)/top_speed` (bucketed by RTT) before promoting it to
+`implied_speed/top_speed` (bucketed by RTT) before promoting it to
 snap-back.
+
+### The speed window
+
+Speed is judged over a per-entity sliding window (#1249), not per packet.
+The client's send timing jitters (packets 25 ms then 175 ms apart while it
+runs at exactly top speed), so a single packet's `distance / dt` can read
+as 4x top speed. Each accepted move that had a time baseline calls
+`MovementValidator::observe_speed` with its distance and server-clock dt:
+
+- The window keeps the newest samples that cover at least 250 ms
+  (`SPEED_WINDOW`), at most 32 of them. Past 32 the oldest sample is
+  folded into the next (distance and dt both), so the window totals are
+  kept: a lag stall's dt is not lost to a burst of zero-dt packets that
+  follows it.
+- It warns when `sum(distance) / max(sum(dt), SPEED_WINDOW)` exceeds
+  `top_speed x 1.5`. The 250 ms floor on the divisor stops a burst of
+  near-zero-dt packets from reading as infinite speed.
+- A move under 0.01 u (`MIN_SPEED_DISTANCE`) adds its dt to the window but
+  never warns.
+- The window is dropped on an authorized teleport, on `forget`, and on every packet accepted under the GM physics bypass (`movement_unrestricted`).
+
+The `distance` and `dt_secs` on the `movement.speed_warning` row are the
+window sums. The old `speed_bunched` DEBUG row is gone: the window absorbs
+bunched packets, so there is nothing separate to report. `check_kinematics`
+now only decides the teleport reject. The row also carries `window_secs = max(dt_secs, SPEED_WINDOW)`, the divisor the verdict used, so `implied_speed = distance / window_secs` (they differ in the first 250 ms after a spawn or teleport).
 
 ### Time source — server clock, not client timestamp
 
@@ -141,8 +167,9 @@ move can't produce a self-inflicted false reject: the next client packet
 is measured from the destination, not the source. Each authoritative path
 additionally calls `SpaceManager::note_authorized_teleport(entity_id)`,
 which reseeds the per-entity clock so the first post-teleport packet's
-`dt` is measured from the teleport instant (suppressing a spurious speed
-warn when an authoritative move interrupts the client's stream). It does
+`dt` is measured from the teleport instant, and drops the speed window and
+any hold anchor (suppressing a spurious speed warn when an authoritative
+move interrupts the client's stream). It does
 **not** suppress hard rejects — a stale in-flight packet pointing at the
 old location *should* snap to the new one. Paths are catalogued in
 `.claude/agent-memory/movement-teleport-advisor/authorized-teleport-paths.md`.

@@ -12,12 +12,12 @@ pub const SPEED_WINDOW: Duration = Duration::from_millis(250);
 pub const MIN_SPEED_DISTANCE: f32 = 0.01;
 /// Cap on samples kept, so a flood of zero-dt packets cannot grow the deque.
 ///
-/// Deliberate bound: a sample ages out only once the samples after it cover
-/// SPEED_WINDOW of server-clock dt, so zero-dt packets (a burst released after
-/// a lag spike) stay in the window. The sum of such a burst is at most
-/// `MAX_SAMPLES` hops over the clamped 0.25 s divisor; the cap drops the
-/// oldest hops beyond that rather than growing without bound. The check only
-/// warns, it never rejects.
+/// A sample ages out only once the samples after it cover SPEED_WINDOW of
+/// server-clock dt, so zero-dt packets (a burst released after a lag spike)
+/// stay in the window. When the cap is hit, the oldest sample is folded into
+/// the next one (distance and dt both), so the window totals are preserved:
+/// dropping it would discard the stall's dt and leave only zero-time hops,
+/// which read as a huge speed. The check only warns, it never rejects.
 const MAX_SAMPLES: usize = 32;
 
 /// One accepted move: its distance and the server-clock dt it covered.
@@ -34,7 +34,8 @@ pub(super) struct SpeedWindow {
 
 impl SpeedWindow {
     /// Add a sample and return (summed distance, summed dt) over the window.
-    /// Drops the oldest samples while the rest still cover SPEED_WINDOW.
+    /// Drops the oldest samples while the rest still cover SPEED_WINDOW; past
+    /// the sample cap the oldest is folded into the next, not dropped.
     /// A negative dt counts as zero.
     pub(super) fn push(&mut self, distance: f32, dt_secs: f32) -> (f32, f32) {
         self.samples.push_back(Sample {
@@ -42,7 +43,12 @@ impl SpeedWindow {
             dt_secs: dt_secs.max(0.0),
         });
         while self.samples.len() > MAX_SAMPLES {
-            self.samples.pop_front();
+            if let Some(evicted) = self.samples.pop_front() {
+                if let Some(next) = self.samples.front_mut() {
+                    next.distance += evicted.distance;
+                    next.dt_secs += evicted.dt_secs;
+                }
+            }
         }
         let window = SPEED_WINDOW.as_secs_f32();
         let mut total: f32 = self.samples.iter().map(|s| s.dt_secs).sum();
