@@ -191,6 +191,7 @@ async fn a_log_grown_in_steps_ships_each_line_once_and_the_exit_closes_it() {
             exit: Some(EXIT),
             bundle_sent: true,
             withdrawn: false,
+            not_queued: 0,
         }
     );
     assert_eq!(posts(&server, BUNDLE).await, 1);
