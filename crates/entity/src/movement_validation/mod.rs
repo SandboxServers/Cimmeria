@@ -15,12 +15,14 @@
 //!    a generous fallback for spaces whose navmesh failed to load.
 //!    Catches NaN / infinity / absurd-coordinate overflows and the
 //!    Z-axis floor-clip exploit. (`check_bounds`, [`bounds`] module)
-//! 2. **Speed** *(warn-only)* — `|new - last| / dt` (server monotonic
-//!    clock, never a client-supplied timestamp) must not exceed
-//!    `top_speed × SPEED_WARN_TOLERANCE`. Over-tolerance moves are
-//!    **logged + counted but still accepted**: the production tolerance
-//!    is calibrated from SigNoz rejection telemetry before it is allowed
-//!    to snap legitimate high-RTT players back. (`check_kinematics`)
+//! 2. **Speed** *(warn-only)* — the summed distance over a per-entity
+//!    sliding window (`SPEED_WINDOW`) divided by `max(summed dt,
+//!    SPEED_WINDOW)` (server monotonic clock, never a client-supplied
+//!    timestamp) must not exceed `top_speed × SPEED_WARN_TOLERANCE`. The
+//!    window absorbs client send jitter and bunched packets. Over-tolerance
+//!    moves are **logged + counted but still accepted**: the production
+//!    tolerance is calibrated from SigNoz rejection telemetry before it is
+//!    allowed to snap legitimate high-RTT players back. (`observe_speed`)
 //! 3. **Teleport detection** *(hard reject)* — a single update that is
 //!    both farther than `TELEPORT_JUMP_UNITS` **and** implies a speed
 //!    above `top_speed × TELEPORT_SPEED_FACTOR` is rejected with

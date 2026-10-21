@@ -347,6 +347,75 @@ fn bunched_packets_do_not_speed_warn() {
     assert!(ratio.is_finite(), "ratio must be finite, got {ratio}");
 }
 
+/// Count the `movement.speed_warning` WARN rows captured so far.
+fn speed_warn_count(capture: &crate::test_support::LogCaptureGuard) -> usize {
+    capture
+        .all()
+        .iter()
+        .filter(|c| c.level == Level::WARN && c.message_contains("movement.speed_warning"))
+        .count()
+}
+
+/// A server-authoritative move (respawn, GM travel, ring transport) must drop
+/// the speed window. Otherwise the fast run that came before the teleport is
+/// still in the window, and the first ordinary packet after it reads as speed.
+///
+/// Reverting `speed_windows.remove` in `note_authorized_teleport` makes the
+/// final assertion fail.
+#[test]
+fn authorized_teleport_resets_the_speed_window_at_the_seam() {
+    let capture = LogCapture::install();
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+
+    let (x, _) = run_packets(&mut mgr, t0, SPAWN_POS[0], 1.0, &[50; 8]);
+    let before = speed_warn_count(&capture);
+    assert!(before > 0, "control: the 20 u/s run must warn");
+
+    mgr.note_authorized_teleport(100);
+
+    // One ordinary packet (top speed) after the teleport.
+    run_packets(&mut mgr, Instant::now(), x, 0.8125, &[100]);
+    assert_eq!(
+        speed_warn_count(&capture),
+        before,
+        "the pre-teleport run must not count against the first packet after it"
+    );
+}
+
+/// Destroying an entity frees its speed window: a recycled entity id must not
+/// inherit the old player's fast run.
+///
+/// Reverting `speed_windows.remove` in `MovementValidator::forget` makes the
+/// final assertion fail.
+#[test]
+fn destroyed_entity_does_not_leave_its_speed_window_to_a_recycled_id() {
+    let capture = LogCapture::install();
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+    run_packets(&mut mgr, t0, SPAWN_POS[0], 1.0, &[50; 8]);
+    let before = speed_warn_count(&capture);
+    assert!(before > 0, "control: the 20 u/s run must warn");
+
+    mgr.destroy_entity(100);
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    let t1 = Instant::now();
+    seed_clock(&mut mgr, 100, t1);
+    run_packets(&mut mgr, t1, SPAWN_POS[0], 0.8125, &[100]);
+    assert_eq!(
+        speed_warn_count(&capture),
+        before,
+        "a recycled entity id must start with an empty speed window"
+    );
+}
+
 /// Client send jitter: the player runs at exactly top speed (0.8125 u per
 /// 100 ms) but packets arrive 25 ms then 175 ms apart. Judged per packet, the
 /// 25 ms ones imply 32 u/s (4x top speed) and warn; over the window the
