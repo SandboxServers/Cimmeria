@@ -8,9 +8,10 @@ use axum::extract::ConnectInfo;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
-use super::quota::{install_key, ip_key, validate_install_id, validate_metadata, WindowTable};
+use super::launcher_kind;
+use super::quota::{ip_key, validate_install_id, validate_metadata, WindowTable};
 use super::token::{
-    encode_token, load_secret, AuthError, TokenClaims, SCOPE_TELEMETRY_WRITE, SESSION_KIND_LAB,
+    encode_token, load_secret, AuthError, TokenClaims, SESSION_KIND_LAB, SESSION_KIND_LAUNCHER,
     SESSION_KIND_PLAYER,
 };
 
@@ -28,7 +29,7 @@ pub const TOKEN_TTL_SECONDS: i64 = 8 * 60 * 60;
 /// which then replays the events through `tracing` so the OTLP layer
 /// ships them to SigNoz.
 const DEFAULT_UPLOAD_ENDPOINT: &str = "http://localhost:8443/api/telemetry";
-const DEFAULT_CHUNK_MAX_BYTES: u64 = 1_048_576;
+pub(super) const DEFAULT_CHUNK_MAX_BYTES: u64 = 1_048_576;
 const DEFAULT_FLUSH_INTERVAL_MS: u64 = 2_000;
 
 const DEFAULT_QUOTA_WINDOW_SECS: u64 = 3_600;
@@ -112,9 +113,10 @@ pub(super) fn kind_claim(requested: Option<&str>) -> Result<Option<String>, Auth
         None => Ok(None),
         Some(k) if k == SESSION_KIND_PLAYER => Ok(None),
         Some(k) if k == SESSION_KIND_LAB => Ok(Some(SESSION_KIND_LAB.to_string())),
+        Some(k) if k == SESSION_KIND_LAUNCHER => Ok(Some(SESSION_KIND_LAUNCHER.to_string())),
         Some(_) => Err(AuthError::BadField {
             field: "session_kind",
-            reason: "must be \"player\" or \"lab\"",
+            reason: "must be \"player\", \"lab\" or \"launcher\"",
         }),
     }
 }
@@ -143,6 +145,9 @@ pub struct QuotaPolicy {
     pub refresh_per_ip: u32,
     pub refresh_bad_per_ip: u32,
     pub max_session_secs: i64,
+    pub mint_launcher_per_ip: u32,
+    pub mint_launcher_per_install: u32,
+    pub launcher_disabled: bool,
 }
 
 impl QuotaPolicy {
@@ -169,6 +174,15 @@ impl QuotaPolicy {
                 "CIMMERIA_TELEMETRY_MAX_SESSION_SECS",
                 DEFAULT_MAX_SESSION_SECS,
             ),
+            mint_launcher_per_ip: env_u32(
+                launcher_kind::LAUNCHER_MINT_IP_ENV,
+                launcher_kind::DEFAULT_LAUNCHER_MINT_PER_IP,
+            ),
+            mint_launcher_per_install: env_u32(
+                launcher_kind::LAUNCHER_MINT_INSTALL_ENV,
+                launcher_kind::DEFAULT_LAUNCHER_MINT_PER_INSTALL,
+            ),
+            launcher_disabled: launcher_kind::launcher_disabled_from_env(),
         }
     }
 }
@@ -178,6 +192,8 @@ impl QuotaPolicy {
 pub struct Tables {
     pub mint_ip: WindowTable,
     pub mint_install: WindowTable,
+    pub mint_launcher_ip: WindowTable,
+    pub mint_launcher_install: WindowTable,
     pub refresh_ip: WindowTable,
     pub refresh_bad: WindowTable,
 }
@@ -187,6 +203,8 @@ impl Tables {
         Self {
             mint_ip: WindowTable::new(),
             mint_install: WindowTable::new(),
+            mint_launcher_ip: WindowTable::new(),
+            mint_launcher_install: WindowTable::new(),
             refresh_ip: WindowTable::new(),
             refresh_bad: WindowTable::new(),
         }
@@ -241,6 +259,8 @@ pub(super) fn mint_inner(
     if kill_switch_active() {
         return Err(AuthError::KillSwitchActive);
     }
+    let launcher = launcher_kind::is_launcher_request(&req);
+    launcher_kind::refuse_if_disabled(policy, launcher)?;
     // Charged before `install_id` is validated, so rotating or
     // malforming it buys nothing from one address. A body that fails
     // JSON extraction never reaches this function (axum rejects it in
@@ -253,44 +273,47 @@ pub(super) fn mint_inner(
         "mint/ip",
         now,
     )?;
+    launcher_kind::charge_ip(tables, policy, peer_ip, launcher, now)?;
     validate_install_id(&req.install_id).map_err(AuthError::BadInstallId)?;
+    launcher_kind::check_machine_id(launcher, &req.machine_id)?;
     for (field, value) in [
-        ("machine_id", &req.machine_id),
         ("branch", &req.branch),
         ("git_sha", &req.git_sha),
         ("launcher_version", &req.launcher_version),
     ] {
         validate_metadata(value).map_err(|reason| AuthError::BadField { field, reason })?;
     }
+    launcher_kind::check_request(&req, launcher)?;
     let kind = kind_claim(req.session_kind.as_deref())?;
     let acct = account_claim(req.account_name.as_deref())?;
-    tables.mint_install.check_and_record(
-        install_key(&req.install_id),
-        policy.mint_per_install,
-        policy.window,
-        "mint/install_id",
-        now,
-    )?;
+    launcher_kind::charge_install(tables, policy, &req.install_id, launcher, now)?;
     let secret = load_secret()?;
     let session_id = uuid::Uuid::new_v4().to_string();
-    let exp = now_unix + TOKEN_TTL_SECONDS;
+    let ttl = if launcher {
+        launcher_kind::LAUNCHER_TOKEN_TTL_SECONDS
+    } else {
+        TOKEN_TTL_SECONDS
+    };
+    let exp = now_unix + ttl;
     let claims = TokenClaims {
         iss: "cimmeria-server".into(),
         sub: req.install_id,
         sid: session_id.clone(),
         iat: now_unix,
         exp,
-        scope: vec![SCOPE_TELEMETRY_WRITE.into()],
+        scope: launcher_kind::scope_for(launcher),
         kind,
         acct,
         // Every launcher already sends its hashed machine id; signing it
         // lets a refresh, which sees only the token, re-record the stream.
-        mid: Some(req.machine_id.trim())
-            .filter(|m| !m.is_empty())
-            .map(str::to_string),
+        // A launcher mint signs none (C12).
+        mid: launcher_kind::machine_claim(launcher, &req.machine_id),
     };
     let token = encode_token(&claims, &secret)?;
-    record_stream(&claims, peer_ip);
+    // A launcher session records no stream: it has no game to join (R4).
+    if !launcher {
+        record_stream(&claims, peer_ip);
+    }
     // install_id / machine_id stay at debug to avoid leaking
     // persistent fingerprints into info-level pipelines. The token itself
     // is never logged.
@@ -307,7 +330,7 @@ pub(super) fn mint_inner(
     tracing::debug!(
         session_id = %session_id, // nt:id-only generated UUID, nothing to name
         install_id = %claims.sub, // nt:id-only a generated install UUID, nothing to name
-        machine_id = %req.machine_id, // nt:id-only an opaque machine fingerprint, nothing to name
+        machine_id = %launcher_kind::machine_id_for_log(launcher, &req.machine_id), // nt:id-only an opaque machine fingerprint, nothing to name
         "dev-session caller identifiers (debug-only)"
     );
     Ok(DevSessionResponse {
@@ -315,7 +338,7 @@ pub(super) fn mint_inner(
         token,
         expires_at_ms: exp * 1000,
         upload_endpoint: upload_endpoint_env(),
-        chunk_max_bytes: DEFAULT_CHUNK_MAX_BYTES,
+        chunk_max_bytes: launcher_kind::chunk_max_bytes(launcher),
         flush_interval_ms: DEFAULT_FLUSH_INTERVAL_MS,
     })
 }
@@ -351,6 +374,7 @@ pub(super) fn refresh_inner(
             return Err(e);
         }
     };
+    launcher_kind::refuse_refresh(&claims)?;
     tables.refresh_ip.check_and_record(
         ip_key(peer_ip),
         policy.refresh_per_ip,
