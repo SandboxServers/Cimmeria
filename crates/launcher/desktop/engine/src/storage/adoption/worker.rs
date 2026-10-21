@@ -26,9 +26,10 @@ impl PreviewWorker {
                 Some(outcome)
             }
             Err(oneshot::error::TryRecvError::Empty) => None,
-            Err(oneshot::error::TryRecvError::Closed) => {
-                Some(Err(StorageError::PersistenceUncertain.into()))
-            }
+            Err(oneshot::error::TryRecvError::Closed) => Some(Err(rejection::reject(
+                StorageError::PersistenceUncertain.into(),
+                Rejection::new("worker_stopped").found("channel_closed"),
+            ))),
         }
     }
     pub async fn wait(&mut self) -> Result<Preview, Error> {
@@ -37,7 +38,10 @@ impl PreviewWorker {
                 self.last_rejection = recorded;
                 outcome
             }
-            Err(_) => Err(StorageError::PersistenceUncertain.into()),
+            Err(_) => Err(rejection::reject(
+                StorageError::PersistenceUncertain.into(),
+                Rejection::new("worker_stopped").found("channel_closed"),
+            )),
         }
     }
 }
@@ -92,7 +96,12 @@ pub(super) fn start_preview_backend(
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 preview_using(state, request, owned_cancel, progress, backend, transport)
             }))
-            .unwrap_or(Err(StorageError::PersistenceUncertain.into()))
+            .unwrap_or_else(|_| {
+                Err(rejection::reject(
+                    StorageError::PersistenceUncertain.into(),
+                    Rejection::new("worker_stopped").found("panic"),
+                ))
+            })
         });
         // An unobserved preview releases its source lock/private temp reference.
         if let Err((Ok(preview), _)) = send.send((outcome, recorded)) {

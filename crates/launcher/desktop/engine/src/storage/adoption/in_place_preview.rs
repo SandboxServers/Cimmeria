@@ -51,34 +51,38 @@ pub(super) fn preview(
                 }
                 let folder = &imported.source.game_directory;
                 if request.destination != *folder {
-                    return Err(refused(
+                    return Err(rejection::reject(
                         StorageError::InvalidDirectory.into(),
-                        "the folder is not the imported game folder",
+                        Rejection::new("invalid_directory")
+                            .expected("the folder is not the imported game folder"),
                     ));
                 }
                 if folder.starts_with(&owner.directory.root)
                     || owner.directory.root.starts_with(folder)
                 {
-                    return Err(refused(
+                    return Err(rejection::reject(
                         StorageError::InvalidDirectory.into(),
-                        "the folder overlaps the launcher state",
+                        Rejection::new("invalid_directory")
+                            .expected("the folder overlaps the launcher state"),
                     ));
                 }
                 // Its lock is held for the whole adoption, and a locked file cannot be
                 // read for verification.
                 if imported.source.launcher_directory.starts_with(folder) {
-                    return Err(refused(
+                    return Err(rejection::reject(
                         StorageError::InvalidDirectory.into(),
-                        "the old launcher lives inside the game folder",
+                        Rejection::new("invalid_directory")
+                            .expected("the old launcher lives inside the game folder"),
                     ));
                 }
                 folder.clone()
             }
             AdoptionSource::Folder(picked) => {
                 if request.destination != picked.root {
-                    return Err(refused(
+                    return Err(rejection::reject(
                         StorageError::InvalidDirectory.into(),
-                        "the folder is not the picked game folder",
+                        Rejection::new("invalid_directory")
+                            .expected("the folder is not the picked game folder"),
                     ));
                 }
                 picked.root.clone()
@@ -107,8 +111,12 @@ pub(super) fn preview(
         other => other,
     };
     if !full_layout(&folder) {
-        tracing::warn!(target: "adoption", "in-place adoption refused: the folder is not in the installer's Working\\Binaries layout");
-        return Err(Error::UnsupportedLayout);
+        return Err(rejection::reject(
+            Error::UnsupportedLayout,
+            Rejection::new("unsupported_layout")
+                .expected("the installer's Working\\Binaries layout")
+                .found("another layout"),
+        ));
     }
     let (adopted, legacy_lock) = source::resolve(adopted)?;
     let servers = source::servers_of(&adopted, &before);
@@ -144,7 +152,8 @@ pub(super) fn preview(
         Ok(prepared) => prepared,
         Err(error) => {
             preparation.release();
-            return Err(refused(error, "the signed reference could not be compared"));
+            let check = Rejection::new("comparison_failed").found(rejection::code(&error));
+            return Err(rejection::reject(error, check));
         }
     };
     let (imported_identity, requested_config) = match &adopted {
@@ -212,12 +221,16 @@ fn clear_unbegun_admission(state: &DesktopState, folder: &Path) -> Result<bool, 
     if !MANAGED.iter().any(|entry| has(&folder.join(entry))) && stages.is_empty() {
         return Ok(false);
     }
-    let leftover = |why: &str| {
-        tracing::warn!(target: "adoption", "in-place adoption refused: launcher-owned names are already in the folder ({why})");
-        Err(Error::LeftoverLauncherFiles)
+    let leftover = |entry: &str, found: &str| {
+        Err(rejection::reject(
+            Error::LeftoverLauncherFiles,
+            Rejection::new("leftover_launcher_files")
+                .entry(entry)
+                .found(found),
+        ))
     };
     if has(&folder.join("content-ready.json")) {
-        return leftover("content-ready.json");
+        return leftover("content-ready.json", "content_ready");
     }
     let empty_game = match std::fs::symlink_metadata(&game) {
         Err(_) => false,
@@ -228,13 +241,13 @@ fn clear_unbegun_admission(state: &DesktopState, folder: &Path) -> Result<bool, 
         }
     };
     if has(&game) && !empty_game {
-        return leftover("game is not an empty folder");
+        return leftover("game", "game_not_empty");
     }
     if has(&marker) {
         let Ok(intent) = inventory::open(&marker)
             .and_then(|file| super::super::read_open::<InstallIntent>(&file).map_err(Error::from))
         else {
-            return leftover("the owner marker is not readable");
+            return leftover(OWNER, "marker");
         };
         let journaled = state
             .operations
@@ -243,12 +256,12 @@ fn clear_unbegun_admission(state: &DesktopState, folder: &Path) -> Result<bool, 
             .as_ref()
             .is_some_and(|op| op.id == intent.operation_id);
         if journaled || intent.destination != folder || planned(state, &intent)? {
-            return leftover("the owner marker belongs to known work");
+            return leftover(OWNER, "marker");
         }
     }
     for (id, stage) in &stages {
         if !unbegun_work_folder(state, *id, stage)? {
-            return leftover("the work folder belongs to known work");
+            return leftover(&rejection::relative(folder, stage), "work_folder");
         }
     }
     if has(&marker) {

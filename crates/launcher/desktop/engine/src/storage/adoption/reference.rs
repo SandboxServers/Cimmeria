@@ -11,7 +11,31 @@ pub(super) struct Reference {
     pub raw: inventory::Index,
     pub index: inventory::Index,
 }
+/// The entry point. A seed or patch archive that fails its zip checks is recorded as `reference_zip_invalid`.
 pub(super) fn reconstruct(
+    parent: &Path,
+    release: &VerifiedRelease,
+    artifacts: &Artifacts,
+    servers: &[crate::client_setup::LoginServer],
+    cancel: &CancellationToken,
+    progress: ProgressSink,
+    extractor: Option<&dyn crate::install::SeedExtractor>,
+) -> Result<Reference, Error> {
+    build(
+        parent, release, artifacts, servers, cancel, progress, extractor,
+    )
+    .map_err(|error| match error {
+        Error::UnsupportedArchive
+        | Error::InvalidArtifact
+        | Error::Storage(StorageError::TooLarge) => rejection::reject(
+            error,
+            Rejection::new("reference_zip_invalid").entry("reference"),
+        ),
+        other => other,
+    })
+}
+
+fn build(
     parent: &Path,
     release: &VerifiedRelease,
     artifacts: &Artifacts,

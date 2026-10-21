@@ -140,8 +140,15 @@ impl Preview {
     }
     /// The one consent rule, shared by review presentation and confirmation.
     pub fn consent(&self, choices: &Choices) -> Result<(), Error> {
-        if self.report.blocking(&self.replacements).next().is_some() {
-            return Err(Error::VerificationFailed);
+        let mut blocking = self.report.blocking(&self.replacements);
+        if let Some(first) = blocking.next() {
+            let count = 1 + blocking.count();
+            return Err(rejection::reject(
+                Error::VerificationFailed,
+                Rejection::new("blocking_files")
+                    .entry(&first.path)
+                    .found(count.to_string()),
+            ));
         }
         // Replacing a changed or absent file is a choice of its own (D-AI1);
         // a patch-only file needs no extra consent (D-AI7). A copy replaces nothing.
