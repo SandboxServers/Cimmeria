@@ -202,73 +202,53 @@ pub const FRAG_FIRST_AND_LAST: u8 = 0x43;
 // Direct encoding (0–60): msg_id = index | 0x80
 // Extended encoding (61+): msg_id = 0xBD, payload = entity_id + (index - 61) as u8 + args
 
-/// Flattened ClientMethod indices.
+/// Flattened ClientMethod indices: a compatibility re-export of
+/// [`crate::cell::client_methods`].
+///
+/// The literals live in the per-interface tables under `cell::client_methods`,
+/// one constant per index. New code should import from the tables, and a new
+/// ClientMethod index belongs there, not here. `mercury::def_conformance`
+/// checks every table constant against `entities/defs/` (#801).
 ///
 /// Both SGWPlayer and SGWMob share indices 0–26 since they have the same
 /// parent chain through SGWBeing with identical interface ordering.
 ///
-/// Every const here is checked against `entities/defs/` by
-/// `mercury::def_conformance` (#801): a name must
-/// match the flattened def method at its value.
+/// Wire encoding boundary for SGWPlayer is idbase (61); see
+/// `append_entity_method`.
 pub mod method_idx {
     // SGWSpawnableEntity own (0–11)
-    pub const ON_SEQUENCE: u16 = 1;
-    pub const INTERACTION_TYPE: u16 = 3;
-    pub const ON_ENTITY_FLAGS: u16 = 4;
-    pub const ON_ENTITY_PROPERTY: u16 = 7;
-    pub const ON_VISIBLE: u16 = 8;
-    pub const ON_KISMET_EVENT_SET_UPDATE: u16 = 9;
-    pub const ON_ENTITY_TINT: u16 = 10;
-    pub const ON_BEING_NAME_ID_UPDATE: u16 = 11;
+    pub use crate::cell::client_methods::spawnable_entity::{
+        INTERACTION_TYPE, ON_BEING_NAME_ID_UPDATE, ON_ENTITY_FLAGS, ON_ENTITY_PROPERTY,
+        ON_ENTITY_TINT, ON_KISMET_EVENT_SET_UPDATE, ON_SEQUENCE, ON_VISIBLE,
+    };
 
-    // SGWBeing interface (12–19)
-    pub const ON_EFFECT_RESULTS: u16 = 14;
-    pub const ON_LEVEL_UPDATE: u16 = 15;
-    pub const ON_TARGET_UPDATE: u16 = 16;
-    pub const ON_BEING_NAME_UPDATE: u16 = 17;
-    pub const ON_STATE_FIELD_UPDATE: u16 = 19;
+    // SGWBeing interface (12–19), and SGWBeing own (26)
+    pub use crate::cell::client_methods::being::{
+        BEING_APPEARANCE, ON_BEING_NAME_UPDATE, ON_EFFECT_RESULTS, ON_LEVEL_UPDATE,
+        ON_STATE_FIELD_UPDATE, ON_TARGET_UPDATE,
+    };
 
     // SGWCombatant interface (20–25)
-    pub const ON_STAT_UPDATE: u16 = 20;
-    pub const ON_STAT_BASE_UPDATE: u16 = 21;
-    pub const ON_ARCHETYPE_UPDATE: u16 = 23;
-    pub const ON_ALIGNMENT_UPDATE: u16 = 24;
-    pub const ON_FACTION_UPDATE: u16 = 25;
-
-    // SGWBeing own (26) — not part of the SGWCombatant interface above.
-    // SGWBeing's Implements interfaces flatten first (12–25), then its own
-    // methods begin at 26.
-    pub const BEING_APPEARANCE: u16 = 26;
+    pub use crate::cell::client_methods::combatant::{
+        ON_ALIGNMENT_UPDATE, ON_ARCHETYPE_UPDATE, ON_FACTION_UPDATE, ON_STAT_BASE_UPDATE,
+        ON_STAT_UPDATE,
+    };
 
     // ── Divergence point: index 27 onward is entity-type-specific ──────────
     //
-    // SGWPlayer and SGWMob share indices 0–26 (the SGWSpawnableEntity →
-    // SGWBeing prefix above), but flatten differently from 27: SGWPlayer's
-    // own `<Implements>` chain continues with Communicator/OrganizationMember/
-    // etc., while SGWMob's `<Implements>` is just `Lootable` (whose
-    // `<ClientMethods>` block is empty — `entities/defs/interfaces/Lootable.def`)
-    // followed immediately by SGWMob's own 2 methods. The two constant blocks
-    // below therefore reuse the same numeric range (27–33) for two different
-    // entity types — always pair a method index with the right `class_id`
-    // (SGWPlayer = 0x02, SGWMob = 0x04) at the call site.
+    // SGWPlayer and SGWMob share indices 0–26, but flatten differently from 27.
+    // Always pair a method index with the right `class_id` (SGWPlayer = 0x02,
+    // SGWMob = 0x04) at the call site.
 
     // Communicator interface (27–33) — SGWPlayer only
-    pub const ON_PLAYER_COMMUNICATION: u16 = 28;
-    pub const ON_CHAT_JOINED: u16 = 31;
-    pub const ON_CHAT_LEFT: u16 = 32;
+    pub use crate::cell::client_methods::communicator::{
+        ON_CHAT_JOINED, ON_CHAT_LEFT, ON_PLAYER_COMMUNICATION,
+    };
 
-    // SGWMob own methods (27–28) — SGWMob only. `entities/defs/SGWMob.def`
-    // `<ClientMethods>` declares `onAggressionOverrideUpdate` then
-    // `onAggressionOverrideCleared`, in that document order, immediately
-    // after the empty `Lootable` interface. Ghidra-confirmed: the client
-    // registers both through `MemberCallback<GameMob, ...>` at 0x00d31cd0
-    // (paired handlers, `Event_NetIn_onAggressionOverrideUpdate` /
-    // `Event_NetIn_onAggressionOverrideCleared`), and the Update handler at
-    // 0x00d31bd0 reads the `aAggressionLevel` INT8 arg and stores it at
-    // `GameMob + 0x16c`. NA33:
-    // docs/reverse-engineering/findings/npc-aggression-broadcast.md.
-    pub const ON_AGGRESSION_OVERRIDE_UPDATE: u16 = 27;
-    pub const ON_AGGRESSION_OVERRIDE_CLEARED: u16 = 28;
+    // SGWMob own methods (27–28) — SGWMob only
+    pub use crate::cell::client_methods::mob::{
+        ON_AGGRESSION_OVERRIDE_CLEARED, ON_AGGRESSION_OVERRIDE_UPDATE,
+    };
 
     // OrganizationMember interface (34–51) — SGWPlayer only. Re-exported
     // from `cell::client_methods::organization`, the authoritative table,
@@ -285,20 +265,17 @@ pub mod method_idx {
     };
 
     // GateTravel interface (65–68)
-    pub const SETUP_STARGATE_INFO: u16 = 65;
+    pub use crate::cell::client_methods::gate_travel::SETUP_STARGATE_INFO;
 
     // SGWInventoryManager interface (69–75)
-    pub const ON_BAG_INFO: u16 = 69;
-    pub const ON_ACTIVE_SLOT_UPDATE: u16 = 70;
-    pub const ON_REMOVE_ITEM: u16 = 71;
-    pub const ON_UPDATE_ITEM: u16 = 72;
-    pub const ON_CASH_CHANGED: u16 = 75;
+    pub use crate::cell::client_methods::inventory::{
+        ON_ACTIVE_SLOT_UPDATE, ON_BAG_INFO, ON_CASH_CHANGED, ON_REMOVE_ITEM, ON_UPDATE_ITEM,
+    };
 
     // SGWMailManager interface (76–79)
-    pub const ON_MAIL_HEADER_INFO: u16 = 76;
-    pub const ON_MAIL_HEADER_REMOVE: u16 = 77;
-    pub const ON_MAIL_READ: u16 = 78;
-    pub const SEND_MAIL_RESULT: u16 = 79;
+    pub use crate::cell::client_methods::mail::{
+        ON_MAIL_HEADER_INFO, ON_MAIL_HEADER_REMOVE, ON_MAIL_READ, SEND_MAIL_RESULT,
+    };
 
     // Missionary interface (80–84) — see
     // `crate::cell::client_methods::missionary`. 80/81 previously carried
@@ -308,46 +285,22 @@ pub mod method_idx {
     // 80/81 lands in the client's mission handlers.
 
     // SGWContactListManager interface (85–89)
-    pub const ON_CONTACT_LIST_UPDATE: u16 = 85;
-    pub const ON_CONTACT_LIST_DELETE: u16 = 86;
-    pub const ON_CONTACT_LIST_ADD_MEMBERS: u16 = 87;
-    pub const ON_CONTACT_LIST_REMOVE_MEMBERS: u16 = 88;
-    pub const ON_CONTACT_LIST_EVENT: u16 = 89;
-
-    // SGWPlayer own methods (base offset 98)
-    pub const ON_BEGIN_AID_WAIT: u16 = 98;
-    pub const ON_END_AID_WAIT: u16 = 99;
-    // onDHDReply = 100
-    pub const ON_KNOWN_ABILITIES_UPDATE: u16 = 101;
-    pub const ON_TIME_OF_DAY: u16 = 102;
-    pub const ON_DIALOG_DISPLAY: u16 = 105;
-    pub const ON_TRAINER_OPEN: u16 = 113;
-    pub const ON_LOOT_DISPLAY: u16 = 114;
-    pub const ON_PLAYER_DATA_LOADED: u16 = 115;
-    pub const ON_CLIENT_MAP_LOAD: u16 = 117;
-    pub const GIVE_ABILITY: u16 = 118;
-    pub const GIVE_XP_FOR_LEVEL: u16 = 119;
-    pub const ON_ERROR_CODE: u16 = 121;
-    pub const SETUP_WORLD_PARAMETERS: u16 = 122;
-    pub const CLEAR_HINTED_REGIONS: u16 = 124;
-    pub const ADD_CLIENT_HINTED_GENERIC_REGION: u16 = 125;
-    pub const ON_RESET_MAP_INFO: u16 = 126;
-
-    // Extended-method block — these indices are >= idbase (61 for SGWPlayer),
-    // so each is emitted with extended encoding (0xBD marker + sub-byte).
-    pub const ON_EXTRA_NAME_UPDATE: u16 = 130;
-    pub const ON_EXP_UPDATE: u16 = 131;
-    pub const ON_MAX_EXP_UPDATE: u16 = 132;
-    pub const ON_RING_TRANSPORTER_LIST: u16 = 133;
-    pub use crate::cell::client_methods::player::{
-        LAUNCH_ORGANIZATION_CREATION, ON_ORGANIZATION_CREATION_RESULT,
+    pub use crate::cell::client_methods::contact_list::{
+        ON_CONTACT_LIST_ADD_MEMBERS, ON_CONTACT_LIST_DELETE, ON_CONTACT_LIST_EVENT,
+        ON_CONTACT_LIST_REMOVE_MEMBERS, ON_CONTACT_LIST_UPDATE,
     };
-    pub const ON_UPDATE_DISCIPLINE: u16 = 136;
-    pub const ON_UPDATE_KNOWN_CRAFTS: u16 = 139;
-    pub const ON_ABILITY_TREE_INFO: u16 = 141;
-    pub const ON_TRADE_STATE: u16 = 144;
-    pub const ON_TRADE_RESULTS: u16 = 145;
-    pub const ON_PLAY_MOVIE: u16 = 155;
+
+    // SGWPlayer own methods (base offset 98), extended-method block included
+    pub use crate::cell::client_methods::player::{
+        ADD_CLIENT_HINTED_GENERIC_REGION,
+        CLEAR_CLIENT_HINTED_GENERIC_REGIONS as CLEAR_HINTED_REGIONS, GIVE_ABILITY,
+        GIVE_XP_FOR_LEVEL, LAUNCH_ORGANIZATION_CREATION, ON_ABILITY_TREE_INFO, ON_BEGIN_AID_WAIT,
+        ON_CLIENT_MAP_LOAD, ON_DIALOG_DISPLAY, ON_END_AID_WAIT, ON_ERROR_CODE, ON_EXP_UPDATE,
+        ON_EXTRA_NAME_UPDATE, ON_KNOWN_ABILITIES_UPDATE, ON_LOOT_DISPLAY, ON_MAX_EXP_UPDATE,
+        ON_ORGANIZATION_CREATION_RESULT, ON_PLAYER_DATA_LOADED, ON_PLAY_MOVIE, ON_RESET_MAP_INFO,
+        ON_RING_TRANSPORTER_LIST, ON_TIME_OF_DAY, ON_TRADE_RESULTS, ON_TRADE_STATE,
+        ON_TRAINER_OPEN, ON_UPDATE_DISCIPLINE, ON_UPDATE_KNOWN_CRAFTS, SETUP_WORLD_PARAMETERS,
+    };
 }
 
 // ── Entity method encoding ───────────────────────────────────────────────────

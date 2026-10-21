@@ -16,13 +16,12 @@
 //! server's game clock, asserted as a window below.
 
 use cimmeria_content_engine::chain::ChainEngine;
+use cimmeria_wire::cell::client_methods::being::ON_TIMER_UPDATE;
 use tokio::sync::mpsc;
 
 use super::setup;
 use crate::cell::console::exec;
 use crate::cell::messages::CellToBaseMsg;
-
-const ON_TIMER_UPDATE: u16 = 12;
 
 /// Every `onTimerUpdate` payload sent directly to `entity_id`.
 fn drain_timer_updates(rx: &mut mpsc::Receiver<CellToBaseMsg>, entity_id: u32) -> Vec<Vec<u8>> {

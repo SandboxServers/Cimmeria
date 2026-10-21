@@ -13,6 +13,10 @@
 use cimmeria_cell_combat::cell::service::npc_ai::{self, AiTransitionReason};
 use cimmeria_entity::abilities::serialize_timer_update;
 use cimmeria_entity::cell_entity::AiState;
+use cimmeria_wire::cell::client_methods::{
+    being::ON_TIMER_UPDATE,
+    player::{ON_CLIENT_CHALLENGE, ON_MAP_INFO},
+};
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
@@ -23,12 +27,6 @@ use crate::cell::interactions;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::method_idx::{ON_PLAYER_COMMUNICATION, ON_SEQUENCE};
-
-/// Client method indices from `docs/protocol/client-method-dispatch-table.md`
-/// (SGWPlayer ClientMethods), for the handful not in `method_idx`.
-const ON_TIMER_UPDATE: u16 = 12;
-const ON_MAP_INFO: u16 = 123;
-const ON_CLIENT_CHALLENGE: u16 = 142;
 
 /// Feedback channel id (`CHAN_FEEDBACK`); `net_speak`'s default speak channel is
 /// say (`0`).
