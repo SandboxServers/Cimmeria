@@ -91,12 +91,13 @@ pub(super) fn verify_bearer_for(
 /// Charge a launcher chunk to the launcher's own windows, in order: the
 /// session, the install, then the address. A launcher chunk is charged here
 /// instead of on the player's chunk windows. The first full window refuses,
-/// and the windows before it keep the charge.
+/// and the windows before it keep the charge. `rate_ip` is the quota key
+/// address (`forwarded_for::rate_limit_ip`), not the socket peer.
 pub(super) fn charge_launcher_chunk(
     state: &UploadState,
     policy: &UploadPolicy,
     claims: &TokenClaims,
-    peer: IpAddr,
+    rate_ip: IpAddr,
     now: Instant,
 ) -> Result<(), IngestError> {
     state
@@ -122,7 +123,7 @@ pub(super) fn charge_launcher_chunk(
     state
         .launcher_chunk_ip
         .check_and_record(
-            ip_key(peer),
+            ip_key(rate_ip),
             policy.launcher_chunk_per_ip,
             CHUNK_QUOTA_WINDOW,
             "upload/launcher_ip",

@@ -300,7 +300,7 @@ fn kill_switch_is_on_only_for_the_literal_one() {
     assert!(kill_switch_active());
 }
 
-fn token_minted_at(iat: i64, exp: i64) -> String {
+pub(super) fn token_minted_at(iat: i64, exp: i64) -> String {
     let claims = TokenClaims {
         iss: "cimmeria-server".into(),
         sub: "install-abc".into(),
