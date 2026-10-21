@@ -1,0 +1,14 @@
+# Launcher event wire targets, one per line (D-LT5, docs/analysis/launcher-telemetry).
+# Pinned by golden tests in cimmeria-launcher-engine and cimmeria-admin-api; change all three together.
+client.launcher.adoption
+client.launcher.startup
+client.launcher.crash
+client.launcher.update
+client.launcher.game_update
+client.launcher.install
+client.launcher.repair
+client.launcher.launch
+client.launcher.settings
+client.launcher.telemetry
+client.launcher.ui
+client.launcher.login

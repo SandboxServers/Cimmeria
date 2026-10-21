@@ -64,6 +64,7 @@ mod tests {
         let records = [LauncherRecord {
             ts_ms: 1,
             level: "info".into(),
+            target: "client.launcher.adoption",
             fields: serde_json::Map::new(),
         }];
         let redaction = Redaction::default();

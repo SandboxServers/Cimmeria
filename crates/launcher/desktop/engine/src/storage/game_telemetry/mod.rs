@@ -4,6 +4,7 @@
 use super::*;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+pub mod endpoint_sanity;
 #[cfg(test)]
 mod event_tests;
 pub(crate) mod install_event;
