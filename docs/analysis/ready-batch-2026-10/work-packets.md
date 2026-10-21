@@ -4,7 +4,7 @@ Ledger: [README.md](README.md). Resume card: [RESUME.md](RESUME.md).
 
 ## Dispatch rules
 
-- One worktree per packet. `ops` creates it with `pwsh tools/build-lane/mk-worktree.ps1 <branch> <name>`. The branch and name are in each packet. The worktree is `C:\Users\derek\Documents\code_projects\Cimmeria\.claude\worktrees\<name>`.
+- One worktree per packet. `ops` creates it with `pwsh tools/build-lane/mk-worktree.ps1 <branch> <name>`. The branch and name are in each packet. The worktree is `.claude/worktrees/<name>`.
 - Dispatch each wave's independent packets in one message, in the background. The brief gives the worktree path, this file's packet section, the report path and the return line.
 - Report path: `<worktree>\.claude\reports\ready-batch-2026-10\<packet>-coder.md` (the review-fixer writes `<packet>-review.md`). Return exactly one line: `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`.
 - After each wave, one `packet-review-fixer` reviews the whole wave. Advisor passes are listed per packet.
