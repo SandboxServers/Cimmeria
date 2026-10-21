@@ -4,6 +4,7 @@
 //! logged through a throttle.
 //!
 //! - `gate` — kill switch, token before body, rate limits, slots.
+//! - `launcher_gate` — the launcher token's scope, quotas, slots and kill switch.
 //! - `chunk` — the chunk budgets and the priority allowance.
 //! - `bundle` — the bundle budgets.
 //! - `field_caps` — the string caps.
@@ -15,6 +16,7 @@ mod bundle;
 mod chunk;
 mod field_caps;
 mod gate;
+mod launcher_gate;
 mod refusal_log;
 mod refusal_log_pools;
 mod slow_body;
@@ -101,6 +103,42 @@ pub(super) fn claims(sid: &str) -> TokenClaims {
 /// A token the `Env` secret verifies.
 pub(super) fn token(sid: &str) -> String {
     encode_token(&claims(sid), &[0x5c; 64]).unwrap()
+}
+
+/// A launcher token's claims: the launcher kind, its own scope, and a
+/// 15-minute life.
+pub(super) fn launcher_claims(sid: &str, install: &str) -> TokenClaims {
+    let now = chrono::Utc::now().timestamp();
+    TokenClaims {
+        iss: "cimmeria-server".into(),
+        sub: install.into(),
+        sid: sid.into(),
+        iat: now,
+        exp: now + 900,
+        scope: vec!["telemetry.launcher.write".into()],
+        kind: Some("launcher".into()),
+        acct: None,
+        mid: None,
+    }
+}
+
+/// A launcher token for session `sid` of install `install`, which the `Env`
+/// secret verifies.
+pub(super) fn launcher_token(sid: &str, install: &str) -> String {
+    encode_token(&launcher_claims(sid, install), &[0x5c; 64]).unwrap()
+}
+
+/// A launcher's chunk request for session `sid`, from the test install.
+pub(super) fn launcher_chunk_request(sid: &str, body: Vec<u8>) -> Request {
+    Request::builder()
+        .method("POST")
+        .uri("/upload-chunk")
+        .header(
+            AUTHORIZATION,
+            format!("Bearer {}", launcher_token(sid, "install-launcher-test")),
+        )
+        .body(Body::from(body))
+        .unwrap()
 }
 
 pub(super) fn gzip(bytes: &[u8]) -> Vec<u8> {
