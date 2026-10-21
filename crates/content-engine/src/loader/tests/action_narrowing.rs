@@ -121,3 +121,29 @@ fn add_item_qty_five_grants_five() {
         other => panic!("expected GrantItem, got {other:?}"),
     }
 }
+
+/// `spawn_entity.aggression` lives in `action_spawn.rs`, not `action.rs`,
+/// and needs a full spawn descriptor, so it cannot be a `CASES` row.
+#[test]
+fn spawn_entity_aggression_out_of_range_drops_the_action() {
+    let spawn = |aggression: i64| {
+        row(
+            "spawn_entity",
+            Some(207),
+            Some("Rinla_Malac"),
+            serde_json::json!({ "x": 1.0, "y": 2.0, "z": 3.0, "aggression": aggression }),
+        )
+    };
+    for value in [OVER_I32, UNDER_I32] {
+        assert!(
+            convert_action(&spawn(value)).is_none(),
+            "spawn_entity.aggression={value} wrapped instead of dropping the action"
+        );
+    }
+    match convert_action(&spawn(i32::MAX as i64)) {
+        Some(Action::SpawnEntity { aggression, .. }) => {
+            assert_eq!(aggression, Some(i32::MAX));
+        }
+        other => panic!("expected SpawnEntity at i32::MAX, got {other:?}"),
+    }
+}
