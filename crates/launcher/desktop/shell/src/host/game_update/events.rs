@@ -43,3 +43,42 @@ pub(super) fn mark_uncertain_failed<E: Serialize>(error: E) {
         "game update: the operation could not be marked uncertain; expected a recovery record; the next start must reconcile it"
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::host::JobError;
+    use crate::test_capture::{capture, Captured};
+
+    #[test]
+    fn action_row_names_the_action_and_the_outcome_code() {
+        let ((), captured) = capture(|| {
+            action_finished::<(), JobError>("apply", &Ok(()), Duration::from_millis(4));
+            action_finished::<(), JobError>(
+                "cancel",
+                &Err(JobError::StaleRevision),
+                Duration::from_millis(5),
+            );
+        });
+        assert_action(&captured[0], "apply", "ok");
+        assert_action(&captured[1], "cancel", "stale_revision");
+        assert_eq!(captured[0].field("duration_ms"), Some("4"));
+    }
+
+    fn assert_action(row: &Captured, action: &str, outcome: &str) {
+        assert_eq!(row.target, "launcher.game_update");
+        assert_eq!(row.level, tracing::Level::INFO);
+        assert_eq!(row.field("event"), Some("game_update_action_finished"));
+        assert_eq!(row.field("action"), Some(action));
+        assert_eq!(row.field("outcome"), Some(outcome));
+    }
+
+    #[test]
+    fn mark_uncertain_row_is_a_warning_with_the_closed_code() {
+        let ((), captured) = capture(|| mark_uncertain_failed(JobError::StaleRevision));
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].level, tracing::Level::WARN);
+        assert_eq!(captured[0].field("event"), Some("mark_uncertain_failed"));
+        assert_eq!(captured[0].field("error_kind"), Some("stale_revision"));
+    }
+}

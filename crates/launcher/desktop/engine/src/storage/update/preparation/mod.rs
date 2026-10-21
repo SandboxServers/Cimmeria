@@ -196,6 +196,7 @@ async fn reconstruct(
     if cancel.is_cancelled() {
         return Err(Failure::Cancelled);
     }
+    let started = std::time::Instant::now();
     let candidate = plan.clone();
     let mut prepared = tokio::task::spawn_blocking(move || claim(candidate))
         .await
@@ -260,7 +261,6 @@ async fn reconstruct(
     }
     let scan_plan = plan.clone();
     let scan_cancel = cancel.clone();
-    let digest_started = std::time::Instant::now();
     let digest = tokio::task::spawn_blocking(move || {
         staged_content::digest(&scan_plan.stage(), &scan_plan, &scan_cancel)
     })
@@ -273,7 +273,10 @@ async fn reconstruct(
             Failure::Failed
         }
     })?;
-    events::staged(&stage, digest_started.elapsed());
+    let size_root = stage.clone();
+    let (files, bytes) = tokio::task::spawn_blocking(move || events::tree_size(&size_root, 0))
+        .await
+        .unwrap_or((0, 0));
     let mut owner = state.lock().map_err(|_| Failure::ReconciliationRequired)?;
     if owner
         .update_plan()
@@ -294,6 +297,7 @@ async fn reconstruct(
     owner.preferences_uncertain |= result == Err(StorageError::PersistenceUncertain);
     result.map_err(|_| Failure::ReconciliationRequired)?;
     drop(owner);
+    events::staged(files, bytes, started.elapsed());
     let (handoff, abandoned) = oneshot::channel();
     let observed_state = state.clone();
     let id = plan.id;

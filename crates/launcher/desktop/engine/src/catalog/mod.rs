@@ -76,7 +76,7 @@ pub async fn fetch_release() -> Result<VerifiedRelease, CatalogError> {
         })?;
     let body = read_bounded(&client, URL, MAX_BODY).await?;
     let signature = read_bounded(&client, &manifest::sig_url_for(URL), MAX_SIGNATURE).await?;
-    let release = verify_release(&body, &signature)?;
+    let release = verify_fetched(&body, &signature)?;
     events::release_fetched(started.elapsed());
     Ok(release)
 }
@@ -137,32 +137,34 @@ fn decode_verified(body: &[u8], signature: &[u8]) -> Result<Manifest, CatalogErr
         return Err(CatalogError::TooLarge);
     }
     let signature = std::str::from_utf8(signature)
-        .map_err(|_| {
-            events::release_fetch_failed("signature", None);
-            CatalogError::Signature
-        })?
+        .map_err(|_| CatalogError::Signature)?
         .trim();
     // Validate ASCII before the shared hex parser uses byte-indexed string slices.
     if signature.len() != 128 || !signature.bytes().all(|b| b.is_ascii_hexdigit()) {
-        events::release_fetch_failed("signature", None);
         return Err(CatalogError::Signature);
     }
-    manifest::verify_manifest_signature(body, signature).map_err(|error| {
-        events::release_fetch_failed("signature", None);
-        match error {
-            ManifestError::SigningKeyUnavailable => CatalogError::SigningKeyUnavailable,
-            _ => CatalogError::Signature,
-        }
+    manifest::verify_manifest_signature(body, signature).map_err(|error| match error {
+        ManifestError::SigningKeyUnavailable => CatalogError::SigningKeyUnavailable,
+        _ => CatalogError::Signature,
     })?;
-    let manifest: Manifest = serde_json::from_slice(body).map_err(|_| {
-        events::release_fetch_failed("invalid_manifest", None);
-        CatalogError::InvalidManifest
-    })?;
-    manifest.validate().map_err(|_| {
-        events::release_fetch_failed("invalid_manifest", None);
-        CatalogError::InvalidManifest
-    })?;
+    let manifest: Manifest =
+        serde_json::from_slice(body).map_err(|_| CatalogError::InvalidManifest)?;
+    manifest
+        .validate()
+        .map_err(|_| CatalogError::InvalidManifest)?;
     Ok(manifest)
+}
+
+/// Verify a body fetched from the release server. Its failure is the fetch failure row.
+fn verify_fetched(body: &[u8], signature: &[u8]) -> Result<VerifiedRelease, CatalogError> {
+    verify_release(body, signature).inspect_err(|&error| {
+        let reason = match error {
+            CatalogError::InvalidManifest => "invalid_manifest",
+            CatalogError::TooLarge => "body",
+            _ => "signature",
+        };
+        events::release_fetch_failed(reason, None);
+    })
 }
 
 fn notes(manifest: Manifest) -> PatchNotes {
