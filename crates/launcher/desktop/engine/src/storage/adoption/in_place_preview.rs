@@ -148,6 +148,7 @@ pub(super) fn preview(
         replacements,
         login_replaced,
         file_index_sha256,
+        index_fallback,
     } = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {
@@ -185,6 +186,7 @@ pub(super) fn preview(
         files,
         user_data_remains_in_source: true,
         game_telemetry_available: false,
+        index_fallback,
         download: Some(download),
         backup,
         login_replaced,

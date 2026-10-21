@@ -15,10 +15,12 @@ mod in_place_recovery_tests;
 mod in_place_replace_tests;
 #[cfg(all(test, not(target_os = "macos")))]
 mod in_place_tests;
+mod index_source;
 mod inventory;
 mod model;
 pub(crate) mod preparation;
 mod publication;
+mod setup_digest;
 // LT-29 onward use `digest`, `relative` and `http_status`.
 #[allow(dead_code)]
 mod rejection;
@@ -321,6 +323,7 @@ fn copy_preview(
         download,
         replacements,
         file_index_sha256,
+        index_fallback,
         ..
     } = match prepared {
         Ok(prepared) => prepared,
@@ -349,6 +352,7 @@ fn copy_preview(
         files,
         user_data_remains_in_source: true,
         game_telemetry_available: false,
+        index_fallback,
         download: Some(download),
         backup: None,
         login_replaced: false,
