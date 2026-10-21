@@ -117,7 +117,12 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   button('confirm-adoption').textContent=inPlace?'Adopt this folder':'Create verified copy';
   const idle=!!s&&s.activity==='idle'&&!r&&!s.owned&&(s.backend==='available'||inPlace)&&(s.native.operation.operation?['succeeded','failed','cancelled'].includes(s.native.operation.operation.state):true);
   button('choose-adoption-destination').disabled=!enabled||!idle;
-  get('adoption-modes').hidden=!(idle&&s?.modes.length===2);
+  const pair=idle&&s?.modes.length===2,copy=box('adoption-mode-copy').checked;
+  get('adoption-modes').hidden=!pair;
+  get('adoption-mode-in-place-row').className=copy?'mode-option':'mode-option selected';
+  get('adoption-mode-copy-row').className=copy?'mode-option selected':'mode-option';
+  for(const id of ['adoption-mode-in-place','adoption-mode-copy'])box(id).disabled=!enabled||!idle;
+  button('choose-adoption-destination').textContent=pair?(copy?'Choose the folder to copy…':'Choose the folder to adopt in place…'):'Use an existing game folder…';
   button('inspect-adoption').disabled=busy;
   button('cancel-adoption').hidden=!s?.cancellable;
   button('cancel-adoption').disabled=!enabled;
@@ -193,6 +198,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
  on('confirm-adoption-maintenance',()=>{void run(Effect.flatMap(Adoption,w=>w.maintain));});
  on('dismiss-adoption-maintenance',()=>{void run(Effect.flatMap(Adoption,w=>w.withdraw));});
  for(const [id,choice] of choices)listen(id,'change',target=>{void runtime.runPromise(Effect.flatMap(Adoption,w=>w.set(choice,(target as HTMLInputElement).checked)));});
+ for(const id of ['adoption-mode-in-place','adoption-mode-copy'])listen(id,'change',()=>render());
  const ready=refresh();
  // A failed read stops polling until an explicit recheck succeeds.
  const timer=setInterval(()=>{const s=current.status,op=s?.native.operation.operation;

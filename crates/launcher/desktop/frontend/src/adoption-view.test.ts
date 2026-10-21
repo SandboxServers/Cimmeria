@@ -16,11 +16,11 @@ const review=(handle='preview-1'):NonNullable<AdoptionStatus['review']>=>({previ
 const reviewing=(handle?:string):AdoptionStatus=>({...idle(3),native:native(3,adopt('running')),activity:'review',review:review(handle)});
 type Reply=AdoptionStatus|Promise<AdoptionStatus>;
 function mount(reply:(request:Request|'choose')=>Reply,onChange=()=>{}) {
- const {document,window}=parseHTML(html),calls:(Request|'choose')[]=[];
- const app=mountAdoption(document,async(command,args)=>{const request=command==='choose_existing_game_folder'?'choose' as const:(args as {request:Request}).request;calls.push(request);return reply(request);},onChange);
+ const {document,window}=parseHTML(html),calls:(Request|'choose')[]=[],modes:string[]=[];
+ const app=mountAdoption(document,async(command,args)=>{if(command==='choose_existing_game_folder')modes.push((args as {mode:string}).mode);const request=command==='choose_existing_game_folder'?'choose' as const:(args as {request:Request}).request;calls.push(request);return reply(request);},onChange);
  const get=(id:string)=>document.getElementById(id)!;
  const settle=async()=>{await app.settled();await new Promise(resolve=>setTimeout(resolve,5));await app.settled();};
- return {app,calls,get,settle,sent:(command:string)=>calls.filter(c=>c!=='choose'&&c.command===command) as Request[],
+ return {app,calls,modes,get,settle,sent:(command:string)=>calls.filter(c=>c!=='choose'&&c.command===command) as Request[],
   press:(id:string)=>{get(id).dispatchEvent(new window.Event('click'));},
   click:async(id:string)=>{get(id).dispatchEvent(new window.Event('click'));await settle();},
   tick:async(id:string,checked=true)=>{(get(id) as HTMLInputElement).checked=checked;get(id).dispatchEvent(new window.Event('change'));await settle();},
@@ -294,12 +294,26 @@ test('each new failure code renders its own text',async()=>{
   try{await ui.app.ready;await ui.settle();assert.match(ui.text(),text,code as string);}finally{await ui.app.dispose();}
  }
 });
-test('the mode choice shows only when the build offers both modes',async()=>{
+test('the mode choice is one row per mode, shows the pick, and the button names it',async()=>{
  const both=mount(()=>({...idle(),modes:['in_place','copy'] as AdoptionStatus['modes']})),one=mount(()=>idle());
  try{await both.app.ready;await both.settle();await one.app.ready;await one.settle();
   assert.equal(both.get('adoption-modes').hidden,false);assert.equal(one.get('adoption-modes').hidden,true);
-  assert.match(both.get('adoption-modes').textContent!,/Adopt it in place: the folder becomes the launcher's installation.*Make a verified copy: your folder is left as it is/);
+  // The labels hold line breaks in the markup, so the match spans them.
+  assert.match(both.get('adoption-modes').textContent!,/Adopt it in place.*becomes the launcher’s installation[\s\S]*Make a verified copy[\s\S]*left as it is/);
+  assert.match(both.get('adoption-mode-in-place-row').className,/\bselected\b/);assert.doesNotMatch(both.get('adoption-mode-copy-row').className,/\bselected\b/);
+  assert.equal(both.get('choose-adoption-destination').textContent,'Choose the folder to adopt in place…');
+  // linkedom does not uncheck the other radio, so both are set explicitly.
+  await both.tick('adoption-mode-in-place',false);await both.tick('adoption-mode-copy');
+  assert.doesNotMatch(both.get('adoption-mode-in-place-row').className,/\bselected\b/);assert.match(both.get('adoption-mode-copy-row').className,/\bselected\b/);
+  assert.equal(both.get('choose-adoption-destination').textContent,'Choose the folder to copy…');
+  await both.click('choose-adoption-destination');
+  assert.deepEqual(both.modes,['copy']);
+  assert.equal(one.get('choose-adoption-destination').textContent,'Use an existing game folder…');
  }finally{await both.app.dispose();await one.app.dispose();}
+});
+test('the mode rows are laid out one per line',async()=>{
+ const css=await readFile(new URL('../ui/style.css',import.meta.url),'utf8');
+ assert.ok(css.includes('.mode-option{display:flex'));assert.ok(css.includes('.mode-option.selected{'));
 });
 test('every button shows busy on the first press',async()=>{
  let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
