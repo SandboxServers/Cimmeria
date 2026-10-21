@@ -11,9 +11,10 @@
 
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
-use super::{SessionRegistry, PENDING_SESSION_TTL};
+use super::{SessionRegistry, SessionRegistryInner, PENDING_SESSION_TTL};
 
 /// What a peer address is matched on. Every non-public peer shares one key:
 /// behind a LAN or a Docker bridge, the TCP peer can be a different private
@@ -84,26 +85,23 @@ pub struct AdmissionRefusal {
     pub pending_sessions: usize,
 }
 
-/// Holds one admission slot; the slot frees on drop.
-///
-/// The guard belongs to the connection, not to the session. It drops when the
-/// connection task ends: at once after a refused login (wrong ticket, wrong
-/// game), and after a cancel or a finished game once the close frames are
-/// sent. Cancelling removes the session from the registry immediately, but the
-/// old connection still holds its slot until it ends, so a replacement ticket
-/// for the same address is refused as `no_free_ticket` meanwhile. With a peer
-/// that has stopped reading, the first teardown send fails after
-/// `SEND_TIMEOUT` (10 s) and the rest are skipped, so that window is at most
-/// about 10 s. Shortening it is an open owner decision.
+/// The shared state behind one admission slot. The slot frees once, from
+/// whichever of the guard's drop, a cancel, or the end of the game loop gets
+/// there first; later calls do nothing.
 #[derive(Debug)]
-pub struct AdmissionGuard {
+pub(super) struct Slot {
     key: AdmissionKey,
     admitted: Arc<StdMutex<HashMap<AdmissionKey, usize>>>,
+    released: AtomicBool,
 }
 
-impl Drop for AdmissionGuard {
-    fn drop(&mut self) {
-        // A std mutex because Drop cannot await. Never panic in drop: a
+impl Slot {
+    /// Give the slot back. Idempotent.
+    fn release(&self) {
+        if self.released.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        // A std mutex because Drop cannot await. Never panic here: a
         // poisoned map is still a valid counter map.
         let mut map = self
             .admitted
@@ -113,6 +111,47 @@ impl Drop for AdmissionGuard {
             *n = n.saturating_sub(1);
             if *n == 0 {
                 map.remove(&self.key);
+            }
+        }
+    }
+}
+
+/// Holds one admission slot; the slot frees when the guard drops, and sooner
+/// when the ticket is cancelled or the connection stops playing.
+///
+/// Owner ruling (2026-10-21): release on cancel. The connection binds its
+/// guard to its ticket after the login claims the session
+/// ([`SessionRegistry::bind_slot`]). From then on the slot frees at the first
+/// of: the registry cancelling that ticket (the player closed the window), the
+/// game loop ending for any reason including a closed socket
+/// ([`SessionRegistry::release_slot`]), or the connection task ending (the
+/// guard dropping, which also covers a refused login). A player who closes and
+/// at once reopens a minigame is not refused while the old socket drains. A
+/// second concurrent connection on a live ticket is still refused.
+#[derive(Debug)]
+pub struct AdmissionGuard {
+    slot: Arc<Slot>,
+}
+
+impl Drop for AdmissionGuard {
+    fn drop(&mut self) {
+        self.slot.release();
+    }
+}
+
+impl SessionRegistryInner {
+    /// Free and forget the slot bound to `entity_id`'s `ticket`, if any.
+    /// Called under the `inner` lock, which is the lock order `try_admit` uses.
+    pub(super) fn release_bound_slot(&mut self, entity_id: u32, ticket: &str) {
+        if self
+            .bound_slots
+            .get(&entity_id)
+            .is_some_and(|(bound, _)| bound == ticket)
+        {
+            if let Some((_, slot)) = self.bound_slots.remove(&entity_id) {
+                if let Some(slot) = slot.upgrade() {
+                    slot.release();
+                }
             }
         }
     }
@@ -165,9 +204,44 @@ impl SessionRegistry {
         *used += 1;
         drop(admitted);
         Ok(AdmissionGuard {
-            key,
-            admitted: Arc::clone(&self.admitted),
+            slot: Arc::new(Slot {
+                key,
+                admitted: Arc::clone(&self.admitted),
+                released: AtomicBool::new(false),
+            }),
         })
+    }
+
+    /// Tie `guard` to the session `ticket` of `entity_id`, once the login has
+    /// claimed it, so a cancel or [`Self::release_slot`] can free the slot
+    /// without waiting for the connection task to end.
+    ///
+    /// If the ticket is already gone (cancelled between the claim and now),
+    /// the slot frees at once.
+    pub async fn bind_slot(&self, entity_id: u32, ticket: &str, guard: &AdmissionGuard) {
+        let mut inner = self.inner.lock().await;
+        if inner
+            .sessions
+            .get(&entity_id)
+            .is_some_and(|s| s.ticket == ticket)
+        {
+            inner
+                .bound_slots
+                .insert(entity_id, (ticket.to_owned(), Arc::downgrade(&guard.slot)));
+        } else {
+            guard.slot.release();
+        }
+    }
+
+    /// Free the slot bound to this ticket now. The connection calls it when
+    /// its game loop ends (closed socket, idle timeout, a finished game),
+    /// before the close frames, so a stalled teardown cannot hold the slot.
+    /// Does nothing if no slot is bound or it already freed.
+    pub async fn release_slot(&self, entity_id: u32, ticket: &str) {
+        self.inner
+            .lock()
+            .await
+            .release_bound_slot(entity_id, ticket);
     }
 }
 

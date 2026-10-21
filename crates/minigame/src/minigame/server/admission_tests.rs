@@ -340,3 +340,91 @@ async fn cancel_frees_the_slot_for_the_next_launch() {
     send_login(&mut next, 4410, &new_ticket).await;
     read_until_game_begin(&mut next).await;
 }
+
+/// Owner ruling: release on cancel. The old connection is bound to its
+/// ticket, so cancelling frees the slot in the same step, before the
+/// connection task has run again. The test never yields between the cancel and
+/// the admission, so it cannot be won by the old task finishing first: without
+/// the bind in `run_connection`, or the release in the cancel path, the next
+/// launch is refused.
+#[tokio::test]
+async fn cancel_frees_the_slot_before_the_old_connection_ends() {
+    let registry = SessionRegistry::new();
+    register_loopback(&registry, 4411).await;
+    let ticket = registry.peek_session(4411).await.unwrap().ticket;
+    let addr = spawn_server(registry.clone(), ListenerLimits::default()).await;
+
+    let mut first = TcpStream::connect(addr).await.expect("connect");
+    send_handshake(&mut first, 4411, &ticket).await;
+    read_until_game_begin(&mut first).await;
+
+    assert!(registry.cancel(4411).await);
+    register_loopback(&registry, 4411).await;
+    assert!(
+        registry.try_admit(LOOPBACK).await.is_ok(),
+        "a player who closes and reopens at once must be admitted",
+    );
+}
+
+/// Owner ruling: the slot also frees when the socket closes, without waiting
+/// for the teardown. The result channel is full and nobody drains it, so the
+/// old connection's teardown parks on its result report, which keeps the
+/// session registered. The reopened connection must be admitted anyway.
+#[tokio::test]
+async fn socket_close_frees_the_slot_while_the_teardown_is_stalled() {
+    let registry = SessionRegistry::new();
+    register_loopback(&registry, 4412).await;
+    let ticket = registry.peek_session(4412).await.unwrap().ticket;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind loopback");
+    let addr = listener.local_addr().expect("local_addr");
+    let (tx, _rx) = mpsc::channel(1);
+    tx.try_send(CellToBaseMsg::MinigameResult {
+        ticket: "filler".into(),
+    })
+    .expect("fill the result channel");
+    let serve_registry = registry.clone();
+    tokio::spawn(async move {
+        accept::serve(
+            listener,
+            9339,
+            serve_registry,
+            tx,
+            ListenerLimits::default(),
+        )
+        .await;
+    });
+
+    let mut first = TcpStream::connect(addr).await.expect("connect");
+    send_handshake(&mut first, 4412, &ticket).await;
+    read_until_game_begin(&mut first).await;
+    drop(first);
+
+    let _reopened = admitted_eventually(addr).await;
+    assert_eq!(
+        registry.session_count().await,
+        1,
+        "the old connection is still draining: its session is still registered",
+    );
+}
+
+/// Two live connections on one ticket stay refused: the early release is for
+/// a cancelled ticket or a finished loop, not for a connection that is playing.
+#[tokio::test]
+async fn second_connection_on_a_live_ticket_is_refused() {
+    let registry = SessionRegistry::new();
+    register_loopback(&registry, 4413).await;
+    let ticket = registry.peek_session(4413).await.unwrap().ticket;
+    let addr = spawn_server(registry.clone(), ListenerLimits::default()).await;
+
+    let mut first = TcpStream::connect(addr).await.expect("connect");
+    send_handshake(&mut first, 4413, &ticket).await;
+    read_until_game_begin(&mut first).await;
+
+    let mut second = TcpStream::connect(addr).await.expect("connect");
+    assert!(
+        !admitted(&mut second).await,
+        "the ticket is playing; a second socket gets no slot",
+    );
+}

@@ -291,14 +291,95 @@ fn refusal_reasons_keep_their_logged_names() {
     );
 }
 
-/// The slot belongs to the connection, not the session: cancelling removes
-/// the session at once, but the old connection keeps its slot until it ends
-/// (its teardown sends, up to `SEND_TIMEOUT` for a peer that stopped reading).
-/// A replacement ticket for the same address is refused as `no_free_ticket`
-/// until then. Pins current behaviour; shortening the window is an open owner
-/// decision.
+/// Admit, claim and bind one connection for entity 1, as the listener does.
+async fn live_connection(registry: &SessionRegistry, ticket: &str) -> AdmissionGuard {
+    let guard = registry.try_admit(ip("203.0.113.5")).await.unwrap();
+    registry
+        .authenticate_and_claim(1, ticket, "Livewire")
+        .await
+        .unwrap();
+    registry.bind_slot(1, ticket, &guard).await;
+    guard
+}
+
+/// Owner ruling: release on cancel. The old connection is still alive (its
+/// guard is held), but a cancelled ticket must not hold a slot, so the player
+/// who reopens at once is admitted. Without the release in the cancel path
+/// the replacement ticket is refused as `no_free_ticket` until the old
+/// connection ends.
 #[tokio::test]
-async fn cancel_keeps_the_slot_until_the_old_connection_ends() {
+async fn cancel_frees_the_slot_at_once() {
+    let registry = SessionRegistry::new();
+    let old = register(&registry, 1, "203.0.113.5").await;
+    let _old_guard = live_connection(&registry, &old).await;
+
+    assert!(registry.cancel_if_ticket(1, &old).await);
+    register(&registry, 1, "203.0.113.5").await;
+
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+
+/// The same for the unconditional cancel the close RPC uses.
+#[tokio::test]
+async fn plain_cancel_frees_the_slot_at_once() {
+    let registry = SessionRegistry::new();
+    let old = register(&registry, 1, "203.0.113.5").await;
+    let _old_guard = live_connection(&registry, &old).await;
+
+    assert!(registry.cancel(1).await);
+    register(&registry, 1, "203.0.113.5").await;
+
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+
+/// A socket that closed ends the game loop, which calls `release_slot`. The
+/// session is still registered (its teardown has not removed it), yet the slot
+/// is free: a reconnect is admitted while the old connection drains.
+#[tokio::test]
+async fn release_slot_frees_the_slot_while_the_old_connection_drains() {
+    let registry = SessionRegistry::new();
+    let old = register(&registry, 1, "203.0.113.5").await;
+    let _old_guard = live_connection(&registry, &old).await;
+    assert_eq!(
+        registry
+            .try_admit(ip("203.0.113.5"))
+            .await
+            .unwrap_err()
+            .reason,
+        AdmissionRefusalReason::NoFreeTicket
+    );
+
+    registry.release_slot(1, &old).await;
+
+    assert_eq!(registry.session_count().await, 1);
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+
+/// Two live connections on one ticket are still refused, and a release for
+/// some other ticket (a stale connection's) frees nothing.
+#[tokio::test]
+async fn live_ticket_keeps_refusing_a_second_connection() {
+    let registry = SessionRegistry::new();
+    let ticket = register(&registry, 1, "203.0.113.5").await;
+    let _guard = live_connection(&registry, &ticket).await;
+
+    registry.release_slot(1, "not-this-ticket").await;
+    registry.release_slot(2, &ticket).await;
+
+    assert_eq!(
+        registry
+            .try_admit(ip("203.0.113.5"))
+            .await
+            .unwrap_err()
+            .reason,
+        AdmissionRefusalReason::NoFreeTicket
+    );
+}
+
+/// A cancel that lands between the claim and the bind leaves nothing to find
+/// later, so the bind itself frees the slot.
+#[tokio::test]
+async fn bind_after_cancel_frees_the_slot() {
     let registry = SessionRegistry::new();
     let old = register(&registry, 1, "203.0.113.5").await;
     let guard = registry.try_admit(ip("203.0.113.5")).await.unwrap();
@@ -306,13 +387,34 @@ async fn cancel_keeps_the_slot_until_the_old_connection_ends() {
         .authenticate_and_claim(1, &old, "Livewire")
         .await
         .unwrap();
-
     assert!(registry.cancel_if_ticket(1, &old).await);
-    assert_eq!(registry.session_count().await, 0);
     register(&registry, 1, "203.0.113.5").await;
 
-    let refusal = registry.try_admit(ip("203.0.113.5")).await.unwrap_err();
-    assert_eq!(refusal.reason, AdmissionRefusalReason::NoFreeTicket);
-    drop(guard);
+    registry.bind_slot(1, &old, &guard).await;
+
     assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+
+/// Freeing early and then dropping the guard must count once: the drop may
+/// not take a slot that now belongs to the next connection.
+#[tokio::test]
+async fn early_release_then_drop_frees_exactly_one_slot() {
+    let registry = SessionRegistry::new();
+    let old = register(&registry, 1, "203.0.113.5").await;
+    let old_guard = live_connection(&registry, &old).await;
+    registry.release_slot(1, &old).await;
+
+    let next = registry.try_admit(ip("203.0.113.5")).await.unwrap();
+    drop(old_guard);
+
+    assert_eq!(
+        registry
+            .try_admit(ip("203.0.113.5"))
+            .await
+            .unwrap_err()
+            .reason,
+        AdmissionRefusalReason::NoFreeTicket,
+        "the old guard's drop must not free the new connection's slot",
+    );
+    drop(next);
 }

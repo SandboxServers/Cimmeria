@@ -354,16 +354,30 @@ one address admit exactly N connections. The returned `AdmissionGuard` is held
 by the connection task for its whole life and frees the slot on every exit,
 including a failed or timed-out handshake.
 
-The slot belongs to the connection, not to the session. A login with the wrong
-ticket or game closes the connection at once and frees its slot, leaving the
-session pending, so the player can retry. A window close (cancel) removes the
-session from the registry at once, but the old connection keeps its slot until
-its task ends: the teardown sends the close frames first. A healthy client
-ends it in milliseconds. With a peer that has stopped reading, the first send
-fails after `SEND_TIMEOUT` (10 s) and the remaining frames are skipped, so a
-replacement ticket for the same address can be refused as `no_free_ticket` for
-up to about 10 s. Shortening that window is an open owner decision; tests
-pin the current behaviour.
+The slot is released on cancel (owner ruling, 2026-10-21). The connection binds
+its guard to its ticket once the login has claimed the session
+(`SessionRegistry::bind_slot`). From then on the slot frees at the first of:
+
+- **A cancel.** `cancel`, `cancel_reporting_connected` and `cancel_if_ticket`
+  remove the session and free the slot in the same step. The old socket may
+  still be draining its close frames, but a player who closes the window and
+  at once reopens the minigame is admitted, not refused for the 10 s a
+  stalled send can take.
+- **The game loop ending**, for any reason: a closed socket, a failed read, the
+  idle timeout, a finished game. The loop calls `release_slot` before the
+  teardown sends, so a peer that stopped reading cannot hold the slot for
+  `SEND_TIMEOUT`. The session stays registered until the task removes it, so
+  the result still deposits; a new launch for the same entity registers once
+  that removal has run.
+- **The connection task ending**, which drops the guard. This is the only path
+  for a failed or timed-out handshake, and for a login with the wrong ticket or
+  game, which closes the connection at once and leaves the session pending so
+  the player can retry.
+
+The release happens once; a later drop does not take a slot that already
+belongs to the next connection. A second concurrent connection on a ticket that
+is still being played is refused as `no_free_ticket`, and so is one whose
+`release_slot` names a different ticket than the one bound.
 
 Matching is by address, with one rule for private networks: every non-public
 peer (loopback, 10/8, 172.16/12, 192.168/16, CGNAT 100.64/10, IPv4 link-local,

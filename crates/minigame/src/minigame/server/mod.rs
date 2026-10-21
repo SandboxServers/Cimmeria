@@ -84,8 +84,10 @@ use super::session::{AdmissionGuard, SessionRegistry};
 /// session. The span is attached with `.instrument`, never an entered
 /// guard, because the body awaits throughout.
 ///
-/// `_admission` is this connection's ticket slot; holding it for the whole
-/// function gives the slot back on every exit path.
+/// `admission` is this connection's ticket slot; holding it for the whole
+/// function gives the slot back on every exit path. Once the login has
+/// claimed the session it is bound to the ticket, so a cancel or the end of
+/// the game loop frees it sooner (owner ruling: release on cancel).
 async fn handle_connection(
     stream: TcpStream,
     peer: SocketAddr,
@@ -121,7 +123,7 @@ async fn handle_connection(
 async fn run_connection(
     mut stream: TcpStream,
     peer: SocketAddr,
-    _admission: AdmissionGuard,
+    admission: AdmissionGuard,
     registry: SessionRegistry,
     result_tx: mpsc::Sender<CellToBaseMsg>,
     external_port: u16,
@@ -175,6 +177,9 @@ async fn run_connection(
     // by ticket so a stale task can never unregister a *newer* session that
     // was registered for the same entity after this one was swept.
     let ticket = session.ticket.clone();
+    // Bind the slot to the claimed ticket so the registry can free it on
+    // cancel. `admission` stays alive to the end of this function.
+    registry.bind_slot(entity_id, &ticket, &admission).await;
     // For the closing row, which outlives the session `run_session` takes.
     let player = session.discord_player();
 

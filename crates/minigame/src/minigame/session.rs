@@ -120,6 +120,10 @@ struct SessionRegistryInner {
     receipt_order: VecDeque<String>,
     /// Next room ID (auto-incrementing from 1001)
     next_room_id: u32,
+    /// The admission slot of each claimed connection, by entity: the ticket
+    /// it belongs to and a weak handle, so a cancel can free the slot at once
+    /// (see [`AdmissionGuard`]). At most one entry per entity.
+    bound_slots: HashMap<u32, (String, std::sync::Weak<admission::Slot>)>,
 }
 
 impl Default for SessionRegistry {
@@ -145,6 +149,7 @@ impl SessionRegistry {
                 receipts: HashMap::new(),
                 receipt_order: VecDeque::new(),
                 next_room_id: 1001,
+                bound_slots: HashMap::new(),
             })),
             admitted: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
@@ -503,6 +508,9 @@ impl SessionRegistry {
         let session = inner.sessions.remove(&entity_id);
         if let Some(ref session) = session {
             session.cancel.send_replace(true);
+            // Release on cancel (owner ruling): the old connection may still
+            // be draining, but its ticket is gone and must not hold a slot.
+            inner.release_bound_slot(entity_id, &session.ticket);
         }
         inner.boards.remove(&entity_id);
         inner.invalidate_entity_receipts(entity_id);
@@ -527,6 +535,7 @@ impl SessionRegistry {
         if matches_session {
             if let Some(session) = inner.sessions.remove(&entity_id) {
                 session.cancel.send_replace(true);
+                inner.release_bound_slot(entity_id, &session.ticket);
             }
         }
         if inner
@@ -569,6 +578,7 @@ impl SessionRegistry {
         match inner.sessions.get(&entity_id) {
             Some(session) if session.ticket == ticket => {
                 inner.sessions.remove(&entity_id);
+                inner.release_bound_slot(entity_id, ticket);
                 if let Some(board) = inner.boards.get_mut(&entity_id) {
                     if board.ticket == ticket && board.snapshot.is_some() {
                         board.finish();
