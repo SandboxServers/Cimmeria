@@ -15,6 +15,7 @@
 //! the session loop when a telemetry session runs. Without one the exit
 //! events go to the disk queue ([`queue_at_exit`]) and ship with the next
 //! session's first flush.
+use super::session_loop;
 use super::transport::{queue_now, Consent, TelemetryEvent, TransportError};
 use super::DesktopState;
 pub use cimmeria_launcher_core::telemetry::patch_log::PatchInjection;
@@ -94,6 +95,7 @@ pub fn queue_at_exit(state: &Mutex<DesktopState>, events: &mut PatchEvents) -> u
     };
     let now = chrono::Utc::now().timestamp_millis();
     let mut queued = 0;
+    let mut failed = 0u64;
     for mut event in events.finish() {
         if let TelemetryEvent::ClientNative(e) = &mut event {
             if e.ts_ms == 0 {
@@ -104,11 +106,11 @@ pub fn queue_at_exit(state: &Mutex<DesktopState>, events: &mut PatchEvents) -> u
             Ok(()) => queued += 1,
             // The player opted out since the consent was read: stop.
             Err(TransportError::NotOptedIn) => break,
-            Err(_) => tracing::warn!(
-                reason = "queue_write_failed",
-                "client-patches event not queued"
-            ),
+            Err(_) => failed += 1,
         }
+    }
+    if failed > 0 {
+        session_loop::events::client_patch_events_not_queued(failed);
     }
     queued
 }

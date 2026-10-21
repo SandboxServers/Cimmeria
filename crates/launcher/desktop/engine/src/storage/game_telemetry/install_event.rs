@@ -14,6 +14,7 @@
 //! queue append, and a preparation whose owner went away before the commit
 //! handoff send nothing. Nothing records which runs were reported, so a
 //! later report could not be exactly-once (see `docs/launch.md`).
+use super::session_loop::events;
 use super::transport::{queue_now, Consent};
 use super::DesktopState;
 use crate::install_report::{InstallReport, RunResult};
@@ -27,6 +28,17 @@ pub(crate) enum Run {
     Install,
     Repair,
     Update,
+}
+
+impl Run {
+    /// The `action` the launcher's log gives the run.
+    fn as_str(self) -> &'static str {
+        match self {
+            Run::Install => "install",
+            Run::Repair => "repair",
+            Run::Update => "update",
+        }
+    }
 }
 
 /// How the run ended, as the journal recorded it.
@@ -61,10 +73,7 @@ impl DesktopState {
             Ok(Some(consent)) => consent,
             Ok(None) => return false,
             Err(_) => {
-                tracing::warn!(
-                    ?run,
-                    "install result not queued: game-telemetry choice unreadable"
-                );
+                events::install_result_not_queued(run.as_str(), "choice_unreadable");
                 return false;
             }
         };
@@ -72,20 +81,15 @@ impl DesktopState {
         let event = install_result_event(&report, chrono::Utc::now().timestamp_millis());
         match queue_now(&consent, &event) {
             Ok(()) => {
-                tracing::info!(
-                    ?run,
-                    result = report.result.as_str(),
-                    patches = report.patches.len(),
-                    "install result queued for the next telemetry session"
+                events::install_result_queued(
+                    run.as_str(),
+                    report.result.as_str(),
+                    report.patches.len() as u64,
                 );
                 true
             }
             Err(_) => {
-                tracing::warn!(
-                    ?run,
-                    reason = "queue_write_failed",
-                    "install result not queued"
-                );
+                events::install_result_not_queued(run.as_str(), "queue_write_failed");
                 false
             }
         }

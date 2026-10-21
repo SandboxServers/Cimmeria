@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub mod endpoint_sanity;
 #[cfg(test)]
 mod event_tests;
+pub mod health;
 pub(crate) mod install_event;
 pub mod ip_scrub;
 pub mod launcher_event;
@@ -17,6 +18,7 @@ pub mod launcher_session;
 mod launcher_session_tests;
 pub mod patch_events;
 mod session;
+mod session_events;
 pub use session::{passthrough_environment, start, Session};
 pub mod session_loop;
 #[cfg(test)]

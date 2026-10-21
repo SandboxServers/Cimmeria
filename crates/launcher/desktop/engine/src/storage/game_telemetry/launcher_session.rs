@@ -1,9 +1,10 @@
 //! The launcher's own adoption events, sent at once under a `launcher` session
 //! (C11). Nothing is queued on disk and the upload queue is never touched: a
 //! send that cannot post drops its events (README D-AU21).
-use super::session::{self, Session};
+use super::session::{self, MintFailure, Session};
 use super::*;
 use crate::client_setup::login_servers::{self, LoginServer};
+use crate::telemetry_endpoint::EndpointPolicy;
 use cimmeria_launcher_core::telemetry::chunk::{self, ChunkError};
 use cimmeria_launcher_core::telemetry::events::TelemetryEvent;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -59,16 +60,24 @@ pub enum SendOutcome {
     Sent,
     /// A hold from an earlier failure is still running; nothing was posted.
     Held,
-    /// No session could be minted; a hold now follows.
-    MintFailed,
+    /// No session could be minted; a hold now follows. `reason` is a C8 code.
+    MintFailed { reason: &'static str },
     /// Some events were not posted and were discarded.
     Dropped,
+}
+
+/// A minted session and the upload URL its batches post to: the advertised
+/// address, or the C10 replacement when the advertised one is loopback.
+#[derive(Debug, Clone)]
+struct Live {
+    session: Session,
+    upload_url: String,
 }
 
 /// Sends launcher events over one HTTP client, keeping one session and one hold.
 pub struct LauncherSender {
     http: reqwest::Client,
-    session: Mutex<Option<Session>>,
+    session: Mutex<Option<Live>>,
     hold_until: Mutex<Option<Instant>>,
     mint_failures: Mutex<u32>,
 }
@@ -104,41 +113,68 @@ impl LauncherSender {
             return SendOutcome::Empty;
         }
         if self.held() {
-            tracing::debug!(reason = "held", "launcher telemetry batch not sent");
+            tracing::debug!(
+                target: "launcher.pipeline",
+                reason = "held",
+                "launcher telemetry batch not sent"
+            );
             return SendOutcome::Held;
         }
-        let Some(mut current) = self.usable_session(target).await else {
-            tracing::debug!(reason = "mint_failed", "launcher telemetry batch not sent");
-            return SendOutcome::MintFailed;
+        let mut live = match self.usable_session(target).await {
+            Ok(live) => live,
+            Err(reason) => {
+                tracing::debug!(
+                    target: "launcher.pipeline",
+                    reason,
+                    "launcher telemetry batch not sent"
+                );
+                return SendOutcome::MintFailed { reason };
+            }
         };
-        let max_bytes = current.marker().telemetry.chunk_max_bytes;
+        let max_bytes = live.session.marker().telemetry.chunk_max_bytes;
         let Ok(batches) = chunk::split_batches(events, max_bytes, LAUNCHER_MAX_ROWS) else {
-            tracing::debug!(reason = "dropped", "launcher telemetry batch not sent");
+            tracing::debug!(
+                target: "launcher.pipeline",
+                reason = "dropped",
+                "launcher telemetry batch not sent"
+            );
             return SendOutcome::Dropped;
         };
         for range in batches {
             let batch = &events[range];
-            let mut posted = self.post(&current, batch).await;
+            let mut posted = self.post(&live, batch).await;
             if matches!(posted, Err(ChunkError::TokenRejected)) {
                 // A 401 is the only error that mints again, and only once.
                 *locked(&self.session) = None;
-                let Some(fresh) = self.mint(target).await else {
-                    tracing::debug!(reason = "dropped", "launcher telemetry batch not sent");
+                let Ok(fresh) = self.mint(target).await else {
+                    tracing::debug!(
+                        target: "launcher.pipeline",
+                        reason = "dropped",
+                        "launcher telemetry batch not sent"
+                    );
                     return SendOutcome::Dropped;
                 };
-                current = fresh;
-                posted = self.post(&current, batch).await;
+                live = fresh;
+                posted = self.post(&live, batch).await;
             }
             match posted {
                 Ok(()) => {}
                 Err(err @ (ChunkError::KillSwitch { .. } | ChunkError::RateLimited { .. })) => {
                     let asked = err.retry_after_secs().unwrap_or(60);
                     self.hold(Duration::from_secs(asked).clamp(MIN_RETRY_HOLD, MAX_HOLD));
-                    tracing::debug!(reason = "dropped", "launcher telemetry batch not sent");
+                    tracing::debug!(
+                        target: "launcher.pipeline",
+                        reason = "dropped",
+                        "launcher telemetry batch not sent"
+                    );
                     return SendOutcome::Dropped;
                 }
                 Err(_) => {
-                    tracing::debug!(reason = "dropped", "launcher telemetry batch not sent");
+                    tracing::debug!(
+                        target: "launcher.pipeline",
+                        reason = "dropped",
+                        "launcher telemetry batch not sent"
+                    );
                     return SendOutcome::Dropped;
                 }
             }
@@ -147,17 +183,17 @@ impl LauncherSender {
     }
 
     /// The stored session while it has time left, else a fresh mint.
-    async fn usable_session(&self, target: &LauncherTarget) -> Option<Session> {
+    async fn usable_session(&self, target: &LauncherTarget) -> Result<Live, &'static str> {
         let stored = locked(&self.session).clone();
         match stored {
-            Some(session) if !expiring(&session) => Some(session),
+            Some(live) if !expiring(&live.session) => Ok(live),
             _ => self.mint(target).await,
         }
     }
 
     /// Mint a launcher session. A failure holds the sender, doubling per failure
     /// in a row up to `MAX_HOLD`.
-    async fn mint(&self, target: &LauncherTarget) -> Option<Session> {
+    async fn mint(&self, target: &LauncherTarget) -> Result<Live, &'static str> {
         let minted = session::start_kind(
             &target.identity,
             &target.servers,
@@ -165,13 +201,31 @@ impl LauncherSender {
             Some(LAUNCHER_SESSION_KIND),
         )
         .await;
-        match minted {
-            Ok(minted) => {
+        let policy =
+            EndpointPolicy::from_login_servers(target.servers.iter().map(|s| s.url.as_str()));
+        let login_server = target
+            .servers
+            .first()
+            .map_or("", |server| server.url.as_str());
+        let live = minted.map_err(mint_reason).and_then(|session| {
+            let url = session::upload_for(
+                &policy,
+                login_server,
+                &session.marker().telemetry.upload_endpoint,
+                LAUNCHER_SESSION_KIND,
+            )?;
+            Ok(Live {
+                session,
+                upload_url: url,
+            })
+        });
+        match live {
+            Ok(live) => {
                 *locked(&self.mint_failures) = 0;
-                *locked(&self.session) = Some(minted.clone());
-                Some(minted)
+                *locked(&self.session) = Some(live.clone());
+                Ok(live)
             }
-            Err(_) => {
+            Err(reason) => {
                 let failures = {
                     let mut count = locked(&self.mint_failures);
                     *count = count.saturating_add(1);
@@ -179,14 +233,14 @@ impl LauncherSender {
                 };
                 let doubled = MINT_HOLD.saturating_mul(2u32.saturating_pow(failures - 1));
                 self.hold(doubled.min(MAX_HOLD));
-                None
+                Err(reason)
             }
         }
     }
 
-    async fn post(&self, session: &Session, batch: &[TelemetryEvent]) -> Result<(), ChunkError> {
-        let block = &session.marker().telemetry;
-        chunk::post_chunk(&self.http, &block.upload_endpoint, &block.token, batch).await
+    async fn post(&self, live: &Live, batch: &[TelemetryEvent]) -> Result<(), ChunkError> {
+        let block = &live.session.marker().telemetry;
+        chunk::post_chunk(&self.http, &live.upload_url, &block.token, batch).await
     }
 
     fn held(&self) -> bool {
@@ -218,4 +272,23 @@ fn locked<T>(slot: &Mutex<T>) -> MutexGuard<'_, T> {
 fn expiring(session: &Session) -> bool {
     let left = session.marker().telemetry.expires_at_ms - chrono::Utc::now().timestamp_millis();
     left < REMINT_MARGIN_MS
+}
+
+/// The C8 reason the session module recorded for a failed mint.
+fn mint_reason(failure: MintFailure) -> &'static str {
+    failure.reason
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mint_failures_keep_the_c8_reason() {
+        let failure = MintFailure {
+            outcome: Outcome::SessionUnavailable,
+            reason: "http_status",
+        };
+        assert_eq!(mint_reason(failure), "http_status");
+    }
 }

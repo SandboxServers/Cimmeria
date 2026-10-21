@@ -1,4 +1,6 @@
 //! One native-selected store, opened lazily on a blocking worker.
+use crate::panic_hook;
+use crate::startup_event::{self, StartupFacts};
 use cimmeria_launcher_engine::{DesktopState, NativeCommand, NativeSnapshot, StorageError};
 use std::{
     path::PathBuf,
@@ -30,6 +32,8 @@ mod repair;
 mod runtime_setup;
 mod seed_archive;
 mod summary;
+pub(crate) mod telemetry_status;
+pub(crate) mod ui_event;
 pub use install::{InstallCommand, InstallStatus, JobError};
 pub use seed_archive::{SeedArchiveCommand, SeedArchiveError, SeedArchiveStatus};
 
@@ -68,6 +72,8 @@ pub struct NativeHost {
         Mutex<Option<cimmeria_launcher_engine::runtime_setup::windows_physx::InstallResult>>,
     repair_worker: Mutex<Option<repair::Worker>>,
     worker: Mutex<Option<cimmeria_launcher_engine::install_worker::Worker>>,
+    /// Whether the launcher opened its log file at start; reported on `launcher.startup`.
+    log_file_ok: bool,
 }
 impl NativeHost {
     pub fn new(root: PathBuf) -> Self {
@@ -102,6 +108,7 @@ impl NativeHost {
             physx_last: Mutex::new(None),
             repair_worker: Mutex::new(None),
             worker: Mutex::new(None),
+            log_file_ok: false,
         }
     }
 
@@ -110,6 +117,29 @@ impl NativeHost {
     pub fn with_default_install_directory(mut self, directory: PathBuf) -> Self {
         self.default_install_directory = Some(directory);
         self
+    }
+
+    /// Set once at start from the telemetry log file; reported on `launcher.startup`.
+    pub fn with_log_file(mut self, ok: bool) -> Self {
+        self.log_file_ok = ok;
+        self
+    }
+
+    /// What this start knows about the build and its recorded settings.
+    fn startup_facts(&self, state: &DesktopState, previous_run_panicked: bool) -> StartupFacts {
+        let preferences = state.preferences();
+        StartupFacts {
+            version: updater::compiled_version(),
+            os: std::env::consts::OS,
+            arch: std::env::consts::ARCH,
+            release_build: !cfg!(debug_assertions),
+            dll_bundled: launch::dll_bundled(),
+            game_diagnostics: state.game_telemetry().is_ok_and(|choice| choice.opted_in),
+            setup_diagnostics: preferences.launcher_summary_consent,
+            login_servers: u64::try_from(preferences.login_servers.len()).unwrap_or(u64::MAX),
+            log_file_ok: self.log_file_ok,
+            previous_run_panicked,
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -159,7 +189,11 @@ impl NativeHost {
                 // Only the running binary's compiled version acknowledges a handoff.
                 // Failure leaves the updater owner visible and excludes game work.
                 // That is the D-LX8 release version the feed signs, not the package's.
-                let _ = state.reconcile_launcher_update(&target, updater::compiled_version());
+                if let Err(error) =
+                    state.reconcile_launcher_update(&target, updater::compiled_version())
+                {
+                    startup_event::update_reconcile_failed(startup_event::reconcile_reason(error));
+                }
             }
             if state.preferences().revision == 0
                 && state.preferences().install_directory.is_none()
@@ -179,7 +213,17 @@ impl NativeHost {
             }
             // Before any Play can queue: an opted-in player's queue is kept for
             // the next session, an opted-out player's deleted unsent.
-            let _ = cimmeria_launcher_engine::game_telemetry::transport::recover_now(&state);
+            if matches!(
+                cimmeria_launcher_engine::game_telemetry::transport::recover_now(&state),
+                cimmeria_launcher_engine::game_telemetry::transport::Recovery::Untouched
+            ) {
+                startup_event::update_recovery_failed("choice_unreadable");
+            }
+            let previous_panic = panic_hook::take_previous_panic(&self.root);
+            if let Some(location) = &previous_panic {
+                panic_hook::report_previous_panic(location);
+            }
+            startup_event::emit_startup(&self.startup_facts(&state, previous_panic.is_some()));
             let state = Arc::new(Mutex::new(state));
             summary::start(&state);
             *guard = Some(state);
@@ -226,6 +270,8 @@ mod tests {
         let call = &source[start..start + source[start..].find(");").unwrap()];
         assert!(call.contains("compiled_version()"), "{call}");
         assert!(!call.contains("CARGO_PKG_VERSION"), "{call}");
+        // The needle is split so this assert does not match its own text.
+        assert!(!source.contains(concat!("version: env!(", "\"CARGO_PKG_VERSION\")")));
     }
 
     #[test]
