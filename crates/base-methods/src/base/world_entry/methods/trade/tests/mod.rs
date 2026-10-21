@@ -52,22 +52,27 @@ pub(super) const TEST_BASE: i32 = 0x7000_0F00;
 /// `resources.items` seed at runtime. Hard-coded type-id constants
 /// are explicitly discouraged by TESTING.md because they break when
 /// seeds shift; the runtime lookup picks the two lowest-numbered ids
-/// so the result is stable enough to be deterministic across CI runs
-/// but not so brittle that a seed edit moves them.
+/// that list the backpack (1) in `container_sets`, so the result is
+/// stable enough to be deterministic across CI runs but not so brittle
+/// that a seed edit moves them. A mission-only (`{2}`) type is skipped:
+/// a trade refuses it as untradeable (#1675), and the two lowest seeded
+/// ids are such types.
 ///
 /// Returns `(first, second)` in ascending order. Panics if the
-/// seed has fewer than two rows — that's a precondition failure
+/// seed has fewer than two such rows — that's a precondition failure
 /// for any trade test, since both sides of a trade need to offer
 /// distinct items to exercise the swap.
 pub(super) async fn tradeable_type_ids(pool: &PgPool) -> (i32, i32) {
-    let ids: Vec<i32> =
-        sqlx::query_scalar("SELECT item_id FROM resources.items ORDER BY item_id ASC LIMIT 2")
-            .fetch_all(pool)
-            .await
-            .expect("query resources.items seed for tradeable type ids");
+    let ids: Vec<i32> = sqlx::query_scalar(
+        "SELECT item_id FROM resources.items WHERE 1 = ANY(container_sets) \
+         ORDER BY item_id ASC LIMIT 2",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("query resources.items seed for tradeable type ids");
     assert!(
         ids.len() >= 2,
-        "trade tests require at least 2 rows in `resources.items` — \
+        "trade tests require at least 2 backpack rows in `resources.items` — \
          the live-DB seed must be loaded before running this test"
     );
     (ids[0], ids[1])

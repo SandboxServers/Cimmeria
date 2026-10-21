@@ -103,7 +103,17 @@ fn request(host: &NativeHost, confirmed: bool) -> GameUpdateCommand {
 async fn observe(host: &NativeHost, expected: OperationState) -> GameUpdateStatus {
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
-            let status = host.game_update_status().unwrap();
+            // A poll that races the apply path is refused as Busy while the
+            // path holds the store; that is transient, so poll again. The
+            // timeout above bounds the retries; any other error is a failure.
+            let status = match host.game_update_status() {
+                Ok(status) => status,
+                Err(JobError::Busy) => {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                    continue;
+                }
+                Err(error) => panic!("game_update_status failed: {error:?}"),
+            };
             let actual = status.native.operation.operation.as_ref().unwrap().state;
             assert!(
                 !actual.terminal() || actual == expected,
@@ -205,12 +215,15 @@ async fn preparation_cancel_preserves_old_tree_and_reports_terminal_outcome() {
     let id = plan(&host).id;
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
-            if host
-                .game_update_status()
-                .unwrap()
-                .progress
-                .is_some_and(|progress| matches!(progress, crate::host::install::contract::JobProgress::Download { current, .. } if current > 0))
-            {
+            // Busy is the transient refusal `observe` tolerates: poll again.
+            let downloading = match host.game_update_status() {
+                Ok(status) => status
+                    .progress
+                    .is_some_and(|progress| matches!(progress, crate::host::install::contract::JobProgress::Download { current, .. } if current > 0)),
+                Err(JobError::Busy) => false,
+                Err(error) => panic!("game_update_status failed: {error:?}"),
+            };
+            if downloading {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(5)).await;

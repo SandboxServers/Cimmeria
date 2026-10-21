@@ -5,6 +5,9 @@
 mod host;
 #[cfg(test)]
 mod release_version;
+mod telemetry;
+#[cfg(test)]
+mod telemetry_tests;
 mod updater_restart;
 mod webview2;
 
@@ -359,6 +362,8 @@ async fn choose_existing_game_folder(
     tauri::async_runtime::spawn_blocking(move || checking.adoption_mode_allowed(mode))
         .await
         .map_err(|_| AdoptionError::Io)??;
+    let in_place = mode == cimmeria_launcher_engine::adoption::AdoptionMode::InPlace;
+    crate::host::adoption_events::mode_chosen(in_place);
     let Some(selected) = pick_folder(
         app.clone(),
         window.clone(),
@@ -366,6 +371,7 @@ async fn choose_existing_game_folder(
     )
     .await?
     else {
+        crate::host::adoption_events::folder_chosen(in_place, false);
         return cancelled(host).await;
     };
     // A copy also needs the folder it goes into; in place there is none.
@@ -373,6 +379,7 @@ async fn choose_existing_game_folder(
         let Some(location) =
             pick_folder(app, window, "Choose where to put the verified copy").await?
         else {
+            crate::host::adoption_events::folder_chosen(in_place, false);
             return cancelled(host).await;
         };
         Some(location)
@@ -383,6 +390,7 @@ async fn choose_existing_game_folder(
     let release = cimmeria_launcher_engine::catalog::fetch_release()
         .await
         .map_err(|_| AdoptionError::ReleaseUnavailable)?;
+    crate::host::adoption_events::folder_chosen(in_place, true);
     tauri::async_runtime::spawn_blocking(move || {
         host.begin_folder_adoption(selected, location, mode, release)
     })
@@ -560,6 +568,8 @@ fn main() {
                 }
             }
             let app_data = app.path().app_data_dir()?;
+            let redaction = telemetry::Redaction::from_env();
+            let telemetry = telemetry::init(&app_data.join("logs"), redaction.clone());
             let host = NativeHost::new(app_data.join("state")).with_default_install_directory(
                 app.path().app_local_data_dir()?.join("Stargate Worlds"),
             );
@@ -570,7 +580,10 @@ fn main() {
                 .with_launch_resources(app.path().resource_dir()?)
                 .with_compiled_updater_config()
                 .with_updater_shutdown(move || app_handle.exit(0));
-            app.manage(Arc::new(host));
+            let host = Arc::new(host);
+            telemetry::spawn_forwarder(Arc::clone(&host), telemetry.records, redaction);
+            app.manage(host);
+            app.manage(std::sync::Mutex::new(telemetry.guard));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

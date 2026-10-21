@@ -415,11 +415,12 @@ async fn terminal_outcome_production_close_logs_failed_results_as_canceled() {
         if !refuse {
             drop(rx);
         }
+        let permit = super::admission_tests::test_permit(peer).await;
         let reg = registry.clone();
         let task = tokio::spawn(handle_connection(
             server,
             peer,
-            super::tests::test_permit(peer),
+            permit,
             reg,
             tx,
             9339,

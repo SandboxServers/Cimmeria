@@ -112,6 +112,9 @@ pub(super) fn expire_pending_locked(
 
     let mut evicted = Vec::with_capacity(expired.len());
     for entity_id in &expired {
+        // No `release_bound_slot` here on purpose: `expired` holds only
+        // unconnected sessions, and a slot is bound only after the login has
+        // claimed (connected) the session, so none of these has a bound slot.
         if let Some(session) = inner.sessions.remove(entity_id) {
             inner.boards.remove(entity_id);
             // info!, not warn!: an abandoned launch is a player closing a

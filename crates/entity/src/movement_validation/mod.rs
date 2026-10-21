@@ -15,12 +15,14 @@
 //!    a generous fallback for spaces whose navmesh failed to load.
 //!    Catches NaN / infinity / absurd-coordinate overflows and the
 //!    Z-axis floor-clip exploit. (`check_bounds`, [`bounds`] module)
-//! 2. **Speed** *(warn-only)* — `|new - last| / dt` (server monotonic
-//!    clock, never a client-supplied timestamp) must not exceed
-//!    `top_speed × SPEED_WARN_TOLERANCE`. Over-tolerance moves are
-//!    **logged + counted but still accepted**: the production tolerance
-//!    is calibrated from SigNoz rejection telemetry before it is allowed
-//!    to snap legitimate high-RTT players back. (`check_kinematics`)
+//! 2. **Speed** *(warn-only)* — the summed distance over a per-entity
+//!    sliding window (`SPEED_WINDOW`) divided by `max(summed dt,
+//!    SPEED_WINDOW)` (server monotonic clock, never a client-supplied
+//!    timestamp) must not exceed `top_speed × SPEED_WARN_TOLERANCE`. The
+//!    window absorbs client send jitter and bunched packets. Over-tolerance
+//!    moves are **logged + counted but still accepted**: the production
+//!    tolerance is calibrated from SigNoz rejection telemetry before it is
+//!    allowed to snap legitimate high-RTT players back. (`observe_speed`)
 //! 3. **Teleport detection** *(hard reject)* — a single update that is
 //!    both farther than `TELEPORT_JUMP_UNITS` **and** implies a speed
 //!    above `top_speed × TELEPORT_SPEED_FACTOR` is rejected with
@@ -112,32 +114,29 @@ pub enum MovementReject {
     MovementLocked,
 }
 
-/// Speed/teleport telemetry for a single update, returned by
-/// [`MovementValidator::check_kinematics`]. Carries the raw inputs so
-/// the cell seam's negative log and the SigNoz tolerance-calibration
-/// pipeline have the full `(distance, dt, implied_speed)` triple.
+/// Speed telemetry returned by [`MovementValidator::observe_speed`]. The
+/// fields are **window sums** (see `speed_window`), so the cell seam's log and
+/// the SigNoz tolerance-calibration pipeline get the `(distance, dt,
+/// implied_speed)` triple the verdict was made on.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SpeedSample {
-    /// World-unit distance from the last accepted position.
+    /// Summed world-unit distance over the window.
     pub distance: f32,
-    /// Server-clock seconds since the last accepted update.
+    /// Summed server-clock seconds over the window.
     pub dt_secs: f32,
-    /// `distance / dt_secs`, in world units per second.
+    /// `distance / max(dt_secs, SPEED_WINDOW)`, in world units per second.
     pub implied_speed: f32,
     /// The class top speed the sample was compared against.
     pub top_speed: f32,
 }
 
-/// Outcome of the stateful speed/teleport layer.
+/// Outcome of the stateful teleport layer. Speed is judged separately, over a
+/// window, by [`MovementValidator::observe_speed`].
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct KinematicsOutcome {
     /// `Some(MovementReject::Teleport)` when the move must be hard-
-    /// rejected; `None` when it is accepted (possibly with a warn).
+    /// rejected; `None` when it is accepted.
     pub reject: Option<MovementReject>,
-    /// `Some(sample)` when the move exceeded the warn tolerance but was
-    /// still accepted under the warn-only speed policy. The caller logs
-    /// + counts it but does **not** snap the client.
-    pub speed_warn: Option<SpeedSample>,
 }
 
 /// Server-authoritative movement validator.
@@ -271,7 +270,7 @@ impl MovementValidator {
         self.move_clock.insert(entity_id, now)
     }
 
-    /// Speed + teleport layer (pure — no clock mutation; the caller
+    /// Teleport layer (pure — no clock mutation; the caller
     /// advances the clock via [`touch_clock`] and passes the recovered
     /// `prev` sample in).
     ///
@@ -314,10 +313,7 @@ impl MovementValidator {
             // dt-based speed gate below only kicks in once a baseline
             // exists.
             let reject = (distance > Self::TELEPORT_JUMP_UNITS).then_some(MovementReject::Teleport);
-            return KinematicsOutcome {
-                reject,
-                speed_warn: None,
-            };
+            return KinematicsOutcome { reject };
         };
 
         let dt_secs = now.saturating_duration_since(prev).as_secs_f32();
@@ -334,34 +330,22 @@ impl MovementValidator {
         if is_teleport {
             return KinematicsOutcome {
                 reject: Some(MovementReject::Teleport),
-                speed_warn: None,
             };
         }
 
-        let speed_warn =
-            (implied_speed > top_speed * Self::SPEED_WARN_TOLERANCE).then_some(SpeedSample {
-                distance,
-                dt_secs,
-                implied_speed,
-                top_speed,
-            });
-        KinematicsOutcome {
-            reject: None,
-            speed_warn,
-        }
+        KinematicsOutcome { reject: None }
     }
 
-    /// Reseed an entity's speed/teleport clock **and** clear its snap-back
-    /// correction budget after a server-authoritative position write (ring
-    /// transport, respawn, gate travel arrival, content-engine teleport, GM
-    /// travel). The next client packet's `dt` is then measured from the
-    /// teleport instant, which suppresses a spurious speed warn when an
-    /// authoritative move interrupts the client's update stream. It does
-    /// **not** suppress hard rejects — a stale in-flight packet pointing at
-    /// the old location *should* be snapped to the new one. See
+    /// After a server-authoritative position write (ring transport, respawn,
+    /// gate travel arrival, content-engine teleport, GM travel): reseed the
+    /// entity's clock, clear its snap-back correction budget, and drop its
+    /// speed window and hold anchor. The next client packet's `dt` is
+    /// measured from the teleport instant and the old window's distance
+    /// cannot count against the new spot, so no spurious speed warn follows
+    /// the move; the next held packet re-anchors there. It does **not**
+    /// suppress hard rejects — a stale in-flight packet pointing at the old
+    /// location *should* be snapped to the new one. See
     /// `.claude/agent-memory/movement-teleport-advisor/authorized-teleport-paths.md`.
-    /// It also drops any hold anchor: the server chose the new spot, so the
-    /// next held packet re-anchors there.
     ///
     /// The budget reset is folded in here rather than left to each caller
     /// because a fresh authoritative placement is exactly the event that
@@ -385,6 +369,14 @@ impl MovementValidator {
         self.move_clock.remove(&entity_id);
         self.consecutive_rejects.remove(&entity_id);
         self.hold_anchors.remove(&entity_id);
+        self.speed_windows.remove(&entity_id);
+    }
+
+    /// Drop an entity's speed window and nothing else. Call on the
+    /// movement-bypass path (fly/ghost): the bypassed packets are not judged,
+    /// so samples recorded before the bypass must not mix with the first
+    /// judged packet after it.
+    pub fn clear_speed_window(&mut self, entity_id: u32) {
         self.speed_windows.remove(&entity_id);
     }
 

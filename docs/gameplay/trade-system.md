@@ -132,13 +132,13 @@ The server decides this from the item rows; the wire carries only instance ids.
 | Buyback (16) | No | Only the seller may buy it back |
 | Vaults (17-20) | No | Reachable only through a banker |
 
-Bound items are refused from any bag. An item whose type has no `resources.items` row is refused rather than placed by guesswork.
+Bound items are refused from any bag. An item whose type has no `resources.items` row is refused rather than placed by guesswork. A mission-only item (`container_sets` `{2}`) is refused too: grants put it in the mission bag, which is not tradeable, so one found in the backpack has no destination bag (#1675). The owner can move it into the mission bag.
 
 Each item lands in the recipient's bag given by its `container_sets`, with the bag it came from as the request (`item_placement::grant_container`, the rule grants use):
 
 - a crafting component goes to the crafting bag, from either bag;
 - a backpack item goes to the backpack;
-- an item that lists no carried bag (a `{2}` mission type) keeps the bag it was traded from, as before.
+- an item that lists neither a carried bag nor the mission bag keeps the bag it was traded from; a mission-only (`{2}`) item is refused instead.
 
 Slots are reserved per recipient and bag, lowest free slot first. Slots the recipient is trading away in the same bag count as free. The backpack holds 40, the crafting bag 100. A destination bag without room refuses the whole trade; it never spills into the other bag. Items are moved, not merged into the recipient's existing stacks.
 

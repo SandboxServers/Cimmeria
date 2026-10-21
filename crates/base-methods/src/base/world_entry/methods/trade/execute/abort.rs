@@ -57,8 +57,10 @@ pub(in super::super) enum TradeAbort {
         item_id: i32,
         container_id: i32,
     },
-    /// The item's type has no `resources.items` row, so there is no
-    /// `container_sets` to place it by. Refused rather than guessed at.
+    /// The item has no tradeable destination bag: its type has no
+    /// `resources.items` row (refused rather than guessed at), or its
+    /// `container_sets` place it outside the tradeable bags, such as a
+    /// mission-only (`{2}`) type found in the backpack (#1675).
     NoDestination {
         which: &'static str,
         player_id: i32,
@@ -128,7 +130,8 @@ impl std::fmt::Display for TradeAbort {
             } => write!(
                 f,
                 "{which} player {player_id} offered item {item_id} of type \
-                 {type_id}, which has no resources.items row to place it by"
+                 {type_id}, which has no tradeable destination bag (no \
+                 resources.items row, or a mission-only type)"
             ),
         }
     }

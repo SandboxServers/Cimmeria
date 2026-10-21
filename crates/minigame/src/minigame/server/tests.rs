@@ -133,14 +133,6 @@ async fn explicit_close_cancels_socket_and_allows_reopen() {
     }
 }
 
-/// A slot from a throwaway tracker, for driving [`handle_connection`]
-/// without the accept loop. The permit keeps the tracker's counts alive.
-pub(super) fn test_permit(peer: SocketAddr) -> ConnectionPermit {
-    limits::ConnectionTracker::new(&ListenerLimits::default())
-        .try_acquire(peer.ip())
-        .expect("an empty tracker admits the first connection")
-}
-
 /// Stand up a loopback TCP pair and drive [`run_session`] over the server
 /// half with a placeholder instance.
 ///
@@ -490,7 +482,7 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
     let (tx, _rx) = mpsc::channel(16);
     let reg = registry.clone();
     let (server, peer) = server;
-    let permit = test_permit(peer);
+    let permit = super::admission_tests::test_permit(peer).await;
     let handle = tokio::spawn(handle_connection(
         server,
         peer,

@@ -1,4 +1,5 @@
 use std::net::IpAddr;
+use std::time::Duration;
 
 use super::*;
 
@@ -62,7 +63,7 @@ fn admission_key_classifies_public_and_non_public() {
 async fn no_sessions_refuses_unexpected_peer() {
     let registry = SessionRegistry::new();
     let refusal = registry.try_admit(ip("203.0.113.5")).await.unwrap_err();
-    assert_eq!(refusal.reason, "unexpected_peer");
+    assert_eq!(refusal.reason, AdmissionRefusalReason::UnexpectedPeer);
     assert_eq!(refusal.pending_sessions, 0);
 }
 
@@ -71,7 +72,10 @@ async fn sessions_for_other_peers_refuse_with_sessions() {
     let registry = SessionRegistry::new();
     register(&registry, 1, "203.0.113.5").await;
     let refusal = registry.try_admit(ip("198.51.100.9")).await.unwrap_err();
-    assert_eq!(refusal.reason, "unexpected_peer_with_sessions");
+    assert_eq!(
+        refusal.reason,
+        AdmissionRefusalReason::UnexpectedPeerWithSessions
+    );
     assert_eq!(refusal.pending_sessions, 1);
 }
 
@@ -81,7 +85,7 @@ async fn one_ticket_admits_one_connection() {
     register(&registry, 1, "203.0.113.5").await;
     let first = registry.try_admit(ip("203.0.113.5")).await.unwrap();
     let second = registry.try_admit(ip("203.0.113.5")).await.unwrap_err();
-    assert_eq!(second.reason, "no_free_ticket");
+    assert_eq!(second.reason, AdmissionRefusalReason::NoFreeTicket);
     drop(first);
     assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
 }
@@ -108,7 +112,7 @@ async fn three_tickets_admit_three() {
         .unwrap();
     guards.push(registry.try_admit(ip("203.0.113.5")).await.unwrap());
     let refusal = registry.try_admit(ip("203.0.113.5")).await.unwrap_err();
-    assert_eq!(refusal.reason, "no_free_ticket");
+    assert_eq!(refusal.reason, AdmissionRefusalReason::NoFreeTicket);
 }
 
 #[tokio::test]
@@ -118,7 +122,7 @@ async fn non_public_peers_share_the_ticket_pool() {
     let guard = registry.try_admit(ip("172.17.0.1")).await.unwrap();
     assert_eq!(
         registry.try_admit(ip("10.0.0.2")).await.unwrap_err().reason,
-        "no_free_ticket"
+        AdmissionRefusalReason::NoFreeTicket
     );
     drop(guard);
 }
@@ -132,7 +136,10 @@ async fn expired_pending_sessions_give_no_slot() {
     // map: the age check alone must withhold the slot.
     assert_eq!(registry.session_count().await, 1);
     let refusal = registry.try_admit(ip("203.0.113.5")).await.unwrap_err();
-    assert_eq!(refusal.reason, "unexpected_peer_with_sessions");
+    assert_eq!(
+        refusal.reason,
+        AdmissionRefusalReason::UnexpectedPeerWithSessions
+    );
 }
 
 /// Poison the counter map, as a panic while it is locked would. The thread
@@ -200,11 +207,17 @@ async fn connected_session_for_another_peer_gives_no_slot() {
     // The connected session belongs to 203.0.113.5; a different public peer
     // has no ticket, and a connected session is not a pending one.
     let refusal = registry.try_admit(ip("198.51.100.9")).await.unwrap_err();
-    assert_eq!(refusal.reason, "unexpected_peer_with_sessions");
+    assert_eq!(
+        refusal.reason,
+        AdmissionRefusalReason::UnexpectedPeerWithSessions
+    );
     assert_eq!(refusal.pending_sessions, 0);
     // A non-public peer must not borrow a public peer's connected ticket.
     let refusal = registry.try_admit(ip("192.168.1.10")).await.unwrap_err();
-    assert_eq!(refusal.reason, "unexpected_peer_with_sessions");
+    assert_eq!(
+        refusal.reason,
+        AdmissionRefusalReason::UnexpectedPeerWithSessions
+    );
 }
 
 #[tokio::test]
@@ -216,7 +229,7 @@ async fn connected_session_still_fills_its_own_slot() {
     // The ticket is claimed and its connection holds the guard: no second
     // connection gets in, and the refusal counts no pending sessions.
     let refusal = registry.try_admit(ip("203.0.113.5")).await.unwrap_err();
-    assert_eq!(refusal.reason, "no_free_ticket");
+    assert_eq!(refusal.reason, AdmissionRefusalReason::NoFreeTicket);
     assert_eq!(refusal.pending_sessions, 0);
     drop(guard);
 }
@@ -236,11 +249,11 @@ async fn mixed_public_and_non_public_pools_stay_separate() {
             .await
             .unwrap_err()
             .reason,
-        "no_free_ticket"
+        AdmissionRefusalReason::NoFreeTicket
     );
     assert_eq!(
         registry.try_admit(ip("10.0.0.2")).await.unwrap_err().reason,
-        "no_free_ticket"
+        AdmissionRefusalReason::NoFreeTicket
     );
     // Freeing the private slot frees only the private pool.
     drop(private);
@@ -251,10 +264,210 @@ async fn mixed_public_and_non_public_pools_stay_separate() {
             .await
             .unwrap_err()
             .reason,
-        "no_free_ticket"
+        AdmissionRefusalReason::NoFreeTicket
     );
     // A second public address has no ticket in this mixed pool.
     let refusal = registry.try_admit(ip("198.51.100.9")).await.unwrap_err();
-    assert_eq!(refusal.reason, "unexpected_peer_with_sessions");
+    assert_eq!(
+        refusal.reason,
+        AdmissionRefusalReason::UnexpectedPeerWithSessions
+    );
     drop(public);
+}
+
+/// The log field values are queried in SigNoz; renaming one breaks queries.
+#[test]
+fn refusal_reasons_keep_their_logged_names() {
+    assert_eq!(
+        AdmissionRefusalReason::UnexpectedPeer.as_str(),
+        "unexpected_peer"
+    );
+    assert_eq!(
+        AdmissionRefusalReason::UnexpectedPeerWithSessions.as_str(),
+        "unexpected_peer_with_sessions"
+    );
+    assert_eq!(
+        AdmissionRefusalReason::NoFreeTicket.as_str(),
+        "no_free_ticket"
+    );
+}
+
+/// Admit, claim and bind one connection for entity 1, as the listener does.
+async fn live_connection(registry: &SessionRegistry, ticket: &str) -> AdmissionGuard {
+    let guard = registry.try_admit(ip("203.0.113.5")).await.unwrap();
+    registry
+        .authenticate_and_claim(1, ticket, "Livewire")
+        .await
+        .unwrap();
+    registry.bind_slot(1, ticket, &guard).await;
+    guard
+}
+
+/// Owner ruling: release on cancel. The old connection is still alive (its
+/// guard is held), but a cancelled ticket must not hold a slot, so the player
+/// who reopens at once is admitted. Without the release in the cancel path
+/// the replacement ticket is refused as `no_free_ticket` until the old
+/// connection ends.
+#[tokio::test]
+async fn cancel_frees_the_slot_at_once() {
+    let registry = SessionRegistry::new();
+    let old = register(&registry, 1, "203.0.113.5").await;
+    let _old_guard = live_connection(&registry, &old).await;
+
+    assert!(registry.cancel_if_ticket(1, &old).await);
+    register(&registry, 1, "203.0.113.5").await;
+
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+
+/// The same for the unconditional cancel the close RPC uses.
+#[tokio::test]
+async fn plain_cancel_frees_the_slot_at_once() {
+    let registry = SessionRegistry::new();
+    let old = register(&registry, 1, "203.0.113.5").await;
+    let _old_guard = live_connection(&registry, &old).await;
+
+    assert!(registry.cancel(1).await);
+    register(&registry, 1, "203.0.113.5").await;
+
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+
+/// A socket that closed ends the game loop, which calls `release_slot`. The
+/// session is still registered (its teardown has not removed it), yet the slot
+/// is free: a reconnect is admitted while the old connection drains.
+#[tokio::test]
+async fn release_slot_frees_the_slot_while_the_old_connection_drains() {
+    let registry = SessionRegistry::new();
+    let old = register(&registry, 1, "203.0.113.5").await;
+    let _old_guard = live_connection(&registry, &old).await;
+    assert_eq!(
+        registry
+            .try_admit(ip("203.0.113.5"))
+            .await
+            .unwrap_err()
+            .reason,
+        AdmissionRefusalReason::NoFreeTicket
+    );
+
+    registry.release_slot(1, &old).await;
+
+    assert_eq!(registry.session_count().await, 1);
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+
+/// Two live connections on one ticket are still refused, and a release for
+/// some other ticket (a stale connection's) frees nothing.
+#[tokio::test]
+async fn live_ticket_keeps_refusing_a_second_connection() {
+    let registry = SessionRegistry::new();
+    let ticket = register(&registry, 1, "203.0.113.5").await;
+    let _guard = live_connection(&registry, &ticket).await;
+
+    registry.release_slot(1, "not-this-ticket").await;
+    registry.release_slot(2, &ticket).await;
+
+    assert_eq!(
+        registry
+            .try_admit(ip("203.0.113.5"))
+            .await
+            .unwrap_err()
+            .reason,
+        AdmissionRefusalReason::NoFreeTicket
+    );
+}
+
+/// A cancel that lands between the claim and the bind leaves nothing to find
+/// later, so the bind itself frees the slot.
+#[tokio::test]
+async fn bind_after_cancel_frees_the_slot() {
+    let registry = SessionRegistry::new();
+    let old = register(&registry, 1, "203.0.113.5").await;
+    let guard = registry.try_admit(ip("203.0.113.5")).await.unwrap();
+    registry
+        .authenticate_and_claim(1, &old, "Livewire")
+        .await
+        .unwrap();
+    assert!(registry.cancel_if_ticket(1, &old).await);
+    register(&registry, 1, "203.0.113.5").await;
+
+    registry.bind_slot(1, &old, &guard).await;
+
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+
+/// Freeing early and then dropping the guard must count once: the drop may
+/// not take a slot that now belongs to the next connection.
+#[tokio::test]
+async fn early_release_then_drop_frees_exactly_one_slot() {
+    let registry = SessionRegistry::new();
+    let old = register(&registry, 1, "203.0.113.5").await;
+    let old_guard = live_connection(&registry, &old).await;
+    registry.release_slot(1, &old).await;
+
+    let next = registry.try_admit(ip("203.0.113.5")).await.unwrap();
+    drop(old_guard);
+
+    assert_eq!(
+        registry
+            .try_admit(ip("203.0.113.5"))
+            .await
+            .unwrap_err()
+            .reason,
+        AdmissionRefusalReason::NoFreeTicket,
+        "the old guard's drop must not free the new connection's slot",
+    );
+    drop(next);
+}
+
+/// The blunt `remove` also ends the ticket, so a connection bound to it must
+/// not keep a slot for a session that no longer exists.
+#[tokio::test]
+async fn blunt_remove_frees_the_slot_at_once() {
+    let registry = SessionRegistry::new();
+    let old = register(&registry, 1, "203.0.113.5").await;
+    let _old_guard = live_connection(&registry, &old).await;
+
+    registry.remove(1).await;
+    register(&registry, 1, "203.0.113.5").await;
+
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+
+/// The connection's own teardown (`remove_if_ticket`) also frees a bound
+/// slot, and a stale ticket's teardown frees nothing.
+#[tokio::test]
+async fn remove_if_ticket_frees_only_its_own_slot() {
+    let registry = SessionRegistry::new();
+    let old = register(&registry, 1, "203.0.113.5").await;
+    let _old_guard = live_connection(&registry, &old).await;
+
+    registry.remove_if_ticket(1, "not-this-ticket").await;
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_err());
+
+    registry.remove_if_ticket(1, &old).await;
+    register(&registry, 1, "203.0.113.5").await;
+    assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+
+/// The TTL sweep evicts only unconnected sessions, so it never strands a bound
+/// slot: with a zero TTL a pending session is evicted, a bound (connected) one
+/// stays, keeps its slot and keeps refusing a second connection. If the sweep
+/// ever removed connected sessions it would have to release their slots too.
+#[tokio::test]
+async fn sweep_evicts_pending_sessions_but_never_a_bound_one() {
+    let registry = SessionRegistry::new();
+    let bound = register(&registry, 1, "203.0.113.5").await;
+    let _guard = live_connection(&registry, &bound).await;
+    register(&registry, 2, "203.0.113.5").await;
+
+    let evicted = registry.expire_pending_sessions(Duration::ZERO).await;
+
+    assert_eq!(evicted.len(), 1);
+    assert_eq!(evicted[0].0, 2, "only the pending session is evicted");
+    assert_eq!(registry.session_count().await, 1);
+    assert!(registry.peek_session(1).await.is_some());
+    // The bound slot still counts: one ticket left, one connection on it.
+    let refusal = registry.try_admit(ip("203.0.113.5")).await.unwrap_err();
+    assert_eq!(refusal.reason, AdmissionRefusalReason::NoFreeTicket);
 }

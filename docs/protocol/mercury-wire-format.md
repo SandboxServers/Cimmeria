@@ -249,7 +249,7 @@ emitter. Widths 1 and 3 and the escape above are not implemented.
 |---|---|---|
 | Inbound, per-`msg_id` table | `read_client_message_payload` in `crates/base/src/base/connect_loop/encrypted/mod.rs` | `CONSTANT` per message; `WORD` for `0x07` and for the wildcard, which covers every entity method |
 | Inbound, the readers themselves | `read_constant_payload` / `read_word_length_payload` in `crates/base/src/base/connect_loop/mod.rs` | 0 and 2 |
-| Outbound, generic bundle encoder | `Bundle::encode` in `crates/mercury/src/bundle.rs` | 2 only; refuses a payload of 0xFFFF bytes or more instead of clamping it |
+| Generic bundle codec | `Bundle::encode` / `Bundle::decode` in `crates/mercury/src/bundle.rs` | 2 only. Encode refuses a payload of 0xFFFF bytes or more instead of clamping it, and leaves the buffer untouched; decode refuses a length field of 0xFFFF (the escape sentinel) with an error instead of reading it as a length |
 | Outbound, `BASEMSG_REPLY_MESSAGE` | `build_connect_reply` in `crates/wire/src/mercury/protocol/session.rs` | 4, written by hand |
 
 No entry in `ClientMessageList` declares `DWORD_LENGTH`, so the inbound

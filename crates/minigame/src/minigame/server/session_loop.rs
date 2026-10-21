@@ -493,6 +493,13 @@ pub(super) async fn run_session(
         }
     }
 
+    // The game is over for this socket whatever ended it: free the ticket
+    // slot before the teardown sends, which can stall for `SEND_TIMEOUT` on a
+    // peer that stopped reading. A player who reopens at once is admitted
+    // (owner ruling: release on cancel). The session stays registered until
+    // the connection task removes it, so the result below still deposits.
+    registry.release_slot(entity_id, &session.ticket).await;
+
     // Defect B4: the loop can also exit because the SWF closed or the
     // socket dropped, with no Victory/Failure ever produced. Give the
     // instance its documented teardown call — before this, `aborted()` had

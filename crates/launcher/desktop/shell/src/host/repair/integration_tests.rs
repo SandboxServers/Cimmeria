@@ -1,6 +1,6 @@
 //! Real host dispatch with a signed inert ZIP and loopback transport only.
 use super::*;
-use crate::host::held_download;
+use crate::host::{held_download, JobError};
 use cimmeria_launcher_engine::{install_worker::fixtures, repair::cleanup::BackupStatus};
 use std::time::Duration;
 use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
@@ -87,7 +87,17 @@ fn dispatch(host: &NativeHost, installation: Uuid) -> (Uuid, InstallCommand) {
 async fn observe(host: &NativeHost, expected: OperationState) -> InstallStatus {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            let status = host.install_status().unwrap();
+            // A poll that races the apply path is refused as Busy while the
+            // path holds the store; that is transient, so poll again. The
+            // timeout above bounds the retries; any other error is a failure.
+            let status = match host.install_status() {
+                Ok(status) => status,
+                Err(JobError::Busy) => {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                    continue;
+                }
+                Err(error) => panic!("install_status failed: {error:?}"),
+            };
             if status.native.operation.operation.as_ref().unwrap().state == expected {
                 return status;
             }

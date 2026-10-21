@@ -718,7 +718,6 @@ preparation and Play of an adopted copy, the `CIMMERIA_WINE_APP_IDENTITY=1`
 runtime and computer-use checks, the published RAR/CAB seed with a rebuilt
 helper, and native Windows validation.
 
-
 ### 2026-10-04: MacBook testing stopped; repository checkpoint
 
 The [MacBook testing checkpoint](worknotes/macbook-testing-checkpoint.md) records
@@ -739,7 +738,6 @@ its current assignment, but receives no new work and is not integrated here.
 Full launcher/release acceptance, the current Windows helper, Windows parity,
 production updater configuration, clean-machine/notarization and reserved
 observability work remain open. This checkpoint does not close the campaign.
-
 
 ### 2026-10-04: repository preservation after MacBook testing stopped
 
@@ -775,3 +773,10 @@ and [Playing on a Mac](../../../guides/macos.md)) were rewritten for those zips 
 LX-22: download, drag to Applications, Open Anyway once, the Wine runtime fetched
 at first install, and manual macOS updates. No player has yet run the packaged
 macOS app from a fresh Mac; that is LX-26 step 13.
+
+### 2026-10-20: adoption refusals name their entries
+
+An in-place adoption that the scan refuses now lists up to five offending files or
+folders with what to do, and the mode choice is a row with a selected state that the
+choose button names. Both modes name the entries that make the launcher refuse a folder; the survey logs them by relative path only. See the
+[launcher-adopt-ux README](../../launcher-adopt-ux/README.md).

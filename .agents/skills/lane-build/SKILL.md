@@ -97,7 +97,7 @@ From a worktree root, this builds the tier in a heavy slot (`--build-only`), the
   meta-tests fail.
 - Get the URL from `test_support::database_url()`, never `DATABASE_URL`.
 - Sentinels fit in `i32`; cleanup deletes by exact sentinel, not by range.
-- If the shared `:5433` Postgres is down, restart the bundled server (`external/postgresql_server`).
+- If the shared `:5433` Postgres is down, restart the bundled server (`external/postgresql_server`); an `ops` dispatch can do it.
 
 ## Server binary and debug builds
 

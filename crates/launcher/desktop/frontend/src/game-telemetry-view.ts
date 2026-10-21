@@ -15,7 +15,7 @@ export function gameTelemetryText(s:GameTelemetryState,saving:boolean|null=null)
  if(last==='session_unavailable')return 'On, but the server gave no session for the last Play, so the game started without diagnostics.';
  if(last==='endpoint_refused')return 'On, but the last Play refused the server address offered for diagnostics, so nothing was sent.';
  if(last==='session_not_written')return 'On, but the session could not be saved beside the game for the last Play, so it started without diagnostics.';
- return 'On. The next Play loads the diagnostics module into the game and sends game events and logs to your login server.';
+ return 'On. The next Play loads the diagnostics module into the game and sends game events and logs to your login server. Game-folder steps are sent as they happen.';
 }
 /** `onSaved` runs after native code confirms a changed choice. */
 export function mountGameTelemetry(document:Document,invoke:Invoke,onSaved:()=>void=()=>{}) {

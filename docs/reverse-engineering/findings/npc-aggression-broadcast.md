@@ -87,7 +87,7 @@ Indices 0-26 are identical for SGWMob and SGWPlayer — both share the
 `SGWSpawnableEntity → SGWBeing` prefix, and that prefix's parse is a
 property of the *ancestor classes*, not the leaf entity, so it cannot
 differ between the two. (This was already documented, pre-NA33, in
-`crates/wire/src/mercury/mod.rs`'s `method_idx` module comment.) From
+the `method_idx` module comment in `crates/wire/src/mercury/mod.rs`; the constants themselves now live in `crates/wire/src/cell/client_methods/`.) From
 27 the two entity types diverge: SGWPlayer continues into
 Communicator/OrganizationMember/etc., while SGWMob's `Implements` is just
 the empty-client-method `Lootable`, so SGWMob's own two methods begin

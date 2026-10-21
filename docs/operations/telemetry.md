@@ -7,8 +7,11 @@ enabling/disabling ingest, and reading the data downstream.
 Everything the players' machines upload (the injected
 `cimmeria-client-telemetry` DLL's events and the game-log lines the
 launcher tails) lands in SigNoz as its own service,
-`service.name = cimmeria-client`. Lab sessions are tagged
-`cimmeria.session_kind = lab`.
+`service.name = cimmeria-client`. Sessions carry `cimmeria.session_kind`
+with one of three values: `player`, `lab` and `launcher`. A launcher
+session is minted by the desktop launcher for its own game-folder steps,
+only for opted-in players, without a game. It is short, write-only and
+has its own scope.
 
 ## Architecture at a glance
 
@@ -233,6 +236,10 @@ switch is released. A session that ends while the switch is on loses
 its end-of-session bundle, which is not retried. The DLL keeps its
 batch, as for any failed upload.
 
+`CIMMERIA_TELEMETRY_LAUNCHER_DISABLED=1` turns off the launcher kind alone:
+a launcher mint and a launcher chunk answer 503, while player and lab
+sessions carry on. The master switch above still stops everything.
+
 Each refused dev-session request logs one row on `cimmeria-server`, so a
 stream that stops has a line saying why: the switch is a WARN with
 `reason = dev_session_kill_switch`. A refresh refused for an expired token,
@@ -323,6 +330,8 @@ that header and falls back to launching without telemetry.
 | `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` | `3600` | The window the mint and refresh quotas below are counted over. The summary quota does not use it. |
 | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints per peer address per window. |
 | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_INSTALL` | `30` | Mints per `install_id` per window. |
+| `CIMMERIA_TELEMETRY_LAUNCHER_MINT_QUOTA_PER_IP` | `30` | Launcher-kind mints per peer address per window, on top of the shared per-IP table. |
+| `CIMMERIA_TELEMETRY_LAUNCHER_MINT_QUOTA_PER_INSTALL` | `12` | Launcher-kind mints per `install_id` per window, on their own table. |
 | `CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP` | `480` | Refreshes with a valid token per peer address per window. Charged only after the token verifies. |
 | `CIMMERIA_TELEMETRY_REFRESH_BAD_QUOTA_PER_IP` | `30` | Refresh calls whose token fails verification, per peer address per window. A separate counter, so junk tokens cannot spend the valid-token allowance. |
 | `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` | `12` | Requests to `/api/telemetry/launcher-summary` per peer address per minute (owner decision, 2026-10-04). The window is a fixed 60 s of the route's own. The route is anonymous, so this is its rate limit. Charged before the body is read or anything is parsed, so malformed, oversized and refused requests count too. Shared by everyone behind one address: see [Launcher summaries](#launcher-summaries). |
@@ -331,6 +340,10 @@ that header and falls back to launching without telemetry.
 | `CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP` | `600` | Requests to `/api/telemetry/upload-chunk` per peer address per minute, across every session behind it. |
 | `CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_SESSION` | `6` | Requests to `/api/telemetry/upload-bundle` per session per hour. |
 | `CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP` | `30` | Requests to `/api/telemetry/upload-bundle` per peer address per hour. |
+
+A launcher token lives 15 minutes, carries no account or machine, is
+never refreshed (a refresh answers 400), and its mints also count against
+the shared per-IP quota.
 
 Setting a quota to `0` disables that counter. A value that does not
 parse falls back to the default rather than refusing to serve — an
@@ -523,6 +536,36 @@ logs at exit; the server keeps the newest files within the bundle
 budgets. A current launcher bundles only the files written to during the
 session.
 
+### Launcher sessions
+
+A `launcher` session has its own limits, all refused before the body is
+read where the route allows it. Its chunks take 2 reserved upload slots
+(so launcher chunks never use up the route's slots the game DLL needs; the per-address limit of one chunk in flight is shared, so a game chunk from the same address waits for a launcher chunk in flight), and a launcher
+token is refused on the bundle route (403, `reason = forbidden`); bundles
+are not part of the launcher kind.
+
+| Limit | Value | Env name (default) |
+|---|---|---|
+| chunks per session per minute | 10 | `CIMMERIA_TELEMETRY_LAUNCHER_CHUNK_QUOTA_PER_SESSION` |
+| chunks per install per minute | 20 | `CIMMERIA_TELEMETRY_LAUNCHER_CHUNK_QUOTA_PER_INSTALL` |
+| chunks per peer address per minute | 60 | `CIMMERIA_TELEMETRY_LAUNCHER_CHUNK_QUOTA_PER_IP` |
+| rows per session, lifetime | 300 | `CIMMERIA_TELEMETRY_LAUNCHER_ROWS_PER_SESSION` |
+| rows per minute, all launcher callers | 3,000 | `CIMMERIA_TELEMETRY_LAUNCHER_ROWS_PER_MINUTE` |
+| compressed chunk body | 64 KiB | the chunk rules above (413) |
+| decompressed chunk | 256 KiB | the chunk rules above (truncated) |
+| one chunk row | 4 KiB | the chunk rules above (`bad_rows`) |
+| rows per chunk | 200 | the chunk rules above (truncated) |
+
+A row the launcher kind may keep has one event name, `client.launcher.adoption`,
+and a `ClientNative` shape. Any other event is dropped. The row's fields are
+scalar only: at most 16 keys, each key at most 32 bytes, each string value at
+most 256 bytes. Keys that could name a host, an account, a machine or a
+session (`ip`, `host`, `account`, `user`, `email`, `machine_id`,
+`install_id`, `session_id` and so on) are dropped, and values that look like
+an IP, a drive path or a rooted path are scrubbed to `<removed>`. Launcher
+rows are never named or lifted into entity attributes, so they cannot
+stand in for a game entity. The rules are in `launcher_rows.rs`.
+
 ## Where the data lives
 
 Every uploaded event is replayed through the server's `tracing`
@@ -542,11 +585,11 @@ server:
 | none | `launcher.key_dump` | Encryption key material; `off` in every OTLP filter, never leaves the host |
 
 Every uploaded `cimmeria-client` row carries `session_id` and `install_id`
-(the token's claims), `cimmeria.session_kind` (`lab` or `player`) and `lab`
+(the token's claims), `cimmeria.session_kind` (`lab`, `player` or `launcher`) and `lab`
 (`true`/`false`), plus `ts_ms` and `seq`. `launcher.summary` rows are the
 exception: they carry none of those identifiers, and their
 `cimmeria.session_kind` is `launcher_summary` (a row label only; no such
-session can be minted). `client.native` rows also carry
+session can be minted, and it is not the `launcher` session kind). `client.native` rows also carry
 `client_level`, the DLL's `fields` bag as JSON in `fields`, and, when the
 event has them, `account_id`, `player_id`, `method_index`, `level_name`,
 `dll_version`, `fingerprint_usable`, and on a governor rollup
@@ -578,6 +621,14 @@ Useful first queries:
   `skipped_dependency`, with `patch.<id>.reason`, and for a failed hash
   check the file and both sha256s). Written at install time, uploaded
   with the next session.
+- `service.name = 'cimmeria-client' AND client_target = 'client.launcher.adoption' AND cimmeria.session_kind = 'launcher'`:
+  the desktop launcher's adoption steps. Its `fields` hold `step`,
+  `decision_outcome`, `mode`, `error`, `unsafe_total` and `unsafe_entries`.
+  Opted-in players only, sent as they happen.
+  A query meaning "a player's game session" should filter
+  `cimmeria.session_kind = 'player'`, not `!= 'lab'`: launcher rows can be
+  forged by anyone who mints a session, so funnel counts built from them
+  measure what clients claim.
 - `service.name = 'cimmeria-client' AND client_target = 'client.patches.counts'`:
   the client-patches DLL's claimed / delivered / dropped counts and the
   last reason per counter (`dropped_no_overlay.last_reason` names a
@@ -781,10 +832,10 @@ While it is off:
 
 | Path | Method | Auth | Purpose |
 |---|---|---|---|
-| `/api/auth/dev-session` | POST | none (anyone can mint), quota-limited | Mint a token for a launcher session, or a lab session with `"session_kind": "lab"` (any other value is a 400). |
-| `/api/auth/dev-session/refresh` | POST | bearer (own token), quota-limited | Extend an almost-expired token, up to the session cap. |
+| `/api/auth/dev-session` | POST | none (anyone can mint), quota-limited | Mint a token for a launcher session (`"session_kind": "launcher"`), or a lab session with `"session_kind": "lab"` (any other value is a 400). |
+| `/api/auth/dev-session/refresh` | POST | bearer (own token), quota-limited | Extend an almost-expired token, up to the session cap. A launcher token is refused (400). |
 | `/api/telemetry/upload-chunk` | POST | bearer, rate- and size-limited | Streaming events (gzip(NDJSON)). |
-| `/api/telemetry/upload-bundle` | POST | bearer, rate- and size-limited | End-of-session zip (multipart). |
+| `/api/telemetry/upload-bundle` | POST | bearer, rate- and size-limited | End-of-session zip (multipart). A launcher token is refused (403). |
 | `/api/telemetry/launcher-summary` | POST | none (anonymous), strict payload, rate-limited per address | Desktop-launcher attempt summaries (JSON). Takes no token. See [Launcher summaries](#launcher-summaries). |
 
 A 503 with `Retry-After: 60` on any of these routes means the kill switch
