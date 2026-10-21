@@ -7,7 +7,7 @@
 
 The desktop launcher can report, with the player's consent, how each install, runtime-setup, repair, uninstall or launch attempt ended. A report is one row per attempt: closed enums, a few bounded integers and two random ids. The server validates a batch of those rows, drops the ones it has already accepted, and writes one typed log row per accepted summary.
 
-The upload is anonymous. There is no token, no mint step and no `Authorization` header: the launcher sends one `POST` and the server judges the body. Two things stand where a credential would: the route accepts only the exact schema-1 payload and refuses everything else, and each peer address gets a fixed number of requests per minute (12 by default).
+The upload is anonymous. There is no token, no mint step and no `Authorization` header: the launcher sends one `POST` and the server judges the body. Two things stand where a credential would: the route accepts only the exact schema-1 payload and refuses everything else, and each quota-key address gets a fixed number of requests per minute (12 by default).
 
 **Status: code only. Nothing here is deployed.** No distributed launcher build has a summary endpoint, so no launcher collects or sends a summary. The route exists in the server code on both listeners. The owner approved serving it on the public login port and set its rate limit on 2026-10-04; a production endpoint for the launcher is still open (see [Decisions and what is still open](#decisions-and-what-is-still-open)). No part of this was run against a real collector or a real SigNoz; the proof is local fixtures and loopback tests.
 
@@ -35,7 +35,7 @@ What bounds a stranger is not authentication:
 
 - **The payload rule.** Only the schema-1 JSON envelope gets past the handler. A request that is anything else is refused whole, before a row is written ([Whole-request refusals](#whole-request-refusals)).
 - **Closed values.** Every stored value is a closed enum, a bounded integer, a parsed UUID or a parsed version triple. A stranger chooses among the same values a launcher can send and can put no text of their own in a row.
-- **The rate limit.** Each peer address gets 12 requests per minute by default ([Anonymous access and the rate limit](#anonymous-access-and-the-rate-limit)). A request is at most 64 KiB and 32 summaries, so by default one address can add at most 384 summary rows per window. The window is fixed and starts at an address's first request, so across a window boundary a caller can briefly send twice that.
+- **The rate limit.** Each quota-key address gets 12 requests per minute by default ([Anonymous access and the rate limit](#anonymous-access-and-the-rate-limit)). A request is at most 64 KiB and 32 summaries, so by default one address can add at most 384 summary rows per window. The window is fixed and starts at an address's first request, so across a window boundary a caller can briefly send twice that.
 - **Fixed memory.** The dedup set has a fixed size, and the quota table is the fixed-size one the dev-session mint uses.
 
 None of this tells a real launcher from a script that sends the same bytes. That is the accepted cost of the design, and the reason for the rule above.
@@ -60,7 +60,7 @@ None of this tells a real launcher from a script that sends the same bytes. That
 
 | Path | Method | Auth | Body cap |
 |---|---|---|---|
-| `/api/telemetry/launcher-summary` | POST | none; limited per peer address | 64 KiB (65,536 bytes) |
+| `/api/telemetry/launcher-summary` | POST | none; limited per quota-key address | 64 KiB (65,536 bytes) |
 
 The path is the same on the admin listener and on the public login listener. The launcher holds a base URL and appends `telemetry/launcher-summary` to it (`endpoint.rs`), so a base of `https://<host>/api/` produces the path above. That is the only URL the exporter ever requests.
 
@@ -144,18 +144,20 @@ One invalid element never fails its neighbours. A game-telemetry event placed be
 
 ### Whole-request refusals
 
-Anything that is not the payload is refused as a whole. No row is written and no id is remembered. The rows below are in the order the server answers them.
+Anything that is not the payload is refused as a whole. No summary row and no batch row is written and no id is remembered; one `launcher_summary_refused` row records the refusal (below). The rows below are in the order the server answers them.
 
 | Status | When | Body |
 |---|---|---|
 | 503 + `Retry-After: 60` | `CIMMERIA_TELEMETRY_KILL_SWITCH=1` | `Kill switch active — telemetry ingest is paused` |
-| 429 + `Retry-After` | The peer address has used its allowance. `Retry-After` is the rest of the minute plus one second, so 61 at most | `summary/ip quota exceeded — retry in Ns` |
+| 429 + `Retry-After` | The quota-key address has used its allowance. `Retry-After` is the rest of the minute plus one second, so 61 at most | `summary/ip quota exceeded — retry in Ns` |
 | 415 | `Content-Type` breaks the rule under [Request headers](#request-headers) | `Content-Type must be application/json` |
 | 400 | The URI has a query string, an empty one (`?`) included | `Query string not allowed` |
 | 413 | The body is over 64 KiB | `Body is over 64 KiB` |
 | 400 | The body is not the envelope: see the list below | A fixed sentence, such as `Body is not a JSON object` or `Repeated key` |
 
 The first four are answered before any of the body is read.
+
+**The refusal row.** Each of these refusals writes one `launcher_summary_refused` row (WARN, target `launcher.ingest`, `route = launcher_summary`, fields `reason`, `status` and `suppressed`) from `launcher_summary/refusal.rs`, throttled to one per reason per minute. The reasons are `kill_switch` (503), `rate_limited` (429), `unsupported_media_type` (415), `body_too_large` (413) and `bad_request` (400, which covers the query string and every envelope failure). The row carries no address, no header and no part of the body. It is SigNoz-only, because an anonymous caller drives it and could otherwise fill the Discord errors channel at will (the `SIGNOZ_ONLY_EVENTS` entry in `crates/discord/src/layer/mod.rs`). The summary route's 503 is the kill switch and nothing else: it has no mint, so it never answers `no_upload_endpoint`. Filters: [telemetry-upload-endpoint.md](../operations/telemetry-upload-endpoint.md#launcher-summaries). Before this row existed the handler logged nothing about a refusal.
 
 What ends as a 400, each sent as `application/json`:
 
@@ -191,13 +193,13 @@ The exporter makes one request per attempt, the `POST`. Its full handling is in 
 
 **No summary session kind.** The dev-session mint has no part in this flow. A mint request with `"session_kind": "launcher_summary"` is refused like any other unknown kind, with the same 400 and the same body (`launcher_summary_is_refused_as_an_unknown_session_kind` in `dev_session/session_kind_tests.rs`). The value `launcher_summary` survives in one place only: as the `cimmeria.session_kind` label on the rows ([Emitted rows](#emitted-rows)), where it tells these rows from the `player` and `lab` rows in the same index. It names no session.
 
-**The rate limit.** `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` requests per peer address per minute. The default is 12 (`DEFAULT_SUMMARY_PER_IP` in `handlers.rs`), `0` disables the limit, and a value that does not parse, or is blank, falls back to the default. The window is this route's own: a fixed 60 seconds (`SUMMARY_QUOTA_WINDOW` in `handlers.rs`) that starts at the address's first counted request. `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` does not move it; that variable sizes the dev-session mint and refresh quotas only, whose window stays an hour by default (`the_mint_quota_window_knob_does_not_move_the_summary_window` in `tests/quota.rs`). A 429 carries `Retry-After` with what is left of the minute plus one second, so it is never more than 61. `tests/quota.rs` pins the count, the window and the wait with the default policy: `the_default_allowance_is_twelve_requests_a_minute_per_address`, `the_default_allowance_returns_a_minute_after_the_first_request` and `a_burst_past_the_default_allowance_waits_61_seconds_at_most`.
+**The rate limit.** `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` requests per quota-key address per minute. The key is the socket peer, or, from a loopback peer, the caller named by the rightmost `X-Forwarded-For` entry; it is a counter key only and is never logged ([rule](dev-session-telemetry.md), [no-address statement](../operations/telemetry.md#no-address-in-any-log)). The default is 12 (`DEFAULT_SUMMARY_PER_IP` in `handlers.rs`), `0` disables the limit, and a value that does not parse, or is blank, falls back to the default. The window is this route's own: a fixed 60 seconds (`SUMMARY_QUOTA_WINDOW` in `handlers.rs`) that starts at the address's first counted request. `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` does not move it; that variable sizes the dev-session mint and refresh quotas only, whose window stays an hour by default (`the_mint_quota_window_knob_does_not_move_the_summary_window` in `tests/quota.rs`). A 429 carries `Retry-After` with what is left of the minute plus one second, so it is never more than 61. `tests/quota.rs` pins the count, the window and the wait with the default policy: `the_default_allowance_is_twelve_requests_a_minute_per_address`, `the_default_allowance_returns_a_minute_after_the_first_request` and `a_burst_past_the_default_allowance_waits_61_seconds_at_most`.
 
 - **Every request shape counts,** the refused ones too. The allowance is charged before anything the caller sent is looked at and before the body is read, so a wrong content type, a query string, a malformed body or a body over 64 KiB spends it like an accepted request (`malformed_requests_spend_the_allowance` and `oversized_requests_spend_the_allowance` in `tests/quota.rs`).
 - **One refusal does not count.** A request under the kill switch is answered before the quota is charged.
 - **An IPv4-mapped address is counted as its IPv4 address.** On a dual-stack listener an IPv4 peer arrives as `::ffff:a.b.c.d`. The quota key folds IPv6 to its /64, and every mapped address is in the same one, so `ip_key` in `dev_session/quota.rs` takes the canonical form first: the mapped and the plain form of one address share an allowance, and two different mapped addresses do not (`ipv4_mapped_addresses_key_as_their_ipv4_address` beside `ip_key`, and `an_ipv4_mapped_peer_is_counted_as_its_ipv4_address` in `tests/quota.rs`). `ip_key` is the key of every per-address quota, so the dev-session mint and refresh quotas count a mapped peer the same way.
 - **Why 12 a minute.** The owner set the rate on 2026-10-04. A launcher sends one request per export cycle, and a cycle runs when the launcher starts, when a tracked attempt ends and when a failure before admission is queued. That is a few requests an hour, so the limit is far above what one launcher uses and leaves room for many launchers behind one address. It is still the only thing between the route and anyone who can reach the port.
-- **The allowance belongs to the address, not to a machine.** Everyone behind one NAT, reverse proxy or tunnel shares it, and no forwarded-for header is read. At 12 a minute that is far roomier than one launcher needs, but it is still one allowance for everyone behind the address, and an operator whose launchers all arrive from one address may have to raise it. See [Known limits](#known-limits).
+- **The allowance belongs to the address, not to a machine.** Everyone behind one NAT or a non-loopback proxy shares it. Behind the colo's Caddy the key is the forwarded caller, if the server sees the proxy as loopback (OPS-LT2, unchecked); otherwise every https caller shares it. At 12 a minute that is far roomier than one launcher needs, but it is still one allowance for everyone behind the address, and an operator whose launchers all arrive from one address may have to raise it. See [Known limits](#known-limits).
 
 **Kill switch.** `CIMMERIA_TELEMETRY_KILL_SWITCH=1` makes the route answer 503 with `Retry-After: 60`, as it does for the dev-session mint and refresh.
 
@@ -265,7 +267,7 @@ A summary or batch row never contains:
 - an account name, a character name or anything the player typed;
 - an installation id, a machine id, or any id that persists across attempts. `event_id` is minted per row and `attempt_id` per attempt, both by the engine, and schema version 1 has no installation correlator;
 - the journal's operation id, which the webview supplies and which is never exported;
-- the peer address, or anything from a header the caller sent;
+- the peer address, the forwarded address (a quota key only) or anything else from a header the caller sent;
 - a path, a URL, a file name or an error text;
 - the length of a play session.
 
@@ -310,11 +312,11 @@ Compare the files as JSON values, never as bytes: a Windows checkout may convert
 - **At-least-once delivery.** The launcher resends until it gets an answer. The server drops a resend it remembers, so a duplicate row needs a server restart, or more than 16,384 accepted ids, between the two deliveries. At the default limit one address can have 384 ids accepted a minute on average, which is 16,384 in about 43 minutes.
 - **In-memory dedup.** The set is per process and lost on restart. Nothing persists it.
 - **Approximate counters.** `client_dropped_*` and a pre-admission row's `retry_count` are at-least-once approximations: a request the launcher has to retry repeats the same counters, and the server does not deduplicate them. Do not sum them across batch rows as if each reported new drops.
-- **The request span still records the caller's method and path** on both listeners. It leaves out the query string and the scheme and host of an absolute-form target (`request_span` in `crates/admin-api/src/request_span.rs`, used by `build_router` and by `login_port_telemetry_router`), but the method and the path are the caller's text. A request whose path or method matches no route gets a 404 or 405 and writes no rows, so that text appears once per request, not once per row.
+- **The request span still records the caller's method and path** on both listeners, but not the peer address (the span drops `peer` on `/api/telemetry*` and `/api/auth/dev-session*`). It leaves out the query string and the scheme and host of an absolute-form target (`request_span` in `crates/admin-api/src/request_span.rs`, used by `build_router` and by `login_port_telemetry_router`), but the method and the path are the caller's text. A request whose path or method matches no route gets a 404 or 405 and writes no rows, so that text appears once per request, not once per row.
 - **The admin span no longer shows a query string on any admin route.** The span is the admin router's, not this route's, so the filters of the admin routes that do read a query (the login audit list, for one) are out of the request span too.
 - **Forged rows cannot be told from real ones.** The route is anonymous, and a script that sends the launcher's bytes is a launcher as far as the server can see. The rate limit bounds how many rows one address adds, not how many addresses add them.
-- **Junk spends a shared allowance.** Every request is counted, the refused and the oversized ones too. Anyone behind the same address as real launchers (a NAT, a tunnel) can use the allowance up with 12 requests of any content and turn those launchers' posts into 429s until the minute ends, and can do the same again every minute.
-- **A shared address shares one allowance of 12 a minute.** No forwarded-for header is read, as for the dev-session quotas. Behind a reverse proxy or a tunnel every launcher arrives from one address, so the default limits the whole deployment to 12 requests per minute. That is far more than a few launchers send, but a large deployment behind one address may need the operator to raise `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`.
+- **Junk spends a shared allowance.** Every request is counted, the refused and the oversized ones too. Anyone behind the same quota-key address as real launchers (a NAT) can use the allowance up with 12 requests of any content and turn those launchers' posts into 429s until the minute ends, and can do the same again every minute.
+- **A shared address shares one allowance of 12 a minute.** The key follows the dev-session rule: the forwarded caller behind a loopback proxy, the socket peer otherwise. Behind a non-loopback proxy every launcher arrives from one address, so the default limits the whole deployment to 12 requests per minute. That is far more than a few launchers send, but a large deployment behind one address may need the operator to raise `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`.
 - **A rate-limited launcher waits, and a row can age out while it does.** A 429 ends the exporter's cycle with the rows still queued, and nothing retries until the next trigger (the launcher starting, or another attempt ending), although the server's minute is over long before that. A row that is still queued after 24 hours expires on the launcher and is only counted in `client_dropped.expired`.
 - **A retried request spends allowance again.** A cycle makes up to three POSTs when the server answers with a transient failure, and each one that reaches the handler is counted.
 - **An admitted request is buffered up to the cap.** A request inside the allowance with the right content type and no query string has up to 64 KiB of its body read into memory before it is parsed, and an oversized one is read up to the cap before its 413. The quota bounds how often one address can do that.
@@ -325,16 +327,16 @@ Compare the files as JSON values, never as bytes: a Windows checkout may convert
 
 **Decided by the owner on 2026-10-04:**
 
-1. **How the route is protected.** The upload is anonymous, accepts only the strictly structured schema-1 payload, and is rate-limited per peer address. That is what this page describes.
+1. **How the route is protected.** The upload is anonymous, accepts only the strictly structured schema-1 payload, and is rate-limited per quota-key address. That is what this page describes.
 2. **The public login-port mount.** The route may be served on the public login listener (port 8081). The decision of 2026-09-29 (@Cadacious) put four telemetry routes on that port, and this one extends it to `/api/telemetry/launcher-summary` as a fifth. `login_port_telemetry_router` (`crates/admin-api/src/login_port.rs`) merges it beside the four. On that port nothing stands between the internet and the handler but the payload rule and the rate limit, and that is the exposure the owner approved.
-3. **The rate.** 12 requests per minute per peer address. `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` keeps its name and its default of 12 and counts requests per 60-second window; `0` still disables the limit. The window is this route's own, and the dev-session mint and refresh quotas keep theirs ([Anonymous access and the rate limit](#anonymous-access-and-the-rate-limit)).
+3. **The rate.** 12 requests per minute per quota-key address. `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` keeps its name and its default of 12 and counts requests per 60-second window; `0` still disables the limit. The window is this route's own, and the dev-session mint and refresh quotas keep theirs ([Anonymous access and the rate limit](#anonymous-access-and-the-rate-limit)).
 
 None of these makes a launcher send anything.
 
 **Still open:**
 
 - **No launcher build has an endpoint.** The shell composes the exporter with `endpoint: None` (`crates/launcher/desktop/shell/src/host/summary.rs`), and there is no environment override. So nothing is collected and nothing is sent.
-- **A production endpoint has not been chosen.** It has to be an `https://` address with a publicly trusted certificate: `SummaryEndpoint::parse` refuses plain `http://` to anything but loopback, and the exporter trusts the bundled webpki roots only. So the plain-HTTP login port cannot be the launcher's endpoint under the client's endpoint policy, although the server may serve the route there.
+- **The production address exists but nothing points at it.** It has to be an `https://` address with a publicly trusted certificate: `SummaryEndpoint::parse` refuses plain `http://` to anything but loopback, and the exporter trusts the bundled webpki roots only. The colo now serves the route at `https://play.cimmeria.app/api/telemetry/launcher-summary` through its Caddy proxy ([the route](../operations/telemetry-upload-endpoint.md#the-colo-route)); no launcher build is configured with it, and no request has been sent to it by a launcher. The plain-HTTP login port still serves the route but cannot be the launcher's endpoint under the client's endpoint policy.
 - **The consent copy and the frontend UAT.** The launcher confirms a consent change with "This build sends nothing". A build with an endpoint needs new copy and the frontend UAT the repo requires.
 
 Those three belong to a later rollout that is decided separately. Its checklist is [what a rollout packet must change](../../crates/launcher/desktop/docs/launcher-summaries.md#what-a-rollout-packet-must-change).

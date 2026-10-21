@@ -121,7 +121,7 @@ It answers "is the ingest healthy?" with one row per request:
 - `client_dropped_*` are what the launcher says it discarded before sending: `overflow` (its queue was full), `expired` (older than 24 hours) and `rejected` (the server refused an earlier batch). These are the attempts the dashboard is missing.
 - `client_dropped_*` are at-least-once approximations. The launcher clears a counter only when the server answers the request that carried it, so a request it has to retry repeats the same numbers on a second batch row. Do not add them up across rows as if each row reported new drops.
 
-A request refused before its summaries are validated (kill switch, rate limit, a wrong content type, a malformed body or envelope) writes no batch row.
+A request refused before its summaries are validated (kill switch, rate limit, a wrong content type, a malformed body or envelope) writes no batch row. It writes one `launcher_summary_refused` row on the same target instead (WARN, SigNoz-only, one per reason per minute, with `reason`, `status` and `suppressed`), which this view's filter does not match. The fixtures have no view for it; to count refusals, filter `service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest' AND event = 'launcher_summary_refused'` and group by `reason` ([reasons](../telemetry-upload-endpoint.md#launcher-summaries)). The filter has not been run against a SigNoz.
 
 ## Importing
 
