@@ -175,15 +175,19 @@ server's operator requires a newer launcher. See
 If the game is already on this PC, you don't have to download it again. Point
 the launcher at the folder. You don't need the old launcher for this.
 
-1. Open **Settings** (⚙) and click **Use an existing game folder…**.
-2. Pick your game folder. The game root, the `Working` folder and the
-   `Binaries` folder all work.
-3. Choose a mode:
+1. Open **Settings** (⚙). Under **Use an existing game folder**, pick a mode
+   (Windows and Linux show both). Each mode is its own row with a short
+   description, and the picked row is outlined.
    - **Adopt it in place** (Windows). The launcher takes over that folder and
      moves the game files into a `game` folder inside it. Shortcuts to the old
      `SGW.exe` stop working.
    - **Make a verified copy.** Your folder stays exactly as it is. The launcher
      makes a checked copy in the place you choose.
+2. Click the button. It names your pick: **Choose the folder to adopt in
+   place…** or **Choose the folder to copy…**. With one mode it reads **Use an
+   existing game folder…**.
+3. Pick your game folder. The game root, the `Working` folder and the
+   `Binaries` folder all work.
 4. Read the review screen. It lists:
    - files that will be updated to the current release;
    - modified or missing files. The launcher replaces these only if you tick
@@ -212,6 +216,27 @@ Before you adopt in place, know what changes:
 - A folder that is behind the current release is fine. The review lists the
   files that will be updated, and the launcher downloads only the patches they
   need.
+
+#### If the launcher refuses the folder
+
+Adoption checks the whole game folder before it changes anything. If it finds
+something it can't adopt safely, it lists up to five files or folders, each
+with its path inside the game folder and what to do, and says how many more it
+found. Nothing was copied, moved or removed.
+
+| Reason | What to do |
+| --- | --- |
+| A link or junction | Put the real folder or file there. |
+| A OneDrive or other cloud-synced file | Move the whole game folder out of the synced folder, for example to `C:\Games`. "Always keep on this device" is not enough, because the files stay cloud files. |
+| A hard link | Replace it with a plain copy, or remove it. |
+| Not a plain file or folder | Remove it or move it out. Files compressed with `compact /EXE` count here: run `compact /U /EXE /S` in the game folder to decompress them. |
+| A name the launcher cannot use | Letters outside plain ASCII, `:` or `\`, or a name that is too long: rename or move it. |
+| Two names that differ only in case | Remove or rename one of them. |
+
+The check covers the whole game folder, including folders you added such as
+mods or backups. If the launcher shows the general "could not be checked
+safely" message without a list, a file changed while it was checked: close the
+game and any sync or backup program and try again.
 
 #### Optional: bring settings from the old launcher
 
@@ -778,6 +803,8 @@ again.
   the same file, the release or archive.org may be out of step; report it.
 - **The folder is refused:** pick an empty folder, or a new folder inside an
   existing one.
+- **Use an existing game folder is refused:** the launcher lists the files and
+  what to do; see [If the launcher refuses the folder](#if-the-launcher-refuses-the-folder).
 
 ### "Your ini (..\SGWGame\Config\SGWEditor.ini) file is outdated"
 

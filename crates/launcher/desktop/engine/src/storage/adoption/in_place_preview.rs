@@ -94,7 +94,7 @@ pub(super) fn preview(
     // The scan above saw any launcher-owned names this cleanup just took back;
     // only then is the folder hashed again.
     let scanned = if cleared {
-        inventory::scan(&folder, &cancel)?
+        survey::explained(&folder, inventory::scan(&folder, &cancel))?
     } else {
         scanned
     };

@@ -20,11 +20,16 @@ mod model;
 pub(crate) mod preparation;
 mod publication;
 mod replay;
+#[cfg(all(test, not(target_os = "macos")))]
+mod unsafe_source_tests;
 pub use preparation::{
     abandon_preparation, inspect_preparation, list_preparations, PreparationRecord,
 };
 mod reference;
 mod source;
+// AU-02 calls the survey from the scan; until then only the tests use it.
+#[allow(dead_code)]
+mod survey;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 mod verification;
@@ -51,6 +56,8 @@ mod recovery_tests;
 mod reference_tests;
 #[cfg(test)]
 mod replay_tests;
+#[cfg(test)]
+mod survey_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
