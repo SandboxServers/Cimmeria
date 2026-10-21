@@ -145,11 +145,13 @@ pub(super) fn log_refusal_in(
         AuthError::BadPayload(_) | AuthError::BadSignature => {
             let reason = "dev_session_bad_token";
             if let Some(suppressed) = throttle.admit(route, reason, now) {
+                // `BadPayload` holds caller-supplied text (base64 error bytes),
+                // so the row names the reason and not the error.
                 tracing::info!(
                     route,
                     reason,
                     suppressed,
-                    "dev-session request refused: {err}"
+                    "dev-session request refused: the token was rejected"
                 );
             }
         }
@@ -176,7 +178,10 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::layer::SubscriberExt;
 
-    use super::super::handlers::{mint_inner, Tables};
+    use axum::extract::ConnectInfo;
+
+    use super::super::handlers::{mint, mint_inner, Tables};
+    use super::super::quota::QuotaExceeded;
     use super::super::tests::{ip, policy, request, EnvGuard, Row, Rows};
     use super::*;
 
@@ -290,5 +295,80 @@ mod tests {
         assert_eq!(reason(&rows[0]), "dev_session_no_upload_endpoint");
         assert!(!rows[0].1.contains_key("peer"), "{rows:#?}");
         assert!(!format!("{rows:?}").contains("203.0.113.7"), "{rows:#?}");
+    }
+
+    /// The real `mint` handler, refused for want of an upload endpoint, from a
+    /// known peer: one WARN on route `mint`, no peer key, no address anywhere.
+    /// Fails if the `.inspect_err` in `handlers::mint` is dropped.
+    #[test]
+    fn the_mint_handler_logs_its_refusal_without_the_peer() {
+        let _g = EnvGuard::install();
+        std::env::remove_var("CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT");
+        let peer: std::net::SocketAddr = "203.0.113.8:4000".parse().unwrap();
+        let rows = capture(|| {
+            let fut = mint(
+                ConnectInfo(peer),
+                axum::http::HeaderMap::new(),
+                axum::Json(request("handler-no-endpoint")),
+            );
+            let res = tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap()
+                .block_on(fut);
+            assert!(matches!(res, Err(AuthError::NoUploadEndpoint)));
+        });
+        assert_eq!(rows.len(), 1, "{rows:#?}");
+        assert_eq!(rows[0].0, Level::WARN);
+        assert_eq!(rows[0].1["route"], "mint");
+        assert_eq!(reason(&rows[0]), "dev_session_no_upload_endpoint");
+        assert!(!rows[0].1.contains_key("peer"), "{rows:#?}");
+        assert!(!format!("{rows:?}").contains("203.0.113.8"), "{rows:#?}");
+    }
+
+    /// Every arm that writes a row, each through a fresh table: no row has a
+    /// `peer` key or a dotted-quad value.
+    #[test]
+    fn no_refusal_row_carries_a_peer_or_an_address() {
+        let errors = [
+            AuthError::SecretMissing,
+            AuthError::SecretTooShort { got: 1, min: 64 },
+            AuthError::KillSwitchActive,
+            AuthError::BadPayload("payload base64: Invalid byte 45, offset 3".into()),
+            AuthError::BadSignature,
+            AuthError::Expired { exp: 1, now: 2 },
+            AuthError::SessionLifetimeExceeded { elapsed: 3, cap: 4 },
+            AuthError::QuotaExceeded(QuotaExceeded {
+                scope: "mint/ip",
+                retry_after_secs: 5,
+            }),
+            AuthError::BadInstallId("too short"),
+            AuthError::BadField {
+                field: "machine_id",
+                reason: "empty",
+            },
+            AuthError::NoUploadEndpoint,
+        ];
+        let rows = capture(|| {
+            for err in &errors {
+                log_refusal_in(&Throttle::default(), "mint", err, Instant::now());
+            }
+        });
+        assert_eq!(rows.len(), errors.len(), "{rows:#?}");
+        for row in &rows {
+            assert!(!row.1.contains_key("peer"), "{rows:#?}");
+            assert!(!row.1.values().any(|v| looks_like_ipv4(v)), "{rows:#?}");
+        }
+    }
+
+    /// True when `text` holds a dotted quad such as `203.0.113.8`.
+    fn looks_like_ipv4(text: &str) -> bool {
+        text.split(|c: char| !(c.is_ascii_digit() || c == '.'))
+            .any(|run| {
+                let octets: Vec<&str> = run.split('.').collect();
+                octets.len() == 4
+                    && octets.iter().all(|o| {
+                        !o.is_empty() && o.len() <= 3 && o.bytes().all(|b| b.is_ascii_digit())
+                    })
+            })
     }
 }
