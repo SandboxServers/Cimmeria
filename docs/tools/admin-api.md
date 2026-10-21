@@ -39,7 +39,7 @@ REST and WebSocket API for administering the Cimmeria server emulator. Built wit
 
 The admin API runs as a background Axum server on port 8443 within the same process as the game server. It accesses game state through a shared `Arc<Orchestrator>` reference — no inter-process communication needed.
 
-Each request to this router writes one `admin.request` row (INFO; WARN for a 5xx status) with `method`, `path` (the matched route template, `"unmatched"` when no route matched, so the path cannot carry free text), `status`, `latency_ms` and `peer` (the client IP, without the port). The login-port router writes no such row. Tower-http's own request events are off in this router, so the row is the only request record the admin API writes.
+Each request to this router writes one `admin.request` row (INFO; WARN for a 5xx status) with `method`, `path` (the matched route template, `"unmatched"` when no route matched, so the path cannot carry free text), `status`, `latency_ms` and `peer` (the client IP, without the port). The login-port router writes no such row, and the telemetry and dev-session routes drop `peer` from their own request span (no address in any launcher or telemetry row; [the rule](../operations/telemetry.md#no-address-in-any-log)). `peer` stays on this row, `unmatched` ones included, because it is the admin router's. Tower-http's own request events are off in this router, so the row is the only request record the admin API writes.
 
 The Tauri desktop app has **two** paths to the backend:
 1. **HTTP fetch** via `admin-api.ts` — calls the Axum REST endpoints (same as any browser client)
@@ -62,7 +62,10 @@ together with the JWT work. Launcher telemetry (`POST /api/auth/dev-session`,
 `/refresh`, `/api/telemetry/upload-{chunk,bundle}`) is served on this listener and, for
 launchers on other hosts, on the public SOAP login port (`LOGON_PORT`, 8081)
 (`login_port_telemetry_router`, decision @Cadacious, 2026-09-29). A cross-host telemetry
-deployment therefore keeps the loopback `ADMIN_BIND`.
+deployment therefore keeps the loopback `ADMIN_BIND`. On the colo a Caddy proxy also
+serves the five telemetry routes over https and answers 404 for the rest; it must pass
+`Host`, `X-Forwarded-Proto: https` and `X-Forwarded-For`
+([the route](../operations/telemetry-upload-endpoint.md#the-colo-route)).
 
 The login port's router holds five routes and nothing else from this API: those four, and
 `POST /api/telemetry/launcher-summary`, which is also served on this listener. The fifth is
@@ -513,11 +516,11 @@ complete surface:
 | `GET /api/editor/draft/{scope_id}/{mission_id}` | `routes/editor.rs:143-146` |
 | `POST /api/editor/draft` | `routes/editor.rs:147` |
 | `GET /api/audit/logins` | `routes/audit.rs:52` — live |
-| `POST /api/auth/dev-session` | `routes/dev_session/mod.rs` — quota-limited; 429 + `Retry-After` over quota, 400 on a malformed `install_id` |
-| `POST /api/auth/dev-session/refresh` | `routes/dev_session/mod.rs` — quota-limited; 401 once the session passes its lifetime cap |
+| `POST /api/auth/dev-session` | `routes/dev_session/mod.rs` — quota-limited per quota-key address (the peer, or from a loopback peer the rightmost `X-Forwarded-For` entry; never logged); 429 + `Retry-After` over quota, 400 on a malformed `install_id`, 503 under the kill switch or `no_upload_endpoint` (no env value, no `Host` with `X-Forwarded-Proto: https`, no default). The response's `upload_endpoint` is resolved as in [telemetry-upload-endpoint.md](../operations/telemetry-upload-endpoint.md#where-a-mint-sends-the-upload) |
+| `POST /api/auth/dev-session/refresh` | `routes/dev_session/mod.rs` — quota-limited (same key as the mint); 401 once the session passes its lifetime cap; 503 under the kill switch or `no_upload_endpoint`. A refresh answered 503 still charges one quota count |
 | `POST /api/telemetry/upload-chunk` | `routes/telemetry/chunk.rs` — bearer token checked before the body is read; rate-limited per session and per address (429), concurrency-limited server-wide and per address (503), 30 s body deadline (400), compressed size cap (413), 400 only for a body that is not gzip; the expansion and row budgets truncate (200 with `truncated: true`) and rows that do not parse are skipped (`bad_rows`); 503 under the telemetry kill switch. Limits: [telemetry.md](../operations/telemetry.md#upload-size-and-rate-limits) |
 | `POST /api/telemetry/upload-bundle` | `routes/telemetry/bundle.rs` (unzip in `bundle_unzip.rs`) — the same gate as the chunk route, 413 on parts, metadata size and the hard entry cap; files, expanded bytes and lines truncate, newest files first (a file over the remaining bytes is skipped) |
-| `POST /api/telemetry/launcher-summary` | `routes/telemetry/launcher_summary/mod.rs` — desktop-launcher attempt summaries. Anonymous: no token, and an `Authorization` header is never read. Accepts only the exact schema-1 JSON payload: `Content-Type` other than `application/json` (a `charset` parameter is allowed) is a 415, a query string is a 400, over 64 KiB is a 413, a body that is not the envelope (a key written twice included) is a 400; one invalid summary in a valid body is `rejected` alone. Limited to 12 requests per peer address per minute by default (`CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`, a fixed 60 s window of its own; 429 + `Retry-After`), charged before the body is read or anything is parsed, so an oversized request counts; 503 under the telemetry kill switch. Rows are self-reported and must not drive server state or alerts. Merged by name in `routes/mod.rs` (this listener) and `login_port.rs` (the login port), not part of `telemetry::routes()`. Contract: [launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md) |
+| `POST /api/telemetry/launcher-summary` | `routes/telemetry/launcher_summary/mod.rs` — desktop-launcher attempt summaries. Anonymous: no token, and an `Authorization` header is never read. Accepts only the exact schema-1 JSON payload: `Content-Type` other than `application/json` (a `charset` parameter is allowed) is a 415, a query string is a 400, over 64 KiB is a 413, a body that is not the envelope (a key written twice included) is a 400; one invalid summary in a valid body is `rejected` alone. Limited to 12 requests per quota-key address per minute by default (`CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`, a fixed 60 s window of its own; 429 + `Retry-After`), charged before the body is read or anything is parsed, so an oversized request counts; 503 under the telemetry kill switch only (it has no mint, so never `no_upload_endpoint`). Each whole-request refusal writes one throttled `launcher_summary_refused` row (SigNoz-only). Rows are self-reported and must not drive server state or alerts. Merged by name in `routes/mod.rs` (this listener) and `login_port.rs` (the login port), not part of `telemetry::routes()`. Contract: [launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md) |
 | `GET /swagger-ui`, `GET /api-docs/openapi.json` | `crates/admin-api/src/lib.rs:117` |
 
 Note that `/api/editor/*` is an **HTTP** chain-editor persistence surface —

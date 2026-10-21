@@ -80,9 +80,11 @@ services:
       # `dev_session_secret_unusable`. The game itself is unaffected.
       CIMMERIA_TELEMETRY_HMAC_SECRET: "${CIMMERIA_TELEMETRY_HMAC_SECRET:-}"
       # The upload base the mint hands to launchers; they append
-      # /upload-chunk and /upload-bundle. Point it at this host's login
-      # port, e.g. http://<public-host>:8081/api/telemetry. Blank falls back
-      # to http://localhost:8443/api/telemetry, usable only on this host.
+      # /upload-chunk and /upload-bundle. Use an https URL you serve, e.g.
+      # https://<public-host>/api/telemetry. Blank counts as unset: there is
+      # no localhost default, so with no value and no https proxy passing
+      # Host, X-Forwarded-Proto: https and X-Forwarded-For the mint answers
+      # 503 no_upload_endpoint (Docker Desktop included).
       CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT: "${CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT:-}"
       # Optional operator controls, from the same .env file. Blank (no
       # line in .env) keeps the server's defaults: ingest on, 12 requests

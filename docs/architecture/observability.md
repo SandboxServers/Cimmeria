@@ -202,13 +202,19 @@ reject it at every level. The targets are `otel::CLIENT_TARGETS`:
 the game-log lines the launcher tails (`launcher.client_log`,
 `launcher.debug_log`, `launcher.session_meta`), and `launcher.summary`:
 the desktop launcher's self-reported rows, one per install, runtime-setup,
-repair, uninstall or launch attempt. Those arrive through the anonymous
+repair, uninstall or launch attempt. A launcher session's own rows are
+`client.native` rows whose `client_target` is one of twelve
+`client.launcher.*` wire targets: `adoption`, `startup`, `crash`, `update`,
+`game_update`, `install`, `repair`, `launch`, `settings`, `telemetry`, `ui`
+and `login` ([list and pins](../operations/telemetry-upload-endpoint.md#accepted-launcher-event-targets)). Those arrive through the anonymous
 `/api/telemetry/launcher-summary` route, not an upload, so they carry no
 `session_id` or `install_id`
 ([launcher-summary-telemetry.md](launcher-summary-telemetry.md)). The
 ingest's own account of an upload (`launcher.ingest`, `launcher.bundle`)
-and the mint rows stay in `cimmeria-server`; `launcher.key_dump` stays
-`off`. Client rows ship at
+and the mint rows stay in `cimmeria-server`; none of them carries the
+caller's address (no `peer`), on any `/api/telemetry*` or
+`/api/auth/dev-session*` path ([the rule](../operations/telemetry.md#no-address-in-any-log)).
+`launcher.key_dump` stays `off`. Client rows ship at
 every level the client sent, TRACE included: the DLL already throttled and
 paid for the upload, and a client WARN is not a server problem.
 
