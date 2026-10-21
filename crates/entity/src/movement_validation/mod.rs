@@ -167,7 +167,7 @@ pub struct MovementValidator {
     hold_anchors: HashMap<u32, [f32; 3]>,
     /// Sliding speed window per entity (#1249). Each accepted move that had a
     /// time baseline adds its distance and dt; see `speed_window`. Released
-    /// by `forget`.
+    /// on an authorized teleport and by `forget`.
     speed_windows: HashMap<u32, speed_window::SpeedWindow>,
 }
 
