@@ -8,12 +8,54 @@ use cimmeria_launcher_core::telemetry::events::{ClientNativeEvent, TelemetryEven
 use serde_json::{Map, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Target of every forwarded launcher log line (SigNoz `client_target`).
-pub const LAUNCHER_EVENT_TARGET: &str = "client.launcher.adoption";
+/// Tracing target -> wire target. The only targets the launcher forwards (D-LT5).
+pub const LAUNCHER_EVENT_TARGETS: [(&str, &str); 12] = [
+    ("adoption", "client.launcher.adoption"),
+    ("launcher.startup", "client.launcher.startup"),
+    ("launcher.crash", "client.launcher.crash"),
+    ("launcher.update", "client.launcher.update"),
+    ("launcher.game_update", "client.launcher.game_update"),
+    ("launcher.install", "client.launcher.install"),
+    ("launcher.repair", "client.launcher.repair"),
+    ("launcher.launch", "client.launcher.launch"),
+    ("launcher.settings", "client.launcher.settings"),
+    ("launcher.telemetry", "client.launcher.telemetry"),
+    ("launcher.ui", "client.launcher.ui"),
+    ("launcher.login", "client.launcher.login"),
+];
 /// A string field is cut to this many bytes (on a char boundary) and "..." is appended.
 pub const LAUNCHER_FIELD_MAX: usize = 240;
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// The wire target for a tracing target, or None when the launcher does not forward it.
+pub fn wire_target(tracing_target: &str) -> Option<&'static str> {
+    LAUNCHER_EVENT_TARGETS
+        .iter()
+        .find(|(t, _)| *t == tracing_target)
+        .map(|(_, w)| *w)
+}
+
+/// A closed, snake_case code for an I/O error kind (C6). Any kind not listed is `"other"`.
+pub fn kind(e: &std::io::Error) -> &'static str {
+    use std::io::ErrorKind;
+    match e.kind() {
+        ErrorKind::NotFound => "not_found",
+        ErrorKind::PermissionDenied => "permission_denied",
+        ErrorKind::AlreadyExists => "already_exists",
+        ErrorKind::WouldBlock => "would_block",
+        ErrorKind::InvalidInput => "invalid_input",
+        ErrorKind::InvalidData => "invalid_data",
+        ErrorKind::TimedOut => "timed_out",
+        ErrorKind::WriteZero => "write_zero",
+        ErrorKind::Interrupted => "interrupted",
+        ErrorKind::UnexpectedEof => "unexpected_eof",
+        ErrorKind::OutOfMemory => "out_of_memory",
+        ErrorKind::StorageFull => "storage_full",
+        ErrorKind::Other => "other",
+        _ => "other",
+    }
+}
 
 /// One forwarded launcher log line, before it is sent.
 #[derive(Debug, Clone, PartialEq)]
@@ -21,6 +63,8 @@ pub struct LauncherRecord {
     pub ts_ms: i64,
     /// "info", "warn" or "error".
     pub level: String,
+    /// The wire target the forward layer resolved through `wire_target`.
+    pub target: &'static str,
     pub fields: Map<String, Value>,
 }
 
@@ -96,7 +140,7 @@ fn launcher_event(record: &LauncherRecord, redaction: &Redaction) -> TelemetryEv
     TelemetryEvent::ClientNative(ClientNativeEvent {
         ts_ms: record.ts_ms,
         seq: SEQ.fetch_add(1, Ordering::Relaxed),
-        target: LAUNCHER_EVENT_TARGET.into(),
+        target: record.target.into(),
         level: record.level.to_lowercase(),
         fields,
     })
@@ -158,4 +202,79 @@ fn has_absolute_path(value: &str) -> bool {
         .any(|w| w[0].is_ascii_alphabetic() && w[1] == b':' && (w[2] == b'\\' || w[2] == b'/'));
     let rest = value.strip_prefix('"').unwrap_or(value);
     drive || rest.starts_with("\\\\") || rest.starts_with('/')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wire_target_maps_each_table_row() {
+        for (tracing_target, wire) in LAUNCHER_EVENT_TARGETS {
+            assert_eq!(wire_target(tracing_target), Some(wire));
+        }
+        assert_eq!(
+            wire_target("launcher.install"),
+            Some("client.launcher.install")
+        );
+        assert_eq!(wire_target("adoption"), Some("client.launcher.adoption"));
+    }
+
+    #[test]
+    fn wire_target_refuses_unlisted_targets() {
+        assert_eq!(wire_target("launcher.pipeline"), None);
+        assert_eq!(wire_target("launcher"), None);
+        assert_eq!(wire_target("cimmeria_launcher_engine"), None);
+        assert_eq!(wire_target("client.launcher.install"), None);
+    }
+
+    #[test]
+    fn wire_column_matches_the_shared_target_file() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../launcher-core/src/telemetry/launcher_targets.txt"
+        );
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(!text.contains('\r'), "the target file must use LF endings");
+        let lines: Vec<&str> = text
+            .lines()
+            .filter(|line| !line.starts_with('#') && !line.is_empty())
+            .collect();
+        let wires: Vec<&str> = LAUNCHER_EVENT_TARGETS.iter().map(|(_, w)| *w).collect();
+        assert_eq!(lines, wires);
+    }
+
+    #[test]
+    fn launcher_events_write_the_record_target() {
+        let record = LauncherRecord {
+            ts_ms: 1,
+            level: "INFO".into(),
+            target: "client.launcher.install",
+            fields: Map::new(),
+        };
+        let events = launcher_events(&[record], &Redaction::default());
+        let TelemetryEvent::ClientNative(native) = &events[0] else {
+            panic!("expected a ClientNative event");
+        };
+        assert_eq!(native.target, "client.launcher.install");
+    }
+
+    #[test]
+    fn kind_names_the_listed_error_kinds() {
+        use std::io::{Error, ErrorKind};
+        assert_eq!(kind(&Error::from(ErrorKind::NotFound)), "not_found");
+        assert_eq!(
+            kind(&Error::from(ErrorKind::PermissionDenied)),
+            "permission_denied"
+        );
+        assert_eq!(kind(&Error::from(ErrorKind::TimedOut)), "timed_out");
+        assert_eq!(kind(&Error::from(ErrorKind::StorageFull)), "storage_full");
+        assert_eq!(kind(&Error::from(ErrorKind::Other)), "other");
+    }
+
+    #[test]
+    fn kind_maps_an_unlisted_error_kind_to_other() {
+        let error = std::io::Error::from(std::io::ErrorKind::ConnectionReset);
+        assert_eq!(kind(&error), "other");
+    }
 }

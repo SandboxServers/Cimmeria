@@ -6,8 +6,12 @@ mod host;
 #[cfg(test)]
 mod release_version;
 mod telemetry;
+// The C9 capture helper; LT-06 onward drive it from the event helpers.
 #[cfg(test)]
 mod telemetry_tests;
+#[cfg(test)]
+#[allow(dead_code)]
+mod test_capture;
 mod updater_restart;
 mod webview2;
 
