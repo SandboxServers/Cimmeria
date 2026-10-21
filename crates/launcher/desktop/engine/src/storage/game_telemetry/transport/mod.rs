@@ -61,6 +61,9 @@
 //! POST, so an enqueue never waits on a flush; flushes and bundle uploads
 //! take turns across the process. Errors are [`TransportError`] codes: no
 //! token, key, URL or server text.
+pub(super) mod events;
+#[cfg(test)]
+mod events_tests;
 mod queue;
 #[cfg(test)]
 mod tests;
@@ -166,6 +169,7 @@ pub struct Transport {
     login_servers: Vec<LoginServer>,
     tags: Vec<String>,
     auth_hold: Mutex<AuthHold>,
+    streaks: events::Streaks,
 }
 
 impl Transport {
@@ -204,6 +208,7 @@ impl Transport {
             login_servers: login_servers.to_vec(),
             tags: marker.tags.clone(),
             auth_hold: Mutex::new(AuthHold::new()),
+            streaks: events::Streaks::default(),
         })
     }
 
@@ -269,7 +274,7 @@ impl Transport {
         self.refresh_if_due().await?;
         let result = match self.telemetry.flush(&self.upload, max_chunks).await {
             Err(TelemetryError::Chunk(ChunkError::TokenRejected)) => {
-                tracing::info!("telemetry token refused by the upload endpoint; renewing");
+                events::token_renew_started();
                 self.renew().await?;
                 let retried = self.telemetry.flush(&self.upload, max_chunks).await;
                 if matches!(
@@ -291,13 +296,13 @@ impl Transport {
                 // `Ok(0)` proves nothing; the queue may just be empty.)
                 if sent > 0 {
                     self.release_auth_hold();
+                    events::chunk_upload_resumed(&self.streaks.upload);
                 }
                 Ok(sent)
             }
             Err(e) => {
-                let code = TransportError::of(&e);
-                tracing::warn!(?code, "telemetry flush failed; events stay queued");
-                Err(code)
+                events::chunk_upload_failed(&self.streaks.upload, &e);
+                Err(TransportError::of(&e))
             }
         }
     }
@@ -340,13 +345,19 @@ impl Transport {
         match result {
             Ok(outcome) => {
                 self.release_auth_hold();
+                if dropped > 0 {
+                    events::queue_dropped(dropped);
+                }
                 if queue.dropped_counter_reset().is_err() {
-                    tracing::warn!("telemetry dropped-lines counter not reset");
+                    events::dropped_counter_reset_failed();
                 }
                 Ok(Some(outcome))
             }
             Err(TelemetryError::Bundle(BundleError::Empty)) => Ok(None),
-            Err(e) => Err(TransportError::of(&e)),
+            Err(e) => {
+                events::bundle_upload_failed(&e);
+                Err(TransportError::of(&e))
+            }
         }
     }
 
@@ -364,26 +375,29 @@ impl Transport {
     /// re-mint, or a 429/503 from the refresh, starts the token back-off
     /// and ends this flush.
     async fn refresh_if_due(&self) -> Result<(), TransportError> {
-        let code = match self.telemetry.refresh_if_due(&self.auth).await {
-            Ok(_) => return Ok(()),
-            Err(e) => TransportError::of(&e),
+        let (code, status) = match self.telemetry.refresh_if_due(&self.auth).await {
+            Ok(_) => {
+                self.streaks.refresh.reset();
+                return Ok(());
+            }
+            Err(e) => (TransportError::of(&e), events::http_status(&e)),
         };
         match code {
             TransportError::TokenRejected => match self.remint().await {
                 Ok(()) => Ok(()),
                 Err(code) => {
-                    tracing::warn!(?code, "telemetry re-mint failed; holding flushes off");
+                    events::token_refresh_failed("remint", code, None);
                     self.hold_auth();
                     Err(code)
                 }
             },
             TransportError::BackingOff => {
-                tracing::warn!("telemetry refresh told to wait; holding flushes off");
+                events::token_refresh_failed("refresh", code, status);
                 self.hold_auth();
                 Err(code)
             }
             code => {
-                tracing::warn!(?code, "proactive telemetry token refresh failed");
+                events::proactive_refresh_failed(&self.streaks.refresh, code, status);
                 Ok(())
             }
         }
@@ -395,22 +409,30 @@ impl Transport {
     /// proves the new token works (a server that renews tokens and then
     /// refuses them must still see the waits double).
     async fn renew(&self) -> Result<(), TransportError> {
+        let mut status = None;
         let result = match self.telemetry.refresh_now(&self.auth).await {
             Ok(()) => Ok(()),
             Err(e) => match TransportError::of(&e) {
                 TransportError::TokenRejected => self.remint().await,
-                code => Err(code),
+                code => {
+                    status = events::http_status(&e);
+                    Err(code)
+                }
             },
         };
         result.inspect_err(|code| {
-            tracing::warn!(?code, "telemetry token not renewed; holding flushes off");
+            events::token_refresh_failed("renew", *code, status);
             self.hold_auth();
         })
     }
 
     /// The upload endpoint refused the token it was just renewed to.
     fn hold_after_refused_renewal(&self) {
-        tracing::warn!("telemetry token refused straight after renewal; holding flushes off");
+        events::token_refresh_failed(
+            "upload_after_renew",
+            TransportError::TokenRejected,
+            Some(401),
+        );
         self.hold_auth();
     }
 
@@ -438,7 +460,7 @@ impl Transport {
                 super::Outcome::EndpointRefused => TransportError::EndpointRefused,
                 _ => TransportError::SessionUnavailable,
             })?;
-        tracing::info!("telemetry session re-minted after its token was refused");
+        events::session_reminted();
         self.telemetry
             .replace_session(minted(&session))
             .await

@@ -6,7 +6,7 @@ use std::io::Read;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
-const CHUNK: &str = "/api/telemetry/upload-chunk";
+pub(super) const CHUNK: &str = "/api/telemetry/upload-chunk";
 
 fn servers(server: &MockServer) -> Vec<LoginServer> {
     vec![LoginServer {
@@ -26,7 +26,7 @@ fn reply(server: &MockServer, token: &str) -> ResponseTemplate {
     }))
 }
 
-async fn mount_mint(server: &MockServer, token: &str) {
+pub(super) async fn mount_mint(server: &MockServer, token: &str) {
     Mock::given(method("POST"))
         .and(path("/api/auth/dev-session"))
         .respond_with(reply(server, token))
@@ -35,14 +35,14 @@ async fn mount_mint(server: &MockServer, token: &str) {
         .await;
 }
 
-fn opted_in(root: &Path) -> DesktopState {
+pub(super) fn opted_in(root: &Path) -> DesktopState {
     let mut state = DesktopState::open(root).unwrap();
     state.set_game_telemetry(true).unwrap();
     state
 }
 
 /// Play's mint, then the transport on the session it returned.
-async fn open(state: &DesktopState, server: &MockServer, install: &Path) -> Transport {
+pub(super) async fn open(state: &DesktopState, server: &MockServer, install: &Path) -> Transport {
     let consent = Consent::read(state).unwrap().expect("opted in");
     let session = start(&consent.identity, &servers(server), &["desktop-launcher"])
         .await
@@ -50,7 +50,7 @@ async fn open(state: &DesktopState, server: &MockServer, install: &Path) -> Tran
     Transport::open(consent, &session, &servers(server), install).unwrap()
 }
 
-fn event(message: &str) -> TelemetryEvent {
+pub(super) fn event(message: &str) -> TelemetryEvent {
     TelemetryEvent::ClientLog(ClientLogEvent {
         ts_ms: 0,
         seq: 0,
@@ -790,7 +790,7 @@ impl tracing::field::Visit for Fields<'_> {
 
 impl tracing::Subscriber for Capture {
     fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
-        metadata.target().starts_with("cimmeria")
+        metadata.target().starts_with("cimmeria") || metadata.target().starts_with("launcher.")
     }
     fn new_span(&self, span: &tracing::span::Attributes<'_>) -> tracing::span::Id {
         self.push(&|v| span.record(v));
