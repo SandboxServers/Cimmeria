@@ -219,10 +219,13 @@ fn forget_clears_clock_so_next_sample_has_no_baseline() {
 
 #[test]
 fn zero_distance_at_zero_dt_never_warns() {
+    // Seed the window with 0.4 s of standing still, then a 4 u hop at zero dt:
+    // windowed 4 / 0.4 = 10 u/s is under 12.19, but judged alone the hop would
+    // read 4 / 0.25 = 16 u/s. Passes only if samples are summed over the window.
     let mut v = MovementValidator::new();
-    for _ in 0..20 {
-        assert!(v.observe_speed(1, 0.0, 0.0, TOP).is_none());
-    }
+    assert!(v.observe_speed(1, 0.0, 0.4, TOP).is_none());
+    assert!(v.observe_speed(1, 0.0, 0.0, TOP).is_none());
+    assert!(v.observe_speed(1, 4.0, 0.0, TOP).is_none());
 }
 
 #[test]

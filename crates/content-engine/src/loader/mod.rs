@@ -257,7 +257,7 @@ pub fn build_chains_from_rows(
                     action_delays.push(a_row.delay_ms.max(0));
                 }
                 None => {
-                    warn!(chain_id, chain_name, action_type = %a_row.action_type, "Unknown action_type, skipping");
+                    warn!(chain_id, chain_name, action_type = %a_row.action_type, "action dropped (unknown action_type or unusable params; see the preceding WARN)");
                 }
             }
         }
