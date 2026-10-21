@@ -10,7 +10,8 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use tokio::io::AsyncReadExt;
 use tracing::Level;
 
-use super::listener_tests::assert_no_warn_or_error;
+use super::listener_tests::{assert_no_warn_or_error, send_handshake};
+use super::tests::read_until_game_begin;
 use super::*;
 use crate::minigame::session::AdmissionGuard;
 use crate::test_support::LogCapture;
@@ -238,4 +239,104 @@ async fn no_free_ticket_rows_are_throttled() {
         .filter(|c| c.level == Level::INFO && c.has_field("reason", "no_free_ticket"))
         .count();
     assert_eq!(rows, 1, "three refusals in one window write one row");
+}
+
+/// Send the `login` frame alone; the caller already sent `verChk`.
+async fn send_login(client: &mut TcpStream, entity_id: u32, ticket: &str) {
+    send_null_terminated(
+        client,
+        &format!(
+            "<msg t='sys'><body action='login' r='0'><login z='Hack'>\
+             <nick><![CDATA[{entity_id}]]></nick><pword><![CDATA[{ticket}]]></pword>\
+             </login></body></msg>"
+        ),
+    )
+    .await
+    .expect("login send");
+}
+
+/// Read until the server closes the socket.
+async fn read_to_close(client: &mut TcpStream) {
+    let mut buf = [0u8; 4096];
+    loop {
+        match tokio::time::timeout(Duration::from_secs(5), client.read(&mut buf)).await {
+            Ok(Ok(0)) | Ok(Err(_)) => return,
+            Ok(Ok(_)) => {}
+            Err(_) => panic!("the server did not close the socket within 5 s"),
+        }
+    }
+}
+
+/// Connect until the listener admits a connection, returning it. The slot
+/// frees as the old connection task ends, which can trail the socket close by
+/// a scheduler turn, so retry for up to about two seconds.
+async fn admitted_eventually(addr: SocketAddr) -> TcpStream {
+    for _ in 0..100 {
+        let mut client = TcpStream::connect(addr).await.expect("connect");
+        if admitted(&mut client).await {
+            return client;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("the ticket slot was never freed");
+}
+
+/// A login with the wrong ticket closes the connection and gives its slot
+/// back at once, so the player can retry with the right ticket. The wrong
+/// attempt does not claim the session. If the connection kept its slot after
+/// a refused login, the retry would be refused as `no_free_ticket`.
+#[tokio::test]
+async fn wrong_ticket_login_frees_the_slot() {
+    let registry = SessionRegistry::new();
+    register_loopback(&registry, 4409).await;
+    let ticket = registry.peek_session(4409).await.unwrap().ticket;
+    let addr = spawn_server(registry.clone(), ListenerLimits::default()).await;
+
+    let mut wrong = TcpStream::connect(addr).await.expect("connect");
+    assert!(
+        admitted(&mut wrong).await,
+        "the first connection is admitted"
+    );
+    let mut rival = TcpStream::connect(addr).await.expect("connect");
+    assert!(
+        !admitted(&mut rival).await,
+        "the slot is held while the login is pending",
+    );
+
+    send_login(&mut wrong, 4409, &"0".repeat(64)).await;
+    read_to_close(&mut wrong).await;
+    assert!(
+        !registry.peek_session(4409).await.unwrap().connected,
+        "a wrong ticket must not claim the session",
+    );
+
+    let mut retry = admitted_eventually(addr).await;
+    send_login(&mut retry, 4409, &ticket).await;
+    read_until_game_begin(&mut retry).await;
+}
+
+/// After the player's window closes (`cancel`), the connection ends and its
+/// slot frees, so the player's next board is admitted. If the slot leaked, the
+/// next launch's connection would be refused as `no_free_ticket`.
+#[tokio::test]
+async fn cancel_frees_the_slot_for_the_next_launch() {
+    let registry = SessionRegistry::new();
+    register_loopback(&registry, 4410).await;
+    let ticket = registry.peek_session(4410).await.unwrap().ticket;
+    let addr = spawn_server(registry.clone(), ListenerLimits::default()).await;
+
+    let mut first = TcpStream::connect(addr).await.expect("connect");
+    send_handshake(&mut first, 4410, &ticket).await;
+    read_until_game_begin(&mut first).await;
+
+    assert!(registry.cancel(4410).await);
+    read_to_close(&mut first).await;
+
+    // Cancelling removed the session; the next launch registers a new ticket.
+    register_loopback(&registry, 4410).await;
+    let mut next = admitted_eventually(addr).await;
+    let new_ticket = registry.peek_session(4410).await.unwrap().ticket;
+    assert_ne!(ticket, new_ticket);
+    send_login(&mut next, 4410, &new_ticket).await;
+    read_until_game_begin(&mut next).await;
 }

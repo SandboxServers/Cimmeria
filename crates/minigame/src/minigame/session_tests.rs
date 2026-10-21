@@ -173,8 +173,12 @@ fn ticket_is_64_hex_chars() {
     assert!(ticket.chars().all(|c| c.is_ascii_hexdigit()));
 }
 
+/// `expects_peer` matches the recorded address exactly. The listener does not
+/// ask it any more: `try_admit` puts every non-public peer in one class, so a
+/// private peer other than the recorded one is still admitted (follow-up #1968
+/// tracks `expects_peer` itself).
 #[tokio::test]
-async fn expects_peer_matches_only_registered_ip() {
+async fn expects_peer_matches_the_recorded_address_exactly() {
     let reg = SessionRegistry::new();
     reg.register(
         42,
@@ -203,6 +207,11 @@ async fn expects_peer_matches_only_registered_ip() {
         !reg.expects_peer(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 6)))
             .await
     );
+    // The listener's rule: another private address shares the ticket class.
+    assert!(reg
+        .try_admit(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 6)))
+        .await
+        .is_ok());
 }
 
 #[tokio::test]

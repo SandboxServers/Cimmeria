@@ -52,17 +52,49 @@ pub(super) fn admission_key(ip: IpAddr) -> AdmissionKey {
     }
 }
 
-/// Why `try_admit` refused a peer.
+/// Why `try_admit` refused a peer. The list is closed; each variant is one
+/// `reason` value on the listener's refusal row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdmissionRefusalReason {
+    /// No session is registered at all: most likely a scanner.
+    UnexpectedPeer,
+    /// Sessions exist, but none (still live) expects this address.
+    UnexpectedPeerWithSessions,
+    /// Every ticket for this address already has a connection holding it.
+    NoFreeTicket,
+}
+
+impl AdmissionRefusalReason {
+    /// The `reason` field value on the refusal row.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::UnexpectedPeer => "unexpected_peer",
+            Self::UnexpectedPeerWithSessions => "unexpected_peer_with_sessions",
+            Self::NoFreeTicket => "no_free_ticket",
+        }
+    }
+}
+
+/// Why `try_admit` refused a peer, and how many sessions were pending then.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdmissionRefusal {
-    /// `"unexpected_peer"`, `"unexpected_peer_with_sessions"` or
-    /// `"no_free_ticket"`.
-    pub reason: &'static str,
-    /// Same count as `SessionRegistry::pending_count`, for the INFO row.
+    /// What kind of refusal this was.
+    pub reason: AdmissionRefusalReason,
+    /// How many registered sessions had no connection yet, for the INFO row.
     pub pending_sessions: usize,
 }
 
 /// Holds one admission slot; the slot frees on drop.
+///
+/// The guard belongs to the connection, not to the session. It drops when the
+/// connection task ends: at once after a refused login (wrong ticket, wrong
+/// game), and after a cancel or a finished game once the close frames are
+/// sent. Cancelling removes the session from the registry immediately, but the
+/// old connection still holds its slot until it ends, so a replacement ticket
+/// for the same address is refused as `no_free_ticket` meanwhile. With a peer
+/// that has stopped reading, the first teardown send fails after
+/// `SEND_TIMEOUT` (10 s) and the rest are skipped, so that window is at most
+/// about 10 s. Shortening it is an open owner decision.
 #[derive(Debug)]
 pub struct AdmissionGuard {
     key: AdmissionKey,
@@ -114,9 +146,9 @@ impl SessionRegistry {
 
         if slots == 0 {
             let reason = if inner.sessions.is_empty() {
-                "unexpected_peer"
+                AdmissionRefusalReason::UnexpectedPeer
             } else {
-                "unexpected_peer_with_sessions"
+                AdmissionRefusalReason::UnexpectedPeerWithSessions
             };
             return Err(AdmissionRefusal {
                 reason,
@@ -126,7 +158,7 @@ impl SessionRegistry {
         let used = admitted.entry(key).or_insert(0);
         if *used >= slots {
             return Err(AdmissionRefusal {
-                reason: "no_free_ticket",
+                reason: AdmissionRefusalReason::NoFreeTicket,
                 pending_sessions,
             });
         }

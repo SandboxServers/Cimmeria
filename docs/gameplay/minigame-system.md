@@ -335,10 +335,15 @@ read timeout and no admission rule. Cimmeria admits **one connection per
 valid ticket** (#1119) and adds timeouts sized to how the client behaves: one
 character runs at most one minigame at a time, and the SWF sends `verChk` and
 `login` on its own as soon as it loads, so a player holds one socket and logs
-in within a second. There is no global or per-address connection cap; the
-number of registered sessions is the only bound. Open connections never exceed
-the tickets issued (each held by one character's single minigame), and a socket
-with no free ticket is closed before a byte is read.
+in within a second. There is no global or per-address connection cap. Tickets
+are the bound: an address is admitted only while its in-flight connections are
+fewer than the live tickets recorded for it, and a socket with no free ticket
+is closed before a byte is read. That bound holds at the moment of each accept,
+not for the connections already open: a connection can outlive its ticket (see
+the slot lifetime below), so for a short time the open connections from an
+address can exceed its live tickets. Each such connection was admitted against
+a ticket, so the count stays bounded by the tickets issued, and the excess is
+only the connections still closing.
 
 `SessionRegistry::try_admit(peer_ip)` decides, in the accept loop, before a
 byte is read. A session is a free ticket for a peer when its recorded client
@@ -348,6 +353,17 @@ while its in-flight connections are fewer than those tickets, so N tickets from
 one address admit exactly N connections. The returned `AdmissionGuard` is held
 by the connection task for its whole life and frees the slot on every exit,
 including a failed or timed-out handshake.
+
+The slot belongs to the connection, not to the session. A login with the wrong
+ticket or game closes the connection at once and frees its slot, leaving the
+session pending, so the player can retry. A window close (cancel) removes the
+session from the registry at once, but the old connection keeps its slot until
+its task ends: the teardown sends the close frames first. A healthy client
+ends it in milliseconds. With a peer that has stopped reading, the first send
+fails after `SEND_TIMEOUT` (10 s) and the remaining frames are skipped, so a
+replacement ticket for the same address can be refused as `no_free_ticket` for
+up to about 10 s. Shortening that window is an open owner decision; tests
+pin the current behaviour.
 
 Matching is by address, with one rule for private networks: every non-public
 peer (loopback, 10/8, 172.16/12, 192.168/16, CGNAT 100.64/10, IPv4 link-local,
@@ -396,6 +412,14 @@ Docker Desktop, a TCP proxy), every peer shows the proxy's private address.
 That peer matches only tickets recorded for a non-public address, so a player
 whose ticket carries a public address is refused as
 `unexpected_peer_with_sessions`.
+
+What #1119 asked for, and where it stands:
+
+| Item | State |
+|---|---|
+| Querying refusals in SigNoz | **Present as log fields only.** Every refusal is an INFO log row whose message starts `Minigame connection refused` and carries `peer` and `reason`. Filter the logs on the `reason` attribute. No saved query or dashboard is shipped. **Deferred** |
+| Carrier-grade-NAT signal | **Present, under a different name.** The issue called it `ip_not_bound` with `pending_sessions > 0`. The shipped reason is `unexpected_peer_with_sessions` (D-04 kept the merged names), unthrottled and carrying `pending_sessions`, so filter on that reason with `pending_sessions > 0`. Nobody is alerted on it yet: watching it is manual. A CGNAT player whose minigame socket leaves from a different public address than the one recorded at `start_minigame` shows up there; see also the proxy case below, which produces the same row |
+| Spectating | **Deferred.** Admission needs a ticket for every connection and nothing here admits a ticket-less spectator. The issue puts it out of scope for a separate issue; `requestSpectateList` and `spectateMinigame` stay stubs (see Remaining Work). Nothing in the admission code rules it out |
 
 ### Logging
 

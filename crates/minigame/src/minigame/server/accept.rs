@@ -12,7 +12,9 @@ use tokio::time::Instant;
 
 use super::handle_connection;
 use super::limits::ListenerLimits;
-use crate::minigame::session::{SessionRegistry, PENDING_SESSION_TTL, SWEEP_INTERVAL};
+use crate::minigame::session::{
+    AdmissionRefusalReason, SessionRegistry, PENDING_SESSION_TTL, SWEEP_INTERVAL,
+};
 
 /// How often a throttled row (a scanner refusal, an accept error) may
 /// be written. Occurrences in between are counted and reported on the next
@@ -109,23 +111,24 @@ pub(super) async fn serve(
                     Err(refusal) => {
                         drop(stream);
                         let pending_sessions = refusal.pending_sessions;
+                        let reason = refusal.reason.as_str();
                         match refusal.reason {
                             // With sessions registered, a real player may be
                             // the one refused (NAT, multi-WAN, a TTL sweep
                             // race), so that row is unthrottled. With none,
                             // it is most likely a scanner.
-                            "unexpected_peer_with_sessions" => tracing::info!(
+                            AdmissionRefusalReason::UnexpectedPeerWithSessions => tracing::info!(
                                 %peer,
-                                reason = refusal.reason,
+                                reason,
                                 pending_sessions,
                                 "Minigame connection refused: sessions are registered but none expects this address",
                             ),
-                            "unexpected_peer" => {
+                            AdmissionRefusalReason::UnexpectedPeer => {
                                 if let Some(suppressed) = unexpected_peer_log.admit(Instant::now())
                                 {
                                     tracing::info!(
                                         %peer,
-                                        reason = refusal.reason,
+                                        reason,
                                         suppressed,
                                         "Minigame connection refused: no minigame session expects this address",
                                     );
@@ -135,15 +138,8 @@ pub(super) async fn serve(
                             // expired: a real player may be the one turned
                             // away (a reconnect racing its old socket), so
                             // INFO, but once a window since a peer who holds
-                            // no ticket can repeat this at socket rate. The arm is a
-                            // catch-all so a new reason is still logged, under its own
-                            // name; the assert makes a typo in a reason string fail
-                            // in tests instead of logging as `no_free_ticket`.
-                            reason => {
-                                debug_assert_eq!(
-                                    reason, "no_free_ticket",
-                                    "unknown refusal reason"
-                                );
+                            // no ticket can repeat this at socket rate.
+                            AdmissionRefusalReason::NoFreeTicket => {
                                 if let Some(suppressed) = no_free_ticket_log.admit(Instant::now()) {
                                     tracing::info!(
                                         %peer,

@@ -16,7 +16,7 @@ use tokio::time::Instant;
 pub use super::session_claim::ClaimRejection;
 #[path = "session_admission.rs"]
 mod admission;
-pub use admission::{AdmissionGuard, AdmissionRefusal};
+pub use admission::{AdmissionGuard, AdmissionRefusal, AdmissionRefusalReason};
 #[path = "session_result.rs"]
 mod session_result;
 #[path = "session_sweep.rs"]
@@ -393,9 +393,13 @@ impl SessionRegistry {
         Ok(claimed)
     }
 
-    /// Whether a registered session (pending or connected) belongs to a
-    /// player whose game connection comes from `ip`. The listener admits
-    /// only those peers (scanners never get a byte read).
+    /// Whether a registered session (pending or connected) records exactly
+    /// `ip` (after IPv4-mapped canonicalization) as its client address.
+    ///
+    /// The listener does not use this: it admits through
+    /// [`Self::try_admit`], which treats every non-public address as one
+    /// class and counts free tickets. This exact-address check is left over
+    /// from the pre-ticket listener (follow-up #1968).
     pub async fn expects_peer(&self, ip: std::net::IpAddr) -> bool {
         let ip = ip.to_canonical();
         let inner = self.inner.lock().await;
@@ -405,9 +409,9 @@ impl SessionRegistry {
             .any(|s| s.client_ip.map(|c| c.to_canonical()) == Some(ip))
     }
 
-    /// How many sessions are registered (pending or connected). The listener
-    /// reads this when it refuses a peer, to tell a scanner from a player
-    /// behind an address no session recorded.
+    /// How many sessions are registered (pending or connected). Only tests
+    /// call it; the listener does not, because [`Self::try_admit`] picks the
+    /// refusal reason under its own lock.
     pub async fn session_count(&self) -> usize {
         self.inner.lock().await.sessions.len()
     }
@@ -424,9 +428,9 @@ impl SessionRegistry {
     }
 
     /// How many registered sessions are still pending, that is, never had
-    /// their SWF client connect. The listener reports it with a refused peer,
-    /// since a pending session is the one a real player's connection is
-    /// expected to claim.
+    /// their SWF client connect. The listener does not read it: [`Self::try_admit`]
+    /// counts pending sessions under its own lock and reports the number in
+    /// [`AdmissionRefusal`]. No caller in the tree uses this one today.
     pub async fn pending_count(&self) -> usize {
         self.inner
             .lock()
