@@ -135,7 +135,9 @@ async fn expired_pending_sessions_give_no_slot() {
     assert_eq!(refusal.reason, "unexpected_peer_with_sessions");
 }
 
-/// Poison the counter map, as a panic while it is locked would.
+/// Poison the counter map, as a panic while it is locked would. The thread
+/// panics on purpose, so the test output shows one backtrace for it; that is
+/// expected, not a failure.
 fn poison(registry: &SessionRegistry) {
     let admitted = Arc::clone(&registry.admitted);
     let _ = std::thread::spawn(move || {
@@ -179,4 +181,80 @@ async fn guard_drop_frees_the_slot_under_concurrency() {
     assert_eq!(admitted, 1);
     drop(results);
     assert!(registry.try_admit(ip("203.0.113.5")).await.is_ok());
+}
+
+/// Turn the session for `entity_id` connected, as a live connection does.
+async fn connect(registry: &SessionRegistry, entity_id: u32) {
+    let ticket = registry.peek_session(entity_id).await.unwrap().ticket;
+    registry
+        .authenticate_and_claim(entity_id, &ticket, "Livewire")
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn connected_session_for_another_peer_gives_no_slot() {
+    let registry = SessionRegistry::new();
+    register(&registry, 1, "203.0.113.5").await;
+    connect(&registry, 1).await;
+    // The connected session belongs to 203.0.113.5; a different public peer
+    // has no ticket, and a connected session is not a pending one.
+    let refusal = registry.try_admit(ip("198.51.100.9")).await.unwrap_err();
+    assert_eq!(refusal.reason, "unexpected_peer_with_sessions");
+    assert_eq!(refusal.pending_sessions, 0);
+    // A non-public peer must not borrow a public peer's connected ticket.
+    let refusal = registry.try_admit(ip("192.168.1.10")).await.unwrap_err();
+    assert_eq!(refusal.reason, "unexpected_peer_with_sessions");
+}
+
+#[tokio::test]
+async fn connected_session_still_fills_its_own_slot() {
+    let registry = SessionRegistry::new();
+    register(&registry, 1, "203.0.113.5").await;
+    let guard = registry.try_admit(ip("203.0.113.5")).await.unwrap();
+    connect(&registry, 1).await;
+    // The ticket is claimed and its connection holds the guard: no second
+    // connection gets in, and the refusal counts no pending sessions.
+    let refusal = registry.try_admit(ip("203.0.113.5")).await.unwrap_err();
+    assert_eq!(refusal.reason, "no_free_ticket");
+    assert_eq!(refusal.pending_sessions, 0);
+    drop(guard);
+}
+
+#[tokio::test]
+async fn mixed_public_and_non_public_pools_stay_separate() {
+    let registry = SessionRegistry::new();
+    register(&registry, 1, "203.0.113.5").await;
+    register(&registry, 2, "192.168.1.10").await;
+    // Each pool holds one ticket: the public peer and the non-public peer
+    // each get exactly one connection, and neither uses the other's.
+    let public = registry.try_admit(ip("203.0.113.5")).await.unwrap();
+    let private = registry.try_admit(ip("172.17.0.1")).await.unwrap();
+    assert_eq!(
+        registry
+            .try_admit(ip("203.0.113.5"))
+            .await
+            .unwrap_err()
+            .reason,
+        "no_free_ticket"
+    );
+    assert_eq!(
+        registry.try_admit(ip("10.0.0.2")).await.unwrap_err().reason,
+        "no_free_ticket"
+    );
+    // Freeing the private slot frees only the private pool.
+    drop(private);
+    assert!(registry.try_admit(ip("10.0.0.2")).await.is_ok());
+    assert_eq!(
+        registry
+            .try_admit(ip("203.0.113.5"))
+            .await
+            .unwrap_err()
+            .reason,
+        "no_free_ticket"
+    );
+    // A second public address has no ticket in this mixed pool.
+    let refusal = registry.try_admit(ip("198.51.100.9")).await.unwrap_err();
+    assert_eq!(refusal.reason, "unexpected_peer_with_sessions");
+    drop(public);
 }
