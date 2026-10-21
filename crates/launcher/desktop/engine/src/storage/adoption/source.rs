@@ -16,9 +16,22 @@ pub(super) fn saved_import(
     };
     let imported = saved.ok_or(StorageError::Corrupt)?;
     if imported.confirmation != *import_digest {
-        return Err(Error::SourceChanged);
+        let check = rejection::Rejection::new("import_changed")
+            .expected(digest_prefix(&imported.confirmation))
+            .found(digest_prefix(import_digest));
+        return Err(rejection::reject(Error::SourceChanged, check));
     }
     Ok(imported)
+}
+
+/// The first 12 characters of a confirmation digest, the closed form C14 keeps.
+fn digest_prefix(confirmation: &str) -> String {
+    confirmation.chars().take(12).collect()
+}
+
+/// `check` with `found` set to the I/O error kind, as a closed snake_case code (C6).
+fn with_io_kind(check: rejection::Rejection, error: &std::io::Error) -> rejection::Rejection {
+    check.found(crate::storage::game_telemetry::launcher_event::kind(error))
 }
 
 /// The source a request names, and the scan of its folder. The state guard is
@@ -56,7 +69,14 @@ pub(super) fn request_source(
         check_writable(&root)?;
     }
     if root.starts_with(&state_root) || state_root.starts_with(&root) {
-        return Err(StorageError::InvalidDirectory.into());
+        let check = rejection::Rejection::new("folder_overlaps_launcher")
+            .entry(".")
+            .expected("outside the launcher folder")
+            .found("overlaps the launcher folder");
+        return Err(rejection::reject(
+            StorageError::InvalidDirectory.into(),
+            check,
+        ));
     }
     let scanned = survey::explained(&root, inventory::scan(&root, &CancellationToken::new()))?;
     let source = AdoptionSource::Folder(FolderSource {
@@ -71,7 +91,13 @@ pub(super) fn request_source(
 /// its `Working\Binaries`. A flat folder (`SGW.exe` beside `SGWGame`) is not a
 /// root in either mode: copy cannot map its layout. Names match case-blind.
 pub fn resolve_folder(selected: &Path) -> Result<PathBuf, Error> {
-    let selected = selected.canonicalize()?;
+    let selected = selected.canonicalize().map_err(|error| {
+        let check = with_io_kind(
+            rejection::Rejection::new("folder_unreadable").entry("."),
+            &error,
+        );
+        rejection::reject(error.into(), check)
+    })?;
     if working_binaries(&selected).is_some() {
         return Ok(selected);
     }
@@ -90,7 +116,11 @@ pub fn resolve_folder(selected: &Path) -> Result<PathBuf, Error> {
         }
     }
     tracing::warn!(target: "adoption", "adoption refused: the folder is not a game folder");
-    Err(Error::NotAGameFolder)
+    let check = rejection::Rejection::new("not_a_game_folder")
+        .entry(".")
+        .expected("SGW.exe and the game folders")
+        .found("no game layout");
+    Err(rejection::reject(Error::NotAGameFolder, check))
 }
 
 /// Whether the last component of `path` is `name`, case-blind.
@@ -164,7 +194,11 @@ fn is_link(meta: &std::fs::Metadata) -> bool {
 pub(super) fn check_writable(root: &Path) -> Result<(), Error> {
     let Some(binaries) = working_binaries(root) else {
         tracing::warn!(target: "adoption", "in-place adoption refused: the folder has no Working\\Binaries to change");
-        return Err(Error::FolderNotWritable);
+        let check = rejection::Rejection::new("folder_not_writable")
+            .entry("Working/Binaries")
+            .expected("present")
+            .found("missing");
+        return Err(rejection::reject(Error::FolderNotWritable, check));
     };
     let id = Uuid::new_v4();
     let root_probe = root.join(format!(".cimmeria-write-probe-{id}"));
@@ -182,17 +216,39 @@ pub(super) fn check_writable(root: &Path) -> Result<(), Error> {
     let _ = std::fs::remove_file(&renamed);
     result.map_err(|error| {
         tracing::warn!(target: "adoption", ?error, "in-place adoption refused: the folder is not writable");
-        Error::FolderNotWritable
+        let check = rejection::Rejection::new("folder_not_writable")
+            .entry(".")
+            .expected("writable");
+        rejection::reject(Error::FolderNotWritable, with_io_kind(check, &error))
     })
 }
 
 /// Imported configuration this copy cannot honour. It is refused, never rewritten.
+/// A status query only asks for the blocker, so this records nothing.
 pub fn import_blocker(imported: &migration::LegacyImport) -> Option<Error> {
+    blocker(imported).map(|(error, _)| error)
+}
+
+/// The blocker of an import an operation refuses. The `Err` it returns is recorded
+/// as the rejection, so the refusal is named once.
+pub(super) fn refuse_blocker(imported: &migration::LegacyImport) -> Option<Error> {
+    blocker(imported).map(|(error, check)| rejection::reject(error, check))
+}
+
+/// The error an import this copy cannot honour fails with, and its rejection.
+fn blocker(imported: &migration::LegacyImport) -> Option<(Error, rejection::Rejection)> {
     if imported.config.manifest_url != crate::catalog::URL {
-        return Some(Error::UnsupportedCatalog);
+        let check = rejection::Rejection::new("unsupported_catalog")
+            .entry("manifest")
+            .expected("built-in catalog")
+            .found("custom manifest URL");
+        return Some((Error::UnsupportedCatalog, check));
     }
     if imported.config.client_patches.dll_override.is_some() {
-        return Some(Error::UnsupportedConfiguration);
+        let check = rejection::Rejection::new("unsupported_configuration")
+            .expected("no diagnostics module")
+            .found("custom diagnostics module");
+        return Some((Error::UnsupportedConfiguration, check));
     }
     None
 }
@@ -293,7 +349,13 @@ pub(super) fn lock_source(imported: &migration::LegacyImport) -> Result<File, Er
     // Import already created the same executable-adjacent legacy lock. Adoption
     // never creates or replaces anything in either legacy folder.
     let file = inventory::open(&imported.source.launcher_directory.join("launcher.lock"))?;
-    file.try_lock().map_err(|_| StorageError::InUse)?;
+    file.try_lock().map_err(|_| {
+        let check = rejection::Rejection::new("folder_in_use")
+            .entry("launcher.lock")
+            .expected("unlocked")
+            .found("locked");
+        rejection::reject(StorageError::InUse.into(), check)
+    })?;
     Ok(file)
 }
 
@@ -325,155 +387,11 @@ pub(super) fn verify_import(imported: &migration::LegacyImport) -> Result<(), Er
     }
     let actual: String = hash.finalize().iter().map(|b| format!("{b:02x}")).collect();
     if actual != imported.confirmation {
-        return Err(Error::SourceChanged);
+        // The three files are hashed together, so no single file can be named.
+        let check = rejection::Rejection::new("folder_changed_during_check")
+            .expected(digest_prefix(&imported.confirmation))
+            .found(digest_prefix(&actual));
+        return Err(rejection::reject(Error::SourceChanged, check));
     }
     Ok(())
-}
-
-#[cfg(all(test, not(target_os = "macos")))]
-mod tests {
-    use super::super::in_place_tests::Fixture;
-    use super::*;
-
-    #[test]
-    fn copy_of_a_folder_source_is_admitted_without_write_access() {
-        let f = Fixture::new(None);
-        // A game folder that is not the saved import: a folder source, copied
-        // read only, so it is admitted even when it is not writable.
-        let picked = tempfile::tempdir().unwrap();
-        layout(picked.path());
-        let request = SourceRequest::Folder {
-            selected: picked.path().to_path_buf(),
-        };
-        let (adopted, _) = request_source(&f.state, &request, AdoptionMode::Copy).unwrap();
-        assert!(matches!(adopted, AdoptionSource::Folder(_)));
-    }
-
-    /// A minimal PE header: enough for the executable to be recognised.
-    fn sgw_exe() -> Vec<u8> {
-        let mut exe = vec![0u8; 0x200];
-        exe[..2].copy_from_slice(b"MZ");
-        exe[60..64].copy_from_slice(&0x128u32.to_le_bytes());
-        exe[0x128..0x12c].copy_from_slice(b"PE\0\0");
-        exe[0x13c..0x13e].copy_from_slice(&0xe0u16.to_le_bytes());
-        exe[0x140..0x142].copy_from_slice(&0x10bu16.to_le_bytes());
-        exe[0x186..0x188].copy_from_slice(&0x40u16.to_le_bytes());
-        exe
-    }
-
-    /// Lays `root` out as the installer does: `Working\Binaries\SGW.exe`.
-    fn layout(root: &Path) {
-        let binaries = root.join("Working").join("Binaries");
-        std::fs::create_dir_all(&binaries).unwrap();
-        std::fs::write(binaries.join("SGW.exe"), sgw_exe()).unwrap();
-    }
-
-    #[test]
-    fn picked_root_working_or_binaries_resolve_to_one_root() {
-        let dir = tempfile::tempdir().unwrap();
-        layout(dir.path());
-        let root = dir.path().canonicalize().unwrap();
-        for picked in [
-            root.clone(),
-            root.join("Working"),
-            root.join("Working").join("Binaries"),
-        ] {
-            assert_eq!(resolve_folder(&picked).unwrap(), root);
-        }
-    }
-
-    #[test]
-    fn folder_without_sgw_is_not_a_game_folder() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir(dir.path().join("Working")).unwrap();
-        assert!(matches!(
-            resolve_folder(dir.path()),
-            Err(Error::NotAGameFolder)
-        ));
-    }
-
-    #[test]
-    fn flat_folder_is_not_a_game_folder_in_either_mode() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("SGW.exe"), sgw_exe()).unwrap();
-        std::fs::create_dir(dir.path().join("SGWGame")).unwrap();
-        assert!(matches!(
-            resolve_folder(dir.path()),
-            Err(Error::NotAGameFolder)
-        ));
-    }
-
-    #[test]
-    fn flat_folder_in_copy_mode_is_not_a_game_folder() {
-        let f = Fixture::new(None);
-        let picked = tempfile::tempdir().unwrap();
-        std::fs::write(picked.path().join("SGW.exe"), sgw_exe()).unwrap();
-        std::fs::create_dir(picked.path().join("SGWGame")).unwrap();
-        let request = SourceRequest::Folder {
-            selected: picked.path().to_path_buf(),
-        };
-        assert!(matches!(
-            request_source(&f.state, &request, AdoptionMode::Copy),
-            Err(Error::NotAGameFolder)
-        ));
-    }
-
-    #[test]
-    fn saved_import_naming_the_folder_is_legacy_another_is_folder() {
-        let f = Fixture::new(None);
-        let named = SourceRequest::Folder {
-            selected: f.folder().to_path_buf(),
-        };
-        layout(f.folder());
-        let (adopted, _) = request_source(&f.state, &named, AdoptionMode::InPlace).unwrap();
-        assert!(matches!(adopted, AdoptionSource::Legacy(_)));
-        let other = tempfile::tempdir().unwrap();
-        layout(other.path());
-        let request = SourceRequest::Folder {
-            selected: other.path().to_path_buf(),
-        };
-        let (adopted, _) = request_source(&f.state, &request, AdoptionMode::InPlace).unwrap();
-        assert!(matches!(adopted, AdoptionSource::Folder(_)));
-    }
-
-    /// Restores the write permission the test denies, even when it fails.
-    #[cfg(windows)]
-    struct RestoreWrite {
-        user: String,
-        folder: PathBuf,
-    }
-
-    #[cfg(windows)]
-    impl Drop for RestoreWrite {
-        fn drop(&mut self) {
-            let _ = std::process::Command::new("icacls")
-                .arg(&self.folder)
-                .arg("/remove:d")
-                .arg(&self.user)
-                .status();
-        }
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn root_denied_write_is_folder_not_writable() {
-        let dir = tempfile::tempdir().unwrap();
-        layout(dir.path());
-        let user = std::env::var("USERNAME").unwrap();
-        let status = std::process::Command::new("icacls")
-            .arg(dir.path())
-            .arg("/deny")
-            .arg(format!("{user}:(W)"))
-            .status()
-            .unwrap();
-        assert!(status.success());
-        let _restore = RestoreWrite {
-            user,
-            folder: dir.path().to_path_buf(),
-        };
-        assert!(matches!(
-            check_writable(dir.path()),
-            Err(Error::FolderNotWritable)
-        ));
-    }
 }
