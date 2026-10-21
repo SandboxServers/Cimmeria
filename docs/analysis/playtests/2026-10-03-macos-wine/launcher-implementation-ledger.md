@@ -718,7 +718,6 @@ preparation and Play of an adopted copy, the `CIMMERIA_WINE_APP_IDENTITY=1`
 runtime and computer-use checks, the published RAR/CAB seed with a rebuilt
 helper, and native Windows validation.
 
-
 ### 2026-10-04: MacBook testing stopped; repository checkpoint
 
 The [MacBook testing checkpoint](worknotes/macbook-testing-checkpoint.md) records
@@ -739,7 +738,6 @@ its current assignment, but receives no new work and is not integrated here.
 Full launcher/release acceptance, the current Windows helper, Windows parity,
 production updater configuration, clean-machine/notarization and reserved
 observability work remain open. This checkpoint does not close the campaign.
-
 
 ### 2026-10-04: repository preservation after MacBook testing stopped
 

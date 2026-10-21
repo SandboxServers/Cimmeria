@@ -11,10 +11,11 @@ Ledger: [README.md](README.md). Resume card: [RESUME.md](RESUME.md). Designed 20
 - Return exactly one line: `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`.
 - Commit messages end with these two lines:
 
-  ```
+  ```text
   Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
   Claude-Session: https://claude.ai/code/session_01WCmH1WPLJdizxaciRv4aJM
   ```
+
 - No lab, live client or live server is used by any packet. Every check below runs on fixtures in temp folders.
 - Order: packet loop for each packet, then the wave loop on `au-integration`, then the integration checks in § Waves, then the PR.
 
@@ -188,6 +189,7 @@ The survey sorts children by name, so the two entries come back as `later-link.t
 Host: windows · Branch `launcher-adopt-ux/AU-01-unsafe-survey` · Worktree `au-01` · Crates `cimmeria-launcher-engine`, `cimmeria-launcher-desktop` (one match arm) · Agent: packet-coder · Base: `origin/main`
 
 **Rules (inline).**
+
 1. PowerShell only, never Bash. Begin every shell call with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\au-01;`.
 2. Never run `cargo` directly. Use `pwsh tools/build-lane/lane.ps1 cargo ...` (the commands in § Standard checks), in the foreground. Never pass `--target-dir`.
 3. Never `git stash`, `git worktree prune` or push. Commit locally and stop.
@@ -199,6 +201,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-01-unsafe-survey` · Worktree `au-
 **Contract.** C1, C2 and C3 above, verbatim.
 
 **Do.**
+
 1. `engine/src/storage/adoption/model.rs`: C1. `Serialize` and `Deserialize` are already in scope there (`FolderSource` derives them).
 2. `engine/src/storage/adoption/inventory.rs`:
    - Lines 8-9: make `MAX_FILES` and `MAX_DEPTH` `pub(super)`.
@@ -213,6 +216,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-01-unsafe-survey` · Worktree `au-
          return Err(StorageError::UnsafeFile.into());
      }
      ```
+
    - Add `reparse_reason` (pure, every host):
 
      ```rust
@@ -231,6 +235,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-01-unsafe-survey` · Worktree `au-
          }
      }
      ```
+
    - Add the Windows tag reader, next to `file_identity`. All names are in `windows_sys::Win32::Storage::FileSystem`, a feature the engine already enables. If a name does not resolve, grep the windows-sys 0.61 source under `$env:USERPROFILE\.cargo\registry\src` for it; do not add features.
 
      ```rust
@@ -262,6 +267,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-01-unsafe-survey` · Worktree `au-
          (ok != 0 && info.FileAttributes & 0x400 != 0).then_some(info.ReparseTag)
      }
      ```
+
    - Add `unsafe_reason`. It mirrors what `identity` refuses, so it must agree with the scan:
 
      ```rust
@@ -299,6 +305,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-01-unsafe-survey` · Worktree `au-
          }
      }
      ```
+
 3. Create `engine/src/storage/adoption/survey.rs` (C3). Module doc: `//! Explains a refused scan: which entries of the folder cannot be adopted safely, and why (launcher-adopt-ux D-AU4). Read only and bounded; it runs only after the scan refused the folder, and never descends into an offender.` Shape:
 
    ```rust
@@ -354,6 +361,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-01-unsafe-survey` · Worktree `au-
 5. `shell/src/host/adoption/contract.rs`: in `From<adoption::Error> for AdoptionError` (lines 156-182), add `adoption::Error::Unsafe(_) => Self::UnsafeFile,` after the `UnsupportedMode` arm. Nothing else in the shell.
 
 **Tests**, in the new `engine/src/storage/adoption/survey_tests.rs` (`use super::*;`, plus `use super::survey::*;` and `super::inventory`). Build folders in `tempfile::tempdir()`; canonicalize the temp path before surveying.
+
 - `reparse_tags_map_to_reasons` (every host): `0xA000_0003` and `0xA000_000C` are `Link`; `0x9000_001A`, `0x9000_101A`, `0x9000_701A`, `0x9000_F01A` and `0x8000_0021` are `CloudFile`; `0x8000_0017` (WOF compression) and `0x8000_001B` (app alias) are `SpecialFile`. Fails if a tag arm is removed.
 - `a_clean_folder_has_nothing_to_explain`: files `a.txt` and `sub/b.txt`. `survey` gives `total == 0` and no entries, and `explain` returns `Error::Storage(StorageError::UnsafeFile)`.
 - `hard_links_are_named_by_relative_path`: `a.txt` plain, `later.txt` hard-linked to `other.txt` (`std::fs::hard_link`). Expect entries `[HardLink Some("later.txt"), HardLink Some("other.txt")]`, total 2, and `explain` is `Error::Unsafe(_)` with that report. Fails if `unsafe_reason` stops detecting hard links, or if the path is not relative.
@@ -376,6 +384,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-01-unsafe-survey` · Worktree `au-
 Host: windows · Branch `launcher-adopt-ux/AU-02-source-wiring` · Worktree `au-02` · Crate `cimmeria-launcher-engine` · Agent: packet-coder · Base: `origin/main` with `launcher-adopt-ux/integration` merged in by `ops` (holds AU-01)
 
 **Rules (inline).**
+
 1. PowerShell only, never Bash. Begin every shell call with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\au-02;`.
 2. Never run `cargo` directly. Use `pwsh tools/build-lane/lane.ps1 cargo ...` (§ Standard checks), in the foreground. Never pass `--target-dir`.
 3. Never `git stash`, `git worktree prune` or push. Commit locally and stop.
@@ -387,6 +396,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-02-source-wiring` · Worktree `au-
 **Contract.** C1 and C3 (from AU-01, already in your tree). Use `survey::explained(root, result)`; do not copy its logic.
 
 **Do.**
+
 1. `engine/src/storage/adoption/source.rs`, `request_source` (lines 30-65):
    - line 42: `let scanned = survey::explained(&imported.source.game_directory, inventory::scan(&imported.source.game_directory, &CancellationToken::new()))?;`
    - line 47: `survey::explained(&root, inventory::scan(&root, &CancellationToken::new()))?`
@@ -405,6 +415,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-02-source-wiring` · Worktree `au-
        })));
    }
    ```
+
 5. `engine/src/storage/adoption/in_place_preview.rs` line 97: `survey::explained(&folder, inventory::scan(&folder, &cancel))?`.
 6. `engine/src/storage/adoption/tests.rs`, update the two tests that pin the bare refusal:
    - line 432-435 (unix symlink `link`): `let Err(Error::Unsafe(report)) = f.preview() else { panic!("expected an unsafe report") };` then assert entries `[UnsafeEntry { reason: UnsafeReason::Link, path: Some("link".into()) }]` and `total == 1`.
@@ -413,6 +424,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-02-source-wiring` · Worktree `au-
 7. Create `engine/src/storage/adoption/unsafe_source_tests.rs`; declare it in `mod.rs` beside `in_place_tests` as `#[cfg(all(test, not(target_os = "macos")))] mod unsafe_source_tests;`. Module doc: `//! Source checks name the entries they refuse (launcher-adopt-ux AU-02).` It uses `super::in_place_tests::Fixture` (`Fixture::new(None)`, `f.state`) and its own `layout(root)` helper that writes `Working/Binaries/SGW.exe` (`b"MZ"` is enough: nothing parses it before the refusal).
 
 **Tests** (in `unsafe_source_tests.rs`):
+
 - `#[cfg(windows)] a_junctioned_working_folder_is_named`: `target` = temp dir with `layout`-style `Binaries/SGW.exe`; `other` = temp dir; `other/Working` = junction to `target` (mklink pattern, return early if it fails). For each mode in `[AdoptionMode::InPlace, AdoptionMode::Copy]`: `request_source(&f.state, &SourceRequest::Folder { selected: other.path().to_path_buf() }, mode)` is `Err(Error::Unsafe(report))` with entries `[Link Some("Working")]` and total 1. After both, `target` holds no `.cimmeria-write-probe-*` entry. Fails if line 52 or line 58 is not wrapped.
 - `a_hard_link_in_a_picked_folder_is_named` (Windows and Linux): `picked` = temp dir with `layout`, plus `notes.txt` hard-linked to `notes-copy.txt`. `request_source(…, AdoptionMode::Copy)` gives `[HardLink "notes-copy.txt", HardLink "notes.txt"]`, total 2.
 - `#[cfg(windows)] a_source_folder_through_a_junction_is_not_canonical`: `link` = junction to a temp dir. `source::canonical_paths(&AdoptionSource::Folder(FolderSource { selected: link.clone(), root: link.clone(), scan_digest: [0; 32] }))` is `Err(Error::Unsafe(r))` with entries `[Link None]`, total 1.
@@ -430,6 +442,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-02-source-wiring` · Worktree `au-
 Host: windows · Branch `launcher-adopt-ux/AU-03-status-field` · Worktree `au-03` · Crate `cimmeria-launcher-desktop`, plus `frontend/` · Agent: packet-coder · Base: `origin/main` with `launcher-adopt-ux/integration` merged in (holds AU-01, AU-02)
 
 **Rules (inline).**
+
 1. PowerShell only, never Bash. Begin every shell call with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\au-03;`.
 2. Never run `cargo` directly. Use `pwsh tools/build-lane/lane.ps1 cargo ...` (§ Standard checks), in the foreground. Never pass `--target-dir`.
 3. Never `git stash`, `git worktree prune` or push. Commit locally and stop.
@@ -441,6 +454,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-03-status-field` · Worktree `au-0
 **Contract.** C4, C5, C7.
 
 **Do.**
+
 1. `shell/src/host/adoption/mod.rs`, `struct Adoption` (lines 72-80): add `last_unsafe: Option<adoption::UnsafeReport>,` after `last_error`. Replace each `adoption.last_error = None;` (lines 268, 325, 465, 487) with `adoption.clear_failure();`.
 2. `shell/src/host/adoption/status.rs`: add
 
@@ -461,6 +475,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-03-status-field` · Worktree `au-0
        }
    }
    ```
+
    In `settle_adoption`: line 126 becomes `adoption.clear_failure();`; line 128 `Err(error) => adoption.fail(error),`; line 137 `match outcome.err() { Some(error) => adoption.fail(error), None => adoption.clear_failure() }`. In `adoption_status`, after `last_error: adoption.last_error,` (line 106) add `unsafe_entries: adoption.last_unsafe.clone(),`.
 3. `shell/src/host/adoption/contract.rs`, `AdoptionStatus` (lines 244-263): add the C4 field after `last_error`.
 4. `shell/src/host/adoption/uat_bridge_in_place.rs` (lines 64-86): add the two C7 arms before the default arm, for example `"plant_hard_link" => { fs::hard_link(folder.join("later.txt"), folder.join("later-link.txt")).unwrap(); Ok(serde_json::json!({})) }`.
@@ -468,6 +483,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-03-status-field` · Worktree `au-0
 6. `frontend/src/adoption-view.test.ts` line 10: the `idle()` fixture gains `unsafe_entries:null` after `last_error:null`.
 
 **Tests.**
+
 - Shell, in `shell/src/host/adoption/in_place_tests.rs`, `a_hard_linked_file_is_named_and_dismissed` (`#[tokio::test(flavor = "multi_thread", worker_threads = 2)]`), in the style of the file's first test:
   1. `let mut f = Fixture::new(serde_json::json!({})); let _origin = f.serve().await; let folder = f.source.game_directory.clone();`
   2. `std::fs::hard_link(folder.join("later.txt"), folder.join("later-link.txt")).unwrap();`, then `f.host.begin_adoption_in_place(f.release()).unwrap();`.
@@ -492,6 +508,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-03-status-field` · Worktree `au-0
 Host: windows · Branch `launcher-adopt-ux/AU-04-refusal-list` · Worktree `au-04` · Path `crates/launcher/desktop/frontend/` · Agent: packet-coder · Base: `origin/main` with `launcher-adopt-ux/integration` merged in (holds AU-01, AU-02, AU-03, AU-05)
 
 **Rules (inline).**
+
 1. PowerShell only, never Bash. Begin every shell call with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\au-04;`.
 2. Never run `cargo` directly; F2's build step goes through `pwsh tools/build-lane/lane.ps1`. Never pass `--target-dir`.
 3. Never `git stash`, `git worktree prune` or push. Commit locally and stop.
@@ -503,10 +520,11 @@ Host: windows · Branch `launcher-adopt-ux/AU-04-refusal-list` · Worktree `au-0
 **Contract.** C5 (in your tree), C6, C7.
 
 **Do.**
+
 1. `frontend/ui/index.html` line 36: after the `<progress id="adoption-progress" …></progress>`, add the C6 `<ul id="adoption-unsafe" …>`.
 2. `frontend/src/adoption-view.ts`:
    - Replace `unsafe_file` (line 24) with: ``unsafe_file:`A file or folder in the game folder could not be checked safely, or it changed while it was checked, so nothing was copied, moved or removed. Close the game and any program that syncs or backs up the folder, then try again. ${unchanged}`,``
-   - D-AU9: in `duplicate_release_file` (line 31) delete ` The launcher log names the file.`; in `leftover_launcher_files` (line 36) delete ` The launcher log says which.`
+   - D-AU9: in `duplicate_release_file` (line 31) delete `The launcher log names the file.`; in `leftover_launcher_files` (line 36) delete `The launcher log says which.`
    - Add, after `failureText` (line 39):
 
      ```ts
@@ -528,6 +546,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-04-refusal-list` · Worktree `au-0
       return items;
      }
      ```
+
    - `adoptionText` line 64: `if(status.last_error)return status.last_error==='unsafe_file'&&status.unsafe_entries?.entries.length?unsafeLead:failureText(status.last_error);`
    - `render`, after the progress lines (after line 127):
 
@@ -537,6 +556,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-04-refusal-list` · Worktree `au-0
      unsafeList.replaceChildren(...unsafe.map(text=>{const item=document.createElement('li');item.textContent=text;return item;}));
      unsafeList.hidden=!unsafe.length;
      ```
+
 3. `frontend/src/adoption-view.test.ts`:
    - line 214: the regex becomes `/neither copy matches.*recovery stopped\. Nothing was deleted/`.
    - New test `an unsafe refusal lists each entry, its reason and the fix`: status `{...idle(),backend:'in_place',modes:['in_place','copy'],last_error:'unsafe_file',unsafe_entries:{entries:[{reason:'hard_link',path:'later.txt'},{reason:'cloud_file',path:'Working/a.pak'},{reason:'link',path:'.'},{reason:'link',path:null},{reason:'name',path:'<img src=x onerror=alert(1)>'}],total:7}}`. Assert: the status text equals the lead text; `adoption-unsafe` is not hidden and has 6 `li`; the first reads `later.txt: a hard link: the same file is stored under another name too. Replace it with a plain copy, or remove it, then try again.`; the third starts `The game folder itself:`; the fourth starts `The game folder’s location:`; the last is `…and 2 more not listed here.`; `get('adoption-unsafe').querySelector('img')` is `null`. Fails if the list, a text or the escaping is reverted.
@@ -559,6 +579,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-04-refusal-list` · Worktree `au-0
     let held=await evidence();assert.equal(held.owner_marker,false);assert.equal(held.executable_in_old_place,true);
     await send({command:'remove_hard_link'});
    ```
+
    In scenario 1, after the review arrives (line 60), add `assert.equal(get('adoption-unsafe').hidden,true,'the refusal list is gone in review');`. Add to the `Exercised:` line: `a hard link in the folder refused with both entries, their reason and fix named, nothing changed;`.
 
 **Checks, in order.** F1, then F2. Paste F2's `Exercised:` line into the report.
@@ -574,6 +595,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-04-refusal-list` · Worktree `au-0
 Host: windows · Branch `launcher-adopt-ux/AU-05-mode-choice` · Worktree `au-05` · Path `crates/launcher/desktop/frontend/` · Agent: packet-coder · Base: `origin/main`
 
 **Rules (inline).**
+
 1. PowerShell only, never Bash. Begin every shell call with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\au-05;`.
 2. Never run `cargo` directly; F2's build step goes through `pwsh tools/build-lane/lane.ps1`. Never pass `--target-dir`.
 3. Never `git stash`, `git worktree prune` or push. Commit locally and stop.
@@ -586,6 +608,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-05-mode-choice` · Worktree `au-05
 **Contract.** C6 (mode rows, choose labels).
 
 **Do.**
+
 1. `frontend/ui/index.html` line 37: replace the fieldset with
 
    ```html
@@ -594,6 +617,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-05-mode-choice` · Worktree `au-05
    <label class="mode-option" id="adoption-mode-copy-row"><input type="radio" name="adoption-mode" id="adoption-mode-copy" value="copy"><span><strong>Make a verified copy</strong><small>Your folder is left as it is. The launcher writes a checked copy to a second folder you pick.</small></span></label>
    <p class="caption">Pick one, then press the button below to choose the folder.</p></fieldset>
    ```
+
 2. `frontend/ui/style.css`: append
 
    ```css
@@ -605,6 +629,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-05-mode-choice` · Worktree `au-05
    .mode-option small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
    .mode-option.selected{border-color:var(--accent);background:#87d5e714}
    ```
+
 3. `frontend/src/adoption-view.ts`, `render`, replacing line 120:
 
    ```ts
@@ -615,6 +640,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-05-mode-choice` · Worktree `au-05
    for(const id of ['adoption-mode-in-place','adoption-mode-copy'])box(id).disabled=!enabled||!idle;
    button('choose-adoption-destination').textContent=pair?(copy?'Choose the folder to copy…':'Choose the folder to adopt in place…'):'Use an existing game folder…';
    ```
+
    After the consent listeners (line 195): `for(const id of ['adoption-mode-in-place','adoption-mode-copy'])listen(id,'change',()=>render());`
 4. `frontend/src/adoption-view.test.ts`:
    - `mount` (lines 18-28): collect the mode the choose call sends. Add `modes:string[]=[]`; in the invoke stub, when `command==='choose_existing_game_folder'`, push `(args as {mode:string}).mode`; return `modes` from `mount`.
@@ -644,6 +670,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-05-mode-choice` · Worktree `au-05
 Host: windows · Branch `launcher-adopt-ux/AU-06-docs` · Worktree `au-06` · Docs only · Agent: packet-coder · Base: `origin/main`
 
 **Rules (inline).**
+
 1. PowerShell only, never Bash. Begin every shell call with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\au-06;`.
 2. Never `git stash`, `git worktree prune` or push. Commit locally and stop. No build is needed.
 3. Every file you edit under `docs/` and `crates/launcher/desktop/docs/` is **CRLF**. After editing, check with `[IO.File]::ReadAllText('<absolute path>')` that no lone `\n` was introduced (`-match "(?<!\r)\n"` must be false); if it is, normalize with `[IO.File]::WriteAllText('<absolute path>', ($text -replace "\r?\n", "`r`n"))`. Use absolute paths.
@@ -652,6 +679,7 @@ Host: windows · Branch `launcher-adopt-ux/AU-06-docs` · Worktree `au-06` · Do
 6. Edit only the files listed below.
 
 **Do.**
+
 1. `docs/client/launcher-guide.md`, § "Use an existing game folder" (lines 173-214):
    - Steps 1-3: the mode choice now comes **before** the folder. Step 1: open **Settings** (⚙); under **Use an existing game folder**, pick a mode (Windows and Linux show both): each mode is its own row with a short description, and the picked row is outlined. Step 2: click the button, which names the pick (**Choose the folder to adopt in place…** or **Choose the folder to copy…**; with one mode it reads **Use an existing game folder…**). Step 3: pick the game folder (root, `Working` or `Binaries`). Keep the two mode descriptions; renumber the rest.
    - Add a subsection `#### If the launcher refuses the folder` after the "Before you adopt in place" list (after line 214). Content: the launcher lists up to five files or folders, each with its path inside the game folder and what to do, plus how many more it found; nothing was copied, moved or removed. Then a table of the six reasons with the fix: a link or junction (put the real folder or file there); a OneDrive or other cloud-synced file (move the whole game folder out of the synced folder, for example to `C:\Games`; "Always keep on this device" is not enough, because the files stay cloud files); a hard link (replace it with a plain copy, or remove it); not a plain file or folder (remove it or move it out; files compressed with `compact /EXE` count here: run `compact /U /EXE /S` in the game folder to decompress them); a name the launcher cannot use (letters outside plain ASCII, `:` or `\`, or too long: rename or move it); two names that differ only in case (remove or rename one). Close with: the check covers the whole game folder, including folders you added such as mods or backups; if the launcher shows the general "could not be checked safely" message without a list, a file changed while it was checked: close the game and any sync or backup program and try again.
