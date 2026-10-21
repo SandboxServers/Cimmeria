@@ -101,6 +101,8 @@ fn persistence_contract_strings_are_stable_for_all_variants() {
 
 /// The persisted tag for each variant, as an exhaustive match: adding a
 /// `CellOutboxPayload` variant fails to compile here until its tag is pinned.
+/// The test below then checks the runtime `event_type()` and JSON `kind`
+/// against this pin, so a renamed tag fails too.
 fn pinned_tag(p: &CellOutboxPayload) -> &'static str {
     match p {
         CellOutboxPayload::ItemUsed { .. } => "item_used",
@@ -112,6 +114,7 @@ fn pinned_tag(p: &CellOutboxPayload) -> &'static str {
 #[test]
 fn every_variant_event_type_matches_its_pinned_tag() {
     // Compile-time guard: fails when a variant is added without a pinned tag.
+    // Runtime guard (the loop below): fails when a tag drifts from its pin.
     let values = [
         CellOutboxPayload::ItemUsed {
             instance_id: 0,
