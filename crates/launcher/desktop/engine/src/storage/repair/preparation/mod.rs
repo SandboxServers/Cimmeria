@@ -149,6 +149,7 @@ fn start_with_backend(
     let (progress, observed) = ProgressSink::latest();
     let (send, result) = oneshot::channel();
     let owner = state.clone();
+    events::repair_started(id);
     runtime.spawn(async move {
         let result = AssertUnwindSafe(reconstruct(
             &owner,
@@ -168,7 +169,9 @@ fn start_with_backend(
             // handoff. Preserve output; only explicit recovery may continue it.
             if let Ok(mut state) = owner.lock() {
                 if let Ok(operations) = state.operations_mut() {
-                    let _ = operations.mark_uncertain(id);
+                    if let Err(error) = operations.mark_uncertain(id) {
+                        events::mark_uncertain_failed(error);
+                    }
                 }
             }
         }
@@ -197,7 +200,10 @@ async fn reconstruct(
     let mut prepared = tokio::task::spawn_blocking(move || claim(candidate))
         .await
         .map_err(|_| Failure::ReconciliationRequired)?
-        .map_err(|_| Failure::Failed)?;
+        .map_err(|error| {
+            events::repair_claim_failed(plan.id, error);
+            Failure::Failed
+        })?;
     let stage = plan.stage();
     let context = install::InstallContext {
         manifest_url: &source.url,
@@ -249,10 +255,14 @@ async fn reconstruct(
         Err(install::InstallError::SeedExtractionUncertain) => {
             return Err(Failure::ReconciliationRequired)
         }
-        Err(_) => return Err(Failure::Failed),
+        Err(error) => {
+            events::repair_stage_failed(plan.id, &error);
+            return Err(Failure::Failed);
+        }
         Ok(()) => (),
     }
     if !install_worker::content_valid(&stage, &release) {
+        events::repair_content_invalid(plan.id);
         return Err(Failure::Failed);
     }
     let mut owner = state.lock().map_err(|_| Failure::ReconciliationRequired)?;
@@ -346,7 +356,13 @@ pub(super) fn finish_failure(state: &Mutex<DesktopState>, id: Uuid, failure: Fai
         Failure::ReconciliationRequired => operations.mark_uncertain(id),
     };
     let (finished, ended) = if result.is_err() {
-        let ended = operations.mark_uncertain(id).is_ok();
+        let ended = match operations.mark_uncertain(id) {
+            Ok(_) => true,
+            Err(error) => {
+                events::mark_uncertain_failed(error);
+                false
+            }
+        };
         (Failure::ReconciliationRequired, ended)
     } else {
         (failure, true)
@@ -354,6 +370,7 @@ pub(super) fn finish_failure(state: &Mutex<DesktopState>, id: Uuid, failure: Fai
     // Only the call that ended the run reports it: the dropped commit
     // handoff lands here after every commit, finding the run already over.
     if open && ended {
+        events::repair_ended(id, &finished);
         owner.queue_install_result(id, Run::Repair, finished.ending("repair_failed"));
     }
     finished

@@ -111,6 +111,26 @@ async fn failed_terminal_persistence_is_reported_as_uncertain() {
         .is_file());
 }
 
+#[tokio::test]
+async fn failed_terminal_persistence_logs_mark_uncertain_failed() {
+    let (root, state, installation, _server) = install_worker::tests::prepared_fixture().await;
+    let plan = admit(&state, installation);
+    let journal = root.path().join("state/operation.json");
+    std::fs::remove_file(&journal).unwrap();
+    std::fs::create_dir(journal).unwrap();
+    let (finished, events) =
+        crate::test_capture::capture(|| finish_failure(&state, plan.id, Failure::Failed));
+    assert_eq!(finished, Failure::ReconciliationRequired);
+    let uncertain = events
+        .iter()
+        .find(|e| {
+            e.target == "launcher.repair" && e.field("event") == Some("mark_uncertain_failed")
+        })
+        .expect("a failed mark_uncertain is logged");
+    assert_eq!(uncertain.level, tracing::Level::WARN);
+    assert!(uncertain.field("reason").is_some());
+}
+
 async fn wait_for_recovery(state: &Mutex<DesktopState>) {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {

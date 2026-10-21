@@ -1,6 +1,15 @@
 use super::*;
 use crate::catalog::verify_release;
 use ed25519_dalek::{Signer, SigningKey};
+use std::sync::{Mutex, MutexGuard};
+
+/// Serializes the tests that remove an installation. A tracing callsite first hit with no
+/// subscriber caches "never", so a parallel test can drop the capture test's uninstall_finished.
+static SERIAL: Mutex<()> = Mutex::new(());
+
+fn serial() -> MutexGuard<'static, ()> {
+    SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 fn fixture() -> (tempfile::TempDir, DesktopState, InstallIntent) {
     let root = tempfile::tempdir().unwrap();
@@ -47,6 +56,7 @@ fn remove(state: &mut DesktopState, intent: &InstallIntent) -> Result<(), Intent
 
 #[test]
 fn confirmed_removal_uses_saved_identity_and_preserves_preferences_and_caches() {
+    let _serial = serial();
     let (root, mut state, intent) = fixture();
     let other = root.path().join("other");
     std::fs::create_dir(&other).unwrap();
@@ -81,6 +91,7 @@ fn confirmed_removal_uses_saved_identity_and_preserves_preferences_and_caches() 
 
 #[test]
 fn missing_confirmation_stale_revision_and_wrong_installation_do_not_mutate() {
+    let _serial = serial();
     let (_root, mut state, intent) = fixture();
     let rev = state.operations().snapshot().revision;
     assert!(state
@@ -98,6 +109,7 @@ fn missing_confirmation_stale_revision_and_wrong_installation_do_not_mutate() {
 
 #[test]
 fn foreign_top_level_file_vetoes_before_admission() {
+    let _serial = serial();
     let (_root, mut state, intent) = fixture();
     std::fs::write(intent.destination.join("keep"), b"foreign").unwrap();
     let rev = state.operations().snapshot().revision;
@@ -108,6 +120,7 @@ fn foreign_top_level_file_vetoes_before_admission() {
 
 #[test]
 fn live_owner_and_foreign_receipt_veto_deletion() {
+    let _serial = serial();
     let (_root, mut state, intent) = fixture();
     let marker = OpenOptions::new()
         .read(true)
@@ -154,6 +167,7 @@ fn interrupted(state: &mut DesktopState, intent: &InstallIntent) -> Plan {
 
 #[test]
 fn recovery_handles_crash_after_rename_before_checkpoint_and_lost_reply() {
+    let _serial = serial();
     let (root, mut state, intent) = fixture();
     let plan = interrupted(&mut state, &intent);
     std::fs::rename(&intent.destination, plan.detached().unwrap()).unwrap();
@@ -173,6 +187,7 @@ fn recovery_handles_crash_after_rename_before_checkpoint_and_lost_reply() {
 
 #[test]
 fn recovery_finishes_partial_deletion_and_leaves_replacement_folder_alone() {
+    let _serial = serial();
     let (root, mut state, intent) = fixture();
     let plan = interrupted(&mut state, &intent);
     let detached = plan.detached().unwrap();
@@ -193,6 +208,7 @@ fn recovery_finishes_partial_deletion_and_leaves_replacement_folder_alone() {
 
 #[test]
 fn missing_source_without_detachment_checkpoint_stays_in_recovery() {
+    let _serial = serial();
     let (root, mut state, intent) = fixture();
     let plan = interrupted(&mut state, &intent);
     std::fs::remove_dir_all(&intent.destination).unwrap();
@@ -217,6 +233,7 @@ fn missing_source_without_detachment_checkpoint_stays_in_recovery() {
 #[cfg(unix)]
 #[test]
 fn symlink_inside_game_cannot_redirect_deletion() {
+    let _serial = serial();
     let (root, mut state, intent) = fixture();
     let outside = root.path().join("outside");
     std::fs::create_dir(&outside).unwrap();
@@ -229,6 +246,7 @@ fn symlink_inside_game_cannot_redirect_deletion() {
 
 #[test]
 fn recovery_after_content_and_marker_deletion_requires_durable_detachment() {
+    let _serial = serial();
     for tombstone_exists in [true, false] {
         let (root, mut state, intent) = fixture();
         let plan = interrupted(&mut state, &intent);
@@ -252,7 +270,31 @@ fn recovery_after_content_and_marker_deletion_requires_durable_detachment() {
 }
 
 #[test]
+fn confirmed_removal_logs_uninstall_started_and_finished() {
+    let _serial = serial();
+    let (_root, mut state, intent) = fixture();
+    let (result, events) = crate::test_capture::capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        remove(&mut state, &intent)
+    });
+    result.unwrap();
+    let repair: Vec<_> = events
+        .iter()
+        .filter(|e| e.target == "launcher.repair")
+        .collect();
+    assert_eq!(repair.len(), 2);
+    assert_eq!(repair[0].level, tracing::Level::INFO);
+    assert_eq!(repair[0].field("event"), Some("uninstall_started"));
+    assert_eq!(repair[1].level, tracing::Level::INFO);
+    assert_eq!(repair[1].field("event"), Some("uninstall_finished"));
+    assert_eq!(repair[1].field("outcome"), Some("ok"));
+    assert_eq!(repair[1].field("recovering"), Some("false"));
+    assert_eq!(repair[0].field("operation"), repair[1].field("operation"));
+}
+
+#[test]
 fn plan_write_failure_leaves_owned_content_and_journal_unchanged() {
+    let _serial = serial();
     let (_root, mut state, intent) = fixture();
     let id = Uuid::new_v4();
     std::fs::create_dir(state.directory.root.join(name(id))).unwrap();
