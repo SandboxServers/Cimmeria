@@ -19,6 +19,9 @@ mod inventory;
 mod model;
 pub(crate) mod preparation;
 mod publication;
+// LT-29 onward use `digest`, `relative` and `http_status`.
+#[allow(dead_code)]
+mod rejection;
 mod replay;
 #[cfg(all(test, not(target_os = "macos")))]
 mod unsafe_source_tests;
@@ -75,6 +78,7 @@ pub(super) enum Backend {
     #[cfg(target_os = "macos")]
     Wine(crate::mac_wine::HelperResource),
 }
+use rejection::Rejection;
 use uuid::Uuid;
 
 /// This handle cannot be serialized or fabricated by an IPC caller. It retains
@@ -226,11 +230,21 @@ fn copy_preview(
             request.operation_revision,
             request.preferences_revision,
         )?;
-        if owner.compatibility.for_release(&request.release).blocks() {
-            return Err(Error::LauncherTooOld);
+        if let crate::launcher_compatibility::MinimumStatus::TooOld { required } =
+            owner.compatibility.for_release(&request.release)
+        {
+            return Err(rejection::reject(
+                Error::LauncherTooOld,
+                Rejection::new("launcher_too_old")
+                    .expected(required)
+                    .found(crate::launcher_compatibility::compiled_version()),
+            ));
         }
         if owner.installed_content()?.is_some() {
-            return Err(ContractError::IdentityConflict.into());
+            return Err(rejection::reject(
+                ContractError::IdentityConflict.into(),
+                Rejection::new("identity_conflict"),
+            ));
         }
     }
     // Resolved and scanned with no state guard held.
@@ -239,10 +253,17 @@ fn copy_preview(
         let owner = state.lock().map_err(|_| StorageError::Io)?;
         let destination =
             super::install_intent::fresh_destination(&request.destination, &owner.directory.root)?;
+        // The folder's last component only: the full path is never recorded.
+        let name = destination
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
         // Confirmation creates this folder itself. Refuse an existing one now,
         // before a long preparation, rather than after the review.
         if std::fs::symlink_metadata(&destination).is_ok() {
-            return Err(StorageError::InvalidDirectory.into());
+            return Err(rejection::reject(
+                StorageError::InvalidDirectory.into(),
+                Rejection::new("destination_exists").entry(&name),
+            ));
         }
         // The copy never overlaps the folders it reads, nor the launcher state.
         for dir in source::directories(&adopted) {
@@ -251,7 +272,10 @@ fn copy_preview(
                 || owner.directory.root.starts_with(dir)
                 || dir.starts_with(&owner.directory.root)
             {
-                return Err(StorageError::InvalidDirectory.into());
+                return Err(rejection::reject(
+                    StorageError::InvalidDirectory.into(),
+                    Rejection::new("destination_overlaps").entry(&name),
+                ));
             }
         }
         (owner.preferences.clone(), destination)
@@ -295,7 +319,8 @@ fn copy_preview(
             // This worker holds no state guard, so settle the owner now rather
             // than leave a Running operation that nothing is working on.
             preparation.release();
-            return Err(error);
+            let check = Rejection::new("comparison_failed").found(rejection::code(&error));
+            return Err(rejection::reject(error, check));
         }
     };
     let report = Report {
@@ -356,11 +381,22 @@ fn idle(
     if state.requires_reopen() {
         return Err(StorageError::PersistenceUncertain.into());
     }
-    if state.operations.snapshot().revision != operation_revision {
-        return Err(ContractError::StaleRevision.into());
+    let revision = state.operations.snapshot().revision;
+    if revision != operation_revision {
+        return Err(rejection::reject(
+            ContractError::StaleRevision.into(),
+            Rejection::new("stale_revision")
+                .expected(operation_revision.to_string())
+                .found(revision.to_string()),
+        ));
     }
     if state.preferences.revision != preferences_revision {
-        return Err(StorageError::StaleRevision.into());
+        return Err(rejection::reject(
+            StorageError::StaleRevision.into(),
+            Rejection::new("stale_revision")
+                .expected(preferences_revision.to_string())
+                .found(state.preferences.revision.to_string()),
+        ));
     }
     if state
         .operations
@@ -369,7 +405,10 @@ fn idle(
         .as_ref()
         .is_some_and(|op| !op.state.terminal())
     {
-        return Err(ContractError::Busy.into());
+        return Err(rejection::reject(
+            ContractError::Busy.into(),
+            Rejection::new("busy"),
+        ));
     }
     Ok(())
 }

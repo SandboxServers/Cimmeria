@@ -5,17 +5,26 @@ use tokio::sync::{oneshot, watch};
 pub struct PreviewWorker {
     cancel: CancellationToken,
     pub progress: watch::Receiver<Option<crate::install::Progress>>,
-    result: oneshot::Receiver<Result<Preview, Error>>,
+    result: oneshot::Receiver<(Result<Preview, Error>, Option<Rejection>)>,
+    /// The refusal the worker recorded; `None` until its result is observed.
+    last_rejection: Option<Rejection>,
 }
 impl PreviewWorker {
     pub fn request_cancel(&self) {
         self.cancel.cancel();
     }
+    /// The rejection the worker recorded, once its result has been observed.
+    pub fn last_rejection(&self) -> Option<&Rejection> {
+        self.last_rejection.as_ref()
+    }
     /// `None` while the worker runs. A worker that vanished without an answer is
     /// reported as uncertain, never as a clean failure.
     pub fn try_result(&mut self) -> Option<Result<Preview, Error>> {
         match self.result.try_recv() {
-            Ok(outcome) => Some(outcome),
+            Ok((outcome, recorded)) => {
+                self.last_rejection = recorded;
+                Some(outcome)
+            }
             Err(oneshot::error::TryRecvError::Empty) => None,
             Err(oneshot::error::TryRecvError::Closed) => {
                 Some(Err(StorageError::PersistenceUncertain.into()))
@@ -23,9 +32,13 @@ impl PreviewWorker {
         }
     }
     pub async fn wait(&mut self) -> Result<Preview, Error> {
-        (&mut self.result)
-            .await
-            .unwrap_or(Err(StorageError::PersistenceUncertain.into()))
+        match (&mut self.result).await {
+            Ok((outcome, recorded)) => {
+                self.last_rejection = recorded;
+                outcome
+            }
+            Err(_) => Err(StorageError::PersistenceUncertain.into()),
+        }
     }
 }
 impl Drop for PreviewWorker {
@@ -75,12 +88,14 @@ pub(super) fn start_preview_backend(
     let (progress, observed) = crate::install_progress::ProgressSink::latest();
     let (send, result) = oneshot::channel();
     runtime.spawn_blocking(move || {
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            preview_using(state, request, owned_cancel, progress, backend, transport)
-        }))
-        .unwrap_or(Err(StorageError::PersistenceUncertain.into()));
+        let (outcome, recorded) = rejection::scope(|| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                preview_using(state, request, owned_cancel, progress, backend, transport)
+            }))
+            .unwrap_or(Err(StorageError::PersistenceUncertain.into()))
+        });
         // An unobserved preview releases its source lock/private temp reference.
-        if let Err(Ok(preview)) = send.send(outcome) {
+        if let Err((Ok(preview), _)) = send.send((outcome, recorded)) {
             preview.discard();
         }
     });
@@ -88,6 +103,7 @@ pub(super) fn start_preview_backend(
         cancel,
         progress: observed,
         result,
+        last_rejection: None,
     })
 }
 pub fn start_confirmation(
