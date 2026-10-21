@@ -42,6 +42,8 @@ struct MintRequest<'a> {
     git_sha: &'a str,
     launcher_version: &'a str,
     tags: &'a [&'a str],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_kind: Option<&'a str>,
 }
 
 #[derive(Deserialize)]
@@ -80,6 +82,17 @@ pub async fn start(
     login_servers: &[LoginServer],
     tags: &[&str],
 ) -> Result<Session, Outcome> {
+    start_kind(identity, login_servers, tags, None).await
+}
+
+/// `start` for a named session kind; `None` is a player session, sent without
+/// a `session_kind` key.
+pub(super) async fn start_kind(
+    identity: &Identity,
+    login_servers: &[LoginServer],
+    tags: &[&str],
+    session_kind: Option<&str>,
+) -> Result<Session, Outcome> {
     // https anywhere, plain http only to this machine or a login server: the
     // rule the Windows launcher applies, to the mint address and to whatever
     // upload address the server hands back.
@@ -92,11 +105,16 @@ pub async fn start(
     let launcher_version = mint_launcher_version();
     let body = serde_json::to_vec(&MintRequest {
         install_id: identity.install_id.to_string(),
-        machine_id: &identity.machine_id,
+        machine_id: if session_kind.is_some() {
+            ""
+        } else {
+            &identity.machine_id
+        },
         branch,
         git_sha,
         launcher_version: &launcher_version,
         tags,
+        session_kind,
     })
     .map_err(|_| Outcome::SessionUnavailable)?;
     let client = reqwest::Client::builder()
@@ -152,6 +170,24 @@ pub async fn start(
         },
         tags: tags.iter().map(|tag| (*tag).into()).collect(),
     }))
+}
+
+#[cfg(test)]
+pub(super) fn mint_body_for_test(kind: Option<&str>) -> serde_json::Value {
+    serde_json::to_value(MintRequest {
+        install_id: Uuid::from_u128(7).to_string(),
+        machine_id: if kind.is_some() {
+            ""
+        } else {
+            "0123456789abcdef"
+        },
+        branch: "desktop",
+        git_sha: "unknown",
+        launcher_version: "desktop-test",
+        tags: &["desktop-launcher", "linux", "launcher"],
+        session_kind: kind,
+    })
+    .unwrap()
 }
 
 /// The developer capture switches to hand to a game that has telemetry attached.

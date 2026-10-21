@@ -25,7 +25,7 @@ try{
  assert.equal(ui.box.checked,false);assert.equal(ui.box.disabled,false);assert.match(ui.text(),/^Off\./);
  // First press: feedback before the native reply, then one saved choice.
  ui.toggle(true);ui.toggle(true);assert.match(ui.text(),/Turning game diagnostics on/);assert.equal(ui.box.getAttribute('aria-busy'),'true');await settle(ui);
- assert.equal(sets(),1);assert.equal(ui.box.checked,true);assert.match(ui.text(),/^On\. The next Play/);
+ assert.equal(sets(),1);assert.equal(ui.box.checked,true);assert.match(ui.text(),/^On\. The next Play/);assert.match(ui.text(),/Game-folder steps are sent as they happen/);assert.ok(ui.document.getElementById('game-telemetry-privacy'));
  assert.equal((await send({command:'inspect',schema_version:1})).opted_in,true);
  // The launcher-summary choice is a different record: unchanged, revision included.
  assert.deepEqual(await send({command:'preferences'}),before);assert.equal(before.launcher_summary_consent,false);
@@ -45,6 +45,6 @@ try{
  await assert.rejects(send({command:'set',schema_version:1,opted_in:true}),e=>e==='platform_unavailable');
  assert.equal((await send({command:'inspect',schema_version:1})).opted_in,false);
  assert.deepEqual(await send({command:'preferences'}),before);
- console.log('Game diagnostics logic UAT passed: off by default, first-press feedback, one native save per press, duplicate suppression, disk reopen, lost reply without replay and recheck, native refusal without the module, opt-out without the module, launcher-summary preferences untouched throughout.');
+ console.log('Game diagnostics logic UAT passed: off by default, first-press feedback, one native save per press, duplicate suppression, disk reopen, lost reply without replay and recheck, native refusal without the module, opt-out without the module, launcher-summary preferences untouched throughout; launcher steps disclosed on opt-in.');
  console.log('Excluded: session mint against a server, the session marker, DLL injection, Wine, uploads, and packaged visual/keyboard/focus UAT.');
 }finally{await ui.app.dispose();child.stdin.end();await exit;}

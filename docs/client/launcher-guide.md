@@ -212,7 +212,9 @@ Before you adopt in place, know what changes:
 - Your game settings and the client cache live in `Documents` and are not
   affected.
 - An adopted folder plays without the game diagnostics module for now, even
-  with **Send game diagnostics while playing** on. A fresh install has it.
+  with **Send game diagnostics** on. A fresh install has it.
+- With game diagnostics on, each step of the adoption is sent as it happens;
+  offline, nothing is sent, and the adoption works the same.
 - A folder that is behind the current release is fine. The review lists the
   files that will be updated, and the launcher downloads only the patches they
   need.
@@ -301,7 +303,7 @@ soon as you press it.
 | **Repair game** | Downloads the signed release again and replaces modified or missing game files in the installed folder. Confirm in the panel that opens. **Cancel** works until replacement starts. Your settings are kept. The [repair contract](../../crates/launcher/desktop/docs/repair.md) has the recovery buttons. |
 | **Uninstall…** | Removes the game files and modifications from the installed folder after you confirm with **Uninstall game**. Launcher settings stay. |
 | **Share setup diagnostics** | Off by default. This build sends nothing either way. |
-| **Send game diagnostics while playing** | Off by default. When on, Play loads a small diagnostics module into the game, which sends game events and logs to your login server, so the developers can see what went wrong. It changes nothing in the game. |
+| **Send game diagnostics** | Off by default. When on, Play loads a small diagnostics module into the game, which sends game events and logs to your login server, so the developers can see what went wrong. It changes nothing in the game. When it is on, the launcher also sends its game-folder events (the steps of **Use an existing game folder**, and why a folder was refused) to your login server as they happen, without Play. They name files only by their place inside the game folder, never your user name or home folder. |
 | **Login servers** | The servers the game's login screen lists, one `Name = http://host:port` per line. **Save servers** saves them; a line the launcher cannot read is shown under the box and nothing is saved. Empty means the default Cimmeria server. |
 | **Client patches** | **Load client patches** is on by default. The patches fix parts of the 2009 client; the Black Market window, for one, needs them. Turn it off only to rule them out when something misbehaves. An adopted folder keeps the setting it was adopted with. |
 | **Debug logs** | **Upload debug logs** zips the game's `SGWDebugLog` files and session logs and uploads them once for the developers. Uploading the same logs again sends nothing ("Nothing new to upload"). Builds without an upload address hide the button. |
@@ -888,6 +890,7 @@ its data again. If the game will not start at all or its settings are broken,
 - The status line under the button you pressed.
 - **Settings → Debug logs → Upload debug logs** for the game's own logs.
 - `game\Working\Binaries\SGWDebugLog.log` in your install folder.
+- The launcher's own log: `%APPDATA%\app.cimmeria.launcher.desktop\logs\launcher.<date>.log`; on Linux, `~/.local/share/app.cimmeria.launcher.desktop/logs/`; on macOS, `~/Library/Application Support/app.cimmeria.launcher.desktop/logs/`. There is one file a day, 7 are kept, and the home folder is written as `~`. **Upload debug logs** does not include it yet, so attach it by hand.
 
 ---
 
