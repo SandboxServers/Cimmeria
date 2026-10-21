@@ -28,3 +28,10 @@ progress::-moz-progress-bar{background:var(--accent);border-radius:999px}
 progress:not([value])::-webkit-progress-bar{background-color:var(--panel);background-image:linear-gradient(90deg,transparent,var(--accent) 50%,transparent);background-repeat:no-repeat;background-size:35% 100%;animation:progress-sweep 1.2s linear infinite}
 @keyframes progress-sweep{from{background-position:-35% 0}to{background-position:135% 0}}
 @media(prefers-reduced-motion:reduce){progress::-webkit-progress-value{transition:none}progress:not([value])::-webkit-progress-bar{animation:none;background-position:50% 0}}
+
+/* Adoption mode choice: one row per mode, the picked one outlined (launcher-adopt-ux AU-05). */
+.adoption-modes{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin:0 0 10px}
+.adoption-modes legend{font-size:12px;color:var(--muted);padding:0 4px}
+.mode-option{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;margin:4px 0;border:1px solid transparent;border-radius:7px;cursor:pointer;font-size:12px;line-height:1.5}
+.mode-option small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.mode-option.selected{border-color:var(--accent);background:#87d5e714}
