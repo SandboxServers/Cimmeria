@@ -113,6 +113,50 @@ pub(crate) fn patch_events_queue_failed(id: Uuid) {
     );
 }
 
+/// Game telemetry was not started for this Play; `reason` is its closed code.
+pub(crate) fn game_telemetry_skipped(id: Uuid, reason: &'static str) {
+    let operation = operation_numbers::number(id);
+    tracing::warn!(
+        target: "launcher.launch",
+        event = "game_telemetry_skipped",
+        operation,
+        reason,
+        "launch: game telemetry skipped"
+    );
+}
+
+/// The game telemetry status could not be saved; the launch is unaffected.
+pub(crate) fn game_telemetry_record_failed(id: Uuid) {
+    let operation = operation_numbers::number(id);
+    tracing::warn!(
+        target: "launcher.launch",
+        event = "game_telemetry_record_failed",
+        operation,
+        reason = "status_save_failed",
+        "launch: game telemetry status not saved"
+    );
+}
+
+/// The launch helper did not stop after a kill; `error_kind` is a closed code.
+pub(crate) fn helper_stop_failed(error_kind: &'static str) {
+    tracing::warn!(
+        target: "launcher.launch",
+        event = "helper_stop_failed",
+        error_kind,
+        "launch: helper did not stop"
+    );
+}
+
+/// The client telemetry DLL is left out of this build; `reason` is its closed code.
+pub fn dll_artifact_unavailable(reason: &'static str) {
+    tracing::warn!(
+        target: "launcher.launch",
+        event = "dll_artifact_unavailable",
+        reason,
+        "launch: client telemetry DLL unavailable"
+    );
+}
+
 /// The launch could not record its uncertain state; the shell calls this too.
 pub fn mark_uncertain_failed(error: ContractError) {
     tracing::warn!(
@@ -184,6 +228,35 @@ mod tests {
         assert_eq!(refused[0].level, Level::WARN);
         assert_eq!(refused[0].field("reason"), Some("plan_exists"));
         assert!(refused[0].field("operation").is_some());
+    }
+
+    #[test]
+    fn game_telemetry_and_helper_events_carry_their_reason() {
+        let id = Uuid::new_v4();
+        let ((), events) = capture(|| {
+            game_telemetry_skipped(id, "choice_unreadable");
+            game_telemetry_record_failed(id);
+            helper_stop_failed("timed_out");
+            dll_artifact_unavailable("lab_build");
+        });
+        let skipped = event_named(&events, "game_telemetry_skipped");
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].level, Level::WARN);
+        assert_eq!(skipped[0].field("reason"), Some("choice_unreadable"));
+        assert!(skipped[0].field("operation").is_some());
+        let record = event_named(&events, "game_telemetry_record_failed");
+        assert_eq!(record.len(), 1);
+        assert_eq!(record[0].level, Level::WARN);
+        assert_eq!(record[0].field("reason"), Some("status_save_failed"));
+        assert!(record[0].field("operation").is_some());
+        let stop = event_named(&events, "helper_stop_failed");
+        assert_eq!(stop.len(), 1);
+        assert_eq!(stop[0].level, Level::WARN);
+        assert_eq!(stop[0].field("error_kind"), Some("timed_out"));
+        let dll = event_named(&events, "dll_artifact_unavailable");
+        assert_eq!(dll.len(), 1);
+        assert_eq!(dll[0].level, Level::WARN);
+        assert_eq!(dll[0].field("reason"), Some("lab_build"));
     }
 
     #[test]

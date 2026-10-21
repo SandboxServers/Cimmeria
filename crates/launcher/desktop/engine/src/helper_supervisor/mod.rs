@@ -220,8 +220,15 @@ pub async fn run(
 /// every caller of this path returns an uncertain result and retains recovery.
 async fn stop(child: &mut Child, grace: Duration) {
     if !matches!(timeout(grace, child.wait()).await, Ok(Ok(_))) {
+        // An exited child refuses the kill; the wait below reports a real failure.
         let _ = child.start_kill();
-        let _ = timeout(Duration::from_secs(3), child.wait()).await;
+        match timeout(Duration::from_secs(3), child.wait()).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => crate::launch::events::helper_stop_failed(
+                crate::game_telemetry::launcher_event::kind(&error),
+            ),
+            Err(_) => crate::launch::events::helper_stop_failed("timed_out"),
+        }
     }
 }
 

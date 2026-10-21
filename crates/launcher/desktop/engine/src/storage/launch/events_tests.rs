@@ -65,3 +65,36 @@ fn a_replaced_helper_logs_launch_not_started_verify_failed() {
     assert_eq!(not_started[0].field("operation"), operation);
     assert_eq!(finished[0].field("operation"), operation);
 }
+
+#[test]
+fn an_unreadable_choice_logs_game_telemetry_skipped() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let ((), events) = capture(|| {
+        rt.block_on(async {
+            let (root, state, mut plan) = super::tests::fixture();
+            plan.resources.client_telemetry = Some(super::tests::artifact(
+                &root.path().canonicalize().unwrap(),
+                "telemetry.dll",
+            ));
+            // A directory where the choice file belongs cannot be read as one.
+            let choice = state.state_root().join("game-telemetry.json");
+            std::fs::create_dir(&choice).unwrap();
+            let session =
+                super::telemetry::session(&Arc::new(std::sync::Mutex::new(state)), &plan, &[])
+                    .await;
+            assert!(session.is_none());
+        });
+    });
+    let skipped: Vec<&Captured> = events
+        .iter()
+        .filter(|e| e.target == "launcher.launch")
+        .filter(|e| e.field("event") == Some("game_telemetry_skipped"))
+        .collect();
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0].level, Level::WARN);
+    assert_eq!(skipped[0].field("reason"), Some("choice_unreadable"));
+    assert!(skipped[0].field("operation").is_some());
+}
