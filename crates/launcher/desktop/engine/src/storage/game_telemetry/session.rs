@@ -5,7 +5,7 @@ use super::*;
 use crate::client_setup::login_servers::LoginServer;
 use crate::telemetry_endpoint::EndpointPolicy;
 use crate::telemetry_session::{CurrentSession, TelemetryBlock, CURRENT_SESSION_SCHEMA};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// A mint reply is a few hundred bytes; anything near this is not one.
 const MAX_REPLY: usize = 16 * 1024;
@@ -75,6 +75,47 @@ fn mint_url(login_server: &str) -> String {
     format!("{}/auth/dev-session", auth_base_url(login_server))
 }
 
+/// Logs one `game_session_mint_failed` (C8) and returns the outcome to give back.
+fn mint_refused(
+    reason: &'static str,
+    http_status: Option<u16>,
+    started: Instant,
+    outcome: Outcome,
+) -> Outcome {
+    let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    session_events::mint_failed(reason, http_status, duration_ms);
+    outcome
+}
+
+/// A request that never got a reply: a timeout, or any other transport failure.
+fn transport_refused(error: &reqwest::Error, started: Instant) -> Outcome {
+    let reason = if error.is_timeout() {
+        "timeout"
+    } else {
+        "transport"
+    };
+    mint_refused(reason, None, started, Outcome::SessionUnavailable)
+}
+
+/// C10 (D-LT7): the upload address the session is given. A loopback address from
+/// a remote login server is replaced and the replacement is logged once. `Err`
+/// carries the C8 reason when no usable address is left.
+fn upload_for(
+    policy: &EndpointPolicy,
+    login_server: &str,
+    advertised: &str,
+) -> Result<String, &'static str> {
+    let effective = endpoint_sanity::effective_upload_endpoint(login_server, advertised)
+        .ok_or("no_https_endpoint")?;
+    policy
+        .check(&effective.url)
+        .map_err(|_| "endpoint_refused")?;
+    if effective.overridden {
+        session_events::endpoint_overridden();
+    }
+    Ok(effective.url)
+}
+
 /// Ask the installation's first login server for a session. Every failure is an
 /// [`Outcome`], never an error that could stop Play.
 pub async fn start(
@@ -96,10 +137,15 @@ pub(super) async fn start_kind(
     // https anywhere, plain http only to this machine or a login server: the
     // rule the Windows launcher applies, to the mint address and to whatever
     // upload address the server hands back.
+    let started = Instant::now();
     let policy = EndpointPolicy::from_login_servers(login_servers.iter().map(|s| s.url.as_str()));
-    let server = login_servers.first().ok_or(Outcome::SessionUnavailable)?;
+    let server = login_servers
+        .first()
+        .ok_or_else(|| mint_refused("transport", None, started, Outcome::SessionUnavailable))?;
     let url = mint_url(&server.url);
-    policy.check(&url).map_err(|_| Outcome::EndpointRefused)?;
+    policy
+        .check(&url)
+        .map_err(|_| mint_refused("endpoint_refused", None, started, Outcome::EndpointRefused))?;
     let branch = option_env!("CIMMERIA_BUILD_BRANCH").unwrap_or("desktop");
     let git_sha = option_env!("CIMMERIA_BUILD_GIT_SHA").unwrap_or("unknown");
     let launcher_version = mint_launcher_version();
@@ -116,42 +162,57 @@ pub(super) async fn start_kind(
         tags,
         session_kind,
     })
-    .map_err(|_| Outcome::SessionUnavailable)?;
+    .map_err(|_| mint_refused("transport", None, started, Outcome::SessionUnavailable))?;
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(CONNECT)
         .timeout(TOTAL)
         .build()
-        .map_err(|_| Outcome::SessionUnavailable)?;
+        .map_err(|_| mint_refused("transport", None, started, Outcome::SessionUnavailable))?;
     let mut response = client
         .post(&url)
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .body(body)
         .send()
         .await
-        .map_err(|_| Outcome::SessionUnavailable)?;
+        .map_err(|e| transport_refused(&e, started))?;
     if !response.status().is_success() {
-        return Err(Outcome::SessionUnavailable);
+        let status = response.status().as_u16();
+        return Err(mint_refused(
+            "http_status",
+            Some(status),
+            started,
+            Outcome::SessionUnavailable,
+        ));
     }
     let mut bytes = Vec::new();
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|_| Outcome::SessionUnavailable)?
+        .map_err(|e| transport_refused(&e, started))?
     {
         if bytes.len() + chunk.len() > MAX_REPLY {
-            return Err(Outcome::SessionUnavailable);
+            return Err(mint_refused(
+                "decode",
+                None,
+                started,
+                Outcome::SessionUnavailable,
+            ));
         }
         bytes.extend_from_slice(&chunk);
     }
-    let reply: MintReply =
-        serde_json::from_slice(&bytes).map_err(|_| Outcome::SessionUnavailable)?;
+    let reply: MintReply = serde_json::from_slice(&bytes)
+        .map_err(|_| mint_refused("decode", None, started, Outcome::SessionUnavailable))?;
     if reply.token.is_empty() || reply.session_id.is_empty() {
-        return Err(Outcome::SessionUnavailable);
+        return Err(mint_refused(
+            "decode",
+            None,
+            started,
+            Outcome::SessionUnavailable,
+        ));
     }
-    policy
-        .check(&reply.upload_endpoint)
-        .map_err(|_| Outcome::EndpointRefused)?;
+    let upload_endpoint = upload_for(&policy, &server.url, &reply.upload_endpoint)
+        .map_err(|reason| mint_refused(reason, None, started, Outcome::EndpointRefused))?;
     Ok(Session(CurrentSession {
         schema_version: CURRENT_SESSION_SCHEMA,
         install_id: identity.install_id.to_string(),
@@ -164,7 +225,7 @@ pub(super) async fn start_kind(
             enabled: true,
             token: reply.token,
             expires_at_ms: reply.expires_at_ms,
-            upload_endpoint: reply.upload_endpoint,
+            upload_endpoint,
             chunk_max_bytes: reply.chunk_max_bytes,
             flush_interval_ms: reply.flush_interval_ms,
         },
@@ -240,4 +301,91 @@ pub(super) fn passthrough_for_test(
     lookup: impl Fn(&str) -> Option<String>,
 ) -> Vec<(&'static str, String)> {
     passthrough_from(lookup)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_capture::capture;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn fixture_identity() -> Identity {
+        Identity {
+            install_id: Uuid::from_u128(7),
+            machine_id: "0123456789abcdef".into(),
+        }
+    }
+
+    #[test]
+    fn a_loopback_upload_from_a_remote_https_login_is_replaced_and_logged_once() {
+        let policy = EndpointPolicy::from_login_servers(["https://play.example"]);
+        let (result, events) = capture(|| {
+            upload_for(
+                &policy,
+                "https://play.example",
+                "http://localhost:8443/api/telemetry",
+            )
+        });
+        assert_eq!(result, Ok("https://play.example/api/telemetry".to_string()));
+        let overridden: Vec<_> = events
+            .iter()
+            .filter(|e| e.field("event") == Some("upload_endpoint_overridden"))
+            .collect();
+        assert_eq!(overridden.len(), 1);
+        assert_eq!(overridden[0].target, "launcher.telemetry");
+        assert_eq!(overridden[0].level, tracing::Level::INFO);
+        assert_eq!(overridden[0].field("kind"), Some("game"));
+    }
+
+    #[test]
+    fn a_loopback_upload_from_a_plain_http_login_has_no_usable_address() {
+        let policy = EndpointPolicy::from_login_servers(["http://play.example:8081"]);
+        let (result, events) = capture(|| {
+            upload_for(
+                &policy,
+                "http://play.example:8081",
+                "http://localhost:8443/api/telemetry",
+            )
+        });
+        assert_eq!(result, Err("no_https_endpoint"));
+        assert!(events
+            .iter()
+            .all(|e| e.field("event") != Some("upload_endpoint_overridden")));
+    }
+
+    #[test]
+    fn a_server_error_on_the_mint_logs_one_warning_and_gives_no_session() {
+        let (result, events) = capture(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let server = MockServer::start().await;
+                    Mock::given(method("POST"))
+                        .and(path("/api/auth/dev-session"))
+                        .respond_with(ResponseTemplate::new(500))
+                        .mount(&server)
+                        .await;
+                    let servers = vec![LoginServer {
+                        name: "fixture".into(),
+                        url: server.uri(),
+                    }];
+                    start_kind(&fixture_identity(), &servers, &[], None)
+                        .await
+                        .map(|_| ())
+                })
+        });
+        assert_eq!(result, Err(Outcome::SessionUnavailable));
+        let failed: Vec<_> = events
+            .iter()
+            .filter(|e| e.field("event") == Some("game_session_mint_failed"))
+            .collect();
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].target, "launcher.telemetry");
+        assert_eq!(failed[0].level, tracing::Level::WARN);
+        assert_eq!(failed[0].field("reason"), Some("http_status"));
+        assert_eq!(failed[0].field("http_status"), Some("500"));
+    }
 }
