@@ -3,13 +3,14 @@
 //! forwarder thread. Nothing here blocks: the file writer is non-blocking and the
 //! forward layer only `try_send`s.
 use crate::host::NativeHost;
+use cimmeria_launcher_engine::game_telemetry::health::{Recovery, SharedHealth, TelemetryHealth};
 use cimmeria_launcher_engine::game_telemetry::launcher_event::wire_target;
-use cimmeria_launcher_engine::game_telemetry::launcher_session::LauncherSender;
+use cimmeria_launcher_engine::game_telemetry::launcher_session::{LauncherSender, SendOutcome};
 use std::fmt;
 use std::io;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, SyncSender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
@@ -185,6 +186,40 @@ impl Visit for FieldVisitor {
     }
 }
 
+static HEALTH: OnceLock<SharedHealth> = OnceLock::new();
+
+/// The process-wide pipeline health, recorded by the forwarder (launcher-telemetry C7).
+pub(crate) fn health() -> SharedHealth {
+    HEALTH
+        .get_or_init(|| Arc::new(Mutex::new(TelemetryHealth::default())))
+        .clone()
+}
+
+/// Records one send's outcome and logs the recovery when it ends a run of failures.
+/// Returns the recovery, if any.
+fn record_outcome(health: &SharedHealth, outcome: &SendOutcome, now_ms: u64) -> Option<Recovery> {
+    let mut state = health.lock().unwrap_or_else(PoisonError::into_inner);
+    let recovery = state.record(outcome, now_ms)?;
+    let last_reason = state.last_reason;
+    drop(state);
+    pipeline_recovered(&recovery, last_reason);
+    Some(recovery)
+}
+
+/// The sends are back after a run of failures (launcher-telemetry C7).
+fn pipeline_recovered(recovery: &Recovery, last_reason: Option<&'static str>) {
+    tracing::info!(
+        target: "launcher.telemetry",
+        event = "pipeline_recovered",
+        mint_failed = recovery.failures.mint_failed,
+        held = recovery.failures.held,
+        dropped = recovery.failures.dropped,
+        outage_ms = recovery.outage_ms,
+        last_reason = last_reason.unwrap_or("none"),
+        "launcher telemetry: sends resumed; expected every batch delivered, some were lost while the server was unreachable"
+    );
+}
+
 /// Start the forwarder thread. It batches records, builds the events on the
 /// host, and sends them with `LauncherSender`. A spawn error is ignored.
 pub(crate) fn spawn_forwarder(
@@ -205,7 +240,8 @@ pub(crate) fn spawn_forwarder(
                     }
                 }
                 if let Some((target, events)) = host.launcher_batch(&batch, &redaction) {
-                    let _ = tauri::async_runtime::block_on(sender.send(&target, &events));
+                    let outcome = tauri::async_runtime::block_on(sender.send(&target, &events));
+                    record_outcome(&health(), &outcome, u64::try_from(now_ms()).unwrap_or(0));
                 }
             }
         });
@@ -246,5 +282,32 @@ mod tests {
         let filter = file_filter();
         assert!(filter.would_enable("launcher.pipeline", &Level::INFO));
         assert!(!filter.would_enable("launcher.pipeline", &Level::DEBUG));
+    }
+
+    #[test]
+    fn two_failures_then_a_success_emit_exactly_one_pipeline_recovered() {
+        let health: SharedHealth = Arc::new(Mutex::new(TelemetryHealth::default()));
+        let outcomes = [
+            SendOutcome::MintFailed {
+                reason: "transport",
+            },
+            SendOutcome::Dropped,
+            SendOutcome::Sent,
+            SendOutcome::Sent,
+        ];
+        let ((), captured) = crate::test_capture::capture(|| {
+            for (at, outcome) in outcomes.iter().enumerate() {
+                record_outcome(&health, outcome, 100 * at as u64);
+            }
+        });
+        let recovered: Vec<_> = captured
+            .iter()
+            .filter(|c| c.field("event") == Some("pipeline_recovered"))
+            .collect();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0].target, "launcher.telemetry");
+        assert_eq!(recovered[0].field("mint_failed"), Some("1"));
+        assert_eq!(recovered[0].field("dropped"), Some("1"));
+        assert_eq!(recovered[0].field("last_reason"), Some("transport"));
     }
 }

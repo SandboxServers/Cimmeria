@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub mod endpoint_sanity;
 #[cfg(test)]
 mod event_tests;
+pub mod health;
 pub(crate) mod install_event;
 pub mod launcher_event;
 #[cfg(test)]
