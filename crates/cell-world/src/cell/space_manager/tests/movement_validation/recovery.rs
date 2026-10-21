@@ -112,6 +112,7 @@ fn apply(mgr: &mut SpaceManager, at: Instant, pos: [f32; 3]) -> Step {
         ClientMoveOutcome::Rejected { last_valid, .. } => Step::Corrected(last_valid),
         ClientMoveOutcome::Recovered { recovered_to, .. } => Step::Corrected(recovered_to),
         ClientMoveOutcome::CorrectionSuppressed { .. } => Step::Settled,
+        ClientMoveOutcome::Locked { .. } => Step::Settled,
         ClientMoveOutcome::EntityMissing => panic!("fixture entity vanished"),
     }
 }

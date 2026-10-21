@@ -46,6 +46,7 @@ mod letter_turn_in_result;
 mod letter_turn_in_session;
 mod minigame;
 mod movement;
+mod movement_lock;
 mod org;
 mod passive_abilities;
 mod receipt_seq;

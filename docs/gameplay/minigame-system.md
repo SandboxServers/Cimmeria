@@ -91,7 +91,7 @@ Two deviations from the original flow: the movement and state hold is taken at l
 
 **The Converse abilities (MG-62).** Ability 1327 (effect 1643) and ability 2089 (effect 2813) carry `script_name` `StartMinigame` with `minigame_type` `ConverseBasicHumanoid` and `difficulty` 1 (`effect_nvps.sql`, ids 25501-25504). The caster plays. No chain follows: the session's own result is the only outcome.
 
-**The Prison Boot (MG-63b).** Chain 1023 casts ability 1597 on the player while mission 689 is open. Its effect 1939 (`MovementHold`) holds the wearer for movement only: item use and abilities stay open, so the wearer can still start the escape game with item 3438. Effect 1942 (`MovementRelease`, `ReleasesEffect` 1939) lifts the boot on victory (chain 1025). A minigame hold taken and released while the boot is on keeps the movement lock until the boot comes off. Death leaves the entry (effect 1939 has no `EF_ClearOnDeath`), and a respawn's hard reset keeps its hold, so the wearer stays held until the minigame's release; this is accepted. Scripts: `movement_hold.rs` in `cimmeria-cell-effect-scripts`.
+**The Prison Boot (MG-63b).** Chain 1023 does not cast ability 1597. Its boot lock is the content movement hold (`movement_lock`, see movement-validation.md), which the wearer cannot walk out of while mission 689 is open. Effect 1939 (`MovementHold`) of ability 1597 is not cast on this path. The escape game starts by a right-click on the Prison Boot Control (`interact_tag`, chain 1024), not item 3438. Ability 1598 is cast on victory (chain 1025) and is harmless: effect 1942 (`MovementRelease`, `ReleasesEffect` 1939) only releases 1939, which is not applied. Scripts: `movement_hold.rs` in `cimmeria-cell-effect-scripts`.
 
 ## Implementation Status
 

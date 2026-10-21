@@ -165,7 +165,7 @@ If the `sgw_mission` read fails at world entry, the player still enters the worl
 Code: `missions/state_lock.rs` in `cimmeria-base-methods` (retry, lock, background read), `client_ready/mission_lock.rs` in `cimmeria-base-world-entry` (world entry), [`cell/missions/state_lock.rs`](../../crates/cell-content/src/cell/missions/state_lock.rs) (cell gate and recovery). The log rows are listed in [negative-logging-convention.md](../architecture/negative-logging-convention.md).
 ## Hidden missions
 
-A mission whose def row has `is_hidden = true` is server-side bookkeeping. In the seed these are the Hallway0N controllers (682-686) and the Prison Boot gate (689). The client is never told about them, matching the reference `MissionManager.py`, which wraps every client call in `if not mission.mission.isHidden:` (#715):
+A mission whose def row has `is_hidden = true` is server-side bookkeeping. In the seed these are the Hallway0N controllers (682-686) and the Prison Boot gate (689). A new character is held by the boot until they right-click the Prison Boot Control and win Livewire (chain 1024 is an `interact_tag` trigger, not an item use); the win releases the hold and completes 689, and chain 1048 releases it if 689 is completed another way - see [`movement_lock`](../content/content-engine-vocabulary.md#movement_lock-params). The client is never told about them, matching the reference `MissionManager.py`, which wraps every client call in `if not mission.mission.isHidden:` (#715):
 
 | Path | Hidden-mission behaviour |
 |------|--------------------------|

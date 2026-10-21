@@ -34,6 +34,7 @@
 --     chain_id in this file, matching the method C01's worker used for
 --     chain 1008). Kept deliberately separate from C03's 1112-1120 range so
 --     the two packets' new ids never collide.
+--     cellblock-boot-lock (2026-10-20): chains 1047-1048, scanned free on main and on every branch updated in the last 30 days
 --   C07 addition (2026-09-17): mission-accepted prompt blurbs, work-packets.md's
 --     reserved range 1151-1160. Used: 1151 (640), 1152 (641), 1154 (688).
 --     1153 skipped -- reserved for mission 680's blurb 2308 (D-CB08's fourth
@@ -57,7 +58,7 @@
 --   Cellblock authored story CB-N05 (2026-10-17): chains 11000-11005, mission 62050 "The Remaining Pods" (id-allocation.md, CB-N05 individual claims).
 --   Cellblock barracks response CB-N07a (2026-10-17): chain 11020 (id-allocation.md, CB-N07 claims).
 --   Cellblock optional choice CB-N06 (2026-10-17): chains 11030-11041, mission 62060 "Before the Patrol Returns" (id-allocation.md, CB-N06 claims).
---   (next free inside 1001-1111: 1029-1030, 1038-1040, 1047-1050, 1067-1070,
+--   (next free inside 1001-1111: 1029-1030, 1038-1040, 1049-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
 --   Class Start v6, CS-04 (2026-10-05, docs/analysis/class-start-v6/README.md):
@@ -82,76 +83,28 @@ SET search_path = resources, pg_catalog;
 -- MISSION 689 — Prison Boot Lock (internal, hidden; C00)
 -- ============================================================
 --
--- New mechanic surfaced by the v3 spec audit (docs/analysis/castle-cellblock-
--- rebuild/audit.md#new-finding-the-prison-boot-movement-lock-gate), not in
--- any recovered Python script. Every non-Goa'uld Castle_CellBlock starting
--- archetype spawns wearing item 3438 "Prison Boots" (forced via
--- char_creation_choices.sql), which should lock movement (ability 1597 ->
--- effect 1939) until a Livewire minigame clears it (ability 1598 -> effects
--- 3081 item-swap + 1942 lock-clear). D-CB14 (answered): reuse Livewire,
--- already wired twice more in this zone (cell-door hack, Preparation stasis
--- terminal) -- no new minigame infrastructure.
+-- The boot lock is a server hold (cellblock-boot-lock D-BL3, D-BL4). Chain
+-- 1023 pins the player to the stasis-room anchor with movement_lock while the
+-- mission is not completed. Chain 1025 releases the hold on Livewire victory,
+-- and chain 1048 releases it on a GM completion. Design and open questions:
+-- docs/analysis/cellblock-boot-lock/README.md
 --
--- Persistence design (this packet's own call, flagged as an open design
--- point in work-packets.md#c00 for the coordinator to review): there is no
--- authorable content_conditions variant that reads ability/effect/item
--- presence (`HasAbility`/`HasItem` are both dead -- see content-engine.md
--- section 3), so "has this character cleared the gate" cannot be expressed
--- directly. Mission 689 is a new, purely internal, `is_hidden = true`
--- tracking mission (see the doc comment on its `missions.sql` row) that
--- reuses the exact same precedent already shipped for the Hallway0N
--- Controllers (682-686): accept/complete through the normal mission
--- lifecycle so state persists across relog via the existing `sgw_mission`
--- UPSERT, with zero client-visible quest-log entry. `mission_status 689`
--- gates all four chains below.
+-- The minigame starts from a right-click on the Prison Boot Control (spawn 284,
+-- tag Cellblock_PrisonBootControl) through interact_tag, chain 1024. The old
+-- item_use 3438 trigger is gone: the client never sent it (README F2).
 --
--- Movement-lock enforcement design (also this packet's own call): effect
--- 1939 has `script_name = NULL` and `pulse_count = 1` (single-shot, not
--- channelled/pulsing per `EffectDef::is_pulsing()`, which requires
--- `pulse_count == 0 || pulse_count > 1`). `Action::LaunchAbility` resolves
--- through `cell::content::effect_apply::apply_ability_effects` (the
--- server-authoritative effect path added alongside this packet, deliberately
--- bypassing the client-facing combat gates -- see that module's doc
--- comment), which for each of the ability's effects: skips script dispatch
--- (no `script_name`), then calls `register_active_effect`, which returns
--- `false` immediately for a non-pulsing effect WITHOUT sending anything --
--- not `onTimerUpdate`, not any other wire packet (confirmed directly against
--- `crates/cell-combat/src/cell/effects/pulsing/register.rs`'s early
--- `if !effect.is_pulsing() { return false; }`, and pinned by the live-DB
--- test `single_shot_scriptless_effect_registers_no_active_instance` in
--- `executor/tests/effects.rs`). Firing ability 1597 today is therefore a
--- complete no-op: no state flag, no movement-input rejection, and NO
--- client-visible signal of any kind -- same conclusion chain 1112 reaches
--- for effect 1634, and confirmed the same way. This packet does NOT add a
--- `client_move.rs` rejection gate or a new `BSF_*`-style anti-cheat flag --
--- that would be inventing new movement-validation infrastructure with no
--- evidence for what the client itself does on receiving the effect, which is
--- explicitly out of scope per D-CB14's own "don't invent new infra" framing.
--- Flagged for the coordinator at HIGH urgency: since there is currently no
--- client-visible signal at all from this self-cast, a client UAT is needed
--- to confirm the client does anything on its own when the player's boot
--- ability list changes (or whether it needs the effect id surfaced some
--- other way this repo doesn't wire yet). If UAT shows the client does NOT
--- self-lock movement, a follow-up packet should add server-side movement
--- rejection keyed on `mission_status 689 neq completed` (cheap to add once
--- UAT tells us it's needed -- the mission-based gate this packet builds is
--- exactly the signal such a check would key off).
+-- Chain 1047 sets the control's click bits on every load and chain 1025 clears
+-- them, so the control is clickable only while the lock is up.
 --
--- Livewire trigger design (also this packet's own call, flagged as an
--- assumption needing UAT): the two existing Livewire triggers in this zone
--- (chains 1016, 1041, 1060) are all `interact_tag` on a spawned world
--- object (a door button, a ring switch, a terminal) -- there is no
--- equivalent spawned "boot control panel" object for this mechanic, and
--- spawnlist data is outside this packet's Entries. Chain 1024 below uses
--- `item_use` on item 3438 instead (double-click the worn boot itself),
--- matching the ONE other item-triggered Livewire-adjacent flow in this file
--- (chain 1034, item 19). This is UNVERIFIED against a real client session:
--- whether the client's inventory UI offers a "use" action for an item
--- currently worn in an equipped slot (rather than sitting in a backpack
--- container) has no evidence either way in this repository. If UAT shows the
--- client doesn't expose "use" for equipped items, the fix is a chain_id swap
--- to an `interact_tag` (once a boot-control-panel spawn or a self-tag exists)
--- without touching the ability/effect/mission data at all.
+-- Ability 1598 is kept on victory (a harmless cast). Ability 1597 is NOT
+-- launched: its effect 1939 sets BSF_MOVEMENT_LOCK (Layer A, OQ-3).
+--
+-- There is no archetype condition. Goa'uld (archetype 6) start on the same
+-- anchor and are held too (D-BL8, owner 2026-10-20).
+--
+-- Mission 689 is an internal, hidden tracking mission (see its missions.sql
+-- row). `mission_status 689 neq completed` gates chains 1023, 1024 and 1047.
+--
 
 -- Chain 1022: zone load while mission 689 has never been accepted → accept it.
 -- Runs once per character (num_repeats = 0 on the mission refuses re-accept
@@ -168,17 +121,15 @@ VALUES (1022, 'mission_status', 689, NULL, 'eq', 'not_active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1022, 'accept_mission', 689, NULL, '{}', 0, 0);
 
--- Chain 1023: zone load while mission 689 is not completed → (re-)launch
--- ability 1597 (Prison Boot) on the player. `neq completed` covers both
--- `not_active` (the very first load, same tick as chain 1022's accept --
--- mission_status defaults missing keys to `not_active`, so this still
--- evaluates true against the pre-action snapshot even before chain 1022's
--- accept commits) and `active` (every relog while still locked). Only
--- `completed` (set by chain 1025 on Livewire victory) stops it -- this is
--- what makes "relog mid-lock re-applies the lock" and "relog after clearing
--- does not re-apply it" both fall out of the same condition for free.
+-- Chain 1023: zone load while mission 689 is not completed -> hold the player
+-- at the stasis-room anchor (cellblock-boot-lock D-BL3, D-BL4). `neq completed`
+-- covers the first load (`not_active`, same tick as chain 1022's accept) and
+-- every relog while still locked (`active`). Only `completed` (set by chain
+-- 1025 on Livewire victory) stops it. Ability 1597 is not launched (its effect
+-- 1939 sets BSF_MOVEMENT_LOCK); the movement_lock hold below does the work.
+-- There is no archetype condition: Goa'uld are held too (D-BL8).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1023, '689 - Zone load: (re-)apply Prison Boot lock while not cleared', 'mission', 689, true, 0);
+VALUES (1023, '689 - Zone load: (re-)apply Prison Boot hold while not cleared', 'mission', 689, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1023, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
@@ -187,15 +138,18 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES (1023, 'mission_status', 689, NULL, 'neq', 'completed', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1023, 'launch_ability', 1597, NULL, '{}', 0, 0);
+VALUES
+  (1023, 'movement_lock', NULL, NULL, '{"op": "hold", "anchor_tag": "Cellblock_PrisonBootControl", "at": [-334.231, 73.472, -228.026], "max_distance": 3.0, "client_flag": false, "message": "Your prison boot is locked to the floor. Right-click the boot control beside you and win the Livewire game to work it loose."}', 0, 0);
 
--- Chain 1024: use item 3438 (Prison Boots, worn) while mission 689 is not
--- completed → start a Livewire session. on_victory_chains: 1025.
+-- Chain 1024: right-click the Prison Boot Control (spawn 284, tag
+-- Cellblock_PrisonBootControl) while mission 689 is not completed -> start a
+-- Livewire session. on_victory_chains: 1025. The trigger is interact_tag, not
+-- item_use 3438: the client never sent item_use for it (README F2).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1024, '689 - Use Prison Boots: start Livewire minigame', 'mission', 689, true, 0);
+VALUES (1024, '689 - Right-click the Prison Boot Control: start Livewire minigame', 'mission', 689, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (1024, 'item_use', '3438', 'player', false, 0);
+VALUES (1024, 'interact_tag', 'Cellblock_PrisonBootControl', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES (1024, 'mission_status', 689, NULL, 'neq', 'completed', 0);
@@ -204,17 +158,52 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (1024, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1025]}', 0, 0);
 
--- Chain 1025: Livewire victory (triggered by 1024 on_victory_chains) →
--- launch ability 1598 (Disable Your Prison Boot -- effects 3081 item-swap +
--- 1942 lock-clear) and complete mission 689 so chain 1023 stops re-locking.
+-- Chain 1025: Livewire victory (triggered by 1024 on_victory_chains). Order
+-- matters: release the hold first, then clear the click bits, then complete
+-- mission 689 so chain 1023 stops re-applying the hold.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1025, '689 - Livewire victory: launch ability 1598, clear lock', 'mission', 689, true, 0);
 
 -- no trigger row — invoked directly by the minigame callback in chain 1024
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  (1025, 'launch_ability',   1598, NULL, '{}', 0, 0),
-  (1025, 'complete_mission', 689,  NULL, '{}', 0, 1);
+  (1025, 'launch_ability', 1598, NULL, '{}', 0, 0),
+  (1025, 'movement_lock', NULL, NULL, '{"op": "release", "message": "The prison boot unlocks. You can move again."}', 0, 1),
+  (1025, 'set_interaction_type', NULL, 'Cellblock_PrisonBootControl', '{"op": "~", "mask": 256}', 0, 2),
+  (1025, 'set_interaction_type', NULL, 'Cellblock_PrisonBootControl', '{"op": "~", "mask": 1073741824}', 0, 3),
+  (1025, 'complete_mission', 689,  NULL, '{}', 0, 4);
+
+-- Chain 1047: zone load while mission 689 is not completed -> make the Prison
+-- Boot Control clickable. The interaction bits are cell-local, the same pattern
+-- as chain 1045 (README F10). No archetype condition (D-BL8).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1047, '689 - Zone load: make the Prison Boot Control clickable while not cleared', 'mission', 689, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1047, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1047, 'mission_status', 689, NULL, 'neq', 'completed', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1047, 'set_interaction_type', NULL, 'Cellblock_PrisonBootControl', '{"op": "|", "mask": 256}', 0, 0),
+  (1047, 'set_interaction_type', NULL, 'Cellblock_PrisonBootControl', '{"op": "|", "mask": 1073741824}', 0, 1);
+
+-- Chain 1048: a GM complete_mission 689 (or chain 1025's own completion)
+-- releases any hold, then clears the control's click bits the same way chain
+-- 1025 does. The release is silent, because chain 1025 already said its line.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1048, '689 - Mission completed: release any Prison Boot hold', 'mission', 689, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1048, 'mission_completed', '689', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1048, 'movement_lock', NULL, NULL, '{"op": "release"}', 0, 0),
+  (1048, 'set_interaction_type', NULL, 'Cellblock_PrisonBootControl', '{"op": "~", "mask": 256}', 0, 1),
+  (1048, 'set_interaction_type', NULL, 'Cellblock_PrisonBootControl', '{"op": "~", "mask": 1073741824}', 0, 2);
 
 -- ============================================================
 -- MISSION 622 — Arm Yourself!

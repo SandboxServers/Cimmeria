@@ -333,6 +333,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         "npc_bark" => super::action_bark::convert_npc_bark(row),
         "send_system_mail" => super::action_mail::convert_send_system_mail(row),
         "open_loot" => super::action_loot::convert_open_loot(row),
+        "movement_lock" => super::action_movement_lock::convert_movement_lock(row),
         "qr_combat_damage" => {
             let stat_id = opt_i32(row, "stat_id").ok()?.unwrap_or(0);
             let source_id = opt_i32(row, "source_id").ok()?.unwrap_or(0);

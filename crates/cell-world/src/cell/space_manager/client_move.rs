@@ -34,6 +34,7 @@ use cimmeria_entity::movement_validation::{
 };
 
 use super::movement_lock;
+use super::ClientMoveOutcome;
 use super::SpaceManager;
 use crate::cell::dispatch::access_level_from_u32;
 
@@ -48,66 +49,6 @@ use crate::cell::dispatch::access_level_from_u32;
 /// perceive, and far below the agent-radius gap that makes a point read as
 /// off-mesh in the first place, so a genuine recovery always clears it.
 const RECOVERY_MIN_DISPLACEMENT: f32 = 0.05;
-
-/// Outcome of `SpaceManager::apply_client_position_update`.
-#[derive(Debug)]
-pub enum ClientMoveOutcome {
-    /// Position passed validation and was written. Carries the new
-    /// position so callers that want to log it can do so without
-    /// re-querying the entity.
-    Accepted { position: [f32; 3] },
-    /// Position failed validation and the cell entity is unchanged. The
-    /// caller must emit `CellToBaseMsg::TeleportPlayer` so the offending
-    /// client snaps back to `last_valid` — which has been checked to be a
-    /// position this validator would itself accept.
-    Rejected {
-        reason: MovementReject,
-        last_valid: [f32; 3],
-        space_id: u32,
-        /// The bounds the proposed position was tested against. Carried
-        /// out so the caller's structured log can include `bounds_min`
-        /// and `bounds_max` per the negative-logging convention.
-        bounds: SpaceBounds,
-    },
-    /// Position failed validation **and** the entity's own authoritative
-    /// position was unusable as a snap target. The entity has already been
-    /// relocated to `recovered_to`, a terminal safe point; the caller snaps
-    /// the client there instead of re-issuing the correction that was
-    /// looping.
-    ///
-    /// Unusable is the *only* trigger. An entity standing somewhere the
-    /// validator would itself accept is never relocated, however many
-    /// strikes it has accrued — an exhausted budget on a sound position is
-    /// [`Self::CorrectionSuppressed`]. Relocating there instead would be a
-    /// server-initiated move of a player who never left a legal point, and
-    /// (because recovery clears the budget) would make the budget
-    /// unenforceable on any navmesh-backed world.
-    Recovered {
-        reason: MovementReject,
-        /// The unusable position the entity was stuck at.
-        from: [f32; 3],
-        /// Where it now is — written to the cell entity before returning.
-        recovered_to: [f32; 3],
-        space_id: u32,
-    },
-    /// Position failed validation, the snap target is unusable, and no
-    /// safe point could be resolved. The caller must **not** emit another
-    /// `BASEMSG_FORCED_POSITION`: doing so is what produced the rubber-band
-    /// loop. The cell entity is left alone and the next accepted position
-    /// clears the state.
-    CorrectionSuppressed {
-        reason: MovementReject,
-        from: [f32; 3],
-        space_id: u32,
-        /// Consecutive rejects for this entity, for the operator log.
-        strikes: u32,
-    },
-    /// The entity is not currently in any space — likely a stale
-    /// inbound packet that arrived after destroy / disconnect. The
-    /// caller can safely no-op; the original `update_entity_position`
-    /// silently dropped the same shape.
-    EntityMissing,
-}
 
 impl SpaceManager {
     /// Apply a client-authoritative position update through the
@@ -257,6 +198,13 @@ impl SpaceManager {
         if movement_unrestricted {
             self.movement_validator.clear_speed_window(entity_id);
             return self.accept(now, entity_id, position, direction, velocity);
+        }
+
+        // Content movement hold (cellblock-boot-lock D-BL4). After the GM bypass
+        // so `/gmsetfly` frees a stuck player; before the layers so a held player
+        // never spends the snap-back budget.
+        if let Some(locked) = self.check_movement_hold(now, entity_id, space_id, proposed) {
+            return locked;
         }
 
         // Server hold (minigame, prison boot): the slack is measured from the

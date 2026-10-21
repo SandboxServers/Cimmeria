@@ -31,6 +31,7 @@ pub mod chain;
 pub mod conditions;
 pub mod context;
 pub mod loader;
+pub mod movement_lock;
 pub mod triggers;
 
 // PP-11 schema snapshot guard. A lib test, not a `tests/it` module, because

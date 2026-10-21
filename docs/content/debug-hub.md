@@ -2,7 +2,7 @@
 title: "Stasis-Room Debug Hub"
 type: reference
 audience: engineers, testers
-last_updated: 2026-09-27
+last_updated: 2026-10-20
 ---
 
 # Stasis-Room Debug Hub
@@ -45,7 +45,15 @@ a new character appears.
 | 472 | 372 | `DebugHub_CommandBanker` | Storage Officer | (-325.84, 73.47, -224.74) | -1.9148 |
 | 490 | 390 | `DebugHub_MailClerk` | Sgt. Harriman | (-324.11, 73.47, -227.84) | -1.5123 |
 | 405 | 305 | `BlackMarket_Auctioneer` | Machra | (-328.48, 73.47, -222.52) | -2.3829 |
+| 284 | 1250 | `Cellblock_PrisonBootControl` | Prison Boot Control | (-333.03, 73.47, -227.32) | 0.0 |
 
+Spawn 284 is **not a hub service and not an NPC**. It is the Prison Boot
+Control prop of the cellblock boot lock (template 1250, `Ga-Props.GA-PuzzleStation00`),
+a stationary Livewire prop that stands by the respawner so a new character
+can right-click it to work the boot loose. It sits in the table because it
+occupies the same room and the same spawn-id space, not because it is part of
+the hub. It is also not on the NPC line: it stands about 1.4 units from the
+respawner. See [movement_lock](content-engine-vocabulary.md#movement_lock-params).
 The pet trainer (pets campaign PT-07) takes the next slot on the line after the
 crate, about 2.1 units in from the room's B-C wall. Its ids come from the pets
 block (templates 350-369, spawns 450-469), not the hub's 300-304 and 400-404.

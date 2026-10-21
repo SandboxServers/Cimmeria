@@ -280,7 +280,7 @@ companion_docs:
   - ADR decision 18: surrendered NPCs are floored at 1 HP by pulses.
 - **Path forward**:
   - Honour the rest of the effect-clear flags (`EEffectFlag`). `EF_ClearOnDeath` is `EF_CLEAR_ON_DEATH` (4) and only the timed stat-buff ledger honours it; pulsing `active_effects` ignore it. `EF_ClearOnDamage`, `EF_ClearOnRez` and `EF_RemoveOnBandolierSlotChange` have no Rust constant.
-  - Send a wire packet for single-shot scriptless effects: `register_active_effect` returns early (pulsing/register.rs:50), so Stasis Sickness, the Prison Boot and similar effects are server no-ops.
+  - Send a wire packet for single-shot scriptless effects: `register_active_effect` returns early (pulsing/register.rs:50), so Stasis Sickness and similar effects are server no-ops. The Prison Boot is not one of them: its lock is the content movement hold, and chain 1023 does not cast ability 1597.
   - Dispatch `effect_*` content triggers (#610; open PR #745).
   - Persist effects across logout.
   - Add script coverage for the long tail.

@@ -2,7 +2,7 @@
 title: "Content engine — vocabulary"
 type: reference
 audience: engineers
-last_updated: 2026-10-03
+last_updated: 2026-10-20
 ---
 
 # Content engine — vocabulary
@@ -190,6 +190,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `grant_ability` | `GrantAbility` | 0 |
 | `show_tutorial` | `ShowTutorial` | 1 |
 | `spawn_set` | `SpawnSet` | 6 |
+| `movement_lock` | `MovementLock` | 3 |
 
 `grant_cash` grants the chain's player naquadah through the base's `GrantCash` handler (the loot path), shown at once by the client's cash display. `params` is `{"amount": N}`, N 1 to 2147483647; a bad amount drops the row at load. The first users are the Beta reward chains 23480-23496 (U-D07).
 
@@ -231,6 +232,12 @@ methods `activateSpawnSet` / `deactivateSpawnSet` and `.spawnset` call the
 same code. The seeded uses are chains 14090-14095
 ([debug-area.md](debug-area.md#groups-and-the-lineup-attendants)).
 
+`movement_lock` pins the player a chain fires for to a fixed point, or lets
+them go. It is the Cellblock boot lock's verb (chains 1023, 1025 and 1048).
+Its params, its fail-open rules and the lock's lifetime are in
+[`movement_lock` params](#movement_lock-params); the movement gate that
+enforces a hold is in
+[movement-validation.md](../architecture/movement-validation.md#content-movement-hold).
 `open_black_market` sends `onBMOpen(auctioneerEntityId)` (client method 90)
 to open the client's Black Market window. It takes no params: the executor
 arm ([`executor/black_market.rs`](../../crates/cell-content/src/cell/content/executor/black_market.rs))
@@ -667,6 +674,69 @@ with its name):
 | `content_show_tutorial` `decision_outcome=shown` | `content` | INFO | the cell displayed the dialog |
 | `content_show_tutorial` `decision_outcome=refused` | `content` | INFO / WARN / ERROR | nothing shown: `not_a_player`, `player_changed`, `not_recorded`, `cell_to_base_closed` (cell); `no_database`, `session_mismatch`, `player_row_missing`, `db_error` (base) |
 | `chain_refused` `reason=unknown_tutorial` / `show_tutorial_invalid` / `dialog_table_unavailable` | `content` | ERROR | at load |
+
+##### `movement_lock` params
+
+`movement_lock` has two ops. `target_id` and `target_key` stay NULL; everything
+is in `params`. The loader is
+[`loader/action_movement_lock.rs`](../../crates/content-engine/src/loader/action_movement_lock.rs),
+the type [`movement_lock.rs`](../../crates/content-engine/src/movement_lock.rs)
+and the executor
+[`executor/movement_lock.rs`](../../crates/cell-content/src/cell/content/executor/movement_lock.rs).
+
+| Param | Ops | Type and range | Default | Meaning |
+|---|---|---|---|---|
+| `op` | both | `"hold"` or `"release"` | none (required) | Pin the player, or let them go |
+| `anchor_tag` | `hold` | 1-64 printable ASCII characters, no spaces | none (required) | The `spawnlist.tag` of the prop that must be live in the player's space |
+| `at` | `hold` | `[x, y, z]`, three finite numbers | none (required) | The fixed anchor the player is pinned to |
+| `max_distance` | `hold` | number above 0 and at most 10 | `3.0` | How far from `at` (horizontal, world units) the player may stand when the hold fires |
+| `client_flag` | `hold` | boolean | `false` | Also set the ref-counted `BSF_MOVEMENT_LOCK` state flag, so an honest client stops sending input |
+| `message` | both | string, 1-200 characters once trimmed | none | One feedback-channel line, sent at once |
+
+A param that is missing, mistyped or out of range drops the whole row at load
+with a `warn!` (`reason = "malformed_movement_lock"`, naming the chain). A
+hold that silently never pins, or a release that never lets go, is worse than
+a row the loader refuses where an author will see it.
+
+**What `hold` does.** The checks run in this order and the first one that
+applies ends the action:
+
+| Check | Outcome | Log (`target: "content"`, `event = "movement_lock.hold"`) |
+|---|---|---|
+| The entity is not a player | Nothing changes | WARN, `decision_outcome = "refused"`, `reason = "not_a_player"` |
+| The player already holds a hold in the current space | Nothing changes | DEBUG, `decision_outcome = "already_held"` |
+| No live entity with `anchor_tag` in the player's space | Skipped | INFO, `decision_outcome = "skipped"`, `reason = "hold_skipped_no_anchor"` |
+| The player is more than `max_distance` from `at` (horizontal) | Skipped | INFO, `reason = "hold_skipped_far_from_anchor"`, with `distance` and `max_distance` |
+| None of the above | Pinned | INFO, `decision_outcome = "held"` |
+
+The two skips fail **open**: a missing prop, or a legacy character standing
+elsewhere in the zone, is never locked without a reason. A pinned player gets
+a `MovementHold` in `CellEntity::extensions`, the `message` line (if any), and
+the state flag when `client_flag` is set. The anchor is the `at` param and
+never the player's position, so a relog cannot walk it away.
+
+**What `release` does.** It removes the hold if the player has one, clears the
+state flag only if that hold set it, and says `message` whether or not there
+was a hold. The log row is `event = "movement_lock.release"` with
+`decision_outcome` `released` or `nothing_held`. A chain with no `message`
+releases silently (chain 1048 does, because chain 1025 already said its line).
+
+**The `client_flag` ref-count rule.** The flag goes through
+`update_state_flag`, a counted writer: a hold with `client_flag` adds one
+reference and its release removes one, so the flag stays set while a stun,
+death or ring transport still holds it. Every seeded `hold` has
+`client_flag: false` (see [BSF_MovementLock writers](../architecture/state-field-bits.md#who-writes-bsf_movementlock)).
+
+**Lifetime.** The hold is cell-local and never persisted. A relog rebuilds the
+cell entity without it, so the seed re-applies it from a `player_loaded` chain
+(1023 does, while mission 689 is not completed). A hold taken in one space is
+dropped the first time the player moves in another.
+
+**Seeded uses** (all in `castle_cellblock_chains.sql`): chain 1023 `hold` with
+`anchor_tag = Cellblock_PrisonBootControl` (sort 0; ability 1597 is not
+launched, its effect 1939 sets `BSF_MOVEMENT_LOCK`); chain 1025 `release` with the unlock line (sort 1, on a
+Livewire win); chain 1048 silent `release` on `mission_completed 689`, which
+covers a GM completing the mission.
 
 #### Entity-lifecycle verbs
 
