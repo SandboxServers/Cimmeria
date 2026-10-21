@@ -37,6 +37,7 @@ server has noticed the old socket is gone (FIN/RST, failed or timed-out send, ke
 ~90 s for an idle connection; with data in flight, retransmit and SEND_TIMEOUT govern instead;
 idle 30 min). A half-open drop is refused as `ticket_already_claimed` until then.
 
-Still open from #532: Flash policy `domain='*'`, accept-rate limiting.
+Still open from #532: Flash policy `domain='*'`, accept-rate limiting, and ticket-to-IP binding (admission matches the peer address
+against the session addresses, not the ticket a login claims).
 
 See also [[session-lifecycle-original]].

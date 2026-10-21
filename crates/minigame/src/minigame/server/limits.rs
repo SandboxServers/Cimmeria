@@ -39,3 +39,18 @@ impl Default for ListenerLimits {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// D-04 keeps the timeouts #1299 chose (the issue's 10 s / 15 min predate
+    /// them). With the connection caps gone these two are the whole bound on
+    /// a socket that was admitted but never plays.
+    #[test]
+    fn default_timeouts_are_the_decided_values() {
+        let limits = ListenerLimits::default();
+        assert_eq!(limits.handshake_timeout, Duration::from_secs(30));
+        assert_eq!(limits.idle_timeout, Duration::from_secs(30 * 60));
+    }
+}

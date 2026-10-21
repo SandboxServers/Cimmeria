@@ -2,10 +2,11 @@
 //! listener logs what unauthenticated peers send.
 //!
 //! The port is reachable from the internet, so two things are pinned here:
-//! a peer cannot hold a socket open without logging in, and bytes from a peer that never logged in never
-//! raise a WARN (only WARN and ERROR reach the Discord harvest). The
-//! authenticated case is the opposite: an unknown frame from a real
-//! session is a protocol gap and must still WARN, with its fields filled.
+//! a peer cannot hold a socket open without logging in, and bytes from a peer
+//! that never logged in never raise a WARN (only WARN and ERROR reach the
+//! Discord harvest). The authenticated case is the opposite: an unknown frame
+//! from a real session is a protocol gap and must still WARN, with its fields
+//! filled.
 
 use std::net::SocketAddr;
 

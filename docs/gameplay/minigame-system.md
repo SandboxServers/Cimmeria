@@ -390,8 +390,10 @@ noticed.
 Admission by address needs the real client address. On Linux, Docker's
 default (iptables) port publishing keeps it for traffic from other hosts.
 Where something in front of the port replaces it (Docker's userland proxy,
-Docker Desktop, a TCP proxy), every peer shares one address and that cap
-behaves like a second, lower total cap.
+Docker Desktop, a TCP proxy), every peer shows the proxy's private address.
+That peer matches only tickets recorded for a non-public address, so a player
+whose ticket carries a public address is refused as
+`unexpected_peer_with_sessions`.
 
 ### Logging
 

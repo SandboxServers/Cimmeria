@@ -19,6 +19,11 @@ const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
 /// Register one pending session whose client address is loopback.
 async fn register_loopback(registry: &SessionRegistry, entity_id: u32) {
+    register_from(registry, entity_id, LOOPBACK).await;
+}
+
+/// Register one pending session recorded for `client_ip`.
+async fn register_from(registry: &SessionRegistry, entity_id: u32, client_ip: IpAddr) {
     registry
         .register(
             entity_id,
@@ -33,11 +38,11 @@ async fn register_loopback(registry: &SessionRegistry, entity_id: u32) {
             vec![],
             vec![],
             None,
-            Some(LOOPBACK),
+            Some(client_ip),
             1,
         )
         .await
-        .expect("register loopback session");
+        .expect("register session");
 }
 
 /// A ticket slot for driving [`handle_connection`] without the accept loop:
@@ -112,14 +117,20 @@ async fn failed_handshake_frees_the_ticket_slot() {
     let addr = spawn_server(
         registry,
         ListenerLimits {
-            handshake_timeout: Duration::from_millis(150),
+            handshake_timeout: Duration::from_secs(1),
             ..ListenerLimits::default()
         },
     )
     .await;
 
     // Holds the only slot and says nothing until the deadline closes it.
+    // While it holds the slot, the ticket admits nobody else.
     let mut silent = TcpStream::connect(addr).await.expect("connect");
+    let mut rival = TcpStream::connect(addr).await.expect("connect");
+    assert!(
+        !admitted(&mut rival).await,
+        "the ticket slot is held while the handshake is pending",
+    );
     let mut byte = [0u8; 1];
     let n = tokio::time::timeout(Duration::from_secs(5), silent.read(&mut byte))
         .await
@@ -182,4 +193,49 @@ async fn admission_refusals_log_info_not_warn() {
         .unwrap_or_else(|| panic!("no no_free_ticket INFO row: {:#?}", capture.all()));
     assert!(row.fields.contains_key("peer"), "{row:#?}");
     assert_no_warn_or_error(&capture);
+}
+
+/// A private-network peer matches a ticket recorded for a different private
+/// address: behind a LAN or a Docker bridge the TCP peer is not the address
+/// the base saw at `start_minigame`, so all non-public peers are one class.
+#[tokio::test]
+async fn non_public_peer_matches_a_ticket_for_another_private_address() {
+    let registry = SessionRegistry::new();
+    register_from(&registry, 4407, IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20))).await;
+    let addr = spawn_server(registry, ListenerLimits::default()).await;
+
+    let mut client = TcpStream::connect(addr).await.expect("connect");
+    assert!(
+        admitted(&mut client).await,
+        "a loopback peer must match a 192.168.1.20 ticket (one non-public class)",
+    );
+    let mut second = TcpStream::connect(addr).await.expect("connect");
+    assert!(
+        !admitted(&mut second).await,
+        "the one non-public ticket admits one connection",
+    );
+}
+
+/// Refusals for a peer that holds no free ticket are throttled to one INFO
+/// row a window, because the same peer can repeat them at socket rate.
+#[tokio::test]
+async fn no_free_ticket_rows_are_throttled() {
+    let capture = LogCapture::install();
+    let registry = SessionRegistry::new();
+    register_loopback(&registry, 4408).await;
+    let addr = spawn_server(registry, ListenerLimits::default()).await;
+
+    let mut first = TcpStream::connect(addr).await.expect("connect");
+    assert!(admitted(&mut first).await);
+    for _ in 0..3 {
+        let mut refused = TcpStream::connect(addr).await.expect("connect");
+        assert!(!admitted(&mut refused).await);
+    }
+
+    let rows = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.level == Level::INFO && c.has_field("reason", "no_free_ticket"))
+        .count();
+    assert_eq!(rows, 1, "three refusals in one window write one row");
 }
