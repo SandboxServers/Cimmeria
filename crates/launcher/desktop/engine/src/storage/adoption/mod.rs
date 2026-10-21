@@ -20,6 +20,8 @@ mod model;
 pub(crate) mod preparation;
 mod publication;
 mod replay;
+#[cfg(all(test, not(target_os = "macos")))]
+mod unsafe_source_tests;
 pub use preparation::{
     abandon_preparation, inspect_preparation, list_preparations, PreparationRecord,
 };
