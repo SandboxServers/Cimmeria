@@ -12,9 +12,10 @@ use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 
 use super::handlers::{
-    kill_switch_active, log_refusal, mint_inner, refresh_inner, DevSessionRequest, QuotaPolicy,
-    Tables, TOKEN_TTL_SECONDS,
+    kill_switch_active, mint_inner, refresh_inner, DevSessionRequest, QuotaPolicy, Tables,
+    TOKEN_TTL_SECONDS,
 };
+use super::refusal_log::{log_refusal_in, Throttle};
 use super::token::{decode_token, encode_token, env_lock, AuthError, TokenClaims};
 use super::SCOPE_TELEMETRY_WRITE;
 
@@ -30,6 +31,7 @@ pub(super) struct EnvGuard {
     _lock: std::sync::MutexGuard<'static, ()>,
     prev_secret: Option<String>,
     prev_kill: Option<String>,
+    prev_endpoint: Option<String>,
 }
 
 impl EnvGuard {
@@ -42,10 +44,17 @@ impl EnvGuard {
         let prev_kill = std::env::var("CIMMERIA_TELEMETRY_KILL_SWITCH").ok();
         std::env::set_var("CIMMERIA_TELEMETRY_HMAC_SECRET", TEST_SECRET_HEX);
         std::env::remove_var("CIMMERIA_TELEMETRY_KILL_SWITCH");
+        // Set explicitly: with no env and no Host the mint is refused (LT-01).
+        let prev_endpoint = std::env::var("CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT").ok();
+        std::env::set_var(
+            "CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT",
+            "https://telemetry.test.example/api/telemetry",
+        );
         Self {
             _lock: lock,
             prev_secret,
             prev_kill,
+            prev_endpoint,
         }
     }
 }
@@ -59,6 +68,10 @@ impl Drop for EnvGuard {
         match self.prev_kill.take() {
             Some(v) => std::env::set_var("CIMMERIA_TELEMETRY_KILL_SWITCH", v),
             None => std::env::remove_var("CIMMERIA_TELEMETRY_KILL_SWITCH"),
+        }
+        match self.prev_endpoint.take() {
+            Some(v) => std::env::set_var("CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT", v),
+            None => std::env::remove_var("CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT"),
         }
     }
 }
@@ -287,7 +300,7 @@ fn kill_switch_is_on_only_for_the_literal_one() {
     assert!(kill_switch_active());
 }
 
-fn token_minted_at(iat: i64, exp: i64) -> String {
+pub(super) fn token_minted_at(iat: i64, exp: i64) -> String {
     let claims = TokenClaims {
         iss: "cimmeria-server".into(),
         sub: "install-abc".into(),
@@ -514,10 +527,10 @@ fn exhausted_refresh_quota_leaves_mint_available() {
         .expect("the launcher's mint-a-fresh-session fallback must stay open");
 }
 
-type Row = (Level, BTreeMap<String, String>);
+pub(super) type Row = (Level, BTreeMap<String, String>);
 
 #[derive(Clone, Default)]
-struct Rows(Arc<Mutex<Vec<Row>>>);
+pub(super) struct Rows(pub(super) Arc<Mutex<Vec<Row>>>);
 
 struct FieldText<'a>(&'a mut BTreeMap<String, String>);
 
@@ -542,6 +555,16 @@ impl<S: Subscriber> Layer<S> for Rows {
     }
 }
 
+/// Runs `f` with a fresh capture and returns its result and the rows it
+/// emitted. The one capture helper for the dev-session test modules.
+pub(super) fn capture<R>(f: impl FnOnce() -> R) -> (R, Vec<Row>) {
+    let rows = Rows::default();
+    let sub = tracing_subscriber::registry().with(rows.clone());
+    let out = tracing::subscriber::with_default(sub, f);
+    let captured = rows.0.lock().unwrap().clone();
+    (out, captured)
+}
+
 /// Runs one refresh and logs its refusal the way the `refresh` handler
 /// does, returning the refusal and the rows that were emitted.
 fn refused_refresh(
@@ -551,15 +574,11 @@ fn refused_refresh(
     now_unix: i64,
 ) -> (AuthError, Vec<Row>) {
     let peer = ip("203.0.113.5");
-    let rows = Rows::default();
-    let sub = tracing_subscriber::registry().with(rows.clone());
-    let err = tracing::subscriber::with_default(sub, || {
+    capture(|| {
         let err = refresh_inner(t, p, peer, token, Instant::now(), now_unix).unwrap_err();
-        log_refusal("refresh", peer, &err);
+        log_refusal_in(&Throttle::default(), "refresh", &err, Instant::now());
         err
-    });
-    let captured = rows.0.lock().unwrap().clone();
-    (err, captured)
+    })
 }
 
 // Each refused refresh leaves one row whose `reason` names the cause, so

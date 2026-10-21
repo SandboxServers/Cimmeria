@@ -60,7 +60,10 @@ impl<S: tracing::Subscriber> Layer<S> for Cap {
 
 pub(crate) fn capture<R>(f: impl FnOnce() -> R) -> (R, Vec<Captured>) {
     let store = Arc::new(Mutex::new(Vec::new()));
-    let r = tracing::subscriber::with_default(Registry::default().with(Cap(store.clone())), f);
+    let r = tracing::subscriber::with_default(Registry::default().with(Cap(store.clone())), || {
+        tracing::callsite::rebuild_interest_cache();
+        f()
+    });
     let v = store.lock().unwrap().clone();
     for event in &v {
         event.assert_no_ip();

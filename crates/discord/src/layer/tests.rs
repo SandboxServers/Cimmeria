@@ -301,6 +301,34 @@ fn signoz_only_rows_are_distinct_and_well_formed() {
 
 /// info/debug/trace are deliberately ignored — Discord is for warn+
 /// only.
+/// The launcher-summary route is anonymous, so any caller can drive its
+/// refusals: a WARN with `launcher_summary_refused` stays SigNoz-only.
+#[tokio::test(flavor = "current_thread")]
+async fn anonymous_summary_refusals_do_not_post() {
+    let mock = MockSender::new();
+    let calls = mock.calls_handle();
+    let cfg = errors_only_config(true, true);
+    let (handle, _task) = spawn(mock, cfg.clone());
+
+    let subscriber = tracing_subscriber::registry().with(DiscordLayer::new(handle, cfg));
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    tracing::warn!(
+        target: "launcher.ingest",
+        event = "launcher_summary_refused",
+        route = "launcher_summary",
+        reason = "rate_limited",
+        status = 429u16,
+        suppressed = 0u64,
+        "launcher summary refused, not recorded: rate_limited"
+    );
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(
+        calls.lock().await.is_empty(),
+        "an anonymous summary refusal must never post to Discord"
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn info_debug_trace_ignored() {
     let mock = MockSender::new();

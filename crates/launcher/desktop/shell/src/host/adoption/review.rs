@@ -1,5 +1,6 @@
 //! Bounded, readable projection of a native-held preview. The complete report
 //! stays native and is written to the adoption plan at confirmation.
+use super::rejection_dto::IndexFallbackView;
 use super::*;
 use cimmeria_launcher_engine::adoption::{
     AdoptionSourceRef, Classification, Difference, DownloadEstimate, Preview,
@@ -58,6 +59,9 @@ pub struct Review {
     /// What the adoption downloads before it can finish, when anything is needed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub download: Option<DownloadEstimate>,
+    /// Set when the published file index was unusable and the seed was checked instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_fallback: Option<IndexFallbackView>,
     /// Requested order, applied to the copy. Legacy sources only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub login_servers: Option<Vec<LoginServer>>,
@@ -150,6 +154,7 @@ impl Review {
             requires_replacement,
             backup_directory: report.backup.clone(),
             download: report.download.clone(),
+            index_fallback: report.index_fallback.as_ref().map(IndexFallbackView::from),
             login_servers: requested.map(|requested| {
                 requested
                     .login_servers

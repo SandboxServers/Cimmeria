@@ -96,13 +96,25 @@ table is in [observability.md](observability.md#log-indexes-and-parity-with-the-
 
 `upload_endpoint` in the mint response, and so in
 `current-session.json`, is the upload **base**
-(`https://host/api/telemetry`, default `http://localhost:8443/api/telemetry`):
-the launcher appends `/upload-chunk` and `/upload-bundle`. The DLL used
-to POST to it verbatim, so every batch from a launcher-written session
-went to the base path and was refused; it now appends `/upload-chunk`
-unless the value already ends with it (`uploader::chunk_url`). A blank
-`CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` (compose passes `${VAR:-}`) falls
-back to the default instead of handing callers `""`.
+(`https://host/api/telemetry`): the launcher appends `/upload-chunk` and
+`/upload-bundle`. The DLL used to POST to it verbatim, so every batch from a
+launcher-written session went to the base path and was refused; it now
+appends `/upload-chunk` unless the value already ends with it
+(`uploader::chunk_url`).
+
+The server resolves the base in a fixed order
+(`routes/dev_session/upload_endpoint.rs`): the
+`CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` env value if it is not blank (compose
+passes `${VAR:-}`, so blank means unset); else `https://<Host>/api/telemetry`
+when the `Host` header is valid and `X-Forwarded-Proto` is exactly `https`;
+else `http://<Host>/api/telemetry` for a loopback `Host` from a loopback
+peer (a one-machine dev box); else a built-in https default that is `None`
+until LT-41; else the mint and refresh answer **503** `no_upload_endpoint`.
+There is no localhost or plain-http fallback for a remote caller. The
+reasoning: a launcher told to upload to `http://localhost:8443` by a remote
+server sends nothing anywhere useful and the failure is silent, so a missing
+endpoint is a loud refusal instead. The table, the boot warnings and the
+Docker Desktop caveat are in [telemetry-upload-endpoint.md](../operations/telemetry-upload-endpoint.md#where-a-mint-sends-the-upload).
 
 ## Where the routes are served
 
@@ -119,8 +131,13 @@ Decision (@Cadacious, 2026-09-29): a remote player's launcher must work
 with no config and no secret, and the login port is the one address every
 player already reaches. Plain HTTP there adds no exposure the game does
 not already have: the client's own SOAP login sends the password over
-plain HTTP on that port. No TLS or tunnel is required; a Cloudflare route
-in front of the admin port remains an option.
+plain HTTP on that port. Since 2026-10-21 the colo also serves the same
+routes over https at `https://play.cimmeria.app`, through a Caddy reverse
+proxy that forwards only the telemetry routes to the login port and answers
+404 for everything else ([the colo route](../operations/telemetry-upload-endpoint.md#the-colo-route)). The server
+now hands out the https address, not the plain-http one; the plain-http
+login port still serves the routes for launchers that predate this. No
+Cloudflare Tunnel was ever deployed.
 
 Wiring: `cimmeria_admin_api::login_port_telemetry_router()` builds a
 stateless router holding those four routes and, since 2026-10-04, a fifth:
@@ -140,8 +157,10 @@ auth listeners serve with connect info, which the mint and refresh quotas
 need. Nothing else under `/api`, `/ws` or Swagger is served on the login
 port; `login_port_router_does_not_expose_admin_routes` pins that.
 
-A public server sets `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` to its login
-port (`http://<host>:8081/api/telemetry`) so uploads go there too.
+A public server sets `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` to an https URL
+it serves (the colo: `https://play.cimmeria.app/api/telemetry`), or sits
+behind a proxy that passes `Host`, `X-Forwarded-Proto: https` and
+`X-Forwarded-For`, in which case the server derives the URL itself.
 
 ## Launcher endpoint policy
 
@@ -162,6 +181,11 @@ in plaintext. Another port on the same host (the admin API's 8443) and
 look-alike hosts are refused, and an `https://` login server does not
 vouch for plain http to its host. The telemetry HTTP client never follows
 redirects, so a checked request cannot be bounced elsewhere.
+
+The server no longer depends on the third case: it hands out only https
+URLs, except for a loopback dev box or an explicit operator override. The
+launcher-side rule is unchanged here and is being tightened in
+launcher-telemetry wave 2.
 
 The desktop launcher mints from `<first login server>/api/auth/dev-session`,
 so with the default server list that is the public login port. (The retired
@@ -405,7 +429,8 @@ refuses a token without it. The scope is checked at ingest rather
 than assumed from the mint path, so narrowing what a token may do
 stays a one-line change on the server.
 
-**Quotas.** Mint and refresh are counted per peer address, and mint
+**Quotas.** Mint and refresh are counted per quota-key address (the socket
+peer, or the forwarded caller behind a loopback proxy; see below), and mint
 additionally per `install_id`, over a fixed window. Refresh verifies
 the token before charging its counter, and counts tokens that fail
 verification on a separate, tighter counter, so junk sent from an
@@ -460,13 +485,35 @@ implementation:
   Both routes also cap the request body at 8 KiB, because the JSON
   body is parsed before any quota is charged.
 
-Behind a reverse proxy (a Cloudflare Tunnel, say) every request
-arrives from the proxy, so the per-IP quota degenerates to a global
-cap. No forwarded-for header is read: an unconditional read would let
-any caller set its own quota key. Operators fronting the admin port
-should raise `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` accordingly. On the
-login port each launcher arrives from its own address, so the quota keys
-on the player.
+**The quota key behind a proxy.** Behind a reverse proxy every request
+arrives from the proxy, so a plain peer-address key degenerates to a global
+cap. The server therefore picks the key with `rate_limit_ip`
+(`routes/dev_session/forwarded_for.rs`): when the socket peer is loopback,
+the key is the rightmost comma entry of the last `X-Forwarded-For` header, if
+it parses as a bare IP; otherwise it is the peer. Headers from a non-loopback
+peer are ignored, so a caller who reaches the port directly cannot choose its
+quota key, and the rightmost entry is the one the proxy appended, not one the
+caller wrote. The result is only an `ip_key` for the quota counters and the
+per-address upload slot. It is never logged, stored, returned or put in a
+span, and it is not hashed into anything either. This is the C18 rule and
+owner decisions D-LT19 and D-LT18; the statement of the no-address rule is
+[telemetry.md § No address in any log](../operations/telemetry.md#no-address-in-any-log).
+
+What stays shared: a NAT or office egress, a proxy that is not on loopback,
+and a container that sees its proxy as the bridge gateway rather than as
+loopback (whether the colo's does is OPS-LT2, unverified). Operators there
+raise the per-address quotas; trusting the header past loopback is a
+separate owner decision (D-LT20) that is not taken.
+
+**Refusal rows.** A refused mint or refresh writes one throttled row per
+`(route, reason)` per 60 seconds, with a `reason` from
+`dev_session_quota_exceeded`, `dev_session_kill_switch`,
+`dev_session_no_upload_endpoint`, `dev_session_secret_unusable`,
+`dev_session_bad_token`, `dev_session_expired`,
+`dev_session_lifetime_exceeded` and `dev_session_bad_request`, and a
+`suppressed` count. A row carries no peer address and nothing derived from
+one. The 503 status covers the kill switch and a missing upload endpoint,
+and only those. Levels and filters: [telemetry-upload-endpoint.md](../operations/telemetry-upload-endpoint.md#dev-session-mint-and-refresh).
 
 **Bounded refresh chain.** `refresh` preserves the original `iat` and
 refuses once the session passes `CIMMERIA_TELEMETRY_MAX_SESSION_SECS`

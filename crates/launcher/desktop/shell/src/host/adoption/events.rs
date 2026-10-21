@@ -14,7 +14,7 @@ fn mode(in_place: bool) -> &'static str {
 }
 
 /// The serde code of `value` (snake_case), or `"unknown"` when it has none.
-fn code<T: serde::Serialize>(value: T) -> String {
+pub(super) fn code<T: serde::Serialize>(value: T) -> String {
     match serde_json::to_value(value) {
         Ok(serde_json::Value::String(text)) => text,
         _ => "unknown".to_owned(),

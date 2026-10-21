@@ -213,6 +213,8 @@ copied nor downloaded a second time.
   [launcher-adopt-ux README](../../../../docs/analysis/launcher-adopt-ux/README.md)
   keep these refusals hard for now.
 
+Three fields explain a review and its refusals. `AdoptionStatus.last_rejection` names the check that stopped a worker (the preview or the confirmation): `check`, the file (`entry`), `expected`, `found` and `http_status` for a failed download; it is `null` when no worker refused. `Review.index_fallback` is present only when the review fell back from the published file index, and gives `reason`, `check`, `http_status` and `seed_bytes`: why the signed seed archive is downloaded instead. `Progress.item` names the step in progress (`seed`, `patch`, `file_index`, `index_build`, `reference`) and is absent for the copy phase and for an unknown label. A refusal that a command returns directly is logged as `adoption_rejected` with its check, and is not stored in `last_rejection`; the command's error code is its response.
+
 **Verification.** With a published release index, the launcher fetches
 `file-index.json` first (paths, sizes, SHA-256) and checks it against the manifest's
 hash. It keeps the index in the state root as `file-index-<sha256>.json`, so a second

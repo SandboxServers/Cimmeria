@@ -268,6 +268,39 @@ After adoption, the folder is the launcher's own: **Play**, **Repair game**,
 game updates and **Uninstall…** work on it as on a fresh install. Uninstall
 removes only what the launcher manages there and leaves your own files.
 
+#### Why adoption downloaded the game archive
+
+Adoption checks your files against the published file index for the release.
+When that index is available and verified, the launcher compares your files
+with it and downloads only the files it must replace. If the index is missing
+or cannot be used, the launcher has no file list to compare against, so it
+downloads the whole signed game archive instead, which is about 4.1 GB for the
+current release, and builds the list from it. The launcher names the reason:
+
+- This release has no published file index.
+- The published file index is malformed.
+- The published file index could not be downloaded.
+- The published file index has the wrong size.
+- The published file index does not match its signed digest.
+- The published file index could not be read.
+- The published file index does not belong to this release.
+- The published file index could not be read from disk.
+
+To skip the download, use a game archive you already have. See
+[Use a game archive you already downloaded](#use-a-game-archive-you-already-downloaded).
+
+#### Reading an adoption refusal
+
+When the launcher refuses an adoption, it shows one line with up to four parts:
+
+- **Check** names the test that failed, in plain words.
+- **File** names the file the test was about, when one applies.
+- **Expected** is the value the signed release requires, such as a size or a digest.
+- **Found** is the value the launcher saw in your files.
+
+Expected and Found appear only when the test compares two values. If this build
+does not know a test, the line reads `Check:` followed by its internal name.
+
 ### Use a game archive you already downloaded
 
 If you already downloaded the game archive, you can use that file instead of

@@ -38,14 +38,14 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->1,534<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,534<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,395<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,714<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,888<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,637<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,531<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,531<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,350<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,713<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,843<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,646<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,542<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,542<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,457<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,721<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,950<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,647<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,542<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,542<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,457<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,721<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,950<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,647<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
@@ -60,7 +60,8 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [Container Distribution](operations/container.md) | `docker run` the published `ghcr.io/sandboxservers/cimmeria-server` image â€” env reference, volume layout, reset workflow |
 | [Colo Auto-Update Deployment](operations/colo-deploy.md) | Self-maintaining single-host deploy: Watchtower auto-pulls `latest-prerelease`; the database persists on a named volume. Game stack [`docker/compose.yml`](../docker/compose.yml) and SigNoz stack [`docker/signoz/`](../docker/signoz/), as the colo runs them |
 | [Persistent Player Data Runbook](operations/persistent-player-data.md) | What survives a restart or release, backups, restore (disaster recovery), the forced resources rebuild, reading `[db-sync]` log lines, fail-closed starts, and the `cimmeria-server-pgdata` volume. |
-| [Dev-Session Telemetry](operations/telemetry.md) | `CIMMERIA_TELEMETRY_HMAC_SECRET` provisioning + rotation, kill switch, storage layout. Design lives in [architecture/dev-session-telemetry.md](architecture/dev-session-telemetry.md). |
+| [Dev-Session Telemetry](operations/telemetry.md) | `CIMMERIA_TELEMETRY_HMAC_SECRET` provisioning + rotation, kill switch, quotas, storage layout, the no-address-in-any-log rule. Design lives in [architecture/dev-session-telemetry.md](architecture/dev-session-telemetry.md). |
+| [Launcher Telemetry Upload Endpoint](operations/telemetry-upload-endpoint.md) | Reference with a diagnostic checklist: how a mint picks the upload URL (no localhost fallback; 503 `no_upload_endpoint`), the boot and refusal rows with one SigNoz filter per reason, the colo https route through Caddy with rollback, the forwarded-for quota key, the 12 launcher event targets, and the "No launcher rows in SigNoz" checklist. |
 | [SigNoz Deployment](operations/signoz-deployment.md) | Server logs + Mercury packet shipping via OTLP to a self-hosted SigNoz (ClickHouse-backed). Local + colo bring-up, retention, troubleshooting. Design lives in [architecture/observability.md](architecture/observability.md). |
 | [NPC AI Telemetry Runbook](operations/npc-ai-telemetry-runbook.md) | After a play session: which SigNoz view or dashboard panel answers each "what did that NPC do, and why?" question, the `.bug` bookmark workflow, and the helper scripts for large pulls. The views and dashboard JSON export live in [operations/signoz/](operations/signoz/npc-ai-views.md). |
 | [Launcher Summary Views](operations/signoz/launcher-summary-views.md) | Reading notes for the two launcher-summary SigNoz fixtures, [launcher-journey.dashboard.json](operations/signoz/launcher-journey.dashboard.json) and [launcher-summary.view.json](operations/signoz/launcher-summary.view.json): who is counted, what a row stands for, how to import them, and the offline guard that ties their queries to the rows the ingest writes. Fixtures only, never imported into a SigNoz. Design lives in [architecture/launcher-summary-telemetry.md](architecture/launcher-summary-telemetry.md). |

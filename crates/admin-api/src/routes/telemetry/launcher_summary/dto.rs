@@ -220,6 +220,30 @@ impl SummaryError {
     pub(super) const QUERY: &'static str = "Query string not allowed";
 }
 
+impl SummaryError {
+    /// The closed code a refusal is logged under: the variant's name.
+    pub(super) fn code(&self) -> &'static str {
+        match self {
+            Self::Paused => "paused",
+            Self::OverQuota(_) => "over_quota",
+            Self::UnsupportedMediaType => "unsupported_media_type",
+            Self::TooLarge => "too_large",
+            Self::BadRequest(_) => "bad_request",
+        }
+    }
+
+    /// The status `into_response` answers with.
+    pub(super) fn status(&self) -> u16 {
+        match self {
+            Self::Paused => AuthError::KillSwitchActive.status().as_u16(),
+            Self::OverQuota(_) => 429,
+            Self::UnsupportedMediaType => 415,
+            Self::TooLarge => 413,
+            Self::BadRequest(_) => 400,
+        }
+    }
+}
+
 impl From<QuotaExceeded> for SummaryError {
     fn from(e: QuotaExceeded) -> Self {
         SummaryError::OverQuota(e)

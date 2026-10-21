@@ -217,12 +217,14 @@ pub(super) fn replay(
         let manifest = release.manifest();
         if plan.needs_seed {
             let seed = fetched.seed.as_deref().ok_or(Error::InvalidArtifact)?;
-            if crate::unpack::detect(seed).map_err(|_| Error::UnsupportedArchive)?
+            if crate::unpack::detect(seed)
+                .map_err(|_| archive_refused("seed", Error::UnsupportedArchive))?
                 == crate::unpack::ArchiveKind::Zip
             {
-                super::reference::strict_zip(seed)?;
+                super::reference::strict_zip(seed).map_err(|e| archive_refused("seed", e))?;
             }
-            crate::unpack::unpack(seed, &scratch, sink).map_err(|_| Error::InvalidArtifact)?;
+            crate::unpack::unpack(seed, &scratch, sink)
+                .map_err(|_| archive_refused("seed", Error::InvalidArtifact))?;
             crate::install_layout::place_bundled_cooked_data(&scratch)?;
         }
         for &k in &plan.patches {
@@ -238,16 +240,22 @@ pub(super) fn replay(
                 )?;
             }
             let patch = manifest.patches.get(k).ok_or(Error::InvalidArtifact)?;
+            let label = format!("patch:{}", patch.id);
             let archive = fetched
                 .patches
                 .get(k)
                 .and_then(Option::as_deref)
                 .ok_or(Error::InvalidArtifact)?;
-            let dest = crate::patch_dest::patch_dest(&scratch, patch)
-                .map_err(|_| Error::UnsupportedLayout)?;
-            super::reference::strict_zip(archive)?;
+            let dest = crate::patch_dest::patch_dest(&scratch, patch).map_err(|_| {
+                rejection::reject(
+                    Error::UnsupportedLayout,
+                    Rejection::new("patch_layout_unsupported").entry(&label),
+                )
+            })?;
+            super::reference::strict_zip(archive).map_err(|e| archive_refused(&label, e))?;
             std::fs::create_dir_all(&dest)?;
-            crate::unpack::unpack(archive, &dest, sink).map_err(|_| Error::InvalidArtifact)?;
+            crate::unpack::unpack(archive, &dest, sink)
+                .map_err(|_| archive_refused(&label, Error::InvalidArtifact))?;
         }
         let mut stored = BTreeMap::new();
         for target in &plan.targets {
@@ -257,7 +265,13 @@ pub(super) fn replay(
             if entry.size != expected.size
                 || !hex(&entry.sha256).eq_ignore_ascii_case(&expected.sha256)
             {
-                return Err(Error::InvalidArtifact);
+                return Err(rejection::reject(
+                    Error::InvalidArtifact,
+                    Rejection::new("patch_replay_mismatch")
+                        .entry(target)
+                        .expected(rejection::digest(expected.size, &expected.sha256))
+                        .found(rejection::digest(entry.size, &hex(&entry.sha256))),
+                ));
             }
             let dest = inventory::native(&prep_dir.join("replacements"), target);
             inventory::copy(&built, &dest, &entry, cancel)?;
@@ -268,9 +282,20 @@ pub(super) fn replay(
     // Best effort: the scratch tree holds only copies of verified bytes.
     let _ = std::fs::remove_dir_all(&scratch);
     if let Err(error) = &outcome {
-        tracing::warn!(target: "adoption", folder = %folder_root.display(), ?error, "adoption replay failed; the replacement files were not built");
+        tracing::warn!(target: "adoption", code = rejection::code(error), "adoption replay failed; the replacement files were not built");
     }
     outcome
+}
+
+/// The refusal for an archive this replay cannot unpack; `entry` is `seed` or `patch:<id>`.
+fn archive_refused(entry: &str, error: Error) -> Error {
+    let found = rejection::code(&error);
+    rejection::reject(
+        error,
+        Rejection::new("patch_archive_unsupported")
+            .entry(entry)
+            .found(found),
+    )
 }
 
 /// Copies the folder file `(stock, folder_file)` into `scratch` as the input
@@ -301,7 +326,22 @@ fn copy_local(
         })
     });
     if !wanted {
-        return Err(Error::InvalidArtifact);
+        let expected = index.patches.get(k).and_then(|layer| {
+            layer
+                .inputs
+                .iter()
+                .find(|input| input.path.eq_ignore_ascii_case(stock))
+        });
+        return Err(rejection::reject(
+            Error::InvalidArtifact,
+            Rejection::new("patch_input_unexpected")
+                .entry(stock)
+                .expected(expected.map_or_else(
+                    || "no input at this path".to_string(),
+                    |input| rejection::digest(input.size, &input.sha256),
+                ))
+                .found(rejection::digest(entry.size, &hash)),
+        ));
     }
     let dest = inventory::native(scratch, stock);
     match std::fs::remove_file(&dest) {

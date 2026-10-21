@@ -377,6 +377,32 @@ fn a_modified_release_file_is_replaced_only_with_consent_and_changes_nothing() {
 }
 
 #[test]
+fn a_modified_file_without_a_replacement_names_the_blocking_file() {
+    let f = Fixture::new(None);
+    std::fs::write(f.folder().join("later.txt"), b"edited by the player").unwrap();
+    let mut preview = f.preview().unwrap();
+    preview.replacements.clear();
+    let (result, record) = rejection::scope(|| preview.consent(&choices()));
+    assert_eq!(result, Err(Error::VerificationFailed));
+    let record = record.unwrap();
+    assert_eq!(record.check, "blocking_files");
+    assert_eq!(record.entry.as_deref(), Some("later.txt"));
+    assert_eq!(record.found.as_deref(), Some("1"));
+}
+
+#[test]
+fn a_leftover_content_ready_file_is_named_in_the_refusal() {
+    let f = Fixture::new(None);
+    std::fs::write(f.folder().join("content-ready.json"), b"{}").unwrap();
+    let (result, record) = rejection::scope(|| f.preview());
+    assert_eq!(result.err(), Some(Error::LeftoverLauncherFiles));
+    let record = record.unwrap();
+    assert_eq!(record.check, "leftover_launcher_files");
+    assert_eq!(record.entry.as_deref(), Some("content-ready.json"));
+    assert_eq!(record.found.as_deref(), Some("content_ready"));
+}
+
+#[test]
 fn an_old_launcher_ledger_for_another_release_is_classified_not_refused() {
     let f = Fixture::new(Some("another-seed"));
     let before = f.scan();

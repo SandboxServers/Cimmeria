@@ -198,8 +198,10 @@ Off until two values are in `.env`:
 
 ```bash
 CIMMERIA_TELEMETRY_HMAC_SECRET=<openssl rand -hex 64>
-CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=http://<public host>:8081/api/telemetry
+CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=https://play.cimmeria.app/api/telemetry
 ```
+
+The endpoint is an https URL the server does not serve itself: the board's Caddy (`board-proxy`) forwards the five telemetry routes from `https://play.cimmeria.app` to the login port on loopback `:8081` and answers 404 for everything else. The proxy must pass `Host`, `X-Forwarded-Proto: https` and `X-Forwarded-For`. The Caddyfile is host config, not yet in the agent-board repo (OPS-LT1), and whether the server container sees Caddy as loopback is unchecked (OPS-LT2). Probe, rollback (`Caddyfile.bak-*`, `docker restart board-proxy`) and the checks: [telemetry-upload-endpoint.md](telemetry-upload-endpoint.md#the-colo-route). Nothing here has run against a deployed server with the https-only changes.
 
 Two more are passed through the same way and are optional; left out or blank, the server keeps its defaults:
 

@@ -20,6 +20,7 @@ pub mod install_progress;
 pub mod install_report;
 pub mod logs;
 pub mod manifest;
+pub mod manifest_chain;
 pub mod overlay_meta;
 pub mod overlay_pack;
 pub mod patch_dest;

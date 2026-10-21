@@ -217,11 +217,24 @@ pub enum Phase {
     Extraction,
     Copy,
 }
+/// The step a download or extraction is on, from the closed table in C16.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProgressItem {
+    Seed,
+    Patch,
+    FileIndex,
+    IndexBuild,
+    Reference,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Progress {
     pub phase: Phase,
     pub current: u64,
     pub total: u64,
+    /// Absent for copy progress and for labels outside the table.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item: Option<ProgressItem>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -261,6 +274,8 @@ pub struct AdoptionStatus {
     pub owned: bool,
     pub completed: Option<Completed>,
     pub last_error: Option<AdoptionError>,
+    /// The check behind `last_error` when the engine recorded one.
+    pub last_rejection: Option<super::rejection_dto::AdoptionRejection>,
     /// The entries a `unsafe_file` refusal names (launcher-adopt-ux D-AU5);
     /// `None` for every other state. Paths are relative to the chosen folder.
     pub unsafe_entries: Option<adoption::UnsafeReport>,

@@ -5,30 +5,26 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use axum::extract::ConnectInfo;
+use axum::http::HeaderMap;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
+use super::forwarded_for::rate_limit_ip;
 use super::launcher_kind;
 use super::quota::{ip_key, validate_install_id, WindowTable};
+use super::refusal_log;
 use super::token::{
     encode_token, load_secret, AuthError, TokenClaims, SESSION_KIND_LAB, SESSION_KIND_LAUNCHER,
     SESSION_KIND_PLAYER,
 };
+use super::upload_endpoint::{self, ResolvedEndpoint};
 
 pub const TOKEN_TTL_SECONDS: i64 = 8 * 60 * 60;
 
-/// Default upload endpoint: the cimmeria-server's own admin port,
-/// localhost. For deployments where the launcher runs on a different
-/// host than the server, operators MUST set
-/// `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` to the publicly-reachable
-/// URL, normally the public login port, which serves the same routes
-/// (`http://<host>:8081/api/telemetry`, see
-/// [`crate::login_port_telemetry_router`]).
-///
-/// Note: this points launcher uploads at cimmeria-server itself,
-/// which then replays the events through `tracing` so the OTLP layer
-/// ships them to SigNoz.
-const DEFAULT_UPLOAD_ENDPOINT: &str = "http://localhost:8443/api/telemetry";
+// The upload endpoint comes from `upload_endpoint::resolve`:
+// `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` is an optional override, then an
+// https-proxied Host, a one-host dev box, or the built-in https default.
+// There is no localhost fallback (owner directive 1).
 pub(super) const DEFAULT_CHUNK_MAX_BYTES: u64 = 1_048_576;
 const DEFAULT_FLUSH_INTERVAL_MS: u64 = 2_000;
 
@@ -213,36 +209,44 @@ fn tables() -> &'static Tables {
 
 pub async fn mint(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(req): Json<DevSessionRequest>,
 ) -> Result<Json<DevSessionResponse>, AuthError> {
-    mint_inner(
+    mint_with_headers(
         tables(),
         &QuotaPolicy::from_env(),
         peer.ip(),
+        &headers,
         req,
         Instant::now(),
         chrono::Utc::now().timestamp(),
     )
-    .inspect_err(|e| log_refusal("mint", peer.ip(), e))
+    .inspect_err(|e| refusal_log::log_refusal("mint", e))
     .map(Json)
 }
 
 pub async fn refresh(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(req): Json<RefreshRequest>,
 ) -> Result<Json<DevSessionResponse>, AuthError> {
-    refresh_inner(
+    refresh_with_headers(
         tables(),
         &QuotaPolicy::from_env(),
         peer.ip(),
+        &headers,
         &req.token,
         Instant::now(),
         chrono::Utc::now().timestamp(),
     )
-    .inspect_err(|e| log_refusal("refresh", peer.ip(), e))
+    .inspect_err(|e| refusal_log::log_refusal("refresh", e))
     .map(Json)
 }
 
+/// Test entry with no request headers: the endpoint then comes from the
+/// env override, which `EnvGuard` sets. Tests that need a Host call
+/// [`mint_with_headers`].
+#[cfg(test)]
 pub(super) fn mint_inner(
     tables: &Tables,
     policy: &QuotaPolicy,
@@ -251,21 +255,77 @@ pub(super) fn mint_inner(
     now: Instant,
     now_unix: i64,
 ) -> Result<DevSessionResponse, AuthError> {
+    mint_with_headers(
+        tables,
+        policy,
+        peer_ip,
+        &HeaderMap::new(),
+        req,
+        now,
+        now_unix,
+    )
+}
+
+/// Same, for refresh.
+#[cfg(test)]
+pub(super) fn refresh_inner(
+    tables: &Tables,
+    policy: &QuotaPolicy,
+    peer_ip: IpAddr,
+    token: &str,
+    now: Instant,
+    now_unix: i64,
+) -> Result<DevSessionResponse, AuthError> {
+    refresh_with_headers(
+        tables,
+        policy,
+        peer_ip,
+        &HeaderMap::new(),
+        token,
+        now,
+        now_unix,
+    )
+}
+
+/// The endpoint to advertise, or the 503 refusal. Resolved before anything is
+/// signed or charged, so a refused mint leaves no token and no stream.
+fn endpoint_for(peer_ip: IpAddr, headers: &HeaderMap) -> Result<ResolvedEndpoint, AuthError> {
+    let env = upload_endpoint::upload_endpoint_env();
+    let peer_is_loopback = peer_ip.to_canonical().is_loopback();
+    // Logged by refusal_log::log_refusal (reason dev_session_no_upload_endpoint).
+    let resolved = upload_endpoint::resolve(env.as_deref(), headers, peer_is_loopback)
+        .ok_or(AuthError::NoUploadEndpoint)?;
+    upload_endpoint::warn_if_unreachable(&resolved, peer_is_loopback);
+    Ok(resolved)
+}
+
+pub(super) fn mint_with_headers(
+    tables: &Tables,
+    policy: &QuotaPolicy,
+    peer_ip: IpAddr,
+    headers: &HeaderMap,
+    req: DevSessionRequest,
+    now: Instant,
+    now_unix: i64,
+) -> Result<DevSessionResponse, AuthError> {
     if kill_switch_active() {
         return Err(AuthError::KillSwitchActive);
     }
+    // The quotas count the forwarded caller behind a loopback proxy (C18).
+    let rate_ip = rate_limit_ip(peer_ip, headers);
+    let endpoint = endpoint_for(peer_ip, headers)?;
     let launcher = launcher_kind::admit(policy, &req)?;
     // The launcher table is charged first, so a launcher mint that its own
     // limit refuses never spends the shared `mint_ip` allowance (S1). A
     // player mint is not charged there at all.
-    launcher_kind::charge_ip(tables, policy, peer_ip, launcher, now)?;
+    launcher_kind::charge_ip(tables, policy, rate_ip, launcher, now)?;
     // Charged before `install_id` is validated, so rotating or
     // malforming it buys nothing from one address. A body that fails
     // JSON extraction never reaches this function (axum rejects it in
     // the `Json` extractor) and is not charged; no token is issued on
     // that path either.
     tables.mint_ip.check_and_record(
-        ip_key(peer_ip),
+        ip_key(rate_ip),
         policy.mint_per_ip,
         policy.window,
         "mint/ip",
@@ -304,6 +364,8 @@ pub(super) fn mint_inner(
         git_sha = %req.git_sha,
         launcher_version = %req.launcher_version,
         exp,
+        upload_endpoint_source = endpoint.source.as_str(),
+        upload_endpoint_https = endpoint.is_https(),
         "Minted dev-session telemetry token"
     );
     tracing::debug!(
@@ -316,16 +378,17 @@ pub(super) fn mint_inner(
         session_id,
         token,
         expires_at_ms: exp * 1000,
-        upload_endpoint: upload_endpoint_env(),
+        upload_endpoint: endpoint.url,
         chunk_max_bytes: launcher_kind::chunk_max_bytes(launcher),
         flush_interval_ms: DEFAULT_FLUSH_INTERVAL_MS,
     })
 }
 
-pub(super) fn refresh_inner(
+pub(super) fn refresh_with_headers(
     tables: &Tables,
     policy: &QuotaPolicy,
     peer_ip: IpAddr,
+    headers: &HeaderMap,
     token: &str,
     now: Instant,
     now_unix: i64,
@@ -333,6 +396,8 @@ pub(super) fn refresh_inner(
     if kill_switch_active() {
         return Err(AuthError::KillSwitchActive);
     }
+    // The quotas count the forwarded caller behind a loopback proxy (C18).
+    let rate_ip = rate_limit_ip(peer_ip, headers);
     // Verify before charging the refresh quota. Charging first let
     // anyone who shares an egress address with real launchers (a
     // tunnel, an office NAT) burn the shared bucket with junk tokens
@@ -344,7 +409,7 @@ pub(super) fn refresh_inner(
         Ok(claims) => claims,
         Err(e) => {
             tables.refresh_bad.check_and_record(
-                ip_key(peer_ip),
+                ip_key(rate_ip),
                 policy.refresh_bad_per_ip,
                 policy.window,
                 "refresh/bad_token",
@@ -355,7 +420,7 @@ pub(super) fn refresh_inner(
     };
     launcher_kind::refuse_refresh(&claims)?;
     tables.refresh_ip.check_and_record(
-        ip_key(peer_ip),
+        ip_key(rate_ip),
         policy.refresh_per_ip,
         policy.window,
         "refresh/ip",
@@ -386,6 +451,7 @@ pub(super) fn refresh_inner(
             now: now_unix,
         });
     }
+    let endpoint = endpoint_for(peer_ip, headers)?;
     let session_deadline = claims.iat.saturating_add(policy.max_session_secs);
     let new_exp = (now_unix + TOKEN_TTL_SECONDS).min(session_deadline);
     let new_claims = TokenClaims {
@@ -416,7 +482,7 @@ pub(super) fn refresh_inner(
         session_id: new_claims.sid,
         token,
         expires_at_ms: new_exp * 1000,
-        upload_endpoint: upload_endpoint_env(),
+        upload_endpoint: endpoint.url,
         chunk_max_bytes: DEFAULT_CHUNK_MAX_BYTES,
         flush_interval_ms: DEFAULT_FLUSH_INTERVAL_MS,
     })
@@ -438,89 +504,11 @@ pub(super) fn record_stream(claims: &TokenClaims, peer_ip: IpAddr) {
     });
 }
 
-/// Every refusal the operator can act on leaves a row with its `reason`
-/// (see docs/operations/telemetry.md): quota limits need tuning, a paused
-/// ingest or an expired token explains a launcher's telemetry stream
-/// going quiet. Refusals a caller can't fix are logged at INFO or below.
-pub(super) fn log_refusal(route: &'static str, peer: IpAddr, err: &AuthError) {
-    match err {
-        AuthError::QuotaExceeded(q) => tracing::warn!(
-            route,
-            peer = %peer,
-            scope = q.scope,
-            retry_after_secs = q.retry_after_secs,
-            reason = "dev_session_quota_exceeded",
-            "dev-session request refused: {}",
-            q
-        ),
-        AuthError::BadInstallId(_) | AuthError::BadField { .. } => tracing::debug!(
-            route,
-            peer = %peer,
-            reason = "dev_session_bad_request",
-            "dev-session request refused: {err}"
-        ),
-        // The operator's misconfiguration, not the caller's: every launcher
-        // and lab session is refused until it is fixed, and before this row
-        // the only trace of it was a 500 on the caller's side.
-        AuthError::SecretMissing | AuthError::SecretTooShort { .. } => tracing::error!(
-            route,
-            peer = %peer,
-            reason = "dev_session_secret_unusable",
-            "dev-session request refused: {err}"
-        ),
-        AuthError::KillSwitchActive => tracing::warn!(
-            route,
-            peer = %peer,
-            reason = "dev_session_kill_switch",
-            "dev-session request refused: {err}"
-        ),
-        AuthError::SessionLifetimeExceeded { elapsed, cap } => tracing::info!(
-            route,
-            peer = %peer,
-            elapsed,
-            cap,
-            reason = "dev_session_lifetime_exceeded",
-            "dev-session request refused: {err}"
-        ),
-        AuthError::Expired { exp, now } => tracing::info!(
-            route,
-            peer = %peer,
-            exp,
-            now,
-            reason = "dev_session_expired",
-            "dev-session request refused: {err}"
-        ),
-        AuthError::BadPayload(_) | AuthError::BadSignature => tracing::info!(
-            route,
-            peer = %peer,
-            reason = "dev_session_bad_token",
-            "dev-session request refused: {err}"
-        ),
-        _ => {}
-    }
-}
-
 pub(crate) fn kill_switch_active() -> bool {
     matches!(
         std::env::var("CIMMERIA_TELEMETRY_KILL_SWITCH"),
         Ok(v) if v == "1"
     )
-}
-
-/// `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT`, or the local default when it is
-/// unset **or blank**. `docker/compose.yml` passes it as
-/// `${CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT:-}`, which sets it to `""` when
-/// the operator's `.env` has no value; handing callers an empty endpoint
-/// would make every upload fail with a URL error instead.
-pub(super) fn upload_endpoint_env() -> String {
-    upload_endpoint_from(std::env::var("CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT").ok())
-}
-
-pub(super) fn upload_endpoint_from(value: Option<String>) -> String {
-    value
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| DEFAULT_UPLOAD_ENDPOINT.to_string())
 }
 
 /// A malformed value falls back to the default rather than refusing

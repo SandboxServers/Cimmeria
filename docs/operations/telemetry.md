@@ -96,64 +96,57 @@ gh secret set CIMMERIA_TELEMETRY_HMAC_SECRET \
 exposure. The secret lives only in GitHub Actions secret store + the
 running cimmeria-server process env.
 
-## Pointing the launcher at a non-localhost server
+## Pointing the launcher at a server
 
 The server serves the four dev-session telemetry routes (mint, refresh
 and the two uploads; see [Endpoints](#endpoints)) on two listeners: the
 admin API port (`8443`, private, no authentication) and the public SOAP
 login port (`LOGON_PORT`, `8081`), which every player's game client
-already reaches. Decision (@Cadacious, 2026-09-29): plain HTTP on the
-login port is acceptable, because the game's own login already sends the
-player's password over plain HTTP on that port.
+already reaches. On the colo a Caddy reverse proxy also serves exactly
+these routes, and the summary route, at `https://play.cimmeria.app`; see
+[the colo route](telemetry-upload-endpoint.md#the-colo-route).
 
 The code also merges a fifth route, `/api/telemetry/launcher-summary`, on
 both listeners (see [Launcher summaries](#launcher-summaries)). Unlike the
 other four it is anonymous: it takes no token. The owner approved serving
-it on the public port on 2026-10-04, which extends that decision to it as a
-fifth route. No launcher build has a summary endpoint, so nothing calls it
-yet. Nothing else from the admin API is served on `8081`.
+it on the public port on 2026-10-04. No launcher build has a summary
+endpoint, so nothing calls it yet. Nothing else from the admin API is
+served on `8081` or through the proxy.
 
-The launcher sends telemetry to:
+**Upload endpoints are https.** The mint hands the launcher an
+`upload_endpoint` URL. The server never falls back to localhost or to plain
+http for a remote caller: it uses `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT`, else
+`https://<Host>/api/telemetry` when a proxy says the request was https, and
+otherwise refuses the mint with 503 `no_upload_endpoint`. The full order,
+the boot warnings and the Docker Desktop caveat are in
+[telemetry-upload-endpoint.md](telemetry-upload-endpoint.md#where-a-mint-sends-the-upload).
+LT-41 will make `https://play.cimmeria.app/api/telemetry` the built-in
+default; until it lands there is none, so a server without the env value
+and without an https proxy mints nothing.
 
-- any `https://` address;
-- plain `http://` on the player's own machine (`localhost`, `127.x`,
-  `::1`);
-- plain `http://` to the exact host and port of one of the launcher's
-  `http://` login servers (the list written into `LoginInternal.lua`; the
-  default is `http://play.cimmeria.app:8081`).
-
-The desktop launcher mints from the installation's first login server
-(`<login server>/api/auth/dev-session`), so the rule applies to that
-address and to every `upload_endpoint` the server hands back, including
-after a token refresh. Anything else leaves the telemetry DLL out before a
-byte is sent; Settings shows the last Play's status as `endpoint_refused`
+**What the launcher accepts today.** The launcher still sends telemetry to
+any `https://` address, plain `http://` on the player's own machine
+(`localhost`, `127.x`, `::1`), and plain `http://` to the exact host and
+port of one of its `http://` login servers (the list written into
+`LoginInternal.lua`)
 ([`telemetry/endpoint.rs`](../../crates/launcher-core/src/telemetry/endpoint.rs)).
-Another port on a login server's host, such as `8443`, is still refused.
-To point a launcher at a local server, put it first in **Settings → Login
-servers** (for example `Local = http://localhost:8081`).
+That last rule is launcher-side and is being tightened in launcher-telemetry
+wave 2; the server no longer relies on it. The desktop launcher mints from
+the installation's first login server (`<login server>/api/auth/dev-session`).
+A refused address leaves the telemetry DLL out before a byte is sent, and
+Settings shows the last Play's status as `endpoint_refused`. To point a
+launcher at a local server, put it first in **Settings → Login servers**
+(for example `Local = http://localhost:8081`).
 
 **The retired egui launcher** kept a separate `telemetry.auth_url` in its
 `launcher-config.json`. The desktop launcher's legacy import keeps that
 value in its record but mints from the login server list.
 
-The dev-session mint hands the launcher an `upload_endpoint` URL from
-`CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT`. The default,
-`http://localhost:8443/api/telemetry`, only works when the launcher and
-the server share a host. A public server sets it to its own login port:
-
-```bash
-CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT="http://<public host>:8081/api/telemetry"
-```
-
-An HTTPS route (for example a Cloudflare Tunnel hostname, see step 2
-below) also works and is optional.
-
 **Sending your own telemetry to the colo over SSH** still works: forward
 the colo's admin port with
 `ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L 127.0.0.1:8443:127.0.0.1:8443 <colo host>`
 and set `telemetry.auth_url` to `http://localhost:8443/api`. The colo's
-`upload_endpoint` then points at the login port, which the default login
-server list allows.
+`upload_endpoint` is its https address, which the launcher accepts.
 
 ## Enable client telemetry on the colo
 
@@ -163,55 +156,52 @@ and lab session gets a 500 from `/api/auth/dev-session` and
 logs `dev-session telemetry: every mint and upload will be refused`
 (WARN, `reason = dev_session_secret_unusable`), and each refused request
 logs the same reason at ERROR. When it is working, the startup line is
-`dev-session telemetry: mint and ingest enabled` with the
-`upload_endpoint` it hands out.
+`dev-session telemetry: mint and ingest enabled`, followed by an
+`upload_endpoint_source` line (an INFO, or a WARN with a `reason` when the
+endpoint is missing or not https; see
+[the boot rows](telemetry-upload-endpoint.md#log-rows-the-resolution-writes)).
 
 1. **Generate the secret** on any machine: `openssl rand -hex 64`.
-2. **Optional: an HTTPS route.** Not needed for players: launchers reach
-   the telemetry routes on the public login port. If you also want an
-   HTTPS address, add a Cloudflare Tunnel hostname (for example
-   `telemetry.<your-domain>`) to `/etc/cloudflared/config.yml` that sends
-   only the telemetry routes to `http://cimmeria:8443`, and give that
-   hostname **no** Cloudflare Access policy (the launcher cannot answer an
-   Access login; the routes carry their own HMAC token):
-
-   ```yaml
-   ingress:
-     - hostname: telemetry.<your-domain>
-       path: ^/api/(auth/dev-session|telemetry/)
-       service: http://cimmeria:8443
-     # ... the existing signoz.<your-domain> rule ...
-     - service: http_status:404
-   ```
-
-   Route DNS with `cloudflared tunnel route dns cimmeria-signoz
-   telemetry.<your-domain>`, and start the `cloudflared` container on
-   `signoz-net` as [signoz-remote-access.md](signoz-remote-access.md)
-   shows (the colo runs no tunnel as of 2026-10-04). The `path` rule
-   keeps the rest of the admin API, which has no authentication (#439),
-   off the public hostname.
+2. **Check the https route.** Players do not need it (launchers reach the
+   telemetry routes on the public login port), but it is the address the
+   server hands out. The colo's Caddy (`board-proxy`) forwards only the five
+   telemetry routes from `https://play.cimmeria.app` to the server's login
+   port on loopback `:8081` and answers 404 for everything else. No
+   Cloudflare Tunnel is involved: one was planned and was never deployed.
+   The Caddyfile is host config and is not yet mirrored into the
+   agent-board repo (OPS-LT1), so a `board-proxy` redeploy can drop the
+   route. Probe and rollback are in
+   [telemetry-upload-endpoint.md](telemetry-upload-endpoint.md#the-colo-route).
 3. **Set both variables in `/opt/cimmeria/.env`** (the file
    `docker compose` reads beside `compose.yml`; it is never committed):
 
    ```bash
    CIMMERIA_TELEMETRY_HMAC_SECRET=<the 128 hex chars from step 1>
-   CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=http://play.cimmeria.app:8081/api/telemetry
+   CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=https://play.cimmeria.app/api/telemetry
    ```
 
-   With the step-2 route, the upload endpoint may be
-   `https://telemetry.<your-domain>/api/telemetry` instead.
    `docker/compose.yml` passes both through as `${VAR:-}`. A blank upload
-   endpoint falls back to `http://localhost:8443/api/telemetry`, which
-   only a launcher on the colo itself can reach.
+   endpoint counts as unset: the server then derives an https URL from the
+   proxied `Host`, and refuses the mint (503 `no_upload_endpoint`) if the
+   request did not come through the proxy. There is no localhost fallback.
 4. **Recreate the container** so it picks up the environment:
    `docker compose up -d` in `/opt/cimmeria`. Leave out `-f compose.yml`:
    it would override `COMPOSE_FILE` and recreate the container without
    its overlays (Discord file, lab endpoint).
-5. **Check it.** `docker logs cimmeria 2>&1 | grep "dev-session telemetry"`
-   shows the enabled line. From any machine,
-   `curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' http://play.cimmeria.app:8081/api/auth/dev-session`
+5. **Check it.** `docker logs cimmeria 2>&1 | grep -E "dev-session telemetry|upload_endpoint"`
+   shows the enabled line and an INFO `upload_endpoint_source` (not a WARN).
+   From any machine:
+
+   ```powershell
+   curl.exe -s -o NUL -w "%{http_code}`n" -X POST -H "Content-Type: application/json" -d "{}" https://play.cimmeria.app/api/auth/dev-session
+   ```
+
    returns `422` (the body is incomplete, so the route is reachable and
-   parsing), not `404` or `500`.
+   parsing), not `404` or `500`. The colo-specific checks, including whether
+   the server container sees the proxy as loopback (OPS-LT2), are under
+   [Colo deploy checks](telemetry-upload-endpoint.md#colo-deploy-checks).
+   None of this has run: the server that answers behind the route does not
+   have the https-only changes deployed yet.
 6. **Launchers need nothing.** A current launcher's default `auth_url`
    and login server already point at the colo; the player only ticks the
    telemetry opt-in (see [Player opt-in](#player-opt-in)).
@@ -341,6 +331,11 @@ that header and falls back to launching without telemetry.
 | `CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_SESSION` | `6` | Requests to `/api/telemetry/upload-bundle` per session per hour. |
 | `CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP` | `30` | Requests to `/api/telemetry/upload-bundle` per peer address per hour. |
 
+"Peer address" in this table and the launcher table below means the quota
+key address: the socket peer, or, behind a loopback proxy, the caller the
+proxy's `X-Forwarded-For` names. The rule is in
+[telemetry-upload-endpoint.md](telemetry-upload-endpoint.md#the-forwarded-for-quota-key).
+
 A launcher token lives 15 minutes, carries no account or machine, is
 never refreshed (a refresh answers 400), and its mints also count against
 the shared per-IP quota.
@@ -392,13 +387,22 @@ table above are not passed through: a line for one of them in `.env`
 reaches nothing until the variable is also added to the `cimmeria`
 service's `environment:` block.
 
-**Raise the per-IP mint quota if the admin port sits behind a proxy
-or a shared egress address.** The counter keys on the peer address,
-and no `X-Forwarded-For` header is read (reading one unconditionally
-would let any caller pick its own quota key), so behind a Cloudflare
-Tunnel or an office NAT every launcher shares one bucket. The default
-of 120/hour covers a small team; a larger one, or a CI fleet, needs
-more.
+**Behind the colo's proxy the key is the caller.** The counters key on the
+address the quota rule picks. When the socket peer is loopback, which is
+what Caddy looks like to the server, the key is the rightmost entry of the
+last `X-Forwarded-For` header; from any other peer the header is ignored,
+so a caller who reaches the port directly cannot choose its own key. The
+key is used only to count and is never logged. Whether the colo's container
+sees Caddy as loopback has not been checked (OPS-LT2).
+
+**Raise the per-IP quotas where the key is still shared:** a NAT or office
+egress, any proxy that is not on loopback, and a container that sees the
+proxy as its bridge gateway (in that case every https caller shares one
+bucket until the check in OPS-LT2 or a trust decision, D-LT20, resolves it).
+The default of 120 mints an hour covers a small team; a larger one, or a CI
+fleet, needs more. 600 chunks a minute covers about ten sessions; raise
+`CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP` (and
+`CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP`) for more.
 
 Behind a shared address the mint quota is also a denial-of-service
 lever: mint takes no credential, so anyone who can reach the port can
@@ -407,11 +411,6 @@ rest of the window. Raise the limit there, or set it to `0`. Refresh
 is not exposed the same way, because it charges its main counter only
 after the token verifies.
 
-The per-address upload quotas share the same caveat: behind one proxy
-or NAT, every session counts against one address. 600 chunks a minute
-covers about ten sessions; raise `CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP`
-(and `CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP`) for more.
-
 ### Symptoms and what to change
 
 | Symptom | Cause | Fix |
@@ -419,6 +418,7 @@ covers about ten sessions; raise `CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP`
 | Players' Play sessions start without the telemetry DLL (Settings shows `session_unavailable`), server logs a WARN with `reason=dev_session_quota_exceeded`, `scope=mint/ip` | Shared egress address | Raise `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP`, or `0` to disable |
 | Mint returns `400 Invalid branch: must not contain control characters` (or another metadata field) | The launcher sent a field with a control character or over 256 bytes; refused so it cannot forge a log line | Fix the launcher-side value; the server does not strip it |
 | One machine repeatedly refused while others are fine | A launcher relaunching in a loop | Investigate that install before raising `..._PER_INSTALL` |
+| Mint answers `503 no_upload_endpoint`, server logs `reason=dev_session_no_upload_endpoint` | No env value, no https-proxied `Host`, no built-in default | Set `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` to an https URL; see [the checklist](telemetry-upload-endpoint.md#no-launcher-rows-in-signoz) |
 | Telemetry stops partway through a very long session | Session passed `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | Expected; the next launch mints a fresh session. Raise the cap only with a reason |
 | Uploads answer 429, server logs a WARN on `launcher.ingest` with `reason=rate_limited` | Many sessions behind one address, or one uploader posting too often | Raise `CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP` for a shared address; investigate a single session first |
 | Uploads answer 413, `reason=over_budget` with a `budget` | One upload passed a size budget | See [Upload size and rate limits](#upload-size-and-rate-limits); the budgets are fixed in code |
@@ -495,8 +495,9 @@ with `reason` (`kill_switch`, `missing_token`, `bad_token`,
 `bad_rows` for an upload that was accepted in part, the last with a
 `bad_rows` count), `budget` and `limit` for a size
 refusal or truncation, `kept` (rows or lines replayed) and
-`dropped_estimate` for a truncation, `pool` (`peer_share` or `route`) and `limit` for a `busy` refusal, `peer`, `cimmeria.session_kind`, and `session_id` /
-`install_id` once the token verified. The row never carries the payload.
+`dropped_estimate` for a truncation, `pool` (`peer_share` or `route`) and `limit` for a `busy` refusal, `cimmeria.session_kind`, and `session_id` /
+`install_id` once the token verified. The row never carries the payload
+or the caller's address.
 `dropped_estimate` is in the unit of the budget that was hit: rows for a
 chunk (past the expansion cap, estimated from the compression ratio),
 files for `budget = zip entries`, **bytes** for `budget = expanded
@@ -548,7 +549,7 @@ are not part of the launcher kind.
 |---|---|---|
 | chunks per session per minute | 10 | `CIMMERIA_TELEMETRY_LAUNCHER_CHUNK_QUOTA_PER_SESSION` |
 | chunks per install per minute | 20 | `CIMMERIA_TELEMETRY_LAUNCHER_CHUNK_QUOTA_PER_INSTALL` |
-| chunks per peer address per minute | 60 | `CIMMERIA_TELEMETRY_LAUNCHER_CHUNK_QUOTA_PER_IP` |
+| chunks per quota-key address per minute | 60 | `CIMMERIA_TELEMETRY_LAUNCHER_CHUNK_QUOTA_PER_IP` |
 | rows per session, lifetime | 300 | `CIMMERIA_TELEMETRY_LAUNCHER_ROWS_PER_SESSION` |
 | rows per minute, all launcher callers | 3,000 | `CIMMERIA_TELEMETRY_LAUNCHER_ROWS_PER_MINUTE` |
 | compressed chunk body | 64 KiB | the chunk rules above (413) |
@@ -556,8 +557,12 @@ are not part of the launcher kind.
 | one chunk row | 4 KiB | the chunk rules above (`bad_rows`) |
 | rows per chunk | 200 | the chunk rules above (truncated) |
 
-A row the launcher kind may keep has one event name, `client.launcher.adoption`,
-and a `ClientNative` shape. Any other event is dropped. The row's fields are
+A row the launcher kind may keep has one of twelve event names and a
+`ClientNative` shape: `client.launcher.` followed by `adoption`, `startup`,
+`crash`, `update`, `game_update`, `install`, `repair`, `launch`, `settings`,
+`telemetry`, `ui` or `login`
+([the list](telemetry-upload-endpoint.md#accepted-launcher-event-targets)).
+Any other event is dropped. The row's fields are
 scalar only: at most 16 keys, each key at most 32 bytes, each string value at
 most 256 bytes. Keys that could name a host, an account, a machine or a
 session (`ip`, `host`, `account`, `user`, `email`, `machine_id`,
@@ -580,7 +585,7 @@ server:
 | `cimmeria-client` | `launcher.debug_log` | `sgwdebuglog` lines |
 | `cimmeria-client` | `launcher.session_meta` | Session boundaries and rotation events. `kind=game_exited` carries the game's `pid` and `exit_code` (the exit code is absent when the OS reports none); the desktop launcher also sends `host_pid` and `early` |
 | `cimmeria-client` | `launcher.summary` | The desktop launcher's attempt summaries: `event = launcher_summary` per accepted summary and `event = launcher_phase` per timed phase. See [Launcher summaries](#launcher-summaries) |
-| `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk, with the session totals; a `warn` with `reason = session_over_budget` when the runaway guard suppressed events; a throttled row per refused upload (`warn`, except `busy`, which is `info`), with its `route`, `reason` and `event` (`upload_auth_refused` for a missing, bad or expired token, SigNoz-only; `upload_refused` for every other refusal) ([Upload size and rate limits](#upload-size-and-rate-limits)). Also `event = launcher_summary_batch`, one row per launcher-summary request that reached validation |
+| `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk, with the session totals; a `warn` with `reason = session_over_budget` when the runaway guard suppressed events; a throttled row per refused upload (`warn`, except `busy`, which is `info`), with its `route`, `reason` and `event` (`upload_auth_refused` for a missing, bad or expired token, SigNoz-only; `upload_refused` for every other refusal) ([Upload size and rate limits](#upload-size-and-rate-limits)). Also `event = launcher_summary_batch`, one row per launcher-summary request that reached validation, and `event = launcher_summary_refused` (WARN, SigNoz-only) for a summary request refused as a whole ([reasons](telemetry-upload-endpoint.md#launcher-summaries)). None of these rows carries a `peer` |
 | `cimmeria-server` | `launcher.bundle` | Bundle metadata and refusals (caps, bad entries) |
 | none | `launcher.key_dump` | Encryption key material; `off` in every OTLP filter, never leaves the host |
 
@@ -724,7 +729,7 @@ code does when a summary arrives.
   beside it are still accepted; a summary that writes a key twice is
   invalid.
 - **Rate limit.** `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` limits requests
-  per peer address per minute (owner decision, 2026-10-04). The default is
+  per quota-key address per minute (owner decision, 2026-10-04). The default is
   `12`, and `0` disables it. The window is a fixed 60 seconds of this
   route's own, and `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` does not change
   it. Over the limit the route answers 429 with a `Retry-After` of 61
@@ -732,15 +737,20 @@ code does when a summary arrives.
   without retrying and keeps its rows for the next one. Every request is
   counted, the malformed and the oversized (413) ones too; only a 503 under
   the kill switch is not. An IPv4 peer seen as `::ffff:a.b.c.d` on a
-  dual-stack listener is counted as `a.b.c.d`.
+  dual-stack listener is counted as `a.b.c.d`. The summary route's 503 is
+  the kill switch only; it has no mint, so it never answers
+  `no_upload_endpoint`.
 - **Kill switch.** The route answers 503 under
   [the kill switch](#kill-switch), before the quota is charged.
 - **Where the rows land.** `launcher.summary` rows go to
   `service.name = cimmeria-client`; the per-request `launcher_summary_batch`
   row goes to `cimmeria-server` under `launcher.ingest`. A request refused
   as a whole (kill switch, rate limit, content type, query string,
-  oversized or malformed body) writes neither, and the handler logs nothing
-  about the refusal.
+  oversized or malformed body) writes neither of those, but it does write one
+  `launcher_summary_refused` row on `launcher.ingest` (WARN, SigNoz-only,
+  one per reason per minute, with `reason`, `status` and `suppressed`; no
+  address). The reasons and a filter for each are in
+  [telemetry-upload-endpoint.md](telemetry-upload-endpoint.md#launcher-summaries).
 - **Duplicates.** The server remembers the last 16,384 accepted ids in
   memory. A restart forgets them, so a summary resent after one is accepted
   again.
@@ -749,17 +759,19 @@ code does when a summary arrives.
   [signoz/launcher-summary-views.md](signoz/launcher-summary-views.md). The
   fixtures have not been imported into any SigNoz.
 
-**A shared address shares the limit.** The allowance belongs to the
-peer address, and no `X-Forwarded-For` header is read. Behind a NAT, a
-reverse proxy or a tunnel every launcher arrives from one address, so the
-default allows 12 summary requests per minute for all of them together.
-A launcher sends a few requests an hour, so that is room for many of them,
-but anyone behind that address can also spend the allowance with 12
-requests of any content and turn the others' posts into 429s until the
-minute ends, and do it again the next minute. Check the limit against the
-number of launchers behind the address before pointing any launcher at the
-route, and raise it if they would need more. The commands, for systemd and
-for compose, are under [Changing a quota](#changing-a-quota).
+**A shared address shares the limit.** The allowance belongs to the quota
+key address. Behind the colo's Caddy that is the caller named by
+`X-Forwarded-For`, provided the server sees the proxy as a loopback peer
+(OPS-LT2, unchecked); behind a NAT, an office egress or any non-loopback
+proxy every launcher arrives from one address, so the default allows 12
+summary requests per minute for all of them together. A launcher sends a
+few requests an hour, so that is room for many of them, but anyone behind
+that address can also spend the allowance with 12 requests of any content
+and turn the others' posts into 429s until the minute ends, and do it again
+the next minute. Check the limit against the number of launchers behind the
+address before pointing any launcher at the route, and raise it if they
+would need more. The commands, for systemd and for compose, are under
+[Changing a quota](#changing-a-quota).
 
 **Do not act on these rows.** The route is anonymous, so anyone can post
 correctly shaped rows within the rate limit. Rows are self-reported; they
@@ -809,6 +821,29 @@ While it is off:
 
 ## Privacy
 
+### No address in any log
+
+Two owner directives (D-LT18, D-LT19) govern what the server writes about a
+caller's network address on the launcher and telemetry routes:
+
+- **No IP in any row, and no hash of one.** No log row, span or field on
+  `/api/telemetry*` or `/api/auth/dev-session*` carries a caller's address.
+  The request span drops `peer` on those paths. The rule does not reach the
+  admin-router `admin.request` `unmatched` rows, which keep `peer`, or the
+  game-login rows in `crates/auth`.
+- **The forwarded address is a quota key and nothing else.** From a loopback
+  peer the server counts quotas against the rightmost `X-Forwarded-For`
+  entry; it never logs, stores, returns or hashes it. See
+  [telemetry-upload-endpoint.md](telemetry-upload-endpoint.md#the-forwarded-for-quota-key).
+- **Endpoints are https.** The server hands out only an https upload URL
+  (or an explicit env override with a WARN), and the public routes are
+  reached over `https://play.cimmeria.app`.
+
+Known and not fixed: the world-entry correlation that matches a telemetry
+stream to a game session by socket address (`StreamRecord.peer_ip`, TG-NET-18)
+fails behind Caddy, because the socket peer is loopback. Repairing it needs a
+forwarded-address match (D-LT21, default no).
+
 - `install_id` and `machine_id` are stable per-install identifiers.
   The mint endpoint logs them at **debug** level only (info gets an
   8-char correlator) to reduce leakage through any future log-upload
@@ -839,7 +874,10 @@ While it is off:
 | `/api/telemetry/launcher-summary` | POST | none (anonymous), strict payload, rate-limited per address | Desktop-launcher attempt summaries (JSON). Takes no token. See [Launcher summaries](#launcher-summaries). |
 
 A 503 with `Retry-After: 60` on any of these routes means the kill switch
-is on; a 503 with `Retry-After: 5` on an upload route means every upload
+is on; a 503 `no_upload_endpoint` on the mint or refresh means the server
+has no https upload URL to hand out (see
+[telemetry-upload-endpoint.md](telemetry-upload-endpoint.md#where-a-mint-sends-the-upload));
+a 503 with `Retry-After: 5` on an upload route means every upload
 slot was busy. A 429 with `Retry-After` means a quota was hit — see
 [Mint and refresh quotas](#mint-and-refresh-quotas). A 413 on an upload
 route means it passed a size budget — see

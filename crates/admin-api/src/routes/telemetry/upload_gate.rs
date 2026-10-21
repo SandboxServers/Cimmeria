@@ -20,6 +20,7 @@ use axum::http::HeaderMap;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
 
+use crate::routes::dev_session::forwarded_for;
 use crate::routes::dev_session::launcher_kind::launcher_disabled_from_env;
 use crate::routes::dev_session::quota::{install_key, ip_key, WindowTable};
 use crate::routes::dev_session::{env_u32, kill_switch_active, AuthError, TokenClaims};
@@ -344,6 +345,9 @@ pub(super) fn admit(
     who.session_id = Some(claims.sid.clone());
     who.install_id = Some(claims.sub.clone());
     who.session_kind = Some(claims.session_kind().to_string());
+    // The quotas and the peer slot count the forwarded caller behind a
+    // loopback proxy (C18). `who.peer` keeps the socket address.
+    let rate_ip = forwarded_for::rate_limit_ip(who.peer, headers);
 
     let (session_table, ip_table, per_session, per_ip, window, slots, pool_size) = match route {
         Route::Chunk => (
@@ -377,7 +381,7 @@ pub(super) fn admit(
         (slots, pool_size)
     };
     if launcher {
-        charge_launcher_chunk(state, policy, &claims, who.peer, now)?;
+        charge_launcher_chunk(state, policy, &claims, rate_ip, now)?;
     } else {
         // `install_key` is a seeded hash of any caller string; the session
         // id is one, and is the token's own.
@@ -391,7 +395,7 @@ pub(super) fn admit(
             )
             .map_err(|q| IngestError::Auth(AuthError::QuotaExceeded(q)))?;
         ip_table
-            .check_and_record(ip_key(who.peer), per_ip, window, "upload/ip", now)
+            .check_and_record(ip_key(rate_ip), per_ip, window, "upload/ip", now)
             .map_err(|q| IngestError::Auth(AuthError::QuotaExceeded(q)))?;
     }
     // Refuse rather than queue: a queued request would still hold its
@@ -405,7 +409,7 @@ pub(super) fn admit(
         &state.peer_slots,
         slots,
         route,
-        ip_key(who.peer),
+        ip_key(rate_ip),
         per_peer,
         pool_size,
     )

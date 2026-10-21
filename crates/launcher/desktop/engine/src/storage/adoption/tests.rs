@@ -371,7 +371,9 @@ fn actual_legacy_lock_is_held_for_the_entire_review_and_released_on_cancel() {
     let f = Fixture::new();
     let before = f.source_snapshot();
     let preview = f.preview().unwrap();
-    assert!(source::lock_source(preview.legacy().unwrap()).is_err());
+    let (result, record) = rejection::scope(|| source::lock_source(preview.legacy().unwrap()));
+    assert!(result.is_err());
+    assert_eq!(record.map(|r| r.check), Some("folder_in_use"));
     drop(preview);
     assert!(
         source::lock_source(&f.state.lock().unwrap().legacy_import().unwrap().unwrap()).is_ok()
@@ -650,4 +652,43 @@ async fn signed_update_preserves_adoption_provenance_and_exact_legacy_import() {
             .current_release,
         plan.target
     );
+}
+#[test]
+#[rustfmt::skip]
+fn a_cancelled_copy_preview_is_not_a_comparison_rejection() {
+    let f = Fixture::new();
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let progress = crate::install_progress::ProgressSink::latest().0;
+    let (result, record) = rejection::scope(|| preview_using(f.state.clone(), f.request(), cancel, progress, Backend::Native, None));
+    assert_eq!(result.err(), Some(Error::Cancelled));
+    assert_eq!(record, None);
+}
+#[tokio::test]
+#[rustfmt::skip]
+async fn a_worker_returns_the_refusal_it_recorded() {
+    let f = Fixture::new();
+    std::fs::create_dir(f.destination()).unwrap();
+    let mut worker = test_support::start_preview(f.state.clone(), f.request(), "http://127.0.0.1:9/manifest.json".into()).unwrap();
+    assert_eq!(worker.wait().await.err(), Some(Error::Storage(StorageError::InvalidDirectory)));
+    assert_eq!(worker.last_rejection().map(|r| r.check), Some("destination_exists"));
+}
+#[test]
+fn idle_refusals_record_the_revisions_they_compared() {
+    let f = Fixture::new();
+    let state = f.state.lock().unwrap();
+    let operation = state.operations().snapshot().revision;
+    let preferences = state.preferences().revision;
+    let (result, record) = rejection::scope(|| idle(&state, operation + 1, preferences));
+    assert_eq!(result, Err(Error::Operation(ContractError::StaleRevision)));
+    let record = record.unwrap();
+    assert_eq!(record.check, "stale_revision");
+    assert_eq!(record.expected, Some((operation + 1).to_string()));
+    assert_eq!(record.found, Some(operation.to_string()));
+    let (result, record) = rejection::scope(|| idle(&state, operation, preferences + 1));
+    assert_eq!(result, Err(Error::Storage(StorageError::StaleRevision)));
+    let record = record.unwrap();
+    assert_eq!(record.check, "stale_revision");
+    assert_eq!(record.expected, Some((preferences + 1).to_string()));
+    assert_eq!(record.found, Some(preferences.to_string()));
 }

@@ -8,9 +8,9 @@ use std::time::{Duration, Instant};
 use crate::routes::dev_session::AuthError;
 use crate::routes::telemetry::dto::IngestError;
 use crate::routes::telemetry::refusal_log::{
-    Decision, Pool, RefusalLog, GLOBAL_ROWS_PER_WINDOW, MAX_WINDOW, RESET_QUIET, WINDOW,
+    Decision, Pool, RefusalLog, Truncation, GLOBAL_ROWS_PER_WINDOW, MAX_WINDOW, RESET_QUIET, WINDOW,
 };
-use crate::routes::telemetry::replay_tests::capture;
+use crate::routes::telemetry::replay_tests::{capture, Row};
 use crate::routes::telemetry::upload_gate::{Route, Uploader};
 
 /// The burst: repeats of one refusal inside the window write nothing, and
@@ -299,4 +299,55 @@ fn credential_refusals_carry_the_signoz_only_event() {
             err.reason()
         );
     }
+}
+
+/// The peer address is in no ingest row: not as a `peer` field, and not in
+/// any field's text (the message included). The test's uploader is
+/// `198.51.100.7`.
+fn assert_no_peer_address(rows: &[Row], what: &str) {
+    assert!(!rows.is_empty(), "{what}: no row was written");
+    for row in rows {
+        assert!(
+            !row.fields.contains_key("peer"),
+            "{what}: a peer field in {:?}",
+            row.fields
+        );
+        for (key, value) in &row.fields {
+            assert!(
+                !value.contains("198.51.100.7"),
+                "{what}: `{key}` holds the peer address: {value}"
+            );
+        }
+    }
+}
+
+/// The `report` row (a refused upload) names the token's ids, not the peer.
+#[test]
+fn report_row_carries_no_peer_address() {
+    let log = RefusalLog::new();
+    let err = IngestError::MissingAuth;
+    let rows = capture(|| log.report(Route::Chunk, &uploader(), &err, Instant::now()));
+    assert_no_peer_address(&rows, "report");
+}
+
+/// The `report_truncated` row names the token's ids, not the peer.
+#[test]
+fn report_truncated_row_carries_no_peer_address() {
+    let log = RefusalLog::new();
+    let t = Truncation {
+        budget: "rows",
+        limit: 10,
+        kept: 10,
+        dropped_estimate: 5,
+    };
+    let rows = capture(|| log.report_truncated(Route::Chunk, &uploader(), &t, Instant::now()));
+    assert_no_peer_address(&rows, "report_truncated");
+}
+
+/// The `report_bad_rows` row names the token's ids, not the peer.
+#[test]
+fn report_bad_rows_row_carries_no_peer_address() {
+    let log = RefusalLog::new();
+    let rows = capture(|| log.report_bad_rows(&uploader(), 2, Instant::now()));
+    assert_no_peer_address(&rows, "report_bad_rows");
 }
