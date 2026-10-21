@@ -127,7 +127,7 @@ impl NativeHost {
     fn startup_facts(&self, state: &DesktopState, previous_run_panicked: bool) -> StartupFacts {
         let preferences = state.preferences();
         StartupFacts {
-            version: env!("CARGO_PKG_VERSION"),
+            version: updater::compiled_version(),
             os: std::env::consts::OS,
             arch: std::env::consts::ARCH,
             release_build: !cfg!(debug_assertions),
@@ -268,6 +268,8 @@ mod tests {
         let call = &source[start..start + source[start..].find(");").unwrap()];
         assert!(call.contains("compiled_version()"), "{call}");
         assert!(!call.contains("CARGO_PKG_VERSION"), "{call}");
+        // The needle is split so this assert does not match its own text.
+        assert!(!source.contains(concat!("version: env!(", "\"CARGO_PKG_VERSION\")")));
     }
 
     #[test]
