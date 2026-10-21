@@ -99,6 +99,44 @@ fn persistence_contract_strings_are_stable_for_all_variants() {
     }
 }
 
+/// The persisted tag for each variant, as an exhaustive match: adding a
+/// `CellOutboxPayload` variant fails to compile here until its tag is pinned.
+fn pinned_tag(p: &CellOutboxPayload) -> &'static str {
+    match p {
+        CellOutboxPayload::ItemUsed { .. } => "item_used",
+        CellOutboxPayload::InventoryItemGranted { .. } => "inventory_item_granted",
+        CellOutboxPayload::InventoryItemRemoved { .. } => "inventory_item_removed",
+    }
+}
+
+#[test]
+fn every_variant_event_type_matches_its_pinned_tag() {
+    // Compile-time guard: fails when a variant is added without a pinned tag.
+    let values = [
+        CellOutboxPayload::ItemUsed {
+            instance_id: 0,
+            type_id: 0,
+            target_id: 0,
+        },
+        CellOutboxPayload::InventoryItemGranted {
+            item_id: 0,
+            container_id: 0,
+            slot_id: 0,
+            quantity: 0,
+        },
+        CellOutboxPayload::InventoryItemRemoved {
+            item_id: 0,
+            source_container_id: 0,
+        },
+    ];
+    for v in &values {
+        let tag = pinned_tag(v);
+        assert_eq!(v.event_type(), tag, "event_type() drift for {v:?}");
+        let json = serde_json::to_value(v).unwrap();
+        assert_eq!(json["kind"], tag, "JSON `kind` tag drift for {v:?}");
+    }
+}
+
 #[test]
 fn inventory_item_granted_roundtrips() {
     let p = CellOutboxPayload::InventoryItemGranted {
