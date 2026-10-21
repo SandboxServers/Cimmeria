@@ -12,17 +12,18 @@ const Review=Schema.Struct({preview_handle:Schema.String,operation_revision:Coun
  download:Schema.optionalKey(Schema.Struct({seed:Schema.Boolean,patches:Schema.Array(Schema.String),bytes:Count,local_seed:Schema.optionalKey(Schema.Boolean)})),
  login_servers:Schema.optionalKey(Schema.Array(Schema.Struct({name:Schema.String,url:Schema.String}))),client_patches_enabled:Schema.optionalKey(Schema.Boolean),
  game_telemetry_opted_in:Schema.optionalKey(Schema.Boolean),game_telemetry_available:Schema.Boolean,requires_normalization:Schema.Boolean,requires_telemetry_acceptance:Schema.Boolean,user_data_remains_in_source:Schema.Boolean,
- in_place:Schema.Boolean,blocked_files:Schema.Array(Schema.String)});
+ in_place:Schema.Boolean,blocked_files:Schema.Array(Schema.String),
+ index_fallback:Schema.optionalKey(Schema.Struct({reason:Schema.String,check:Schema.NullOr(Schema.String),http_status:Schema.NullOr(Count),seed_bytes:Count}))});
 const Unsafe=Schema.Struct({entries:Schema.Array(Schema.Struct({reason:Schema.Literals(['link','cloud_file','hard_link','special_file','name','case_collision']),path:Schema.NullOr(Schema.String)})),total:Count});
 export const AdoptionStatus=Schema.Struct({schema_version:Schema.Literal(1),native:NativeSnapshot,
  backend:Schema.Literals(['available','in_place','unsupported_platform','helper_unavailable']),
  imported:Schema.NullOr(Schema.Struct({launcher_directory:Schema.String,game_directory:Schema.String,blocker:Schema.NullOr(Code)})),
  modes:Schema.Array(Schema.Literals(['in_place','copy'])),
  activity:Schema.Literals(['idle','preparing','review','copying']),review:Schema.NullOr(Review),
- progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction','copy']),current:Count,total:Count})),cancellable:Schema.Boolean,
+ progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction','copy']),current:Count,total:Count,item:Schema.optionalKey(Schema.Literals(['seed','patch','file_index','index_build','reference']))})),cancellable:Schema.Boolean,
  reconciliation:Schema.NullOr(Schema.Union([Schema.Struct({kind:Schema.Literal('preparation'),preparation_id:Schema.String}),
   Schema.Struct({kind:Schema.Literal('copy'),operation_id:Schema.String,directory:Schema.String,can_recover:Schema.Boolean,can_abandon:Schema.Boolean})])),
- preparations:Schema.Array(Schema.String),owned:Schema.Boolean,completed:Schema.NullOr(Schema.Struct({directory:Schema.String,backup_directory:Schema.optionalKey(Schema.String)})),last_error:Schema.NullOr(Code),unsafe_entries:Schema.NullOr(Unsafe)});
+ preparations:Schema.Array(Schema.String),owned:Schema.Boolean,completed:Schema.NullOr(Schema.Struct({directory:Schema.String,backup_directory:Schema.optionalKey(Schema.String)})),last_error:Schema.NullOr(Code),last_rejection:Schema.NullOr(Schema.Struct({check:Schema.String,entry:Schema.NullOr(Schema.String),expected:Schema.NullOr(Schema.String),found:Schema.NullOr(Schema.String),http_status:Schema.NullOr(Count)})),unsafe_entries:Schema.NullOr(Unsafe)});
 export type AdoptionStatus=typeof AdoptionStatus.Type;
 export type Request={command:'inspect'|'dismiss'|'cancel';schema_version:1}|{command:'confirm';schema_version:1;work_id:string;preview_handle:string;operation_revision:number;preferences_revision:number;normalize_managed_files:boolean;accept_unavailable_game_telemetry:boolean;old_game_closed:boolean;replace_modified_files?:boolean;confirmed:true}|{command:'recover'|'abandon';schema_version:1;operation_id:string;operation_revision:number;confirmed:true}|{command:'abandon_preparation';schema_version:1;preparation_id:string;operation_revision:number;confirmed:true};
 export type Maintenance={action:'recover'|'abandon'|'abandon_preparation';id:string};

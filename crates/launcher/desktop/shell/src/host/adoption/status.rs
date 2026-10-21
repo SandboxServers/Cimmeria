@@ -1,6 +1,7 @@
 //! Status projection: retained workers are collected, and store-derived facts are
 //! read without ever waiting on a running copy.
 use super::contract::{Completed, Imported, Phase, Progress, Reconciliation};
+use super::rejection_dto::AdoptionRejection;
 use super::*;
 use cimmeria_launcher_engine::{install::Progress as Observed, OperationKind, OperationState};
 use std::sync::TryLockError;
@@ -47,6 +48,7 @@ impl NativeHost {
                         phase: Phase::Copy,
                         current,
                         total,
+                        item: None,
                     }
                 }),
             )
@@ -62,6 +64,7 @@ impl NativeHost {
                         },
                         current,
                         total,
+                        item: super::rejection_dto::progress_item(observed),
                     }
                 }),
             )
@@ -104,12 +107,17 @@ impl NativeHost {
             owned: facts.owned,
             completed: facts.completed,
             last_error: adoption.last_error,
+            last_rejection: adoption.last_rejection.clone(),
             unsafe_entries: adoption.last_unsafe.clone(),
         })
     }
     /// Collect finished workers. The preview stays native-held as the session.
     pub(super) fn settle_adoption(&self, adoption: &mut Adoption) -> Result<(), AdoptionError> {
         if let Some(outcome) = adoption.preview.as_mut().and_then(|w| w.try_result()) {
+            let rejection = adoption
+                .preview
+                .as_ref()
+                .and_then(|w| w.last_rejection().cloned());
             adoption.preview = None;
             match outcome {
                 Ok(preview) => {
@@ -128,7 +136,7 @@ impl NativeHost {
                     events::review_ready();
                 }
                 Err(error) => {
-                    adoption.fail(error);
+                    adoption.fail(error, rejection);
                     if let Some(code) = adoption.last_error {
                         events::refused(code, adoption.last_unsafe.as_ref());
                     }
@@ -141,12 +149,12 @@ impl NativeHost {
                 .result
                 .borrow()
                 .clone()
-                .map(|outcome| (job.in_place, outcome))
+                .map(|outcome| (job.in_place, outcome, job.worker.last_rejection()))
         });
-        if let Some((in_place, outcome)) = finished {
+        if let Some((in_place, outcome, rejection)) = finished {
             adoption.confirm = None;
             match outcome.err() {
-                Some(error) => adoption.fail(error),
+                Some(error) => adoption.fail(error, rejection),
                 None => adoption.clear_failure(),
             }
             events::finished(in_place, adoption.last_error);
@@ -159,13 +167,16 @@ impl Adoption {
     pub(super) fn clear_failure(&mut self) {
         self.last_error = None;
         self.last_unsafe = None;
+        self.last_rejection = None;
     }
-    /// `error` is shown; an unsafe refusal keeps its named entries.
-    pub(super) fn fail(&mut self, error: adoption::Error) {
+    /// `error` is shown; an unsafe refusal keeps its named entries, and the check
+    /// the engine recorded (if any) is shown beside it.
+    pub(super) fn fail(&mut self, error: adoption::Error, rejection: Option<adoption::Rejection>) {
         self.last_unsafe = match &error {
             adoption::Error::Unsafe(report) => Some((**report).clone()),
             _ => None,
         };
+        self.last_rejection = rejection.as_ref().map(AdoptionRejection::from);
         self.last_error = Some(error.into());
     }
 }

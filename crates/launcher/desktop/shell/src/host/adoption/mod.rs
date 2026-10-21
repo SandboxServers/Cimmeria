@@ -14,6 +14,7 @@ use cimmeria_launcher_engine::{OperationKind, OperationState};
 use uuid::Uuid;
 mod contract;
 pub(crate) mod events;
+mod rejection_dto;
 mod review;
 mod status;
 #[cfg(all(test, target_os = "macos"))]
@@ -34,6 +35,8 @@ mod in_place_tests;
 mod lifecycle_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod play_tests;
+#[cfg(test)]
+mod rejection_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod tests;
 #[cfg(all(test, target_os = "macos"))]
@@ -77,6 +80,7 @@ pub(crate) struct Adoption {
     confirm: Option<ConfirmJob>,
     last_error: Option<AdoptionError>,
     last_unsafe: Option<adoption::UnsafeReport>,
+    last_rejection: Option<rejection_dto::AdoptionRejection>,
     // Served, with live progress, while publication holds the store.
     facts: Option<status::Facts>,
 }
