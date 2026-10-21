@@ -144,3 +144,48 @@ fn file_index_build_matches_adoption_reference_raw_index() {
     assert_eq!(*sha256, hex(&Sha256::digest(&prepared)));
     assert_ne!(*sha256, hex(&Sha256::digest(&exe)));
 }
+#[test]
+fn reference_records_zip_invalid_only_for_zip_failures() {
+    let seed = crate::install_worker::fixtures::archive(true);
+    let patch = archive(&[("later.txt", b"patch one")]);
+    let bad = archive(&[("../escape", b"escape")]);
+    let servers = crate::client_setup::login_servers::default_servers();
+    let attempt = |seed_bytes: &[u8], release: &VerifiedRelease, patches: Vec<PathBuf>| {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("seed.zip");
+        std::fs::write(&path, seed_bytes).unwrap();
+        let artifacts = Artifacts {
+            seed: path,
+            patches,
+        };
+        rejection::scope(|| {
+            reference::reconstruct(
+                dir.path(),
+                release,
+                &artifacts,
+                &servers,
+                &CancellationToken::new(),
+                crate::install_progress::ProgressSink::latest().0,
+                None,
+            )
+        })
+    };
+    // A patch-count mismatch is not a zip failure: nothing is recorded.
+    let (result, record) = attempt(&seed, &signed(&seed, &[(&patch, "install_dir")]), vec![]);
+    assert!(matches!(result, Err(Error::InvalidArtifact)));
+    assert!(record.is_none());
+    // A seed that fails the authenticated size and sha256 check is not a zip failure either.
+    let (result, record) = attempt(
+        &archive(&[("other.txt", b"other")]),
+        &signed(&seed, &[]),
+        vec![],
+    );
+    assert!(matches!(result, Err(Error::InvalidArtifact)));
+    assert!(record.is_none());
+    // A zip that fails `strict_zip` is recorded at the seed.
+    let (result, record) = attempt(&bad, &signed(&bad, &[]), vec![]);
+    assert!(matches!(result, Err(Error::InvalidArtifact)));
+    let record = record.unwrap();
+    assert_eq!(record.check, "reference_zip_invalid");
+    assert_eq!(record.entry.as_deref(), Some("reference"));
+}

@@ -15,7 +15,8 @@ pub(super) const OWNER: &str = ".cimmeria-install.json";
 /// What an owner root holds. A folder that already has any of these is refused.
 pub(super) const MANAGED: [&str; 3] = ["game", OWNER, "content-ready.json"];
 pub(super) fn refused(error: Error, why: &str) -> Error {
-    tracing::warn!(target: "adoption", ?error, "in-place adoption refused: {why}");
+    let code = rejection::code(&error);
+    tracing::warn!(target: "adoption", code, "in-place adoption refused: {why}");
     error
 }
 
