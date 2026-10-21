@@ -14,11 +14,15 @@ fn named<'a>(events: &[&'a Captured], name: &str) -> Vec<&'a Captured> {
 
 #[test]
 fn a_replaced_helper_logs_launch_not_started_verify_failed() {
+    // A second live Dispatch keeps tracing's callsite interest per dispatcher; with one,
+    // a callsite first hit by another test with no subscriber stays disabled.
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
     let ((), events) = capture(|| {
+        tracing::callsite::rebuild_interest_cache();
         rt.block_on(async {
             let (_root, state, plan) = super::tests::fixture();
             std::fs::write(plan.resources.helper.path(), b"replacement").unwrap();
@@ -68,11 +72,15 @@ fn a_replaced_helper_logs_launch_not_started_verify_failed() {
 
 #[test]
 fn an_unreadable_choice_logs_game_telemetry_skipped() {
+    // A second live Dispatch keeps tracing's callsite interest per dispatcher; with one,
+    // a callsite first hit by another test with no subscriber stays disabled.
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
     let ((), events) = capture(|| {
+        tracing::callsite::rebuild_interest_cache();
         rt.block_on(async {
             let (root, state, mut plan) = super::tests::fixture();
             plan.resources.client_telemetry = Some(super::tests::artifact(

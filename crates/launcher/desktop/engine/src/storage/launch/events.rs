@@ -196,9 +196,15 @@ mod tests {
             (Observation::Cancelled, "cancelled"),
             (Observation::Unknown, "unknown"),
         ];
+        // A second live Dispatch keeps tracing's callsite interest per dispatcher; with one,
+        // a callsite first hit by another test with no subscriber stays disabled.
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
         for (observation, outcome) in cases {
             let id = Uuid::new_v4();
-            let ((), events) = capture(|| launch_finished(id, observation));
+            let ((), events) = capture(|| {
+                tracing::callsite::rebuild_interest_cache();
+                launch_finished(id, observation)
+            });
             let finished = event_named(&events, "launch_finished");
             assert_eq!(finished.len(), 1);
             assert_eq!(finished[0].level, Level::INFO);
@@ -209,8 +215,14 @@ mod tests {
 
     #[test]
     fn game_exited_carries_code_and_duration() {
+        // A second live Dispatch keeps tracing's callsite interest per dispatcher; with one,
+        // a callsite first hit by another test with no subscriber stays disabled.
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
         let id = Uuid::new_v4();
-        let ((), events) = capture(|| game_exited(id, -1, true, Duration::from_millis(250)));
+        let ((), events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache();
+            game_exited(id, -1, true, Duration::from_millis(250))
+        });
         let exited = event_named(&events, "game_exited");
         assert_eq!(exited.len(), 1);
         assert_eq!(exited[0].level, Level::INFO);
@@ -221,8 +233,14 @@ mod tests {
 
     #[test]
     fn refusals_carry_their_reason() {
+        // A second live Dispatch keeps tracing's callsite interest per dispatcher; with one,
+        // a callsite first hit by another test with no subscriber stays disabled.
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
         let id = Uuid::new_v4();
-        let ((), events) = capture(|| launch_refused(id, "plan_exists"));
+        let ((), events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache();
+            launch_refused(id, "plan_exists")
+        });
         let refused = event_named(&events, "launch_refused");
         assert_eq!(refused.len(), 1);
         assert_eq!(refused[0].level, Level::WARN);
@@ -232,8 +250,12 @@ mod tests {
 
     #[test]
     fn game_telemetry_and_helper_events_carry_their_reason() {
+        // A second live Dispatch keeps tracing's callsite interest per dispatcher; with one,
+        // a callsite first hit by another test with no subscriber stays disabled.
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
         let id = Uuid::new_v4();
         let ((), events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache();
             game_telemetry_skipped(id, "choice_unreadable");
             game_telemetry_record_failed(id);
             helper_stop_failed("timed_out");
@@ -261,7 +283,13 @@ mod tests {
 
     #[test]
     fn mark_uncertain_failed_carries_the_contract_code() {
-        let ((), events) = capture(|| mark_uncertain_failed(ContractError::IdentityConflict));
+        // A second live Dispatch keeps tracing's callsite interest per dispatcher; with one,
+        // a callsite first hit by another test with no subscriber stays disabled.
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+        let ((), events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache();
+            mark_uncertain_failed(ContractError::IdentityConflict)
+        });
         let failed: Vec<&Captured> = events
             .iter()
             .filter(|e| e.field("event") == Some("mark_uncertain_failed"))
