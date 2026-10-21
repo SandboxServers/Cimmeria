@@ -6,5 +6,7 @@ export type UiArea='install'|'adoption'|'update'|'game_update'|'launch'|'repair'
 
 /** Sends a swallowed frontend error to the launcher's telemetry as `ui_event`. Fire and forget: the player is never told. */
 export function reportUiEvent(area:UiArea,event:string,code:string,level:'info'|'warn'='warn'):void {
- window.__TAURI__.core.invoke('ui_event',{area,event,code,level}).catch(() => undefined); // Telemetry is best effort; a refused report is not an error for the player.
+ const tauri=(globalThis as {window?:Window}).window?.__TAURI__;
+ if(!tauri) return; // Not inside the launcher window (tests, UAT scripts): nothing to report to.
+ tauri.core.invoke('ui_event',{area,event,code,level}).catch(() => undefined); // Telemetry is best effort; a refused report is not an error for the player.
 }

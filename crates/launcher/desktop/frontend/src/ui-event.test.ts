@@ -22,6 +22,11 @@ test('reportUiEvent invokes ui_event with the arguments', async () => {
  Reflect.deleteProperty(globalThis,'window');
 });
 
+test('reportUiEvent is a no-op without a Tauri window', () => {
+ Reflect.deleteProperty(globalThis,'window');
+ assert.doesNotThrow(() => reportUiEvent('launch','play_failed','timeout'));
+});
+
 test('reportUiEvent ignores a rejected invoke', async () => {
  fakeTauri(async () => {throw 'invalid ui event';});
  assert.doesNotThrow(() => reportUiEvent('launch','play_failed','timeout'));
