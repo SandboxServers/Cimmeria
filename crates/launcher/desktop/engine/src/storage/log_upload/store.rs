@@ -1,7 +1,7 @@
 //! The Azure Blob container the logs go to, addressed by a SAS URL compiled in
 //! from `LAUNCHER_LOG_SAS_URL`. The SAS query is a write credential: it never
 //! appears in an error, a log line, a status or `Debug` output.
-use super::{LogUploadError, PendingUpload};
+use super::{events, LogUploadError, PendingUpload};
 use std::time::Duration;
 
 pub struct LogStore {
@@ -72,10 +72,10 @@ impl LogStore {
         if !status.is_success() {
             // A 3xx lands here too: the policy above does not follow it. The
             // body is the store's error XML; it is not needed to triage.
-            tracing::warn!(status = status.as_u16(), "log upload was refused");
+            events::rejected(status.as_u16());
             return Err(LogUploadError::Rejected);
         }
-        tracing::info!(blob = %blob_name, bytes, "log upload stored");
+        events::stored(bytes);
         Ok(StoredUpload {
             digest,
             blob_name,
@@ -112,7 +112,7 @@ fn put_timeout(bytes: usize) -> Duration {
 /// fixed reason logged here nor anything formatting it later can carry the
 /// SAS signature.
 pub(super) fn network_error(error: &reqwest::Error) -> LogUploadError {
-    tracing::warn!(reason = transport_reason(error), "log upload failed");
+    events::failed(transport_reason(error));
     LogUploadError::Network
 }
 
