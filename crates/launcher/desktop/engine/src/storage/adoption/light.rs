@@ -282,6 +282,8 @@ pub(super) fn light_comparison(
         reference: None,
         expected_digest,
         expected_paths,
+        // The same tree that gave `expected_digest`, after setup (C-LF3).
+        expected_tree: Some(tree),
         files,
         download,
         replacements,

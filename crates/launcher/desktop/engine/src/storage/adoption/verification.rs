@@ -210,6 +210,7 @@ pub(super) fn reference_and_comparison(
         reference,
         expected_digest,
         expected_paths,
+        expected_tree: None,
         files,
         download,
         replacements,
@@ -357,6 +358,8 @@ pub(super) struct Compared {
     pub expected_digest: [u8; 32],
     /// Every release path of the post-setup tree, in release spelling.
     pub expected_paths: Vec<String>,
+    /// The post-setup tree itself, for the light check's per-file diff; `None` otherwise.
+    pub expected_tree: Option<Tree>,
     pub files: Vec<Difference>,
     pub download: DownloadEstimate,
     pub replacements: Vec<Replacement>,
