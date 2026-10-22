@@ -55,45 +55,45 @@ Still open from launcher-telemetry: D2 (the `inPlaceMaintenance.abandon` wording
 
 ## Packet status
 
-Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integrated / UATPending / Done.
+Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integrated / UATPending / Done. Final state (2026-10-22): every code packet is merged and reads `UATPending`, because no live UAT has run; U1-U6 below are owed. Nothing here reaches `Done` until the owner reports those rows.
 
 | Wave | Packet | Title | Agent | Depends on | Status |
 |---|---|---|---|---|---|
-| 1 | LF-01 | `tree_diff`: case-insensitive tree diff, samples, `adoption_tree_checked` helper | packet-coder | — | Ready |
-| 1 | LF-04 | Scan accepts valid-Unicode names; telemetry truncation on a char boundary | packet-coder | — | Ready |
-| 1 | LF-05 | An invalid login-server list refuses the light preview | packet-coder | — | Ready |
-| 1 | LF-02 | Light final check by diff; expected tree in the stage; Recover finishes old adoptions | rust-gameserver-dev | LF-01, LF-05 merged into `lf-w1` | BlockedDependency |
-| 1 | LF-03 | Setup originals and Abandon after `Promoted` (Light) | rust-gameserver-dev | LF-02 merged into `lf-w1` | BlockedDependency |
-| 2 | LF-06 | One owner for an interrupted adoption: Install and Play defer | packet-coder | — | Ready |
-| 2 | LF-07 | Display paths without `\\?\`; one folder line; "found" wording | packet-coder | — | Ready |
-| 2 | LF-08 | Release details toggle, reconciled counts, summary marker | packet-coder | LF-07 merged into `lf-w2` | BlockedDependency |
-| 2 | LF-09 | Telemetry line, maintenance trigger, button gaps, UAT script | packet-coder | LF-08 merged into `lf-w2` | BlockedDependency |
-| 3 | LF-10 | Dev-session `purpose = "logs"` for launcher sessions | packet-coder | — | Ready |
-| 3 | LF-11 | Log row rules, per-word scrub, log-targets file | packet-coder | — | Ready |
-| 3 | LF-12 | Log-session limits, budgets and replay body | rust-gameserver-dev | LF-10, LF-11 merged into `lf-w3` | BlockedDependency |
-| 4 | LF-13 | Log line reader and offsets ledger (engine) | packet-coder | `lf-w4` created from the `lf-w3` tip | BlockedDependency |
-| 4 | LF-14 | Log rows and the log sender (engine) | rust-gameserver-dev | `lf-w4` created | BlockedDependency |
-| 4 | LF-15 | Upload state machine, shell command and TS schema | rust-gameserver-dev | LF-13, LF-14 merged into `lf-w4` | BlockedDependency |
-| 4 | LF-16 | Debug-logs view copy, first press, tests, UAT | packet-coder | LF-15 merged into `lf-w4` | BlockedDependency |
-| 4 | LF-19 | Game-log reader and `client.launcher.game_log` rows (engine) | rust-gameserver-dev | LF-15 merged into `lf-w4` | BlockedDependency |
-| 4 | LF-17 | Docs for log ingest (server and launcher) | documentation-writer | LF-19 merged into `lf-w4` | BlockedDependency |
-| 5 | LF-18 | Retire the blob upload path | packet-coder | PR U4 merged | BlockedDependency |
-| close | LF-20 | Close-out: UAT rows, status docs, retire | documentation-writer | every PR merged | BlockedDependency |
+| 1 | LF-01 | `tree_diff`: case-insensitive tree diff, samples, `adoption_tree_checked` helper | packet-coder | — | UATPending, merged in #1986 (U1) |
+| 1 | LF-04 | Scan accepts valid-Unicode names; telemetry truncation on a char boundary | packet-coder | — | UATPending, merged in #1986 (U1) |
+| 1 | LF-05 | An invalid login-server list refuses the light preview | packet-coder | — | UATPending, merged in #1986 (U1) |
+| 1 | LF-02 | Light final check by diff; expected tree in the stage; Recover finishes old adoptions | rust-gameserver-dev | LF-01, LF-05 merged into `lf-w1` | UATPending, merged in #1986 (U1) |
+| 1 | LF-03 | Setup originals and Abandon after `Promoted` (Light) | rust-gameserver-dev | LF-02 merged into `lf-w1` | UATPending, merged in #1986 (U1) |
+| 2 | LF-06 | One owner for an interrupted adoption: Install and Play defer | packet-coder | — | UATPending, merged in #1984 (U2) |
+| 2 | LF-07 | Display paths without `\\?\`; one folder line; "found" wording | packet-coder | — | UATPending, merged in #1984 (U2) |
+| 2 | LF-08 | Release details toggle, reconciled counts, summary marker | packet-coder | LF-07 merged into `lf-w2` | UATPending, merged in #1984 (U2) |
+| 2 | LF-09 | Telemetry line, maintenance trigger, button gaps, UAT script | packet-coder | LF-08 merged into `lf-w2` | UATPending, merged in #1984 (U2) |
+| 3 | LF-10 | Dev-session `purpose = "logs"` for launcher sessions | packet-coder | — | UATPending, merged in #1985 (U3) |
+| 3 | LF-11 | Log row rules, per-word scrub, log-targets file | packet-coder | — | UATPending, merged in #1985 (U3) |
+| 3 | LF-12 | Log-session limits, budgets and replay body | rust-gameserver-dev | LF-10, LF-11 merged into `lf-w3` | UATPending, merged in #1985 (U3) |
+| 4 | LF-13 | Log line reader and offsets ledger (engine) | packet-coder | `lf-w4` created from the `lf-w3` tip | UATPending, merged in #1987 (U4) |
+| 4 | LF-14 | Log rows and the log sender (engine) | rust-gameserver-dev | `lf-w4` created | UATPending, merged in #1987 (U4) |
+| 4 | LF-15 | Upload state machine, shell command and TS schema | rust-gameserver-dev | LF-13, LF-14 merged into `lf-w4` | UATPending, merged in #1987 (U4) |
+| 4 | LF-16 | Debug-logs view copy, first press, tests, UAT | packet-coder | LF-15 merged into `lf-w4` | UATPending, merged in #1987 (U4) |
+| 4 | LF-19 | Game-log reader and `client.launcher.game_log` rows (engine) | rust-gameserver-dev | LF-15 merged into `lf-w4` | UATPending, merged in #1987 (U4) |
+| 4 | LF-17 | Docs for log ingest (server and launcher) | documentation-writer | LF-19 merged into `lf-w4` | UATPending, merged in #1987 (U4) |
+| 5 | LF-18 | Retire the blob upload path | packet-coder | PR U4 merged | UATPending, merged in #1988 (U5), review fixes in X |
+| close | LF-20 | Close-out: UAT rows, status docs, retire | documentation-writer | every PR merged | Review (this PR, X) |
 
 ## PRs and merge order
 
 | PR | Contents and merge order into its integration branch | Branch (worktree) | Base |
 |---|---|---|---|
-| U1 | Wave 1: LF-01, LF-04, LF-05, LF-02, LF-03 | `launcher-uat-fixes/adoption-engine` (`lf-w1`) | `origin/main` |
-| U2 | Wave 2: LF-06, LF-07, LF-08, LF-09 | `launcher-uat-fixes/adoption-ui` (`lf-w2`) | `origin/main` |
-| U3 | Wave 3: LF-10, LF-11, LF-12 | `launcher-uat-fixes/log-ingest-server` (`lf-w3`) | `origin/main` |
-| U4 | Wave 4: LF-13, LF-14, LF-15, LF-16, LF-19, LF-17 | `launcher-uat-fixes/log-ingest-launcher` (`lf-w4`) | the `lf-w3` tip (stacked; `ship.ps1` restacks after U3 merges) |
-| U5 | LF-18 | `launcher-uat-fixes/lf-18-retire-blob` (`lf-18`) | `origin/main` after U4 |
-| X | LF-20 | `launcher-uat-fixes/close-out` (`lf-20`) | `origin/main` after the rest |
+| U1 | **#1986 merged.** Wave 1: LF-01, LF-04, LF-05, LF-02, LF-03 | `launcher-uat-fixes/adoption-engine` (`lf-w1`) | `origin/main` |
+| U2 | **#1984 merged.** Wave 2: LF-06, LF-07, LF-08, LF-09 | `launcher-uat-fixes/adoption-ui` (`lf-w2`) | `origin/main` |
+| U3 | **#1985 merged.** Wave 3: LF-10, LF-11, LF-12 | `launcher-uat-fixes/log-ingest-server` (`lf-w3`) | `origin/main` |
+| U4 | **#1987 merged.** Wave 4: LF-13, LF-14, LF-15, LF-16, LF-19, LF-17 | `launcher-uat-fixes/log-ingest-launcher` (`lf-w4`) | the `lf-w3` tip (stacked; `ship.ps1` restacks after U3 merges) |
+| U5 | **#1988 merged.** LF-18 | `launcher-uat-fixes/lf-18-retire-blob` (`lf-18`) | `origin/main` after U4 |
+| X | This PR (number on opening). LF-20, plus the reviewed LF-18 follow-up fixes (launcher-guide operator text, the unused `gethostname` dependency, the `sgw-launcher.md` wording). | `launcher-uat-fixes/post-merge-fixes` (`lf-fix-w6`) | `origin/main` after the rest |
 
 Into `main`: U1 first (the blocker), U2 at any time, then U3 → colo deploy (owner) → U4 → a launcher release (owner) → U5 → X. Waves 1, 2 and 3 can run at the same time; wave 4 waits for U3 to be integrated, not merged.
 
-## Owner UAT owed (close-out writes them; ask before any laptop or lab use)
+## Owner UAT owed (now rows U1-U6 in [unified-uat.md](../../guides/unified-uat.md#launcher-uat-fixes); ask before any laptop or lab use)
 
 - U1: on the laptop's half-adopted `C:\Temp\sgw`, a build with PR U1 → Recover finishes (`adoption_tree_checked outcome = unrecorded`).
 - U2: a fresh copy → a light adoption completes, and `adoption_tree_checked` shows `matched` or `accepted` with samples.
@@ -101,3 +101,32 @@ Into `main`: U1 first (the blocker), U2 at any time, then U3 → colo deploy (ow
 - U4: interrupted adoption → one banner and one recheck button; Install is hidden.
 - U5: the review shows one folder line without `\\?\`, and the hashes sit behind "Release details". Recheck screenshot 2's clipping and overlap (F5, unverified).
 - U6: "Upload debug logs" during a reconciliation → "Sent N lines. Reference …". One SigNoz filter on that reference shows the lines. A second press sends only the new lines. With the game run once, the same reference also shows `client.launcher.game_log` rows.
+
+## Close-out (2026-10-22)
+
+All code packets (LF-01..LF-19) are merged: U1 #1986, U2 #1984, U3 #1985, U4 #1987, U5 #1988. This PR (X) carries LF-20 and the reviewed LF-18 follow-up fixes. The campaign closes here; the colo server and the launcher are released together by the owner (D-LU5 in [RESUME.md](RESUME.md)).
+
+### Tested and untested
+
+| Tested | Not tested |
+|---|---|
+| Unit and flow tests per packet; per-packet and wave reviews; security passes on wave 3, LF-14 and LF-19 (all `ship`); engine (924) and shell (147) runs for U5 | **No live UAT of any kind.** No laptop run, no lab run, no colo run. Rows U1-U6 are owed to the owner. |
+| The admission test for the operation gate fails when reverted (LF-18) | The `adoption_tree_checked` result on the real half-adopted folder (U1) and on a fresh light adoption (U2) |
+| | The Debug logs flow end to end against a deployed server, and the rows in SigNoz (U6) |
+| | F5's clipping and overlap in the laptop screenshot (U5): still unverified |
+
+### Owner risks (accepted under D-LU3 and D-LU4; nothing was removed to avoid them)
+
+1. **Chat and names leave the machine.** Game logs are ingested unfiltered. Only the per-word scrub applies (paths, IPs, URLs, `@`, GUIDs, long hex).
+2. **2,048-byte floor.** A message is cut at 2,048 bytes by design. A secret or a spaced name inside a line is not caught by the per-word scrub.
+3. **Rows over 4,096 bytes after escaping are dropped by the server.** The launcher marks over-long lines, but a line that escapes past the limit is lost.
+4. **Older lines are not uploaded past 20,000 new lines per file.** Newest first; the rest stay on disk.
+5. **Daily ceilings.** 80,000 log rows per install and 400,000 per address per UTC day, and 40,000 per minute in total. A busy day ends `Partial`.
+6. **Secrets shorter than 32 characters, or split by dots, are kept** by the scrub.
+7. **Log rows are forgeable** by anyone who holds a log token. The server cannot tell a real launcher line from a made-up one.
+8. **Budgets are speed bumps, not walls.** The install and address budgets slow abuse; they do not stop a determined sender.
+9. Scrub gaps B2, B3 and B4 from the security review remain open (see [RESUME.md](RESUME.md)).
+
+### Status docs
+
+`docs/project-status.md` and `docs/gap-analysis*.md` have no launcher row, so this close-out leaves them unchanged (R2: status docs change once per campaign, and there is nothing to change). The launcher campaign's own ledger is [launcher-telemetry/RESUME.md](../launcher-telemetry/RESUME.md), which now points here for F1-F6 and G1-G4.
