@@ -428,7 +428,7 @@ test('the light review names the folder, its patch counts and the skipped change
   assert.equal(ui.get('adoption-light-found').textContent,'Stargate Worlds found in SGW.');assert.equal(ui.get('adoption-light-found').hidden,false);
   assert.equal(ui.get('adoption-light-patches').textContent,'Patches already applied: 1 of 3. To apply: 2 (1.0 MB to download).');
   assert.equal(ui.get('adoption-light-skipped-note').hidden,false);
-  assert.match(ui.get('adoption-light-skipped-note').textContent!,/Some patch changes can't be applied: 1 files differ from the originals the patches expect\. They stay as they are\. You can still use this folder\./);
+  assert.match(ui.get('adoption-light-skipped-note').textContent!,/Some patch changes can't be applied: 1 file differs from the originals the patches expect\. They stay as they are\. You can still use this folder\./);
   assert.match(ui.get('adoption-light-skipped').textContent!,/Working\/Data\/a\.lua — first-patch/);
   assert.equal(ui.get('confirm-adoption').textContent,'Use this folder');
   await ui.tick('adoption-closed');assert.equal(ui.disabled('confirm-adoption'),false,'skipped changes never disable the confirm button');
@@ -440,6 +440,14 @@ test('a light review with no skipped changes hides the skipped note and list',as
   await ui.click('choose-adoption-destination');
   assert.equal(ui.get('adoption-light-skipped-note').hidden,true);assert.equal(ui.get('adoption-light-skipped').hidden,true);
   assert.equal(ui.get('adoption-light-found').hidden,false);
+ }finally{await ui.app.dispose();}
+});
+test('a light review with more skipped changes than the list shows says how many are not listed',async()=>{
+ const ui=mount(request=>request==='choose'?{...reviewing('light-4'),backend:'in_place',modes:['light','copy'],review:lightReview(600)}:idle());
+ try{await ui.app.ready;await ui.settle();
+  await ui.click('choose-adoption-destination');
+  assert.match(ui.get('adoption-light-skipped').textContent!,/…and 599 more not listed here\./);
+  assert.match(ui.get('adoption-light-skipped-note').textContent!,/Some patch changes can't be applied: 600 files differ from the originals/);
  }finally{await ui.app.dispose();}
 });
 test('a copy review has no light lines and keeps Create verified copy',async()=>{
@@ -465,6 +473,14 @@ test('the first press says the folder is being checked before the preview resolv
   await cancelled.click('choose-adoption-destination');
   assert.equal(cancelled.text(),'No folder chosen.');
  }finally{await cancelled.app.dispose();}
+});
+test('a cancel notice is cleared by the next press',async()=>{
+ let n=0;
+ const ui=mount(request=>request==='choose'?(n++===0?idle():{...reviewing('again'),backend:'in_place',modes:['light','copy'],review:lightReview()}):idle());
+ try{await ui.app.ready;await ui.settle();
+  await ui.click('choose-adoption-destination');assert.equal(ui.text(),'No folder chosen.');
+  await ui.click('choose-adoption-destination');assert.notEqual(ui.text(),'No folder chosen.');
+ }finally{await ui.app.dispose();}
 });
 test('several game folders on the choose path: the status and the refusal line name the install, and choose is enabled again',async()=>{
  const ui=mount(request=>request==='choose'?{...idle(),backend:'in_place',modes:['light','copy'] as AdoptionStatus['modes'],last_error:'not_a_game_folder',last_rejection:{check:'several_game_folders',entry:'.',expected:'one game folder',found:'2',http_status:null}}:idle());

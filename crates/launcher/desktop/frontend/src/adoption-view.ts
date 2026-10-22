@@ -149,10 +149,12 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   if(!light)return;
   found.textContent=`Stargate Worlds found in ${folderName(source)}.`;
   patches.textContent=`Patches already applied: ${light.patches_current} of ${light.patches_total}. To apply: ${light.patches_pending} (${megabytes(light.download_bytes)} to download).`;
-  note.textContent=`Some patch changes can't be applied: ${light.skipped_total} files differ from the originals the patches expect. They stay as they are. You can still use this folder.`;
+  note.textContent=`Some patch changes can't be applied: ${light.skipped_total===1?'1 file differs':`${light.skipped_total} files differ`} from the originals the patches expect. They stay as they are. You can still use this folder.`;
   const summary=document.createElement('summary'),list=document.createElement('ul');
   summary.textContent='Show the skipped files';
-  list.replaceChildren(...light.skipped.map(s=>{const item=document.createElement('li');item.textContent=`${s.path} — ${s.patch}`;return item;}));
+  const rows=light.skipped.map(s=>`${s.path} — ${s.patch}`);
+  if(light.skipped_total>light.skipped.length)rows.push(`…and ${light.skipped_total-light.skipped.length} more not listed here.`);
+  list.replaceChildren(...rows.map(text=>{const item=document.createElement('li');item.textContent=text;return item;}));
   details.replaceChildren(summary,list);
  };
  const choices:[string,Choice][]=[['adoption-normalize','normalize'],['adoption-closed','closed'],['adoption-telemetry','telemetry'],['adoption-replace','replace']];
