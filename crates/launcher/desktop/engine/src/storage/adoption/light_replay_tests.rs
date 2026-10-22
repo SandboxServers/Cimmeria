@@ -84,6 +84,15 @@ pub(in crate::storage::adoption) fn release_with_roots(
     zips: &[Vec<u8>],
     roots: &[&str],
 ) -> VerifiedRelease {
+    release_with_index(zips, roots, None)
+}
+
+/// As `release_with_roots`, with the manifest's optional `file_index` reference.
+pub(in crate::storage::adoption) fn release_with_index(
+    zips: &[Vec<u8>],
+    roots: &[&str],
+    file_index: Option<serde_json::Value>,
+) -> VerifiedRelease {
     let seed = b"seed".to_vec();
     let patches: Vec<_> = zips
         .iter()
@@ -99,12 +108,15 @@ pub(in crate::storage::adoption) fn release_with_roots(
             patch
         })
         .collect();
-    let body = serde_json::to_vec(&serde_json::json!({
+    let mut body = serde_json::json!({
         "schema": 1,
         "seed": {"blob": "seed.zip", "size": seed.len(), "sha256": hex(&Sha256::digest(&seed))},
         "patches": patches,
-    }))
-    .unwrap();
+    });
+    if let Some(index) = file_index {
+        body["file_index"] = index;
+    }
+    let body = serde_json::to_vec(&body).unwrap();
     let signature = SigningKey::from_bytes(&[0x2a; 32]).sign(&body);
     crate::catalog::verify_release(&body, hex(&signature.to_bytes()).as_bytes()).unwrap()
 }

@@ -2,7 +2,9 @@
 //! recovers, and the files it could not rebuild are recorded rather than refused.
 use super::golden_tests::{hex, PLAN_BYTES, PLAN_DIGEST};
 use super::in_place_tests::{commit, commit_with, Fixture};
-use super::light_replay::tests::{big, patch_zip, release_with_roots, OpFixture, OVERLAY};
+use super::light_replay::tests::{
+    big, patch_zip, release_with_index, release_with_roots, OpFixture, OVERLAY,
+};
 use super::*;
 use crate::install_progress::ProgressSink;
 use crate::storage::install_worker::content_valid;
@@ -51,7 +53,13 @@ struct Light {
 
 impl Light {
     async fn new(zips: Vec<Vec<u8>>, files: &[(&str, &[u8])]) -> Self {
-        let release = release_with_roots(&zips, &[]);
+        Self::with_release(release_with_roots(&zips, &[]), zips, files).await
+    }
+    async fn with_release(
+        release: VerifiedRelease,
+        zips: Vec<Vec<u8>>,
+        files: &[(&str, &[u8])],
+    ) -> Self {
         let server = MockServer::start().await;
         for (i, zip) in zips.iter().enumerate() {
             Mock::given(matchers::path(format!("/p{i}.zip")))
@@ -96,13 +104,20 @@ impl Light {
         artifacts::Transport::loopback(format!("{}/manifest.json", self.server.uri())).unwrap()
     }
     fn preview(&self) -> Result<Preview, Error> {
+        self.preview_with(CancellationToken::new(), ProgressSink::latest().0)
+    }
+    fn preview_with(
+        &self,
+        cancel: CancellationToken,
+        progress: ProgressSink,
+    ) -> Result<Preview, Error> {
         let request = self.request();
         tokio::task::block_in_place(|| {
             preview_using(
                 self.state.clone(),
                 request,
-                CancellationToken::new(),
-                ProgressSink::latest().0,
+                cancel,
+                progress,
                 Backend::Native,
                 Some(self.transport()),
             )
@@ -126,6 +141,11 @@ async fn a_stock_folder_publishes_as_a_light_adoption() {
     let preview = lt.preview().unwrap();
     assert!(preview.reference.is_none(), "no seed is read or kept");
     let summary = preview.light_summary().expect("a light preview has one");
+    // The fixture release publishes no index, so there is nothing to compare.
+    assert_eq!(
+        summary.index_state,
+        index_compare::IndexState::IndexNotPublished
+    );
     assert_eq!(
         (
             summary.patches_total,
@@ -157,6 +177,10 @@ async fn a_changed_source_publishes_with_an_incomplete_patch() {
     let lt = Light::new(overlay_patch(), &[(OVERLAY, b"modded by the player")]).await;
     let preview = lt.preview().expect("a changed input never blocks");
     assert_eq!(preview.light_summary().unwrap().skipped_total, 1);
+    assert_eq!(
+        preview.light_summary().unwrap().index_state,
+        index_compare::IndexState::IndexNotPublished
+    );
     let provenance = commit(preview).unwrap();
     assert_eq!(provenance.check, FileCheck::Light);
     assert!(content_valid(&lt.game(), &lt.verified()));
@@ -320,4 +344,123 @@ async fn the_summary_caps_the_skipped_list_and_keeps_the_total() {
     let summary = preview.light_summary().unwrap();
     assert_eq!(summary.skipped_total as usize, count);
     assert_eq!(summary.skipped.len(), LIGHT_LIST_CAP);
+}
+
+/// D-LA9: a published index the origin does not serve never blocks the preview. It
+/// is reported as unreachable, compares nothing and is not recorded in the ledger.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unreachable_index_never_blocks_and_is_not_recorded() {
+    let zips = overlay_patch();
+    // Nothing is mounted at the index path, so the origin answers 404.
+    let index = serde_json::json!({
+        "blob": "index/file-index.json",
+        "size": 10,
+        "sha256": "ab".repeat(32),
+    });
+    let release = release_with_index(&zips, &[], Some(index));
+    let lt = Light::with_release(release, zips, &[(OVERLAY, &big("stock overlay"))]).await;
+    let preview = lt.preview().expect("an unreachable index never blocks");
+    let summary = preview.light_summary().unwrap();
+    assert_eq!(
+        summary.index_state,
+        index_compare::IndexState::IndexUnreachable
+    );
+    assert!(summary.index_counts.is_empty());
+    assert_eq!(summary.index_files_total, 0);
+    assert_eq!(preview.file_index_sha256, None);
+    let provenance = commit(preview).unwrap();
+    assert_eq!(provenance.file_index_sha256, None);
+}
+
+/// A cooked file held under the stock spelling that a patch ships under the placed
+/// spelling is stored as a move: the row names both paths and the copy is kept.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_stock_named_cooked_file_is_stored_as_a_move() {
+    const STOCK: &str = "Working/SGWGame/Cache.en-US/Cooked.pak";
+    const PLACED: &str = "Working/SGWGame/SourceCache.en-us/Cooked.pak";
+    let zips = vec![patch_zip(
+        "p0",
+        &[OpFixture {
+            target: OVERLAY,
+            sources: &[(OVERLAY, &big("stock overlay"))],
+            result: &big("patched overlay"),
+        }],
+        &[(PLACED, b"cooked")],
+    )];
+    let lt = Light::new(
+        zips,
+        &[(OVERLAY, &big("stock overlay")), (STOCK, b"cooked")],
+    )
+    .await;
+    let preview = lt.preview().unwrap();
+    let row = preview
+        .report()
+        .files
+        .iter()
+        .find(|d| d.path == PLACED)
+        .expect("the placed path has a row");
+    assert_eq!(row.classification, Classification::NeedsPatching);
+    assert_eq!(row.source_path.as_deref(), Some(STOCK));
+    let store = preview.preparation.record.directory.join("replacements");
+    assert_eq!(
+        std::fs::read(inventory::native(&store, PLACED)).unwrap(),
+        b"cooked"
+    );
+    assert!(preview.replacements().iter().any(|r| r.path == PLACED));
+}
+
+/// A recorder for the progress a preview reports.
+struct Seen(Mutex<Vec<crate::install::Progress>>);
+
+impl crate::install_progress::ProgressReporter for Seen {
+    fn report(&self, value: crate::install::Progress) {
+        self.0.lock().unwrap().push(value);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_scan_reports_progress() {
+    let lt = Light::new(overlay_patch(), &[(OVERLAY, &big("stock overlay"))]).await;
+    let seen = Arc::new(Seen(Mutex::new(Vec::new())));
+    lt.preview_with(
+        CancellationToken::new(),
+        ProgressSink::Checkpoint(seen.clone()),
+    )
+    .unwrap();
+    let seen = seen.0.lock().unwrap();
+    let scanning: Vec<_> = seen
+        .iter()
+        .filter_map(|p| match p {
+            crate::install::Progress::Extracting {
+                label,
+                current,
+                total,
+                ..
+            } if label == "Scanning" => Some((*current, *total)),
+            _ => None,
+        })
+        .collect();
+    assert!(!scanning.is_empty(), "the scan reports");
+    assert!(scanning.iter().all(|(current, total)| current <= total));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_cancelled_scan_is_cancelled_and_leaves_no_probe() {
+    let lt = Light::new(overlay_patch(), &[(OVERLAY, &big("stock overlay"))]).await;
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let seen = Arc::new(Seen(Mutex::new(Vec::new())));
+    let result = lt.preview_with(cancel, ProgressSink::Checkpoint(seen.clone()));
+    assert!(matches!(result, Err(Error::Cancelled)));
+    // The scan stops before it hashes anything, so it never reports.
+    assert!(seen.0.lock().unwrap().is_empty());
+    let mut stack = vec![lt.root.path().join("state")];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            assert_ne!(entry.file_name(), "probe", "{:?}", entry.path());
+            if entry.path().is_dir() {
+                stack.push(entry.path());
+            }
+        }
+    }
 }
