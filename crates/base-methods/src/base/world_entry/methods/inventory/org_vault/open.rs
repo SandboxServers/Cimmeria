@@ -316,26 +316,37 @@ async fn refuse(
 ) {
     let account_id = db_account_id.or(req.account_id.and_then(|a| i32::try_from(a).ok()));
     let player_label = known_names::player_name(req.player_id);
-    tracing::warn!(
-        target: "bank",
-        event = "org_vault_open_rejected",
-        account_id,
-        account_name = known_names::account_name(account_id),
-        player_id = req.player_id,
-        player_name = player_label,
-        entity_id = req.entity_id,
-        entity_name = player_label,
-        org_id,
-        org_name = known_names::org_name(org_id),
-        org_type = req.scope.org_type().map(|t| t.name()),
-        scope = req.scope.as_str(),
-        banker_id = req.banker_id, // nt:id-only banker NPC, unnamed on the base
-        space_id = req.space_id,
-        world = space_registry::world_for_space(req.space_id),
-        distance = req.distance,
-        reason = refusal.reason(),
-        "org_vault_open_rejected: the vault did not open -- the player sees a chat line saying why"
-    );
+    // One row shape for both levels. `not_in_org` is a normal refusal with a
+    // chat line, not a fault, so it logs at INFO (LN-05).
+    macro_rules! rejected {
+        ($lvl:ident) => {
+            tracing::$lvl!(
+                target: "bank",
+                event = "org_vault_open_rejected",
+                account_id,
+                account_name = known_names::account_name(account_id),
+                player_id = req.player_id,
+                player_name = player_label,
+                entity_id = req.entity_id,
+                entity_name = player_label,
+                org_id,
+                org_name = known_names::org_name(org_id),
+                org_type = req.scope.org_type().map(|t| t.name()),
+                scope = req.scope.as_str(),
+                banker_id = req.banker_id, // nt:id-only banker NPC, unnamed on the base
+                space_id = req.space_id,
+                world = space_registry::world_for_space(req.space_id),
+                distance = req.distance,
+                reason = refusal.reason(),
+                "org_vault_open_rejected: the vault did not open -- the player sees a chat line saying why"
+            )
+        };
+    }
+    if matches!(refusal, OpenRefusal::NotInOrg) {
+        rejected!(info);
+    } else {
+        rejected!(warn);
+    }
     let addr = io
         .entity_to_addr
         .lock()
