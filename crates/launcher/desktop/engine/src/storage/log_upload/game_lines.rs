@@ -458,7 +458,7 @@ impl Scan {
                     })
                     .collect();
                 let (text, raw_cut) = cut(text, MAX_RAW_BYTES);
-                let scrubbed = scrub_ips(&redaction.scrub(&text)).into_owned();
+                let scrubbed = scrub_ips(&redaction.scrub_words(&text)).into_owned();
                 let (message, message_cut) = cut(scrubbed, MAX_MESSAGE_BYTES);
                 LogLine {
                     file: key.to_string(),

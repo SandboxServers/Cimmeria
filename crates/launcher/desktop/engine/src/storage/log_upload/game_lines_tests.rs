@@ -334,6 +334,29 @@ fn a_64_mib_file_is_streamed_and_keeps_the_newest_lines() {
     assert_eq!(last.message, format!("line {n:08}"));
 }
 
+/// The per-word scrub: a path word and a long key word are replaced, the rest of
+/// the line stays (A5, A9). The launcher's whole-value scrub still blanks the line.
+#[test]
+fn a_path_or_key_word_is_scrubbed_and_the_rest_of_the_line_kept() {
+    let game = tempfile::tempdir().unwrap();
+    let dir = binaries(game.path());
+    let text = "loaded C:\\Users\\bob\\x.dll ok\nkey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5 done\n";
+    fs::write(dir.join("SGWDebugLog.log"), text).unwrap();
+    let got = read(game.path(), &Offsets::default());
+    assert_eq!(
+        messages(&got),
+        vec!["loaded <path removed> ok", "<removed> done"]
+    );
+    let redaction = Redaction {
+        home: None,
+        user: None,
+    };
+    assert_eq!(
+        redaction.scrub("loaded C:\\Users\\bob\\x.dll ok"),
+        "<path removed>"
+    );
+}
+
 #[test]
 fn a_version_one_offsets_file_loads_with_no_heads() {
     let dir = tempfile::tempdir().unwrap();

@@ -114,6 +114,57 @@ impl Redaction {
             replaced
         }
     }
+
+    /// The per-word scrub for game log text (LF-19 A5, A9): each whitespace-separated
+    /// word that is a path becomes `<path removed>` and each long mixed token (a key
+    /// or ticket) becomes `<removed>`; the other words and the spacing stay, then
+    /// `replace_home`. A line with a path keeps its text, unlike `scrub`.
+    pub fn scrub_words(&self, value: &str) -> String {
+        let mut out = String::with_capacity(value.len());
+        let mut word = String::new();
+        for c in value.chars() {
+            if c.is_whitespace() {
+                out.push_str(&scrub_word(&word));
+                word.clear();
+                out.push(c);
+            } else {
+                word.push(c);
+            }
+        }
+        out.push_str(&scrub_word(&word));
+        self.replace_home(&out)
+    }
+}
+
+/// One word of `scrub_words`: a path word, a long mixed token, or the word as is.
+fn scrub_word(word: &str) -> String {
+    if is_path_word(word) {
+        "<path removed>".to_string()
+    } else if is_long_token(word) {
+        "<removed>".to_string()
+    } else {
+        word.to_string()
+    }
+}
+
+/// `has_absolute_path`, or a word that contains `:\`, `:/` or `\\`, or starts with `/`.
+fn is_path_word(word: &str) -> bool {
+    has_absolute_path(word)
+        || word.contains(":\\")
+        || word.contains(":/")
+        || word.contains("\\\\")
+        || word.starts_with('/')
+}
+
+/// A word of 32 or more base64-style characters with at least one digit and one
+/// letter: a session key, a ticket or a `key=` value (LF-19 A9).
+fn is_long_token(word: &str) -> bool {
+    word.len() >= 32
+        && word
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '=' | '_' | '-'))
+        && word.chars().any(|c| c.is_ascii_digit())
+        && word.chars().any(|c| c.is_ascii_alphabetic())
 }
 
 /// One `TelemetryEvent::ClientNative` per record, scrubbed. Pure: no I/O, no consent check.
