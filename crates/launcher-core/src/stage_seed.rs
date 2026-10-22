@@ -55,6 +55,12 @@ pub fn seed_stage(
             "stage directory already exists",
         ));
     }
+    if is_link(&fs::symlink_metadata(src)?) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "seed source is a symbolic link or reparse point",
+        ));
+    }
     let mut plan = Plan::default();
     walk(src, Path::new(""), &mut plan)?;
 
@@ -218,6 +224,44 @@ mod tests {
 
         let err = seed_stage(tmp.path(), &dst, &BTreeSet::new(), true, &never).unwrap_err();
 
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(!dst.exists());
+    }
+
+    #[cfg(windows)]
+    fn junction(link: &Path, target: &Path) {
+        let out = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "mklink /J failed: {out:?}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_junction_in_src_is_refused() {
+        let tmp = source();
+        let out = tempfile::tempdir().unwrap();
+        let dst = out.path().join("stage");
+        // `cmd` reads a forward slash as a switch, so the paths are built with `join`.
+        let game = tmp.path().join("game");
+        junction(&game.join("alias"), &game.join("data"));
+        let err = seed_stage(tmp.path(), &dst, &BTreeSet::new(), true, &never).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(!dst.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_junction_as_src_is_refused() {
+        let tmp = source();
+        let out = tempfile::tempdir().unwrap();
+        let alias = out.path().join("alias");
+        junction(&alias, tmp.path());
+        let dst = out.path().join("stage");
+        let err = seed_stage(&alias, &dst, &BTreeSet::new(), true, &never).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         assert!(!dst.exists());
     }
