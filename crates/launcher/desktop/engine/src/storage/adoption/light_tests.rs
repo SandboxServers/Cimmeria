@@ -311,6 +311,79 @@ async fn a_scan_with_nothing_to_reuse_is_refused() {
     assert_eq!(recorded.found.as_deref(), Some("0 of 0"));
 }
 
+/// A login-server list the setup would refuse stops the light preview before any
+/// file moves, with the closed check `login_servers_invalid`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_invalid_login_server_list_refuses_the_light_preview() {
+    let lt = Light::new(overlay_patch(), &[(OVERLAY, &big("stock overlay"))]).await;
+    let request = lt.request();
+    let ownership = preparation::Ownership::claim(
+        lt.state.clone(),
+        &request,
+        crate::storage::install_intent::ExtractionBackend::Native,
+        Vec::new(),
+    )
+    .unwrap();
+    let scanned = inventory::scan(&lt.folder, &CancellationToken::new()).unwrap();
+    let bad = [crate::client_setup::LoginServer {
+        name: "Evil\"".into(),
+        url: "http://x:8081".into(),
+    }];
+    let (result, recorded) = rejection::scope(|| {
+        tokio::task::block_in_place(|| {
+            light::light_comparison(
+                &lt.state,
+                &request,
+                Some(lt.transport()),
+                &ownership,
+                &lt.folder,
+                &scanned,
+                &bad,
+                &CancellationToken::new(),
+                ProgressSink::latest().0,
+            )
+        })
+    });
+    assert!(matches!(result, Err(Error::UnsupportedConfiguration)));
+    let recorded = recorded.expect("the refusal is recorded");
+    assert_eq!(recorded.check, "login_servers_invalid");
+    // Nothing moved: the stock file is still in the folder and no game tier exists.
+    assert!(inventory::native(&lt.folder, OVERLAY).is_file());
+    assert!(!lt.game().exists());
+}
+
+/// A valid list passes the same check and the light preview still runs.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_valid_login_server_list_still_previews() {
+    let lt = Light::new(overlay_patch(), &[(OVERLAY, &big("stock overlay"))]).await;
+    let request = lt.request();
+    let ownership = preparation::Ownership::claim(
+        lt.state.clone(),
+        &request,
+        crate::storage::install_intent::ExtractionBackend::Native,
+        Vec::new(),
+    )
+    .unwrap();
+    let scanned = inventory::scan(&lt.folder, &CancellationToken::new()).unwrap();
+    let servers = crate::client_setup::login_servers::default_servers();
+    let (result, recorded) = rejection::scope(|| {
+        tokio::task::block_in_place(|| {
+            light::light_comparison(
+                &lt.state,
+                &request,
+                Some(lt.transport()),
+                &ownership,
+                &lt.folder,
+                &scanned,
+                &servers,
+                &CancellationToken::new(),
+                ProgressSink::latest().0,
+            )
+        })
+    });
+    assert!(result.is_ok(), "{recorded:?}");
+}
+
 /// The review keeps `LIGHT_LIST_CAP` skipped targets and the true total beside it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_summary_caps_the_skipped_list_and_keeps_the_total() {

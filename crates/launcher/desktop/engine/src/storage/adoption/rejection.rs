@@ -10,7 +10,7 @@ pub const REJECTION_CHECKS: &[&str] = &[
     "folder_too_deep", "path_not_canonical", "unsupported_catalog", "unsupported_configuration",
     "stale_revision", "busy", "destination_exists", "destination_overlaps", "launcher_too_old",
     "identity_conflict", "comparison_failed", "exe_at_root",
-    "no_reusable_files", "seed_mismatch", "setup_rule_invalid", "file_unclassified",
+    "no_reusable_files", "seed_mismatch", "setup_rule_invalid", "file_unclassified", "login_servers_invalid",
     "artifact_missing", "artifact_hash_mismatch", "artifact_size_mismatch",
     "download_http_status", "download_failed", "local_seed_invalid", "local_artifact_mismatch",
     "manifest_digest_malformed", "patch_replay_mismatch", "patch_archive_unsupported",
