@@ -16,9 +16,9 @@
 //!
 //! Each was proven to fail with the hub's seed rows removed.
 //!
-//! The seed rows for dialogs 60100/60101 stay while their cooked-data
-//! overrides are quarantined (client map-load crash, 2026-09-27; see
-//! `QUARANTINED_DIALOG_OVERRIDES` in `cimmeria-resources`).
+//! The seed rows for dialogs 60100/60101 stay beside their cooked-data
+//! overrides. The dialogs are served since 2026-10-22 (D-LN3; see
+//! `DIALOG_OVERRIDES` in `cimmeria-resources`).
 mod live_db {
     use std::collections::HashSet;
 
