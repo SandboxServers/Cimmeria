@@ -9,6 +9,7 @@
 //! the state mutex is held only to decide and build the target; the file reads,
 //! the paced posts and the offsets writes run without it. Nothing here logs a
 //! path, URL, token or error text (R5).
+use super::game_lines::{self, GameCollected};
 use super::ingest::{self, IngestOutcome, Pacer, TokioPacer};
 use super::lines::{self, Collected};
 use super::offsets::Offsets;
@@ -92,6 +93,10 @@ pub struct LogIngest {
     state_dir: PathBuf,
     /// `<app_data>/logs`, where the shell writes the launcher's own logs.
     log_dir: Option<PathBuf>,
+    /// The game folder (`<install>/game`) whose debug and session logs go with
+    /// the launcher's (LF-19). None when nothing is installed or the install
+    /// state cannot be read: the launcher's own lines still go.
+    pub(super) game: Option<PathBuf>,
     _busy: BusyGuard,
 }
 
@@ -135,6 +140,13 @@ impl DesktopState {
                     cancel: uploader.cancel.clone(),
                     state_dir: self.directory.root.clone(),
                     log_dir: self.directory.root.parent().map(|p| p.join("logs")),
+                    // An unreadable install record (recovery in progress) must not
+                    // stop the launcher's own lines, which are wanted most then.
+                    game: self
+                        .installed_for_launch()
+                        .ok()
+                        .flatten()
+                        .map(|(installed, _)| installed.intent.destination.join("game")),
                     _busy: busy,
                 }))
             }
@@ -146,7 +158,9 @@ impl DesktopState {
 struct Pending {
     offsets: Offsets,
     collected: Collected,
-    /// Whether the log folder holds any launcher log file at all.
+    /// The game's debug and session log lines (LF-19).
+    game: GameCollected,
+    /// Whether the launcher's log folder or the game holds any log file at all.
     has_files: bool,
 }
 
@@ -168,14 +182,12 @@ impl LogIngest {
             cancel,
             state_dir,
             log_dir,
+            game,
             _busy,
         } = self;
-        let Some(log_dir) = log_dir else {
-            return Ok(status(LogUploadState::NoLogs));
-        };
         let read = tokio::task::spawn_blocking({
             let (state_dir, cancel) = (state_dir.clone(), cancel.clone());
-            move || read_pending(&state_dir, &log_dir, &cancel)
+            move || read_pending(&state_dir, log_dir.as_deref(), game.as_deref(), &cancel)
         })
         .await;
         let read = match read {
@@ -192,9 +204,10 @@ impl LogIngest {
         let Pending {
             mut offsets,
             collected,
+            game,
             has_files,
         } = read;
-        if collected.lines.is_empty() {
+        if collected.lines.is_empty() && game.collected.lines.is_empty() {
             return Ok(status(if has_files {
                 LogUploadState::NothingNew
             } else {
@@ -206,25 +219,42 @@ impl LogIngest {
             "desktop-{}",
             crate::launcher_compatibility::compiled_version()
         );
-        let rows = ingest::rows(
+        // One row list, launcher lines first and then the game's, so one pacer
+        // and one `send_logs` hold the 3.5 s interval across the switch and a
+        // 429 on the launcher rows sends no game rows (LF-19).
+        let launcher_n = collected.lines.len();
+        let game_lines = &game.collected.lines;
+        let mut rows = ingest::rows(
             &collected.lines,
             ingest::LAUNCHER_LOG_TARGET,
             &upload_id,
             &version,
             std::env::consts::OS,
         );
-        if rows.len() != collected.lines.len() {
+        let mut game_rows = ingest::rows(
+            &game_lines::row_lines(game_lines),
+            ingest::GAME_LOG_TARGET,
+            &upload_id,
+            &version,
+            std::env::consts::OS,
+        );
+        if rows.len() != launcher_n || game_rows.len() != game_lines.len() {
             events::failed("rows_mismatch");
             return Err(LogUploadError::Network);
         }
+        game_lines::continue_seq(&mut game_rows, launcher_n as u64);
+        rows.append(&mut game_rows);
         let mut done = 0usize;
         let lines = &collected.lines;
         // The offsets file is a few dozen bytes, so the synchronous save between
         // two posts (3.5 s apart) costs nothing worth a blocking-pool hop.
         let outcome = ingest::send_logs(&sender, &target, &rows, pacer, &cancel, |chunk| {
-            let end = (done + chunk).min(lines.len());
-            for line in &lines[done..end] {
-                offsets.advance(line);
+            let end = (done + chunk).min(rows.len());
+            for index in done..end {
+                match lines.get(index) {
+                    Some(line) => offsets.advance(line),
+                    None => offsets.advance_game(&game_lines[index - launcher_n], &game.files),
+                }
             }
             done = end;
             if offsets.save(&state_dir).is_err() {
@@ -232,7 +262,7 @@ impl LogIngest {
             }
         })
         .await;
-        let lines_total = collected.lines_total;
+        let lines_total = collected.lines_total + game.collected.lines_total;
         match outcome {
             IngestOutcome::Sent { lines_sent } => Ok(status(LogUploadState::Sent {
                 lines_sent,
@@ -262,15 +292,25 @@ fn status(state: LogUploadState) -> LogUploadStatus {
 
 fn read_pending(
     state_dir: &Path,
-    log_dir: &Path,
+    log_dir: Option<&Path>,
+    game_dir: Option<&Path>,
     cancel: &CancellationToken,
 ) -> Result<Pending, LogUploadError> {
     let offsets = Offsets::load(state_dir);
-    let collected = lines::collect(log_dir, &offsets, cancel)?;
+    let collected = match log_dir {
+        Some(dir) => lines::collect(dir, &offsets, cancel)?,
+        None => Collected::default(),
+    };
+    let game = match game_dir {
+        Some(dir) => game_lines::collect(dir, &offsets, cancel)?,
+        None => GameCollected::default(),
+    };
     Ok(Pending {
-        has_files: !lines::launcher_files(log_dir).is_empty(),
+        has_files: log_dir.is_some_and(|dir| !lines::launcher_files(dir).is_empty())
+            || game.has_files,
         offsets,
         collected,
+        game,
     })
 }
 

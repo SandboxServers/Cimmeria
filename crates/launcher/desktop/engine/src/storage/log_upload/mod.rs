@@ -13,6 +13,7 @@ use crate::storage::game_telemetry::launcher_event::Redaction;
 use cimmeria_launcher_core::logs;
 use cimmeria_launcher_core::state::UploadedLedger;
 mod events;
+mod game_lines;
 mod ingest;
 mod ingest_flow;
 #[cfg(test)]

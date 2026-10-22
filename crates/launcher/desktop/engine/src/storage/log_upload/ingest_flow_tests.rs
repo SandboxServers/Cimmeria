@@ -515,3 +515,100 @@ fn the_new_states_serialize_flat_for_the_webview() {
         serde_json::json!({"schema_version": 1, "state": "unreachable"})
     );
 }
+
+/// Every NDJSON line the double received, in order.
+async fn posted_rows(server: &MockServer) -> Vec<String> {
+    use std::io::Read;
+    let mut rows = Vec::new();
+    for request in server.received_requests().await.unwrap() {
+        if request.url.path() != CHUNK {
+            continue;
+        }
+        let mut text = String::new();
+        flate2::read::GzDecoder::new(&request.body[..])
+            .read_to_string(&mut text)
+            .unwrap();
+        rows.extend(text.lines().map(str::to_string));
+    }
+    rows
+}
+
+#[tokio::test]
+async fn one_upload_carries_both_targets_under_one_upload_id() {
+    let root = tempfile::tempdir().unwrap();
+    let server = accepting_server().await;
+    let state = state_at(root.path(), &server.uri());
+    write_log(root.path(), 3);
+    let game = root.path().join("game");
+    let binaries = game.join("Working").join("Binaries");
+    std::fs::create_dir_all(&binaries).unwrap();
+    std::fs::write(
+        binaries.join("SGWDebugLog.log"),
+        "[Say] Bob: hello\nsecond\n",
+    )
+    .unwrap();
+    let uploader = LogUploader::new();
+    let mut ingest = ingest_of(state.begin_log_upload(upload(), &uploader).unwrap());
+    ingest.game = Some(game.clone());
+    let mut pacer = FakePacer::default();
+    let status = ingest.run_with(&mut pacer).await.unwrap().state;
+    let LogUploadState::Sent {
+        lines_sent,
+        lines_total,
+        upload_id,
+    } = status
+    else {
+        panic!("expected sent, got {status:?}");
+    };
+    assert_eq!((lines_sent, lines_total), (5, 5));
+    let rows = posted_rows(&server).await;
+    let launcher = rows
+        .iter()
+        .filter(|r| r.contains(LAUNCHER_LOG_TARGET))
+        .count();
+    let game_rows: Vec<_> = rows
+        .iter()
+        .filter(|r| r.contains(GAME_LOG_TARGET))
+        .collect();
+    assert_eq!((launcher, game_rows.len()), (3, 2));
+    assert!(rows.iter().all(|r| r.contains(&upload_id)), "one upload_id");
+    assert!(game_rows[0].contains("[Say] Bob: hello"), "unfiltered");
+    assert!(game_rows[0].contains("SGWDebugLog.log"));
+    assert!(!game_rows[0].contains("Binaries"), "a name, never a path");
+    let saved = Offsets::load(&state.directory.root);
+    assert_eq!(
+        saved.files.get("game/SGWDebugLog.log").copied(),
+        Some(24),
+        "the game offset moved with the accepted chunk"
+    );
+    assert!(saved.heads.contains_key("game/SGWDebugLog.log"));
+    let again = ingest_of(state.begin_log_upload(upload(), &uploader).unwrap());
+    let mut again = again;
+    again.game = Some(game);
+    assert_eq!(
+        again.run_with(&mut pacer).await.unwrap().state,
+        LogUploadState::NothingNew
+    );
+}
+
+#[tokio::test]
+async fn game_logs_alone_are_enough_to_send() {
+    let root = tempfile::tempdir().unwrap();
+    let server = accepting_server().await;
+    let state = state_at(root.path(), &server.uri());
+    let game = root.path().join("game");
+    let binaries = game.join("Working").join("Binaries");
+    std::fs::create_dir_all(&binaries).unwrap();
+    std::fs::write(binaries.join("SGWDebugLog.log"), "only game\n").unwrap();
+    let uploader = LogUploader::new();
+    let mut ingest = ingest_of(state.begin_log_upload(upload(), &uploader).unwrap());
+    ingest.game = Some(game);
+    assert!(matches!(
+        ingest
+            .run_with(&mut FakePacer::default())
+            .await
+            .unwrap()
+            .state,
+        LogUploadState::Sent { lines_sent: 1, .. }
+    ));
+}
