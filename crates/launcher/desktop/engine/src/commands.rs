@@ -37,6 +37,8 @@ pub struct NativeSnapshot {
     pub adopted_login_servers: Option<Vec<LoginServer>>,
     /// The running build, for the About line in Settings.
     pub launcher: LauncherBuild,
+    /// Whether setup diagnostics have an https endpoint to go to.
+    pub setup_diagnostics_endpoint: bool,
 }
 
 /// Compiled release identity. `tag` is `null` for a development build: one
@@ -65,6 +67,7 @@ impl DesktopState {
             requires_reopen: self.requires_reopen(),
             adopted_login_servers: self.adopted_login_servers(),
             launcher: LauncherBuild::current(),
+            setup_diagnostics_endpoint: self.summary_endpoint_configured(),
         }
     }
 

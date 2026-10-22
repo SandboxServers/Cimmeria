@@ -25,6 +25,8 @@ export const NativeSnapshot = Schema.Struct({
   adopted_login_servers: Schema.NullOr(Schema.Array(LoginServer)),
   // The running build (engine `LauncherBuild`); `tag` is null for a development build.
   launcher: Schema.Struct({version: Schema.String, tag: Schema.NullOr(Schema.String)}),
+  // Whether setup diagnostics have an https endpoint to go to (engine `setup_diagnostics_endpoint`).
+  setup_diagnostics_endpoint: Schema.optionalKey(Schema.Boolean),
 });
 export type NativeSnapshot = typeof NativeSnapshot.Type;
 export type Preferences = NativeSnapshot["preferences"];

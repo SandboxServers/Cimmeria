@@ -151,6 +151,12 @@ impl DesktopState {
         lock(&self.summaries).faults
     }
 
+    /// Whether setup diagnostics have an https endpoint to go to. The gate is
+    /// `NoEndpoint` exactly when no endpoint was configured.
+    pub fn summary_endpoint_configured(&self) -> bool {
+        !matches!(lock(&self.summaries).gate(), Gate::NoEndpoint)
+    }
+
     /// Lazy and idempotent: turns a committed end into its queue entry. Runs at
     /// the start of `operations_mut`, a preferences save and every entry point,
     /// and right after the install worker's terminal commit, while the install
