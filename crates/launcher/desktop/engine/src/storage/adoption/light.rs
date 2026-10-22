@@ -91,6 +91,13 @@ pub(super) fn light_comparison(
     if scanned.is_empty() {
         return Err(no_reusable(0));
     }
+    // An invalid list is refused before any file moves: the setup would not write it.
+    login_servers::validate(servers).map_err(|_| {
+        rejection::reject(
+            Error::UnsupportedConfiguration,
+            Rejection::new("login_servers_invalid").expected("a valid login server list"),
+        )
+    })?;
     let root = state
         .lock()
         .map_err(|_| StorageError::Io)?
