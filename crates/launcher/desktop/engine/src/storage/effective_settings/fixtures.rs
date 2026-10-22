@@ -222,11 +222,13 @@ pub fn adopt_native(legacy: &Legacy, state: &Arc<Mutex<DesktopState>>) -> adopti
 
 /// The pinned Windows archive helper and an optional verified runtime tree to
 /// copy, so a supervised run needs no download. Both come from the environment.
+#[cfg(target_os = "macos")]
 pub struct Wine {
     helper: crate::mac_wine::HelperResource,
     runtime_tree: Option<PathBuf>,
 }
 
+#[cfg(target_os = "macos")]
 impl Wine {
     pub fn from_environment() -> Self {
         let helper = crate::mac_wine::HelperResource::open(
@@ -245,6 +247,7 @@ impl Wine {
 
 /// The real Wine-backed adoption: the helper reconstructs the reference in this
 /// fixture's own headless prefix, then the copy is confirmed and published.
+#[cfg(target_os = "macos")]
 pub async fn adopt_wine(
     legacy: &Legacy,
     state: &Arc<Mutex<DesktopState>>,
@@ -276,6 +279,7 @@ pub async fn adopt_wine(
 
 /// Moves the private runtime copy aside, so a later prerequisite or Play worker
 /// in the same test stops at its resource claim and never starts Wine.
+#[cfg(target_os = "macos")]
 pub fn retire_runtime(legacy: &Legacy) {
     let runtimes = legacy.state_root().join("runtimes");
     if runtimes.exists() {
@@ -286,6 +290,7 @@ pub fn retire_runtime(legacy: &Legacy) {
 /// Successful prerequisite evidence for an installed Wine copy, recorded through
 /// the public admission and observation entry points. No prerequisite process,
 /// prefix or download: this is fixture evidence, not a prepared game runtime.
+#[cfg(target_os = "macos")]
 pub fn record_prepared_runtime(state: &mut DesktopState) -> Uuid {
     let installed = state.installed_content().unwrap().unwrap();
     let crate::ExtractionBackend::Wine { runtime_sha256, .. } = installed.intent.backend else {

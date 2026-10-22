@@ -4,7 +4,7 @@
 use super::*;
 use crate::storage::adoption::Provenance;
 
-#[cfg(all(target_os = "macos", any(test, feature = "test-support")))]
+#[cfg(any(test, feature = "test-support"))]
 pub mod fixtures;
 
 /// Patch policy of the installed copy, decided natively. Never renderer input.

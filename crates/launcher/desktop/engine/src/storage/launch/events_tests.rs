@@ -163,15 +163,38 @@ fn launch_tags_read_the_copys_provenance_and_ledger() {
     .unwrap();
     let light = Some(provenance(FileCheck::Light));
     assert_eq!(
-        super::worker::launch_tags(light.as_ref(), game.path()),
+        super::adoption_tags::launch_tags(light.as_ref(), game.path()),
         ("light", 1)
     );
     let full = Some(provenance(FileCheck::Full));
     assert_eq!(
-        super::worker::launch_tags(full.as_ref(), game.path()),
+        super::adoption_tags::launch_tags(full.as_ref(), game.path()),
         ("full", 1)
     );
     // No provenance is a downloaded install; no ledger is no incomplete patch.
     let plain = tempfile::tempdir().unwrap();
-    assert_eq!(super::worker::launch_tags(None, plain.path()), ("none", 0));
+    assert_eq!(
+        super::adoption_tags::launch_tags(None, plain.path()),
+        ("none", 0)
+    );
+}
+
+#[test]
+fn adoption_tags_read_the_adopted_copy_and_its_ledger() {
+    use crate::storage::effective_settings::fixtures::{adopt_native, Legacy};
+    use cimmeria_launcher_core::state::{IncompletePatch, InstalledState};
+    // A real copy adoption, then one incomplete patch in the copy's own ledger.
+    let legacy = Legacy::new(false, false);
+    let state = Arc::new(std::sync::Mutex::new(legacy.open()));
+    let _provenance = adopt_native(&legacy, &state);
+    let game = legacy.destination().join("game");
+    let mut ledger = InstalledState::load(&game);
+    ledger.incomplete_patches.push(IncompletePatch {
+        state_key: "patch:one".to_owned(),
+        skipped: Vec::new(),
+    });
+    ledger.save(&game).unwrap();
+    // A copy adoption checks `full`. Reverted to a constant `("none", 0)`, this fails.
+    let tags = super::adoption_tags::adoption_tags(&state.lock().unwrap());
+    assert_eq!(tags, ("full", 1));
 }
