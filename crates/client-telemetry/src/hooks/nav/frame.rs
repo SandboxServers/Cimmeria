@@ -23,7 +23,7 @@ pub struct NavFrame {
     pub now_ms: u64,
     /// The controller's input words for this tick.
     pub ctrl: ControllerState,
-    /// Whether the UI owns the mouse; `None` until LN-10 fills it in.
+    /// Whether the UI owns the mouse; `None` when unknown; an approximation, see `ui::read_ui_owned`.
     pub ui_owned: Option<bool>,
 }
 
