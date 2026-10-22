@@ -1,5 +1,5 @@
-//! GM `.bankexpand` on the base (BV-05, owner decision while the Expand
-//! dialog is quarantined): the same purchase handler with
+//! GM `.bankexpand` on the base (BV-05, owner decision; the Expand dialog
+//! is served since D-LN3 and this GM path stays): the same purchase handler with
 //! `trigger=gm_console` and no offer, so the base quotes the current step
 //! and buys it with the same keyed statement, checks and telemetry.
 //!

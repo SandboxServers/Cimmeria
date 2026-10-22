@@ -14,11 +14,10 @@
 //! the mail row) is guarded in `cimmeria-base-methods`
 //! `mail/tests/content_live.rs`.
 //!
-//! Dialog 60104 is quarantined from the cooked-data overrides since
-//! 2026-09-27 (client map-load crash): the chains still resolve, but no
-//! client is sent the dialog body, so the clerk shows nothing and its button
-//! cannot be pressed. The "not served" guard is
-//! `quarantined_dialogs_are_not_served` in `cimmeria-resources`.
+//! Dialog 60104 is served from the cooked-data overrides since 2026-10-22
+//! (D-LN3): the chains resolve, the server sends `onDialogDisplay`, and the
+//! client draws the clerk's dialog body with its button. The "served" guard
+//! is `debug_hub_dialogs_are_served` in `cimmeria-resources`.
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::{ChainEngine, ResolvedActions};

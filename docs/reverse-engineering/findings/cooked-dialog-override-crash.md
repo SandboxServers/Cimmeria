@@ -73,7 +73,7 @@ delete their local `Cache.en-US\CookedDataDialogs.pak` and retry, and separately
 client that already received the debug-hub dialogs. Dynamic tracing (live x64dbg, breakpoints on
 `Event_NetIn_DialogDisplay`'s handler `FUN_00d25900` and on `ZipStorageBase::OpenArchive`/
 `WriteStreamToFile` at `0x00479340`/`0x00479930`) is the fallback only if those empirical tests are
-still ambiguous.
+still ambiguous. Superseded 2026-10-22: the quarantine is lifted (D-LN3); the empirical check is now the owner's post-release validation.
 ```
 
 ## Verdict (2026-09-27, after live headless-Ghidra decompile)
@@ -306,6 +306,9 @@ push, acknowledged normally, and reached `Castle_CellBlock`: it processed `CREAT
 never sent `mapLoaded`. The process died. On relog — with no push this time, since the client's
 locally cached version now matched — the same map load died the same way, confirming the crash is
 triggered by data already sitting in the client's writable cooked-data cache, not by the push itself.
+
+On 2026-10-22 the owner lifted the quarantine and served these dialogs again with the cause still
+unknown; see [2026-10-22: quarantine lifted (D-LN3)](#2026-10-22-quarantine-lifted-d-ln3).
 
 **This session got live decompile access via headless Ghidra** — see "Verdict" above for the
 result. The original pass (below, still preserved for its correct parts and its explicit
@@ -613,6 +616,9 @@ again — the RE evidence no longer supports id width as a live hypothesis.
 local-cache clear or a one-time `invalidate_all`/tombstone (finding §5) before this is fully closed
 for them, independent of whatever the true root cause turns out to be.
 
+The quarantine on these dialogs was lifted on 2026-10-22 with the cause still unknown; see
+[2026-10-22: quarantine lifted (D-LN3)](#2026-10-22-quarantine-lifted-d-ln3).
+
 ## Next steps for a follow-up RE session
 
 1. ~~Get a Ghidra session where the dynamically-registered analysis tools are actually
@@ -644,6 +650,16 @@ for them, independent of whatever the true root cause turns out to be.
    the `SpeakerID=754` lead (item 2 above) before returning to element-key width — the RE evidence
    built this session doesn't support width as the mechanism, and re-treading it would repeat this
    session's work for a hypothesis that's now refuted for every reachable code path.
+
+## 2026-10-22: quarantine lifted (D-LN3)
+
+The owner chose to serve 60100, 60101, 60104 and 60110 again. The cause of the Castle_CellBlock
+entry crash is still unknown: no field was named, and no lab run was made for this decision.
+
+What to watch for: a session that gets `onClientMapLoad` for Castle_CellBlock and never sends
+`mapLoaded` (SigNoz, the same signature as 2026-09-27). The recovery is to put the entries back
+(revert the LN-20a/b commits) **and** have the tester delete `Cache.en-US\CookedDataDialogs.pak`,
+since the server evicts nothing. The owner validates after release.
 
 ## Cross-references
 

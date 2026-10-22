@@ -32,7 +32,7 @@ use tokio::sync::mpsc;
 use cimmeria_entity::cell_entity::{ExpansionOffer, VaultScope};
 use cimmeria_wire::cell::messages::{BankCellToBase, ExpandTrigger};
 use cimmeria_wire::cell::vault::{
-    VAULT_EXPAND_BUTTON_ID, VAULT_EXPAND_DIALOG_ID, VAULT_EXPAND_DIALOG_SERVED, VAULT_EXPAND_STEP,
+    VAULT_EXPAND_BUTTON_ID, VAULT_EXPAND_DIALOG_ID, VAULT_EXPAND_STEP,
 };
 
 use super::rejection::send_bank_feedback;
@@ -90,11 +90,8 @@ pub(super) async fn request_expansion_quote(
     }
 }
 
-/// The base's `OfferExpansion`: record the offer on the vault session and,
-/// while the dialog is served ([`VAULT_EXPAND_DIALOG_SERVED`]), show it
-/// ([`show_expand_offer`]). While it is quarantined the offer is recorded
-/// and DEBUG `expand_offer_suppressed reason=dialog_quarantined` is logged
-/// once per open instead.
+/// The base's `OfferExpansion`: record the offer on the vault session and
+/// show it ([`show_expand_offer`]).
 ///
 /// The offer is dropped (DEBUG `expand_offer_dropped`) when the entity is
 /// gone or is another character, or when the personal vault session the
@@ -147,29 +144,6 @@ pub async fn offer_vault_expansion(
         );
         return;
     }
-    if !VAULT_EXPAND_DIALOG_SERVED {
-        // The client has no entry for 60110 while it is quarantined (#943),
-        // so a display would show nothing. The offer is still recorded, so
-        // lifting the quarantine needs no other change here.
-        tracing::debug!(
-            target: "bank",
-            event = "expand_offer_suppressed",
-            account_id = id.account_id,
-            account_name = id.account_name,
-            player_id,
-            player_name = id.player_name,
-            entity_id,
-            entity_name = id.player_name,
-            speaker_id,
-            speaker_name = space_mgr.entity_label(speaker_id),
-            bank_slots = from_slots,
-            price,
-            reason = "dialog_quarantined",
-            "expand_offer_suppressed: the Expand dialog is quarantined -- no dialog shown; \
-             a GM buys with .bankexpand"
-        );
-        return;
-    }
     show_expand_offer(
         entity_id,
         speaker_id,
@@ -182,7 +156,6 @@ pub async fn offer_vault_expansion(
 
 /// Show a recorded offer: `onDialogDisplay(speaker, 60110)`, which also
 /// records the #479 offered-dialog gate, then the chat line with the price.
-/// [`offer_vault_expansion`] calls it only while the dialog is served.
 pub async fn show_expand_offer(
     entity_id: u32,
     speaker_id: u32,

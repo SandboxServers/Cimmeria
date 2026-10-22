@@ -141,18 +141,12 @@ async fn an_org_banker_click_asks_for_no_quote() {
     );
 }
 
-/// While the Expand dialog is quarantined (#943), the base's offer is
-/// recorded on the session but nothing is sent: no `onDialogDisplay` for an
-/// id the client has no entry for, and no price line pointing at a button
-/// that is not there. DEBUG `expand_offer_suppressed reason=dialog_quarantined`,
-/// once. Fails if the suppression is removed (the dialog would go out).
+/// The base's offer is recorded on the session and shown at once: the
+/// Expand dialog by the Banker (`onDialogDisplay`), then the price line, in
+/// that order, and one DEBUG `expand_offered` row. No `expand_offer_suppressed`
+/// row. Revert proof: with the suppression block back, `methods` is empty.
 #[tokio::test]
-async fn a_quarantined_dialog_is_recorded_but_not_shown() {
-    // Pins the quarantined behaviour: serving the dialog stops this
-    // compiling, so the test is updated with the flag.
-    const {
-        assert!(!cimmeria_wire::cell::vault::VAULT_EXPAND_DIALOG_SERVED);
-    }
+async fn an_offer_is_recorded_and_shown_at_once() {
     let mut mgr = two_space_manager();
     let banker = spawn_banker(&mut mgr, "Agnos", [2.0, 0.0, 0.0], VaultScope::Personal);
     let (tx, mut rx) = mpsc::channel(16);
@@ -163,26 +157,30 @@ async fn a_quarantined_dialog_is_recorded_but_not_shown() {
     offer_vault_expansion(PLAYER, PLAYER_ID, banker, 40, 100, &tx, &mut mgr).await;
 
     assert_eq!(offer(&mgr), Some(OFFER_40));
-    assert!(
-        methods(&mut rx).is_empty(),
-        "nothing is sent while quarantined"
+    let line = "Your vault has 40 slots. 10 more cost 100 naquadah: press Expand vault in the \
+                Banker's dialog to buy them.";
+    assert_eq!(
+        methods(&mut rx),
+        vec![
+            (ON_DIALOG_DISPLAY, dialog_display_args(banker)),
+            (
+                ON_PLAYER_COMMUNICATION,
+                serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, line)
+            ),
+        ]
     );
-    assert!(!mgr
+    assert!(mgr
         .get_entity(PLAYER)
         .unwrap()
         .offered_dialogs()
         .contains(&VAULT_EXPAND_DIALOG_ID));
     one(
         &capture,
-        "expand_offer_suppressed",
+        "expand_offered",
         Level::DEBUG,
-        &[
-            ("reason", "dialog_quarantined"),
-            ("bank_slots", "40"),
-            ("price", "100"),
-        ],
+        &[("bank_slots", "40"), ("price", "100")],
     );
-    assert!(rows(&capture, "expand_offered").is_empty());
+    assert!(rows(&capture, "expand_offer_suppressed").is_empty());
 }
 
 /// Once served, showing an offer sends the Expand dialog by the Banker

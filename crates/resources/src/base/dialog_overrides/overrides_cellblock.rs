@@ -1,8 +1,9 @@
 //! Cellblock authored dialog overrides (CB-N05, CIMMERIA_AUTHORING).
 //!
 //! Only the shape the client already renders from 3995/3996 is used: one
-//! screen, `speaker_id` 0, zero buttons, UI type 2. Multi-screen or
-//! NPC-speaker authored dialogs stay quarantined (2026-09-27 client crash).
+//! screen, `speaker_id` 0, zero buttons, UI type 2. These two keep that
+//! shape. The multi-screen NPC-speaker debug-hub dialogs are served from
+//! `overrides_debug_hub.rs` since D-LN3 (2026-10-22).
 
 use super::{DialogOverride, DialogScreen};
 
