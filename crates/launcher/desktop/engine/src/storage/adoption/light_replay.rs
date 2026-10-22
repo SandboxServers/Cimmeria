@@ -260,4 +260,4 @@ fn replayed_event(patches: usize, done: &LightReplay) {
 
 #[cfg(test)]
 #[path = "light_replay_tests.rs"]
-mod tests;
+pub(super) mod tests;

@@ -1,4 +1,3 @@
-#![cfg_attr(not(test), allow(dead_code))] // LA-11 calls this.
 //! Compares an adopted folder with the published file index (LA-12). Only a
 //! cancel aborts; a missing, unreachable or refused index becomes an
 //! [`IndexState`], so a preview never blocks on it.

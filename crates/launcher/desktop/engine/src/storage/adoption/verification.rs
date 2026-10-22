@@ -93,7 +93,7 @@ pub(super) fn reference_and_comparison(
         None => {
             let tree = expected_tree(&index, servers)?;
             (
-                published_digest(&tree, &request.release)?,
+                published_digest(&tree, &request.release, &[])?,
                 tree.keys().cloned().collect(),
             )
         }
@@ -288,7 +288,7 @@ fn reconstructed(
 }
 
 /// A tree of release paths, each with its size and SHA-256.
-type Tree = BTreeMap<String, (u64, [u8; 32])>;
+pub(super) type Tree = BTreeMap<String, (u64, [u8; 32])>;
 
 /// The release tree after setup, keyed by release spelling: every path's release
 /// bytes, or the setup rule's bytes for `SGW.exe` and `LoginInternal.lua`.
@@ -326,8 +326,13 @@ fn expected_tree(
 
 /// The digest the post-setup tree of a published index must have: `tree` plus the
 /// synthesized ledger, hashed the way [`inventory::content_digest`] hashes a scan.
-fn published_digest(tree: &Tree, release: &VerifiedRelease) -> Result<[u8; 32], Error> {
-    let ledger = serde_json::to_vec_pretty(&reference::ledger(release))
+/// A light adoption passes the patches it applied with skipped ops (D-LA18).
+pub(super) fn published_digest(
+    tree: &Tree,
+    release: &VerifiedRelease,
+    incomplete: &[cimmeria_launcher_core::state::IncompletePatch],
+) -> Result<[u8; 32], Error> {
+    let ledger = serde_json::to_vec_pretty(&reference::ledger(release, incomplete))
         .map_err(|_| StorageError::Corrupt)?;
     let mut all = tree.clone();
     all.insert(

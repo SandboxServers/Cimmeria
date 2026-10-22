@@ -189,6 +189,7 @@ fn admit(
         setup_policy_version: 1,
         folder_scan_digest,
         file_index_sha256: preview.file_index_sha256.clone(),
+        check: preview.file_check(),
     };
     let mut after = preview.before.clone();
     after.revision = after.revision.checked_add(1).ok_or(StorageError::Corrupt)?;
@@ -208,6 +209,7 @@ fn admit(
         stage_identity: inventory::identity(game)?,
         destination_identity: inventory::identity(root)?,
         replacements: Vec::new(),
+        incomplete_patches: preview.incomplete_patches(),
     };
     plan.replacements = stage_replacements(preview, &plan.stage(), cancel)?;
     state.save_release_evidence(owner_id, &preview.release)?;
@@ -579,7 +581,7 @@ pub(super) fn finish(
     if record.phase == Phase::Promoted {
         // Idempotent, so a recovery after a crash here applies it again.
         crate::client_setup::prepare(&game, &plan.installation.login_servers)?;
-        reference::ledger(&release)
+        reference::ledger(&release, &plan.incomplete_patches)
             .save(&game)
             .map_err(|_| StorageError::Io)?;
         sync_files(&game, &SETUP_FILES)?;

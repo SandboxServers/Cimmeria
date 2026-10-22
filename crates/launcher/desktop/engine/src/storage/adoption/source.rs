@@ -45,6 +45,19 @@ pub(super) fn request_source(
     request: &SourceRequest,
     mode: AdoptionMode,
 ) -> Result<(AdoptionSource, inventory::Index), Error> {
+    request_source_with(state, request, mode, &|root| {
+        inventory::scan(root, &CancellationToken::new())
+    })
+}
+
+/// [`request_source`] with the folder scan supplied, so a light preview can report
+/// hashing progress and honour its cancel token.
+pub(super) fn request_source_with(
+    state: &Mutex<DesktopState>,
+    request: &SourceRequest,
+    mode: AdoptionMode,
+    scan: &dyn Fn(&Path) -> Result<inventory::Index, Error>,
+) -> Result<(AdoptionSource, inventory::Index), Error> {
     let (saved, state_root) = {
         let owner = state.lock().map_err(|_| StorageError::Io)?;
         let saved = owner.legacy_import().map_err(|_| StorageError::Corrupt)?;
@@ -54,13 +67,13 @@ pub(super) fn request_source(
         let imported = saved_import(saved, request)?;
         let scanned = survey::explained(
             &imported.source.game_directory,
-            inventory::scan(&imported.source.game_directory, &CancellationToken::new()),
+            scan(&imported.source.game_directory),
         )?;
         return Ok((AdoptionSource::Legacy(imported), scanned));
     };
     let root = resolve_folder(selected)?;
     if let Some(imported) = saved.filter(|imported| imported.source.game_directory == root) {
-        let scanned = survey::explained(&root, inventory::scan(&root, &CancellationToken::new()))?;
+        let scanned = survey::explained(&root, scan(&root))?;
         return Ok((AdoptionSource::Legacy(imported), scanned));
     }
     // A copy only reads the folder, so it needs no write access to it.
@@ -78,7 +91,7 @@ pub(super) fn request_source(
             check,
         ));
     }
-    let scanned = survey::explained(&root, inventory::scan(&root, &CancellationToken::new()))?;
+    let scanned = survey::explained(&root, scan(&root))?;
     let source = AdoptionSource::Folder(FolderSource {
         selected: selected.clone(),
         root,

@@ -1,4 +1,5 @@
 use super::*;
+use cimmeria_launcher_core::{file_index::FileClass, state::IncompletePatch};
 
 /// Native-selected, already downloaded artifact paths. Hashes always come from
 /// the authenticated release, never from these paths or from a legacy ledger.
@@ -39,7 +40,51 @@ pub struct FolderSource {
 pub enum AdoptionMode {
     InPlace,
     Copy,
+    /// In place, with no stock seed: patches replay tolerantly over the folder's
+    /// own files and the published index is only compared (D-LA9, D-LA14).
+    Light,
 }
+/// How the adopted files were checked. A full check verifies every file against
+/// the release; a light check never blocks on a changed file. Old plans carry no
+/// field and read as `Full`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FileCheck {
+    #[default]
+    Full,
+    Light,
+}
+impl FileCheck {
+    pub(super) fn is_full(&self) -> bool {
+        *self == Self::Full
+    }
+}
+/// One op a light adoption skipped, for the review. The path is the target's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LightSkip {
+    pub path: String,
+    /// The patch's state key.
+    pub patch: String,
+    /// A closed skip code (`SkipReason::code`).
+    pub reason: String,
+}
+/// What a light preview found, beside the `Report` (which the frontend decodes
+/// strictly, R8). Lists are capped at [`LIGHT_LIST_CAP`]; the totals are not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LightSummary {
+    pub patches_total: u32,
+    pub patches_current: u32,
+    pub patches_pending: u32,
+    pub download_bytes: u64,
+    pub skipped: Vec<LightSkip>,
+    pub skipped_total: u32,
+    pub index_state: super::index_compare::IndexState,
+    pub index_counts: std::collections::BTreeMap<FileClass, u64>,
+    pub index_files: Vec<(String, FileClass)>,
+    pub index_files_total: u32,
+}
+/// The longest list a [`LightSummary`] carries.
+pub const LIGHT_LIST_CAP: usize = 500;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Classification {
@@ -290,6 +335,9 @@ pub struct Provenance {
     pub folder_scan_digest: Option<[u8; 32]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_index_sha256: Option<String>,
+    /// Absent in a plan an earlier build wrote, which read as a full check.
+    #[serde(default, skip_serializing_if = "FileCheck::is_full")]
+    pub check: FileCheck,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -314,6 +362,10 @@ pub struct Plan {
     /// legacy adoption.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub replacements: Vec<Replacement>,
+    /// Patches a light adoption applied with skipped ops; they are also in the
+    /// ledger's `applied_patches` (D-LA18). Empty for every other adoption.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub incomplete_patches: Vec<IncompletePatch>,
 }
 impl Plan {
     pub fn stage(&self) -> PathBuf {
@@ -349,6 +401,7 @@ impl Plan {
             stage_identity,
             destination_identity,
             replacements,
+            incomplete_patches,
         } = self;
         #[derive(Serialize)]
         struct Digested<'a> {
@@ -368,6 +421,8 @@ impl Plan {
             destination_identity: &'a inventory::Identity,
             #[serde(skip_serializing_if = "Vec::is_empty")]
             replacements: &'a Vec<Replacement>,
+            #[serde(skip_serializing_if = "Vec::is_empty")]
+            incomplete_patches: &'a Vec<IncompletePatch>,
         }
         digest(&Digested {
             schema_version,
@@ -383,6 +438,7 @@ impl Plan {
             stage_identity,
             destination_identity,
             replacements,
+            incomplete_patches,
         })
     }
 }

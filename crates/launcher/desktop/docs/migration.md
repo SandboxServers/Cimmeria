@@ -254,6 +254,8 @@ game folders, such as PAKs placed by hand in `SourceCache.en-us`, stay where the
 and the game no longer uses them. Settings and the client cache in Documents are
 not affected.
 
+**Light mode (in place).** Light adoption reads no seed. It scans your folder, plans which patches the folder does not yet carry, and replays them over the folder's own files in a scratch tree. The replay is tolerant per operation: an operation whose source file differs from the signed one (a modded file, a different build) is skipped and your file stays as it is, and the patch is still recorded as applied. Each such patch is also listed in `incomplete_patches` in `launcher-installed.json`, with the skipped files and a closed reason code. Nothing in your folder blocks a light adoption; only a folder with no reusable file is refused (`no_reusable_files`). The published file index is compared and shown but never decides the outcome. The adoption's provenance records `check = light`; its digest covers the folder's files with the replacements, moves and setup writes applied, so a recovered adoption verifies the same way. Every other adoption keeps the full check and writes no `check` key.
+
 **Admission and moves (in place).**
 
 1. **Admission.** Confirmation first opens `Working\Binaries\SGW.exe` exclusively. A

@@ -10,13 +10,13 @@ fn serial() -> MutexGuard<'static, ()> {
     SERIAL.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-const OVERLAY: &str = "Working/Data/Overlay.dat";
+pub(in crate::storage::adoption) const OVERLAY: &str = "Working/Data/Overlay.dat";
 const SECOND: &str = "Working/Data/Second.dat";
 const CHAIN: &str = "Working/Data/Chain.dat";
 const COOKED_STOCK: &str = "Working/SGWGame/Cache.en-US/Cooked.pak";
 const COOKED_PLACED: &str = "Working/SGWGame/SourceCache.en-us/Cooked.pak";
 
-fn big(tag: &str) -> Vec<u8> {
+pub(in crate::storage::adoption) fn big(tag: &str) -> Vec<u8> {
     format!("{tag} line of a file the game ships\r\n")
         .repeat(60)
         .into_bytes()
@@ -27,14 +27,18 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 /// One recipe op: `target` rebuilt from `sources` into `result`.
-struct OpFixture<'a> {
-    target: &'a str,
-    sources: &'a [(&'a str, &'a [u8])],
-    result: &'a [u8],
+pub(in crate::storage::adoption) struct OpFixture<'a> {
+    pub(in crate::storage::adoption) target: &'a str,
+    pub(in crate::storage::adoption) sources: &'a [(&'a str, &'a [u8])],
+    pub(in crate::storage::adoption) result: &'a [u8],
 }
 
 /// A real patch zip, built with the patchset builder.
-fn patch_zip(id: &str, ops: &[OpFixture], files: &[(&str, &[u8])]) -> Vec<u8> {
+pub(in crate::storage::adoption) fn patch_zip(
+    id: &str,
+    ops: &[OpFixture],
+    files: &[(&str, &[u8])],
+) -> Vec<u8> {
     let dir = tempfile::tempdir().unwrap();
     let (stock, patched, spec_dir) = (
         dir.path().join("stock"),
@@ -74,13 +78,12 @@ fn patch_zip(id: &str, ops: &[OpFixture], files: &[(&str, &[u8])]) -> Vec<u8> {
         .zip
 }
 
-/// A signed release naming `zips`, in order. The seed is signed, never used.
-fn release_of(zips: &[Vec<u8>]) -> VerifiedRelease {
-    release_with_roots(zips, &[])
-}
-
-/// Like [`release_of`], with `roots[i]` as patch `i`'s root (default when short).
-fn release_with_roots(zips: &[Vec<u8>], roots: &[&str]) -> VerifiedRelease {
+/// A signed release naming `zips`, in order, with `roots[i]` as patch `i`'s root
+/// (default when short). The seed is signed, never used.
+pub(in crate::storage::adoption) fn release_with_roots(
+    zips: &[Vec<u8>],
+    roots: &[&str],
+) -> VerifiedRelease {
     let seed = b"seed".to_vec();
     let patches: Vec<_> = zips
         .iter()

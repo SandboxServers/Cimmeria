@@ -353,8 +353,6 @@ fn scan_inner(
 }
 /// The bytes and files `scan` would walk, from metadata only. It never opens or
 /// hashes a file and never rejects: the walk does the safety checks.
-// LA-11 wires this into the light preview.
-#[cfg_attr(not(test), allow(dead_code))]
 fn sized(root: &Path, cancel: &CancellationToken) -> Result<u64, Error> {
     fn add(
         path: &Path,
@@ -392,8 +390,6 @@ fn sized(root: &Path, cancel: &CancellationToken) -> Result<u64, Error> {
 }
 /// [`scan`] with progress: `on_bytes(hashed, total)` once after sizing, then after
 /// each hashed file. `total` is the sized total, raised when a file grew after it.
-// LA-11 wires this into the light preview.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn scan_with_progress(
     root: &Path,
     cancel: &CancellationToken,

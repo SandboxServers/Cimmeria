@@ -168,6 +168,7 @@ fn copy_and_publish(
         setup_policy_version: 1,
         folder_scan_digest,
         file_index_sha256: preview.file_index_sha256.clone(),
+        check: FileCheck::Full,
     };
     let mut after = preview.before.clone();
     after.revision = after.revision.checked_add(1).ok_or(StorageError::Corrupt)?;
@@ -187,6 +188,7 @@ fn copy_and_publish(
         stage_identity: inventory::identity(&stage)?,
         destination_identity: inventory::identity(&destination)?,
         replacements: Vec::new(),
+        incomplete_patches: Vec::new(),
     };
     state.save_release_evidence(owner_id, &preview.release)?;
     atomic::write(
@@ -263,7 +265,7 @@ fn copy_and_publish(
         }
         if preview.reference.is_none() {
             // The ledger a reconstruction would have saved, synthesized from the release.
-            reference::ledger(&preview.release)
+            reference::ledger(&preview.release, &[])
                 .save(&stage)
                 .map_err(|_| StorageError::Io)?;
         }
