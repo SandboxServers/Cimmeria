@@ -118,14 +118,22 @@ async fn failed_terminal_persistence_logs_mark_uncertain_failed() {
     let journal = root.path().join("state/operation.json");
     std::fs::remove_file(&journal).unwrap();
     std::fs::create_dir(journal).unwrap();
-    let (finished, events) =
-        crate::test_capture::capture(|| finish_failure(&state, plan.id, Failure::Failed));
+    // A second live Dispatch keeps callsite interest per-dispatcher, so a parallel
+    // test's first hit cannot cache "never" for the callsites below.
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let (finished, events) = crate::test_capture::capture(|| {
+        // Prime the callsite on this thread (its row is skipped below), then rebuild.
+        events::mark_uncertain_failed(crate::ContractError::Busy);
+        tracing::callsite::rebuild_interest_cache();
+        finish_failure(&state, plan.id, Failure::Failed)
+    });
     assert_eq!(finished, Failure::ReconciliationRequired);
     let uncertain = events
         .iter()
-        .find(|e| {
+        .filter(|e| {
             e.target == "launcher.repair" && e.field("event") == Some("mark_uncertain_failed")
         })
+        .nth(1)
         .expect("a failed mark_uncertain is logged");
     assert_eq!(uncertain.level, tracing::Level::WARN);
     assert!(uncertain.field("reason").is_some());
