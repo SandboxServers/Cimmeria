@@ -4,7 +4,9 @@ use serde_json::json;
 
 use super::controller::InputAxes;
 use super::frame::{controller_ptr, PcCache, PC_RESCAN_MS};
-use super::pose::{angle_delta_deg, changed, pose_fields, PoseSampler, PoseSnapshot, POSE_PERIOD_MS};
+use super::pose::{
+    angle_delta_deg, changed, pose_fields, PoseSampler, PoseSnapshot, POSE_PERIOD_MS,
+};
 use crate::hooks::camera::layout::{
     GLEVEL_PTR_VA, LEVEL_ACTORS_OFF, PLAYER_CONTROLLER_VTABLE_VA, WORLD_LEVEL_OFF,
 };
