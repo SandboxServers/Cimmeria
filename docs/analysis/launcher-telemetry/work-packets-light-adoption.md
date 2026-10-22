@@ -54,7 +54,7 @@ Every step is an `ops` request; record each SHA in the orchestrator's ledger.
 
 The build lane's heavy slots set the real concurrency: if there are fewer than six, the extra jobs queue in the lane on their own, and nobody needs to stagger dispatch. Dispatch all six in the background; each packet's review loop starts when its coder returns. The wave review covers the five PR LA packets after they merge in the order above. LA-05 has only its packet review.
 - **Wave 8b:** LA-03 → LA-04; LA-09 → LA-10; LA-12 alongside; LA-11 after LA-10 and LA-12; LA-11b after LA-11 (added 2026-10-21 from the wave 8b3 review; it has its own packet review loop). **Merge order:** LA-03, LA-09, LA-12, LA-04, LA-10, LA-11, LA-11b.
-- **Wave 8c:** LA-13 (after LA-04, LA-08, LA-11, which adds `Provenance.check`, and LA-11b, which places the cooked tier), LA-14 → LA-15 → LA-16 → LA-18, and LA-17 (after LA-11). **Merge order:** LA-13, LA-17, LA-14, LA-15, LA-16, LA-18.
+- **Wave 8c:** LA-13 (after LA-04, LA-08, LA-11, which adds `Provenance.check`, and LA-11b, which places the cooked tier), LA-14 → LA-15 → LA-16 (then LA-16b, a second commit in the same `la-16` worktree) → LA-18, and LA-17 (after LA-11). **Merge order:** LA-13, LA-17, LA-14, LA-15, LA-16 (with LA-16b), LA-18.
 - **Close:** LA-19 (docs, `documentation-writer`, in `la-19`) goes into the integration branch; then PR LA ships. LA-20 runs after PR I2 merges with green CI.
 - **Sonnet (`rust-gameserver-dev`):** LA-10, LA-11, LA-11b, LA-13. **Haiku (`packet-coder`):** all the others except LA-19 and LA-20.
 
@@ -793,7 +793,7 @@ Samples (D-LA17): each holds at most 10 paths, comma-joined, at most 600 charact
 - **Copy:**
   - **Mode rows.**
     - **Use it where it is (recommended):** "The launcher takes over this folder and brings it up to date with the current patches. Its game files move into a “game” folder inside it."
-    - **Make a checked copy:** the existing text, plus "Checks every file; downloads the full game archive (4.1 GB) unless a file list is published."
+    - **Make a verified copy** (amended 2026-10-22, LA-16b: the label stays "Make a verified copy", as the confirm button, `adoptionText` and the UAT scripts say): the existing text, plus "Checks every file; downloads the full game archive (4.1 GB) unless a file list is published."
   - **First press.** On picker return, set "Checking your game folder…" in the same frame, before the preview resolves. A cancelled picker shows "No folder chosen."
   - **Review.**
     - "Stargate Worlds found in <folder name only>."
@@ -815,6 +815,94 @@ Samples (D-LA17): each holds at most 10 paths, comma-joined, at most 600 charact
   Reverted, they fail. The shell wiring itself is proven by the LA-15 Part B Rust tests, not here.
 - **Lane:** frontend (`npm run check; npm test`).
 - **Docs:** none. **Commit:** `LA-16: light adoption review, skipped-change list and first-press status`.
+
+### LA-16b: light wording for counts, consequences and the completed text
+
+- **Agent:** packet-coder. **Host:** windows. **Worktree:** `la-16` (the same branch, `launcher-telemetry/la-16-adoption-view`), **after** the commit that applies the wave 8c4 review's fix notes N1-N4. One new commit of its own. Anchors are at `7ccb84540` plus that fix commit; re-grep every anchor before editing (line numbers below are approximate).
+- **Ruling (architect, 2026-10-22, wave 8c4 review "Not fixed" D1).** Light adoption (engine `adoption/light.rs`, `light_comparison`) puts every scanned file into the moved tree as `Matched`, `KnownTransform` (the bundled cooked data placed under `SourceCache.en-us`) or `NeedsPatching`, never `Modified`, `Missing` or `Extra`; it keeps modified and unlisted files, makes no backup and never blocks. Three texts in `adoption-view.ts` still describe strict in-place adoption, so a light review and a completed light adoption get their own wording:
+  - **Review** (`reviewLines`, `counts` and `consequences`): branch on `r.light` (present only for a light review, from LA-15). No shell change.
+  - **Completed text:** the view cannot tell a finished light adoption from a strict one, so `Completed` gains one field, `light: bool`, set from the adoption record's provenance (`record.plan.provenance.check == FileCheck::Light`). It is left out of the JSON when `false`, so a strict or copy completion sends exactly the bytes it sends today, and no existing frontend fixture or `.mjs` UAT script changes. The TypeScript schema gains `light` as an optional key in the same commit (R-LA 7).
+  - **The shell part is in this packet, not LA-18:** LA-18 is frontend-only and merges later, and the completed text must be right when LA-16 merges. The shell change is four lines plus test literals.
+  - Rejected: a frontend-only flag remembered from the confirmed review (lost on restart or after an inspect from another window), and dropping the "left where they were" sentence for every in-place completion (it is true and useful for a strict adoption).
+- **Rules (R-LA, inlined):** PowerShell only; start every command with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\la-16;`. Never call cargo directly; use the lane, in the foreground. No `git stash`, no `git worktree prune`, no push, no rebase; one local commit, then stop. Edit only the files listed. Each new test must fail when its change is reverted, and the report says which reverted line makes it fail. Rust serde types and their TypeScript schema land in the same commit (`onExcessProperty: 'error'`). The new strings use the typographic characters shown (’ U+2019, “ ” U+201C/U+201D), exactly as the existing strings in `adoption-view.ts` do; copy them byte for byte. Keep each file's existing line endings (the frontend files are CRLF). Report to `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\la-16\.claude\reports\launcher-telemetry\LA-16b-coder.md` (not committed); return exactly one line `LA-16b <done|blocked|failed> <sha|-> <report-path>`. If an anchor below does not match the code, return `blocked` with the reason.
+- **Files (only these):**
+  1. Shell `crates/launcher/desktop/shell/src/host/adoption/contract.rs`, `struct Completed` (about `:257`). It becomes:
+     ```rust
+     #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+     pub struct Completed {
+         pub directory: PathBuf,
+         /// A light adoption: every game file was kept and moved into `game`.
+         /// Left out of the JSON for a strict in-place adoption or a copy.
+         #[serde(skip_serializing_if = "std::ops::Not::not")]
+         pub light: bool,
+     }
+     ```
+     If `std::ops::Not::not` does not compile there, add `fn is_false(value: &bool) -> bool { !*value }` directly below the struct, use `skip_serializing_if = "is_false"`, and say so in the report.
+  2. Shell `host/adoption/status.rs`, the `Some((id, OperationState::Succeeded))` arm (about `:272-279`). The `.map(|record| Completed { directory: record.plan.installation.destination, })` literal gains, after the `directory` line, `light: record.plan.provenance.check == adoption::FileCheck::Light,`. (`FileCheck` is public through the engine's `pub use model::*`; `adoption::Phase::Published` in the same closure resolves the same way.)
+  3. Shell test literals that build a `Completed` (they stop compiling otherwise): `host/adoption/tests.rs` (about `:164`), `host/adoption/lifecycle_tests.rs` (about `:362`) and `host/adoption/wine_tests.rs` (about `:87`). In each `Completed { directory: ... }` add `light: false,` after the `directory` line. Change nothing else in them.
+  4. Shell `host/adoption/in_place_tests.rs` (at most +3 lines), the two asserts in Tests 1 and 2 below.
+  5. Frontend `crates/launcher/desktop/frontend/src/adoption-workflow.ts`, the `AdoptionStatus` schema (about `:31`): `completed:Schema.NullOr(Schema.Struct({directory:Schema.String,backup_directory:Schema.optionalKey(Schema.String)}))` becomes `completed:Schema.NullOr(Schema.Struct({directory:Schema.String,backup_directory:Schema.optionalKey(Schema.String),light:Schema.optionalKey(Schema.Boolean)}))`.
+  6. Frontend `src/adoption-view.ts`:
+     - Directly after the `const doneText=...;` line (about `:48`) add two lines:
+       ```ts
+       const lightConsequences='Your folder becomes the launcher’s installation. Its game files, including files you added such as PAKs placed by hand in SourceCache.en-us, are moved, not copied, into a “game” folder inside it, and the game keeps using them. Files that differ from what the patches expect are kept as they are. Desktop shortcuts and the old launcher stop working: start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Your settings and the client cache live in Documents and are not affected.';
+       const lightDoneText='Its game files, including files you added, now sit in the launcher-owned “game” folder inside it, and the game keeps using them.';
+       ```
+     - In `adoptionText`, directly before the line that starts `if(status.completed&&status.backend==='in_place')return \`Adopted` (about `:94`), add:
+       ```ts
+        if(status.completed?.light)return `Adopted ${status.completed.directory} in place. ${lightDoneText} ${doneText}`;
+       ```
+       The strict line below it stays exactly as it is.
+     - In `reviewLines`, the `counts:` entry (about `:117`): prefix its value with a light branch, so it reads `counts:r.light?<LIGHT>:<the existing template, unchanged>,` where `<LIGHT>` is
+       ```ts
+       `${plural(c.matched,'file moves','files move')} into the “game” folder with no patch changes. ${plural(c.needs_patching,'file is','files are')} updated by the patches. ${plural(c.known_transform,'bundled data file moves','bundled data files move')} to the folder the game loads them from.`
+       ```
+     - In `reviewLines`, the `consequences:` entry (about `:118`): `consequences:r.in_place?'Your folder becomes…':…` becomes `consequences:r.light?lightConsequences:r.in_place?'Your folder becomes…':…` (only the `r.light?lightConsequences:` prefix is added; both existing texts stay byte for byte).
+     - The file must stay at or below 300 lines (it is about 283 after N1-N4; this adds 3). Nothing else in this file changes.
+  7. Frontend tests: `src/adoption-workflow.test.ts` and `src/adoption-view.test.ts` (Tests 3-5).
+- **Tests.**
+  1. `in_place_tests.rs`, in `a_picked_folder_without_an_import_is_reviewed_and_adopted_light`, directly before `assert_eq!(status.completed.map(|c| c.directory), Some(folder.clone()));` (about `:248`): `assert_eq!(serde_json::to_value(&status).unwrap()["completed"]["light"], serde_json::json!(true));`. Fails when item 2's `light:` line is reverted to `light: false` (the key is then absent and reads `null`).
+  2. `in_place_tests.rs`, in `the_imported_folder_is_adopted_in_place_once_its_release_files_verify`, directly before its `assert_eq!(status.completed.map(|c| c.directory), Some(folder.clone()));` (about `:85`): `assert!(serde_json::to_value(&status).unwrap()["completed"].get("light").is_none(), "a strict adoption sends no light flag");`. Fails when the `#[serde(skip_serializing_if = ...)]` line is removed (`"light": false` is then sent).
+  3. `adoption-workflow.test.ts`, a new test after the scan-progress test, using the existing `status` and `decode` helpers:
+     ```ts
+     test('a completed light adoption decodes its flag, and a non-boolean flag is refused', async () => {
+       const done=await decode({...(status(['light','copy']) as object),owned:true,completed:{directory:'/f',light:true}});
+       assert.equal(done.completed?.light,true);
+       assert.equal((await decode({...(status(['light','copy']) as object),completed:{directory:'/f'}})).completed?.light,undefined);
+       await assert.rejects(decode({...(status(['light','copy']) as object),completed:{directory:'/f',light:'yes'}}));
+     });
+     ```
+     Fails when item 5 is reverted (the first decode is refused as an excess property).
+  4. `adoption-view.test.ts`, a new test after `a light review with no skipped changes hides the skipped note and list`:
+     ```ts
+     test('a light review says every game file moves into game and stays in use',async()=>{
+      const counts={matched:40,known_transform:2,modified:0,needs_patching:3,missing:0,extra:0};
+      const ui=mount(request=>request==='choose'?{...reviewing('light-5'),backend:'in_place',modes:['light','copy'],review:{...lightReview(0),counts}}:idle());
+      try{await ui.app.ready;await ui.settle();
+       await ui.click('choose-adoption-destination');
+       assert.equal(ui.get('adoption-counts').textContent,'40 files move into the “game” folder with no patch changes. 3 files are updated by the patches. 2 bundled data files move to the folder the game loads them from.');
+       assert.equal(ui.get('adoption-consequences').textContent,'Your folder becomes the launcher’s installation. Its game files, including files you added such as PAKs placed by hand in SourceCache.en-us, are moved, not copied, into a “game” folder inside it, and the game keeps using them. Files that differ from what the patches expect are kept as they are. Desktop shortcuts and the old launcher stop working: start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Your settings and the client cache live in Documents and are not affected.');
+      }finally{await ui.app.dispose();}
+     });
+     ```
+     Fails when the `r.light?` branch of `counts` is reverted, and (separately) when the `r.light?lightConsequences:` prefix is reverted (the strict "will no longer use them" text comes back).
+  5. `adoption-view.test.ts`, a new test directly after Test 4:
+     ```ts
+     test('a completed light adoption says the added files moved with it, not that they were left behind',async()=>{
+      const done:AdoptionStatus={...idle(9),native:native(9,adopt('succeeded')),backend:'in_place',modes:['light','copy'],owned:true,completed:{directory:'/games/SGW',light:true}};
+      const ui=mount(()=>done);
+      try{await ui.app.ready;await ui.settle();
+       assert.equal(ui.text(),'Adopted /games/SGW in place. Its game files, including files you added, now sit in the launcher-owned “game” folder inside it, and the game keeps using them. This folder is now your Cimmeria install. If the game will not start, use Repair (it downloads the full game, 4.1 GB).');
+       assert.doesNotMatch(ui.text(),/left where they were/);
+      }finally{await ui.app.dispose();}
+     });
+     ```
+     Fails when the `status.completed?.light` line is removed (the strict text, with "left where they were", is shown). The existing in-place test's `/Adopted \/old-game in place.*uninstalling never removes them/` assert (about `:187`, `completed:{directory:'/old-game'}`) stays as it is and proves the strict text is unchanged.
+
+  The UAT scripts need no change: `adoption-in-place-uat.mjs:96` drives a strict in-place adoption, whose completion carries no `light` key. Do not run them (they need `ADOPTION_UAT_BINARY`); say so in the report.
+- **Lane, in this order:** `pwsh tools/build-lane/lane.ps1 cargo fmt -p cimmeria-launcher-desktop -- --check`; `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-launcher-desktop --all-targets -- -D warnings`; `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-launcher-desktop`; then `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\la-16\crates\launcher\desktop\frontend; npm run check; npm test`. At most 5 fix rounds per check. Check that the lane log sits under `logs\la-16\`. No engine file changes.
+- **Review:** one packet-reviewer pass on this commit (the LA-16 review loop continues; it is not a new wave).
+- **Docs:** none here (LA-19 documents `completed.light`). **Commit:** `LA-16b: light wording for the review counts, consequences and completed adoption`.
 
 ### LA-17: launch tag (engine)
 
@@ -863,6 +951,7 @@ Samples (D-LA17): each holds at most 10 paths, comma-joined, at most 600 charact
   - The player guide adoption section (grep `docs/guides/` for "existing game folder"): Light, what "can't be applied" means, Repair.
   - `docs/operations/telemetry.md`: the field list, with the six event rows in the C-LA events table.
   - `crates/launcher/desktop/docs/`: the update doc (grep "Update" in that folder) covers the incremental path, the write set, hard links and Repair as the full rebuild. It states that the seedless Update applies **only** to installs adopted through light adoption (`check = light` in the adoption provenance), and that a launcher-downloaded install updates exactly as before, from the seed (D-LA14).
+  - The adoption status contract (grep `crates/launcher/desktop/docs/` for the C16 table): the `scan` progress item and `LaunchStatus.patches_incomplete` / `ops_skipped` (LA-15), and `completed.light` (LA-16b: present and `true` only for a light adoption).
   - Walk `docs/agents/doc-update-map.md` and list the rows touched in the report.
 - **Check:** no `<!-- gen: -->` block is edited by hand. No IPs. **Commit:** `LA-19: document light adoption, incremental update and the index comparison`.
 
