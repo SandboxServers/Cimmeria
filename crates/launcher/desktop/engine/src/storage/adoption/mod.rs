@@ -4,6 +4,7 @@
 mod artifacts;
 mod comparison;
 mod in_place;
+mod in_place_abandon;
 mod in_place_preview;
 mod in_place_replace;
 // Where the in-place backend is the one previews use.
@@ -35,6 +36,7 @@ mod light_update_tests;
 mod model;
 pub(crate) mod preparation;
 mod publication;
+mod publication_recovery;
 mod setup_digest;
 // LT-29 onward use `digest`, `relative` and `http_status`.
 #[allow(dead_code)]
