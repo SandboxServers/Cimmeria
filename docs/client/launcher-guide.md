@@ -757,8 +757,7 @@ The launcher verifies the signature against the compile-time-embedded
 `cimmeria-patchset pubkey --key <file>` prints the public key for a key
 file, to check it matches the secret.
 
-Full operator setup (signing keypair generation, GitHub secrets,
-log-upload SAS) lives in
+Full operator setup (signing keypair generation, GitHub secrets) lives in
 [launcher-distribution-setup.md](launcher-distribution-setup.md).
 
 ### Append-only invariants

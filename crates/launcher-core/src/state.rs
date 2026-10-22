@@ -2,9 +2,6 @@
 //!
 //! - [`InstalledState`] sits inside the game install directory and tracks
 //!   which manifest patches have been applied (so reruns are no-ops).
-//! - [`UploadedLedger`] sits next to the launcher .exe and tracks log-zip
-//!   content digests already uploaded, so we don't double-pay storage on
-//!   repeat "Upload Logs" clicks.
 
 use std::path::{Path, PathBuf};
 
@@ -20,12 +17,6 @@ pub enum StateError {
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }
-
-/// Maximum log-upload ledger entries kept in memory + on disk. Each entry
-/// is ~100 bytes; capping at 100 keeps the file under 10 KB even after a
-/// thousand upload clicks. Display use is "have we seen this digest?" so
-/// keeping a sliding window of the most-recent N is sufficient.
-pub const LEDGER_KEEP: usize = 100;
 
 /// Atomic write: stage to `<path>.tmp` then rename onto `path`. NTFS
 /// rename is atomic on the same volume, so a power loss between the
@@ -188,52 +179,6 @@ impl TelemetryState {
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default()
-    }
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct UploadedLedger {
-    #[serde(default)]
-    pub entries: Vec<UploadedEntry>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UploadedEntry {
-    pub sha256: String,
-    pub blob_name: String,
-    pub uploaded_at: chrono::DateTime<chrono::Utc>,
-}
-
-impl UploadedLedger {
-    pub fn load(path: &Path) -> Self {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
-    }
-
-    pub fn save(&self, path: &Path) -> Result<(), StateError> {
-        let bytes = serde_json::to_vec_pretty(self)?;
-        atomic_write(path, &bytes)?;
-        Ok(())
-    }
-
-    pub fn contains(&self, sha256: &str) -> bool {
-        self.entries.iter().any(|e| e.sha256 == sha256)
-    }
-
-    /// Records a new upload and prunes oldest entries beyond
-    /// [`LEDGER_KEEP`]. Callers persist with `save()`.
-    pub fn record(&mut self, sha256: String, blob_name: String) {
-        self.entries.push(UploadedEntry {
-            sha256,
-            blob_name,
-            uploaded_at: chrono::Utc::now(),
-        });
-        if self.entries.len() > LEDGER_KEEP {
-            let overflow = self.entries.len() - LEDGER_KEEP;
-            self.entries.drain(0..overflow);
-        }
     }
 }
 
@@ -515,20 +460,5 @@ mod tests {
         s.record_incomplete("a", Vec::new());
         assert!(s.is_fully_applied("a"));
         assert!(s.incomplete_patches.is_empty());
-    }
-
-    #[test]
-    fn uploaded_ledger_dedupe() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("u.json");
-        let mut led = UploadedLedger::default();
-        assert!(!led.contains("h1"));
-        led.record("h1".into(), "logs/x.zip".into());
-        led.save(&path).unwrap();
-        let loaded = UploadedLedger::load(&path);
-        assert!(loaded.contains("h1"));
-        assert!(!loaded.contains("h2"));
-        assert_eq!(loaded.entries.len(), 1);
-        assert_eq!(loaded.entries[0].blob_name, "logs/x.zip");
     }
 }

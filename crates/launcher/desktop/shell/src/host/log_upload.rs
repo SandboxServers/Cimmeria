@@ -34,14 +34,13 @@ mod tests {
     }
 
     #[test]
-    fn inspect_without_an_installation_does_not_report_disabled() {
+    fn inspect_without_an_installation_does_not_block_a_press() {
         let root = tempfile::tempdir().unwrap();
         let host = NativeHost::new(root.path().join("state"));
         let request = serde_json::from_str(r#"{"command":"inspect","schema_version":1}"#).unwrap();
-        // A press is consent (D-LU1): neither a missing store nor a missing
-        // installation turns the button off.
+        // A press is consent (D-LU1): a missing store or installation must not
+        // stop the inspect from answering.
         let state = finished(host.begin_log_upload(request)).unwrap();
-        assert_ne!(state, LogUploadState::Disabled);
         assert_ne!(state, LogUploadState::NotInstalled);
     }
 

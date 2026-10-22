@@ -1,6 +1,6 @@
 //! How far into each launcher log file the last sent chunk reached
-//! (launcher-logs LF-13). The file is `uploaded-log-offsets.json` beside
-//! `uploaded-logs.json`, so a repeat press sends only the lines written since.
+//! (launcher-logs LF-13). The file is `uploaded-log-offsets.json` in the launcher
+//! state directory, so a repeat press sends only the lines written since.
 //! A file that does not parse loads as empty: the next press sends from the
 //! start of each file, which is a repeat of lines, never a loss.
 use super::game_lines::{GameFile, KEY_PREFIX};

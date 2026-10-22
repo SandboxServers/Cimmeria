@@ -5,11 +5,8 @@ import {reportUiEvent} from './ui-event';
 import {decodeLogUploadStatus,logUploadFailure,type LogUploadError,type LogUploadStatus,type NativeSnapshot} from './contract';
 /** Settings panel for `log_upload_command`. Native code picks the files and the store; the view sends only the command. */
 export const logUploadText:Record<LogUploadStatus['state'],string>={
- disabled:'Debug logs are not available in this build.',
  not_installed:'Install the game first: there are no game logs to upload yet.',
  ready:'Ready to send debug logs.',
- uploaded:'Uploaded',
- uploaded_newest:'Uploaded the newest logs. Older logs were left out to keep the upload under 64 MiB.',
  nothing_new:'No new log lines since the last upload.',
  no_logs:'No logs to upload yet: the game has not written any.',
  sent:'Sent',
@@ -28,9 +25,7 @@ export const logUploadNote="Sends the launcher's and the game's recent log lines
 export const logUploadErrorText:Record<LogUploadError|'transport'|'schema',string>={
  busy:'Another log upload is still running. Wait for it to finish, then try again.',
  network:'The upload did not reach the log store. Check your connection and try again.',
- rejected:'The log store refused the upload. Try again later.',
  collect_failed:'The game\'s logs could not be read. Close the game and try again.',
- logs_too_large:'Every game log is over 64 MiB on its own, so nothing was uploaded.',
  in_use:'The launcher state is in use. Try again in a moment.',
  io:'The launcher could not read its state. Try again.',
  corrupt:'The launcher state is damaged, so nothing was uploaded.',
@@ -58,8 +53,8 @@ export function mountLogUpload(document:Document,invoke:Invoke,context:PanelCont
   try{value=await invoke('log_upload_command',{request:{command,schema_version:1}});}catch(error){return {error:logUploadFailure(error)};}
   try{return {error:null,status:await Effect.runPromise(decodeLogUploadStatus(value))};}catch{reportUiEvent('log_upload','status_decode_failed','schema');return {error:'schema'};}};
  const show=(state:LogUploadStatus['state'])=>{
-  // A build with no store compiled in hides the button: there is nowhere to send logs.
-  button.hidden=state==='disabled';button.disabled=state==='disabled'||state==='not_installed'||state==='unreachable';};
+  // The button is always shown: a press is consent (D-LU1), and only a missing install or server disables it.
+  button.hidden=false;button.disabled=state==='not_installed'||state==='unreachable';};
  const inspect=()=>{if(disposed||uploading)return work;
   work=call('inspect').then(reply=>{if(disposed||uploading)return;
    // A `ready` re-inspect keeps the last upload's result on screen; anything else

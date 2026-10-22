@@ -1,4 +1,4 @@
-//! Debug-log collection + single-shot Azure Blob upload.
+//! Debug-log collection: the game log files and the session log bundle.
 //!
 //! Inputs (in `<install_dir>/Binaries/`):
 //! - any file whose name starts with `sgwdebuglog` (BigWorld Mercury
@@ -6,21 +6,10 @@
 //! - every `*.log` file recursively under `sessions/` (key dumps such as
 //!   `*-keys.txt` and `current-session.json`, which carry secrets, are left
 //!   out)
-//!
-//! Output: a single zip uploaded via one PUT to the SAS URL, named
-//! `logs/<hostname>-<utc>-<digest-prefix>.zip`.
-//!
-//! Wallet protection:
-//! - We compute a content digest over the **inputs** (filename + bytes,
-//!   sorted), not the zip itself — so a re-zip of unchanged logs (with
-//!   different per-entry timestamps) still dedupes against the ledger.
-//! - On match: zero HTTP requests. The button reports "nothing new".
-//! - On miss: exactly one PUT request, regardless of input file count.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 use walkdir::WalkDir;
 use zip::write::FileOptions;
@@ -31,12 +20,6 @@ pub enum LogError {
     Io(#[from] std::io::Error),
     #[error("Zip error: {0}")]
     Zip(#[from] zip::result::ZipError),
-    #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
-    #[error("Storage server returned {status}: {body}")]
-    BadResponse { status: u16, body: String },
-    #[error("Refusing to upload over non-HTTPS URL")]
-    InsecureUrl,
     #[error("Failed to walk sessions directory: {0}")]
     Walk(#[from] walkdir::Error),
 }
@@ -81,55 +64,12 @@ pub fn collect_log_inputs(install_dir: &Path) -> Result<Vec<PathBuf>, LogError> 
     Ok(files)
 }
 
-/// Stable hash over (rel_path, contents) pairs in canonical sort order.
-/// Independent of zip-time so dedup ledger checks survive re-zipping.
-pub fn compute_content_digest(install_dir: &Path) -> Result<Option<String>, LogError> {
-    let files: Vec<_> = collect_log_inputs(install_dir)?
-        .into_iter()
-        .map(|p| (p, u64::MAX))
-        .collect();
-    digest_files(install_dir, &files)
-}
-
-/// The digest over `(path, bytes read up to its length)` pairs, in the
-/// order given.
-fn digest_files(install_dir: &Path, files: &[(PathBuf, u64)]) -> Result<Option<String>, LogError> {
-    if files.is_empty() {
-        return Ok(None);
-    }
-    let binaries = crate::install_layout::binaries_dir(install_dir);
-    let mut hasher = Sha256::new();
-    for (path, len) in files {
-        let rel = rel_in_archive(path, &binaries);
-        hasher.update(rel.as_bytes());
-        hasher.update([0u8]);
-        let data = read_up_to(path, *len)?;
-        hasher.update(&data);
-        hasher.update([0u8]);
-    }
-    // digest 0.11's `Array` output no longer implements `LowerHex`; hex-encode
-    // the bytes explicitly instead of the old `{:x}`.
-    Ok(Some(
-        hasher
-            .finalize()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect(),
-    ))
-}
-
-pub fn build_log_zip(install_dir: &Path) -> Result<Option<Vec<u8>>, LogError> {
-    let files = collect_log_inputs(install_dir)?;
-    zip_log_files(install_dir, &files)
-}
-
-/// The log files one size-capped upload carries, chosen from file metadata
-/// before any log is read. Each file is read only up to the length it had
-/// when chosen, so a log the game is still writing cannot push the upload
-/// past the cap, and the digest and the zip see the same bytes.
+/// The log files a size cap allows, chosen from file metadata before any
+/// log is read. Each file is read only up to the length it had when chosen,
+/// so a log the game is still writing cannot push the zip past the cap.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogSelection {
-    /// In path order, for a stable digest.
+    /// In path order.
     files: Vec<(PathBuf, u64)>,
     left_out: usize,
 }
@@ -142,17 +82,6 @@ impl LogSelection {
     /// How many log files were left out to stay under the cap.
     pub fn left_out(&self) -> usize {
         self.left_out
-    }
-
-    /// [`compute_content_digest`] over the chosen files: the same value when
-    /// nothing was left out and no file grew since it was chosen.
-    pub fn digest(&self, install_dir: &Path) -> Result<Option<String>, LogError> {
-        digest_files(install_dir, &self.files)
-    }
-
-    /// [`build_log_zip`] over the chosen files.
-    pub fn zip(&self, install_dir: &Path) -> Result<Option<Vec<u8>>, LogError> {
-        zip_capped_files(install_dir, &self.files)
     }
 }
 
@@ -190,7 +119,7 @@ fn read_up_to(path: &Path, len: u64) -> std::io::Result<Vec<u8>> {
     Ok(data)
 }
 
-/// [`build_log_zip`] for one telemetry session: only the log files written
+/// The zip for one telemetry session: only the log files written
 /// to since `since` (the session's start), so the end-of-session bundle
 /// carries this session's rotated client logs and the current
 /// `SGWDebugLog`, not every log the install has kept. The client's log
@@ -275,66 +204,6 @@ fn rel_in_archive(path: &Path, binaries: &Path) -> String {
     rel.to_string_lossy().replace('\\', "/")
 }
 
-/// PUT a block blob to an Azure Blob SAS URL in **one HTTP request**. We do
-/// not chunk via PutBlock/PutBlockList — debug-log zips are well under
-/// the 256MB single-PutBlob limit and one request is one billable
-/// transaction.
-pub async fn upload_blob(
-    http: &reqwest::Client,
-    sas_base: &str,
-    blob_name: &str,
-    body: Vec<u8>,
-) -> Result<(), LogError> {
-    if !sas_base.starts_with("https://") {
-        return Err(LogError::InsecureUrl);
-    }
-    let url = insert_blob_path(sas_base, blob_name);
-    let resp = http
-        .put(&url)
-        .header("x-ms-blob-type", "BlockBlob")
-        .header("content-type", "application/zip")
-        .body(body)
-        .send()
-        .await?;
-    if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(LogError::BadResponse { status, body });
-    }
-    Ok(())
-}
-
-fn insert_blob_path(sas_url: &str, blob_name: &str) -> String {
-    match sas_url.find('?') {
-        Some(qpos) => {
-            let (path_part, qs) = sas_url.split_at(qpos);
-            let trimmed = path_part.trim_end_matches('/');
-            format!("{trimmed}/{blob_name}{qs}")
-        }
-        None => {
-            let trimmed = sas_url.trim_end_matches('/');
-            format!("{trimmed}/{blob_name}")
-        }
-    }
-}
-
-pub fn blob_name_for(digest: &str) -> String {
-    let host = gethostname::gethostname().to_string_lossy().into_owned();
-    let safe_host: String = host
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
-    let prefix = &digest[..digest.len().min(12)];
-    format!("logs/{safe_host}-{ts}-{prefix}.zip")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -372,7 +241,7 @@ mod tests {
     }
 
     /// A session folder's key dump and session JSON (which holds a token)
-    /// are not collected, so they are never zipped or uploaded.
+    /// are not collected, so they are never zipped.
     #[test]
     fn collect_leaves_out_key_dumps_and_session_json() {
         let dir = tempfile::tempdir().unwrap();
@@ -389,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_is_sorted_for_stable_digest() {
+    fn collect_is_sorted_and_repeatable() {
         let dir = tempfile::tempdir().unwrap();
         setup_logs(dir.path());
         let a = collect_log_inputs(dir.path()).unwrap();
@@ -447,7 +316,9 @@ mod tests {
             .unwrap()
             .set_modified(old)
             .unwrap();
-        let bytes = build_log_zip(dir.path()).unwrap().unwrap();
+        let now = std::time::SystemTime::now();
+        let since = now - std::time::Duration::from_secs(60 * 86_400);
+        let bytes = build_session_log_zip(dir.path(), since).unwrap().unwrap();
         let mut zr = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
         let stamp = |zr: &mut zip::ZipArchive<_>, suffix: &str| {
             let i = (0..zr.len())
@@ -485,15 +356,13 @@ mod tests {
 
         let all = select_log_inputs(dir.path(), 120).unwrap();
         assert_eq!(all.left_out(), 0);
-        assert_eq!(
-            all.digest(dir.path()).unwrap(),
-            compute_content_digest(dir.path()).unwrap()
-        );
 
         let capped = select_log_inputs(dir.path(), 100).unwrap();
         assert_eq!(capped.left_out(), 1);
         std::fs::write(bin.join("SGWDebugLog.log"), [b'n'; 4000]).unwrap();
-        let zip = capped.zip(dir.path()).unwrap().unwrap();
+        let zip = zip_capped_files(dir.path(), &capped.files)
+            .unwrap()
+            .unwrap();
         let mut zr = zip::ZipArchive::new(std::io::Cursor::new(zip)).unwrap();
         let mut entries: Vec<(String, u64)> = (0..zr.len())
             .map(|i| {
@@ -516,16 +385,18 @@ mod tests {
     }
 
     #[test]
-    fn build_zip_returns_none_when_no_logs() {
+    fn session_zip_returns_none_when_no_logs() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(build_log_zip(dir.path()).unwrap().is_none());
+        let since = std::time::SystemTime::UNIX_EPOCH;
+        assert!(build_session_log_zip(dir.path(), since).unwrap().is_none());
     }
 
     #[test]
-    fn build_zip_round_trips_through_zip_reader() {
+    fn session_zip_round_trips_through_zip_reader() {
         let dir = tempfile::tempdir().unwrap();
         setup_logs(dir.path());
-        let bytes = build_log_zip(dir.path()).unwrap().unwrap();
+        let since = std::time::SystemTime::UNIX_EPOCH;
+        let bytes = build_session_log_zip(dir.path(), since).unwrap().unwrap();
         assert!(!bytes.is_empty());
         let cursor = std::io::Cursor::new(bytes);
         let mut zr = zip::ZipArchive::new(cursor).unwrap();
@@ -535,70 +406,5 @@ mod tests {
         assert!(names.contains("Binaries/sgwdebuglog"));
         assert!(names.contains("Binaries/sgwdebuglog.txt"));
         assert!(names.contains("Binaries/sessions/2026-05/session.log"));
-    }
-
-    #[test]
-    fn content_digest_is_stable() {
-        let dir = tempfile::tempdir().unwrap();
-        setup_logs(dir.path());
-        let a = compute_content_digest(dir.path()).unwrap().unwrap();
-        let b = compute_content_digest(dir.path()).unwrap().unwrap();
-        assert_eq!(a, b);
-    }
-
-    #[test]
-    fn content_digest_changes_when_logs_change() {
-        let dir = tempfile::tempdir().unwrap();
-        setup_logs(dir.path());
-        let a = compute_content_digest(dir.path()).unwrap().unwrap();
-        std::fs::write(dir.path().join("Binaries/sgwdebuglog"), b"different").unwrap();
-        let b = compute_content_digest(dir.path()).unwrap().unwrap();
-        assert_ne!(a, b);
-    }
-
-    #[test]
-    fn content_digest_none_when_no_logs() {
-        let dir = tempfile::tempdir().unwrap();
-        assert!(compute_content_digest(dir.path()).unwrap().is_none());
-    }
-
-    #[test]
-    fn insert_blob_path_with_sas_query() {
-        let u = insert_blob_path(
-            "https://x.blob.core.windows.net/sgw?sv=1&sp=c",
-            "logs/a.zip",
-        );
-        assert_eq!(
-            u,
-            "https://x.blob.core.windows.net/sgw/logs/a.zip?sv=1&sp=c"
-        );
-    }
-
-    #[test]
-    fn insert_blob_path_handles_trailing_slash() {
-        let u = insert_blob_path("https://x.blob.core.windows.net/sgw/?sv=1", "logs/a.zip");
-        assert_eq!(u, "https://x.blob.core.windows.net/sgw/logs/a.zip?sv=1");
-    }
-
-    #[test]
-    fn insert_blob_path_without_query() {
-        let u = insert_blob_path("https://x.blob.core.windows.net/sgw", "logs/a.zip");
-        assert_eq!(u, "https://x.blob.core.windows.net/sgw/logs/a.zip");
-    }
-
-    #[tokio::test]
-    async fn upload_blob_rejects_non_https() {
-        let http = reqwest::Client::new();
-        let err = upload_blob(&http, "http://example.com/sgw", "logs/a.zip", vec![])
-            .await
-            .unwrap_err();
-        assert!(matches!(err, LogError::InsecureUrl));
-    }
-
-    #[test]
-    fn blob_name_includes_digest_prefix() {
-        let n = blob_name_for("abcdef1234567890");
-        assert!(n.starts_with("logs/"));
-        assert!(n.ends_with("abcdef123456.zip"));
     }
 }

@@ -141,7 +141,7 @@ stage_app() {
   # must see "not stamped", exactly as a local build does.
   local stamp
   for stamp in CIMMERIA_LAUNCHER_TAG CIMMERIA_LAUNCHER_BUILD_EPOCH CIMMERIA_LAUNCHER_VERSION \
-    CIMMERIA_BUILD_BRANCH LAUNCHER_MANIFEST_PUBKEY_HEX LAUNCHER_LOG_SAS_URL; do
+    CIMMERIA_BUILD_BRANCH LAUNCHER_MANIFEST_PUBKEY_HEX; do
     [ -n "${!stamp:-}" ] || unset "$stamp"
   done
   # A release carries its tag. Such a build with no manifest key cannot

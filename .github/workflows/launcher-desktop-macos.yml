@@ -64,8 +64,6 @@ on:
     secrets:
       LAUNCHER_MANIFEST_PUBKEY_HEX:
         required: false
-      LAUNCHER_LOG_SAS_URL:
-        required: false
     outputs:
       zip_sha256:
         description: SHA-256 of the zip
@@ -145,7 +143,6 @@ jobs:
       - name: build the app, pinned to them
         env:
           LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ inputs.dev_manifest_key && '197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61' || secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
-          LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
           CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ inputs.epoch }}
           CIMMERIA_BUILD_BRANCH: ${{ inputs.build_branch }}
           CIMMERIA_BUILD_GIT_SHA: ${{ github.sha }}
