@@ -32,7 +32,7 @@ test('review is readable, every required confirmation is visible and unchecked, 
  try{await ui.app.ready;await ui.settle();
   assert.equal(ui.get('adoption-review').hidden,false);
   assert.equal(ui.get('adoption-source').textContent,'/old-game');assert.equal(ui.get('adoption-destination').textContent,'/library/Stargate Worlds');
-  assert.match(ui.get('adoption-release').textContent!,new RegExp(`Signed release ${'ab'.repeat(32)}.*first-patch, second-patch`));
+  assert.equal(ui.get('adoption-release').textContent,'Signed release: 2 patches.');
   assert.match(ui.get('adoption-counts').textContent!,/40 files are identical.*1 file differs only.*2 files were modified.*1 file is missing.*3 files are not part/);
   const listed=Array.from(ui.get('adoption-differences').querySelectorAll('li'),li=>li.textContent);
   assert.deepEqual(listed,['Old launcher setup change: Working/Binaries/SGW.exe','Modified: <img src=x onerror=alert(1)>.lua','Not part of the release: mod.dll','…and 4 more differences not listed here.']);
@@ -246,12 +246,31 @@ test('a folder source with files that need patching shows its review, backup and
 });
 test('a review whose seed comes from the chosen game archive says so, with its patches',async()=>{
  const archive=(patches:string[]):NonNullable<AdoptionStatus['review']>=>({...review(),source_kind:'folder',download:{seed:false,patches,bytes:1048576,local_seed:true}});
- for(const [patches,line] of [[['first-patch'],'Uses your game archive and patches first-patch (1.0 MB).'],[[],'Uses your game archive.']] as const){
+ for(const [patches,line] of [[['first-patch'],'Uses your game archive and downloads 1 patch (1.0 MB).'],[[],'Uses your game archive.']] as const){
   const ui=mount(()=>({...reviewing(),modes:['in_place','copy'],review:archive([...patches])}));
   try{await ui.app.ready;await ui.settle();
    assert.equal(ui.get('adoption-download').textContent,line);assert.equal(ui.get('adoption-seed-archive').hidden,true);
   }finally{await ui.app.dispose();}
  }
+});
+test('the digest and ids sit behind Release details; the visible review holds counts only',async()=>{
+ const archive:NonNullable<AdoptionStatus['review']>={...review(),source_kind:'folder',download:{seed:false,patches:['first-patch','second-patch'],bytes:2097152}};
+ const ui=mount(()=>({...reviewing(),modes:['in_place','copy'],review:archive}));
+ try{await ui.app.ready;await ui.settle();
+  const details=ui.get('adoption-release-details');
+  assert.equal(details.tagName,'DETAILS');assert.equal(details.classList.contains('release-details'),true);
+  assert.equal(details.querySelector('summary')!.textContent,'Release details');
+  const hidden=details.textContent!;
+  assert.match(hidden,new RegExp(`Manifest SHA-256: ${'ab'.repeat(32)}`));
+  assert.match(hidden,/Patches in signed order: first-patch, second-patch/);
+  assert.match(hidden,/Download ids: first-patch, second-patch/);
+  const visible=ui.get('adoption-review').textContent!.replace(hidden,'');
+  assert.doesNotMatch(visible,/[0-9a-f]{64}/,'no digest outside Release details');
+  assert.doesNotMatch(visible,/first-patch|second-patch/,'no patch id outside Release details');
+  assert.equal(ui.get('adoption-download').textContent,'Downloads: 2 patches (2.0 MB).');
+  assert.equal(visible.split('40 files are identical').length-1,1,'each plan count appears once');
+  assert.equal(visible.split('2 files were modified').length-1,1,'each plan count appears once');
+ }finally{await ui.app.dispose();}
 });
 test('a folder review without imported settings decodes and says the launcher defaults apply',async()=>{
  // A folder preview has no legacy import, so the requested-config fields are absent.
@@ -283,7 +302,7 @@ test('a folder review imports nothing: only the launcher’s own settings line i
   assert.equal(ui.get('adoption-settings').textContent,'Settings: this launcher\'s own server list and client-patch setting.');
   assert.doesNotMatch(ui.get('adoption-settings').textContent!,/Second|First|Client patches: off/);
   assert.doesNotMatch(ui.get('adoption-telemetry').textContent!,/you opted in/);
-  assert.equal(ui.get('adoption-replace-row').hidden,true);assert.equal(ui.get('adoption-download').textContent,'Downloads: patches first-patch (1.0 MB).');
+  assert.equal(ui.get('adoption-replace-row').hidden,true);assert.equal(ui.get('adoption-download').textContent,'Downloads: 1 patch (1.0 MB).');
   assert.equal(ui.get('adoption-seed-archive').hidden,true);
  }finally{await ui.app.dispose();}
 });
@@ -426,7 +445,7 @@ test('the light review names the folder, its patch counts and the skipped change
  try{await ui.app.ready;await ui.settle();
   await ui.click('choose-adoption-destination');
   assert.equal(ui.get('adoption-light-found').textContent,'Found Stargate Worlds in /games/SGW.');assert.equal(ui.get('adoption-light-found').hidden,false);
-  assert.equal(ui.get('adoption-light-patches').textContent,'Patches already applied: 1 of 3. To apply: 2 (1.0 MB to download).');
+  assert.equal(ui.get('adoption-light-patches').textContent,'Patches already applied: 1 of 3. To apply: 2.');
   assert.equal(ui.get('adoption-light-skipped-note').hidden,false);
   assert.match(ui.get('adoption-light-skipped-note').textContent!,/Some patch changes can't be applied: 1 file differs from the originals the patches expect\. They stay as they are\. You can still use this folder\./);
   assert.match(ui.get('adoption-light-skipped').textContent!,/Working\/Data\/a\.lua — first-patch/);
