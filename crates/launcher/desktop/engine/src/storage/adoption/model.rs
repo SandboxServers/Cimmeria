@@ -298,7 +298,7 @@ pub enum UnsafeReason {
     HardLink,
     /// Not a plain file or folder: another reparse point, a socket, a device.
     SpecialFile,
-    /// A name the file index cannot hold: not ASCII, over 4096 bytes, or with `:` or `\`.
+    /// A name the scan refuses: empty, over 4096 bytes, with a control character, `:` or `\`, or not valid Unicode.
     Name,
     /// Another entry has the same name apart from letter case.
     CaseCollision,
