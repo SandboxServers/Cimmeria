@@ -1,0 +1,2 @@
+client.launcher.log
+client.launcher.game_log
