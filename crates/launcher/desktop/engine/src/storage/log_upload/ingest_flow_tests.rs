@@ -582,6 +582,14 @@ async fn one_upload_carries_both_targets_under_one_upload_id() {
         "the game offset moved with the accepted chunk"
     );
     assert!(saved.heads.contains_key("game/SGWDebugLog.log"));
+    let seqs: Vec<u64> = rows
+        .iter()
+        .map(|r| {
+            let v: serde_json::Value = serde_json::from_str(r).unwrap();
+            v["seq"].as_u64().unwrap()
+        })
+        .collect();
+    assert_eq!(seqs, vec![0, 1, 2, 3, 4], "game rows continue the seq");
     let again = ingest_of(state.begin_log_upload(upload(), &uploader).unwrap());
     let mut again = again;
     again.game = Some(game);
@@ -589,6 +597,41 @@ async fn one_upload_carries_both_targets_under_one_upload_id() {
         again.run_with(&mut pacer).await.unwrap().state,
         LogUploadState::NothingNew
     );
+}
+
+#[tokio::test]
+async fn a_throttled_launcher_chunk_sends_no_game_rows() {
+    let root = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_mint(&server).await;
+    Mock::given(method("POST"))
+        .and(path(CHUNK))
+        .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "600"))
+        .mount(&server)
+        .await;
+    write_log(root.path(), 1_001);
+    let game = root.path().join("game");
+    let binaries = game.join("Working").join("Binaries");
+    std::fs::create_dir_all(&binaries).unwrap();
+    std::fs::write(binaries.join("SGWDebugLog.log"), "[Say] Bob: hello\n").unwrap();
+    let state = state_at(root.path(), &server.uri());
+    let uploader = LogUploader::new();
+    let mut ingest = ingest_of(state.begin_log_upload(upload(), &uploader).unwrap());
+    ingest.game = Some(game);
+    let mut pacer = FakePacer::default();
+    let status = ingest.run_with(&mut pacer).await.unwrap().state;
+    assert!(
+        matches!(status, LogUploadState::Partial { .. }),
+        "expected partial, got {status:?}"
+    );
+    let sent = posted_rows(&server).await;
+    assert!(!sent.is_empty(), "the first launcher chunk was posted");
+    assert!(
+        sent.iter().all(|r| !r.contains(GAME_LOG_TARGET)),
+        "no game row after a 429 on the launcher rows"
+    );
+    let saved = Offsets::load(&state.directory.root);
+    assert!(!saved.files.contains_key("game/SGWDebugLog.log"));
 }
 
 #[tokio::test]

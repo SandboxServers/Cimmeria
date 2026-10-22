@@ -243,6 +243,36 @@ fn a_symlinked_log_is_skipped() {
         .is_empty());
 }
 
+/// A session folder the process cannot list must not cost the launcher's own
+/// lines: the game's files degrade to none. Skipped when the process can list
+/// it anyway (root, or a platform without the permission).
+#[cfg(unix)]
+#[test]
+fn an_unlistable_session_folder_is_no_game_lines_not_a_failure() {
+    use std::os::unix::fs::PermissionsExt;
+    let game = tempfile::tempdir().unwrap();
+    let dir = binaries(game.path());
+    let locked = dir.join("sessions").join("x");
+    fs::create_dir_all(&locked).unwrap();
+    fs::write(locked.join("a.log"), "line\n").unwrap();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+    if fs::read_dir(&locked).is_ok() {
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        eprintln!("skipped: this process can list a chmod 000 folder");
+        return;
+    }
+    let got = collect(game.path(), &Offsets::default(), &CancellationToken::new());
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+    let got = got.unwrap();
+    assert!(got.collected.lines.is_empty());
+}
+
+#[test]
+fn a_missing_file_is_read_failed_for_telemetry() {
+    let dir = tempfile::tempdir().unwrap();
+    assert_eq!(read_whole(&dir.path().join("gone.log")), Err("read_failed"));
+}
+
 #[test]
 fn a_version_one_offsets_file_loads_with_no_heads() {
     let dir = tempfile::tempdir().unwrap();

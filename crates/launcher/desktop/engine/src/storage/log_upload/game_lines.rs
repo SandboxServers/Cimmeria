@@ -85,8 +85,12 @@ pub(crate) fn collect(
     };
     for (key, path) in inputs {
         cancelled()?;
-        let Ok(bytes) = read_whole(&path) else {
-            continue;
+        let bytes = match read_whole(&path) {
+            Ok(bytes) => bytes,
+            Err(reason) => {
+                events::game_file_skipped(reason);
+                continue;
+            }
         };
         let saved = offsets.files.get(&key).copied().unwrap_or(0);
         let saved_head = offsets.heads.get(&key).map(String::as_str);
@@ -130,7 +134,7 @@ pub(crate) fn continue_seq(rows: &mut [TelemetryEvent], by: u64) {
 fn inputs(game: &Path) -> Result<Vec<(String, PathBuf)>, LogUploadError> {
     let Ok(files) = collect_log_inputs(game) else {
         events::collect_failed("game_files");
-        return Err(LogUploadError::CollectFailed);
+        return Ok(Vec::new());
     };
     let binaries = binaries_dir(game);
     let mut found: Vec<(std::time::SystemTime, String, PathBuf)> = files
@@ -160,11 +164,14 @@ fn key_of(binaries: &Path, path: &Path) -> Option<String> {
     Some(format!("{KEY_PREFIX}{}", parts?.join("/")))
 }
 
-fn read_whole(path: &Path) -> std::io::Result<Vec<u8>> {
-    if std::fs::metadata(path)?.len() > MAX_FILE_BYTES {
-        return Err(std::io::ErrorKind::InvalidData.into());
+/// The file's bytes, or the closed reason it was skipped: `too_large` over
+/// `MAX_FILE_BYTES`, `read_failed` for any I/O error.
+fn read_whole(path: &Path) -> Result<Vec<u8>, &'static str> {
+    let len = std::fs::metadata(path).map_err(|_| "read_failed")?.len();
+    if len > MAX_FILE_BYTES {
+        return Err("too_large");
     }
-    std::fs::read(path)
+    std::fs::read(path).map_err(|_| "read_failed")
 }
 
 /// The fingerprint of a file's first bytes: `<n>:<h12>`, `n` the number of
