@@ -50,10 +50,12 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     const operation=status?.native.operation.operation;
     const active=!!status&&operationActive(status);
     const recovery=operation?.state==='reconciliation_required';
+    // The adoption panel owns an adopt operation until it is terminal, so Install stays out of it.
+    const adopting=operation?.kind==='adopt'&&!['succeeded','failed','cancelled'].includes(operation.state);
     const ready=!!status&&!status.native.requires_reopen&&!current.needsInspection&&!current.busy&&!pending;
     repairs.render(current,ready);
     const canPrepare=!!status?.runtime_setup&&!active&&!recovery;
-    primary.hidden=operation?.kind==='launch'||(!!status?.uninstall&&!canPrepare&&!active);
+    primary.hidden=operation?.kind==='launch'||adopting||(!!status?.uninstall&&!canPrepare&&!active);
     primary.disabled=!ready||active||(!canPrepare&&(!status?.install_supported||(!!operation&&!status?.can_retry)||!status.native.preferences.install_directory));
     const removed=operation?.kind==='uninstall'&&operation.state==='succeeded';
     const runtimeSetup=operation?.kind==='prepare_runtime';
@@ -76,7 +78,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     cancel.disabled=!ready||operation?.state==='cancel_requested';
     resume.hidden=!recovery||!status?.can_resume; resume.disabled=!ready||!status?.can_resume;
     recheck.textContent=runtimeSetup&&recovery&&status?.can_reconcile?'Recover compatibility setup':'Recheck status';
-    recheck.hidden=!current.error&&!recovery;
+    recheck.hidden=(!current.error&&!recovery)||adopting;
     recheck.disabled=pending||current.busy||status?.native.requires_reopen===true;
     progress.hidden=!active||!status?.progress;
     if(status?.progress){progress.max=Math.max(1,status.progress.total);progress.value=Math.min(status.progress.current,progress.max);
@@ -95,6 +97,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
       else if(runtimeSetup)text=recovery?(status.can_reconcile?'A saved compatibility result is available. Recover setup to finish checking its state.':'Compatibility setup was interrupted. Files are preserved; recovery requires inspection.'):active?(operation?.state==='cancel_requested'?'Cancellation requested. Waiting for compatibility setup to stop safely.':'Checking game compatibility…'):operation?.state==='succeeded'?'Prerequisites checked. Graphics and Play still need validation.':'Compatibility setup stopped. Game files are preserved.';
       else if(operation?.kind==='uninstall')text=recovery?'Uninstall was interrupted. Use Finish uninstall in Settings to confirm removal again.':active?'Removing game files…':'Inspect uninstall status before continuing.';
       else if(operation?.state==='succeeded')text='Game content prepared. This build cannot continue compatibility setup for this installation.';
+      else if(adopting&&recovery)text='';
       else if(recovery)text=status.can_resume||status.can_reconcile?'An interrupted installation was found. Inspect files or explicitly resume the saved attempt.':'An interrupted compatibility operation was found. Files are preserved; recovery is not available in this build. You can recheck status.';
       else if(active)text=operation?.state==='cancel_requested'?'Cancellation requested. Waiting for the installer to stop safely.':
         status.progress?.phase==='download'?progressLine('Downloading verified game content…',status.progress,transfer):status.progress?.phase==='extraction'?progressLine('Extracting game content…',status.progress,transfer):'Preparing installation…';

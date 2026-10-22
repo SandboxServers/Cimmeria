@@ -2,10 +2,16 @@ import {Context,Effect,Fiber,Layer,ManagedRuntime,Stream} from 'effect';
 import {launchBlocked,launchBridgeLayer,LaunchState,makeLaunchWorkflow} from './launch-workflow';
 import type {Invoke} from './view';
 class Launch extends Context.Service<Launch,Effect.Success<typeof makeLaunchWorkflow>>()('launcher/Play') {}
+// An adopt operation that is not terminal is owned by the adoption panel; Play says one line about it.
+function adoptLine(s:LaunchState):string|null {
+ const operation=s.status?.native.operation.operation;
+ if(operation?.kind!=='adopt'||['succeeded','failed','cancelled'].includes(operation.state))return null;
+ return operation.state==='reconciliation_required'?'Finish or abandon the interrupted adoption in the adoption panel before you play.':'An adoption review is open. Finish or cancel it in the adoption panel.';
+}
 export function launchText(s:LaunchState):string {
  if(s.pending)return 'Starting game…';
  if(s.error==='launcher_too_old'||s.status?.launcher_update_required)return 'Update the launcher before playing this release. Your game files are preserved.';
- if(s.error)return 'Resolve any folder-access prompt, then recheck status. Play was not retried.';
+ if(s.error)return adoptLine(s)??'Resolve any folder-access prompt, then recheck status. Play was not retried.';
  const status=s.status;if(!status)return 'Checking Play availability…';
  const o=status.observation;
  if(o?.phase==='unknown')return 'Game status is unknown. Play, Repair and removal remain blocked. Preserve files and restart to inspect.';
@@ -14,7 +20,7 @@ export function launchText(s:LaunchState):string {
  if(o?.phase==='process_exited')return o.early?`Game exited shortly after starting (code ${o.code}).`:`Game exited (code ${o.code}).`;
  if(o?.phase==='not_started')return 'Game could not start. Files are preserved; recheck before trying again. If you edited the login servers, check them under Login servers.';
  if(!status.resources_available)return 'Play unavailable: this build is missing verified game launch resources.';
- if(launchBlocked(status))return 'Another operation owns the game. Wait for it to finish.';
+ if(launchBlocked(status))return adoptLine(s)??'Another operation owns the game. Wait for it to finish.';
  // Play stays enabled: a skipped patch change is named, and Repair is the way to a full game.
  if(status.installation_id&&status.patches_incomplete>0)return `Ready to Play. ${status.ops_skipped} patch ${status.ops_skipped===1?'change':'changes'} could not be applied. If the game crashes or misbehaves, use Repair (downloads the full game, 4.1 GB).`;
  return status.installation_id?'Ready to Play.':'Finish installation and compatibility checks to enable Play.';
@@ -28,7 +34,7 @@ export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()
  const render=()=>{if(disposed)return;button.hidden=!!current.status&&!current.status.installation_id&&!current.status.observation&&!current.status.launcher_update_required;button.disabled=playing||current.pending||current.uncertain||!current.status?.installation_id||launchBlocked(current.status);
  button.textContent=playing||current.pending?'Starting…':'Play';button.setAttribute('aria-busy',String(playing||current.pending));
  document.getElementById('launch-status')!.textContent=playing?'Starting game…':launchText(current);
- recheck.disabled=playing||current.pending;};
+ recheck.disabled=playing||current.pending;recheck.hidden=adoptLine(current)!==null;};
  const watcher=runtime.runFork(Effect.flatMap(Launch,s=>Stream.runForEach(s.changes,value=>Effect.sync(()=>{current=value;render();
  const next=value.status?.native.operation.revision;if(next!==undefined&&next!==revision){revision=next;onChange();}}))));
  const run=(play:boolean)=>{

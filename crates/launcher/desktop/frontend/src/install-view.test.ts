@@ -261,6 +261,21 @@ for(const state of ['running','succeeded','reconciliation_required'] as const)te
  finally{await app.dispose();}
 });
 
+for(const state of ['running','reconciliation_required'] as const)test(`an interrupted adoption (${state}) is owned by the adoption panel, not Install`,async()=>{
+ const ui=dom();const status:InstallStatus={...initial(),native:{...initial().native,operation:{schema_version:1,revision:3,operation:{id,kind:'adopt',state,intent_digest:Array(32).fill(0)}}}};
+ const app=mountInstall(ui.document,async()=>status,()=>id);
+ try{await app.ready;await flush();assert.equal(ui.get('install').hidden,true);assert.equal(ui.get('inspect-install').hidden,true);
+  assert.doesNotMatch(ui.get('install-status').textContent!,/interrupted installation was found/);}
+ finally{await app.dispose();}
+});
+test('an interrupted install keeps its primary, recovery text and Recheck',async()=>{
+ const ui=dom();const status:InstallStatus={...initial(),native:{...initial().native,operation:{schema_version:1,revision:3,operation:{id,kind:'install',state:'reconciliation_required',intent_digest:Array(32).fill(0)}}}};
+ const app=mountInstall(ui.document,async()=>status,()=>id);
+ try{await app.ready;await flush();assert.equal(ui.get('install').hidden,false);assert.equal(ui.get('inspect-install').hidden,false);
+  assert.match(ui.get('install-status').textContent!,/interrupted installation was found/);}
+ finally{await app.dispose();}
+});
+
 test('minimum-version rejection preserves state and reports update requirement',async()=>{
  const ui=dom();const status=initial();let installs=0;
  const app=mountInstall(ui.document,async(_,{request}:any)=>{if(request.command==='install'){installs++;throw 'launcher_too_old';}return status;});
