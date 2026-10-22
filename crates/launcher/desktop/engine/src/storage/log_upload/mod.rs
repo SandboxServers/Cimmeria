@@ -13,6 +13,9 @@ use crate::storage::game_telemetry::launcher_event::Redaction;
 use cimmeria_launcher_core::logs;
 use cimmeria_launcher_core::state::UploadedLedger;
 mod events;
+// LF-15 wires the sender into `Upload`; until then only its tests call it.
+#[allow(dead_code)]
+mod ingest;
 mod launcher_logs;
 // LF-15 calls these from `Upload`; until then only their tests use them.
 #[allow(dead_code)]

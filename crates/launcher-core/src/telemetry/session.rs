@@ -36,7 +36,7 @@ pub struct CurrentSession {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TelemetryBlock {
     pub enabled: bool,
     pub token: String,
@@ -44,6 +44,20 @@ pub struct TelemetryBlock {
     pub upload_endpoint: String,
     pub chunk_max_bytes: u64,
     pub flush_interval_ms: u64,
+}
+
+/// Prints every field but the bearer `token`, which is never shown in `Debug`.
+impl std::fmt::Debug for TelemetryBlock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TelemetryBlock")
+            .field("enabled", &self.enabled)
+            .field("token", &"<redacted>")
+            .field("expires_at_ms", &self.expires_at_ms)
+            .field("upload_endpoint", &self.upload_endpoint)
+            .field("chunk_max_bytes", &self.chunk_max_bytes)
+            .field("flush_interval_ms", &self.flush_interval_ms)
+            .finish()
+    }
 }
 
 pub fn current_session_path(install_dir: &Path) -> PathBuf {
@@ -96,6 +110,15 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         let loaded: CurrentSession = serde_json::from_str(&text).unwrap();
         assert_eq!(loaded, session);
+    }
+
+    #[test]
+    fn debug_never_prints_the_token() {
+        let block = sample().telemetry;
+        let shown = format!("{block:?}");
+        assert!(!shown.contains("payload.sig"));
+        assert!(shown.contains("<redacted>"));
+        assert!(shown.contains("https://x.example/api"));
     }
 
     #[test]

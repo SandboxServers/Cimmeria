@@ -1,4 +1,6 @@
-use super::launcher_session::{LauncherSender, LauncherTarget, SendOutcome, LAUNCHER_SESSION_KIND};
+use super::launcher_session::{
+    BatchOutcome, LauncherSender, LauncherTarget, SendOutcome, LAUNCHER_SESSION_KIND,
+};
 use super::session::mint_body_for_test;
 use super::*;
 use crate::client_setup::login_servers::LoginServer;
@@ -109,6 +111,28 @@ async fn a_launcher_session_is_minted_and_events_are_posted() {
     let target = target(&server.uri());
     assert_eq!(sender.send(&target, &[event()]).await, SendOutcome::Sent);
     assert_eq!(sender.send(&target, &[event()]).await, SendOutcome::Sent);
+}
+
+#[tokio::test]
+async fn a_log_post_under_a_mint_hold_does_not_mint_again() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/dev-session"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let sender = LauncherSender::logs();
+    let target = target(&server.uri());
+    let first = sender.post_batch(&target, &[event()]).await;
+    assert!(
+        matches!(first, BatchOutcome::MintFailed { .. }),
+        "{first:?}"
+    );
+    assert_eq!(
+        sender.post_batch(&target, &[event()]).await,
+        BatchOutcome::MintFailed { reason: "held" }
+    );
 }
 
 #[tokio::test]
