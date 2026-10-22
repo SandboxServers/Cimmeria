@@ -12,7 +12,7 @@ use cimmeria_launcher_core::state::InstalledState;
 use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
 /// The PE stub `install_worker::fixtures::archive` ships as `SGW.exe`.
-fn exe_stub() -> Vec<u8> {
+pub(super) fn exe_stub() -> Vec<u8> {
     let mut exe = vec![0u8; 0x200];
     exe[..2].copy_from_slice(b"MZ");
     exe[60..64].copy_from_slice(&0x128u32.to_le_bytes());
@@ -23,7 +23,7 @@ fn exe_stub() -> Vec<u8> {
     exe
 }
 
-fn write(root: &Path, rel: &str, bytes: &[u8]) {
+pub(super) fn write(root: &Path, rel: &str, bytes: &[u8]) {
     let path = inventory::native(root, rel);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(path, bytes).unwrap();
@@ -43,16 +43,16 @@ fn overlay_patch() -> Vec<Vec<u8>> {
 }
 
 /// A game folder, a state store and an origin that serves the patch archives.
-struct Light {
-    root: tempfile::TempDir,
-    state: Arc<Mutex<DesktopState>>,
-    folder: PathBuf,
-    release: VerifiedRelease,
+pub(super) struct Light {
+    pub(super) root: tempfile::TempDir,
+    pub(super) state: Arc<Mutex<DesktopState>>,
+    pub(super) folder: PathBuf,
+    pub(super) release: VerifiedRelease,
     server: MockServer,
 }
 
 impl Light {
-    async fn new(zips: Vec<Vec<u8>>, files: &[(&str, &[u8])]) -> Self {
+    pub(super) async fn new(zips: Vec<Vec<u8>>, files: &[(&str, &[u8])]) -> Self {
         Self::with_release(release_with_roots(&zips, &[]), zips, files).await
     }
     async fn with_release(
@@ -82,7 +82,7 @@ impl Light {
             server,
         }
     }
-    fn verified(&self) -> VerifiedRelease {
+    pub(super) fn verified(&self) -> VerifiedRelease {
         crate::catalog::verify_release(self.release.evidence().0, self.release.evidence().1)
             .unwrap()
     }
@@ -103,7 +103,7 @@ impl Light {
     fn transport(&self) -> artifacts::Transport {
         artifacts::Transport::loopback(format!("{}/manifest.json", self.server.uri())).unwrap()
     }
-    fn preview(&self) -> Result<Preview, Error> {
+    pub(super) fn preview(&self) -> Result<Preview, Error> {
         self.preview_with(CancellationToken::new(), ProgressSink::latest().0)
     }
     fn preview_with(
@@ -123,10 +123,10 @@ impl Light {
             )
         })
     }
-    fn game(&self) -> PathBuf {
+    pub(super) fn game(&self) -> PathBuf {
         self.folder.join("game")
     }
-    fn ledger(&self) -> InstalledState {
+    pub(super) fn ledger(&self) -> InstalledState {
         InstalledState::load(&self.game())
     }
     /// The overlay as the published tree holds it.
@@ -373,7 +373,9 @@ async fn an_unreachable_index_never_blocks_and_is_not_recorded() {
 }
 
 /// A cooked file held under the stock spelling that a patch ships under the placed
-/// spelling is stored as a move: the row names both paths and the copy is kept.
+/// spelling is stored as a move: the row names both paths and the copy is kept. A
+/// folder with only the stock tier is placed by a directory rename instead (LA-11b),
+/// so this folder also holds a placed file and keeps both tiers.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_stock_named_cooked_file_is_stored_as_a_move() {
     const STOCK: &str = "Working/SGWGame/Cache.en-US/Cooked.pak";
@@ -389,7 +391,11 @@ async fn a_stock_named_cooked_file_is_stored_as_a_move() {
     )];
     let lt = Light::new(
         zips,
-        &[(OVERLAY, &big("stock overlay")), (STOCK, b"cooked")],
+        &[
+            (OVERLAY, &big("stock overlay")),
+            (STOCK, b"cooked"),
+            ("Working/SGWGame/SourceCache.en-us/Other.pak", b"other"),
+        ],
     )
     .await;
     let preview = lt.preview().unwrap();

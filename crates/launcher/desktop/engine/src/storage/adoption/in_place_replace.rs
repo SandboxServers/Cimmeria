@@ -1,10 +1,94 @@
 //! The in-place replace and restore steps: a release file that needs replacing has
 //! its original set aside first, and an abandoned adoption puts each one back. Split
 //! out of `in_place.rs`; the moves that call these stay there.
-use super::in_place::{holds, present, Hashed};
+use super::in_place::{holds, present, Hashed, Way};
+use super::model::FileCheck;
 use super::publication::Point;
 use super::*;
+use cimmeria_launcher_core::install_layout::bundled_cooked_alias;
 use std::collections::BTreeSet;
+
+/// The stock cooked-data tier a light adoption places (LA-11b), as folder-relative
+/// `(stock, placed)` directories in the folder's spelling. `None` unless the plan is
+/// light and one of its rows renames a stock-spelled file to its placed path.
+fn cooked_tier(plan: &Plan) -> Option<(String, String)> {
+    if !matches!(plan.provenance.check, FileCheck::Light) {
+        return None;
+    }
+    plan.report.files.iter().find_map(|d| {
+        let source = d.source_path.as_deref()?;
+        (bundled_cooked_alias(source).is_some() && !d.path.eq_ignore_ascii_case(source)).then(
+            || {
+                (
+                    source[..27].to_string(),
+                    format!("{}SourceCache.en-us", &source[..16]),
+                )
+            },
+        )
+    })
+}
+
+/// Whether `path` is a plain directory. Missing is `false`; a link, junction or file
+/// is refused.
+fn plain_dir(path: &Path) -> Result<bool, Error> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if super::super::failed_cleanup::plain(&meta) && meta.is_dir() => Ok(true),
+        Ok(_) => Err(StorageError::UnsafeFile.into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(_) => Err(StorageError::Io.into()),
+    }
+}
+
+/// Before any file moves (adopt, and abandon too, so that a run that stopped before
+/// the rename can move files back): rename the stock tier to the placed one.
+/// Idempotent.
+pub(super) fn place_cooked_tier(way: Way<'_>, from: &Path, to: &Path) -> Result<(), Error> {
+    let (plan, root) = match way {
+        Way::Adopt { plan, .. } => (plan, from),
+        Way::Abandon { plan } => (plan, to),
+    };
+    let Some((stock, placed)) = cooked_tier(plan) else {
+        return Ok(());
+    };
+    let (stock, placed) = (
+        inventory::native(root, &stock),
+        inventory::native(root, &placed),
+    );
+    // Already renamed: a re-run, a recovery, or the second call.
+    if !plain_dir(&stock)? {
+        return Ok(());
+    }
+    if plain_dir(&placed)? && std::fs::remove_dir(&placed).is_err() {
+        tracing::error!(target: "adoption", "light adoption: both cooked-data tiers are in the folder");
+        return Err(StorageError::Corrupt.into());
+    }
+    std::fs::rename(&stock, &placed)?;
+    tracing::debug!(target: "adoption", "light adoption: placed the bundled cooked-data tier");
+    Ok(())
+}
+
+/// After abandon moved the files back: rename the placed tier back to the stock
+/// spelling.
+pub(super) fn restore_cooked_tier(way: Way<'_>, to: &Path) -> Result<(), Error> {
+    let Way::Abandon { plan } = way else {
+        return Ok(());
+    };
+    let Some((stock, placed)) = cooked_tier(plan) else {
+        return Ok(());
+    };
+    let (stock, placed) = (
+        inventory::native(to, &stock),
+        inventory::native(to, &placed),
+    );
+    match (plain_dir(&placed)?, plain_dir(&stock)?) {
+        (true, false) => std::fs::rename(&placed, &stock)?,
+        (true, true) => {
+            tracing::warn!(target: "adoption", "abandoning light adoption: both cooked-data tiers are in the folder; the placed one stays")
+        }
+        _ => (),
+    }
+    Ok(())
+}
 
 /// The login file the launcher writes its server list into (D-AI13).
 const LOGIN_INTERNAL: &str = "Working/SGWGame/Content/UI/Startup/Login/LoginInternal.lua";

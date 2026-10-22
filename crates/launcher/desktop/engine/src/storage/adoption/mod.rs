@@ -19,6 +19,8 @@ mod index_compare;
 mod index_source;
 mod inventory;
 mod light;
+#[cfg(all(test, not(target_os = "macos")))]
+mod light_cooked_tests;
 mod light_plan;
 #[cfg(test)]
 mod light_plan_tests;

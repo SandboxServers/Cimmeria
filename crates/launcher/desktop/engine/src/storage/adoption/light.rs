@@ -2,6 +2,8 @@
 //! against: the folder's own files are the base, pending patches replay over them
 //! tolerantly, and the published index is only compared. Nothing here blocks on a
 //! changed input; only an empty folder is refused (`no_reusable_files`).
+//! A folder with only the stock cooked-data tier is reviewed as placed
+//! (`SourceCache.en-us`), as a fresh install places it; the moves rename the directory.
 use super::in_place::SETUP_FILES;
 use super::verification::{published_digest, Compared, Tree};
 use super::*;
@@ -10,6 +12,7 @@ use crate::{
     install_progress::{ProgressReporter, ProgressSink},
     unpack::UnpackSink,
 };
+use cimmeria_launcher_core::install_layout::bundled_cooked_alias;
 use cimmeria_launcher_core::state::IncompletePatch;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -114,32 +117,74 @@ pub(super) fn light_comparison(
     let store = prep.join("replacements");
     let mut tree = Tree::new();
     let mut files = Vec::new();
-    // A cooked file the folder holds under the stock spelling moves to its placed
-    // path as a stored copy; the original stays where the player left it.
-    let placed = |to: &str| scanned.contains_key(to) || replacements.iter().any(|r| r.path == to);
-    let moves: Vec<&(String, String)> = replayed
-        .moves
-        .iter()
-        .filter(|(from, to)| scanned.contains_key(from) && !placed(to))
+    // The rule `place_bundled_cooked_data` applies: a stock tier with no placed tier
+    // beside it is placed. The moves then rename the directory once (`in_place`).
+    let place = scanned.keys().any(|k| bundled_cooked_alias(k).is_some())
+        && !scanned.keys().any(|k| {
+            k.to_ascii_lowercase()
+                .starts_with("working/sgwgame/sourcecache.en-us/")
+        });
+    let placed_name = |name: &str| -> String {
+        // The slices are ASCII-safe: `bundled_cooked_alias` matched those bytes.
+        if place && bundled_cooked_alias(name).is_some() {
+            format!("{}SourceCache.en-us/{}", &name[..16], &name[28..])
+        } else {
+            name.to_string()
+        }
+    };
+    let by_placed: BTreeMap<String, &String> = scanned
+        .keys()
+        .map(|k| (placed_name(k).to_ascii_lowercase(), k))
         .collect();
+    // A cooked file the folder holds under the stock spelling moves to its placed
+    // path as a stored copy; the original stays where the player left it. Only a
+    // folder with both tiers reaches this: a placed folder renames the directory.
+    let placed = |to: &str| scanned.contains_key(to) || replacements.iter().any(|r| r.path == to);
+    let moves: Vec<&(String, String)> = if place {
+        Vec::new()
+    } else {
+        replayed
+            .moves
+            .iter()
+            .filter(|(from, to)| scanned.contains_key(from) && !placed(to))
+            .collect()
+    };
     let moved: BTreeSet<&str> = moves.iter().map(|(from, _)| from.as_str()).collect();
-    let replaced: BTreeSet<&str> = replacements.iter().map(|r| r.path.as_str()).collect();
+    let replaced: BTreeSet<String> = replacements
+        .iter()
+        .map(|r| r.path.to_ascii_lowercase())
+        .collect();
     for (name, entry) in scanned {
-        if moved.contains(name.as_str()) || replaced.contains(name.as_str()) {
+        let path = placed_name(name);
+        if moved.contains(name.as_str()) || replaced.contains(&path.to_ascii_lowercase()) {
             continue;
         }
-        tree.insert(name.clone(), (entry.size, entry.sha256));
+        tree.insert(path.clone(), (entry.size, entry.sha256));
+        let classification = if path == *name {
+            Classification::Matched
+        } else {
+            Classification::KnownTransform
+        };
         files.push(Difference {
-            path: name.clone(),
+            path,
             source_path: Some(name.clone()),
-            classification: Classification::Matched,
+            classification,
         });
     }
     for r in &replacements {
         tree.insert(r.path.clone(), (r.size, r.sha256));
+        let source_path = if scanned.contains_key(&r.path) {
+            Some(r.path.clone())
+        } else if place {
+            by_placed
+                .get(&r.path.to_ascii_lowercase())
+                .map(|name| (*name).clone())
+        } else {
+            None
+        };
         files.push(Difference {
             path: r.path.clone(),
-            source_path: scanned.contains_key(&r.path).then(|| r.path.clone()),
+            source_path,
             classification: Classification::NeedsPatching,
         });
     }

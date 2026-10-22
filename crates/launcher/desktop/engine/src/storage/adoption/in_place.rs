@@ -323,7 +323,7 @@ pub(super) fn holds(path: &Path, expected: &Hashed) -> Result<bool, Error> {
 
 /// Which way the release files go, and what a file found in both places means.
 #[derive(Clone, Copy)]
-enum Way<'a> {
+pub(super) enum Way<'a> {
     /// Into `game`. The old launcher or a running game can recreate a file at
     /// its old path after the review, so a duplicate is settled by content.
     Adopt { plan: &'a Plan, store: &'a Path },
@@ -387,6 +387,7 @@ fn move_files(
     progress: &ProgressSink,
     hook: &mut impl FnMut(Point) -> Result<(), Error>,
 ) -> Result<(), Error> {
+    super::in_place_replace::place_cooked_tier(way, from, to)?;
     let mut reviewed = None;
     for (current, path) in files.iter().enumerate() {
         progress.report(crate::install::Progress::Extracting {
@@ -454,7 +455,8 @@ fn move_files(
         total: files.len(),
         filename: String::new(),
     });
-    remove_emptied(from, files)
+    remove_emptied(from, files)?;
+    super::in_place_replace::restore_cooked_tier(way, to)
 }
 
 fn move_release_files(
