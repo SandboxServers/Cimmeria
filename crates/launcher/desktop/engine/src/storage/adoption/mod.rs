@@ -27,6 +27,10 @@ mod light_plan_tests;
 mod light_replay;
 #[cfg(all(test, not(target_os = "macos")))]
 mod light_tests;
+#[cfg(all(test, not(target_os = "macos")))]
+mod light_update_guard_tests;
+#[cfg(all(test, not(target_os = "macos")))]
+mod light_update_tests;
 mod model;
 pub(crate) mod preparation;
 mod publication;

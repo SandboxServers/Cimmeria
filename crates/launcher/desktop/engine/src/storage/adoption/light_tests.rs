@@ -48,14 +48,14 @@ pub(super) struct Light {
     pub(super) state: Arc<Mutex<DesktopState>>,
     pub(super) folder: PathBuf,
     pub(super) release: VerifiedRelease,
-    server: MockServer,
+    pub(super) server: MockServer,
 }
 
 impl Light {
     pub(super) async fn new(zips: Vec<Vec<u8>>, files: &[(&str, &[u8])]) -> Self {
         Self::with_release(release_with_roots(&zips, &[]), zips, files).await
     }
-    async fn with_release(
+    pub(super) async fn with_release(
         release: VerifiedRelease,
         zips: Vec<Vec<u8>>,
         files: &[(&str, &[u8])],

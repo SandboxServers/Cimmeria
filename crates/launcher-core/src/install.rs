@@ -329,16 +329,15 @@ async fn install_all_into(
     Ok(())
 }
 
-/// Download `patch` and unpack it, returning the ops a tolerant apply skipped.
-/// `only_targets` (lower-case, relative to the patch's dest) limits the apply
-/// to those targets with no overlays: the retry of an incomplete patch.
-async fn apply_patch(
-    ctx: &InstallContext<'_>,
-    patch: &PatchEntry,
-    opts: InstallOptions,
-    only_targets: Option<BTreeSet<String>>,
-) -> Result<Vec<SkippedOp>, InstallError> {
-    let url = blob_url(ctx.manifest_url, &patch.blob);
+/// The file name an install run downloads `patch` to, inside its install dir.
+///
+/// Includes a sha prefix so a republished patch with the same `id` but a new
+/// sha256 doesn't accidentally resume against the stale bytes: different sha,
+/// different tmp path, fresh download. `safe_sha_prefix` rejects non-hex
+/// characters at this boundary so a malformed manifest can't escape
+/// `install_dir` via crafted sha256 strings. Public so an Update that already
+/// holds a verified copy can place it where the install will find it.
+pub fn patch_download_name(patch: &PatchEntry) -> Result<String, InstallError> {
     let safe_id: String = patch
         .id
         .chars()
@@ -350,16 +349,21 @@ async fn apply_patch(
             }
         })
         .collect();
-    // Include a sha prefix in the tmp filename so a republished patch
-    // with the same `id` but a new sha256 doesn't accidentally resume
-    // against the stale bytes — different sha → different tmp path →
-    // fresh download. `safe_sha_prefix` rejects non-hex characters at
-    // this boundary so a malformed manifest can't escape `install_dir`
-    // via crafted sha256 strings.
     let safe_sha = safe_sha_prefix(&patch.sha256)?;
-    let tmp = ctx
-        .install_dir
-        .join(format!(".tmp-patch-{safe_id}-{safe_sha}.download"));
+    Ok(format!(".tmp-patch-{safe_id}-{safe_sha}.download"))
+}
+
+/// Download `patch` and unpack it, returning the ops a tolerant apply skipped.
+/// `only_targets` (lower-case, relative to the patch's dest) limits the apply
+/// to those targets with no overlays: the retry of an incomplete patch.
+async fn apply_patch(
+    ctx: &InstallContext<'_>,
+    patch: &PatchEntry,
+    opts: InstallOptions,
+    only_targets: Option<BTreeSet<String>>,
+) -> Result<Vec<SkippedOp>, InstallError> {
+    let url = blob_url(ctx.manifest_url, &patch.blob);
+    let tmp = ctx.install_dir.join(patch_download_name(patch)?);
     let label = format!("patch {}", patch.id);
     // Resolve the destination before downloading, so a client tree with
     // no SGWGame directory fails fast instead of after the download.
