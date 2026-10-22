@@ -92,6 +92,17 @@ test('a stale save re-inspects, says so and keeps the text',async()=>{
  await m.app.dispose();
 });
 
+test('a refresh that fails after a stale save is reported to telemetry',async()=>{
+ const uiCalls:unknown[]=[];
+ Object.assign(globalThis,{window:{__TAURI__:{core:{invoke:async(command:string,args:unknown)=>{uiCalls.push([command,args]);}}}}});
+ try{
+  const m=mounted(async()=>{throw 'stale_revision';},async()=>{throw 'transport';});
+  m.edit('Home = http://home.example:8081');m.press();await m.app.settled();
+  assert.deepEqual(uiCalls,[['ui_event',{area:'server_list',event:'refresh_failed',code:'transport',level:'warn'}]]);
+  await m.app.dispose();
+ }finally{Reflect.deleteProperty(globalThis,'window');}
+});
+
 test('a save keeps the comments, and a failed reload keeps the text without claiming it reloaded',async()=>{
  let reload=true;
  const m=mounted(async request=>request,async()=>{if(!reload)throw 'transport';m.feed.publish(snapshot(4,[{name:'Home',url:'http://home.example'}]));});

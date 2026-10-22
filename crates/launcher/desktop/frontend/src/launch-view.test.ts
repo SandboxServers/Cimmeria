@@ -46,6 +46,31 @@ test('minimum-version Play rejection is distinct from transport uncertainty',asy
  }finally{await app.dispose();}
 });
 
+test('a refused Play is reported to telemetry',async()=>{
+ const uiCalls:unknown[]=[];
+ Object.assign(globalThis,{window:{__TAURI__:{core:{invoke:async(command:string,args:unknown)=>{uiCalls.push([command,args]);}}}}});
+ try{
+  const status=initial();const {document,window}=parseHTML(html);
+  const app=mountLaunch(document,async(_,{request}:any)=>{if(request.command==='play')throw 'busy';return status;});
+  try{await app.ready;await new Promise(resolve=>setImmediate(resolve));document.getElementById('launch')!.dispatchEvent(new window.Event('click'));await app.settled();await new Promise(resolve=>setImmediate(resolve));
+   assert.deepEqual(uiCalls,[['ui_event',{area:'launch',event:'invoke_failed',code:'busy',level:'warn'}]]);
+  }finally{await app.dispose();}
+ }finally{Reflect.deleteProperty(globalThis,'window');}
+});
+
+test('a minimum-version Play refusal is not reported to telemetry',async()=>{
+ const uiCalls:unknown[]=[];
+ Object.assign(globalThis,{window:{__TAURI__:{core:{invoke:async(command:string,args:unknown)=>{uiCalls.push([command,args]);}}}}});
+ try{
+  const status=initial();let plays=0;const {document,window}=parseHTML(html);
+  const app=mountLaunch(document,async(_,{request}:any)=>{if(request.command==='play'){plays++;throw 'launcher_too_old';}return status;});
+  try{await app.ready;await new Promise(resolve=>setImmediate(resolve));document.getElementById('launch')!.dispatchEvent(new window.Event('click'));await app.settled();await new Promise(resolve=>setImmediate(resolve));
+   assert.equal(plays,1);
+   assert.deepEqual(uiCalls,[]);
+  }finally{await app.dispose();}
+ }finally{Reflect.deleteProperty(globalThis,'window');}
+});
+
 test('native minimum gate survives successful status polls and blocks repeated Play',async()=>{
  let status={...initial(),launcher_update_required:true,installation_id:null as string|null};let plays=0;
  const {document,window}=parseHTML(html);

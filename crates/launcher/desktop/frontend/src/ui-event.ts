@@ -10,3 +10,8 @@ export function reportUiEvent(area:UiArea,event:string,code:string,level:'info'|
  if(!tauri) return; // Not inside the launcher window (tests, UAT scripts): nothing to report to.
  tauri.core.invoke('ui_event',{area,event,code,level}).catch(() => undefined); // Telemetry is best effort; a refused report is not an error for the player.
 }
+
+/** A caught failure as a `ui_event` code: the error itself when it is a valid code, else `fallback`. */
+export function uiCode(error:unknown,fallback='transport'):string {
+ return typeof error==='string'&&/^[a-z][a-z0-9_]{0,39}$/.test(error)?error:fallback;
+}

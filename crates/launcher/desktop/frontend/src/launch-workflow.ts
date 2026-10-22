@@ -1,5 +1,6 @@
 import { Context, Data, Effect, Layer, PubSub, Ref, Schema, Semaphore, Stream } from 'effect';
 import { NativeSnapshot } from './contract';
+import { reportUiEvent, uiCode } from './ui-event';
 const Pid=Schema.Int.check(Schema.isBetween({minimum:1,maximum:4294967295}));
 export const LaunchStatus=Schema.Struct({schema_version:Schema.Literal(1),native:NativeSnapshot,
   installation_id:Schema.NullOr(Schema.String),resources_available:Schema.Boolean,launcher_update_required:Schema.Boolean,
@@ -14,7 +15,10 @@ export type Request={command:'inspect';schema_version:1}|{command:'play';schema_
 export class LaunchFailure extends Data.TaggedError('LaunchFailure')<{readonly code:string}> {}
 export class LaunchBridge extends Context.Service<LaunchBridge,{invoke:(request:Request)=>Effect.Effect<LaunchStatus,LaunchFailure>}>()('launcher/LaunchBridge') {}
 export const launchBridgeLayer=(invoke:(request:Request)=>Promise<unknown>)=>Layer.succeed(LaunchBridge,{
-  invoke:(request)=>Effect.tryPromise({try:()=>invoke(request),catch:error=>new LaunchFailure({code:error==='launcher_too_old'?'launcher_too_old':'transport'})}).pipe(
+  invoke:(request)=>Effect.tryPromise({try:()=>invoke(request),catch:error=>{
+    if(error!=='launcher_too_old')reportUiEvent('launch','invoke_failed',uiCode(error));
+    return new LaunchFailure({code:error==='launcher_too_old'?'launcher_too_old':'transport'});
+  }}).pipe(
     Effect.timeout('5 seconds'),Effect.catchTag('TimeoutError',()=>Effect.fail(new LaunchFailure({code:'transport'}))),
     Effect.flatMap(value=>Schema.decodeUnknownEffect(LaunchStatus,{onExcessProperty:'error'})(value).pipe(Effect.mapError(()=>new LaunchFailure({code:'schema'})))),
   )});
