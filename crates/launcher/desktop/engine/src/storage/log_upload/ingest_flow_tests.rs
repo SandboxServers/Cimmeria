@@ -342,30 +342,8 @@ async fn partial_keeps_the_unsent_lines_for_the_next_press() {
     );
 }
 
-/// A test responder: on the first chunk it puts a folder where the offsets file
-/// goes, so that save fails; on the second it removes the folder again.
-struct BlockOffsetsOnce {
-    file: std::path::PathBuf,
-    calls: std::sync::atomic::AtomicUsize,
-}
-
-impl wiremock::Respond for BlockOffsetsOnce {
-    fn respond(&self, _request: &wiremock::Request) -> ResponseTemplate {
-        match self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
-            0 => {
-                let _ = std::fs::create_dir_all(&self.file);
-            }
-            1 => {
-                let _ = std::fs::remove_dir(&self.file);
-            }
-            _ => {}
-        }
-        ResponseTemplate::new(200)
-    }
-}
-
-/// LF-19 N1: a save that fails after one chunk does not stop the saves of the
-/// chunks after it. The third chunk's save succeeds, so the offset reaches the end.
+/// LF-19 N1: a failed offsets save on one chunk does not stop the saves after it.
+/// The first chunk blocks the save (a folder), the second unblocks it.
 #[tokio::test]
 async fn a_failed_offsets_save_on_one_chunk_is_retried_on_the_next() {
     let root = tempfile::tempdir().unwrap();
@@ -374,11 +352,16 @@ async fn a_failed_offsets_save_on_one_chunk_is_retried_on_the_next() {
     let width = write_log(root.path(), 2_500);
     let state = state_at(root.path(), &server.uri());
     let blocked = state.directory.root.join("uploaded-log-offsets.json");
+    let calls = std::sync::atomic::AtomicUsize::new(0);
     Mock::given(method("POST"))
         .and(path(CHUNK))
-        .respond_with(BlockOffsetsOnce {
-            file: blocked,
-            calls: std::sync::atomic::AtomicUsize::new(0),
+        .respond_with(move |_: &wiremock::Request| {
+            match calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 => _ = std::fs::create_dir_all(&blocked),
+                1 => _ = std::fs::remove_dir(&blocked),
+                _ => {}
+            }
+            ResponseTemplate::new(200)
         })
         .mount(&server)
         .await;
@@ -394,14 +377,8 @@ async fn a_failed_offsets_save_on_one_chunk_is_retried_on_the_next() {
         ),
         "{out:?}"
     );
-    assert_eq!(
-        Offsets::load(&state.directory.root)
-            .files
-            .get(LOG_FILE)
-            .copied(),
-        Some(2_500 * width as u64),
-        "the save after the failed one still runs"
-    );
+    let saved = Offsets::load(&state.directory.root);
+    assert_eq!(saved.files.get(LOG_FILE), Some(&(2_500 * width as u64)));
 }
 
 #[test]
