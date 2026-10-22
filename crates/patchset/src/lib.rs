@@ -40,7 +40,7 @@ pub mod recipe;
 pub mod signing;
 pub mod transform;
 
-pub use apply::{apply, ApplyReport};
+pub use apply::{apply, apply_with, ApplyOptions, ApplyReport, SkipReason, SkippedOp};
 pub use build::{build, Spec};
 pub use case_path::resolve_existing_case;
 pub use recipe::{Op, Recipe, Source, Transform, WorldMapParams, RECIPE_NAME};
