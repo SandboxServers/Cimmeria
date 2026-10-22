@@ -339,7 +339,27 @@ fn over_the_cap_logs_one_trimmed_event_and_no_blob_name() {
         .collect();
     assert_eq!(trimmed.len(), 1);
     assert_eq!(trimmed[0].field("count"), Some("1"));
+    // The PUT runs inside the `block_on` above, so its stored event is captured.
+    assert!(events
+        .iter()
+        .any(|e| e.field("event") == Some("log_upload_stored") && e.field("bytes").is_some()));
     assert!(events.iter().all(|e| e.field("blob").is_none()));
+}
+
+/// The launcher's logs in the upload come from the `logs` folder beside the
+/// state folder, and are zipped under `launcher/`. Fails if the
+/// `launcher_logs::append` call in `collect` is removed.
+#[test]
+fn collect_adds_the_launcher_logs_from_the_logs_folder_next_to_state() {
+    let (root, state, _) = installed();
+    let logs = root.path().join("logs");
+    std::fs::create_dir(&logs).unwrap();
+    std::fs::write(logs.join("launcher.2026-10-21.log"), "hello\n").unwrap();
+    let store = LogStore::insecure_for_tests(&format!("http://127.0.0.1:1/c?{SECRET}"));
+    let CollectedLogs::Send(pending) = collect(&state, &store).collect().unwrap() else {
+        panic!("expected a send");
+    };
+    assert!(zip_names(&pending.body).contains(&"launcher/launcher.2026-10-21.log".to_string()));
 }
 
 /// The PUT runs without the state lock, so an operation can start while it

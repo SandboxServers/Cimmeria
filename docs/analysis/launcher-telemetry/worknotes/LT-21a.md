@@ -9,6 +9,6 @@ Next step: LT-21b, per `work-packets-wave4.md` § LT-21b.
 Last check: `cargo test --locked ... -p cimmeria-launcher-engine log_upload` status=ok exit=0 (21 passed, 0 failed).
 
 Accepted deviations:
-- vents.rs is 241 lines against a 180-line target (kept whole rather than split).
-- vents.rs has an extra helper, log_error_reason, beyond the per-event helpers.
-- 	ests.rs has its own SERIAL pair and a synchronous lock_on test.
+- `events.rs` is 241 lines against a 180-line target (kept whole rather than split).
+- `events.rs` has an extra helper, `log_error_reason`, beyond the per-event helpers.
+- `tests.rs` has its own SERIAL pair and a synchronous `block_on` test.
