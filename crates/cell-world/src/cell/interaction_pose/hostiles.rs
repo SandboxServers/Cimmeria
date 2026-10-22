@@ -72,13 +72,13 @@ pub fn emit_nearby_hostiles(mgr: &SpaceManager, pose: &InteractionPose, pose_seq
         entity_id = pose.entity_id, // nt:id-only privacy: no personal names (D-PC2)
         pose_seq = pose_seq,
         count = hostiles.len(),
-        hostile_1_id = first.entity_id,
+        hostile_1_id = first.entity_id, // nt:id-only joins the entity snapshot by id; row stays name-free (D-PC2)
         hostile_1_dist_m = first.dist_m,
         hostile_1_bearing_deg = first.bearing_deg,
-        hostile_2_id = second.map(|h| h.entity_id),
+        hostile_2_id = second.map(|h| h.entity_id), // nt:id-only joins the entity snapshot by id; row stays name-free (D-PC2)
         hostile_2_dist_m = second.map(|h| h.dist_m),
         hostile_2_bearing_deg = second.map(|h| h.bearing_deg),
-        hostile_3_id = third.map(|h| h.entity_id),
+        hostile_3_id = third.map(|h| h.entity_id), // nt:id-only joins the entity snapshot by id; row stays name-free (D-PC2)
         hostile_3_dist_m = third.map(|h| h.dist_m),
         hostile_3_bearing_deg = third.map(|h| h.bearing_deg),
         "interaction_hostiles: living hostiles near the player at an interaction"

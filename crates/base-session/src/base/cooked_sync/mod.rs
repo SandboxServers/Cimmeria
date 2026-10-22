@@ -165,6 +165,7 @@ pub fn serve_miss(ctx: SyncContext, category_id: u32, key: u32) -> MissOutcome {
                     account_name = who.account_name,
                     event = "dialog.cooked_miss_after_display",
                     category_id,
+                    category_name = super::resources::category_name(category_id),
                     key,
                     element_name = element_name.as_deref(),
                     display_age_ms = age,
