@@ -87,6 +87,17 @@ pub(super) fn collect_failed(reason: &'static str) {
     );
 }
 
+/// A game log file was not read this press. `reason` is a closed word
+/// (`read_failed` today); the path is never logged (R5).
+pub(super) fn game_file_skipped(reason: &'static str) {
+    tracing::warn!(
+        target: "launcher.telemetry",
+        event = "log_upload_game_file_skipped",
+        reason,
+        "launcher log upload: a game log file was not read; its lines wait for the next press"
+    );
+}
+
 /// The store refused the PUT with a non-success status.
 pub(super) fn rejected(http_status: u16) {
     tracing::warn!(

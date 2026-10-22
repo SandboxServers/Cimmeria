@@ -75,7 +75,14 @@ pub(crate) fn rows(
         .iter()
         .enumerate()
         .map(|(seq, line)| {
-            let scrubbed = scrub_ips(&redaction.scrub(&line.message)).into_owned();
+            // Game rows get the per-word scrub (A5, A9); launcher rows keep the
+            // whole-value scrub.
+            let scrubbed = if target == GAME_LOG_TARGET {
+                redaction.scrub_words(&line.message)
+            } else {
+                redaction.scrub(&line.message)
+            };
+            let scrubbed = scrub_ips(&scrubbed).into_owned();
             let (message, cut) = cut_message(&scrubbed);
             let mut fields = Map::new();
             fields.insert("message".into(), json!(message));

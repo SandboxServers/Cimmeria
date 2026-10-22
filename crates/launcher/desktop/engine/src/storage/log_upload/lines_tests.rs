@@ -212,7 +212,7 @@ fn offsets_round_trip_never_move_back_and_an_unreadable_file_loads_empty() {
     offsets.advance(&LogLine { end: 10, ..line });
     offsets.save(dir).unwrap();
     let loaded = Offsets::load(dir);
-    assert_eq!(loaded.version, 1);
+    assert_eq!(loaded.version, 2);
     assert_eq!(loaded.files.get(FILE), Some(&42));
     std::fs::write(dir.join("uploaded-log-offsets.json"), b"{not json").unwrap();
     assert!(Offsets::load(dir).files.is_empty());
@@ -220,8 +220,11 @@ fn offsets_round_trip_never_move_back_and_an_unreadable_file_loads_empty() {
 
 #[test]
 fn offsets_keep_only_the_newest_files() {
+    use crate::storage::log_upload::offsets::MAX_FILES;
+    let total = MAX_FILES + 88;
+    let key = |n: usize| format!("launcher.2026-{:02}-{:02}.log", 1 + n / 28, 1 + n % 28);
     let mut offsets = Offsets::default();
-    for n in 0..70 {
+    for n in 0..total {
         let line = LogLine {
             file: format!("launcher.2026-{:02}-{:02}.log", 1 + n / 28, 1 + n % 28),
             line_no: 1,
@@ -234,7 +237,12 @@ fn offsets_keep_only_the_newest_files() {
         };
         offsets.advance(&line);
     }
-    assert_eq!(offsets.files.len(), 64);
-    assert!(offsets.files.contains_key("launcher.2026-03-14.log"));
-    assert!(!offsets.files.contains_key("launcher.2026-01-01.log"));
+    // The limit is enforced after a read, not on each advance (A7).
+    offsets.prune(
+        &std::collections::HashMap::new(),
+        &std::collections::HashSet::new(),
+    );
+    assert_eq!(offsets.files.len(), MAX_FILES);
+    assert!(offsets.files.contains_key(&key(total - 1)));
+    assert!(!offsets.files.contains_key(&key(0)));
 }

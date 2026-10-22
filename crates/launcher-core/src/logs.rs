@@ -41,7 +41,7 @@ pub enum LogError {
     Walk(#[from] walkdir::Error),
 }
 
-fn collect_log_inputs(install_dir: &Path) -> Result<Vec<PathBuf>, LogError> {
+pub fn collect_log_inputs(install_dir: &Path) -> Result<Vec<PathBuf>, LogError> {
     let binaries = crate::install_layout::binaries_dir(install_dir);
     let mut files = Vec::new();
 
