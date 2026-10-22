@@ -3,11 +3,15 @@
 use reqwest::Url;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-/// `https://…`, or `http://` to this machine for local fixtures. Nothing else.
+/// `https://…`, or `http://` to this machine for local fixtures only. Login servers
+/// must be https, so `for_login_server` never accepts plain http.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SummaryEndpoint {
     base: Url,
 }
+
+/// The built-in https base (`https://<host>/api/`); LT-41 sets it. Never a plain-http value.
+pub const DEFAULT_SUMMARY_BASE: Option<&str> = None;
 
 impl SummaryEndpoint {
     /// The only constructor. A URL carrying credentials, a query or a fragment
@@ -42,6 +46,32 @@ impl SummaryEndpoint {
         let joined = format!("{}telemetry/launcher-summary", url.path());
         url.set_path(&joined);
         url
+    }
+
+    /// The endpoint for a login server: its https host and port, with `/api/` as the
+    /// base. The login server's own path is ignored. Plain http is refused even for
+    /// loopback, because login servers are always https. A login server carrying
+    /// a username or password is refused too, and its value is never logged.
+    pub fn for_login_server(login_server: &str) -> Option<Self> {
+        let url = Url::parse(login_server).ok()?;
+        if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
+            return None;
+        }
+        let host = url.host_str()?;
+        let port = url.port().map(|p| format!(":{p}")).unwrap_or_default();
+        Self::parse(&format!("https://{host}{port}/api/"))
+    }
+
+    /// The endpoint to use, with its source: the first login server when it is https,
+    /// else the built-in default, else none (`no_https_endpoint`).
+    pub fn resolve(first_login_server: Option<&str>) -> (Option<Self>, &'static str) {
+        if let Some(endpoint) = first_login_server.and_then(Self::for_login_server) {
+            return (Some(endpoint), "login_server");
+        }
+        match DEFAULT_SUMMARY_BASE.and_then(Self::parse) {
+            Some(endpoint) => (Some(endpoint), "default"),
+            None => (None, "no_https_endpoint"),
+        }
     }
 }
 
@@ -131,5 +161,72 @@ mod tests {
         ] {
             assert_eq!(SummaryEndpoint::parse(refused), None, "{refused}");
         }
+    }
+
+    #[test]
+    fn an_https_login_server_gives_its_api_base() {
+        let with_port = SummaryEndpoint::for_login_server("https://play.example:8443");
+        let ingest = with_port.map(|e| e.ingest_url().to_string());
+        assert_eq!(
+            ingest.as_deref(),
+            Some("https://play.example:8443/api/telemetry/launcher-summary")
+        );
+        let with_path = SummaryEndpoint::for_login_server("https://play.example/login");
+        let ingest = with_path.map(|e| e.ingest_url().to_string());
+        assert_eq!(
+            ingest.as_deref(),
+            Some("https://play.example/api/telemetry/launcher-summary")
+        );
+    }
+
+    #[test]
+    fn plain_http_login_servers_are_refused() {
+        // Positive control: the same host over https is accepted.
+        assert!(SummaryEndpoint::for_login_server("https://127.0.0.1:8081").is_some());
+        for refused in [
+            "http://play.example:8081",
+            "http://127.0.0.1:8081",
+            "http://localhost",
+        ] {
+            assert_eq!(
+                SummaryEndpoint::for_login_server(refused),
+                None,
+                "{refused}"
+            );
+        }
+    }
+
+    #[test]
+    fn other_schemes_and_bad_values_are_refused() {
+        for refused in [
+            "ftp://x",
+            "play.example",
+            "https://user@play.example",
+            "https://user:pw@play.example",
+            "",
+        ] {
+            assert_eq!(
+                SummaryEndpoint::for_login_server(refused),
+                None,
+                "{refused}"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_falls_through_to_no_https_endpoint() {
+        assert_eq!(DEFAULT_SUMMARY_BASE, None);
+        let (endpoint, source) = SummaryEndpoint::resolve(Some("http://play.example:8081"));
+        assert_eq!((endpoint, source), (None, "no_https_endpoint"));
+        let (endpoint, source) = SummaryEndpoint::resolve(None);
+        assert_eq!((endpoint, source), (None, "no_https_endpoint"));
+        let (endpoint, source) = SummaryEndpoint::resolve(Some("https://play.example"));
+        assert!(endpoint.is_some());
+        assert_eq!(source, "login_server");
+    }
+
+    #[test]
+    fn the_default_base_is_none_or_https() {
+        assert!(DEFAULT_SUMMARY_BASE.is_none_or(|b| b.starts_with("https://")));
     }
 }

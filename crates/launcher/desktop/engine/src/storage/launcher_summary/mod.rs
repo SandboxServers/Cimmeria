@@ -51,7 +51,7 @@ mod tracker;
 #[cfg(test)]
 pub(in crate::storage) mod tests;
 
-pub use endpoint::SummaryEndpoint;
+pub use endpoint::{SummaryEndpoint, DEFAULT_SUMMARY_BASE};
 pub use export::start;
 pub use schema::{
     DroppedCounts, LauncherVersion, Millis, PhaseDuration, RetryCount, Summary, SummaryArch,
