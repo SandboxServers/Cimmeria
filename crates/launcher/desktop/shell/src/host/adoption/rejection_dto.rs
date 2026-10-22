@@ -57,6 +57,7 @@ pub(super) fn progress_item(observed: &Observed) -> Option<ProgressItem> {
             "File index" => Some(ProgressItem::IndexBuild),
             "Authenticated adoption reference" => Some(ProgressItem::Reference),
             "Adoption replay" => Some(ProgressItem::Patch),
+            "Scanning" => Some(ProgressItem::Scan),
             _ => None,
         },
     }
@@ -101,6 +102,10 @@ mod tests {
         assert_eq!(
             progress_item(&extracting("Adoption replay")),
             Some(ProgressItem::Patch)
+        );
+        assert_eq!(
+            progress_item(&extracting("Scanning")),
+            Some(ProgressItem::Scan)
         );
         assert_eq!(progress_item(&extracting("Verified copy")), None);
         assert_eq!(progress_item(&downloading("something else")), None);

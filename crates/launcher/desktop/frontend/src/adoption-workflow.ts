@@ -1,6 +1,11 @@
 import {Context,Data,Effect,Layer,PubSub,Ref,Schema,Semaphore,Stream} from 'effect';
 import {NativeSnapshot} from './contract';
 const Count=Schema.Int.check(Schema.isBetween({minimum:0,maximum:Number.MAX_SAFE_INTEGER}));
+const FileClass=Schema.Literals(['stock','patched','prepared','changed','missing','extra']);
+const Light=Schema.Struct({patches_total:Count,patches_current:Count,patches_pending:Count,download_bytes:Count,
+ skipped:Schema.Array(Schema.Struct({path:Schema.String,patch:Schema.String,reason:Schema.String})),skipped_total:Count,
+ index_state:Schema.Literals(['compared','index_not_published','index_unreachable','index_invalid']),
+ index_counts:Schema.Record(Schema.String,Count),index_files:Schema.Array(Schema.Tuple([Schema.String,FileClass])),index_files_total:Count});
 const codes=['unsupported_schema','platform_unavailable','import_required','unsupported_catalog','unsupported_configuration','review_unavailable','source_changed','in_use','consent_required','no_reusable_files','busy','stale_revision','identity_conflict','recovery_required','persistence_uncertain','invalid_directory','unsafe_file','corrupt_state','io','cancelled','launcher_too_old','invalid_artifact','unsupported_archive','network','release_unavailable','verification_failed','unsupported_layout','game_running','duplicate_release_file','leftover_launcher_files','folder_not_writable','not_a_game_folder','backup_conflict','unsupported_mode'] as const;
 const Code=Schema.Literals(codes);
 const Review=Schema.Struct({preview_handle:Schema.String,operation_revision:Count,preferences_revision:Count,source:Schema.String,destination:Schema.String,
@@ -13,14 +18,14 @@ const Review=Schema.Struct({preview_handle:Schema.String,operation_revision:Coun
  login_servers:Schema.optionalKey(Schema.Array(Schema.Struct({name:Schema.String,url:Schema.String}))),client_patches_enabled:Schema.optionalKey(Schema.Boolean),
  game_telemetry_opted_in:Schema.optionalKey(Schema.Boolean),game_telemetry_available:Schema.Boolean,requires_normalization:Schema.Boolean,requires_telemetry_acceptance:Schema.Boolean,user_data_remains_in_source:Schema.Boolean,
  in_place:Schema.Boolean,blocked_files:Schema.Array(Schema.String),
- index_fallback:Schema.optionalKey(Schema.Struct({reason:Schema.String,check:Schema.NullOr(Schema.String),http_status:Schema.NullOr(Count),seed_bytes:Count}))});
+ index_fallback:Schema.optionalKey(Schema.Struct({reason:Schema.String,check:Schema.NullOr(Schema.String),http_status:Schema.NullOr(Count),seed_bytes:Count})),light:Schema.optionalKey(Light)});
 const Unsafe=Schema.Struct({entries:Schema.Array(Schema.Struct({reason:Schema.Literals(['link','cloud_file','hard_link','special_file','name','case_collision']),path:Schema.NullOr(Schema.String)})),total:Count});
 export const AdoptionStatus=Schema.Struct({schema_version:Schema.Literal(1),native:NativeSnapshot,
  backend:Schema.Literals(['available','in_place','unsupported_platform','helper_unavailable']),
  imported:Schema.NullOr(Schema.Struct({launcher_directory:Schema.String,game_directory:Schema.String,blocker:Schema.NullOr(Code)})),
  modes:Schema.Array(Schema.Literals(['light','in_place','copy'])),
  activity:Schema.Literals(['idle','preparing','review','copying']),review:Schema.NullOr(Review),
- progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction','copy']),current:Count,total:Count,item:Schema.optionalKey(Schema.Literals(['seed','patch','file_index','index_build','reference']))})),cancellable:Schema.Boolean,
+ progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction','copy']),current:Count,total:Count,item:Schema.optionalKey(Schema.Literals(['seed','patch','file_index','index_build','reference','scan']))})),cancellable:Schema.Boolean,
  reconciliation:Schema.NullOr(Schema.Union([Schema.Struct({kind:Schema.Literal('preparation'),preparation_id:Schema.String}),
   Schema.Struct({kind:Schema.Literal('copy'),operation_id:Schema.String,directory:Schema.String,can_recover:Schema.Boolean,can_abandon:Schema.Boolean})])),
  preparations:Schema.Array(Schema.String),owned:Schema.Boolean,completed:Schema.NullOr(Schema.Struct({directory:Schema.String,backup_directory:Schema.optionalKey(Schema.String)})),last_error:Schema.NullOr(Code),last_rejection:Schema.NullOr(Schema.Struct({check:Schema.String,entry:Schema.NullOr(Schema.String),expected:Schema.NullOr(Schema.String),found:Schema.NullOr(Schema.String),http_status:Schema.NullOr(Count)})),unsafe_entries:Schema.NullOr(Unsafe)});

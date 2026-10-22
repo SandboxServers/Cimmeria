@@ -217,7 +217,7 @@ pub enum Phase {
     Extraction,
     Copy,
 }
-/// The step a download or extraction is on, from the closed table in C16.
+/// The step a download, extraction or folder scan is on, from the closed table in C16.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProgressItem {
@@ -226,6 +226,8 @@ pub enum ProgressItem {
     FileIndex,
     IndexBuild,
     Reference,
+    /// Hashing the picked folder (light adoption); current and total are bytes.
+    Scan,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Progress {

@@ -3,7 +3,7 @@
 use super::rejection_dto::IndexFallbackView;
 use super::*;
 use cimmeria_launcher_engine::adoption::{
-    AdoptionSourceRef, Classification, Difference, DownloadEstimate, Preview,
+    AdoptionSourceRef, Classification, Difference, DownloadEstimate, LightSummary, Preview,
 };
 use serde::Serialize;
 
@@ -62,6 +62,9 @@ pub struct Review {
     /// Set when the published file index was unusable and the seed was checked instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_fallback: Option<IndexFallbackView>,
+    /// Light adoption only: patch counts, skipped changes and the index comparison.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub light: Option<LightSummary>,
     /// Requested order, applied to the copy. Legacy sources only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub login_servers: Option<Vec<LoginServer>>,
@@ -155,6 +158,7 @@ impl Review {
             backup_directory: report.backup.clone(),
             download: report.download.clone(),
             index_fallback: report.index_fallback.as_ref().map(IndexFallbackView::from),
+            light: preview.light_summary().cloned(),
             login_servers: requested.map(|requested| {
                 requested
                     .login_servers

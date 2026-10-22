@@ -324,6 +324,7 @@ test('a preparing download says why the archive is downloaded, for the seed, a p
   ['patch','download',/^Downloading the signed game archive to check your files/],
   ['index_build','extraction',/^Downloading the signed game archive to check your files/],
   ['file_index','download',/^Downloading the signed reference: /],
+  ['scan','extraction',/^Scanning your game folder: /],
  ] as const){
   const ui=mount(()=>({...idle(),activity:'preparing',progress:{phase,current:0,total:1,item}}));
   try{await ui.app.ready;await ui.settle();assert.match(ui.text(),text,item);}finally{await ui.app.dispose();}

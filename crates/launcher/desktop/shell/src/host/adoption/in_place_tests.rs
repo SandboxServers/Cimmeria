@@ -38,6 +38,10 @@ async fn the_imported_folder_is_adopted_in_place_once_its_release_files_verify()
     // so it is shown as modified and needs consent rather than blocking.
     f.host.begin_adoption_in_place(f.release()).unwrap();
     let review = reviewed(&f.host).await;
+    assert!(serde_json::to_value(&review)
+        .unwrap()
+        .get("light")
+        .is_none());
     assert!(review.in_place);
     assert_eq!((&review.source, &review.destination), (&folder, &folder));
     assert!(review.blocked_files.is_empty());
@@ -225,6 +229,11 @@ async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_light() {
         )
         .unwrap();
     let review = reviewed(&f.host).await;
+    assert!(review.light.is_some(), "a light review carries its summary");
+    let json = serde_json::to_value(&review).unwrap();
+    assert!(json["light"]["patches_total"].is_u64());
+    assert!(json["light"]["index_state"].is_string());
+    assert!(json["light"]["skipped"].is_array());
     assert!(matches!(review.source_kind, SourceKind::Folder));
     assert!(review.in_place);
     assert_eq!((&review.source, &review.destination), (&folder, &folder));

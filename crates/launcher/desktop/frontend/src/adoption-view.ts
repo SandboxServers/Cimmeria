@@ -65,6 +65,7 @@ const activityText=(status:AdoptionStatus)=>{
  const p=status.progress;
  if(status.activity==='copying'&&status.backend==='in_place')return !p||p.current<p.total?`Moving the verified release files into the launcher-owned game folder${p?`: ${p.current} of ${p.total}`:'…'}. Nothing is copied.`:'Verifying and publishing the adopted folder. This step cannot be cancelled.';
  if(status.activity==='copying')return !p?`Starting the verified copy… ${unchanged}`:p.current<p.total?`Copying verified files: ${p.current} of ${p.total}. ${unchanged}`:'Verifying and publishing the copy. This step cannot be cancelled.';
+ if(p?.item==='scan')return `Scanning your game folder: ${megabytes(p.current)} of ${megabytes(p.total)}.`;
  if(status.activity==='preparing'&&p?.item&&archiveItems.includes(p.item))return archiveText;
  if(p?.phase==='download')return `Downloading the signed reference: ${megabytes(p.current)} of ${megabytes(p.total)}.`;
  if(p?.phase==='extraction')return `Extracting the signed reference: ${p.current} of ${p.total}.`;

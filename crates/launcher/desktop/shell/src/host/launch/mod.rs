@@ -3,6 +3,7 @@ use super::*;
 use cimmeria_launcher_engine::launch;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+mod ledger;
 mod resources;
 pub(crate) use resources::dll_bundled;
 #[derive(Debug, Deserialize)]
@@ -25,6 +26,10 @@ pub struct LaunchStatus {
     installation_id: Option<Uuid>,
     resources_available: bool,
     launcher_update_required: bool,
+    /// Patches the installed copy applied with skipped ops; 0 when Play is not offered.
+    patches_incomplete: u32,
+    /// The ops those patches skipped.
+    ops_skipped: u32,
     observation: Option<launch::Observation>,
 }
 impl NativeHost {
@@ -109,27 +114,32 @@ impl NativeHost {
             && state
                 .installed_launcher_minimum()?
                 .is_some_and(|minimum| minimum.blocks());
-        let installation_id = if idle && playable && !launcher_update_required {
-            state
-                .installed_content()?
-                .filter(|installed| {
-                    if installed.intent.backend.is_native() {
-                        cfg!(windows)
-                    } else {
-                        cfg!(target_os = "macos")
-                            && state.prepared_runtime().ok().flatten().is_some()
-                    }
-                })
-                .map(|installed| installed.intent.operation_id)
+        let installed = if idle && playable && !launcher_update_required {
+            state.installed_content()?.filter(|installed| {
+                if installed.intent.backend.is_native() {
+                    cfg!(windows)
+                } else {
+                    cfg!(target_os = "macos") && state.prepared_runtime().ok().flatten().is_some()
+                }
+            })
         } else {
             None
         };
+        let installation_id = installed
+            .as_ref()
+            .map(|installed| installed.intent.operation_id);
+        let game = installed
+            .as_ref()
+            .map(|installed| installed.intent.destination.join("game"));
+        let (patches_incomplete, ops_skipped) = ledger::incomplete_counts(game.as_deref());
         Ok(LaunchStatus {
             schema_version: 1,
             native,
             installation_id,
             resources_available: available,
             launcher_update_required,
+            patches_incomplete,
+            ops_skipped,
             observation,
         })
     }
