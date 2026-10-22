@@ -267,6 +267,43 @@ fn an_unlistable_session_folder_is_no_game_lines_not_a_failure() {
     assert!(got.collected.lines.is_empty());
 }
 
+/// A 4 MiB line: the path past the first 32 KiB never reaches the scrub or the
+/// message, and the message is the 2,048-byte cut, flagged as truncated.
+#[test]
+fn a_huge_line_is_cut_before_the_scrub() {
+    let game = tempfile::tempdir().unwrap();
+    let dir = binaries(game.path());
+    let mut line = "a".repeat(3 << 20);
+    line.push_str(" C:\\Users\\bob\\x.dll ");
+    line.push_str(&"b".repeat(1 << 20));
+    line.push('\n');
+    fs::write(dir.join("SGWDebugLog.log"), line).unwrap();
+    let got = read(game.path(), &Offsets::default());
+    let [only] = got.collected.lines.as_slice() else {
+        panic!("expected one line, got {}", got.collected.lines.len());
+    };
+    assert_eq!(only.message.len(), MAX_MESSAGE_BYTES);
+    assert!(only.truncated);
+    assert!(!only.message.contains("C:"));
+}
+
+/// A NUL run is kept as U+FFFD, so it cannot inflate the row's escaping.
+#[test]
+fn control_characters_become_replacement_characters() {
+    let game = tempfile::tempdir().unwrap();
+    let dir = binaries(game.path());
+    // Plain text first, so the encoding check reads the file as UTF-8.
+    let text = format!("{}{}\n", "a".repeat(600), "\0".repeat(2_048));
+    fs::write(dir.join("SGWDebugLog.log"), text).unwrap();
+    let got = read(game.path(), &Offsets::default());
+    let [only] = got.collected.lines.as_slice() else {
+        panic!("expected one line");
+    };
+    assert!(!only.message.contains('\0'));
+    assert!(only.message.contains('\u{FFFD}'));
+    assert!(only.truncated);
+}
+
 #[test]
 fn a_missing_file_is_read_failed_for_telemetry() {
     let dir = tempfile::tempdir().unwrap();

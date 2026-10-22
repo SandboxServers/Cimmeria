@@ -37,6 +37,10 @@ const HEAD_BYTES: usize = 256;
 /// The longest message kept, in bytes; a longer one is cut on a char boundary.
 const MAX_MESSAGE_BYTES: usize = 2_048;
 
+/// The longest line the scrub sees, in bytes. Text past it is cut first, so a
+/// huge line costs bounded CPU (A3). Never below `MAX_MESSAGE_BYTES`.
+const MAX_RAW_BYTES: usize = 32 * 1024;
+
 /// The largest file read whole. A bigger one is left alone rather than loaded
 /// into memory; no real client log comes near this.
 const MAX_FILE_BYTES: u64 = 512 * 1024 * 1024;
@@ -311,8 +315,24 @@ fn read_file(
         .into_iter()
         .skip(skip)
         .map(|(line_no, end, text)| {
-            let scrubbed = scrub_ips(&redaction.scrub(&text)).into_owned();
-            let (message, truncated) = cut(scrubbed);
+            // Control characters (a NUL run from a crashed client) become U+FFFD
+            // so the line is kept but cannot inflate the row's JSON escaping.
+            let text: String = text
+                .chars()
+                .map(|c| {
+                    if c.is_control() && c != '\t' {
+                        '\u{FFFD}'
+                    } else {
+                        c
+                    }
+                })
+                .collect();
+            // A line is cut to `MAX_RAW_BYTES` before the scrub, so a multi-MB
+            // line costs bounded work; the message cut below still applies.
+            let (raw, raw_cut) = cut(text, MAX_RAW_BYTES);
+            let scrubbed = scrub_ips(&redaction.scrub(&raw)).into_owned();
+            let (message, message_cut) = cut(scrubbed, MAX_MESSAGE_BYTES);
+            let truncated = raw_cut || message_cut;
             LogLine {
                 file: key.to_string(),
                 line_no,
@@ -330,12 +350,12 @@ fn read_file(
     (lines, file, total)
 }
 
-/// `message`, cut to `MAX_MESSAGE_BYTES` on a char boundary, and whether it was.
-fn cut(message: String) -> (String, bool) {
-    if message.len() <= MAX_MESSAGE_BYTES {
+/// `message`, cut to `limit` bytes on a char boundary, and whether it was.
+fn cut(message: String, limit: usize) -> (String, bool) {
+    if message.len() <= limit {
         return (message, false);
     }
-    let mut end = MAX_MESSAGE_BYTES;
+    let mut end = limit;
     while !message.is_char_boundary(end) {
         end -= 1;
     }
