@@ -2,9 +2,11 @@
 //! background stream; unknown categories and keys are refused; a session
 //! is rate-limited.
 
+use std::time::Instant;
+
 use tracing::Level;
 
-use super::super::{MissOutcome, MissRefusal, MISS_BURST};
+use super::super::{note_dialog_display, MissOutcome, MissRefusal, MISS_BURST};
 use super::{decode, rig, server_entries, server_version, ClientModel, Sent};
 use crate::test_support::LogCapture;
 
@@ -123,6 +125,64 @@ async fn an_unknown_key_is_refused_and_repeats_are_throttled() {
         .filter(|e| e.has_field("event", "cooked_data.miss_refused"))
         .count();
     assert_eq!(warns, 1, "one WARN per reason per 5 s");
+}
+
+/// A refused dialog miss asked for right after the client was shown that
+/// dialog carries the display age and raises the correlation WARN.
+#[tokio::test]
+async fn a_refused_dialog_miss_right_after_its_display_warns_with_the_age() {
+    let rig = rig(47_606);
+    let capture = LogCapture::install();
+    let missing = u32::MAX - 3;
+    note_dialog_display(rig.addr, missing, Instant::now());
+    assert!(matches!(
+        rig.miss(DIALOGS, missing),
+        MissOutcome::Refused {
+            why: MissRefusal::UnknownKey,
+            ..
+        }
+    ));
+    let refused = capture
+        .find_event(
+            Level::WARN,
+            "Refused a cooked-data cache miss",
+            "unknown_key",
+        )
+        .unwrap_or_else(|| panic!("no refusal WARN; saw {:#?}", capture.all()));
+    assert!(refused.fields.contains_key("display_age_ms"));
+    let correlated: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|e| e.has_field("event", "dialog.cooked_miss_after_display"))
+        .collect();
+    assert_eq!(correlated.len(), 1, "saw {:#?}", capture.all());
+    assert!(correlated[0].has_field("category_id", "5"));
+    assert!(correlated[0].has_field("key", &missing.to_string()));
+}
+
+/// Without a display before it, a refused dialog miss has no age and no
+/// correlation row.
+#[tokio::test]
+async fn a_refused_dialog_miss_without_a_display_has_no_correlation_row() {
+    let rig = rig(47_607);
+    let capture = LogCapture::install();
+    let missing = u32::MAX - 3;
+    assert!(matches!(
+        rig.miss(DIALOGS, missing),
+        MissOutcome::Refused { .. }
+    ));
+    let refused = capture
+        .find_event(
+            Level::WARN,
+            "Refused a cooked-data cache miss",
+            "unknown_key",
+        )
+        .unwrap_or_else(|| panic!("no refusal WARN; saw {:#?}", capture.all()));
+    assert!(!refused.fields.contains_key("display_age_ms"));
+    assert!(capture
+        .all()
+        .iter()
+        .all(|e| !e.has_field("event", "dialog.cooked_miss_after_display")));
 }
 
 /// A burst of distinct valid keys past the bucket is refused as
