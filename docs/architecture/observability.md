@@ -1,7 +1,7 @@
 # Server observability — design and tool choice
 
 **Status:** Accepted (2026-05-25)
-**Last updated:** 2026-10-05 (named-telemetry saved views, NT-50b). Before that 2026-10-03 (target catalog moved to [observability-target-catalog.md](observability-target-catalog.md))
+**Last updated:** 2026-10-21 (named-telemetry saved views, NT-50b). Before that 2026-10-03 (target catalog moved to [observability-target-catalog.md](observability-target-catalog.md))
 **Confidence:** High
 
 ## Context

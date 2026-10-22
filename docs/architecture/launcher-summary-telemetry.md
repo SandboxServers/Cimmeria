@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Engineers changing the ingest route, its rows or the desktop exporter, and the maintainer deciding on a rollout
-> **Last updated:** 2026-10-04
+> **Last updated:** 2026-10-21
 > **Companions:** [desktop-side contract](../../crates/launcher/desktop/docs/launcher-summaries.md), [telemetry operations](../operations/telemetry.md), [dashboard and saved view](../operations/signoz/launcher-summary-views.md), [dev-session telemetry](dev-session-telemetry.md), [target catalog](observability-target-catalog.md#launchersummary), [implementation assignment](../analysis/playtests/2026-10-03-macos-wine/worknotes/observability-implementation-assignment.md)
 
 The desktop launcher can report, with the player's consent, how each install, runtime-setup, repair, uninstall or launch attempt ended. A report is one row per attempt: closed enums, a few bounded integers and two random ids. The server validates a batch of those rows, drops the ones it has already accepted, and writes one typed log row per accepted summary.

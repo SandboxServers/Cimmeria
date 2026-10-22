@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Launcher contributors
-> **Last updated:** 2026-10-04
+> **Last updated:** 2026-10-21
 > **Companions:** [Implementation plan](../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md), [build rules](../../../docs/architecture/build-system.md#standalone-desktop-launcher-validation), [test policy](../../../TESTING.md)
 
 This standalone workspace contains native Rust state, Effect workflows and a
@@ -115,7 +115,11 @@ engine half in `engine/src/storage/<name>/` and its host half in
 | `choose_existing_game_folder` | `mode` (`in_place` or `copy`); the native folder picker, then a second picker for a copy | in place (Windows and Linux) or verified copy (every OS), as `modes` offers | AI-10; copy AI-12 |
 
 `log_upload_command` is filled. `upload` zips `Binaries/sgwdebuglog*` and the
-`*.log` files under `Binaries/sessions/` in the installed game, and PUTs the zip
+`*.log` files under `Binaries/sessions/` in the installed game, plus the newest three `launcher.<date>.log` files from the
+launcher's log folder, added under `launcher/` with the home folder, absolute
+paths and IP literals (`[ip]`) scrubbed in the copy only (the digest and the
+"nothing new" check cover only the game logs, and with no game logs nothing is
+uploaded), and PUTs the zip
 once to the SAS URL compiled in from `LAUNCHER_LOG_SAS_URL` as
 `logs/<host>-<utc>-<digest>.zip`. A content digest already in the
 `uploaded-logs.json` ledger (state directory, newest 100) sends nothing and

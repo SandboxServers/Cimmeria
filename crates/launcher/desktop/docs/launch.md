@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Launcher integrators and playtesters
-> **Last updated:** 2026-10-04
+> **Last updated:** 2026-10-21
 > **Companions:** [Desktop workspace](../README.md), [prerequisites](prerequisites.md), [runtime evidence](../../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md)
 
 ## Admission and integration
@@ -464,12 +464,16 @@ Nothing leaves without the game-diagnostics opt-in, in a build with the module.
 
 **Other launcher events.** The shell writes its own events as tracing events, one
 target per subsystem: `launcher.startup`, `launcher.crash`, `launcher.update`,
-`launcher.game_update`, `launcher.install` and `launcher.telemetry` are emitted
-today. Each event has a snake_case `event` name: `<op>_started` and
-`<op>_finished` are info, `<op>_failed` is warn. Wire rows use the same name with
+`launcher.game_update`, `launcher.install`, `launcher.repair`, `launcher.launch`,
+`launcher.settings`, `launcher.ui` and `launcher.telemetry` are emitted;
+`launcher.login` has no emitter yet. Each event has a snake_case `event` name:
+`<op>_started` and `<op>_finished` are info, `<op>_failed` is warn. A refusal
+(`launch_refused`) and `launch_not_started` are warn too. Wire rows use the same name with
 a `client.` prefix (`client.launcher.install`). The full subsystem table is in
-[observability.md](../../../../docs/architecture/observability.md). Two events on
-`launcher.telemetry` are named here: `pipeline_recovered`, one row when the
+[observability.md](../../../../docs/architecture/observability.md). `launcher.launch` carries `launch_refused`, `launch_started`, `launch_not_started`,
+`launch_failed`, `game_started`, `game_exited` and `launch_finished`, each with the
+operation number; refusals, failures and not-started launches add a closed `reason`.
+Two events on `launcher.telemetry` are named here: `pipeline_recovered`, one row when the
 upload pipeline comes back after failures, and `game_session_mint_failed`, when
 a game session could not be minted and Play went on with no game diagnostics.
 Their fields are not listed in this file.
