@@ -17,6 +17,7 @@ use cimmeria_launcher_core::telemetry::events::{ClientNativeEvent, TelemetryEven
 use serde_json::{json, Map, Value};
 use std::future::Future;
 use std::ops::Range;
+use std::sync::Arc;
 
 /// The launcher's own log (C-LF5).
 pub(crate) const LAUNCHER_LOG_TARGET: &str = "client.launcher.log";
@@ -35,8 +36,16 @@ const MAX_GZIP_BYTES: usize = 64 * 1024;
 const MIN_RETRY_SECS: u64 = 60;
 /// The server cuts a message here anyway; cutting first keeps the row small.
 const MAX_MESSAGE_BYTES: usize = 2_048;
+/// C-LF6: at most this many rows in one upload; the rest wait for the next press.
+const MAX_UPLOAD_ROWS: usize = 40_000;
+/// Planned posts per upload, so a split that blows up cannot drive many mints.
+const MAX_UPLOAD_CHUNKS: usize = 400;
 
 /// The launcher side of C-LF5. `launcher_version` and `os` are the same on every row.
+/// Returns no rows when `target` is not in [`LOG_UPLOAD_TARGETS`] or `upload_id`
+/// is not 16 lowercase hex digits (the server would drop each row and still
+/// answer 2xx). The caller treats an empty result as `Failed` and does not
+/// advance its offsets.
 pub(crate) fn rows(
     lines: &[LogLine],
     target: &'static str,
@@ -44,7 +53,9 @@ pub(crate) fn rows(
     launcher_version: &str,
     os: &str,
 ) -> Vec<TelemetryEvent> {
-    debug_assert!(LOG_UPLOAD_TARGETS.contains(&target));
+    if !LOG_UPLOAD_TARGETS.contains(&target) || !is_upload_id(upload_id) {
+        return Vec::new();
+    }
     let read_at = chrono::Utc::now().timestamp_millis();
     let version = clean(launcher_version, 32, |c| {
         c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '+' | '-')
@@ -98,6 +109,11 @@ pub(crate) fn rows(
             })
         })
         .collect()
+}
+
+/// The server's C-LF5 rule for `upload_id`: 16 lowercase hex digits.
+fn is_upload_id(id: &str) -> bool {
+    id.len() == 16 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 fn is_target_char(c: char) -> bool {
@@ -246,7 +262,9 @@ pub(crate) async fn send_logs(
 /// `on_chunk_sent` gets the number of rows the caller may mark done: the chunk's
 /// rows plus any too-big rows skipped just before it (and after the last chunk),
 /// so an offset never sticks on a row that can never be sent. A 429 or 503 ends
-/// the upload as `Partial`; there is no retry loop (R16).
+/// the upload as `Partial`; there is no retry loop (R16). More than
+/// `MAX_UPLOAD_ROWS` rows or `MAX_UPLOAD_CHUNKS` posts are cut: the first ones are
+/// sent and the upload ends `Partial` with a 60 s wait, the rest go on the next press.
 pub(crate) async fn send_with(
     sink: &mut impl ChunkSink,
     events: &[TelemetryEvent],
@@ -254,10 +272,16 @@ pub(crate) async fn send_with(
     mut on_chunk_sent: impl FnMut(usize),
 ) -> IngestOutcome {
     log_started(events.len());
-    let Some(steps) = plan(events) else {
-        log_finished("failed", 0, 0, 0);
+    let rows_capped = events.len() > MAX_UPLOAD_ROWS;
+    // Planning gzips every batch, so it runs off the async worker threads.
+    let events: Arc<[TelemetryEvent]> = events[..events.len().min(MAX_UPLOAD_ROWS)].into();
+    let planning = Arc::clone(&events);
+    let Ok(Some(steps)) = tokio::task::spawn_blocking(move || plan(&planning)).await else {
+        log_finished("failed", "plan_failed", 0, 0, 0);
         return IngestOutcome::Failed;
     };
+    let (steps, chunks_capped) = cap_sends(steps);
+    let capped = rows_capped || chunks_capped;
     let mut last_start: Option<u64> = None;
     let (mut lines_sent, mut chunks, mut dropped) = (0u64, 0u64, 0u64);
     let mut skipped = 0usize;
@@ -278,28 +302,57 @@ pub(crate) async fn send_with(
         }
         last_start = Some(pacer.now_ms());
         let rows = range.len();
-        let outcome = match sink.post(&events[range]).await {
+        let (outcome, reason) = match sink.post(&events[range]).await {
             BatchOutcome::Posted => {
                 chunks += 1;
                 lines_sent += rows as u64;
                 on_chunk_sent(rows + std::mem::take(&mut skipped));
                 continue;
             }
-            BatchOutcome::Throttled { retry_after_secs } => IngestOutcome::Partial {
-                lines_sent,
-                retry_after_secs: retry_after_secs.max(MIN_RETRY_SECS),
-            },
-            BatchOutcome::MintFailed { .. } if chunks == 0 => IngestOutcome::Unreachable,
-            BatchOutcome::MintFailed { .. } | BatchOutcome::Failed => IngestOutcome::Failed,
+            BatchOutcome::Throttled { retry_after_secs } => (
+                IngestOutcome::Partial {
+                    lines_sent,
+                    retry_after_secs: retry_after_secs.max(MIN_RETRY_SECS),
+                },
+                "throttled",
+            ),
+            BatchOutcome::MintFailed { reason } if chunks == 0 => {
+                (IngestOutcome::Unreachable, reason)
+            }
+            BatchOutcome::MintFailed { reason } => (IngestOutcome::Failed, reason),
+            BatchOutcome::Failed => (IngestOutcome::Failed, "post_failed"),
         };
-        log_finished(outcome_name(outcome), lines_sent, chunks, dropped);
+        log_finished(outcome_name(outcome), reason, lines_sent, chunks, dropped);
         return outcome;
     }
     if skipped > 0 {
         on_chunk_sent(skipped);
     }
-    log_finished("sent", lines_sent, chunks, dropped);
+    if capped {
+        log_finished("partial", "upload_cap", lines_sent, chunks, dropped);
+        return IngestOutcome::Partial {
+            lines_sent,
+            retry_after_secs: MIN_RETRY_SECS,
+        };
+    }
+    log_finished("sent", "none", lines_sent, chunks, dropped);
     IngestOutcome::Sent { lines_sent }
+}
+
+/// Keeps the first `MAX_UPLOAD_CHUNKS` posts and says whether any were cut.
+fn cap_sends(steps: Vec<Step>) -> (Vec<Step>, bool) {
+    let mut sends = 0usize;
+    let mut kept = Vec::with_capacity(steps.len());
+    for step in steps {
+        if matches!(step, Step::Send(_)) {
+            if sends == MAX_UPLOAD_CHUNKS {
+                return (kept, true);
+            }
+            sends += 1;
+        }
+        kept.push(step);
+    }
+    (kept, false)
 }
 
 fn outcome_name(outcome: IngestOutcome) -> &'static str {
@@ -321,11 +374,19 @@ fn log_started(lines: usize) {
     );
 }
 
-fn log_finished(outcome: &'static str, lines_sent: u64, chunks: u64, rows_dropped: u64) {
+/// `reason` is a closed code: `none` on success, else why the upload stopped.
+fn log_finished(
+    outcome: &'static str,
+    reason: &'static str,
+    lines_sent: u64,
+    chunks: u64,
+    rows_dropped: u64,
+) {
     tracing::info!(
         target: "launcher.telemetry",
         event = "log_upload_finished",
         outcome,
+        reason,
         lines_sent,
         chunks,
         rows_dropped,

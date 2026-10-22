@@ -278,6 +278,48 @@ async fn the_first_post_failing_to_mint_is_unreachable_a_later_one_is_failed() {
     );
 }
 
+#[test]
+fn a_failed_upload_says_why_in_the_finish_event() {
+    let events = rows_of(2_000, |i| format!("line {i}"));
+    let cases = [
+        (
+            1,
+            BatchOutcome::MintFailed {
+                reason: "transport",
+            },
+            "unreachable",
+            "transport",
+        ),
+        (
+            2,
+            BatchOutcome::Throttled {
+                retry_after_secs: 90,
+            },
+            "partial",
+            "throttled",
+        ),
+    ];
+    for (post, outcome, name, reason) in cases {
+        let mut pacer = FakePacer::default();
+        let mut sink = FakeSink::new(&pacer, 0);
+        sink.script = vec![(post, outcome)];
+        // A second live dispatcher keeps the callsite interest from caching "never".
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+        let (_, logged) = capture(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap()
+                .block_on(send_with(&mut sink, &events, &mut pacer, |_| {}))
+        });
+        let finished = logged
+            .iter()
+            .find(|e| e.field("event") == Some("log_upload_finished"))
+            .expect("a finish event");
+        assert_eq!(finished.field("outcome"), Some(name));
+        assert_eq!(finished.field("reason"), Some(reason));
+    }
+}
+
 // ---- the real sender against an HTTP double ----
 
 fn target(url: &str) -> LauncherTarget {
@@ -558,4 +600,47 @@ fn start_and_finish_are_one_info_event_each_without_the_upload_id() {
             "the server denies the key `count`"
         );
     }
+}
+
+#[test]
+fn a_bad_upload_id_or_target_yields_no_rows() {
+    let l = line(1, "x".into());
+    let one = std::slice::from_ref(&l);
+    assert_eq!(
+        rows(one, LAUNCHER_LOG_TARGET, UPLOAD_ID, "v", "win").len(),
+        1
+    );
+    for id in ["0123456789ABCDEF", "0123456789abcde", "0123456789abcdeg"] {
+        assert!(
+            rows(one, LAUNCHER_LOG_TARGET, id, "v", "win").is_empty(),
+            "{id}"
+        );
+    }
+    assert!(rows(&[l], "client.launcher.other", UPLOAD_ID, "v", "win").is_empty());
+}
+
+#[test]
+fn the_planned_posts_are_capped_at_400() {
+    let steps = vec![Step::Send(0..1); MAX_UPLOAD_CHUNKS + 1];
+    assert_eq!(
+        cap_sends(steps),
+        (vec![Step::Send(0..1); MAX_UPLOAD_CHUNKS], true)
+    );
+}
+
+#[tokio::test]
+async fn an_upload_over_40000_rows_sends_40000_and_ends_partial() {
+    let events = rows_of(40_001, |i| format!("line {i}"));
+    let mut pacer = FakePacer::default();
+    let mut sink = FakeSink::new(&pacer, 0);
+    let mut marks = Vec::new();
+    let out = send_with(&mut sink, &events, &mut pacer, |n| marks.push(n)).await;
+    assert_eq!(
+        out,
+        IngestOutcome::Partial {
+            lines_sent: 40_000,
+            retry_after_secs: 60
+        }
+    );
+    assert_eq!(marks.iter().sum::<usize>(), 40_000);
 }

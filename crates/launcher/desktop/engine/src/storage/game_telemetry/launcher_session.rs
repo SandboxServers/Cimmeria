@@ -80,15 +80,12 @@ struct Live {
 /// caller ends the upload `Partial` and the next press starts clean.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BatchOutcome {
+    /// The chunk was accepted (2xx).
     Posted,
     /// A 429 or 503; the wait is the server's `Retry-After`.
-    Throttled {
-        retry_after_secs: u64,
-    },
+    Throttled { retry_after_secs: u64 },
     /// No session could be minted; `reason` is a C8 code.
-    MintFailed {
-        reason: &'static str,
-    },
+    MintFailed { reason: &'static str },
     /// Anything else, including a second 401.
     Failed,
 }
@@ -215,14 +212,18 @@ impl LauncherSender {
     }
 
     /// Post one already-split log chunk (LF-14). A 401 mints again, once.
-    /// Unlike `send`, a throttle does not hold the sender and a hold from an
-    /// earlier failed mint is not consulted: the caller paces and ends the
-    /// upload itself, and each press is a deliberate retry.
+    /// Unlike `send`, a throttle does not hold the sender: the caller paces and
+    /// ends the upload itself. A hold from a failed mint does stop a mint while
+    /// no session is stored, so a retry loop cannot use up the mint budget that
+    /// the event session shares.
     pub async fn post_batch(
         &self,
         target: &LauncherTarget,
         batch: &[TelemetryEvent],
     ) -> BatchOutcome {
+        if self.held() && locked(&self.session).is_none() {
+            return BatchOutcome::MintFailed { reason: "held" };
+        }
         let mut live = match self.usable_session(target).await {
             Ok(live) => live,
             Err(reason) => return BatchOutcome::MintFailed { reason },
