@@ -1,13 +1,21 @@
 use super::*;
+use crate::test_capture::capture;
 use crate::{
     catalog::verify_release,
     launcher_compatibility::{CompatibilityPolicy, Identity},
     OperationState,
 };
 use ed25519_dalek::{Signer, SigningKey};
+use std::sync::{Mutex, MutexGuard};
 use uuid::Uuid;
 use wiremock::matchers::{header, method, path, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+/// One capture test of this module at a time (Capture standard).
+static SERIAL: Mutex<()> = Mutex::new(());
+fn serial() -> MutexGuard<'static, ()> {
+    SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 const SECRET: &str = "sv=2026&sig=not-a-real-signature";
 
@@ -294,6 +302,64 @@ async fn over_the_cap_the_oldest_logs_are_left_out() {
         LogUploadError::LogsTooLarge
     );
     assert_eq!(MAX_UPLOAD_BYTES, 64 * 1024 * 1024);
+}
+
+/// The over-the-cap upload above, under capture: one `log_upload_trimmed`
+/// with the left-out count, and no `blob` field on any event.
+#[test]
+fn over_the_cap_logs_one_trimmed_event_and_no_blob_name() {
+    let _serial = serial();
+    // A second live Dispatch keeps callsite interest per dispatcher (Capture standard).
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (state_result, events) = capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        runtime.block_on(async {
+            let (_server, store) = accepting_store(1).await;
+            let (_root, state, binaries) = installed();
+            let old = binaries.join("sessions/one/older.log");
+            std::fs::write(&old, [b'o'; 4000]).unwrap();
+            std::fs::File::options()
+                .write(true)
+                .open(&old)
+                .unwrap()
+                .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(86_400))
+                .unwrap();
+            let collection = collect(&state, &store).with_max_bytes(1000);
+            send(&state, &store, collection).await
+        })
+    });
+    assert_eq!(state_result, Ok(LogUploadState::UploadedNewest));
+    let trimmed: Vec<_> = events
+        .iter()
+        .filter(|e| e.field("event") == Some("log_upload_trimmed"))
+        .collect();
+    assert_eq!(trimmed.len(), 1);
+    assert_eq!(trimmed[0].field("count"), Some("1"));
+    // The PUT runs inside the `block_on` above, so its stored event is captured.
+    assert!(events
+        .iter()
+        .any(|e| e.field("event") == Some("log_upload_stored") && e.field("bytes").is_some()));
+    assert!(events.iter().all(|e| e.field("blob").is_none()));
+}
+
+/// The launcher's logs in the upload come from the `logs` folder beside the
+/// state folder, and are zipped under `launcher/`. Fails if the
+/// `launcher_logs::append` call in `collect` is removed.
+#[test]
+fn collect_adds_the_launcher_logs_from_the_logs_folder_next_to_state() {
+    let (root, state, _) = installed();
+    let logs = root.path().join("logs");
+    std::fs::create_dir(&logs).unwrap();
+    std::fs::write(logs.join("launcher.2026-10-21.log"), "hello\n").unwrap();
+    let store = LogStore::insecure_for_tests(&format!("http://127.0.0.1:1/c?{SECRET}"));
+    let CollectedLogs::Send(pending) = collect(&state, &store).collect().unwrap() else {
+        panic!("expected a send");
+    };
+    assert!(zip_names(&pending.body).contains(&"launcher/launcher.2026-10-21.log".to_string()));
 }
 
 /// The PUT runs without the state lock, so an operation can start while it

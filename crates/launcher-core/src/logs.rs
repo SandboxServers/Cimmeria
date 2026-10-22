@@ -253,7 +253,7 @@ fn zip_capped_files(
 
 /// A file time as a zip (DOS) timestamp: local time, 2 s resolution,
 /// 1980-2107. `None` outside that range.
-fn zip_time(t: std::time::SystemTime) -> Option<zip::DateTime> {
+pub fn zip_time(t: std::time::SystemTime) -> Option<zip::DateTime> {
     use chrono::{Datelike, Timelike};
     let local: chrono::DateTime<chrono::Local> = t.into();
     zip::DateTime::from_date_and_time(

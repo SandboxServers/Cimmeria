@@ -9,8 +9,11 @@
 //! check, zip; unlocked), [`LogStore::put`] (unlocked), then
 //! [`DesktopState::finish_log_upload`] (ledger; locked).
 use super::*;
+use crate::storage::game_telemetry::launcher_event::Redaction;
 use cimmeria_launcher_core::logs;
 use cimmeria_launcher_core::state::UploadedLedger;
+mod events;
+mod launcher_logs;
 mod store;
 pub use store::{LogStore, StoredUpload};
 #[cfg(test)]
@@ -120,6 +123,9 @@ pub struct LogCollection {
     game: PathBuf,
     ledger: UploadedLedger,
     max_bytes: u64,
+    /// `<app_data>/logs`, where the shell writes the launcher's own logs.
+    launcher_logs: Option<PathBuf>,
+    redaction: Redaction,
 }
 
 /// What `collect` decided.
@@ -190,6 +196,8 @@ impl DesktopState {
             game: installed.intent.destination.join("game"),
             ledger: self.uploaded_ledger(),
             max_bytes: MAX_UPLOAD_BYTES,
+            launcher_logs: self.directory.root.parent().map(|p| p.join("logs")),
+            redaction: Redaction::from_env(),
         }))
     }
 
@@ -206,13 +214,13 @@ impl DesktopState {
             LogUploadState::Uploaded
         };
         if let Err(error) = self.ensure_no_active_operation() {
-            tracing::info!(?error, "log upload ledger not saved: an operation started");
+            events::ledger_skipped(error.code());
             return LogUploadStatus::new(state);
         }
         let mut ledger = self.uploaded_ledger();
         ledger.record(stored.digest, stored.blob_name);
-        if let Err(error) = ledger.save(&self.directory.root.join(LEDGER)) {
-            tracing::warn!(%error, "log upload ledger was not saved");
+        if ledger.save(&self.directory.root.join(LEDGER)).is_err() {
+            events::ledger_save_failed();
         }
         LogUploadStatus::new(state)
     }
@@ -231,32 +239,31 @@ impl LogCollection {
             logs::select_log_inputs(&self.game, self.max_bytes).map_err(collect_failed)?;
         if selection.is_empty() {
             if selection.left_out() > 0 {
-                tracing::warn!(
-                    left_out = selection.left_out(),
-                    max_bytes = self.max_bytes,
-                    "log upload refused: every log is over the cap"
-                );
+                events::logs_too_large(selection.left_out(), self.max_bytes);
                 return Err(LogUploadError::LogsTooLarge);
             }
             return finished(LogUploadState::NoLogs);
         }
         if selection.left_out() > 0 {
-            tracing::info!(
-                left_out = selection.left_out(),
-                max_bytes = self.max_bytes,
-                "log upload leaves out the oldest logs"
-            );
+            events::logs_trimmed(selection.left_out(), self.max_bytes);
         }
         let Some(digest) = selection.digest(&self.game).map_err(collect_failed)? else {
             return finished(LogUploadState::NoLogs);
         };
         if self.ledger.contains(&digest) {
-            tracing::debug!("log upload skipped: same content as a past upload");
+            events::nothing_new();
             return finished(LogUploadState::NothingNew);
         }
         let Some(body) = selection.zip(&self.game).map_err(collect_failed)? else {
             return finished(LogUploadState::NoLogs);
         };
+        let entries = match &self.launcher_logs {
+            Some(dir) => {
+                launcher_logs::entries(dir, &self.redaction, launcher_logs::LAUNCHER_LOG_CAP)
+            }
+            None => Vec::new(),
+        };
+        let body = launcher_logs::append(body, &entries)?;
         let blob_name = logs::blob_name_for(&digest);
         Ok(CollectedLogs::Send(PendingUpload {
             digest,
@@ -275,6 +282,6 @@ impl LogCollection {
 
 fn collect_failed(error: logs::LogError) -> LogUploadError {
     // Local IO and zip errors name only local paths, never the store URL.
-    tracing::warn!(%error, "log upload could not collect the logs");
+    events::collect_failed(events::log_error_reason(&error));
     LogUploadError::CollectFailed
 }
