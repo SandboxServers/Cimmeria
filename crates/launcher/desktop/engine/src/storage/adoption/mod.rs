@@ -52,6 +52,9 @@ mod source;
 mod survey;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
+// LF-02 and LF-03 call these; until then the tests are the only callers.
+#[allow(dead_code)]
+mod tree_diff;
 mod verification;
 mod worker;
 pub use worker::{start_confirmation, start_preview, ConfirmationWorker, PreviewWorker};
