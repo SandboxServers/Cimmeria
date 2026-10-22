@@ -158,21 +158,22 @@ tree node for every seeded archetype.
 
 ### Dialog NPC (template 302, Airman Lance)
 
-> **Quarantined (2026-09-27).** Dialogs 60100, 60101 and 60104 are not
-> served to clients. Their definitions sit in `QUARANTINED_DIALOG_OVERRIDES`,
-> not `DIALOG_OVERRIDES`. After they started going out as cooked-data
-> overrides, a tester's client crashed on every entry into Castle_CellBlock:
-> it died after `onClientMapLoad` and never sent `mapLoaded`. Renumbering
-> them below 65536 did not help, and the field that crashes the client is
-> not yet known. The chains, the seed rows and the NPCs stay. A right-click
-> still sends `onDialogDisplay`, but the client has no entry for the id, so
-> **the Dialog NPC and the Gate Mail Clerk show no dialog**. Use
-> `.mail` for the mail test until the quarantine is lifted.
+> **Served again since 2026-10-22 (D-LN3).** Dialogs 60100, 60101 and 60104
+> were quarantined from 2026-09-27 to 2026-10-22 (#943). After they started
+> going out as cooked-data overrides, a tester's client crashed on every
+> entry into Castle_CellBlock: it died after `onClientMapLoad` and never sent
+> `mapLoaded`. Renumbering them below 65536 did not help, and the field that
+> crashes the client is not yet known. The owner lifted the quarantine on
+> 2026-10-22 and validates the dialogs after release, so the Castle_CellBlock
+> entry crash may return. The chains, the seed rows and the NPCs stay. A
+> right-click sends `onDialogDisplay` and the Dialog NPC and the Gate Mail
+> Clerk show their dialogs.
 >
 > The server evicts nothing from the client's dialog cache. A client that
 > already received these dialogs (as 100100/100101 or 60100-60104) keeps
-> them on disk and keeps crashing. Delete `Cache.en-US\CookedDataDialogs.pak`
-> in the client folder; the client rebuilds it at the next login.
+> them on disk and keeps crashing if the crash returns. Delete
+> `Cache.en-US\CookedDataDialogs.pak` in the client folder; the client
+> rebuilds it at the next login.
 
 Right-click shows dialog 60100. These dialogs are Cimmeria-authored. The
 client draws them from the dialog overrides in
@@ -181,8 +182,7 @@ client draws them from the dialog overrides in
 Cimmeria-authored dialog ids live in 60100-60199 and must stay at or below
 65535. The hub's dialogs were first numbered 100100-100104, and pushing
 100100 and 100101 as overrides crashed the client while it loaded
-Castle_CellBlock. The renumber did not stop the crash (see the quarantine
-note above). The client's own dialog ids stop at 6427. The guard is
+Castle_CellBlock. The renumber did not stop the crash (see the note above). The client's own dialog ids stop at 6427. The guard is
 `every_cooked_override_element_id_fits_in_16_bits` in `crates/resources`; the
 evidence is in
 `docs/reverse-engineering/findings/cooked-dialog-override-crash.md`.
@@ -414,9 +414,10 @@ engineering with the kickers) are in section 2 of
 
 ### Gate Mail Clerk (template 390)
 
-> **Quarantined (2026-09-27).** Dialog 60104 is not served, so the clerk
-> shows no dialog and nothing can be mailed from it. See the quarantine note
-> under [Dialog NPC](#dialog-npc-template-302-airman-lance).
+> **Served again since 2026-10-22 (D-LN3).** Dialog 60104 was quarantined
+> from 2026-09-27 to 2026-10-22 (#943), so the clerk showed no dialog. The
+> owner lifted the quarantine on 2026-10-22; the Castle_CellBlock crash risk
+> is noted under [Dialog NPC](#dialog-npc-template-302-airman-lance).
 
 Right-click shows dialog 60104, which has one button, "Send me a mail".
 Pressing it mails you a test mail from "Gate Mail Clerk" with 5 Health
@@ -525,7 +526,7 @@ opens with you as its leader, and a line says the organization was founded.
 | Trainer list 350 | `db/resources/Abilities/Seed/trainer_ability_lists.sql`, `trainer_abilities.sql` |
 | Chains 7001-7005, 7010-7011 | `db/resources/Content/Seed/debug_hub_chains.sql` |
 | Chain 5030 (the auctioneer) | `db/resources/Content/Seed/castle_cellblock_chains.sql` |
-| Dialogs 60100-60104, screens 200000-200005, buttons 200000-200001 | `db/resources/Dialogs/Seed/` and `QUARANTINED_DIALOG_OVERRIDES` (not served) |
+| Dialogs 60100-60104, screens 200000-200005, buttons 200000-200001 | `db/resources/Dialogs/Seed/` and `overrides_debug_hub.rs` in `DIALOG_OVERRIDES` (served since D-LN3) |
 | The clerk's mail and cooldown | `mail/content.rs` in `crates/base-methods`; table `db/sgw/Players/Tables/sgw_player_content_cooldown.sql` |
 | Loot table 3 (loot rows 14-23) | `db/resources/Loot/Seed/` |
 | Ability set 6 | `db/resources/Abilities/Seed/ability_sets.sql`, `ability_set_abilities.sql` |
@@ -564,7 +565,7 @@ hub, crafting)`.
 | `cell-world` `tests/npc_spawn.rs` | Any `INT_Vendor*` bit derives `Vendor`, `INT_Auction` derives `Auctioneer` (below the Banker, above the vendor bits); no other bit derives anything |
 | `cell-catalog` `spawner/tests/live_db_debug_auctioneer.rs` | Template 305 is an auctioneer and nothing else: exactly `INT_Auction`, a shipped name, a body, no trainer or vendor list, not faction 10; it is the only `INT_Auction` template; spawn 405 is its one placement, tagged for chain 5030, inside Region1, on the floor, clear of the respawner and of every other NPC in the room |
 | `cell-content` `chain_replay_tests/black_market_auctioneer.rs` | Spawned from its real row, the auctioneer is an `Auctioneer`; clicking it runs chain 5030, which sends `onBMOpen` naming him, the chat line and a session; the same chain at the dialog NPC opens nothing |
-| `resources` `dialog_overrides/override_seed_agreement_debug_hub.rs` | The quarantined overrides of 60100, 60101 and 60104 and the dialog seed agree screen for screen and button for button; `dialog_overrides/mod.rs` `quarantined_dialogs_are_not_served` fails if one is served again without lifting the quarantine |
+| `resources` `dialog_overrides/override_seed_agreement_debug_hub.rs` | The overrides of 60100, 60101 and 60104 and the dialog seed agree screen for screen and button for button; `dialog_overrides/mod.rs` `debug_hub_dialogs_are_served` checks that each of them is served |
 | `content-engine` `interact_tag_linter`, `dialog_button_linter` | Chains 7001, 7004 and 7010 are allowlisted (template-default bits); the hub dialogs obey the button hard rules |
 | `cell-catalog` `spawner/tests/live_db_crafting_hub.rs` | Stations carry all four craft bits and no interaction bit, with the client's station monikers; the vendor sells only list 310; the crafting spawns stand inside Region1, on the floor, clear of the respawner and of every other spawn in the room; list 310 is exactly the supplies, each a real item at 1 naquadah and no item cost, and covers the UAT recipes |
 | `cell-methods` `interaction/crafting_hub_station_tests.rs` | Spawned from their real rows, the stations are reported for every verb to a player at the supplies vendor, and none reaches the respawn spot |
