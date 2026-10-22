@@ -220,8 +220,11 @@ fn offsets_round_trip_never_move_back_and_an_unreadable_file_loads_empty() {
 
 #[test]
 fn offsets_keep_only_the_newest_files() {
+    use crate::storage::log_upload::offsets::MAX_FILES;
+    let total = MAX_FILES + 88;
+    let key = |n: usize| format!("launcher.2026-{:02}-{:02}.log", 1 + n / 28, 1 + n % 28);
     let mut offsets = Offsets::default();
-    for n in 0..600 {
+    for n in 0..total {
         let line = LogLine {
             file: format!("launcher.2026-{:02}-{:02}.log", 1 + n / 28, 1 + n % 28),
             line_no: 1,
@@ -239,7 +242,7 @@ fn offsets_keep_only_the_newest_files() {
         &std::collections::HashMap::new(),
         &std::collections::HashSet::new(),
     );
-    assert_eq!(offsets.files.len(), 512);
-    assert!(offsets.files.contains_key("launcher.2026-22-04.log"));
-    assert!(!offsets.files.contains_key("launcher.2026-01-01.log"));
+    assert_eq!(offsets.files.len(), MAX_FILES);
+    assert!(offsets.files.contains_key(&key(total - 1)));
+    assert!(!offsets.files.contains_key(&key(0)));
 }

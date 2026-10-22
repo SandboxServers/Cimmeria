@@ -20,12 +20,14 @@ const FILE: &str = "uploaded-log-offsets.json";
 const VERSION: u32 = 2;
 
 /// The most bytes the offsets file may take. Launcher logs are a handful of
-/// entries; the game's session logs add one entry (path, offset, head) each.
-const MAX_BYTES: usize = 256 * 1024;
+/// entries; each game file adds its key three times (offset, head, tail), about
+/// 500 bytes at a 150-byte key, so `MAX_FILES` such entries fit (LF-19 A7).
+pub(super) const MAX_BYTES: usize = 1024 * 1024;
 
 /// The most files the offsets keep; the shell keeps 7 launcher logs, and the
-/// game keeps one folder per session, so this leaves room for hundreds.
-const MAX_FILES: usize = 512;
+/// game keeps one folder per session, so this leaves room for thousands. Past
+/// this a live file is re-sent in full on each press (LF-19 A7).
+pub(super) const MAX_FILES: usize = 2048;
 
 /// The byte offset already sent, per launcher log file name (`launcher.*.log`)
 /// and per game log (`game/<path under the binaries folder>`).

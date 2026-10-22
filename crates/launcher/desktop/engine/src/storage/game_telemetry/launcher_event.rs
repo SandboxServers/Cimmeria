@@ -120,6 +120,8 @@ impl Redaction {
     /// or ticket) becomes `<removed>`; the other words and the spacing stay, then
     /// `replace_home`. A line with a path keeps its text, unlike `scrub`.
     pub fn scrub_words(&self, value: &str) -> String {
+        // Home first: a home folder with a space must not be split into words.
+        let value = self.replace_home(value);
         let mut out = String::with_capacity(value.len());
         let mut word = String::new();
         for c in value.chars() {
@@ -132,19 +134,54 @@ impl Redaction {
             }
         }
         out.push_str(&scrub_word(&word));
-        self.replace_home(&out)
+        out
     }
 }
 
-/// One word of `scrub_words`: a path word, a long mixed token, or the word as is.
+/// One word of `scrub_words`: a path word, or the word with its long tokens removed.
 fn scrub_word(word: &str) -> String {
     if is_path_word(word) {
         "<path removed>".to_string()
-    } else if is_long_token(word) {
-        "<removed>".to_string()
     } else {
-        word.to_string()
+        scrub_tokens(word)
     }
+}
+
+/// Replaces each secret-shaped token in `word` (LF-19 A9) and keeps the punctuation
+/// around it. A candidate is a run of token characters and dots; a three-part dotted
+/// candidate (a JWT shape) is removed whole, otherwise each long token run is removed.
+fn scrub_tokens(word: &str) -> String {
+    let mut out = String::with_capacity(word.len());
+    let mut candidate = String::new();
+    for c in word.chars() {
+        if is_token_char(c) || c == '.' {
+            candidate.push(c);
+        } else {
+            out.push_str(&scrub_candidate(&candidate));
+            candidate.clear();
+            out.push(c);
+        }
+    }
+    out.push_str(&scrub_candidate(&candidate));
+    out
+}
+
+/// One run of `scrub_tokens`: removed when it is a JWT shape, else split at the dots.
+fn scrub_candidate(candidate: &str) -> String {
+    if is_jwt_shape(candidate) {
+        return "<removed>".to_string();
+    }
+    candidate
+        .split('.')
+        .map(|run| {
+            if is_long_token(run) {
+                "<removed>".to_string()
+            } else {
+                run.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(".")
 }
 
 /// `has_absolute_path`, or a word that contains `:\`, `:/` or `\\`, or starts with `/`.
@@ -156,15 +193,26 @@ fn is_path_word(word: &str) -> bool {
         || word.starts_with('/')
 }
 
-/// A word of 32 or more base64-style characters with at least one digit and one
-/// letter: a session key, a ticket or a `key=` value (LF-19 A9).
-fn is_long_token(word: &str) -> bool {
-    word.len() >= 32
-        && word
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '=' | '_' | '-'))
-        && word.chars().any(|c| c.is_ascii_digit())
-        && word.chars().any(|c| c.is_ascii_alphabetic())
+/// A base64-style character: letters, digits and `+ / = _ -`.
+fn is_token_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '=' | '_' | '-')
+}
+
+/// A run of 32 or more token characters with at least one digit and one letter: a
+/// session key, a ticket or a `key=` value (LF-19 A9). The run is one token only.
+fn is_long_token(run: &str) -> bool {
+    run.len() >= 32
+        && run.chars().any(|c| c.is_ascii_digit())
+        && run.chars().any(|c| c.is_ascii_alphabetic())
+}
+
+/// Three dot-separated parts of 10 or more token characters each (a JWT shape).
+fn is_jwt_shape(candidate: &str) -> bool {
+    let parts: Vec<&str> = candidate.split('.').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|part| part.len() >= 10 && part.chars().all(is_token_char))
 }
 
 /// One `TelemetryEvent::ClientNative` per record, scrubbed. Pure: no I/O, no consent check.

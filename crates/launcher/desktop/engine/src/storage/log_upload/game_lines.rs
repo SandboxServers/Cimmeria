@@ -105,10 +105,19 @@ pub(crate) fn collect(
         let saved = offsets.files.get(&key).copied().unwrap_or(0);
         let saved_head = offsets.heads.get(&key).map(String::as_str);
         let saved_tail = offsets.tails.get(&key).map(String::as_str);
-        let read = read_file(&key, &path, saved, (saved_head, saved_tail), &redaction);
+        let read = read_file(
+            &key,
+            &path,
+            saved,
+            (saved_head, saved_tail),
+            &redaction,
+            cancel,
+        );
         let (lines, file, total) = match read {
             Ok(read) => read,
             Err(reason) => {
+                // A cancel that stopped the stream is a failed collect, not a skip.
+                cancelled()?;
                 // The file is skipped with its offset untouched: its lines wait
                 // for the next press. Telemetry carries no path (R5).
                 events::game_file_skipped(reason);
@@ -318,14 +327,19 @@ fn decode(bytes: &[u8], encoding: Encoding) -> String {
 /// `MAX_LINES` only, and what the reader saw of the file. The file is streamed
 /// in `BLOCK_BYTES` blocks (A1): every newline is counted from the first line so
 /// `line_no` stays right, and only the newest raw lines are held. A failed open,
-/// metadata call or read is the closed reason `read_failed`.
+/// metadata call or read is the closed reason `read_failed`. A cancel, checked
+/// before each block, stops the read with the reason `cancelled` (LF-19 A-note 3).
 fn read_file(
     key: &str,
     path: &Path,
     saved: u64,
     (saved_head, saved_tail): (Option<&str>, Option<&str>),
     redaction: &Redaction,
+    cancel: &CancellationToken,
 ) -> Result<(Vec<LogLine>, GameFile, u64), &'static str> {
+    if cancel.is_cancelled() {
+        return Err("cancelled");
+    }
     let mut reader = std::fs::File::open(path).map_err(|_| "read_failed")?;
     // The open handle is what gets read, and a folder or other non-file is not
     // read at all (A8).
@@ -361,6 +375,9 @@ fn read_file(
     scan.feed(&first[bom..]);
     let head = head_of(first);
     loop {
+        if cancel.is_cancelled() {
+            return Err("cancelled");
+        }
         let n = fill(&mut reader, &mut block).map_err(|_| "read_failed")?;
         if n == 0 {
             break;

@@ -337,8 +337,41 @@ fn a_missing_file_is_read_failed_for_telemetry() {
         0,
         (None, None),
         &Redaction::from_env(),
+        &CancellationToken::new(),
     );
     assert!(matches!(got, Err("read_failed")));
+}
+
+/// LF-19 A-note 3: a cancel stops a 64 MiB file's read before the stream ends; with
+/// the token already cancelled the read returns `cancelled` and no lines.
+#[test]
+fn a_cancel_stops_the_stream_of_a_large_file() {
+    let game = tempfile::tempdir().unwrap();
+    let dir = binaries(game.path());
+    let line = "x".repeat(1023) + "\n";
+    let body = line.repeat(64 * 1024);
+    fs::write(dir.join("SGWDebugLog.log"), body).unwrap();
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let got = read_file(
+        "game/SGWDebugLog.log",
+        &dir.join("SGWDebugLog.log"),
+        0,
+        (None, None),
+        &Redaction::default(),
+        &cancel,
+    );
+    assert!(matches!(got, Err("cancelled")));
+    // A live token reads the same file to its end (the cancel is the only cause).
+    let live = read_file(
+        "game/SGWDebugLog.log",
+        &dir.join("SGWDebugLog.log"),
+        0,
+        (None, None),
+        &Redaction::default(),
+        &CancellationToken::new(),
+    );
+    assert_eq!(live.unwrap().2, 64 * 1024);
 }
 
 /// A 64 MiB file is streamed: every line is counted, only the newest `MAX_LINES`
@@ -384,6 +417,18 @@ fn a_path_or_key_word_is_scrubbed_and_the_rest_of_the_line_kept() {
         redaction.scrub("loaded C:\\Users\\bob\\x.dll ok"),
         "<path removed>"
     );
+}
+
+/// LF-19 N3: a home folder or user name with a space is replaced before the words
+/// are split, so the second word of the name cannot leak.
+#[test]
+fn scrub_words_hides_a_home_with_a_space() {
+    let redaction = Redaction {
+        home: Some("C:\\Users\\John Smith".into()),
+        user: Some("John Smith".into()),
+    };
+    let got = redaction.scrub_words("opened C:\\Users\\John Smith\\x.log ok");
+    assert!(!got.contains("Smith"), "{got}");
 }
 
 #[test]
@@ -452,20 +497,46 @@ fn a_version_two_offsets_file_without_tails_loads_with_none() {
 /// file with lines this press (busy) never does, and the newest survives (A7).
 #[test]
 fn past_the_file_limit_the_oldest_unbusy_file_goes_and_the_newest_stays() {
+    use crate::storage::log_upload::offsets::MAX_FILES;
+    let total = MAX_FILES as u64 + 88;
     let mut offsets = Offsets::default();
     let mut live = HashMap::new();
-    for n in 0..600u64 {
-        let key = format!("game/sessions/s{n:03}.log");
+    for n in 0..total {
+        let key = format!("game/sessions/s{n:04}.log");
         offsets.files.insert(key.clone(), 10);
         let modified = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(n);
         live.insert(key, modified);
     }
-    let busy = std::collections::HashSet::from(["game/sessions/s000.log".to_string()]);
+    let busy = std::collections::HashSet::from(["game/sessions/s0000.log".to_string()]);
     offsets.prune(&live, &busy);
-    assert_eq!(offsets.files.len(), 512);
-    assert!(offsets.files.contains_key("game/sessions/s000.log"));
-    assert!(!offsets.files.contains_key("game/sessions/s001.log"));
-    assert!(offsets.files.contains_key("game/sessions/s599.log"));
+    assert_eq!(offsets.files.len(), MAX_FILES);
+    assert!(offsets.files.contains_key("game/sessions/s0000.log"));
+    assert!(!offsets.files.contains_key("game/sessions/s0001.log"));
+    assert!(offsets
+        .files
+        .contains_key(&format!("game/sessions/s{:04}.log", total - 1)));
+}
+
+/// `MAX_FILES` entries, each key written in files, heads and tails at 150 bytes,
+/// serialize under `MAX_BYTES`, so a full table is never refused by the atomic
+/// write (LF-19 A7).
+#[test]
+fn a_full_offsets_table_fits_the_byte_budget() {
+    use crate::storage::log_upload::offsets::{MAX_BYTES, MAX_FILES};
+    let mut offsets = Offsets::default();
+    for n in 0..MAX_FILES {
+        // "game/" (5) + 4 digits + 141 filler = 150 bytes.
+        let key = format!("game/{n:04}{}", "x".repeat(141));
+        offsets.files.insert(key.clone(), u64::MAX);
+        offsets.heads.insert(key.clone(), "0123456789ab".into());
+        offsets.tails.insert(key, "0123456789ab".into());
+    }
+    let dir = tempfile::tempdir().unwrap();
+    offsets.save(dir.path()).unwrap();
+    let size = std::fs::metadata(dir.path().join("uploaded-log-offsets.json"))
+        .unwrap()
+        .len() as usize;
+    assert!(size < MAX_BYTES, "{size} bytes");
 }
 
 /// A game file that is gone is pruned with its head and tail; launcher keys stay.
