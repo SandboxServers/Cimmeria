@@ -8,8 +8,9 @@
 //! leader may buy it; there is no permission bit for it. The Command vault
 //! (20) is fixed at 100 and is refused.
 //!
-//! There is no client UI: the Expand dialog is quarantined (#943), so the
-//! trigger is the GM console. Without a size the command only quotes; with
+//! There is no client UI for the Team vault: the Expand dialog (60110, served
+//! since 2026-10-22, D-LN3) is personal-vault only, so the trigger is the GM
+//! console. Without a size the command only quotes; with
 //! the current size it buys, keyed on that size, so a repeated command is a
 //! `replay` and charges nothing.
 //!
