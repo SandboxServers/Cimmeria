@@ -762,6 +762,10 @@ all 22 checks, native Windows and macOS included, at `4361679e7` (the earlier to
 current head before claiming it. Open, as a later and separately decided rollout: a production endpoint (https,
 publicly trusted certificate; not the plain-HTTP login port), and the consent copy and frontend UAT.
 
+### 2026-10-21: launcher telemetry docs (LT-26)
+
+The launcher summary endpoint is now the first login server when it is https, else the built-in default, which is `None` until LT-41. The default server list is plain http, so a build with that list still sends nothing; a player whose first login server is https sends once opted in. The launcher's own newest three days of logs now join Upload debug logs, only when there are game logs to send. See [launcher telemetry](../../launcher-telemetry/README.md).
+
 ### 2026-10-11: distribution moved to the launcher consolidation campaign
 
 Distribution of the desktop launcher is now tracked by the

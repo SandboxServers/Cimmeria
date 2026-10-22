@@ -6,7 +6,7 @@
 > **Companions:** [Desktop workspace](../README.md), [design and wire contract](../../../../docs/architecture/launcher-summary-telemetry.md), [operator notes](../../../../docs/operations/telemetry.md), [dashboard reading notes](../../../../docs/operations/signoz/launcher-summary-views.md), [launch](launch.md), [implementation assignment](../../../../docs/analysis/playtests/2026-10-03-macos-wine/worknotes/observability-implementation-assignment.md)
 
 **Status: the engine component, its queue, its exporter and the shell glue are
-connected. The endpoint is the first login server when it is https, else the built-in default, which is not set yet. The default server list is plain http, so every distributed build today collects nothing and sends nothing. Frontend UAT, the built-in default and native evidence are open rollout gates.** Nothing here ran against a real server.
+connected. The endpoint is the first login server when it is https, else the built-in default, which is not set yet. The default server list is plain http, so a build with the default list collects nothing and sends nothing; a player whose first login server is https sends once opted in. Frontend UAT, the built-in default and native evidence are open rollout gates.** Nothing here ran against a real server.
 
 A launcher summary is one terminal row per install, runtime-setup, repair,
 uninstall or launch attempt: closed enums, bounded integers and two engine-minted

@@ -834,6 +834,7 @@ caller's network address on the launcher and telemetry routes:
   peer the server counts quotas against the rightmost `X-Forwarded-For`
   entry; it never logs, stores, returns or hashes it. See
   [telemetry-upload-endpoint.md](telemetry-upload-endpoint.md#the-forwarded-for-quota-key).
+- **The launcher scrubs its own rows.** Every string of a launcher row, and every line of a launcher log in a debug-log upload, has IPv4 and IPv6 literals replaced with `[ip]` before it is queued or zipped (`ip_scrub.rs`); nothing is hashed. Absolute paths in a launcher row's strings become `<path removed>` and the home folder becomes `~` (`launcher_event.rs`).
 - **Endpoints are https.** The server hands out only an https upload URL
   (or an explicit env override with a WARN), and the public routes are
   reached over `https://play.cimmeria.app`.

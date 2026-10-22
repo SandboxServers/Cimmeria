@@ -327,8 +327,8 @@ this list and stop at the first row that explains it.
 The launcher side has three checks that need no server log:
 
 6. **The setup-diagnostics line.** After a press in Settings, the box's line says whether summaries are sent. "Saved but not sent yet" means there is no https endpoint (the default server list is plain http); no summary row can exist yet.
-7. **`pipeline_recovered` on `launcher.telemetry`.** One row when the upload pipeline comes back after failures. Failures with no such row after them mean the pipeline has not recovered.
-8. **`game_session_mint_failed` on `launcher.telemetry`.** A game session could not be minted, so Play went on with no game diagnostics. The row carries a `reason` code (C8) and `http_status` when the login server replied.
+7. **`pipeline_recovered` on `launcher.telemetry`.** One row when the upload pipeline comes back after failures. Its fields are `mint_failed`, `held` and `dropped` (counts of the failed sends), `outage_ms` and `last_reason`. It appears once per recovery, after sends resume, so its absence proves nothing; a launcher that never recovers shows no row at all.
+8. **`game_session_mint_failed` on `launcher.telemetry`.** A game session could not be minted, so Play went on with no game diagnostics. The row carries a `reason` (`timeout`, `transport`, `http_status`, `decode`, `endpoint_refused` or `no_https_endpoint`), `http_status` only when the login server replied, and `duration_ms`.
 
 For the anonymous summary route there is no mint: check the
 `launcher_summary_refused` rows, then the `launcher_summary_batch` row, then
