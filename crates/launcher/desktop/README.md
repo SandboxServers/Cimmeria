@@ -17,8 +17,8 @@ through Settings. Settings also connects confirmed [Repair](docs/repair.md),
 precommit cancellation, recovery/abandonment and current-backup cleanup. [Play](docs/launch.md)
 now observes native game lifecycle and, for a player who opts in, injects the
 [game-telemetry DLL](docs/launch.md#opt-in-game-telemetry) with a server session.
-Consented [launcher summaries](docs/launcher-summaries.md) are connected,
-but this build configures no endpoint and sends nothing. Real-client/platform gates remain open.
+Consented [launcher summaries](docs/launcher-summaries.md) are connected and
+go only over https: to the first login server when it is https, else to the built-in default. That default is not set yet, so with the default server list (plain http) nothing is sent. Real-client/platform gates remain open.
 A player's own [seed archive](docs/seed-archive.md) can replace the seed download for Install, Repair and Update; the seed is never rehosted.
 
 ## Native operation and storage contracts
@@ -67,7 +67,7 @@ Preferences persist an optional absolute install path and separate default-off
 active operation blocks path changes but permits consent changes. The path check
 does not establish installation ownership or safe deletion. The flag gates
 [launcher summaries](docs/launcher-summaries.md) only, never game/DLL telemetry. Opt-out aborts a
-send in flight. This build configures no endpoint, so nothing is tracked, queued or sent.
+send in flight. With no https endpoint (the default server list is plain http and the built-in default is not set yet), nothing is tracked, queued or sent.
 
 Preferences are `schema_version: 2`. They also hold the client options: the
 `login_servers` list (empty means the built-in default list) and

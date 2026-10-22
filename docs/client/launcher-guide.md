@@ -335,7 +335,7 @@ soon as you press it.
 | **Local install directory** | **Choose folder…** picks where a new install goes. **Show folder** opens the saved folder. |
 | **Repair game** | Downloads the signed release again and replaces modified or missing game files in the installed folder. Confirm in the panel that opens. **Cancel** works until replacement starts. Your settings are kept. The [repair contract](../../crates/launcher/desktop/docs/repair.md) has the recovery buttons. |
 | **Uninstall…** | Removes the game files and modifications from the installed folder after you confirm with **Uninstall game**. Launcher settings stay. |
-| **Share setup diagnostics** | Off by default. This build sends nothing either way. |
+| **Share setup diagnostics** | Off by default. When it is on, setup diagnostics are sent over https to your first login server, if that address is https. With the default server list (plain http) they are saved but not sent yet, and the box says so. Nothing is sent while it is off. The built-in fallback address is not set yet. |
 | **Send game diagnostics** | Off by default. When on, Play loads a small diagnostics module into the game, which sends game events and logs to your login server, so the developers can see what went wrong. It changes nothing in the game. When it is on, the launcher also sends its game-folder events (the steps of **Use an existing game folder**, and why a folder was refused) to your login server as they happen, without Play. They name files only by their place inside the game folder, never your user name or home folder. |
 | **Login servers** | The servers the game's login screen lists, one `Name = http://host:port` per line. **Save servers** saves them; a line the launcher cannot read is shown under the box and nothing is saved. Empty means the default Cimmeria server. |
 | **Client patches** | **Load client patches** is on by default. The patches fix parts of the 2009 client; the Black Market window, for one, needs them. Turn it off only to rule them out when something misbehaves. An adopted folder keeps the setting it was adopted with. |
@@ -923,7 +923,7 @@ its data again. If the game will not start at all or its settings are broken,
 - The status line under the button you pressed.
 - **Settings → Debug logs → Upload debug logs** for the game's own logs.
 - `game\Working\Binaries\SGWDebugLog.log` in your install folder.
-- The launcher's own log: `%APPDATA%\app.cimmeria.launcher.desktop\logs\launcher.<date>.log`; on Linux, `~/.local/share/app.cimmeria.launcher.desktop/logs/`; on macOS, `~/Library/Application Support/app.cimmeria.launcher.desktop/logs/`. There is one file a day, 7 are kept, and the home folder is written as `~`. **Upload debug logs** does not include it yet, so attach it by hand.
+- The launcher's own log: `%APPDATA%\app.cimmeria.launcher.desktop\logs\launcher.<date>.log`; on Linux, `~/.local/share/app.cimmeria.launcher.desktop/logs/`; on macOS, `~/Library/Application Support/app.cimmeria.launcher.desktop/logs/`. There is one file a day, 7 are kept, and the home folder is written as `~`. **Upload debug logs** sends it with the other logs. Before the upload, paths are scrubbed and IP literals are replaced with `[ip]`.
 
 ---
 

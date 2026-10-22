@@ -324,6 +324,12 @@ this list and stop at the first row that explains it.
    'launcher'` and a `client_target` from the [accepted list](#accepted-launcher-event-targets).
    A target outside the list is dropped silently by design.
 
+The launcher side has three checks that need no server log:
+
+6. **The setup-diagnostics line.** After a press in Settings, the box's line says whether summaries are sent. "Saved but not sent yet" means there is no https endpoint (the default server list is plain http); no summary row can exist yet.
+7. **`pipeline_recovered` on `launcher.telemetry`.** One row when the upload pipeline comes back after failures. Failures with no such row after them mean the pipeline has not recovered.
+8. **`game_session_mint_failed` on `launcher.telemetry`.** A game session could not be minted, so Play went on with no game diagnostics. The row carries a `reason` code (C8) and `http_status` when the login server replied.
+
 For the anonymous summary route there is no mint: check the
 `launcher_summary_refused` rows, then the `launcher_summary_batch` row, then
 `launcher.summary` in `cimmeria-client`.

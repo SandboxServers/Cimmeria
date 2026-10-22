@@ -462,6 +462,18 @@ dropped silently when offline. The six steps are C10 of
 Nothing leaves without the game-diagnostics opt-in, in a build with the module.
 `client.launcher.install_result` is unchanged and still waits for Play.
 
+**Other launcher events.** The shell writes its own events as tracing events, one
+target per subsystem: `launcher.startup`, `launcher.crash`, `launcher.update`,
+`launcher.game_update`, `launcher.install` and `launcher.telemetry` are emitted
+today. Each event has a snake_case `event` name: `<op>_started` and
+`<op>_finished` are info, `<op>_failed` is warn. Wire rows use the same name with
+a `client.` prefix (`client.launcher.install`). The full subsystem table is in
+[observability.md](../../../../docs/architecture/observability.md). Two events on
+`launcher.telemetry` are named here: `pipeline_recovered`, one row when the
+upload pipeline comes back after failures, and `game_session_mint_failed`, when
+a game session could not be minted and Play went on with no game diagnostics.
+Their fields are not listed in this file.
+
 **Not covered:**
 
 - An install result is queued only by the journal commit that ends the run.
