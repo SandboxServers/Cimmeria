@@ -269,7 +269,13 @@ impl NativeHost {
     ) -> Result<AdoptionStatus, AdoptionError> {
         self.adoption_mode_allowed(mode)?;
         // The engine checks the request names this same root, so the root is passed.
-        let root = adoption::resolve_folder(&selected)?;
+        // A refused pick is held like a worker's refusal, so the player sees the check.
+        let (resolved, rejection) =
+            adoption::rejection_scope(|| adoption::resolve_folder(&selected));
+        let root = match resolved {
+            Ok(root) => root,
+            Err(error) => return self.refuse_picked_folder(error, rejection),
+        };
         let destination = match (mode, location) {
             (adoption::AdoptionMode::InPlace | adoption::AdoptionMode::Light, None) => root,
             (adoption::AdoptionMode::InPlace | adoption::AdoptionMode::Light, Some(_)) => {

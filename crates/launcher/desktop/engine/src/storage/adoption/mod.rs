@@ -100,7 +100,7 @@ pub(super) enum Backend {
     Wine(crate::mac_wine::HelperResource),
 }
 pub use index_source::IndexFallback;
-pub use rejection::{refuse, Rejection};
+pub use rejection::{refuse, scope as rejection_scope, Rejection};
 use uuid::Uuid;
 
 /// This handle cannot be serialized or fabricated by an IPC caller. It retains

@@ -440,7 +440,7 @@ async fn pick_folder(
 
 /// The status after a cancelled dialog: nothing is started.
 async fn cancelled(host: Arc<NativeHost>) -> Result<AdoptionStatus, AdoptionError> {
-    tauri::async_runtime::spawn_blocking(move || host.adoption_status())
+    tauri::async_runtime::spawn_blocking(move || host.adoption_picker_cancelled())
         .await
         .map_err(|_| AdoptionError::Io)?
 }

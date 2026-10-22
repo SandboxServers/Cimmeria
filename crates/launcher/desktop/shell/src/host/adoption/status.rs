@@ -159,6 +159,42 @@ impl NativeHost {
         Ok(())
     }
 }
+impl NativeHost {
+    /// A picked folder the engine refused before any preview: shown with the check the engine recorded, like a worker's refusal.
+    pub(super) fn refuse_picked_folder(
+        &self,
+        error: adoption::Error,
+        rejection: Option<adoption::Rejection>,
+    ) -> Result<AdoptionStatus, AdoptionError> {
+        {
+            let mut adoption = self.adoption.lock().map_err(|_| AdoptionError::Io)?;
+            if adoption.preview.is_some()
+                || adoption.session.is_some()
+                || adoption.confirm.is_some()
+            {
+                return Err(refusal(AdoptionError::Busy, "busy", "adoption_active"));
+            }
+            adoption.fail(error, rejection);
+            if let Some(code) = adoption.last_error {
+                events::refused(code, adoption.last_unsafe.as_ref());
+            }
+        }
+        self.adoption_status()
+    }
+    /// The player closed the folder picker: an earlier refusal is no longer shown, so the view can say no folder was chosen.
+    pub fn adoption_picker_cancelled(&self) -> Result<AdoptionStatus, AdoptionError> {
+        {
+            let mut adoption = self.adoption.lock().map_err(|_| AdoptionError::Io)?;
+            if adoption.preview.is_none()
+                && adoption.session.is_none()
+                && adoption.confirm.is_none()
+            {
+                adoption.clear_failure();
+            }
+        }
+        self.adoption_status()
+    }
+}
 impl Adoption {
     /// No failure is shown.
     pub(super) fn clear_failure(&mut self) {
