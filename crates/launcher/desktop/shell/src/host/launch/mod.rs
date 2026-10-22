@@ -131,17 +131,36 @@ impl NativeHost {
         let game = installed
             .as_ref()
             .map(|installed| installed.intent.destination.join("game"));
-        let (patches_incomplete, ops_skipped) = ledger::incomplete_counts(game.as_deref());
-        Ok(LaunchStatus {
+        Ok(LaunchStatus::assemble(
+            native,
+            installation_id,
+            (available, launcher_update_required),
+            game.as_deref(),
+            observation,
+        ))
+    }
+}
+impl LaunchStatus {
+    /// The incomplete-patch counts come from the admitted copy's own ledger (`game`),
+    /// so a status with no admitted copy reports 0, 0.
+    fn assemble(
+        native: NativeSnapshot,
+        installation_id: Option<Uuid>,
+        (resources_available, launcher_update_required): (bool, bool),
+        game: Option<&std::path::Path>,
+        observation: Option<launch::Observation>,
+    ) -> Self {
+        let (patches_incomplete, ops_skipped) = ledger::incomplete_counts(game);
+        Self {
             schema_version: 1,
             native,
             installation_id,
-            resources_available: available,
+            resources_available,
             launcher_update_required,
             patches_incomplete,
             ops_skipped,
             observation,
-        })
+        }
     }
 }
 #[cfg(test)]
