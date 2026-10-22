@@ -16,7 +16,7 @@ use std::time::Instant;
 pub const ON_DIALOG_DISPLAY_INDEX: u16 = 105;
 
 /// The cooked-data category of dialogs (`CookedDataDialogs.pak`).
-pub const DIALOGS_CATEGORY: u32 = 5;
+pub(super) const DIALOGS_CATEGORY: u32 = 5;
 
 /// Where the dialog id sits in the `onDialogDisplay` args: after the
 /// little-endian `EntityId` (`send_dialog_display`, `args[0..4]`).
@@ -50,7 +50,7 @@ pub fn note_dialog_display(addr: SocketAddr, dialog_id: u32, now: Instant) {
 
 /// Milliseconds since `dialog_id` was last displayed to `addr`, when that
 /// display is the most recent one to `addr`; `None` otherwise.
-pub fn display_age_ms(addr: SocketAddr, dialog_id: u32, now: Instant) -> Option<u64> {
+pub(super) fn display_age_ms(addr: SocketAddr, dialog_id: u32, now: Instant) -> Option<u64> {
     let last = LAST.lock().unwrap_or_else(|e| e.into_inner());
     let &(shown, at) = last.get(&addr)?;
     if shown != dialog_id {

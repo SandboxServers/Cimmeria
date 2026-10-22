@@ -7,7 +7,7 @@
 
 use std::sync::{Mutex, MutexGuard};
 
-use serde_json::{json, Value};
+use serde_json::json;
 
 use super::controller::{ControllerState, BUTTON_LMB, BUTTON_RMB};
 use super::frame::NavFrame;
@@ -237,6 +237,8 @@ pub(super) fn step(frame: &NavFrame) {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::Value;
+
     use super::*;
 
     /// A controller with only the button word, drag and hover set.

@@ -77,8 +77,10 @@ fn is_named(mem: &impl Mem, wstr: u32, want: &str) -> Option<bool> {
     };
     let bytes = mem.bytes_at(text, units.len() * 2)?;
     let decoded: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
         .collect();
     Some(decoded == units)
 }
@@ -123,7 +125,7 @@ mod tests {
         if units.len() % 2 == 1 {
             units.push(0);
         }
-        for (i, pair) in units.chunks_exact(2).enumerate() {
+        for (i, pair) in units.as_chunks::<2>().0.iter().enumerate() {
             let word = u32::from(pair[0]) | (u32::from(pair[1]) << 16);
             mem.set(at + 4 * i as u32, word);
         }
