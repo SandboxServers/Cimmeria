@@ -69,7 +69,6 @@ walkdir = "2"
 # The work directory build-file-index unpacks the release into (its binary
 # needs it, so it is not a dev-dependency).
 tempfile = "3"
-gethostname = "1.1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 # Ed25519 detached signature verification on the manifest. Defaults off
 # bring the dep down to just what we need (no rand for signing — the

@@ -489,7 +489,7 @@ Both are described in
 > [telemetry.md § Launcher log ingest](../operations/telemetry.md#launcher-log-ingest).
 
 Single-PUT upload to Azure Blob via a SAS URL baked into the .exe at
-build time (`LAUNCHER_LOG_SAS_URL` env, consumed by `option_env!`).
+build time (retired: no build variable is read any more).
 
 ```text
 Inputs   <binaries>/sgwdebuglog*   (BigWorld unicode log, case-blind)
@@ -512,8 +512,8 @@ Wallet protection rules:
 4. **No background uploads.** Only fires on explicit button click.
 
 The local dev / PR-build pipeline produces a launcher with
-`LAUNCHER_LOG_SAS_URL = None`. The button is greyed out with a friendly
-"Log upload disabled — built without LAUNCHER_LOG_SAS_URL" note. The
+the build's upload setting unset. The button is greyed out with a friendly
+"Log upload disabled" note. The
 release workflow injects the secret.
 
 See [docs/client/launcher-distribution-setup.md](launcher-distribution-setup.md)
@@ -544,7 +544,7 @@ CIMMERIA_START32_EXE=$PWD/target/i686-pc-windows-msvc/release/sgw-start32.exe \
 # Output: target/release/sgw-launcher.exe (64-bit)
 ```
 
-`LAUNCHER_LOG_SAS_URL` enables log upload in any of these builds.
+The retired blob SAS variable used to enable log upload in any of these builds.
 Without `CIMMERIA_CLIENT_PATCHES_DLL` and `CIMMERIA_START32_EXE` the
 launcher embeds neither and looks for each beside itself.
 
@@ -571,15 +571,13 @@ Three GitHub Actions workflows mirror the server's pattern:
 | Workflow | File | Trigger |
 |---|---|---|
 | **launcher** | `.github/workflows/launcher-build.yml` | Path-filtered fmt/clippy/build/test/coverage (five jobs; the `coverage` job runs `cargo llvm-cov`) on PRs touching `crates/launcher/**`, `crates/client-launch/**`, `crates/client-patches/overlay/**` or `.github/workflows/launcher-*.yml`. Clippy covers `cimmeria-client-launch` and `cimmeria-start32` too. The test job builds the i686 `sgw-start32` helper and runs the x64 tests with `CIMMERIA_TEST_START32` set, so the helper injects a real DLL into a real 32-bit process. A `release-dry-run` job runs the release build stages (`tools/launcher-release/build.sh`) without signing or publishing, because the release workflow itself only runs on a release. |
-| **launcher-release** | [`.github/workflows/launcher-release.yml`](../../.github/workflows/launcher-release.yml) | `workflow_dispatch`. Builds the i686 client-patches DLL and `sgw-start32` helper, then the 64-bit launcher embedding both with `LAUNCHER_LOG_SAS_URL` injected from secrets, verifies them, packs the UI overlay, and creates a GitHub Release tagged `launcher-<date>-<sha7>` with the exe, its `.sha256` (what self-update verifies against) and, when there is an overlay, its patch zip and `.entry.json`. The tag and the build time are stamped before the build and embedded in the launcher (`CIMMERIA_LAUNCHER_TAG`, `CIMMERIA_LAUNCHER_BUILD_EPOCH`). A second job, `desktop-windows`, then builds the desktop launcher for Windows with `tools/launcher-release/build-desktop.sh` and attaches `stargate-worlds-launcher-desktop-windows-<tag>.zip` to the same release as a preview; macOS is deferred ([desktop release](../../crates/launcher/desktop/docs/release.md)). |
+| **launcher-release** | [`.github/workflows/launcher-release.yml`](../../.github/workflows/launcher-release.yml) | `workflow_dispatch`. Builds the i686 client-patches DLL and `sgw-start32` helper, then the 64-bit launcher embedding both, verifies them, packs the UI overlay, and creates a GitHub Release tagged `launcher-<date>-<sha7>` with the exe, its `.sha256` (what self-update verifies against) and, when there is an overlay, its patch zip and `.entry.json`. The tag and the build time are stamped before the build and embedded in the launcher (`CIMMERIA_LAUNCHER_TAG`, `CIMMERIA_LAUNCHER_BUILD_EPOCH`). A second job, `desktop-windows`, then builds the desktop launcher for Windows with `tools/launcher-release/build-desktop.sh` and attaches `stargate-worlds-launcher-desktop-windows-<tag>.zip` to the same release as a preview; macOS is deferred ([desktop release](../../crates/launcher/desktop/docs/release.md)). |
 | **launcher-release-on-comment** | [`.github/workflows/launcher-release-on-comment.yml`](../../.github/workflows/launcher-release-on-comment.yml) | Mirror of `release-on-comment.yml` but matches `/release-launcher` on a merged PR. Validates commenter has write access, dispatches `launcher-release.yml`. |
 
-Two repo secrets feed the release build: `LAUNCHER_LOG_SAS_URL` (log
-upload) and `LAUNCHER_MANIFEST_PUBKEY_HEX` (the embedded Ed25519 manifest
-verification key). PR / build jobs deliberately omit both; only
-`launcher-release` reads them. Without `LAUNCHER_LOG_SAS_URL` the release
-exe still builds and log upload is permanently disabled; without
-`LAUNCHER_MANIFEST_PUBKEY_HEX`, manifest verification fails closed with
+One repo secret feeds the release build: `LAUNCHER_MANIFEST_PUBKEY_HEX` (the embedded
+Ed25519 manifest verification key). PR / build jobs deliberately omit it; only
+`launcher-release` reads it. Without `LAUNCHER_MANIFEST_PUBKEY_HEX`,
+manifest verification fails closed with
 `ManifestError::SigningKeyUnavailable`.
 
 The launcher is **excluded** from the main `ci` workflow ([`test.yml`](../../.github/workflows/test.yml))
