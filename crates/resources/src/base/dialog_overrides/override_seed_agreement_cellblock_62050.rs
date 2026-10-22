@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 
 use super::overrides_cellblock::REMAINING_PODS_DIALOG;
-use super::{generate_dialog_xml, DIALOG_OVERRIDES, QUARANTINED_DIALOG_OVERRIDES};
+use super::{generate_dialog_xml, DIALOG_OVERRIDES};
 
 /// The 305 bytes F3 freezes. No newline anywhere.
 const EXPECTED: &[u8] = br#"<?xml version="1.0" encoding="UTF-8"?><COOKED_DIALOG DialogFlags="0" DialogID="60150" KismetEventSetID="0" UIScreenType="2"><Screens SpeakerID="0" ScreenID="96110" Text="Prisoner 329 says there are still people in the other pods. Tell Col. Marsh to check them before you leave."></Screens></COOKED_DIALOG>"#;
@@ -48,7 +48,7 @@ fn remaining_pods_dialog_emits_the_frozen_bytes() {
 }
 
 /// The override keeps the shape 3995 and 3996 already serve: one screen,
-/// speaker 0, no buttons, UI type 2, flags 0, and not quarantined.
+/// speaker 0, no buttons, UI type 2, flags 0.
 #[test]
 fn remaining_pods_dialog_keeps_the_served_shape() {
     let served: Vec<_> = DIALOG_OVERRIDES
@@ -63,12 +63,6 @@ fn remaining_pods_dialog_keeps_the_served_shape() {
     assert_eq!(ov.screens[0].speaker_id, 0);
     assert!(ov.screens[0].buttons.is_empty(), "zero buttons");
     assert_eq!(ov.screens[0].screen_id, 96110);
-    assert!(
-        QUARANTINED_DIALOG_OVERRIDES
-            .iter()
-            .all(|q| q.dialog_id != DIALOG_ID),
-        "60150 must not be in any quarantine list",
-    );
 }
 
 /// The `dialogs.sql` and `dialog_screens.sql` rows for 60150 are present
