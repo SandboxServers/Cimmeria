@@ -44,6 +44,7 @@ impl Default for LogUploader {
 }
 
 impl LogUploader {
+    /// Builds the one upload state for this app run: one log sender, a fresh cancel token, no upload running.
     pub fn new() -> Self {
         Self {
             sender: Arc::new(LauncherSender::logs()),
@@ -172,11 +173,21 @@ impl LogIngest {
         let Some(log_dir) = log_dir else {
             return Ok(status(LogUploadState::NoLogs));
         };
-        let read = {
+        let read = tokio::task::spawn_blocking({
             let (state_dir, cancel) = (state_dir.clone(), cancel.clone());
-            tokio::task::spawn_blocking(move || read_pending(&state_dir, &log_dir, &cancel))
-                .await
-                .map_err(|_| LogUploadError::CollectFailed)??
+            move || read_pending(&state_dir, &log_dir, &cancel)
+        })
+        .await;
+        let read = match read {
+            Ok(Ok(read)) => read,
+            Ok(Err(error)) => {
+                events::collect_failed("lines_read");
+                return Err(error);
+            }
+            Err(_) => {
+                events::collect_failed("read_task_failed");
+                return Err(LogUploadError::CollectFailed);
+            }
         };
         let Pending {
             mut offsets,
@@ -203,6 +214,7 @@ impl LogIngest {
             std::env::consts::OS,
         );
         if rows.len() != collected.lines.len() {
+            events::failed("rows_mismatch");
             return Err(LogUploadError::Network);
         }
         let mut done = 0usize;

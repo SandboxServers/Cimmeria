@@ -7,6 +7,7 @@ use super::offsets::Offsets;
 use super::*;
 use crate::client_setup::login_servers::LoginServer;
 use crate::game_telemetry::launcher_session::BatchOutcome;
+use crate::test_capture::capture;
 use cimmeria_launcher_core::telemetry::events::TelemetryEvent;
 use std::future::Future;
 use tokio_util::sync::CancellationToken;
@@ -328,6 +329,43 @@ async fn partial_keeps_the_unsent_lines_for_the_next_press() {
             .copied(),
         Some(2_500 * width as u64)
     );
+    let mints = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/api/auth/dev-session")
+        .count();
+    assert_eq!(
+        mints, 1,
+        "two presses on one LogUploader share one log session"
+    );
+}
+
+#[test]
+fn a_cancelled_line_read_says_why_in_one_collect_failed_event() {
+    let root = tempfile::tempdir().unwrap();
+    write_log(root.path(), 3);
+    let state = state_at(root.path(), "http://127.0.0.1:9");
+    let uploader = LogUploader::new();
+    uploader.cancel();
+    // A second live dispatcher keeps the callsite interest from caching "never".
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let (result, logged) = capture(|| {
+        let step = state.begin_log_upload(upload(), &uploader).unwrap();
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(ingest_of(step).run_with(&mut FakePacer::default()))
+    });
+    assert!(matches!(result, Err(LogUploadError::CollectFailed)));
+    let collect: Vec<_> = logged
+        .iter()
+        .filter(|e| e.field("event") == Some("log_upload_collect_failed"))
+        .collect();
+    assert_eq!(collect.len(), 1, "exactly one collect_failed event");
+    assert_eq!(collect[0].level, tracing::Level::WARN);
+    assert_eq!(collect[0].field("reason"), Some("lines_read"));
 }
 
 #[tokio::test]

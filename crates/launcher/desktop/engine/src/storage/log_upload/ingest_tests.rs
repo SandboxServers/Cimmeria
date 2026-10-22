@@ -180,6 +180,23 @@ impl ChunkSink for FakeSink {
     }
 }
 
+/// `send_with` with a cancel token that never fires.
+async fn send_uncancelled(
+    sink: &mut FakeSink,
+    events: &[TelemetryEvent],
+    pacer: &mut FakePacer,
+    on_chunk_sent: impl FnMut(usize),
+) -> IngestOutcome {
+    send_with(
+        sink,
+        events,
+        pacer,
+        &CancellationToken::new(),
+        on_chunk_sent,
+    )
+    .await
+}
+
 fn forty_chunks() -> Vec<TelemetryEvent> {
     rows_of(40_000, |i| format!("line {i}"))
 }
@@ -190,14 +207,7 @@ async fn forty_chunks_start_at_least_3500_ms_apart_and_never_18_plus_in_a_minute
     let mut pacer = FakePacer::default();
     let mut sink = FakeSink::new(&pacer, 0);
     let mut done = 0usize;
-    let out = send_with(
-        &mut sink,
-        &events,
-        &mut pacer,
-        &CancellationToken::new(),
-        |n| done += n,
-    )
-    .await;
+    let out = send_uncancelled(&mut sink, &events, &mut pacer, |n| done += n).await;
     assert_eq!(out, IngestOutcome::Sent { lines_sent: 40_000 });
     assert_eq!(done, 40_000);
     assert_eq!(sink.starts.len(), 40);
@@ -221,14 +231,7 @@ async fn a_slow_send_shortens_or_removes_the_next_sleep() {
     let events = rows_of(3_000, |i| format!("line {i}"));
     let mut pacer = FakePacer::default();
     let mut sink = FakeSink::new(&pacer, 5_000);
-    send_with(
-        &mut sink,
-        &events,
-        &mut pacer,
-        &CancellationToken::new(),
-        |_| {},
-    )
-    .await;
+    send_uncancelled(&mut sink, &events, &mut pacer, |_| {}).await;
     assert!(
         pacer.sleeps.is_empty(),
         "a 5 s send already waited long enough"
@@ -236,14 +239,7 @@ async fn a_slow_send_shortens_or_removes_the_next_sleep() {
 
     let mut pacer = FakePacer::default();
     let mut sink = FakeSink::new(&pacer, 1_000);
-    send_with(
-        &mut sink,
-        &events,
-        &mut pacer,
-        &CancellationToken::new(),
-        |_| {},
-    )
-    .await;
+    send_uncancelled(&mut sink, &events, &mut pacer, |_| {}).await;
     assert_eq!(pacer.sleeps, vec![2_500, 2_500]);
 }
 
@@ -259,14 +255,7 @@ async fn a_429_on_chunk_21_ends_partial_with_no_sleep_after_it() {
         },
     )];
     let mut done = 0usize;
-    let out = send_with(
-        &mut sink,
-        &events,
-        &mut pacer,
-        &CancellationToken::new(),
-        |n| done += n,
-    )
-    .await;
+    let out = send_uncancelled(&mut sink, &events, &mut pacer, |n| done += n).await;
     assert_eq!(
         out,
         IngestOutcome::Partial {
@@ -294,28 +283,14 @@ async fn the_first_post_failing_to_mint_is_unreachable_a_later_one_is_failed() {
     let mut sink = FakeSink::new(&pacer, 0);
     sink.script = vec![(1, mint)];
     assert_eq!(
-        send_with(
-            &mut sink,
-            &events,
-            &mut pacer,
-            &CancellationToken::new(),
-            |_| {}
-        )
-        .await,
+        send_uncancelled(&mut sink, &events, &mut pacer, |_| {}).await,
         IngestOutcome::Unreachable
     );
     let mut pacer = FakePacer::default();
     let mut sink = FakeSink::new(&pacer, 0);
     sink.script = vec![(2, mint)];
     assert_eq!(
-        send_with(
-            &mut sink,
-            &events,
-            &mut pacer,
-            &CancellationToken::new(),
-            |_| {}
-        )
-        .await,
+        send_uncancelled(&mut sink, &events, &mut pacer, |_| {}).await,
         IngestOutcome::Failed
     );
 }
@@ -351,13 +326,7 @@ fn a_failed_upload_says_why_in_the_finish_event() {
             tokio::runtime::Builder::new_current_thread()
                 .build()
                 .unwrap()
-                .block_on(send_with(
-                    &mut sink,
-                    &events,
-                    &mut pacer,
-                    &CancellationToken::new(),
-                    |_| {},
-                ))
+                .block_on(send_uncancelled(&mut sink, &events, &mut pacer, |_| {}))
         });
         let finished = logged
             .iter()
@@ -608,13 +577,9 @@ fn a_single_row_that_cannot_fit_is_dropped_and_counted_and_the_rest_go() {
         tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap()
-            .block_on(send_with(
-                &mut sink,
-                &events,
-                &mut pacer,
-                &CancellationToken::new(),
-                |n| marks.push(n),
-            ))
+            .block_on(send_uncancelled(&mut sink, &events, &mut pacer, |n| {
+                marks.push(n)
+            }))
     });
     assert_eq!(out, IngestOutcome::Sent { lines_sent: 2 });
     // The skipped row rides with the chunk after it, so an offset moves past it.
@@ -638,13 +603,7 @@ fn start_and_finish_are_one_info_event_each_without_the_upload_id() {
         tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap()
-            .block_on(send_with(
-                &mut sink,
-                &events,
-                &mut pacer,
-                &CancellationToken::new(),
-                |_| {},
-            ))
+            .block_on(send_uncancelled(&mut sink, &events, &mut pacer, |_| {}))
     });
     assert_eq!(out, IngestOutcome::Sent { lines_sent: 2_000 });
     let ours: Vec<_> = logged
@@ -702,14 +661,7 @@ async fn an_upload_over_40000_rows_sends_40000_and_ends_partial() {
     let mut pacer = FakePacer::default();
     let mut sink = FakeSink::new(&pacer, 0);
     let mut marks = Vec::new();
-    let out = send_with(
-        &mut sink,
-        &events,
-        &mut pacer,
-        &CancellationToken::new(),
-        |n| marks.push(n),
-    )
-    .await;
+    let out = send_uncancelled(&mut sink, &events, &mut pacer, |n| marks.push(n)).await;
     assert_eq!(
         out,
         IngestOutcome::Partial {

@@ -50,6 +50,6 @@ try{
  // No log server for this install: the line says so and the button stays usable.
  ui=page(()=>({schema_version:1,state:'unreachable'}));await ui.app.ready;
  assert.match(ui.text(),/could not be reached/);assert.equal(ui.button().hidden,false);assert.equal(ui.button().disabled,false);
- console.log('Debug logs UAT passed: first press shows Uploading… then the sent line count and upload id; a repeat says Nothing new to upload; no store hides the button; a busy refusal says another upload is running; a partial send says when to press again and survives a ready re-inspect; an unreachable server keeps the button usable.');
+ console.log('Debug logs UAT passed: first press shows Uploadingâ€¦ then the sent line count and upload id; a repeat says Nothing new to upload; no store hides the button; a busy refusal says another upload is running; a partial send says when to press again and survives a ready re-inspect; an unreachable server keeps the button usable.');
  console.log('Excluded: the real native host and network (engine tests cover the reads, paced posts and offsets); the packaged window and visual layout.');
 }finally{await ui.app.dispose();}
