@@ -178,8 +178,10 @@ the launcher at the folder. You don't need the old launcher for this.
 1. Open **Settings** (⚙). Under **Use an existing game folder**, pick a mode
    (Windows and Linux show both). Each mode is its own row with a short
    description, and the picked row is outlined.
-   - **Adopt it in place** (Windows). The launcher takes over that folder and
-     moves the game files into a `game` folder inside it. Shortcuts to the old
+   - **Use it where it is (recommended).** The launcher takes over that folder
+     and moves its game files, including any you added, into a `game` folder
+     inside it. It does not download the whole game: it works out which patches
+     your folder is missing and downloads only those. Shortcuts to the old
      `SGW.exe` stop working.
    - **Make a verified copy.** Your folder stays exactly as it is. The launcher
      makes a checked copy in the place you choose.
@@ -187,7 +189,9 @@ the launcher at the folder. You don't need the old launcher for this.
    place…** or **Choose the folder to copy…**. With one mode it reads **Use an
    existing game folder…**.
 3. Pick your game folder. The game root, the `Working` folder and the
-   `Binaries` folder all work.
+   `Binaries` folder all work. If you pick a folder that holds exactly one game
+   folder one level down, the launcher uses that one. If it holds several, the
+   launcher asks you to pick the one you want.
 4. Read the review screen. It lists:
    - files that will be updated to the current release;
    - modified or missing files. The launcher replaces these only if you tick
@@ -195,20 +199,48 @@ the launcher at the folder. You don't need the old launcher for this.
      `cimmeria-adoption-backup-<id>` in the game folder. The launcher never
      deletes that folder, not even when you uninstall.
    - what will be downloaded.
+
+   A **Use it where it is** review reads differently: it says the game was
+   found in your folder, how many patches are already applied and how many will
+   be applied (with the download size), and, if there are any, which patch
+   changes can't be applied (see below). It has no tick box for replacing
+   files, because that mode never replaces or removes your files. The button
+   reads **Use this folder**.
 5. Tick the confirmations and click the confirm button on the screen.
 
-Program Files folders can't be adopted in place, so use a verified copy for
+Program Files folders can't be used where they are, so use a verified copy for
 those.
 
-Before you adopt in place, know what changes:
+#### What "can't be applied" means
+
+A patch changes specific files from a known starting version. If one of your
+files differs from that starting version (a modded file, or a different build),
+the launcher can't apply that change to it. It skips the change, leaves your
+file exactly as it is, and still lets you use the folder. The review lists those
+files. The rest of the patch is applied. Nothing about a skipped change stops
+the game from starting, but that part of the patch is missing until you repair.
+
+After the adoption, the main view tells you how many patch changes were skipped.
+**Repair** rebuilds the game from the release and so applies every patch in
+full. It also moves your current `game` folder aside as a backup, so files you
+added yourself stay only in that backup afterwards. An **Update** does the same
+rebuild for an install that came from a download. For an install you adopted with
+**Use it where it is**, an Update downloads only the new patches and keeps your
+files.
+
+Nothing here has been tried by a player yet: this describes how the launcher is
+built and tested, not a verified walkthrough.
+
+Before you use a folder where it is, know what changes:
 
 - `SGW.exe` and the other game files move into a new `game` folder inside your
   folder. Desktop shortcuts to `SGW.exe` and to the old launcher stop working.
   Start the game from this launcher from now on. Don't run the old launcher on
   this folder again: it may download the whole game a second time.
 - Files you added yourself inside the game folders, such as PAKs you placed by
-  hand in `SourceCache.en-us`, stay where they are, and the game no longer uses
-  them.
+  hand in `SourceCache.en-us`, move into `game` with everything else, and the
+  game keeps using them. (With a verified copy your folder is untouched, so
+  nothing moves.)
 - Your game settings and the client cache live in `Documents` and are not
   affected.
 - An adopted folder plays without the game diagnostics module for now, even

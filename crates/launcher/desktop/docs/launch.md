@@ -473,6 +473,11 @@ a `client.` prefix (`client.launcher.install`). The full subsystem table is in
 [observability.md](../../../../docs/architecture/observability.md). `launcher.launch` carries `launch_refused`, `launch_started`, `launch_not_started`,
 `launch_failed`, `game_started`, `game_exited` and `launch_finished`, each with the
 operation number; refusals, failures and not-started launches add a closed `reason`.
+`launch_started` also carries `adoption_check` (`light`, `full`, or `none` for an
+install not adopted from a folder) and `patches_incomplete` (how many patches the
+copy's `launcher-installed.json` lists in `incomplete_patches`). When the installed
+copy cannot be read for those tags, the launcher logs a WARN `launch_tags_unavailable`
+(the event name only, no error text) and the launch goes on untagged (`none`, 0).
 Two events on `launcher.telemetry` are named here: `pipeline_recovered`, one row when the
 upload pipeline comes back after failures, and `game_session_mint_failed`, when
 a game session could not be minted and Play went on with no game diagnostics.

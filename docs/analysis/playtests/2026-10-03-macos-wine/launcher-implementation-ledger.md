@@ -784,3 +784,12 @@ An in-place adoption that the scan refuses now lists up to five offending files 
 folders with what to do, and the mode choice is a row with a selected state that the
 choose button names. Both modes name the entries that make the launcher refuse a folder; the survey logs them by relative path only. See the
 [launcher-adopt-ux README](../../launcher-adopt-ux/README.md).
+
+### 2026-10-22: light adoption, seedless Update and the index comparison
+
+The shell offers **Use it where it is** (Light) and the verified copy; verified in-place
+adoption is hidden (D-LA12). Light replays the missing patches over the folder's own
+files, skips operations whose source differs, and records them in `incomplete_patches`.
+A light-adopted install updates without the seed. None of this has had live UAT. See
+the [migration contract](../../../../crates/launcher/desktop/docs/migration.md#adopting-an-existing-folder)
+and the [light-adoption packets](../../launcher-telemetry/work-packets-light-adoption.md).
