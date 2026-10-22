@@ -25,7 +25,8 @@ impl InteractionKind {
 }
 
 /// How the interaction target was resolved. Label is one of `"trainer"`,
-/// `"chain_tag"`, `"chain_template"`, `"fallback"` or `"item_used"`.
+/// `"chain_tag"`, `"chain_template"`, `"fallback"`, `"item_used"` or
+/// `"hostile_attack"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InteractionRoute {
     /// Resolved through a trainer.
@@ -38,6 +39,8 @@ pub enum InteractionRoute {
     Fallback,
     /// Resolved as an item use.
     ItemUsed,
+    /// A right-click on a living hostile NPC, rerouted to combat.
+    HostileAttack,
 }
 
 impl InteractionRoute {
@@ -49,6 +52,7 @@ impl InteractionRoute {
             Self::ChainTemplate => "chain_template",
             Self::Fallback => "fallback",
             Self::ItemUsed => "item_used",
+            Self::HostileAttack => "hostile_attack",
         }
     }
 }

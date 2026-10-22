@@ -135,9 +135,10 @@ async fn out_of_range_interact_writes_no_row() {
     assert!(rows.is_empty(), "{rows:#?}");
 }
 
-/// Pins that a hostile reroute to combat is taken before the capture, so it writes no pose row.
+/// Pins that a right-click on a living hostile writes one `hostile_attack` pose row (F5).
+/// The target is the only hostile in the scene, so no hostile-context row follows it.
 #[tokio::test]
-async fn hostile_reroute_writes_no_row() {
+async fn hostile_right_click_emits_hostile_attack_pose() {
     const PLAYER: u32 = 9304;
     let (mut mgr, npc) = scene(PLAYER, 3.0);
     mgr.get_entity_mut(npc).unwrap().faction = crate::cell::combat::HOSTILE_FACTION;
@@ -158,5 +159,18 @@ async fn hostile_reroute_writes_no_row() {
         .into_iter()
         .filter(|c| c.target == "interaction.pose")
         .collect();
-    assert!(rows.is_empty(), "{rows:#?}");
+    let pose: Vec<_> = rows
+        .iter()
+        .filter(|c| c.fields.get("event").map(String::as_str) == Some("interaction_pose"))
+        .collect();
+    assert_eq!(pose.len(), 1, "{rows:#?}");
+    assert_eq!(
+        pose[0].fields.get("route").map(String::as_str),
+        Some("hostile_attack")
+    );
+    let hostiles: Vec<_> = rows
+        .iter()
+        .filter(|c| c.fields.get("event").map(String::as_str) == Some("interaction_hostiles"))
+        .collect();
+    assert!(hostiles.is_empty(), "the only hostile is the target: {rows:#?}");
 }

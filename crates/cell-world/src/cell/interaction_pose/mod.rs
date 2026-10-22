@@ -10,6 +10,9 @@ mod emit_tests;
 mod geometry;
 #[cfg(test)]
 mod geometry_tests;
+mod hostiles;
+#[cfg(test)]
+mod hostiles_tests;
 pub mod inbound;
 #[cfg(test)]
 mod inbound_tests;
@@ -18,4 +21,8 @@ pub use capture::{capture_interaction_pose, InteractionPose};
 pub use emit::{emit_interaction_pose, emit_interaction_pose_at, PoseExtra, POSE_MIN_INTERVAL};
 pub use geometry::{
     pose_geometry, wrap_deg_180, wrap_deg_360, InteractionKind, InteractionRoute, PoseGeometry,
+};
+pub use hostiles::{
+    emit_nearby_hostiles, nearby_hostiles, NearbyHostile, HOSTILE_CONTEXT_MAX,
+    HOSTILE_CONTEXT_RADIUS_M,
 };

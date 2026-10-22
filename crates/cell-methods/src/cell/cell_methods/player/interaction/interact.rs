@@ -80,6 +80,22 @@ pub(super) async fn handle_interact(
         !t.is_player && t.faction == 10 && !crate::cell::combat::is_dead_state(t.state_field)
     });
     if is_hostile {
+        // Pose row for the hostile click, with the hostiles around the player (F5).
+        if let Some(pose) =
+            interaction_pose::capture_interaction_pose(space_mgr, entity_id, target_entity_u32)
+        {
+            if let Some(seq) = interaction_pose::emit_interaction_pose(
+                &pose,
+                InteractionKind::Interact,
+                InteractionRoute::HostileAttack,
+                PoseExtra {
+                    dialog_id: None,
+                    item_type_id: None,
+                },
+            ) {
+                interaction_pose::emit_nearby_hostiles(space_mgr, &pose, seq);
+            }
+        }
         super::hostile_attack::right_click_attack(
             entity_id,
             target_entity_id,
@@ -254,7 +270,7 @@ pub(super) async fn handle_interact(
     }
 
     if let Some(pose) = pose {
-        let _ = interaction_pose::emit_interaction_pose(
+        if let Some(seq) = interaction_pose::emit_interaction_pose(
             &pose,
             InteractionKind::Interact,
             route,
@@ -262,7 +278,9 @@ pub(super) async fn handle_interact(
                 dialog_id,
                 item_type_id: None,
             },
-        );
+        ) {
+            interaction_pose::emit_nearby_hostiles(space_mgr, &pose, seq);
+        }
     }
 }
 
