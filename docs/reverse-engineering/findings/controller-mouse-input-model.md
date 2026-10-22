@@ -96,3 +96,71 @@ All aggregated (per ~100 ms window or per transition), no per-frame rows, no key
 5. A ~4 Hz pose sample while anything changes: camera yaw/pitch/distance, pawn location and rotator, `PlayerInput` forward/strafe/turn, hover id.
 6. Hover changes via `0x00e83cb0`.
 7. CEGUI-handled vs world button routing (`0x00581f80`).
+
+## 6. Poll model (LN-15)
+
+Static RE, headless Ghidra (`tools/re/ghidra-headless/Probe.java`, read-only), 2026-10-22. Marks: **static** = read from the decompile or disassembly; **inferred** = standard UE3/CEGUI 0.6 shape, not traced instruction by instruction. Nothing here is confirmed live; LN-13 does that.
+
+### 6.1 `0x0056b890` "CEGUI owns the mouse" is a hit test, not a field
+
+**static.** The only caller is PlayerTick (`0x00e84dab`). `this` is the `SGWUIManager` singleton (getter `0x0056f980`, global `g_SGWUIManager_ptr` at VA `0x01ee2a58`). The function:
+
+1. Returns false if `UIMgr+0xc` (the CEGUI `System*`) or `UIMgr+0x38` (cursor provider) is null.
+2. Calls cursor provider vtable `+0x30` for the integer cursor position, converts to float.
+3. Calls `Window::getChildAtPosition` `0x011a55b0` on the active sheet `System+0x2c`.
+4. Returns true when the hit window is non-null, is not the sheet itself, and its name (wide string at `window+0x1e8`) compared with `L"BackgroundWin"` (`0x0183f8c8`, compare `0x00570ff0`) is non-zero.
+
+So there is no stored flag to poll: the answer is recomputed by a recursive child walk every tick.
+
+**Nearest pollable chain (static, with one caveat below):** CEGUI `System::injectMouseMove` `0x011ae5b0` stores the window under the mouse at `System+0x28` (`d_wndWithMouse`) after calling `getTargetWindow` `0x011ade50`.
+
+| Step | Read | Type |
+|---|---|---|
+| 1 | `*(u32*)0x01ee2a58` → `UIMgr` | pointer, may be 0 before UI init |
+| 2 | `*(u32*)(UIMgr+0xc)` → `System` | pointer |
+| 3 | `*(u32*)(System+0x28)` → `wndWithMouse` | `CEGUI::Window*`, may be 0 |
+| 4 | `*(u32*)(System+0x2c)` → active sheet | `CEGUI::Window*` |
+| 5 | name at `wndWithMouse+0x1e8` | MSVC `std::wstring` (length u32 at `+0x14` of the string, so `window+0x1fc`) *inferred layout* |
+
+"CEGUI owns the mouse" ≈ `wndWithMouse != 0 && wndWithMouse != sheet && name != "BackgroundWin"`. LN-10 can resolve the BackgroundWin window pointer once by name and compare pointers after that.
+
+Caveat (static): this is not the same predicate as `0x0056b890`. `getTargetWindow` returns the capture window (`DAT_01f00278`, CEGUI `Window::d_captureWindow`) when one is set, falls back to the sheet when nothing is hit, and is clamped to the modal target `System+0x30`. `d_wndWithMouse` is updated only on mouse-move injection, so it can be stale while the cursor is still or hidden (UI MouseLook hides it, `0x0056c620`). A read-only post-call capture of AL at `0x0056b890` would be exact; that is a hook, not a poll (D-LN5).
+
+Also seen: CEGUI `System::injectMouseButtonUp` is `0x011b0040` (`System+0x50` sys-key bits, `+0x74` click trackers, parent link `window+0x48`). `0x00581f80` sends every button to CEGUI (`0x0056b1b0`) and then to the world handler `0x00581dc0`.
+
+### 6.2 Drag counters on release
+
+**static.** Helper `0x00e85540`: the press branch (`released == 0`) zeroes `+0x4a0`/`+0x4a4` and subscribes MouseMove; the release branch only unsubscribes (`0x00e876a0`) and never writes them. It returns true on press. LMB `0x00e85710` and RMB `0x00e85860` test `|+0x4a0| < 5 && |+0x4a4| < 5` after the helper returns false, so the release tick reads the final drag. `0x00e84ac0`/`0x00e84b20` themselves never read the counters. D-LN5 holds.
+
+RMB detail: `+0x498` bit 0 is set to the helper's return (press = 1) and the click branch runs only when bit 0 is 0, that is on release.
+
+### 6.3 Click targets come from a fresh trace
+
+**static.** Both `0x00e84ac0` (select, `0x00def320`) and `0x00e84b20` (interact, `0x00def4b0`) call the pick `0x00e84860` again: cursor deproject `0x00e83fa0`, world trace `0x008721b0`, APawn fallback `0x00875970`. Neither reads the hover id `+0x4c0`. Both skip when `g_dwMapCheckDepEnabled != 0 && DAT_01eb082c == 0`. `0x00e84b20` also skips the player's own id (`*(PC+0x1b0)+0x1b4`). A telemetry row that wants the picked id must take it from those calls, not from `+0x4c0`.
+
+### 6.4 PlayerTick and the engine tick
+
+**static:** PlayerTick `0x00e84d70` has one reference, vtable slot `0x019e2c8c` (no direct caller). `FEngineLoop::Tick` `0x00416ec0` calls the engine vtable `+0x10c` with `GDeltaTime` (`DAT_01daea88`), then pumps Windows messages (`PeekMessage`/`DispatchMessage`, so WndProc `0x012357d0`) after that. **inferred:** engine `+0x10c` is `UGameEngine::Tick` → world tick → actor ticks → PlayerTick, inside `FEngineLoop::Tick`. The DirectInput pump `0x01234770` is a vtable method (data ref `0x01ac7b88`), reached from viewport input processing during the engine tick (*inferred*). A poll at the top of the existing `FEngineLoop::Tick` detour therefore sees the previous frame's controller state.
+
+Annotation note: the Ghidra global `g_pFlashExternalWindowModule` used here is `GEngine` (`+0x2d0` GamePlayers, `[0]+0x40` actor, `+0x2b0` camera in `0x00e84860`). Misnamed, see [annotation-script-shift-bugs.md](annotation-script-shift-bugs.md).
+
+### 6.5 PlayerInput axes
+
+**static, floats:** `+0xa8` forward (`+= g_flOnePointZero` in `0x00e83e10` and PlayerTick), `+0xc0` strafe (`-= 1.0` in `0x00e83e80`), `+0xa4` turn (`-= (float)20000 * time` in `0x00e84e60`), `+0xc4` up (`+= time * DAT_0181418c` in `0x00e850c0`). Every handler accumulates (`+=`/`-=`), never stores. **inferred:** they are UE3 `input float` axes zeroed each frame by `UPlayerInput` before bindings run; nothing in the controller clears them. A poll reads the last frame's summed value.
+
+### 6.6 Writers of `+0x498`
+
+**static,** instruction scan `0x498]` across the binary, controller range only (other hits belong to unrelated classes at `0x005d5520`, `0x00828240`, `0x009xxxxx`, `0x00bxxxxx`, `0x012xxxxx`). No byte writes to `+0x499..+0x49b` in the controller.
+
+| Address | Function | Write |
+|---|---|---|
+| `0x00e83a73` | ToggleAutorun `0x00e83a50` | `^= 4`, skipped when `g_dwMapCheckDepEnabled != 0 && DAT_01eb082c == 0` |
+| `0x00e83e10` | forward `0x00e83e10` | `&= ~4` |
+| `0x00e83e56` | back `0x00e83e50` | `&= ~4` |
+| `0x00e853a9` | jump `0x00e850c0` | bit 1 = held (`!released`) |
+| `0x00e856d5` | constructor `0x00e85680` | `&= 0xfffffff2` (bits 0, 2, 3) |
+| `0x00e8583e` | LMB `0x00e85710` | bit 3 = both buttons held |
+| `0x00e85946` | RMB `0x00e85860` | bit 0 = press |
+| `0x00e859a4` | RMB `0x00e85860` | bit 3 = both buttons held |
+
+Readers: `0x00e7b256` (pawn rotation override, bit 0), `0x00e84b79` (ground target, bit 0), `0x00e84e27` (PlayerTick, `& 0xc`), `0x00e83e17` (forward, bit 3), `0x00e85260` (jump, bit 1), `0x00e8594c` (RMB, bit 0). The scan finds only `[reg + 0x498]` forms; a write through a computed base would be missed.
