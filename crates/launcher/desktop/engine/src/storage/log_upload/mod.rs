@@ -14,6 +14,11 @@ use cimmeria_launcher_core::logs;
 use cimmeria_launcher_core::state::UploadedLedger;
 mod events;
 mod launcher_logs;
+// LF-15 calls these from `Upload`; until then only their tests use them.
+#[allow(dead_code)]
+mod lines;
+#[allow(dead_code)]
+mod offsets;
 mod store;
 pub use store::{LogStore, StoredUpload};
 #[cfg(test)]
