@@ -88,6 +88,8 @@ mod entity_labels;
 mod field_caps;
 mod launcher_budget;
 mod launcher_gate;
+mod launcher_log_budget;
+mod launcher_log_rows;
 mod launcher_rows;
 mod launcher_summary;
 mod refusal_log;
@@ -103,9 +105,15 @@ mod client_pid_tests;
 #[cfg(test)]
 mod entity_labels_tests;
 #[cfg(test)]
+mod launcher_log_budget_tests;
+#[cfg(test)]
+mod launcher_log_rows_tests;
+#[cfg(test)]
 mod launcher_rows_tests;
 #[cfg(test)]
 mod replay_camera_tests;
+#[cfg(test)]
+mod replay_log_tests;
 #[cfg(test)]
 mod replay_names_tests;
 #[cfg(test)]

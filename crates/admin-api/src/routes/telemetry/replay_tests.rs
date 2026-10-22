@@ -85,6 +85,7 @@ pub(super) fn claims(kind: Option<&str>) -> TokenClaims {
         kind: kind.map(str::to_string),
         acct: None,
         mid: None,
+        purpose: None,
     }
 }
 

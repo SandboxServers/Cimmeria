@@ -2,6 +2,7 @@
 # cross-platform conflicts between Linux (LF) and Windows (CRLF) checkouts.
 Cargo.lock text eol=lf
 crates/launcher-core/src/telemetry/launcher_targets.txt text eol=lf
+crates/launcher-core/src/telemetry/launcher_log_targets.txt text eol=lf
 frontend/package-lock.json text eol=lf
 
 # Container build artefacts must stay LF — Linux interprets the shebang
