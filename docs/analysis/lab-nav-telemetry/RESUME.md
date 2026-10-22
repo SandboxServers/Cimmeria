@@ -12,7 +12,7 @@ Ledger: [README.md](README.md) · Packets: [work-packets.md](work-packets.md) (r
 | 1b | LN-20a → LN-20b → LN-20d (stacked), LN-20c, LN-20e | one PR from `lab-nav-telemetry/wave1b`, after LN-05 merges | LN-20a, c, e Ready |
 | 1b | LN-12b (BM overlay clock) | one PR | after LN-11 merges |
 | 2 | LN-15 (RE), LN-19, then LN-06 + LN-07 | LN-15, LN-19 one PR each; LN-06+07 from `lab-nav-telemetry/wave2` | LN-15 after LN-11; LN-19 triage first; LN-06 after wave 1 |
-| 3 | LN-08, LN-09, LN-10, LN-16 | one PR from `lab-nav-telemetry/wave3` | after wave 2; LN-10 also LN-15 |
+| 3 | LN-08 → LN-09 → LN-10 → LN-16, one at a time in `ln-w3` | one PR from `lab-nav-telemetry/wave3` | Ready (re-specified 2026-10-22; LN-10 filled from LN-15 § 6.1) |
 | 4 | LN-13 (lab), LN-18 (launcher), LN-14 (close-out) | one each | blocked |
 
 **Next.**
@@ -21,7 +21,7 @@ Ledger: [README.md](README.md) · Packets: [work-packets.md](work-packets.md) (r
 3. Dispatch wave 1 and LN-20a, LN-20c, LN-20e (packet-coder) in the background. Merge LN-11 first, then dispatch LN-12b and LN-15.
 4. LN-20b is cut at LN-20a's reviewed head, LN-20d at LN-20b's. `ops` merges LN-20a, b, d, c, e into `ln-w1b`; wave review there; one PR.
 5. LN-19: first a `telemetry-triage` agent writes `worknotes/ln-19-triage.md`.
-6. Before LN-10 and LN-18: a fresh architect fills LN-10's chain from LN-15 and re-checks LN-18's launcher lines.
+6. Wave 3: dispatch LN-08, LN-09, LN-10, LN-16 one at a time in `ln-w3` (work-packets § Wave 3, rules W1-W3). Each packet's review passes before the next coder starts; then the wave review and one PR. Before LN-18, a fresh architect re-checks its launcher lines.
 7. LN-13 needs the lab: ask the user first and wait until it is free.
 
 **Owner steps after release (no lab):** re-sign and publish the overlay, then check that a BM reopen sends a second `BMSearch`; check the debug-hub and Banker dialogs and two Castle_CellBlock entries (unified-uat K2/K3 after LN-20e).

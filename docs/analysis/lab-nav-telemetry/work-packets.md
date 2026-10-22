@@ -7,7 +7,7 @@ Design complete (architect pass, 2026-10-22). Owner decisions D-LN1 (yes, varian
 ## Dispatch rules
 
 - **Waves.** Wave 1 (LN-01..05, LN-11) touches no launcher file and runs in parallel with launcher-uat-fixes. Wave 2 code (LN-06, LN-07, LN-19) after wave 1 has merged; the RE packets LN-12 and LN-15 touch only docs and memory and can start any time. Wave 1b (LN-12b, LN-20a..e; [work-packets-wave1b.md](work-packets-wave1b.md)) runs beside wave 1; LN-12b and LN-15 start after LN-11 has merged (LN-11 commits the files they need). Wave 3 (LN-08, LN-09, LN-10, LN-16) after wave 2; D-LN1 is decided (A), so LN-17 is out unless the owner later picks B. Wave 4 (LN-13, LN-18, LN-14) last.
-- **Shipping.** Wave 1: one PR per packet; merge order LN-11, LN-04, LN-05, LN-01, LN-02, LN-03 (LN-11 first: LN-12b and LN-15 need its files; LN-02 and LN-03 edit different hunks of `interact.rs`; LN-03 rebases after LN-02). Wave 2: LN-06 and LN-07 ship together from an integration worktree on branch `lab-nav-telemetry/wave2` (LN-07's worktree is a branch cut at LN-06's reviewed head); LN-15 and LN-19 ship one PR each, in that order, then the wave-2 PR (LN-12 is done and commits nothing: its memory entry rides LN-11, its fix is LN-12b). Wave 1b: see [work-packets-wave1b.md § Dispatch and shipping](work-packets-wave1b.md#dispatch-and-shipping) (LN-20a..e as one integration PR from `lab-nav-telemetry/wave1b`, LN-12b its own PR). Wave 3: one integration PR from `lab-nav-telemetry/wave3` (cut from `main` after the wave-2 PR merges), packets merged in the order LN-08, LN-09, LN-10, LN-16 (LN-17 last if D-LN1 = B). Wave 4: LN-18 and LN-14 one PR each.
+- **Shipping.** Wave 1: one PR per packet; merge order LN-11, LN-04, LN-05, LN-01, LN-02, LN-03 (LN-11 first: LN-12b and LN-15 need its files; LN-02 and LN-03 edit different hunks of `interact.rs`; LN-03 rebases after LN-02). Wave 2: LN-06 and LN-07 ship together from an integration worktree on branch `lab-nav-telemetry/wave2` (LN-07's worktree is a branch cut at LN-06's reviewed head); LN-15 and LN-19 ship one PR each, in that order, then the wave-2 PR (LN-12 is done and commits nothing: its memory entry rides LN-11, its fix is LN-12b). Wave 1b: see [work-packets-wave1b.md § Dispatch and shipping](work-packets-wave1b.md#dispatch-and-shipping) (LN-20a..e as one integration PR from `lab-nav-telemetry/wave1b`, LN-12b its own PR). Wave 3: one integration PR from `lab-nav-telemetry/wave3` (worktree `ln-w3`, which holds the wave-2 code and LN-15). Coders commit there one at a time, in the order LN-08, LN-09, LN-10, LN-16; see [§ Wave 3](#wave-3-mouse-input-rows-after-d-ln1). LN-17 would go last only if D-LN1 = B. Wave 4: LN-18 and LN-14 one PR each.
 - **Agents.** Code and docs packets: `packet-coder` (Haiku). LN-12, LN-15: `game-archaeology-specialist`. LN-17: `rust-gameserver-dev`. LN-13: the orchestrator with the `lab-uat` skill, only after the user says yes. LN-19's triage step: an agent with the `telemetry-triage` skill.
 - **Host.** Every packet is `Host: windows`.
 - **Report and return.** Report at `<worktree>\.claude\reports\lab-nav-telemetry\<packet>-coder.md`; return exactly `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`. The report states what was tested and what was not.
@@ -55,7 +55,7 @@ All rows go through `crate::hooks::emit::emit(target, "info", fields)`. Angles i
 | Target | When | Fields | Packet |
 |---|---|---|---|
 | `client.nav.pose` | checked every 250 ms; emitted only when the snapshot changed (thresholds in LN-07) | `zoom`, `yaw_offset_deg`, `pitch_offset_deg`, `pawn_ok` (bool), `pawn_x`, `pawn_y`, `pawn_z`, `pawn_yaw_deg` (when `pawn_ok`), `fwd`, `strafe`, `turn` (when PlayerInput was readable), `mode`, `buttons`, `hover_id` | LN-07 |
-| `client.input.button` | each LMB/RMB edge | `button` (`lmb`/`rmb`), `edge` (`down`/`up`); on down `other_held` (bool); on up `hold_ms` (when the down was seen), `drag_x`, `drag_y`, `class` (`select`/`interact`/`drag`/`chord`), `entity_id` (hover id, only for `select`/`interact` and when non-zero); `ui_owned` (bool, only when known) | LN-08, LN-10 |
+| `client.input.button` | each LMB/RMB edge | `button` (`lmb`/`rmb`), `edge` (`down`/`up`); on down `other_held` (bool); on up `hold_ms` (when the down was seen), `drag_x`, `drag_y`, `class` (`select`/`interact`/`drag`/`chord`), `hover_id` (the hover id at release, only for `select`/`interact` and when non-zero; the client re-traces the click, so this approximates the picked target, RE § 6.3); `ui_owned` (bool, only when known; an approximation, LN-10) | LN-08, LN-10 |
 | `client.input.mode` | `mode` change, at most 8 rows per second | `mode`, `prev`, `mouselook`, `jump`, `autorun`, `mousewalk` (bools of `mode`), `suppressed` (changes not emitted since the last row) | LN-09 |
 | `client.input.hover` | `hover_id` change, at most 4 rows per second | `entity_id` (0 = none), `prev`, `suppressed` | LN-09 |
 | `client.input.mouse_window` | per 100 ms window with any mouse record (D-LN1 = B only) | `dx`, `dy`, `wheel`, `records`, `buttons`, `mode` | LN-17 |
@@ -109,7 +109,8 @@ pub struct PcCache { pub ptr: u32, pub next_scan_ms: u64 }
 pub fn controller_ptr(mem: &impl Mem, now_ms: u64, cache: &mut PcCache) -> Option<u32>;
 
 // pose.rs (LN-07), buttons.rs (LN-08), transitions.rs (LN-09), ui.rs (LN-10).
-// LN-07 creates these three stubs with exactly these signatures; wave 3 fills them:
+// LN-07 created these three stubs with exactly these signatures (checked in ln-w3); wave 3 fills them.
+// Their statics need const constructors: ButtonTracker::new(), RateLimitedDiff::new(cap, zero).
 pub(super) fn step(frame: &NavFrame) {}                              // buttons.rs, transitions.rs
 pub(super) fn read_ui_owned(mem: &impl Mem) -> Option<bool> { None } // ui.rs
 ```
@@ -355,7 +356,7 @@ Output: `docs/reverse-engineering/findings/black-market-reopen-search.md` (CRLF)
 
 Host: windows · Agent: game-archaeology-specialist · Branch `lab-nav-telemetry/ln-15-poll-model-re` · Worktree `ln-15` · Commit `LN-15: confirm the controller poll model statically`
 
-Status: BlockedDependency (LN-11 merged: the finding file below is untracked until LN-11 commits it).
+Status: Done (static, 2026-10-22). The answers are in the finding's § 6. Q1 found no stored flag, and LN-10 polls the nearest field as an approximation.
 
 Why: D-LN5 rests on static readings; LN-08..LN-10 need them confirmed and LN-10 needs a field to poll.
 
@@ -385,85 +386,244 @@ Lanes: server set for `cimmeria-admin-api`.
 
 ## Wave 3: mouse input rows (after D-LN1)
 
-LN-08, LN-09 and LN-10 each edit exactly one stub file from LN-07, with inline `#[cfg(test)] mod tests`, so they can run in parallel. None of them touches `tick.rs`, `mod.rs`, the governor or docs.
+Re-specified 2026-10-22 (wave-3 prep architect) against the wave-2 code in `ln-w3` and LN-15's [§ 6 Poll model](../../reverse-engineering/findings/controller-mouse-input-model.md). The packets below supersede the first-pass text.
+
+**Worktree, branches, order.** One integration worktree, `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ln-w3`, on branch `lab-nav-telemetry/wave3` (it already holds the wave-2 code LN-06/LN-07 and LN-15's RE). Coders run **one at a time in `ln-w3`**, in the order **LN-08, LN-09, LN-10, LN-16**. Each commits on `lab-nav-telemetry/wave3`. There is no per-packet branch, worktree or test DB, because the client DLL tests use none. A packet's review loop finishes on its commit before the next coder starts. After LN-16, one wave review covers the four commits, and `ops` ships one PR from `lab-nav-telemetry/wave3` to `main`. LN-17 stays out (D-LN1 = A).
+
+**Wiring is done.** `hooks/nav/tick.rs` already calls `buttons::step(&frame)` and `transitions::step(&frame)` on every engine tick, and builds `NavFrame.ui_owned` from `ui::read_ui_owned(&mem)`. LN-08, LN-09 and LN-10 each fill exactly one stub file, with inline `#[cfg(test)] mod tests`. None of them touches `tick.rs`, `mod.rs`, the governor or docs (LN-10 may change one doc line in `frame.rs`).
+
+**Wave-3 rules** (in addition to R1-R8; each packet lists the ones it needs):
+
+- W1. Work only in `ln-w3`. Start every PowerShell call with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ln-w3;`. Before your first edit, `git -C <ln-w3> branch --show-current` must print `lab-nav-telemetry/wave3`; if it doesn't, return `blocked`. Commit only your files: `git -C <ln-w3> add <files>` then `git -C <ln-w3> commit`. No stash, push, rebase, prune or branch switch. R2's "one worktree per packet" does not apply to wave 3.
+- W2. Code facts, checked against `ln-w3` on 2026-10-22. If one is wrong, return `blocked`:
+  - `super::frame::NavFrame { pub now_ms: u64, pub ctrl: ControllerState, pub ui_owned: Option<bool> }`.
+  - `super::controller::ControllerState { pub mode: u32, pub buttons: u32, pub drag: [i32; 2], pub hover_id: i32, pub axes: Option<InputAxes> }`, which derives `Clone, Copy, Debug, PartialEq, Default`. Constants: `BUTTON_LMB = 0x1`, `BUTTON_RMB = 0x2`, `MODE_MOUSELOOK = 0x1`, `MODE_JUMP = 0x2`, `MODE_AUTORUN = 0x4`, `MODE_MOUSEWALK = 0x8`.
+  - `crate::hooks::entity_trace::Fields` is `Vec<(&'static str, serde_json::Value)>`. Build values with `serde_json::json!`.
+  - `crate::hooks::emit::emit(target: &'static str, level: &'static str, fields: Fields)`, with level `"info"`.
+  - A `static X: Mutex<T> = Mutex::new(...)` needs a `const fn` constructor. Copy `PoseSampler::new` in `hooks/nav/pose.rs` (`pub const fn new() -> Self`, plus `#[derive(Default)]` so clippy's `new_without_default` stays quiet). Lock with `m.lock().unwrap_or_else(|e| e.into_inner())`.
+  - `crate::hooks::entity_trace::map::Mem` has `u32_at(addr: u32) -> Option<u32>` and `bytes_at(addr: u32, len: usize) -> Option<Vec<u8>>`. The test fake is `crate::hooks::entity_trace::map::fake::FakeMem` (`FakeMem::default()`, `mem.set(addr, u32)`). Its `bytes_at` reads word by word, so tests lay bytes out as little-endian `u32` words at 4-aligned addresses.
+  - The stub modules are private (`mod buttons;` in `nav/mod.rs`) and their entry points are `pub(super) fn step(frame: &NavFrame)` and `pub(super) fn read_ui_owned(mem: &impl Mem) -> Option<bool>`. Keep both signatures and visibilities exactly.
+- W3. Facts from LN-15 that the wave relies on (static; LN-13 confirms them live):
+  - § 6.2: the drag counters `+0x4a0`/`+0x4a4` are zeroed on press and left alone on release, so the release tick reads the final drag. The client calls a release a click when `|dx| < 5 && |dy| < 5`.
+  - § 6.3: the client's click target comes from a **fresh trace**, not from the hover id `+0x4c0`. The button row therefore carries the hover id at release as **`hover_id`** (renamed from `entity_id`; C-LN2 is updated). It approximates the picked target and is not that target.
+  - § 6.4: the poll runs at the top of `FEngineLoop::Tick` and sees the previous frame. An edge is at most one frame late.
+  - § 6.6: the `+0x498` writers are bit 0 RMB held (mouselook), bit 1 jump held, bit 2 autorun toggle, and bit 3 both buttons held (mousewalk). Polling the word sees all of them.
 
 ### LN-08 Client: button edges and click class
 
-Host: windows · Agent: packet-coder · Branch `lab-nav-telemetry/ln-08-buttons` · Worktree `ln-08` · Commit `LN-08: emit mouse button edges with drag totals and click class`
+Host: windows · Agent: packet-coder · Worktree `ln-w3`, branch `lab-nav-telemetry/wave3` (shared, first in wave 3) · Commit `LN-08: emit mouse button edges with drag totals and click class`
 
-Status: BlockedDependency (LN-06, LN-07; D-LN1 decided A). Rules: R1 (the client DLL set), R2, R3, R5, R6, R8. Edit only `crates/client-telemetry/src/hooks/nav/buttons.rs`.
+Status: Ready. Rules: R1 (the client DLL set), R3 (`buttons.rs` ends at 400 lines or fewer, tests included), R5, R6, R8, W1, W2, W3. Edit only `crates/client-telemetry/src/hooks/nav/buttons.rs` (a 7-line stub now; replace its body and keep the module doc's first line).
+
+Contract (C-LN2, `client.input.button`): one row per LMB/RMB edge. The fields are `button` (`"lmb"`/`"rmb"`) and `edge` (`"down"`/`"up"`). A down row adds `other_held` (bool). An up row adds `hold_ms` (u64, only when the down was seen), `drag_x` and `drag_y` (i32), `class` (`"select"`/`"interact"`/`"drag"`/`"chord"`), and `hover_id` (i32, only for `select`/`interact` and only when non-zero). Both edges add `ui_owned` (bool, only when `Some`).
 
 ```rust
-pub const DRAG_THRESHOLD: i32 = 5;   // RE § 1: a drag under 5 counts on both axes is a click
+use std::sync::Mutex;
+use serde_json::json;
+use super::controller::{ControllerState, BUTTON_LMB, BUTTON_RMB};
+use super::frame::NavFrame;
+use crate::hooks::entity_trace::Fields;
+
+/// RE § 6.2: the client treats a release as a click when |dx| < 5 and |dy| < 5.
+pub const DRAG_THRESHOLD: u32 = 5;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)] pub enum Button { Lmb, Rmb }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)] pub enum Edge { Down, Up }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)] pub enum ClickClass { Select, Interact, Drag, Chord }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ButtonEvent { pub button: Button, pub edge: Edge, pub other_held: bool,
-    pub hold_ms: Option<u64>, pub drag: Option<[i32; 2]>, pub class: Option<ClickClass>, pub entity_id: Option<i32> }
-#[derive(Default)]
+    pub hold_ms: Option<u64>, pub drag: Option<[i32; 2]>, pub class: Option<ClickClass>, pub hover_id: Option<i32> }
+#[derive(Debug, Default)]
 pub struct ButtonTracker { initialized: bool, prev: u32, down_at: [Option<u64>; 2], chord: [bool; 2] }
-impl ButtonTracker { pub fn step(&mut self, now_ms: u64, ctrl: &ControllerState) -> Vec<ButtonEvent>; }
+impl ButtonTracker {
+    pub const fn new() -> Self;   // false, 0, [None; 2], [false; 2]
+    pub fn observe(&mut self, now_ms: u64, ctrl: &ControllerState) -> Vec<ButtonEvent>;
+}
 pub fn classify(button: Button, drag: [i32; 2], chord: bool) -> ClickClass;
 pub fn button_fields(ev: &ButtonEvent, ui_owned: Option<bool>) -> Fields;
+static TRACKER: Mutex<ButtonTracker> = Mutex::new(ButtonTracker::new());
+pub(super) fn step(frame: &NavFrame);   // unchanged signature
 ```
 
-- `step`: the first call only records `prev = ctrl.buttons` (no events). Then per button, LMB first (bit `BUTTON_LMB`, index 0), then RMB (`BUTTON_RMB`, index 1): 0 to 1 gives `Down` (`down_at = now`, `chord` = other bit set now, `other_held` = the same); while held, the other bit set sets `chord = true`; 1 to 0 gives `Up` with `hold_ms = now - down_at` (None when unknown), `drag = Some(ctrl.drag)`, `class = classify(...)`, `entity_id = Some(ctrl.hover_id)` only for `Select`/`Interact` and a non-zero hover; then clear `down_at` and `chord`.
-- `classify`: `Drag` when `|dx| >= 5 || |dy| >= 5`; else `Chord` when `chord`; else `Select` for LMB, `Interact` for RMB.
-- `button_fields`: C-LN2 names; `class` as `select`/`interact`/`drag`/`chord`; `ui_owned` only when Some.
-- `step(frame)`: a `static TRACKER: Mutex<ButtonTracker>` (poison recovered); emit each event as `client.input.button` through `crate::hooks::emit::emit`.
-- Tests (inline): click LMB with drag (2, -3) gives Select with the hover id; RMB with drag (0, 7) gives Drag with no `entity_id`; RMB pressed while LMB is held, then both released, gives two Chord ups; a zero hover gives no `entity_id`; the first call emits nothing; `hold_ms` is the tick difference; `button_fields` omits `ui_owned` when None.
+1. `observe`: let `cur = ctrl.buttons`. On the first call, set `initialized = true` and `prev = cur`, and return an empty Vec. On later calls, loop over `[(0, Button::Lmb, BUTTON_LMB, BUTTON_RMB), (1, Button::Rmb, BUTTON_RMB, BUTTON_LMB)]` in that order, with `was = prev & bit != 0`, `is = cur & bit != 0` and `other = cur & other_bit != 0`:
+   - `!was && is`: set `down_at[i] = Some(now_ms)` and `chord[i] = other`, then push a `Down` with `other_held: other` and every Option `None`.
+   - `was && is`: if `other`, set `chord[i] = true`.
+   - `was && !is`: `class = classify(button, ctrl.drag, chord[i] || other)`; `hold_ms = down_at[i].map(|t| now_ms.saturating_sub(t))`; `hover_id = (matches!(class, ClickClass::Select | ClickClass::Interact) && ctrl.hover_id != 0).then_some(ctrl.hover_id)`. Push an `Up` with `other_held: other`, `drag: Some(ctrl.drag)` and `class: Some(class)`, then set `down_at[i] = None` and `chord[i] = false`.
+   - After the loop, set `prev = cur` and return the events.
+2. `classify`: `Drag` when `drag[0].unsigned_abs() >= DRAG_THRESHOLD || drag[1].unsigned_abs() >= DRAG_THRESHOLD` (`unsigned_abs`, so `i32::MIN` cannot panic). Otherwise `Chord` when `chord`. Otherwise `Select` for `Lmb` and `Interact` for `Rmb`.
+3. `button_fields`, in this order: `button`, `edge`. A `Down` adds `other_held`. An `Up` adds `hold_ms` (only when `Some`), `drag_x`, `drag_y`, `class` and `hover_id` (only when `Some`). Then `ui_owned` comes last, only when `Some`.
+4. `step(frame)`: `let events = lock(&TRACKER).observe(frame.now_ms, &frame.ctrl);` releases the lock before emitting. Then `for ev in &events { crate::hooks::emit::emit("client.input.button", "info", button_fields(ev, frame.ui_owned)); }`. Write a local `fn lock` the way `tick.rs` does.
+5. Tests (inline `#[cfg(test)] mod tests`, plain `#[test]`). Use a helper `fn ctrl(buttons: u32, drag: [i32; 2], hover_id: i32) -> ControllerState { ControllerState { buttons, drag, hover_id, ..Default::default() } }`.
+   - `first_call_emits_nothing`: `observe(0, &ctrl(BUTTON_LMB, [0, 0], 0))` returns an empty Vec.
+   - `lmb_click_is_select_with_hover`: at 0, buttons 0. At 100, LMB, which gives one `Down` with `other_held == false`. At 180, buttons 0 with drag `[2, -3]` and hover 42, which gives an `Up` with `hold_ms == Some(80)`, `drag == Some([2, -3])`, `class == Some(Select)` and `hover_id == Some(42)`.
+   - `rmb_drag_has_no_hover`: RMB down, then up with drag `[0, 7]` and hover 42, which gives `Drag` and `hover_id == None`.
+   - `chord_gives_two_chord_ups`: buttons 0, then LMB, then LMB|RMB (the RMB `Down` has `other_held == true`), then 0 in one tick. That last tick gives two `Up`s, LMB first, both `Chord`.
+   - `zero_hover_has_no_hover_id`: an LMB click with hover 0 gives `Select` and `hover_id == None`.
+   - `up_without_seen_down_has_no_hold_ms`: the first call sees LMB already held. The release gives `Up` with `hold_ms == None`.
+   - `classify_table`: `[4, -4]` LMB gives `Select`; `[-5, 0]` gives `Drag`; `[i32::MIN, 0]` gives `Drag`; `[0, 0]` with chord gives `Chord`; `[0, 0]` RMB gives `Interact`.
+   - `button_fields_shape`: a `Down` has `other_held` and no `hold_ms`. An `Up` Select has `class == json!("select")` and `hover_id`. `ui_owned` is absent for `None` and present as `json!(true)` for `Some(true)`. Check keys with `f.iter().any(|(k, _)| *k == "ui_owned")`.
+   - Revert check: with the stub restored, these tests do not compile, and the lane's test count drops.
+6. Docs: none (LN-16 documents the rows).
 
-Lanes: the client DLL set (six steps).
+Lanes: the client DLL set (six steps), each prefixed per W1. Both nextest counts must be higher than before.
 
 ### LN-09 Client: mode and hover transitions
 
-Host: windows · Agent: packet-coder · Branch `lab-nav-telemetry/ln-09-transitions` · Worktree `ln-09` · Commit `LN-09: emit controller mode and hover transitions`
+Host: windows · Agent: packet-coder · Worktree `ln-w3`, branch `lab-nav-telemetry/wave3` (after LN-08's review passes) · Commit `LN-09: emit controller mode and hover transitions`
 
-Status: BlockedDependency (LN-06, LN-07; D-LN1 decided A). Rules: R1 (the client DLL set), R2, R3, R5, R6, R8. Edit only `crates/client-telemetry/src/hooks/nav/transitions.rs`.
+Status: Ready after LN-08. Rules: R1 (the client DLL set), R3 (`transitions.rs` ends at 400 lines or fewer), R5, R6, R8, W1, W2, W3. Edit only `crates/client-telemetry/src/hooks/nav/transitions.rs`.
+
+Contract (C-LN2). `client.input.mode` is one row per `mode` change, at most 8 a second. Its fields are `mode`, `prev`, the bools `mouselook`, `jump`, `autorun` and `mousewalk` (taken from `mode`), and `suppressed`. `client.input.hover` is one row per `hover_id` change, at most 4 a second. Its fields are `entity_id` (0 = none), `prev` and `suppressed`.
 
 ```rust
+use std::sync::Mutex;
+use serde_json::json;
+use super::controller::{MODE_AUTORUN, MODE_JUMP, MODE_MOUSELOOK, MODE_MOUSEWALK};
+use super::frame::NavFrame;
+use crate::hooks::entity_trace::Fields;
+
 pub const MODE_CAP_PER_SEC: u32 = 8;
 pub const HOVER_CAP_PER_SEC: u32 = 4;
-#[derive(Clone, Copy, Debug, PartialEq)] pub struct Change<T> { pub value: T, pub prev: T, pub suppressed: u32 }
+pub const WINDOW_MS: u64 = 1000;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Change<T> { pub value: T, pub prev: T, pub suppressed: u32 }
+#[derive(Debug)]
 pub struct RateLimitedDiff<T> { cap: u32, initialized: bool, last_seen: T, last_emitted: T,
     window_start_ms: u64, emitted_in_window: u32, suppressed: u32 }
-impl<T: Copy + PartialEq + Default> RateLimitedDiff<T> {
-    pub fn new(cap: u32) -> Self;
-    pub fn step(&mut self, now_ms: u64, value: T) -> Option<Change<T>>;
+impl<T: Copy + PartialEq> RateLimitedDiff<T> {
+    pub const fn new(cap: u32, zero: T) -> Self;   // last_seen = last_emitted = zero; the rest 0/false
+    pub fn observe(&mut self, now_ms: u64, value: T) -> Option<Change<T>>;
 }
-pub fn mode_fields(c: &Change<u32>) -> Fields;   // mode, prev, mouselook, jump, autorun, mousewalk, suppressed
-pub fn hover_fields(c: &Change<i32>) -> Fields;  // entity_id, prev, suppressed
+pub fn mode_fields(c: &Change<u32>) -> Fields;
+pub fn hover_fields(c: &Change<i32>) -> Fields;
+static MODE: Mutex<RateLimitedDiff<u32>> = Mutex::new(RateLimitedDiff::new(MODE_CAP_PER_SEC, 0));
+static HOVER: Mutex<RateLimitedDiff<i32>> = Mutex::new(RateLimitedDiff::new(HOVER_CAP_PER_SEC, 0));
+pub(super) fn step(frame: &NavFrame);   // unchanged signature
 ```
 
-- `step`: the first call records the value (no event). A value differing from `last_seen` counts one change. The window is 1,000 ms from `window_start_ms` (reset when `now - start >= 1000`). When `value != last_emitted` and `emitted_in_window < cap`: return `Change { value, prev: last_emitted, suppressed }`, then set `last_emitted`, bump the count, zero `suppressed`. When over the cap, a counted change adds to `suppressed`. The catch-up is automatic: a later tick in a new window with `value != last_emitted` emits.
-- `step(frame)`: two statics, `RateLimitedDiff::<u32>::new(MODE_CAP_PER_SEC)` fed `frame.ctrl.mode` and `RateLimitedDiff::<i32>::new(HOVER_CAP_PER_SEC)` fed `frame.ctrl.hover_id`; emit `client.input.mode` and `client.input.hover`.
-- Tests (inline): the first value is silent; one change emits with the right `prev`; ten hover changes inside 1 s emit 4 and the next window's row carries the latest value and `suppressed`; a flip and flip-back inside the cap emit two rows; `mode_fields` decodes the four bools (0x9 gives mouselook and mousewalk).
+1. `observe`, exactly:
+   ```rust
+   if !self.initialized {
+       self.initialized = true; self.last_seen = value; self.last_emitted = value;
+       self.window_start_ms = now_ms; return None;
+   }
+   if now_ms.saturating_sub(self.window_start_ms) >= WINDOW_MS {
+       self.window_start_ms = now_ms; self.emitted_in_window = 0;
+   }
+   let changed = value != self.last_seen;
+   self.last_seen = value;
+   if value != self.last_emitted && self.emitted_in_window < self.cap {
+       let c = Change { value, prev: self.last_emitted, suppressed: self.suppressed };
+       self.last_emitted = value; self.emitted_in_window += 1; self.suppressed = 0;
+       return Some(c);
+   }
+   if changed { self.suppressed = self.suppressed.saturating_add(1); }
+   None
+   ```
+   The catch-up needs no code: the first tick of a new window with `value != last_emitted` emits.
+2. `mode_fields`: `mode`, `prev`, `mouselook` (`value & MODE_MOUSELOOK != 0`), `jump`, `autorun`, `mousewalk`, `suppressed`. `hover_fields`: `entity_id` (= `value`), `prev`, `suppressed`.
+3. `step(frame)`: `let m = lock(&MODE).observe(frame.now_ms, frame.ctrl.mode);` then `if let Some(c) = m { emit("client.input.mode", "info", mode_fields(&c)) }`. Do the same for `HOVER` with `frame.ctrl.hover_id` and `client.input.hover`. Bind the result before emitting, so the lock is released first. Write a local `fn lock` as in `tick.rs`.
+4. Tests (inline, plain `#[test]`):
+   - `first_value_is_silent`: `new(4, 0)`, then `observe(0, 7)` gives `None`.
+   - `one_change_emits_with_prev`: initialise with 0 at 0. `observe(100, 5)` gives `Some(Change { value: 5, prev: 0, suppressed: 0 })`.
+   - `cap_then_catch_up`: `new(HOVER_CAP_PER_SEC, 0)`, initialised with 0 at 0. `observe(i * 50, i)` for `i` in `1..=10` gives exactly 4 `Some` (values 1..=4). Then `observe(1000, 10)` gives `Some(Change { value: 10, prev: 4, suppressed: 6 })`.
+   - `flip_and_back_emits_two`: initialise with 0 at 0. `observe(100, 5)` gives prev 0. `observe(200, 0)` gives value 0 and prev 5.
+   - `unchanged_never_emits`: initialise with 3. `observe(100, 3)` and `observe(5000, 3)` both give `None`.
+   - `mode_fields_decodes_bits`: `Change { value: 0x9, prev: 0, suppressed: 0 }` gives `mouselook` and `mousewalk` true, `jump` and `autorun` false, and `mode == json!(9)`.
+   - `hover_fields_names`: the keys are exactly `entity_id`, `prev`, `suppressed`.
+   - Revert check: with the stub restored, these tests do not compile.
+5. Docs: none.
 
-Lanes: the client DLL set (six steps).
+Lanes: the client DLL set (six steps), each prefixed per W1. Both nextest counts must be higher than after LN-08.
 
 ### LN-10 Client: `ui_owned`
 
-Host: windows · Agent: packet-coder · Branch `lab-nav-telemetry/ln-10-ui-owned` · Worktree `ln-10` · Commit `LN-10: read whether CEGUI owns the mouse`
+Host: windows · Agent: packet-coder · Worktree `ln-w3`, branch `lab-nav-telemetry/wave3` (after LN-09's review passes) · Commit `LN-10: read whether CEGUI owns the mouse`
 
-Status: BlockedDependency (LN-15, LN-07; D-LN1 decided A). **Before dispatch, a fresh architect fills the chain below from LN-15's § 6 answer 1.** If LN-15 found no pollable field, this packet is dropped and `ui_owned` stays absent.
+Status: Ready after LN-09. Rules: R1 (the client DLL set), R3 (`ui.rs` ends at 300 lines or fewer), R6, R7, R8, W1, W2, W3. Edit only `crates/client-telemetry/src/hooks/nav/ui.rs`, plus one doc line in `hooks/nav/frame.rs` (step 4).
 
-Rules: R1 (the client DLL set), R2, R3, R6, R8. Edit only `crates/client-telemetry/src/hooks/nav/ui.rs`.
+Why the design looks like this (LN-15 § 6.1). The game's "CEGUI owns the mouse" test `0x0056b890` is a hit test, not a stored flag, so nothing exact can be polled. The nearest pollable field is CEGUI `System::d_wndWithMouse` (`System+0x28`), which `injectMouseMove` writes. It differs from the game's predicate in three ways: it is stale while the cursor is still or hidden (mouselook), a capture or modal window counts as owned, and the window-name layout is inferred. So `ui_owned` is an **approximation**. The design degrades safely: any unreadable link, null `UIMgr`/`System`, or implausible string header gives `None`, and `None` drops the field from the row (LN-08 already omits it). There is no panic path and no call into the game. **Documented fallback:** if LN-13 shows the chain wrong, the fix is to restore the LN-07 stub body (`None`). No other file changes.
 
-- `read_ui_owned(mem)`: follow `<UI_OWNER_GLOBAL_VA>` then `<offsets>`; any unreadable or null link gives None; return `Some(<value test>)`. Constants named and commented with the LN-15 citation.
-- Tests (inline, `FakeMem`): owned, not owned, null global gives None, unreadable link gives None.
+Contract (C-LN2, `ui_owned` on `client.input.button`): `true` when CEGUI's last mouse-move target is a real UI window. `false` when that target is none, the active sheet, or the window named `BackgroundWin`. Absent when unknown.
 
-Lanes: the client DLL set (six steps).
+```rust
+use crate::hooks::entity_trace::map::Mem;
+
+/// `g_SGWUIManager_ptr`: the SGWUIManager singleton pointer (RE § 6.1, static; getter 0x0056f980).
+pub const UI_MANAGER_PTR_VA: u32 = 0x01ee_2a58;
+/// SGWUIManager + 0xc: the CEGUI `System*` (RE § 6.1, static).
+pub const UIMGR_SYSTEM_OFF: u32 = 0x0c;
+/// CEGUI System + 0x28: `d_wndWithMouse`, written by `injectMouseMove` 0x011ae5b0 (RE § 6.1, static).
+pub const SYSTEM_WND_WITH_MOUSE_OFF: u32 = 0x28;
+/// CEGUI System + 0x2c: the active sheet (RE § 6.1, static).
+pub const SYSTEM_SHEET_OFF: u32 = 0x2c;
+/// CEGUI Window + 0x1e8: the window name, an MSVC `std::wstring` (RE § 6.1; layout inferred).
+pub const WINDOW_NAME_OFF: u32 = 0x1e8;
+/// MSVC (VC8/9) `std::wstring`, inferred: +0x04 inline buffer or heap pointer,
+/// +0x14 length, +0x18 capacity; the text is inline while capacity < 8.
+pub const WSTR_BUF_OFF: u32 = 0x04;
+pub const WSTR_LEN_OFF: u32 = 0x14;
+pub const WSTR_CAP_OFF: u32 = 0x18;
+pub const WSTR_INLINE_CAP: u32 = 8;
+/// A length or capacity above this means the layout guess is wrong: answer unknown.
+pub const WSTR_SANE_MAX: u32 = 0x400;
+/// The world backdrop window; the cursor over it is not "UI owns the mouse" (0x0183f8c8).
+pub const BACKGROUND_WIN: &str = "BackgroundWin";
+
+pub(super) fn read_ui_owned(mem: &impl Mem) -> Option<bool>;   // unchanged signature
+fn is_named(mem: &impl Mem, wstr: u32, want: &str) -> Option<bool>;
+```
+
+1. `read_ui_owned` (all address arithmetic uses `wrapping_add`):
+   ```rust
+   let mgr = mem.u32_at(UI_MANAGER_PTR_VA).filter(|&p| p != 0)?;
+   let system = mem.u32_at(mgr.wrapping_add(UIMGR_SYSTEM_OFF)).filter(|&p| p != 0)?;
+   let wnd = mem.u32_at(system.wrapping_add(SYSTEM_WND_WITH_MOUSE_OFF))?;
+   let sheet = mem.u32_at(system.wrapping_add(SYSTEM_SHEET_OFF))?;
+   if wnd == 0 || wnd == sheet { return Some(false); }
+   Some(!is_named(mem, wnd.wrapping_add(WINDOW_NAME_OFF), BACKGROUND_WIN)?)
+   ```
+2. `is_named`: read `len` at `+WSTR_LEN_OFF` and `cap` at `+WSTR_CAP_OFF` (`?` on each). If `len > cap || cap > WSTR_SANE_MAX`, return `None`. Encode `want` with `want.encode_utf16().collect::<Vec<u16>>()`. If `len as usize != want.len()`, return `Some(false)` without reading the text. The text address is `wstr + WSTR_BUF_OFF` when `cap < WSTR_INLINE_CAP`; otherwise it is the pointer stored there, with 0 giving `None`. Read `mem.bytes_at(text, want.len() * 2)?`, decode with `chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]]))`, and return `Some(decoded == want)`. Do no indexing that can panic.
+3. Rewrite the module doc: what is read (the chain above), the three caveats, and the fallback. Cite `controller-mouse-input-model.md` § 6.1.
+4. `hooks/nav/frame.rs`: change the `ui_owned` field doc from "`None` until LN-10 fills it in" to "`None` when unknown; an approximation, see `ui::read_ui_owned`". Change nothing else in that file.
+5. Tests (inline, plain `#[test]`, `FakeMem`). Use the fixed addresses `MGR = 0x3000_0000`, `SYS = 0x3000_1000`, `SHEET = 0x3000_2000`, `WND = 0x3000_3000` and `HEAP = 0x3000_4000`. `fn world(mem, wnd)` sets `UI_MANAGER_PTR_VA -> MGR`, `MGR+0xc -> SYS`, `SYS+0x28 -> wnd` and `SYS+0x2c -> SHEET`. `fn put_wstr(mem, at, text)`:
+   - when `len < 8`: `cap = 7`, with the UTF-16LE text packed two units per word at `at+4`;
+   - otherwise: `cap = len`, `at+4 -> HEAP`, with the text packed at `HEAP`;
+   - in both cases, `at+0x14 -> len` and `at+0x18 -> cap`. Pad an odd unit with 0.
+
+   The tests:
+   - `no_manager_is_unknown`: nothing set gives `None`, and `UI_MANAGER_PTR_VA -> 0` gives `None`.
+   - `null_system_is_unknown`: `MGR+0xc -> 0` gives `None`.
+   - `no_window_is_not_owned`: `wnd = 0` gives `Some(false)`.
+   - `sheet_is_not_owned`: `wnd = SHEET` gives `Some(false)`.
+   - `background_win_is_not_owned`: `WND` named `BackgroundWin` (heap) gives `Some(false)`.
+   - `named_window_is_owned`: `ChatWindow` (heap) gives `Some(true)`, and `Chat` (inline) gives `Some(true)`.
+   - `same_length_other_name_is_owned`: `BackgroundWiX` gives `Some(true)`.
+   - `bad_header_is_unknown`: `len = 0x5000` gives `None`, and `len = 13, cap = 9` (len > cap) gives `None`.
+   - `unreadable_text_is_unknown`: `len = 13, cap = 15`, with the pointer set to an address that has no words, gives `None`.
+   - Revert check: against the stub (always `None`), the `Some(..)` tests fail.
+6. Docs: none (LN-16 documents `ui_owned` and its caveats).
+
+Lanes: the client DLL set (six steps), each prefixed per W1. Both nextest counts must be higher than after LN-09.
 
 ### LN-16 Docs: mouse input rows
 
-Host: windows · Agent: packet-coder · Branch `lab-nav-telemetry/ln-16-input-docs` · Worktree `ln-16` · Commit `LN-16: document the mouse input rows`
+Host: windows · Agent: packet-coder · Worktree `ln-w3`, branch `lab-nav-telemetry/wave3` (after LN-10's review passes) · Commit `LN-16: document the mouse input rows`
 
-Status: BlockedDependency (LN-08, LN-09). Rules: R2, R4, R8. Docs only, no lane run.
+Status: Ready after LN-10. Rules: R4, R5, R8, W1. Docs only; no lane run. Read `crates/client-telemetry/src/hooks/nav/{buttons,transitions,ui}.rs` for the exact names, and C-LN2 above.
 
-1. `docs/architecture/client-telemetry.md`: a section `## Mouse input: client.input.*` right after LN-07's `## Navigation pose` section: the three (or four with LN-17) targets and fields from C-LN2, the click classes and the 5-count threshold, the rate caps and `suppressed`, `ui_owned` (only when LN-10 shipped), what is not captured (keys, text, cursor position), and that every address is static until LN-13.
-2. `docs/operations/signoz/interaction-pose-views.md`: a section `## Mouse navigation` before `## Documentation debt`, with two ClickHouse queries in the file's style: one session's `client.input.button` and `client.nav.pose` rows in time order, and clicks by `class` with `entity_id`.
-3. CRLF (R4). Check links.
+1. `docs/architecture/client-telemetry.md`: add a section `## Mouse input: client.input.*` right after `## Navigation pose: client.nav.pose` (before `## Session tags on client.dll.attached`). Match the style of the Navigation pose section. It covers:
+   - the three targets and their fields (C-LN2);
+   - the click classes and the 5-count drag threshold (RE § 6.2);
+   - the chord rule;
+   - the rate caps (mode 8/s, hover 4/s) and what `suppressed` counts;
+   - `hover_id` as the hover id at release, which approximates the picked target because the client re-traces (RE § 6.3);
+   - `ui_owned`: what it reads, that it is an approximation, its three caveats, when it is absent, and the fallback (RE § 6.1);
+   - the one-frame lag (RE § 6.4);
+   - the `nav_poll` kill switch, which covers these rows too;
+   - what is not captured (keys, text, cursor position, per-frame motion);
+   - that every address is static until LN-13 confirms it live.
+2. `docs/operations/signoz/interaction-pose-views.md`: add a section `## Mouse navigation` before `## Documentation debt`, with two ClickHouse queries in the style of the `## Approach trails` query (`:69`). The first lists one session's `client.input.button`, `client.input.mode` and `client.nav.pose` rows in time order. The second counts clicks by `class`, with `hover_id`, for `edge = 'up'`.
+3. Convert both files to CRLF (R4), using the absolute `ln-w3` paths. Check that every link you added resolves.
 
 ### LN-17 Client: GetDeviceData aggregate in the player build (D-LN1 = B only)
 
@@ -487,7 +647,7 @@ Lanes: the client DLL set (six steps). The reviewer pass adds `server-authority-
 Status: BlockedDecision. The orchestrator asks the user before any lab use and waits until the lab is free. Run with the `lab-uat` skill and a lab-driver; grade against server and SigNoz evidence.
 
 1. x64dbg non-freezing (log-only) breakpoints, fast resume off, on `0x00e85710`, `0x00e85860`, `0x00e83f40`, `0x00e84ac0`, `0x00e84b20`: record the hit order for an LMB click, an LMB drag, an RMB click on an NPC, an RMB drag, and both buttons held.
-2. With a player DLL from the merged wave 3 (default features), perform the same five actions plus a zoom and an autorun toggle; check each gives the expected `client.input.*` and `client.nav.pose` rows (classes, `entity_id`, `mode` bits).
+2. With a player DLL from the merged wave 3 (default features), perform the same five actions plus a zoom and an autorun toggle; check each gives the expected `client.input.*` and `client.nav.pose` rows (classes, `hover_id`, `ui_owned`, `mode` bits).
 3. F3: record `pawn_ok` through a world entry and a zone change.
 4. (Dropped: D-LN3 was decided (b), the quarantine is lifted by wave 1b, and the owner validates the debug-hub dialogs and the BM reopen after release, with no lab step.)
 
