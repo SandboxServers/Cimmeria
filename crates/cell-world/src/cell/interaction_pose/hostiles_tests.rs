@@ -13,8 +13,7 @@ const HOSTILE: u8 = 10;
 /// Spawns an NPC at `(x, 0, z)` with `faction` and returns its id.
 fn spawn(mgr: &mut SpaceManager, x: f32, z: f32, faction: u8) -> u32 {
     let id = mgr.allocate_npc_id();
-    mgr.spawn_npc(id, "Agnos", [x, 0.0, z], [0.0; 3])
-        .unwrap();
+    mgr.spawn_npc(id, "Agnos", [x, 0.0, z], [0.0; 3]).unwrap();
     mgr.get_entity_mut(id).unwrap().faction = faction;
     id
 }

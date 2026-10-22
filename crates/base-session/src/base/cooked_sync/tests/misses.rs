@@ -8,7 +8,8 @@ use tracing::Level;
 
 use super::super::{note_dialog_display, MissOutcome, MissRefusal, MISS_BURST};
 use super::{decode, rig, server_entries, server_version, ClientModel, Sent};
-use crate::test_support::LogCapture;
+use crate::test_support::{LogCapture, LogCaptureGuard};
+use cimmeria_names::{NameBook, Table};
 
 const ABILITIES: u32 = 2;
 const DIALOGS: u32 = 5;
@@ -127,6 +128,17 @@ async fn an_unknown_key_is_refused_and_repeats_are_throttled() {
     assert_eq!(warns, 1, "one WARN per reason per 5 s");
 }
 
+/// The name the test book gives the refused dialog id.
+const NAMED_DIALOG: &str = "Refused_Dialog_Fixture";
+
+/// Gives the process-wide name book a name for the refused dialog id, so the rows can carry
+/// `element_name`. The id is far outside the shipped dialog range.
+fn name_the_dialog(id: u32) {
+    let mut book = NameBook::empty();
+    book.insert(Table::Dialogs, i64::from(id), NAMED_DIALOG);
+    cimmeria_names::global().store(book);
+}
+
 /// A refused dialog miss asked for right after the client was shown that
 /// dialog carries the display age and raises the correlation WARN.
 #[tokio::test]
@@ -134,6 +146,7 @@ async fn a_refused_dialog_miss_right_after_its_display_warns_with_the_age() {
     let rig = rig(47_606);
     let capture = LogCapture::install();
     let missing = u32::MAX - 3;
+    name_the_dialog(missing);
     note_dialog_display(rig.addr, missing, Instant::now());
     assert!(matches!(
         rig.miss(DIALOGS, missing),
@@ -150,6 +163,10 @@ async fn a_refused_dialog_miss_right_after_its_display_warns_with_the_age() {
         )
         .unwrap_or_else(|| panic!("no refusal WARN; saw {:#?}", capture.all()));
     assert!(refused.fields.contains_key("display_age_ms"));
+    assert!(
+        refused.has_field("element_name", NAMED_DIALOG),
+        "{refused:#?}"
+    );
     let correlated: Vec<_> = capture
         .all()
         .into_iter()
@@ -158,6 +175,37 @@ async fn a_refused_dialog_miss_right_after_its_display_warns_with_the_age() {
     assert_eq!(correlated.len(), 1, "saw {:#?}", capture.all());
     assert!(correlated[0].has_field("category_id", "5"));
     assert!(correlated[0].has_field("key", &missing.to_string()));
+    assert!(
+        correlated[0].has_field("element_name", NAMED_DIALOG),
+        "{correlated:#?}"
+    );
+}
+
+/// The correlation WARN is raised once per display: a client re-requesting the same refused key
+/// in a loop does not write one per request, and a fresh display re-arms it.
+#[tokio::test]
+async fn the_correlation_warn_is_once_per_display() {
+    let rig = rig(47_610);
+    let capture = LogCapture::install();
+    let missing = u32::MAX - 3;
+    let correlated = |capture: &LogCaptureGuard| {
+        capture
+            .all()
+            .into_iter()
+            .filter(|e| e.has_field("event", "dialog.cooked_miss_after_display"))
+            .count()
+    };
+    note_dialog_display(rig.addr, missing, Instant::now());
+    for _ in 0..2 {
+        assert!(matches!(
+            rig.miss(DIALOGS, missing),
+            MissOutcome::Refused { .. }
+        ));
+    }
+    assert_eq!(correlated(&capture), 1, "saw {:#?}", capture.all());
+    note_dialog_display(rig.addr, missing, Instant::now());
+    rig.miss(DIALOGS, missing);
+    assert_eq!(correlated(&capture), 2, "saw {:#?}", capture.all());
 }
 
 /// Without a display before it, a refused dialog miss has no age and no
@@ -167,6 +215,7 @@ async fn a_refused_dialog_miss_without_a_display_has_no_correlation_row() {
     let rig = rig(47_607);
     let capture = LogCapture::install();
     let missing = u32::MAX - 3;
+    name_the_dialog(missing);
     assert!(matches!(
         rig.miss(DIALOGS, missing),
         MissOutcome::Refused { .. }
@@ -179,10 +228,35 @@ async fn a_refused_dialog_miss_without_a_display_has_no_correlation_row() {
         )
         .unwrap_or_else(|| panic!("no refusal WARN; saw {:#?}", capture.all()));
     assert!(!refused.fields.contains_key("display_age_ms"));
+    assert!(
+        refused.has_field("element_name", NAMED_DIALOG),
+        "{refused:#?}"
+    );
     assert!(capture
         .all()
         .iter()
         .all(|e| !e.has_field("event", "dialog.cooked_miss_after_display")));
+}
+
+/// A refused dialog with no name in the book carries no `element_name` field.
+#[tokio::test]
+async fn an_unnamed_refused_dialog_has_no_element_name() {
+    let rig = rig(47_611);
+    let capture = LogCapture::install();
+    let missing = u32::MAX - 9;
+    name_the_dialog(u32::MAX - 3);
+    assert!(matches!(
+        rig.miss(DIALOGS, missing),
+        MissOutcome::Refused { .. }
+    ));
+    let refused = capture
+        .find_event(
+            Level::WARN,
+            "Refused a cooked-data cache miss",
+            "unknown_key",
+        )
+        .unwrap_or_else(|| panic!("no refusal WARN; saw {:#?}", capture.all()));
+    assert!(!refused.fields.contains_key("element_name"), "{refused:#?}");
 }
 
 /// A burst of distinct valid keys past the bucket is refused as

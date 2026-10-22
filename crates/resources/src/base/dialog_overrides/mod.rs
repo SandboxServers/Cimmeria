@@ -182,10 +182,10 @@ pub struct DialogOverride {
 /// Pushing overrides 100100 and 100101 crashed the 2009 client while it
 /// loaded Castle_CellBlock (colo deploy, 2026-09-27). The id's width was
 /// first suspected but has been ruled out, and those dialogs were
-/// quarantined 2026-09-27 to 2026-10-22, #943; see the crash finding (D-LN3).
-/// The 16-bit bound
-/// stays as a guard. Cimmeria-authored dialogs live in 60100-60199, well above
-/// the client's own ids (which stop at 6427). See
+/// quarantined 2026-09-27 to 2026-10-22, #943; see the crash finding
+/// (D-LN3). The 16-bit bound stays as a guard. Cimmeria-authored dialogs
+/// live in 60100-60199, well above the client's own ids (which stop at
+/// 6427). See
 /// `docs/reverse-engineering/findings/cooked-dialog-override-crash.md`. The
 /// guard is `every_cooked_override_element_id_fits_in_16_bits` in
 /// `resources/tests/committed_paks.rs`.

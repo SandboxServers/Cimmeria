@@ -529,6 +529,47 @@ mod tests {
         assert!(flushed[0].has_field("method_counts", "14:1"));
     }
 
+    /// `onDialogDisplay` through `entity_method_call` notes the display for the recipient's
+    /// address, which is what the cooked-miss correlation reads. Fails on revert of the call in
+    /// `aoi_dispatch::entity_method_call`: no display age would ever exist.
+    #[tokio::test]
+    async fn an_on_dialog_display_call_notes_the_display_age() {
+        use cimmeria_base_session::base::cooked_sync::{display_age_ms, ON_DIALOG_DISPLAY_INDEX};
+        const SHOWN: i32 = 2_000_001;
+        const OTHER_METHOD_DIALOG: i32 = 2_000_002;
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+        let (addr, connected, e2a) = super::super::tests_dispatch_arms::one_session(PLAYER, true);
+        let args = |dialog: i32| {
+            let mut a = (PLAYER as i32).to_le_bytes().to_vec();
+            a.extend_from_slice(&dialog.to_le_bytes());
+            a
+        };
+
+        super::super::aoi_dispatch::entity_method_call(
+            PLAYER,
+            ON_DIALOG_DISPLAY_INDEX,
+            args(SHOWN),
+            &transport,
+            &connected,
+            &e2a,
+        )
+        .await;
+        super::super::aoi_dispatch::entity_method_call(
+            PLAYER,
+            ON_DIALOG_DISPLAY_INDEX - 1,
+            args(OTHER_METHOD_DIALOG),
+            &transport,
+            &connected,
+            &e2a,
+        )
+        .await;
+
+        let now = std::time::Instant::now();
+        assert!(display_age_ms(addr, SHOWN as u32, now).is_some());
+        assert_eq!(display_age_ms(addr, SHOWN as u32 + 5, now), None);
+        assert_eq!(display_age_ms(addr, OTHER_METHOD_DIALOG as u32, now), None);
+    }
+
     /// The buffer at its cap drops the method with a WARN naming it.
     #[tokio::test]
     async fn a_method_refused_by_a_full_buffer_logs_the_drop() {

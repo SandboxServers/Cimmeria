@@ -163,8 +163,8 @@ pub(crate) fn log_non_gm_bankdump(entity_id: u32, space_mgr: &SpaceManager) {
 
 /// `.bankexpand`: buy one vault step for the GM through the purchase path
 /// the Banker's dialog uses (BV-05). The personal-vault Expand dialog (60110)
-/// is served since 2026-10-22 (D-LN3); this GM path stays. The result line comes from the base, after the purchase commits or is
-/// refused.
+/// is served since 2026-10-22 (D-LN3); this GM path stays. The result line
+/// comes from the base, after the purchase commits or is refused.
 pub(super) async fn expand(
     caller_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,

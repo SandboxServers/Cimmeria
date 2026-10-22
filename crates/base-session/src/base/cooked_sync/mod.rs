@@ -39,7 +39,9 @@ use std::time::{Duration, Instant};
 
 pub use decision::{resync_pending_version, VersionReply};
 pub use order::{is_held, rank, HELD_CATEGORIES};
-pub use recent_display::{dialog_id_from_args, note_dialog_display, ON_DIALOG_DISPLAY_INDEX};
+pub use recent_display::{
+    dialog_id_from_args, display_age_ms, note_dialog_display, ON_DIALOG_DISPLAY_INDEX,
+};
 pub use registry::{
     defer_until_synced, holds_world_entry, is_syncing, DeferredAction, EnqueueOutcome, MissOutcome,
     MissRefusal, SyncJob,
@@ -124,7 +126,8 @@ pub fn serve_miss(ctx: SyncContext, category_id: u32, key: u32) -> MissOutcome {
                 "reason" => why.reason(),
             );
             let element_name = super::cooked_data::element_name(category_id, key);
-            let display_age_ms = if category_id == recent_display::DIALOGS_CATEGORY {
+            let is_dialog = category_id == recent_display::DIALOGS_CATEGORY;
+            let display_age_ms = if is_dialog {
                 recent_display::display_age_ms(addr, key, now)
             } else {
                 None
@@ -148,7 +151,13 @@ pub fn serve_miss(ctx: SyncContext, category_id: u32, key: u32) -> MissOutcome {
             }
             // Outside the throttle: a repeat refusal right after a display
             // is still the one the client is stuck on.
-            if let Some(age) = display_age_ms.filter(|age| *age < 1000) {
+            // Once per display: a refused key re-requested in a loop stays quiet.
+            let unreported = if is_dialog {
+                recent_display::take_unreported_age_ms(addr, key, now, 1000)
+            } else {
+                None
+            };
+            if let Some(age) = unreported {
                 let who = super::session_identity::identity_for_addr(&ctx.connected, addr);
                 tracing::warn!(
                     %addr,

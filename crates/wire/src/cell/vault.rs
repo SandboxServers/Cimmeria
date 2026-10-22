@@ -13,9 +13,9 @@ use cimmeria_entity::cell_entity::VaultScope;
 
 /// The Banker's "Expand vault" dialog (bank-vault BV-05, D-BV02): one
 /// screen with one Generic 1 button, authored as a Cimmeria cooked-data
-/// override, served in `cimmeria-resources` `DIALOG_OVERRIDES` (`overrides_bank.rs`,
-/// D-LN3). The Bank campaign
-/// owns dialog ids 60110-60119 and screen ids 200010-200019.
+/// override, served in `cimmeria-resources` `DIALOG_OVERRIDES`
+/// (`overrides_bank.rs`, D-LN3). The Bank campaign owns dialog ids
+/// 60110-60119 and screen ids 200010-200019.
 ///
 /// The client's reply (`dialogButtonChoice`) is routed by this id to the
 /// purchase path, never to a content chain. The reply is not an authority

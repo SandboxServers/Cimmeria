@@ -506,5 +506,9 @@ pub(super) fn heading_age_ms(now: Instant, last: Option<Instant>) -> i64 {
 mod pose_tests;
 
 #[cfg(test)]
+#[path = "interact_hostiles_tests.rs"]
+mod hostiles_tests;
+
+#[cfg(test)]
 #[path = "interact_heading_tests.rs"]
 mod heading_tests;

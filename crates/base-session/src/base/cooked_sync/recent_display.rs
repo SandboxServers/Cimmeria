@@ -26,7 +26,9 @@ const DIALOG_ID_OFFSET: usize = 4;
 /// on insert: a correlation that is lost only costs one missing row.
 const MAX_TRACKED: usize = 4096;
 
-static LAST: LazyLock<Mutex<HashMap<SocketAddr, (u32, Instant)>>> =
+/// Per client: the last dialog shown, when, and whether a refused miss already
+/// raised the correlation WARN for this display (one WARN per display).
+static LAST: LazyLock<Mutex<HashMap<SocketAddr, (u32, Instant, bool)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// The dialog id in the args of an `onDialogDisplay`, or `None` when the
@@ -45,14 +47,14 @@ pub fn note_dialog_display(addr: SocketAddr, dialog_id: u32, now: Instant) {
     if last.len() > MAX_TRACKED {
         last.clear();
     }
-    last.insert(addr, (dialog_id, now));
+    last.insert(addr, (dialog_id, now, false));
 }
 
 /// Milliseconds since `dialog_id` was last displayed to `addr`, when that
 /// display is the most recent one to `addr`; `None` otherwise.
-pub(super) fn display_age_ms(addr: SocketAddr, dialog_id: u32, now: Instant) -> Option<u64> {
+pub fn display_age_ms(addr: SocketAddr, dialog_id: u32, now: Instant) -> Option<u64> {
     let last = LAST.lock().unwrap_or_else(|e| e.into_inner());
-    let &(shown, at) = last.get(&addr)?;
+    let &(shown, at, _) = last.get(&addr)?;
     if shown != dialog_id {
         return None;
     }
@@ -60,6 +62,33 @@ pub(super) fn display_age_ms(addr: SocketAddr, dialog_id: u32, now: Instant) -> 
         .as_millis()
         .try_into()
         .ok()
+}
+
+/// Like [`display_age_ms`], but only when the age is under `max_age_ms` and
+/// no earlier call has taken it for this display: returns the age once and
+/// marks the display reported. A client re-requesting the same refused key in
+/// a tight loop would otherwise write one WARN per request.
+pub(super) fn take_unreported_age_ms(
+    addr: SocketAddr,
+    dialog_id: u32,
+    now: Instant,
+    max_age_ms: u64,
+) -> Option<u64> {
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    let entry = last.get_mut(&addr)?;
+    if entry.0 != dialog_id || entry.2 {
+        return None;
+    }
+    let age: u64 = now
+        .saturating_duration_since(entry.1)
+        .as_millis()
+        .try_into()
+        .ok()?;
+    if age >= max_age_ms {
+        return None;
+    }
+    entry.2 = true;
+    Some(age)
 }
 
 #[cfg(test)]
@@ -77,6 +106,27 @@ mod tests {
         note_dialog_display(a, 2576, now);
         let later = now + Duration::from_millis(250);
         assert_eq!(display_age_ms(a, 2576, later), Some(250));
+    }
+
+    #[test]
+    fn a_display_is_taken_once_and_a_new_display_rearms_it() {
+        let (a, now) = (addr(47_705), Instant::now());
+        note_dialog_display(a, 2576, now);
+        assert_eq!(take_unreported_age_ms(a, 2576, now, 1000), Some(0));
+        assert_eq!(take_unreported_age_ms(a, 2576, now, 1000), None);
+        // The non-consuming read is unaffected by the flag.
+        assert_eq!(display_age_ms(a, 2576, now), Some(0));
+        note_dialog_display(a, 2576, now);
+        assert_eq!(take_unreported_age_ms(a, 2576, now, 1000), Some(0));
+    }
+
+    #[test]
+    fn an_old_display_is_not_taken() {
+        let (a, now) = (addr(47_706), Instant::now());
+        note_dialog_display(a, 2576, now);
+        let later = now + Duration::from_millis(1000);
+        assert_eq!(take_unreported_age_ms(a, 2576, later, 1000), None);
+        assert_eq!(take_unreported_age_ms(a, 2574, now, 1000), None);
     }
 
     #[test]
