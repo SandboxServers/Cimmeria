@@ -12,10 +12,19 @@ export const logUploadText:Record<LogUploadStatus['state'],string>={
  uploaded_newest:'Uploaded the newest logs. Older logs were left out to keep the upload under 64 MiB.',
  nothing_new:'Nothing new to upload',
  no_logs:'No logs to upload yet: the game has not written any.',
+ sent:'Sent',
+ partial:'Part of the logs was sent. Press again to send the rest.',
+ unreachable:'The log server could not be reached. Check your connection and try again.',
 };
+/** The line shown for a status: `sent` and `partial` say how many lines went and the id to quote in a report. */
+export function logUploadMessage(status:LogUploadStatus):string {
+ if(status.state==='sent')return `Sent ${status.lines_sent} of ${status.lines_total} log lines. Quote ${status.upload_id} in your report.`;
+ if(status.state==='partial')return `Sent ${status.lines_sent} of ${status.lines_total} log lines (${status.upload_id}). Press again in ${status.retry_after_secs} seconds to send the rest.`;
+ return logUploadText[status.state];
+}
 export const logUploadUploading='Uploading…';
 export const logUploadErrorText:Record<LogUploadError|'transport'|'schema',string>={
- busy:'Another launcher operation is still running or needs to be reconciled. Finish or reconcile it first, then upload again.',
+ busy:'Another log upload is still running. Wait for it to finish, then try again.',
  network:'The upload did not reach the log store. Check your connection and try again.',
  rejected:'The log store refused the upload. Try again later.',
  collect_failed:'The game\'s logs could not be read. Close the game and try again.',
@@ -41,10 +50,10 @@ export function mountLogUpload(document:Document,invoke:Invoke,context:PanelCont
  const status=document.createElement('p');status.id='log-upload-status';status.setAttribute('role','status');status.setAttribute('aria-live','polite');status.textContent='Checking debug logs…';
  panel.textContent='';panel.append(heading,button,status);
  let disposed=false;let uploading=false;let showingResult=false;let work:Promise<void>=Promise.resolve();
- type Reply={error:null;state:LogUploadStatus['state']}|{error:keyof typeof logUploadErrorText};
+ type Reply={error:null;status:LogUploadStatus}|{error:keyof typeof logUploadErrorText};
  const call=async(command:'inspect'|'upload'):Promise<Reply>=>{let value:unknown;
   try{value=await invoke('log_upload_command',{request:{command,schema_version:1}});}catch(error){return {error:logUploadFailure(error)};}
-  try{return {error:null,state:(await Effect.runPromise(decodeLogUploadStatus(value))).state};}catch{reportUiEvent('log_upload','status_decode_failed','schema');return {error:'schema'};}};
+  try{return {error:null,status:await Effect.runPromise(decodeLogUploadStatus(value))};}catch{reportUiEvent('log_upload','status_decode_failed','schema');return {error:'schema'};}};
  const show=(state:LogUploadStatus['state'])=>{
   // A build with no store compiled in hides the button: there is nowhere to send logs.
   button.hidden=state==='disabled';button.disabled=state==='disabled'||state==='not_installed';};
@@ -52,16 +61,16 @@ export function mountLogUpload(document:Document,invoke:Invoke,context:PanelCont
   work=call('inspect').then(reply=>{if(disposed||uploading)return;
    // A `ready` re-inspect keeps the last upload's result on screen; anything else
    // (uninstalled, busy, an error) is news and replaces it.
-   if(reply.error===null&&reply.state==='ready'&&showingResult){show(reply.state);return;}
+   if(reply.error===null&&reply.status.state==='ready'&&showingResult){show(reply.status.state);return;}
    showingResult=false;
-   if(reply.error===null){show(reply.state);status.textContent=logUploadText[reply.state];}
+   if(reply.error===null){show(reply.status.state);status.textContent=logUploadMessage(reply.status);}
    else{button.hidden=false;button.disabled=false;status.textContent=logUploadErrorText[reply.error];}});return work;};
  const upload=()=>{if(disposed||uploading||button.disabled)return work;
   // Feedback before the native reply: the press is visibly taken at once.
   uploading=true;showingResult=true;button.disabled=true;button.setAttribute('aria-busy','true');button.textContent=logUploadUploading;status.textContent=logUploadUploading;
   work=call('upload').then(reply=>{uploading=false;if(disposed)return;
    button.setAttribute('aria-busy','false');button.textContent='Upload debug logs';
-   if(reply.error===null){show(reply.state);status.textContent=logUploadText[reply.state];}
+   if(reply.error===null){show(reply.status.state);status.textContent=logUploadMessage(reply.status);}
    else{button.disabled=false;status.textContent=logUploadErrorText[reply.error];}});return work;};
  const click=()=>{void upload();};button.addEventListener('click',click);
  // A finished install or uninstall changes whether there is anything to upload,

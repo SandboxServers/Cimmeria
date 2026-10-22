@@ -35,6 +35,17 @@ pub(super) fn ledger_save_failed() {
     );
 }
 
+/// The offsets file could not be written after a chunk was accepted: the next
+/// press resends from the last saved point, a repeat of lines and never a loss.
+pub(super) fn offsets_save_failed() {
+    tracing::warn!(
+        target: "launcher.telemetry",
+        event = "log_upload_offsets_save_failed",
+        reason = "offsets_save_failed",
+        "launcher log upload: offsets not saved; the lines were accepted; the same lines may be sent again"
+    );
+}
+
 /// Every log is over the cap, so nothing is sent.
 pub(super) fn logs_too_large(left_out: usize, max_bytes: u64) {
     tracing::warn!(
@@ -151,6 +162,18 @@ mod tests {
         });
         let e = one(&events, Level::WARN, "log_upload_ledger_save_failed");
         assert_eq!(e.field("reason"), Some("ledger_save_failed"));
+    }
+
+    #[test]
+    fn offsets_save_failed_logs_the_reason() {
+        let _serial = serial();
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+        let ((), events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache();
+            offsets_save_failed();
+        });
+        let e = one(&events, Level::WARN, "log_upload_offsets_save_failed");
+        assert_eq!(e.field("reason"), Some("offsets_save_failed"));
     }
 
     #[test]

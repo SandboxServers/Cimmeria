@@ -46,11 +46,25 @@ export type ScaffoldError = StorageCode | "unavailable";
 
 // `log_upload_command` (engine `storage/log_upload/`, LX-05).
 export type LogUploadCommand = {command: "inspect"; schema_version: 1} | {command: "upload"; schema_version: 1};
-export const LogUploadStatus = Schema.Struct({
-  schema_version: Schema.Literal(1),
-  // `disabled`: no log store compiled in. `ready` answers Inspect; the last four answer Upload.
-  state: Schema.Literals(["disabled", "not_installed", "ready", "uploaded", "uploaded_newest", "nothing_new", "no_logs"]),
-});
+const logUploadPlain = <S extends string>(state: S) =>
+  Schema.Struct({schema_version: Schema.Literal(1), state: Schema.Literal(state)});
+// Flat on the wire (`{"schema_version":1,"state":"sent","lines_sent":3,...}`), one struct per state so
+// `onExcessProperty: "error"` still rejects a field the state does not carry (LF-15).
+// `sent` and `partial` carry the line counts and the id the server logs the rows under; `unreachable` and
+// `ready` answer Inspect. `disabled`, `uploaded`, `uploaded_newest`, `nothing_new` and `no_logs` stay until LF-18.
+export const LogUploadStatus = Schema.Union([
+  logUploadPlain("disabled"), logUploadPlain("not_installed"), logUploadPlain("ready"),
+  logUploadPlain("uploaded"), logUploadPlain("uploaded_newest"), logUploadPlain("nothing_new"),
+  logUploadPlain("no_logs"), logUploadPlain("unreachable"),
+  Schema.Struct({
+    schema_version: Schema.Literal(1), state: Schema.Literal("sent"),
+    lines_sent: Schema.Number, lines_total: Schema.Number, upload_id: Schema.String,
+  }),
+  Schema.Struct({
+    schema_version: Schema.Literal(1), state: Schema.Literal("partial"),
+    lines_sent: Schema.Number, lines_total: Schema.Number, upload_id: Schema.String, retry_after_secs: Schema.Number,
+  }),
+]);
 export type LogUploadStatus = typeof LogUploadStatus.Type;
 /** One flat code string: a storage code (`"busy"` is the operation gate) or an upload code. */
 export type LogUploadError = StorageCode | "collect_failed" | "logs_too_large" | "network" | "rejected";

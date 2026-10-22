@@ -43,6 +43,25 @@ impl DesktopState {
     pub fn launcher_target(&self) -> Option<LauncherTarget> {
         let choice = self.game_telemetry().ok()?;
         let identity = choice.opted_in.then_some(choice.identity).flatten()?;
+        self.target_for(identity)
+    }
+
+    /// The target for "Upload debug logs" (LF-15, D-LU1): the press itself is the
+    /// consent for that one upload, so the diagnostics opt-in does not matter.
+    /// An install that has an identity uses it. One that never opted in has none
+    /// (it is minted only at opt-in), so the target carries a fresh one that is
+    /// not saved: it lasts for this upload, and the per-install budget the
+    /// server keeps cannot tie two such presses together (the per-IP ceiling
+    /// still applies). `None` only when the login-server list is unusable.
+    pub fn launcher_log_target(&self) -> Option<LauncherTarget> {
+        let stored = self
+            .game_telemetry()
+            .ok()
+            .and_then(|choice| choice.identity);
+        self.target_for(stored.unwrap_or_else(Identity::mint))
+    }
+
+    fn target_for(&self, identity: Identity) -> Option<LauncherTarget> {
         let servers = if self.preferences.login_servers.is_empty() {
             login_servers::default_servers()
         } else {

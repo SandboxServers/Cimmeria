@@ -84,7 +84,7 @@ pub(crate) fn collect(
 }
 
 /// The launcher log file names in `dir`, oldest first (the names sort by date).
-fn launcher_files(dir: &Path) -> Vec<String> {
+pub(crate) fn launcher_files(dir: &Path) -> Vec<String> {
     let Ok(read) = std::fs::read_dir(dir) else {
         return Vec::new();
     };

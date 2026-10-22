@@ -13,16 +13,15 @@ use crate::storage::game_telemetry::launcher_event::Redaction;
 use cimmeria_launcher_core::logs;
 use cimmeria_launcher_core::state::UploadedLedger;
 mod events;
-// LF-15 wires the sender into `Upload`; until then only its tests call it.
-#[allow(dead_code)]
 mod ingest;
+mod ingest_flow;
+#[cfg(test)]
+mod ingest_flow_tests;
 mod launcher_logs;
-// LF-15 calls these from `Upload`; until then only their tests use them.
-#[allow(dead_code)]
 mod lines;
-#[allow(dead_code)]
 mod offsets;
 mod store;
+pub use ingest_flow::{LogIngest, LogUploader};
 pub use store::{LogStore, StoredUpload};
 #[cfg(test)]
 mod tests;
@@ -54,9 +53,11 @@ impl LogUploadCommand {
     }
 }
 
-/// What `Inspect` found or what `Upload` did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
+/// What `Inspect` found or what `Upload` did. Serializes flat with the status:
+/// `{"schema_version":1,"state":"sent","lines_sent":3,...}`; a state with no
+/// fields adds none.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
 pub enum LogUploadState {
     /// This build has no log store compiled in; the view hides the button.
     Disabled,
@@ -73,16 +74,35 @@ pub enum LogUploadState {
     NothingNew,
     /// `Upload`: the game has written no debug or session logs.
     NoLogs,
+    /// `Upload` (LF-15): every new launcher log line was accepted.
+    /// `lines_total` is how many new lines there were before the 20,000-line cap.
+    Sent {
+        lines_sent: u64,
+        lines_total: u64,
+        upload_id: String,
+    },
+    /// `Upload` (LF-15): the server asked for a pause (or the app is closing);
+    /// the lines not yet sent go on the next press, after `retry_after_secs`.
+    Partial {
+        lines_sent: u64,
+        lines_total: u64,
+        upload_id: String,
+        retry_after_secs: u64,
+    },
+    /// `Inspect` or `Upload` (LF-15): no telemetry target can be built for
+    /// this install, or no log session could be minted.
+    Unreachable,
 }
 
 /// Path-free and URL-free, safe for IPC.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LogUploadStatus {
     pub schema_version: u32,
+    #[serde(flatten)]
     pub state: LogUploadState,
 }
 impl LogUploadStatus {
-    fn new(state: LogUploadState) -> Self {
+    pub(crate) fn new(state: LogUploadState) -> Self {
         Self {
             schema_version: 1,
             state,
@@ -120,8 +140,11 @@ impl From<StorageError> for LogUploadError {
 pub enum LogUploadStep {
     /// Nothing to collect; report this status.
     Finished(LogUploadStatus),
-    /// Run [`LogCollection::collect`] without the state mutex.
+    /// Run [`LogCollection::collect`] without the state mutex. Only the blob
+    /// path (`begin_blob_upload`, removed by LF-18) returns this.
     Collect(LogCollection),
+    /// Run [`LogIngest::run`] without the state mutex (LF-15).
+    Ingest(LogIngest),
 }
 
 /// An admitted upload: where the logs are and which digests were sent before.
@@ -171,14 +194,16 @@ impl std::fmt::Debug for PendingUpload {
 }
 
 impl DesktopState {
-    /// Answer `Inspect`, or admit an `Upload`. `Upload` takes the full
-    /// mutation admission (`ensure_no_active_operation`) before anything else.
+    /// The pre-LF-15 blob upload: answer `Inspect`, or admit an `Upload`.
+    /// `Upload` takes the full mutation admission (`ensure_no_active_operation`)
+    /// before anything else. Nothing in the shell calls it any more; LF-18
+    /// deletes it with the blob store.
     /// The log reads and the PUT run after the lock is released, so
     /// [`Self::finish_log_upload`] takes the admission again before it writes
     /// the ledger. Known limit: an operation stuck in `ReconciliationRequired`
     /// also refuses this with `busy`; the view tells the player to finish or
     /// reconcile it first.
-    pub fn begin_log_upload(
+    pub fn begin_blob_upload(
         &self,
         request: LogUploadCommand,
         store: Option<&LogStore>,
