@@ -5,6 +5,7 @@
 //! A folder with only the stock cooked-data tier is reviewed as placed
 //! (`SourceCache.en-us`), as a fresh install places it; the moves rename the directory.
 use super::in_place::SETUP_FILES;
+use super::light_order::capped_index_files;
 use super::verification::{published_digest, Compared, Tree};
 use super::*;
 use crate::client_setup::{aslr, login_servers, stock_case};
@@ -244,7 +245,7 @@ pub(super) fn light_comparison(
         index_state,
         index_counts,
         index_files_total: index_all.len() as u32,
-        index_files: index_all.into_iter().take(LIGHT_LIST_CAP).collect(),
+        index_files: capped_index_files(index_all),
     };
     let download = DownloadEstimate {
         seed: false,

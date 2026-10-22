@@ -38,6 +38,7 @@ try {
  // 1. A clean stock folder: every file is original, nothing is skipped, confirm is enabled.
  await scenario(reviewed({index_counts:{stock:40}}));
  assert.equal(get('adoption-index').textContent,'Compared with the published file list: 40 original, 0 already patched, 0 prepared by the launcher, 0 changed, 0 missing, 0 extra.');
+ assert.equal(get('adoption-index-files').hidden,true);
  assert.equal(get('adoption-light-skipped-note').hidden,true);
  await confirmable();
  console.log('ok: a clean stock folder names its counts and leaves confirm and Play enabled');

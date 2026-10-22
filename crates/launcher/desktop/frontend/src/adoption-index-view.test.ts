@@ -33,6 +33,12 @@ test('the files list shows each path with its class and says how many are not li
  assert.deepEqual(items,['Working/a.upk — changed','Working/b.lua — extra','…and 500 more not listed here.']);
 });
 
+test('a compared folder with no listed files shows the line and no files list',()=>{
+ const {get}=mountIndex(light({index_counts:{stock:40}}));
+ assert.equal(get('adoption-index').hidden,false);
+ assert.equal(get('adoption-index-files').hidden,true);
+});
+
 test('no light review renders no index line and no files list',()=>{
  const {get}=mountIndex(undefined);
  assert.equal(get('adoption-index').hidden,true);

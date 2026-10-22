@@ -451,6 +451,15 @@ test('a light review says every game file moves into game and stays in use',asyn
   assert.equal(ui.get('adoption-consequences').textContent,'Your folder becomes the launcher’s installation. Its game files, including files you added such as PAKs placed by hand in SourceCache.en-us, are moved, not copied, into a “game” folder inside it, and the game keeps using them. Files that differ from what the patches expect are kept as they are. Desktop shortcuts and the old launcher stop working: start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Your settings and the client cache live in Documents and are not affected. The launcher rewrites its login server file and turns off address randomisation in SGW.exe.');
  }finally{await ui.app.dispose();}
 });
+test('a light review shows the index comparison and its files list through the adoption view',async()=>{
+ const light={...lightReview(0).light!,index_counts:{changed:1},index_files:[['Working/a.upk','changed']] as [string,'changed'][],index_files_total:1};
+ const ui=mount(request=>request==='choose'?{...reviewing('light-6'),backend:'in_place',modes:['light','copy'],review:{...lightReview(0),light}}:idle());
+ try{await ui.app.ready;await ui.settle();
+  await ui.click('choose-adoption-destination');
+  assert.equal(ui.get('adoption-index').textContent,'Compared with the published file list: 0 original, 0 already patched, 0 prepared by the launcher, 1 changed, 0 missing, 0 extra.');
+  assert.equal(ui.get('adoption-index-files').hidden,false);
+ }finally{await ui.app.dispose();}
+});
 test('a completed light adoption says the added files moved with it, not that they were left behind',async()=>{
  const done:AdoptionStatus={...idle(9),native:native(9,adopt('succeeded')),backend:'in_place',modes:['light','copy'],owned:true,completed:{directory:'/games/SGW',light:true}};
  const ui=mount(()=>done);

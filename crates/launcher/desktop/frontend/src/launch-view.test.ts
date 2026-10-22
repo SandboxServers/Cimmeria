@@ -136,6 +136,15 @@ test('an install with no skipped patch changes reads exactly Ready to Play.',()=
  const status={...initial(),patches_incomplete:0,ops_skipped:3} as any;
  assert.equal(launchText({status,pending:false,uncertain:false,error:null}),'Ready to Play.');
 });
+test('without an installation the skipped-change hint is not shown',()=>{
+ const status={...initial(),installation_id:null,patches_incomplete:1,ops_skipped:3} as any;
+ assert.equal(launchText({status,pending:false,uncertain:false,error:null}),'Finish installation and compatibility checks to enable Play.');
+});
+test('one skipped patch change reads in the singular, several in the plural',()=>{
+ const text=(n:number)=>launchText({status:{...initial(),patches_incomplete:1,ops_skipped:n} as any,pending:false,uncertain:false,error:null});
+ assert.match(text(1),/^Ready to Play\. 1 patch change could not be applied\. /);
+ assert.match(text(2),/^Ready to Play\. 2 patch changes could not be applied\. /);
+});
 test('a Play that did not start points at an edited login server list',()=>{
  const status={...initial(),observation:{phase:'not_started'}} as any;
  assert.match(launchText({status,pending:false,uncertain:false,error:null}),/If you edited the login servers, check them under Login servers\./);
