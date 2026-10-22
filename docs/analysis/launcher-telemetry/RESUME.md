@@ -12,9 +12,7 @@ Ledger: [README.md](README.md) · Packets: [work-packets.md](work-packets.md) (r
 **Wave 8 close (2026-10-22 late).** PR L #1981 and PR I2 #1982 merged. LA-01..LA-19 are done and `light-adoption` (tip `ebf8a46f3`, 47 commits over main, restacked) is open as **PR LA #1983**; the user queues the merge. LA-20 done: the signed manifest now carries `file_index` -> release `content-file-index-20261022` (worknotes/LA-20-publish.md, rollback recipe in it). Final cross-packet reviews A and B are running (worknotes/wave8e-final-review-A.md, -B.md); apply their fix notes on the branch, then push. Open: D2 (`inPlaceMaintenance.abandon` wording after a light abandon), D-LA12, Windows ARM64 scope, owner UAT (laptop light adoption, seedless Update, comparison panel, LT-27 U1-U9; ask first). Left from wave 7: LT-24 (PR F), LT-41 (PR H), LT-27 (PR X). Stale AU worktrees still to retire. Older notes below.
 
 **Current state (2026-10-21 late).**
-- PRs S #1976, I #1977 and A #1978 are merged.
-- **PR L #1981 is open** (`launcher-telemetry/launcher`, worktree `lt-app-integration`, tip `e6f16395a`). The user queues its merge.
-- Left from waves 0-7: LT-24 (PR F), LT-41 (PR H) and LT-27 (PR X, the owner's laptop UAT; ask first).
+- PRs S #1976, I #1977 and A #1978 are merged; **PR L #1981 is open** (`launcher-telemetry/launcher`, worktree `lt-app-integration`, tip `e6f16395a`). The user queues its merge. Left from waves 0-7: LT-24 (PR F), LT-41 (PR H) and LT-27 (PR X, the owner's laptop UAT; ask first).
 - LT-37 is superseded by LA-05 + LA-20 (worknotes/LT-37.md). The per-file policy idea is superseded by D-LA9 and D-LA11.
 
 | Wave | Packets | Ships as | Status |
