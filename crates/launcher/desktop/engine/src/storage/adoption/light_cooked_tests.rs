@@ -151,3 +151,35 @@ async fn an_empty_placed_directory_does_not_stop_the_rename() {
     commit(lt.preview().unwrap()).unwrap();
     assert_placed_tree(&lt);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn only_a_light_plan_places_the_cooked_tier() {
+    use super::in_place_replace::cooked_tier;
+    use super::model::FileCheck;
+    use super::publication::{plan_name, read_large};
+    let lt = stock_tier(&[]).await;
+    // A stopped run leaves its plan behind, which is the only way to hold one.
+    assert!(commit_with(lt.preview().unwrap(), crash_after_first_move).is_err());
+    let id = lt
+        .state
+        .lock()
+        .unwrap()
+        .operations()
+        .snapshot()
+        .operation
+        .clone()
+        .unwrap()
+        .id;
+    let root = lt.state.lock().unwrap().directory.root.clone();
+    let mut plan: Plan = read_large(&root.join(plan_name(id))).unwrap();
+    assert_eq!(
+        cooked_tier(&plan),
+        Some((
+            "Working/SGWGame/Cache.en-US".to_string(),
+            "Working/SGWGame/SourceCache.en-us".to_string()
+        ))
+    );
+    // Full-check and copy adoption never rename a directory.
+    plan.provenance.check = FileCheck::Full;
+    assert!(cooked_tier(&plan).is_none());
+}

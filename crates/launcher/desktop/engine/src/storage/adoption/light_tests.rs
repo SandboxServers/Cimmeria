@@ -413,6 +413,21 @@ async fn a_stock_named_cooked_file_is_stored_as_a_move() {
         b"cooked"
     );
     assert!(preview.replacements().iter().any(|r| r.path == PLACED));
+    // Both tiers hold files, so the publish places nothing and stores the move.
+    commit(preview).unwrap();
+    let game = lt.game();
+    assert_eq!(
+        std::fs::read(inventory::native(&game, PLACED)).unwrap(),
+        b"cooked"
+    );
+    assert_eq!(
+        std::fs::read(inventory::native(
+            &game,
+            "Working/SGWGame/SourceCache.en-us/Other.pak"
+        ))
+        .unwrap(),
+        b"other"
+    );
 }
 
 /// A recorder for the progress a preview reports.

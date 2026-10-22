@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 /// The stock cooked-data tier a light adoption places (LA-11b), as folder-relative
 /// `(stock, placed)` directories in the folder's spelling. `None` unless the plan is
 /// light and one of its rows renames a stock-spelled file to its placed path.
-fn cooked_tier(plan: &Plan) -> Option<(String, String)> {
+pub(super) fn cooked_tier(plan: &Plan) -> Option<(String, String)> {
     if !matches!(plan.provenance.check, FileCheck::Light) {
         return None;
     }
@@ -59,8 +59,9 @@ pub(super) fn place_cooked_tier(way: Way<'_>, from: &Path, to: &Path) -> Result<
         return Ok(());
     }
     if plain_dir(&placed)? && std::fs::remove_dir(&placed).is_err() {
-        tracing::error!(target: "adoption", "light adoption: both cooked-data tiers are in the folder");
-        return Err(StorageError::Corrupt.into());
+        // Both tiers hold files (a stored-move row looks like a rename row): nothing to place.
+        tracing::debug!(target: "adoption", "light adoption: both cooked-data tiers hold files; the directory stays as it is");
+        return Ok(());
     }
     std::fs::rename(&stock, &placed)?;
     tracing::debug!(target: "adoption", "light adoption: placed the bundled cooked-data tier");
