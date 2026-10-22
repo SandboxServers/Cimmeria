@@ -15,6 +15,8 @@ export function launchText(s:LaunchState):string {
  if(o?.phase==='not_started')return 'Game could not start. Files are preserved; recheck before trying again. If you edited the login servers, check them under Login servers.';
  if(!status.resources_available)return 'Play unavailable: this build is missing verified game launch resources.';
  if(launchBlocked(status))return 'Another operation owns the game. Wait for it to finish.';
+ // Play stays enabled: a skipped patch change is named, and Repair is the way to a full game.
+ if(status.installation_id&&status.patches_incomplete>0)return `Ready to Play. ${status.ops_skipped} patch changes could not be applied. If the game crashes or misbehaves, use Repair (downloads the full game, 4.1 GB).`;
  return status.installation_id?'Ready to Play.':'Finish installation and compatibility checks to enable Play.';
 }
 export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()=>{},uuid:()=>string=()=>crypto.randomUUID()) {

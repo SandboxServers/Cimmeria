@@ -123,6 +123,19 @@ test('background inspection keeps Play steady and accepts one click while the re
   assert.equal(button.textContent,'Play');
  } finally {release();await app.dispose();}
 });
+test('an install with skipped patch changes names them in the main view, and Play stays enabled',async()=>{
+ const status=initial();status.patches_incomplete=1;status.ops_skipped=3;
+ const {document}=parseHTML(html);
+ const app=mountLaunch(document,async()=>status,()=>{},()=>'attempt');
+ try{await app.ready;await new Promise(resolve=>setImmediate(resolve));
+  assert.match(document.getElementById('launch-status')!.textContent!,/3 patch changes could not be applied\. If the game crashes or misbehaves, use Repair \(downloads the full game, 4\.1 GB\)\./);
+  assert.equal((document.getElementById('launch') as HTMLButtonElement).disabled,false);
+ }finally{await app.dispose();}
+});
+test('an install with no skipped patch changes reads exactly Ready to Play.',()=>{
+ const status={...initial(),patches_incomplete:0,ops_skipped:3} as any;
+ assert.equal(launchText({status,pending:false,uncertain:false,error:null}),'Ready to Play.');
+});
 test('a Play that did not start points at an edited login server list',()=>{
  const status={...initial(),observation:{phase:'not_started'}} as any;
  assert.match(launchText({status,pending:false,uncertain:false,error:null}),/If you edited the login servers, check them under Login servers\./);

@@ -2,6 +2,7 @@ import {Context,Effect,Fiber,Layer,ManagedRuntime,Stream} from 'effect';
 import {AdoptionState,AdoptionStatus,Choice,Maintenance,adoptionBridgeLayer,consented,makeAdoptionWorkflow,unknownOutcome} from './adoption-workflow';
 import type {Invoke} from './view';
 import {fallbackText,rejectionText} from './adoption-reasons';
+import {renderIndex} from './adoption-index-view';
 class Adoption extends Context.Service<Adoption,Effect.Success<typeof makeAdoptionWorkflow>>()('launcher/Adoption') {}
 type Review=NonNullable<AdoptionStatus['review']>;
 const unchanged='The original game folder is unchanged.';
@@ -46,7 +47,7 @@ export const failureText=(code:string)=>unknownOutcome(code)?'The result could n
 const unsafeLead='These files or folders in the game folder cannot be adopted safely. Fix each one as described below, then choose the folder again. Nothing was copied, moved or removed.';
 const severalLead='The launcher found more than one Stargate Worlds install in that folder, so it did not pick one. Choose the install you want: its game root, the folder that holds “Working”, or its “Working\\Binaries” folder. Nothing was changed.';
 const doneText='This folder is now your Cimmeria install. If the game will not start, use Repair (it downloads the full game, 4.1 GB).';
-const lightConsequences='Your folder becomes the launcher’s installation. Its game files, including files you added such as PAKs placed by hand in SourceCache.en-us, are moved, not copied, into a “game” folder inside it, and the game keeps using them. Files that differ from what the patches expect are kept as they are. Desktop shortcuts and the old launcher stop working: start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Your settings and the client cache live in Documents and are not affected.';
+const lightConsequences='Your folder becomes the launcher’s installation. Its game files, including files you added such as PAKs placed by hand in SourceCache.en-us, are moved, not copied, into a “game” folder inside it, and the game keeps using them. Files that differ from what the patches expect are kept as they are. Desktop shortcuts and the old launcher stop working: start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Your settings and the client cache live in Documents and are not affected. The launcher rewrites its login server file and turns off address randomisation in SGW.exe.';
 const lightDoneText='Its game files, including files you added, now sit in the launcher-owned “game” folder inside it, and the game keeps using them.';
 /** The folder's own name only, never its full path. */
 const folderName=(path:string)=>path.split(/[\\/]/).filter(Boolean).pop()??path;
@@ -226,6 +227,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
    fallback.textContent=review.index_fallback?fallbackText(review.index_fallback):'';
    fallback.hidden=!review.index_fallback;
    lightReview(review.light,review.source);
+   renderIndex(document,get('adoption-light-skipped'),review.light);
    get('adoption-seed-archive').hidden=!review.download?.seed;
    get('adoption-replace-text').textContent=lines.replace;
    get('adoption-replace-row').hidden=!review.requires_replacement;
