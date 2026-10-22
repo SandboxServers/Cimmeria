@@ -144,7 +144,7 @@ pub(super) enum IngestError {
     #[error("this session may not post that target")]
     PurposeTarget,
     /// A log chunk passed a row budget (C-LF6): `reason` is
-    /// `log_session_budget`, `log_install_budget` or `log_global_budget`.
+    /// `log_session_budget`, `log_install_budget`, `log_ip_budget` or `log_global_budget`.
     /// `global` answers 503 (the server is full), the others 429.
     #[error("Log upload budget exceeded")]
     LogBudget {

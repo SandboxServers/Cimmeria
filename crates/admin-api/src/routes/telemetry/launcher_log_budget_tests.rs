@@ -169,6 +169,27 @@ fn the_install_day_table_evicts_the_oldest_day() {
     assert_eq!(budget.tracked_installs(), 2);
 }
 
+/// **The fullest install entry survives eviction.** `i2` holds the fewest rows
+/// today, so it is the one evicted; `i1` keeps its 90 and its next 20 are refused.
+#[test]
+fn the_fullest_install_entry_survives_eviction() {
+    let budget = LogBudget::new(1_000, 100, 1_000).with_capacity(2);
+    let t0 = Instant::now();
+    budget
+        .admit("s", "i1", 0, ChunkRows::kept(90), t0, 10 * DAY)
+        .unwrap();
+    budget
+        .admit("s", "i2", 0, ChunkRows::kept(5), t0, 10 * DAY)
+        .unwrap();
+    budget
+        .admit("s", "i3", 0, ChunkRows::kept(5), t0, 10 * DAY)
+        .unwrap();
+    assert_eq!(
+        refused(budget.admit("s", "i1", 0, ChunkRows::kept(20), t0, 10 * DAY)).0,
+        "log_install_budget"
+    );
+}
+
 /// **A full session table refuses a new session (fail closed).**
 #[test]
 fn a_full_session_table_refuses_a_new_session() {

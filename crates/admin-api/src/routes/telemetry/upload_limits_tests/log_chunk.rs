@@ -15,7 +15,7 @@ use crate::routes::telemetry::launcher_log_budget::LogBudget;
 use crate::routes::telemetry::replay_tests::capture_async;
 use crate::routes::telemetry::upload_gate::{UploadLimits, UploadPolicy, UploadState};
 
-use super::{gzip, launcher_chunk_request, log_chunk_request, run, Env, PEER};
+use super::{chunk_request, gzip, launcher_chunk_request, log_chunk_request, run, Env, PEER};
 
 const INSTALL: &str = "install-log-test";
 
@@ -158,6 +158,20 @@ fn a_log_chunk_over_512_kib_expanded_is_refused_with_413() {
     );
     assert_eq!(err.into_response().status(), 413);
 }
+
+/// **A second log session from one address is refused once the address day cap is spent.**
+#[test]
+fn one_address_is_refused_past_its_log_day_cap() {
+    let _env = Env::install();
+    let budget = LauncherBudget::new(300, 3_000)
+        .with_logs(LogBudget::new(40_000, 80_000, 40_000).with_address_day(1_500));
+    post(&state(), &budget, "sess-ip-a", &log_rows(1_000)).expect("the first 1,000 rows fit");
+    let err = post(&state(), &budget, "sess-ip-b", &log_rows(1_000))
+        .expect_err("1,000 + 1,000 is over the 1,500 address cap");
+    assert_eq!(err.reason(), "log_ip_budget");
+    assert_eq!(err.into_response().status(), 429);
+}
+
 /// **A log row over 4 KiB is dropped and counted**; the rows beside it stay.
 #[test]
 fn a_log_row_over_4_kib_is_dropped() {
@@ -319,6 +333,26 @@ fn a_log_token_posting_an_event_target_gets_403() {
         &rows,
     )
     .expect_err("a log session may not post event rows");
+    assert_eq!(err.reason(), "purpose_target");
+    assert_eq!(err.into_response().status(), 403);
+}
+
+/// **A player token posting a log target gets 403.**
+#[test]
+fn a_player_token_posting_a_log_target_gets_403() {
+    let _env = Env::install();
+    let err = run(chunk_inner_with(
+        &state(),
+        &UploadPolicy::defaults(),
+        PEER,
+        chunk_request(
+            "sess-player-logs",
+            body(&[log_row(1, "client.launcher.log", "hi")]),
+        ),
+        Instant::now(),
+        &LauncherBudget::new(300, 3_000),
+    ))
+    .expect_err("a player session may not post log rows");
     assert_eq!(err.reason(), "purpose_target");
     assert_eq!(err.into_response().status(), 403);
 }

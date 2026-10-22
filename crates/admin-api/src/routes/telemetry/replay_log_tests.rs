@@ -76,6 +76,23 @@ fn an_event_rows_body_stays_its_target() {
     assert!(r.fields["fields"].contains("kept"));
 }
 
+/// **A log target from a non-log session is not replayed** (C-LF4, second guard).
+#[test]
+fn a_log_target_from_a_non_log_session_is_dropped() {
+    for c in [claims(Some("launcher")), claims(None)] {
+        let rows = capture(|| {
+            replay_client_native(
+                &c,
+                row(
+                    "client.launcher.log",
+                    json!({ "message": "forged", "upload_id": "0123456789abcdef" }),
+                ),
+            );
+        });
+        assert!(rows.iter().all(|r| r.target != "client.native"), "{rows:?}");
+    }
+}
+
 /// A log session's claims: a launcher token with the logs purpose.
 fn log_claims() -> crate::routes::dev_session::TokenClaims {
     crate::routes::dev_session::TokenClaims {
