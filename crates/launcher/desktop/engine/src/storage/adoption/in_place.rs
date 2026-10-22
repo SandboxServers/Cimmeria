@@ -3,6 +3,7 @@
 //! owned `game` tree, so nothing is copied; every other file stays where it was,
 //! outside that tree, and no later Repair, Update or Uninstall touches it.
 pub(super) use super::in_place_abandon::{abandon, abandonable};
+use super::in_place_check;
 use super::in_place_replace::{
     drop_login_copy, keep_login, keeps_login, remove_emptied, remove_work_folder, replace_file,
     replaced_kind, restore_replaced,
@@ -245,6 +246,9 @@ fn admit(
         .collect();
     write_large(&state.directory.root, &reviewed_name(id), &reviewed)?;
     write_large(&state.directory.root, &plan_name(id), &plan)?;
+    if let Some(tree) = &preview.expected_tree {
+        in_place_check::write_expected(&plan.stage(), tree)?;
+    }
     // Staged here means the moves are authorized, not that they are done.
     write_large(
         &state.directory.root,
@@ -503,17 +507,6 @@ fn game_running(_root: &Path) -> Result<bool, Error> {
     Ok(false)
 }
 
-fn validate(game: &Path, plan: &Plan) -> Result<(), Error> {
-    inventory::same_directory(game, &plan.stage_identity)?;
-    if inventory::content_digest(&inventory::scan(game, &CancellationToken::new())?)?
-        != plan.provenance.reference_digest
-    {
-        tracing::error!(target: "adoption", game = %game.display(), "in-place adoption: the owned tree does not match the signed reference");
-        return Err(StorageError::Corrupt.into());
-    }
-    Ok(())
-}
-
 /// Shared by publication and explicit recovery. A Staged checkpoint finishes its
 /// moves; the release files are then exactly the signed reference.
 /// The files the launcher's setup writes in the game folder, relative to it. Both
@@ -575,9 +568,11 @@ pub(super) fn finish(
             &ProgressSink::latest().0,
             &mut |_| Ok(()),
         )?;
-        // Checkpointed before setup rewrites any release bytes: from here only
-        // recovery is offered, because moving the files back would not undo
-        // the setup and Abandon would not put the folder back as reviewed.
+        // A light adoption copies the setup files aside first, so Abandon can still
+        // put them back once setup has rewritten them (D-LF2).
+        in_place_check::save_setup_originals(plan, &game)?;
+        // Checkpointed before setup rewrites any release bytes. A verified adoption
+        // is only recoverable from here; moving its files back would not undo the setup.
         record.phase = Phase::Promoted;
         write_large(&state.directory.root, &name(id), &record)?;
     }
@@ -590,7 +585,7 @@ pub(super) fn finish(
         sync_files(&game, &SETUP_FILES)?;
         hook(Point::SetUp)?;
     }
-    validate(&game, plan)?;
+    in_place_check::validate(&game, plan)?;
     atomic::write(root, "content-ready.json", &plan.installation)?;
     state.remember_adopted_content(&plan.installation, &plan.provenance)?;
     hook(Point::Receipt)?;

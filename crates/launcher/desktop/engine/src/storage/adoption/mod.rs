@@ -5,8 +5,13 @@ mod artifacts;
 mod comparison;
 mod in_place;
 mod in_place_abandon;
+mod in_place_check;
+#[cfg(all(test, not(target_os = "macos")))]
+mod in_place_check_tests;
 mod in_place_preview;
 mod in_place_replace;
+#[cfg(all(test, not(target_os = "macos")))]
+mod setup_originals_tests;
 // Where the in-place backend is the one previews use.
 #[cfg(all(test, not(target_os = "macos")))]
 mod folder_tests;
@@ -52,6 +57,7 @@ mod source;
 mod survey;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
+mod tree_diff;
 mod verification;
 mod worker;
 pub use worker::{start_confirmation, start_preview, ConfirmationWorker, PreviewWorker};
@@ -121,6 +127,9 @@ pub struct Preview {
     /// The digest and release paths of the post-setup tree (see `Compared`).
     expected_digest: [u8; 32],
     expected_paths: Vec<String>,
+    /// A light adoption's post-setup tree, stored at admission for the final check
+    /// per file; `None` for every other adoption.
+    expected_tree: Option<verification::Tree>,
     /// The files the replay stored for the adopted tree (AI-09); empty when the
     /// review needs none.
     replacements: Vec<Replacement>,
@@ -396,6 +405,7 @@ fn copy_preview(
         reference,
         expected_digest,
         expected_paths,
+        expected_tree: None,
         replacements,
         file_index_sha256,
         light: None,

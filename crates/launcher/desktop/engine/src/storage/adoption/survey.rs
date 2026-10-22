@@ -77,7 +77,7 @@ fn walk(root: &Path, dir: &Path, depth: usize, survey: &mut Survey) {
             })
             .collect::<Option<Vec<_>>>()
             .map(|parts| parts.join("/"))
-            .filter(|name| inventory::index_name_allowed(name));
+            .filter(|name| inventory::scan_name_allowed(name));
         let Some(name) = name else {
             survey.note(UnsafeReason::Name, shown_path);
             continue;
