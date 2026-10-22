@@ -32,14 +32,14 @@ test('review is readable, every required confirmation is visible and unchecked, 
  try{await ui.app.ready;await ui.settle();
   assert.equal(ui.get('adoption-review').hidden,false);
   assert.equal(ui.get('adoption-source').textContent,'/old-game');assert.equal(ui.get('adoption-destination').textContent,'/library/Stargate Worlds');
-  assert.match(ui.get('adoption-release').textContent!,new RegExp(`Signed release ${'ab'.repeat(32)}.*first-patch, second-patch`));
+  assert.equal(ui.get('adoption-release').textContent,'Signed release: 2 patches.');
   assert.match(ui.get('adoption-counts').textContent!,/40 files are identical.*1 file differs only.*2 files were modified.*1 file is missing.*3 files are not part/);
   const listed=Array.from(ui.get('adoption-differences').querySelectorAll('li'),li=>li.textContent);
   assert.deepEqual(listed,['Old launcher setup change: Working/Binaries/SGW.exe','Modified: <img src=x onerror=alert(1)>.lua','Not part of the release: mod.dll','…and 4 more differences not listed here.']);
   assert.equal(ui.get('adoption-differences').querySelectorAll('img').length,0,'paths are text, never markup');
   assert.match(ui.get('adoption-consequences').textContent!,/not copied or migrated: they stay in the original folder/);
   assert.match(ui.get('adoption-settings').textContent!,/Second \(https:\/\/example.invalid\/second\); First .*Client patches: off, as imported/);
-  assert.match(ui.get('adoption-telemetry').textContent!,/you opted in.*cannot send game telemetry.*diagnostics stay off; adoption does not change/);
+  assert.match(ui.get('adoption-telemetry').textContent!,/you opted in with the old launcher\. This build has no game diagnostics module, so only launcher diagnostics are sent\. Launcher setup diagnostics stay off; adoption does not change/);
   for(const id of ['adoption-normalize','adoption-closed','adoption-telemetry']){
    assert.equal(ui.get(`${id}-row`).hidden,false,`${id} is shown`);assert.equal((ui.get(id) as HTMLInputElement).checked,false);assert.equal(ui.disabled(id),false);
   }
@@ -124,6 +124,15 @@ test('a lost confirm reply is reported and never sent again',async()=>{
   assert.equal(ui.get('adoption-review').hidden,true);assert.equal(ui.disabled('choose-adoption-destination'),true);
  }finally{await ui.app.dispose();}
 });
+test('each confirmation keeps its two buttons in one settings-actions row',()=>{
+ const {document}=parseHTML(html);
+ for(const [confirm,dismiss] of [['confirm-uninstall','dismiss-uninstall'],['confirm-repair','dismiss-repair'],['confirm-game-update','dismiss-game-update'],['confirm-adoption-maintenance','dismiss-adoption-maintenance']]){
+  const row=document.getElementById(confirm)!.parentElement!;
+  assert.equal(row.className,'settings-actions',`${confirm} sits in a settings-actions row`);
+  assert.ok(row.querySelector(`#${dismiss}`),`${dismiss} sits beside ${confirm}`);
+ }
+});
+
 test('interrupted work offers only its native recovery, behind an explicit confirmation',async()=>{
  let status:AdoptionStatus={...idle(4),native:native(4,adopt('reconciliation_required')),reconciliation:{kind:'preparation',preparation_id:'prep-1'}};
  const ui=mount(request=>{if(request!=='choose'&&request.command==='abandon_preparation')status={...idle(6),native:native(6,adopt('cancelled'))};
@@ -134,8 +143,10 @@ test('interrupted work offers only its native recovery, behind an explicit confi
   assert.equal(ui.get('remove-adoption-preparation').hidden,false);assert.equal(ui.get('recover-adoption').hidden,true);assert.equal(ui.get('abandon-adoption').hidden,true);
   await ui.click('remove-adoption-preparation');
   assert.equal(ui.get('adoption-maintenance').hidden,false);assert.match(ui.get('adoption-maintenance-consequences').textContent!,/Permanently remove the private reference files/);
+  assert.equal(ui.get('remove-adoption-preparation').hidden,true,'the trigger is hidden while its confirmation is open');
   assert.equal(ui.sent('abandon_preparation').length,0,'opening the confirmation changes nothing');
   await ui.click('dismiss-adoption-maintenance');assert.equal(ui.get('adoption-maintenance').hidden,true);
+  assert.equal(ui.get('remove-adoption-preparation').hidden,false,'the trigger shows again once the confirmation closes');
   await ui.click('remove-adoption-preparation');await ui.click('confirm-adoption-maintenance');await ui.click('confirm-adoption-maintenance');
   assert.deepEqual(ui.sent('abandon_preparation'),[{command:'abandon_preparation',schema_version:1,preparation_id:'prep-1',operation_revision:4,confirmed:true}]);
   assert.equal(ui.get('adoption-maintenance').hidden,true);assert.equal(ui.disabled('choose-adoption-destination'),false);
@@ -164,7 +175,7 @@ test('in place: the imported folder is offered, a file that does not verify is n
   assert.equal(ui.get('choose-adoption-destination').textContent,'Use an existing game folder…');
   await ui.click('choose-adoption-destination');
   assert.match(ui.text(),/cannot be adopted in place: later\.txt\. Restore them/);
-  assert.equal(ui.get('adoption-source-label').textContent,'Game folder to adopt:');
+  assert.equal(ui.get('adoption-source-label').textContent,'Folder:');assert.equal(ui.get('adoption-destination-label').parentElement!.hidden,true,'one folder line');
   assert.equal(ui.get('adoption-destination-label').textContent,'Launcher-owned installation:');
   assert.equal(ui.get('confirm-adoption').textContent,'Adopt this folder');
   // The owner-approved warning, shown before Confirm.
@@ -246,12 +257,32 @@ test('a folder source with files that need patching shows its review, backup and
 });
 test('a review whose seed comes from the chosen game archive says so, with its patches',async()=>{
  const archive=(patches:string[]):NonNullable<AdoptionStatus['review']>=>({...review(),source_kind:'folder',download:{seed:false,patches,bytes:1048576,local_seed:true}});
- for(const [patches,line] of [[['first-patch'],'Uses your game archive and patches first-patch (1.0 MB).'],[[],'Uses your game archive.']] as const){
+ for(const [patches,line] of [[['first-patch'],'Uses your game archive and downloads 1 patch (1.0 MB).'],[[],'Uses your game archive.']] as const){
   const ui=mount(()=>({...reviewing(),modes:['in_place','copy'],review:archive([...patches])}));
   try{await ui.app.ready;await ui.settle();
    assert.equal(ui.get('adoption-download').textContent,line);assert.equal(ui.get('adoption-seed-archive').hidden,true);
   }finally{await ui.app.dispose();}
  }
+});
+test('the digest and ids sit behind Release details; the visible review holds counts only',async()=>{
+ const archive:NonNullable<AdoptionStatus['review']>={...review(),source_kind:'folder',download:{seed:false,patches:['first-patch','second-patch'],bytes:2097152}};
+ const ui=mount(()=>({...reviewing(),modes:['in_place','copy'],review:archive}));
+ try{await ui.app.ready;await ui.settle();
+  const details=ui.get('adoption-release-details');
+  assert.equal(details.tagName,'DETAILS');assert.equal(details.classList.contains('release-details'),true);
+  assert.equal(details.querySelector('summary')!.textContent,'Release details');
+  assert.equal(ui.get('adoption-release').nextElementSibling,details);
+  const hidden=details.textContent!;
+  assert.match(hidden,new RegExp(`Manifest SHA-256: ${'ab'.repeat(32)}`));
+  assert.match(hidden,/Patches in signed order: first-patch, second-patch/);
+  assert.match(hidden,/Download ids: first-patch, second-patch/);
+  const visible=ui.get('adoption-review').textContent!.replace(hidden,'');
+  assert.doesNotMatch(visible,/[0-9a-f]{64}/,'no digest outside Release details');
+  assert.doesNotMatch(visible,/first-patch|second-patch/,'no patch id outside Release details');
+  assert.equal(ui.get('adoption-download').textContent,'Downloads: 2 patches (2.0 MB).');
+  assert.equal(visible.split('40 files are identical').length-1,1,'each plan count appears once');
+  assert.equal(visible.split('2 files were modified').length-1,1,'each plan count appears once');
+ }finally{await ui.app.dispose();}
 });
 test('a folder review without imported settings decodes and says the launcher defaults apply',async()=>{
  // A folder preview has no legacy import, so the requested-config fields are absent.
@@ -283,7 +314,7 @@ test('a folder review imports nothing: only the launcher’s own settings line i
   assert.equal(ui.get('adoption-settings').textContent,'Settings: this launcher\'s own server list and client-patch setting.');
   assert.doesNotMatch(ui.get('adoption-settings').textContent!,/Second|First|Client patches: off/);
   assert.doesNotMatch(ui.get('adoption-telemetry').textContent!,/you opted in/);
-  assert.equal(ui.get('adoption-replace-row').hidden,true);assert.equal(ui.get('adoption-download').textContent,'Downloads: patches first-patch (1.0 MB).');
+  assert.equal(ui.get('adoption-replace-row').hidden,true);assert.equal(ui.get('adoption-download').textContent,'Downloads: 1 patch (1.0 MB).');
   assert.equal(ui.get('adoption-seed-archive').hidden,true);
  }finally{await ui.app.dispose();}
 });
@@ -419,14 +450,14 @@ test('the list is gone once a review is shown',async()=>{
   assert.equal(ui.get('adoption-unsafe').hidden,true);
  }finally{await ui.app.dispose();}
 });
-const lightReview=(skipped_total=1):NonNullable<AdoptionStatus['review']>=>({...review(),source:'/games/SGW',in_place:true,source_kind:'folder',requires_replacement:false,requires_normalization:false,requires_telemetry_acceptance:false,blocked_files:[],
+const lightReview=(skipped_total=1):NonNullable<AdoptionStatus['review']>=>({...review(),source:'/games/SGW',destination:'/games/SGW',in_place:true,source_kind:'folder',requires_replacement:false,requires_normalization:false,requires_telemetry_acceptance:false,blocked_files:[],
  light:{patches_total:3,patches_current:1,patches_pending:2,download_bytes:1048576,skipped:[{path:'Working/Data/a.lua',patch:'first-patch',reason:'modified'}],skipped_total,index_state:'compared',index_counts:{},index_files:[],index_files_total:0}});
 test('the light review names the folder, its patch counts and the skipped changes, and Use this folder stays enabled',async()=>{
  const ui=mount(request=>request==='choose'?{...reviewing('light-1'),backend:'in_place',modes:['light','copy'],review:lightReview()}:idle());
  try{await ui.app.ready;await ui.settle();
   await ui.click('choose-adoption-destination');
-  assert.equal(ui.get('adoption-light-found').textContent,'Stargate Worlds found in SGW.');assert.equal(ui.get('adoption-light-found').hidden,false);
-  assert.equal(ui.get('adoption-light-patches').textContent,'Patches already applied: 1 of 3. To apply: 2 (1.0 MB to download).');
+  assert.equal(ui.get('adoption-light-found').textContent,'Found Stargate Worlds in /games/SGW.');assert.equal(ui.get('adoption-light-found').hidden,false);
+  assert.equal(ui.get('adoption-light-patches').textContent,'Patches already applied: 1 of 3. To apply: 2.');
   assert.equal(ui.get('adoption-light-skipped-note').hidden,false);
   assert.match(ui.get('adoption-light-skipped-note').textContent!,/Some patch changes can't be applied: 1 file differs from the originals the patches expect\. They stay as they are\. You can still use this folder\./);
   assert.match(ui.get('adoption-light-skipped').textContent!,/Working\/Data\/a\.lua — first-patch/);
@@ -524,4 +555,21 @@ test('no failure text points at a launcher log',async()=>{
   try{await ui.app.ready;await ui.settle();assert.doesNotMatch(ui.text(),/log/);
   }finally{await ui.app.dispose();}
  }
+});
+test('an in-place review shows one plain Folder line; a copy keeps its two labelled lines',async()=>{
+ const extended='\\\\?\\C:\\Games\\SGW';
+ const flags={requires_normalization:false,requires_telemetry_acceptance:false,game_telemetry_opted_in:false};
+ const inPlace:AdoptionStatus={...reviewing(),review:{...review(),source:extended,destination:extended,in_place:true,...flags}};
+ const copy:AdoptionStatus={...reviewing(),review:{...review(),source:extended,destination:'D:\\Copy\\SGW',in_place:false,...flags}};
+ let status=inPlace;
+ const ui=mount(()=>status);
+ try{await ui.app.ready;await ui.settle();
+  assert.equal(ui.get('adoption-source-label').textContent,'Folder:');assert.equal(ui.get('adoption-source').textContent,'C:\\Games\\SGW');
+  assert.equal(ui.get('adoption-destination-label').parentElement!.hidden,true,'the in-place review has one folder line');
+  status=copy;await ui.click('inspect-adoption');
+  assert.equal(ui.get('adoption-source-label').textContent,'Original game, never changed:');assert.equal(ui.get('adoption-source').textContent,'C:\\Games\\SGW');
+  assert.equal(ui.get('adoption-destination-label').parentElement!.hidden,false,'a copy keeps its destination line');
+  assert.equal(ui.get('adoption-destination-label').textContent,'New verified copy:');assert.equal(ui.get('adoption-destination').textContent,'D:\\Copy\\SGW');
+  assert.doesNotMatch(ui.get('adoption-review').textContent!,/\\\\\?\\/);
+ }finally{await ui.app.dispose();}
 });

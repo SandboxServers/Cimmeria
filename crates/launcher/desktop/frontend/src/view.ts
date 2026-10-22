@@ -1,6 +1,6 @@
 import { mountPatchNotes } from "./patch-notes";
 import { Context, Effect, Fiber, Layer, ManagedRuntime, Result, Schema, Stream } from "effect";
-import { BridgeFailure, safeFailure } from "./contract";
+import { BridgeFailure, operationOpen, safeFailure } from "./contract";
 import { bridgeLayer, makeLauncher, ScreenState } from "./workflows";
 import { mountServerList } from "./server-list-view";
 import { mountClientPatches } from "./client-patches-view";
@@ -74,7 +74,7 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     checkbox.checked = pendingConsent ?? native?.preferences.launcher_summary_consent ?? false;
     checkbox.disabled = !enabled;
     path.value = native?.preferences.install_directory ?? '';
-    get<HTMLButtonElement>('choose').disabled = !enabled || (!!native?.operation.operation && !['succeeded','failed','cancelled'].includes(native.operation.operation.state));
+    get<HTMLButtonElement>('choose').disabled = !enabled || operationOpen(native?.operation.operation);
     get<HTMLButtonElement>('folder').disabled = !enabled || !native?.preferences.install_directory;
     const failure = localError ?? current.error;
     get('status').textContent = failure ? errorText[failure] : active ?? notice ??

@@ -79,7 +79,7 @@ try {
  assert.equal(status.review.in_place,true);assert.equal(status.review.requires_replacement,true);assert.deepEqual(status.review.blocked_files,[]);
  assert.match(text(),/Review the comparison and confirmations below\. Nothing is moved until you confirm\./);
  assert.equal(get('adoption-unsafe').hidden,true,'the refusal list is gone in review');
- assert.equal(get('adoption-source-label').textContent,'Game folder to adopt:');assert.equal(get('adoption-source').textContent,before.folder);
+ assert.equal(get('adoption-source-label').textContent,'Folder:');assert.equal(get('adoption-source').textContent,before.folder.replace(/^\\\\\?\\(?=[A-Za-z]:\\)/,''));assert.equal(get('adoption-destination-label').parentElement.hidden,true,'one folder line');
  assert.equal(get('adoption-replace-row').hidden,false,'a modified release file shows the replacement box');
  assert.equal(get('adoption-replace').checked,false);
  await tickShown();

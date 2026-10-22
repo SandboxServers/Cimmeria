@@ -149,3 +149,22 @@ test('a Play that did not start points at an edited login server list',()=>{
  const status={...initial(),observation:{phase:'not_started'}} as any;
  assert.match(launchText({status,pending:false,uncertain:false,error:null}),/If you edited the login servers, check them under Login servers\./);
 });
+const withOperation=(kind:string,state:string)=>({...initial(),native:{...initial().native,operation:{schema_version:1,revision:1,operation:{id:'op',kind,state,intent_digest:Array(32).fill(0)}}}}) as any;
+test('an interrupted adoption gives Play one adoption line in place of the owner and error lines',()=>{
+ const play=(status:any,error:string|null=null)=>({status,pending:false,uncertain:false,error}) as any;
+ assert.equal(launchText(play(withOperation('adopt','reconciliation_required'))),'Finish or abandon the interrupted adoption in the adoption panel before you play.');
+ assert.equal(launchText(play(withOperation('adopt','running'))),'An adoption review is open. Finish or cancel it in the adoption panel.');
+ assert.equal(launchText(play(withOperation('adopt','running'),'io')),'An adoption review is open. Finish or cancel it in the adoption panel.');
+});
+test('an install operation keeps the generic owner line and error line',()=>{
+ assert.equal(launchText({status:withOperation('install','running'),pending:false,uncertain:false,error:null} as any),'Another operation owns the game. Wait for it to finish.');
+ assert.match(launchText({status:withOperation('install','running'),pending:false,uncertain:false,error:'io'} as any),/Resolve any folder-access prompt/);
+});
+test('Play hides Recheck while an adoption is open',async()=>{
+ const status=withOperation('adopt','reconciliation_required');const {document}=parseHTML(html);
+ const app=mountLaunch(document,async()=>status,()=>{},()=>'attempt');
+ try{await app.ready;await new Promise(resolve=>setImmediate(resolve));
+  assert.equal((document.getElementById('inspect-launch') as HTMLButtonElement).hidden,true);
+  assert.equal(document.getElementById('launch-status')!.textContent,'Finish or abandon the interrupted adoption in the adoption panel before you play.');
+ }finally{await app.dispose();}
+});

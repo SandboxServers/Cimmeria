@@ -3,6 +3,8 @@ import {AdoptionState,AdoptionStatus,Choice,Maintenance,adoptionBridgeLayer,cons
 import type {Invoke} from './view';
 import {fallbackText,rejectionText} from './adoption-reasons';
 import {renderIndex} from './adoption-index-view';
+import {displayPath} from './display-path';
+import {operationOpen} from './contract';
 class Adoption extends Context.Service<Adoption,Effect.Success<typeof makeAdoptionWorkflow>>()('launcher/Adoption') {}
 type Review=NonNullable<AdoptionStatus['review']>;
 const unchanged='The original game folder is unchanged.';
@@ -49,8 +51,6 @@ const severalLead='The launcher found more than one Stargate Worlds install in t
 const doneText='This folder is now your Cimmeria install. If the game will not start, use Repair (it downloads the full game, 4.1 GB).';
 const lightConsequences='Your folder becomes the launcher’s installation. Its game files, including files you added such as PAKs placed by hand in SourceCache.en-us, are moved, not copied, into a “game” folder inside it, and the game keeps using them. Files that differ from what the patches expect are kept as they are. Desktop shortcuts and the old launcher stop working: start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Your settings and the client cache live in Documents and are not affected. The launcher rewrites its login server file and turns off address randomisation in SGW.exe.';
 const lightDoneText='Its game files, including files you added, now sit in the launcher-owned “game” folder inside it, and the game keeps using them.';
-/** The folder's own name only, never its full path. */
-const folderName=(path:string)=>path.split(/[\\/]/).filter(Boolean).pop()??path;
 const unsafeReasons:Record<UnsafeReason,string>={
  link:'a link or junction to another place. Put the real folder or file here instead, then try again.',
  cloud_file:'a OneDrive or other cloud-synced file. Move the whole game folder out of the synced folder (for example to C:\\Games), then try again.',
@@ -117,14 +117,16 @@ const inPlaceMaintenance:Partial<typeof maintenanceText>={
 function reviewLines(r:Review,summaryConsent:boolean) {
  const c=r.counts,plural=(n:number,one:string,many:string)=>`${n} ${n===1?one:many}`;
  return {
-  release:`Signed release ${r.release.manifest_sha256} (seed ${r.release.seed_sha256.slice(0,16)}…, ${r.release.patches.length?`patches in signed order: ${r.release.patches.join(', ')}`:'no patches'}).`,
+  release:`Signed release: ${r.release.patches.length?plural(r.release.patches.length,'patch','patches'):'no patches'}.`,
+  // The digest, the patch ids and the download ids sit behind "Release details", not in the summary.
+  details:[`Manifest SHA-256: ${r.release.manifest_sha256}.`,`Seed SHA-256 starts ${r.release.seed_sha256.slice(0,16)}….`,r.release.patches.length?`Patches in signed order: ${r.release.patches.join(', ')}.`:'Patches in signed order: none.',...(r.download?.patches.length?[`Download ids: ${r.download.patches.join(', ')}.`]:[])],
   counts:r.light?`${plural(c.matched,'file moves','files move')} into the “game” folder with no patch changes. ${plural(c.needs_patching,'file is','files are')} updated by the patches. ${plural(c.known_transform,'bundled data file moves','bundled data files move')} to the folder the game loads them from.`:`${plural(c.matched,'file is','files are')} identical${r.in_place?'':' and copied from your game'}. ${plural(c.known_transform,'file differs','files differ')} only by the old launcher’s own setup change. ${plural(c.modified,'file was','files were')} modified. ${plural(c.missing,'file is','files are')} missing. ${plural(c.extra,'file is','files are')} not part of the signed release.`,
   consequences:r.light?lightConsequences:r.in_place?'Your folder becomes the launcher’s installation. SGW.exe and every release file are moved, not copied, into a “game” folder inside it, so desktop shortcuts and the old launcher stop working: start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Files you added inside the game folders, such as PAKs placed by hand in SourceCache.en-us, stay where they are and the game will no longer use them. Your settings and the client cache live in Documents and are not affected. Files changed only by the old launcher’s setup get the launcher’s own setup again, and uninstalling removes only what the release lists.':`The copy will hold exactly the signed release. Modified, missing and setup-changed files are taken from the signed reference instead of your game${r.requires_normalization?'':' (none in this comparison)'}. Files that are not part of the release, saved game settings and other user files are not copied or migrated${r.user_data_remains_in_source?': they stay in the original folder':''}. ${unchanged}`,
   // A folder adoption imports no legacy settings, so those fields are absent for it.
-  download:!r.download?'Nothing to download.':r.download.local_seed?`Uses your game archive${r.download.patches.length?` and patches ${r.download.patches.join(', ')} (${megabytes(r.download.bytes)})`:''}.`:r.download.seed?`Downloads: the game archive${r.download.patches.length?` and patches ${r.download.patches.join(', ')}`:''} (${megabytes(r.download.bytes)}).`:r.download.patches.length?`Downloads: patches ${r.download.patches.join(', ')} (${megabytes(r.download.bytes)}).`:'Nothing to download.',
+  download:!r.download?'Nothing to download.':r.download.local_seed?`Uses your game archive${r.download.patches.length?` and downloads ${plural(r.download.patches.length,'patch','patches')} (${megabytes(r.download.bytes)})`:''}.`:r.download.seed?`Downloads: the game archive${r.download.patches.length?` and ${plural(r.download.patches.length,'patch','patches')}`:''} (${megabytes(r.download.bytes)}).`:r.download.patches.length?`Downloads: ${plural(r.download.patches.length,'patch','patches')} (${megabytes(r.download.bytes)}).`:'Nothing to download.',
   replace:`Replace ${c.modified+c.missing} modified or missing release files with the signed release's versions. ${r.in_place?`Your originals are moved to ${r.backup_directory??'a backup folder'}.`:'The copy gets the signed versions; your folder is not changed.'}`,
   settings:r.source_kind==='folder'?'Settings: this launcher\'s own server list and client-patch setting.':r.login_servers===undefined?'Launcher defaults: nothing is imported from this folder for login servers or client patches.':`Login servers, in your order: ${r.login_servers.length?r.login_servers.map(s=>`${s.name} (${s.url})`).join('; '):'none'}. Client patches: ${r.client_patches_enabled?'on':'off'}, as imported.`,
-  telemetry:`Game telemetry: ${r.game_telemetry_opted_in===undefined?'launcher defaults, nothing imported':r.game_telemetry_opted_in?'you opted in with the old launcher':'not opted in'}.${r.game_telemetry_available?'':'This desktop build cannot send game telemetry; your saved choice is kept and nothing is sent. '}Launcher setup diagnostics stay ${summaryConsent?'on':'off'}; adoption does not change that choice.`,
+  telemetry:`Game telemetry: ${r.game_telemetry_opted_in===undefined?'launcher defaults, nothing imported':r.game_telemetry_opted_in?'you opted in with the old launcher':'not opted in'}.${r.game_telemetry_available?' ':' This build has no game diagnostics module, so only launcher diagnostics are sent. '}Launcher setup diagnostics stay ${summaryConsent?'on':'off'}; adoption does not change that choice.`,
  };
 }
 export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=()=>{}) {
@@ -151,8 +153,8 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   found.hidden=patches.hidden=!light;
   note.hidden=details.hidden=!light||light.skipped_total===0;
   if(!light)return;
-  found.textContent=`Stargate Worlds found in ${folderName(source)}.`;
-  patches.textContent=`Patches already applied: ${light.patches_current} of ${light.patches_total}. To apply: ${light.patches_pending} (${megabytes(light.download_bytes)} to download).`;
+  found.textContent=`Found Stargate Worlds in ${displayPath(source)}.`;
+  patches.textContent=`Patches already applied: ${light.patches_current} of ${light.patches_total}. To apply: ${light.patches_pending}.`;
   note.textContent=`Some patch changes can't be applied: ${light.skipped_total===1?'1 file differs':`${light.skipped_total} files differ`} from the originals the patches expect. They stay as they are. You can still use this folder.`;
   const summary=document.createElement('summary'),list=document.createElement('ul');
   summary.textContent='Show the skipped files';
@@ -179,7 +181,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   rejection.hidden=!rejection.textContent;
   const inPlace=s?.backend==='in_place';
   button('confirm-adoption').textContent=review?.light?'Use this folder':inPlace?'Adopt this folder':'Create verified copy';
-  const idle=!!s&&s.activity==='idle'&&!r&&!s.owned&&(s.backend==='available'||inPlace)&&(s.native.operation.operation?['succeeded','failed','cancelled'].includes(s.native.operation.operation.state):true);
+  const idle=!!s&&s.activity==='idle'&&!r&&!s.owned&&(s.backend==='available'||inPlace)&&!operationOpen(s.native.operation.operation);
   button('choose-adoption-destination').disabled=!enabled||!idle;
   const pair=idle&&s?.modes.length===2,copy=box('adoption-mode-copy').checked;
   get('adoption-modes').hidden=!pair;
@@ -202,7 +204,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   offers={'recover-adoption':r?.kind==='copy'&&r.can_recover?{action:'recover',id:r.operation_id}:null,
    'abandon-adoption':r?.kind==='copy'&&r.can_abandon?{action:'abandon',id:r.operation_id}:null,
    'remove-adoption-preparation':removable&&!working&&!review?{action:'abandon_preparation',id:removable}:null};
-  for(const [id,offer] of Object.entries(offers)){button(id).hidden=!offer;button(id).disabled=!enabled||!!current.maintenance;}
+  for(const [id,offer] of Object.entries(offers)){button(id).hidden=!offer||!!current.maintenance;button(id).disabled=!enabled;}
   const m=current.maintenance;
   get('adoption-maintenance').hidden=!m;
   if(m){const [title,consequences]=(inPlace?inPlaceMaintenance[m.action]:undefined)??maintenanceText[m.action];get('adoption-maintenance-title').textContent=title;get('adoption-maintenance-consequences').textContent=consequences;button('confirm-adoption-maintenance').textContent=title;}
@@ -212,8 +214,9 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   if(review){
    // Paths and settings come from disk and old configuration: text only, never HTML.
    const lines=reviewLines(review,s!.native.preferences.launcher_summary_consent);
-   get('adoption-source').textContent=review.source;get('adoption-destination').textContent=review.destination;
-   get('adoption-source-label').textContent=review.in_place?'Game folder to adopt:':'Original game, never changed:';
+   const shownSource=displayPath(review.source),shownDestination=displayPath(review.destination),oneFolder=shownSource===shownDestination;
+   get('adoption-source').textContent=shownSource;get('adoption-destination').textContent=shownDestination;get('adoption-destination').parentElement!.hidden=oneFolder;
+   get('adoption-source-label').textContent=oneFolder?'Folder:':'Original game, never changed:';
    get('adoption-destination-label').textContent=review.in_place?'Launcher-owned installation:':'New verified copy:';
    get('adoption-normalize-text').textContent=review.in_place?'Apply the launcher’s own setup to release files the old launcher’s setup changed.':'Use the signed reference for managed files that are modified, missing or changed by the old launcher’s setup.';
    for(const key of ['release','counts','consequences','settings','telemetry'] as const)get(`adoption-${key}`).textContent=lines[key];
@@ -226,6 +229,12 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
    const fallback=lineAfter('adoption-index-fallback','adoption-download');
    fallback.textContent=review.index_fallback?fallbackText(review.index_fallback):'';
    fallback.hidden=!review.index_fallback;
+   // The "Release details" toggle is closed by default; its text is rebuilt with each review.
+   const releaseDetails=lineAfter('adoption-release-details','adoption-release','details');
+   releaseDetails.className='release-details';
+   const toggle=document.createElement('summary');toggle.textContent='Release details';
+   const detailLines=lines.details.map(text=>{const item=document.createElement('p');item.textContent=text;return item;});
+   releaseDetails.replaceChildren(toggle,...detailLines);
    lightReview(review.light,review.source);
    renderIndex(document,get('adoption-light-skipped'),review.light);
    get('adoption-seed-archive').hidden=!review.download?.seed;

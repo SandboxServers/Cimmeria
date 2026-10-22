@@ -35,3 +35,9 @@ progress:not([value])::-webkit-progress-bar{background-color:var(--panel);backgr
 .mode-option{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;margin:4px 0;border:1px solid transparent;border-radius:7px;cursor:pointer;font-size:12px;line-height:1.5}
 .mode-option small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
 .mode-option.selected{border-color:var(--accent);background:#87d5e714}
+
+/* Release details: a closed toggle with a text marker, so the hashes stay out of the summary. */
+details > summary{cursor:pointer;list-style:none}
+details > summary::-webkit-details-marker{display:none}
+details > summary::before{content:"+ "}
+details[open] > summary::before{content:"- "}

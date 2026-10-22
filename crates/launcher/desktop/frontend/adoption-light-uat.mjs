@@ -21,7 +21,9 @@ const twoInstalls=()=>({...idle(),last_error:'not_a_game_folder',last_rejection:
 const html=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');let document,window,app;
 // The reply the next choose press gets; the other requests get the idle status.
 let next=idle();
-const fresh=async()=>{if(app)await app.dispose();({document,window}=parseHTML(html));app=mountAdoption(document,async(command)=>command==='choose_existing_game_folder'?next:idle());await app.ready;await settle();};
+// The reply an inspect press gets, when a step sets one; otherwise the idle status.
+let inspected=null;
+const fresh=async()=>{if(app)await app.dispose();({document,window}=parseHTML(html));app=mountAdoption(document,async(command)=>command==='choose_existing_game_folder'?next:(inspected??idle()));await app.ready;await settle();};
 const get=id=>document.getElementById(id),text=()=>get('adoption-status').textContent;
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const settle=async()=>{await app.settled();await pause(10);await app.settled();};
@@ -72,7 +74,54 @@ try {
  await choose(cancelled());
  assert.equal(text(),'No folder chosen.');
  console.log('ok: two installs are rejected with the rejection line; a cancelled picker says No folder chosen.');
+ // 4b. One folder: the game folder is both the source and the destination, so one folder line is shown and the destination row is hidden.
+ await scenario(reviewed({}));
+ assert.equal(get('adoption-source-label').textContent,'Folder:');
+ assert.equal(get('adoption-destination').parentElement.hidden,true,'the second folder line is hidden');
+ console.log('ok: one folder is named once, with no second folder line');
+
+ // 4c. The release digest sits behind a "Release details" toggle, not in the summary.
+ await scenario(reviewed({}));
+ assert.equal(get('adoption-release-details').querySelector('summary').textContent,'Release details');
+ assert.doesNotMatch(get('adoption-review').textContent.replace(get('adoption-release-details').textContent,''),/[0-9a-f]{64}/);
+ assert.equal(get('adoption-release-details').hasAttribute('open'),false,'the toggle starts closed');
+ console.log('ok: the release digest sits behind a Release details toggle');
+
+ // 4d. An installation this launcher already owns shows the owned status line only (not the LF-06 adoption lines).
+ await fresh();
+ inspected={...idle(),owned:true};
+ await press('inspect-adoption');await settle();
+ inspected=null;
+ assert.match(text(),/A desktop-owned installation already exists, so there is nothing further to adopt\./);
+ console.log('ok: an owned installation shows the owned status line');
+
+ // 4e. The maintenance trigger is hidden while its confirmation is open and shows again when the confirmation closes.
+ await scenario({...idle(),preparations:['prep-1']});
+ assert.equal(get('remove-adoption-preparation').hidden,false,'the trigger is offered');
+ press('remove-adoption-preparation');await settle();
+ assert.equal(get('adoption-maintenance').hidden,false,'the confirmation opens');
+ assert.equal(get('remove-adoption-preparation').hidden,true,'the trigger is hidden while the confirmation is open');
+ press('dismiss-adoption-maintenance');await settle();
+ assert.equal(get('adoption-maintenance').hidden,true,'the confirmation closes');
+ assert.equal(get('remove-adoption-preparation').hidden,false,'the trigger shows again');
+ console.log('ok: the maintenance trigger hides while its confirmation is open and returns after cancel');
+
+ // 4f. The telemetry sentence is spaced from the line before it, with and without the game diagnostics module.
+ await scenario({...reviewed({}),review:{...review({}),game_telemetry_available:false}});
+ assert.match(get('adoption-telemetry').textContent,/opted in with the old launcher\. This build has no game diagnostics module, so only launcher diagnostics are sent\. Launcher setup/);
+ await scenario(reviewed({}));
+ assert.match(get('adoption-telemetry').textContent,/opted in with the old launcher\. Launcher setup/);
+ console.log('ok: the telemetry sentence has a space before it and says this build has no game diagnostics module');
 } finally {await app.dispose();}
+
+// 4g. LF-06: an interrupted adoption gives Play one adoption line and no Recheck button.
+{const doc=parseHTML(html).document;
+ const interrupted={schema_version:1,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,installation_id:'owner',observation:null,native:{...native,operation:{...native.operation,operation:{id:'op',kind:'adopt',state:'reconciliation_required',intent_digest:Array(32).fill(0)}}}};
+ const play=mountLaunch(doc,async()=>interrupted,()=>{},()=>'attempt');await play.ready;await pause(10);
+ assert.equal(doc.getElementById('launch-status').textContent,'Finish or abandon the interrupted adoption in the adoption panel before you play.');
+ assert.equal(doc.getElementById('inspect-launch').hidden,true);
+ await play.dispose();
+ console.log('ok: an interrupted adoption gives Play one adoption line and hides Recheck');}
 
 // 5. An install with incomplete patches: Play stays enabled and the main view names the skipped changes.
 const launchDocument=parseHTML(await readFile(new URL('./ui/index.html',import.meta.url),'utf8')).document;
