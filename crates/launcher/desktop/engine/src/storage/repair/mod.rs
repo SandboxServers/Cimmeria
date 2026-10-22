@@ -3,6 +3,7 @@ use super::*;
 pub mod abandon;
 pub mod cleanup;
 pub mod commit;
+pub mod events;
 pub mod preparation;
 pub mod recovery;
 pub(super) mod tree_identity;

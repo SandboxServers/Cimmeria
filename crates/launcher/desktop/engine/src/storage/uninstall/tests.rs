@@ -252,6 +252,36 @@ fn recovery_after_content_and_marker_deletion_requires_durable_detachment() {
 }
 
 #[test]
+fn confirmed_removal_logs_uninstall_started_and_finished() {
+    let (_root, mut state, intent) = fixture();
+    // A second live Dispatch keeps callsite interest per-dispatcher, so a parallel
+    // test's first hit cannot cache "never" for the callsites below.
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let (result, events) = crate::test_capture::capture(|| {
+        // Register both callsites on this thread's subscriber, then rebuild the
+        // interest cache, so another test's first hit cannot cache "never" for them.
+        events::uninstall_started(Uuid::nil());
+        events::uninstall_finished(Uuid::nil(), false);
+        tracing::callsite::rebuild_interest_cache();
+        remove(&mut state, &intent)
+    });
+    result.unwrap();
+    let repair: Vec<_> = events
+        .iter()
+        .filter(|e| e.target == "launcher.repair")
+        .skip(2)
+        .collect();
+    assert_eq!(repair.len(), 2);
+    assert_eq!(repair[0].level, tracing::Level::INFO);
+    assert_eq!(repair[0].field("event"), Some("uninstall_started"));
+    assert_eq!(repair[1].level, tracing::Level::INFO);
+    assert_eq!(repair[1].field("event"), Some("uninstall_finished"));
+    assert_eq!(repair[1].field("outcome"), Some("ok"));
+    assert_eq!(repair[1].field("recovering"), Some("false"));
+    assert_eq!(repair[0].field("operation"), repair[1].field("operation"));
+}
+
+#[test]
 fn plan_write_failure_leaves_owned_content_and_journal_unchanged() {
     let (_root, mut state, intent) = fixture();
     let id = Uuid::new_v4();

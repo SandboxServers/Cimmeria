@@ -8,6 +8,7 @@ use std::{
     fs, io,
     path::{Path, PathBuf},
 };
+pub(crate) mod events;
 #[cfg(test)]
 mod tests;
 
@@ -94,10 +95,7 @@ impl DesktopState {
         #[cfg(not(windows))]
         let firesky: Option<PathBuf> = None;
         let Some(firesky) = firesky else {
-            tracing::warn!(
-                ?request,
-                "client maintenance: no client Documents folder on this host"
-            );
+            events::client_maintenance_failed(events::action(&request), "profile_unavailable");
             return Err(ClientMaintenanceError::ProfileUnavailable);
         };
         self.client_maintenance_at(request, &firesky)
@@ -119,9 +117,19 @@ impl DesktopState {
         request: ClientMaintenanceCommand,
         firesky: &Path,
     ) -> Result<ClientMaintenanceStatus, ClientMaintenanceError> {
+        let started = std::time::Instant::now();
         let result = self.client_maintenance_in(request, firesky);
-        if let Err(error) = &result {
-            tracing::warn!(?request, ?error, firesky = %firesky.display(), "client maintenance refused");
+        match &result {
+            Ok(status) => {
+                if let Some(removed) = status.removed {
+                    events::client_maintenance_finished(
+                        events::action(&request),
+                        removed,
+                        started.elapsed(),
+                    );
+                }
+            }
+            Err(error) => events::client_maintenance_failed(events::action(&request), error.code()),
         }
         result
     }
@@ -144,7 +152,7 @@ impl DesktopState {
                 let mut guarded = folders_above(firesky);
                 guarded.push(firesky.join("SGWGame"));
                 ensure_not_linked(&guarded)?;
-                let removed = remove_tree(&cache).map_err(|error| removal_failed(&cache, error))?;
+                let removed = remove_tree(&cache).map_err(removal_failed)?;
                 Ok(status(firesky, Some(removed)))
             }
             ClientMaintenanceCommand::ResetAllClientState { confirmed, .. } => {
@@ -159,8 +167,7 @@ impl DesktopState {
                 // refused like the cache reset. Links inside the tree are
                 // removed as themselves.
                 ensure_not_linked(&folders_above(firesky))?;
-                let removed =
-                    remove_tree(firesky).map_err(|error| removal_failed(firesky, error))?;
+                let removed = remove_tree(firesky).map_err(removal_failed)?;
                 Ok(status(firesky, Some(removed)))
             }
         }
@@ -206,7 +213,6 @@ fn folders_above(firesky: &Path) -> Vec<PathBuf> {
 fn ensure_not_linked(folders: &[PathBuf]) -> Result<(), ClientMaintenanceError> {
     for folder in folders {
         if fs::symlink_metadata(folder).is_ok_and(|meta| is_link(&meta)) {
-            tracing::warn!(folder = %folder.display(), "client maintenance: folder is a link; nothing deleted");
             return Err(ClientMaintenanceError::UnsafePath);
         }
     }
@@ -215,9 +221,9 @@ fn ensure_not_linked(folders: &[PathBuf]) -> Result<(), ClientMaintenanceError> 
 
 /// A removal that stopped part-way (a file the running game holds open, say)
 /// leaves the rest in place; the next reset finishes it. The flat code is
-/// `io`; the log keeps the path and the OS error.
-fn removal_failed(path: &Path, error: io::Error) -> ClientMaintenanceError {
-    tracing::warn!(path = %path.display(), %error, "client maintenance: removal stopped part-way");
+/// `io`; the event keeps the I/O error kind.
+fn removal_failed(error: io::Error) -> ClientMaintenanceError {
+    events::client_maintenance_removal_failed(crate::game_telemetry::launcher_event::kind(&error));
     StorageError::Io.into()
 }
 
@@ -227,7 +233,6 @@ fn remove_tree(path: &Path) -> io::Result<bool> {
     match fs::symlink_metadata(path) {
         Ok(meta) => {
             remove_entry(path, &meta)?;
-            tracing::info!(path = %path.display(), "client maintenance: deleted");
             Ok(true)
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),

@@ -78,6 +78,7 @@ pub(crate) fn start(
                 .unwrap_or(Err(Failure::ReconciliationRequired));
         let result = result.map_err(|error| preparation::finish_failure(&state, id, error));
         if result.is_ok() {
+            super::events::repair_finished(id);
             if let Ok(mut owner) = state.lock() {
                 owner.queue_install_result(id, Run::Repair, Ending::Succeeded);
             }
