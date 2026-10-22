@@ -24,7 +24,8 @@ use cimmeria_launcher_core::install_layout::binaries_dir;
 use cimmeria_launcher_core::logs::collect_log_inputs;
 use cimmeria_launcher_core::telemetry::events::TelemetryEvent;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+use std::io::{ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use tokio_util::sync::CancellationToken;
 
@@ -41,9 +42,9 @@ const MAX_MESSAGE_BYTES: usize = 2_048;
 /// huge line costs bounded CPU (A3). Never below `MAX_MESSAGE_BYTES`.
 const MAX_RAW_BYTES: usize = 32 * 1024;
 
-/// The largest file read whole. A bigger one is left alone rather than loaded
-/// into memory; no real client log comes near this.
-const MAX_FILE_BYTES: u64 = 512 * 1024 * 1024;
+/// The bytes read per block while a file is streamed (A1). Memory per file is
+/// this block plus the newest `MAX_LINES` raw lines, never the whole file.
+const BLOCK_BYTES: usize = 1024 * 1024;
 
 /// What the reader saw of one file, for `Offsets::advance_game`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,16 +90,18 @@ pub(crate) fn collect(
     };
     for (key, path) in inputs {
         cancelled()?;
-        let bytes = match read_whole(&path) {
-            Ok(bytes) => bytes,
+        let saved = offsets.files.get(&key).copied().unwrap_or(0);
+        let saved_head = offsets.heads.get(&key).map(String::as_str);
+        let (lines, file, total) = match read_file(&key, &path, saved, saved_head, &redaction) {
+            Ok(read) => read,
             Err(reason) => {
+                // The file is skipped with its offset untouched: its lines wait
+                // for the next press. Telemetry carries no path (R5).
                 events::game_file_skipped(reason);
+                events::collect_failed("game_file_unreadable");
                 continue;
             }
         };
-        let saved = offsets.files.get(&key).copied().unwrap_or(0);
-        let saved_head = offsets.heads.get(&key).map(String::as_str);
-        let (lines, file, total) = read_file(&key, &bytes, saved, saved_head, &redaction);
         out.collected.lines_total += total;
         out.collected.lines.extend(lines);
         out.files.insert(key, file);
@@ -168,16 +171,6 @@ fn key_of(binaries: &Path, path: &Path) -> Option<String> {
     Some(format!("{KEY_PREFIX}{}", parts?.join("/")))
 }
 
-/// The file's bytes, or the closed reason it was skipped: `too_large` over
-/// `MAX_FILE_BYTES`, `read_failed` for any I/O error.
-fn read_whole(path: &Path) -> Result<Vec<u8>, &'static str> {
-    let len = std::fs::metadata(path).map_err(|_| "read_failed")?.len();
-    if len > MAX_FILE_BYTES {
-        return Err("too_large");
-    }
-    std::fs::read(path).map_err(|_| "read_failed")
-}
-
 /// The fingerprint of a file's first bytes: `<n>:<h12>`, `n` the number of
 /// bytes hashed (at most 256) and `h12` the first 12 hex digits of their
 /// SHA-256. The length is part of it so a short file that is still being
@@ -238,24 +231,18 @@ fn detect(bytes: &[u8]) -> (Encoding, usize) {
     }
 }
 
-/// The byte offset just past each `\n` at or after `from`. A half-written last
-/// line has no entry, so it waits for its newline.
-fn line_ends(bytes: &[u8], from: usize, encoding: Encoding) -> Vec<usize> {
+/// True when `seg` holds a character that is not whitespace. Bytes (UTF-8) or
+/// units (UTF-16LE) from 0x80 up count as text, so a line of only exotic Unicode
+/// spaces is sent rather than skipped: the safe direction.
+fn has_text(seg: &[u8], encoding: Encoding) -> bool {
+    let blank = |v: u16| matches!(v, 0x09..=0x0D | 0x20);
     match encoding {
-        Encoding::Utf8 => bytes[from..]
-            .iter()
-            .enumerate()
-            .filter(|&(_, &b)| b == b'\n')
-            .map(|(i, _)| from + i + 1)
-            .collect(),
-        Encoding::Utf16Le => bytes[from..]
+        Encoding::Utf8 => seg.iter().any(|&b| !blank(u16::from(b))),
+        Encoding::Utf16Le => seg
             .as_chunks::<2>()
             .0
             .iter()
-            .enumerate()
-            .filter(|(_, unit)| **unit == [b'\n', 0])
-            .map(|(i, _)| from + 2 * i + 2)
-            .collect(),
+            .any(|unit| !blank(u16::from_le_bytes(*unit))),
     }
 }
 
@@ -275,79 +262,219 @@ fn decode(bytes: &[u8], encoding: Encoding) -> String {
 }
 
 /// The complete non-empty lines of one file from the saved offset, newest
-/// `MAX_LINES` only, and what the reader saw of the file.
+/// `MAX_LINES` only, and what the reader saw of the file. The file is streamed
+/// in `BLOCK_BYTES` blocks (A1): every newline is counted from the first line so
+/// `line_no` stays right, and only the newest raw lines are held. A failed open,
+/// metadata call or read is the closed reason `read_failed`.
 fn read_file(
     key: &str,
-    bytes: &[u8],
+    path: &Path,
     saved: u64,
     saved_head: Option<&str>,
     redaction: &Redaction,
-) -> (Vec<LogLine>, GameFile, u64) {
-    let (encoding, bom) = detect(bytes);
-    let restarted =
-        saved > bytes.len() as u64 || saved_head.is_some_and(|h| !head_matches(h, bytes));
+) -> Result<(Vec<LogLine>, GameFile, u64), &'static str> {
+    let mut reader = std::fs::File::open(path).map_err(|_| "read_failed")?;
+    let len = reader.metadata().map_err(|_| "read_failed")?.len();
+    let mut block = vec![0u8; BLOCK_BYTES];
+    let first_len = fill(&mut reader, &mut block).map_err(|_| "read_failed")?;
+    let first = &block[..first_len];
+    let (encoding, bom) = detect(first);
+    let restarted = saved > len || saved_head.is_some_and(|h| !head_matches(h, first));
     let file = GameFile {
-        head: head_of(bytes),
+        head: head_of(first),
         restarted,
     };
     let mut start = if restarted { 0 } else { saved as usize };
     if encoding == Encoding::Utf16Le {
         start &= !1;
     }
-    let start = start.max(bom);
-    let ends = line_ends(bytes, bom, encoding);
-    let before = ends.partition_point(|&end| end <= start);
-    let newline = if encoding == Encoding::Utf16Le { 2 } else { 1 };
-    let mut kept: Vec<(u64, usize, String)> = Vec::new();
-    for index in before..ends.len() {
-        let begin = if index == 0 { bom } else { ends[index - 1] };
-        let end = ends[index];
-        let text = decode(&bytes[begin..end - newline], encoding);
-        let text = text.trim_end_matches('\r');
-        if text.trim().is_empty() {
-            continue;
+    let mut scan = Scan::new(encoding, bom, start.max(bom) as u64);
+    scan.feed(&first[bom..]);
+    loop {
+        let n = fill(&mut reader, &mut block).map_err(|_| "read_failed")?;
+        if n == 0 {
+            break;
         }
-        kept.push((index as u64 + 1, end, text.to_string()));
+        scan.feed(&block[..n]);
     }
-    let total = kept.len() as u64;
-    let skip = kept.len().saturating_sub(MAX_LINES);
-    let lines: Vec<LogLine> = kept
-        .into_iter()
-        .skip(skip)
-        .map(|(line_no, end, text)| {
-            // Control characters (a NUL run from a crashed client) become U+FFFD
-            // so the line is kept but cannot inflate the row's JSON escaping.
-            let text: String = text
-                .chars()
-                .map(|c| {
-                    if c.is_control() && c != '\t' {
-                        '\u{FFFD}'
-                    } else {
-                        c
-                    }
-                })
-                .collect();
-            // A line is cut to `MAX_RAW_BYTES` before the scrub, so a multi-MB
-            // line costs bounded work; the message cut below still applies.
-            let (raw, raw_cut) = cut(text, MAX_RAW_BYTES);
-            let scrubbed = scrub_ips(&redaction.scrub(&raw)).into_owned();
-            let (message, message_cut) = cut(scrubbed, MAX_MESSAGE_BYTES);
-            let truncated = raw_cut || message_cut;
-            LogLine {
-                file: key.to_string(),
-                line_no,
-                end: end as u64,
-                // The sample proves no timestamp format worth trusting across
-                // time zones, so the row takes the read time (C-LF5).
-                ts_ms: None,
-                level: None,
-                target: None,
-                message,
-                truncated,
+    let total = scan.total;
+    Ok((scan.lines(key, redaction), file, total))
+}
+
+/// Reads into `buf` until it is full or the file ends; the bytes read.
+fn fill(reader: &mut std::fs::File, buf: &mut [u8]) -> std::io::Result<usize> {
+    let mut filled = 0;
+    while filled < buf.len() {
+        match reader.read(&mut buf[filled..]) {
+            Ok(0) => break,
+            Ok(n) => filled += n,
+            Err(e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(filled)
+}
+
+/// A complete non-blank line, raw: its bytes are cut to `MAX_RAW_BYTES` (A3).
+struct RawLine {
+    line_no: u64,
+    end: u64,
+    bytes: Vec<u8>,
+    over: bool,
+}
+
+/// The streaming line reader's state for one file: the newlines seen so far,
+/// the line being read, and the newest `MAX_LINES` complete non-blank lines.
+struct Scan {
+    encoding: Encoding,
+    /// Bytes per newline unit: 1 for UTF-8, 2 for UTF-16LE.
+    unit: usize,
+    /// Byte offset of the next unit to process, the first line's start at first.
+    pos: u64,
+    /// Bytes of a unit cut by the end of the last block.
+    carry: Vec<u8>,
+    /// Newlines seen so far: the `line_no` of the line that just ended.
+    line_no: u64,
+    /// A line ending at or before this offset is counted, not kept.
+    start: u64,
+    /// The line being read, up to `MAX_RAW_BYTES`.
+    cur: Vec<u8>,
+    /// True when the line is longer than `cur`.
+    over: bool,
+    /// True when the line has a character that is not whitespace.
+    has_text: bool,
+    /// The newest `MAX_LINES` kept lines, oldest first.
+    ring: VecDeque<RawLine>,
+    /// Every kept line of the file, not only the newest.
+    total: u64,
+}
+
+impl Scan {
+    fn new(encoding: Encoding, bom: usize, start: u64) -> Self {
+        Self {
+            encoding,
+            unit: if encoding == Encoding::Utf16Le { 2 } else { 1 },
+            pos: bom as u64,
+            carry: Vec::new(),
+            line_no: 0,
+            start,
+            cur: Vec::new(),
+            over: false,
+            has_text: false,
+            ring: VecDeque::new(),
+            total: 0,
+        }
+    }
+
+    /// Takes the next block of the file. A unit cut by the block's end waits
+    /// for the next block.
+    fn feed(&mut self, data: &[u8]) {
+        let mut work = std::mem::take(&mut self.carry);
+        work.extend_from_slice(data);
+        let usable = work.len() - work.len() % self.unit;
+        self.consume(&work[..usable]);
+        self.carry = work[usable..].to_vec();
+    }
+
+    /// Every complete line in `data`, which starts at `self.pos`.
+    fn consume(&mut self, data: &[u8]) {
+        let mut from = 0;
+        while let Some(at) = self.next_newline(&data[from..]) {
+            let at = from + at;
+            self.append(&data[from..at]);
+            self.line_no += 1;
+            let end = self.pos + (at + self.unit) as u64;
+            if end > self.start {
+                self.finish(end);
             }
-        })
-        .collect();
-    (lines, file, total)
+            self.cur.clear();
+            self.over = false;
+            self.has_text = false;
+            from = at + self.unit;
+        }
+        self.append(&data[from..]);
+        self.pos += data.len() as u64;
+    }
+
+    /// The index of the first newline unit in `data`, unit-aligned.
+    fn next_newline(&self, data: &[u8]) -> Option<usize> {
+        match self.encoding {
+            Encoding::Utf8 => data.iter().position(|&b| b == b'\n'),
+            Encoding::Utf16Le => data
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .position(|unit| *unit == [b'\n', 0])
+                .map(|i| 2 * i),
+        }
+    }
+
+    /// Adds a part of the current line; the whole part decides `has_text`.
+    fn append(&mut self, seg: &[u8]) {
+        if !self.has_text {
+            self.has_text = has_text(seg, self.encoding);
+        }
+        let room = MAX_RAW_BYTES - self.cur.len();
+        if seg.len() > room {
+            self.over = true;
+        }
+        self.cur.extend_from_slice(&seg[..seg.len().min(room)]);
+    }
+
+    /// Keeps the line that just ended, if it has text.
+    fn finish(&mut self, end: u64) {
+        if !self.has_text {
+            return;
+        }
+        self.total += 1;
+        self.ring.push_back(RawLine {
+            line_no: self.line_no,
+            end,
+            bytes: std::mem::take(&mut self.cur),
+            over: self.over,
+        });
+        if self.ring.len() > MAX_LINES {
+            self.ring.pop_front();
+        }
+    }
+
+    /// The kept lines as messages: control characters become U+FFFD (A4), the
+    /// line is cut before the scrub (A3), then scrubbed and cut to the message
+    /// limit.
+    fn lines(&self, key: &str, redaction: &Redaction) -> Vec<LogLine> {
+        self.ring
+            .iter()
+            .map(|raw| {
+                let decoded = decode(&raw.bytes, self.encoding);
+                let text: String = decoded
+                    .trim_end_matches('\r')
+                    .chars()
+                    .map(|c| {
+                        if c.is_control() && c != '\t' {
+                            '\u{FFFD}'
+                        } else {
+                            c
+                        }
+                    })
+                    .collect();
+                let (text, raw_cut) = cut(text, MAX_RAW_BYTES);
+                let scrubbed = scrub_ips(&redaction.scrub(&text)).into_owned();
+                let (message, message_cut) = cut(scrubbed, MAX_MESSAGE_BYTES);
+                LogLine {
+                    file: key.to_string(),
+                    line_no: raw.line_no,
+                    end: raw.end,
+                    // The sample proves no timestamp format worth trusting across
+                    // time zones, so the row takes the read time (C-LF5).
+                    ts_ms: None,
+                    level: None,
+                    target: None,
+                    message,
+                    truncated: raw.over || raw_cut || message_cut,
+                }
+            })
+            .collect()
+    }
 }
 
 /// `message`, cut to `limit` bytes on a char boundary, and whether it was.

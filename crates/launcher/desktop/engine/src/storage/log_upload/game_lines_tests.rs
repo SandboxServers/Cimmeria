@@ -307,7 +307,31 @@ fn control_characters_become_replacement_characters() {
 #[test]
 fn a_missing_file_is_read_failed_for_telemetry() {
     let dir = tempfile::tempdir().unwrap();
-    assert_eq!(read_whole(&dir.path().join("gone.log")), Err("read_failed"));
+    let missing = dir.path().join("gone.log");
+    let got = read_file("game/gone.log", &missing, 0, None, &Redaction::from_env());
+    assert!(matches!(got, Err("read_failed")));
+}
+
+/// A 64 MiB file is streamed: every line is counted, only the newest `MAX_LINES`
+/// are kept, and `line_no` is the number a whole-file read would give.
+#[test]
+fn a_64_mib_file_is_streamed_and_keeps_the_newest_lines() {
+    let game = tempfile::tempdir().unwrap();
+    let dir = binaries(game.path());
+    let mut text = Vec::with_capacity(64 << 20);
+    let mut n = 0u64;
+    while text.len() < 64 << 20 {
+        n += 1;
+        text.extend_from_slice(format!("line {n:08}\n").as_bytes());
+    }
+    fs::write(dir.join("SGWDebugLog.log"), &text).unwrap();
+    let got = read(game.path(), &Offsets::default());
+    assert_eq!(got.collected.lines_total, n);
+    assert_eq!(got.collected.lines.len(), MAX_LINES);
+    assert_eq!(got.collected.lines[0].line_no, n - MAX_LINES as u64 + 1);
+    let last = got.collected.lines.last().unwrap();
+    assert_eq!(last.line_no, n);
+    assert_eq!(last.message, format!("line {n:08}"));
 }
 
 #[test]
