@@ -1,7 +1,7 @@
 //! Light adoption's comparison (LA-11, D-LA9). There is no stock seed to verify
 //! against: the folder's own files are the base, pending patches replay over them
 //! tolerantly, and the published index is only compared. Nothing here blocks on a
-//! changed input; only a folder with no reusable file is refused.
+//! changed input; only an empty folder is refused (`no_reusable_files`).
 use super::in_place::SETUP_FILES;
 use super::verification::{published_digest, Compared, Tree};
 use super::*;
@@ -166,10 +166,6 @@ pub(super) fn light_comparison(
         });
     }
     replacements.extend(stored);
-    let reusable = files.iter().filter(|d| d.source_path.is_some()).count();
-    if reusable == 0 {
-        return Err(no_reusable(files.len()));
-    }
 
     restore_stock_case(&mut tree);
     apply_setup(&mut tree, &store, folder, prep, servers, cancel)?;
