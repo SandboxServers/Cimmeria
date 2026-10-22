@@ -565,6 +565,41 @@ Kill switch: `nav_poll` in `CIMMERIA_CLIENT_HOOKS_DISABLE` turns the poll off. T
 
 Governor: `client.nav.*` is must-keep, so the governor never collapses or summarizes it. The source caps the rate instead (above), per D-LN6.
 
+## Mouse input: `client.input.*`
+
+Added 2026-10-22 (LN-08 to LN-10). The nav poll reads the controller's button word, mode word, hover id and drag counters on every engine tick (D-LN5). It hooks nothing, and it emits only on a button edge or a change, never per frame. Every address comes from the reverse-engineering notes ([controller-mouse-input-model.md](../reverse-engineering/findings/controller-mouse-input-model.md), section 6) and stays static until LN-13 confirms it in a live client. The modules are in [`hooks/nav/`](../../crates/client-telemetry/src/hooks/nav/); `buttons.rs`, `transitions.rs` and `ui.rs` hold the rules below.
+
+Three rows, all `info`:
+
+- **`client.input.button`**: one row per LMB or RMB edge.
+  - On a down edge: `button` (`lmb` or `rmb`), `edge` = `down`, `other_held` (bool, whether the other button was down at that edge).
+  - On an up edge: `button`, `edge` = `up`, `hold_ms` (from the down edge the poll saw; absent when no down was seen), `drag_x` and `drag_y` (the drag counters at release, i32 mouse counts), `class`, and `hover_id` (only for `select` and `interact`, and only when non-zero). An up row has no `other_held`.
+  - On both edges: `ui_owned` (bool, present only when known; see below).
+- **`client.input.mode`**: one row per change of the mode word, at most 8 rows a second. Fields: `mode` (the raw word), `prev` (the value last emitted, which is not always the value seen last), the bools `mouselook` (bit `0x1`), `jump` (`0x2`), `autorun` (`0x4`) and `mousewalk` (`0x8`), and `suppressed`.
+- **`client.input.hover`**: one row per change of the hover id, at most 4 rows a second. Fields: `entity_id` (`0` means none), `prev` and `suppressed`.
+
+`suppressed` counts the changes the poll saw but did not emit since the last row. A change that reverts before the window reopens still counts. The rate window is one second; a change held back is emitted on the first tick of the next window, if the value still differs from the last row. The first value the poll sees only sets the baseline, so a session's starting mode has no row here (the `client.nav.pose` row carries it).
+
+Click classes (RE § 6.2): a release is `drag` when `|drag_x|` or `|drag_y|` is 5 or more, and this wins over everything else. Otherwise it is `chord` when the other button was held at any point during the hold, including at its down edge. Otherwise it is `select` for LMB and `interact` for RMB. The counters are read on the release tick, because the game zeroes them on press and never writes them on release, so they are the final values the game used.
+
+`hover_id` on a button row is the hover id at release, not the entity the click picked. The client traces the click target again and does not read the hover id for the pick (RE § 6.3), so `hover_id` approximates the target and can differ from it.
+
+`ui_owned` (LN-10, an approximation): read on every tick from the CEGUI chain (`SGWUIManager` to `System`, then the window under the mouse and the active sheet, RE § 6.1). It is `false` when that window is none, is the active sheet, or is named `BackgroundWin`; `true` for any other window; and absent when any link is unreadable, the manager or system is null, or the name's header is implausible. Its three caveats:
+
+- the window under the mouse is written only on mouse-move input, so it is stale while the cursor is still or hidden (mouselook);
+- a capture or modal window counts as owned;
+- the window-name layout (an MSVC `std::wstring` at `+0x1e8`) is inferred from the RE notes and not yet checked live.
+
+Fallback: if LN-13 finds the chain wrong, the body of `read_ui_owned` goes back to `None`, and the field disappears from every button row.
+
+Timing: the poll runs in the engine tick, which RE § 6.4 infers runs before the game's input pump for the same frame. A row therefore shows controller input one frame late (inferred, not measured).
+
+Kill switch: `nav_poll` in `CIMMERIA_CLIENT_HOOKS_DISABLE` turns off the whole nav poll, so `client.input.*` and `client.nav.pose` stop together. The client emits `client.hooks.inline.disabled` once, with `hook = "nav_poll"`.
+
+Not captured (R5): key codes, characters, chat text, cursor coordinates and per-frame mouse motion. The drag counters are the game's accumulated counts, not a position. The per-100 ms motion row `client.input.mouse_window` is LN-17 and is not built (D-LN1 = B only).
+
+Tested status: at the time of writing, these modules have unit tests but no lane has compiled or run them, and no row has been seen from a live client. LN-13 step 2 is the first live check. Every address is static until LN-13 confirms it.
+
 ## Session tags on `client.dll.attached`
 
 A launcher may label its session in `current-session.json` (`tags`, an array of strings). The desktop launcher sends `desktop-launcher`, the host OS and `wine` or `native`. The server takes the same tags in the mint request but does not put them on the session's events, so the DLL repeats them as `session_tags` on `client.dll.attached` (2026-10-04). A marker without `tags`, or with an empty list, adds no field.
