@@ -1480,7 +1480,7 @@ press:
 A click from further than 5 m gets the client's own "You are too far away"
 line. One attendant per button, rather than one attendant with a dialog of
 buttons: a custom dialog's buttons need a cooked dialog override, and those
-crashed the client (#943).
+crashed the client (#943); served again since 2026-10-22 (D-LN3).
 
 **The same switch for GMs.** `.spawnset` lists the groups (`.spawnset
 list`, the default), shows one (`.spawnset on 1301`), hides one
