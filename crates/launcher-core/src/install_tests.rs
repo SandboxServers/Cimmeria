@@ -129,7 +129,7 @@ async fn download_to_file_returns_unexpected_status_on_non_2xx() {
     }
 }
 
-fn unpack_ctx_parts() -> (
+pub(super) fn unpack_ctx_parts() -> (
     tokio::sync::mpsc::UnboundedSender<Progress>,
     tokio::sync::mpsc::UnboundedReceiver<Progress>,
 ) {
@@ -157,9 +157,17 @@ async fn hash_mismatch_deletes_the_download() {
         http: &http,
         seed_source: &SeedSourceHandle::download(),
     };
-    let err = verify_and_unpack(&ctx, &tmp, ctx.install_dir, "00", "seed")
-        .await
-        .unwrap_err();
+    let err = verify_and_unpack(
+        &ctx,
+        &tmp,
+        ctx.install_dir,
+        "00",
+        "seed",
+        InstallOptions::STRICT,
+        None,
+    )
+    .await
+    .unwrap_err();
     assert!(matches!(err, InstallError::HashMismatch { .. }), "{err:?}");
     assert!(!tmp.exists(), "a bad download must not be resumed");
 }
@@ -251,7 +259,7 @@ fn safe_sha_prefix_short_input_passes() {
     assert_eq!(safe_sha_prefix("abc").unwrap(), "abc");
 }
 
-fn fake_manifest(seed_hash: &str) -> crate::manifest::Manifest {
+pub(super) fn fake_manifest(seed_hash: &str) -> crate::manifest::Manifest {
     crate::manifest::Manifest {
         schema: 1,
         min_launcher: None,
@@ -265,7 +273,7 @@ fn fake_manifest(seed_hash: &str) -> crate::manifest::Manifest {
     }
 }
 
-fn zip_with(name: &str, body: &[u8]) -> Vec<u8> {
+pub(super) fn zip_with(name: &str, body: &[u8]) -> Vec<u8> {
     use std::io::Write;
     let mut zw = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     zw.start_file(name, zip::write::SimpleFileOptions::default())
@@ -274,7 +282,7 @@ fn zip_with(name: &str, body: &[u8]) -> Vec<u8> {
     zw.finish().unwrap().into_inner()
 }
 
-fn sha_hex(bytes: &[u8]) -> String {
+pub(super) fn sha_hex(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
