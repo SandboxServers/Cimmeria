@@ -668,6 +668,20 @@ Samples (D-LA17): each holds at most 10 paths, comma-joined, at most 600 charact
   Reverted, they fail.
 - **Lane:** `cimmeria-launcher-engine`, `cimmeria-launcher-desktop`, then the frontend.
 - **Docs:** none. **Commit:** `LA-14: Light mode in the shell and a one-level-down folder search`.
+- **Amendment (architect, 2026-10-22), after the first run returned `blocked` on the shell half.** Part 1 (`28a2fb024`: the engine search, the rejection check and the frontend literal) stands. Finish the shell half in `la-14`, on top of its uncommitted shell edits, exactly as below. Anchors are at `28a2fb024` plus those edits.
+  - **Ruling 1: Light keeps the extra file; the test changes, the engine does not (no LA-11c).** Light does not delete `unknown.dll`. It has no trusted release list (the index comparison is informational and may be absent, D-LA11), so `light::light_comparison` (`light.rs:157-173`) makes **every** scanned file a `Matched` row, and the moves carry it into `<folder>/game/` byte for byte; abandon moves it back. Verified in place classifies it `Extra` and leaves it in the folder root (`in_place.rs:231`, `:272`). Both keep the player's bytes, and Light keeps them where the client reads them, which is the intended Light behaviour (D-LA2, D-LA8: the folder's own files are the base).
+  - **Ruling 2: the shell offers `[Light, Copy]`.** `status.rs:82` as edited. `begin_folder_adoption` refuses `AdoptionMode::InPlace` with `UnsupportedMode` through `adoption_mode_allowed`. The verified in-place code stays, hidden (D-LA12): do not touch the engine dispatch, `begin_adoption_in_place` (`host/adoption/mod.rs:233`; its only callers are tests and `uat_bridge_in_place.rs:66`) or the `InPlace | Light` arms at `host/adoption/mod.rs:274-275`. `events.rs` stays unchanged; counting `Light` as in place at `main.rs:374-375` is accepted (report deviation 1).
+  - **Ruling 3: the tests.**
+    1. `in_place_tests.rs`: rename `a_picked_folder_without_an_import_is_reviewed_and_adopted_in_place` to `a_picked_folder_without_an_import_is_reviewed_and_adopted_light`, and keep `AdoptionMode::Light` at `:212`. Then:
+       - Right after the `later.txt` write (`:207`), assert that `f.host.begin_folder_adoption(folder.join("Working"), None, AdoptionMode::InPlace, f.release())` returns `Err(AdoptionError::UnsupportedMode)` and that `folder.join("game")` does not exist. This fails when `status.rs:82` is reverted.
+       - Replace the comment and assertion at `:233-237` with the comment "Light carries every folder file into `game/`, the release's and the player's own; none is lost." and these three asserts: `assert!(!folder.join("unknown.dll").exists());`, `assert_eq!(std::fs::read(under(&folder, "game/unknown.dll")).unwrap(), b"untrusted plugin");`, `assert!(under(&folder, "game/Working/Binaries/SGW.exe").is_file());`.
+       - If `game/unknown.dll` is missing or holds other bytes, stop and return `blocked`: that is real data loss, and the architect then specifies LA-11c.
+    2. Verified in place keeps its shell coverage: `the_imported_folder_is_adopted_in_place_once_its_release_files_verify` (`in_place_tests.rs:30`, through `begin_adoption_in_place`) still asserts that `unknown.dll` stays in the folder root (`:95-99`). Do not edit it, and do not edit any engine `in_place*` or `light*` test.
+    3. `copy_tests.rs:17` expects `[Light, Copy]`, as edited; it is the "light is listed first" test.
+  - **Files (the shell half, only these):** shell `host/adoption/status.rs`, `host/adoption/copy_tests.rs`, `host/adoption/in_place_tests.rs`, and `main.rs` (call lines in `:372-405` only). No engine or frontend file.
+  - **Checks:** the desktop fmt, clippy and test runs exactly as part 1 ran them, all passing, then the frontend `npm run check; npm test`. The report says which assertions fail with `status.rs:82` reverted (expected: the `UnsupportedMode` assert and `copy_tests.rs:17`).
+  - **Commit (part 2):** `LA-14: offer Light and Copy in the shell; verified in place stays hidden`.
+  - **Note for LA-19 (no packet change now).** A light-adopted `game/` also holds the player's own files. The incremental Update keeps them (LA-13 seeds the stage from `game/`), but Repair and a full Update rebuild `game/` from the seed, so those files stay only in the old tree; an Update keeps that tree as its backup until an explicit cleanup (`update/commit/mod.rs:48`). Downloaded installs behave the same for files the client writes into `game/`. LA-19 states this in the Light paragraph of `migration.md`, after checking what Repair does with the old tree.
 
 ### LA-15: shell status and schema for the light review and incomplete patches
 
@@ -685,6 +699,33 @@ Samples (D-LA17): each holds at most 10 paths, comma-joined, at most 600 charact
   Reverted, they fail.
 - **Lane:** `cimmeria-launcher-desktop`, then the frontend.
 - **Docs:** none. **Commit:** `LA-15: light review, index comparison and incomplete patches in the shell status`.
+- **Part B (architect ruling, 2026-10-22, wave 8c1 review "Not fixed" 1): a refused folder pick shows its check.** A second packet-coder run in the same `la-15` worktree, after the commit above, with its own commit. Anchors are at the LA-14 tip (`.claude/worktrees/la-14`); re-grep them.
+  - **Problem.** `begin_folder_adoption` (shell `host/adoption/mod.rs:272`) runs `adoption::resolve_folder(&selected)?` outside a rejection scope. The `?` returns the bare `AdoptionError::NotAGameFolder` as the Tauri command error and drops the check the engine recorded, so the player sees the generic `not_a_game_folder` text for `several_game_folders`, and `folder_unreadable` / `not_a_game_folder` never show their detail line either. Preview and confirm refusals already reach the screen through `Adoption::fail` (`host/adoption/status.rs:171`).
+  - **Ruling: option (a).** The shell keeps its pre-resolve, runs it inside the engine's rejection scope, and records a refusal the way a worker refusal is recorded: `Ok(status)` with `last_error` and `last_rejection` set. Option (b) was rejected: Light needs the resolved root as its destination (`mod.rs:274`), so dropping the pre-resolve means changing the engine's request check, and the refusal would come later, after admission. The choose contract does not change shape: `choose_existing_game_folder` already returns `AdoptionStatus` (a cancelled picker does), so there is no Rust or TypeScript schema change (R-LA 7 holds). Only the picked-folder check changes; the mode, location and busy refusals stay errors.
+  - **Files (only these):**
+    1. Engine `adoption/mod.rs:99`: change the line to `pub use rejection::{refuse, scope as rejection_scope, Rejection};`. One edited line; nothing else in the engine.
+    2. Shell `host/adoption/mod.rs` (547 lines, over the soft cap; net at most +5 lines): in `begin_folder_adoption`, replace `let root = adoption::resolve_folder(&selected)?;` with
+       ```rust
+       // A refused pick is held like a worker's refusal, so the player sees the check.
+       let (resolved, rejection) = adoption::rejection_scope(|| adoption::resolve_folder(&selected));
+       let root = match resolved {
+           Ok(root) => root,
+           Err(error) => return self.refuse_picked_folder(error, rejection),
+       };
+       ```
+    3. Shell `host/adoption/status.rs` (269 lines): add a second `impl NativeHost` block after the first, with two methods:
+       - `pub(super) fn refuse_picked_folder(&self, error: adoption::Error, rejection: Option<adoption::Rejection>) -> Result<AdoptionStatus, AdoptionError>`: lock `self.adoption` in an inner block; if `preview`, `session` or `confirm` is `Some`, return `Err(refusal(AdoptionError::Busy, "busy", "adoption_active"))` (as `admit_adoption_preview` does); else call `adoption.fail(error, rejection)`, then `if let Some(code) = adoption.last_error { events::refused(code, adoption.last_unsafe.as_ref()); }` (as `settle_adoption` does). Drop the lock, then return `self.adoption_status()`. Doc comment: "A picked folder the engine refused before any preview: shown with the check the engine recorded, like a worker's refusal."
+       - `pub fn adoption_picker_cancelled(&self) -> Result<AdoptionStatus, AdoptionError>`: lock `self.adoption` in an inner block; when `preview`, `session` and `confirm` are all `None`, call `adoption.clear_failure()`. Drop the lock, then return `self.adoption_status()`. Doc comment: "The player closed the folder picker: an earlier refusal is no longer shown, so the view can say no folder was chosen." Without this, a cancel after a refusal returns the old refusal, and LA-16's "No folder chosen." cannot be told apart.
+    4. Shell `main.rs:443` (the body of `async fn cancelled`, whose only callers are the two picker returns in `choose_existing_game_folder`): `host.adoption_status()` becomes `host.adoption_picker_cancelled()`. One call line.
+    5. Shell `host/adoption/rejection_tests.rs` (82 lines): the two tests below.
+  - **Tests** (in `rejection_tests.rs`, plain `#[test]`, each gated `#[cfg(not(target_os = "macos"))]` because Light is offered only by the in-place backend). Build the host as `in_place_tests.rs` does: `let mut f = Fixture::new(serde_json::json!({})); f.host = super::in_place_tests::unimported_host(f.root.path().join("plain-state"));`. No server is needed: the refusal comes before admission.
+    1. `a_picked_folder_holding_two_installs_shows_the_several_game_folders_check`: make `parent = f.root.path().join("two-installs")` and, for `Live` and `Test`, create `parent/<name>/Working/Binaries/` and write into `SGW.exe` the bytes of `f.source.game_directory`'s `Working/Binaries/SGW.exe` (the engine's root test reads its PE header). Call `f.host.begin_folder_adoption(parent.clone(), None, AdoptionMode::Light, f.release())` and `.expect(...)` an `Ok` status. Assert `status.activity == Activity::Idle`, `status.last_error == Some(AdoptionError::NotAGameFolder)`, and on `status.last_rejection.expect(...)`: `check == "several_game_folders"`, `found.as_deref() == Some("2")`, `entry.as_deref() == Some(".")`. Assert `!parent.join("game").exists()` and that `f.host.adoption_status().unwrap().last_rejection.map(|r| r.check)` is still `Some("several_game_folders")`. Reverted to the bare `?`, the call returns `Err(NotAGameFolder)` and the `expect` fails.
+    2. `a_cancelled_picker_clears_an_earlier_refusal`: pick an empty `f.root.path().join("empty")` folder the same way; assert the status's `last_rejection` check is `"not_a_game_folder"`. Then `let status = f.host.adoption_picker_cancelled().unwrap();` and assert `status.last_error == None` and `status.last_rejection.is_none()`. Reverted (the method body reduced to `self.adoption_status()`), `last_error` is still set and the test fails.
+
+    The report says, per test, which reverted line makes it fail (R-LA 5).
+  - **Lane:** `cimmeria-launcher-engine` (fmt, clippy; nextest), then `cimmeria-launcher-desktop` (fmt, clippy, nextest), then the frontend `npm run check; npm test` (no frontend file changes; it must stay green).
+  - **Rules for Part B:** R-LA 1-3, 5, 6 and 9 apply. Telemetry: the engine already writes the WARN `adoption_rejected` row; Part B adds only the existing shell `refused` step row (closed code, no path). No `docs/` file. If `adoption.fail`, `clear_failure`, `events::refused` or `refusal` are not reachable from `status.rs` as named here, return `blocked` with the compiler message; don't widen anything else.
+  - **Commit (Part B):** `LA-15: a refused folder pick shows its check; a cancelled picker clears it`.
 
 ### LA-16: adoption view copy and first press
 
@@ -701,13 +742,18 @@ Samples (D-LA17): each holds at most 10 paths, comma-joined, at most 600 charact
     - When `skipped_total > 0`: "Some patch changes can't be applied: <N> files differ from the originals the patches expect. They stay as they are. You can still use this folder." Below it, a `<details>` list of `path — patch`.
     - The confirm button **Use this folder** is never disabled by skipped ops.
   - **Done.** "This folder is now your Cimmeria install. If the game will not start, use Repair (it downloads the full game, 4.1 GB)."
-  - **Refusals.** `several_game_folders`: "This folder holds more than one Stargate Worlds install. Pick the one you want."
+  - **Refusals.** `several_game_folders`: "This folder holds more than one Stargate Worlds install. Pick the one you want." **Already in `frontend/src/adoption-reasons.ts` (LA-14 fix N1) together with its entry in `adoption-reasons.test.ts`; do not add it again.**
+  - **Picked-folder refusals (architect ruling 2026-10-22, wave 8c1 "Not fixed" 1; needs LA-15 Part B merged).** The choose press now gets an `Ok` status for a refused pick: `activity` `idle`, `last_error` set (for both folder checks, `not_a_game_folder`), and `last_rejection` naming the check. The existing render path already shows it (`adoption-view.ts:88` for the status line, `:148` for the `adoption-rejection` line), so no wiring is added. Three small changes:
+    - `adoption-view.ts:88`: when `status.last_rejection?.check==='several_game_folders'`, the status line is "The launcher found more than one Stargate Worlds install in that folder, so it did not pick one. Choose the install you want: its game root, the folder that holds “Working”, or its “Working\\Binaries” folder. Nothing was changed." instead of the generic `not_a_game_folder` text, which would say the folder is not a game folder. The `unsafe_file` branch keeps its precedence.
+    - `adoption-reasons.ts` `rejectionText`: an `entry` of `"."` (the picked folder itself) adds no `File:` part; today it renders "File: ..".
+    - Cancel: the shell clears the shown refusal when the picker is cancelled (LA-15 Part B), so a choose reply that is `idle` with no `review` and no `last_error` is a cancel, and shows "No folder chosen."
 - **Tests (`adoption-view.test.ts`, or a new `adoption-light-view.test.ts`):**
   - The first-press status is set before the preview promise resolves.
   - The skipped list renders and the confirm button stays enabled.
-  - `several_game_folders` has its text.
+  - `several_game_folders` has its text **on the choose path**: with the existing `mount` and `idle()` helpers, the choose reply is `{...idle(),backend:'in_place',modes:['light','copy'],last_error:'not_a_game_folder',last_rejection:{check:'several_game_folders',entry:'.',expected:'one game folder',found:'2',http_status:null}}`. Press `choose-adoption-destination`, settle, and assert: the status text matches `/more than one Stargate Worlds install/` and does not match `/is not a Stargate Worlds game folder/`; `adoption-rejection` is not hidden and its text equals `This folder holds more than one Stargate Worlds install. Pick the one you want. Expected one game folder, found 2.`; `choose-adoption-destination` is enabled again. It fails when the `:88` branch is reverted, when the `"."` rule is reverted (the text gains `File: ..`), or when the N1 table line is removed.
+  - `adoption-reasons.test.ts`: `rejectionText` with `entry:'.'` has no `File:` part, and with `entry:'Working'` it still has `File: Working.`
 
-  Reverted, they fail.
+  Reverted, they fail. The shell wiring itself is proven by the LA-15 Part B Rust tests, not here.
 - **Lane:** frontend (`npm run check; npm test`).
 - **Docs:** none. **Commit:** `LA-16: light adoption review, skipped-change list and first-press status`.
 
@@ -739,7 +785,8 @@ Samples (D-LA17): each holds at most 10 paths, comma-joined, at most 600 charact
   - a clean stock folder;
   - skipped changes;
   - each index state;
-  - an install with incomplete patches.
+  - an install with incomplete patches;
+  - a picked folder holding two installs (architect ruling 2026-10-22, wave 8c1 "Not fixed" 1): a canned native reply to the choose press, fed the same way as the script's other scenarios, shaped as the shell returns it after LA-15 Part B (`activity` `idle`, `last_error` `not_a_game_folder`, `last_rejection` check `several_game_folders`, entry `.`, found `2`). Assert the LA-16 status line and the `adoption-rejection` line, and that the choose button is enabled on the first press after it. Then a cancel reply (idle, no `last_error`) shows "No folder chosen."
 - **Tests:** each index state's text, the list cap line, and the main-view hint shown only when the count is above 0. Reverted, they fail.
 - **Lane:** frontend, then `npm run uat:adoption-light`.
 - **Docs:** none. **Commit:** `LA-18: index comparison panel, incomplete-patch hint and the light adoption UAT`.
