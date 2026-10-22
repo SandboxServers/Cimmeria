@@ -342,12 +342,24 @@ impl tracing::Subscriber for Rows {
     fn exit(&self, _: &tracing::span::Id) {}
 }
 
+/// One capture test at a time: tracing's callsite interest cache is process-wide.
+static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// The `patch_retry_failed` row: closed fields only (R5), never the error's text.
-#[tokio::test]
-async fn a_failed_retry_logs_one_warning_with_the_patch_label_and_closed_code() {
+// Sync test + explicit runtime so the SERIAL guard is not held across an `.await`.
+#[test]
+fn a_failed_retry_logs_one_warning_with_the_patch_label_and_closed_code() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    // A second live Dispatch makes callsites register as "sometimes", so a
+    // concurrent test's no-dispatcher hit cannot cache the WARN as "never".
+    let _second = tracing::Dispatch::new(Rows::default());
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let work = tempfile::tempdir().unwrap();
     let zip = recipe_patch_zip(work.path());
-    let server = MockServer::start().await;
+    let server = runtime.block_on(MockServer::start());
     let dir = tempfile::tempdir().unwrap();
     seed(
         dir.path(),
@@ -362,7 +374,8 @@ async fn a_failed_retry_logs_one_warning_with_the_patch_label_and_closed_code() 
     );
     let rows = Rows::default();
     let _guard = tracing::subscriber::set_default(rows.clone());
-    let result = run(dir.path(), &server, &manifest_for(&zip), true).await;
+    tracing::callsite::rebuild_interest_cache();
+    let result = runtime.block_on(run(dir.path(), &server, &manifest_for(&zip), true));
     assert!(result.is_ok(), "{result:?}");
     let rows = rows.0.lock().unwrap();
     let field = |row: &(tracing::Level, String, Vec<(String, String)>), key: &str| {
