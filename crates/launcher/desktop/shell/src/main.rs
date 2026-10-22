@@ -276,8 +276,6 @@ async fn log_upload_command(
         // The file reads and the paced posts run without the state mutex; the
         // ingest holds the busy flag until it ends.
         LogUploadStep::Ingest(ingest) => ingest.run().await,
-        // Only the blob path (removed by LF-18) returns this; nothing calls it.
-        LogUploadStep::Collect(_) => Err(StorageError::Io.into()),
     }
 }
 
