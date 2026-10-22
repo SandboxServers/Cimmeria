@@ -18,11 +18,14 @@ mod in_place_tests;
 mod index_compare;
 mod index_source;
 mod inventory;
-// LA-10 and LA-11 read the plan; until then only the tests call it.
+// LA-11 calls `plan`; until then only the tests do.
 #[allow(dead_code)]
 mod light_plan;
 #[cfg(test)]
 mod light_plan_tests;
+// LA-11 calls `replay`; until then only the tests do.
+#[allow(dead_code)]
+mod light_replay;
 mod model;
 pub(crate) mod preparation;
 mod publication;
