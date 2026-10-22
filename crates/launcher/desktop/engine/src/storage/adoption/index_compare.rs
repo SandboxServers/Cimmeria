@@ -297,6 +297,7 @@ mod tests {
             .filter(|row| row.field("event") == Some("adoption_index_compared"))
             .collect();
         assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].target, "adoption");
         assert_eq!(rows[0].field("state"), Some("compared"));
         assert_eq!(rows[0].field("changed"), Some("1"));
         assert_eq!(rows[0].field("extra"), Some("1"));
@@ -304,10 +305,32 @@ mod tests {
             .field("changed_sample")
             .unwrap()
             .contains("later.txt"));
+        assert!(!rows[0].field("missing_sample").unwrap().is_empty());
         assert!(logs.iter().all(|row| row
             .fields
             .values()
             .all(|v| !v.contains("my_screenshot_Steve"))));
+    }
+
+    #[test]
+    fn a_sample_holds_at_most_ten_paths_and_600_characters_of_one_class() {
+        let mut files: Vec<(String, FileClass)> = (0..12)
+            .map(|i| (format!("p{i:02}"), FileClass::Changed))
+            .collect();
+        files.insert(3, ("x".to_string(), FileClass::Extra));
+        files.insert(7, ("x".to_string(), FileClass::Extra));
+        files.push(("x".to_string(), FileClass::Extra));
+        assert_eq!(
+            sample(&files, FileClass::Changed),
+            "p00,p01,p02,p03,p04,p05,p06,p07,p08,p09"
+        );
+        let long: Vec<(String, FileClass)> = (0..10)
+            .map(|_| ("a".repeat(100), FileClass::Missing))
+            .collect();
+        let missing = sample(&long, FileClass::Missing);
+        assert!(missing.chars().count() <= 600);
+        assert_eq!(missing.split(',').count(), 5);
+        assert_eq!(sample(&[], FileClass::Changed), "");
     }
 
     #[test]
