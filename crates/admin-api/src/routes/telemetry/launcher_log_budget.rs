@@ -276,12 +276,6 @@ pub(super) fn check_event_targets(events: &[TelemetryEvent]) -> Result<(), Inges
     }
 }
 
-/// A player, lab or other non-launcher chunk must hold no row of a launcher
-/// log target: those rows are replayed only for a log session (C-LF4).
-pub(super) fn check_no_log_targets(events: &[TelemetryEvent]) -> Result<(), IngestError> {
-    check_event_targets(events)
-}
-
 fn is_log_target_row(event: &TelemetryEvent) -> bool {
     matches!(event, TelemetryEvent::ClientNative(row)
         if LAUNCHER_LOG_TARGETS.contains(&row.target.as_str()))

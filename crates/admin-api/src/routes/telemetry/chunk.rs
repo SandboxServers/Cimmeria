@@ -40,7 +40,7 @@ use super::dto::{ChunkResponse, IngestError, TelemetryEvent};
 use super::entity_labels::{self, name_chunk, EntityLabels};
 use super::field_caps::cap_event;
 use super::launcher_budget::{admit_launcher_chunk, LauncherBudget};
-use super::launcher_log_budget::{admit_log_chunk, check_event_targets, check_no_log_targets};
+use super::launcher_log_budget::{admit_log_chunk, check_event_targets};
 use super::refusal_log::Truncation;
 use super::replay::replay_events_from_client;
 use super::session_budget::{
@@ -181,7 +181,7 @@ async fn chunk_flow(
         // named by asking the cell who held each slot when the row was written
         // (NT-40); the rest of a row's names need no round trip.
         // A launcher log target is replayed only in a log session (C-LF4).
-        check_no_log_targets(&events)?;
+        check_event_targets(&events)?;
         let now_secs = chrono::Utc::now().timestamp();
         let (admitted_rows, totals) = admit_budgeted(&claims, &events, now_secs);
         let labels = name_chunk(
