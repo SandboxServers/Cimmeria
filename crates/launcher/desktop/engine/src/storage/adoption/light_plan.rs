@@ -40,6 +40,8 @@ pub(super) fn plan(
     let manifest = release.manifest();
     let all: Vec<usize> = (0..manifest.patches.len()).collect();
     let progress = ProgressSink::latest().0;
+    // Read before the fetch, so the review counts only what must download.
+    let held = artifacts::held(cache, release, cancel)?;
     let fetched = artifacts::fetch_some(
         cache,
         transport,
@@ -65,18 +67,45 @@ pub(super) fn plan(
         if cancel.is_cancelled() {
             return Err(Error::Cancelled);
         }
-        let summary = patch_summary::summarize(zip, patch).map_err(|_| {
-            rejection::reject(
-                Error::InvalidArtifact,
-                Rejection::new("artifact_hash_mismatch").entry(format!("patch:{}", patch.id)),
-            )
+        // The blobs verified against the signed manifest, so a failure here is an
+        // unreadable, invalid or unsafe archive, not a bad download.
+        let summary = patch_summary::summarize(zip, patch).map_err(|error| {
+            let label = format!("patch:{}", patch.id);
+            match error {
+                patch_summary::PatchSummaryError::Path(_) => rejection::reject(
+                    Error::UnsupportedLayout,
+                    Rejection::new("patch_layout_unsupported").entry(label),
+                ),
+                patch_summary::PatchSummaryError::Io(_) => rejection::reject(
+                    Error::InvalidArtifact,
+                    Rejection::new("patch_archive_unsupported")
+                        .entry(label)
+                        .found("io"),
+                ),
+                patch_summary::PatchSummaryError::Zip(_) => rejection::reject(
+                    Error::InvalidArtifact,
+                    Rejection::new("patch_archive_unsupported")
+                        .entry(label)
+                        .found("zip"),
+                ),
+                patch_summary::PatchSummaryError::Recipe(_) => rejection::reject(
+                    Error::InvalidArtifact,
+                    Rejection::new("patch_archive_unsupported")
+                        .entry(label)
+                        .found("recipe"),
+                ),
+            }
         })?;
         summaries.push(summary);
     }
     let folder = folder_hashes(scan);
     let pending = patch_summary::pending(&summaries, |path| have(&folder, path));
-    // `fetch_some` does not say which blobs it downloaded, so every patch counts.
-    let download_bytes = manifest.patches.iter().map(|patch| patch.size).sum();
+    let download_bytes = manifest
+        .patches
+        .iter()
+        .filter(|patch| !held.contains(&patch.sha256))
+        .map(|patch| patch.size)
+        .sum();
     planned_event(summaries.len(), pending.len(), download_bytes);
     Ok(LightPlan {
         summaries,

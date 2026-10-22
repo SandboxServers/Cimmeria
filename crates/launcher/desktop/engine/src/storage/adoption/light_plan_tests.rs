@@ -34,9 +34,15 @@ fn zip_of(entries: &[(&str, &[u8])]) -> Vec<u8> {
 /// A signed release with two patches: patch 0 rewrites the overlay and patch 1
 /// writes an extra file. The seed is signed but never served.
 fn release() -> (VerifiedRelease, Vec<(&'static str, Vec<u8>)>) {
+    release_of(
+        zip_of(&[(OVERLAY, OVERLAY_PATCHED)]),
+        zip_of(&[(EXTRA, EXTRA_OUT)]),
+    )
+}
+
+/// The release of [`release`] with the two patch blobs given.
+fn release_of(patch0: Vec<u8>, patch1: Vec<u8>) -> (VerifiedRelease, Vec<(&'static str, Vec<u8>)>) {
     let seed = zip_of(&[(OVERLAY, SEED_OVERLAY)]);
-    let patch0 = zip_of(&[(OVERLAY, OVERLAY_PATCHED)]);
-    let patch1 = zip_of(&[(EXTRA, EXTRA_OUT)]);
     let body = serde_json::json!({
         "schema": 1,
         "seed": {"blob": "seed.zip", "size": seed.len(), "sha256": hex(&Sha256::digest(&seed))},
@@ -147,6 +153,7 @@ async fn the_planned_event_carries_the_four_counts() {
         .iter()
         .find(|e| e.field("event") == Some("adoption_light_planned"))
         .expect("the plan emits adoption_light_planned");
+    assert_eq!(event.target, "adoption");
     assert_eq!(event.field("patches_total"), Some("2"));
     assert_eq!(event.field("patches_current"), Some("0"));
     assert_eq!(event.field("patches_pending"), Some("2"));
@@ -162,6 +169,68 @@ async fn no_request_asks_for_the_seed() {
     let state = tempfile::tempdir().unwrap();
     run(&transport(&server), &release, state.path(), &scan);
     assert_eq!(requests(&server).await, ["/patch0.zip", "/patch1.zip"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_second_plan_over_the_same_store_downloads_nothing() {
+    let (release, blobs) = release();
+    let server = serve(&blobs).await;
+    let transport = transport(&server);
+    let (_folder, scan) = folder(&[(OVERLAY, SEED_OVERLAY)]);
+    let state = tempfile::tempdir().unwrap();
+    let first = run(&transport, &release, state.path(), &scan);
+    let fetched_bytes: u64 = blobs.iter().map(|(_, bytes)| bytes.len() as u64).sum();
+    assert_eq!(first.download_bytes, fetched_bytes);
+    let cancel = CancellationToken::new();
+    // The guard is taken after the last await: one capture test of this module at a time.
+    let _serial = serial();
+    // A second live Dispatch keeps callsite interest per dispatcher, so a callsite
+    // that another module's test hit first is not left disabled.
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let (planned, events) = crate::test_capture::capture(|| {
+        tracing::callsite::rebuild_interest_cache(); // first line in the closure
+        tokio::task::block_in_place(|| plan(&transport, &release, state.path(), &scan, &cancel))
+    });
+    planned.unwrap();
+    let event = events
+        .iter()
+        .find(|e| e.field("event") == Some("adoption_light_planned"))
+        .expect("the plan emits adoption_light_planned");
+    assert_eq!(event.field("download_bytes"), Some("0"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_placed_cooked_file_held_under_the_stock_name_counts_as_current() {
+    let patch0 = zip_of(&[(
+        "Working/SGWGame/SourceCache.en-us/Cooked.pak",
+        b"cooked".as_slice(),
+    )]);
+    let (release, blobs) = release_of(patch0, zip_of(&[(EXTRA, EXTRA_OUT)]));
+    let server = serve(&blobs).await;
+    let (_folder, scan) = folder(&[
+        ("Working/SGWGame/Cache.en-US/Cooked.pak", b"cooked"),
+        (EXTRA, EXTRA_OUT),
+    ]);
+    let state = tempfile::tempdir().unwrap();
+    let planned = run(&transport(&server), &release, state.path(), &scan);
+    assert!(planned.pending.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_patch_that_is_not_a_zip_is_refused_as_an_unsupported_archive() {
+    let (release, blobs) = release_of(b"not a zip".to_vec(), zip_of(&[(EXTRA, EXTRA_OUT)]));
+    let server = serve(&blobs).await;
+    let transport = transport(&server);
+    let (_folder, scan) = folder(&[(OVERLAY, SEED_OVERLAY)]);
+    let state = tempfile::tempdir().unwrap();
+    let cancel = CancellationToken::new();
+    let (result, recorded) = rejection::scope(|| {
+        tokio::task::block_in_place(|| plan(&transport, &release, state.path(), &scan, &cancel))
+    });
+    assert_eq!(result.err(), Some(Error::InvalidArtifact));
+    let recorded = recorded.expect("the refused archive is recorded");
+    assert_eq!(recorded.check, "patch_archive_unsupported");
+    assert_eq!(recorded.entry.as_deref(), Some("patch:overlay"));
 }
 
 #[test]
