@@ -276,7 +276,7 @@ The cell holds the session and the base holds membership, so the open is a round
 
 Opening needs no bank bit: every member may look (D-BV12). `DepositBank` and `WithdrawBank` are checked per move.
 
-A refusal logs `org_vault_open_rejected` (WARN, `bank`) with a stable `reason` and, where there is a player to tell, a chat line:
+A refusal logs `org_vault_open_rejected` (WARN, `bank`; `not_in_org` is INFO, a normal refusal) with a stable `reason` and, where there is a player to tell, a chat line:
 
 | `reason` | Where | When |
 |---|---|---|

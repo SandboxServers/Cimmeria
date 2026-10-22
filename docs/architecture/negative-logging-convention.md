@@ -531,7 +531,7 @@ guards are in `cell-interactions` `cell/interactions/bank/telemetry_tests.rs`
 
 ## Team and Command vault open refusals (BV-07)
 
-Target `bank`, WARN. `org_vault_open_rejected` carries `reason`, `org_id`
+Target `bank`, WARN; `not_in_org` is INFO (a normal refusal with a chat line, not a fault). `org_vault_open_rejected` carries `reason`, `org_id`
 (when known), `org_type`, `scope`, `banker_id`, and on the base
 `space_id` and `distance`. Each reason with a player to tell also sends a
 `CHAN_FEEDBACK` line.

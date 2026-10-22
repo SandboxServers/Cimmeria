@@ -173,18 +173,19 @@ async fn live_db_a_member_gets_size_contents_and_a_grant() {
     fx.teardown().await;
 }
 
-/// One refusal: exactly one WARN `org_vault_open_rejected` with `reason`,
-/// no grant, and the chat line.
+/// One refusal: exactly one `org_vault_open_rejected` at `level` with
+/// `reason`, no grant, and the chat line.
 fn assert_refused(
     capture: &LogCaptureGuard,
     sent: &[BankBaseToCell],
     client: &Client,
     reason: &str,
+    level: Level,
     line: &str,
 ) {
     let rows = bank_rows(capture, "org_vault_open_rejected");
     assert_eq!(rows.len(), 1, "{reason}: {:#?}", capture.all());
-    assert_eq!(rows[0].level, Level::WARN);
+    assert_eq!(rows[0].level, level, "{reason} level: {:#?}", rows[0]);
     assert!(rows[0].has_field("reason", reason), "{:#?}", rows[0]);
     assert!(
         rows[0].has_field("banker_id", &BANKER.to_string()),
@@ -218,7 +219,16 @@ async fn live_db_a_player_in_no_team_is_refused_not_in_org() {
         &sent,
         &client,
         "not_in_org",
+        Level::INFO,
         "You are not in a Team, so there is no Team vault to open.",
+    );
+    // A normal refusal, so no row of this event is a WARN.
+    assert!(
+        bank_rows(&capture, "org_vault_open_rejected")
+            .iter()
+            .all(|r| r.level != Level::WARN),
+        "{:#?}",
+        capture.all()
     );
     let row = &bank_rows(&capture, "org_vault_open_rejected")[0];
     assert!(
@@ -248,6 +258,7 @@ async fn a_request_without_a_player_is_refused_player_unknown() {
         &sent,
         &client,
         "player_unknown",
+        Level::WARN,
         "The Command vault could not be opened. Please try again.",
     );
 
