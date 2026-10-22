@@ -26,6 +26,7 @@ pub mod overlay_pack;
 pub mod patch_dest;
 pub mod patch_summary;
 pub mod seed_source;
+pub mod stage_seed;
 pub mod state;
 pub mod telemetry;
 pub mod unpack;
