@@ -1,6 +1,6 @@
 # RE Findings
 
-This directory contains <!-- gen:re-findings-count -->101<!-- /gen:re-findings-count --> per-system reverse engineering findings with evidence.
+This directory contains <!-- gen:re-findings-count -->102<!-- /gen:re-findings-count --> per-system reverse engineering findings with evidence.
 
 ## Documents
 
@@ -106,6 +106,7 @@ This directory contains <!-- gen:re-findings-count -->101<!-- /gen:re-findings-c
 | `bank-vault-client.md` | BV-E1 (bank-and-vault) | Bank/Vault client evidence — world-entry `onBagInfo` is sufficient for container 17 (no fresh send needed on `onVaultOpen`); `Events.InventoryUpdateContainerSize` is inferred (emit site untraced) to resize an open vault window; a Banker can offer a single-button "Expand vault" dialog through the existing `dialogButtonChoice`/content-engine path with no wire change (the button is not an authority check: the purchase handler must re-validate the session, proximity, cash and ceiling); `onVaultOpen`'s `Position` argument has no client consumer (server-authoritative proximity is load-bearing); `isBankingOverride` sweep reproduces the prior negative result | HIGH (Lua/doc evidence) / MEDIUM-LOW (native emit sites for Q2/Q4, explicitly open) |
 | `chat-speaker-echo.md` | 2026-09-28 (colo incident) | Spatial chat speaker-echo doubling — the legacy server's own comment (`SGWPlayer.py:1841-1843`) shows the 2009 client echoes its own `say` line locally but not `emote`/`yell`; Cimmeria had this inverted (SS-C1, `92cdeddaa`) and echoed `say` unconditionally, doubling the speaker's own line; corrected in `cell/console/chat/spatial.rs` | HIGH (legacy comment + SigNoz incident evidence) / UNRESOLVED (exact native client mechanism, no Ghidra session available) |
 | `ammo-system.md` | AM-01 (ammo campaign, #1026) | Ammo system — confirms the client schema has **no finite ammo reserve** (only a `knownAmmoTypes` discovery-flag array, not a count); `getAmmoTypes`/`getCurrentAmmoType`/`requestAmmoChange` all resolve through the same live `SGWPlayer+0x8c → *+0x24` container cache as the bandolier active-slot map, not `CookedDataItems.pak`, so widening a weapon's `ammo_types` is a pure DB change; toggle abilities 715/719 are architecturally independent of `requestAmmoChange`; new item ids should work via the existing element-key cooked-data push (proven for overrides by PR #405, not yet for net-new ids) | HIGH (reserve absence, live cache, ability independence) / MEDIUM (exact `ammoId` semantics, `GiveAmmo` wire byte layout — open) |
+| `controller-mouse-input-model.md` | lab-nav-telemetry (2026-10-22) | Player controller mouse and movement input model: static RE hook map for the nav poll (LMB orbit, RMB turn, both-button walk); not yet confirmed live |
 
 ## Finding Format
 

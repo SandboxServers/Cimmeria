@@ -26,7 +26,8 @@
 //! with the current size buys, one +10 step of the GM's Team vault, paid
 //! from the Team treasury. The Team's leader only, checked by the base
 //! under the organization lock. There is no client UI for it: the Expand
-//! dialog is quarantined (#943). No vault session is needed: the purchase
+//! dialog (60110) is personal-vault only, served since 2026-10-22 (D-LN3).
+//! No vault session is needed: the purchase
 //! moves no item and the leader check is the authorization.
 //!
 //! New in the Rust server; the legacy python console had no equivalent.
@@ -161,10 +162,9 @@ pub(crate) fn log_non_gm_bankdump(entity_id: u32, space_mgr: &SpaceManager) {
 }
 
 /// `.bankexpand`: buy one vault step for the GM through the purchase path
-/// the Banker's dialog uses (BV-05). The Expand dialog is quarantined
-/// (#943), so this is the only way to expand a vault until it is served.
-/// The result line comes from the base, after the purchase commits or is
-/// refused.
+/// the Banker's dialog uses (BV-05). The personal-vault Expand dialog (60110)
+/// is served since 2026-10-22 (D-LN3); this GM path stays. The result line
+/// comes from the base, after the purchase commits or is refused.
 pub(super) async fn expand(
     caller_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,

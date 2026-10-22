@@ -86,24 +86,18 @@ fn apply_dialog_overrides_regenerates_existing_and_inserts_new() {
         ids.as_slice(),
         &[
             3995u32, 3996u32, 10700u32, 10701u32, 10702u32, 10709u32, 10717u32, 10718u32, 10721u32,
-            10725u32, 10729u32, 10730u32, 10733u32, 10734u32, 60150u32, 60151u32,
+            10725u32, 10729u32, 10730u32, 10733u32, 10734u32, 60100u32, 60101u32, 60104u32,
+            60110u32, 60150u32, 60151u32,
         ],
-        "overridden_elements must name every regenerated dialog id (the two mission-622 corpses, the Castle dialogs and the CB-N05/CB-N06 dialogs) in ascending order, and no quarantined one",
+        "overridden_elements must name every regenerated dialog id (the two mission-622 corpses, the Castle dialogs, the debug-hub dialogs and the CB-N05/CB-N06 dialogs) in ascending order",
     );
 
-    // The debug-hub dialogs are quarantined (client map-load crash,
-    // 2026-09-27): they are neither inserted into the catalogue nor named in
-    // the versionInfo InvalidKeys, so no client is sent them.
-    for q in crate::base::dialog_overrides::QUARANTINED_DIALOG_OVERRIDES {
+    // D-LN3 (2026-10-22): the debug-hub dialogs and the Banker's Expand dialog
+    // are served, so each one is regenerated into the Dialogs category.
+    for id in [60100u32, 60101, 60104, 60110] {
         assert!(
-            !dialogs.elements.contains_key(&q.dialog_id),
-            "quarantined dialog {} must not be inserted into the served catalogue",
-            q.dialog_id,
-        );
-        assert!(
-            !ids.contains(&q.dialog_id),
-            "quarantined dialog {} must not be named in overridden_elements",
-            q.dialog_id,
+            dialogs.elements.contains_key(&id),
+            "debug-hub dialog {id} must be regenerated into the Dialogs category (D-LN3)",
         );
     }
 }

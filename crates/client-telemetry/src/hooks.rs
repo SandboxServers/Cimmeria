@@ -65,6 +65,10 @@ pub(crate) mod ability_trace;
 // the i686 emitter.
 #[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
 pub(crate) mod camera;
+// The player controller's input state (`client.nav.*`, `client.input.*`).
+// The pure readers run on every target; the tick is i686 only.
+#[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
+pub mod nav;
 // Pure helpers run only from the i686 CEGUI logger detour.
 #[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
 mod cegui_log;

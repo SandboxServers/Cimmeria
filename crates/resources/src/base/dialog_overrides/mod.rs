@@ -50,8 +50,10 @@
 //! contract this module implements.
 
 pub mod emit;
+mod overrides_bank;
 mod overrides_castle;
 mod overrides_cellblock;
+mod overrides_debug_hub;
 pub mod parse;
 pub mod patch;
 mod patches_beta_e1;
@@ -170,8 +172,8 @@ pub struct DialogOverride {
 /// The override text and the `dialog_screens.sql` text must be kept in
 /// sync by hand — the override is the source of truth for what the player
 /// sees; the seed row is the canonical record for committing to the repo.
-/// The quarantined debug-hub entries ([`QUARANTINED_DIALOG_OVERRIDES`]) are
-/// checked against the seed by `override_seed_agreement_debug_hub`.
+/// The debug-hub entries (`overrides_debug_hub.rs`) are checked against the
+/// seed by `override_seed_agreement_debug_hub`.
 ///
 /// Append new entries at the END: tests elsewhere read `DIALOG_OVERRIDES[0]`
 /// as the Frost dialog.
@@ -179,10 +181,11 @@ pub struct DialogOverride {
 /// Every `dialog_id` must be at most [`MAX_COOKED_ELEMENT_ID`] (65535).
 /// Pushing overrides 100100 and 100101 crashed the 2009 client while it
 /// loaded Castle_CellBlock (colo deploy, 2026-09-27). The id's width was
-/// first suspected but has been ruled out, and those dialogs are now
-/// quarantined (see [`QUARANTINED_DIALOG_OVERRIDES`]). The 16-bit bound
-/// stays as a guard. Cimmeria-authored dialogs live in 60100-60199, well above
-/// the client's own ids (which stop at 6427). See
+/// first suspected but has been ruled out, and those dialogs were
+/// quarantined 2026-09-27 to 2026-10-22, #943; see the crash finding
+/// (D-LN3). The 16-bit bound stays as a guard. Cimmeria-authored dialogs
+/// live in 60100-60199, well above the client's own ids (which stop at
+/// 6427). See
 /// `docs/reverse-engineering/findings/cooked-dialog-override-crash.md`. The
 /// guard is `every_cooked_override_element_id_fits_in_16_bits` in
 /// `resources/tests/committed_paks.rs`.
@@ -243,141 +246,12 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
     // CB-N06 mission 62060: the patrol choice (dialog 60151), the served
     // one-screen speaker-0 shape. See overrides_cellblock.rs.
     overrides_cellblock::PRISONER_CHOICE_DIALOG,
-];
-
-/// Cimmeria-authored overrides that are defined but NOT served: nothing
-/// reads this list at runtime, so no client is sent these entries.
-///
-/// **Why they are held back (2026-09-27).** After the debug-hub dialogs
-/// started going out as category-5 overrides (as 100100/100101 in the
-/// 16:19 UTC colo deploy, then as 60100/60101/60104 in the 17:49 deploy), a
-/// tester's client died on every entry into Castle_CellBlock. It crashed
-/// after `onClientMapLoad` and never sent `mapLoaded`. SigNoz shows the
-/// client writes pushed overrides to its disk cache
-/// (`Cache.en-US\CookedDataDialogs.pak`): a session that got no push, only
-/// the cached copy, crashed the same way. These dialogs are the only
-/// category-5 content that client received between its last good session
-/// and the crash. The renumber below 65536 (#938) did not help, and PR #939
-/// found the client's dialog cache takes any 32-bit key, so the width of the
-/// id is not the fault. Which field is, is still open. The candidates are
-/// what these entries have and the long-served 3995/3996 lack: a nonzero
-/// speaker (754, 843), more than one screen, screen ids 200000-200005, and
-/// button type 4.
-///
-/// **To restore one**, once RE names the bad field and it is fixed, move
-/// the entry back into [`DIALOG_OVERRIDES`] and drop its id from this list.
-/// `quarantined_dialogs_are_not_served` fails while an id is in both.
-///
-/// The seed rows (`dialogs.sql`, `dialog_screens.sql`,
-/// `dialog_screen_buttons.sql`) and chains 7001-7003 / 7010-7011 stay. The
-/// server still sends `onDialogDisplay` for these ids, but a client without
-/// the override has no entry for them, so the NPCs show no dialog.
-///
-/// Removing these from the served list does NOT clean a client that already
-/// cached them: the server evicts nothing. Such a client must delete
-/// `Cache.en-US\CookedDataDialogs.pak`.
-pub const QUARANTINED_DIALOG_OVERRIDES: &[DialogOverride] = &[
-    // NEW CONTENT (debug hub): the stasis-room dialog NPC (template 302,
-    // Airman Lance, speaker 754), chains 7001-7003 in debug_hub_chains.sql.
-    // Two screens so the player pages with Next; ONE button, on the final
-    // screen (hard rule 1), so reading to the end always leaves something to
-    // press. Type 4 (Generic 1) because a `DUIST_DefaultDialog` draws only
-    // types 2 and 4-6, and type 2 (Accept) would hide the label behind a
-    // fixed image and bring an inert Decline.
-    DialogOverride {
-        dialog_id: 60100,
-        dialog_flags: 0,
-        kismet_event_set_id: 0,
-        ui_screen_type: 2,
-        screens: &[
-            DialogScreen {
-                screen_id: 200000,
-                speaker_id: 754,
-                text: "Debug hub dialog test. This is screen one of two. Page forward to \
-                       reach the button.",
-                buttons: &[],
-            },
-            DialogScreen {
-                screen_id: 200001,
-                speaker_id: 754,
-                text: "Screen two. The button below sends your choice to the server, and the \
-                       server answers by opening a second dialog.",
-                buttons: &[DialogButton {
-                    button_type: 4,
-                    button_id: 8,
-                    text: "Send my choice",
-                }],
-            },
-        ],
-    },
-    // NEW CONTENT (debug hub): the answer to 60100's button. Zero buttons on
-    // purpose: closing it sends `dialogButtonChoice(60101, -1)` (fact F8),
-    // which is the other half of the round trip (chain 7003).
-    DialogOverride {
-        dialog_id: 60101,
-        dialog_flags: 0,
-        kismet_event_set_id: 0,
-        ui_screen_type: 2,
-        screens: &[DialogScreen {
-            screen_id: 200002,
-            speaker_id: 754,
-            text: "Choice received. This dialog has no buttons, so closing it sends -1 to \
-                   the server, which answers in your chat window.",
-            buttons: &[],
-        }],
-    },
-    // Social-systems campaign, SS-U3: the Gate Mail Clerk (template 390,
-    // Sgt. Harriman, speaker 843), chains 7010-7011 in debug_hub_chains.sql.
-    // One screen, one Generic 1 button (the 60100 reasoning): pressing it
-    // sends `dialogButtonChoice(60104, 8)` and chain 7011 mails the player.
-    // Closing with X sends nothing, so nothing is mailed.
-    DialogOverride {
-        dialog_id: 60104,
-        dialog_flags: 0,
-        kismet_event_set_id: 0,
-        ui_screen_type: 2,
-        screens: &[DialogScreen {
-            screen_id: 200005,
-            speaker_id: 843,
-            text: "Gate Mail. I can send you a test mail with a stack of Health Slappacks \
-                   and 50 naquadah. Open your mail afterwards to take them. One mail every \
-                   10 minutes.",
-            buttons: &[DialogButton {
-                button_type: 4,
-                button_id: 8,
-                text: "Send me a mail",
-            }],
-        }],
-    },
-    // Bank and Vault campaign, BV-05: the Banker's Expand vault offer
-    // (`cimmeria_wire::cell::vault::VAULT_EXPAND_DIALOG_ID`). One screen,
-    // one Generic 1 button (the 60100 reasoning). The server shows it beside
-    // `onVaultOpen` while the vault is below 100 slots; the answer goes to
-    // the purchase path, which re-checks everything. Closing with X sends
-    // nothing, so nothing is bought. Speaker 0, because any Banker (or the
-    // GM's own entity after `.bank`) speaks it.
-    //
-    // Authored under quarantine: it shares two of the suspects above (screen
-    // id 200010, button type 4), so it is not served until RE names the
-    // field. Until then the server still sends `onDialogDisplay(60110)` and
-    // the client shows nothing, so no expansion can be bought from the UI.
-    DialogOverride {
-        dialog_id: 60110,
-        dialog_flags: 0,
-        kismet_event_set_id: 0,
-        ui_screen_type: 2,
-        screens: &[DialogScreen {
-            screen_id: 200010,
-            speaker_id: 0,
-            text: "Vault expansion. I can add 10 slots to your vault, up to 100 in all. The \
-                   price of the next 10 slots is in your chat window.",
-            buttons: &[DialogButton {
-                button_type: 4,
-                button_id: 8,
-                text: "Expand vault",
-            }],
-        }],
-    },
+    // D-LN3 (2026-10-22): the debug-hub dialogs, out of quarantine. See overrides_debug_hub.rs.
+    overrides_debug_hub::STASIS_DIALOG,
+    overrides_debug_hub::STASIS_ANSWER_DIALOG,
+    overrides_debug_hub::MAIL_CLERK_DIALOG,
+    // BV-05 / #479: the Banker's Expand vault offer (60110), served since D-LN3. See overrides_bank.rs.
+    overrides_bank::VAULT_EXPAND_DIALOG,
 ];
 
 /// Build the emitter's model from an authored override. Raw text is
@@ -515,7 +389,7 @@ mod tests {
     /// fields don't make it into the emitted XML.
     #[test]
     fn all_overrides_emit_their_ids_and_text() {
-        for ov in DIALOG_OVERRIDES.iter().chain(QUARANTINED_DIALOG_OVERRIDES) {
+        for ov in DIALOG_OVERRIDES {
             let bytes = generate_dialog_xml(ov);
             let s = std::str::from_utf8(&bytes).expect("utf-8");
             assert!(
@@ -590,56 +464,42 @@ mod tests {
         );
     }
 
-    /// A quarantined dialog must not be served. Moving one back into
-    /// `DIALOG_OVERRIDES` without also taking it out of the quarantine list
-    /// fails here, so a restore is always a deliberate two-sided edit, made
-    /// once RE has named the field that crashed the client on map load.
+    /// BV-05: the Banker's Expand dialog 60110 is served, exactly once. The
+    /// cell offers it on every Banker visit with a vault below 100 slots, so
+    /// a missing or duplicated entry would silence or double the offer.
     #[test]
-    fn quarantined_dialogs_are_not_served() {
-        for q in QUARANTINED_DIALOG_OVERRIDES {
-            assert!(
-                !DIALOG_OVERRIDES
-                    .iter()
-                    .any(|ov| ov.dialog_id == q.dialog_id),
-                "dialog {} is quarantined (client map-load crash, 2026-09-27) but is \
-                 back in DIALOG_OVERRIDES; lift the quarantine explicitly by removing \
-                 it from QUARANTINED_DIALOG_OVERRIDES",
-                q.dialog_id,
+    fn the_expand_dialog_is_served() {
+        use cimmeria_wire::cell::vault::VAULT_EXPAND_DIALOG_ID;
+        let id = VAULT_EXPAND_DIALOG_ID as u32;
+        let served = DIALOG_OVERRIDES
+            .iter()
+            .filter(|ov| ov.dialog_id == id)
+            .count();
+        assert_eq!(served, 1, "dialog {id} is served exactly once (D-LN3)");
+    }
+
+    /// The debug-hub dialogs and the Banker's Expand dialog are served (D-LN3),
+    /// each exactly once.
+    #[test]
+    fn debug_hub_dialogs_are_served() {
+        let served = |id: u32| {
+            DIALOG_OVERRIDES
+                .iter()
+                .filter(|ov| ov.dialog_id == id)
+                .count()
+        };
+        for id in [60100, 60101, 60104, 60110] {
+            assert_eq!(
+                served(id),
+                1,
+                "debug-hub dialog {id} is served exactly once (D-LN3)"
             );
         }
-    }
-
-    /// BV-05: the cell offers the Expand dialog only while
-    /// `VAULT_EXPAND_DIALOG_SERVED` says it is served, so the flag and the
-    /// two lists must agree. Lifting the quarantine without the flag leaves
-    /// the Banker silent; flipping the flag first sends a dialog id the
-    /// client has no entry for.
-    #[test]
-    fn the_expand_dialog_flag_matches_the_served_list() {
-        use cimmeria_wire::cell::vault::{VAULT_EXPAND_DIALOG_ID, VAULT_EXPAND_DIALOG_SERVED};
-        let id = VAULT_EXPAND_DIALOG_ID as u32;
-        let served = DIALOG_OVERRIDES.iter().any(|ov| ov.dialog_id == id);
-        let quarantined = QUARANTINED_DIALOG_OVERRIDES
-            .iter()
-            .any(|ov| ov.dialog_id == id);
-        assert_eq!(served, VAULT_EXPAND_DIALOG_SERVED);
-        assert_eq!(quarantined, !VAULT_EXPAND_DIALOG_SERVED);
-    }
-
-    /// The debug-hub dialogs are the ones held back, and each is still
-    /// defined in full so a restore is a move, not a rewrite.
-    #[test]
-    fn debug_hub_dialogs_are_quarantined() {
-        let ids: Vec<u32> = QUARANTINED_DIALOG_OVERRIDES
-            .iter()
-            .map(|ov| ov.dialog_id)
-            .collect();
-        assert_eq!(ids, [60100, 60101, 60104, 60110]);
         let xml = |id: u32| {
-            let ov = QUARANTINED_DIALOG_OVERRIDES
+            let ov = DIALOG_OVERRIDES
                 .iter()
                 .find(|ov| ov.dialog_id == id)
-                .expect("quarantined definition");
+                .expect("debug-hub definition");
             String::from_utf8(generate_dialog_xml(ov)).unwrap()
         };
         // The button-carrying contract each one had while served.

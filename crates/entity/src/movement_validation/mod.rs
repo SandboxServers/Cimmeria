@@ -270,6 +270,11 @@ impl MovementValidator {
         self.move_clock.insert(entity_id, now)
     }
 
+    /// When the last client position update for `entity_id` was processed, if any.
+    pub fn last_move_at(&self, entity_id: u32) -> Option<Instant> {
+        self.move_clock.get(&entity_id).copied()
+    }
+
     /// Teleport layer (pure — no clock mutation; the caller
     /// advances the clock via [`touch_clock`] and passes the recovered
     /// `prev` sample in).

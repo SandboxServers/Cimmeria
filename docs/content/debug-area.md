@@ -1057,15 +1057,15 @@ its hub twin; the [hub page](debug-hub.md#what-each-npc-tests) describes what
 each one tests. The differences:
 
 - **Dialog NPC (template 302).** The hub's dialogs 60100 and 60101 are
-  quarantined (a client that received them crashed on map load), so the hub's
-  dialog NPC shows nothing. The plaza's copy shows dialog 5738, which the
+  served again since 2026-10-22 (D-LN3), so the hub's dialog NPC shows them.
+  The plaza's copy shows dialog 5738, which the
   client ships: two screens (Next pages through them) and one Generic button.
   No mission, dialog set or other chain uses 5738. Its text is a mission line
   out of context; the dialog UI is what is being tested. The button sends
   `dialogButtonChoice(5738, 198)`, and chain 13003 says "Dialog round trip
   complete" in chat as Airman Lance. Closing with X sends nothing.
-- **Gate Mail Clerk (template 390).** The hub clerk mails from a quarantined
-  dialog, so it cannot mail at all. The plaza's clerk mails on the click
+- **Gate Mail Clerk (template 390).** The hub clerk mails from its dialog 60104
+  (served again since 2026-10-22, D-LN3). The plaza's clerk mails on the click
   itself (chain 13007): the same mail, 5 Health Slappack TC1 and 50
   naquadah, and the same limit of one per character every 10 minutes. The
   limit is kept separately from the hub clerk's.
@@ -1480,7 +1480,7 @@ press:
 A click from further than 5 m gets the client's own "You are too far away"
 line. One attendant per button, rather than one attendant with a dialog of
 buttons: a custom dialog's buttons need a cooked dialog override, and those
-crashed the client (#943).
+crashed the client (#943); served again since 2026-10-22 (D-LN3).
 
 **The same switch for GMs.** `.spawnset` lists the groups (`.spawnset
 list`, the default), shows one (`.spawnset on 1301`), hides one

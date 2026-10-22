@@ -283,6 +283,7 @@ Settlement (BM-02b): every mail an auction writes logs INFO `bm.payout` after th
 2. **Durations** — the tier-to-hours table is design, not recovered.
 3. **Watch notifications** — deferred by D4; `BMStartWatchingItem` / `BMStopWatchingItem` answer `WatchUnavailable` until the core loop passes UAT (BM-08).
 4. **Search sort and quality** — `sortId`, `quality` and the eleventh field are logged, not applied; results come in listing order.
+5. **Reopen search (LN-12b)** — the overlay clock fix needs the owner to re-sign and publish the overlay manifest; then check that a reopen sends a second `BMSearch` (server `wire.in`).
 
 ## Economy sink design (unbuilt)
 

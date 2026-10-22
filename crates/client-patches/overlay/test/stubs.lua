@@ -196,8 +196,10 @@ function Stubs.newEnv( opts )
     }
     env.localize = function(section, key) return key end
 
-    env.clock = 0
-    env.worldGetDeltaSeconds = function() return env.clock end
+    -- The real binding returns the frame delta, not a clock: run.lua's tick sets
+    -- env.frameDelta once per simulated frame.
+    env.frameDelta = 0
+    env.worldGetDeltaSeconds = function() return env.frameDelta end
     env.cash = 1000
     env.getCash = function() return env.cash end
 

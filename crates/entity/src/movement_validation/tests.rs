@@ -117,6 +117,17 @@ fn touch_clock_returns_prior_and_advances() {
     assert_eq!(v.touch_clock(1, t1), Some(t0), "second touch returns t0");
 }
 
+/// `last_move_at` reports the instant `touch_clock` recorded, and `None` for an unknown id.
+#[test]
+fn last_move_at_returns_touched_instant() {
+    let mut v = MovementValidator::new();
+    let t0 = Instant::now();
+    assert_eq!(v.last_move_at(7), None, "unknown id has no clock");
+    v.touch_clock(7, t0);
+    assert_eq!(v.last_move_at(7), Some(t0));
+    assert_eq!(v.last_move_at(8), None, "other ids are unaffected");
+}
+
 /// A spamming attacker who keeps the cell entity pinned (last_pos
 /// unchanged) must be rejected on *every* packet — touching the clock
 /// each packet keeps dt ~one tick so the implied speed never decays

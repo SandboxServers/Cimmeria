@@ -62,6 +62,47 @@ GROUP BY kind
 ORDER BY kind
 ```
 
+## Hostile clicks and nearby hostiles
+
+A right-click on a living hostile NPC is an interaction too. Its pose row carries `route = 'hostile_attack'` (the click is rerouted to combat, so the other routes never apply to it). The same pose row also gets one `interaction_hostiles` row when a living hostile stands within 20 m of the player, listing the three nearest, nearest first. It carries the pose row's `pose_seq` and is written by the same actor's pose throttle, so it is never written without its pose row. The target itself, dead NPCs and non-hostile NPCs are left out. A pose with no hostile nearby has no `interaction_hostiles` row.
+
+| Field | Meaning |
+|---|---|
+| `event` | `interaction_hostiles` |
+| `pose_seq` | The pose row's `pose_seq`, the join key |
+| `entity_id` | The acting player's entity id |
+| `count` | How many hostiles are listed, 1 to 3 |
+| `hostile_1_id`, `hostile_2_id`, `hostile_3_id` | The hostile's entity id, absent past `count` |
+| `hostile_N_dist_m` | Horizontal distance from the player, in metres |
+| `hostile_N_bearing_deg` | `atan2(pz - tz, px - tx)` from the hostile to the player, in `[0, 360)` |
+
+```sql
+SELECT
+  p.timestamp                                   AS t,
+  toInt64(p.attributes_number['pose_seq'])      AS pose_seq,
+  p.attributes_number['radius_m']               AS radius_m,
+  h.attributes_number['count']                  AS hostile_count,
+  h.attributes_number['hostile_1_id']           AS hostile_1_id,
+  h.attributes_number['hostile_1_dist_m']       AS hostile_1_dist_m,
+  h.attributes_number['hostile_1_bearing_deg']  AS hostile_1_bearing_deg
+FROM signoz_logs.distributed_logs_v2 AS p
+INNER JOIN signoz_logs.distributed_logs_v2 AS h
+  ON toInt64(h.attributes_number['pose_seq']) = toInt64(p.attributes_number['pose_seq'])
+ AND h.resources_string['service.name'] = 'cimmeria-server'
+ AND h.scope_name = 'interaction.pose'
+ AND h.attributes_string['event'] = 'interaction_hostiles'
+WHERE p.resources_string['service.name'] = 'cimmeria-server'
+  AND p.scope_name = 'interaction.pose'
+  AND p.attributes_string['route'] = 'hostile_attack'
+  AND p.timestamp > toUnixTimestamp(now() - INTERVAL 1 DAY) * 1000000000
+  AND h.timestamp > toUnixTimestamp(now() - INTERVAL 1 DAY) * 1000000000
+  AND toInt64(h.timestamp) - toInt64(p.timestamp) BETWEEN 0 AND 5000000000
+ORDER BY t DESC
+LIMIT 50
+```
+
+Each `pose_seq` restarts at 1 with the server, so narrow the window to one server run if the join matches across a restart.
+
 ## Approach trails
 
 The approach row holds the last few positions before the interaction. Join it to its pose row on `pose_seq`, which is process-global and restarts at 1 with the server, so also bound the time (the approach row is written right after its pose row; the bound sits in `WHERE` because a ClickHouse join condition between the two sides is not available on every version):
@@ -262,9 +303,72 @@ FORMAT JSONEachRow
 ```
 
 Check before you trust it: run `SELECT DISTINCT scope_name, resources_string['service.name'] ... LIMIT 20` on a day with a camera upload. If the rows sit under another service name, change the `WHERE`, not the column list. The `pawn_*` columns are left out on purpose; add them the same way if you want the pawn pose beside the camera.
+
+## Heading age at interact
+
+The `interact` INFO row carries `heading_age_ms`: milliseconds since the cell processed the player's last position update, so it says how old the server's heading is at the click. `-1` means no position update has been seen yet. Standing players send a position about every 3 s, so an age above 1,000 means the server heading may lag the client's turn.
+
 ## Friction is DEBUG now (D-PC11)
 
 `playtest.friction` is exported at DEBUG through its own `OTEL_FILTER` row (`crates/server/src/logging/filters.rs`). A saved view or alert that filters it on WARN severity shows nothing. Filter on `scope_name = 'playtest.friction'` and drop the severity condition. The owner updates the live "Playtest: friction" saved view; this repository does not hold its export, and no worker edits it.
+
+## Mouse navigation
+
+The nav poll's rows (`client.input.button`, `client.input.mode`, `client.nav.pose`) are client telemetry replayed by admin-api. Each row has `resources_string['service.name'] = 'cimmeria-client'`, `scope_name = 'client.native'`, the event name in `attributes_string['client_target']` and the session in `attributes_string['session_id']`. Only a few correlation keys are lifted to attributes (`entity_id` is one, on `client.input.hover`). Every other field, `button`, `edge`, `class`, `hover_id`, `mode`, `ui_owned` and the rest, is in the JSON text of `attributes_string['fields']`, so the queries below read it with `JSONExtract*`. What each field means is in [client-telemetry.md](../../architecture/client-telemetry.md#mouse-input-clientinput).
+
+Not run against a live SigNoz yet. The first live proof is LN-13 (live confirmation in the lab), and the owner's mouse session is listed in [unified-uat.md](../../guides/unified-uat.md) once it lands.
+
+### One session in time order
+
+Replace `<session_id>` with the session's id. The row timestamp is the replay time; the order is the order the poll saw the rows within one session.
+
+```sql
+WITH attributes_string['fields'] AS f
+SELECT
+  timestamp                                     AS t,
+  attributes_string['client_target']            AS target,
+  JSONExtractString(f, 'button')                AS button,
+  JSONExtractString(f, 'edge')                  AS edge,
+  JSONExtractString(f, 'class')                 AS class,
+  JSONExtractRaw(f, 'hover_id')                 AS hover_id,
+  JSONExtractRaw(f, 'mode')                     AS mode,
+  JSONExtractRaw(f, 'buttons')                  AS buttons,
+  JSONExtractRaw(f, 'ui_owned')                 AS ui_owned
+FROM signoz_logs.distributed_logs_v2
+WHERE resources_string['service.name'] = 'cimmeria-client'
+  AND scope_name = 'client.native'
+  AND attributes_string['session_id'] = '<session_id>'
+  AND attributes_string['client_target'] IN ('client.input.button', 'client.input.mode', 'client.nav.pose')
+  AND timestamp > toUnixTimestamp(now() - INTERVAL 1 DAY) * 1000000000
+ORDER BY t
+LIMIT 500
+```
+
+`JSONExtractRaw` returns an empty string for an absent field, so an empty `ui_owned` means unknown, not `false`. `hover_id` is only on select and interact rows, so an empty value there is normal.
+
+### Clicks by class and hover id
+
+Counts releases (`edge = 'up'`) by `class` and `hover_id`, for human sessions. A `hover_id` of `0` covers both "absent" (drag and chord releases) and "zero". The id is the hover id at release and approximates the picked target (see the architecture page).
+
+```sql
+WITH attributes_string['fields'] AS f
+SELECT
+  JSONExtractString(f, 'class') AS class,
+  JSONExtractInt(f, 'hover_id') AS hover_id,
+  count()                       AS clicks
+FROM signoz_logs.distributed_logs_v2
+WHERE resources_string['service.name'] = 'cimmeria-client'
+  AND scope_name = 'client.native'
+  AND attributes_string['client_target'] = 'client.input.button'
+  AND attributes_string['cimmeria.session_kind'] = 'player'
+  AND JSONExtractString(f, 'edge') = 'up'
+  AND timestamp > toUnixTimestamp(now() - INTERVAL 7 DAY) * 1000000000
+GROUP BY class, hover_id
+ORDER BY clicks DESC
+LIMIT 50
+```
+
+Read it with care: `hover_id` is approximate, so a count per id is a hint about where the player clicked, not proof of the picked entity. Drop the `class` column to see the totals per id alone.
 
 ## Documentation debt
 

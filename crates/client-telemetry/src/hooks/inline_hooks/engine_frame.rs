@@ -104,6 +104,7 @@ unsafe extern "thiscall-unwind" fn engine_tick_detour(this: *mut c_void) {
         // Frame-gap (hitch) and memory sampling run on every tick; the
         // sampled `client.engine.tick` below is only a heartbeat.
         crate::hooks::seams::frame_health::on_tick();
+        crate::hooks::nav::tick::on_tick();
         if TICK_SAMPLER.should_emit() {
             if let Some(p) = crate::boot::producer() {
                 p.try_emit(crate::events::ClientNativeEvent::builder(

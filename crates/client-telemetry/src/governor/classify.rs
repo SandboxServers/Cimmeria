@@ -87,6 +87,10 @@ pub enum KeepReason {
     /// Mercury sequence join (PC-16b). The hook throttles them per method, and
     /// a camera row must stay joinable to its pose row.
     InteractionCamera,
+    /// `client.nav.*` and the `client.input.button`, `.mode` and `.hover`
+    /// rows: the pose and input rows. Each is rate-capped where it is
+    /// emitted, so the governor keeps them whole.
+    NavInput,
 }
 
 impl KeepReason {
@@ -103,6 +107,7 @@ impl KeepReason {
             KeepReason::SelfReport => "self_report",
             KeepReason::AbilityTrace => "ability_trace",
             KeepReason::InteractionCamera => "interaction_camera",
+            KeepReason::NavInput => "nav_input",
         }
     }
 }
@@ -225,6 +230,13 @@ pub const RULES: &[Rule] = &[
     keep(Prefix("client.ability."), KeepReason::AbilityTrace),
     // The camera at interact and useItem (PC-16), and its send join (PC-16b).
     keep(Prefix("client.camera."), KeepReason::InteractionCamera),
+    // The nav pose and the controller input rows (LN-07, D-LN6).
+    keep(Prefix("client.nav."), KeepReason::NavInput),
+    // Exact rows, not a `client.input.` prefix: `client.input.console_command`
+    // has no source-side rate cap and must stay budgeted.
+    keep(Exact("client.input.button"), KeepReason::NavInput),
+    keep(Exact("client.input.mode"), KeepReason::NavInput),
+    keep(Exact("client.input.hover"), KeepReason::NavInput),
     // Per-entity streams: the first K per entity survive world entry.
     per_entity(Exact("client.cme.event"), "name"),
     per_entity(Exact("client.mercury.entity_method"), "msg_id"),

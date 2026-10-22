@@ -353,7 +353,7 @@ async fn live_db_debug_hub_org_bankers_open_the_members_vault_and_refuse_others(
             .filter(|c| c.target == "bank" && c.has_field("event", "org_vault_open_rejected"))
             .collect();
         assert_eq!(refusals.len(), 1, "{tag}: {:#?}", capture.all());
-        assert_eq!(refusals[0].level, Level::WARN);
+        assert_eq!(refusals[0].level, Level::INFO, "{tag}");
         assert!(refusals[0].has_field("reason", "not_in_org"), "{tag}");
         assert!(
             refusals[0].has_field("banker_id", &banker.to_string()),

@@ -72,10 +72,24 @@ fn the_must_keep_targets_are_never_summarized() {
         ("client.ability.shown", KeepReason::AbilityTrace),
         ("client.camera.at_interact", KeepReason::InteractionCamera),
         ("client.camera.sent_seq", KeepReason::InteractionCamera),
+        ("client.nav.pose", KeepReason::NavInput),
+        ("client.input.button", KeepReason::NavInput),
+        ("client.input.mode", KeepReason::NavInput),
+        ("client.input.hover", KeepReason::NavInput),
     ];
     for (target, reason) in cases {
         assert_eq!(class_of(target), Class::MustKeep(*reason), "{target}");
     }
+}
+
+/// `client.input.console_command` fires per script console command with no
+/// source-side cap, so the nav rows' must-keep class must not cover it.
+#[test]
+fn console_command_is_not_a_nav_input_row() {
+    assert_ne!(
+        class_of("client.input.console_command"),
+        Class::MustKeep(KeepReason::NavInput)
+    );
 }
 
 /// The streams the SigNoz measurement named as high-rate.

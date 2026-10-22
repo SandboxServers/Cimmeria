@@ -57,7 +57,7 @@ Gotchas:
   before Enter. Close every dialog before a chat command or GM jump; a jump under an open
   dialog orphans it (close with DialogMod.onDialogDoneClicked(DialogWin, DialogWin)).
 - Interact: find the entity id (entity find, or client_entity_table for unrendered or
-  unnamed ones). Stand 3-4 m away (server range 5.0 m) with open floor behind you, never
+  unnamed ones). Stand 3-4 m away (server range 5.0 m in 3D; humans interact at about 1.3-3.8 m. Click by entity_id: under about 3.4 m your own avatar can take a click by point) with open floor behind you, never
   against a wall. Face it, correct pitch to about -15 deg, then click BY entity_id, not by point.
   A hover answering other_entity 2 is your own avatar: reposition, don't force.
 - Escape does not close Flash windows: read the close button's rect, move there, click.

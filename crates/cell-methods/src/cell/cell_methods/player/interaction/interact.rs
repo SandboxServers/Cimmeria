@@ -7,6 +7,7 @@ use cimmeria_cell_world::cell::interaction_pose::{
     self, InteractionKind, InteractionRoute, PoseExtra,
 };
 use cimmeria_content_engine::chain::ChainEngine;
+use std::time::Instant;
 use tokio::sync::mpsc;
 
 /// Handle the `interact(target_entity_id)` cell method. Args are the raw
@@ -51,6 +52,10 @@ pub(super) async fn handle_interact(
         entity_name = space_mgr.entity_label(entity_id),
         target_entity_id,
         target_entity_name = space_mgr.entity_label(target_entity_id as u32),
+        heading_age_ms = heading_age_ms(
+            Instant::now(),
+            space_mgr.movement_validator.last_move_at(entity_id)
+        ),
         "interact"
     );
 
@@ -80,6 +85,22 @@ pub(super) async fn handle_interact(
         !t.is_player && t.faction == 10 && !crate::cell::combat::is_dead_state(t.state_field)
     });
     if is_hostile {
+        // Pose row for the hostile click, with the hostiles around the player (F5).
+        if let Some(pose) =
+            interaction_pose::capture_interaction_pose(space_mgr, entity_id, target_entity_u32)
+        {
+            if let Some(seq) = interaction_pose::emit_interaction_pose(
+                &pose,
+                InteractionKind::Interact,
+                InteractionRoute::HostileAttack,
+                PoseExtra {
+                    dialog_id: None,
+                    item_type_id: None,
+                },
+            ) {
+                interaction_pose::emit_nearby_hostiles(space_mgr, &pose, seq);
+            }
+        }
         super::hostile_attack::right_click_attack(
             entity_id,
             target_entity_id,
@@ -254,7 +275,7 @@ pub(super) async fn handle_interact(
     }
 
     if let Some(pose) = pose {
-        let _ = interaction_pose::emit_interaction_pose(
+        if let Some(seq) = interaction_pose::emit_interaction_pose(
             &pose,
             InteractionKind::Interact,
             route,
@@ -262,7 +283,9 @@ pub(super) async fn handle_interact(
                 dialog_id,
                 item_type_id: None,
             },
-        );
+        ) {
+            interaction_pose::emit_nearby_hostiles(space_mgr, &pose, seq);
+        }
     }
 }
 
@@ -471,6 +494,21 @@ mod hostile_target_tests {
     }
 }
 
+/// Milliseconds since the last processed position update, or -1 when none was seen.
+pub(super) fn heading_age_ms(now: Instant, last: Option<Instant>) -> i64 {
+    last.map_or(-1, |t| {
+        i64::try_from(now.saturating_duration_since(t).as_millis()).unwrap_or(i64::MAX)
+    })
+}
+
 #[cfg(test)]
 #[path = "interact_pose_tests.rs"]
 mod pose_tests;
+
+#[cfg(test)]
+#[path = "interact_hostiles_tests.rs"]
+mod hostiles_tests;
+
+#[cfg(test)]
+#[path = "interact_heading_tests.rs"]
+mod heading_tests;

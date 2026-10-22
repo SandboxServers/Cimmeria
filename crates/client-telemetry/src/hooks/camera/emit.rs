@@ -36,9 +36,10 @@ pub fn camera_fields(
     if let Some(id) = send_id {
         f.push(("send_id", json!(id)));
     }
-    f.push(("zoom", json!(cam.distance)));
-    f.push(("yaw_offset_deg", json!(read::rot_deg(cam.yaw))));
-    f.push(("pitch_offset_deg", json!(read::rot_deg(cam.pitch))));
+    let (zoom, yaw_offset_deg, pitch_offset_deg) = camera_angles(&cam);
+    f.push(("zoom", json!(zoom)));
+    f.push(("yaw_offset_deg", json!(yaw_offset_deg)));
+    f.push(("pitch_offset_deg", json!(pitch_offset_deg)));
     f.push(("camera_flags", json!(cam.flags)));
     f.push(("camera_gain", json!(cam.gain)));
 
@@ -59,13 +60,30 @@ const CAMERA_KEYS: [&str; 4] = ["camera_x", "camera_y", "camera_z", "camera_yaw_
 /// Keys of the pawn pose, as [`CAMERA_KEYS`].
 const PAWN_KEYS: [&str; 4] = ["pawn_x", "pawn_y", "pawn_z", "pawn_yaw_deg"];
 
+/// The camera's zoom (its distance), and its yaw and pitch offsets in degrees.
+pub(crate) fn camera_angles(cam: &CameraState) -> (f32, f32, f32) {
+    (
+        cam.distance,
+        read::rot_deg(cam.yaw),
+        read::rot_deg(cam.pitch),
+    )
+}
+
+/// A pose's position in server units, and its yaw in degrees wrapped to `[0, 360)`.
+pub(crate) fn pawn_fields(pawn: &ActorPose) -> ([f32; 3], f32) {
+    (
+        read::client_to_server(pawn.pos),
+        read::rot_deg_360(pawn.yaw),
+    )
+}
+
 /// Adds one pose under `keys`: the position in server units and the yaw.
 fn push_pose(f: &mut Fields, p: ActorPose, keys: [&'static str; 4]) {
-    let [x, y, z] = read::client_to_server(p.pos);
-    f.push((keys[0], json!(x)));
-    f.push((keys[1], json!(y)));
-    f.push((keys[2], json!(z)));
-    f.push((keys[3], json!(read::rot_deg_360(p.yaw))));
+    let (pos, yaw) = pawn_fields(&p);
+    f.push((keys[0], json!(pos[0])));
+    f.push((keys[1], json!(pos[1])));
+    f.push((keys[2], json!(pos[2])));
+    f.push((keys[3], json!(yaw)));
 }
 
 /// Reads the camera and, under S-CAM A, the pawn, then emits the row for an

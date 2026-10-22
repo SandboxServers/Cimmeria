@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 
 use super::overrides_cellblock::PRISONER_CHOICE_DIALOG;
-use super::{generate_dialog_xml, DIALOG_OVERRIDES, QUARANTINED_DIALOG_OVERRIDES};
+use super::{generate_dialog_xml, DIALOG_OVERRIDES};
 
 /// The 392 bytes F3 freezes. No newline anywhere.
 const EXPECTED: &[u8] = br#"<?xml version="1.0" encoding="UTF-8"?><COOKED_DIALOG DialogFlags="0" DialogID="60151" KismetEventSetID="0" UIScreenType="2"><Screens SpeakerID="0" ScreenID="96111" Text="The two prisoners are too weak to run, and the patrol is coming back. There is time for one thing: help them hide, or jam the cell-door panel by Prisoner 329 so the guards cannot seal the block."></Screens></COOKED_DIALOG>"#;
@@ -50,7 +50,7 @@ fn prisoner_choice_dialog_emits_the_frozen_bytes() {
 }
 
 /// The override keeps the shape 3995, 3996 and 60150 already serve: one
-/// screen, speaker 0, no buttons, UI type 2, flags 0, and not quarantined.
+/// screen, speaker 0, no buttons, UI type 2, flags 0.
 #[test]
 fn prisoner_choice_dialog_keeps_the_served_shape() {
     let served: Vec<_> = DIALOG_OVERRIDES
@@ -65,12 +65,6 @@ fn prisoner_choice_dialog_keeps_the_served_shape() {
     assert_eq!(ov.screens[0].speaker_id, 0);
     assert!(ov.screens[0].buttons.is_empty(), "zero buttons");
     assert_eq!(ov.screens[0].screen_id, 96111);
-    assert!(
-        QUARANTINED_DIALOG_OVERRIDES
-            .iter()
-            .all(|q| q.dialog_id != DIALOG_ID),
-        "60151 must not be in any quarantine list",
-    );
 }
 
 /// The `dialogs.sql` and `dialog_screens.sql` rows for 60151 are present
