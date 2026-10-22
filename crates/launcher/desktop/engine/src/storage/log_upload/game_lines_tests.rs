@@ -229,6 +229,29 @@ fn a_cancel_before_the_read_is_collect_failed() {
     );
 }
 
+/// A `sessions` junction into a folder outside the binaries folder reads nothing
+/// from it (A8). Skipped with a message when `mklink /J` is not available.
+#[cfg(windows)]
+#[test]
+fn a_sessions_junction_out_of_the_binaries_folder_reads_nothing() {
+    let game = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    fs::write(outside.path().join("outside.log"), "outside line\n").unwrap();
+    let link = binaries(game.path()).join("sessions");
+    let made = std::process::Command::new("cmd")
+        .args(["/C", "mklink", "/J"])
+        .arg(&link)
+        .arg(outside.path())
+        .output();
+    if !matches!(&made, Ok(out) if out.status.success()) {
+        eprintln!("skipped: mklink /J is not available here");
+        return;
+    }
+    let got = read(game.path(), &Offsets::default());
+    assert!(got.collected.lines.is_empty());
+    assert!(got.files.is_empty());
+}
+
 #[cfg(unix)]
 #[test]
 fn a_symlinked_log_is_skipped() {

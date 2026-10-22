@@ -20,6 +20,10 @@ const MAX_MESSAGE_BYTES: usize = 2_048;
 const LEVELS: [&str; 5] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
 
 /// One record of a launcher log file, ready to become a telemetry row.
+///
+/// `message` holds raw chat and client text (D-LU3). Never format a `LogLine`
+/// (or a `GameCollected`) with `{:?}` in an event, a log line or a panic: the
+/// derived `Debug` prints the message. Nothing does today (A10).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LogLine {
     /// The log file's name, never its path.

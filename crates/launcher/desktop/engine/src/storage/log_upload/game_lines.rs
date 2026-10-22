@@ -64,6 +64,8 @@ pub(crate) struct GameFile {
 }
 
 /// The game lines `collect` read, plus what it saw of each file they came from.
+/// Its `collected` lines hold raw chat text: never format this with `{:?}` in
+/// an event, a log line or a panic (A10, see `LogLine`).
 #[derive(Debug, Default)]
 pub(crate) struct GameCollected {
     pub collected: Collected,
@@ -156,6 +158,12 @@ fn inputs(game: &Path) -> Result<Vec<(String, PathBuf, SystemTime)>, LogUploadEr
         return Ok(Vec::new());
     };
     let binaries = binaries_dir(game);
+    // The binaries folder resolved once. A directory on the way in (a junction
+    // named `sessions`, say) must not lead out of it, so each candidate is
+    // resolved and must still sit under this folder (A8).
+    let Ok(root) = binaries.canonicalize() else {
+        return Ok(Vec::new());
+    };
     let mut found: Vec<(SystemTime, String, PathBuf)> = files
         .into_iter()
         .filter_map(|path| {
@@ -165,7 +173,11 @@ fn inputs(game: &Path) -> Result<Vec<(String, PathBuf, SystemTime)>, LogUploadEr
             }
             let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
             let key = key_of(&binaries, &path)?;
-            Some((modified, key, path))
+            let resolved = path.canonicalize().ok()?;
+            if !resolved.starts_with(&root) {
+                return None;
+            }
+            Some((modified, key, resolved))
         })
         .collect();
     found.sort();
@@ -315,7 +327,13 @@ fn read_file(
     redaction: &Redaction,
 ) -> Result<(Vec<LogLine>, GameFile, u64), &'static str> {
     let mut reader = std::fs::File::open(path).map_err(|_| "read_failed")?;
-    let len = reader.metadata().map_err(|_| "read_failed")?.len();
+    // The open handle is what gets read, and a folder or other non-file is not
+    // read at all (A8).
+    let meta = reader.metadata().map_err(|_| "read_failed")?;
+    if !meta.is_file() {
+        return Err("read_failed");
+    }
+    let len = meta.len();
     let mut block = vec![0u8; BLOCK_BYTES];
     let first_len = fill(&mut reader, &mut block).map_err(|_| "read_failed")?;
     let first = &block[..first_len];
