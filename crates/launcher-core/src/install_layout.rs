@@ -80,6 +80,18 @@ pub fn place_bundled_cooked_data(install_dir: &Path) -> std::io::Result<bool> {
     Ok(true)
 }
 
+/// The `SourceCache.en-us` spelling of a bundled cooked-data path, for a path
+/// the 2009 cabinets store under `Cache.en-US`. The match is case-blind and
+/// `rel` is client-root relative with `/` separators. Returns `None` for any
+/// other path, and for the tier's own directory with no file under it.
+pub fn bundled_cooked_alias(rel: &str) -> Option<String> {
+    const STOCK: &str = "Working/SGWGame/Cache.en-US/";
+    const ALIAS: &str = "Working/SGWGame/SourceCache.en-us/";
+    let head = rel.get(..STOCK.len())?;
+    let rest = rel.get(STOCK.len()..)?;
+    (head.eq_ignore_ascii_case(STOCK) && !rest.is_empty()).then(|| format!("{ALIAS}{rest}"))
+}
+
 /// The `Binaries` directory under `parent`, in whatever case it has on
 /// disk (the cabinets store `binaries`; a case-sensitive file system would
 /// miss it under the other spelling).
@@ -152,6 +164,26 @@ mod tests {
             b"patched"
         );
         assert!(!place_bundled_cooked_data(tempfile::tempdir().unwrap().path()).unwrap());
+    }
+
+    #[test]
+    fn bundled_cooked_alias_maps_the_stock_tier_case_blind() {
+        assert_eq!(
+            bundled_cooked_alias("working/sgwgame/cache.en-us/a.pak").as_deref(),
+            Some("Working/SGWGame/SourceCache.en-us/a.pak")
+        );
+        assert_eq!(
+            bundled_cooked_alias("Working/SGWGame/Cache.en-US/sub/b.pak").as_deref(),
+            Some("Working/SGWGame/SourceCache.en-us/sub/b.pak")
+        );
+        // The tier's own directory, the source tier and other paths have no alias.
+        assert_eq!(bundled_cooked_alias("Working/SGWGame/Cache.en-US/"), None);
+        assert_eq!(
+            bundled_cooked_alias("Working/SGWGame/SourceCache.en-us/a.pak"),
+            None
+        );
+        assert_eq!(bundled_cooked_alias("Working/Binaries/SGW.exe"), None);
+        assert_eq!(bundled_cooked_alias("Working/SGWGame/Cache.en-US"), None);
     }
 
     #[test]
