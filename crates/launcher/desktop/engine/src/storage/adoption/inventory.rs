@@ -119,9 +119,20 @@ fn identity_of(metadata: &std::fs::Metadata) -> Result<Identity, Error> {
             .as_nanos(),
     })
 }
-/// The scan's rule for an index name (one place, used by the scan and the survey).
+/// The ASCII rule for an index name. Since LF-04 the scan and the survey use
+/// [`scan_name_allowed`]; nothing calls this one now.
+#[allow(dead_code)]
 pub(super) fn index_name_allowed(name: &str) -> bool {
     name.is_ascii() && name.len() <= 4096 && !name.contains(':') && !name.contains('\\')
+}
+/// The scan's rule for a name (D-LF3): any valid-Unicode name with no control
+/// character, `:` or `\`, at most 4,096 bytes.
+pub(super) fn scan_name_allowed(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 4096
+        && !name.contains(':')
+        && !name.contains('\\')
+        && !name.chars().any(char::is_control)
 }
 /// Why `path` itself cannot be scanned, or `None` when it can. Read only: a
 /// Windows handle is opened with FILE_READ_ATTRIBUTES and
@@ -311,7 +322,7 @@ fn scan_inner(
                 }
             }
             let name = parts.join("/");
-            if !index_name_allowed(&name) {
+            if !scan_name_allowed(&name) {
                 return Err(StorageError::UnsafeFile.into());
             }
             if folded

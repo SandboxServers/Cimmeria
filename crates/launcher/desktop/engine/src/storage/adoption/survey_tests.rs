@@ -83,23 +83,47 @@ fn the_report_lists_five_and_counts_all() {
         .all(|entry| entry.reason == UnsafeReason::HardLink));
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(unix, not(target_os = "macos")))]
 #[test]
 fn an_offender_is_not_descended() {
+    // A control character is valid on Unix only; Windows refuses it in a name,
+    // and `a_control_character_name_is_refused` covers the rule on every host.
     let (_dir, root) = folder();
-    let dir = root.join("é");
+    let dir = root.join("bad\u{7}");
     std::fs::create_dir(&dir).unwrap();
     hard_pair(&dir, "x.txt", "y.txt");
     let report = survey(&root);
     assert_eq!(
         report,
         UnsafeReport {
-            entries: vec![entry(UnsafeReason::Name, "é")],
+            entries: vec![entry(UnsafeReason::Name, "bad\u{7}")],
             total: 1,
         }
     );
 }
 
+#[test]
+fn a_non_ascii_stock_name_is_scanned() {
+    let (_dir, root) = folder();
+    let name = "Working/Binaries/wxRes/TerrainEdit_Gradient másolata.bmp";
+    let path = root.join(name);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, b"same").unwrap();
+    let cancel = CancellationToken::new();
+    let index = inventory::scan(&root, &cancel).unwrap();
+    let expected = inventory::hash(&path, &cancel).unwrap();
+    let found = &index[name];
+    assert_eq!(found.size, 4);
+    assert_eq!(found.sha256, expected.sha256);
+}
+
+#[test]
+fn a_control_character_name_is_refused() {
+    assert!(!inventory::scan_name_allowed("bad\u{7}.bmp"));
+    assert!(inventory::scan_name_allowed(
+        "Working/Binaries/wxRes/TerrainEdit_Gradient másolata.bmp"
+    ));
+}
 #[cfg(windows)]
 #[test]
 fn a_junction_is_a_link() {
