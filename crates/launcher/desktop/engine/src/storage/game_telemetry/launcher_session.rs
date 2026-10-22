@@ -84,7 +84,7 @@ pub enum BatchOutcome {
     Posted,
     /// A 429 or 503; the wait is the server's `Retry-After`.
     Throttled { retry_after_secs: u64 },
-    /// No session could be minted; `reason` is a C8 code.
+    /// No session could be minted; `reason` is a C8 code, or "held" while an earlier failed mint's hold is still running.
     MintFailed { reason: &'static str },
     /// Anything else, including a second 401.
     Failed,
