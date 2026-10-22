@@ -1,8 +1,12 @@
 //! A refused step keeps the check that refused it beside the error, and the
 //! status names the progress item and the rejection fields the webview reads.
-use super::contract::{Activity, AdoptionError, Phase, Progress, ProgressItem};
+#[cfg(not(target_os = "macos"))]
+use super::contract::Activity;
+use super::contract::{AdoptionError, Phase, Progress, ProgressItem};
 use super::fixture::*;
+#[cfg(not(target_os = "macos"))]
 use super::in_place_tests::unimported_host;
+#[cfg(not(target_os = "macos"))]
 use cimmeria_launcher_engine::adoption::AdoptionMode;
 use std::fs;
 use std::time::Duration;
