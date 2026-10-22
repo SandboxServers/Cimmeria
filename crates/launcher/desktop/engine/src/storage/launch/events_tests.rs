@@ -198,3 +198,32 @@ fn adoption_tags_read_the_adopted_copy_and_its_ledger() {
     let tags = super::adoption_tags::adoption_tags(&state.lock().unwrap());
     assert_eq!(tags, ("full", 1));
 }
+
+#[test]
+fn an_unreadable_record_launches_untagged_and_logs_one_closed_warning() {
+    use crate::storage::effective_settings::fixtures::{adopt_native, Legacy};
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let legacy = Legacy::new(false, false);
+    let state = Arc::new(std::sync::Mutex::new(legacy.open()));
+    let _provenance = adopt_native(&legacy, &state);
+    // A record that is not JSON cannot be read as installed.
+    let record = state
+        .lock()
+        .unwrap()
+        .directory
+        .root
+        .join("installed-content.json");
+    std::fs::write(record, b"not json").unwrap();
+    let (tags, events) = capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        super::adoption_tags::adoption_tags(&state.lock().unwrap())
+    });
+    assert_eq!(tags, ("none", 0));
+    let rows = named(
+        &events.iter().collect::<Vec<_>>(),
+        "launch_tags_unavailable",
+    );
+    assert_eq!(rows.len(), 1, "{events:?}");
+    assert_eq!(rows[0].target, "launcher.launch");
+    assert_eq!(rows[0].level, Level::WARN);
+}

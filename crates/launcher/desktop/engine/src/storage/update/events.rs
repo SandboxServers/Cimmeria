@@ -211,6 +211,13 @@ mod tests {
     }
 
     #[test]
+    fn incremental_failed_row_carries_the_closed_reason() {
+        let ((), captured) = capture(|| incremental_failed("hash_mismatch"));
+        let row = only_row(&captured, Level::WARN);
+        assert_eq!(row.field("event"), Some("update_incremental_failed"));
+        assert_eq!(row.field("reason"), Some("hash_mismatch"));
+    }
+    #[test]
     fn staged_row_carries_the_incremental_mode_and_stage_counts() {
         let staging = Staging {
             mode: "incremental",
