@@ -40,11 +40,11 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
 | Documentation files | <!-- gen:docs-md-count -->1,591<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
 | Documentation files | <!-- gen:docs-md-count -->1,591<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,552<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,734<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,045<!-- /gen:tests-ci-gated --> gated in CI) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,604<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,738<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,097<!-- /gen:tests-ci-gated --> gated in CI) |
 | Live-DB regression guards | <!-- gen:tests-live-db -->2,647<!-- /gen:tests-live-db --> |
 | Documentation files | <!-- gen:docs-md-count -->1,591<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
 | Documentation files | <!-- gen:docs-md-count -->1,591<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,552<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,734<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,045<!-- /gen:tests-ci-gated --> gated in CI) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,604<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,738<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,097<!-- /gen:tests-ci-gated --> gated in CI) |
 | Live-DB regression guards | <!-- gen:tests-live-db -->2,647<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
