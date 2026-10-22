@@ -38,6 +38,7 @@ use super::dto::{ChunkResponse, IngestError, TelemetryEvent};
 use super::entity_labels::{self, name_chunk, EntityLabels};
 use super::field_caps::cap_event;
 use super::launcher_budget::{admit_launcher_chunk, LauncherBudget};
+use super::launcher_log_budget::{admit_log_chunk, check_event_targets};
 use super::refusal_log::Truncation;
 use super::replay::replay_events_from_client;
 use super::session_budget::{
@@ -115,7 +116,11 @@ async fn chunk_flow(
     // Taken before the body is read, so the body transfer stays out of the
     // clock sample.
     let recv = SystemTime::now();
-    let limits = if launcher {
+    // Chosen from the claim, before the body is read (C-LF4).
+    let log_session = launcher && claims.is_log_session();
+    let limits = if log_session {
+        state.limits.launcher_logs()
+    } else if launcher {
         state.limits.launcher()
     } else {
         state.limits.clone()
@@ -143,9 +148,15 @@ async fn chunk_flow(
     } = decoded?;
 
     let (admitted_rows, labels, totals) = if launcher {
-        // The launcher rows only, charged to the launcher budget (AU-15).
-        let admission = admit_launcher_chunk(budget, &claims, &mut events, row_cap, now)
-            .map_err(IngestError::Auth)?;
+        let admission = if log_session {
+            let utc = chrono::Utc::now().timestamp().max(0) as u64;
+            admit_log_chunk(budget, &claims, &mut events, truncation.as_ref(), now, utc)?
+        } else {
+            // The launcher rows only, charged to the launcher budget (AU-15).
+            check_event_targets(&events)?;
+            admit_launcher_chunk(budget, &claims, &mut events, row_cap, now)
+                .map_err(IngestError::Auth)?
+        };
         bad_rows += admission.dropped;
         (
             admission.admitted,

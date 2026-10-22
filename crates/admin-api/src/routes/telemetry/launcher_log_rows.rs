@@ -8,9 +8,6 @@
 //!
 //! The module is pure: no I/O, no tracing, and no regex crate.
 
-// Nothing calls the module until the log route lands (LF-12); the tests cover it.
-#![allow(dead_code)]
-
 use serde_json::{Map, Value};
 
 use super::dto::ClientNativeEvent;
@@ -34,6 +31,20 @@ pub(super) fn admit_log_rows(rows: Vec<ClientNativeEvent>) -> (Vec<ClientNativeE
     let kept: Vec<ClientNativeEvent> = rows.into_iter().filter_map(clean_row).collect();
     let dropped = (total - kept.len()) as u64;
     (kept, dropped)
+}
+
+/// The replay body of a launcher log row: when `target` is one of
+/// [`LAUNCHER_LOG_TARGETS`] and `fields` holds a string `message`, that message,
+/// removed from `fields` so it is not repeated in the attributes. `None` for any
+/// other row, and for a log row with no string message (nothing is removed).
+pub(super) fn take_log_body(target: &str, fields: &mut Map<String, Value>) -> Option<String> {
+    if !LAUNCHER_LOG_TARGETS.contains(&target) || !fields.get("message")?.is_string() {
+        return None;
+    }
+    match fields.remove("message") {
+        Some(Value::String(message)) => Some(message),
+        _ => None,
+    }
 }
 
 /// Scrub each whitespace-separated word of a message that [`scrub_value`] flags

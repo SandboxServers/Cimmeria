@@ -5,6 +5,7 @@
 //!
 //! - `gate` — kill switch, token before body, rate limits, slots.
 //! - `launcher_gate` — the launcher token's scope, quotas, slots and kill switch.
+//! - `log_chunk` — a launcher log session's limits, targets and budgets (C-LF6).
 //! - `forwarded` — the per-address keys behind a loopback proxy (C18).
 //! - `chunk` — the chunk budgets and the priority allowance.
 //! - `bundle` — the bundle budgets.
@@ -20,6 +21,7 @@ mod forwarded;
 mod gate;
 mod launcher_chunk;
 mod launcher_gate;
+mod log_chunk;
 mod refusal_log;
 mod refusal_log_pools;
 mod slow_body;
@@ -142,6 +144,20 @@ pub(super) fn launcher_chunk_request(sid: &str, body: Vec<u8>) -> Request {
             AUTHORIZATION,
             format!("Bearer {}", launcher_token(sid, "install-launcher-test")),
         )
+        .body(Body::from(body))
+        .unwrap()
+}
+
+/// A launcher log session's chunk request: a launcher token with the `logs`
+/// purpose (C-LF4), for session `sid` of install `install`.
+pub(super) fn log_chunk_request(sid: &str, install: &str, body: Vec<u8>) -> Request {
+    let mut claims = launcher_claims(sid, install);
+    claims.purpose = Some("logs".into());
+    let token = encode_token(&claims, &[0x5c; 64]).unwrap();
+    Request::builder()
+        .method("POST")
+        .uri("/upload-chunk")
+        .header(AUTHORIZATION, format!("Bearer {token}"))
         .body(Body::from(body))
         .unwrap()
 }

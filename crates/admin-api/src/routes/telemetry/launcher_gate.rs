@@ -31,6 +31,19 @@ const LAUNCHER_CHUNK_ROW_BYTES: usize = 4_096;
 /// The most rows one launcher chunk may carry.
 const LAUNCHER_CHUNK_ROWS: usize = 200;
 
+/// Chunks a log session may post per minute (C-LF6); an event session keeps
+/// the policy's limit.
+const LOG_CHUNK_PER_SESSION: u32 = 20;
+
+/// The most a log chunk body may be (compressed).
+const LOG_CHUNK_BODY_BYTES: usize = 64 * 1024;
+
+/// The most a log chunk may expand to.
+const LOG_CHUNK_DECOMPRESSED_BYTES: u64 = 512 * 1024;
+
+/// The most rows one log chunk may carry; one more is refused with 413.
+const LOG_CHUNK_ROWS: usize = 1_000;
+
 /// The bearer check for one route. The token is decoded and checked as it
 /// always was; then its kind must agree with its scope. A launcher token is
 /// refused on the bundle route, and a chunk accepts either scope.
@@ -104,7 +117,11 @@ pub(super) fn charge_launcher_chunk(
         .launcher_chunk_session
         .check_and_record(
             install_key(&claims.sid),
-            policy.launcher_chunk_per_session,
+            if claims.is_log_session() {
+                LOG_CHUNK_PER_SESSION
+            } else {
+                policy.launcher_chunk_per_session
+            },
             CHUNK_QUOTA_WINDOW,
             "upload/launcher_session",
             now,
@@ -144,6 +161,21 @@ impl UploadLimits {
                 .chunk_decompressed_bytes
                 .min(LAUNCHER_CHUNK_DECOMPRESSED_BYTES),
             chunk_rows: self.chunk_rows.min(LAUNCHER_CHUNK_ROWS),
+            chunk_row_bytes: self.chunk_row_bytes.min(LAUNCHER_CHUNK_ROW_BYTES),
+            ..self.clone()
+        }
+    }
+
+    /// The limits a log chunk runs under (C-LF6): 1,000 rows, 512 KiB
+    /// expanded, 64 KiB compressed, 4 KiB a row, each the smaller of this and
+    /// the server's limit.
+    pub(super) fn launcher_logs(&self) -> UploadLimits {
+        UploadLimits {
+            chunk_body_bytes: self.chunk_body_bytes.min(LOG_CHUNK_BODY_BYTES),
+            chunk_decompressed_bytes: self
+                .chunk_decompressed_bytes
+                .min(LOG_CHUNK_DECOMPRESSED_BYTES),
+            chunk_rows: self.chunk_rows.min(LOG_CHUNK_ROWS),
             chunk_row_bytes: self.chunk_row_bytes.min(LAUNCHER_CHUNK_ROW_BYTES),
             ..self.clone()
         }

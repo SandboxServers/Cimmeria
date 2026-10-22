@@ -42,6 +42,7 @@ use crate::routes::dev_session::TokenClaims;
 use super::client_symbols::symbol_name;
 use super::dto::ClientNativeEvent;
 use super::entity_labels::entity_id;
+use super::launcher_log_rows::take_log_body;
 
 /// Targets whose `msg_id` is one the client sent; every other target's is
 /// one the client received.
@@ -289,6 +290,9 @@ pub(super) fn replay_client_native_stamped(
     if known_unbound {
         fields.insert("drop_class".into(), Value::from("known_unbound"));
     }
+    // A launcher log row's body is its message, which then is not repeated in
+    // the attributes; every other row's body is its target name.
+    let body = take_log_body(name, &mut fields).unwrap_or_else(|| name.to_string());
     let fields_json = Value::Object(fields);
     let level = if known_unbound {
         "info"
@@ -334,7 +338,7 @@ pub(super) fn replay_client_native_stamped(
                 address = l.address.as_deref(),
                 address_name = n.address_name,
                 fields = %fields_json,
-                "{name}"
+                "{body}"
             )
         };
     }
@@ -361,7 +365,7 @@ pub(super) fn replay_client_native_stamped(
                 rollup_target = l.rollup_target.as_deref(),
                 rollup_count = l.rollup_count,
                 fields = %fields_json,
-                "{name}"
+                "{body}"
             )
         };
     }

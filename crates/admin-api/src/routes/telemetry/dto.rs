@@ -139,6 +139,19 @@ pub(super) enum IngestError {
     /// address's share) or `route` (the route's slots), and `limit` its size.
     #[error("Telemetry ingest is busy, retry shortly")]
     Busy { pool: &'static str, limit: usize },
+    /// A log session posted a row of an event target, or an event session a
+    /// row of a log target (C-LF4). The whole chunk is refused.
+    #[error("this session may not post that target")]
+    PurposeTarget,
+    /// A log chunk passed a row budget (C-LF6): `reason` is
+    /// `log_session_budget`, `log_install_budget` or `log_global_budget`.
+    /// `global` answers 503 (the server is full), the others 429.
+    #[error("Log upload budget exceeded")]
+    LogBudget {
+        reason: &'static str,
+        global: bool,
+        retry_after_secs: Option<u64>,
+    },
 }
 
 impl IngestError {
@@ -167,6 +180,8 @@ impl IngestError {
             IngestError::OverBudget { .. } => "over_budget",
             IngestError::Body => "body_read_failed",
             IngestError::Busy { .. } => "busy",
+            IngestError::PurposeTarget => "purpose_target",
+            IngestError::LogBudget { reason, .. } => reason,
         }
     }
 
@@ -200,8 +215,12 @@ impl IngestError {
                 | AuthError::NoUploadEndpoint
                 | AuthError::QuotaExceeded(_) => false,
             },
-            IngestError::MissingAuth | IngestError::Forbidden(_) => true,
-            IngestError::TooLarge(_, _)
+            // A token used for the wrong target list is the uploader's state.
+            IngestError::MissingAuth | IngestError::Forbidden(_) | IngestError::PurposeTarget => {
+                true
+            }
+            IngestError::LogBudget { .. }
+            | IngestError::TooLarge(_, _)
             | IngestError::Gzip(_)
             | IngestError::Zip(_)
             | IngestError::Multipart(_)
@@ -252,6 +271,27 @@ impl IntoResponse for IngestError {
             }
             IngestError::OverBudget { .. } => StatusCode::PAYLOAD_TOO_LARGE,
             IngestError::Body => StatusCode::BAD_REQUEST,
+            IngestError::PurposeTarget => StatusCode::FORBIDDEN,
+            IngestError::LogBudget {
+                global,
+                retry_after_secs,
+                ..
+            } => {
+                let status = if *global {
+                    StatusCode::SERVICE_UNAVAILABLE
+                } else {
+                    StatusCode::TOO_MANY_REQUESTS
+                };
+                let retry = *retry_after_secs;
+                let mut resp = (status, self.to_string()).into_response();
+                if let Some(secs) = retry {
+                    resp.headers_mut().insert(
+                        axum::http::header::RETRY_AFTER,
+                        axum::http::HeaderValue::from(secs),
+                    );
+                }
+                return resp;
+            }
             IngestError::Busy { .. } => {
                 let mut resp = (StatusCode::SERVICE_UNAVAILABLE, self.to_string()).into_response();
                 resp.headers_mut().insert(
