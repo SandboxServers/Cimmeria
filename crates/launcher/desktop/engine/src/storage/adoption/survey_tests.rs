@@ -118,6 +118,17 @@ fn a_non_ascii_stock_name_is_scanned() {
 }
 
 #[test]
+fn a_non_ascii_name_is_not_reported() {
+    let (_dir, root) = folder();
+    let dir = root.join("Working").join("wxRes");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("TerrainEdit_Gradient másolata.bmp"), b"same").unwrap();
+    let report = survey(&root);
+    assert_eq!(report.total, 0);
+    assert!(report.entries.is_empty());
+}
+
+#[test]
 fn a_control_character_name_is_refused() {
     assert!(!inventory::scan_name_allowed("bad\u{7}.bmp"));
     assert!(inventory::scan_name_allowed(
