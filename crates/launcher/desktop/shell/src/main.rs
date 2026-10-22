@@ -354,7 +354,7 @@ async fn adoption_command(
 
 /// Picks an existing game folder to adopt: in place, or as a verified copy made
 /// into a folder the player picks next. The webview never passes a path; a
-/// cancelled dialog returns the current status.
+/// cancelled dialog returns the status with any earlier refusal cleared.
 #[tauri::command]
 async fn choose_existing_game_folder(
     app: tauri::AppHandle,
@@ -368,7 +368,12 @@ async fn choose_existing_game_folder(
     tauri::async_runtime::spawn_blocking(move || checking.adoption_mode_allowed(mode))
         .await
         .map_err(|_| AdoptionError::Io)??;
-    let in_place = mode == cimmeria_launcher_engine::adoption::AdoptionMode::InPlace;
+    // Light adopts the folder where it is, so it counts as in place.
+    let in_place = matches!(
+        mode,
+        cimmeria_launcher_engine::adoption::AdoptionMode::InPlace
+            | cimmeria_launcher_engine::adoption::AdoptionMode::Light
+    );
     crate::host::adoption_events::mode_chosen(in_place);
     let Some(selected) = pick_folder(
         app.clone(),
@@ -435,7 +440,7 @@ async fn pick_folder(
 
 /// The status after a cancelled dialog: nothing is started.
 async fn cancelled(host: Arc<NativeHost>) -> Result<AdoptionStatus, AdoptionError> {
-    tauri::async_runtime::spawn_blocking(move || host.adoption_status())
+    tauri::async_runtime::spawn_blocking(move || host.adoption_picker_cancelled())
         .await
         .map_err(|_| AdoptionError::Io)?
 }

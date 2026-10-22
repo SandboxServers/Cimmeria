@@ -1,7 +1,9 @@
 //! A refused step keeps the check that refused it beside the error, and the
 //! status names the progress item and the rejection fields the webview reads.
-use super::contract::{AdoptionError, Phase, Progress, ProgressItem};
+use super::contract::{Activity, AdoptionError, Phase, Progress, ProgressItem};
 use super::fixture::*;
+use super::in_place_tests::unimported_host;
+use cimmeria_launcher_engine::adoption::AdoptionMode;
 use std::fs;
 use std::time::Duration;
 use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
@@ -79,4 +81,58 @@ fn the_status_json_names_the_new_fields() {
     };
     let value = serde_json::to_value(without_item).unwrap();
     assert!(value.get("item").is_none());
+}
+
+/// A host over a fresh state, so the picked folder is the source.
+#[cfg(not(target_os = "macos"))]
+fn picker_host(f: &mut Fixture) {
+    f.host = unimported_host(f.root.path().join("plain-state"));
+}
+
+#[test]
+#[cfg(not(target_os = "macos"))]
+fn a_picked_folder_holding_two_installs_shows_the_several_game_folders_check() {
+    let mut f = Fixture::new(serde_json::json!({}));
+    picker_host(&mut f);
+    let parent = f.root.path().join("two-installs");
+    let exe = fs::read(f.source.game_directory.join("Working/Binaries/SGW.exe")).unwrap();
+    for name in ["Live", "Test"] {
+        let binaries = parent.join(name).join("Working/Binaries");
+        fs::create_dir_all(&binaries).unwrap();
+        fs::write(binaries.join("SGW.exe"), &exe).unwrap();
+    }
+    let status = f
+        .host
+        .begin_folder_adoption(parent.clone(), None, AdoptionMode::Light, f.release())
+        .expect("a refused pick is an Ok status");
+    assert_eq!(status.activity, Activity::Idle);
+    assert_eq!(status.last_error, Some(AdoptionError::NotAGameFolder));
+    let rejection = status.last_rejection.expect("the refused check");
+    assert_eq!(rejection.check, "several_game_folders");
+    assert_eq!(rejection.found.as_deref(), Some("2"));
+    assert_eq!(rejection.entry.as_deref(), Some("."));
+    assert!(!parent.join("game").exists());
+    let shown = f.host.adoption_status().unwrap().last_rejection;
+    assert_eq!(
+        shown.map(|r| r.check).as_deref(),
+        Some("several_game_folders")
+    );
+}
+
+#[test]
+#[cfg(not(target_os = "macos"))]
+fn a_cancelled_picker_clears_an_earlier_refusal() {
+    let mut f = Fixture::new(serde_json::json!({}));
+    picker_host(&mut f);
+    let empty = f.root.path().join("empty");
+    fs::create_dir_all(&empty).unwrap();
+    let status = f
+        .host
+        .begin_folder_adoption(empty, None, AdoptionMode::Light, f.release())
+        .expect("a refused pick is an Ok status");
+    let rejection = status.last_rejection.expect("the refused check");
+    assert_eq!(rejection.check, "not_a_game_folder");
+    let status = f.host.adoption_picker_cancelled().unwrap();
+    assert_eq!(status.last_error, None);
+    assert!(status.last_rejection.is_none());
 }

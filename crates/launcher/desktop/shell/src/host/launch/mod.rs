@@ -3,6 +3,7 @@ use super::*;
 use cimmeria_launcher_engine::launch;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+mod ledger;
 mod resources;
 pub(crate) use resources::dll_bundled;
 #[derive(Debug, Deserialize)]
@@ -25,6 +26,10 @@ pub struct LaunchStatus {
     installation_id: Option<Uuid>,
     resources_available: bool,
     launcher_update_required: bool,
+    /// Patches the installed copy applied with skipped ops; 0 when Play is not offered.
+    patches_incomplete: u32,
+    /// The ops those patches skipped.
+    ops_skipped: u32,
     observation: Option<launch::Observation>,
 }
 impl NativeHost {
@@ -109,29 +114,53 @@ impl NativeHost {
             && state
                 .installed_launcher_minimum()?
                 .is_some_and(|minimum| minimum.blocks());
-        let installation_id = if idle && playable && !launcher_update_required {
-            state
-                .installed_content()?
-                .filter(|installed| {
-                    if installed.intent.backend.is_native() {
-                        cfg!(windows)
-                    } else {
-                        cfg!(target_os = "macos")
-                            && state.prepared_runtime().ok().flatten().is_some()
-                    }
-                })
-                .map(|installed| installed.intent.operation_id)
+        let installed = if idle && playable && !launcher_update_required {
+            state.installed_content()?.filter(|installed| {
+                if installed.intent.backend.is_native() {
+                    cfg!(windows)
+                } else {
+                    cfg!(target_os = "macos") && state.prepared_runtime().ok().flatten().is_some()
+                }
+            })
         } else {
             None
         };
-        Ok(LaunchStatus {
+        let installation_id = installed
+            .as_ref()
+            .map(|installed| installed.intent.operation_id);
+        let game = installed
+            .as_ref()
+            .map(|installed| installed.intent.destination.join("game"));
+        Ok(LaunchStatus::assemble(
+            native,
+            installation_id,
+            (available, launcher_update_required),
+            game.as_deref(),
+            observation,
+        ))
+    }
+}
+impl LaunchStatus {
+    /// The incomplete-patch counts come from the admitted copy's own ledger (`game`),
+    /// so a status with no admitted copy reports 0, 0.
+    fn assemble(
+        native: NativeSnapshot,
+        installation_id: Option<Uuid>,
+        (resources_available, launcher_update_required): (bool, bool),
+        game: Option<&std::path::Path>,
+        observation: Option<launch::Observation>,
+    ) -> Self {
+        let (patches_incomplete, ops_skipped) = ledger::incomplete_counts(game);
+        Self {
             schema_version: 1,
             native,
             installation_id,
-            resources_available: available,
+            resources_available,
             launcher_update_required,
+            patches_incomplete,
+            ops_skipped,
             observation,
-        })
+        }
     }
 }
 #[cfg(test)]

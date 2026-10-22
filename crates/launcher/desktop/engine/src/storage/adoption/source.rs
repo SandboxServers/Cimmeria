@@ -45,6 +45,19 @@ pub(super) fn request_source(
     request: &SourceRequest,
     mode: AdoptionMode,
 ) -> Result<(AdoptionSource, inventory::Index), Error> {
+    request_source_with(state, request, mode, &|root| {
+        inventory::scan(root, &CancellationToken::new())
+    })
+}
+
+/// [`request_source`] with the folder scan supplied, so a light preview can report
+/// hashing progress and honour its cancel token.
+pub(super) fn request_source_with(
+    state: &Mutex<DesktopState>,
+    request: &SourceRequest,
+    mode: AdoptionMode,
+    scan: &dyn Fn(&Path) -> Result<inventory::Index, Error>,
+) -> Result<(AdoptionSource, inventory::Index), Error> {
     let (saved, state_root) = {
         let owner = state.lock().map_err(|_| StorageError::Io)?;
         let saved = owner.legacy_import().map_err(|_| StorageError::Corrupt)?;
@@ -54,17 +67,17 @@ pub(super) fn request_source(
         let imported = saved_import(saved, request)?;
         let scanned = survey::explained(
             &imported.source.game_directory,
-            inventory::scan(&imported.source.game_directory, &CancellationToken::new()),
+            scan(&imported.source.game_directory),
         )?;
         return Ok((AdoptionSource::Legacy(imported), scanned));
     };
     let root = resolve_folder(selected)?;
     if let Some(imported) = saved.filter(|imported| imported.source.game_directory == root) {
-        let scanned = survey::explained(&root, inventory::scan(&root, &CancellationToken::new()))?;
+        let scanned = survey::explained(&root, scan(&root))?;
         return Ok((AdoptionSource::Legacy(imported), scanned));
     }
-    // A copy only reads the folder, so it needs no write access to it.
-    if mode == AdoptionMode::InPlace {
+    // A copy only reads the folder; in place and light move files in it, so they need links refused and write access.
+    if matches!(mode, AdoptionMode::InPlace | AdoptionMode::Light) {
         survey::explained(&root, refuse_links(&root))?;
         check_writable(&root)?;
     }
@@ -78,7 +91,7 @@ pub(super) fn request_source(
             check,
         ));
     }
-    let scanned = survey::explained(&root, inventory::scan(&root, &CancellationToken::new()))?;
+    let scanned = survey::explained(&root, scan(&root))?;
     let source = AdoptionSource::Folder(FolderSource {
         selected: selected.clone(),
         root,
@@ -115,12 +128,41 @@ pub fn resolve_folder(selected: &Path) -> Result<PathBuf, Error> {
             return Ok(root.to_path_buf());
         }
     }
+    // The pick is a folder of game folders: one inside it is the game, two or more are ambiguous.
+    let roots = child_roots(&selected);
+    if let [only] = roots.as_slice() {
+        return Ok(only.clone());
+    }
+    if roots.len() > 1 {
+        tracing::warn!(target: "adoption", "adoption refused: the folder holds several game folders");
+        let check = rejection::Rejection::new("several_game_folders")
+            .entry(".")
+            .expected("one game folder")
+            .found(roots.len().to_string());
+        return Err(rejection::reject(Error::NotAGameFolder, check));
+    }
     tracing::warn!(target: "adoption", "adoption refused: the folder is not a game folder");
     let check = rejection::Rejection::new("not_a_game_folder")
         .entry(".")
         .expected("SGW.exe and the game folders")
         .found("no game layout");
     Err(rejection::reject(Error::NotAGameFolder, check))
+}
+
+/// The direct child folders of `dir` that are client roots (`Working\Binaries\SGW.exe`),
+/// skipping links and junctions.
+fn child_roots(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir() && !is_link(&meta))
+        })
+        .filter(|path| working_binaries(path).is_some())
+        .collect()
 }
 
 /// Whether the last component of `path` is `name`, case-blind.

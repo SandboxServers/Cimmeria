@@ -90,7 +90,7 @@ pub(super) fn reconstruct(
         )?;
     }
     crate::client_setup::prepare(&prepared, servers)?;
-    ledger(release)
+    ledger(release, &[])
         .save(&prepared)
         .map_err(|_| StorageError::Io)?;
     if !super::super::install_worker::content_valid(&prepared, release) {
@@ -104,13 +104,19 @@ pub(super) fn reconstruct(
     })
 }
 /// The ledger an adopted tree carries: the signed release, fully applied. It is
-/// synthesized, never carried over from the old launcher.
-pub(super) fn ledger(release: &VerifiedRelease) -> crate::state::InstalledState {
+/// synthesized, never carried over from the old launcher. A light adoption lists
+/// the patches it applied with skipped ops in `incomplete` (D-LA18); they are in
+/// `applied_patches` too.
+pub(super) fn ledger(
+    release: &VerifiedRelease,
+    incomplete: &[cimmeria_launcher_core::state::IncompletePatch],
+) -> crate::state::InstalledState {
     let manifest = release.manifest();
     crate::state::InstalledState {
         seed_sha256: Some(manifest.seed.sha256.clone()),
         seed_adopted: false,
         applied_patches: manifest.patches.iter().map(|p| p.state_key()).collect(),
+        incomplete_patches: incomplete.to_vec(),
     }
 }
 /// Unpack the local seed. A zip seed is checked by `strict_zip` first. A RAR

@@ -92,6 +92,54 @@ fn flat_folder_in_copy_mode_is_not_a_game_folder() {
 }
 
 #[test]
+fn the_one_game_folder_inside_a_pick_is_picked() {
+    let dir = tempfile::tempdir().unwrap();
+    layout(&dir.path().join("Stargate"));
+    std::fs::create_dir(dir.path().join("Downloads")).unwrap();
+    let root = dir.path().join("Stargate").canonicalize().unwrap();
+    assert_eq!(resolve_folder(dir.path()).unwrap(), root);
+}
+
+#[test]
+fn two_game_folders_inside_a_pick_are_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    layout(&dir.path().join("Live"));
+    layout(&dir.path().join("Test"));
+    let (result, record) = rejection::scope(|| resolve_folder(dir.path()));
+    assert!(matches!(result, Err(Error::NotAGameFolder)));
+    let record = record.expect("a recorded rejection");
+    assert_eq!(record.check, "several_game_folders");
+    assert_eq!(record.found.as_deref(), Some("2"));
+}
+
+/// `link` is a junction to `target`. Returns false when `mklink` cannot run.
+#[cfg(windows)]
+fn junction_to(link: &Path, target: &Path) -> bool {
+    let made = std::process::Command::new("cmd")
+        .args(["/C", "mklink", "/J"])
+        .arg(link)
+        .arg(target)
+        .status();
+    matches!(made, Ok(status) if status.success())
+}
+
+/// A junction is a link, so `child_roots` skips it: a pick holding one real game
+/// folder and a junction to another layout still resolves to the real one.
+#[cfg(windows)]
+#[test]
+fn a_junction_child_is_skipped_and_not_a_second_game_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    layout(&dir.path().join("Real"));
+    let target = tempfile::tempdir().unwrap();
+    layout(target.path());
+    if !junction_to(&dir.path().join("Alias"), target.path()) {
+        return;
+    }
+    let root = dir.path().join("Real").canonicalize().unwrap();
+    assert_eq!(resolve_folder(dir.path()).unwrap(), root);
+}
+
+#[test]
 fn saved_import_naming_the_folder_is_legacy_another_is_folder() {
     let f = Fixture::new(None);
     let named = SourceRequest::Folder {
@@ -155,6 +203,37 @@ fn denied_write_is_folder_not_writable() {
     assert!(record.found.is_some(), "the I/O kind is named");
 }
 
+/// Light moves files inside the picked folder like in place does, so a folder it
+/// cannot write to is refused up front; a copy only reads and still goes through.
+#[cfg(windows)]
+#[test]
+fn light_refuses_an_unwritable_folder_and_copy_does_not() {
+    let f = Fixture::new(None);
+    let dir = tempfile::tempdir().unwrap();
+    layout(dir.path());
+    let binaries = dir.path().join("Working").join("Binaries");
+    let user = std::env::var("USERNAME").unwrap();
+    let status = std::process::Command::new("icacls")
+        .arg(&binaries)
+        .arg("/deny")
+        .arg(format!("{user}:(WD)"))
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let _restore = RestoreWrite {
+        user,
+        folder: binaries,
+    };
+    let request = SourceRequest::Folder {
+        selected: dir.path().to_path_buf(),
+    };
+    let light = request_source(&f.state, &request, AdoptionMode::Light);
+    assert!(
+        matches!(light, Err(Error::FolderNotWritable)),
+        "expected FolderNotWritable for Light"
+    );
+    assert!(request_source(&f.state, &request, AdoptionMode::Copy).is_ok());
+}
 #[test]
 fn import_blocker_is_silent_and_refuse_blocker_records_the_refusal() {
     let f = Fixture::new(None);

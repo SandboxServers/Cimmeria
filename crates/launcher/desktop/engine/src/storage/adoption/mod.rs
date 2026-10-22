@@ -4,6 +4,7 @@
 mod artifacts;
 mod comparison;
 mod in_place;
+mod in_place_abandon;
 mod in_place_preview;
 mod in_place_replace;
 // Where the in-place backend is the one previews use.
@@ -15,11 +16,27 @@ mod in_place_recovery_tests;
 mod in_place_replace_tests;
 #[cfg(all(test, not(target_os = "macos")))]
 mod in_place_tests;
+mod index_compare;
 mod index_source;
 mod inventory;
+mod light;
+#[cfg(all(test, not(target_os = "macos")))]
+mod light_cooked_tests;
+mod light_order;
+mod light_plan;
+#[cfg(test)]
+mod light_plan_tests;
+mod light_replay;
+#[cfg(all(test, not(target_os = "macos")))]
+mod light_tests;
+#[cfg(all(test, not(target_os = "macos")))]
+mod light_update_guard_tests;
+#[cfg(all(test, not(target_os = "macos")))]
+mod light_update_tests;
 mod model;
 pub(crate) mod preparation;
 mod publication;
+mod publication_recovery;
 mod setup_digest;
 // LT-29 onward use `digest`, `relative` and `http_status`.
 #[allow(dead_code)]
@@ -71,6 +88,7 @@ mod tests;
 mod verification_tests;
 use super::*;
 use crate::{catalog::VerifiedRelease, OperationKind, OperationState};
+pub use index_compare::IndexState;
 pub use model::*;
 pub use publication::{abandon, inspect, interrupted, recover, Interrupted};
 use sha2::{Digest, Sha256};
@@ -85,7 +103,7 @@ pub(super) enum Backend {
     Wine(crate::mac_wine::HelperResource),
 }
 pub use index_source::IndexFallback;
-pub use rejection::{refuse, Rejection};
+pub use rejection::{refuse, scope as rejection_scope, Rejection};
 use uuid::Uuid;
 
 /// This handle cannot be serialized or fabricated by an IPC caller. It retains
@@ -108,6 +126,8 @@ pub struct Preview {
     replacements: Vec<Replacement>,
     /// The published index's digest, recorded in the provenance; `None` when built.
     file_index_sha256: Option<String>,
+    /// A light adoption's skipped ops and review summary; `None` for the others.
+    light: Option<light::Light>,
     _legacy_lock: Option<File>,
 }
 impl Preview {
@@ -224,7 +244,12 @@ pub(super) fn preview_using(
         AdoptionMode::InPlace => {
             // In place never runs the Wine helper; only a copy extracts through it.
             let _ = backend;
-            in_place_preview::preview(state, request, cancel, progress, transport)
+            in_place_preview::preview(state, request, cancel, progress, transport, false)
+        }
+        // Light adopts in place too; only the comparison differs (LA-11).
+        AdoptionMode::Light => {
+            let _ = backend;
+            in_place_preview::preview(state, request, cancel, progress, transport, true)
         }
         AdoptionMode::Copy => copy_preview(state, request, cancel, progress, backend, transport),
     }
@@ -373,6 +398,7 @@ fn copy_preview(
         expected_paths,
         replacements,
         file_index_sha256,
+        light: None,
         _legacy_lock: legacy_lock,
     })
 }

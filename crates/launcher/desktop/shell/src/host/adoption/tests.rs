@@ -162,7 +162,8 @@ async fn reviewed_copy_publishes_once_and_preserves_source_import_identity_and_c
     assert_eq!(
         done.completed,
         Some(Completed {
-            directory: f.destination()
+            directory: f.destination(),
+            light: false,
         })
     );
     assert_eq!(done.preparations, Vec::<Uuid>::new());

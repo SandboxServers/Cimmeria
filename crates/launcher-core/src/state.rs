@@ -59,6 +59,30 @@ pub struct InstalledState {
     /// rows.
     #[serde(default)]
     pub seed_adopted: bool,
+    /// Patches that applied with some ops skipped by a tolerant apply. A
+    /// patch listed here is also in `applied_patches`; see
+    /// [`InstalledState::is_fully_applied`]. Left out of the file when empty,
+    /// so a ledger without skips keeps its bytes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub incomplete_patches: Vec<IncompletePatch>,
+}
+
+/// A target a tolerant apply skipped, as the ledger records it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkippedTarget {
+    /// Client-root relative path, `/` separated.
+    pub path: String,
+    /// The skip code, `SkipReason::code` (for example `source_missing`).
+    pub reason: String,
+}
+
+/// A patch that applied with skipped ops.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IncompletePatch {
+    /// The patch's state key, as in `applied_patches`.
+    pub state_key: String,
+    /// The skipped targets, in the order the apply reported them.
+    pub skipped: Vec<SkippedTarget>,
 }
 
 impl InstalledState {
@@ -100,6 +124,43 @@ impl InstalledState {
 
     fn has_applied_key(&self, key: &str) -> bool {
         self.applied_patches.iter().any(|p| p == key)
+    }
+
+    /// Whether `state_key` is recorded as applied with no skipped ops.
+    pub fn is_fully_applied(&self, state_key: &str) -> bool {
+        self.has_applied_key(state_key)
+            && !self
+                .incomplete_patches
+                .iter()
+                .any(|p| p.state_key == state_key)
+    }
+
+    /// The skipped ops across every incomplete patch.
+    pub fn skipped_op_count(&self) -> usize {
+        self.incomplete_patches
+            .iter()
+            .map(|p| p.skipped.len())
+            .sum()
+    }
+
+    /// Record the skipped targets of `state_key`, replacing an earlier
+    /// entry in place. An empty `skipped` removes the entry.
+    pub fn record_incomplete(&mut self, state_key: &str, skipped: Vec<SkippedTarget>) {
+        let at = self
+            .incomplete_patches
+            .iter()
+            .position(|p| p.state_key == state_key);
+        match (at, skipped.is_empty()) {
+            (Some(i), true) => {
+                self.incomplete_patches.remove(i);
+            }
+            (Some(i), false) => self.incomplete_patches[i].skipped = skipped,
+            (None, false) => self.incomplete_patches.push(IncompletePatch {
+                state_key: state_key.to_owned(),
+                skipped,
+            }),
+            (None, true) => {}
+        }
     }
 }
 
@@ -187,6 +248,7 @@ mod tests {
             applied_patches: vec!["a".into(), "b".into()],
             seed_sha256: Some("h".into()),
             seed_adopted: false,
+            ..Default::default()
         };
         s.save(dir.path()).unwrap();
         let loaded = InstalledState::load(dir.path());
@@ -207,6 +269,7 @@ mod tests {
             applied_patches: vec![],
             seed_sha256: Some("manifest-seed-hash".into()),
             seed_adopted: true,
+            ..Default::default()
         };
         s.save(dir.path()).unwrap();
         let loaded = InstalledState::load(dir.path());
@@ -363,6 +426,7 @@ mod tests {
             applied_patches: vec!["base".into(), "bm-ui-overlay-11b3bae0a2b7@sgw_game".into()],
             seed_sha256: Some("h".into()),
             seed_adopted: false,
+            ..Default::default()
         };
         assert!(state.has_applied_patch(&overlay));
         let mut base = sgw_game_patch("base");
@@ -381,12 +445,76 @@ mod tests {
             applied_patches: vec!["overlay".into()],
             seed_sha256: Some("h".into()),
             seed_adopted: false,
+            ..Default::default()
         };
         assert!(!state.has_applied_patch(&overlay));
         let patches = vec![overlay];
         let missing = state.missing_patches(&patches);
         assert_eq!(missing.len(), 1);
         assert_eq!(missing[0].id, "overlay");
+    }
+
+    // A ledger written before `incomplete_patches` existed loads, and saving
+    // it again gives the same bytes: the empty list is not written. This is
+    // the downloaded-install guard for the ledger.
+    #[test]
+    fn ledger_without_incomplete_patches_roundtrips_byte_identically() {
+        let dir = tempfile::tempdir().unwrap();
+        let text = "{\n  \"applied_patches\": [\n    \"a\"\n  ],\n  \"seed_sha256\": \"h\",\n  \"seed_adopted\": false\n}";
+        std::fs::write(InstalledState::path(dir.path()), text).unwrap();
+        let loaded = InstalledState::load(dir.path());
+        assert!(loaded.incomplete_patches.is_empty());
+        loaded.save(dir.path()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(InstalledState::path(dir.path())).unwrap(),
+            text
+        );
+    }
+
+    #[test]
+    fn incomplete_patches_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = InstalledState {
+            applied_patches: vec!["a".into()],
+            ..Default::default()
+        };
+        let skipped = vec![SkippedTarget {
+            path: "Working/SGWGame/Maps/cell.umap".into(),
+            reason: "source_mismatch".into(),
+        }];
+        s.record_incomplete("a", skipped.clone());
+        s.save(dir.path()).unwrap();
+        let loaded = InstalledState::load(dir.path());
+        assert_eq!(
+            loaded.incomplete_patches,
+            vec![IncompletePatch {
+                state_key: "a".into(),
+                skipped,
+            }]
+        );
+    }
+
+    #[test]
+    fn is_fully_applied_is_false_for_an_incomplete_key_and_true_for_a_clean_one() {
+        let mut s = InstalledState {
+            applied_patches: vec!["a".into(), "b".into()],
+            ..Default::default()
+        };
+        s.record_incomplete(
+            "a",
+            vec![SkippedTarget {
+                path: "x.upk".into(),
+                reason: "source_missing".into(),
+            }],
+        );
+        assert!(!s.is_fully_applied("a"));
+        assert!(s.is_fully_applied("b"));
+        assert!(!s.is_fully_applied("c"));
+        assert_eq!(s.skipped_op_count(), 1);
+        // An empty record removes the entry again.
+        s.record_incomplete("a", Vec::new());
+        assert!(s.is_fully_applied("a"));
+        assert!(s.incomplete_patches.is_empty());
     }
 
     #[test]

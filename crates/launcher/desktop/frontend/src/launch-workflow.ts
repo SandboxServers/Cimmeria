@@ -2,8 +2,9 @@ import { Context, Data, Effect, Layer, PubSub, Ref, Schema, Semaphore, Stream } 
 import { NativeSnapshot } from './contract';
 import { reportUiEvent, uiCode } from './ui-event';
 const Pid=Schema.Int.check(Schema.isBetween({minimum:1,maximum:4294967295}));
+const Count=Schema.Int.check(Schema.isBetween({minimum:0,maximum:4294967295}));
 export const LaunchStatus=Schema.Struct({schema_version:Schema.Literal(1),native:NativeSnapshot,
-  installation_id:Schema.NullOr(Schema.String),resources_available:Schema.Boolean,launcher_update_required:Schema.Boolean,
+  installation_id:Schema.NullOr(Schema.String),resources_available:Schema.Boolean,launcher_update_required:Schema.Boolean,patches_incomplete:Count,ops_skipped:Count,
   observation:Schema.NullOr(Schema.Union([
     Schema.Struct({phase:Schema.Literals(['preparing','not_started','cancelled','unknown'])}),
     Schema.Struct({phase:Schema.Literal('host_started'),host_pid:Pid}),

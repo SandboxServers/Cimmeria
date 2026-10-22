@@ -20,6 +20,7 @@ pub(super) fn preview(
     cancel: CancellationToken,
     progress: ProgressSink,
     transport: Option<artifacts::Transport>,
+    light: bool,
 ) -> Result<Preview, Error> {
     // macOS adopts only by a verified copy; it never adopts a folder in place.
     if cfg!(target_os = "macos") {
@@ -40,8 +41,13 @@ pub(super) fn preview(
         }
     }
     // Resolved and scanned with no state guard held.
-    let (adopted, scanned) =
-        source::request_source(&state, &request.source, AdoptionMode::InPlace)?;
+    let (adopted, scanned) = if light {
+        // Light hashes the whole folder, so the scan reports progress (LA-11).
+        let scan = light::scan_reporting(&progress, &cancel);
+        source::request_source_with(&state, &request.source, AdoptionMode::Light, &scan)?
+    } else {
+        source::request_source(&state, &request.source, AdoptionMode::InPlace)?
+    };
     let (folder, before) = {
         let owner = state.lock().map_err(|_| StorageError::Io)?;
         let folder = match &adopted {
@@ -126,30 +132,49 @@ pub(super) fn preview(
         ExtractionBackend::Native,
         servers.clone(),
     )?;
-    let prepared = verification::reference_and_comparison(
-        &state,
-        &request,
-        Backend::Native,
-        transport,
-        &mut preparation,
-        source::borrowed(&adopted),
-        AdoptionMode::InPlace,
-        &scanned,
-        &servers,
-        &cancel,
-        progress,
-    );
-    let verification::Compared {
-        reference,
-        expected_digest,
-        expected_paths,
-        files,
-        download,
-        replacements,
-        login_replaced,
-        file_index_sha256,
-        index_fallback,
-    } = match prepared {
+    let prepared = if light {
+        light::light_comparison(
+            &state,
+            &request,
+            transport,
+            &preparation,
+            &folder,
+            &scanned,
+            &servers,
+            &cancel,
+            progress,
+        )
+        .map(|(compared, light)| (compared, Some(light)))
+    } else {
+        verification::reference_and_comparison(
+            &state,
+            &request,
+            Backend::Native,
+            transport,
+            &mut preparation,
+            source::borrowed(&adopted),
+            AdoptionMode::InPlace,
+            &scanned,
+            &servers,
+            &cancel,
+            progress,
+        )
+        .map(|compared| (compared, None))
+    };
+    let (
+        verification::Compared {
+            reference,
+            expected_digest,
+            expected_paths,
+            files,
+            download,
+            replacements,
+            login_replaced,
+            file_index_sha256,
+            index_fallback,
+        },
+        light,
+    ) = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {
             preparation.release();
@@ -207,6 +232,7 @@ pub(super) fn preview(
         expected_paths,
         replacements,
         file_index_sha256,
+        light,
         _legacy_lock: legacy_lock,
     })
 }

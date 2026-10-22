@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fallbackText,rejectionText} from './adoption-reasons';
 // The engine's REJECTION_CHECKS (C14). A check added there must get its own sentence here.
-const checks=['not_a_game_folder','folder_not_writable','folder_in_use','folder_overlaps_launcher',
+const checks=['not_a_game_folder','several_game_folders','folder_not_writable','folder_in_use','folder_overlaps_launcher',
  'folder_unreadable','import_changed','folder_changed_during_check','folder_too_large',
  'folder_too_deep','path_not_canonical','unsupported_catalog','unsupported_configuration',
  'stale_revision','busy','destination_exists','destination_overlaps','launcher_too_old',
@@ -35,6 +35,12 @@ test('the file, expected and found parts follow the sentence when present',()=>{
   'A signed file’s size did not match its download. Expected 100.');
  assert.equal(rejectionText({check:'download_http_status',entry:'seed',expected:null,found:null,http_status:500}),
   'The server refused the signed download. File: seed.');
+});
+test('the picked folder itself, entry ".", names no file; a file entry still does',()=>{
+ assert.equal(rejectionText({check:'several_game_folders',entry:'.',expected:'one game folder',found:'2',http_status:null}),
+  'This folder holds more than one Stargate Worlds install. Pick the one you want. Expected one game folder, found 2.');
+ assert.equal(rejectionText({check:'destination_exists',entry:'Working',expected:null,found:null,http_status:null}),
+  'The destination folder already exists. File: Working.');
 });
 test('a hash mismatch reads as the signed file did not match its download',()=>{
  assert.equal(rejectionText(bare('artifact_hash_mismatch')),'A signed file did not match its download.');

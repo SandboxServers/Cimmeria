@@ -274,3 +274,38 @@ fn signed_minimum_inspection_keeps_play_unavailable_without_mutation() {
     assert!(!status.launcher_update_required);
     assert!(status.installation_id.is_some());
 }
+
+#[test]
+fn the_status_reports_the_admitted_copys_incomplete_patch_counts() {
+    use cimmeria_launcher_engine::state::{IncompletePatch, InstalledState, SkippedTarget};
+    let root = tempfile::tempdir().unwrap();
+    let host = NativeHost::new(root.path().join("state"));
+    let native = host
+        .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+        .unwrap()
+        .native;
+    let skip = |path: &str| SkippedTarget {
+        path: path.into(),
+        reason: "source_mismatch".into(),
+    };
+    let game = tempfile::tempdir().unwrap();
+    InstalledState {
+        incomplete_patches: vec![
+            IncompletePatch {
+                state_key: "p1".into(),
+                skipped: vec![skip("Working/a.upk"), skip("Working/b.upk")],
+            },
+            IncompletePatch {
+                state_key: "p2".into(),
+                skipped: vec![skip("Working/c.upk")],
+            },
+        ],
+        ..Default::default()
+    }
+    .save(game.path())
+    .unwrap();
+    let status = LaunchStatus::assemble(native, None, (true, false), Some(game.path()), None);
+    let value = serde_json::to_value(status).unwrap();
+    assert_eq!(value["patches_incomplete"], 2);
+    assert_eq!(value["ops_skipped"], 3);
+}

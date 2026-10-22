@@ -18,9 +18,11 @@
 //!    configured login servers and switch ASLR off in SGW.exe.
 //!    Idempotent; it also runs before every launch.
 
+use std::collections::BTreeSet;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
+use cimmeria_patchset::{ApplyOptions, SkippedOp};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
@@ -30,6 +32,8 @@ use tracing::{info, warn};
 #[path = "install_seed.rs"]
 mod seed;
 pub use seed::{SeedBackend, SeedExtraction, SeedExtractor};
+#[path = "install_tolerant.rs"]
+mod tolerant;
 
 use crate::install_layout;
 use crate::install_progress::{ProgressReporter, ProgressSink};
@@ -177,7 +181,7 @@ pub struct InstallContext<'a> {
 /// patch (for the install-result telemetry event).
 pub async fn install_all(ctx: InstallContext<'_>) -> (Result<(), InstallError>, InstallReport) {
     let mut report = InstallReport::default();
-    let result = install_all_into(ctx, &mut report, None).await;
+    let result = install_all_into(ctx, &mut report, None, InstallOptions::STRICT).await;
     report.finish(&result);
     (result, report)
 }
@@ -189,15 +193,55 @@ pub async fn install_all_with_seed_extractor(
     backend: SeedBackend<'_>,
 ) -> (Result<(), InstallError>, InstallReport) {
     let mut report = InstallReport::default();
-    let result = install_all_into(ctx, &mut report, Some(backend)).await;
+    let result = install_all_into(ctx, &mut report, Some(backend), InstallOptions::STRICT).await;
     report.finish(&result);
     (result, report)
+}
+
+/// [`install_all`], but a patch whose ops cannot apply is kept and recorded
+/// as incomplete instead of failing the run (LA-04). Each later run retries
+/// the skipped ops of every incomplete patch first.
+pub async fn install_all_tolerant(
+    ctx: InstallContext<'_>,
+) -> (Result<(), InstallError>, InstallReport) {
+    let mut report = InstallReport::default();
+    let result = install_all_into(ctx, &mut report, None, InstallOptions::TOLERANT).await;
+    report.finish(&result);
+    (result, report)
+}
+
+/// [`install_all_with_seed_extractor`] with the tolerant patch handling of
+/// [`install_all_tolerant`].
+pub async fn install_all_tolerant_with_seed_extractor(
+    ctx: InstallContext<'_>,
+    backend: SeedBackend<'_>,
+) -> (Result<(), InstallError>, InstallReport) {
+    let mut report = InstallReport::default();
+    let result = install_all_into(ctx, &mut report, Some(backend), InstallOptions::TOLERANT).await;
+    report.finish(&result);
+    (result, report)
+}
+
+/// How one install run treats a patch op that cannot apply. The strict
+/// entry points (fresh install, full Update, Repair) use `STRICT`; their
+/// files and ledger bytes do not change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct InstallOptions {
+    tolerate_ops: bool,
+}
+
+impl InstallOptions {
+    const STRICT: Self = Self {
+        tolerate_ops: false,
+    };
+    const TOLERANT: Self = Self { tolerate_ops: true };
 }
 
 async fn install_all_into(
     ctx: InstallContext<'_>,
     report: &mut InstallReport,
     backend: Option<SeedBackend<'_>>,
+    opts: InstallOptions,
 ) -> Result<(), InstallError> {
     if backend.is_none() {
         std::fs::create_dir_all(ctx.install_dir)?;
@@ -213,6 +257,7 @@ async fn install_all_into(
             seed_sha256: Some(ctx.manifest.seed.sha256.clone()),
             applied_patches: Vec::new(),
             seed_adopted: false,
+            ..Default::default()
         };
         state.save(ctx.install_dir)?;
     }
@@ -221,6 +266,10 @@ async fn install_all_into(
     // patches below expect the bundled PAKs in SourceCache.en-us.
     if install_layout::place_bundled_cooked_data(ctx.install_dir)? {
         info!(target: "launcher.install", event = "bundled_paks_moved", "moved the bundled cooked-data PAKs into SourceCache");
+    }
+
+    if opts.tolerate_ops {
+        tolerant::retry_incomplete(&ctx, &mut state).await?;
     }
 
     // One patch that cannot apply (a hand-edited file an adopted install
@@ -246,9 +295,12 @@ async fn install_all_into(
             });
             continue;
         }
-        match apply_patch(&ctx, patch).await {
-            Ok(()) => {
+        match apply_patch(&ctx, patch, opts, None).await {
+            Ok(skipped) => {
                 state.applied_patches.push(patch.state_key());
+                if opts.tolerate_ops {
+                    tolerant::record_skipped(&ctx, patch, &mut state, &skipped)?;
+                }
                 state.save(ctx.install_dir)?;
                 report.push(&patch.id, PatchOutcomeKind::Applied, None);
             }
@@ -277,8 +329,15 @@ async fn install_all_into(
     Ok(())
 }
 
-async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(), InstallError> {
-    let url = blob_url(ctx.manifest_url, &patch.blob);
+/// The file name an install run downloads `patch` to, inside its install dir.
+///
+/// Includes a sha prefix so a republished patch with the same `id` but a new
+/// sha256 doesn't accidentally resume against the stale bytes: different sha,
+/// different tmp path, fresh download. `safe_sha_prefix` rejects non-hex
+/// characters at this boundary so a malformed manifest can't escape
+/// `install_dir` via crafted sha256 strings. Public so an Update that already
+/// holds a verified copy can place it where the install will find it.
+pub fn patch_download_name(patch: &PatchEntry) -> Result<String, InstallError> {
     let safe_id: String = patch
         .id
         .chars()
@@ -290,16 +349,21 @@ async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(),
             }
         })
         .collect();
-    // Include a sha prefix in the tmp filename so a republished patch
-    // with the same `id` but a new sha256 doesn't accidentally resume
-    // against the stale bytes — different sha → different tmp path →
-    // fresh download. `safe_sha_prefix` rejects non-hex characters at
-    // this boundary so a malformed manifest can't escape `install_dir`
-    // via crafted sha256 strings.
     let safe_sha = safe_sha_prefix(&patch.sha256)?;
-    let tmp = ctx
-        .install_dir
-        .join(format!(".tmp-patch-{safe_id}-{safe_sha}.download"));
+    Ok(format!(".tmp-patch-{safe_id}-{safe_sha}.download"))
+}
+
+/// Download `patch` and unpack it, returning the ops a tolerant apply skipped.
+/// `only_targets` (lower-case, relative to the patch's dest) limits the apply
+/// to those targets with no overlays: the retry of an incomplete patch.
+async fn apply_patch(
+    ctx: &InstallContext<'_>,
+    patch: &PatchEntry,
+    opts: InstallOptions,
+    only_targets: Option<BTreeSet<String>>,
+) -> Result<Vec<SkippedOp>, InstallError> {
+    let url = blob_url(ctx.manifest_url, &patch.blob);
+    let tmp = ctx.install_dir.join(patch_download_name(patch)?);
     let label = format!("patch {}", patch.id);
     // Resolve the destination before downloading, so a client tree with
     // no SGWGame directory fails fast instead of after the download.
@@ -317,7 +381,7 @@ async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(),
     )
     .await?;
     info!("Applying {} into {}", label, dest.display());
-    verify_and_unpack(ctx, &tmp, &dest, &patch.sha256, &label).await
+    verify_and_unpack(ctx, &tmp, &dest, &patch.sha256, &label, opts, only_targets).await
 }
 
 /// Hash `tmp` against `sha256`, unpack it into `dest`, then delete
@@ -333,7 +397,9 @@ async fn verify_and_unpack(
     dest: &Path,
     sha256: &str,
     label: &str,
-) -> Result<(), InstallError> {
+    opts: InstallOptions,
+    only_targets: Option<BTreeSet<String>>,
+) -> Result<Vec<SkippedOp>, InstallError> {
     let tmp = tmp.to_path_buf();
     let dest = dest.to_path_buf();
     let expected = sha256.to_string();
@@ -341,6 +407,10 @@ async fn verify_and_unpack(
         progress: ctx.progress.clone(),
         label: label.to_string(),
         cancel: ctx.cancel.clone(),
+    };
+    let apply = ApplyOptions {
+        tolerate_ops: opts.tolerate_ops,
+        only_targets,
     };
     let label = label.to_string();
     tokio::task::spawn_blocking(move || {
@@ -350,9 +420,9 @@ async fn verify_and_unpack(
             }
             return Err(e);
         }
-        unpack::unpack(&tmp, &dest, &sink)?;
+        let skipped = unpack::unpack_with(&tmp, &dest, &sink, &apply)?;
         let _ = std::fs::remove_file(&tmp);
-        Ok(())
+        Ok(skipped)
     })
     .await
     .map_err(|e| InstallError::Io(std::io::Error::other(format!("unpack task failed: {e}"))))?
@@ -499,77 +569,9 @@ pub fn hash_file(path: &Path) -> std::io::Result<String> {
         .collect())
 }
 
-/// Outcome of an "Adopt existing install" attempt — the launcher
-/// inspects the install directory and decides whether the user's
-/// pre-existing copy of the game looks plausible enough to mark as
-/// managed (skipping the full seed re-download) and let patches apply
-/// on top.
-#[derive(Debug, Error)]
-pub enum AdoptError {
-    /// The install directory doesn't contain `SGW.exe`. Either the path
-    /// is wrong or this is a genuinely empty install — the user should
-    /// run a normal Install / Update instead.
-    #[error(
-        "No SGW.exe found in {0} — this directory doesn't look like a Stargate Worlds install. \
-         Point the install path at a directory containing SGW.exe and try again, \
-         or run Install / Update to download a fresh copy."
-    )]
-    NoGameExe(PathBuf),
-    /// `launcher-installed.json` already exists. Adopt is a one-way
-    /// transition from "unmanaged by the launcher" → "managed"; once
-    /// the launcher has state for this install we don't need to adopt
-    /// it again.
-    #[error("Install at {0} is already managed by the launcher — nothing to adopt.")]
-    AlreadyManaged(PathBuf),
-    /// Persisting the marker file failed.
-    #[error("State error: {0}")]
-    State(#[from] StateError),
-}
-
-/// Mark a pre-existing game install as managed by the launcher without
-/// downloading / re-extracting the seed.
-///
-/// **Trust model:** we record `manifest.seed.sha256` as the install's
-/// `seed_sha256` *without* hashing on-disk bytes. The seed blob is
-/// gigabytes; rehashing it at adopt-time would freeze the UI for
-/// minutes. Instead we set `seed_adopted = true` so the install state
-/// carries an "unverified" flag that the UI surfaces. If the user's
-/// existing files don't match what the manifest's seed would have
-/// produced, patches may corrupt them or no-op surprisingly — the
-/// confirm dialog in the UI makes this trade-off explicit.
-///
-/// Idempotency: refuses to overwrite an existing `launcher-installed.json`
-/// (returns [`AdoptError::AlreadyManaged`]). The user must remove the
-/// state file by hand to re-adopt, which is the right behaviour because
-/// adopt-over-managed would silently discard the real `applied_patches`
-/// list.
-pub fn adopt_existing_install(
-    install_dir: &Path,
-    manifest: &crate::manifest::Manifest,
-) -> Result<InstalledState, AdoptError> {
-    let exe = install_layout::sgw_exe(install_dir);
-    // `is_file` rather than `exists` so a directory or junction named
-    // SGW.exe doesn't fool us into adopting a non-install.
-    if !exe.is_file() {
-        return Err(AdoptError::NoGameExe(install_dir.to_path_buf()));
-    }
-    if InstalledState::path(install_dir).exists() {
-        return Err(AdoptError::AlreadyManaged(install_dir.to_path_buf()));
-    }
-    let state = InstalledState {
-        seed_sha256: Some(manifest.seed.sha256.clone()),
-        applied_patches: Vec::new(),
-        seed_adopted: true,
-    };
-    state.save(install_dir)?;
-    info!(
-        install_dir = %install_dir.display(),
-        seed_sha = %manifest.seed.sha256,
-        "Adopted existing install (unverified — seed bytes not hashed)"
-    );
-    Ok(state)
-}
-
 #[cfg(test)]
 #[path = "install_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "install_tolerant_tests.rs"]
+mod tolerant_tests;

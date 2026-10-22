@@ -1,11 +1,12 @@
 //! Build → apply round trips on synthetic trees. The `UpkNormalize` path
 //! is covered by `real_client_ring_maps` against a real client.
 
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use crate::build::{SpecFile, SpecOp, SpecSource};
 use crate::recipe::Transform;
-use crate::{apply, build, PatchsetError, Spec};
+use crate::{apply, apply_with, build, ApplyOptions, PatchsetError, SkipReason, SkippedOp, Spec};
 
 pub(crate) fn write(root: &Path, rel: &str, bytes: &[u8]) {
     let p = root.join(rel);
@@ -186,6 +187,93 @@ fn a_non_stock_source_fails_and_writes_nothing() {
         "the op before the failing one must not have been written"
     );
     assert!(!f.stock.join("Working/Binaries/SGWLogConfig.xml").exists());
+}
+
+const DIALOG: &str = "Working/SGWGame/UI/Dialog.lua";
+const CELL: &str = "Working/SGWGame/Maps/cell.umap";
+const DONOR: &str = "Working/SGWGame/Maps/donor.umap";
+const OVERLAY: &str = "Working/Binaries/SGWLogConfig.xml";
+
+fn tolerant() -> ApplyOptions {
+    ApplyOptions {
+        tolerate_ops: true,
+        only_targets: None,
+    }
+}
+
+// Tolerant apply: a mismatched source skips only the op that reads it. The
+// other op still applies, the overlay is still written, and the skipped
+// target keeps its bytes.
+#[test]
+fn tolerant_apply_skips_a_mismatched_source_and_applies_the_rest() {
+    let f = fixture();
+    let zip = zip_to_disk(&f);
+    write(&f.stock, DONOR, b"modded");
+    let cell_before = std::fs::read(f.stock.join(CELL)).unwrap();
+    let report = apply_with(&zip, &f.stock, &tolerant(), &mut |_| {}).unwrap();
+    assert_eq!(report.rebuilt, [DIALOG]);
+    assert_eq!(report.overlay_files, 1);
+    assert_eq!(
+        report.skipped,
+        [SkippedOp {
+            target: CELL.into(),
+            reason: SkipReason::SourceMismatch,
+        }]
+    );
+    assert_eq!(std::fs::read(f.stock.join(DIALOG)).unwrap(), f.ui_patched);
+    assert_eq!(std::fs::read(f.stock.join(CELL)).unwrap(), cell_before);
+    assert_eq!(std::fs::read(f.stock.join(OVERLAY)).unwrap(), b"<ours/>");
+}
+
+// The same input with default options is still strict: the error comes
+// back and nothing is written.
+#[test]
+fn default_options_still_fail_a_mismatched_source_and_write_nothing() {
+    let f = fixture();
+    let zip = zip_to_disk(&f);
+    write(&f.stock, DONOR, b"modded");
+    let err = apply_with(&zip, &f.stock, &ApplyOptions::default(), &mut |_| {}).unwrap_err();
+    assert!(
+        matches!(&err, PatchsetError::SourceMismatch { path, .. } if path.ends_with("donor.umap")),
+        "{err:?}"
+    );
+    assert_eq!(std::fs::read(f.stock.join(DIALOG)).unwrap(), f.ui_stock);
+    assert!(!f.stock.join(OVERLAY).exists());
+}
+
+#[test]
+fn tolerant_apply_skips_a_missing_source() {
+    let f = fixture();
+    let zip = zip_to_disk(&f);
+    std::fs::remove_file(f.stock.join(DONOR)).unwrap();
+    let report = apply_with(&zip, &f.stock, &tolerant(), &mut |_| {}).unwrap();
+    assert_eq!(report.rebuilt, [DIALOG]);
+    assert_eq!(
+        report.skipped,
+        [SkippedOp {
+            target: CELL.into(),
+            reason: SkipReason::SourceMissing,
+        }]
+    );
+}
+
+// Only op `dialog` runs. The map op is ignored and no overlay is written.
+#[test]
+fn only_targets_runs_that_op_alone_and_writes_no_overlay() {
+    let f = fixture();
+    let zip = zip_to_disk(&f);
+    let cell_before = std::fs::read(f.stock.join(CELL)).unwrap();
+    let opts = ApplyOptions {
+        tolerate_ops: false,
+        only_targets: Some(BTreeSet::from([DIALOG.to_lowercase()])),
+    };
+    let report = apply_with(&zip, &f.stock, &opts, &mut |_| {}).unwrap();
+    assert_eq!(report.rebuilt, [DIALOG]);
+    assert_eq!(report.overlay_files, 0);
+    assert!(report.skipped.is_empty());
+    assert_eq!(std::fs::read(f.stock.join(DIALOG)).unwrap(), f.ui_patched);
+    assert_eq!(std::fs::read(f.stock.join(CELL)).unwrap(), cell_before);
+    assert!(!f.stock.join(OVERLAY).exists());
 }
 
 // The ring-transport shape: map A is rebuilt from A plus donor B, and B

@@ -51,7 +51,17 @@ pub(super) async fn apply(
     }
     info!("Unpacking seed into {}", ctx.install_dir.display());
     let Some(backend) = backend else {
-        return verify_and_unpack(ctx, &archive, ctx.install_dir, &seed.sha256, "seed").await;
+        return verify_and_unpack(
+            ctx,
+            &archive,
+            ctx.install_dir,
+            &seed.sha256,
+            "seed",
+            InstallOptions::STRICT,
+            None,
+        )
+        .await
+        .map(|_| ());
     };
     // Authenticate before platform code sees the archive. The helper also
     // authenticates through its own open handle before writing output.

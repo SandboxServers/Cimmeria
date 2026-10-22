@@ -85,7 +85,8 @@ async fn wine_backed_journey_downloads_extracts_reviews_and_publishes_a_wine_own
     assert_eq!(
         done.completed,
         Some(Completed {
-            directory: f.destination()
+            directory: f.destination(),
+            light: false,
         })
     );
     assert_eq!(done.preparations, Vec::<Uuid>::new());

@@ -23,7 +23,8 @@ const {document,window}=parseHTML(await readFile(new URL('./ui/index.html',impor
 const calls=[];
 const app=mountAdoption(document,async(command,args)=>{
  // The stand-in for the folder dialog: the production view names the mode it chose.
- const request=command==='choose_existing_game_folder'?(assert.equal(args.mode,'in_place'),{command:'choose'}):(assert.equal(command,'adoption_command'),args.request);
+ // The production view names the mode it chose (light first); the bridge still runs the verified in-place path.
+ const request=command==='choose_existing_game_folder'?(assert.equal(args.mode,'light'),{command:'choose'}):(assert.equal(command,'adoption_command'),args.request);
  calls.push(request);
  return send(request);
 });

@@ -4,6 +4,7 @@ use super::*;
 use crate::{OperationKind, OperationState};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+mod adoption_tags;
 mod preparation;
 mod resource;
 pub use resource::{Artifact, Graphics, Resources};

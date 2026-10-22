@@ -8,6 +8,7 @@ pub mod cleanup;
 pub mod commit;
 pub mod discard;
 mod events;
+mod incremental;
 pub mod preparation;
 pub mod recovery;
 mod staged_content;

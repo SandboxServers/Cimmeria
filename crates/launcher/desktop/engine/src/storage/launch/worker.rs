@@ -61,7 +61,13 @@ pub fn dispatch(state: Arc<Mutex<DesktopState>>, id: Uuid) -> Result<Worker, Int
             return Err(ContractError::InvalidTransition.into());
         }
         owner.record_launch(&plan, Observation::Preparing)?;
-        events::launch_started(plan.id, plan.resources.client_telemetry.is_some());
+        let (adoption_check, patches_incomplete) = super::adoption_tags::adoption_tags(&owner);
+        events::launch_started(
+            plan.id,
+            plan.resources.client_telemetry.is_some(),
+            adoption_check,
+            patches_incomplete,
+        );
         (plan, owner.state_root().to_path_buf())
     };
     let cancel = CancellationToken::new();

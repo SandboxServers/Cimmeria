@@ -5,7 +5,7 @@ use std::cell::RefCell;
 /// Closed list; the frontend text table (C17) and the shell keep the same codes.
 #[rustfmt::skip]
 pub const REJECTION_CHECKS: &[&str] = &[
-    "not_a_game_folder", "folder_not_writable", "folder_in_use", "folder_overlaps_launcher",
+    "not_a_game_folder", "several_game_folders", "folder_not_writable", "folder_in_use", "folder_overlaps_launcher",
     "folder_unreadable", "import_changed", "folder_changed_during_check", "folder_too_large",
     "folder_too_deep", "path_not_canonical", "unsupported_catalog", "unsupported_configuration",
     "stale_revision", "busy", "destination_exists", "destination_overlaps", "launcher_too_old",

@@ -111,7 +111,7 @@ fn start_with_backend(
     backend: Backend,
 ) -> Result<Preparation, IntentError> {
     let runtime = tokio::runtime::Handle::try_current().map_err(|_| StorageError::Io)?;
-    let (plan, release, seed_source) = {
+    let (plan, release, path) = {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         let plan = owner
             .update_plan()?
@@ -142,8 +142,8 @@ fn start_with_backend(
         let release = owner
             .verify_release_identity(plan.target)
             .map_err(|_| StorageError::Corrupt)?;
-        let seed_source = owner.seed_source_for(&release);
-        (plan.clone(), release, seed_source)
+        let path = choose_path(&mut owner, &plan, &release);
+        (plan.clone(), release, path)
     };
     let cancel = CancellationToken::new();
     let owned_cancel = cancel.clone();
@@ -155,7 +155,7 @@ fn start_with_backend(
             &owner,
             plan,
             release,
-            seed_source,
+            path,
             Source { http, url, backend },
             owned_cancel,
             progress,
@@ -184,11 +184,56 @@ fn start_with_backend(
         result,
     })
 }
+/// How the replacement tree is built. Fixed under the state lock at admission.
+enum UpdatePath {
+    /// Today's rebuild from the seed (a fresh, downloaded or copy-adopted install).
+    Full(SeedSourceHandle),
+    /// Light-adopted install: seeded from the live tree, no seed (LA-13, D-LA14).
+    Incremental(incremental::IncrementalPlan),
+}
+
+/// The seedless path needs the install's own adoption record to say `light`
+/// (D-LA14) and then a ledger that matches the target. Anything else, or any
+/// unreadable record, is the seed rebuild. A light install that is refused is
+/// logged once, because it is the one that pays for a seed it never held.
+fn choose_path(
+    owner: &mut DesktopState,
+    plan: &Plan,
+    release: &catalog::VerifiedRelease,
+) -> UpdatePath {
+    let seedless = incremental::seedless_allowed(owner.adoption_check().ok().flatten());
+    let incremental = if seedless {
+        match owner.verify_release_identity(plan.previous).ok() {
+            None => {
+                events::seedless_declined("previous_release_unverified");
+                None
+            }
+            Some(previous) => {
+                let planned = incremental::plan(
+                    &plan.owner.destination.join("game"),
+                    &previous.manifest().patches,
+                    &release.manifest().seed.sha256,
+                    &release.manifest().patches,
+                );
+                if planned.is_none() {
+                    events::seedless_declined("ledger_mismatch");
+                }
+                planned
+            }
+        }
+    } else {
+        None
+    };
+    match incremental {
+        Some(incremental) => UpdatePath::Incremental(incremental),
+        None => UpdatePath::Full(owner.seed_source_for(release)),
+    }
+}
 async fn reconstruct(
     state: &Arc<Mutex<DesktopState>>,
     plan: Plan,
     release: catalog::VerifiedRelease,
-    seed_source: SeedSourceHandle,
+    path: UpdatePath,
     source: Source,
     cancel: CancellationToken,
     progress: ProgressSink,
@@ -203,6 +248,29 @@ async fn reconstruct(
         .map_err(|_| Failure::ReconciliationRequired)?
         .map_err(|_| Failure::Failed)?;
     let stage = plan.stage();
+    let mut staging = events::Staging::FULL;
+    let (seed_source, tolerant) = match path {
+        UpdatePath::Full(seed_source) => (seed_source, false),
+        UpdatePath::Incremental(incremental) => {
+            let stats = incremental::stage(
+                &plan,
+                &incremental,
+                &source.url,
+                &source.http,
+                &cancel,
+                &progress,
+            )
+            .await?;
+            staging = events::Staging {
+                mode: "incremental",
+                linked: stats.linked,
+                copied: stats.copied,
+                ..staging
+            };
+            // The stage already holds the install, so the seed is never read.
+            (SeedSourceHandle::download(), true)
+        }
+    };
     let context = install::InstallContext {
         manifest_url: &source.url,
         install_dir: &stage,
@@ -214,6 +282,7 @@ async fn reconstruct(
         seed_source: &seed_source,
     };
     let (result, report) = match source.backend {
+        Backend::Native if tolerant => install::install_all_tolerant(context).await,
         Backend::Native => install::install_all(context).await,
         #[cfg(target_os = "macos")]
         Backend::Wine(helper) => {
@@ -233,14 +302,15 @@ async fn reconstruct(
                 _ => Failure::Failed,
             })?;
             let cache = plan.work_directory().join("cache");
-            let result = install::install_all_with_seed_extractor(
-                context,
-                install::SeedBackend {
-                    extractor: &adapter,
-                    cache_directory: &cache,
-                },
-            )
-            .await;
+            let backend = install::SeedBackend {
+                extractor: &adapter,
+                cache_directory: &cache,
+            };
+            let result = if tolerant {
+                install::install_all_tolerant_with_seed_extractor(context, backend).await
+            } else {
+                install::install_all_with_seed_extractor(context, backend).await
+            };
             prepared.wine = Some(adapter);
             result
         }
@@ -297,7 +367,11 @@ async fn reconstruct(
     owner.preferences_uncertain |= result == Err(StorageError::PersistenceUncertain);
     result.map_err(|_| Failure::ReconciliationRequired)?;
     drop(owner);
-    events::staged(files, bytes, started.elapsed());
+    if tolerant {
+        let skipped = crate::state::InstalledState::load(&stage).skipped_op_count();
+        staging.ops_skipped = u64::try_from(skipped).unwrap_or(u64::MAX);
+    }
+    events::staged(files, bytes, started.elapsed(), staging);
     let (handoff, abandoned) = oneshot::channel();
     let observed_state = state.clone();
     let id = plan.id;

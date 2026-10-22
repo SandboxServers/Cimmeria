@@ -10,11 +10,11 @@ use std::time::Duration;
 
 #[cfg(windows)]
 #[test]
-fn windows_offers_both_in_place_and_copy() {
+fn windows_offers_light_then_copy() {
     let f = Fixture::new(serde_json::json!({}));
     assert_eq!(
         f.host.adoption_status().unwrap().modes,
-        vec![AdoptionMode::InPlace, AdoptionMode::Copy]
+        vec![AdoptionMode::Light, AdoptionMode::Copy]
     );
 }
 

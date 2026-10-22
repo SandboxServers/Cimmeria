@@ -2,9 +2,10 @@
 //! release and becomes the owner root. Its release files move by rename into the
 //! owned `game` tree, so nothing is copied; every other file stays where it was,
 //! outside that tree, and no later Repair, Update or Uninstall touches it.
+pub(super) use super::in_place_abandon::{abandon, abandonable};
 use super::in_place_replace::{
-    clear_abandoned, drop_login_copy, keep_login, keeps_login, remove_emptied, remove_work_folder,
-    replace_file, replaced_kind, restore_replaced,
+    drop_login_copy, keep_login, keeps_login, remove_emptied, remove_work_folder, replace_file,
+    replaced_kind, restore_replaced,
 };
 use super::publication::{self, name, plan_name, read_large, write_large, Point};
 use super::*;
@@ -189,6 +190,7 @@ fn admit(
         setup_policy_version: 1,
         folder_scan_digest,
         file_index_sha256: preview.file_index_sha256.clone(),
+        check: preview.file_check(),
     };
     let mut after = preview.before.clone();
     after.revision = after.revision.checked_add(1).ok_or(StorageError::Corrupt)?;
@@ -208,6 +210,7 @@ fn admit(
         stage_identity: inventory::identity(game)?,
         destination_identity: inventory::identity(root)?,
         replacements: Vec::new(),
+        incomplete_patches: preview.incomplete_patches(),
     };
     plan.replacements = stage_replacements(preview, &plan.stage(), cancel)?;
     state.save_release_evidence(owner_id, &preview.release)?;
@@ -263,7 +266,7 @@ fn admit(
 
 /// The verified release files, by index name. The old launcher's ledger is not
 /// one of them: the adopted tree gets a synthesized ledger instead.
-fn release_files(report: &Report) -> Vec<&str> {
+pub(super) fn release_files(report: &Report) -> Vec<&str> {
     report
         .files
         .iter()
@@ -321,7 +324,7 @@ pub(super) fn holds(path: &Path, expected: &Hashed) -> Result<bool, Error> {
 
 /// Which way the release files go, and what a file found in both places means.
 #[derive(Clone, Copy)]
-enum Way<'a> {
+pub(super) enum Way<'a> {
     /// Into `game`. The old launcher or a running game can recreate a file at
     /// its old path after the review, so a duplicate is settled by content.
     Adopt { plan: &'a Plan, store: &'a Path },
@@ -377,7 +380,7 @@ fn settle_duplicate(
 /// Move each file from `from` to `to`. Idempotent: a file already at `to` is
 /// one an interrupted run moved. A file in neither place is refused; one in
 /// both is settled as `way` says.
-fn move_files(
+pub(super) fn move_files(
     files: &[&str],
     from: &Path,
     to: &Path,
@@ -385,6 +388,7 @@ fn move_files(
     progress: &ProgressSink,
     hook: &mut impl FnMut(Point) -> Result<(), Error>,
 ) -> Result<(), Error> {
+    super::in_place_replace::place_cooked_tier(way, from, to)?;
     let mut reviewed = None;
     for (current, path) in files.iter().enumerate() {
         progress.report(crate::install::Progress::Extracting {
@@ -452,7 +456,8 @@ fn move_files(
         total: files.len(),
         filename: String::new(),
     });
-    remove_emptied(from, files)
+    remove_emptied(from, files)?;
+    super::in_place_replace::restore_cooked_tier(way, to)
 }
 
 fn move_release_files(
@@ -579,7 +584,7 @@ pub(super) fn finish(
     if record.phase == Phase::Promoted {
         // Idempotent, so a recovery after a crash here applies it again.
         crate::client_setup::prepare(&game, &plan.installation.login_servers)?;
-        reference::ledger(&release)
+        reference::ledger(&release, &plan.incomplete_patches)
             .save(&game)
             .map_err(|_| StorageError::Io)?;
         sync_files(&game, &SETUP_FILES)?;
@@ -618,71 +623,5 @@ pub(super) fn finish(
         tracing::info!(target: "adoption", backup = %backup.display(), "in-place adoption: the replaced files are kept in the backup folder");
     }
     tracing::info!(target: "adoption", directory = %root.display(), files = plan.report.files.len(), "adopted the installation in place");
-    Ok(())
-}
-
-/// While only renames have happened, abandonment can put every file back.
-pub(super) fn abandonable(state: &DesktopState, plan: &Plan) -> bool {
-    read_large::<Record>(&state.directory.root.join(name(plan.provenance.work_id)))
-        .is_ok_and(|record| record.plan == *plan && record.phase == Phase::Staged)
-}
-
-/// Move the release files back to where the review found them, then release the
-/// folder. Published content is recovered, never unwound.
-pub(super) fn abandon(state: &mut DesktopState, plan: &Plan) -> Result<(), Error> {
-    let id = plan.provenance.work_id;
-    if !abandonable(state, plan) {
-        return Err(ContractError::InvalidTransition.into());
-    }
-    let root = &plan.installation.destination;
-    let game = root.join("game");
-    inventory::same_directory(root, &plan.destination_identity)?;
-    let marker = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(root.join(OWNER))
-        .map_err(|_| StorageError::Corrupt)?;
-    marker.try_lock().map_err(|_| StorageError::InUse)?;
-    let saved: InstallIntent = super::super::read_open(&marker)?;
-    if saved != plan.installation {
-        return Err(StorageError::Corrupt.into());
-    }
-    match std::fs::symlink_metadata(&game) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
-        Err(_) => return Err(StorageError::Io.into()),
-        Ok(_) => {
-            inventory::same_directory(&game, &plan.stage_identity)?;
-            let files = release_files(&plan.report);
-            move_files(
-                &files,
-                &game,
-                root,
-                Way::Abandon { plan },
-                &ProgressSink::latest().0,
-                &mut |_| Ok(()),
-            )?;
-            // The synthesized ledger is the launcher's own file.
-            match std::fs::remove_file(game.join("launcher-installed.json")) {
-                Ok(()) => (),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
-                Err(_) => return Err(StorageError::Io.into()),
-            }
-            if std::fs::remove_dir(&game).is_err() {
-                tracing::warn!(target: "adoption", game = %game.display(), "abandoned in-place adoption left a non-empty game folder in place");
-            }
-            clear_abandoned(plan, &files)?;
-        }
-    }
-    // Windows cannot unlink a locked file; admission is still serialized here.
-    drop(marker);
-    match std::fs::remove_file(root.join(OWNER)) {
-        Ok(()) => (),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
-        Err(_) => return Err(StorageError::Io.into()),
-    }
-    state
-        .operations_mut()?
-        .reconcile(id, OperationState::Cancelled)?;
-    tracing::info!(target: "adoption", directory = %root.display(), "abandoned in-place adoption; release files are back in place");
     Ok(())
 }

@@ -394,6 +394,7 @@ async fn same_session_reconciliation_discards_stale_uncertain_worker_result() {
         seed_sha256: Some("a".repeat(64)),
         applied_patches: vec![],
         seed_adopted: false,
+        ..Default::default()
     }
     .save(&game)
     .unwrap();

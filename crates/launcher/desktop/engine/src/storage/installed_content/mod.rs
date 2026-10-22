@@ -149,6 +149,17 @@ impl DesktopState {
         }
     }
 
+    /// The file check the install was adopted with (D-LA14): `Some` only for an
+    /// adopted install, `None` for a downloaded one. The seedless Update reads
+    /// this and nothing else to decide. An unreadable record is an error, so the
+    /// caller falls back to the seed rebuild.
+    pub(super) fn adoption_check(
+        &self,
+    ) -> Result<Option<super::adoption::FileCheck>, StorageError> {
+        let record: Record = read(&self.directory.root.join(NAME))?.ok_or(StorageError::Corrupt)?;
+        Ok(adoption_shape(&record)?.map(|provenance| provenance.check))
+    }
+
     /// Read-only admission view: the verified owner and its signed release, plus
     /// the provenance of an adopted copy. Older successful installs can be checked
     /// without materializing the installed-content index. Imported settings are

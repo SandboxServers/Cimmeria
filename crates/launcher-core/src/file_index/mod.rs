@@ -25,6 +25,10 @@ pub use build::build;
 /// Publication checks for a candidate manifest and index (LT-35).
 pub mod check;
 
+/// Compares a folder with the index, file by file, by class (LA-06).
+mod compare;
+pub use compare::{compare, FileClass, IndexComparison};
+
 /// The only index schema this launcher reads.
 pub const FILE_INDEX_SCHEMA: u32 = 1;
 /// Bumped when client_setup changes what it writes. A launcher ignores an

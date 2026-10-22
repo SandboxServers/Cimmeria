@@ -165,31 +165,47 @@ Settings → **Use an existing game folder…** opens one native folder picker. 
 the game root, its `Working` folder or its `Working\Binaries` folder; the launcher
 resolves all three to the same root. No old-launcher import is needed. The import
 is optional ("Optional: bring settings from the old launcher"); if it names the
-same folder, its settings are used. Decision D-LX12 makes in-place adoption the
-default on every host other than macOS, so a multi-gigabyte install is neither
-copied nor downloaded a second time.
+same folder, its settings are used. Decision D-LX12 made adopting the folder where it
+is the default on every host other than macOS, so a multi-gigabyte install is neither
+copied nor downloaded a second time. The shell now offers that default as **Light**
+(see [Light mode](#adopting-an-existing-folder) below); verified in-place adoption, the
+full check, stays in the engine but is hidden (D-LA12).
 
 **Modes.**
 
-- **Windows and Linux** offer two choices. **Adopt it in place** moves the release
-  files into `game\` inside your folder. **Make a verified copy** asks for a second
+- **Windows and Linux** offer two choices, in this order (`AdoptionStatus.modes` is
+  `[light, copy]`). **Use it where it is (recommended)** is Light: it moves the
+  folder's files into `game\` inside your folder after the tolerant replay described
+  under *Light mode* below. **Make a verified copy** asks for a second
   folder and writes the copy to `<chosen>\Stargate Worlds`; your folder is untouched. The two modes are rows with a selected state, and the choose
   button names the selected mode; the native picker that follows is the confirm step
-  (D-AU8).
+  (D-AU8). Verified in-place adoption (`AdoptionMode::InPlace`) is not offered:
+  `begin_folder_adoption` refuses it with `UnsupportedMode`, and only tests and the
+  UAT bridge reach it through `begin_adoption_in_place` (D-LA12).
+- The shell's `mode_chosen` and `folder_chosen` telemetry rows (`step` on
+  `client.launcher.adoption`) count Light as `in_place`: `shell/src/main.rs` passes
+  `in_place = true` for `AdoptionMode::InPlace | AdoptionMode::Light`, so
+  `decision_outcome = in_place` (`mode_chosen`) and `mode = in_place` (`folder_chosen`)
+  cover both. The two rows cannot tell a Light adoption from a hidden verified one;
+  the `adoption_light_*` events and `launch_started.adoption_check` can.
 - **macOS** offers the copy only. The copy is extracted by the build-pinned Windows
   helper under Wine, so the adopted installation records the Wine backend that
   prerequisite setup and Play require.
 - A folder the launcher cannot write to (for example one under Program Files) is
-  refused for in-place adoption before any download, and the copy is offered instead.
+  refused for adoption where it is before any download, and the copy is offered instead.
 
 **Preflight (before any download).**
 
-- The folder must hold `SGW.exe` in `Working\Binaries` (`not_a_game_folder`). In place,
-  the folder must be writable (`folder_not_writable`): the check creates and deletes a
+- The folder must hold `SGW.exe` in `Working\Binaries` (`not_a_game_folder`). Where it
+  is (Light), the folder must be writable (`folder_not_writable`): the check creates and deletes a
   probe file in the root and renames one inside `Working\Binaries`.
 - A picked `Working` or `Binaries` folder is resolved to its root first. An old
   launcher import whose recorded game folder points straight at `Working` or
-  `Binaries` cannot be adopted in place and is refused once (`unsupported_layout`).
+  `Binaries` cannot be adopted where it is and is refused once (`unsupported_layout`).
+- When the pick, its parent and its grandparent are not a game root, the launcher
+  lists the pick's direct child folders (links skipped) and runs the same root test on
+  each. Exactly one game folder is used. Two or more are refused as
+  `several_game_folders` (`found` is the count); none is `not_a_game_folder` as before.
 - A `game` folder, `.cimmeria-install.json` or `content-ready.json` already in the
   folder is refused (`leftover_launcher_files`). The exception is what an admission
   leaves when it dies before its operation begins, or what Abandon leaves when it
@@ -213,9 +229,10 @@ copied nor downloaded a second time.
   [launcher-adopt-ux README](../../../../docs/analysis/launcher-adopt-ux/README.md)
   keep these refusals hard for now.
 
-Three fields explain a review and its refusals. `AdoptionStatus.last_rejection` names the check that stopped a worker (the preview or the confirmation): `check`, the file (`entry`), `expected`, `found` and `http_status` for a failed download; it is `null` when no worker refused. `Review.index_fallback` is present only when the review fell back from the published file index, and gives `reason`, `check`, `http_status` and `seed_bytes`: why the signed seed archive is downloaded instead. `Progress.item` names the step in progress (`seed`, `patch`, `file_index`, `index_build`, `reference`) and is absent for the copy phase and for an unknown label. A refusal that a command returns directly is logged as `adoption_rejected` with its check, and is not stored in `last_rejection`; the command's error code is its response.
+Three fields explain a review and its refusals. `AdoptionStatus.last_rejection` names the check that stopped a worker (the preview or the confirmation): `check`, the file (`entry`), `expected`, `found` and `http_status` for a failed download; it is `null` when no worker refused. `Review.index_fallback` is present only when the review fell back from the published file index, and gives `reason`, `check`, `http_status` and `seed_bytes`: why the signed seed archive is downloaded instead. `Progress.item` names the step in progress (`seed`, `patch`, `file_index`, `index_build`, `reference`, `scan`) and is absent for the copy phase and for an unknown label. A refusal that a command returns directly is logged as `adoption_rejected` with its check, and is not stored in `last_rejection`; the command's error code is its response.
 
-**Verification.** With a published release index, the launcher fetches
+**Verification (verified copy and hidden verified in place).** Light does not use this
+classification; see *Light mode*. With a published release index, the launcher fetches
 `file-index.json` first (paths, sizes, SHA-256) and checks it against the manifest's
 hash. It keeps the index in the state root as `file-index-<sha256>.json`, so a second
 review does not download it again. If the manifest publishes no index, or the index
@@ -246,13 +263,50 @@ the same preparation a verified copy uses.
 does not require it, because the source folder is never changed. The copy gets the
 signed versions; your folder is not changed.
 
-**Before you confirm in place.** The review warns that `SGW.exe` and every release
+**Before you confirm (verified in place, hidden; Light differs, see below).** The review warns that `SGW.exe` and every release
 file move into `game`, so desktop shortcuts and the old launcher stop working; start
 the game from this launcher afterwards. Do not run the old launcher on this folder
 again, because it may download the game a second time. Files you added inside the
 game folders, such as PAKs placed by hand in `SourceCache.en-us`, stay where they are
 and the game no longer uses them. Settings and the client cache in Documents are
-not affected.
+not affected. Light is the exception to the "stay where they are" sentence: it moves
+the added files into `game` with everything else, and the game keeps using them.
+
+**Light mode (in place).** Light adoption reads no seed. It scans your folder, plans which patches the folder does not yet carry, and replays them over the folder's own files in a scratch tree. The replay is tolerant per operation: an operation whose source file differs from the signed one (a modded file, a different build) is skipped and your file stays as it is, and the patch is still recorded as applied. Each such patch is also listed in `incomplete_patches` in `launcher-installed.json`, with the skipped files and a closed reason code. Nothing in your folder blocks a light adoption; only an empty folder is refused (`no_reusable_files`). The published file index is compared and shown but never decides the outcome. The adoption's provenance records `check = light`; its digest covers the folder's files with the replacements, moves and setup writes applied, so a recovered adoption verifies the same way. Every other adoption keeps the full check and writes no `check` key. A folder that has only the 2009 `Working\SGWGame\Cache.en-US` tier is adopted with it renamed to `SourceCache.en-us`, the place a fresh install uses; abandon renames it back.
+
+**Light mode: what it keeps, what it shows.**
+
+- **Every scanned file moves.** Light classifies each file as matched, a known
+  transform (the bundled cooked tier placed under `SourceCache.en-us`) or needing
+  patching, never modified, missing or extra. It keeps modified and unlisted files,
+  makes no backup and never blocks. A file such as a third-party plugin `.dll` moves
+  into `game\` byte for byte and abandon moves it back. Uninstall removes `game`, so it
+  removes those files too.
+- **The index comparison is informational.** When the signed release publishes a file
+  index, Light compares the folder to it and shows the result (`Review.light.index_state`:
+  `compared`, `index_not_published`, `index_unreachable` or `index_invalid`; with
+  `index_counts` and a capped `index_files` list) and logs `adoption_index_compared`. The
+  result never decides the outcome (D-LA11).
+- **Status contract.** `Review.light` (`patches_total`, `patches_current`,
+  `patches_pending`, `download_bytes`, `skipped` capped at 500 with `skipped_total`,
+  `index_state`, `index_counts`, `index_files` capped at 500 with `index_files_total`) is
+  present only for a Light review; a copy or verified in-place review has no `light` key.
+  `Progress.item = scan` is the folder scan (the player-facing words "Scanning your
+  game folder" live only in the frontend). `completed.light` is present and `true` only
+  for a completed Light adoption. `LaunchStatus` (the status behind the Play button)
+  gains `patches_incomplete` and `ops_skipped`, read from
+  `<destination>/game/launcher-installed.json`, the file the launch tag reads.
+- **Repair and a full Update rebuild `game\` from the seed.** Both move the current
+  tree to an operation-owned backup and build a new one; Repair always does this
+  (`repair.md`), and an Update does it unless the seedless path below applies. The
+  player's own files that Light carried into `game\` therefore stay only in that old
+  tree, which an Update keeps as its backup until an explicit cleanup. The seedless
+  Update keeps them. A downloaded install behaves the same for files the client writes
+  into `game\`.
+- **Open item (D2).** The in-place maintenance text `inPlaceMaintenance.abandon` says
+  "Files that are not part of the release were never moved", which is false after a
+  Light abandon. The frontend cannot tell Light from verified in place for a stored
+  adoption (`completed` has no mode field), so the fix needs a shell field.
 
 **Admission and moves (in place).**
 
@@ -335,10 +389,17 @@ the backup, a missing file, and recover or abandon after a crash between the bac
 move and the replacement copy. `folder_tests.rs` adopts a folder with no import, and
 `verification_tests.rs` and `replay_tests.rs` cover classification and the minimal
 download. `shell/src/host/adoption/in_place_tests.rs` drives
-the same flow through the production host. From `crates/launcher/desktop/frontend`,
+the same flow through the production host. Light is covered by `light_tests.rs`,
+`light_plan_tests.rs`, `light_replay_tests.rs`, `light_cooked_tests.rs`,
+`light_update_tests.rs` and `light_update_guard_tests.rs` in the engine, and by
+`a_picked_folder_without_an_import_is_reviewed_and_adopted_light` in the shell's
+`in_place_tests.rs`. None of these ran against a real game folder, a live signed
+release or a packaged launcher. From `crates/launcher/desktop/frontend`,
 `npm run uat:adoption` (with the shell test binary in `ADOPTION_UAT_BINARY`) drives the
 production Effect workflow; on Windows it runs `adoption-in-place-uat.mjs` against the
-`host::adoption::uat_bridge_in_place` bridge. With `CIMMERIA_WINE_HELPER`,
+`host::adoption::uat_bridge_in_place` bridge, which starts the adoption through
+`begin_adoption_in_place`: it drives the hidden verified in-place mode, not Light, and no
+UAT script drives Light. With `CIMMERIA_WINE_HELPER`,
 `CIMMERIA_WINE_HELPER_SHA256` and `CIMMERIA_WINE_RUNTIME_TREE` set, the copy path
 extracts through the pinned helper under Wine. Every archive in these checks is a small
 inert fixture; no game is started. Native Windows power-loss behavior and the
@@ -434,7 +495,44 @@ backup cleanup and separately confirmed signed rollback. These actions remain
 subject to native checkpoint and ownership validation. It does not enumerate
 changed files for review. The UI must disclose full reconstruction:
 existing modifications and game-local user files remain only in the retained
-backup; they are not merged into the newly active game.
+backup; they are not merged into the newly active game. That describes the full path;
+the seedless Update below keeps them.
+
+### Seedless (incremental) Update: light-adopted installs only
+
+A light-adopted install already holds most of the target release, so its Update skips
+the 4.1 GB seed download (D-LA14).
+
+- **Who takes it.** `incremental::seedless_allowed` is true only when the installed
+  record's adoption provenance says `check = light`. A copy adoption (`full`), a legacy
+  import and a launcher-downloaded install update exactly as before: same requests
+  (the seed included), same `seed_source_for`, strict `install_all` into an empty stage,
+  same ledger bytes. Extending the seedless path to every install is a later option
+  (D-LA14b) and is not done. The provenance survives the Update, so the next Update of
+  a light-adopted install is seedless again.
+- **When it declines.** `incremental::plan` returns a plan only if
+  `game/launcher-installed.json` loads, its `seed_sha256` equals the target's, and its
+  `applied_patches` are, in order, a prefix of the target's patch state keys, and the
+  previous release verifies. Otherwise the Update runs the full rebuild and logs
+  `update_seedless_declined` with `reason = previous_release_unverified` or
+  `ledger_mismatch`.
+- **Write set and hard links.** The write set is the outputs of every patch not yet
+  applied, every path in `incomplete_patches[].skipped[]`, `launcher-installed.json`
+  and the setup-rule paths. `stage_seed::seed_stage` builds the stage from the live
+  `game\`: files outside the write set are hard-linked (Windows; copied when the link
+  fails, and always copied elsewhere, because the stage digest refuses `nlink != 1`
+  on unix), and write-set files are copied. A symbolic link or reparse point in `game\`
+  refuses the stage. The tolerant install then runs over the stage and skips the seed
+  because the ledger matches. The live `game\` is not touched until commit; swap,
+  backup and recovery are unchanged.
+- **Failure.** `update_incremental_failed` (WARN) names a closed `reason`:
+  `fetch_failed`, `hash_mismatch`, `write_set_unreadable`, `seed_stage_failed` or
+  `rename_failed`. Cancellation is not logged as a failure.
+- **Repair is the full rebuild.** Repair always rebuilds from the seed, strictly
+  (`tolerate_ops: false`), and never reads `incomplete_patches`.
+- **Telemetry.** `update_staged` gains `mode`, `ops_skipped`, `stage_linked` and
+  `stage_copied`; the event rows are in
+  [telemetry.md](../../../../docs/operations/telemetry.md#launcher-light-adoption-and-update-events).
 
 Native Mac fixtures exercise two distinct signed HTTP seeds through Update,
 reopen, Repair of the new release and Uninstall; both sides of both renames and

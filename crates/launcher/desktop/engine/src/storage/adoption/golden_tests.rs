@@ -5,7 +5,7 @@
 //! Regenerate only deliberately: `CIMMERIA_WRITE_GOLDEN=1` with this test
 //! filter rewrites the fixtures, and the digest then has to be updated by hand.
 use super::inventory::Identity;
-use super::model::{Choices, Classification, Difference, Plan, Provenance, Report};
+use super::model::{Choices, Classification, Difference, FileCheck, Plan, Provenance, Report};
 use crate::storage::{
     install_intent::{ExtractionBackend, InstallIntent},
     migration::{
@@ -17,10 +17,11 @@ use crate::storage::{
 use std::path::PathBuf;
 use uuid::Uuid;
 
-const PLAN_BYTES: &[u8] = include_bytes!("fixtures/plan-v1-in-place.json");
+pub(super) const PLAN_BYTES: &[u8] = include_bytes!("fixtures/plan-v1-in-place.json");
 const PROVENANCE_BYTES: &[u8] = include_bytes!("fixtures/provenance-v1.json");
 /// Hex of `plan().digest()`, the schema-1 intent digest of the fixture.
-const PLAN_DIGEST: &str = "115c9e09bba351247498d457fccf64c1690fcdb237ab6f0aa9d46e3af75c9179";
+pub(super) const PLAN_DIGEST: &str =
+    "115c9e09bba351247498d457fccf64c1690fcdb237ab6f0aa9d46e3af75c9179";
 
 const WORK: u128 = 0x6f1c2a4e_3b5d_4e7f_8a9b_0c1d2e3f4a5b;
 const OWNER: u128 = 0x1a2b3c4d_5e6f_4a7b_8c9d_0e1f2a3b4c5d;
@@ -29,7 +30,7 @@ const PREVIEW: u128 = 0x0c1d2e3f_4a5b_4c6d_8e7f_9a0b1c2d3e4f;
 /// Plain strings, not `Path` joins: the bytes are the same on every OS.
 const GAME: &str = "C:\\Game";
 
-fn hex(bytes: &[u8]) -> String {
+pub(super) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -42,6 +43,7 @@ fn provenance() -> Provenance {
         setup_policy_version: 1,
         folder_scan_digest: None,
         file_index_sha256: None,
+        check: FileCheck::Full,
     }
 }
 
@@ -150,6 +152,7 @@ fn plan() -> Plan {
         stage_identity: identity(1),
         destination_identity: identity(5),
         replacements: Vec::new(),
+        incomplete_patches: Vec::new(),
     }
 }
 

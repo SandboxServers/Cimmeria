@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {parseHTML} from 'linkedom';
 import {launchText,mountLaunch} from './launch-view';
 const html=readFileSync('ui/index.html','utf8');
-const initial=()=>({schema_version:1,resources_available:true,launcher_update_required:false,installation_id:'owner',observation:null as unknown,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1,revision:0,operation:null as unknown}}});
+const initial=()=>({schema_version:1,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,installation_id:'owner',observation:null as unknown,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1,revision:0,operation:null as unknown}}});
 test('Play first click gives feedback, lost reply is observed without replay, unknown stays blocked',async()=>{
  let status=initial();let plays=0;let finish!:()=>void;const wait=new Promise<void>(resolve=>{finish=resolve;});
  const {document,window}=parseHTML(html);
@@ -122,6 +122,28 @@ test('background inspection keeps Play steady and accepts one click while the re
   assert.equal(button.disabled,false);
   assert.equal(button.textContent,'Play');
  } finally {release();await app.dispose();}
+});
+test('an install with skipped patch changes names them in the main view, and Play stays enabled',async()=>{
+ const status=initial();status.patches_incomplete=1;status.ops_skipped=3;
+ const {document}=parseHTML(html);
+ const app=mountLaunch(document,async()=>status,()=>{},()=>'attempt');
+ try{await app.ready;await new Promise(resolve=>setImmediate(resolve));
+  assert.match(document.getElementById('launch-status')!.textContent!,/3 patch changes could not be applied\. If the game crashes or misbehaves, use Repair \(downloads the full game, 4\.1 GB\)\./);
+  assert.equal((document.getElementById('launch') as HTMLButtonElement).disabled,false);
+ }finally{await app.dispose();}
+});
+test('an install with no skipped patch changes reads exactly Ready to Play.',()=>{
+ const status={...initial(),patches_incomplete:0,ops_skipped:3} as any;
+ assert.equal(launchText({status,pending:false,uncertain:false,error:null}),'Ready to Play.');
+});
+test('without an installation the skipped-change hint is not shown',()=>{
+ const status={...initial(),installation_id:null,patches_incomplete:1,ops_skipped:3} as any;
+ assert.equal(launchText({status,pending:false,uncertain:false,error:null}),'Finish installation and compatibility checks to enable Play.');
+});
+test('one skipped patch change reads in the singular, several in the plural',()=>{
+ const text=(n:number)=>launchText({status:{...initial(),patches_incomplete:1,ops_skipped:n} as any,pending:false,uncertain:false,error:null});
+ assert.match(text(1),/^Ready to Play\. 1 patch change could not be applied\. /);
+ assert.match(text(2),/^Ready to Play\. 2 patch changes could not be applied\. /);
 });
 test('a Play that did not start points at an edited login server list',()=>{
  const status={...initial(),observation:{phase:'not_started'}} as any;

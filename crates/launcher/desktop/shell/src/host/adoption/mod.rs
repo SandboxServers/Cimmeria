@@ -260,6 +260,7 @@ impl NativeHost {
     /// itself), and the folder can be written, before any download. In place
     /// (`InPlace`, no `location`) the folder itself is adopted. A copy (`Copy`) goes
     /// into a new folder inside `location`, the folder the player picked second.
+    /// A folder the engine refuses is returned as an `Ok` status that carries the refusal and its check.
     pub fn begin_folder_adoption(
         &self,
         selected: PathBuf,
@@ -269,10 +270,16 @@ impl NativeHost {
     ) -> Result<AdoptionStatus, AdoptionError> {
         self.adoption_mode_allowed(mode)?;
         // The engine checks the request names this same root, so the root is passed.
-        let root = adoption::resolve_folder(&selected)?;
+        // A refused pick is held like a worker's refusal, so the player sees the check.
+        let (resolved, rejection) =
+            adoption::rejection_scope(|| adoption::resolve_folder(&selected));
+        let root = match resolved {
+            Ok(root) => root,
+            Err(error) => return self.refuse_picked_folder(error, rejection),
+        };
         let destination = match (mode, location) {
-            (adoption::AdoptionMode::InPlace, None) => root,
-            (adoption::AdoptionMode::InPlace, Some(_)) => {
+            (adoption::AdoptionMode::InPlace | adoption::AdoptionMode::Light, None) => root,
+            (adoption::AdoptionMode::InPlace | adoption::AdoptionMode::Light, Some(_)) => {
                 return Err(AdoptionError::UnsupportedMode)
             }
             (adoption::AdoptionMode::Copy, Some(location)) => copy_destination(location)?,

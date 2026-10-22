@@ -21,13 +21,22 @@ pub(crate) fn launch_refused(id: Uuid, reason: &'static str) {
 }
 
 /// The admitted launch began; `telemetry_dll` says whether the DLL goes in.
-pub(crate) fn launch_started(id: Uuid, telemetry_dll: bool) {
+/// `adoption_check` is the adoption provenance's check (`light`, `full` or
+/// `none`); `patches_incomplete` counts the patches an apply left incomplete.
+pub(crate) fn launch_started(
+    id: Uuid,
+    telemetry_dll: bool,
+    adoption_check: &'static str,
+    patches_incomplete: u64,
+) {
     let operation = operation_numbers::number(id);
     tracing::info!(
         target: "launcher.launch",
         event = "launch_started",
         operation,
         telemetry_dll,
+        adoption_check,
+        patches_incomplete,
         "launch: started"
     );
 }

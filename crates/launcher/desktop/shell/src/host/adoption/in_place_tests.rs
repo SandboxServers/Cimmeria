@@ -38,6 +38,10 @@ async fn the_imported_folder_is_adopted_in_place_once_its_release_files_verify()
     // so it is shown as modified and needs consent rather than blocking.
     f.host.begin_adoption_in_place(f.release()).unwrap();
     let review = reviewed(&f.host).await;
+    assert!(serde_json::to_value(&review)
+        .unwrap()
+        .get("light")
+        .is_none());
     assert!(review.in_place);
     assert_eq!((&review.source, &review.destination), (&folder, &folder));
     assert!(review.blocked_files.is_empty());
@@ -78,6 +82,12 @@ async fn the_imported_folder_is_adopted_in_place_once_its_release_files_verify()
     .await;
     assert_eq!(status.last_error, None);
     assert!(status.owned);
+    assert!(
+        serde_json::to_value(&status).unwrap()["completed"]
+            .get("light")
+            .is_none(),
+        "a strict adoption sends no light flag"
+    );
     assert_eq!(status.completed.map(|c| c.directory), Some(folder.clone()));
     assert_eq!(
         operation(&f.host.adoption_status().unwrap()),
@@ -194,7 +204,7 @@ pub(super) fn unimported_host(state_root: PathBuf) -> NativeHost {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_in_place() {
+async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_light() {
     let mut f = Fixture::new(serde_json::json!({}));
     let folder = f.source.game_directory.clone();
     f.host = unimported_host(f.root.path().join("plain-state"));
@@ -205,15 +215,31 @@ async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_in_place() {
     // The player picks the `Working` folder inside the game root; the root is
     // what gets adopted. The release file they edited is restored first.
     std::fs::write(folder.join("later.txt"), b"later entry").unwrap();
-    f.host
-        .begin_folder_adoption(
+    // The shell no longer offers in-place adoption, so the refusal is checked here.
+    assert!(matches!(
+        f.host.begin_folder_adoption(
             folder.join("Working"),
             None,
             AdoptionMode::InPlace,
             f.release(),
+        ),
+        Err(AdoptionError::UnsupportedMode)
+    ));
+    assert!(!folder.join("game").exists());
+    f.host
+        .begin_folder_adoption(
+            folder.join("Working"),
+            None,
+            AdoptionMode::Light,
+            f.release(),
         )
         .unwrap();
     let review = reviewed(&f.host).await;
+    assert!(review.light.is_some(), "a light review carries its summary");
+    let json = serde_json::to_value(&review).unwrap();
+    assert!(json["light"]["patches_total"].is_u64());
+    assert!(json["light"]["index_state"].is_string());
+    assert!(json["light"]["skipped"].is_array());
     assert!(matches!(review.source_kind, SourceKind::Folder));
     assert!(review.in_place);
     assert_eq!((&review.source, &review.destination), (&folder, &folder));
@@ -225,16 +251,23 @@ async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_in_place() {
     .await;
     assert_eq!(status.last_error, None);
     assert!(status.owned);
+    assert_eq!(
+        serde_json::to_value(&status).unwrap()["completed"]["light"],
+        serde_json::json!(true)
+    );
     assert_eq!(status.completed.map(|c| c.directory), Some(folder.clone()));
     assert_eq!(
         operation(&f.host.adoption_status().unwrap()),
         Some((OperationKind::Adopt, OperationState::Succeeded))
     );
-    // Not part of the release: it stays exactly where the player left it.
+    // Light carries every folder file into `game/`, the release's and the player's
+    // own; none is lost.
+    assert!(!folder.join("unknown.dll").exists());
     assert_eq!(
-        std::fs::read(folder.join("unknown.dll")).unwrap(),
+        std::fs::read(under(&folder, "game/unknown.dll")).unwrap(),
         b"untrusted plugin"
     );
+    assert!(under(&folder, "game/Working/Binaries/SGW.exe").is_file());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

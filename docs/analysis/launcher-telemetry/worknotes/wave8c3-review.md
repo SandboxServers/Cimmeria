@@ -1,0 +1,34 @@
+# Wave 8c3 review: LA-15 (Part A 38d7614c0, Part B adfbd1d03)
+
+Worktree `.claude/worktrees/la-15`, branch `launcher-telemetry/la-15-light-status`, base `d273e29b1`. Read-only review; nothing was built or run except one Effect-schema message probe.
+
+## Verdict
+
+fix
+
+## Fix notes
+
+N1. crates/launcher/desktop/frontend/src/launch-workflow.test.ts:16-17 — the test `a launch status without the skipped op count is refused` passes with the change reverted: the literal still carries `patches_incomplete`, so a schema without the new fields refuses it as an excess property (`onExcessProperty:'error'`). It is theatre (R-LA 5). — replace line 16 `const {ops_skipped:_omitted,...withoutSkips}=initial();` with `const {patches_incomplete:_incomplete,ops_skipped:_skipped,...withoutCounts}=initial();`, line 17 `await assert.rejects(decode(withoutSkips));` with `await assert.rejects(decode(withoutCounts));`, and rename the test to `a launch status without the incomplete patch counts is refused`. With the fields reverted out of `LaunchStatus` the stripped literal decodes, so `assert.rejects` fails; with them present it is refused as missing keys. — verify: `Set-Location <wt>\crates\launcher\desktop\frontend; npm run check; npm test` passes; then remove `patches_incomplete:Count,ops_skipped:Count,` from `src/launch-workflow.ts:7` locally and confirm that test fails (restore after).
+
+N2. crates/launcher/desktop/frontend/src/adoption-workflow.test.ts:29 — the test `a light review with an unknown field is refused by the schema` passes with the `Light` schema reverted: without `light` in `Review`, the whole `light` key is an excess property and is refused (theatre, R-LA 5). The Effect error text names the offending path (probed: `at ["review"]["light"]["surprise"]` with the schema, `at ["review"]["light"]` without it). — change line 29 to `await assert.rejects(decode({...(status(['light','copy']) as object),activity:'review',review:review({light:{...light,surprise:1}})}),/\["light"\]\["surprise"\]/);` (add the regex as the second argument of `assert.rejects`, nothing else). — verify: `npm test` passes; remove `,light:Schema.optionalKey(Light)` from `src/adoption-workflow.ts:21` locally and confirm that test and the `decodes its patch counts` test both fail (restore after).
+
+N3. crates/launcher/desktop/shell/src/main.rs:355-357 and crates/launcher/desktop/shell/src/host/adoption/mod.rs:258-262 — doc comments are stale after Part B. `choose_existing_game_folder` still says "a cancelled dialog returns the current status" (it now returns the status with an earlier refusal cleared), and `begin_folder_adoption` says "The engine admits it only when `selected` resolves to a game root" without saying a refused pick comes back as `Ok` with `last_error` and `last_rejection` set. — main.rs: replace `a\n/// cancelled dialog returns the current status.` with `a\n/// cancelled dialog returns the status with any earlier refusal cleared.` (keep the two-line wrap); mod.rs: append the sentence `/// A folder the engine refuses is returned as an `Ok` status that carries the refusal and its check.` after the line ending `...inside `location`, the folder the player picked second.` — verify: `pwsh tools/build-lane/lane.ps1 cargo fmt -p cimmeria-launcher-desktop -- --check` is clean.
+
+N4. .claude/reports/launcher-telemetry/LA-15-coder.md:5-9 (in the la-15 worktree) — the Part A section omits what the spec requires: the "reverted line that fails each test" per Part A test (R-LA 5, spec "The report says, per test..."), the fmt, clippy and test status lines for Part A, the statement that `launch_command` itself is untested on Windows (macOS-only fixture), and the Schema.Record/Tuple form used. — add to the Part A section: one line per test (`rejection_dto` Scanning assert: remove the `"Scanning"` arm; `in_place_tests` light assert: `light: None` in `Review::of`; `ledger` (b): return `(0, 0)`; `adoption-workflow` decode test: remove `light` from `Review`; `adoption-view` row: remove the `scan` line; `launch-workflow` decode test: remove the two fields), the lane lines, and the macOS-only sentence. Do this after N1 and N2, since their reverts change. — verify: the report names a failing revert for each Part A test.
+
+## Not fixed
+
+1. Spec/lane deviation, accepted: the coder ran `cargo test` instead of `nextest` for the desktop crate (Part A spec Lane says nextest). The report says the brief required it, and the LA-11 review already ruled the same for the engine crate. No change.
+2. `LaunchStatus` field names (`patches_incomplete`, `ops_skipped`) are pinned only by the TypeScript decode test; no Rust test serializes `LaunchStatus` on Windows, because the launch fixture is macOS-only (`host/launch/mod.rs:140-143`). The spec accepts this. A later packet could add a Windows-runnable serialization test, but it is out of scope here.
+3. `host/adoption/mod.rs` grew by net 6 lines (spec said at most 5); rustfmt wraps the spec's own snippet to that. The file is 549 lines (soft cap 500, hard cap 700), and the spec itself orders the change. No change.
+4. `the_imported_folder_is_adopted_in_place...` gets `assert!(...get("light").is_none())`, which passes whether or not Part A is reverted. The spec asks for it as a guard that a full check never carries `light` (R-LA 10), not as a revert test. No change.
+5. The `package.json` test list gained `launch-workflow.test.ts`. Without it the new test never runs; it is a needed deviation and the report states it.
+
+## Checked and clean
+
+- Spec items 1-9 (Part A) and 1-5 (Part B) match the spec text: `ProgressItem::Scan`, the `"Scanning"` mapping, `Review.light`, `launch/ledger.rs` (57 lines), `LaunchStatus` fields read only when Play is offered, the TypeScript `Light` schema (field names, types and the snake_case `FileClass` and `IndexState` names agree with `LightSummary`, `LightSkip`, `FileClass`, `IndexState`), the `scan` text line, both launch fixtures, and `mod.rs`/`status.rs`/`main.rs` for Part B.
+- R5: no telemetry field added except the existing `events::refused(code, ..)` closed code; the review summary is UI data with folder-relative paths.
+- R8: Rust DTO and TypeScript schema changed in the same commit (Part A); Part B changes no schema.
+- R-LA 10: `incomplete_counts` only reads the ledger (`InstalledState::load`, no write); a downloaded install's ledger has no `incomplete_patches`, so both counts are 0. No engine behavior changed: the only engine edit is the one re-export line.
+- Part B tests: both fail when their line is reverted (bare `?` gives `Err(NotAGameFolder)`; a body of `self.adoption_status()` leaves `last_error` set).
+- File caps: all touched files are under 700 (largest `host/adoption/mod.rs` 549, `main.rs` 614). No docs files changed, so CRLF is not in play; this note is CRLF. No dist, node_modules or `launcher_targets.txt` in either commit; the worktree is clean.

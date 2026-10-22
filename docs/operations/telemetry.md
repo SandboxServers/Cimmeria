@@ -643,6 +643,43 @@ Useful first queries:
 Retention is whatever the ClickHouse TTL says (see
 [signoz-deployment.md](signoz-deployment.md#retention)).
 
+## Launcher light-adoption and update events
+
+These events come from the desktop launcher's light adoption, its seedless Update and
+its launch tags. They are `tracing` events with a closed `event` name; the upload
+pipeline gives them the `client.launcher.<subsystem>` target of
+[the table above](#where-the-data-lives) (for example `client.launcher.adoption`). None
+carries a path, URL or host: the only free text is a sample of at most 10 index paths
+(see below). The fields of the existing rows are not repeated here.
+
+| Event | Target (subsystem) | Level | Fields |
+| --- | --- | --- | --- |
+| `adoption_light_planned` | `adoption` | info | `patches_total`, `patches_current`, `patches_pending`, `download_bytes` |
+| `adoption_light_replayed` | `adoption` | info | `patches_replayed`, `replacements`, `ops_skipped`, `patches_incomplete` |
+| `adoption_light_replay_failed` | `adoption` | warn | `code` (a closed rejection code) |
+| `adoption_index_compared` | `adoption` | info | `state`, `stock`, `patched`, `prepared`, `changed`, `missing`, `extra`, `changed_sample`, `missing_sample` |
+| `patch_incomplete` | `launcher.install` | info | `patch` (`patch:<id>`), `ops_skipped` |
+| `patch_retry_failed` | `launcher.install` | warn | `patch` (`patch:<id>`), `reason` (a closed install error code) |
+| `update_staged` (gained fields) | `launcher.game_update` | info | `mode` (`incremental` or `full`), `ops_skipped`, `stage_linked`, `stage_copied`; the full path always sends `full`, 0, 0, 0 |
+| `update_seedless_declined` | `launcher.game_update` | info | `reason`: `previous_release_unverified` or `ledger_mismatch` |
+| `update_incremental_failed` | `launcher.game_update` | warn | `reason`: `fetch_failed`, `hash_mismatch`, `write_set_unreadable`, `seed_stage_failed` or `rename_failed` |
+| `launch_started` (gained fields) | `launcher.launch` | info | `adoption_check` (`light`, `full` or `none`), `patches_incomplete` |
+| `launch_tags_unavailable` | `launcher.launch` | warn | none beyond `event`; the launch goes on tagged `none`, 0 |
+
+- `changed_sample` and `missing_sample` hold at most 10 paths, comma-joined, at most
+  600 characters, taken only from index entries the release names (`changed`,
+  `missing`), never from `extra` files (D-LA17).
+- The shell's `mode_chosen` and `folder_chosen` steps on `client.launcher.adoption`
+  count a Light adoption as `in_place` (`decision_outcome = in_place` and
+  `mode = in_place`). A funnel that splits `in_place` from `copy` therefore cannot
+  tell Light from the hidden verified in-place mode; split on `adoption_light_planned`
+  instead.
+- The `completed.light` flag and `LaunchStatus.patches_incomplete` / `ops_skipped` are
+  IPC status fields, not telemetry; see the
+  [migration contract](../../crates/launcher/desktop/docs/migration.md#adopting-an-existing-folder).
+- Nothing in this table has been seen in SigNoz from a real launcher run. The rows
+  are asserted by captured-event unit tests only.
+
 ## Volume control and the runaway guard
 
 The telemetry DLL summarizes high-rate streams before upload. The design is in

@@ -129,6 +129,7 @@ async fn admitted_setup_is_retained_and_duplicate_does_not_replace_worker() {
             seed_sha256: Some("a".repeat(64)),
             applied_patches: vec![],
             seed_adopted: false,
+            ..Default::default()
         }
         .save(&game)
         .unwrap();

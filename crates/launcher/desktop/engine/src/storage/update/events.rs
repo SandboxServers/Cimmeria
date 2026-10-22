@@ -63,9 +63,32 @@ pub(super) fn tree_size(root: &Path, depth: usize) -> (u64, u64) {
         })
 }
 
+/// How the replacement tree was built (LA-13). Counts and a closed mode only (R5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Staging {
+    /// `incremental` (seedless, from the live tree) or `full` (rebuilt from the seed).
+    pub mode: &'static str,
+    /// Patch ops left incomplete in the staged ledger.
+    pub ops_skipped: u64,
+    /// Files the stage shares with the live tree through a hard link.
+    pub linked: u64,
+    /// Files the stage copied from the live tree.
+    pub copied: u64,
+}
+
+impl Staging {
+    /// The seed-rebuild path: nothing is taken from the live tree.
+    pub(super) const FULL: Self = Self {
+        mode: "full",
+        ops_skipped: 0,
+        linked: 0,
+        copied: 0,
+    };
+}
+
 /// The replacement tree was staged and its digest was recorded. `files` and `bytes`
 /// count the regular files of the staged tree; `elapsed` covers the staging.
-pub(super) fn staged(files: u64, bytes: u64, elapsed: Duration) {
+pub(super) fn staged(files: u64, bytes: u64, elapsed: Duration, staging: Staging) {
     let duration_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
     tracing::info!(
         target: "launcher.game_update",
@@ -73,6 +96,10 @@ pub(super) fn staged(files: u64, bytes: u64, elapsed: Duration) {
         files,
         bytes,
         duration_ms,
+        mode = staging.mode,
+        ops_skipped = staging.ops_skipped,
+        stage_linked = staging.linked,
+        stage_copied = staging.copied,
         "game update: the replacement tree was staged; expected a digest-checked tree; commit may begin"
     );
 }
@@ -132,6 +159,28 @@ pub(super) fn mark_uncertain_failed(error: ContractError) {
     );
 }
 
+/// A light-adopted install fell back to the seed rebuild. `reason` is closed:
+/// `previous_release_unverified` or `ledger_mismatch`. No path, URL or host.
+pub(super) fn seedless_declined(reason: &'static str) {
+    tracing::info!(
+        target: "launcher.game_update",
+        event = "update_seedless_declined",
+        reason,
+        "game update: the seedless update was declined; expected a rebuild from the seed"
+    );
+}
+
+/// The seedless Update failed. `reason` is closed: `fetch_failed`,
+/// `hash_mismatch`, `write_set_unreadable`, `seed_stage_failed` or `rename_failed`.
+pub(super) fn incremental_failed(reason: &'static str) {
+    tracing::warn!(
+        target: "launcher.game_update",
+        event = "update_incremental_failed",
+        reason,
+        "game update: the seedless update failed; expected a staged tree built from the live one"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,12 +198,39 @@ mod tests {
 
     #[test]
     fn staged_row_carries_counts_and_duration() {
-        let ((), captured) = capture(|| staged(2, 8, Duration::from_millis(7)));
+        let ((), captured) = capture(|| staged(2, 8, Duration::from_millis(7), Staging::FULL));
         let row = only_row(&captured, Level::INFO);
         assert_eq!(row.field("event"), Some("update_staged"));
         assert_eq!(row.field("files"), Some("2"));
         assert_eq!(row.field("bytes"), Some("8"));
         assert_eq!(row.field("duration_ms"), Some("7"));
+        assert_eq!(row.field("mode"), Some("full"));
+        assert_eq!(row.field("ops_skipped"), Some("0"));
+        assert_eq!(row.field("stage_linked"), Some("0"));
+        assert_eq!(row.field("stage_copied"), Some("0"));
+    }
+
+    #[test]
+    fn incremental_failed_row_carries_the_closed_reason() {
+        let ((), captured) = capture(|| incremental_failed("hash_mismatch"));
+        let row = only_row(&captured, Level::WARN);
+        assert_eq!(row.field("event"), Some("update_incremental_failed"));
+        assert_eq!(row.field("reason"), Some("hash_mismatch"));
+    }
+    #[test]
+    fn staged_row_carries_the_incremental_mode_and_stage_counts() {
+        let staging = Staging {
+            mode: "incremental",
+            ops_skipped: 3,
+            linked: 40,
+            copied: 5,
+        };
+        let ((), captured) = capture(|| staged(45, 9, Duration::from_millis(1), staging));
+        let row = only_row(&captured, Level::INFO);
+        assert_eq!(row.field("mode"), Some("incremental"));
+        assert_eq!(row.field("ops_skipped"), Some("3"));
+        assert_eq!(row.field("stage_linked"), Some("40"));
+        assert_eq!(row.field("stage_copied"), Some("5"));
     }
 
     #[test]

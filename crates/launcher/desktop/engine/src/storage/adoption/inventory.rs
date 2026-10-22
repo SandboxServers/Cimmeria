@@ -259,6 +259,14 @@ pub(super) fn hash(path: &Path, cancel: &CancellationToken) -> Result<Entry, Err
     })
 }
 pub(super) fn scan(root: &Path, cancel: &CancellationToken) -> Result<Index, Error> {
+    scan_inner(root, cancel, &mut |_| {})
+}
+/// The walk behind [`scan`]; `on_file` sees the size of each file it hashes.
+fn scan_inner(
+    root: &Path,
+    cancel: &CancellationToken,
+    on_file: &mut dyn FnMut(u64),
+) -> Result<Index, Error> {
     fn walk(
         root: &Path,
         path: &Path,
@@ -266,6 +274,7 @@ pub(super) fn scan(root: &Path, cancel: &CancellationToken) -> Result<Index, Err
         out: &mut Index,
         folded: &mut BTreeMap<String, String>,
         cancel: &CancellationToken,
+        on_file: &mut dyn FnMut(u64),
     ) -> Result<(), Error> {
         check_cancel(cancel)?;
         if depth > MAX_DEPTH {
@@ -312,16 +321,27 @@ pub(super) fn scan(root: &Path, cancel: &CancellationToken) -> Result<Index, Err
                 return Err(StorageError::UnsafeFile.into());
             }
             if child.file_type()?.is_dir() {
-                walk(root, &path, depth + 1, out, folded, cancel)?;
+                walk(root, &path, depth + 1, out, folded, cancel, on_file)?;
             } else {
-                out.insert(name, hash(&path, cancel)?);
+                let entry = hash(&path, cancel)?;
+                let size = entry.size;
+                out.insert(name, entry);
+                on_file(size);
             }
         }
         Ok(())
     }
     let before = identity(root)?;
     let mut index = Index::new();
-    walk(root, root, 0, &mut index, &mut BTreeMap::new(), cancel)?;
+    walk(
+        root,
+        root,
+        0,
+        &mut index,
+        &mut BTreeMap::new(),
+        cancel,
+        on_file,
+    )?;
     if identity(root)? != before {
         let check = rejection::Rejection::new("folder_changed_during_check")
             .entry(".")
@@ -330,6 +350,59 @@ pub(super) fn scan(root: &Path, cancel: &CancellationToken) -> Result<Index, Err
         return Err(rejection::reject(Error::SourceChanged, check));
     }
     Ok(index)
+}
+/// The bytes and files `scan` would walk, from metadata only. It never opens or
+/// hashes a file and never rejects: the walk does the safety checks.
+fn sized(root: &Path, cancel: &CancellationToken) -> Result<u64, Error> {
+    fn add(
+        path: &Path,
+        depth: usize,
+        files: &mut usize,
+        total: &mut u64,
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
+        check_cancel(cancel)?;
+        if depth > MAX_DEPTH {
+            return Ok(());
+        }
+        let Ok(children) = std::fs::read_dir(path) else {
+            return Ok(());
+        };
+        for child in children.flatten() {
+            if *files >= MAX_FILES {
+                return Ok(());
+            }
+            let Ok(kind) = child.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                add(&child.path(), depth + 1, files, total, cancel)?;
+            } else if kind.is_file() {
+                *files += 1;
+                *total = total.saturating_add(child.metadata().map_or(0, |m| m.len()));
+            }
+        }
+        Ok(())
+    }
+    let (mut files, mut total) = (0, 0);
+    add(root, 0, &mut files, &mut total, cancel)?;
+    Ok(total)
+}
+/// [`scan`] with progress: `on_bytes(hashed, total)` once after sizing, then after
+/// each hashed file. `total` is the sized total, raised when a file grew after it.
+pub(super) fn scan_with_progress(
+    root: &Path,
+    cancel: &CancellationToken,
+    on_bytes: &dyn Fn(u64, u64),
+) -> Result<Index, Error> {
+    let total = sized(root, cancel)?;
+    on_bytes(0, total);
+    let mut hashed = 0u64;
+    scan_inner(root, cancel, &mut |size| {
+        hashed = hashed.saturating_add(size);
+        // A file that grew after sizing never shows hashed > total.
+        on_bytes(hashed, total.max(hashed));
+    })
 }
 
 /// `TooLarge` for a folder past the file cap: the walked folder and the count seen.

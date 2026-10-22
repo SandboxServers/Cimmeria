@@ -360,7 +360,8 @@ async fn an_interrupted_copy_offers_only_the_recovery_its_checkpoint_allows() {
     assert_eq!(
         recovered.completed,
         Some(Completed {
-            directory: f.destination()
+            directory: f.destination(),
+            light: false,
         })
     );
     assert_eq!(source_bytes(&f.source), before);

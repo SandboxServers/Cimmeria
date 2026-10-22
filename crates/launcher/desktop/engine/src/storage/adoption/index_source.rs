@@ -96,7 +96,7 @@ pub(super) fn download_for(origin: &IndexOrigin, estimate: DownloadEstimate) -> 
 /// The signed blob, from the cache when it verifies, else downloaded and cached.
 /// The flag is true for a cache hit. The outer error aborts; the inner one is a
 /// refusal that falls back to the build.
-fn published(
+pub(super) fn published(
     state_root: &Path,
     release: &VerifiedRelease,
     transport: &artifacts::Transport,
