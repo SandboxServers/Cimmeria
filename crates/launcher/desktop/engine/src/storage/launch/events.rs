@@ -44,6 +44,13 @@ pub(crate) fn launch_not_started(id: Uuid, reason: &'static str) {
     );
 }
 
+/// Test seam (launcher-telemetry LT-25): the real `launch_not_started` event, for
+/// the shell's launcher-telemetry UAT bridge. Test-support builds only.
+#[cfg(feature = "test-support")]
+pub fn launch_not_started_for_test(id: Uuid, reason: &'static str) {
+    launch_not_started(id, reason);
+}
+
 /// The launch failed after it began; the reason is its closed code.
 pub(crate) fn launch_failed(id: Uuid, reason: &'static str) {
     let operation = operation_numbers::number(id);

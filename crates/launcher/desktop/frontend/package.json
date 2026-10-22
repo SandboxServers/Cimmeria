@@ -23,7 +23,8 @@
     "uat:about": "esbuild src/view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/view.mjs && node about-uat.mjs",
     "uat:client-changes": "esbuild src/client-changes-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/client-changes-view.mjs && node client-changes-uat.mjs",
     "uat:physx": "esbuild src/physx-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/physx-view.mjs && node physx-uat.mjs",
-    "uat:seed-archive": "esbuild src/seed-archive-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/seed-archive-view.mjs && node seed-archive-uat.mjs"
+    "uat:seed-archive": "esbuild src/seed-archive-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/seed-archive-view.mjs && node seed-archive-uat.mjs",
+    "uat:launcher-telemetry": "node launcher-telemetry-native-uat.mjs"
   },
   "dependencies": {
     "effect": "4.0.0"
