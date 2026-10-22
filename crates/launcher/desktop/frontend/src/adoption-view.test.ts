@@ -39,7 +39,7 @@ test('review is readable, every required confirmation is visible and unchecked, 
   assert.equal(ui.get('adoption-differences').querySelectorAll('img').length,0,'paths are text, never markup');
   assert.match(ui.get('adoption-consequences').textContent!,/not copied or migrated: they stay in the original folder/);
   assert.match(ui.get('adoption-settings').textContent!,/Second \(https:\/\/example.invalid\/second\); First .*Client patches: off, as imported/);
-  assert.match(ui.get('adoption-telemetry').textContent!,/you opted in.*cannot send game telemetry.*diagnostics stay off; adoption does not change/);
+  assert.match(ui.get('adoption-telemetry').textContent!,/you opted in with the old launcher\. This build has no game diagnostics module, so only launcher diagnostics are sent\. Launcher setup diagnostics stay off; adoption does not change/);
   for(const id of ['adoption-normalize','adoption-closed','adoption-telemetry']){
    assert.equal(ui.get(`${id}-row`).hidden,false,`${id} is shown`);assert.equal((ui.get(id) as HTMLInputElement).checked,false);assert.equal(ui.disabled(id),false);
   }
@@ -124,6 +124,15 @@ test('a lost confirm reply is reported and never sent again',async()=>{
   assert.equal(ui.get('adoption-review').hidden,true);assert.equal(ui.disabled('choose-adoption-destination'),true);
  }finally{await ui.app.dispose();}
 });
+test('each confirmation keeps its two buttons in one settings-actions row',()=>{
+ const {document}=parseHTML(html);
+ for(const [confirm,dismiss] of [['confirm-uninstall','dismiss-uninstall'],['confirm-repair','dismiss-repair'],['confirm-game-update','dismiss-game-update'],['confirm-adoption-maintenance','dismiss-adoption-maintenance']]){
+  const row=document.getElementById(confirm)!.parentElement!;
+  assert.equal(row.className,'settings-actions',`${confirm} sits in a settings-actions row`);
+  assert.ok(row.querySelector(`#${dismiss}`),`${dismiss} sits beside ${confirm}`);
+ }
+});
+
 test('interrupted work offers only its native recovery, behind an explicit confirmation',async()=>{
  let status:AdoptionStatus={...idle(4),native:native(4,adopt('reconciliation_required')),reconciliation:{kind:'preparation',preparation_id:'prep-1'}};
  const ui=mount(request=>{if(request!=='choose'&&request.command==='abandon_preparation')status={...idle(6),native:native(6,adopt('cancelled'))};
@@ -134,8 +143,10 @@ test('interrupted work offers only its native recovery, behind an explicit confi
   assert.equal(ui.get('remove-adoption-preparation').hidden,false);assert.equal(ui.get('recover-adoption').hidden,true);assert.equal(ui.get('abandon-adoption').hidden,true);
   await ui.click('remove-adoption-preparation');
   assert.equal(ui.get('adoption-maintenance').hidden,false);assert.match(ui.get('adoption-maintenance-consequences').textContent!,/Permanently remove the private reference files/);
+  assert.equal(ui.get('remove-adoption-preparation').hidden,true,'the trigger is hidden while its confirmation is open');
   assert.equal(ui.sent('abandon_preparation').length,0,'opening the confirmation changes nothing');
   await ui.click('dismiss-adoption-maintenance');assert.equal(ui.get('adoption-maintenance').hidden,true);
+  assert.equal(ui.get('remove-adoption-preparation').hidden,false,'the trigger shows again once the confirmation closes');
   await ui.click('remove-adoption-preparation');await ui.click('confirm-adoption-maintenance');await ui.click('confirm-adoption-maintenance');
   assert.deepEqual(ui.sent('abandon_preparation'),[{command:'abandon_preparation',schema_version:1,preparation_id:'prep-1',operation_revision:4,confirmed:true}]);
   assert.equal(ui.get('adoption-maintenance').hidden,true);assert.equal(ui.disabled('choose-adoption-destination'),false);
