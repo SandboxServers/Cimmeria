@@ -65,12 +65,18 @@ pub(super) fn validate(game: &Path, plan: &Plan) -> Result<(), Error> {
         }
         return Ok(());
     }
-    let Some(expected) = read_expected(&plan.stage()) else {
+    let Some(stored) = read_expected(&plan.stage()) else {
         log_tree_checked("light", TreeOutcome::Unrecorded, None);
         return Ok(());
     };
-    // The ledger is synthesized after the tree was predicted and is not in it.
+    // The ledger is synthesized after the tree was predicted and is not in it. A
+    // ledger the folder already held was predicted as a release-side entry, so it
+    // is dropped from both trees: the comparison never judges it.
     let [_, _, ledger] = SETUP_FILES;
+    let expected: Tree = stored
+        .into_iter()
+        .filter(|(path, _)| !path.eq_ignore_ascii_case(ledger))
+        .collect();
     let actual: Tree = scanned
         .iter()
         .filter(|(path, _)| !path.eq_ignore_ascii_case(ledger))
