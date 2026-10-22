@@ -116,11 +116,13 @@ const inPlaceMaintenance:Partial<typeof maintenanceText>={
 function reviewLines(r:Review,summaryConsent:boolean) {
  const c=r.counts,plural=(n:number,one:string,many:string)=>`${n} ${n===1?one:many}`;
  return {
-  release:`Signed release ${r.release.manifest_sha256} (seed ${r.release.seed_sha256.slice(0,16)}…, ${r.release.patches.length?`patches in signed order: ${r.release.patches.join(', ')}`:'no patches'}).`,
+  release:`Signed release: ${r.release.patches.length?plural(r.release.patches.length,'patch','patches'):'no patches'}.`,
+  // The digest, the patch ids and the download ids sit behind "Release details", not in the summary.
+  details:[`Manifest SHA-256: ${r.release.manifest_sha256}.`,`Seed SHA-256 starts ${r.release.seed_sha256.slice(0,16)}….`,r.release.patches.length?`Patches in signed order: ${r.release.patches.join(', ')}.`:'Patches in signed order: none.',...(r.download?.patches.length?[`Download ids: ${r.download.patches.join(', ')}.`]:[])],
   counts:r.light?`${plural(c.matched,'file moves','files move')} into the “game” folder with no patch changes. ${plural(c.needs_patching,'file is','files are')} updated by the patches. ${plural(c.known_transform,'bundled data file moves','bundled data files move')} to the folder the game loads them from.`:`${plural(c.matched,'file is','files are')} identical${r.in_place?'':' and copied from your game'}. ${plural(c.known_transform,'file differs','files differ')} only by the old launcher’s own setup change. ${plural(c.modified,'file was','files were')} modified. ${plural(c.missing,'file is','files are')} missing. ${plural(c.extra,'file is','files are')} not part of the signed release.`,
   consequences:r.light?lightConsequences:r.in_place?'Your folder becomes the launcher’s installation. SGW.exe and every release file are moved, not copied, into a “game” folder inside it, so desktop shortcuts and the old launcher stop working: start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Files you added inside the game folders, such as PAKs placed by hand in SourceCache.en-us, stay where they are and the game will no longer use them. Your settings and the client cache live in Documents and are not affected. Files changed only by the old launcher’s setup get the launcher’s own setup again, and uninstalling removes only what the release lists.':`The copy will hold exactly the signed release. Modified, missing and setup-changed files are taken from the signed reference instead of your game${r.requires_normalization?'':' (none in this comparison)'}. Files that are not part of the release, saved game settings and other user files are not copied or migrated${r.user_data_remains_in_source?': they stay in the original folder':''}. ${unchanged}`,
   // A folder adoption imports no legacy settings, so those fields are absent for it.
-  download:!r.download?'Nothing to download.':r.download.local_seed?`Uses your game archive${r.download.patches.length?` and patches ${r.download.patches.join(', ')} (${megabytes(r.download.bytes)})`:''}.`:r.download.seed?`Downloads: the game archive${r.download.patches.length?` and patches ${r.download.patches.join(', ')}`:''} (${megabytes(r.download.bytes)}).`:r.download.patches.length?`Downloads: patches ${r.download.patches.join(', ')} (${megabytes(r.download.bytes)}).`:'Nothing to download.',
+  download:!r.download?'Nothing to download.':r.download.local_seed?`Uses your game archive${r.download.patches.length?` and downloads ${plural(r.download.patches.length,'patch','patches')} (${megabytes(r.download.bytes)})`:''}.`:r.download.seed?`Downloads: the game archive${r.download.patches.length?` and ${plural(r.download.patches.length,'patch','patches')}`:''} (${megabytes(r.download.bytes)}).`:r.download.patches.length?`Downloads: ${plural(r.download.patches.length,'patch','patches')} (${megabytes(r.download.bytes)}).`:'Nothing to download.',
   replace:`Replace ${c.modified+c.missing} modified or missing release files with the signed release's versions. ${r.in_place?`Your originals are moved to ${r.backup_directory??'a backup folder'}.`:'The copy gets the signed versions; your folder is not changed.'}`,
   settings:r.source_kind==='folder'?'Settings: this launcher\'s own server list and client-patch setting.':r.login_servers===undefined?'Launcher defaults: nothing is imported from this folder for login servers or client patches.':`Login servers, in your order: ${r.login_servers.length?r.login_servers.map(s=>`${s.name} (${s.url})`).join('; '):'none'}. Client patches: ${r.client_patches_enabled?'on':'off'}, as imported.`,
   telemetry:`Game telemetry: ${r.game_telemetry_opted_in===undefined?'launcher defaults, nothing imported':r.game_telemetry_opted_in?'you opted in with the old launcher':'not opted in'}.${r.game_telemetry_available?'':'This desktop build cannot send game telemetry; your saved choice is kept and nothing is sent. '}Launcher setup diagnostics stay ${summaryConsent?'on':'off'}; adoption does not change that choice.`,
@@ -151,7 +153,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   note.hidden=details.hidden=!light||light.skipped_total===0;
   if(!light)return;
   found.textContent=`Found Stargate Worlds in ${displayPath(source)}.`;
-  patches.textContent=`Patches already applied: ${light.patches_current} of ${light.patches_total}. To apply: ${light.patches_pending} (${megabytes(light.download_bytes)} to download).`;
+  patches.textContent=`Patches already applied: ${light.patches_current} of ${light.patches_total}. To apply: ${light.patches_pending}.`;
   note.textContent=`Some patch changes can't be applied: ${light.skipped_total===1?'1 file differs':`${light.skipped_total} files differ`} from the originals the patches expect. They stay as they are. You can still use this folder.`;
   const summary=document.createElement('summary'),list=document.createElement('ul');
   summary.textContent='Show the skipped files';
@@ -226,6 +228,12 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
    const fallback=lineAfter('adoption-index-fallback','adoption-download');
    fallback.textContent=review.index_fallback?fallbackText(review.index_fallback):'';
    fallback.hidden=!review.index_fallback;
+   // The "Release details" toggle is closed by default; its text is rebuilt with each review.
+   const releaseDetails=lineAfter('adoption-release-details','adoption-index-fallback','details');
+   releaseDetails.className='release-details';
+   const toggle=document.createElement('summary');toggle.textContent='Release details';
+   const detailLines=lines.details.map(text=>{const item=document.createElement('p');item.textContent=text;return item;});
+   releaseDetails.replaceChildren(toggle,...detailLines);
    lightReview(review.light,review.source);
    renderIndex(document,get('adoption-light-skipped'),review.light);
    get('adoption-seed-archive').hidden=!review.download?.seed;

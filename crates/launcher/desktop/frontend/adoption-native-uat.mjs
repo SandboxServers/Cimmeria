@@ -121,7 +121,7 @@ try {
  const review=status.review;
  assert.equal(get('adoption-review').hidden,false);
  assert.equal(get('adoption-source').textContent,review.source.replace(/^\\\\\?\\(?=[A-Za-z]:\\)/,''));assert.equal(get('adoption-destination').textContent,before.destination.replace(/^\\\\\?\\(?=[A-Za-z]:\\)/,''));
- assert(get('adoption-release').textContent.includes(review.release.manifest_sha256));
+ assert(get('adoption-release-details').textContent.includes(review.release.manifest_sha256));assert(!get('adoption-release').textContent.includes(review.release.manifest_sha256));
  assert.match(get('adoption-counts').textContent,/2 files are identical.*1 file was modified.*0 files are missing.*2 files are not part/);
  assert.deepEqual([...get('adoption-differences').querySelectorAll('li')].map(li=>li.textContent),['Modified: later.txt','Not part of the release: launcher-installed.json','Not part of the release: unknown.dll']);
  assert.match(get('adoption-settings').textContent,/Second \(https:\/\/example.invalid\/second\); First \(https:\/\/example.invalid\/first\)\. Client patches: off/);
