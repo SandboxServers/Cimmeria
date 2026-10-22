@@ -1,6 +1,7 @@
 import {Effect} from 'effect';
 import type {Invoke} from './view';
 import type {PanelContext} from './panel-context';
+import {reportUiEvent} from './ui-event';
 import {decodeLogUploadStatus,logUploadFailure,type LogUploadError,type LogUploadStatus,type NativeSnapshot} from './contract';
 /** Settings panel for `log_upload_command`. Native code picks the files and the store; the view sends only the command. */
 export const logUploadText:Record<LogUploadStatus['state'],string>={
@@ -43,7 +44,7 @@ export function mountLogUpload(document:Document,invoke:Invoke,context:PanelCont
  type Reply={error:null;state:LogUploadStatus['state']}|{error:keyof typeof logUploadErrorText};
  const call=async(command:'inspect'|'upload'):Promise<Reply>=>{let value:unknown;
   try{value=await invoke('log_upload_command',{request:{command,schema_version:1}});}catch(error){return {error:logUploadFailure(error)};}
-  try{return {error:null,state:(await Effect.runPromise(decodeLogUploadStatus(value))).state};}catch{return {error:'schema'};}};
+  try{return {error:null,state:(await Effect.runPromise(decodeLogUploadStatus(value))).state};}catch{reportUiEvent('log_upload','status_decode_failed','schema');return {error:'schema'};}};
  const show=(state:LogUploadStatus['state'])=>{
   // A build with no store compiled in hides the button: there is nowhere to send logs.
   button.hidden=state==='disabled';button.disabled=state==='disabled'||state==='not_installed';};

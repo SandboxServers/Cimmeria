@@ -85,6 +85,15 @@ test('refusals and failures each get their own result line',async()=>{
  }
 });
 
+test('an undecodable PhysX status is reported to telemetry',async()=>{
+ const uiCalls:unknown[]=[];
+ Object.assign(globalThis,{window:{__TAURI__:{core:{invoke:async(command:string,args:unknown)=>{uiCalls.push([command,args]);}}}}});
+ try{
+  const p=await mounted(async()=>({}));
+  try{assert.deepEqual(uiCalls,[['ui_event',{area:'physx',event:'status_decode_failed',code:'schema',level:'warn'}]]);}finally{await p.app.dispose();}
+ }finally{Reflect.deleteProperty(globalThis,'window');}
+});
+
 test('without the retained installer the button is disabled and says why',async()=>{
  const p=await mounted(async()=>status({installer_available:false}));
  try{

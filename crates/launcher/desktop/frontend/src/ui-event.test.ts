@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {reportUiEvent} from './ui-event';
+import {reportUiEvent,uiCode} from './ui-event';
 
 /** Installs a fake Tauri `invoke` on the global window for one test, and returns the calls it saw. */
 function fakeTauri(answer:() => Promise<unknown>):Array<[string,Record<string,unknown>|undefined]> {
@@ -25,6 +25,12 @@ test('reportUiEvent invokes ui_event with the arguments', async () => {
 test('reportUiEvent is a no-op without a Tauri window', () => {
  Reflect.deleteProperty(globalThis,'window');
  assert.doesNotThrow(() => reportUiEvent('launch','play_failed','timeout'));
+});
+
+test('uiCode passes a valid code through and falls back for anything else', () => {
+ assert.equal(uiCode('busy'),'busy');
+ for (const bad of ['Bad Code', {}, undefined, 'a'.repeat(41)]) assert.equal(uiCode(bad),'transport', String(bad));
+ assert.equal(uiCode(undefined,'schema'),'schema');
 });
 
 test('reportUiEvent ignores a rejected invoke', async () => {

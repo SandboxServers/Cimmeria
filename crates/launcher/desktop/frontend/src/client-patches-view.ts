@@ -1,6 +1,7 @@
 import type {Invoke} from './view';
 import type {PanelContext} from './panel-context';
 import {scaffoldFailure} from './contract';
+import {reportUiEvent,uiCode} from './ui-event';
 /**
  * Settings panel (LX-04): "Load client patches", saved through `launcher_command`
  * (`save_client_options`) with the saved login servers carried over unchanged. Off means Play
@@ -59,7 +60,7 @@ export function mountClientPatches(document:Document,invoke:Invoke,context:Panel
     :enabled?'Saved. The next Play loads client patches.':'Saved. The next Play starts the game without client patches.';
   },async failure=>{
    const code=scaffoldFailure(failure);
-   if(code==='stale_revision')await context.refresh().catch(()=>{});
+   if(code==='stale_revision')await context.refresh().catch(e=>reportUiEvent('client_patches','refresh_failed',uiCode(e)));
    if(!disposed)status.textContent=saveErrorText[code]??'The setting could not be saved. Recheck status, then try again.';
   }).finally(()=>{saving=false;if(disposed)return;box.setAttribute('aria-busy','false');
    if(unconfirmed){box.disabled=false;return;}
