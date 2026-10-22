@@ -686,19 +686,77 @@ Samples (D-LA17): each holds at most 10 paths, comma-joined, at most 600 charact
 ### LA-15: shell status and schema for the light review and incomplete patches
 
 - **Agent:** packet-coder. **Host:** windows. **Worktree:** `la-15`, branch `launcher-telemetry/la-15-light-status`. **Depends:** LA-14 merged.
-- **Files:**
-  - The shell adoption review contract: grep `index_fallback` under `shell/host/adoption/`, where C16 added it, and add `light: Option<LightSummary>` beside it.
-  - The installed-content status the main view reads: grep `installed_content` in `shell/host/` and add `patches_incomplete: u32` and `ops_skipped: u32`, read from `game/launcher-installed.json` through `InstalledState::load`, with `skipped_op_count()`.
-  - The progress mapping for the scan bytes from LA-12 (`ProgressItem` C16: label "Scanning your game folder", `done`/`total` in bytes).
-  - The TS schemas in `frontend/src/adoption-workflow.ts` and the matching status schema file, in the same commit.
-- **Tests:**
-  - A shell serialization test for a preview with `light` set.
-  - A TS schema test that decodes it, and one where an unknown key fails.
-  - The status reports `patches_incomplete` for a fixture ledger.
+- **Amended 2026-10-22 (architect)** after the first run returned `blocked` (the scan label and the status struct were not named). The text below replaces the old Files and Tests; follow it exactly. Anchors are at `d273e29b1` (the `la-15` base); re-grep each before editing.
+- **Rulings.**
+  - **Scan progress:** the engine label stays `"Scanning"` (`engine/adoption/light.rs:58`, `scan_reporting`, an `Observed::Extracting` with `current`/`total` in bytes). Do not change the engine. The shell gains a sixth closed item, `ProgressItem::Scan` (serde `"scan"`). The player-facing words "Scanning your game folder" live only in the frontend.
+  - **Main-view status = `LaunchStatus`** (`shell/host/launch/mod.rs:22-29`), the status behind the Play button and the `launch-status` line (`frontend/src/launch-view.ts`). It gains `patches_incomplete: u32` and `ops_skipped: u32`, read from `<destination>/game/launcher-installed.json`, the same file the engine's launch tag reads (`engine/launch/adoption_tags.rs:11`, `installed.intent.destination.join("game")`). `GameUpdateStatus`, `RepairStatus`, `InstallStatus` and the adoption status do not change.
+  - **Review:** `Review` carries the engine's `adoption::LightSummary` as is (it is `Serialize`; its paths are folder-relative), from `Preview::light_summary()` (`engine/adoption/light.rs:45`).
+- **Files (only these):**
+  1. Shell `host/adoption/contract.rs` (283 lines): in `enum ProgressItem` (`:223-229`) add, after `Reference,`: `/// Hashing the picked folder (light adoption); current and total are bytes.` and `Scan,`. Update the enum's doc line `:220` to "The step a download, extraction or folder scan is on, from the closed table in C16."
+  2. Shell `host/adoption/rejection_dto.rs` (145 lines): in `progress_item`, the `Observed::Extracting` arm (`:56-61`), add `"Scanning" => Some(ProgressItem::Scan),` after the `"Adoption replay"` line. In the test `progress_items_map_the_engine_labels` add `assert_eq!(progress_item(&extracting("Scanning")), Some(ProgressItem::Scan));` before the `"Verified copy"` assert.
+  3. Shell `host/adoption/review.rs` (182 lines): add `LightSummary` to the `cimmeria_launcher_engine::adoption::{..}` import (`:5-7`). In `struct Review`, directly after `index_fallback` (`:62-64`), add:
+     ```rust
+     /// Light adoption only: patch counts, skipped changes and the index comparison.
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub light: Option<LightSummary>,
+     ```
+     In `Review::of`, directly after the `index_fallback:` line (`:157`), add `light: preview.light_summary().cloned(),`.
+  4. New shell `host/launch/ledger.rs` (≤70 lines including tests):
+     ```rust
+     //! The incomplete patches of the installed copy, read from its own ledger.
+     use cimmeria_launcher_engine::state::InstalledState;
+     use std::path::Path;
 
-  Reverted, they fail.
-- **Lane:** `cimmeria-launcher-desktop`, then the frontend.
-- **Docs:** none. **Commit:** `LA-15: light review, index comparison and incomplete patches in the shell status`.
+     /// How many patches the copy's `launcher-installed.json` lists as incomplete,
+     /// and how many ops they skipped. No copy, or no readable ledger, is (0, 0).
+     pub(super) fn incomplete_counts(game: Option<&Path>) -> (u32, u32) {
+         let Some(game) = game else { return (0, 0) };
+         let ledger = InstalledState::load(game);
+         let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+         (count(ledger.incomplete_patches.len()), count(ledger.skipped_op_count()))
+     }
+     ```
+     plus the `#[cfg(test)] mod tests` below.
+  5. Shell `host/launch/mod.rs` (144 lines):
+     - After `mod resources;` (`:6`) add `mod ledger;`.
+     - In `struct LaunchStatus` (`:22-29`), after `launcher_update_required: bool,` add `/// Patches the installed copy applied with skipped ops; 0 when Play is not offered.` `patches_incomplete: u32,` and `/// The ops those patches skipped.` `ops_skipped: u32,`.
+     - Replace the `let installation_id = if idle && playable && !launcher_update_required { .. } else { None };` block (`:112-126`) with the same condition and the same `state.installed_content()?.filter(..)` closure, unchanged, bound to `let installed = ...;` (the `.map(|installed| installed.intent.operation_id)` line moves out). Then:
+       ```rust
+       let installation_id = installed.as_ref().map(|installed| installed.intent.operation_id);
+       let game = installed.as_ref().map(|installed| installed.intent.destination.join("game"));
+       let (patches_incomplete, ops_skipped) = ledger::incomplete_counts(game.as_deref());
+       ```
+     - Add `patches_incomplete,` and `ops_skipped,` to the `Ok(LaunchStatus { .. })` literal (`:127-134`). Nothing else changes: the counts are read only when Play is offered, so a busy or refused state still never fails Inspect.
+  6. Frontend `src/adoption-workflow.ts` (101 lines):
+     - After the `Count` line (`:3`) add:
+       ```ts
+       const FileClass=Schema.Literals(['stock','patched','prepared','changed','missing','extra']);
+       const Light=Schema.Struct({patches_total:Count,patches_current:Count,patches_pending:Count,download_bytes:Count,
+        skipped:Schema.Array(Schema.Struct({path:Schema.String,patch:Schema.String,reason:Schema.String})),skipped_total:Count,
+        index_state:Schema.Literals(['compared','index_not_published','index_unreachable','index_invalid']),
+        index_counts:Schema.Record(Schema.String,Count),index_files:Schema.Array(Schema.Tuple([Schema.String,FileClass])),index_files_total:Count});
+       ```
+     - In `Review` (`:16`), after the `index_fallback:...` entry and before the closing `})`, add `,light:Schema.optionalKey(Light)`.
+     - In `progress` (`:23`), the item literals become `['seed','patch','file_index','index_build','reference','scan']`.
+     - If `Schema.Record(key, value)` or `Schema.Tuple([..])` does not type-check against the installed `effect`, read its `Schema.d.ts` under `node_modules/effect` for the record and tuple constructors, use that form, and say so in the report. Do not loosen anything else.
+  7. Frontend `src/adoption-view.ts` (249 lines): in the progress text function, directly before the `archiveItems` line (`:68`), add one line: ``if(p?.item==='scan')return `Scanning your game folder: ${megabytes(p.current)} of ${megabytes(p.total)}.`;``. Nothing else in this file (LA-16 owns the review copy).
+  8. Frontend `src/launch-workflow.ts` (51 lines): after the `Pid` line (`:4`) add `const Count=Schema.Int.check(Schema.isBetween({minimum:0,maximum:4294967295}));`. In `LaunchStatus` (`:6`), after `launcher_update_required:Schema.Boolean,` add `patches_incomplete:Count,ops_skipped:Count,`.
+  9. Frontend fixtures that build a `LaunchStatus` (strict decode, R-LA 7): `src/launch-view.test.ts:7` (`initial()`) and `updater-native-uat.mjs:20` each gain `patches_incomplete:0,ops_skipped:0` after `launcher_update_required:false`. Change nothing else in them.
+  10. Tests named below: shell `host/adoption/in_place_tests.rs` (311 lines, at most +8), frontend `src/adoption-workflow.test.ts`, `src/adoption-view.test.ts` (one table row), new `src/launch-workflow.test.ts`.
+- **Tests.**
+  1. `rejection_dto.rs`: the `"Scanning"` assert in item 2. Reverted (the mapping line removed), it fails.
+  2. `in_place_tests.rs`, in `a_picked_folder_without_an_import_is_reviewed_and_adopted_light`, right after `let review = reviewed(&f.host).await;` (`:227`): `assert!(review.light.is_some(), "a light review carries its summary");` then `let json = serde_json::to_value(&review).unwrap();`, `assert!(json["light"]["patches_total"].is_u64());`, `assert!(json["light"]["index_state"].is_string());`, `assert!(json["light"]["skipped"].is_array());`. In `the_imported_folder_is_adopted_in_place_once_its_release_files_verify`, right after its first `let review = reviewed(&f.host).await;` (`:40`): `assert!(serde_json::to_value(&review).unwrap().get("light").is_none());`. Reverted (`light: None` in `Review::of`), the first fails.
+  3. `launch/ledger.rs` tests (plain `#[test]`, `tempfile::tempdir()`): (a) `incomplete_counts(None) == (0, 0)`, and a tempdir with no ledger is `(0, 0)`; (b) save `InstalledState { applied_patches: vec!["p1".into(), "p2".into()], incomplete_patches: vec![IncompletePatch { state_key: "p1".into(), skipped: vec![two SkippedTarget] }, IncompletePatch { state_key: "p2".into(), skipped: vec![one SkippedTarget] }], ..Default::default() }` with `.save(dir.path())` (types from `cimmeria_launcher_engine::state`; `reason: "source_mismatch".into()`, paths like `"Working/a.upk"`), then `incomplete_counts(Some(dir.path())) == (2, 3)`. Reverted to `(0, 0)`, (b) fails. The `launch_command` path itself is not tested on Windows: the launch fixture is macOS-only (`launch/mod.rs:140-143`); say so in the report.
+  4. `adoption-workflow.test.ts`: add a `review(extra)` builder: `{preview_handle:'p',operation_revision:1,preferences_revision:1,source:'/f',destination:'/f',source_kind:'folder',release:{manifest_sha256:'m',seed_sha256:'s',patches:['p1','p2']},counts:{matched:1,known_transform:0,modified:0,needs_patching:0,missing:0,extra:0},differences:[],differences_omitted:0,requires_replacement:false,game_telemetry_available:true,requires_normalization:false,requires_telemetry_acceptance:false,user_data_remains_in_source:false,in_place:true,blocked_files:[],...extra}` and a `light` value `{patches_total:2,patches_current:1,patches_pending:1,download_bytes:1024,skipped:[{path:'Working/a.upk',patch:'p2',reason:'source_mismatch'}],skipped_total:1,index_state:'compared',index_counts:{stock:5,patched:1,prepared:0,changed:1,missing:0,extra:2},index_files:[['Working/a.upk','changed'],['notes.txt','extra']],index_files_total:2}`. Three tests on `{...status(['light','copy']),activity:'review',review:review({light})}` and friends:
+     - it decodes, `review.light.patches_pending === 1` and `review.light.index_files[0][1] === 'changed'`;
+     - `review({light:{...light,surprise:1}})` is refused (`assert.rejects`);
+     - `{...status(['light','copy']),activity:'preparing',progress:{phase:'extraction',current:0,total:15,item:'scan'}}` decodes, and the same with `item:'scanning'` is refused.
+  5. `adoption-view.test.ts:322-327`: add the row `['scan','extraction',/^Scanning your game folder: /],`. Reverted (item 7 removed), the text is "Extracting the signed reference…" and the row fails.
+  6. New `launch-workflow.test.ts` (same imports as `adoption-workflow.test.ts`, decoding `LaunchStatus` from `./launch-workflow` with `onExcessProperty:'error'`): a status literal copied from `launch-view.test.ts:7` with `patches_incomplete:1,ops_skipped:3` decodes with those values; the same literal without `ops_skipped` is refused.
+
+  The report says, per test, which reverted line makes it fail (R-LA 5).
+- **Lane:** `cimmeria-launcher-desktop` (fmt, clippy, nextest, per R-LA 2), then the frontend `npm run check; npm test`. No engine file changes in Part A.
+- **Docs:** none (LA-19 adds `scan` to the C16 progress table and the two `LaunchStatus` fields). **Commit:** `LA-15: light review, index comparison and incomplete patches in the shell status`.
 - **Part B (architect ruling, 2026-10-22, wave 8c1 review "Not fixed" 1): a refused folder pick shows its check.** A second packet-coder run in the same `la-15` worktree, after the commit above, with its own commit. Anchors are at the LA-14 tip (`.claude/worktrees/la-14`); re-grep them.
   - **Problem.** `begin_folder_adoption` (shell `host/adoption/mod.rs:272`) runs `adoption::resolve_folder(&selected)?` outside a rejection scope. The `?` returns the bare `AdoptionError::NotAGameFolder` as the Tauri command error and drops the check the engine recorded, so the player sees the generic `not_a_game_folder` text for `several_game_folders`, and `folder_unreadable` / `not_a_game_folder` never show their detail line either. Preview and confirm refusals already reach the screen through `Adoption::fail` (`host/adoption/status.rs:171`).
   - **Ruling: option (a).** The shell keeps its pre-resolve, runs it inside the engine's rejection scope, and records a refusal the way a worker refusal is recorded: `Ok(status)` with `last_error` and `last_rejection` set. Option (b) was rejected: Light needs the resolved root as its destination (`mod.rs:274`), so dropping the pre-resolve means changing the engine's request check, and the refusal would come later, after admission. The choose contract does not change shape: `choose_existing_game_folder` already returns `AdoptionStatus` (a cancelled picker does), so there is no Rust or TypeScript schema change (R-LA 7 holds). Only the picked-folder check changes; the mode, location and busy refusals stay errors.
@@ -731,6 +789,7 @@ Samples (D-LA17): each holds at most 10 paths, comma-joined, at most 600 charact
 
 - **Agent:** packet-coder. **Host:** windows. **Worktree:** `la-16`, branch `launcher-telemetry/la-16-adoption-view`. **Depends:** LA-15 merged.
 - **Files:** `frontend/ui/index.html:37-39` (mode rows; rebuild `dist/index.html` as the frontend's build does, if it is committed); `frontend/src/adoption-view.ts` (`:123-124`, `:154-158`, `:230`, `:242`). If `adoption-view.ts` passes 300 lines, put the new rendering in a new `frontend/src/adoption-light-view.ts`. Add the C17 reason texts (grep `several_game_folders`' neighbours, e.g. `not_a_game_folder`, in the C17 table file).
+- **Inputs from LA-15 (amended 2026-10-22).** LA-15 adds one line to `adoption-view.ts` (the `scan` progress text, before the `archiveItems` check), so every `adoption-view.ts` anchor in this packet sits about one line lower; re-grep them. The review's light figures are `status.review.light` (absent for Copy): `patches_total`, `patches_current`, `patches_pending`, `download_bytes`, `skipped` (`{path,patch,reason}[]`, at most 500) and `skipped_total`. "Patches already applied: <k> of <n>. To apply: <m> (<size> to download)." uses `patches_current`, `patches_total`, `patches_pending` and `download_bytes`; the skipped list uses `skipped` and the count `skipped_total`. Render only when `review.light` is present; the index fields belong to LA-18. The scan progress text is LA-15's; do not add another.
 - **Copy:**
   - **Mode rows.**
     - **Use it where it is (recommended):** "The launcher takes over this folder and brings it up to date with the current patches. Its game files move into a “game” folder inside it."
@@ -772,7 +831,9 @@ Samples (D-LA17): each holds at most 10 paths, comma-joined, at most 600 charact
 ### LA-18: index comparison panel, main-view hint, REPL UAT
 
 - **Agent:** packet-coder. **Host:** windows. **Worktree:** `la-18`, branch `launcher-telemetry/la-18-compare-view`. **Depends:** LA-16 merged.
-- **Files:** new `frontend/src/adoption-index-view.ts` (≤250 lines) and its test; one call line in `adoption-view.ts`; the main-view status renderer (grep where the installed status line renders, e.g. `content_ready` or `installed` in `frontend/src/`); new `frontend/adoption-light-uat.mjs`, modelled on `frontend/adoption-in-place-uat.mjs` (110 lines), with an npm script `uat:adoption-light`.
+- **Files:** new `frontend/src/adoption-index-view.ts` (≤250 lines) and its test; one call line in `adoption-view.ts`; the main-view hint in `frontend/src/launch-view.ts` and its test in `frontend/src/launch-view.test.ts`; new `frontend/adoption-light-uat.mjs`, modelled on `frontend/adoption-in-place-uat.mjs` (110 lines), with an npm script `uat:adoption-light`.
+- **Inputs from LA-15 (amended 2026-10-22).** The comparison reads `status.review.light`: `index_state` (`compared`, `index_not_published`, `index_unreachable`, `index_invalid`), `index_counts` (an object keyed by `stock`, `patched`, `prepared`, `changed`, `missing`, `extra`; a missing key counts 0), `index_files` (`[path, class][]`, at most 500) and `index_files_total`. Render nothing when `review.light` is absent. The main-view hint reads `LaunchStatus.patches_incomplete` and `LaunchStatus.ops_skipped` (`frontend/src/launch-workflow.ts`); both are 0 whenever Play is not offered.
+- **Main-view hint, exactly.** In `launch-view.ts` `launchText`, the last line (`return status.installation_id?'Ready to Play.':...`) becomes: when `status.installation_id` and `status.patches_incomplete>0`, return `` `Ready to Play. ${status.ops_skipped} patch changes could not be applied. If the game crashes or misbehaves, use Repair (downloads the full game, 4.1 GB).` ``; otherwise the existing text. The Play button logic in `render` is not touched, so Play stays enabled. Tests in `launch-view.test.ts`, built from `initial()`: with `patches_incomplete:1,ops_skipped:3` the `launch-status` text contains `3 patch changes could not be applied` and the `launch` button is enabled; with `patches_incomplete:0` the text is exactly `Ready to Play.`.
 - **Copy:**
   - **Comparison.**
     - `Compared`: "Compared with the published file list: <stock> original, <patched> already patched, <prepared> prepared by the launcher, <changed> changed, <missing> missing, <extra> extra." Then a `<details>` list "Show the files" (path and class; "and <n> more" when `index_files_total` > the list).
