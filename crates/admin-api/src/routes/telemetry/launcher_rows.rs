@@ -175,6 +175,7 @@ pub(super) fn scrub_value(value: &str) -> String {
 
 fn scrubbed(lower: &str) -> bool {
     lower.split(is_separator).any(is_ip_token)
+        || contains_ip(lower)
         || drive_path(lower)
         || lower.split_whitespace().any(rooted_token)
         || [
@@ -220,6 +221,36 @@ fn is_separator(c: char) -> bool {
         )
 }
 
+/// Whether an address appears anywhere in the value, next to any punctuation
+/// (A4): a run of hex digits, `.` and `:` that parses as an IP or socket
+/// address, or four dot-separated decimal groups of one to three digits, each
+/// at most 255 (a leading zero included).
+fn contains_ip(lower: &str) -> bool {
+    let address = |run: &str| {
+        let run = run.trim_matches(|c: char| c == ':' || c == '.');
+        run.parse::<IpAddr>().is_ok() || run.parse::<SocketAddr>().is_ok()
+    };
+    lower
+        .split(|c: char| !(c.is_ascii_hexdigit() || c == '.' || c == ':'))
+        .any(address)
+        || lower
+            .split(|c: char| !(c.is_ascii_digit() || c == '.'))
+            .any(dotted_quad)
+}
+
+/// Whether the run holds four consecutive dot-separated decimal groups, each
+/// of one to three digits and at most 255.
+fn dotted_quad(run: &str) -> bool {
+    let parts: Vec<&str> = run.split('.').collect();
+    parts.windows(4).any(|quad| {
+        quad.iter().all(|p| {
+            (1..=3).contains(&p.len())
+                && p.bytes().all(|b| b.is_ascii_digit())
+                && p.parse::<u16>().is_ok_and(|n| n <= 255)
+        })
+    })
+}
+
 /// Whether the token is an address, its trailing sentence punctuation ignored (S3).
 fn is_ip_token(token: &str) -> bool {
     let token = token.trim_end_matches(['.', '!', '?', '}']);
@@ -227,7 +258,7 @@ fn is_ip_token(token: &str) -> bool {
 }
 
 /// An ASCII letter followed by `:\` or `:/`.
-fn drive_path(lower: &str) -> bool {
+pub(super) fn drive_path(lower: &str) -> bool {
     lower
         .as_bytes()
         .windows(3)

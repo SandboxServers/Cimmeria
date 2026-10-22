@@ -8,13 +8,10 @@
 //!
 //! The module is pure: no I/O, no tracing, and no regex crate.
 
-// Nothing calls the module until the log route lands (LF-12); the tests cover it.
-#![allow(dead_code)]
-
 use serde_json::{Map, Value};
 
 use super::dto::ClientNativeEvent;
-use super::launcher_rows::scrub_value;
+use super::launcher_rows::{drive_path, scrub_value, REMOVED};
 
 /// The exact targets a `logs` token may post (C-LF5). The same list as
 /// `crates/launcher-core/src/telemetry/launcher_log_targets.txt`, in the same order.
@@ -36,12 +33,90 @@ pub(super) fn admit_log_rows(rows: Vec<ClientNativeEvent>) -> (Vec<ClientNativeE
     (kept, dropped)
 }
 
+/// The replay body of a launcher log row: when `target` is one of
+/// [`LAUNCHER_LOG_TARGETS`] and `fields` holds a string `message`, that message,
+/// removed from `fields` so it is not repeated in the attributes. `None` for any
+/// other row, and for a log row with no string message (nothing is removed).
+pub(super) fn take_log_body(target: &str, fields: &mut Map<String, Value>) -> Option<String> {
+    if !LAUNCHER_LOG_TARGETS.contains(&target) || !fields.get("message")?.is_string() {
+        return None;
+    }
+    match fields.remove("message") {
+        Some(Value::String(message)) => Some(message),
+        _ => None,
+    }
+}
+
 /// Scrub each whitespace-separated word of a message that [`scrub_value`] flags
 /// with [`REMOVED`], join the words with one space and cut the result to
-/// [`MAX_MESSAGE_BYTES`] on a char boundary (D-LF9).
+/// [`MAX_MESSAGE_BYTES`] on a char boundary (D-LF9). Control and invisible
+/// format characters become spaces first, so they cannot hide an address or
+/// reach the log body. A flagged path also removes the words after it that
+/// finish it: the rest of a name with a space in it, and the path's tail.
 pub(super) fn scrub_words(message: &str) -> String {
-    let words: Vec<String> = message.split_whitespace().map(scrub_value).collect();
-    cut_message(words.join(" "))
+    let mapped: String = message
+        .chars()
+        .map(|c| if is_hidden_char(c) { ' ' } else { c })
+        .collect();
+    let words: Vec<&str> = mapped.split_whitespace().collect();
+    let mut out: Vec<String> = Vec::with_capacity(words.len());
+    let mut i = 0;
+    while i < words.len() {
+        let word = words[i];
+        i += 1;
+        if scrub_value(word) != REMOVED {
+            out.push(word.to_string());
+            continue;
+        }
+        out.push(REMOVED.to_string());
+        let lower = word.to_ascii_lowercase();
+        if !path_like(&lower) {
+            continue;
+        }
+        if ends_at_profile(&lower) && i < words.len() {
+            out.push(REMOVED.to_string());
+            i += 1;
+        }
+        while i < words.len() && words[i].contains(['\\', '/']) {
+            out.push(REMOVED.to_string());
+            i += 1;
+        }
+    }
+    cut_message(out.join(" "))
+}
+
+/// Control characters and the invisible format characters: the bidi
+/// overrides and isolates, zero-width marks and joiners, and the word joiner
+/// and byte order mark.
+fn is_hidden_char(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{200B}'..='\u{200F}'
+                | '\u{202A}'..='\u{202E}'
+                | '\u{2060}'..='\u{2064}'
+                | '\u{2066}'..='\u{2069}'
+                | '\u{FEFF}'
+        )
+}
+
+/// A lowercase word that is a drive or rooted path, or has a profile folder.
+fn path_like(lower: &str) -> bool {
+    drive_path(lower) || lower.starts_with(['\\', '/']) || profile_folder(lower).is_some()
+}
+
+/// Whether the path's profile folder (`\users\`, `/users/`, `/home/`) is the
+/// last segment of the word: a name that a space may split.
+fn ends_at_profile(lower: &str) -> bool {
+    profile_folder(lower).is_some_and(|rest| !rest.is_empty() && !rest.contains(['\\', '/']))
+}
+
+/// The text after the last profile folder of a lowercase word.
+fn profile_folder(lower: &str) -> Option<&str> {
+    ["\\users\\", "/users/", "/home/"]
+        .iter()
+        .filter_map(|p| lower.rfind(p).map(|at| &lower[at + p.len()..]))
+        .next()
 }
 
 /// The row when it is a valid log row, cleaned; `None` when it must be dropped.

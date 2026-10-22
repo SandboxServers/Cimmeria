@@ -18,6 +18,10 @@ use crate::routes::dev_session::quota::QuotaExceeded;
 use crate::routes::dev_session::{env_u32, AuthError, TokenClaims};
 
 use super::dto::TelemetryEvent;
+use super::launcher_log_budget::{
+    LogBudget, DEFAULT_LOG_ROWS_PER_INSTALL_DAY, DEFAULT_LOG_ROWS_PER_MINUTE,
+    DEFAULT_LOG_ROWS_PER_SESSION,
+};
 use super::launcher_rows::admit_launcher_rows;
 
 /// Rows a launcher session may replay over its lifetime (R15).
@@ -64,6 +68,8 @@ pub(super) struct LauncherBudget {
     minute: Mutex<(Instant, usize)>,
     /// Sessions the table holds at most.
     capacity: usize,
+    /// The ledgers of the log sessions (C-LF6), kept apart from the event ones.
+    logs: LogBudget,
 }
 
 impl LauncherBudget {
@@ -75,12 +81,29 @@ impl LauncherBudget {
             sessions: Mutex::new(HashMap::new()),
             minute: Mutex::new((Instant::now(), 0)),
             capacity: LAUNCHER_LEDGER_SESSIONS,
+            logs: LogBudget::new(
+                DEFAULT_LOG_ROWS_PER_SESSION,
+                DEFAULT_LOG_ROWS_PER_INSTALL_DAY,
+                DEFAULT_LOG_ROWS_PER_MINUTE,
+            ),
         }
+    }
+
+    /// The log ledgers.
+    pub(super) fn logs(&self) -> &LogBudget {
+        &self.logs
+    }
+
+    /// The same budget with the log ledgers `logs`, for tests.
+    #[cfg(test)]
+    pub(super) fn with_logs(mut self, logs: LogBudget) -> Self {
+        self.logs = logs;
+        self
     }
 
     /// The budget from the environment, or the defaults for what is unset.
     pub(super) fn from_env() -> Self {
-        Self::new(
+        let mut budget = Self::new(
             env_u32(
                 LAUNCHER_ROWS_PER_SESSION_ENV,
                 DEFAULT_LAUNCHER_ROWS_PER_SESSION,
@@ -89,7 +112,9 @@ impl LauncherBudget {
                 LAUNCHER_ROWS_PER_MINUTE_ENV,
                 DEFAULT_LAUNCHER_ROWS_PER_MINUTE,
             ),
-        )
+        );
+        budget.logs = LogBudget::from_env();
+        budget
     }
 
     /// The same budget with a session table of `sessions` entries, for tests.
