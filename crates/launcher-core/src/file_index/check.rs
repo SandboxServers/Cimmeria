@@ -20,8 +20,8 @@ pub struct Finding {
 }
 
 /// Checks, in order: manifest_parses, manifest_valid (Manifest::validate),
-/// file_index_present, blob_form_matches_seed (same form as the seed's `blob`:
-/// both absolute https URLs on one host, or both relative), index_under_cap,
+/// file_index_present, index_blob_form (an absolute https URL on any host, or
+/// a relative name, as the launcher reads it), index_under_cap,
 /// index_size, index_digest, index_parse_verified, index_bind, then
 /// append_only when `previous` is given, then parity when `built` is given
 /// (the candidate index equals the one `file_index::build` makes from the
@@ -56,10 +56,7 @@ pub fn check_publication(
         )),
         Some(reference) => {
             out.push(finding("file_index_present", Ok(())));
-            out.push(finding(
-                "blob_form_matches_seed",
-                blob_forms_match(&manifest.seed.blob, &reference.blob),
-            ));
+            out.push(finding("index_blob_form", index_blob_form(&reference.blob)));
             out.push(finding("index_under_cap", under_cap(index)));
             out.push(finding("index_size", size_matches(index, reference)));
             out.push(finding("index_digest", digest_matches(index, reference)));
@@ -112,16 +109,15 @@ fn finding(check: &'static str, result: Result<(), String>) -> Finding {
     }
 }
 
-/// The two blob names have the same form: both absolute https URLs on one
-/// host, or both relative.
-fn blob_forms_match(seed: &str, index: &str) -> Result<(), String> {
-    match (blob_form(seed), blob_form(index)) {
-        (BlobForm::Relative, BlobForm::Relative) => Ok(()),
-        (BlobForm::Https(a), BlobForm::Https(b)) if a.eq_ignore_ascii_case(b) => Ok(()),
-        _ => Err(
-            "the file index blob is not in the seed's form (same https host, or both relative)"
-                .into(),
-        ),
+/// The index blob is a relative name or an absolute https URL on any host.
+/// The seed's blob form does not matter: releases may host the index apart
+/// from the seed.
+fn index_blob_form(index: &str) -> Result<(), String> {
+    match blob_form(index) {
+        BlobForm::Relative | BlobForm::Https(_) => Ok(()),
+        BlobForm::Other => {
+            Err("the file index blob must be an https URL or a relative name".into())
+        }
     }
 }
 
@@ -279,7 +275,7 @@ mod tests {
                 "manifest_parses",
                 "manifest_valid",
                 "file_index_present",
-                "blob_form_matches_seed",
+                "index_blob_form",
                 "index_under_cap",
                 "index_size",
                 "index_digest",
@@ -339,12 +335,36 @@ mod tests {
     }
 
     #[test]
-    fn a_relative_index_blob_under_an_https_seed_fails_the_blob_form() {
+    fn an_https_index_blob_on_another_host_passes() {
+        let (candidate, index_bytes) = fixture();
+        let mut manifest: Manifest = serde_json::from_slice(&candidate).unwrap();
+        manifest.seed.blob = "https://archive.example/seed.zip".into();
+        manifest.file_index.as_mut().unwrap().blob =
+            "https://github.com/owner/repo/releases/download/content-file-index-20261021/file-index.json"
+                .into();
+        let candidate = serde_json::to_vec(&manifest).unwrap();
+        let findings = check_publication(&candidate, &index_bytes, None, None);
+        assert!(failed(&findings).is_empty(), "{findings:?}");
+    }
+
+    #[test]
+    fn a_relative_index_blob_under_an_https_seed_passes() {
         let (candidate, index_bytes) = fixture();
         let mut manifest: Manifest = serde_json::from_slice(&candidate).unwrap();
         manifest.seed.blob = "https://play.example/seed.zip".into();
         let candidate = serde_json::to_vec(&manifest).unwrap();
         let findings = check_publication(&candidate, &index_bytes, None, None);
-        assert_eq!(failed(&findings), ["blob_form_matches_seed"]);
+        assert!(failed(&findings).is_empty(), "{findings:?}");
+    }
+
+    #[test]
+    fn an_http_index_blob_fails_index_blob_form() {
+        let (candidate, index_bytes) = fixture();
+        let mut manifest: Manifest = serde_json::from_slice(&candidate).unwrap();
+        manifest.file_index.as_mut().unwrap().blob =
+            "http://github.com/owner/repo/file-index.json".into();
+        let candidate = serde_json::to_vec(&manifest).unwrap();
+        let findings = check_publication(&candidate, &index_bytes, None, None);
+        assert_eq!(failed(&findings), ["index_blob_form"]);
     }
 }

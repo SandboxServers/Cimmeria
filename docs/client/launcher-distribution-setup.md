@@ -142,16 +142,25 @@ cargo run -p cimmeria-launcher-core --bin build-file-index -- `
   --manifest manifest.json --seed seed.zip --patch <id>=<zip> ... --out file-index.json
 ```
 
-- Attach `file-index.json` to the immutable per-publication release, next to the seed and patches.
-- Paste the printed `file_index` entry into `manifest.json` before signing, and set its `blob` to the attached asset name.
+- Attach `file-index.json` to its own release, `content-file-index-<yyyymmdd>` (see the publication bullet below).
+- Paste the printed `file_index` entry into `manifest.json` before signing, and set its `blob` to the attached asset's full https URL.
 - `pack-client-overlay` drops a stale index: when it appends a patch, it sets `file_index` to `None` and prints a reminder. Rebuild the index after adding patches, before signing.
 - A missing or mismatched index makes the launcher build one from the seed. That is a fallback, never a wrong verdict.
 - Publishing is an owner step: no agent signs, uploads or reads the release key. The runbook, in order:
   1. Build the tools with a lane build: `$env:LANE_VERBOSE='1'; pwsh tools/build-lane/lane.ps1 cargo build --locked -p cimmeria-launcher-core --bins -p cimmeria-patchset --bin cimmeria-patchset`. The lane log prints `target=<dir>`; the exes are in `<dir>\debug`.
-  2. Prepare: `pwsh tools/content-release/prepare-file-index.ps1 -Seed seed.zip -Patch <id>=<zip> ... -Current manifest.json -Out <dir> -BlobPath <blob name> -PubKey <release public key, hex> -BuildExe <dir>\debug\build-file-index.exe -VerifyExe <dir>\debug\verify-file-index.exe`. It verifies the current manifest, builds `file-index.json`, writes `manifest.candidate.json` (the current manifest plus its `file_index` entry, nothing else changed) and runs `verify-file-index`. It stops on any FAIL and never signs or uploads.
+  2. Prepare: `pwsh tools/content-release/prepare-file-index.ps1 -Seed seed.zip -Patch <id>=<zip> ... -Current manifest.json -Out <dir> -BlobPath <full https URL of the file-index.json asset> -PubKey <release public key, hex> -BuildExe <dir>\debug\build-file-index.exe -VerifyExe <dir>\debug\verify-file-index.exe`. It verifies the current manifest, builds `file-index.json`, writes `manifest.candidate.json` (the current manifest plus its `file_index` entry, nothing else changed) and runs `verify-file-index`. It stops on any FAIL and never signs or uploads.
   3. Chain rule: the candidate only appends. The seed and every patch keep their order, `id`, `after`, `size`, `sha256` and `blob`. `after` links are never remapped; a reordered patch or a changed `after` fails `append_only`, so a changed patch list is a new publication.
   4. Parity: the same run rebuilds the index from the local seed and patches and compares the parsed values with the candidate's. This is the launcher-verify step before signing; it matches the launcher's own fallback build (above).
-  5. Owner only, with the offline release key on the owner's machine: `cimmeria-patchset sign manifest.json --key <offline key file>`, then `cimmeria-patchset verify manifest.json --pubkey <hex>`. Upload `file-index.json` to the immutable per-publication release first, then upload `manifest.json` and `manifest.json.sig` to `content-current` with `--clobber`. Then run LT-27 U7 on a laptop that would not adopt.
+  5. Owner only, with the offline release key on the owner's machine: `cimmeria-patchset sign manifest.json --key <offline key file>`, then `cimmeria-patchset verify manifest.json --pubkey <hex>`. Upload `file-index.json` to the `content-file-index-<yyyymmdd>` release first, then upload `manifest.json` and `manifest.json.sig` to `content-current` with `--clobber`. Then run LT-27 U7 on a laptop that would not adopt.
+- Each publication uploads `file-index.json` to a **new** GitHub release `content-file-index-<yyyymmdd>`. The tracked script `tools/content-release/prepare-file-index.ps1` checks it. `-BlobPath` is that asset's full URL, `https://github.com/<owner>/<repo>/releases/download/content-file-index-<yyyymmdd>/file-index.json`. The launcher accepts an https URL on any host, or a relative name.
+- Publish and roll back (owner only; this list expands step 5 above and replaces its upload and swap order):
+  1. Back up the live `manifest.json` and `manifest.json.sig` to a backup folder.
+  2. Sign: `cimmeria-patchset sign manifest.json --key <offline key file>`.
+  3. Run `cimmeria-patchset verify manifest.json --pubkey <hex>`.
+  4. Upload `file-index.json` to the new `content-file-index-<yyyymmdd>` release.
+  5. Swap: `gh release upload content-current --clobber manifest.json manifest.json.sig`.
+  6. Download the live `manifest.json` and the new `file-index.json` again and run `verify-file-index --manifest <downloaded manifest.json> --file-index <downloaded file-index.json> --previous <backup>\manifest.json`. On any FAIL, roll back at once (step 7).
+  7. Rollback, if needed: `gh release upload content-current --clobber <backup>\manifest.json <backup>\manifest.json.sig`.
 - The index carries only paths, sizes and hashes. The seed is never rehosted.
 
 ### Initial setup
