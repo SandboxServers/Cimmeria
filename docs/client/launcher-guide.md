@@ -31,8 +31,8 @@ itself. If you still use that one, read
 How the launcher is built and released is in the
 [desktop launcher README](../../crates/launcher/desktop/README.md) and its
 [release guide](../../crates/launcher/desktop/docs/release.md). The one-time
-operator setup (content releases, the three signing keys, the log-upload
-storage) is [launcher-distribution-setup.md](launcher-distribution-setup.md).
+operator setup (content releases and the two signing keys) is
+[launcher-distribution-setup.md](launcher-distribution-setup.md).
 
 ---
 
@@ -976,6 +976,6 @@ its data again. If the game will not start at all or its settings are broken,
 - [Playing on a Mac](../guides/macos.md) — the macOS launcher
 - [Desktop launcher README](../../crates/launcher/desktop/README.md) — how the launcher works, for contributors
 - [launcher-self-update.md](launcher-self-update.md) — how launcher updates are signed, verified and swapped
-- [launcher-distribution-setup.md](launcher-distribution-setup.md) — operator setup: content releases, the signing keys, the log-upload storage
+- [launcher-distribution-setup.md](launcher-distribution-setup.md) — operator setup: content releases and the two signing keys
 - [Desktop launcher release](../../crates/launcher/desktop/docs/release.md) — what `/release-launcher` publishes
 - [sgw-launcher.md](sgw-launcher.md) — the retired old launcher's design, kept for history

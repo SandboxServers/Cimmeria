@@ -59,6 +59,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Mission data lock](#mission-data-lock) | This section (telemetry-gaps packet TG-DB-12) |
 | [Lab harness](#lab-harness) | [lab-harness close-out](../analysis/lab-harness/closeout.md#what-was-not-tested-live) |
 | [Telemetry gaps](#telemetry-gaps) | [telemetry-gaps ledger](../analysis/telemetry-gaps/README.md#packet-status) and its [close-out handoff](../analysis/telemetry-gaps/handoffs/2026-10-11-closeout.md) |
+| [Launcher UAT fixes](#launcher-uat-fixes) | [launcher-uat-fixes ledger](../analysis/launcher-uat-fixes/README.md#close-out-2026-10-22) and the [laptop UAT worknote](../analysis/launcher-telemetry/worknotes/laptop-uat-2026-10-22.md) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
@@ -1549,6 +1550,25 @@ Not ready for UAT until the next signed launcher release.
 **Things only a human can check:** that a normal quit doesn't hang the game (TG-UAT-C2); that the presence change (TG-UAT-G7) shows nothing in the ignorer's client.
 
 Source: [telemetry-gaps ledger](../analysis/telemetry-gaps/README.md) and [close-out handoff](../analysis/telemetry-gaps/handoffs/2026-10-11-closeout.md); row names in [negative-logging-convention.md](../architecture/negative-logging-convention.md), [observability-target-catalog.md](../architecture/observability-target-catalog.md) and [client-telemetry.md](../architecture/client-telemetry.md).
+
+## Launcher UAT fixes
+
+The launcher-uat-fixes campaign ([ledger](../analysis/launcher-uat-fixes/README.md), PRs #1984 to #1988 and its close-out) fixed what the owner's laptop UAT of light in-place adoption found (F1-F6) and made "Upload debug logs" ingest launcher and game log lines into SigNoz (G1-G6). The step ids U1-U6 are the ledger's.
+
+**Status:** UATPending. All code is merged; **no live UAT has run** (no laptop, lab or colo run). Owner only. **Ask the owner before any laptop use.** U6 needs the colo server and the launcher released together (the server first, or with the launcher; D-LU5).
+
+**Prerequisites:** a launcher build with PR #1986 (U1-U3) and #1984 (U4, U5), or the release that carries all of #1984 to #1988 (U6); the laptop's half-adopted `C:\Temp\sgw` for U1; a fresh copy of the stock client for U2 and U3. Filter SigNoz on `service.name = 'cimmeria-client' AND cimmeria.session_kind = 'launcher'` (launcher rows are replayed under the client service; the `client.launcher.*` targets).
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| U1 | On the laptop's half-adopted `C:\Temp\sgw`, with a build that has PR #1986, press Recover | The adoption finishes and the folder is playable. SigNoz: one `adoption_tree_checked` row with `outcome = unrecorded` | D-LF1. The folder was adopted before the expected tree existed, so the check accepts it with a WARN. If Recover still fails, copy the row's samples |
+| U2 | On a fresh copy of the stock client, run a light adoption to the end | It completes. SigNoz: `adoption_tree_checked` with `outcome = matched` or `accepted`, and `samples` listing any case-only or unexpected paths | A real `missing` or `changed` file must fail the check. Do not delete a file to prove it on the laptop copy |
+| U3 | Adopt the stock client, which holds `Working/Binaries/wxRes/TerrainEdit_Gradient másolata.bmp` | The review and the adoption do not refuse the file (no `Name` reason) | D-LF3. LF-04 |
+| U4 | Interrupt an adoption (close the launcher mid-move), then reopen it | One banner about the adoption; one recheck button; Install shows no primary button and no recovery text; Play shows one adoption line | D-LF5. LF-06 |
+| U5 | Open the adoption review | One folder line with no `\\?\` prefix; counts in one place; hashes and ids behind "Release details"; the telemetry sentence has its space; the "Recover adoption…" trigger stays usable while its confirmation is open; the two confirmation buttons are spaced. **Recheck the clipping and overlap in screenshot 2 of the laptop worknote** | F5's clipping and overlap were never verified. Record what you see, with a screenshot |
+| U6 | During a reconciliation, press "Upload debug logs"; then run the game once and press it again | First press: "Sent N lines. Reference …". One SigNoz filter on that reference shows the launcher lines. The second press sends only new lines. After a game run, the same reference also shows `client.launcher.game_log` rows | LF-15, LF-16, LF-19. A 429 or 503 ends `Partial`. Known limits: messages cut at 2,048 bytes; rows over 4,096 bytes after escaping are dropped by the server; lines beyond 20,000 new launcher lines and 20,000 new game lines per press are not uploaded; daily ceilings apply |
+
+**What this run risks (owner decision, D-LU3, D-LU4):** chat and character names in the game log leave the machine, and only a per-word scrub (paths, IPs, URLs, `@`, GUIDs, long hex) applies; secrets under 32 characters or split by dots are kept; log rows can be forged by a log-token holder; the install and address budgets are speed bumps. The full list is in the [ledger close-out](../analysis/launcher-uat-fixes/README.md#owner-risks-accepted-under-d-lu3-and-d-lu4-nothing-was-removed-to-avoid-them).
 
 ## Lab CLI (`lab.exe`)
 
