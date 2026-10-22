@@ -266,6 +266,64 @@ Check before you trust it: run `SELECT DISTINCT scope_name, resources_string['se
 
 `playtest.friction` is exported at DEBUG through its own `OTEL_FILTER` row (`crates/server/src/logging/filters.rs`). A saved view or alert that filters it on WARN severity shows nothing. Filter on `scope_name = 'playtest.friction'` and drop the severity condition. The owner updates the live "Playtest: friction" saved view; this repository does not hold its export, and no worker edits it.
 
+## Mouse navigation
+
+The nav poll's rows (`client.input.button`, `client.input.mode`, `client.nav.pose`) are client telemetry replayed by admin-api. Each row has `resources_string['service.name'] = 'cimmeria-client'`, `scope_name = 'client.native'`, the event name in `attributes_string['client_target']` and the session in `attributes_string['session_id']`. Only a few correlation keys are lifted to attributes (`entity_id` is one, on `client.input.hover`). Every other field, `button`, `edge`, `class`, `hover_id`, `mode`, `ui_owned` and the rest, is in the JSON text of `attributes_string['fields']`, so the queries below read it with `JSONExtract*`. What each field means is in [client-telemetry.md](../../architecture/client-telemetry.md#mouse-input-clientinput).
+
+Not run against a live SigNoz yet. The first live proof is LN-13 (live confirmation in the lab), and the owner's mouse session is listed in [unified-uat.md](../../guides/unified-uat.md) once it lands.
+
+### One session in time order
+
+Replace `<session_id>` with the session's id. The row timestamp is the replay time; the order is the order the poll saw the rows within one session.
+
+```sql
+WITH attributes_string['fields'] AS f
+SELECT
+  timestamp                                     AS t,
+  attributes_string['client_target']            AS target,
+  JSONExtractString(f, 'button')                AS button,
+  JSONExtractString(f, 'edge')                  AS edge,
+  JSONExtractString(f, 'class')                 AS class,
+  JSONExtractRaw(f, 'hover_id')                 AS hover_id,
+  JSONExtractRaw(f, 'mode')                     AS mode,
+  JSONExtractRaw(f, 'buttons')                  AS buttons,
+  JSONExtractRaw(f, 'ui_owned')                 AS ui_owned
+FROM signoz_logs.distributed_logs_v2
+WHERE resources_string['service.name'] = 'cimmeria-client'
+  AND scope_name = 'client.native'
+  AND attributes_string['session_id'] = '<session_id>'
+  AND attributes_string['client_target'] IN ('client.input.button', 'client.input.mode', 'client.nav.pose')
+  AND timestamp > toUnixTimestamp(now() - INTERVAL 1 DAY) * 1000000000
+ORDER BY t
+LIMIT 500
+```
+
+`JSONExtractRaw` returns an empty string for an absent field, so an empty `ui_owned` means unknown, not `false`. `hover_id` is only on select and interact rows, so an empty value there is normal.
+
+### Clicks by class and hover id
+
+Counts releases (`edge = 'up'`) by `class` and `hover_id`, for human sessions. A `hover_id` of `0` covers both "absent" (drag and chord releases) and "zero". The id is the hover id at release and approximates the picked target (see the architecture page).
+
+```sql
+WITH attributes_string['fields'] AS f
+SELECT
+  JSONExtractString(f, 'class') AS class,
+  JSONExtractInt(f, 'hover_id') AS hover_id,
+  count()                       AS clicks
+FROM signoz_logs.distributed_logs_v2
+WHERE resources_string['service.name'] = 'cimmeria-client'
+  AND scope_name = 'client.native'
+  AND attributes_string['client_target'] = 'client.input.button'
+  AND attributes_string['cimmeria.session_kind'] = 'player'
+  AND JSONExtractString(f, 'edge') = 'up'
+  AND timestamp > toUnixTimestamp(now() - INTERVAL 7 DAY) * 1000000000
+GROUP BY class, hover_id
+ORDER BY clicks DESC
+LIMIT 50
+```
+
+Read it with care: `hover_id` is approximate, so a count per id is a hint about where the player clicked, not proof of the picked entity. Drop the `class` column to see the totals per id alone.
+
 ## Documentation debt
 
 - No saved-view export exists for these queries. Add one only after PC-19 shows the queries work.
