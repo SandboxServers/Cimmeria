@@ -203,6 +203,7 @@ mod tests {
             "play.example",
             "https://user@play.example",
             "https://user:pw@play.example",
+            "https://:pw@play.example",
             "",
         ] {
             assert_eq!(
