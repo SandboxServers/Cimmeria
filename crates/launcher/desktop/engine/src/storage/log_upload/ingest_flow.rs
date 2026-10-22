@@ -248,7 +248,9 @@ impl LogIngest {
                 upload_id,
                 retry_after_secs,
             })),
-            IngestOutcome::Unreachable => Ok(status(LogUploadState::Unreachable)),
+            // A failed mint is a transient outage (server down, DNS, offline), not a
+            // missing target: the player can press again (LF-15 item 3).
+            IngestOutcome::Unreachable => Err(LogUploadError::Network),
             // The sender does not keep the status code, so a rejection and a
             // transport failure read the same to the player: try again later.
             IngestOutcome::Failed => Err(LogUploadError::Network),

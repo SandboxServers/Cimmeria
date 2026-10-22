@@ -387,6 +387,29 @@ async fn a_rejected_upload_is_a_network_error_and_moves_no_offset() {
     assert!(Offsets::load(&state.directory.root).files.is_empty());
 }
 
+#[tokio::test]
+async fn a_failed_mint_is_a_network_error_the_player_can_retry() {
+    let root = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/dev-session"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    write_log(root.path(), 4);
+    let state = state_at(root.path(), &server.uri());
+    let uploader = LogUploader::new();
+    assert_eq!(
+        run_upload(&state, &uploader).await,
+        Err(LogUploadError::Network),
+        "a transient mint failure must not read as `no telemetry server`"
+    );
+    assert_eq!(chunk_posts(&server).await, 0);
+    assert!(Offsets::load(&state.directory.root).files.is_empty());
+    // The busy flag is released: a second press is admitted.
+    assert!(state.begin_log_upload(upload(), &uploader).is_ok());
+}
+
 /// Cancels the token during its first post, as an app shutdown would.
 struct CancellingSink {
     cancel: CancellationToken,
