@@ -7,6 +7,8 @@ Ledger: [README.md](README.md) · Packets: [work-packets.md](work-packets.md) (r
 - Incremental update without the 4.1 GB seed, for light-adopted installs only (D-LA14).
 - A non-blocking comparison against the published file index, which LT-37 publishes.
 
+**Follow-up campaign (2026-10-22).** The laptop UAT findings F1-F6 and G1-G4 moved to [launcher-uat-fixes](../launcher-uat-fixes/README.md) (closed; PRs #1984-#1988 plus its close-out). Light adoption's final check is now a per-file diff, Abandon works after `Promoted`, and "Upload debug logs" ingests into SigNoz. Owner UAT rows U1-U6 are in [unified-uat.md](../../guides/unified-uat.md#launcher-uat-fixes); the D2 wording question is still open.
+
 **Wave 8 close (2026-10-22 late).** PR L #1981 and PR I2 #1982 merged. LA-01..LA-19 are done and `light-adoption` (tip `ebf8a46f3`, 47 commits over main, restacked) is open as **PR LA #1983**; the user queues the merge. LA-20 done: the signed manifest now carries `file_index` -> release `content-file-index-20261022` (worknotes/LA-20-publish.md, rollback recipe in it). Final cross-packet reviews A and B are running (worknotes/wave8e-final-review-A.md, -B.md); apply their fix notes on the branch, then push. Open: D2 (`inPlaceMaintenance.abandon` wording after a light abandon), D-LA12, Windows ARM64 scope, owner UAT (laptop light adoption, seedless Update, comparison panel, LT-27 U1-U9; ask first). Left from wave 7: LT-24 (PR F), LT-41 (PR H), LT-27 (PR X). Stale AU worktrees still to retire. Older notes below.
 
 **Current state (2026-10-21 late).**
