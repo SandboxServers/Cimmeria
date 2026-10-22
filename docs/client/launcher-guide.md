@@ -293,7 +293,11 @@ changes.
 If adoption stops part-way (the PC turns off), the launcher offers
 **Recover adoption…** to finish it or, while only file moves have happened,
 **Abandon adoption…** to put every file back. **Abandon** puts your original
-files back. Neither runs on its own. The full rules are in the
+files back. After a light adoption (a stock folder adopted in place) the
+launcher keeps copies of the files its setup rewrites, so **Abandon** is still
+offered after the folder has been promoted and setup has begun, not only
+before it. **Recover** also finishes a light adoption that an older launcher
+build began. Neither runs on its own. The full rules are in the
 [migration contract](../../crates/launcher/desktop/docs/migration.md#adopting-an-existing-folder).
 
 After adoption, the folder is the launcher's own: **Play**, **Repair game**,
@@ -371,7 +375,7 @@ soon as you press it.
 | **Send game diagnostics** | Off by default. When on, Play loads a small diagnostics module into the game, which sends game events and logs to your login server, so the developers can see what went wrong. It changes nothing in the game. When it is on, the launcher also sends its game-folder events (the steps of **Use an existing game folder**, and why a folder was refused) to your login server as they happen, without Play. They name files only by their place inside the game folder, never your user name or home folder. |
 | **Login servers** | The servers the game's login screen lists, one `Name = http://host:port` per line. **Save servers** saves them; a line the launcher cannot read is shown under the box and nothing is saved. Empty means the default Cimmeria server. |
 | **Client patches** | **Load client patches** is on by default. The patches fix parts of the 2009 client; the Black Market window, for one, needs them. Turn it off only to rule them out when something misbehaves. An adopted folder keeps the setting it was adopted with. |
-| **Debug logs** | **Upload debug logs** zips the game's `SGWDebugLog` files and session logs, plus the newest three days of the launcher's own log, and uploads them once for the developers. Uploading the same logs again sends nothing ("Nothing new to upload"). Builds without an upload address hide the button. |
+| **Debug logs** | **Upload debug logs** sends the launcher's own log lines and the game's `SGWDebugLog` and session log lines to the project's diagnostics server, in a few paced batches. It sends only lines it has not sent before, at most 20,000 launcher lines and 20,000 game lines per press, and shows "Sent N log lines. Reference `<id>`." when it is done. Quote the reference when you report a problem. File paths and addresses are removed first. Game logs can include chat and character names. Pressing the button sends the logs even when **Send game diagnostics** is off. |
 | **Client cache and settings** | **Reset client cache** clears the game's downloaded data cache in `Documents\My Games\Firesky\SGWGame\Cache.en-US`; the game refills it from the server at your next login. **Reset all client state…** deletes the whole `Documents\My Games\Firesky` folder (your game settings, key bindings and cache) after you confirm with **Delete all client state**. Your characters on the server are not affected. Both refuse while the game runs. |
 | **Changes to your client** | Read-only. Every change the launcher makes to the stock client: the setup steps, each applied patch, the DLLs Play loads, and what the server sends while you play. |
 | **PhysX System Software** | Windows only. See [Install PhysX](#install-physx). |
@@ -943,19 +947,28 @@ its data again. If the game will not start at all or its settings are broken,
 
 ### Log upload problems
 
-- **"Nothing new to upload"** is not an error: these exact logs were already
-  uploaded. Play a new session to make new ones.
-- **"The log store refused the upload"**: the upload address in your launcher
-  may have expired. Update the launcher.
-- **"Uploaded the newest logs. Older logs were left out…"**: the logs were
-  over 64 MiB, so only the newest went up.
+- **"No new log lines since the last upload"** is not an error: everything
+  was already sent. Play a new session to make new lines.
+- **"Sent X of Y lines. The server asked us to wait; press again in about N min."**
+  The server asked the launcher to wait (a per-install or per-day limit), or you closed
+  the launcher mid-upload. Wait the minutes shown, then press again; it
+  carries on from the last batch the server accepted. Each press sends at most
+  40,000 lines, and a day allows about two full presses.
+- **"The upload did not reach the log store."** The launcher could not reach
+  the server. Check your connection and press again.
+- **"Debug logs can't be sent: this install has no telemetry server."** The
+  saved login-server list is not valid, for example after a hand edit of
+  `launcher-config.json`. Save a valid list under **Login servers**, or clear
+  it to use the default server.
+- **"No logs to upload yet: the game has not written any."** There is nothing
+  to read yet.
 
 ### Where to find logs to share
 
 - The status line under the button you pressed.
-- **Settings → Debug logs → Upload debug logs** for the game's own logs.
+- **Settings → Debug logs → Upload debug logs** for the launcher's and the game's log lines.
 - `game\Working\Binaries\SGWDebugLog.log` in your install folder.
-- The launcher's own log: `%APPDATA%\app.cimmeria.launcher.desktop\logs\launcher.<date>.log`; on Linux, `~/.local/share/app.cimmeria.launcher.desktop/logs/`; on macOS, `~/Library/Application Support/app.cimmeria.launcher.desktop/logs/`. There is one file a day, 7 are kept, and the home folder is written as `~`. **Upload debug logs** adds the newest three days of it to the upload, but only when there are game logs to send. Before the upload, paths are scrubbed and IP literals are replaced with `[ip]`.
+- The launcher's own log: `%APPDATA%\app.cimmeria.launcher.desktop\logs\launcher.<date>.log`; on Linux, `~/.local/share/app.cimmeria.launcher.desktop/logs/`; on macOS, `~/Library/Application Support/app.cimmeria.launcher.desktop/logs/`. There is one file a day, 7 are kept, and the home folder is written as `~`. **Upload debug logs** sends the new lines of these files, up to 20,000 per press. Before the upload, paths are scrubbed and IP literals are replaced with `[ip]`, and the server scrubs each message again word by word.
 
 ---
 

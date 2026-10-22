@@ -114,3 +114,29 @@ fn replace_home_and_scrub_cases() {
     assert_eq!(bob.scrub("\"/etc/x\""), "<path removed>");
     assert_eq!(bob.scrub("."), ".");
 }
+
+/// LF-19 A9: a long token is removed when punctuation sits next to it, and the
+/// punctuation stays. Only the token run is replaced.
+#[test]
+fn a_long_token_next_to_punctuation_is_removed_and_the_punctuation_kept() {
+    let none = Redaction::default();
+    let key = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5";
+    assert_eq!(
+        none.scrub_words(&format!("{{\"key\":\"{key}\"}} done")),
+        "{\"key\":\"<removed>\"} done"
+    );
+    assert_eq!(none.scrub_words(&format!("(ticket={key})")), "(<removed>)");
+    assert_eq!(none.scrub_words(&format!("'{key}',")), "'<removed>',");
+    let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N";
+    assert_eq!(none.scrub_words(&format!("token={jwt} ok")), "<removed> ok");
+}
+
+/// LF-19 A9: a 31-character mixed run and a 40-character all-letter run are kept.
+#[test]
+fn a_short_or_all_letter_run_is_kept() {
+    let none = Redaction::default();
+    let short = "abcdefghij0123456789klmnopqrstu";
+    let letters = "abcdefghijabcdefghijabcdefghijabcdefghij";
+    assert_eq!(none.scrub_words(short), short);
+    assert_eq!(none.scrub_words(letters), letters);
+}

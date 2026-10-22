@@ -44,6 +44,9 @@ struct MintRequest<'a> {
     tags: &'a [&'a str],
     #[serde(skip_serializing_if = "Option::is_none")]
     session_kind: Option<&'a str>,
+    /// `"logs"` for the log-ingest session (server C-LF4); absent otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    purpose: Option<&'a str>,
 }
 
 #[derive(Deserialize)]
@@ -143,7 +146,7 @@ pub async fn start(
     login_servers: &[LoginServer],
     tags: &[&str],
 ) -> Result<Session, Outcome> {
-    start_kind(identity, login_servers, tags, None)
+    start_kind(identity, login_servers, tags, None, None)
         .await
         .map_err(|failure| failure.outcome)
 }
@@ -155,6 +158,7 @@ pub(super) async fn start_kind(
     login_servers: &[LoginServer],
     tags: &[&str],
     session_kind: Option<&str>,
+    purpose: Option<&str>,
 ) -> Result<Session, MintFailure> {
     // https anywhere, plain http only to this machine or a login server: the
     // rule the Windows launcher applies, to the mint address and to whatever
@@ -186,6 +190,7 @@ pub(super) async fn start_kind(
         launcher_version: &launcher_version,
         tags,
         session_kind,
+        purpose,
     })
     .map_err(|_| mint_refused("transport", None, attempt, Outcome::SessionUnavailable))?;
     let client = reqwest::Client::builder()
@@ -279,6 +284,7 @@ pub(super) fn mint_body_for_test(kind: Option<&str>) -> serde_json::Value {
         launcher_version: "desktop-test",
         tags: &["desktop-launcher", "linux", "launcher"],
         session_kind: kind,
+        purpose: None,
     })
     .unwrap()
 }
@@ -425,7 +431,7 @@ mod tests {
                     name: "fixture".into(),
                     url: server.uri(),
                 }];
-                start_kind(&fixture_identity(), &servers, &[], Some("launcher"))
+                start_kind(&fixture_identity(), &servers, &[], Some("launcher"), None)
                     .await
                     .err()
             })
@@ -452,7 +458,7 @@ mod tests {
                         name: "fixture".into(),
                         url: server.uri(),
                     }];
-                    start_kind(&fixture_identity(), &servers, &[], None)
+                    start_kind(&fixture_identity(), &servers, &[], None, None)
                         .await
                         .map(|_| ())
                         .map_err(|failure| failure.outcome)
@@ -488,7 +494,7 @@ mod tests {
                         name: "fixture".into(),
                         url: server.uri(),
                     }];
-                    start_kind(&fixture_identity(), &servers, &[], Some("launcher"))
+                    start_kind(&fixture_identity(), &servers, &[], Some("launcher"), None)
                         .await
                         .map(|_| ())
                         .map_err(|failure| failure.outcome)

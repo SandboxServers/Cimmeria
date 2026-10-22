@@ -114,7 +114,18 @@ engine half in `engine/src/storage/<name>/` and its host half in
 | `choose_seed_archive` | none; the native `*.rar` picker | available; see [seed archive](docs/seed-archive.md) | AI-06 (part B) |
 | `choose_existing_game_folder` | `mode` (`light` or `copy`; `in_place` is refused with `UnsupportedMode`); the native folder picker, then a second picker for a copy | Light, adopted where the folder is (Windows and Linux), or verified copy (every OS), as `modes` offers | AI-10; copy AI-12; Light LA-14 |
 
-`log_upload_command` is filled. `upload` zips `Binaries/sgwdebuglog*` and the
+> [!NOTE]
+> `upload` no longer follows the paragraph below. Since LF-15 and LF-19 it
+> reads the new launcher and game log lines and posts them to the telemetry
+> server through a `purpose = logs` session (`engine/src/storage/log_upload/`:
+> `lines.rs`, `game_lines.rs`, `offsets.rs`, `ingest.rs`, `ingest_flow.rs`). The
+> operator side is [telemetry.md § Launcher log
+> ingest](../../../docs/operations/telemetry.md#launcher-log-ingest). The zip, SAS
+> and `uploaded-logs.json` path described next is legacy: `begin_blob_upload`
+> and `LogCollection` remain in the tree, nothing in the shell calls them, and
+> LF-18 deletes them.
+
+`log_upload_command` is filled. The legacy blob `upload` zips `Binaries/sgwdebuglog*` and the
 `*.log` files under `Binaries/sessions/` in the installed game, plus the newest three `launcher.<date>.log` files from the
 launcher's log folder, added under `launcher/` with the home folder, absolute
 paths and IP literals (`[ip]`) scrubbed in the copy only (the digest and the

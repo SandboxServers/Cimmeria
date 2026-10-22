@@ -483,6 +483,11 @@ Both are described in
 
 ## Debug Log Upload
 
+> [!NOTE]
+> This section describes the **retired** egui launcher's blob upload. The desktop
+> launcher ingests log lines into SigNoz instead; see
+> [telemetry.md § Launcher log ingest](../operations/telemetry.md#launcher-log-ingest).
+
 Single-PUT upload to Azure Blob via a SAS URL baked into the .exe at
 build time (`LAUNCHER_LOG_SAS_URL` env, consumed by `option_env!`).
 

@@ -80,14 +80,15 @@ fn status(step: LogUploadStep) -> LogUploadState {
             CollectedLogs::Finished(status) => status.state,
             CollectedLogs::Send(pending) => panic!("expected a status, got {pending:?}"),
         },
+        LogUploadStep::Ingest(_) => unreachable!("the blob path never ingests"),
     }
 }
 
 /// An admitted upload's collection step.
 fn collect(state: &DesktopState, store: &LogStore) -> LogCollection {
-    match state.begin_log_upload(upload(), Some(store)).unwrap() {
+    match state.begin_blob_upload(upload(), Some(store)).unwrap() {
         LogUploadStep::Collect(collection) => collection,
-        LogUploadStep::Finished(status) => panic!("expected a collection, got {status:?}"),
+        other => panic!("expected a collection, got {other:?}"),
     }
 }
 
@@ -108,9 +109,10 @@ async fn send(
 
 /// One full upload as the shell runs it.
 async fn run(state: &DesktopState, store: &LogStore) -> Result<LogUploadState, LogUploadError> {
-    match state.begin_log_upload(upload(), Some(store))? {
+    match state.begin_blob_upload(upload(), Some(store))? {
         LogUploadStep::Finished(status) => Ok(status.state),
         LogUploadStep::Collect(collection) => send(state, store, collection).await,
+        LogUploadStep::Ingest(_) => unreachable!("the blob path never ingests"),
     }
 }
 
@@ -409,23 +411,23 @@ fn no_store_reports_disabled_and_no_install_reports_not_installed() {
     let inspect = LogUploadCommand::Inspect { schema_version: 1 };
     for request in [inspect, upload()] {
         assert_eq!(
-            status(state.begin_log_upload(request, None).unwrap()),
+            status(state.begin_blob_upload(request, None).unwrap()),
             LogUploadState::Disabled
         );
     }
     let store = LogStore::new("https://example.invalid/c?sig=x").unwrap();
     assert_eq!(
-        status(state.begin_log_upload(inspect, Some(&store)).unwrap()),
+        status(state.begin_blob_upload(inspect, Some(&store)).unwrap()),
         LogUploadState::NotInstalled
     );
     let (_root, state, binaries) = installed();
     assert_eq!(
-        status(state.begin_log_upload(inspect, Some(&store)).unwrap()),
+        status(state.begin_blob_upload(inspect, Some(&store)).unwrap()),
         LogUploadState::Ready
     );
     std::fs::remove_dir_all(binaries).unwrap();
     assert_eq!(
-        status(state.begin_log_upload(upload(), Some(&store)).unwrap()),
+        status(state.begin_blob_upload(upload(), Some(&store)).unwrap()),
         LogUploadState::NoLogs
     );
 }
@@ -446,12 +448,12 @@ fn upload_is_refused_while_an_operation_is_nonterminal() {
         .unwrap();
     let store = LogStore::new("https://example.invalid/c?sig=x").unwrap();
     assert_eq!(
-        state.begin_log_upload(upload(), Some(&store)).unwrap_err(),
+        state.begin_blob_upload(upload(), Some(&store)).unwrap_err(),
         LogUploadError::Storage(StorageError::Busy)
     );
     // The gate comes first: even a build with no store answers busy.
     assert_eq!(
-        state.begin_log_upload(upload(), None).unwrap_err(),
+        state.begin_blob_upload(upload(), None).unwrap_err(),
         LogUploadError::Storage(StorageError::Busy)
     );
 }
@@ -462,7 +464,7 @@ fn rejects_unknown_fields_and_versions() {
     let state = DesktopState::open(root.path()).unwrap();
     assert_eq!(
         state
-            .begin_log_upload(LogUploadCommand::Inspect { schema_version: 2 }, None)
+            .begin_blob_upload(LogUploadCommand::Inspect { schema_version: 2 }, None)
             .unwrap_err(),
         LogUploadError::Storage(StorageError::UnsupportedSchema)
     );

@@ -18,6 +18,8 @@ pub const MINT_HOLD: Duration = Duration::from_secs(60);
 pub const MIN_RETRY_HOLD: Duration = Duration::from_secs(60);
 /// The longest hold of any kind.
 pub const MAX_HOLD: Duration = Duration::from_secs(3_600);
+/// The mint `purpose` of the log-ingest session (server C-LF4).
+pub const LOGS_PURPOSE: &str = "logs";
 /// Rows per chunk; the server keeps at most this many (C14).
 pub const LAUNCHER_MAX_ROWS: usize = 200;
 /// Re-mint when the token has less than this left.
@@ -41,6 +43,25 @@ impl DesktopState {
     pub fn launcher_target(&self) -> Option<LauncherTarget> {
         let choice = self.game_telemetry().ok()?;
         let identity = choice.opted_in.then_some(choice.identity).flatten()?;
+        self.target_for(identity)
+    }
+
+    /// The target for "Upload debug logs" (LF-15, D-LU1): the press itself is the
+    /// consent for that one upload, so the diagnostics opt-in does not matter.
+    /// An install that has an identity uses it. One that never opted in has none
+    /// (it is minted only at opt-in), so the target carries a fresh one that is
+    /// not saved: it lasts for this upload, and the per-install budget the
+    /// server keeps cannot tie two such presses together (the per-IP ceiling
+    /// still applies). `None` only when the login-server list is unusable.
+    pub fn launcher_log_target(&self) -> Option<LauncherTarget> {
+        let stored = self
+            .game_telemetry()
+            .ok()
+            .and_then(|choice| choice.identity);
+        self.target_for(stored.unwrap_or_else(Identity::mint))
+    }
+
+    fn target_for(&self, identity: Identity) -> Option<LauncherTarget> {
         let servers = if self.preferences.login_servers.is_empty() {
             login_servers::default_servers()
         } else {
@@ -74,8 +95,25 @@ struct Live {
     upload_url: String,
 }
 
+/// What one log chunk post did (LF-14). The 429/503 hold is not taken here: the
+/// caller ends the upload `Partial` and the next press starts clean.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BatchOutcome {
+    /// The chunk was accepted (2xx).
+    Posted,
+    /// A 429 or 503; the wait is the server's `Retry-After`.
+    Throttled { retry_after_secs: u64 },
+    /// No session could be minted; `reason` is a C8 code, or "held" while an earlier failed mint's hold is still running.
+    MintFailed { reason: &'static str },
+    /// Anything else, including a second 401.
+    Failed,
+}
+
 /// Sends launcher events over one HTTP client, keeping one session and one hold.
 pub struct LauncherSender {
+    /// `Some("logs")` for a log-ingest session; it never shares a token with
+    /// the event session (the server picks limits by this claim).
+    purpose: Option<&'static str>,
     http: reqwest::Client,
     session: Mutex<Option<Live>>,
     hold_until: Mutex<Option<Instant>>,
@@ -92,6 +130,15 @@ impl LauncherSender {
     /// A sender with no session and no hold. Its client follows no redirect, so
     /// the bearer token never reaches another host.
     pub fn new() -> Self {
+        Self::with_purpose(None)
+    }
+
+    /// A sender whose session is minted with `purpose = "logs"`.
+    pub fn logs() -> Self {
+        Self::with_purpose(Some(LOGS_PURPOSE))
+    }
+
+    fn with_purpose(purpose: Option<&'static str>) -> Self {
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(session::CONNECT)
@@ -99,6 +146,7 @@ impl LauncherSender {
             .build()
             .expect("the TLS backend is compiled in");
         Self {
+            purpose,
             http,
             session: Mutex::new(None),
             hold_until: Mutex::new(None),
@@ -182,6 +230,43 @@ impl LauncherSender {
         SendOutcome::Sent
     }
 
+    /// Post one already-split log chunk (LF-14). A 401 mints again, once.
+    /// Unlike `send`, a throttle does not hold the sender: the caller paces and
+    /// ends the upload itself. A hold from a failed mint does stop a mint while
+    /// no session is stored, so a retry loop cannot use up the mint budget that
+    /// the event session shares.
+    pub async fn post_batch(
+        &self,
+        target: &LauncherTarget,
+        batch: &[TelemetryEvent],
+    ) -> BatchOutcome {
+        if self.held() && locked(&self.session).is_none() {
+            return BatchOutcome::MintFailed { reason: "held" };
+        }
+        let mut live = match self.usable_session(target).await {
+            Ok(live) => live,
+            Err(reason) => return BatchOutcome::MintFailed { reason },
+        };
+        let mut posted = self.post(&live, batch).await;
+        if matches!(posted, Err(ChunkError::TokenRejected)) {
+            *locked(&self.session) = None;
+            live = match self.mint(target).await {
+                Ok(fresh) => fresh,
+                Err(reason) => return BatchOutcome::MintFailed { reason },
+            };
+            posted = self.post(&live, batch).await;
+        }
+        match posted {
+            Ok(()) => BatchOutcome::Posted,
+            Err(err @ (ChunkError::KillSwitch { .. } | ChunkError::RateLimited { .. })) => {
+                BatchOutcome::Throttled {
+                    retry_after_secs: err.retry_after_secs().unwrap_or(60),
+                }
+            }
+            Err(_) => BatchOutcome::Failed,
+        }
+    }
+
     /// The stored session while it has time left, else a fresh mint.
     async fn usable_session(&self, target: &LauncherTarget) -> Result<Live, &'static str> {
         let stored = locked(&self.session).clone();
@@ -199,6 +284,7 @@ impl LauncherSender {
             &target.servers,
             &LAUNCHER_TAGS,
             Some(LAUNCHER_SESSION_KIND),
+            self.purpose,
         )
         .await;
         let policy =
@@ -249,6 +335,11 @@ impl LauncherSender {
 
     fn hold(&self, wait: Duration) {
         *locked(&self.hold_until) = Some(Instant::now() + wait);
+    }
+
+    /// Forgets the stored session so the next post mints a new one. The hold from a failed mint stays.
+    pub fn end_session(&self) {
+        *locked(&self.session) = None;
     }
 
     /// The time left on the hold, if any.

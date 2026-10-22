@@ -26,6 +26,10 @@ remote services, and the three keys that protect them:
 - **Debug-log uploads** — a single PUT per click into an Azure Blob
   container, through a create-only SAS URL compiled in from the
   `LAUNCHER_LOG_SAS_URL` secret. The only operator-managed infrastructure.
+  *Legacy:* the desktop launcher's **Upload debug logs** no longer uses this
+  path. It posts log lines to the telemetry server
+  ([telemetry.md § Launcher log ingest](../operations/telemetry.md#launcher-log-ingest)),
+  and LF-18 removes the SAS URL from the build.
 
 Re-read this when rotating a key or the log-upload SAS, or when moving content
 to a new release tag. How a launcher release is built and published, job by job,
@@ -336,6 +340,13 @@ compromised, and announce it as for the egui retirement
 ---
 
 ## Part 4 — Debug-log uploads via Azure Blob
+
+> [!WARNING]
+> **Legacy.** The desktop launcher's upload is a log ingest into SigNoz (see
+> [telemetry.md § Launcher log ingest](../operations/telemetry.md#launcher-log-ingest)),
+> and `LAUNCHER_LOG_SAS_URL` is unused by it. LF-18 removes the secret from the
+> build and this Part with it. Nothing below is needed for a launcher that ingests
+> logs. A launcher built before LF-15 still uploads here.
 
 Log uploads need a write-capable destination that the launcher can reach
 without per-user credentials; GitHub Releases doesn't support
