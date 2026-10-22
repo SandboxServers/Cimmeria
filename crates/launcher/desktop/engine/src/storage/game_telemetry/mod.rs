@@ -125,6 +125,7 @@ impl DesktopState {
         }
         value.opted_in = opted_in;
         self.write_game_telemetry(NAME, &value)?;
+        crate::storage::settings_events::game_diagnostics_changed(opted_in);
         transport::discard_queue(&self.directory.root);
         Ok(value)
     }
