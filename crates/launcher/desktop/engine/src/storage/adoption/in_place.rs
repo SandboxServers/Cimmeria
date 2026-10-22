@@ -568,9 +568,11 @@ pub(super) fn finish(
             &ProgressSink::latest().0,
             &mut |_| Ok(()),
         )?;
-        // Checkpointed before setup rewrites any release bytes: from here only
-        // recovery is offered, because moving the files back would not undo
-        // the setup and Abandon would not put the folder back as reviewed.
+        // A light adoption copies the setup files aside first, so Abandon can still
+        // put them back once setup has rewritten them (D-LF2).
+        in_place_check::save_setup_originals(plan, &game)?;
+        // Checkpointed before setup rewrites any release bytes. A verified adoption
+        // is only recoverable from here; moving its files back would not undo the setup.
         record.phase = Phase::Promoted;
         write_large(&state.directory.root, &name(id), &record)?;
     }

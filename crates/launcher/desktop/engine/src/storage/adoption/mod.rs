@@ -10,6 +10,8 @@ mod in_place_check;
 mod in_place_check_tests;
 mod in_place_preview;
 mod in_place_replace;
+#[cfg(all(test, not(target_os = "macos")))]
+mod setup_originals_tests;
 // Where the in-place backend is the one previews use.
 #[cfg(all(test, not(target_os = "macos")))]
 mod folder_tests;
