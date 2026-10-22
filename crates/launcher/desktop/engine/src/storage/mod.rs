@@ -15,6 +15,7 @@ pub mod migration;
 pub mod repair;
 pub mod runtime_setup;
 pub mod seed_archive;
+pub(crate) mod settings_events;
 pub mod uninstall;
 pub mod update;
 pub mod updater;
