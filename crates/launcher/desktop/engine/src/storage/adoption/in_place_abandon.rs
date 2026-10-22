@@ -75,9 +75,6 @@ pub(super) fn abandon(state: &mut DesktopState, plan: &Plan) -> Result<(), Error
             if std::fs::remove_dir(&game).is_err() {
                 tracing::warn!(target: "adoption", game = %game.display(), "abandoned in-place adoption left a non-empty game folder in place");
             }
-            // Only after the files are home: until then the copies are what makes a
-            // rerun of this abandon possible.
-            in_place_check::remove_setup_originals(&plan.stage());
             clear_abandoned(plan, &files)?;
         }
     }
@@ -97,6 +94,9 @@ pub(super) fn abandon(state: &mut DesktopState, plan: &Plan) -> Result<(), Error
     state
         .operations_mut()?
         .reconcile(id, OperationState::Cancelled)?;
+    // Last, so a failed abandon can be rerun while the originals are still there.
+    in_place_check::remove_setup_originals(&plan.stage());
+    let _ = std::fs::remove_dir(plan.stage());
     tracing::info!(target: "adoption", directory = %root.display(), restored_setup, "abandoned in-place adoption; release files are back in place");
     Ok(())
 }

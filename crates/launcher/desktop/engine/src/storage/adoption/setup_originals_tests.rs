@@ -178,6 +178,27 @@ fn a_promoted_verified_record_is_not_abandonable() {
     let plan: Plan =
         publication::read_large(&state.directory.root.join(publication::plan_name(id))).unwrap();
     assert!(!plan.stage().join(SETUP_MANIFEST).exists());
+    // A valid manifest alone must not make a verified record abandonable: only the Light
+    // check may do that. A verified record has no stage folder left, so make one.
+    std::fs::create_dir_all(plan.stage()).unwrap();
+    std::fs::write(
+        plan.stage().join(SETUP_MANIFEST),
+        br#"{"version":1,"files":[]}"#,
+    )
+    .unwrap();
+    assert!(!interrupted(&state, id).unwrap().abandonable);
+}
+
+/// A rerun of the restore after an earlier run already moved `SGW.exe` home must not copy
+/// it back into `game` (that would leave a stray game folder behind).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_restore_rerun_skips_a_stock_file_already_moved_home() {
+    let (lt, folder) = failed_after_setup().await;
+    let stage = stage_of(&folder);
+    let game = lt.game();
+    std::fs::rename(inventory::native(&game, SGW), folder.join("SGW.exe")).unwrap();
+    in_place_check::restore_setup_originals(&stage, &game).unwrap();
+    assert!(!inventory::native(&game, SGW).exists());
 }
 
 /// A rerun of the copy (recovery re-enters the `Staged` branch) replaces the first set.

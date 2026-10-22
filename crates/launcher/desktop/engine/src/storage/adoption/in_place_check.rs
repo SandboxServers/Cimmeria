@@ -94,6 +94,7 @@ pub(super) fn validate(game: &Path, plan: &Plan) -> Result<(), Error> {
 /// Where a light adoption keeps the setup files as they were before setup rewrote
 /// them (C-LF3), inside the work folder.
 pub(super) const SETUP_ORIGINALS: &str = "setup-originals";
+/// File name of the manifest that marks a complete set of setup originals; written last.
 pub(super) const SETUP_MANIFEST: &str = "setup-originals.json";
 
 #[derive(Serialize, Deserialize)]
@@ -187,8 +188,9 @@ pub(super) fn remove_setup_originals(stage: &Path) {
 }
 
 /// Puts the setup files in `game` back as `save_setup_originals` found them: a file that
-/// existed is copied back over, one that did not is deleted. Returns how many files it
-/// touched. Safe to run again after a crash.
+/// existed is copied back over, one that did not is deleted. A file that existed and is
+/// no longer under `game` was already moved home by an earlier run, so it is skipped and
+/// not counted. Returns how many files it touched. Safe to run again after a crash.
 pub(super) fn restore_setup_originals(stage: &Path, game: &Path) -> Result<u32, Error> {
     let originals = read_originals(stage).ok_or(StorageError::Corrupt)?;
     let mut touched = 0;
@@ -203,6 +205,10 @@ pub(super) fn restore_setup_originals(stage: &Path, game: &Path) -> Result<u32, 
         }
         let target = inventory::native(game, &row.path);
         if row.existed {
+            // A file no longer under `game` was already moved home by an earlier run.
+            if std::fs::symlink_metadata(&target).is_err() {
+                continue;
+            }
             let from = inventory::native(&stage.join(SETUP_ORIGINALS), &row.path);
             if let Some(parent) = target.parent() {
                 std::fs::create_dir_all(parent)?;
@@ -230,6 +236,7 @@ pub(super) fn restore_setup_originals(stage: &Path, game: &Path) -> Result<u32, 
     }
     Ok(touched)
 }
+
 fn to_hex(sha: &[u8; 32]) -> String {
     sha.iter().map(|byte| format!("{byte:02x}")).collect()
 }
