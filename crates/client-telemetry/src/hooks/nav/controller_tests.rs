@@ -133,5 +133,8 @@ fn mode_bits_fall_inside_the_mask() {
     let state = read_controller(&mem, PC).expect("every word is readable");
     assert_eq!(state.mode, MODE_MOUSELOOK | MODE_JUMP | MODE_AUTORUN);
     mem.set(PC + PC_BUTTONS_OFF, BUTTON_RMB);
-    assert_eq!(read_controller(&mem, PC).map(|s| s.buttons), Some(BUTTON_RMB));
+    assert_eq!(
+        read_controller(&mem, PC).map(|s| s.buttons),
+        Some(BUTTON_RMB)
+    );
 }

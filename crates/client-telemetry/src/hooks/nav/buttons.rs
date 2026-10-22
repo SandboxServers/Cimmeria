@@ -327,7 +327,10 @@ mod tests {
     fn classify_table() {
         assert_eq!(classify(Button::Lmb, [4, -4], false), ClickClass::Select);
         assert_eq!(classify(Button::Lmb, [-5, 0], false), ClickClass::Drag);
-        assert_eq!(classify(Button::Lmb, [i32::MIN, 0], false), ClickClass::Drag);
+        assert_eq!(
+            classify(Button::Lmb, [i32::MIN, 0], false),
+            ClickClass::Drag
+        );
         assert_eq!(classify(Button::Lmb, [0, 0], true), ClickClass::Chord);
         assert_eq!(classify(Button::Rmb, [0, 0], false), ClickClass::Interact);
     }

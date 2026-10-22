@@ -48,10 +48,7 @@ fn disabled() -> bool {
             crate::hooks::emit::emit(
                 "client.hooks.inline.disabled",
                 "info",
-                vec![
-                    ("hook", json!(HOOK_NAME)),
-                    ("env", json!(DISABLE_ENV)),
-                ],
+                vec![("hook", json!(HOOK_NAME)), ("env", json!(DISABLE_ENV))],
             );
         }
         off

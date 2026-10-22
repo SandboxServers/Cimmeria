@@ -489,7 +489,11 @@ mod tests {
                 .count()
         };
         for id in [60100, 60101, 60104, 60110] {
-            assert_eq!(served(id), 1, "debug-hub dialog {id} is served exactly once (D-LN3)");
+            assert_eq!(
+                served(id),
+                1,
+                "debug-hub dialog {id} is served exactly once (D-LN3)"
+            );
         }
         let xml = |id: u32| {
             let ov = DIALOG_OVERRIDES

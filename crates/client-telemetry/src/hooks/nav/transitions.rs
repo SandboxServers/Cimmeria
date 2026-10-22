@@ -118,11 +118,9 @@ pub fn hover_fields(c: &Change<i32>) -> Fields {
 }
 
 /// The last mode word seen and emitted.
-static MODE: Mutex<RateLimitedDiff<u32>> =
-    Mutex::new(RateLimitedDiff::new(MODE_CAP_PER_SEC, 0));
+static MODE: Mutex<RateLimitedDiff<u32>> = Mutex::new(RateLimitedDiff::new(MODE_CAP_PER_SEC, 0));
 /// The last hover id seen and emitted.
-static HOVER: Mutex<RateLimitedDiff<i32>> =
-    Mutex::new(RateLimitedDiff::new(HOVER_CAP_PER_SEC, 0));
+static HOVER: Mutex<RateLimitedDiff<i32>> = Mutex::new(RateLimitedDiff::new(HOVER_CAP_PER_SEC, 0));
 
 /// Locks `m`, recovering a poisoned lock: a panic in another tick must not stop the poll.
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {

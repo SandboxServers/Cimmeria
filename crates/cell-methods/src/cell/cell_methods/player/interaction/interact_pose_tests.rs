@@ -172,5 +172,8 @@ async fn hostile_right_click_emits_hostile_attack_pose() {
         .iter()
         .filter(|c| c.fields.get("event").map(String::as_str) == Some("interaction_hostiles"))
         .collect();
-    assert!(hostiles.is_empty(), "the only hostile is the target: {rows:#?}");
+    assert!(
+        hostiles.is_empty(),
+        "the only hostile is the target: {rows:#?}"
+    );
 }

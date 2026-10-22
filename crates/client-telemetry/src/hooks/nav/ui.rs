@@ -50,7 +50,11 @@ pub(super) fn read_ui_owned(mem: &impl Mem) -> Option<bool> {
     if wnd == 0 || wnd == sheet {
         return Some(false);
     }
-    Some(!is_named(mem, wnd.wrapping_add(WINDOW_NAME_OFF), BACKGROUND_WIN)?)
+    Some(!is_named(
+        mem,
+        wnd.wrapping_add(WINDOW_NAME_OFF),
+        BACKGROUND_WIN,
+    )?)
 }
 
 /// Whether the `std::wstring` at `wstr` spells `want`. `None` when the header

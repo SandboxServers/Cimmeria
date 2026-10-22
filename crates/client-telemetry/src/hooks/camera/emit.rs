@@ -62,12 +62,19 @@ const PAWN_KEYS: [&str; 4] = ["pawn_x", "pawn_y", "pawn_z", "pawn_yaw_deg"];
 
 /// The camera's zoom (its distance), and its yaw and pitch offsets in degrees.
 pub(crate) fn camera_angles(cam: &CameraState) -> (f32, f32, f32) {
-    (cam.distance, read::rot_deg(cam.yaw), read::rot_deg(cam.pitch))
+    (
+        cam.distance,
+        read::rot_deg(cam.yaw),
+        read::rot_deg(cam.pitch),
+    )
 }
 
 /// A pose's position in server units, and its yaw in degrees wrapped to `[0, 360)`.
 pub(crate) fn pawn_fields(pawn: &ActorPose) -> ([f32; 3], f32) {
-    (read::client_to_server(pawn.pos), read::rot_deg_360(pawn.yaw))
+    (
+        read::client_to_server(pawn.pos),
+        read::rot_deg_360(pawn.yaw),
+    )
 }
 
 /// Adds one pose under `keys`: the position in server units and the yaw.

@@ -95,5 +95,8 @@ async fn interact_row_reports_minus_one_without_position_update() {
         .into_iter()
         .find(|c| c.level == Level::INFO && c.message.as_deref() == Some("interact"))
         .expect("interact INFO row");
-    assert_eq!(row.fields.get("heading_age_ms").map(String::as_str), Some("-1"));
+    assert_eq!(
+        row.fields.get("heading_age_ms").map(String::as_str),
+        Some("-1")
+    );
 }
