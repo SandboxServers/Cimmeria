@@ -4,6 +4,7 @@ type IndexFallbackView=NonNullable<NonNullable<AdoptionStatus['review']>['index_
 /** One sentence per engine check (REJECTION_CHECKS, C14). Each names the failed check in plain words. */
 const checkTexts:Record<string,string>={
  not_a_game_folder:'That folder is not a Stargate Worlds game folder.',
+ several_game_folders:'This folder holds more than one Stargate Worlds install. Pick the one you want.',
  folder_not_writable:'The launcher cannot write to this folder, so it cannot adopt or copy into it.',
  folder_in_use:'Another launcher has this folder open.',
  folder_overlaps_launcher:'The chosen folder overlaps the launcher’s own folders.',

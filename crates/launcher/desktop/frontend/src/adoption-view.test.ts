@@ -360,6 +360,14 @@ test('the mode choice is one row per mode, shows the pick, and the button names 
   assert.equal(one.get('choose-adoption-destination').textContent,'Use an existing game folder…');
  }finally{await both.app.dispose();await one.app.dispose();}
 });
+test('with copy unticked, the first offered mode is the one chosen (light, not in place)',async()=>{
+ const ui=mount(()=>({...idle(),modes:['light','copy'] as AdoptionStatus['modes']}));
+ try{await ui.app.ready;await ui.settle();
+  // Copy is never ticked here, so the press chooses the first offered mode.
+  await ui.click('choose-adoption-destination');
+  assert.deepEqual(ui.modes,['light']);
+ }finally{await ui.app.dispose();}
+});
 test('the mode rows are laid out one per line',async()=>{
  const css=await readFile(new URL('../ui/style.css',import.meta.url),'utf8');
  assert.ok(css.includes('.mode-option{display:flex'));assert.ok(css.includes('.mode-option.selected{'));

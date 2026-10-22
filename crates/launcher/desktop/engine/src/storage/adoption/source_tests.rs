@@ -112,6 +112,33 @@ fn two_game_folders_inside_a_pick_are_refused() {
     assert_eq!(record.found.as_deref(), Some("2"));
 }
 
+/// `link` is a junction to `target`. Returns false when `mklink` cannot run.
+#[cfg(windows)]
+fn junction_to(link: &Path, target: &Path) -> bool {
+    let made = std::process::Command::new("cmd")
+        .args(["/C", "mklink", "/J"])
+        .arg(link)
+        .arg(target)
+        .status();
+    matches!(made, Ok(status) if status.success())
+}
+
+/// A junction is a link, so `child_roots` skips it: a pick holding one real game
+/// folder and a junction to another layout still resolves to the real one.
+#[cfg(windows)]
+#[test]
+fn a_junction_child_is_skipped_and_not_a_second_game_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    layout(&dir.path().join("Real"));
+    let target = tempfile::tempdir().unwrap();
+    layout(target.path());
+    if !junction_to(&dir.path().join("Alias"), target.path()) {
+        return;
+    }
+    let root = dir.path().join("Real").canonicalize().unwrap();
+    assert_eq!(resolve_folder(dir.path()).unwrap(), root);
+}
+
 #[test]
 fn saved_import_naming_the_folder_is_legacy_another_is_folder() {
     let f = Fixture::new(None);

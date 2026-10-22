@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fallbackText,rejectionText} from './adoption-reasons';
 // The engine's REJECTION_CHECKS (C14). A check added there must get its own sentence here.
-const checks=['not_a_game_folder','folder_not_writable','folder_in_use','folder_overlaps_launcher',
+const checks=['not_a_game_folder','several_game_folders','folder_not_writable','folder_in_use','folder_overlaps_launcher',
  'folder_unreadable','import_changed','folder_changed_during_check','folder_too_large',
  'folder_too_deep','path_not_canonical','unsupported_catalog','unsupported_configuration',
  'stale_revision','busy','destination_exists','destination_overlaps','launcher_too_old',
