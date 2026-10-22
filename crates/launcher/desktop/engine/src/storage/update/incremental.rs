@@ -102,9 +102,7 @@ async fn fetch(
     cancel: &CancellationToken,
     progress: &ProgressSink,
 ) -> Result<PathBuf, Failure> {
-    let dest = work.join(
-        install::patch_download_name(entry).map_err(|_| failed("fetch_failed"))?,
-    );
+    let dest = work.join(install::patch_download_name(entry).map_err(|_| failed("fetch_failed"))?);
     install::download_to_file(
         http,
         &blob_url(manifest_url, &entry.blob),

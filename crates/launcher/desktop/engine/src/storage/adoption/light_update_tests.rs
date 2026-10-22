@@ -298,7 +298,10 @@ fn a_changed_source_of_the_new_patch_is_skipped_not_refused() {
     };
     assert_eq!(logged.target, "launcher.install");
     let third = &target.manifest().patches[2].id;
-    assert_eq!(logged.field("patch"), Some(format!("patch:{third}").as_str()));
+    assert_eq!(
+        logged.field("patch"),
+        Some(format!("patch:{third}").as_str())
+    );
     assert_eq!(logged.field("ops_skipped"), Some("1"));
     assert_eq!(read(&game, THIRD), b"modded by the player");
     assert_eq!(read(&game, SECOND), big("patched second"));
