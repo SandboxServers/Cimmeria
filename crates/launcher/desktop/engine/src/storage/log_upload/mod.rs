@@ -9,9 +9,11 @@
 //! check, zip; unlocked), [`LogStore::put`] (unlocked), then
 //! [`DesktopState::finish_log_upload`] (ledger; locked).
 use super::*;
+use crate::storage::game_telemetry::launcher_event::Redaction;
 use cimmeria_launcher_core::logs;
 use cimmeria_launcher_core::state::UploadedLedger;
 mod events;
+mod launcher_logs;
 mod store;
 pub use store::{LogStore, StoredUpload};
 #[cfg(test)]
@@ -121,6 +123,9 @@ pub struct LogCollection {
     game: PathBuf,
     ledger: UploadedLedger,
     max_bytes: u64,
+    /// `<app_data>/logs`, where the shell writes the launcher's own logs.
+    launcher_logs: Option<PathBuf>,
+    redaction: Redaction,
 }
 
 /// What `collect` decided.
@@ -191,6 +196,8 @@ impl DesktopState {
             game: installed.intent.destination.join("game"),
             ledger: self.uploaded_ledger(),
             max_bytes: MAX_UPLOAD_BYTES,
+            launcher_logs: self.directory.root.parent().map(|p| p.join("logs")),
+            redaction: Redaction::from_env(),
         }))
     }
 
@@ -250,6 +257,13 @@ impl LogCollection {
         let Some(body) = selection.zip(&self.game).map_err(collect_failed)? else {
             return finished(LogUploadState::NoLogs);
         };
+        let entries = match &self.launcher_logs {
+            Some(dir) => {
+                launcher_logs::entries(dir, &self.redaction, launcher_logs::LAUNCHER_LOG_CAP)
+            }
+            None => Vec::new(),
+        };
+        let body = launcher_logs::append(body, &entries)?;
         let blob_name = logs::blob_name_for(&digest);
         Ok(CollectedLogs::Send(PendingUpload {
             digest,
