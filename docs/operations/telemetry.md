@@ -10,7 +10,7 @@ launcher tails) lands in SigNoz as its own service,
 `service.name = cimmeria-client`. Sessions carry `cimmeria.session_kind`
 with one of three values: `player`, `lab` and `launcher`. A launcher
 session is minted by the desktop launcher for its own game-folder steps,
-only for opted-in players, without a game. It is short, write-only and
+without a game, for opted-in players; the one exception is a press of Upload debug logs, which mints a short `purpose = logs` session whatever the opt-in says (see [Launcher log ingest](#launcher-log-ingest)). It is short, write-only and
 has its own scope.
 
 ## Architecture at a glance
@@ -575,7 +575,7 @@ stand in for a game entity. The rules are in `launcher_rows.rs`.
 
 The desktop launcher's **Upload debug logs** button posts the launcher's and the game's recent log lines to the same `/telemetry/upload` endpoint as everything else, through a `logs`-purpose launcher session. The rows land in SigNoz. This is reference for the operator: what a log session may send, what the server refuses and which knob moves each limit. The player-side behaviour is in [launcher-guide.md](../client/launcher-guide.md); the wire rules for the endpoint are in [telemetry-upload-endpoint.md](telemetry-upload-endpoint.md).
 
-Status: the server and engine code and their unit tests are merged on the `launcher-uat-fixes/log-client-w4` branch. No live upload through the colo has run yet; see [What is tested](#what-is-tested-and-what-is-not).
+Status: the server and engine code and their unit tests are merged (launcher-uat-fixes, waves 3 and 4). No live upload through the colo has run yet; see [What is tested](#what-is-tested-and-what-is-not).
 
 **The session.** The launcher mints a `kind = "launcher"` session with the optional `purpose: "logs"` claim. The mint takes the same quota tables as any launcher mint. A `logs` claim on a non-launcher kind is `400 purpose_kind`; an unknown purpose is `400 purpose_unknown`. The token lives 900 s and a launcher token is never refreshed, so a long upload re-mints. A log session posts through the same `/telemetry/upload` path with its own limits: 1,000 rows, 512 KiB decompressed and 64 KiB compressed per chunk, and 20 chunks per session per minute (`rate_limited`, 429). The install window (20 chunks a minute) and the address window (60 chunks a minute) are shared with event sessions.
 
@@ -610,7 +610,7 @@ The session and install ceilings count rows kept; the address and minute ceiling
 
 **Refusals in the logs.** `purpose_target` is a credential-class refusal and logs as `upload_auth_refused` (SigNoz only). The four `log_*_budget` reasons are not credential refusals and log as `upload_refused`, which posts to Discord at WARN under the existing throttle (10 s doubling to 15 min). A busy day can therefore post a budget warning; that is the throttle working, not a fault. To change a ceiling see [Changing a quota](#changing-a-quota).
 
-**One upload, in numbers.** One press sends at most 20,000 launcher lines and 20,000 game lines, so at most 40,000 rows: exactly the session ceiling. The install ceiling of 80,000 allows about two full uploads a UTC day; the third gets `log_install_budget`, and the launcher shows the wait. The launcher posts launcher lines first, then game lines, in one session with one `upload_id`. Chunks hold at most 384 KiB raw and 64 KiB gzipped, and are paced 3.5 s apart (at most 18 a minute, under the 20-a-minute session window). On a 429 or 503 the upload ends as partial with a wait of the server's `Retry-After`, never less than 60 s; there is no retry loop. The launcher moves its read offsets forward only after each accepted chunk, so the next press resumes where the server stopped. A partial on launcher rows sends no game rows.
+**One upload, in numbers.** One press sends at most 20,000 launcher lines and 20,000 game lines, so at most 40,000 rows: exactly the session ceiling. The install ceiling of 80,000 allows about two full uploads a UTC day; the third gets `log_install_budget`, and the launcher shows the wait. That holds for an install with a stored identity (one that has opted in once). An install that never opted in sends under a fresh install id on every press, so only the address ceiling (log_ip_budget) bounds it. The launcher posts launcher lines first, then game lines, in one session with one `upload_id`. Chunks hold at most 384 KiB raw and 64 KiB gzipped, and are paced 3.5 s apart (at most 18 a minute, under the 20-a-minute session window). On a 429 or 503 the upload ends as partial with a wait of the server's `Retry-After`, never less than 60 s; there is no retry loop. The launcher moves its read offsets forward only after each accepted chunk, so the next press resumes where the server stopped. A partial on launcher rows sends no game rows.
 
 **Game logs.** The launcher reads `sgwdebuglog*` from the game's `Binaries` folder and `sessions/**/*.log` (key dumps and `current-session.json` are skipped). It detects UTF-16LE by byte-order mark or NUL pattern, else reads UTF-8 lossily. A raw line is cut at 32 KiB before the local scrub (word scrub and address removal), then cut to 2,048 bytes with `truncated` set. Offsets are keyed by relative path with a head hash, so a rewritten file restarts at 0.
 
@@ -796,7 +796,7 @@ identifier. The design and the wire contract are in
 
 - **Consent.** The desktop launcher's own `launcher_summary_consent`
   preference, off by default, labelled Share setup diagnostics. It is separate from the telemetry opt-in under
-  [Player opt-in](#player-opt-in) and never turns on game or DLL telemetry. Nothing from the launcher's own events leaves without Send game diagnostics; this box gates only the anonymous summaries.
+  [Player opt-in](#player-opt-in) and never turns on game or DLL telemetry. Nothing from the launcher's own events leaves without Send game diagnostics; this box gates only the anonymous summaries. (Upload debug logs sends log lines on its own press.)
 - **No token.** The route is anonymous. The launcher sends one `POST` with
   no `Authorization` header, and there is no mint step. The server never
   reads an `Authorization` header on this route, so a dev-session token is
@@ -874,7 +874,7 @@ Windows and macOS) asks with the **Send game diagnostics while playing**
 checkbox in Settings, off by default and separate from its
 setup-diagnostics checkbox. The choice is saved in `game-telemetry.json` in
 the launcher's state directory, with the install identity minted at the
-first opt-in, and applies from the next Play.
+first opt-in, and applies from the next Play. Upload debug logs is not covered by this choice: pressing it is consent for that one upload (see [Launcher log ingest](#launcher-log-ingest)).
 
 While it is on, Play mints a player session on the installation's first
 login server before the game starts, writes `current-session.json` beside
@@ -922,7 +922,7 @@ caller's network address on the launcher and telemetry routes:
   peer the server counts quotas against the rightmost `X-Forwarded-For`
   entry; it never logs, stores, returns or hashes it. See
   [telemetry-upload-endpoint.md](telemetry-upload-endpoint.md#the-forwarded-for-quota-key).
-- **The launcher scrubs its own rows.** Every string of a launcher row, and every line of a launcher log in a debug-log upload, has IPv4 and IPv6 literals replaced with `[ip]` before it is queued or zipped (`ip_scrub.rs`); nothing is hashed. Absolute paths in a launcher row's strings become `<path removed>` and the home folder becomes `~` (`launcher_event.rs`).
+- **The launcher scrubs its own rows.** Every string of a launcher row, and every line of a launcher log in a debug-log upload, has IPv4 and IPv6 literals replaced with `[ip]` before it is queued or sent (`ip_scrub.rs`); nothing is hashed. Absolute paths in a launcher row's strings become `<path removed>` and the home folder becomes `~` (`launcher_event.rs`).
 - **Endpoints are https.** The server hands out only an https upload URL
   (or an explicit env override with a WARN), and the public routes are
   reached over `https://play.cimmeria.app`.

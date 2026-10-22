@@ -957,8 +957,9 @@ its data again. If the game will not start at all or its settings are broken,
 - **"The upload did not reach the log store."** The launcher could not reach
   the server. Check your connection and press again.
 - **"Debug logs can't be sent: this install has no telemetry server."** The
-  first login server is not an https address the launcher accepts for
-  telemetry. Set one under **Login servers**.
+  saved login-server list is not valid, for example after a hand edit of
+  `launcher-config.json`. Save a valid list under **Login servers**, or clear
+  it to use the default server.
 - **"No logs to upload yet: the game has not written any."** There is nothing
   to read yet.
 
