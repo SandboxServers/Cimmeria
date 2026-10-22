@@ -306,3 +306,80 @@ async fn a_failed_retry_keeps_the_entry_and_the_run_succeeds() {
         incomplete
     );
 }
+
+/// Records every event's level, target and fields; the crate has no subscriber
+/// dev-dependency, so this is the smallest `Subscriber` that can be asserted on.
+#[derive(Clone, Default)]
+struct Rows(std::sync::Arc<std::sync::Mutex<Vec<(tracing::Level, String, Vec<(String, String)>)>>>);
+
+struct Fields<'a>(&'a mut Vec<(String, String)>);
+
+impl tracing::field::Visit for Fields<'_> {
+    fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+        self.0.push((f.name().to_owned(), format!("{v:?}")));
+    }
+}
+
+impl tracing::Subscriber for Rows {
+    fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+        true
+    }
+    fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+        tracing::span::Id::from_u64(1)
+    }
+    fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+    fn event(&self, event: &tracing::Event<'_>) {
+        let mut fields = Vec::new();
+        event.record(&mut Fields(&mut fields));
+        self.0.lock().unwrap().push((
+            *event.metadata().level(),
+            event.metadata().target().to_owned(),
+            fields,
+        ));
+    }
+    fn enter(&self, _: &tracing::span::Id) {}
+    fn exit(&self, _: &tracing::span::Id) {}
+}
+
+/// The `patch_retry_failed` row: closed fields only (R5), never the error's text.
+#[tokio::test]
+async fn a_failed_retry_logs_one_warning_with_the_patch_label_and_closed_code() {
+    let work = tempfile::tempdir().unwrap();
+    let zip = recipe_patch_zip(work.path());
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    seed(
+        dir.path(),
+        InstalledState {
+            applied_patches: vec!["001".into()],
+            incomplete_patches: vec![IncompletePatch {
+                state_key: "001".into(),
+                skipped: skipped_dialog(),
+            }],
+            ..fresh_ledger()
+        },
+    );
+    let rows = Rows::default();
+    let _guard = tracing::subscriber::set_default(rows.clone());
+    let result = run(dir.path(), &server, &manifest_for(&zip), true).await;
+    assert!(result.is_ok(), "{result:?}");
+    let rows = rows.0.lock().unwrap();
+    let field = |row: &(tracing::Level, String, Vec<(String, String)>), key: &str| {
+        row.2.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+    };
+    let hits: Vec<_> = rows
+        .iter()
+        .filter(|r| {
+            field(r, "event").as_deref() == Some("\"patch_retry_failed\"")
+                || field(r, "event").as_deref() == Some("patch_retry_failed")
+        })
+        .collect();
+    assert_eq!(hits.len(), 1, "{rows:?}");
+    assert_eq!(hits[0].0, tracing::Level::WARN);
+    assert_eq!(hits[0].1, "launcher.install");
+    let patch = field(hits[0], "patch").unwrap();
+    assert!(patch.starts_with("patch:"), "{patch}");
+    let reason = field(hits[0], "reason").unwrap();
+    assert_eq!(reason.trim_matches('"'), "unexpected_status");
+}

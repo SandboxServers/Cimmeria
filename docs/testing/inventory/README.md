@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 16,523 |
-| Files with tests | 2,730 |
-| Gated in CI (every crate but CI's exclude list) | 14,016 |
+| Tests (`#[test]` / `#[tokio::test]`) | 16,552 |
+| Files with tests | 2,734 |
+| Gated in CI (every crate but CI's exclude list) | 14,045 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 2,647 |
-| Inventory threshold (5% of the tests) | 826 |
+| Inventory threshold (5% of the tests) | 828 |
 
 <!-- /gen:tests-totals -->
 
@@ -98,9 +98,9 @@ with no file in this directory yet.
 | `crates/entity` | `cimmeria-entity` | 492 | 66 | 0 | yes | [entity.md](entity.md) |
 | `crates/minigame` | `cimmeria-minigame` | 469 | 47 | 0 | yes | none |
 | `crates/navmesh-extractor` | `cimmeria-navmesh-extractor` | 449 | 52 | 0 | yes | none |
+| `crates/launcher-core` | `cimmeria-launcher-core` | 378 | 49 | 0 | yes | none |
 | `crates/mercury` | `cimmeria-mercury` | 378 | 61 | 0 | yes | [mercury.md](mercury.md) |
 | `crates/admin-api` | `cimmeria-admin-api` | 359 | 50 | 0 | yes | none |
-| `crates/launcher-core` | `cimmeria-launcher-core` | 353 | 45 | 0 | yes | none |
 | `crates/content-engine` | `cimmeria-content-engine` | 338 | 37 | 1 | yes | [content-engine.md](content-engine.md) |
 | `crates/cell-methods` | `cimmeria-cell-methods` | 334 | 58 | 21 | yes | none |
 | `crates/wire` | `cimmeria-wire` | 325 | 60 | 0 | yes | none |
@@ -118,7 +118,7 @@ with no file in this directory yet.
 | `crates/client-patches` | `cimmeria-client-patches` | 99 | 16 | 0 | no | none |
 | `crates/services` | `cimmeria-services` | 93 | 32 | 54 | yes | [services.md](services.md) |
 | `crates/lab-mcp` | `cimmeria-lab-mcp` | 90 | 17 | 10 | yes | none |
-| `crates/patchset` | `cimmeria-patchset` | 78 | 14 | 0 | yes | none |
+| `crates/patchset` | `cimmeria-patchset` | 82 | 14 | 0 | yes | none |
 | `crates/upk-objects` | `cimmeria-upk-objects` | 78 | 9 | 0 | yes | [upk-objects.md](upk-objects.md) |
 | `crates/cell-org` | `cimmeria-cell-org` | 74 | 8 | 0 | yes | none |
 | `crates/cell-cover` | `cimmeria-cell-cover` | 71 | 5 | 6 | yes | none |

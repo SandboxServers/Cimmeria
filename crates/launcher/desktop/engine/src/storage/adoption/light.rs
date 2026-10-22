@@ -138,8 +138,10 @@ pub(super) fn light_comparison(
         .map(|k| (placed_name(k).to_ascii_lowercase(), k))
         .collect();
     // A cooked file the folder holds under the stock spelling moves to its placed
-    // path as a stored copy; the original stays where the player left it. Only a
-    // folder with both tiers reaches this: a placed folder renames the directory.
+    // path as a stored copy; in the both-tiers case the original stays where the
+    // player left it. When the tier is placed (place), the stock directory is
+    // renamed at adoption, so no stock-spelled original remains and no per-file
+    // move is needed.
     let placed = |to: &str| scanned.contains_key(to) || replacements.iter().any(|r| r.path == to);
     let moves: Vec<&(String, String)> = if place {
         Vec::new()
