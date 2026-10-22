@@ -125,7 +125,7 @@ function reviewLines(r:Review,summaryConsent:boolean) {
   download:!r.download?'Nothing to download.':r.download.local_seed?`Uses your game archive${r.download.patches.length?` and downloads ${plural(r.download.patches.length,'patch','patches')} (${megabytes(r.download.bytes)})`:''}.`:r.download.seed?`Downloads: the game archive${r.download.patches.length?` and ${plural(r.download.patches.length,'patch','patches')}`:''} (${megabytes(r.download.bytes)}).`:r.download.patches.length?`Downloads: ${plural(r.download.patches.length,'patch','patches')} (${megabytes(r.download.bytes)}).`:'Nothing to download.',
   replace:`Replace ${c.modified+c.missing} modified or missing release files with the signed release's versions. ${r.in_place?`Your originals are moved to ${r.backup_directory??'a backup folder'}.`:'The copy gets the signed versions; your folder is not changed.'}`,
   settings:r.source_kind==='folder'?'Settings: this launcher\'s own server list and client-patch setting.':r.login_servers===undefined?'Launcher defaults: nothing is imported from this folder for login servers or client patches.':`Login servers, in your order: ${r.login_servers.length?r.login_servers.map(s=>`${s.name} (${s.url})`).join('; '):'none'}. Client patches: ${r.client_patches_enabled?'on':'off'}, as imported.`,
-  telemetry:`Game telemetry: ${r.game_telemetry_opted_in===undefined?'launcher defaults, nothing imported':r.game_telemetry_opted_in?'you opted in with the old launcher':'not opted in'}.${r.game_telemetry_available?'':'This desktop build cannot send game telemetry; your saved choice is kept and nothing is sent. '}Launcher setup diagnostics stay ${summaryConsent?'on':'off'}; adoption does not change that choice.`,
+  telemetry:`Game telemetry: ${r.game_telemetry_opted_in===undefined?'launcher defaults, nothing imported':r.game_telemetry_opted_in?'you opted in with the old launcher':'not opted in'}.${r.game_telemetry_available?' ':' This build has no game diagnostics module, so only launcher diagnostics are sent. '}Launcher setup diagnostics stay ${summaryConsent?'on':'off'}; adoption does not change that choice.`,
  };
 }
 export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=()=>{}) {
@@ -203,7 +203,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   offers={'recover-adoption':r?.kind==='copy'&&r.can_recover?{action:'recover',id:r.operation_id}:null,
    'abandon-adoption':r?.kind==='copy'&&r.can_abandon?{action:'abandon',id:r.operation_id}:null,
    'remove-adoption-preparation':removable&&!working&&!review?{action:'abandon_preparation',id:removable}:null};
-  for(const [id,offer] of Object.entries(offers)){button(id).hidden=!offer;button(id).disabled=!enabled||!!current.maintenance;}
+  for(const [id,offer] of Object.entries(offers)){button(id).hidden=!offer||!!current.maintenance;button(id).disabled=!enabled;}
   const m=current.maintenance;
   get('adoption-maintenance').hidden=!m;
   if(m){const [title,consequences]=(inPlace?inPlaceMaintenance[m.action]:undefined)??maintenanceText[m.action];get('adoption-maintenance-title').textContent=title;get('adoption-maintenance-consequences').textContent=consequences;button('confirm-adoption-maintenance').textContent=title;}
