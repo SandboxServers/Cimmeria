@@ -337,8 +337,8 @@ async fn partial_keeps_the_unsent_lines_for_the_next_press() {
         .filter(|r| r.url.path() == "/api/auth/dev-session")
         .count();
     assert_eq!(
-        mints, 1,
-        "two presses on one LogUploader share one log session"
+        mints, 2,
+        "each press ends its log session, so the second mints its own"
     );
 }
 
@@ -576,6 +576,37 @@ fn the_new_states_serialize_flat_for_the_webview() {
         serde_json::to_value(LogUploadStatus::new(LogUploadState::Unreachable)).unwrap(),
         serde_json::json!({"schema_version": 1, "state": "unreachable"})
     );
+}
+
+#[tokio::test]
+async fn each_press_mints_its_own_log_session() {
+    let root = tempfile::tempdir().unwrap();
+    let server = accepting_server().await;
+    let state = state_at(root.path(), &server.uri());
+    let uploader = LogUploader::new();
+    let mut pacer = FakePacer::default();
+    write_log(root.path(), 3);
+    let first = ingest_of(state.begin_log_upload(upload(), &uploader).unwrap());
+    let status = first.run_with(&mut pacer).await.unwrap().state;
+    assert!(
+        matches!(status, LogUploadState::Sent { .. }),
+        "got {status:?}"
+    );
+    write_log(root.path(), 4);
+    let second = ingest_of(state.begin_log_upload(upload(), &uploader).unwrap());
+    let status = second.run_with(&mut pacer).await.unwrap().state;
+    assert!(
+        matches!(status, LogUploadState::Sent { lines_sent: 1, .. }),
+        "got {status:?}"
+    );
+    let mints = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/api/auth/dev-session")
+        .count();
+    assert_eq!(mints, 2, "the second press mints its own session");
 }
 
 #[path = "ingest_flow_game_tests.rs"]

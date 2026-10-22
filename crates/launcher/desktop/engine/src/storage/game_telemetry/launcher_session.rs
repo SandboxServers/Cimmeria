@@ -337,6 +337,11 @@ impl LauncherSender {
         *locked(&self.hold_until) = Some(Instant::now() + wait);
     }
 
+    /// Forgets the stored session so the next post mints a new one. The hold from a failed mint stays.
+    pub fn end_session(&self) {
+        *locked(&self.session) = None;
+    }
+
     /// The time left on the hold, if any.
     #[cfg(test)]
     pub fn hold_remaining(&self) -> Option<Duration> {

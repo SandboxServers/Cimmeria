@@ -265,6 +265,8 @@ impl LogIngest {
             }
         })
         .await;
+        // One upload is one log session (LF-19): every outcome ends it.
+        sender.end_session();
         let lines_total = collected.lines_total + game.collected.lines_total;
         match outcome {
             IngestOutcome::Sent { lines_sent } => Ok(status(LogUploadState::Sent {
