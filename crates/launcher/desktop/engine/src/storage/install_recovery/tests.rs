@@ -53,6 +53,7 @@ fn prepared(intent: &InstallIntent, release: &VerifiedRelease) {
         seed_sha256: Some(release.manifest().seed.sha256.clone()),
         applied_patches: vec![],
         seed_adopted: false,
+        ..Default::default()
     }
     .save(&content)
     .unwrap();

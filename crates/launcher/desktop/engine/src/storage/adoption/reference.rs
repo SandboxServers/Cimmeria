@@ -111,6 +111,7 @@ pub(super) fn ledger(release: &VerifiedRelease) -> crate::state::InstalledState 
         seed_sha256: Some(manifest.seed.sha256.clone()),
         seed_adopted: false,
         applied_patches: manifest.patches.iter().map(|p| p.state_key()).collect(),
+        ..Default::default()
     }
 }
 /// Unpack the local seed. A zip seed is checked by `strict_zip` first. A RAR

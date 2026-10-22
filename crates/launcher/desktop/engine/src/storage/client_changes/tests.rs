@@ -66,6 +66,7 @@ fn installing() -> (tempfile::TempDir, DesktopState, Uuid) {
             .filter(|p| p.id == TITLED)
             .map(|p| p.state_key())
             .collect(),
+        ..Default::default()
     }
     .save(&game)
     .unwrap();

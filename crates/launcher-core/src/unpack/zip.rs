@@ -247,6 +247,12 @@ mod tests {
                 reason: SkipReason::SourceMismatch,
             }]
         );
-        assert!(unpack_with(&zip_path, &dest, &sink, &ApplyOptions::default()).is_err());
+        assert!(matches!(
+            unpack_with(&zip_path, &dest, &sink, &ApplyOptions::default()),
+            Err(super::super::UnpackError::PatchsetHash {
+                kind: "source_mismatch",
+                ..
+            })
+        ));
     }
 }
