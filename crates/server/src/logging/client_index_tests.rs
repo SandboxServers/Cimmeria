@@ -102,6 +102,7 @@ fn lab_claims() -> TokenClaims {
         kind: Some("lab".into()),
         acct: None,
         mid: None,
+        purpose: None,
     }
 }
 

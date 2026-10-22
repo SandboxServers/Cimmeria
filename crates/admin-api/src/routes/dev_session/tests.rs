@@ -100,6 +100,7 @@ pub(super) fn request(install_id: &str) -> DevSessionRequest {
         tags: Vec::new(),
         session_kind: None,
         account_name: None,
+        purpose: None,
     }
 }
 
@@ -311,6 +312,7 @@ pub(super) fn token_minted_at(iat: i64, exp: i64) -> String {
         kind: None,
         acct: None,
         mid: None,
+        purpose: None,
     };
     encode_token(&claims, &secret()).unwrap()
 }

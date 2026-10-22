@@ -129,6 +129,7 @@ async fn a_row_uploaded_after_its_slot_was_reused_names_the_original_occupant() 
         kind: Some("lab".into()),
         acct: None,
         mid: None,
+        purpose: None,
     };
 
     // The chunk the client uploads now, written over the last minute while

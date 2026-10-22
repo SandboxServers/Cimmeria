@@ -100,6 +100,7 @@ pub(super) fn claims(sid: &str) -> TokenClaims {
         kind: None,
         acct: None,
         mid: None,
+        purpose: None,
     }
 }
 
@@ -122,6 +123,7 @@ pub(super) fn launcher_claims(sid: &str, install: &str) -> TokenClaims {
         kind: Some("launcher".into()),
         acct: None,
         mid: None,
+        purpose: None,
     }
 }
 

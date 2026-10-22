@@ -71,6 +71,11 @@ pub struct DevSessionRequest {
     /// game logs in). Blank counts as absent.
     #[serde(default)]
     pub account_name: Option<String>,
+    /// `"logs"` mints a launcher session for log upload (C-LF4). Absent for
+    /// an event session. Any other value, or `logs` with a kind other than
+    /// `launcher`, is refused with 400.
+    #[serde(default)]
+    pub purpose: Option<String>,
 }
 
 /// The longest `account_name` a mint takes: the game login's own cap
@@ -334,6 +339,7 @@ pub(super) fn mint_with_headers(
     validate_install_id(&req.install_id).map_err(AuthError::BadInstallId)?;
     launcher_kind::check_request(&req, launcher)?;
     let kind = kind_claim(req.session_kind.as_deref())?;
+    let purpose = launcher_kind::purpose_claim(launcher, req.purpose.as_deref())?;
     let acct = account_claim(req.account_name.as_deref())?;
     launcher_kind::charge_install(tables, policy, &req.install_id, launcher, now)?;
     let secret = load_secret()?;
@@ -350,6 +356,7 @@ pub(super) fn mint_with_headers(
         acct,
         // Signed so a refresh, which sees only the token, can re-record the stream.
         mid: launcher_kind::machine_claim(launcher, &req.machine_id),
+        purpose,
     };
     let token = encode_token(&claims, &secret)?;
     launcher_kind::record_unless_launcher(launcher, &claims, peer_ip);
@@ -467,6 +474,8 @@ pub(super) fn refresh_with_headers(
         acct: claims.acct,
         // ...and its machine, so the join still finds it by machine.
         mid: claims.mid,
+        // ...and its purpose, so a log session stays a log session.
+        purpose: claims.purpose,
     };
     let token = encode_token(&new_claims, &secret)?;
     record_stream(&new_claims, peer_ip);
