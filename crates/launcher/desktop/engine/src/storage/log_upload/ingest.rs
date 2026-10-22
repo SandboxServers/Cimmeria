@@ -9,6 +9,8 @@
 //!   a minute instead of asking the server for a bigger window.
 //! - Nothing here logs a path, URL, token or error text (R5).
 use super::lines::LogLine;
+use crate::storage::game_telemetry::ip_scrub::scrub_ips;
+use crate::storage::game_telemetry::launcher_event::Redaction;
 use crate::storage::game_telemetry::launcher_session::{
     BatchOutcome, LauncherSender, LauncherTarget,
 };
@@ -18,6 +20,7 @@ use serde_json::{json, Map, Value};
 use std::future::Future;
 use std::ops::Range;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 /// The launcher's own log (C-LF5).
 pub(crate) const LAUNCHER_LOG_TARGET: &str = "client.launcher.log";
@@ -46,6 +49,10 @@ const MAX_UPLOAD_CHUNKS: usize = 400;
 /// is not 16 lowercase hex digits (the server would drop each row and still
 /// answer 2xx). The caller treats an empty result as `Failed` and does not
 /// advance its offsets.
+/// Every message is scrubbed here again, whatever made the line: a line that
+/// reached this point by any route (the launcher files, the game logs) leaves
+/// the machine only after the per-word scrub and the IP scrub. Scrubbing is
+/// idempotent, so a line `lines::collect` already cleaned is unchanged.
 pub(crate) fn rows(
     lines: &[LogLine],
     target: &'static str,
@@ -63,11 +70,13 @@ pub(crate) fn rows(
     let os = clean(&os.to_ascii_lowercase(), 16, |c| {
         c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'
     });
+    let redaction = Redaction::from_env();
     lines
         .iter()
         .enumerate()
         .map(|(seq, line)| {
-            let (message, cut) = cut_message(&line.message);
+            let scrubbed = scrub_ips(&redaction.scrub(&line.message)).into_owned();
+            let (message, cut) = cut_message(&scrubbed);
             let mut fields = Map::new();
             fields.insert("message".into(), json!(message));
             if let Some(level) = line
@@ -246,12 +255,14 @@ pub(crate) async fn send_logs(
     target: &LauncherTarget,
     events: &[TelemetryEvent],
     pacer: &mut impl Pacer,
+    cancel: &CancellationToken,
     on_chunk_sent: impl FnMut(usize),
 ) -> IngestOutcome {
     send_with(
         &mut SenderSink { sender, target },
         events,
         pacer,
+        cancel,
         on_chunk_sent,
     )
     .await
@@ -265,10 +276,14 @@ pub(crate) async fn send_logs(
 /// the upload as `Partial`; there is no retry loop (R16). More than
 /// `MAX_UPLOAD_ROWS` rows or `MAX_UPLOAD_CHUNKS` posts are cut: the first ones are
 /// sent and the upload ends `Partial` with a 60 s wait, the rest go on the next press.
+/// `cancel` is checked before each paced sleep and again before each post (the
+/// sleep itself also ends on a cancel): a cancel ends the upload as `Partial` with
+/// the rows already sent, and no further post is made.
 pub(crate) async fn send_with(
     sink: &mut impl ChunkSink,
     events: &[TelemetryEvent],
     pacer: &mut impl Pacer,
+    cancel: &CancellationToken,
     mut on_chunk_sent: impl FnMut(usize),
 ) -> IngestOutcome {
     log_started(events.len());
@@ -294,11 +309,21 @@ pub(crate) async fn send_with(
             }
             Step::Send(range) => range,
         };
+        if cancel.is_cancelled() {
+            return cancelled(lines_sent, chunks, dropped);
+        }
         if let Some(previous) = last_start {
             let since = pacer.now_ms().saturating_sub(previous);
             if since < MIN_CHUNK_INTERVAL_MS {
-                pacer.sleep_ms(MIN_CHUNK_INTERVAL_MS - since).await;
+                tokio::select! {
+                    () = pacer.sleep_ms(MIN_CHUNK_INTERVAL_MS - since) => {}
+                    () = cancel.cancelled() => {}
+                }
             }
+        }
+        // Checked again: the sleep may have ended because of the cancel.
+        if cancel.is_cancelled() {
+            return cancelled(lines_sent, chunks, dropped);
         }
         last_start = Some(pacer.now_ms());
         let rows = range.len();
@@ -337,6 +362,15 @@ pub(crate) async fn send_with(
     }
     log_finished("sent", "none", lines_sent, chunks, dropped);
     IngestOutcome::Sent { lines_sent }
+}
+
+/// A cancel keeps what was sent; the caller's offsets already stop at the last chunk.
+fn cancelled(lines_sent: u64, chunks: u64, dropped: u64) -> IngestOutcome {
+    log_finished("partial", "cancelled", lines_sent, chunks, dropped);
+    IngestOutcome::Partial {
+        lines_sent,
+        retry_after_secs: MIN_RETRY_SECS,
+    }
 }
 
 /// Keeps the first `MAX_UPLOAD_CHUNKS` posts and says whether any were cut.

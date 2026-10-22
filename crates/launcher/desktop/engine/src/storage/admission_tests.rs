@@ -100,7 +100,7 @@ fn resets_and_upload_are_busy_while_any_operation_or_the_updater_runs() {
         }
         assert_eq!(
             state
-                .begin_log_upload(
+                .begin_blob_upload(
                     LogUploadCommand::Upload { schema_version: 1 },
                     LogStore::new("https://example.invalid/c?sig=x").as_ref(),
                 )

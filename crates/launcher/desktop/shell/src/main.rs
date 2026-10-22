@@ -24,7 +24,7 @@ use cimmeria_launcher_engine::client_maintenance::{
     ClientMaintenanceCommand, ClientMaintenanceError, ClientMaintenanceStatus,
 };
 use cimmeria_launcher_engine::log_upload::{
-    CollectedLogs, LogStore, LogUploadCommand, LogUploadError, LogUploadStatus, LogUploadStep,
+    LogUploadCommand, LogUploadError, LogUploadStatus, LogUploadStep,
 };
 use cimmeria_launcher_engine::runtime_setup::windows_physx::{
     PhysxCommand, PhysxError, PhysxStatus,
@@ -268,30 +268,17 @@ async fn log_upload_command(
     state: tauri::State<'_, Arc<NativeHost>>,
 ) -> Result<LogUploadStatus, LogUploadError> {
     let host = state.inner().clone();
-    let beginning = host.clone();
-    let step = tauri::async_runtime::spawn_blocking(move || {
-        beginning.begin_log_upload(request, LogStore::compiled().as_ref())
-    })
-    .await
-    .map_err(|_| StorageError::Io)??;
-    let collection = match step {
-        LogUploadStep::Finished(status) => return Ok(status),
-        LogUploadStep::Collect(collection) => collection,
-    };
-    // Reading and zipping up to 64 MiB of logs runs without the state mutex.
-    let pending = match tauri::async_runtime::spawn_blocking(move || collection.collect())
+    let step = tauri::async_runtime::spawn_blocking(move || host.begin_log_upload(request))
         .await
-        .map_err(|_| StorageError::Io)??
-    {
-        CollectedLogs::Finished(status) => return Ok(status),
-        CollectedLogs::Send(pending) => pending,
-    };
-    // `begin_log_upload` only collects when a store is compiled in.
-    let store = LogStore::compiled().ok_or(StorageError::Io)?;
-    let stored = store.put(pending).await?;
-    tauri::async_runtime::spawn_blocking(move || host.finish_log_upload(stored))
-        .await
-        .map_err(|_| StorageError::Io)?
+        .map_err(|_| StorageError::Io)??;
+    match step {
+        LogUploadStep::Finished(status) => Ok(status),
+        // The file reads and the paced posts run without the state mutex; the
+        // ingest holds the busy flag until it ends.
+        LogUploadStep::Ingest(ingest) => ingest.run().await,
+        // Only the blob path (removed by LF-18) returns this; nothing calls it.
+        LogUploadStep::Collect(_) => Err(StorageError::Io.into()),
+    }
 }
 
 #[tauri::command]

@@ -78,6 +78,8 @@ pub struct NativeHost {
     worker: Mutex<Option<cimmeria_launcher_engine::install_worker::Worker>>,
     /// Whether the launcher opened its log file at start; reported on `launcher.startup`.
     log_file_ok: bool,
+    /// The one log-ingest sender for this run (LF-15), and its busy flag.
+    log_uploader: cimmeria_launcher_engine::log_upload::LogUploader,
 }
 impl NativeHost {
     pub fn new(root: PathBuf) -> Self {
@@ -113,6 +115,7 @@ impl NativeHost {
             repair_worker: Mutex::new(None),
             worker: Mutex::new(None),
             log_file_ok: false,
+            log_uploader: cimmeria_launcher_engine::log_upload::LogUploader::new(),
         }
     }
 
