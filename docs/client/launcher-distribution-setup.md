@@ -152,6 +152,15 @@ cargo run -p cimmeria-launcher-core --bin build-file-index -- `
   3. Chain rule: the candidate only appends. The seed and every patch keep their order, `id`, `after`, `size`, `sha256` and `blob`. `after` links are never remapped; a reordered patch or a changed `after` fails `append_only`, so a changed patch list is a new publication.
   4. Parity: the same run rebuilds the index from the local seed and patches and compares the parsed values with the candidate's. This is the launcher-verify step before signing; it matches the launcher's own fallback build (above).
   5. Owner only, with the offline release key on the owner's machine: `cimmeria-patchset sign manifest.json --key <offline key file>`, then `cimmeria-patchset verify manifest.json --pubkey <hex>`. Upload `file-index.json` to the immutable per-publication release first, then upload `manifest.json` and `manifest.json.sig` to `content-current` with `--clobber`. Then run LT-27 U7 on a laptop that would not adopt.
+- Each publication uploads `file-index.json` to a **new** GitHub release `content-file-index-<yyyymmdd>`, next to the seed and patches. The tracked script `tools/content-release/prepare-file-index.ps1` checks it. `-BlobPath` is that asset's full URL, `https://github.com/<owner>/<repo>/releases/download/content-file-index-<yyyymmdd>/file-index.json`. The launcher accepts an https URL on any host, or a relative name.
+- Publish and roll back (owner only, after the `content-current` swap in step 5):
+  1. Back up the live `manifest.json` and `manifest.json.sig` to a backup folder.
+  2. Sign: `cimmeria-patchset sign manifest.json --key <offline key file>`.
+  3. Run `cimmeria-patchset verify manifest.json --pubkey <hex>`.
+  4. Upload `file-index.json` to the new `content-file-index-<yyyymmdd>` release.
+  5. Swap: `gh release upload content-current --clobber manifest.json manifest.json.sig`.
+  6. Download the release again and run `verify-file-index --previous <backup>`.
+  7. Rollback, if needed: `gh release upload content-current --clobber <backup>\manifest.json <backup>\manifest.json.sig`.
 - The index carries only paths, sizes and hashes. The seed is never rehosted.
 
 ### Initial setup
