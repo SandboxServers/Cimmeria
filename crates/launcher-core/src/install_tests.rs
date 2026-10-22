@@ -324,6 +324,7 @@ async fn install_all_reports_every_patch_outcome() {
         applied_patches: vec!["001".into()],
         seed_sha256: Some("5eed".into()),
         seed_adopted: false,
+        ..Default::default()
     }
     .save(dir.path())
     .unwrap();
@@ -541,6 +542,7 @@ async fn a_patch_with_a_transform_this_launcher_does_not_know_fails_alone() {
         applied_patches: vec![],
         seed_sha256: Some("5eed".into()),
         seed_adopted: false,
+        ..Default::default()
     }
     .save(dir.path())
     .unwrap();

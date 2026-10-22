@@ -2,6 +2,8 @@
 
 use std::path::Path;
 
+use cimmeria_patchset::{ApplyOptions, SkippedOp};
+
 use super::{dos_time, UnpackError, UnpackSink};
 
 fn patchset_err(e: cimmeria_patchset::PatchsetError) -> UnpackError {
@@ -41,12 +43,18 @@ fn patchset_err(e: cimmeria_patchset::PatchsetError) -> UnpackError {
 ///
 /// A zip carrying a `cimmeria-patch.json` recipe is a patch set: it is
 /// applied with `cimmeria-patchset`, which rebuilds files from the stock
-/// ones in `dest` and then writes the overlay entries.
-pub(super) fn extract(zip_path: &Path, dest: &Path, sink: &UnpackSink) -> Result<(), UnpackError> {
+/// ones in `dest` and then writes the overlay entries. `opts` goes to the
+/// apply; the returned vec holds the ops it skipped (empty for a plain zip).
+pub(super) fn extract(
+    zip_path: &Path,
+    dest: &Path,
+    sink: &UnpackSink,
+    opts: &ApplyOptions,
+) -> Result<Vec<SkippedOp>, UnpackError> {
     if cimmeria_patchset::apply::has_recipe(zip_path).map_err(patchset_err)? {
         sink.check_cancel()?;
         let mut n = 0;
-        let report = cimmeria_patchset::apply(zip_path, dest, &mut |name| {
+        let report = cimmeria_patchset::apply_with(zip_path, dest, opts, &mut |name| {
             n += 1;
             sink.report("patching", n, n, &dest.join(name));
         })
@@ -55,9 +63,10 @@ pub(super) fn extract(zip_path: &Path, dest: &Path, sink: &UnpackSink) -> Result
             rebuilt = report.rebuilt.len(),
             already_current = report.already_current.len(),
             overlay_files = report.overlay_files,
+            skipped = report.skipped.len(),
             "applied patch set"
         );
-        return Ok(());
+        return Ok(report.skipped);
     }
     let file = std::fs::File::open(zip_path)?;
     let mut archive = ::zip::ZipArchive::new(file)?;
@@ -89,7 +98,7 @@ pub(super) fn extract(zip_path: &Path, dest: &Path, sink: &UnpackSink) -> Result
         }
         sink.report("unzipping", i + 1, total, &out);
     }
-    Ok(())
+    Ok(Vec::new())
 }
 
 #[cfg(test)]
@@ -114,7 +123,7 @@ mod tests {
         }
         let out = dir.path().join("out");
         let (sink, _rx) = sink();
-        extract(&zip_path, &out, &sink).unwrap();
+        extract(&zip_path, &out, &sink, &ApplyOptions::default()).unwrap();
         assert_eq!(
             std::fs::read_to_string(out.join("hello.txt")).unwrap(),
             "hi"
@@ -153,7 +162,7 @@ mod tests {
         let out = dir.path().join("out");
         let started = std::time::SystemTime::now() - std::time::Duration::from_secs(60);
         let (sink, _rx) = sink();
-        extract(&zip_path, &out, &sink).unwrap();
+        extract(&zip_path, &out, &sink, &ApplyOptions::default()).unwrap();
         let mtime = |p: &str| std::fs::metadata(out.join(p)).unwrap().modified().unwrap();
         assert_eq!(mtime("Config/DefaultEngine.ini"), fixture_mtime());
         assert!(mtime("unstamped.txt") >= started);
@@ -189,5 +198,55 @@ mod tests {
             .starts_with("Patch set error: SGWGame/CookedPC/x.upk does not match"));
         let other = patchset_err(cimmeria_patchset::PatchsetError::Invalid("bad".into()));
         assert!(matches!(other, UnpackError::Patchset(m) if m == "bad"));
+    }
+
+    /// A recipe zip with one op: `DIALOG` rebuilt from its stock bytes.
+    fn one_op_recipe_zip(dir: &Path) -> std::path::PathBuf {
+        const DIALOG: &str = "Working/SGWGame/UI/Dialog.lua";
+        let (stock, patched, spec_dir) = (dir.join("stock"), dir.join("patched"), dir.join("spec"));
+        for root in [&stock, &patched] {
+            std::fs::create_dir_all(root.join("Working/SGWGame/UI")).unwrap();
+        }
+        std::fs::create_dir_all(&spec_dir).unwrap();
+        let stock_bytes = b"function Dialog.show()\r\nend\r\n".repeat(40);
+        let mut patched_bytes = stock_bytes.clone();
+        patched_bytes.extend_from_slice(b"-- ours\r\n");
+        std::fs::write(stock.join(DIALOG), &stock_bytes).unwrap();
+        std::fs::write(patched.join(DIALOG), &patched_bytes).unwrap();
+        let spec: cimmeria_patchset::Spec = serde_json::from_str(&format!(
+            r#"{{"id":"one-op","ops":[{{"target":"{DIALOG}","sources":[{{"path":"{DIALOG}"}}]}}]}}"#
+        ))
+        .unwrap();
+        let built = cimmeria_patchset::build(&spec, &spec_dir, &stock, &patched).unwrap();
+        let zip_path = dir.join("recipe.zip");
+        std::fs::write(&zip_path, &built.zip).unwrap();
+        zip_path
+    }
+
+    // A recipe zip whose source was modded: tolerant mode skips that one op
+    // and returns it, strict mode fails with the same error as before.
+    #[test]
+    fn tolerant_unpack_returns_the_skipped_op_and_strict_still_fails() {
+        use super::super::{test_fixtures::sink, unpack_with};
+        use cimmeria_patchset::{ApplyOptions, SkipReason, SkippedOp};
+        let dir = tempfile::tempdir().unwrap();
+        let zip_path = one_op_recipe_zip(dir.path());
+        let dest = dir.path().join("install");
+        std::fs::create_dir_all(dest.join("Working/SGWGame/UI")).unwrap();
+        std::fs::write(dest.join("Working/SGWGame/UI/Dialog.lua"), b"modded").unwrap();
+        let (sink, _rx) = sink();
+        let tolerant = ApplyOptions {
+            tolerate_ops: true,
+            only_targets: None,
+        };
+        let skipped = unpack_with(&zip_path, &dest, &sink, &tolerant).unwrap();
+        assert_eq!(
+            skipped,
+            [SkippedOp {
+                target: "Working/SGWGame/UI/Dialog.lua".into(),
+                reason: SkipReason::SourceMismatch,
+            }]
+        );
+        assert!(unpack_with(&zip_path, &dest, &sink, &ApplyOptions::default()).is_err());
     }
 }

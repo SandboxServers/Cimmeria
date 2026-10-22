@@ -27,6 +27,7 @@ mod zip;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use cimmeria_patchset::{ApplyOptions, SkippedOp};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -125,9 +126,21 @@ pub fn detect(path: &Path) -> Result<ArchiveKind, UnpackError> {
 
 /// Unpack `archive` into `dest`, overwriting files that already exist.
 pub fn unpack(archive: &Path, dest: &Path, sink: &UnpackSink) -> Result<(), UnpackError> {
+    unpack_with(archive, dest, sink, &ApplyOptions::default()).map(|_| ())
+}
+
+/// [`unpack`] with the patch-set apply options `opts`. Returns the ops a
+/// tolerant apply skipped. A RAR or a plain zip has none, and a patch set
+/// under default options has none either.
+pub fn unpack_with(
+    archive: &Path,
+    dest: &Path,
+    sink: &UnpackSink,
+    opts: &ApplyOptions,
+) -> Result<Vec<SkippedOp>, UnpackError> {
     std::fs::create_dir_all(dest)?;
     match detect(archive)? {
-        ArchiveKind::Zip => zip::extract(archive, dest, sink),
+        ArchiveKind::Zip => zip::extract(archive, dest, sink, opts),
         ArchiveKind::Rar => {
             let staging = dest.join(STAGING_DIR);
             if staging.exists() {
@@ -147,7 +160,7 @@ pub fn unpack(archive: &Path, dest: &Path, sink: &UnpackSink) -> Result<(), Unpa
                 move_tree(&staging, &staging, dest)?;
             }
             std::fs::remove_dir_all(&staging)?;
-            Ok(())
+            Ok(Vec::new())
         }
     }
 }

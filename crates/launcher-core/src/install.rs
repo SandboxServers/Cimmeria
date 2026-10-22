@@ -213,6 +213,7 @@ async fn install_all_into(
             seed_sha256: Some(ctx.manifest.seed.sha256.clone()),
             applied_patches: Vec::new(),
             seed_adopted: false,
+            ..Default::default()
         };
         state.save(ctx.install_dir)?;
     }
