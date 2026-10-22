@@ -91,6 +91,152 @@ pub(super) fn validate(game: &Path, plan: &Plan) -> Result<(), Error> {
     Ok(())
 }
 
+/// Where a light adoption keeps the setup files as they were before setup rewrote
+/// them (C-LF3), inside the work folder.
+pub(super) const SETUP_ORIGINALS: &str = "setup-originals";
+/// File name of the manifest that marks a complete set of setup originals; written last.
+pub(super) const SETUP_MANIFEST: &str = "setup-originals.json";
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Originals {
+    version: u32,
+    files: Vec<Original>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Original {
+    path: String,
+    existed: bool,
+}
+
+/// The spelling `key` has on disk under `game`, or `None` when no such file is there.
+/// The disk folds case, so a lookup by the key would succeed under another spelling
+/// than the one the file keeps; the copy and the manifest record the real one.
+fn found_on_disk(game: &Path, key: &str) -> Option<String> {
+    let mut dir = game.to_path_buf();
+    let mut spelled = Vec::new();
+    for part in key.split('/') {
+        let names: Vec<String> = std::fs::read_dir(&dir)
+            .ok()?
+            .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+            .collect();
+        let name = names
+            .iter()
+            .find(|name| *name == part)
+            .or_else(|| names.iter().find(|name| name.eq_ignore_ascii_case(part)))?
+            .clone();
+        dir.push(&name);
+        spelled.push(name);
+    }
+    std::fs::symlink_metadata(&dir)
+        .ok()
+        .filter(|meta| meta.is_file())
+        .map(|_| spelled.join("/"))
+}
+
+/// Light only (R10: a verified adoption does nothing new). Copies each setup file
+/// that exists in `game` into the work folder, flushes every copy, and writes the
+/// manifest last, so a manifest on disk means the copies are whole. Idempotent: a rerun
+/// starts from nothing and overwrites both.
+pub(super) fn save_setup_originals(plan: &Plan, game: &Path) -> Result<(), Error> {
+    if !matches!(plan.provenance.check, FileCheck::Light) {
+        return Ok(());
+    }
+    let stage = plan.stage();
+    std::fs::create_dir_all(&stage)?;
+    remove_setup_originals(&stage);
+    let copies = stage.join(SETUP_ORIGINALS);
+    let mut files = Vec::new();
+    for key in SETUP_FILES {
+        let Some(found) = found_on_disk(game, key) else {
+            files.push(Original {
+                path: key.to_string(),
+                existed: false,
+            });
+            continue;
+        };
+        let to = inventory::native(&copies, &found);
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(inventory::native(game, &found), &to)?;
+        OpenOptions::new().write(true).open(&to)?.sync_all()?;
+        files.push(Original {
+            path: found,
+            existed: true,
+        });
+    }
+    write_large(&stage, SETUP_MANIFEST, &Originals { version: 1, files })
+}
+
+fn read_originals(stage: &Path) -> Option<Originals> {
+    let found: Originals = read_large(&stage.join(SETUP_MANIFEST)).ok()?;
+    (found.version == 1).then_some(found)
+}
+
+/// Whether the work folder holds a complete, readable set of setup originals.
+pub(super) fn has_setup_originals(stage: &Path) -> bool {
+    read_originals(stage).is_some()
+}
+
+/// Removes the manifest first, then the copies, so a half-removed set never looks whole.
+pub(super) fn remove_setup_originals(stage: &Path) {
+    let _ = std::fs::remove_file(stage.join(SETUP_MANIFEST));
+    let _ = std::fs::remove_dir_all(stage.join(SETUP_ORIGINALS));
+}
+
+/// Puts the setup files in `game` back as `save_setup_originals` found them: a file that
+/// existed is copied back over, one that did not is deleted. A file that existed and is
+/// no longer under `game` was already moved home by an earlier run, so it is skipped and
+/// not counted. Returns how many files it touched. Safe to run again after a crash.
+pub(super) fn restore_setup_originals(stage: &Path, game: &Path) -> Result<u32, Error> {
+    let originals = read_originals(stage).ok_or(StorageError::Corrupt)?;
+    let mut touched = 0;
+    for row in &originals.files {
+        // A row names a file under `game`; a name that climbs out of it is not ours.
+        if row
+            .path
+            .split('/')
+            .any(|part| part.is_empty() || part == "..")
+        {
+            return Err(StorageError::Corrupt.into());
+        }
+        let target = inventory::native(game, &row.path);
+        if row.existed {
+            // A file no longer under `game` was already moved home by an earlier run.
+            if std::fs::symlink_metadata(&target).is_err() {
+                continue;
+            }
+            let from = inventory::native(&stage.join(SETUP_ORIGINALS), &row.path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(&from, &target).map_err(|_| StorageError::Corrupt)?;
+            touched += 1;
+        } else {
+            match std::fs::remove_file(&target) {
+                Ok(()) => {
+                    touched += 1;
+                    // Setup made the folders around a file the player never had; an
+                    // empty one would keep the game folder from being removed.
+                    let mut dir = target.parent();
+                    while let Some(empty) = dir.filter(|d| *d != game) {
+                        if std::fs::remove_dir(empty).is_err() {
+                            break;
+                        }
+                        dir = empty.parent();
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
+    Ok(touched)
+}
+
 fn to_hex(sha: &[u8; 32]) -> String {
     sha.iter().map(|byte| format!("{byte:02x}")).collect()
 }
