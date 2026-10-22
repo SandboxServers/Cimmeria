@@ -145,6 +145,7 @@ fn replay_client_native_tolerates_unknown_level() {
         kind: None,
         acct: None,
         mid: None,
+        purpose: None,
     };
     let ev = ClientNativeEvent {
         ts_ms: 0,
@@ -184,6 +185,7 @@ fn verify_bearer_accepts_token_minted_by_dev_session() {
         kind: None,
         acct: None,
         mid: None,
+        purpose: None,
     };
     let token = encode_token(&claims, &secret).unwrap();
 
@@ -228,6 +230,7 @@ fn verify_bearer_rejects_a_token_without_the_telemetry_write_scope() {
             kind: None,
             acct: None,
             mid: None,
+            purpose: None,
         };
         let token = encode_token(&claims, &secret).unwrap();
         let mut headers = HeaderMap::new();

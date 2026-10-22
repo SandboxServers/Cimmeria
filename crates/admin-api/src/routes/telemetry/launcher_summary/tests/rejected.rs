@@ -304,6 +304,7 @@ fn the_game_telemetry_line_is_a_real_upload_event() {
         kind: None,
         acct: None,
         mid: None,
+        purpose: None,
     };
     let (counts, rows) = capture(|| replay_ndjson(&claims, &format!("{CLIENT_NATIVE_LINE}\n")));
     let counts = counts.expect("the upload replay accepts the line");

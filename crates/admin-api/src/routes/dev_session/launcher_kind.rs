@@ -11,7 +11,8 @@ use super::handlers::{
 };
 use super::quota::{install_key, ip_key, validate_metadata};
 use super::token::{
-    AuthError, TokenClaims, SCOPE_LAUNCHER_WRITE, SCOPE_TELEMETRY_WRITE, SESSION_KIND_LAUNCHER,
+    AuthError, TokenClaims, PURPOSE_LOGS, SCOPE_LAUNCHER_WRITE, SCOPE_TELEMETRY_WRITE,
+    SESSION_KIND_LAUNCHER,
 };
 
 /// A launcher session lives 15 minutes and is never refreshed (R3, R4).
@@ -68,6 +69,32 @@ pub(super) fn admit(policy: &QuotaPolicy, req: &DevSessionRequest) -> Result<boo
         return Err(AuthError::KillSwitchActive);
     }
     Ok(launcher)
+}
+
+/// The `purpose` claim for a requested purpose (C-LF4): `None` when absent
+/// (an event session, so the token keeps its old bytes), `Some("logs")` for a
+/// log session. Any other value is refused as `purpose_unknown`, and `logs`
+/// with a kind other than `launcher` as `purpose_kind`.
+pub(super) fn purpose_claim(
+    launcher: bool,
+    requested: Option<&str>,
+) -> Result<Option<String>, AuthError> {
+    let Some(purpose) = requested else {
+        return Ok(None);
+    };
+    if purpose != PURPOSE_LOGS {
+        return Err(AuthError::BadField {
+            field: "purpose",
+            reason: "purpose_unknown",
+        });
+    }
+    if !launcher {
+        return Err(AuthError::BadField {
+            field: "purpose",
+            reason: "purpose_kind",
+        });
+    }
+    Ok(Some(PURPOSE_LOGS.to_string()))
 }
 
 /// The quota reads for the launcher kind, from the C12 env names:

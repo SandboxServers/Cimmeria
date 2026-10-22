@@ -422,6 +422,7 @@ fn claims_of(kind: Option<&str>, scope: &str) -> TokenClaims {
         kind: kind.map(str::to_string),
         acct: None,
         mid: None,
+        purpose: None,
     }
 }
 
@@ -433,6 +434,154 @@ fn kind_and_scope_must_agree() {
     assert!(!claims_of(None, SCOPE_LAUNCHER_WRITE).kind_matches_scope());
     assert!(claims_of(Some("launcher"), SCOPE_LAUNCHER_WRITE).kind_matches_scope());
     assert!(claims_of(None, SCOPE_TELEMETRY_WRITE).kind_matches_scope());
+}
+
+fn logs_request(install_id: &str) -> DevSessionRequest {
+    DevSessionRequest {
+        purpose: Some("logs".into()),
+        ..launcher_request(install_id)
+    }
+}
+
+/// A `logs` launcher mint is a 15-minute launcher session carrying the `logs`
+/// purpose claim (C-LF4). It is scoped like any launcher mint.
+#[test]
+fn a_logs_mint_carries_the_logs_purpose_claim() {
+    let _g = EnvGuard::install();
+    let t = Tables::new();
+    let resp = mint_inner(
+        &t,
+        &policy(10, 10, 10),
+        ip("203.0.113.40"),
+        logs_request("3f2504e0-4f89-41d3-9a0c-0305e82c3303"),
+        Instant::now(),
+        NOW_UNIX,
+    )
+    .unwrap();
+    let claims = decode_token(&resp.token, &secret()).unwrap();
+    assert_eq!(claims.purpose.as_deref(), Some("logs"));
+    assert!(claims.is_log_session());
+    assert!(claims.is_launcher());
+    assert_eq!(claims.exp - claims.iat, 900);
+    assert_eq!(claims.scope, [SCOPE_LAUNCHER_WRITE]);
+}
+
+/// `logs` is for the launcher kind only: a player or lab mint asking for it
+/// is a 400 `purpose_kind`.
+#[test]
+fn a_logs_purpose_with_another_kind_is_refused() {
+    let _g = EnvGuard::install();
+    let t = Tables::new();
+    let install = "3f2504e0-4f89-41d3-9a0c-0305e82c3304";
+    let player = DevSessionRequest {
+        purpose: Some("logs".into()),
+        ..request(install)
+    };
+    let lab = DevSessionRequest {
+        purpose: Some("logs".into()),
+        ..lab_request(install)
+    };
+    for req in [player, lab] {
+        let err = mint_inner(
+            &t,
+            &policy(10, 10, 10),
+            ip("203.0.113.41"),
+            req,
+            Instant::now(),
+            NOW_UNIX,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                AuthError::BadField {
+                    field: "purpose",
+                    reason: "purpose_kind"
+                }
+            ),
+            "{err:?}"
+        );
+    }
+}
+
+/// Any purpose other than `logs` is a 400 `purpose_unknown`.
+#[test]
+fn an_unknown_purpose_is_refused() {
+    let _g = EnvGuard::install();
+    let t = Tables::new();
+    let req = DevSessionRequest {
+        purpose: Some("x".into()),
+        ..launcher_request("3f2504e0-4f89-41d3-9a0c-0305e82c3305")
+    };
+    let err = mint_inner(
+        &t,
+        &policy(10, 10, 10),
+        ip("203.0.113.42"),
+        req,
+        Instant::now(),
+        NOW_UNIX,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            AuthError::BadField {
+                field: "purpose",
+                reason: "purpose_unknown"
+            }
+        ),
+        "{err:?}"
+    );
+}
+
+/// A claims JSON without `purpose`, as every token minted before the claim
+/// has, still decodes, and it is an event session.
+#[test]
+fn a_claims_json_without_purpose_decodes_as_an_event_session() {
+    let json = serde_json::json!({
+        "iss": "cimmeria-server",
+        "sub": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        "sid": "s",
+        "iat": NOW_UNIX,
+        "exp": NOW_UNIX + 900,
+        "scope": [SCOPE_LAUNCHER_WRITE],
+        "kind": "launcher"
+    });
+    let claims: TokenClaims = serde_json::from_value(json).unwrap();
+    assert_eq!(claims.purpose, None);
+    assert!(!claims.is_log_session());
+    assert!(claims.is_launcher());
+}
+
+/// A `logs` mint is charged to the launcher per-install table like any other
+/// launcher mint, so the 13th in the hour is refused (C-LF4, R6).
+#[test]
+fn a_logs_mint_counts_toward_the_launcher_install_quota() {
+    let _g = EnvGuard::install();
+    let t = Tables::new();
+    let p = policy(100, 10, 10);
+    let install = "3f2504e0-4f89-41d3-9a0c-0305e82c3306";
+    for n in 1..=12 {
+        mint_inner(
+            &t,
+            &p,
+            ip("203.0.113.43"),
+            logs_request(install),
+            Instant::now(),
+            NOW_UNIX,
+        )
+        .unwrap_or_else(|e| panic!("logs mint {n}: {e:?}"));
+    }
+    let err = mint_inner(
+        &t,
+        &p,
+        ip("203.0.113.43"),
+        logs_request(install),
+        Instant::now(),
+        NOW_UNIX,
+    )
+    .unwrap_err();
+    assert!(matches!(err, AuthError::QuotaExceeded(_)), "{err:?}");
 }
 
 /// A launcher mint records no stream: it has no game to join (R4). The

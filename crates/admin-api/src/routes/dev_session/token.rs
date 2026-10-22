@@ -38,6 +38,8 @@ pub const SESSION_KIND_LAUNCHER: &str = "launcher";
 /// The only scope a launcher token carries. It is not `telemetry.write`, so
 /// a launcher token cannot pass a game upload gate.
 pub const SCOPE_LAUNCHER_WRITE: &str = "telemetry.launcher.write";
+/// The value of [`TokenClaims::purpose`] a launcher log-upload session carries.
+pub const PURPOSE_LOGS: &str = "logs";
 
 /// Wire format pinned: any field rename is a breaking change for the
 /// Functions-side verifier. `kind` is the one optional addition, and it is
@@ -72,6 +74,11 @@ pub struct TokenClaims {
     /// minted before it, which still decode. A signed label, not proof.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mid: Option<String>,
+    /// What a launcher session is for: `Some("logs")` for a log-upload
+    /// session (C-LF4), absent for an event session. Omitted when absent, so
+    /// every token minted before it still verifies as an event session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub purpose: Option<String>,
 }
 
 impl TokenClaims {
@@ -93,6 +100,12 @@ impl TokenClaims {
     /// True for a launcher-only session (AU-11, README R1).
     pub fn is_launcher(&self) -> bool {
         self.session_kind() == SESSION_KIND_LAUNCHER
+    }
+
+    /// True for a launcher log-upload session (C-LF4): a `purpose` of `logs`.
+    /// An event session has no purpose, so it is never a log session.
+    pub fn is_log_session(&self) -> bool {
+        self.purpose.as_deref() == Some(PURPOSE_LOGS)
     }
 
     /// True when the kind and the scope agree (README R1): a launcher token
@@ -318,6 +331,7 @@ mod tests {
             kind: None,
             acct: None,
             mid: None,
+            purpose: None,
         }
     }
 
