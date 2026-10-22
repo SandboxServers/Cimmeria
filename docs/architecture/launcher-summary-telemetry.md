@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Engineers changing the ingest route, its rows or the desktop exporter, and the maintainer deciding on a rollout
-> **Last updated:** 2026-10-04
+> **Last updated:** 2026-10-21
 > **Companions:** [desktop-side contract](../../crates/launcher/desktop/docs/launcher-summaries.md), [telemetry operations](../operations/telemetry.md), [dashboard and saved view](../operations/signoz/launcher-summary-views.md), [dev-session telemetry](dev-session-telemetry.md), [target catalog](observability-target-catalog.md#launchersummary), [implementation assignment](../analysis/playtests/2026-10-03-macos-wine/worknotes/observability-implementation-assignment.md)
 
 The desktop launcher can report, with the player's consent, how each install, runtime-setup, repair, uninstall or launch attempt ended. A report is one row per attempt: closed enums, a few bounded integers and two random ids. The server validates a batch of those rows, drops the ones it has already accepted, and writes one typed log row per accepted summary.
@@ -335,10 +335,10 @@ None of these makes a launcher send anything.
 
 **Still open:**
 
-- **No launcher build has an endpoint.** The shell composes the exporter with `endpoint: None` (`crates/launcher/desktop/shell/src/host/summary.rs`), and there is no environment override. So nothing is collected and nothing is sent.
+- **The default server list gives no endpoint.** The shell composes the exporter from the first login server when it is https, else from the built-in default (`crates/launcher/desktop/shell/src/host/summary.rs`). The default server list is plain http and `DEFAULT_SUMMARY_BASE` is `None`, so a build with that list collects nothing and sends nothing. There is no environment override. A built-in https default is set by a later change (D-LT17); until then this stays true.
 - **The production address exists but nothing points at it.** It has to be an `https://` address with a publicly trusted certificate: `SummaryEndpoint::parse` refuses plain `http://` to anything but loopback, and the exporter trusts the bundled webpki roots only. The colo now serves the route at `https://play.cimmeria.app/api/telemetry/launcher-summary` through its Caddy proxy ([the route](../operations/telemetry-upload-endpoint.md#the-colo-route)); no launcher build is configured with it, and no request has been sent to it by a launcher. The plain-HTTP login port still serves the route but cannot be the launcher's endpoint under the client's endpoint policy.
-- **The consent copy and the frontend UAT.** The launcher confirms a consent change with "This build sends nothing". A build with an endpoint needs new copy and the frontend UAT the repo requires.
+- **The frontend UAT.** The setup-diagnostics box now says whether summaries are sent ("sent over https to your login server", "saved but not sent yet", or "Nothing is sent."). The native run of the frontend UAT the repo requires is still owed.
 
-Those three belong to a later rollout that is decided separately. Its checklist is [what a rollout packet must change](../../crates/launcher/desktop/docs/launcher-summaries.md#what-a-rollout-packet-must-change).
+Those belong to a later rollout that is decided separately. Its checklist is [what a rollout packet must change](../../crates/launcher/desktop/docs/launcher-summaries.md#what-a-rollout-packet-must-change).
 
-Until that rollout, the route exists and no shipped launcher has an endpoint, so the launcher's consent copy, "This build sends nothing", stays true.
+Until that rollout, the route exists and no shipped launcher has an endpoint: the default server list is plain http, and the built-in default is not set. The "not sent yet" state of setup diagnostics ends with the built-in https default (D-LT17).
