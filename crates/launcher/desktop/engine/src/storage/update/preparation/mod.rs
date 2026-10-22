@@ -191,26 +191,39 @@ enum UpdatePath {
     /// Light-adopted install: seeded from the live tree, no seed (LA-13, D-LA14).
     Incremental(incremental::IncrementalPlan),
 }
+
 /// The seedless path needs the install's own adoption record to say `light`
 /// (D-LA14) and then a ledger that matches the target. Anything else, or any
-/// unreadable record, is the seed rebuild.
+/// unreadable record, is the seed rebuild. A light install that is refused is
+/// logged once, because it is the one that pays for a seed it never held.
 fn choose_path(
     owner: &mut DesktopState,
     plan: &Plan,
     release: &catalog::VerifiedRelease,
 ) -> UpdatePath {
     let seedless = incremental::seedless_allowed(owner.adoption_check().ok().flatten());
-    let incremental = seedless
-        .then(|| {
-            let previous = owner.verify_release_identity(plan.previous).ok()?;
-            incremental::plan(
-                &plan.owner.destination.join("game"),
-                &previous.manifest().patches,
-                &release.manifest().seed.sha256,
-                &release.manifest().patches,
-            )
-        })
-        .flatten();
+    let incremental = if seedless {
+        match owner.verify_release_identity(plan.previous).ok() {
+            None => {
+                events::seedless_declined("previous_release_unverified");
+                None
+            }
+            Some(previous) => {
+                let planned = incremental::plan(
+                    &plan.owner.destination.join("game"),
+                    &previous.manifest().patches,
+                    &release.manifest().seed.sha256,
+                    &release.manifest().patches,
+                );
+                if planned.is_none() {
+                    events::seedless_declined("ledger_mismatch");
+                }
+                planned
+            }
+        }
+    } else {
+        None
+    };
     match incremental {
         Some(incremental) => UpdatePath::Incremental(incremental),
         None => UpdatePath::Full(owner.seed_source_for(release)),

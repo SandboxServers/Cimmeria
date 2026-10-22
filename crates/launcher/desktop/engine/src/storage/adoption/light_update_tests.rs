@@ -260,6 +260,17 @@ fn a_target_with_another_seed_rebuilds_from_the_seed() {
     assert_eq!(row.field("mode"), Some("full"));
     assert_eq!(row.field("stage_linked"), Some("0"));
     assert_eq!(row.field("stage_copied"), Some("0"));
+    // The fallback is visible: a light install that pays for a seed says why.
+    let declined: Vec<_> = up
+        .events
+        .iter()
+        .filter(|row| row.field("event") == Some("update_seedless_declined"))
+        .collect();
+    let [declined] = declined.as_slice() else {
+        panic!("one declined row: {:?}", up.events);
+    };
+    assert_eq!(declined.target, "launcher.game_update");
+    assert_eq!(declined.field("reason"), Some("ledger_mismatch"));
 }
 
 /// D-LA9: a file the player changed never stops the Update. The new patch's op on
@@ -276,6 +287,19 @@ fn a_changed_source_of_the_new_patch_is_skipped_not_refused() {
     let row = up.staged();
     assert_eq!(row.field("mode"), Some("incremental"));
     assert_eq!(row.field("ops_skipped"), Some("1"));
+    // The tolerant retry logs the skipped op on the Update path too.
+    let incomplete_rows: Vec<_> = up
+        .events
+        .iter()
+        .filter(|row| row.field("event") == Some("patch_incomplete"))
+        .collect();
+    let [logged] = incomplete_rows.as_slice() else {
+        panic!("one patch_incomplete row: {:?}", up.events);
+    };
+    assert_eq!(logged.target, "launcher.install");
+    let third = &target.manifest().patches[2].id;
+    assert_eq!(logged.field("patch"), Some(format!("patch:{third}").as_str()));
+    assert_eq!(logged.field("ops_skipped"), Some("1"));
     assert_eq!(read(&game, THIRD), b"modded by the player");
     assert_eq!(read(&game, SECOND), big("patched second"));
     let ledger = InstalledState::load(&game);

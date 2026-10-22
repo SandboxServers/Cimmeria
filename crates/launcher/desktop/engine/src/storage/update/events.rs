@@ -159,6 +159,28 @@ pub(super) fn mark_uncertain_failed(error: ContractError) {
     );
 }
 
+/// A light-adopted install fell back to the seed rebuild. `reason` is closed:
+/// `previous_release_unverified` or `ledger_mismatch`. No path, URL or host.
+pub(super) fn seedless_declined(reason: &'static str) {
+    tracing::info!(
+        target: "launcher.game_update",
+        event = "update_seedless_declined",
+        reason,
+        "game update: the seedless update was declined; expected a rebuild from the seed"
+    );
+}
+
+/// The seedless Update failed. `reason` is closed: `fetch_failed`,
+/// `hash_mismatch`, `write_set_unreadable`, `seed_stage_failed` or `rename_failed`.
+pub(super) fn incremental_failed(reason: &'static str) {
+    tracing::warn!(
+        target: "launcher.game_update",
+        event = "update_incremental_failed",
+        reason,
+        "game update: the seedless update failed; expected a staged tree built from the live one"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

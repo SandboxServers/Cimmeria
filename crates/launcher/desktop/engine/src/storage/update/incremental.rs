@@ -10,6 +10,7 @@
 //! runs (`check = light`). Fresh, downloaded and copy-adopted installs keep the
 //! seed rebuild byte for byte (R-LA 10); [`plan`] then only checks that the
 //! live ledger really matches the target release.
+use super::events;
 use super::preparation::Failure;
 use super::Plan;
 use crate::install::{self, InstallError, Progress};
@@ -83,6 +84,13 @@ pub(super) fn plan(
     })
 }
 
+/// Logs the closed `reason` and returns the plain failure. A cancelled Update
+/// is not logged; callers map that case to `Failure::Cancelled` themselves.
+fn failed(reason: &'static str) -> Failure {
+    events::incremental_failed(reason);
+    Failure::Failed
+}
+
 /// Downloads one pending patch into `work` under the name the install step
 /// uses for its own partial download, and checks its hash. The install step
 /// then finds a complete file and asks the server only for the missing tail.
@@ -94,7 +102,9 @@ async fn fetch(
     cancel: &CancellationToken,
     progress: &ProgressSink,
 ) -> Result<PathBuf, Failure> {
-    let dest = work.join(install::patch_download_name(entry).map_err(|_| Failure::Failed)?);
+    let dest = work.join(
+        install::patch_download_name(entry).map_err(|_| failed("fetch_failed"))?,
+    );
     install::download_to_file(
         http,
         &blob_url(manifest_url, &entry.blob),
@@ -102,22 +112,22 @@ async fn fetch(
         cancel.clone(),
         CancellationToken::new(),
         entry.size,
-        &entry.id,
+        &format!("patch {}", entry.id),
         progress,
     )
     .await
     .map_err(|error| match error {
         InstallError::Cancelled => Failure::Cancelled,
-        _ => Failure::Failed,
+        _ => failed("fetch_failed"),
     })?;
     let hashed = dest.clone();
     let actual = tokio::task::spawn_blocking(move || install::hash_file(&hashed))
         .await
         .map_err(|_| Failure::ReconciliationRequired)?
-        .map_err(|_| Failure::Failed)?;
+        .map_err(|_| failed("hash_mismatch"))?;
     if !actual.eq_ignore_ascii_case(&entry.sha256) {
         let _ = std::fs::remove_file(&dest);
-        return Err(Failure::Failed);
+        return Err(failed("hash_mismatch"));
     }
     Ok(dest)
 }
@@ -156,7 +166,7 @@ fn seed(
     cancel: &CancellationToken,
     progress: &ProgressSink,
 ) -> Result<SeedStats, Failure> {
-    let write_set = write_set(live, zips).ok_or(Failure::Failed)?;
+    let write_set = write_set(live, zips).ok_or_else(|| failed("write_set_unreadable"))?;
     let step = |current| {
         progress.report(Progress::Extracting {
             label: PREPARING.to_owned(),
@@ -172,12 +182,12 @@ fn seed(
     })
     .map_err(|error| match error.kind() {
         std::io::ErrorKind::Interrupted => Failure::Cancelled,
-        _ => Failure::Failed,
+        _ => failed("seed_stage_failed"),
     })?;
     step(1);
     for (entry, zip) in zips {
-        let name = install::patch_download_name(entry).map_err(|_| Failure::Failed)?;
-        std::fs::rename(zip, target.join(name)).map_err(|_| Failure::Failed)?;
+        let name = install::patch_download_name(entry).map_err(|_| failed("rename_failed"))?;
+        std::fs::rename(zip, target.join(name)).map_err(|_| failed("rename_failed"))?;
     }
     Ok(stats)
 }
