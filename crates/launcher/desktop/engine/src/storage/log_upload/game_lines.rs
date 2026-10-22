@@ -25,15 +25,19 @@ use cimmeria_launcher_core::logs::collect_log_inputs;
 use cimmeria_launcher_core::telemetry::events::TelemetryEvent;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
-use std::io::{ErrorKind, Read};
+use std::io::{ErrorKind, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use tokio_util::sync::CancellationToken;
 
 /// The offsets key prefix of a game file: `game/<path under binaries, '/'>`.
-const KEY_PREFIX: &str = "game/";
+pub(crate) const KEY_PREFIX: &str = "game/";
 
 /// How many leading bytes the head fingerprint covers.
 const HEAD_BYTES: usize = 256;
+
+/// How many bytes before a saved offset the tail fingerprint covers (A6).
+const TAIL_BYTES: usize = 64;
 
 /// The longest message kept, in bytes; a longer one is cut on a char boundary.
 const MAX_MESSAGE_BYTES: usize = 2_048;
@@ -54,6 +58,9 @@ pub(crate) struct GameFile {
     /// True when the file is a new one (head changed) or shorter than its saved
     /// offset: the saved offset must be dropped, not kept by `advance`'s `max`.
     pub restarted: bool,
+    /// The fingerprint of the bytes that end at each kept line's end, so the
+    /// offset saved for that line can carry its tail (A6).
+    pub tails: HashMap<u64, String>,
 }
 
 /// The game lines `collect` read, plus what it saw of each file they came from.
@@ -63,6 +70,8 @@ pub(crate) struct GameCollected {
     pub files: HashMap<String, GameFile>,
     /// Whether the game has any debug or session log file at all.
     pub has_files: bool,
+    /// Every game file listed this press, with its modification time (A7).
+    pub live: HashMap<String, SystemTime>,
 }
 
 /// The new complete lines in every game log under `game` (the game folder, the
@@ -88,11 +97,14 @@ pub(crate) fn collect(
         has_files: !inputs.is_empty(),
         ..GameCollected::default()
     };
-    for (key, path) in inputs {
+    for (key, path, modified) in inputs {
         cancelled()?;
+        out.live.insert(key.clone(), modified);
         let saved = offsets.files.get(&key).copied().unwrap_or(0);
         let saved_head = offsets.heads.get(&key).map(String::as_str);
-        let (lines, file, total) = match read_file(&key, &path, saved, saved_head, &redaction) {
+        let saved_tail = offsets.tails.get(&key).map(String::as_str);
+        let read = read_file(&key, &path, saved, (saved_head, saved_tail), &redaction);
+        let (lines, file, total) = match read {
             Ok(read) => read,
             Err(reason) => {
                 // The file is skipped with its offset untouched: its lines wait
@@ -135,23 +147,23 @@ pub(crate) fn continue_seq(rows: &mut [TelemetryEvent], by: u64) {
     }
 }
 
-/// `(offsets key, path)` per log file, oldest modification first so the
+/// `(offsets key, path, modified)` per log file, oldest modification first so the
 /// "newest MAX_LINES" cut keeps the right ones. Symlinks are skipped: a link
 /// named `sgwdebuglog` must not make the launcher read some other file.
-fn inputs(game: &Path) -> Result<Vec<(String, PathBuf)>, LogUploadError> {
+fn inputs(game: &Path) -> Result<Vec<(String, PathBuf, SystemTime)>, LogUploadError> {
     let Ok(files) = collect_log_inputs(game) else {
         events::collect_failed("game_files");
         return Ok(Vec::new());
     };
     let binaries = binaries_dir(game);
-    let mut found: Vec<(std::time::SystemTime, String, PathBuf)> = files
+    let mut found: Vec<(SystemTime, String, PathBuf)> = files
         .into_iter()
         .filter_map(|path| {
             let meta = std::fs::symlink_metadata(&path).ok()?;
             if !meta.file_type().is_file() {
                 return None;
             }
-            let modified = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
+            let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
             let key = key_of(&binaries, &path)?;
             Some((modified, key, path))
         })
@@ -159,7 +171,7 @@ fn inputs(game: &Path) -> Result<Vec<(String, PathBuf)>, LogUploadError> {
     found.sort();
     Ok(found
         .into_iter()
-        .map(|(_, key, path)| (key, path))
+        .map(|(modified, key, path)| (key, path, modified))
         .collect())
 }
 
@@ -176,8 +188,19 @@ fn key_of(binaries: &Path, path: &Path) -> Option<String> {
 /// SHA-256. The length is part of it so a short file that is still being
 /// written does not look like a rewrite when it grows.
 pub(crate) fn head_of(bytes: &[u8]) -> String {
-    let n = bytes.len().min(HEAD_BYTES);
-    format!("{n}:{}", h12(&bytes[..n]))
+    fingerprint(&bytes[..bytes.len().min(HEAD_BYTES)])
+}
+
+/// The fingerprint of the bytes that end at a saved offset (`bytes` is the file
+/// up to that offset): the last 64 of them, in the same `<n>:<h12>` form (A6).
+fn tail_of(bytes: &[u8]) -> String {
+    fingerprint(&bytes[bytes.len().saturating_sub(TAIL_BYTES)..])
+}
+
+/// `<n>:<h12>` for `bytes`: `n` the number of bytes hashed and `h12` the first
+/// 12 hex digits of their SHA-256.
+fn fingerprint(bytes: &[u8]) -> String {
+    format!("{}:{}", bytes.len(), h12(bytes))
 }
 
 fn h12(bytes: &[u8]) -> String {
@@ -197,6 +220,24 @@ fn head_matches(saved: &str, bytes: &[u8]) -> bool {
         return false;
     };
     n <= bytes.len() && h12(&bytes[..n]) == hash
+}
+
+/// True when the file still holds the bytes `saved` fingerprinted just before
+/// the offset `at`. The reader seeks, so the caller seeks back to where it was.
+/// A fingerprint longer than `TAIL_BYTES`, or one that reaches before the file,
+/// does not match.
+fn tail_matches(reader: &mut std::fs::File, at: u64, saved: &str) -> std::io::Result<bool> {
+    let n = saved
+        .split_once(':')
+        .and_then(|(n, _)| n.parse::<usize>().ok())
+        .filter(|&n| n <= TAIL_BYTES && n as u64 <= at);
+    let Some(n) = n else {
+        return Ok(false);
+    };
+    let mut bytes = vec![0u8; n];
+    reader.seek(SeekFrom::Start(at - n as u64))?;
+    reader.read_exact(&mut bytes)?;
+    Ok(fingerprint(&bytes) == saved)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -270,7 +311,7 @@ fn read_file(
     key: &str,
     path: &Path,
     saved: u64,
-    saved_head: Option<&str>,
+    (saved_head, saved_tail): (Option<&str>, Option<&str>),
     redaction: &Redaction,
 ) -> Result<(Vec<LogLine>, GameFile, u64), &'static str> {
     let mut reader = std::fs::File::open(path).map_err(|_| "read_failed")?;
@@ -279,17 +320,28 @@ fn read_file(
     let first_len = fill(&mut reader, &mut block).map_err(|_| "read_failed")?;
     let first = &block[..first_len];
     let (encoding, bom) = detect(first);
-    let restarted = saved > len || saved_head.is_some_and(|h| !head_matches(h, first));
-    let file = GameFile {
-        head: head_of(first),
-        restarted,
+    // A tail check needs a seek, so it runs before the stream is read on: the
+    // reader is put back at the end of the first block afterwards.
+    let tail_changed = match saved_tail {
+        Some(tail) if saved > 0 && saved <= len => {
+            let same = tail_matches(&mut reader, saved, tail).map_err(|_| "read_failed")?;
+            reader
+                .seek(SeekFrom::Start(first_len as u64))
+                .map_err(|_| "read_failed")?;
+            !same
+        }
+        _ => false,
     };
+    let restarted =
+        saved > len || tail_changed || saved_head.is_some_and(|h| !head_matches(h, first));
     let mut start = if restarted { 0 } else { saved as usize };
     if encoding == Encoding::Utf16Le {
         start &= !1;
     }
     let mut scan = Scan::new(encoding, bom, start.max(bom) as u64);
+    scan.push_recent(&first[..bom]);
     scan.feed(&first[bom..]);
+    let head = head_of(first);
     loop {
         let n = fill(&mut reader, &mut block).map_err(|_| "read_failed")?;
         if n == 0 {
@@ -298,6 +350,15 @@ fn read_file(
         scan.feed(&block[..n]);
     }
     let total = scan.total;
+    let file = GameFile {
+        head,
+        restarted,
+        tails: scan
+            .ring
+            .iter()
+            .map(|line| (line.end, line.tail.clone()))
+            .collect(),
+    };
     Ok((scan.lines(key, redaction), file, total))
 }
 
@@ -321,6 +382,8 @@ struct RawLine {
     end: u64,
     bytes: Vec<u8>,
     over: bool,
+    /// The tail fingerprint at `end` (A6).
+    tail: String,
 }
 
 /// The streaming line reader's state for one file: the newlines seen so far,
@@ -347,6 +410,8 @@ struct Scan {
     ring: VecDeque<RawLine>,
     /// Every kept line of the file, not only the newest.
     total: u64,
+    /// The last `TAIL_BYTES` bytes consumed, up to the line being ended (A6).
+    recent: Vec<u8>,
 }
 
 impl Scan {
@@ -363,7 +428,16 @@ impl Scan {
             has_text: false,
             ring: VecDeque::new(),
             total: 0,
+            recent: Vec::new(),
         }
+    }
+
+    /// Adds consumed bytes to `recent`, keeping only the last `TAIL_BYTES`.
+    fn push_recent(&mut self, seg: &[u8]) {
+        self.recent
+            .extend_from_slice(&seg[seg.len().saturating_sub(TAIL_BYTES)..]);
+        let extra = self.recent.len().saturating_sub(TAIL_BYTES);
+        self.recent.drain(..extra);
     }
 
     /// Takes the next block of the file. A unit cut by the block's end waits
@@ -382,6 +456,7 @@ impl Scan {
         while let Some(at) = self.next_newline(&data[from..]) {
             let at = from + at;
             self.append(&data[from..at]);
+            self.push_recent(&data[from..at + self.unit]);
             self.line_no += 1;
             let end = self.pos + (at + self.unit) as u64;
             if end > self.start {
@@ -393,6 +468,7 @@ impl Scan {
             from = at + self.unit;
         }
         self.append(&data[from..]);
+        self.push_recent(&data[from..]);
         self.pos += data.len() as u64;
     }
 
@@ -432,6 +508,7 @@ impl Scan {
             end,
             bytes: std::mem::take(&mut self.cur),
             over: self.over,
+            tail: tail_of(&self.recent),
         });
         if self.ring.len() > MAX_LINES {
             self.ring.pop_front();

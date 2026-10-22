@@ -246,6 +246,8 @@ impl LogIngest {
         rows.append(&mut game_rows);
         let mut done = 0usize;
         let lines = &collected.lines;
+        // A failed save is reported once per press, not once per chunk (A7).
+        let mut save_failed = false;
         // The offsets file is a few dozen bytes, so the synchronous save between
         // two posts (3.5 s apart) costs nothing worth a blocking-pool hop.
         let outcome = ingest::send_logs(&sender, &target, &rows, pacer, &cancel, |chunk| {
@@ -257,7 +259,8 @@ impl LogIngest {
                 }
             }
             done = end;
-            if offsets.save(&state_dir).is_err() {
+            if !save_failed && offsets.save(&state_dir).is_err() {
+                save_failed = true;
                 events::offsets_save_failed();
             }
         })
@@ -296,7 +299,7 @@ fn read_pending(
     game_dir: Option<&Path>,
     cancel: &CancellationToken,
 ) -> Result<Pending, LogUploadError> {
-    let offsets = Offsets::load(state_dir);
+    let mut offsets = Offsets::load(state_dir);
     let collected = match log_dir {
         Some(dir) => lines::collect(dir, &offsets, cancel)?,
         None => Collected::default(),
@@ -305,6 +308,18 @@ fn read_pending(
         Some(dir) => game_lines::collect(dir, &offsets, cancel)?,
         None => GameCollected::default(),
     };
+    if game.has_files {
+        // The files with lines this press are the ones being sent, so they are
+        // never evicted (A7). The listing is non-empty here, so the live set is
+        // the whole game folder, not a failed listing.
+        let busy: std::collections::HashSet<String> = game
+            .collected
+            .lines
+            .iter()
+            .map(|line| line.file.clone())
+            .collect();
+        offsets.prune(&game.live, &busy);
+    }
     Ok(Pending {
         has_files: log_dir.is_some_and(|dir| !lines::launcher_files(dir).is_empty())
             || game.has_files,

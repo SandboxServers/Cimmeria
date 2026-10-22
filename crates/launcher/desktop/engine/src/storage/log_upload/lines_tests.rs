@@ -234,6 +234,11 @@ fn offsets_keep_only_the_newest_files() {
         };
         offsets.advance(&line);
     }
+    // The limit is enforced after a read, not on each advance (A7).
+    offsets.prune(
+        &std::collections::HashMap::new(),
+        &std::collections::HashSet::new(),
+    );
     assert_eq!(offsets.files.len(), 512);
     assert!(offsets.files.contains_key("launcher.2026-22-04.log"));
     assert!(!offsets.files.contains_key("launcher.2026-01-01.log"));

@@ -308,7 +308,13 @@ fn control_characters_become_replacement_characters() {
 fn a_missing_file_is_read_failed_for_telemetry() {
     let dir = tempfile::tempdir().unwrap();
     let missing = dir.path().join("gone.log");
-    let got = read_file("game/gone.log", &missing, 0, None, &Redaction::from_env());
+    let got = read_file(
+        "game/gone.log",
+        &missing,
+        0,
+        (None, None),
+        &Redaction::from_env(),
+    );
     assert!(matches!(got, Err("read_failed")));
 }
 
@@ -373,23 +379,89 @@ fn a_version_one_offsets_file_loads_with_no_heads() {
     assert_eq!(again.files, offsets.files, "saves as version 2 and reloads");
 }
 
+/// A rewrite whose first 256 bytes are the same as the old run's: only the tail
+/// fingerprint at the saved offset tells it is new (A6). Without the tail check
+/// the new run's early lines end before the saved offset and are never sent.
 #[test]
-fn offsets_keep_at_most_the_newest_files_and_drop_their_heads() {
+fn a_rewritten_log_with_the_same_head_restarts_by_its_tail() {
+    let game = tempfile::tempdir().unwrap();
+    let path = binaries(game.path()).join("SGWDebugLog.log");
+    // A 300-byte banner starts both runs, so the 256-byte head cannot tell them apart.
+    let banner = format!("{}\n", "=".repeat(300));
+    let old: String = (0..20).map(|n| format!("old run {n:02}\n")).collect();
+    fs::write(&path, format!("{banner}{old}")).unwrap();
     let mut offsets = Offsets::default();
-    for i in 0..600 {
-        let key = format!("game/sessions/{i:04}/a.log");
-        offsets.heads.insert(key.clone(), "0:x".into());
-        offsets.advance(&LogLine {
-            file: key,
-            line_no: 1,
-            end: 1,
-            ts_ms: None,
-            level: None,
-            target: None,
-            message: String::new(),
-            truncated: false,
-        });
+    let first = read(game.path(), &offsets);
+    sent(&mut offsets, &first);
+    assert!(offsets.tails.contains_key("game/SGWDebugLog.log"));
+    // The new run is longer than the saved offset.
+    let new: String = (0..30).map(|n| format!("new run {n:02}\n")).collect();
+    fs::write(&path, format!("{banner}{new}")).unwrap();
+    let got = read(game.path(), &offsets);
+    assert!(got.files["game/SGWDebugLog.log"].restarted);
+    assert_eq!(
+        messages(&got).len(),
+        31,
+        "the banner and all 30 new lines are sent"
+    );
+    sent(&mut offsets, &got);
+    assert!(
+        read(game.path(), &offsets).collected.lines.is_empty(),
+        "the saved tail matches the file, so the caught-up file sends nothing"
+    );
+}
+
+/// A version-2 file with no `tails` key loads with no tail check, as before.
+#[test]
+fn a_version_two_offsets_file_without_tails_loads_with_none() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uploaded-log-offsets.json"),
+        r#"{"version":2,"files":{"game/SGWDebugLog.log":12},"heads":{}}"#,
+    )
+    .unwrap();
+    let offsets = Offsets::load(dir.path());
+    assert_eq!(offsets.files["game/SGWDebugLog.log"], 12);
+    assert!(offsets.tails.is_empty());
+}
+
+/// Past the file limit, the oldest game file by modification time goes, but a
+/// file with lines this press (busy) never does, and the newest survives (A7).
+#[test]
+fn past_the_file_limit_the_oldest_unbusy_file_goes_and_the_newest_stays() {
+    let mut offsets = Offsets::default();
+    let mut live = HashMap::new();
+    for n in 0..600u64 {
+        let key = format!("game/sessions/s{n:03}.log");
+        offsets.files.insert(key.clone(), 10);
+        let modified = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(n);
+        live.insert(key, modified);
     }
+    let busy = std::collections::HashSet::from(["game/sessions/s000.log".to_string()]);
+    offsets.prune(&live, &busy);
     assert_eq!(offsets.files.len(), 512);
-    assert!(offsets.heads.len() <= 512, "a dropped file drops its head");
+    assert!(offsets.files.contains_key("game/sessions/s000.log"));
+    assert!(!offsets.files.contains_key("game/sessions/s001.log"));
+    assert!(offsets.files.contains_key("game/sessions/s599.log"));
+}
+
+/// A game file that is gone is pruned with its head and tail; launcher keys stay.
+#[test]
+fn a_deleted_game_file_is_pruned_and_a_launcher_key_is_kept() {
+    let mut offsets = Offsets::default();
+    offsets.files.insert("game/gone.log".into(), 5);
+    offsets.heads.insert("game/gone.log".into(), "5:x".into());
+    offsets.tails.insert("game/gone.log".into(), "5:x".into());
+    offsets.files.insert("launcher.2026-10-22.log".into(), 7);
+    offsets.files.insert("game/here.log".into(), 9);
+    let live = HashMap::from([(
+        "game/here.log".to_string(),
+        std::time::SystemTime::UNIX_EPOCH,
+    )]);
+    offsets.prune(&live, &std::collections::HashSet::new());
+    assert!(!offsets.files.contains_key("game/gone.log"));
+    assert!(!offsets.heads.contains_key("game/gone.log"));
+    assert!(!offsets.tails.contains_key("game/gone.log"));
+    assert_eq!(offsets.files["launcher.2026-10-22.log"], 7);
+    assert_eq!(offsets.files["game/here.log"], 9);
 }
