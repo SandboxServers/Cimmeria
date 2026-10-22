@@ -7,6 +7,7 @@ use cimmeria_cell_world::cell::interaction_pose::{
     self, InteractionKind, InteractionRoute, PoseExtra,
 };
 use cimmeria_content_engine::chain::ChainEngine;
+use std::time::Instant;
 use tokio::sync::mpsc;
 
 /// Handle the `interact(target_entity_id)` cell method. Args are the raw
@@ -51,6 +52,10 @@ pub(super) async fn handle_interact(
         entity_name = space_mgr.entity_label(entity_id),
         target_entity_id,
         target_entity_name = space_mgr.entity_label(target_entity_id as u32),
+        heading_age_ms = heading_age_ms(
+            Instant::now(),
+            space_mgr.movement_validator.last_move_at(entity_id)
+        ),
         "interact"
     );
 
@@ -471,6 +476,17 @@ mod hostile_target_tests {
     }
 }
 
+/// Milliseconds since the last processed position update, or -1 when none was seen.
+pub(super) fn heading_age_ms(now: Instant, last: Option<Instant>) -> i64 {
+    last.map_or(-1, |t| {
+        i64::try_from(now.saturating_duration_since(t).as_millis()).unwrap_or(i64::MAX)
+    })
+}
+
 #[cfg(test)]
 #[path = "interact_pose_tests.rs"]
 mod pose_tests;
+
+#[cfg(test)]
+#[path = "interact_heading_tests.rs"]
+mod heading_tests;

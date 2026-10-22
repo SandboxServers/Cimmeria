@@ -262,6 +262,10 @@ FORMAT JSONEachRow
 ```
 
 Check before you trust it: run `SELECT DISTINCT scope_name, resources_string['service.name'] ... LIMIT 20` on a day with a camera upload. If the rows sit under another service name, change the `WHERE`, not the column list. The `pawn_*` columns are left out on purpose; add them the same way if you want the pawn pose beside the camera.
+## Heading age at interact
+
+The `interact` INFO row carries `heading_age_ms`: milliseconds since the cell processed the player's last position update, so it says how old the server's heading is at the click. `-1` means no position update has been seen yet. Standing players send a position about every 3 s, so an age above 1,000 means the server heading may lag the client's turn.
+
 ## Friction is DEBUG now (D-PC11)
 
 `playtest.friction` is exported at DEBUG through its own `OTEL_FILTER` row (`crates/server/src/logging/filters.rs`). A saved view or alert that filters it on WARN severity shows nothing. Filter on `scope_name = 'playtest.friction'` and drop the severity condition. The owner updates the live "Playtest: friction" saved view; this repository does not hold its export, and no worker edits it.
