@@ -1,12 +1,12 @@
 use super::*;
 use crate::game_telemetry::start;
 use crate::storage::DesktopState;
-use cimmeria_launcher_core::telemetry::events::ClientLogEvent;
+use cimmeria_launcher_core::telemetry::events::{ClientLogEvent, ClientNativeEvent};
 use std::io::Read;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
-const CHUNK: &str = "/api/telemetry/upload-chunk";
+pub(super) const CHUNK: &str = "/api/telemetry/upload-chunk";
 
 fn servers(server: &MockServer) -> Vec<LoginServer> {
     vec![LoginServer {
@@ -26,7 +26,7 @@ fn reply(server: &MockServer, token: &str) -> ResponseTemplate {
     }))
 }
 
-async fn mount_mint(server: &MockServer, token: &str) {
+pub(super) async fn mount_mint(server: &MockServer, token: &str) {
     Mock::given(method("POST"))
         .and(path("/api/auth/dev-session"))
         .respond_with(reply(server, token))
@@ -35,14 +35,14 @@ async fn mount_mint(server: &MockServer, token: &str) {
         .await;
 }
 
-fn opted_in(root: &Path) -> DesktopState {
+pub(super) fn opted_in(root: &Path) -> DesktopState {
     let mut state = DesktopState::open(root).unwrap();
     state.set_game_telemetry(true).unwrap();
     state
 }
 
 /// Play's mint, then the transport on the session it returned.
-async fn open(state: &DesktopState, server: &MockServer, install: &Path) -> Transport {
+pub(super) async fn open(state: &DesktopState, server: &MockServer, install: &Path) -> Transport {
     let consent = Consent::read(state).unwrap().expect("opted in");
     let session = start(&consent.identity, &servers(server), &["desktop-launcher"])
         .await
@@ -50,7 +50,7 @@ async fn open(state: &DesktopState, server: &MockServer, install: &Path) -> Tran
     Transport::open(consent, &session, &servers(server), install).unwrap()
 }
 
-fn event(message: &str) -> TelemetryEvent {
+pub(super) fn event(message: &str) -> TelemetryEvent {
     TelemetryEvent::ClientLog(ClientLogEvent {
         ts_ms: 0,
         seq: 0,
@@ -328,6 +328,28 @@ fn queue_now_after_an_opt_out_writes_nothing() {
     assert!(!root.path().join("telemetry-queue.jsonl").exists());
 }
 
+/// LT-40: a row that core builds without `launcher_event` (an install result whose
+/// error holds an address) reaches the queue file with the address scrubbed.
+#[test]
+fn queue_now_scrubs_an_ip_literal_before_it_is_written() {
+    let root = tempfile::tempdir().unwrap();
+    let state = opted_in(root.path());
+    let consent = Consent::read(&state).unwrap().unwrap();
+    let mut fields = serde_json::Map::new();
+    fields.insert("error".into(), "connect to 198.51.100.7 failed".into());
+    let install = TelemetryEvent::ClientNative(ClientNativeEvent {
+        ts_ms: 0,
+        seq: 0,
+        target: "client.launcher.install".into(),
+        level: "info".into(),
+        fields,
+    });
+    queue_now(&consent, &install).unwrap();
+    let raw = std::fs::read_to_string(root.path().join("telemetry-queue.jsonl")).unwrap();
+    assert!(raw.contains("connect to [ip] failed"), "{raw}");
+    assert!(!raw.contains("198.51.100.7"), "{raw}");
+}
+
 /// Both writes refuse after an opt-out.
 async fn refuse_writes(transport: &Transport, consent: &Consent) {
     assert_eq!(
@@ -532,6 +554,37 @@ async fn a_refresh_to_an_unchecked_http_endpoint_is_refused() {
             .pending_count::<TelemetryEvent>()
             .unwrap(),
         1
+    );
+}
+
+/// C10 survives a refresh: a refresh reply that advertises the loopback address
+/// again is replaced by the login server's `/api/telemetry`, as at mint.
+#[tokio::test]
+async fn a_refresh_keeps_the_login_servers_upload_address() {
+    let root = tempfile::tempdir().unwrap();
+    let install = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_mint(&server, "tok-1").await;
+    let expires = chrono::Utc::now().timestamp_millis() + 8 * 60 * 60 * 1000;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/dev-session/refresh"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "session_id": "session-1", "token": "tok-2", "expires_at_ms": expires,
+            "upload_endpoint": "http://127.0.0.1:8081/api/telemetry",
+            "chunk_max_bytes": 1_048_576, "flush_interval_ms": 2_000,
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let state = opted_in(root.path());
+    let mut transport = open(&state, &server, install.path()).await;
+    // A remote https login server: the loopback address in the refresh reply is misconfigured.
+    transport.login_servers[0].url = "https://play.example".to_string();
+    transport.renew().await.unwrap();
+    assert_eq!(
+        transport.telemetry.session.read().await.upload_endpoint,
+        "https://play.example/api/telemetry"
     );
 }
 
@@ -790,7 +843,7 @@ impl tracing::field::Visit for Fields<'_> {
 
 impl tracing::Subscriber for Capture {
     fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
-        metadata.target().starts_with("cimmeria")
+        metadata.target().starts_with("cimmeria") || metadata.target().starts_with("launcher.")
     }
     fn new_span(&self, span: &tracing::span::Attributes<'_>) -> tracing::span::Id {
         self.push(&|v| span.record(v));

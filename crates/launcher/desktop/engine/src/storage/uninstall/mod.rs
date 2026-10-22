@@ -1,6 +1,7 @@
 //! Confirmed removal of an owned installation. Detach by rename before deleting;
 //! a persisted plan and retained owner marker make interrupted removal inspectable.
 use super::*;
+use crate::repair::events;
 use crate::{OperationKind, OperationState};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -167,6 +168,7 @@ impl DesktopState {
             .begin(id, OperationKind::Uninstall, plan.digest()?, revision)?;
         self.operations_mut()?
             .observe(id, OperationState::Running)?;
+        events::uninstall_started(plan.id);
         self.remove_installation(&plan)
     }
 
@@ -179,8 +181,11 @@ impl DesktopState {
     fn remove_installation(&mut self, plan: &Plan) -> Result<(), IntentError> {
         let result = self.remove_installation_files(plan);
         if let Err(error) = result {
+            events::uninstall_failed(plan.id, error.code());
             if let Ok(operations) = self.operations_mut() {
-                let _ = operations.mark_uncertain(plan.id);
+                if let Err(e) = operations.mark_uncertain(plan.id) {
+                    events::mark_uncertain_failed(e);
+                }
             }
             return Err(error);
         }
@@ -199,11 +204,15 @@ impl DesktopState {
                 .observe(plan.id, OperationState::Succeeded)
         };
         if let Err(error) = result {
+            events::uninstall_failed(plan.id, error.code());
             if let Ok(operations) = self.operations_mut() {
-                let _ = operations.mark_uncertain(plan.id);
+                if let Err(e) = operations.mark_uncertain(plan.id) {
+                    events::mark_uncertain_failed(e);
+                }
             }
             return Err(error.into());
         }
+        events::uninstall_finished(plan.id, recovering);
         Ok(())
     }
 
@@ -350,7 +359,7 @@ impl DesktopState {
             Err(_) => return Err(StorageError::Io.into()),
         }
         if std::fs::remove_dir(root).is_err() && root.exists() {
-            tracing::info!(target: "uninstall", directory = %root.display(), "kept the adopted folder: it holds files the release does not list");
+            events::uninstall_kept_adopted_folder();
         }
         self.forget_installed_content(&plan.installation)?;
         Ok(())

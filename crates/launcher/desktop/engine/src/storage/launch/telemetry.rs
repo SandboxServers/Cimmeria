@@ -18,8 +18,17 @@ pub(super) async fn session(
 ) -> Option<Session> {
     plan.resources.client_telemetry.as_ref()?;
     let identity = {
-        let owner = state.lock().ok()?;
-        let choice = owner.game_telemetry().ok()?;
+        let Ok(owner) = state.lock() else {
+            events::game_telemetry_skipped(plan.id, "state_lock_poisoned");
+            return None;
+        };
+        let choice = match owner.game_telemetry() {
+            Ok(choice) => choice,
+            Err(_) => {
+                events::game_telemetry_skipped(plan.id, "choice_unreadable");
+                return None;
+            }
+        };
         choice.opted_in.then_some(choice.identity).flatten()?
     };
     let backend = if plan.runtime.is_some() {
@@ -43,8 +52,15 @@ pub(super) fn injected<'a>(plan: &'a Plan, session: Option<&Session>) -> Option<
     let artifact = plan.resources.client_telemetry.as_ref()?;
     let game = plan.installation.destination.join("game");
     let marker = crate::telemetry_session::current_session_path(&game);
-    preparation::contained(&game, &marker).ok()?;
-    crate::telemetry_session::write_current_session(&game, session?.marker()).ok()?;
+    if preparation::contained(&game, &marker).is_err() {
+        events::game_telemetry_skipped(plan.id, "marker_outside_game_dir");
+        return None;
+    }
+    let session = session?;
+    if crate::telemetry_session::write_current_session(&game, session.marker()).is_err() {
+        events::game_telemetry_skipped(plan.id, "marker_write_failed");
+        return None;
+    }
     Some(artifact)
 }
 
@@ -61,7 +77,20 @@ pub(super) async fn open_session(
     session: &Session,
     servers: &[LoginServer],
 ) -> Option<Settled> {
-    let consent = Consent::read(&*state.lock().ok()?).ok().flatten()?;
+    let consent = {
+        let Ok(owner) = state.lock() else {
+            events::game_telemetry_skipped(plan.id, "state_lock_poisoned");
+            return None;
+        };
+        match Consent::read(&owner) {
+            Ok(Some(consent)) => consent,
+            Ok(None) => return None,
+            Err(_) => {
+                events::game_telemetry_skipped(plan.id, "consent_unreadable");
+                return None;
+            }
+        }
+    };
     let game = plan.installation.destination.join("game");
     match Transport::open(consent, session, servers, &game) {
         Ok(transport) => Some(SessionLoop::settle(transport).await),
@@ -109,6 +138,8 @@ pub(super) fn game_exit(observation: Observation) -> Option<GameExit> {
 /// Best effort: a status that cannot be saved must not change what Play does.
 pub(super) fn record(state: &Arc<Mutex<DesktopState>>, plan: &Plan, outcome: Outcome) {
     if let Ok(mut owner) = state.lock() {
-        let _ = owner.record_game_telemetry(plan.id, outcome);
+        if owner.record_game_telemetry(plan.id, outcome).is_err() {
+            events::game_telemetry_record_failed(plan.id);
+        }
     }
 }

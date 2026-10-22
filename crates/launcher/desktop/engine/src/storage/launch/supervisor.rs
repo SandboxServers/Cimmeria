@@ -16,13 +16,16 @@ pub(super) async fn run(
     cancel: CancellationToken,
     mut observe: impl FnMut(Observation) -> Result<(), IntentError>,
 ) -> Observation {
+    let id = request.operation_id;
     if cancel.is_cancelled() {
         return Observation::Cancelled;
     }
     let Ok(mut bytes) = serde_json::to_vec(&request) else {
+        events::launch_not_started(id, "request_invalid");
         return Observation::NotStarted;
     };
     if bytes.len() > MAX_MESSAGE {
+        events::launch_not_started(id, "request_too_large");
         return Observation::NotStarted;
     }
     let mut command = Command::new(&spec.executable);
@@ -38,11 +41,17 @@ pub(super) async fn run(
     command.creation_flags(0x08000000);
     // No kill-on-drop: killing the host is not equivalent to stopping its guest.
     let Ok(mut child) = command.spawn() else {
+        events::launch_not_started(id, "spawn_failed");
         return Observation::NotStarted;
     };
     let host_pid = child.id().unwrap_or(0);
     let host = Observation::HostStarted { host_pid };
-    if host_pid == 0 || observe(host).is_err() {
+    if host_pid == 0 {
+        events::launch_failed(id, "no_pid");
+        return Observation::Unknown;
+    }
+    if observe(host).is_err() {
+        events::launch_failed(id, "observe_failed");
         return Observation::Unknown;
     }
     let mut input = child.stdin.take().unwrap();
@@ -55,6 +64,7 @@ pub(super) async fn run(
     .await
     .is_ok_and(|r| r.is_ok())
     {
+        events::launch_failed(id, "stdin_write_failed");
         return Observation::Unknown;
     }
     drop(input);
@@ -66,7 +76,10 @@ pub(super) async fn run(
     .await;
     let event = match first {
         Ok(Ok(event)) => event,
-        _ => return Observation::Unknown,
+        _ => {
+            events::launch_failed(id, "no_first_event");
+            return Observation::Unknown;
+        }
     };
     let (guest_pid, started) = match event {
         Event::ProcessStarted { guest_pid } => {
@@ -76,21 +89,32 @@ pub(super) async fn run(
             })
             .is_err()
             {
+                events::launch_failed(id, "observe_failed");
                 return Observation::Unknown;
             }
+            events::game_started(id);
             (guest_pid, Instant::now())
         }
-        Event::NotStarted => {
+        Event::NotStarted { stage, win32 } => {
             return if tokio::time::timeout(Duration::from_secs(10), child.wait())
                 .await
                 .is_ok_and(|s| s.is_ok_and(|s| s.success()))
             {
+                events::launch_not_started_at(id, stage, win32);
                 Observation::NotStarted
             } else {
+                events::launch_failed(id, "helper_unclean_exit");
                 Observation::Unknown
             };
         }
-        _ => return Observation::Unknown,
+        Event::Unknown { stage, win32 } => {
+            events::launch_failed_at(id, stage, win32);
+            return Observation::Unknown;
+        }
+        _ => {
+            events::launch_failed(id, "unexpected_event");
+            return Observation::Unknown;
+        }
     };
     // Cancellation is admission/pre-spawn only. Closing the UI or cancelling a
     // start cannot silently kill a game whose own threads are already running.
@@ -104,27 +128,37 @@ pub(super) async fn run(
             }
         }
     };
+    if let Ok(Event::Unknown { stage, win32 }) = event {
+        events::launch_failed_at(id, stage, win32);
+        return Observation::Unknown;
+    }
     let Ok(Event::ProcessExited {
         guest_pid: exited_pid,
         code,
     }) = event
     else {
+        events::launch_failed(id, "no_exit_event");
         return Observation::Unknown;
     };
     if exited_pid != guest_pid {
+        events::launch_failed(id, "pid_mismatch");
         return Observation::Unknown;
     }
     if !tokio::time::timeout(Duration::from_secs(10), child.wait())
         .await
         .is_ok_and(|s| s.is_ok_and(|s| s.success()))
     {
+        events::launch_failed(id, "helper_unclean_exit");
         return Observation::Unknown;
     }
+    let ran = started.elapsed();
+    let early = ran < Duration::from_secs(10);
+    events::game_exited(id, code, early, ran);
     Observation::ProcessExited {
         host_pid,
         guest_pid,
         code,
-        early: started.elapsed() < Duration::from_secs(10),
+        early,
     }
 }
 async fn line(reader: &mut (impl tokio::io::AsyncBufRead + Unpin), id: Uuid) -> Result<Event, ()> {

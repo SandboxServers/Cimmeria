@@ -221,3 +221,13 @@ fn reconfiguring_never_lets_an_older_batch_look_current_again() {
     assert!(!state.summary_batch_current(batch.generation));
     assert!(!state.summary_apply_results(&batch, &[SummaryResult::Accepted]));
 }
+
+#[test]
+fn the_snapshot_says_whether_summaries_have_an_endpoint() {
+    let root = tempfile::tempdir().unwrap();
+    let mut state = DesktopState::open(root.path()).unwrap();
+    state.configure_summaries(config(None));
+    assert!(!state.inspect().setup_diagnostics_endpoint);
+    state.configure_summaries(config(Some(ENDPOINT)));
+    assert!(state.inspect().setup_diagnostics_endpoint);
+}

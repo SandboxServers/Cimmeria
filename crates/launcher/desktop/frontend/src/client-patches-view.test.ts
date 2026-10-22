@@ -65,6 +65,17 @@ test('a stale save re-inspects, shows the saved setting again and says nothing w
  await m.app.dispose();
 });
 
+test('a refresh that fails after a stale save is reported to telemetry',async()=>{
+ const uiCalls:unknown[]=[];
+ Object.assign(globalThis,{window:{__TAURI__:{core:{invoke:async(command:string,args:unknown)=>{uiCalls.push([command,args]);}}}}});
+ try{
+  const m=mounted(async()=>{throw 'stale_revision';},async()=>{throw 'transport';});
+  m.toggle();await m.app.settled();
+  assert.deepEqual(uiCalls,[['ui_event',{area:'client_patches',event:'refresh_failed',code:'transport',level:'warn'}]]);
+  await m.app.dispose();
+ }finally{Reflect.deleteProperty(globalThis,'window');}
+});
+
 test('a busy refusal says why and puts the box back',async()=>{
  const m=mounted(async()=>{throw 'busy';});
  m.toggle();await m.app.settled();

@@ -38,6 +38,7 @@ pub(super) fn dispatch(
             .lock()
             .map_err(|_| IntentError::from(StorageError::Io))
             .and_then(|mut state| reconcile(&mut state, id, revision));
+        events::recovered(&outcome);
         let _ = send.send(outcome);
     });
     Ok(result)

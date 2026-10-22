@@ -2,7 +2,9 @@
 //! process handle so an immediate exit cannot race a later OpenProcess.
 use super::*;
 use cimmeria_client_launch::{
-    inject::inject_dll, launch::strip_verbatim, process::create_process_suspended,
+    inject::{inject_dll, InjectError},
+    launch::strip_verbatim,
+    process::create_process_suspended,
 };
 use std::io::{Read, Write};
 
@@ -17,6 +19,14 @@ fn game_paths(request: &Request) -> (PathBuf, PathBuf) {
         strip_verbatim(request.exe.clone()),
         strip_verbatim(request.directory.clone()),
     )
+}
+
+/// The Win32 code of an injector failure, when it has one. Never the DLL path.
+fn win32_of(error: &InjectError) -> Option<u32> {
+    match error {
+        InjectError::Win32 { code, .. } => Some(*code),
+        _ => None,
+    }
 }
 
 pub fn run() -> Result<(), &'static str> {
@@ -49,23 +59,39 @@ pub fn run() -> Result<(), &'static str> {
             .iter()
             .any(|p| !p.is_absolute() || !p.is_file())
     {
-        return emit(Event::NotStarted);
+        return emit(Event::NotStarted {
+            stage: Some(Stage::Request),
+            win32: None,
+        });
     }
     let (exe, directory) = game_paths(&request);
     let suspended = match create_process_suspended(&exe, Some(&directory)) {
         Ok(process) => process,
-        Err(_) => return emit(Event::NotStarted),
+        Err(e) => {
+            return emit(Event::NotStarted {
+                stage: Some(Stage::CreateProcess),
+                win32: win32_of(&e),
+            })
+        }
     };
     for dll in &request.dlls {
-        if inject_dll(suspended.process_handle(), dll).is_err() {
+        if let Err(e) = inject_dll(suspended.process_handle(), dll) {
             // The shared termination primitive is best effort, not proof of exit.
             suspended.terminate();
-            return emit(Event::Unknown);
+            return emit(Event::Unknown {
+                stage: Some(Stage::Inject),
+                win32: win32_of(&e),
+            });
         }
     }
     let running = match suspended.resume_running() {
         Ok(process) => process,
-        Err(_) => return emit(Event::Unknown),
+        Err(e) => {
+            return emit(Event::Unknown {
+                stage: Some(Stage::Resume),
+                win32: win32_of(&e),
+            })
+        }
     };
     let guest_pid = running.pid();
     // Loss of the launcher's pipe must not drop our process observation early.
@@ -74,7 +100,10 @@ pub fn run() -> Result<(), &'static str> {
     started?;
     match exited {
         Ok(code) => emit(Event::ProcessExited { guest_pid, code }),
-        Err(_) => emit(Event::Unknown),
+        Err(e) => emit(Event::Unknown {
+            stage: Some(Stage::Wait),
+            win32: e.raw_os_error().and_then(|c| u32::try_from(c).ok()),
+        }),
     }
 }
 

@@ -1,6 +1,7 @@
 import type {Invoke} from './view';
 import type {PanelContext} from './panel-context';
 import {scaffoldFailure,type LoginServer} from './contract';
+import {reportUiEvent,uiCode} from './ui-event';
 /**
  * Settings panel (LX-03): the login servers `LoginInternal.lua` offers, one `Name = URL` per line,
  * saved through `launcher_command` (`save_client_options`). The parser mirrors
@@ -94,7 +95,7 @@ export function mountServerList(document:Document,invoke:Invoke,context:PanelCon
     :parsed.servers.length?'Saved. The next Play uses this list.':'Saved. The next Play uses the default server.';
   },async failure=>{
    const code=scaffoldFailure(failure);
-   if(code==='stale_revision')await context.refresh().catch(()=>{});
+   if(code==='stale_revision')await context.refresh().catch(e=>reportUiEvent('server_list','refresh_failed',uiCode(e)));
    if(!disposed)status.textContent=saveErrorText[code]??'The list could not be saved. Recheck status, then try again.';
   }).finally(()=>{saving=false;if(disposed)return;save.disabled=false;box.readOnly=false;save.setAttribute('aria-busy','false');sync();});
  };

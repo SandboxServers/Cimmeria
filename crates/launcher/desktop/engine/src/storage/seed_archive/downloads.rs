@@ -46,14 +46,31 @@ pub fn downloads_folder() -> Option<PathBuf> {
 /// other files are never offered.
 pub fn find_downloads_offer(dir: &Path, seed: &SeedEntry) -> Option<PathBuf> {
     let wanted = archive_file_name(&seed.blob)?;
-    std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
+    let entries = std::fs::read_dir(dir)
+        .map_err(|error| log_offer_unreadable(&error))
+        .ok()?;
+    entries.flatten().find_map(|entry| {
         if entry.file_name().to_str() != Some(wanted.as_str()) {
             return None;
         }
         let path = entry.path();
-        let meta = std::fs::symlink_metadata(&path).ok()?;
+        let meta = std::fs::symlink_metadata(&path)
+            .map_err(|error| log_offer_unreadable(&error))
+            .ok()?;
         (meta.is_file() && meta.len() == seed.size).then_some(path)
     })
+}
+
+/// LT-15: an offer the launcher could not look at is logged as a closed
+/// `seed_archive_failed` row, and the archive is fetched instead.
+fn log_offer_unreadable(error: &std::io::Error) {
+    tracing::warn!(
+        target: "launcher.install",
+        event = "seed_archive_failed",
+        reason = "offer_unreadable",
+        error_kind = crate::game_telemetry::launcher_event::kind(error),
+        "seed archive: the Downloads folder could not be read; the archive is fetched again"
+    );
 }
 
 /// The archive.org file name: the last path segment of the blob URL, percent-decoded.

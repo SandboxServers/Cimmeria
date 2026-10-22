@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Launcher contributors
-> **Last updated:** 2026-10-04
+> **Last updated:** 2026-10-21
 > **Companions:** [Implementation plan](../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md), [build rules](../../../docs/architecture/build-system.md#standalone-desktop-launcher-validation), [test policy](../../../TESTING.md)
 
 This standalone workspace contains native Rust state, Effect workflows and a
@@ -17,8 +17,8 @@ through Settings. Settings also connects confirmed [Repair](docs/repair.md),
 precommit cancellation, recovery/abandonment and current-backup cleanup. [Play](docs/launch.md)
 now observes native game lifecycle and, for a player who opts in, injects the
 [game-telemetry DLL](docs/launch.md#opt-in-game-telemetry) with a server session.
-Consented [launcher summaries](docs/launcher-summaries.md) are connected,
-but this build configures no endpoint and sends nothing. Real-client/platform gates remain open.
+Consented [launcher summaries](docs/launcher-summaries.md) are connected and
+go only over https: to the first login server when it is https, else to the built-in default. That default is not set yet, so with the default server list (plain http) nothing is sent. Real-client/platform gates remain open.
 A player's own [seed archive](docs/seed-archive.md) can replace the seed download for Install, Repair and Update; the seed is never rehosted.
 
 ## Native operation and storage contracts
@@ -67,7 +67,7 @@ Preferences persist an optional absolute install path and separate default-off
 active operation blocks path changes but permits consent changes. The path check
 does not establish installation ownership or safe deletion. The flag gates
 [launcher summaries](docs/launcher-summaries.md) only, never game/DLL telemetry. Opt-out aborts a
-send in flight. This build configures no endpoint, so nothing is tracked, queued or sent.
+send in flight. With no https endpoint (the default server list is plain http and the built-in default is not set yet), nothing is tracked, queued or sent.
 
 Preferences are `schema_version: 2`. They also hold the client options: the
 `login_servers` list (empty means the built-in default list) and
@@ -115,7 +115,11 @@ engine half in `engine/src/storage/<name>/` and its host half in
 | `choose_existing_game_folder` | `mode` (`in_place` or `copy`); the native folder picker, then a second picker for a copy | in place (Windows and Linux) or verified copy (every OS), as `modes` offers | AI-10; copy AI-12 |
 
 `log_upload_command` is filled. `upload` zips `Binaries/sgwdebuglog*` and the
-`*.log` files under `Binaries/sessions/` in the installed game, and PUTs the zip
+`*.log` files under `Binaries/sessions/` in the installed game, plus the newest three `launcher.<date>.log` files from the
+launcher's log folder, added under `launcher/` with the home folder, absolute
+paths and IP literals (`[ip]`) scrubbed in the copy only (the digest and the
+"nothing new" check cover only the game logs, and with no game logs nothing is
+uploaded), and PUTs the zip
 once to the SAS URL compiled in from `LAUNCHER_LOG_SAS_URL` as
 `logs/<host>-<utc>-<digest>.zip`. A content digest already in the
 `uploaded-logs.json` ledger (state directory, newest 100) sends nothing and

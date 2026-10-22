@@ -2,7 +2,9 @@
 use crate::manifest::{self, Manifest, ManifestError};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+mod events;
 
 pub(crate) const URL: &str =
     "https://github.com/SandboxServers/Cimmeria/releases/download/content-current/manifest.json";
@@ -61,16 +63,22 @@ pub async fn fetch_release() -> Result<VerifiedRelease, CatalogError> {
     if manifest::MANIFEST_SIGNING_PUBKEY.is_none() {
         return Err(CatalogError::SigningKeyUnavailable);
     }
+    let started = Instant::now();
     let client = reqwest::Client::builder()
         .https_only(true)
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(15))
         .redirect(reqwest::redirect::Policy::limited(5))
         .build()
-        .map_err(|_| CatalogError::Network)?;
+        .map_err(|_| {
+            events::release_fetch_failed("network", None);
+            CatalogError::Network
+        })?;
     let body = read_bounded(&client, URL, MAX_BODY).await?;
     let signature = read_bounded(&client, &manifest::sig_url_for(URL), MAX_SIGNATURE).await?;
-    verify_release(&body, &signature)
+    let release = verify_fetched(&body, &signature)?;
+    events::release_fetched(started.elapsed());
+    Ok(release)
 }
 
 async fn read_bounded(
@@ -83,16 +91,30 @@ async fn read_bounded(
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|_| CatalogError::Network)?;
+        .map_err(|error| {
+            let http_status = error.status().map(|status| status.as_u16());
+            let reason = if http_status.is_some() {
+                "http_status"
+            } else {
+                "network"
+            };
+            events::release_fetch_failed(reason, http_status);
+            CatalogError::Network
+        })?;
     if response
         .content_length()
         .is_some_and(|size| size > limit as u64)
     {
+        events::release_fetch_failed("body", None);
         return Err(CatalogError::TooLarge);
     }
     let mut body = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|_| CatalogError::Network)? {
+    while let Some(chunk) = response.chunk().await.map_err(|_| {
+        events::release_fetch_failed("network", None);
+        CatalogError::Network
+    })? {
         if chunk.len() > limit.saturating_sub(body.len()) {
+            events::release_fetch_failed("body", None);
             return Err(CatalogError::TooLarge);
         }
         body.extend_from_slice(&chunk);
@@ -131,6 +153,18 @@ fn decode_verified(body: &[u8], signature: &[u8]) -> Result<Manifest, CatalogErr
         .validate()
         .map_err(|_| CatalogError::InvalidManifest)?;
     Ok(manifest)
+}
+
+/// Verify a body fetched from the release server. Its failure is the fetch failure row.
+fn verify_fetched(body: &[u8], signature: &[u8]) -> Result<VerifiedRelease, CatalogError> {
+    verify_release(body, signature).inspect_err(|&error| {
+        let reason = match error {
+            CatalogError::InvalidManifest => "invalid_manifest",
+            CatalogError::TooLarge => "body",
+            _ => "signature",
+        };
+        events::release_fetch_failed(reason, None);
+    })
 }
 
 fn notes(manifest: Manifest) -> PatchNotes {

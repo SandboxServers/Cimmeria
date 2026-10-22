@@ -61,6 +61,7 @@ pub fn dispatch(state: Arc<Mutex<DesktopState>>, id: Uuid) -> Result<Worker, Int
             return Err(ContractError::InvalidTransition.into());
         }
         owner.record_launch(&plan, Observation::Preparing)?;
+        events::launch_started(plan.id, plan.resources.client_telemetry.is_some());
         (plan, owner.state_root().to_path_buf())
     };
     let cancel = CancellationToken::new();
@@ -77,7 +78,14 @@ pub fn dispatch(state: Arc<Mutex<DesktopState>>, id: Uuid) -> Result<Worker, Int
             .await;
         let result = match result {
             Ok(Ok(result)) => result,
-            _ => Observation::Unknown,
+            Ok(Err(error)) => {
+                events::launch_failed(plan.id, error.code());
+                Observation::Unknown
+            }
+            Err(_) => {
+                events::launch_failed(plan.id, "panicked");
+                Observation::Unknown
+            }
         };
         let commit = (|| {
             let mut owner = state.lock().map_err(|_| StorageError::Io)?;
@@ -105,12 +113,23 @@ pub fn dispatch(state: Arc<Mutex<DesktopState>>, id: Uuid) -> Result<Worker, Int
             Ok::<_, IntentError>(())
         })();
         if commit.is_err() {
+            events::launch_failed(plan.id, "commit_failed");
             if let Ok(mut owner) = state.lock() {
                 if let Ok(operations) = owner.operations_mut() {
-                    let _ = operations.mark_uncertain(id);
+                    if let Err(error) = operations.mark_uncertain(id) {
+                        events::mark_uncertain_failed(error);
+                    }
                 }
             }
         }
+        events::launch_finished(
+            plan.id,
+            if commit.is_ok() {
+                result
+            } else {
+                Observation::Unknown
+            },
+        );
         updates.send_replace(if commit.is_ok() {
             result
         } else {
@@ -136,6 +155,7 @@ async fn execute(
         .map_err(|_| StorageError::Io)?
         .is_err()
     {
+        events::launch_not_started(plan.id, "verify_failed");
         return Ok(Observation::NotStarted);
     }
     let Some((servers, session)) = servers_and_session(&state, plan).await? else {
@@ -149,6 +169,7 @@ async fn execute(
             .await
             .map_err(|_| StorageError::Io)?;
     let Ok((spec, request, _ownership)) = setup else {
+        events::launch_not_started(plan.id, "prepare_failed");
         return Ok(Observation::NotStarted);
     };
     if minted {
@@ -223,10 +244,14 @@ pub(super) async fn run_game(
         Err(mut patches) if ran => {
             // The log read and the queue append are file I/O: off the runtime.
             let state = state.clone();
-            let _ = tokio::task::spawn_blocking(move || {
+            if tokio::task::spawn_blocking(move || {
                 patch_events::queue_at_exit(&state, &mut patches)
             })
-            .await;
+            .await
+            .is_err()
+            {
+                events::patch_events_queue_failed(plan.id);
+            }
         }
         Err(_) => {}
     }
@@ -244,8 +269,8 @@ async fn servers_and_session(
         .launch_login_servers(&plan.installation);
     let servers = match resolved {
         Ok(servers) => servers,
-        Err(error) => {
-            tracing::warn!(operation = %plan.id, ?error, "launch login servers refused; Play not started");
+        Err(_error) => {
+            events::launch_not_started(plan.id, "login_servers_refused");
             return Ok(None);
         }
     };

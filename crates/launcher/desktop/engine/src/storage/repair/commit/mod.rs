@@ -77,13 +77,18 @@ pub(crate) fn start(
             std::panic::catch_unwind(AssertUnwindSafe(|| replace(&state, &prepared, |_| Ok(()))))
                 .unwrap_or(Err(Failure::ReconciliationRequired));
         let result = result.map_err(|error| preparation::finish_failure(&state, id, error));
+        // Release the retained root-owner byte-range lock before the telemetry and
+        // result bookkeeping below. Succeeded is already observable, and on Windows
+        // a status poll that reads the owner marker while this handle still holds
+        // its lock fails with ERROR_LOCK_VIOLATION (surfaced as Io). Prepared's
+        // observer is harmless once a durable terminal result exists.
+        drop(prepared);
         if result.is_ok() {
+            super::events::repair_finished(id);
             if let Ok(mut owner) = state.lock() {
                 owner.queue_install_result(id, Run::Repair, Ending::Succeeded);
             }
         }
-        // Prepared's observer is harmless once a durable terminal result exists.
-        drop(prepared);
         let _ = send.send(result);
     });
     Ok(observed)

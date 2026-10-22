@@ -220,7 +220,7 @@ async fn install_all_into(
     // After a fresh seed, and for adopted installs that never had it: the
     // patches below expect the bundled PAKs in SourceCache.en-us.
     if install_layout::place_bundled_cooked_data(ctx.install_dir)? {
-        info!("Moved the bundled cooked-data PAKs to Working\\SGWGame\\SourceCache.en-us");
+        info!(target: "launcher.install", event = "bundled_paks_moved", "moved the bundled cooked-data PAKs into SourceCache");
     }
 
     // One patch that cannot apply (a hand-edited file an adopted install
@@ -233,7 +233,7 @@ async fn install_all_into(
             continue;
         }
         if let Some(after) = blocked_by_failure(patch, &failures) {
-            warn!(patch = %patch.id, after = %after, reason = "dependency_failed", "patch skipped");
+            warn!(target: "launcher.install", event = "patch_skipped", patch = %patch.id, reason = "dependency_failed", "patch skipped: a patch it builds on did not apply");
             let reason = format!("skipped, it builds on {after}, which did not apply");
             report.push(
                 &patch.id,
@@ -254,7 +254,7 @@ async fn install_all_into(
             }
             Err(InstallError::Cancelled) => return Err(InstallError::Cancelled),
             Err(e) => {
-                warn!(patch = %patch.id, error = %e, reason = "apply_failed", "patch not applied");
+                warn!(target: "launcher.install", event = "patch_failed", patch = %patch.id, reason = e.code(), http_status = e.http_status(), "patch not applied");
                 report.push_failure(&patch.id, &e);
                 failures.push(PatchFailure {
                     id: patch.id.clone(),
@@ -268,7 +268,7 @@ async fn install_all_into(
         let report = crate::client_setup::prepare(ctx.install_dir, ctx.login_servers)?;
         info!(?report, "Client setup done");
     } else {
-        warn!("SGW.exe missing after install — verify the seed manifest entry");
+        warn!(target: "launcher.install", event = "game_exe_missing", "SGW.exe missing after install");
     }
 
     if !failures.is_empty() {

@@ -2,6 +2,7 @@ import {Effect} from 'effect';
 import type {Invoke} from './view';
 import type {PanelContext} from './panel-context';
 import {decodePhysxStatus,physxFailure,type PhysxResult,type PhysxStatus} from './contract';
+import {reportUiEvent} from './ui-event';
 /**
  * Settings panel (LX-12, D-LX13): PhysX System Software on native Windows. Shows whether it is
  * installed and offers "Install PhysX", which runs the pinned vendor MSI elevated through UAC.
@@ -57,7 +58,7 @@ export function mountPhysx(document:Document,invoke:Invoke,context:PanelContext)
  };
  // Never throws synchronously into the snapshot feed, whatever the bridge does.
  const call=(command:'inspect'|'install')=>Promise.resolve().then(()=>invoke('physx_command',{request:{command,schema_version:1}}));
- const decode=(value:unknown)=>Effect.runPromise(decodePhysxStatus(value)).catch(()=>{throw 'schema';});
+ const decode=(value:unknown)=>Effect.runPromise(decodePhysxStatus(value)).catch(()=>{reportUiEvent('physx','status_decode_failed','schema');throw 'schema';});
  const inspect=()=>{
   if(disposed||installing)return mutation;
   mutation=call('inspect').then(decode).then(next=>{

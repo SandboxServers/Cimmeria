@@ -181,7 +181,7 @@ async fn copy_local(
     copied.map_err(|error| {
         if !matches!(error, LocalSeedError::Cancelled) {
             // The player moved, changed or deleted the file after choosing it.
-            warn!("The chosen seed archive could not be copied: {error}");
+            warn!(target: "launcher.install", event = "seed_copy_failed", reason = error.code(), "the chosen seed archive could not be copied; the next attempt downloads it");
             ctx.seed_source.note_local_failure();
         }
         InstallError::from(error)

@@ -702,14 +702,13 @@ of closed values per attempt, with no session, install or machine
 identifier. The design and the wire contract are in
 [launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md).
 
-**No launcher sends one today.** Every distributed build has no summary
-endpoint, so there is nothing to operate yet, and nothing here has run
-against a deployed server or a real SigNoz. What follows is what the server
-code does when a summary arrives.
+**No launcher sends one today.** A launcher takes its endpoint from its first login server when that is https, else from the built-in default, which is not set yet. The default server list is plain http, so a build with it sends nothing. Nothing here has run against a deployed server or a real SigNoz. What follows is what the server code does when a summary arrives.
+
+- **Https only, and not sent yet.** Summaries and the default upload URL are https only; a plain `http://` address is refused, except loopback for local fixtures. With no https endpoint, Share setup diagnostics is saved and the box says "saved but not sent yet". That state ends when the built-in https default is set (D-LT17).
 
 - **Consent.** The desktop launcher's own `launcher_summary_consent`
-  preference, off by default. It is separate from the telemetry opt-in under
-  [Player opt-in](#player-opt-in) and never turns on game or DLL telemetry.
+  preference, off by default, labelled Share setup diagnostics. It is separate from the telemetry opt-in under
+  [Player opt-in](#player-opt-in) and never turns on game or DLL telemetry. Nothing from the launcher's own events leaves without Send game diagnostics; this box gates only the anonymous summaries.
 - **No token.** The route is anonymous. The launcher sends one `POST` with
   no `Authorization` header, and there is no mint step. The server never
   reads an `Authorization` header on this route, so a dev-session token is
@@ -835,6 +834,7 @@ caller's network address on the launcher and telemetry routes:
   peer the server counts quotas against the rightmost `X-Forwarded-For`
   entry; it never logs, stores, returns or hashes it. See
   [telemetry-upload-endpoint.md](telemetry-upload-endpoint.md#the-forwarded-for-quota-key).
+- **The launcher scrubs its own rows.** Every string of a launcher row, and every line of a launcher log in a debug-log upload, has IPv4 and IPv6 literals replaced with `[ip]` before it is queued or zipped (`ip_scrub.rs`); nothing is hashed. Absolute paths in a launcher row's strings become `<path removed>` and the home folder becomes `~` (`launcher_event.rs`).
 - **Endpoints are https.** The server hands out only an https upload URL
   (or an explicit env override with a WARN), and the public routes are
   reached over `https://play.cimmeria.app`.

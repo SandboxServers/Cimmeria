@@ -1,4 +1,4 @@
-use super::{Error, Offer};
+use super::{events, Error, Offer};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use minisign_verify::{PublicKey, Signature};
 use reqwest::Url;
@@ -48,7 +48,10 @@ impl Config {
         Ok(config)
     }
     pub(crate) fn key(&self) -> Result<PublicKey, Error> {
-        PublicKey::decode(&decode(&self.public_key)?).map_err(|_| Error::Signature)
+        PublicKey::decode(&decode(&self.public_key)?).map_err(|_| {
+            events::verify_failed("signature");
+            Error::Signature
+        })
     }
     pub(crate) fn allow(&self, url: &Url) -> Result<(), Error> {
         #[cfg(any(test, feature = "test-support"))]
@@ -94,32 +97,43 @@ impl Config {
         }
         let announced = self.newer(&offer.version)?;
         self.allow(&Url::parse(&offer.url).map_err(|_| Error::Policy)?)?;
-        let signature =
-            Signature::decode(&decode(&offer.signature)?).map_err(|_| Error::Signature)?;
+        let signature = Signature::decode(&decode(&offer.signature)?).map_err(|_| {
+            events::verify_failed("signature");
+            Error::Signature
+        })?;
         // Tauri updater v2.13.1 contract: verify both the payload and global
         // signature BEFORE consuming the trusted comment's version field.
-        self.key()?
-            .verify(bytes, &signature, true)
-            .map_err(|_| Error::Signature)?;
+        self.key()?.verify(bytes, &signature, true).map_err(|_| {
+            events::verify_failed("signature");
+            Error::Signature
+        })?;
         let versions: Vec<_> = signature
             .trusted_comment()
             .split('\t')
             .filter_map(|field| field.strip_prefix("version:"))
             .collect();
         if versions.len() != 1 {
+            events::verify_failed("signed_version");
             return Err(Error::SignedVersion);
         }
-        let signed = Version::parse(versions[0].trim_start_matches('v'))
-            .map_err(|_| Error::SignedVersion)?;
+        let signed = Version::parse(versions[0].trim_start_matches('v')).map_err(|_| {
+            events::verify_failed("signed_version");
+            Error::SignedVersion
+        })?;
         if signed != announced {
+            events::verify_failed("signed_version");
             return Err(Error::SignedVersion);
         }
         Ok(())
     }
 }
 fn decode(value: &str) -> Result<String, Error> {
-    let bytes = STANDARD.decode(value).map_err(|_| Error::Signature)?;
-    String::from_utf8(bytes).map_err(|_| Error::Signature)
+    let fail = || {
+        events::verify_failed("signature");
+        Error::Signature
+    };
+    let bytes = STANDARD.decode(value).map_err(|_| fail())?;
+    String::from_utf8(bytes).map_err(|_| fail())
 }
 #[derive(Deserialize)]
 struct Feed {
@@ -137,8 +151,12 @@ pub(crate) fn parse(config: &Config, bytes: &[u8]) -> Result<Option<Offer>, Erro
     if bytes.len() > MAX_FEED {
         return Err(Error::Size);
     }
-    let feed: Feed = serde_json::from_slice(bytes).map_err(|_| Error::Feed)?;
+    let feed: Feed = serde_json::from_slice(bytes).map_err(|_| {
+        events::verify_failed("feed");
+        Error::Feed
+    })?;
     if feed.version.len() > 128 || feed.notes.len() > 4096 {
+        events::verify_failed("feed");
         return Err(Error::Feed);
     }
     match config.newer(&feed.version) {
@@ -151,6 +169,7 @@ pub(crate) fn parse(config: &Config, bytes: &[u8]) -> Result<Option<Offer>, Erro
         .get(&config.platform)
         .ok_or(Error::Platform)?;
     if artifact.signature.len() > 8192 || artifact.url.len() > 2048 {
+        events::verify_failed("feed");
         return Err(Error::Feed);
     }
     config.allow(&Url::parse(&artifact.url).map_err(|_| Error::Policy)?)?;

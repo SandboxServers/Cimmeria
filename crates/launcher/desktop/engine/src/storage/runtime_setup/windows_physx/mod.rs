@@ -141,6 +141,10 @@ impl DesktopState {
         self.ensure_no_active_operation()?;
         let package = self.physx_package()?.ok_or_else(|| {
             tracing::warn!(
+                target: "launcher.install",
+                event = "physx_failed",
+                action = "install",
+                reason = "installer_missing",
                 "PhysX install refused: no retained vendor installer in the installation"
             );
             PhysxError::InstallerUnavailable
@@ -159,16 +163,76 @@ pub fn install(
     elevate: &dyn Elevate,
     probe: &dyn Probe,
 ) -> Result<InstallResult, PhysxError> {
+    let started = std::time::Instant::now();
+    tracing::info!(
+        target: "launcher.install",
+        event = "physx_started",
+        action = "install",
+        "PhysX install started"
+    );
+    let result = install_package(source, elevate, probe);
+    let duration_ms = started.elapsed().as_millis() as u64;
+    match &result {
+        Ok(InstallResult::Installed { .. }) => tracing::info!(
+            target: "launcher.install",
+            event = "physx_finished",
+            action = "install",
+            outcome = "installed",
+            duration_ms,
+            "PhysX System Software installed"
+        ),
+        Ok(other) => tracing::warn!(
+            target: "launcher.install",
+            event = "physx_failed",
+            action = "install",
+            reason = result_name(other),
+            duration_ms,
+            "PhysX install did not complete: the player sees the install as unfinished"
+        ),
+        // Each refusal before or during the run logged its own `physx_failed`.
+        Err(_) => {}
+    }
+    result
+}
+
+/// The closed snake_case name of an install result, for the `launcher.install` log.
+fn result_name(result: &InstallResult) -> &'static str {
+    match result {
+        InstallResult::Installed { .. } => "installed",
+        InstallResult::CancelledAtUac {} => "cancelled_at_uac",
+        InstallResult::CancelledInInstaller {} => "cancelled_in_installer",
+        InstallResult::Failed { .. } => "installer_failed",
+        InstallResult::NotDetected { .. } => "not_detected",
+        InstallResult::OtherVersionBlocks {} => "other_version_blocks",
+        InstallResult::StartFailed { .. } => "start_failed",
+    }
+}
+
+fn install_package(
+    source: &InstallSource,
+    elevate: &dyn Elevate,
+    probe: &dyn Probe,
+) -> Result<InstallResult, PhysxError> {
     let bytes = read_package(&source.package)?;
-    let payload = physx_msi(&bytes).map_err(|error| {
+    let payload = physx_msi(&bytes).map_err(|_| {
         tracing::warn!(
-            ?error,
+            target: "launcher.install",
+            event = "physx_failed",
+            action = "install",
+            reason = "package_mismatch",
             "PhysX install refused: vendor installer does not match the pinned package"
         );
         PhysxError::PackageMismatch
     })?;
     std::fs::create_dir_all(&source.scratch).map_err(|error| {
-        tracing::warn!(%error, "PhysX install: could not create the scratch folder");
+        tracing::warn!(
+            target: "launcher.install",
+            event = "physx_failed",
+            action = "install",
+            reason = "scratch_unavailable",
+            error_kind = crate::game_telemetry::launcher_event::kind(&error),
+            "PhysX install: could not create the scratch folder"
+        );
         StorageError::Io
     })?;
     let msi = source
@@ -181,15 +245,15 @@ pub fn install(
     });
     if let Err(error) = std::fs::remove_file(&msi) {
         if error.kind() != std::io::ErrorKind::NotFound {
-            tracing::warn!(%error, "PhysX install: could not remove the extracted MSI");
+            tracing::warn!(
+                target: "launcher.install",
+                event = "physx_failed",
+                action = "install",
+                reason = "msi_cleanup_failed",
+                error_kind = crate::game_telemetry::launcher_event::kind(&error),
+                "PhysX install: could not remove the extracted MSI"
+            );
         }
-    }
-    match &result {
-        Ok(InstallResult::Installed { restart_required }) => {
-            tracing::info!(restart_required, "PhysX System Software installed")
-        }
-        Ok(other) => tracing::warn!(result = ?other, "PhysX install did not complete"),
-        Err(error) => tracing::warn!(?error, "PhysX install failed before the installer ran"),
     }
     result
 }
@@ -229,12 +293,33 @@ fn read_package(path: &Path) -> Result<Vec<u8>, PhysxError> {
         options.share_mode(windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ);
     }
     let mut file = options.open(path).map_err(|error| {
-        tracing::warn!(%error, "PhysX install: could not open the retained vendor installer");
+        tracing::warn!(
+            target: "launcher.install",
+            event = "physx_failed",
+            action = "install",
+            reason = "installer_unavailable",
+            error_kind = crate::game_telemetry::launcher_event::kind(&error),
+            "PhysX install: could not open the retained vendor installer"
+        );
         PhysxError::InstallerUnavailable
     })?;
-    let meta = file.metadata().map_err(|_| StorageError::Io)?;
+    let meta = file.metadata().map_err(|error| {
+        tracing::warn!(
+            target: "launcher.install",
+            event = "physx_failed",
+            action = "install",
+            reason = "installer_unavailable",
+            error_kind = crate::game_telemetry::launcher_event::kind(&error),
+            "PhysX install: could not read the vendor installer's metadata"
+        );
+        StorageError::Io
+    })?;
     if !meta.is_file() || meta.len() != PHYSX_EXE_BYTES as u64 {
         tracing::warn!(
+            target: "launcher.install",
+            event = "physx_failed",
+            action = "install",
+            reason = "package_mismatch",
             len = meta.len(),
             "PhysX install refused: vendor installer has the wrong size"
         );
@@ -245,7 +330,14 @@ fn read_package(path: &Path) -> Result<Vec<u8>, PhysxError> {
         .take(PHYSX_EXE_BYTES as u64 + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| {
-            tracing::warn!(%error, "PhysX install: could not read the vendor installer");
+            tracing::warn!(
+                target: "launcher.install",
+                event = "physx_failed",
+                action = "install",
+                reason = "read_failed",
+                error_kind = crate::game_telemetry::launcher_event::kind(&error),
+                "PhysX install: could not read the vendor installer"
+            );
             StorageError::Io
         })?;
     Ok(bytes)
@@ -256,7 +348,14 @@ fn read_package(path: &Path) -> Result<Vec<u8>, PhysxError> {
 /// is read-only and denies writers and deletion until it is dropped.
 fn write_msi(path: &Path, payload: &[u8]) -> Result<std::fs::File, PhysxError> {
     let io = |error: std::io::Error| {
-        tracing::warn!(%error, "PhysX install: could not write the extracted MSI");
+        tracing::warn!(
+            target: "launcher.install",
+            event = "physx_failed",
+            action = "install",
+            reason = "msi_write_failed",
+            error_kind = crate::game_telemetry::launcher_event::kind(&error),
+            "PhysX install: could not write the extracted MSI"
+        );
         PhysxError::Storage(StorageError::Io)
     };
     let mut options = std::fs::OpenOptions::new();
@@ -276,7 +375,13 @@ fn write_msi(path: &Path, payload: &[u8]) -> Result<std::fs::File, PhysxError> {
         .read_to_end(&mut written)
         .map_err(io)?;
     if written != payload {
-        tracing::warn!("PhysX install refused: the extracted MSI changed on disk");
+        tracing::warn!(
+            target: "launcher.install",
+            event = "physx_failed",
+            action = "install",
+            reason = "package_mismatch",
+            "PhysX install refused: the extracted MSI changed on disk"
+        );
         return Err(PhysxError::PackageMismatch);
     }
     Ok(guard)

@@ -9,6 +9,7 @@ mod resource;
 pub use resource::{Artifact, Graphics, Resources};
 mod worker;
 pub use worker::{dispatch, Worker};
+pub mod events;
 mod supervisor;
 mod telemetry;
 #[cfg(target_os = "macos")]
@@ -85,13 +86,13 @@ impl DesktopState {
             .is_some_and(|op| op.id == id)
         {
             let Some(plan) = self.launch_plan()? else {
-                tracing::warn!(operation = %id, "launch retry refused: no recorded plan for this operation");
+                events::launch_refused(id, "retry_without_plan");
                 return Err(ContractError::IdentityConflict.into());
             };
             if plan.installation.operation_id != installation_id
                 || !plan.resources.same_retry(&resources)
             {
-                tracing::warn!(operation = %id, "launch retry refused: installation or resources differ from the admitted plan");
+                events::launch_refused(id, "retry_plan_mismatch");
                 return Err(ContractError::IdentityConflict.into());
             }
             return Ok(Admission {
@@ -113,7 +114,7 @@ impl DesktopState {
         }
         let (installed, adoption) = self.installed_for_launch()?.ok_or(StorageError::Corrupt)?;
         if installed.intent.operation_id != installation_id {
-            tracing::warn!(operation = %id, "launch refused: not the installed copy");
+            events::launch_refused(id, "not_the_installed_copy");
             return Err(ContractError::IdentityConflict.into());
         }
         // The signed minimum is the owner's; it is reported whatever the state of
@@ -125,7 +126,7 @@ impl DesktopState {
         // lab build is refused whatever digest the host was compiled with.
         if let Some(telemetry) = &resources.client_telemetry {
             if !self.game_telemetry()?.opted_in {
-                tracing::warn!(operation = %id, "launch refused: telemetry DLL named but the player is not opted in");
+                events::launch_refused(id, "telemetry_not_opted_in");
                 return Err(ContractError::IdentityConflict.into());
             }
             telemetry.refuse_lab_build()?;
@@ -145,7 +146,7 @@ impl DesktopState {
                 // "Load client patches" off: a host that skipped resolution must
                 // not inject the DLL anyway.
                 if resources.client_patches.is_some() && !self.preferences.client_patches_enabled {
-                    tracing::warn!(operation = %id, "launch refused: client patches named while Load client patches is off");
+                    events::launch_refused(id, "client_patches_off");
                     return Err(ContractError::IdentityConflict.into());
                 }
                 resources.verify()?
@@ -185,7 +186,7 @@ impl DesktopState {
             .try_exists()
             .map_err(|_| StorageError::Io)?
         {
-            tracing::warn!(operation = %id, "launch refused: a plan for this operation id already exists");
+            events::launch_refused(id, "plan_exists");
             return Err(ContractError::IdentityConflict.into());
         }
         self.write_launch(&name, &plan)?;
@@ -265,5 +266,7 @@ impl DesktopState {
         result.map_err(Into::into)
     }
 }
+#[cfg(test)]
+mod events_tests;
 #[cfg(test)]
 mod tests;

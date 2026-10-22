@@ -147,6 +147,7 @@ fn spawn_worker(
     let (result, results) = watch::channel(None);
     let owned_state = state.clone();
     let owned_cancel = cancel.clone();
+    events::install_started(id, input.ownership.is_some());
     runtime.spawn(watch_phases(Arc::downgrade(&state), id, observed.clone()));
     // Intentionally detached from the webview. No external owner can abort it.
     runtime.spawn(async move {
@@ -211,7 +212,10 @@ fn spawn_worker(
         })
         .catch_unwind()
         .await
-        .unwrap_or((Outcome::ReconciliationRequired, None));
+        .unwrap_or_else(|_| {
+            events::install_reconcile_unknown(id);
+            (Outcome::ReconciliationRequired, None)
+        });
         let (outcome, report) = outcome;
         if let (Some(report), Ok(mut owner)) = (report, owned_state.lock()) {
             owner.stash_install_report(id, report);
@@ -220,10 +224,11 @@ fn spawn_worker(
         // next attempt downloads instead of failing on the same file again.
         if let Ok(mut owner) = owned_state.lock() {
             if owner.forget_if_unusable(&seed_probe).is_err() {
-                tracing::warn!("forgetting the unusable seed archive failed");
+                events::install_seed_forget_failed(id);
             }
         }
         let published = publish(&owned_state, id, outcome);
+        events::install_finished(id, published);
         result.send_replace(Some(published));
     });
     Worker {
@@ -243,6 +248,7 @@ async fn watch_phases(
     mut progress: watch::Receiver<Option<install::Progress>>,
 ) {
     let mut entered = None;
+    let mut phases = events::PhaseLog::new(id);
     while progress.changed().await.is_ok() {
         let phase = match &*progress.borrow_and_update() {
             Some(install::Progress::Downloading { .. }) => TimedPhase::Download,
@@ -253,6 +259,7 @@ async fn watch_phases(
         if entered.replace(phase) == Some(phase) {
             continue;
         }
+        phases.enter(phase);
         let Some(state) = state.upgrade() else {
             return;
         };
@@ -293,7 +300,9 @@ fn commit_result(state: &mut DesktopState, id: Uuid, outcome: Outcome) -> Outcom
             && state.prepare_install_result(id, outcome).is_err())
     {
         if let Ok(operations) = state.operations_mut() {
-            let _ = operations.mark_uncertain(id);
+            if let Err(error) = operations.mark_uncertain(id) {
+                events::mark_uncertain_failed(error);
+            }
         }
         return Outcome::ReconciliationRequired;
     }
@@ -308,7 +317,9 @@ fn commit_result(state: &mut DesktopState, id: Uuid, outcome: Outcome) -> Outcom
     };
     if result.is_err() {
         // A failed terminal commit is never reported as a confirmed success.
-        let _ = operations.mark_uncertain(id);
+        if let Err(error) = operations.mark_uncertain(id) {
+            events::mark_uncertain_failed(error);
+        }
         Outcome::ReconciliationRequired
     } else {
         outcome
@@ -384,7 +395,10 @@ fn finish_stage(
     match result {
         Err(InstallError::Cancelled) => return Outcome::Cancelled,
         Err(InstallError::SeedExtractionUncertain) => return Outcome::ReconciliationRequired,
-        Err(_) => return Outcome::InstallFailed,
+        Err(error) => {
+            events::install_stage_failed(intent.operation_id, &error);
+            return Outcome::InstallFailed;
+        }
         Ok(()) => (),
     }
     if !content_valid(stage, release) {
@@ -491,6 +505,8 @@ mod export_tests;
 mod summary_tests;
 #[cfg(test)]
 mod telemetry_tests;
+
+pub mod events;
 
 mod resume;
 pub use resume::{resume, ResumeError};

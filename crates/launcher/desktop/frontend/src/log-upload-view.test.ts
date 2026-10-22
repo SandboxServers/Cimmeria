@@ -57,6 +57,16 @@ test('a finished operation re-inspects, other snapshots do not',async()=>{
  assert.equal(calls.length,2);assert.equal(button.disabled,false);await app.dispose();
 });
 
+test('an undecodable status is reported to telemetry and still shows the schema error',async()=>{
+ const uiCalls:unknown[]=[];
+ Object.assign(globalThis,{window:{__TAURI__:{core:{invoke:async(command:string,args:unknown)=>{uiCalls.push([command,args]);}}}}});
+ try{
+  const ui=mount({inspect:{}});await ui.app.ready;
+  assert.deepEqual(uiCalls,[['ui_event',{area:'log_upload',event:'status_decode_failed',code:'schema',level:'warn'}]]);
+  assert.equal(ui.text(),logUploadErrorText.schema);await ui.app.dispose();
+ }finally{Reflect.deleteProperty(globalThis,'window');}
+});
+
 test('a network failure is shown, and an unknown rejection is a transport failure',async()=>{
  const ui=mount({inspect:{state:'ready'},upload:{error:'network'}});await ui.app.ready;
  ui.press();ui.release();await ui.app.settled();assert.equal(ui.text(),logUploadErrorText.network);await ui.app.dispose();

@@ -3,6 +3,7 @@
 //! is queued on disk. The server scrubs it again, so this scrub is defence in
 //! depth (README D-AU19, D-AU21).
 
+use super::ip_scrub::scrub_ips;
 use super::session::mint_launcher_version;
 use cimmeria_launcher_core::telemetry::events::{ClientNativeEvent, TelemetryEvent};
 use serde_json::{Map, Value};
@@ -127,7 +128,7 @@ fn launcher_event(record: &LauncherRecord, redaction: &Redaction) -> TelemetryEv
     let mut fields = Map::new();
     for (key, value) in &record.fields {
         let value = match value {
-            Value::String(text) => Value::String(bound(&redaction.scrub(text))),
+            Value::String(text) => Value::String(bound(&scrub_ips(&redaction.scrub(text)))),
             other => other.clone(),
         };
         fields.insert(key.clone(), value);
@@ -257,6 +258,31 @@ mod tests {
             panic!("expected a ClientNative event");
         };
         assert_eq!(native.target, "client.launcher.install");
+    }
+
+    #[test]
+    fn launcher_events_scrub_ip_literals_from_message_and_fields() {
+        let mut fields = Map::new();
+        fields.insert(
+            "message".into(),
+            Value::String("connect to 198.51.100.7:8081 failed".into()),
+        );
+        fields.insert("host_note".into(), Value::String("198.51.100.7".into()));
+        let record = LauncherRecord {
+            ts_ms: 1,
+            level: "INFO".into(),
+            target: "client.launcher.install",
+            fields,
+        };
+        let events = launcher_events(&[record], &Redaction::default());
+        let TelemetryEvent::ClientNative(native) = &events[0] else {
+            panic!("expected a ClientNative event");
+        };
+        assert_eq!(
+            native.fields["message"].as_str(),
+            Some("connect to [ip]:8081 failed")
+        );
+        assert_eq!(native.fields["host_note"].as_str(), Some("[ip]"));
     }
 
     #[test]

@@ -1,5 +1,6 @@
 //! Small versioned command surface shared by Tauri and the logic-UAT harness.
 use crate::launcher_compatibility::Identity;
+use crate::storage::settings_events;
 use crate::{DesktopState, Preferences, Snapshot, StorageError};
 use cimmeria_launcher_core::client_setup::login_servers::LoginServer;
 use serde::{Deserialize, Serialize};
@@ -37,6 +38,8 @@ pub struct NativeSnapshot {
     pub adopted_login_servers: Option<Vec<LoginServer>>,
     /// The running build, for the About line in Settings.
     pub launcher: LauncherBuild,
+    /// Whether setup diagnostics have an https endpoint to go to.
+    pub setup_diagnostics_endpoint: bool,
 }
 
 /// Compiled release identity. `tag` is `null` for a development build: one
@@ -65,6 +68,7 @@ impl DesktopState {
             requires_reopen: self.requires_reopen(),
             adopted_login_servers: self.adopted_login_servers(),
             launcher: LauncherBuild::current(),
+            setup_diagnostics_endpoint: self.summary_endpoint_configured(),
         }
     }
 
@@ -84,11 +88,20 @@ impl DesktopState {
                 if schema_version != 1 {
                     return Err(StorageError::UnsupportedSchema);
                 }
+                let before = self.preferences().clone();
                 self.save_preferences(
                     install_directory,
                     launcher_summary_consent,
                     expected_revision,
                 )?;
+                let after = self.preferences();
+                settings_events::preferences_saved(
+                    before.install_directory != after.install_directory,
+                    after.launcher_summary_consent,
+                );
+                if before.launcher_summary_consent != after.launcher_summary_consent {
+                    settings_events::setup_diagnostics_changed(after.launcher_summary_consent);
+                }
             }
             NativeCommand::SaveClientOptions {
                 schema_version,
@@ -100,6 +113,11 @@ impl DesktopState {
                     return Err(StorageError::UnsupportedSchema);
                 }
                 self.save_client_options(login_servers, client_patches_enabled, expected_revision)?;
+                let after = self.preferences();
+                settings_events::client_options_saved(
+                    &after.login_servers,
+                    after.client_patches_enabled,
+                );
             }
         }
         Ok(self.inspect())
@@ -109,6 +127,94 @@ impl DesktopState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_capture::capture;
+    use std::sync::{Mutex, MutexGuard};
+
+    static SERIAL: Mutex<()> = Mutex::new(());
+    fn serial() -> MutexGuard<'static, ()> {
+        SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn saving_client_options_reports_a_count_not_the_servers() {
+        let _serial = serial(); // first line: one capture test of this module at a time
+                                // A second live Dispatch keeps callsite interest per dispatcher.
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = DesktopState::open(dir.path()).unwrap();
+        let server = |name: &str, url: &str| LoginServer {
+            name: name.into(),
+            url: url.into(),
+        };
+        let (result, events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache(); // first line in the closure
+            state.dispatch(NativeCommand::SaveClientOptions {
+                schema_version: 1,
+                expected_revision: 0,
+                login_servers: vec![
+                    server("A", "https://a.example"),
+                    server("B", "https://b.example"),
+                ],
+                client_patches_enabled: false,
+            })
+        });
+        assert!(result.is_ok());
+        let saved: Vec<_> = events
+            .iter()
+            .filter(|e| e.field("event") == Some("client_options_saved"))
+            .collect();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].level, tracing::Level::INFO);
+        assert_eq!(saved[0].target, "launcher.settings");
+        assert_eq!(saved[0].field("count"), Some("2"));
+        assert_eq!(saved[0].field("custom_servers"), Some("true"));
+        assert_eq!(saved[0].field("client_patches_enabled"), Some("false"));
+        for event in &events {
+            for value in event.fields.values() {
+                assert!(!value.contains("a.example") && !value.contains("b.example"));
+            }
+        }
+    }
+
+    #[test]
+    fn saving_preferences_reports_the_consent_change_only_when_it_changes() {
+        let _serial = serial();
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = DesktopState::open(dir.path()).unwrap();
+        let save = |expected_revision, consent| NativeCommand::SavePreferences {
+            schema_version: 1,
+            expected_revision,
+            install_directory: None,
+            launcher_summary_consent: consent,
+        };
+        let named = |events: &[crate::test_capture::Captured], name: &str| {
+            events
+                .iter()
+                .filter(|e| e.field("event") == Some(name))
+                .count()
+        };
+        let (stale, events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache();
+            state.dispatch(save(7, true))
+        });
+        assert!(matches!(stale, Err(StorageError::StaleRevision)));
+        assert!(events.iter().all(|e| e.target != "launcher.settings"));
+        let (first, events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache();
+            state.dispatch(save(0, true))
+        });
+        assert!(first.is_ok());
+        assert_eq!(named(&events, "preferences_saved"), 1);
+        assert_eq!(named(&events, "setup_diagnostics_changed"), 1);
+        let (second, events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache();
+            state.dispatch(save(1, true))
+        });
+        assert!(second.is_ok());
+        assert_eq!(named(&events, "preferences_saved"), 1);
+        assert_eq!(named(&events, "setup_diagnostics_changed"), 0);
+    }
 
     #[test]
     fn command_version_is_checked_before_saving() {

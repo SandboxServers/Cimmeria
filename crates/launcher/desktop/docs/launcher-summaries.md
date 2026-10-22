@@ -2,13 +2,11 @@
 
 > **Type:** Reference
 > **Audience:** Launcher contributors, and whoever prepares the rollout packet
-> **Last updated:** 2026-10-04
+> **Last updated:** 2026-10-21
 > **Companions:** [Desktop workspace](../README.md), [design and wire contract](../../../../docs/architecture/launcher-summary-telemetry.md), [operator notes](../../../../docs/operations/telemetry.md), [dashboard reading notes](../../../../docs/operations/signoz/launcher-summary-views.md), [launch](launch.md), [implementation assignment](../../../../docs/analysis/playtests/2026-10-03-macos-wine/worknotes/observability-implementation-assignment.md)
 
 **Status: the engine component, its queue, its exporter and the shell glue are
-connected. The endpoint is `None` in every distributed build, so this build
-collects nothing and sends nothing. Endpoint configuration, consent copy and
-frontend UAT are open rollout gates.** Nothing here ran against a real server.
+connected. The endpoint is the first login server when it is https, else the built-in default, which is not set yet. The default server list is plain http, so a build with the default list collects nothing and sends nothing; a player whose first login server is https sends once opted in. Frontend UAT, the built-in default and native evidence are open rollout gates.** Nothing here ran against a real server.
 
 A launcher summary is one terminal row per install, runtime-setup, repair,
 uninstall or launch attempt: closed enums, bounded integers and two engine-minted
@@ -51,7 +49,7 @@ Four files outside the folder take part:
   journal without `operations_mut`, so `admit_install_with` finalizes first.
 - `engine/src/storage/install_worker/mod.rs`: a watcher task enters `download`
   and `extraction`, and `publish` finalizes right after the terminal commit.
-- `shell/src/host/summary.rs`: composition (`endpoint: None`), the product
+- `shell/src/host/summary.rs`: composition (the endpoint from the first login server, else the built-in default), the product
   version, and the closed codes for a command that failed before admission.
   `shell/src/host.rs` calls `summary::start` once, right after the state is
   first opened, and `shell/src/main.rs` notes a failed `install_command` or
@@ -442,32 +440,35 @@ on its public login port. Those decisions activate nothing: no launcher build
 has an endpoint. Turning it on is a separate packet, decided separately; what
 is still open is listed in the
 [design reference](../../../../docs/architecture/launcher-summary-telemetry.md#decisions-and-what-is-still-open).
-It has to change at least these:
+It has to change at least these. Items 1 and 2 are done; items 3 to 5 are open.
 
-1. **Endpoint configuration.** `shell/src/host/summary.rs` passes
-   `endpoint: None`. A rollout supplies a `SummaryEndpoint` from native
-   configuration. There is deliberately no environment override. Today
+1. **Endpoint configuration. Done in LT-23a, with no default yet.**
+   `shell/src/host/summary.rs` passes the first login server's endpoint when
+   it is https, else `DEFAULT_SUMMARY_BASE`, which is `None` until the built-in
+   https default is set (LT-41). The default server list is plain http, so no
+   build with it has an endpoint. The endpoint comes from native configuration. There is deliberately no environment override. Today
    `SummaryEndpoint::parse` refuses plain `http://` to anything but loopback,
    so the base must be an `https://` address with a publicly trusted
    certificate. The server may serve the route on its plain-HTTP login port
    (owner decision, 2026-10-04), but that port cannot be the launcher's
    endpoint under this policy.
-2. **Consent copy.** The frontend confirms a consent change with "Diagnostics
-   choice saved. This build sends nothing." (`frontend/src/view.ts`). That
-   sentence becomes false the moment an endpoint is configured. The copy must
-   say what is sent (the fields in the wire contract) and what is not, before
-   any build with an endpoint ships. The preferences paragraph in the
-   [desktop README](../README.md) needs the same correction.
-3. **Frontend UAT.** A frontend change needs the REPL-style logic UAT the repo
+2. **Consent copy. Done in LT-23b.** The setup-diagnostics box says whether
+   summaries are sent: "Setup diagnostics are sent over https to your login
+   server.", "Setup diagnostics are saved but not sent yet: this server has no
+   secure (https) address for them.", or "Nothing is sent." (`frontend/src/view.ts`).
+   The copy does not yet list the wire fields; that is owed before a build with
+   a built-in endpoint ships. The preferences paragraph in the
+   [desktop README](../README.md) matches this.
+3. **Frontend UAT. Open.** A frontend change needs the REPL-style logic UAT the repo
    requires ([AGENTS.md](../../../../AGENTS.md)), covering opt-in, opt-out and
    the copy for both states.
-4. **Server side.** Deploy a server that serves the route where the endpoint
+4. **Server side. Open.** Deploy a server that serves the route where the endpoint
    points, and size `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` for the address
    launchers arrive from: the default of 12 requests per minute is shared by
    everyone behind one NAT, proxy or tunnel. The route needs no HMAC secret.
    Import the SigNoz fixtures only after the first rows exist
    ([importing](../../../../docs/operations/signoz/launcher-summary-views.md#importing)).
-5. **Native evidence.** Record the Windows and macOS runs of both suites for the
+5. **Native evidence. Open.** Record the Windows and macOS runs of both suites for the
    revision that ships.
 
 Finer launch phases (host started, process started) are not timed. Adding them

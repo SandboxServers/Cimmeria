@@ -287,7 +287,9 @@ impl NativeHost {
 fn mark_uncertain(state: &Mutex<DesktopState>, id: Uuid) {
     if let Ok(mut state) = state.lock() {
         if let Ok(operations) = state.operations_mut() {
-            let _ = operations.mark_uncertain(id);
+            if let Err(error) = operations.mark_uncertain(id) {
+                cimmeria_launcher_engine::repair::events::mark_uncertain_failed(error);
+            }
         }
     }
 }

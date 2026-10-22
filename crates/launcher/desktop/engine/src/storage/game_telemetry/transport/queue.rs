@@ -2,6 +2,7 @@
 //! session: startup recovery, discarding on a change of choice, and an
 //! event queued before any session.
 use super::{TelemetryEvent, TransportError};
+use crate::game_telemetry::ip_scrub::scrub_event;
 use crate::game_telemetry::Identity;
 use crate::storage::DesktopState;
 use cimmeria_launcher_core::telemetry::queue::DiskQueue;
@@ -90,7 +91,7 @@ impl Consent {
             return Ok(());
         }
         if DiskQueue::new(&self.queue_dir).discard().is_err() {
-            tracing::warn!("withdrawn game telemetry write not deleted");
+            super::events::queue_discard_failed("withdrawn_write");
         }
         Err(TransportError::NotOptedIn)
     }
@@ -160,12 +161,12 @@ pub(crate) fn discard_queue(root: &Path) -> bool {
     discards(root).fetch_add(1, Ordering::SeqCst);
     match DiskQueue::new(root).discard() {
         Ok(true) => {
-            tracing::info!("game telemetry queue deleted unsent");
+            super::events::queue_discarded();
             true
         }
         Ok(false) => false,
         Err(_) => {
-            tracing::warn!("game telemetry queue not deleted");
+            super::events::queue_discard_failed("choice_changed");
             false
         }
     }
@@ -188,8 +189,12 @@ pub(crate) fn queue_now(consent: &Consent, event: &TelemetryEvent) -> Result<(),
     if !consent.current() {
         return Err(TransportError::NotOptedIn);
     }
+    // LT-40: core builds install-result and patch-count rows without `launcher_event`,
+    // so the IP guard runs here, on the copy that is written.
+    let mut scrubbed = event.clone();
+    scrub_event(&mut scrubbed);
     DiskQueue::new(&consent.queue_dir)
-        .enqueue(event)
+        .enqueue(&scrubbed)
         .map_err(|_| TransportError::Queue)?;
     consent.undo_if_withdrawn()
 }

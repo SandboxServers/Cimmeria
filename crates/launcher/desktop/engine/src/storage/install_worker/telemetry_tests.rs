@@ -165,6 +165,57 @@ fn a_failed_stage_carries_the_desktop_code_and_its_own_report() {
 }
 
 #[test]
+fn a_failed_download_logs_the_install_lifecycle() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (worker_outcome, events) = crate::test_capture::capture(|| {
+        rt.block_on(async {
+            let release = verified(&archive(true));
+            let (_root, state, id) = setup(&release);
+            state.lock().unwrap().set_game_telemetry(true).unwrap();
+            // No seed is served: the download fails.
+            let server = MockServer::start().await;
+            let worker = dispatch_with(
+                state.clone(),
+                id,
+                release,
+                format!("{}/manifest.json", server.uri()),
+                reqwest::Client::new(),
+            )
+            .unwrap();
+            outcome(worker.result.clone()).await
+        })
+    });
+    assert_eq!(worker_outcome, Outcome::InstallFailed);
+    let install: Vec<_> = events
+        .iter()
+        .filter(|e| e.target == "launcher.install")
+        .collect();
+    let started = install
+        .iter()
+        .find(|e| e.field("event") == Some("install_started"))
+        .expect("install_started");
+    assert_eq!(started.field("action"), Some("install"));
+    let stage = install
+        .iter()
+        .find(|e| e.field("event") == Some("install_stage_failed"))
+        .expect("install_stage_failed");
+    assert_eq!(stage.field("http_status"), Some("404"));
+    let failed = install
+        .iter()
+        .find(|e| e.field("event") == Some("install_failed"))
+        .expect("install_failed");
+    assert_eq!(failed.level, tracing::Level::WARN);
+    assert_eq!(failed.field("reason"), Some("install_failed"));
+    let operation = started.field("operation");
+    assert!(operation.is_some());
+    assert_eq!(stage.field("operation"), operation);
+    assert_eq!(failed.field("operation"), operation);
+}
+
+#[test]
 fn a_report_stashed_by_another_operation_is_not_attached() {
     let (_root, state, id) = running(false);
     publish(&state, id, Outcome::ContentInvalid);

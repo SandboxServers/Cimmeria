@@ -1,7 +1,7 @@
 # Server observability — design and tool choice
 
 **Status:** Accepted (2026-05-25)
-**Last updated:** 2026-10-05 (named-telemetry saved views, NT-50b). Before that 2026-10-03 (target catalog moved to [observability-target-catalog.md](observability-target-catalog.md))
+**Last updated:** 2026-10-21 (named-telemetry saved views, NT-50b). Before that 2026-10-03 (target catalog moved to [observability-target-catalog.md](observability-target-catalog.md))
 **Confidence:** High
 
 ## Context
@@ -217,6 +217,28 @@ caller's address (no `peer`), on any `/api/telemetry*` or
 `launcher.key_dump` stays `off`. Client rows ship at
 every level the client sent, TRACE included: the DLL already throttled and
 paid for the upload, and a client WARN is not a server problem.
+
+The desktop launcher writes its own events on one tracing target per subsystem
+(C5). Each row follows the C6 vocabulary: `event` is snake_case, at most 40
+characters; `<op>_started` and `<op>_finished` are info, `<op>_failed` is warn,
+with `reason` or `outcome` as a closed code. No row carries a path, a URL, a
+host, an IP, an account name or an error Display, and no hash of an address
+(R5, D-LT18). Wire rows carry the target with a `client.` prefix.
+
+| Tracing target | Subsystems |
+|---|---|
+| `launcher.startup` | startup facts |
+| `launcher.crash` | panic, previous-run panic |
+| `launcher.update` | launcher self-update (the apply events are unchanged) |
+| `launcher.game_update` | game update, release catalog, patch notes |
+| `launcher.install` | install, seed archive, prerequisites, PhysX, migration |
+| `adoption` | adoption (AU, unchanged) |
+| `launcher.repair` | repair, client maintenance, uninstall, client changes |
+| `launcher.launch` | Play, launch worker, helper supervisor |
+| `launcher.settings` | preferences, both consents, server list, client patches |
+| `launcher.telemetry` | game-session mint, game transport, pipeline recovery, log upload |
+| `launcher.ui` | frontend reports |
+| `launcher.login` | reserved for oidc-login; no emitter yet |
 
 The `cimmeria-client` resource carries `cimmeria.source = client`,
 `deployment.environment` and `cimmeria.deploy_env`, and names the

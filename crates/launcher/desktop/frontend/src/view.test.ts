@@ -110,6 +110,36 @@ test('consent waits for native acknowledgement and rolls back on failed save', {
   } finally {await app.dispose();}
 });
 
+const withEndpoint = (endpoint: boolean): NativeSnapshot => ({...initial(), setup_diagnostics_endpoint: endpoint});
+
+// Turns consent on with a save that resolves, and returns the status text it leaves.
+async function savedStatus(endpoint: boolean): Promise<string> {
+  const ui = dom();
+  const app = mountLauncher(ui.document, async (_command, args) => {
+    const request = args!.request as Command;
+    if (request.command === 'inspect') return withEndpoint(endpoint);
+    return {...withEndpoint(endpoint), preferences: {...initial().preferences, revision: 1, launcher_summary_consent: true}};
+  });
+  try {
+    await app.ready; await flush();
+    const checkbox = ui.get<HTMLInputElement>('telemetry');
+    checkbox.checked = true; checkbox.dispatchEvent(new ui.window.Event('change'));
+    await app.settled(); await flush();
+    return ui.get('status').textContent!;
+  } finally {await app.dispose();}
+}
+
+test('the saved consent says whether setup diagnostics are sent', {timeout:5000}, async () => {
+  assert.match(await savedStatus(false), /saved but not sent yet/);
+  assert.match(await savedStatus(true), /sent over https/);
+});
+
+test('the diagnostics label says summaries go over https and never that the build sends nothing', {timeout:5000}, () => {
+  const ui = dom();
+  assert.match(ui.get('telemetry').closest('label')!.textContent!, /sent over https/);
+  assert.doesNotMatch(html, /This build sends nothing/);
+});
+
 test('native folder choice saves once, preserves consent, and cancellation changes nothing', {timeout:5000}, async () => {
   const ui=dom(); let state=initial(); let folder:string|null='/selected/game'; let saves=0; let opens=0;
   const app=mountLauncher(ui.document, async (command,args) => {

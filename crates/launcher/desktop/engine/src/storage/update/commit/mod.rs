@@ -88,6 +88,7 @@ pub(crate) fn start(
         }
         // Prepared's observer is harmless once a durable terminal result exists.
         drop(prepared);
+        events::committed(&result);
         let _ = send.send(result);
     });
     Ok(observed)

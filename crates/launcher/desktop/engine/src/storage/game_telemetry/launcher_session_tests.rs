@@ -117,7 +117,9 @@ async fn offline_fails_silently_then_holds_with_backoff() {
     let target = target("http://127.0.0.1:9");
     assert_eq!(
         sender.send(&target, &[event()]).await,
-        SendOutcome::MintFailed
+        SendOutcome::MintFailed {
+            reason: "transport"
+        }
     );
     let first = sender.hold_remaining().expect("a failed mint holds");
     assert!(first >= Duration::from_secs(50) && first <= Duration::from_secs(60));
@@ -125,7 +127,9 @@ async fn offline_fails_silently_then_holds_with_backoff() {
     sender.clear_hold();
     assert_eq!(
         sender.send(&target, &[event()]).await,
-        SendOutcome::MintFailed
+        SendOutcome::MintFailed {
+            reason: "transport"
+        }
     );
     let second = sender.hold_remaining().expect("the second failure holds");
     assert!(second >= Duration::from_secs(110) && second <= Duration::from_secs(120));

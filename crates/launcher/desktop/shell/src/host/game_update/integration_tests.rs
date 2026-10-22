@@ -156,6 +156,20 @@ async fn maintain(host: Arc<NativeHost>, action: MaintenanceAction) -> GameUpdat
     .unwrap()
 }
 #[tokio::test]
+async fn unconfirmed_apply_reports_one_recovery_required_action_row() {
+    let (_root, host, _server) = fixture(false).await;
+    let command = request(&host, false);
+    let (result, captured) = crate::test_capture::capture(|| host.apply_game_update(command));
+    assert_eq!(result.unwrap_err(), JobError::RecoveryRequired);
+    let finished: Vec<_> = captured
+        .iter()
+        .filter(|row| row.field("event") == Some("game_update_action_finished"))
+        .collect();
+    assert_eq!(finished.len(), 1, "{captured:?}");
+    assert_eq!(finished[0].field("action"), Some("apply"));
+    assert_eq!(finished[0].field("outcome"), Some("recovery_required"));
+}
+#[tokio::test]
 async fn confirmed_apply_retains_handoff_and_duplicate_does_not_download_twice() {
     let (root, host, server) = fixture(false).await;
     let before = host.game_update_status().unwrap().native;

@@ -1,28 +1,63 @@
-//! Launcher-summary composition: the product version, the endpoint (none in
-//! this build) and the closed codes for a command that failed before admission.
+//! Launcher-summary composition: the product version, the endpoint (the first
+//! login server when it is https, else the built-in default, else none) and the
+//! closed codes for a command that failed before admission.
 //! Nothing here carries a path, a URL, a name or an error text.
 use super::{InstallCommand, JobError, LaunchCommand, NativeHost};
 use cimmeria_launcher_engine::{
+    client_setup::login_servers::default_servers,
     launcher_compatibility,
-    launcher_summary::{self, SummaryConfig, SummaryErrorCode, SummaryOperation, SummaryPhase},
+    launcher_summary::{
+        self, SummaryConfig, SummaryEndpoint, SummaryErrorCode, SummaryOperation, SummaryPhase,
+    },
     DesktopState,
 };
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-/// Called once, right after the state is first opened.
+/// Called once, right after the state is first opened. The endpoint is resolved
+/// here, so a change to the login server list applies from the next launcher start.
 pub(super) fn start(state: &Arc<Mutex<DesktopState>>) {
-    launcher_summary::start(state, config());
+    let first = state
+        .lock()
+        .ok()
+        .and_then(|state| first_login_server(&state));
+    let (config, source) = config(first.as_deref());
+    tracing::info!(
+        target: "launcher.pipeline",
+        event = "summary_endpoint_resolved",
+        outcome = source,
+        "launcher summary: endpoint source resolved"
+    );
+    launcher_summary::start(state, config);
 }
 
-fn config() -> SummaryConfig {
-    SummaryConfig {
+// The first login server Play would log in to: the adopted list when this copy
+// keeps one, else the saved list, else the defaults. Mirrors `launch_login_servers`.
+fn first_login_server(state: &DesktopState) -> Option<String> {
+    let snapshot = state.inspect();
+    let servers = snapshot
+        .adopted_login_servers
+        .unwrap_or(snapshot.preferences.login_servers);
+    let servers = if servers.is_empty() {
+        default_servers()
+    } else {
+        servers
+    };
+    servers.first().map(|server| server.url.clone())
+}
+
+// The config, with the endpoint source (`login_server`, `default` or
+// `no_https_endpoint`) for the event.
+fn config(first_login_server: Option<&str>) -> (SummaryConfig, &'static str) {
+    let (endpoint, source) = SummaryEndpoint::resolve(first_login_server);
+    let config = SummaryConfig {
         // The D-LX8 release version About shows, not the package's.
         launcher_version: version(launcher_compatibility::compiled_version()),
-        // No endpoint is configured in this build, so nothing is tracked,
-        // recorded or sent, whatever the consent preference says.
-        endpoint: None,
-    }
+        // With no https endpoint, nothing is tracked, recorded or sent, whatever
+        // the consent preference says.
+        endpoint,
+    };
+    (config, source)
 }
 
 // "a.b.c", with any pre-release or build suffix ignored.
@@ -327,12 +362,41 @@ mod tests {
     }
 
     #[test]
-    fn this_build_configures_no_endpoint() {
-        assert!(config().endpoint.is_none());
+    fn this_build_derives_an_https_endpoint_from_the_first_login_server() {
+        let (resolved, source) = config(Some("https://play.example"));
         assert_eq!(
-            config().launcher_version,
+            resolved
+                .endpoint
+                .map(|endpoint| endpoint.ingest_url().to_string()),
+            Some("https://play.example/api/telemetry/launcher-summary".to_string())
+        );
+        assert_eq!(source, "login_server");
+
+        let (resolved, source) = config(Some("http://play.example:8081"));
+        assert!(resolved.endpoint.is_none());
+        assert_eq!(source, "no_https_endpoint");
+
+        let (resolved, source) = config(None);
+        assert!(resolved.endpoint.is_none());
+        assert_eq!(source, "no_https_endpoint");
+        assert_eq!(
+            resolved.launcher_version,
             version(launcher_compatibility::compiled_version())
         );
+    }
+
+    #[test]
+    fn the_first_login_server_is_the_default_list_when_none_is_saved() {
+        let root = tempfile::tempdir().unwrap();
+        let host = NativeHost::new(root.path().join("state"));
+        host.with_state(|state| {
+            assert_eq!(
+                first_login_server(state),
+                default_servers().first().map(|server| server.url.clone())
+            );
+            Ok(())
+        })
+        .unwrap();
     }
 
     #[test]
@@ -343,9 +407,9 @@ mod tests {
         host.note_command_failure(attempt, JobError::ManifestUnavailable);
         assert!(!root.path().join("state").exists());
 
-        // Open and opted in. This build configures no endpoint, and that alone
-        // keeps the failure from being recorded: the positive control below
-        // differs only in having one.
+        // Open and opted in. The default login server is plain http, so no endpoint
+        // is configured, and that alone keeps the failure from being recorded: the
+        // positive control below differs only in having one.
         opt_in(&host);
         host.note_command_failure(attempt, JobError::ManifestUnavailable);
         host.note_command_failure(None, JobError::ManifestUnavailable);
@@ -358,8 +422,8 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let host = NativeHost::new(root.path().join("state"));
         opt_in(&host);
-        // This build has no endpoint; give the open state one that is never
-        // contacted. No exporter is started by this call.
+        // The default login server is plain http, so there is no endpoint; give the
+        // open state one that is never contacted. No exporter is started by this call.
         host.with_state(|state| {
             state.configure_summaries(SummaryConfig {
                 launcher_version: (0, 1, 0),
