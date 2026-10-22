@@ -83,15 +83,17 @@ try {
  // 4c. The release digest sits behind a "Release details" toggle, not in the summary.
  await scenario(reviewed({}));
  assert.equal(get('adoption-release-details').querySelector('summary').textContent,'Release details');
+ assert.doesNotMatch(get('adoption-review').textContent.replace(get('adoption-release-details').textContent,''),/[0-9a-f]{64}/);
+ assert.equal(get('adoption-release-details').hasAttribute('open'),false,'the toggle starts closed');
  console.log('ok: the release digest sits behind a Release details toggle');
 
- // 4d. An installation this launcher already owns says so once, and offers nothing further.
+ // 4d. An installation this launcher already owns shows the owned status line only (not the LF-06 adoption lines).
  await fresh();
  inspected={...idle(),owned:true};
  await press('inspect-adoption');await settle();
  inspected=null;
  assert.match(text(),/A desktop-owned installation already exists, so there is nothing further to adopt\./);
- console.log('ok: an owned installation shows the one-owner line');
+ console.log('ok: an owned installation shows the owned status line');
 
  // 4e. The maintenance trigger is hidden while its confirmation is open and shows again when the confirmation closes.
  await scenario({...idle(),preparations:['prep-1']});
@@ -111,6 +113,15 @@ try {
  assert.match(get('adoption-telemetry').textContent,/opted in with the old launcher\. Launcher setup/);
  console.log('ok: the telemetry sentence has a space before it and says this build has no game diagnostics module');
 } finally {await app.dispose();}
+
+// 4g. LF-06: an interrupted adoption gives Play one adoption line and no Recheck button.
+{const doc=parseHTML(html).document;
+ const interrupted={schema_version:1,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,installation_id:'owner',observation:null,native:{...native,operation:{...native.operation,operation:{id:'op',kind:'adopt',state:'reconciliation_required',intent_digest:Array(32).fill(0)}}}};
+ const play=mountLaunch(doc,async()=>interrupted,()=>{},()=>'attempt');await play.ready;await pause(10);
+ assert.equal(doc.getElementById('launch-status').textContent,'Finish or abandon the interrupted adoption in the adoption panel before you play.');
+ assert.equal(doc.getElementById('inspect-launch').hidden,true);
+ await play.dispose();
+ console.log('ok: an interrupted adoption gives Play one adoption line and hides Recheck');}
 
 // 5. An install with incomplete patches: Play stays enabled and the main view names the skipped changes.
 const launchDocument=parseHTML(await readFile(new URL('./ui/index.html',import.meta.url),'utf8')).document;

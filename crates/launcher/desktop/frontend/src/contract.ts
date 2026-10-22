@@ -8,6 +8,8 @@ const Operation = Schema.Struct({
     .check(Schema.isBetweenLength(32, 32)),
   state: Schema.Literals(["starting", "running", "cancel_requested", "succeeded", "failed", "cancelled", "reconciliation_required"]),
 });
+/** True while an operation has not reached a terminal state; an absent operation is not open. */
+export const operationOpen=(op:{state:string}|null|undefined):boolean=>!!op&&!['succeeded','failed','cancelled'].includes(op.state);
 /** `cimmeria_launcher_core::client_setup::login_servers::LoginServer`. */
 export const LoginServer = Schema.Struct({name: Schema.String, url: Schema.String});
 export type LoginServer = typeof LoginServer.Type;

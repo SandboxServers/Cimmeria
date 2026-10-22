@@ -271,6 +271,7 @@ test('the digest and ids sit behind Release details; the visible review holds co
   const details=ui.get('adoption-release-details');
   assert.equal(details.tagName,'DETAILS');assert.equal(details.classList.contains('release-details'),true);
   assert.equal(details.querySelector('summary')!.textContent,'Release details');
+  assert.equal(ui.get('adoption-release').nextElementSibling,details);
   const hidden=details.textContent!;
   assert.match(hidden,new RegExp(`Manifest SHA-256: ${'ab'.repeat(32)}`));
   assert.match(hidden,/Patches in signed order: first-patch, second-patch/);

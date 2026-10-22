@@ -1,5 +1,5 @@
 import { Context, Data, Effect, Layer, PubSub, Ref, Schema, Semaphore, Stream } from 'effect';
-import { NativeSnapshot } from './contract';
+import { NativeSnapshot, operationOpen } from './contract';
 import { reportUiEvent, uiCode } from './ui-event';
 const Pid=Schema.Int.check(Schema.isBetween({minimum:1,maximum:4294967295}));
 const Count=Schema.Int.check(Schema.isBetween({minimum:0,maximum:4294967295}));
@@ -24,8 +24,7 @@ export const launchBridgeLayer=(invoke:(request:Request)=>Promise<unknown>)=>Lay
     Effect.flatMap(value=>Schema.decodeUnknownEffect(LaunchStatus,{onExcessProperty:'error'})(value).pipe(Effect.mapError(()=>new LaunchFailure({code:'schema'})))),
   )});
 export type LaunchState={status:LaunchStatus|null;pending:boolean;uncertain:boolean;error:string|null};
-export const launchBlocked=(status:LaunchStatus)=>status.launcher_update_required || status.native.requires_reopen || !!status.native.operation.operation &&
-  !['succeeded','failed','cancelled'].includes(status.native.operation.operation.state);
+export const launchBlocked=(status:LaunchStatus)=>status.launcher_update_required || status.native.requires_reopen || operationOpen(status.native.operation.operation);
 export const makeLaunchWorkflow=Effect.gen(function*(){
  const bridge=yield* LaunchBridge;const gate=yield* Semaphore.make(1);
  const state=yield* Ref.make<LaunchState>({status:null,pending:false,uncertain:true,error:null});

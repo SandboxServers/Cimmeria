@@ -4,6 +4,7 @@ import type {Invoke} from './view';
 import {fallbackText,rejectionText} from './adoption-reasons';
 import {renderIndex} from './adoption-index-view';
 import {displayPath} from './display-path';
+import {operationOpen} from './contract';
 class Adoption extends Context.Service<Adoption,Effect.Success<typeof makeAdoptionWorkflow>>()('launcher/Adoption') {}
 type Review=NonNullable<AdoptionStatus['review']>;
 const unchanged='The original game folder is unchanged.';
@@ -180,7 +181,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   rejection.hidden=!rejection.textContent;
   const inPlace=s?.backend==='in_place';
   button('confirm-adoption').textContent=review?.light?'Use this folder':inPlace?'Adopt this folder':'Create verified copy';
-  const idle=!!s&&s.activity==='idle'&&!r&&!s.owned&&(s.backend==='available'||inPlace)&&(s.native.operation.operation?['succeeded','failed','cancelled'].includes(s.native.operation.operation.state):true);
+  const idle=!!s&&s.activity==='idle'&&!r&&!s.owned&&(s.backend==='available'||inPlace)&&!operationOpen(s.native.operation.operation);
   button('choose-adoption-destination').disabled=!enabled||!idle;
   const pair=idle&&s?.modes.length===2,copy=box('adoption-mode-copy').checked;
   get('adoption-modes').hidden=!pair;
@@ -229,7 +230,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
    fallback.textContent=review.index_fallback?fallbackText(review.index_fallback):'';
    fallback.hidden=!review.index_fallback;
    // The "Release details" toggle is closed by default; its text is rebuilt with each review.
-   const releaseDetails=lineAfter('adoption-release-details','adoption-index-fallback','details');
+   const releaseDetails=lineAfter('adoption-release-details','adoption-release','details');
    releaseDetails.className='release-details';
    const toggle=document.createElement('summary');toggle.textContent='Release details';
    const detailLines=lines.details.map(text=>{const item=document.createElement('p');item.textContent=text;return item;});

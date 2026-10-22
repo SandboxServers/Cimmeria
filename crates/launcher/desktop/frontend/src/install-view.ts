@@ -5,6 +5,7 @@ import type { SeedArchiveState } from './seed-archive-workflow';
 import { acquireSeedArchive, seedArchiveOfferText, seedArchiveShowsLine, seedArchiveText, SeedArchive } from './seed-archive-view';
 import type { Invoke } from './view';
 import { formatBytes, formatDuration, makeRateTracker, type TransferSample } from './transfer-rate';
+import { operationOpen } from './contract';
 class Installation extends Context.Service<Installation,Effect.Success<typeof makeInstallWorkflow>>()('launcher/Installation') {}
 const errors:Record<InstallFailure['code'],string>={
   launcher_too_old:'Update the launcher before installing or playing this release. Your game files are preserved.',
@@ -51,7 +52,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     const active=!!status&&operationActive(status);
     const recovery=operation?.state==='reconciliation_required';
     // The adoption panel owns an adopt operation until it is terminal, so Install stays out of it.
-    const adopting=operation?.kind==='adopt'&&!['succeeded','failed','cancelled'].includes(operation.state);
+    const adopting=operation?.kind==='adopt'&&operationOpen(operation);
     const ready=!!status&&!status.native.requires_reopen&&!current.needsInspection&&!current.busy&&!pending;
     repairs.render(current,ready);
     const canPrepare=!!status?.runtime_setup&&!active&&!recovery;

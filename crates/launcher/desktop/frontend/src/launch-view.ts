@@ -1,11 +1,12 @@
 import {Context,Effect,Fiber,Layer,ManagedRuntime,Stream} from 'effect';
 import {launchBlocked,launchBridgeLayer,LaunchState,makeLaunchWorkflow} from './launch-workflow';
+import {operationOpen} from './contract';
 import type {Invoke} from './view';
 class Launch extends Context.Service<Launch,Effect.Success<typeof makeLaunchWorkflow>>()('launcher/Play') {}
 // An adopt operation that is not terminal is owned by the adoption panel; Play says one line about it.
 function adoptLine(s:LaunchState):string|null {
  const operation=s.status?.native.operation.operation;
- if(operation?.kind!=='adopt'||['succeeded','failed','cancelled'].includes(operation.state))return null;
+ if(operation?.kind!=='adopt'||!operationOpen(operation))return null;
  return operation.state==='reconciliation_required'?'Finish or abandon the interrupted adoption in the adoption panel before you play.':'An adoption review is open. Finish or cancel it in the adoption panel.';
 }
 export function launchText(s:LaunchState):string {
