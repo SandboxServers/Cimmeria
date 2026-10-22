@@ -197,7 +197,11 @@ pub(crate) fn health() -> SharedHealth {
 
 /// Records one send's outcome and logs the recovery when it ends a run of failures.
 /// Returns the recovery, if any.
-fn record_outcome(health: &SharedHealth, outcome: &SendOutcome, now_ms: u64) -> Option<Recovery> {
+pub(crate) fn record_outcome(
+    health: &SharedHealth,
+    outcome: &SendOutcome,
+    now_ms: u64,
+) -> Option<Recovery> {
     let mut state = health.lock().unwrap_or_else(PoisonError::into_inner);
     let recovery = state.record(outcome, now_ms)?;
     let last_reason = state.last_reason;

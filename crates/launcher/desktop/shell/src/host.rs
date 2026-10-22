@@ -18,6 +18,8 @@ mod game_update;
 mod held_download;
 mod install;
 mod launcher_telemetry;
+#[cfg(test)]
+mod launcher_telemetry_uat;
 pub use adoption::{AdoptionCommand, AdoptionError, AdoptionStatus};
 pub use game_telemetry::{GameTelemetryCommand, GameTelemetryStatus};
 pub use game_update::{GameUpdateCommand, GameUpdateStatus};
