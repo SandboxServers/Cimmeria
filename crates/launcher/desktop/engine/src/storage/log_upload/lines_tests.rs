@@ -217,3 +217,24 @@ fn offsets_round_trip_never_move_back_and_an_unreadable_file_loads_empty() {
     std::fs::write(dir.join("uploaded-log-offsets.json"), b"{not json").unwrap();
     assert!(Offsets::load(dir).files.is_empty());
 }
+
+#[test]
+fn offsets_keep_only_the_newest_files() {
+    let mut offsets = Offsets::default();
+    for n in 0..70 {
+        let line = LogLine {
+            file: format!("launcher.2026-{:02}-{:02}.log", 1 + n / 28, 1 + n % 28),
+            line_no: 1,
+            end: 10,
+            ts_ms: None,
+            level: None,
+            target: None,
+            message: String::new(),
+            truncated: false,
+        };
+        offsets.advance(&line);
+    }
+    assert_eq!(offsets.files.len(), 64);
+    assert!(offsets.files.contains_key("launcher.2026-03-14.log"));
+    assert!(!offsets.files.contains_key("launcher.2026-01-01.log"));
+}

@@ -20,6 +20,9 @@ const VERSION: u32 = 1;
 /// is a few dozen bytes, so this is far above what a normal install writes.
 const MAX_BYTES: usize = 64 * 1024;
 
+/// The most files the offsets keep; the shell keeps 7, so older entries are dead.
+const MAX_FILES: usize = 64;
+
 /// The byte offset already sent, per launcher log file name.
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -65,5 +68,8 @@ impl Offsets {
     pub(crate) fn advance(&mut self, line: &LogLine) {
         let sent = self.files.entry(line.file.clone()).or_default();
         *sent = (*sent).max(line.end);
+        while self.files.len() > MAX_FILES {
+            self.files.pop_first();
+        }
     }
 }
