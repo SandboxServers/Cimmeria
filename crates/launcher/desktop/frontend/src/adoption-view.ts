@@ -44,6 +44,10 @@ const archiveText='Downloading the signed game archive to check your files (no u
 /** The workflow's Code schema is closed, so this branch guards codes added to the native side before this table. */
 export const failureText=(code:string)=>unknownOutcome(code)?'The result could not be confirmed, and nothing was retried. Recheck adoption status before continuing.':failures[code]??`Adoption stopped: ${code}.`;
 const unsafeLead='These files or folders in the game folder cannot be adopted safely. Fix each one as described below, then choose the folder again. Nothing was copied, moved or removed.';
+const severalLead='The launcher found more than one Stargate Worlds install in that folder, so it did not pick one. Choose the install you want: its game root, the folder that holds “Working”, or its “Working\\Binaries” folder. Nothing was changed.';
+const doneText='This folder is now your Cimmeria install. If the game will not start, use Repair (it downloads the full game, 4.1 GB).';
+/** The folder's own name only, never its full path. */
+const folderName=(path:string)=>path.split(/[\\/]/).filter(Boolean).pop()??path;
 const unsafeReasons:Record<UnsafeReason,string>={
  link:'a link or junction to another place. Put the real folder or file here instead, then try again.',
  cloud_file:'a OneDrive or other cloud-synced file. Move the whole game folder out of the synced folder (for example to C:\\Games), then try again.',
@@ -86,8 +90,8 @@ export function adoptionText(s:AdoptionState):string {
  if(r?.kind==='copy')return `The copy into ${r.directory} was interrupted. ${r.can_recover?'Its verified files are staged: recover to finish publishing them.':r.can_abandon?'Nothing was published: abandon it, then choose a different location.':'Recheck after restarting the launcher.'} ${unchanged}`;
  if(status.review?.in_place)return s.stale?failures.stale_revision:status.review.blocked_files.length?`These release files in your game folder do not match the signed release, so it cannot be adopted in place: ${status.review.blocked_files.join(', ')}. Restore them, then dismiss this review and prepare a new one. Nothing was changed.`:'Review the comparison and confirmations below. Nothing is moved until you confirm.';
  if(status.review)return s.stale?failures.stale_revision:`Review the comparison and confirmations below. Nothing is copied until you confirm. ${unchanged}`;
- if(status.last_error)return status.last_error==='unsafe_file'&&status.unsafe_entries?.entries.length?unsafeLead:failureText(status.last_error);
- if(status.completed&&status.backend==='in_place')return `Adopted ${status.completed.directory} in place. Its release files now sit in the launcher-owned “game” folder inside it; files that are not part of the release were left where they were, and uninstalling never removes them.${status.completed.backup_directory?` Replaced files were moved to ${status.completed.backup_directory}.`:''}`;
+ if(status.last_error)return status.last_error==='unsafe_file'&&status.unsafe_entries?.entries.length?unsafeLead:status.last_rejection?.check==='several_game_folders'?severalLead:failureText(status.last_error);
+ if(status.completed&&status.backend==='in_place')return `Adopted ${status.completed.directory} in place. Its release files now sit in the launcher-owned “game” folder inside it; files that are not part of the release were left where they were, and uninstalling never removes them.${status.completed.backup_directory?` Replaced files were moved to ${status.completed.backup_directory}.`:''} ${doneText}`;
  if(status.completed)return `Verified copy created in ${status.completed.directory}. The original game folder and old launcher are unchanged and no longer needed by this copy. Game setup and Play for adopted copies continue in the Play area when this build offers them.`;
  if(status.owned)return 'A desktop-owned installation already exists, so there is nothing further to adopt.';
  if(status.imported?.blocker)return failureText(status.imported.blocker);
@@ -122,15 +126,34 @@ function reviewLines(r:Review,summaryConsent:boolean) {
 export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=()=>{}) {
  // The mode the next choose press sends: the native picker is opened for it.
  let chosen:'light'|'in_place'|'copy'='in_place';
+ // Set by a choose press until its reply is handled; the status then says the folder is being checked.
+ let checking=false;
+ // The text after a picker cancel ("No folder chosen."), cleared by the next action.
+ let notice:string|null=null;
  const runtime=ManagedRuntime.make(Layer.effect(Adoption,makeAdoptionWorkflow).pipe(Layer.provide(adoptionBridgeLayer(request=>request==='choose'?invoke('choose_existing_game_folder',{mode:chosen}):invoke('adoption_command',{request})))));
  const get=(id:string)=>document.getElementById(id)!;
  const button=(id:string)=>get(id) as HTMLButtonElement;
  const box=(id:string)=>get(id) as HTMLInputElement;
  // A status line placed right after its anchor, created once; the page markup stays as it is.
- const lineAfter=(id:string,anchor:string)=>{
+ const lineAfter=(id:string,anchor:string,tag='p')=>{
   let line=document.getElementById(id);
-  if(!line){line=document.createElement('p');line.id=id;const at=get(anchor);at.parentNode?.insertBefore(line,at.nextSibling);}
+  if(!line){line=document.createElement(tag);line.id=id;const at=get(anchor);at.parentNode?.insertBefore(line,at.nextSibling);}
   return line;
+ };
+ // The light review (LA-16): the folder found, the patch counts, and the skipped changes. Absent for a copy.
+ const lightReview=(light:Review['light'],source:string)=>{
+  const found=lineAfter('adoption-light-found','adoption-counts'),patches=lineAfter('adoption-light-patches','adoption-light-found');
+  const note=lineAfter('adoption-light-skipped-note','adoption-light-patches'),details=lineAfter('adoption-light-skipped','adoption-light-skipped-note','details');
+  found.hidden=patches.hidden=!light;
+  note.hidden=details.hidden=!light||light.skipped_total===0;
+  if(!light)return;
+  found.textContent=`Stargate Worlds found in ${folderName(source)}.`;
+  patches.textContent=`Patches already applied: ${light.patches_current} of ${light.patches_total}. To apply: ${light.patches_pending} (${megabytes(light.download_bytes)} to download).`;
+  note.textContent=`Some patch changes can't be applied: ${light.skipped_total} files differ from the originals the patches expect. They stay as they are. You can still use this folder.`;
+  const summary=document.createElement('summary'),list=document.createElement('ul');
+  summary.textContent='Show the skipped files';
+  list.replaceChildren(...light.skipped.map(s=>{const item=document.createElement('li');item.textContent=`${s.path} — ${s.patch}`;return item;}));
+  details.replaceChildren(summary,list);
  };
  const choices:[string,Choice][]=[['adoption-normalize','normalize'],['adoption-closed','closed'],['adoption-telemetry','telemetry'],['adoption-replace','replace']];
  let current:AdoptionState={status:null,pending:false,uncertain:true,error:null,stale:false,maintenance:null,normalize:false,telemetry:false,closed:false,replace:false};
@@ -143,13 +166,13 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   const s=current.status,review=s?.review,r=s?.reconciliation,busy=mutating||current.pending,enabled=!busy&&!current.uncertain;
   const working=s?.activity==='preparing'||s?.activity==='copying';
   // The press itself is acknowledged before the workflow publishes anything.
-  get('adoption-status').textContent=adoptionText({...current,pending:busy});
+  get('adoption-status').textContent=checking?'Checking your game folder…':notice??adoptionText({...current,pending:busy});
   // The engine's refusal for the failure shown above it, when a worker recorded one.
   const rejection=lineAfter('adoption-rejection','adoption-status');
   rejection.textContent=!busy&&!current.error&&!review&&!working&&!r&&s?.last_error&&s.last_rejection?rejectionText(s.last_rejection):'';
   rejection.hidden=!rejection.textContent;
   const inPlace=s?.backend==='in_place';
-  button('confirm-adoption').textContent=inPlace?'Adopt this folder':'Create verified copy';
+  button('confirm-adoption').textContent=review?.light?'Use this folder':inPlace?'Adopt this folder':'Create verified copy';
   const idle=!!s&&s.activity==='idle'&&!r&&!s.owned&&(s.backend==='available'||inPlace)&&(s.native.operation.operation?['succeeded','failed','cancelled'].includes(s.native.operation.operation.state):true);
   button('choose-adoption-destination').disabled=!enabled||!idle;
   const pair=idle&&s?.modes.length===2,copy=box('adoption-mode-copy').checked;
@@ -197,6 +220,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
    const fallback=lineAfter('adoption-index-fallback','adoption-download');
    fallback.textContent=review.index_fallback?fallbackText(review.index_fallback):'';
    fallback.hidden=!review.index_fallback;
+   lightReview(review.light,review.source);
    get('adoption-seed-archive').hidden=!review.download?.seed;
    get('adoption-replace-text').textContent=lines.replace;
    get('adoption-replace-row').hidden=!review.requires_replacement;
@@ -218,7 +242,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
  };
  const run=(effect:Effect.Effect<unknown,unknown,Adoption>)=>{
   if(disposed||mutating)return mutation;
-  mutating=true;render();
+  notice=null;mutating=true;render();
   mutation=runtime.runPromise(Effect.result(effect)).then(()=>{}).finally(()=>{mutating=false;render();});
   return mutation;
  };
@@ -230,7 +254,13 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   const modes=current.status?.modes??[];
   // The first offered mode is the folder itself: light, or in place.
   chosen=modes.length===2?(box('adoption-mode-copy').checked?'copy':modes[0]):(modes[0]??'in_place');
-  void run(Effect.flatMap(Adoption,w=>w.choose));
+  // The reply of this press: a picker cancel is an idle status with no review and no error.
+  checking=true;const picked={status:null as AdoptionStatus|null};
+  void run(Effect.flatMap(Adoption,w=>w.choose).pipe(Effect.tap(s=>Effect.sync(()=>{picked.status=s;})))).then(()=>{
+   const s=picked.status;checking=false;
+   if(s&&s.activity==='idle'&&!s.review&&!s.last_error)notice='No folder chosen.';
+   render();
+  });
  });
  on('adoption-seed-archive',()=>{document.getElementById('seed-archive-panel')?.scrollIntoView?.();});
  on('cancel-adoption',()=>{void run(Effect.flatMap(Adoption,w=>w.cancel));});

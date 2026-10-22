@@ -67,7 +67,8 @@ export function rejectionText(r:Rejection):string {
   :r.check==='unsupported_configuration'&&r.found!==null&&r.found.startsWith('setup policy')?'The file index uses a setup policy this launcher does not support.'
   :Object.prototype.hasOwnProperty.call(checkTexts,r.check)?checkTexts[r.check]:`Check: ${r.check}.`;
  const parts=[sentence];
- if(r.entry!==null)parts.push(`File: ${r.entry}.`);
+ // "." names the picked folder itself, so there is no file to name.
+ if(r.entry!==null&&r.entry!=='.')parts.push(`File: ${r.entry}.`);
  if(r.expected!==null&&r.found!==null)parts.push(`Expected ${r.expected}, found ${r.found}.`);
  else if(r.expected!==null)parts.push(`Expected ${r.expected}.`);
  else if(r.found!==null)parts.push(`Found ${r.found}.`);

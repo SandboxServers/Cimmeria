@@ -74,7 +74,7 @@ test('preparation shows progress and cancel, and cannot be replaced by choosing 
   assert.match(ui.text(),/Choose where to create a separate verified copy/);assert.equal(ui.disabled('choose-adoption-destination'),false);
   assert.equal(ui.get('cancel-adoption').hidden,true);assert.equal(ui.get('adoption-progress').hidden,true);
   ui.press('choose-adoption-destination');
-  assert.equal(ui.text(),'Working on verified adoption…','the first press is acknowledged at once');assert.equal(ui.disabled('choose-adoption-destination'),true);
+  assert.equal(ui.text(),'Checking your game folder…','the first press is acknowledged at once');assert.equal(ui.disabled('choose-adoption-destination'),true);
   await ui.settle();
   assert.match(ui.text(),/Downloading the signed reference: 1.0 MB of 4.0 MB/);
   const progress=ui.get('adoption-progress') as HTMLProgressElement;
@@ -184,7 +184,7 @@ test('in place: the imported folder is offered, a file that does not verify is n
   assert.equal(ui.get('cancel-adoption').hidden,true,'admitted moves are never cancelled part-way');
   status=placed({...idle(7),native:native(7,adopt('succeeded')),owned:true,completed:{directory:'/old-game'}});
   await ui.click('inspect-adoption');
-  assert.match(ui.text(),/Adopted \/old-game in place.*uninstalling never removes them/);
+  assert.match(ui.text(),/Adopted \/old-game in place.*uninstalling never removes them.*This folder is now your Cimmeria install\. If the game will not start, use Repair \(it downloads the full game, 4\.1 GB\)\./);
   status=placed({...idle(8),native:native(8,adopt('reconciliation_required')),reconciliation:{kind:'copy',operation_id:'adopt-1',directory:'/old-game',can_recover:true,can_abandon:true}});
   await ui.click('inspect-adoption');
   assert.match(ui.text(),/in-place adoption of \/old-game was interrupted\. Recover to finish moving.*Abandon to put every release file back/);
@@ -349,7 +349,7 @@ test('the mode choice is one row per mode, shows the pick, and the button names 
  try{await both.app.ready;await both.settle();await one.app.ready;await one.settle();
   assert.equal(both.get('adoption-modes').hidden,false);assert.equal(one.get('adoption-modes').hidden,true);
   // The labels hold line breaks in the markup, so the match spans them.
-  assert.match(both.get('adoption-modes').textContent!,/Adopt it in place.*becomes the launcher’s installation[\s\S]*Make a verified copy[\s\S]*left as it is/);
+  assert.match(both.get('adoption-modes').textContent!,/Use it where it is \(recommended\)[\s\S]*Its game files move into a “game” folder[\s\S]*Make a verified copy[\s\S]*left as it is/);
   assert.match(both.get('adoption-mode-in-place-row').className,/\bselected\b/);assert.doesNotMatch(both.get('adoption-mode-copy-row').className,/\bselected\b/);
   assert.equal(both.get('choose-adoption-destination').textContent,'Choose the folder to adopt in place…');
   // linkedom does not uncheck the other radio, so both are set explicitly.
@@ -417,6 +417,63 @@ test('the list is gone once a review is shown',async()=>{
  const ui=mount(()=>({...reviewing(),last_error:'unsafe_file',unsafe_entries:{entries:[{reason:'link',path:'x'}],total:1}}));
  try{await ui.app.ready;await ui.settle();
   assert.equal(ui.get('adoption-unsafe').hidden,true);
+ }finally{await ui.app.dispose();}
+});
+const lightReview=(skipped_total=1):NonNullable<AdoptionStatus['review']>=>({...review(),source:'/games/SGW',in_place:true,source_kind:'folder',requires_replacement:false,requires_normalization:false,requires_telemetry_acceptance:false,blocked_files:[],
+ light:{patches_total:3,patches_current:1,patches_pending:2,download_bytes:1048576,skipped:[{path:'Working/Data/a.lua',patch:'first-patch',reason:'modified'}],skipped_total,index_state:'compared',index_counts:{},index_files:[],index_files_total:0}});
+test('the light review names the folder, its patch counts and the skipped changes, and Use this folder stays enabled',async()=>{
+ const ui=mount(request=>request==='choose'?{...reviewing('light-1'),backend:'in_place',modes:['light','copy'],review:lightReview()}:idle());
+ try{await ui.app.ready;await ui.settle();
+  await ui.click('choose-adoption-destination');
+  assert.equal(ui.get('adoption-light-found').textContent,'Stargate Worlds found in SGW.');assert.equal(ui.get('adoption-light-found').hidden,false);
+  assert.equal(ui.get('adoption-light-patches').textContent,'Patches already applied: 1 of 3. To apply: 2 (1.0 MB to download).');
+  assert.equal(ui.get('adoption-light-skipped-note').hidden,false);
+  assert.match(ui.get('adoption-light-skipped-note').textContent!,/Some patch changes can't be applied: 1 files differ from the originals the patches expect\. They stay as they are\. You can still use this folder\./);
+  assert.match(ui.get('adoption-light-skipped').textContent!,/Working\/Data\/a\.lua — first-patch/);
+  assert.equal(ui.get('confirm-adoption').textContent,'Use this folder');
+  await ui.tick('adoption-closed');assert.equal(ui.disabled('confirm-adoption'),false,'skipped changes never disable the confirm button');
+ }finally{await ui.app.dispose();}
+});
+test('a light review with no skipped changes hides the skipped note and list',async()=>{
+ const ui=mount(request=>request==='choose'?{...reviewing('light-2'),backend:'in_place',modes:['light','copy'],review:lightReview(0)}:idle());
+ try{await ui.app.ready;await ui.settle();
+  await ui.click('choose-adoption-destination');
+  assert.equal(ui.get('adoption-light-skipped-note').hidden,true);assert.equal(ui.get('adoption-light-skipped').hidden,true);
+  assert.equal(ui.get('adoption-light-found').hidden,false);
+ }finally{await ui.app.dispose();}
+});
+test('a copy review has no light lines and keeps Create verified copy',async()=>{
+ const ui=mount(request=>request==='choose'?{...reviewing('copy-1'),backend:'available',modes:['copy'],review:review('copy-1')}:idle());
+ try{await ui.app.ready;await ui.settle();
+  await ui.click('choose-adoption-destination');
+  assert.equal(ui.get('adoption-light-found').hidden,true);assert.equal(ui.get('adoption-light-patches').hidden,true);
+  assert.notEqual(ui.get('confirm-adoption').textContent,'Use this folder');
+ }finally{await ui.app.dispose();}
+});
+test('the first press says the folder is being checked before the preview resolves, and a cancelled picker says No folder chosen.',async()=>{
+ let finish:(s:AdoptionStatus)=>void=()=>{};
+ const ui=mount(request=>request==='choose'?new Promise<AdoptionStatus>(resolve=>{finish=resolve;}):idle());
+ try{await ui.app.ready;await ui.settle();
+  ui.press('choose-adoption-destination');
+  assert.equal(ui.text(),'Checking your game folder…');
+  finish({...reviewing('light-3'),backend:'in_place',modes:['light','copy'],review:lightReview()});
+  await ui.settle();
+  assert.notEqual(ui.text(),'Checking your game folder…');
+ }finally{await ui.app.dispose();}
+ const cancelled=mount(request=>request==='choose'?idle():idle());
+ try{await cancelled.app.ready;await cancelled.settle();
+  await cancelled.click('choose-adoption-destination');
+  assert.equal(cancelled.text(),'No folder chosen.');
+ }finally{await cancelled.app.dispose();}
+});
+test('several game folders on the choose path: the status and the refusal line name the install, and choose is enabled again',async()=>{
+ const ui=mount(request=>request==='choose'?{...idle(),backend:'in_place',modes:['light','copy'] as AdoptionStatus['modes'],last_error:'not_a_game_folder',last_rejection:{check:'several_game_folders',entry:'.',expected:'one game folder',found:'2',http_status:null}}:idle());
+ try{await ui.app.ready;await ui.settle();
+  await ui.click('choose-adoption-destination');
+  assert.match(ui.text(),/more than one Stargate Worlds install/);assert.doesNotMatch(ui.text(),/is not a Stargate Worlds game folder/);
+  assert.equal(ui.get('adoption-rejection').hidden,false);
+  assert.equal(ui.get('adoption-rejection').textContent,'This folder holds more than one Stargate Worlds install. Pick the one you want. Expected one game folder, found 2.');
+  assert.equal(ui.disabled('choose-adoption-destination'),false);
  }finally{await ui.app.dispose();}
 });
 test('no failure text points at a launcher log',async()=>{

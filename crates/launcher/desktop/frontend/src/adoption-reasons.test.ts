@@ -36,6 +36,12 @@ test('the file, expected and found parts follow the sentence when present',()=>{
  assert.equal(rejectionText({check:'download_http_status',entry:'seed',expected:null,found:null,http_status:500}),
   'The server refused the signed download. File: seed.');
 });
+test('the picked folder itself, entry ".", names no file; a file entry still does',()=>{
+ assert.equal(rejectionText({check:'several_game_folders',entry:'.',expected:'one game folder',found:'2',http_status:null}),
+  'This folder holds more than one Stargate Worlds install. Pick the one you want. Expected one game folder, found 2.');
+ assert.equal(rejectionText({check:'destination_exists',entry:'Working',expected:null,found:null,http_status:null}),
+  'The destination folder already exists. File: Working.');
+});
 test('a hash mismatch reads as the signed file did not match its download',()=>{
  assert.equal(rejectionText(bare('artifact_hash_mismatch')),'A signed file did not match its download.');
 });
