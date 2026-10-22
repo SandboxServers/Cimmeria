@@ -17,8 +17,11 @@ mod events;
 #[allow(dead_code)]
 mod ingest;
 mod launcher_logs;
+// LF-15 calls these from `Upload`; until then only their tests use them.
 #[allow(dead_code)]
 mod lines;
+#[allow(dead_code)]
+mod offsets;
 mod store;
 pub use store::{LogStore, StoredUpload};
 #[cfg(test)]
