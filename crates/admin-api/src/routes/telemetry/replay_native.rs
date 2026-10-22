@@ -42,7 +42,7 @@ use crate::routes::dev_session::TokenClaims;
 use super::client_symbols::symbol_name;
 use super::dto::ClientNativeEvent;
 use super::entity_labels::entity_id;
-use super::launcher_log_rows::take_log_body;
+use super::launcher_log_rows::{take_log_body, LAUNCHER_LOG_TARGETS};
 
 /// Targets whose `msg_id` is one the client sent; every other target's is
 /// one the client received.
@@ -282,6 +282,12 @@ pub(super) fn replay_client_native_stamped(
     let kind = claims.session_kind();
     let lab = claims.is_lab();
     let name = e.target.as_str();
+    // A launcher log target is replayed only from a log session; the chunk
+    // path refuses it elsewhere (C-LF4), so this is the second guard.
+    let log_session = claims.is_launcher() && claims.is_log_session();
+    if LAUNCHER_LOG_TARGETS.contains(&name) && !log_session {
+        return;
+    }
     // A drop of a method the client binds nowhere is classified, not
     // alarmed on. The marker rides in the bag: the game shape is already at
     // `tracing`'s 32-field cap.
@@ -292,7 +298,10 @@ pub(super) fn replay_client_native_stamped(
     }
     // A launcher log row's body is its message, which then is not repeated in
     // the attributes; every other row's body is its target name.
-    let body = take_log_body(name, &mut fields).unwrap_or_else(|| name.to_string());
+    let body = log_session
+        .then(|| take_log_body(name, &mut fields))
+        .flatten()
+        .unwrap_or_else(|| name.to_string());
     let fields_json = Value::Object(fields);
     let level = if known_unbound {
         "info"

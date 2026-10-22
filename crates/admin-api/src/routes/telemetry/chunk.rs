@@ -34,11 +34,13 @@ use axum::http::HeaderMap;
 use axum::Json;
 use flate2::bufread::GzDecoder;
 
+use crate::routes::dev_session::forwarded_for;
+
 use super::dto::{ChunkResponse, IngestError, TelemetryEvent};
 use super::entity_labels::{self, name_chunk, EntityLabels};
 use super::field_caps::cap_event;
 use super::launcher_budget::{admit_launcher_chunk, LauncherBudget};
-use super::launcher_log_budget::{admit_log_chunk, check_event_targets};
+use super::launcher_log_budget::{admit_log_chunk, check_event_targets, check_no_log_targets};
 use super::refusal_log::Truncation;
 use super::replay::replay_events_from_client;
 use super::session_budget::{
@@ -113,6 +115,7 @@ async fn chunk_flow(
         client_pid_header(&parts.headers)
     };
     let client_sent_ms = client_sent_ms_header(&parts.headers);
+    let rate_ip = forwarded_for::rate_limit_ip(who.peer, &parts.headers);
     // Taken before the body is read, so the body transfer stays out of the
     // clock sample.
     let recv = SystemTime::now();
@@ -150,7 +153,15 @@ async fn chunk_flow(
     let (admitted_rows, labels, totals) = if launcher {
         let admission = if log_session {
             let utc = chrono::Utc::now().timestamp().max(0) as u64;
-            admit_log_chunk(budget, &claims, &mut events, truncation.as_ref(), now, utc)?
+            admit_log_chunk(
+                budget,
+                &claims,
+                &mut events,
+                truncation.as_ref(),
+                rate_ip,
+                now,
+                utc,
+            )?
         } else {
             // The launcher rows only, charged to the launcher budget (AU-15).
             check_event_targets(&events)?;
@@ -169,6 +180,8 @@ async fn chunk_flow(
         // dropped silently), and only those are named. Then entity IDs are
         // named by asking the cell who held each slot when the row was written
         // (NT-40); the rest of a row's names need no round trip.
+        // A launcher log target is replayed only in a log session (C-LF4).
+        check_no_log_targets(&events)?;
         let now_secs = chrono::Utc::now().timestamp();
         let (admitted_rows, totals) = admit_budgeted(&claims, &events, now_secs);
         let labels = name_chunk(

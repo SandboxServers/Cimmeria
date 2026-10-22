@@ -279,6 +279,23 @@ fn credential_refusals_carry_the_signoz_only_event() {
             "upload_refused",
         ),
         (IngestError::TooLarge(2, 1), "upload_refused"),
+        (IngestError::PurposeTarget, "upload_auth_refused"),
+        (
+            IngestError::LogBudget {
+                reason: "log_session_budget",
+                global: false,
+                retry_after_secs: None,
+            },
+            "upload_refused",
+        ),
+        (
+            IngestError::LogBudget {
+                reason: "log_global_budget",
+                global: true,
+                retry_after_secs: Some(5),
+            },
+            "upload_refused",
+        ),
     ];
     for (err, want) in cases {
         let log = RefusalLog::new();

@@ -22,7 +22,7 @@ fn row(target: &str, fields: serde_json::Value) -> ClientNativeEvent {
 fn a_log_rows_body_is_its_message() {
     let rows = capture(|| {
         replay_client_native(
-            &claims(Some("launcher")),
+            &log_claims(),
             row(
                 "client.launcher.log",
                 json!({
@@ -50,7 +50,7 @@ fn a_log_rows_body_is_its_message() {
 fn a_game_log_rows_body_is_its_message() {
     let rows = capture(|| {
         replay_client_native(
-            &claims(Some("launcher")),
+            &log_claims(),
             row(
                 "client.launcher.game_log",
                 json!({ "message": "zone loaded", "upload_id": "0123456789abcdef" }),
@@ -74,4 +74,13 @@ fn an_event_rows_body_stays_its_target() {
     let r = rows.iter().find(|r| r.target == "client.native").unwrap();
     assert_eq!(r.fields["message"], "client.launcher.adoption");
     assert!(r.fields["fields"].contains("kept"));
+}
+
+/// A log session's claims: a launcher token with the logs purpose.
+fn log_claims() -> crate::routes::dev_session::TokenClaims {
+    crate::routes::dev_session::TokenClaims {
+        scope: vec!["telemetry.launcher.write".into()],
+        purpose: Some("logs".into()),
+        ..claims(Some("launcher"))
+    }
 }

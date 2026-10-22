@@ -112,6 +112,52 @@ fn a_1001_row_log_chunk_is_refused_with_413() {
     assert_eq!(err.into_response().status(), 413);
 }
 
+/// **A log chunk body over 64 KiB compressed is refused with 413.** The cap is
+/// the C-LF6 limit, not the event path's.
+#[test]
+fn a_log_chunk_body_over_64_kib_is_refused_with_413() {
+    let _env = Env::install();
+    let err = run(chunk_inner_with(
+        &state(),
+        &wide_policy(),
+        PEER,
+        log_chunk_request("sess-log-body", INSTALL, vec![0u8; 64 * 1024 + 1]),
+        Instant::now(),
+        &LauncherBudget::new(300, 3_000),
+    ))
+    .expect_err("over the body cap");
+    assert!(matches!(err, IngestError::TooLarge(..)), "{err:?}");
+    assert_eq!(err.into_response().status(), 413);
+}
+
+/// **A log chunk over 512 KiB expanded is refused with 413.** The rows compress
+/// far below 64 KiB, so only the decompressed cap binds.
+#[test]
+fn a_log_chunk_over_512_kib_expanded_is_refused_with_413() {
+    let _env = Env::install();
+    let message = "x".repeat(3_900);
+    let rows: Vec<String> = (0..150)
+        .map(|seq| log_row(seq, "client.launcher.log", &message))
+        .collect();
+    let err = post(
+        &state(),
+        &LauncherBudget::new(300, 3_000),
+        "sess-log-exp",
+        &rows,
+    )
+    .expect_err("over the decompressed cap");
+    assert!(
+        matches!(
+            err,
+            IngestError::OverBudget {
+                what: "decompressed bytes",
+                limit: 524_288
+            }
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.into_response().status(), 413);
+}
 /// **A log row over 4 KiB is dropped and counted**; the rows beside it stay.
 #[test]
 fn a_log_row_over_4_kib_is_dropped() {

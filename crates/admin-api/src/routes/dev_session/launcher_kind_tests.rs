@@ -436,6 +436,17 @@ fn kind_and_scope_must_agree() {
     assert!(claims_of(None, SCOPE_TELEMETRY_WRITE).kind_matches_scope());
 }
 
+/// A purpose is set only on a launcher token: a hand-signed logs purpose on a
+/// player token is refused (fail closed).
+#[test]
+fn a_purpose_on_a_non_launcher_kind_is_refused() {
+    let claims = TokenClaims {
+        purpose: Some("logs".into()),
+        ..claims_of(None, SCOPE_TELEMETRY_WRITE)
+    };
+    assert!(!claims.kind_matches_scope());
+}
+
 fn logs_request(install_id: &str) -> DevSessionRequest {
     DevSessionRequest {
         purpose: Some("logs".into()),

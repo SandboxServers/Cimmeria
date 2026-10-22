@@ -137,3 +137,26 @@ fn log_targets_match_the_canonical_file() {
         .collect();
     assert_eq!(targets, LAUNCHER_LOG_TARGETS);
 }
+
+#[test]
+fn a_flagged_path_takes_the_name_words_after_its_space() {
+    assert_eq!(
+        scrub_words(r"C:\Users\Jane Doe\AppData\x.log failed"),
+        "<removed> <removed> failed"
+    );
+    assert_eq!(scrub_words("[Say] Bob: hello"), "[Say] Bob: hello");
+}
+
+#[test]
+fn control_and_invisible_characters_do_not_reach_the_body() {
+    assert_eq!(
+        scrub_words("ok\u{1b}[0m\u{0}end\u{202e}x\u{200b}y"),
+        "ok [0m end x y"
+    );
+    assert_eq!(scrub_words("Привет 😀"), "Привет 😀");
+}
+
+#[test]
+fn an_address_next_to_punctuation_is_removed() {
+    assert_eq!(scrub_words("peer <1.2.3.4:5000> ok"), "peer <removed> ok");
+}

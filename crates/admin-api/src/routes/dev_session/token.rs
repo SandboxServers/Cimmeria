@@ -115,7 +115,9 @@ impl TokenClaims {
         if self.is_launcher() {
             self.scope.len() == 1 && self.scope[0] == SCOPE_LAUNCHER_WRITE
         } else {
-            !self.has_scope(SCOPE_LAUNCHER_WRITE)
+            // A purpose is set only on a launcher token, so one on any other
+            // kind is refused (fail closed).
+            self.purpose.is_none() && !self.has_scope(SCOPE_LAUNCHER_WRITE)
         }
     }
 }
