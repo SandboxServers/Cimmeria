@@ -15,16 +15,16 @@ use crate::hooks::entity_trace::map::Mem;
 
 /// How long a failed controller scan waits before it scans again.
 pub const PC_RESCAN_MS: u64 = 1000;
+/// The longest wait between scans: the wait doubles from [`PC_RESCAN_MS`] to this.
+pub const PC_RESCAN_MAX_MS: u64 = 5000;
 
-/// What one tick knows about the input: the clock, the controller's words, and
-/// whether the UI owns the mouse (when known).
+/// What one tick knows about the input: the clock and the controller's words.
+/// Whether the UI owns the mouse is read lazily, only for a button edge.
 pub struct NavFrame {
     /// Milliseconds since the first tick ([`now_ms`]).
     pub now_ms: u64,
     /// The controller's input words for this tick.
     pub ctrl: ControllerState,
-    /// Whether the UI owns the mouse; `None` when unknown; an approximation, see `ui::read_ui_owned`.
-    pub ui_owned: Option<bool>,
 }
 
 /// The cached controller pointer (`0` when none), and the earliest time the
@@ -35,6 +35,8 @@ pub struct PcCache {
     pub ptr: u32,
     /// The earliest `now_ms` at which a scan runs again.
     pub next_scan_ms: u64,
+    /// The current wait after a failed scan; doubles up to [`PC_RESCAN_MAX_MS`].
+    pub backoff_ms: u64,
 }
 
 /// The process's monotonic clock, in milliseconds since the first call.
@@ -63,12 +65,40 @@ pub fn controller_ptr(mem: &impl Mem, now_ms: u64, cache: &mut PcCache) -> Optio
     match find_player_controller(mem) {
         Some(pc) => {
             cache.ptr = pc;
+            cache.backoff_ms = 0;
             Some(pc)
         }
         None => {
             cache.ptr = 0;
-            cache.next_scan_ms = now_ms + PC_RESCAN_MS;
+            // Back off while there is no controller (loading, character
+            // select): the scan reads the whole Actors array.
+            cache.backoff_ms = (cache.backoff_ms * 2).clamp(PC_RESCAN_MS, PC_RESCAN_MAX_MS);
+            cache.next_scan_ms = now_ms + cache.backoff_ms;
             None
         }
+    }
+}
+
+/// Remembers the controller pointer seen on the last tick, so the per-session
+/// state (button tracker, mode/hover baselines, pose clock) can be re-baselined
+/// when the controller goes away or is replaced (zone change, character switch).
+#[derive(Debug, Default)]
+pub struct PcWatch {
+    last: u32,
+}
+
+impl PcWatch {
+    /// A watch that has seen no controller. `const`, so it can seed a `static`.
+    pub const fn new() -> Self {
+        Self { last: 0 }
+    }
+
+    /// Notes this tick's controller (`None` for none). True when it differs
+    /// from last tick's, which includes the controller going away.
+    pub fn changed(&mut self, pc: Option<u32>) -> bool {
+        let now = pc.unwrap_or(0);
+        let changed = now != self.last;
+        self.last = now;
+        changed
     }
 }

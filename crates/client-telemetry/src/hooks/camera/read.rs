@@ -120,12 +120,23 @@ pub fn find_player_controller(mem: &impl Mem) -> Option<u32> {
     if data == 0 || count == 0 {
         return None;
     }
+    // One read for the whole pointer array: this runs on the game thread, and
+    // two reads per slot over 8192 slots is far too slow to repeat.
+    if let Some(bytes) = mem.bytes_at(data, count as usize * 4) {
+        return bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| u32::from_le_bytes(*c))
+            .find(|&actor| has_vtable(mem, actor, PLAYER_CONTROLLER_VTABLE_VA));
+    }
+    // Part of the array is unreadable: walk it slot by slot, where a slot that
+    // cannot be read is skipped, the same as a null slot.
     for i in 0..count {
-        // A slot that cannot be read is skipped, the same as a null slot.
         let Some(actor) = mem.u32_at(data.wrapping_add(i * 4)) else {
             continue;
         };
-        if actor != 0 && mem.u32_at(actor) == Some(PLAYER_CONTROLLER_VTABLE_VA) {
+        if has_vtable(mem, actor, PLAYER_CONTROLLER_VTABLE_VA) {
             return Some(actor);
         }
     }

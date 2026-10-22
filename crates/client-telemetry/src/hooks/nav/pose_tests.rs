@@ -3,14 +3,16 @@
 use serde_json::json;
 
 use super::controller::InputAxes;
-use super::frame::{controller_ptr, PcCache, PC_RESCAN_MS};
+use super::frame::{controller_ptr, PcCache, PcWatch, PC_RESCAN_MAX_MS, PC_RESCAN_MS};
 use super::pose::{
-    angle_delta_deg, changed, pose_fields, PoseSampler, PoseSnapshot, POSE_PERIOD_MS,
+    angle_delta_deg, changed, pose_fields, PoseSampler, PoseSnapshot, POSE_PERIOD_MS, POS_EPS,
 };
 use crate::hooks::camera::layout::{
     GLEVEL_PTR_VA, LEVEL_ACTORS_OFF, PLAYER_CONTROLLER_VTABLE_VA, WORLD_LEVEL_OFF,
 };
+use crate::hooks::camera::read::find_player_controller;
 use crate::hooks::entity_trace::map::fake::FakeMem;
+use crate::hooks::entity_trace::map::Mem;
 
 /// Virtual addresses for the fake world: a `UWorld`, its level, the Actors array, and the controller.
 const WORLD: u32 = 0x2000_0000;
@@ -145,6 +147,140 @@ fn failed_scan_holds_off_the_rescan() {
     assert_eq!(controller_ptr(&mem, PC_RESCAN_MS - 1, &mut cache), None);
     assert_eq!(controller_ptr(&mem, PC_RESCAN_MS, &mut cache), Some(PC));
     assert_eq!(cache.ptr, PC);
+}
+
+/// Repeated failed scans wait longer each time, up to the cap, and a hit resets the wait.
+#[test]
+fn failed_scans_back_off_to_the_cap() {
+    let mut mem = FakeMem::default();
+    let mut cache = PcCache::default();
+    let mut now = 0;
+    let mut waits = Vec::new();
+    for _ in 0..5 {
+        assert_eq!(controller_ptr(&mem, now, &mut cache), None);
+        waits.push(cache.next_scan_ms - now);
+        now = cache.next_scan_ms;
+    }
+    assert_eq!(
+        waits,
+        vec![1000, 2000, 4000, PC_RESCAN_MAX_MS, PC_RESCAN_MAX_MS]
+    );
+    world_with_controller(&mut mem);
+    assert_eq!(controller_ptr(&mem, now, &mut cache), Some(PC));
+    assert_eq!(cache.backoff_ms, 0);
+}
+
+/// The watch reports the controller appearing, changing and going, and nothing in between.
+#[test]
+fn pc_watch_reports_only_changes() {
+    let mut w = PcWatch::new();
+    assert!(w.changed(Some(PC)));
+    assert!(!w.changed(Some(PC)));
+    assert!(w.changed(Some(PC + 0x100)));
+    assert!(w.changed(None));
+    assert!(!w.changed(None));
+}
+
+/// A memory that counts bulk reads, to prove the Actors array is read in one call.
+struct Counting {
+    inner: FakeMem,
+    bulk: std::cell::Cell<u32>,
+}
+
+impl Mem for Counting {
+    fn u32_at(&self, addr: u32) -> Option<u32> {
+        self.inner.u32_at(addr)
+    }
+
+    fn bytes_at(&self, addr: u32, len: usize) -> Option<Vec<u8>> {
+        self.bulk.set(self.bulk.get() + 1);
+        self.inner.bytes_at(addr, len)
+    }
+}
+
+/// A 1000-actor level costs one bulk read of the pointer array, and still finds the controller.
+#[test]
+fn the_scan_reads_the_actors_array_in_one_call() {
+    let mut inner = FakeMem::default();
+    inner.set(GLEVEL_PTR_VA, WORLD);
+    inner.set(WORLD + WORLD_LEVEL_OFF, LEVEL);
+    inner.set(LEVEL + LEVEL_ACTORS_OFF, ACTORS);
+    inner.set(LEVEL + LEVEL_ACTORS_OFF + 4, 1000);
+    for i in 0..999u32 {
+        let other = 0x3000_0000 + i * 0x10;
+        inner.set(ACTORS + 4 * i, other);
+        inner.set(other, 0x1234);
+    }
+    inner.set(ACTORS + 4 * 999, PC);
+    inner.set(PC, PLAYER_CONTROLLER_VTABLE_VA);
+    let mem = Counting {
+        inner,
+        bulk: std::cell::Cell::new(0),
+    };
+    assert_eq!(find_player_controller(&mem), Some(PC));
+    assert_eq!(mem.bulk.get(), 1);
+}
+
+/// Pawn movement is measured at [`POS_EPS`] and a pawn turn at a full degree.
+#[test]
+fn pawn_position_and_yaw_thresholds() {
+    let base = snap();
+    let mut moved = base;
+    moved.pawn = Some(([1.0 + POS_EPS * 0.9, 2.0, 3.0], 90.0));
+    assert!(!changed(&base, &moved));
+    moved.pawn = Some(([1.0 + POS_EPS * 1.1, 2.0, 3.0], 90.0));
+    assert!(changed(&base, &moved));
+    moved.pawn = Some(([1.0, 2.0, 3.0], 90.5));
+    assert!(!changed(&base, &moved));
+    moved.pawn = Some(([1.0, 2.0, 3.0], 92.0));
+    assert!(changed(&base, &moved));
+}
+
+/// The mode bits or the button bits alone are enough to emit a pose row.
+#[test]
+fn mode_or_buttons_alone_trigger_a_row() {
+    let base = snap();
+    let mut moved = base;
+    moved.mode = 1;
+    assert!(changed(&base, &moved));
+    let mut moved = base;
+    moved.buttons = 1;
+    assert!(changed(&base, &moved));
+}
+
+/// A check with no camera still spends the 250 ms period.
+#[test]
+fn skip_advances_the_clock() {
+    let mut s = PoseSampler::default();
+    s.skip(100);
+    assert!(!s.due(100 + POSE_PERIOD_MS - 1));
+    assert!(s.due(100 + POSE_PERIOD_MS));
+}
+
+/// Slow drift adds up against the last emitted snapshot, not against the last sample.
+#[test]
+fn drift_is_measured_from_the_last_emitted_snapshot() {
+    let mut s = PoseSampler::default();
+    assert!(s.offer(0, snap()));
+    let mut a = snap();
+    a.zoom += 0.6;
+    assert!(!s.offer(250, a));
+    let mut b = snap();
+    b.zoom += 1.2;
+    assert!(
+        s.offer(500, b),
+        "1.2 from the emitted pose, 0.6 from the last sample"
+    );
+}
+
+/// A reset sampler emits a fresh baseline row and is due at once.
+#[test]
+fn reset_forgets_the_baseline() {
+    let mut s = PoseSampler::default();
+    assert!(s.offer(0, snap()));
+    s.reset();
+    assert!(s.due(1));
+    assert!(s.offer(1, snap()));
 }
 
 /// A cached controller is reused while its vtable matches, and rescanned once it does not.

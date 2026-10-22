@@ -510,11 +510,7 @@ function BlackMarketMod.openSession()
     -- Each open is a fresh session, and the clock stops while the window is
     -- hidden (PreRender only runs while subscribed), so the delay is over.
     BlackMarketMod.searchSuspended = false
-    if BlackMarketMod.searchSuspended then
-        BlackMarketMod.setStatus( 'Press Search to list auctions.' )
-    else
-        BlackMarketMod.onSearchClicked()
-    end
+    BlackMarketMod.onSearchClicked()
 end
 
 function BlackMarketMod.resetAllViews()

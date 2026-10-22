@@ -12,9 +12,10 @@ use serde_json::json;
 
 use super::buttons;
 use super::controller::read_controller;
-use super::frame::{self, NavFrame, PcCache};
+use super::frame::{self, NavFrame, PcCache, PcWatch};
+use super::notices::{notice_row, Notices};
 use super::pose::{pose_fields, PoseSampler, PoseSnapshot};
-use super::{transitions, ui};
+use super::transitions;
 use crate::hooks::camera::emit::{camera_angles, pawn_fields};
 use crate::hooks::camera::read;
 use crate::hooks::entity_trace::map::{LiveMem, Mem};
@@ -29,7 +30,12 @@ static DISABLED: OnceLock<bool> = OnceLock::new();
 static PC: Mutex<PcCache> = Mutex::new(PcCache {
     ptr: 0,
     next_scan_ms: 0,
+    backoff_ms: 0,
 });
+/// The controller seen on the last tick, to catch a change.
+static WATCH: Mutex<PcWatch> = Mutex::new(PcWatch::new());
+/// The one-shot notices given so far.
+static NOTICES: Mutex<Notices> = Mutex::new(Notices::new());
 /// The cached `ASGWCamera_Player` pointer; [`read::camera_ptr`] rechecks its vtable on every use.
 static CAMERA: AtomicU32 = AtomicU32::new(0);
 /// The pose sampler's clock and last emitted snapshot.
@@ -67,20 +73,36 @@ pub(crate) fn on_tick() {
         let mut cache = lock(&PC);
         frame::controller_ptr(&mem, now, &mut cache)
     };
+    // A gone or replaced controller (zone change, character switch) must not
+    // leak its held buttons or mode/hover baselines into the next one: drop
+    // them, and the next tick re-baselines without emitting.
+    if lock(&WATCH).changed(pc) {
+        reset_state();
+    }
     let Some(pc) = pc else {
         return;
     };
-    let Some(ctrl) = read_controller(&mem, pc) else {
+    let ctrl = read_controller(&mem, pc);
+    // R7: a wrong offset must not look like an idle player.
+    let notice = lock(&NOTICES).on_read(pc, ctrl.is_some());
+    if let Some(n) = notice {
+        let (target, fields) = notice_row(&n);
+        crate::hooks::emit::emit(target, "info", fields);
+    }
+    let Some(ctrl) = ctrl else {
         return;
     };
-    let frame = NavFrame {
-        now_ms: now,
-        ctrl,
-        ui_owned: ui::read_ui_owned(&mem),
-    };
+    let frame = NavFrame { now_ms: now, ctrl };
     sample_pose(&mem, &frame);
-    buttons::step(&frame);
+    buttons::step(&mem, &frame);
     transitions::step(&frame);
+}
+
+/// Drops the per-controller state of every step.
+fn reset_state() {
+    lock(&SAMPLER).reset();
+    buttons::reset();
+    transitions::reset();
 }
 
 /// Checks the pose when it is due, and emits `client.nav.pose` when it moved.

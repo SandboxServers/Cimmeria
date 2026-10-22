@@ -2,7 +2,8 @@
 //!
 //! One row per change of the controller's mode word or hover id. A value that
 //! changes faster than the cap is held back and reported once the window
-//! opens again, with the count of changes that were not emitted.
+//! opens again, with the count of changes that were not emitted. The cap is per
+//! fixed 1 s window, so up to twice the cap can land across a window boundary.
 
 use std::sync::{Mutex, MutexGuard};
 
@@ -12,9 +13,9 @@ use super::controller::{MODE_AUTORUN, MODE_JUMP, MODE_MOUSELOOK, MODE_MOUSEWALK}
 use super::frame::NavFrame;
 use crate::hooks::entity_trace::Fields;
 
-/// At most this many `client.input.mode` rows a second.
+/// At most this many `client.input.mode` rows per [`WINDOW_MS`] window.
 pub const MODE_CAP_PER_SEC: u32 = 8;
-/// At most this many `client.input.hover` rows a second.
+/// At most this many `client.input.hover` rows per [`WINDOW_MS`] window.
 pub const HOVER_CAP_PER_SEC: u32 = 4;
 /// The length of the rate-limit window, in milliseconds.
 pub const WINDOW_MS: u64 = 1000;
@@ -31,7 +32,8 @@ pub struct Change<T> {
     pub suppressed: u32,
 }
 
-/// Reports changes of a value, at most `cap` a window of [`WINDOW_MS`].
+/// Reports changes of a value, at most `cap` per fixed window of [`WINDOW_MS`]
+/// (up to `2 * cap` inside any 1 s span that straddles a window boundary).
 #[derive(Debug)]
 pub struct RateLimitedDiff<T> {
     cap: u32,
@@ -56,6 +58,15 @@ impl<T: Copy + PartialEq> RateLimitedDiff<T> {
             emitted_in_window: 0,
             suppressed: 0,
         }
+    }
+
+    /// Forgets every baseline: the next value only sets the baseline again, and
+    /// the window and counters start over. For a new controller.
+    pub fn reset(&mut self) {
+        self.initialized = false;
+        self.window_start_ms = 0;
+        self.emitted_in_window = 0;
+        self.suppressed = 0;
     }
 
     /// Feeds `value` seen at `now_ms`. The first value only sets the baseline.
@@ -125,6 +136,12 @@ static HOVER: Mutex<RateLimitedDiff<i32>> = Mutex::new(RateLimitedDiff::new(HOVE
 /// Locks `m`, recovering a poisoned lock: a panic in another tick must not stop the poll.
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Drops the mode and hover baselines, for a new controller.
+pub(super) fn reset() {
+    lock(&MODE).reset();
+    lock(&HOVER).reset();
 }
 
 /// Runs once per tick: emits a mode row and a hover row when either changed and
@@ -205,6 +222,33 @@ mod tests {
         d.observe(0, 3);
         assert_eq!(d.observe(100, 3), None);
         assert_eq!(d.observe(5000, 3), None);
+    }
+
+    #[test]
+    fn reset_rebaselines_without_a_row() {
+        let mut d = RateLimitedDiff::new(4, 0);
+        d.observe(0, 0);
+        assert!(d.observe(10, 5).is_some());
+        // A new controller starts at another value: no spurious change row.
+        d.reset();
+        assert_eq!(d.observe(20, 9), None);
+        assert_eq!(d.observe(30, 9), None);
+        assert_eq!(d.observe(40, 1).map(|c| c.prev), Some(9));
+    }
+
+    /// Across a window boundary the fixed window lets through up to twice the cap.
+    #[test]
+    fn a_boundary_can_pass_twice_the_cap() {
+        let mut d = RateLimitedDiff::new(HOVER_CAP_PER_SEC, 0);
+        d.observe(0, 0);
+        let mut n = 0;
+        for i in 1..=4 {
+            n += d.observe(990 + i, i as i32).is_some() as u32;
+        }
+        for i in 5..=8 {
+            n += d.observe(1000 + i, i as i32).is_some() as u32;
+        }
+        assert_eq!(n, 2 * HOVER_CAP_PER_SEC);
     }
 
     #[test]

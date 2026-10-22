@@ -11,6 +11,8 @@ use serde_json::json;
 
 use super::controller::{ControllerState, BUTTON_LMB, BUTTON_RMB};
 use super::frame::NavFrame;
+use super::ui;
+use crate::hooks::entity_trace::map::Mem;
 use crate::hooks::entity_trace::Fields;
 
 /// RE § 6.2: the client treats a release as a click when |dx| < 5 and |dy| < 5.
@@ -85,6 +87,12 @@ impl ButtonTracker {
             down_at: [None; 2],
             chord: [false; 2],
         }
+    }
+
+    /// Forgets the previous tick, the press times and the chords, so a new
+    /// controller's first tick only records its starting state.
+    pub fn reset(&mut self) {
+        *self = Self::new();
     }
 
     /// The edges between the previous tick's buttons and `ctrl.buttons`. The
@@ -222,16 +230,32 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Drops the tracker state, for a new controller.
+pub(super) fn reset() {
+    lock(&TRACKER).reset();
+}
+
+/// The `client.input.button` rows for this tick's edges. `ui_owned` costs
+/// several memory reads, so it is read once per tick that has an edge, and not
+/// at all on the (usual) tick without one.
+fn rows(tracker: &mut ButtonTracker, mem: &impl Mem, frame: &NavFrame) -> Vec<Fields> {
+    let events = tracker.observe(frame.now_ms, &frame.ctrl);
+    if events.is_empty() {
+        return Vec::new();
+    }
+    let ui_owned = ui::read_ui_owned(mem);
+    events
+        .iter()
+        .map(|ev| button_fields(ev, ui_owned))
+        .collect()
+}
+
 /// Runs once per tick: emits one `client.input.button` row per edge. The lock
 /// is released before the rows are emitted.
-pub(super) fn step(frame: &NavFrame) {
-    let events = lock(&TRACKER).observe(frame.now_ms, &frame.ctrl);
-    for ev in &events {
-        crate::hooks::emit::emit(
-            "client.input.button",
-            "info",
-            button_fields(ev, frame.ui_owned),
-        );
+pub(super) fn step(mem: &impl Mem, frame: &NavFrame) {
+    let fields = rows(&mut lock(&TRACKER), mem, frame);
+    for f in fields {
+        crate::hooks::emit::emit("client.input.button", "info", f);
     }
 }
 
@@ -240,6 +264,7 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
+    use crate::hooks::entity_trace::map::fake::FakeMem;
 
     /// A controller with only the button word, drag and hover set.
     fn ctrl(buttons: u32, drag: [i32; 2], hover_id: i32) -> ControllerState {
@@ -323,6 +348,92 @@ mod tests {
         let up = t.observe(50, &ctrl(0, [0, 0], 0));
         assert_eq!(up.len(), 1);
         assert_eq!(up[0].hold_ms, None);
+    }
+
+    /// A memory that counts every word read, to prove what a tick touches.
+    struct Counting {
+        inner: FakeMem,
+        reads: std::cell::Cell<u32>,
+    }
+
+    impl Mem for Counting {
+        fn u32_at(&self, addr: u32) -> Option<u32> {
+            self.reads.set(self.reads.get() + 1);
+            self.inner.u32_at(addr)
+        }
+    }
+
+    fn frame(now_ms: u64, buttons: u32) -> NavFrame {
+        NavFrame {
+            now_ms,
+            ctrl: ctrl(buttons, [0, 0], 0),
+        }
+    }
+
+    #[test]
+    fn ui_owned_is_read_only_for_a_tick_with_an_edge() {
+        let mem = Counting {
+            inner: FakeMem::default(),
+            reads: std::cell::Cell::new(0),
+        };
+        let mut t = ButtonTracker::new();
+        assert!(rows(&mut t, &mem, &frame(0, 0)).is_empty());
+        assert!(rows(&mut t, &mem, &frame(10, 0)).is_empty());
+        assert_eq!(
+            mem.reads.get(),
+            0,
+            "a no-edge tick must not read the UI chain"
+        );
+        let emitted = rows(&mut t, &mem, &frame(20, BUTTON_LMB));
+        assert_eq!(emitted.len(), 1);
+        assert!(mem.reads.get() > 0, "an edge reads the UI chain");
+    }
+
+    #[test]
+    fn reset_drops_a_held_button_without_an_up_edge() {
+        let mut t = ButtonTracker::new();
+        t.observe(0, &ctrl(0, [0, 0], 0));
+        t.observe(10, &ctrl(BUTTON_LMB, [0, 0], 0));
+        // The controller is replaced while LMB is held.
+        t.reset();
+        assert!(t.observe(500, &ctrl(0, [0, 0], 0)).is_empty(), "no up edge");
+        // A later press carries no hold time from the old one.
+        t.observe(600, &ctrl(BUTTON_RMB, [0, 0], 0));
+        let up = t.observe(650, &ctrl(0, [0, 0], 0));
+        assert_eq!(up[0].hold_ms, Some(50));
+    }
+
+    #[test]
+    fn chord_released_first_button_first_is_still_a_chord() {
+        let mut t = ButtonTracker::new();
+        t.observe(0, &ctrl(0, [0, 0], 0));
+        t.observe(10, &ctrl(BUTTON_LMB, [0, 0], 0));
+        t.observe(20, &ctrl(BUTTON_LMB | BUTTON_RMB, [0, 0], 0));
+        // LMB, the first pressed, goes up first while RMB stays held.
+        let first = t.observe(30, &ctrl(BUTTON_RMB, [0, 0], 0));
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].button, Button::Lmb);
+        assert_eq!(first[0].class, Some(ClickClass::Chord));
+        // RMB comes up alone later but was part of the chord.
+        let second = t.observe(40, &ctrl(0, [0, 0], 0));
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].button, Button::Rmb);
+        assert_eq!(second[0].class, Some(ClickClass::Chord));
+        assert_eq!(second[0].hold_ms, Some(20));
+    }
+
+    #[test]
+    fn a_down_and_an_up_in_one_tick_both_report() {
+        let mut t = ButtonTracker::new();
+        t.observe(0, &ctrl(BUTTON_RMB, [0, 0], 0));
+        let evs = t.observe(10, &ctrl(BUTTON_LMB, [0, 0], 0));
+        assert_eq!(evs.len(), 2);
+        assert_eq!((evs[0].button, evs[0].edge), (Button::Lmb, Edge::Down));
+        assert_eq!((evs[1].button, evs[1].edge), (Button::Rmb, Edge::Up));
+        // A press that starts and ends between two ticks is invisible to a poll.
+        let mut t = ButtonTracker::new();
+        t.observe(0, &ctrl(0, [0, 0], 0));
+        assert!(t.observe(10, &ctrl(0, [0, 0], 0)).is_empty());
     }
 
     #[test]

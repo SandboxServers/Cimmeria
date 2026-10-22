@@ -80,6 +80,12 @@ impl PoseSampler {
         changed
     }
 
+    /// Forgets the clock and the last emitted snapshot, so the next check emits
+    /// a fresh baseline row. For a new controller (zone or character change).
+    pub fn reset(&mut self) {
+        *self = Self::new();
+    }
+
     /// Records a check at `now_ms` that found no camera, so the next check
     /// waits a full period.
     pub fn skip(&mut self, now_ms: u64) {

@@ -10,6 +10,7 @@ pub mod controller;
 #[cfg(test)]
 mod controller_tests;
 pub mod frame;
+pub mod notices;
 pub mod pose;
 // The LN-08 button edges, the LN-09 transitions and the LN-10 UI ownership
 // fill these in; LN-07 only sets up the frame they read.
