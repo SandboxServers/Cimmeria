@@ -16,13 +16,13 @@
 //! exactly, and the seed must carry nothing the overrides do not. No
 //! database: the seed files are read from disk.
 //!
-//! The definitions for 60100, 60101 and 60104 are served from
-//! `overrides_debug_hub.rs` (D-LN3, 2026-10-22). 60110 is still held in
-//! [`QUARANTINED_DIALOG_OVERRIDES`] until LN-20b; all four are checked here.
+//! All four are served (D-LN3, 2026-10-22): 60100, 60101 and 60104 from
+//! `overrides_debug_hub.rs`, 60110 from `overrides_bank.rs`. All four are
+//! checked here.
 
 use std::path::PathBuf;
 
-use super::{DialogOverride, DIALOG_OVERRIDES, QUARANTINED_DIALOG_OVERRIDES};
+use super::{DialogOverride, DIALOG_OVERRIDES};
 
 /// The Cimmeria-authored dialogs of the debug hub, and the Banker's.
 const HUB_DIALOGS: [u32; 4] = [60100, 60101, 60104, 60110];
@@ -39,7 +39,6 @@ fn read_seed(name: &str) -> String {
 fn hub_override(dialog_id: u32) -> &'static DialogOverride {
     DIALOG_OVERRIDES
         .iter()
-        .chain(QUARANTINED_DIALOG_OVERRIDES)
         .find(|ov| ov.dialog_id == dialog_id)
         .unwrap_or_else(|| {
             panic!("debug-hub dialog {dialog_id} must be defined in DIALOG_OVERRIDES")
