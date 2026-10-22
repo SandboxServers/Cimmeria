@@ -306,7 +306,7 @@ pub(crate) fn skip_hook(name: &str, disable: Option<&str>, enable: Option<&str>)
 
 /// Whether the environment disables the hook `name`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-fn hook_disabled(name: &str) -> bool {
+pub(crate) fn hook_disabled(name: &str) -> bool {
     skip_hook(
         name,
         std::env::var(DISABLE_ENV).ok().as_deref(),
