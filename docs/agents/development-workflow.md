@@ -51,7 +51,7 @@ The model column applies in Claude Code. Codex runs every agent on the session's
 |---|---|
 | Default persona: dispatching, deciding, keeping the ledger (Sonnet) | `orchestrator` |
 | Campaign design: ledger, packets, waves, `RESUME.md` (Opus) | `architect` |
-| One git, gh or host chore: worktrees, PRs, merge, retire, board posts, explicit-path commit, `--no-ff` merge, branch at a SHA, push, rebase onto a recorded SHA, fetch, CI run reads and `--failed` reruns, PR or issue comments from a file, restarting the :5433 test Postgres, starting an already-built game server from a worktree (on its `sgw_<name>` database) or the main checkout (on the play database `sgw`), one at a time, read-only colo and node2 checks (Haiku). It never builds, never stops a server and never uses the lab | `ops` |
+| One git, gh or host chore: worktrees, PRs, merge, retire, board posts, explicit-path commit, `--no-ff` merge, branch at a SHA, push, rebase onto a recorded SHA, fetch, CI run reads and `--failed` reruns, PR or issue comments from a file, issue create and label or body edits from a file (never close), restarting the :5433 test Postgres, starting an already-built game server from a worktree (on its `sgw_<name>` database) or the main checkout (on the play database `sgw`), one at a time, read-only colo and node2 checks (Haiku). It never builds, never stops a server and never uses the lab | `ops` |
 | Full-tool escape hatch for direct work (`claude --agent hands-on`) | `hands-on` |
 | Implementing server systems, wire handlers, persistence code | `rust-gameserver-dev` |
 | BigWorld conventions, cell/base split, Mercury, what the client assumes | `bigworld-engine-advisor` |

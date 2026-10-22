@@ -70,6 +70,12 @@ class OpsChoresTest(unittest.TestCase):
             "--body-file", ".claude/reports/", "never `-`", "first non-space character is `/`",
             "/release-launcher", "slash command body", "`-R`/`--repo`", "--edit-last",
         ),
+        "gh issue create --title": (
+            "--body-file <path>", ".claude/reports/", "never `-`", "slash command body",
+            "`gh issue edit <n>`", "`--add-label <label>`", "`--remove-label <label>`",
+            "`gh label create` is not allowed", "`--title` on an edit", "`--assignee`",
+            "`-R`/`--repo`", "never `gh issue close`", "`reopen`", "`delete`",
+        ),
         "pg_ctl.exe": (
             '-o "-p 5433"', "exit 2 (no response)", "starts nothing", "still not accepting",
             "do not start it again", "`pg_ctl stop`", "`initdb`", "win32 only",
