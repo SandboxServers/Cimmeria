@@ -51,7 +51,7 @@ mod tracker;
 #[cfg(test)]
 pub(in crate::storage) mod tests;
 
-pub use endpoint::SummaryEndpoint;
+pub use endpoint::{SummaryEndpoint, DEFAULT_SUMMARY_BASE};
 pub use export::start;
 pub use schema::{
     DroppedCounts, LauncherVersion, Millis, PhaseDuration, RetryCount, Summary, SummaryArch,
@@ -149,6 +149,12 @@ impl DesktopState {
 
     pub fn summary_faults(&self) -> SummaryFaults {
         lock(&self.summaries).faults
+    }
+
+    /// Whether setup diagnostics have an https endpoint to go to. The gate is
+    /// `NoEndpoint` exactly when no endpoint was configured.
+    pub fn summary_endpoint_configured(&self) -> bool {
+        !matches!(lock(&self.summaries).gate(), Gate::NoEndpoint)
     }
 
     /// Lazy and idempotent: turns a committed end into its queue entry. Runs at

@@ -127,10 +127,14 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
   on('telemetry', 'change', () => {
     if (checkbox.disabled) return;
     const consent = checkbox.checked; pendingConsent = consent;
+    // The done text says where the summaries go, from the endpoint the snapshot reports.
+    const done = !consent ? 'Diagnostics choice saved. Nothing is sent.'
+      : current.native?.setup_diagnostics_endpoint ? 'Diagnostics choice saved. Setup diagnostics are sent over https to your login server.'
+      : 'Diagnostics choice saved. Setup diagnostics are saved but not sent yet: this server has no secure (https) address for them.';
     run(Effect.flatMap(Launcher, launcher => Effect.gen(function* () {
       const state = yield* launcher.snapshot;
       return yield* launcher.savePreferences(state.native?.preferences.install_directory ?? null, consent);
-    })), 'Saving your diagnostics choice…', 'Diagnostics choice saved. This build sends nothing.');
+    })), 'Saving your diagnostics choice…', done);
   });
   on('choose', 'click', () => {
     if (get<HTMLButtonElement>('choose').disabled) return;
