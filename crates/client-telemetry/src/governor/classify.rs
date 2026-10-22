@@ -87,6 +87,10 @@ pub enum KeepReason {
     /// Mercury sequence join (PC-16b). The hook throttles them per method, and
     /// a camera row must stay joinable to its pose row.
     InteractionCamera,
+    /// `client.nav.*` and `client.input.*`: the pose and the input rows. The
+    /// poll rate-caps them at the source (4 Hz pose, 8 and 4 a second for the
+    /// mode and hover rows), so the governor keeps them whole.
+    NavInput,
 }
 
 impl KeepReason {
@@ -103,6 +107,7 @@ impl KeepReason {
             KeepReason::SelfReport => "self_report",
             KeepReason::AbilityTrace => "ability_trace",
             KeepReason::InteractionCamera => "interaction_camera",
+            KeepReason::NavInput => "nav_input",
         }
     }
 }
@@ -225,6 +230,9 @@ pub const RULES: &[Rule] = &[
     keep(Prefix("client.ability."), KeepReason::AbilityTrace),
     // The camera at interact and useItem (PC-16), and its send join (PC-16b).
     keep(Prefix("client.camera."), KeepReason::InteractionCamera),
+    // The nav pose and the controller input rows (LN-07, D-LN6).
+    keep(Prefix("client.nav."), KeepReason::NavInput),
+    keep(Prefix("client.input."), KeepReason::NavInput),
     // Per-entity streams: the first K per entity survive world entry.
     per_entity(Exact("client.cme.event"), "name"),
     per_entity(Exact("client.mercury.entity_method"), "msg_id"),

@@ -72,6 +72,9 @@ fn the_must_keep_targets_are_never_summarized() {
         ("client.ability.shown", KeepReason::AbilityTrace),
         ("client.camera.at_interact", KeepReason::InteractionCamera),
         ("client.camera.sent_seq", KeepReason::InteractionCamera),
+        ("client.nav.pose", KeepReason::NavInput),
+        ("client.input.mode", KeepReason::NavInput),
+        ("client.input.hover", KeepReason::NavInput),
     ];
     for (target, reason) in cases {
         assert_eq!(class_of(target), Class::MustKeep(*reason), "{target}");

@@ -9,3 +9,14 @@
 pub mod controller;
 #[cfg(test)]
 mod controller_tests;
+pub mod frame;
+pub mod pose;
+// The LN-08 button edges, the LN-09 transitions and the LN-10 UI ownership
+// fill these in; LN-07 only sets up the frame they read.
+mod buttons;
+mod transitions;
+mod ui;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+pub(crate) mod tick;
+#[cfg(test)]
+mod pose_tests;
