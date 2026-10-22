@@ -187,6 +187,14 @@ limits](telemetry.md#upload-size-and-rate-limits). The row carries `event`:
 - `upload_auth_refused` for `missing_token`, `bad_token` and `token_expired`;
 - `upload_refused` for every other reason.
 
+A launcher **log session** (`purpose = logs`) adds five reasons. `purpose_target`
+is a credential-class refusal, so it writes `upload_auth_refused` (SigNoz-only).
+`log_session_budget`, `log_install_budget`, `log_ip_budget` and
+`log_global_budget` write `upload_refused`, which still posts to Discord at
+WARN under the same throttle. Their statuses, `Retry-After` values and the
+env names that tune them are in [telemetry.md § Launcher log
+ingest](telemetry.md#launcher-log-ingest).
+
 ```text
 service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest'
   AND event = 'upload_refused'
@@ -250,6 +258,12 @@ The same list, in the same order, is
 the launcher engine and in `cimmeria-admin-api` pin both; change the three
 together. The server accepts the list; no shipped launcher sends most of
 them yet.
+
+A log session is the exception to this list. Its token (`purpose = logs`)
+may post only `client.launcher.log` and `client.launcher.game_log`
+(`LAUNCHER_LOG_TARGETS` in `launcher_log_rows.rs`, mirrored by
+`launcher_log_targets.txt`), and an event session may post neither. See
+[telemetry.md § Launcher log ingest](telemetry.md#launcher-log-ingest).
 
 ## Colo deploy checks
 
