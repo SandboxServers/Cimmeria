@@ -81,6 +81,7 @@ mod tests;
 mod verification_tests;
 use super::*;
 use crate::{catalog::VerifiedRelease, OperationKind, OperationState};
+pub use index_compare::IndexState;
 pub use model::*;
 pub use publication::{abandon, inspect, interrupted, recover, Interrupted};
 use sha2::{Digest, Sha256};

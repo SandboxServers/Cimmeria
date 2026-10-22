@@ -128,12 +128,41 @@ pub fn resolve_folder(selected: &Path) -> Result<PathBuf, Error> {
             return Ok(root.to_path_buf());
         }
     }
+    // The pick is a folder of game folders: one inside it is the game, two or more are ambiguous.
+    let roots = child_roots(&selected);
+    if let [only] = roots.as_slice() {
+        return Ok(only.clone());
+    }
+    if roots.len() > 1 {
+        tracing::warn!(target: "adoption", "adoption refused: the folder holds several game folders");
+        let check = rejection::Rejection::new("several_game_folders")
+            .entry(".")
+            .expected("one game folder")
+            .found(roots.len().to_string());
+        return Err(rejection::reject(Error::NotAGameFolder, check));
+    }
     tracing::warn!(target: "adoption", "adoption refused: the folder is not a game folder");
     let check = rejection::Rejection::new("not_a_game_folder")
         .entry(".")
         .expected("SGW.exe and the game folders")
         .found("no game layout");
     Err(rejection::reject(Error::NotAGameFolder, check))
+}
+
+/// The direct child folders of `dir` that are client roots (`Working\Binaries\SGW.exe`),
+/// skipping links and junctions.
+fn child_roots(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir() && !is_link(&meta))
+        })
+        .filter(|path| working_binaries(path).is_some())
+        .collect()
 }
 
 /// Whether the last component of `path` is `name`, case-blind.

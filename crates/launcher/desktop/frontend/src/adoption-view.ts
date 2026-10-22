@@ -120,7 +120,7 @@ function reviewLines(r:Review,summaryConsent:boolean) {
 }
 export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=()=>{}) {
  // The mode the next choose press sends: the native picker is opened for it.
- let chosen:'in_place'|'copy'='in_place';
+ let chosen:'light'|'in_place'|'copy'='in_place';
  const runtime=ManagedRuntime.make(Layer.effect(Adoption,makeAdoptionWorkflow).pipe(Layer.provide(adoptionBridgeLayer(request=>request==='choose'?invoke('choose_existing_game_folder',{mode:chosen}):invoke('adoption_command',{request})))));
  const get=(id:string)=>document.getElementById(id)!;
  const button=(id:string)=>get(id) as HTMLButtonElement;
@@ -227,7 +227,8 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
  on('inspect-adoption',()=>{void refresh();});
  on('choose-adoption-destination',()=>{
   const modes=current.status?.modes??[];
-  chosen=modes.length===2?(box('adoption-mode-copy').checked?'copy':'in_place'):(modes[0]??'in_place');
+  // The first offered mode is the folder itself: light, or in place.
+  chosen=modes.length===2?(box('adoption-mode-copy').checked?'copy':modes[0]):(modes[0]??'in_place');
   void run(Effect.flatMap(Adoption,w=>w.choose));
  });
  on('adoption-seed-archive',()=>{document.getElementById('seed-archive-panel')?.scrollIntoView?.();});

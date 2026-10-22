@@ -18,7 +18,7 @@ const Unsafe=Schema.Struct({entries:Schema.Array(Schema.Struct({reason:Schema.Li
 export const AdoptionStatus=Schema.Struct({schema_version:Schema.Literal(1),native:NativeSnapshot,
  backend:Schema.Literals(['available','in_place','unsupported_platform','helper_unavailable']),
  imported:Schema.NullOr(Schema.Struct({launcher_directory:Schema.String,game_directory:Schema.String,blocker:Schema.NullOr(Code)})),
- modes:Schema.Array(Schema.Literals(['in_place','copy'])),
+ modes:Schema.Array(Schema.Literals(['light','in_place','copy'])),
  activity:Schema.Literals(['idle','preparing','review','copying']),review:Schema.NullOr(Review),
  progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction','copy']),current:Count,total:Count,item:Schema.optionalKey(Schema.Literals(['seed','patch','file_index','index_build','reference']))})),cancellable:Schema.Boolean,
  reconciliation:Schema.NullOr(Schema.Union([Schema.Struct({kind:Schema.Literal('preparation'),preparation_id:Schema.String}),

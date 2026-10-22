@@ -92,6 +92,27 @@ fn flat_folder_in_copy_mode_is_not_a_game_folder() {
 }
 
 #[test]
+fn the_one_game_folder_inside_a_pick_is_picked() {
+    let dir = tempfile::tempdir().unwrap();
+    layout(&dir.path().join("Stargate"));
+    std::fs::create_dir(dir.path().join("Downloads")).unwrap();
+    let root = dir.path().join("Stargate").canonicalize().unwrap();
+    assert_eq!(resolve_folder(dir.path()).unwrap(), root);
+}
+
+#[test]
+fn two_game_folders_inside_a_pick_are_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    layout(&dir.path().join("Live"));
+    layout(&dir.path().join("Test"));
+    let (result, record) = rejection::scope(|| resolve_folder(dir.path()));
+    assert!(matches!(result, Err(Error::NotAGameFolder)));
+    let record = record.expect("a recorded rejection");
+    assert_eq!(record.check, "several_game_folders");
+    assert_eq!(record.found.as_deref(), Some("2"));
+}
+
+#[test]
 fn saved_import_naming_the_folder_is_legacy_another_is_folder() {
     let f = Fixture::new(None);
     let named = SourceRequest::Folder {
