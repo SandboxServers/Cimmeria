@@ -264,6 +264,7 @@ pub(super) fn clear_abandoned(plan: &Plan, files: &[&str]) -> Result<(), Error> 
             tracing::warn!(target: "adoption", ?error, "abandoned in-place adoption: could not remove the staged replacements")
         }
     }
+    super::in_place_check::remove_expected(&stage);
     remove_empty_dir(&originals);
     remove_empty_dir(&stage);
     Ok(())

@@ -34,6 +34,12 @@ pub(super) fn write_expected(stage: &Path, tree: &Tree) -> Result<(), Error> {
     write_large(stage, EXPECTED_TREE, &stored)
 }
 
+/// Removes `<stage>/expected-tree.json` when an abandoned adoption clears its stage.
+/// A missing file is not an error: an admission may have failed before it was written.
+pub(super) fn remove_expected(stage: &Path) {
+    let _ = std::fs::remove_file(stage.join(EXPECTED_TREE));
+}
+
 /// The stored tree, or `None` when the file is absent, unreadable or not what
 /// `write_expected` writes: an adoption an earlier build began has none, and the
 /// check then has nothing to compare (it reports `unrecorded`).

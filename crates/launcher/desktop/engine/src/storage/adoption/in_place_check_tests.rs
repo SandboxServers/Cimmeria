@@ -6,6 +6,7 @@ use super::in_place_tests::{commit, commit_with, Fixture};
 use super::light_replay::tests::{big, patch_zip, OpFixture, OVERLAY};
 use super::light_tests::Light;
 use super::publication::{name, plan_name, read_large};
+use super::verification::Tree;
 use super::*;
 use crate::test_capture::{capture, Captured};
 
@@ -244,4 +245,47 @@ fn a_verified_adoption_still_fails_on_a_digest_miss() {
     };
     assert_eq!(event.field("check"), Some("verified"));
     assert_eq!(event.field("outcome"), Some("mismatch"));
+}
+
+/// N1. Abandoning a light adoption that stopped before its first move clears the stage,
+/// its stored tree included, so no `.cimmeria-adopt-` folder is left in the player's folder.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn abandoning_a_staged_light_adoption_leaves_no_stage() {
+    let lt = Light::new(overlay_patch(), &[(OVERLAY, &big("stock overlay"))]).await;
+    assert!(commit_with(
+        lt.preview().unwrap(),
+        stop_at(publication::Point::BeforePromotion)
+    )
+    .is_err());
+    let stages = |folder: &Path| -> Vec<String> {
+        std::fs::read_dir(folder)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".cimmeria-adopt-"))
+            .collect()
+    };
+    assert_eq!(stages(&lt.folder).len(), 1, "the admission left its stage");
+    let (id, revision) = {
+        let state = lt.state.lock().unwrap();
+        let snapshot = state.operations().snapshot();
+        (snapshot.operation.clone().unwrap().id, snapshot.revision)
+    };
+    abandon(&mut lt.state.lock().unwrap(), id, revision).unwrap();
+    assert!(stages(&lt.folder).is_empty(), "{:?}", stages(&lt.folder));
+}
+
+/// N2. A light work folder that holds only the stored tree is one an admission never
+/// began: the next preview clears it instead of refusing the folder.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_stored_tree_alone_in_a_work_folder_is_cleared() {
+    let lt = Light::new(overlay_patch(), &[(OVERLAY, &big("stock overlay"))]).await;
+    let stage = lt
+        .folder
+        .join(format!(".cimmeria-adopt-{}", Uuid::new_v4()));
+    let tree: Tree = [("Working/SGWGame/Overlay.dat".to_string(), (1, [0; 32]))]
+        .into_iter()
+        .collect();
+    write_expected(&stage, &tree).unwrap();
+    lt.preview().unwrap();
+    assert!(!stage.exists());
 }

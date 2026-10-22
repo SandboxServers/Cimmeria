@@ -325,13 +325,15 @@ fn work_folders(folder: &Path) -> Result<Vec<(Uuid, PathBuf)>, Error> {
 }
 
 /// Whether a work folder holds only what admission copies in: `replacements` (any
-/// content) and optionally an empty `originals`, and nothing else at its top level.
-/// Anything else is not the launcher's to delete, so the folder is kept.
+/// content), the stored `expected-tree.json` of a light admission, and optionally an
+/// empty `originals`, and nothing else at its top level. Anything else is not the
+/// launcher's to delete, so the folder is kept.
 fn only_copies(stage: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(stage) else {
         return false;
     };
     let mut replacements = false;
+    let mut stored = false;
     for entry in entries {
         let Ok(entry) = entry else {
             return false;
@@ -340,6 +342,11 @@ fn only_copies(stage: &Path) -> bool {
         let plain_dir = std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.is_dir());
         match entry.file_name().to_str() {
             Some("replacements") if plain_dir => replacements = true,
+            Some(super::in_place_check::EXPECTED_TREE)
+                if std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.is_file()) =>
+            {
+                stored = true
+            }
             Some("originals") if plain_dir => {
                 if std::fs::read_dir(&path).is_ok_and(|mut d| d.next().is_some()) {
                     return false;
@@ -348,7 +355,7 @@ fn only_copies(stage: &Path) -> bool {
             _ => return false,
         }
     }
-    replacements
+    replacements || stored
 }
 
 /// Whether an admission for `id` never began. Moves follow `begin`, so such a
