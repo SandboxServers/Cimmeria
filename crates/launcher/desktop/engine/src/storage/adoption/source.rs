@@ -76,8 +76,8 @@ pub(super) fn request_source_with(
         let scanned = survey::explained(&root, scan(&root))?;
         return Ok((AdoptionSource::Legacy(imported), scanned));
     }
-    // A copy only reads the folder, so it needs no write access to it.
-    if mode == AdoptionMode::InPlace {
+    // A copy only reads the folder; in place and light move files in it, so they need links refused and write access.
+    if matches!(mode, AdoptionMode::InPlace | AdoptionMode::Light) {
         survey::explained(&root, refuse_links(&root))?;
         check_writable(&root)?;
     }

@@ -155,6 +155,37 @@ fn denied_write_is_folder_not_writable() {
     assert!(record.found.is_some(), "the I/O kind is named");
 }
 
+/// Light moves files inside the picked folder like in place does, so a folder it
+/// cannot write to is refused up front; a copy only reads and still goes through.
+#[cfg(windows)]
+#[test]
+fn light_refuses_an_unwritable_folder_and_copy_does_not() {
+    let f = Fixture::new(None);
+    let dir = tempfile::tempdir().unwrap();
+    layout(dir.path());
+    let binaries = dir.path().join("Working").join("Binaries");
+    let user = std::env::var("USERNAME").unwrap();
+    let status = std::process::Command::new("icacls")
+        .arg(&binaries)
+        .arg("/deny")
+        .arg(format!("{user}:(WD)"))
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let _restore = RestoreWrite {
+        user,
+        folder: binaries,
+    };
+    let request = SourceRequest::Folder {
+        selected: dir.path().to_path_buf(),
+    };
+    let light = request_source(&f.state, &request, AdoptionMode::Light);
+    assert!(
+        matches!(light, Err(Error::FolderNotWritable)),
+        "expected FolderNotWritable for Light"
+    );
+    assert!(request_source(&f.state, &request, AdoptionMode::Copy).is_ok());
+}
 #[test]
 fn import_blocker_is_silent_and_refuse_blocker_records_the_refusal() {
     let f = Fixture::new(None);

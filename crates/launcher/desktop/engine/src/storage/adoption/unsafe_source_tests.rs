@@ -50,7 +50,11 @@ fn a_junctioned_working_folder_is_named() {
     if !junction(&other.path().join("Working"), target.path()) {
         return;
     }
-    for mode in [AdoptionMode::InPlace, AdoptionMode::Copy] {
+    for mode in [
+        AdoptionMode::InPlace,
+        AdoptionMode::Light,
+        AdoptionMode::Copy,
+    ] {
         let request = SourceRequest::Folder {
             selected: other.path().to_path_buf(),
         };
