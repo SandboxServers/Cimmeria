@@ -10,3 +10,4 @@ F8 (BM items only on first open) is OUR overlay Lua bug, not the 2009 binary.
 
 **Why:** any overlay Lua that needs elapsed time must accumulate the delta in a PreRender handler; there is no wall-clock binding in the stock UI.
 **How to apply:** recommended fix is D-LN2 option (b) (Lua clock plus a stub fix). A server push of `onBMAuctions` with clientKey 0 after `onBMOpen` works as a stopgap: the DLL is stateless and `CimmeriaBM.onAuctions` accepts unsolicited replies. Report: `.claude/reports/lab-nav-telemetry/LN-12-re.md`. Not live-verified (LN-13).
+Fixed in the overlay by LN-12b (2026-10-22); live check owed after the owner publishes.
