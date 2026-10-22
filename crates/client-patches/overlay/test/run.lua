@@ -76,10 +76,15 @@ local function logged( env, needle )
     return false
 end
 
--- Let time pass and run one frame.
+-- Let time pass in 0.25 s frames, as the real frame delta would.
 local function tick( env, seconds )
-    env.clock = env.clock + seconds
-    env.BlackMarketWin:fire('Events.PreRender')
+    local left = seconds
+    while left > 0 do
+        local dt = math.min(0.25, left)
+        env.frameDelta = dt
+        env.BlackMarketWin:fire('Events.PreRender')
+        left = left - dt
+    end
 end
 
 -- Open the window as the DLL would, and answer the opening search.
@@ -551,7 +556,7 @@ scenario('handlers are pcall-guarded and log [Cimmeria BM]', function()
     ok(logged(env, 'onAuctionUpdate: malformed item'), 'malformed update logged')
 end)
 
-scenario('reopening while open refreshes; reopening during the search delay says so', function()
+scenario('reopening while open refreshes; reopening after a close searches again', function()
     local env = newClient()
     openWithResults(env, items(1, 2), 2)
     tick(env, 5)
@@ -560,9 +565,32 @@ scenario('reopening while open refreshes; reopening during the search delay says
     eq(callCount(env), before + 1, 'a second open searches again')
     env.CimmeriaBM.onAuctions(items(1, 1), 1, 0)
     env.BlackMarketWin:hide()
+    local before2 = callCount(env)
     env.CimmeriaBM.onOpen(4242)
-    eq(status(env), 'Press Search to list auctions.', 'open inside the delay')
+    eq(callCount(env), before2 + 1, 'a reopen after a close searches again')
+    eq(lastCall(env).op, 'search', 'the reopen sends search')
     eq(env.BlackMarketMod.getAuctionVisibleCount(0), 0, 'store starts clean')
+end)
+
+scenario('F8: open, reply, close, reopen sends a second search', function()
+    local env = newClient()
+    openWithResults(env, items(1, 2), 2)
+    tick(env, 1)
+    env.BlackMarketWin:hide()
+    local before = callCount(env)
+    env.CimmeriaBM.onOpen(4242)
+    eq(callCount(env), before + 1, 'the reopen sends one search')
+    eq(lastCall(env).op, 'search', 'the reopen sends search')
+end)
+
+scenario('Search re-enables after 4 s of frame deltas, not after one long frame', function()
+    local env = newClient()
+    openWithResults(env, items(1, 2), 2)
+    env.frameDelta = 5
+    env.BlackMarketWin:fire('Events.PreRender')
+    eq(env.BlackMarket_SearchButton.enabled, false, 'a 5 s hitch is not counted')
+    tick(env, 4)
+    eq(env.BlackMarket_SearchButton.enabled, true, 'Search after 4 s of frames')
 end)
 
 -- A player's click: CEGUI fires EventClicked only on an enabled button.

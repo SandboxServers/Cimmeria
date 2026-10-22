@@ -122,12 +122,11 @@ end
 -- so this counts characters: 85 fits even at three bytes each.
 BlackMarketMod.MAX_NAME_CHARS = 85
 
+-- worldGetDeltaSeconds() is the frame delta, not a clock (LN-12; every stock
+-- caller uses it as a delta). onPreRender accumulates it here.
+BlackMarketMod.clock = 0
 function BlackMarketMod.now()
-    local ok, t = pcall(worldGetDeltaSeconds)
-    if ok and type(t) == 'number' then
-        return t
-    end
-    return 0
+    return BlackMarketMod.clock
 end
 
 --=============================================================================
@@ -508,6 +507,9 @@ function BlackMarketMod.openSession()
         BlackMarketMod.setStatus( BlackMarketMod.PATCH_MISSING_TEXT, true )
         return
     end
+    -- Each open is a fresh session, and the clock stops while the window is
+    -- hidden (PreRender only runs while subscribed), so the delay is over.
+    BlackMarketMod.searchSuspended = false
     if BlackMarketMod.searchSuspended then
         BlackMarketMod.setStatus( 'Press Search to list auctions.' )
     else
@@ -981,6 +983,11 @@ function BlackMarketMod.ensurePreRender()
 end
 
 function BlackMarketMod.onPreRender( window, view )
+    -- A frame of 1 s or more (a hitch or a load) is not counted.
+    local ok, dt = pcall(worldGetDeltaSeconds)
+    if ok and type(dt) == 'number' and dt > 0 and dt < 1 then
+        BlackMarketMod.clock = BlackMarketMod.clock + dt
+    end
     local now = BlackMarketMod.now()
 
     -- If enough time has passed, enabled the search buttons again

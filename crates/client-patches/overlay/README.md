@@ -45,6 +45,8 @@ The defect ids are the U-list in
 [black-market-client-io.md](../../../docs/reverse-engineering/findings/black-market-client-io.md) §5.
 The plan is [docs/analysis/black-market/README.md](../../../docs/analysis/black-market/README.md) §3.3.
 
+- Clock (LN-12): `worldGetDeltaSeconds()` returns the frame delta, not a clock. `onPreRender` adds each frame delta under 1 s to `BlackMarketMod.clock`, and `now()` reads that. Each open clears the search delay, so a reopen searches again (U13).
+
 | Area | Change |
 |---|---|
 | Receive | A global `CimmeriaBM` table with plain function fields that the DLL calls without `self`: `onOpen(entityId)`, `onError(errorId)`, `onAuctions(items, totalResults, clientKey)`, `onAuctionRemove(sequenceId)`, `onAuctionUpdate(item)` and `onWatchedItems(itemList)`. `onOpen` opens the window through `BlackMarketMod.onBMOpen()`, the same path as `Events.BMOpen`, which stays subscribed. |
@@ -95,7 +97,7 @@ flows: open, search, results, scrolling, paging both ways, row selection,
 bid, buyout, bid-only listings (the Bid and Buyout columns in every view, and Buyout's first-press line), errors, create, cancel, the My Bids and Watched tabs, a missing
 DLL, refused and throwing sends, reply timeouts, guarded handlers, and
 reopening. It also checks that every `BMError` id in `error.rs` has text, and that the duration labels in the layout are wide enough for their text, do not overlap, and sit over their bars.
-Run against the stock files, every scenario fails.
+Run against the stock files, every scenario fails. The stub's `worldGetDeltaSeconds` returns `env.frameDelta`, and `tick` advances time in 0.25 s frames.
 
 `test/access.lua` is the Access-bar suite, which `run.lua` loads. It loads the
 overlay `Access.lua` against stub windows and modules and clicks every

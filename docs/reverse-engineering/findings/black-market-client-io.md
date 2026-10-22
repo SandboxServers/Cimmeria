@@ -178,6 +178,7 @@ The result is a pointer whose reference count is the dword at `+0x04`. The calle
 | U10 | The row timer image switches on `techCompentancy` instead of `timeLeft` | Lua 438–445 |
 | U11 | `populateRow` calls `rowWin:hide()` when `rowWin` is nil, which raises an error for any view whose rows are missing | Lua 476–478 |
 | U12 | Create gives no acknowledgement: the form is not cleared and the My Auctions view is not refreshed | Lua 144–158 |
+| U13 | The overlay clock reads `worldGetDeltaSeconds()`, which is the per-frame delta, not elapsed time. The 4 s search delay never ends, so a reopen sends no `BMSearch`, Search/Next/Prev stay disabled, and the 15 s pending timeout never fires. Fixed in the overlay (LN-12b); static evidence (LN-12); live check owed after the owner publishes | Lua `now()` 125–131, `openSession` 495–515, `onPreRender` 983 |
 
 The Lua expects the store to fire `Events.BMViewUpdate(viewType)` after data arrives. That event would have come from the unwritten C++ subscriber, so a patch can call `BlackMarketMod.onBMViewUpdate(nil, view)` directly instead.
 
