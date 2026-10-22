@@ -174,6 +174,46 @@ mod tests {
     }
 
     #[test]
+    fn saving_preferences_reports_the_consent_change_only_when_it_changes() {
+        let _serial = serial();
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = DesktopState::open(dir.path()).unwrap();
+        let save = |expected_revision, consent| NativeCommand::SavePreferences {
+            schema_version: 1,
+            expected_revision,
+            install_directory: None,
+            launcher_summary_consent: consent,
+        };
+        let named = |events: &[crate::test_capture::Captured], name: &str| {
+            events
+                .iter()
+                .filter(|e| e.field("event") == Some(name))
+                .count()
+        };
+        let (stale, events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache();
+            state.dispatch(save(7, true))
+        });
+        assert!(matches!(stale, Err(StorageError::StaleRevision)));
+        assert!(events.iter().all(|e| e.target != "launcher.settings"));
+        let (first, events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache();
+            state.dispatch(save(0, true))
+        });
+        assert!(first.is_ok());
+        assert_eq!(named(&events, "preferences_saved"), 1);
+        assert_eq!(named(&events, "setup_diagnostics_changed"), 1);
+        let (second, events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache();
+            state.dispatch(save(1, true))
+        });
+        assert!(second.is_ok());
+        assert_eq!(named(&events, "preferences_saved"), 1);
+        assert_eq!(named(&events, "setup_diagnostics_changed"), 0);
+    }
+
+    #[test]
     fn command_version_is_checked_before_saving() {
         let dir = tempfile::tempdir().unwrap();
         let mut state = DesktopState::open(dir.path()).unwrap();
