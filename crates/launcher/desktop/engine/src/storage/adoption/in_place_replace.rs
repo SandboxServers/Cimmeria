@@ -12,6 +12,11 @@ use std::collections::BTreeSet;
 /// `(stock, placed)` directories in the folder's spelling. `None` unless the plan is
 /// light and one of its rows renames a stock-spelled file to its placed path.
 pub(super) fn cooked_tier(plan: &Plan) -> Option<(String, String)> {
+    // The stock directory without its trailing slash, and the parent both tiers share.
+    // These must stay in step with undled_cooked_alias, whose guard keeps the source
+    // ASCII in this prefix.
+    const STOCK_DIR: &str = "Working/SGWGame/Cache.en-US";
+    const TIER_PARENT: &str = "Working/SGWGame/";
     if !matches!(plan.provenance.check, FileCheck::Light) {
         return None;
     }
@@ -19,9 +24,11 @@ pub(super) fn cooked_tier(plan: &Plan) -> Option<(String, String)> {
         let source = d.source_path.as_deref()?;
         (bundled_cooked_alias(source).is_some() && !d.path.eq_ignore_ascii_case(source)).then(
             || {
+                debug_assert!(source.is_char_boundary(STOCK_DIR.len()));
+                debug_assert!(source.is_char_boundary(TIER_PARENT.len()));
                 (
-                    source[..27].to_string(),
-                    format!("{}SourceCache.en-us", &source[..16]),
+                    source[..STOCK_DIR.len()].to_string(),
+                    format!("{}SourceCache.en-us", &source[..TIER_PARENT.len()]),
                 )
             },
         )

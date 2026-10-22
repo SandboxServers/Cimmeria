@@ -183,3 +183,34 @@ async fn only_a_light_plan_places_the_cooked_tier() {
     plan.provenance.check = FileCheck::Full;
     assert!(cooked_tier(&plan).is_none());
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_source_shorter_than_the_stock_prefix_places_no_tier_and_does_not_panic() {
+    use super::in_place_replace::cooked_tier;
+    use super::publication::{plan_name, read_large};
+    let lt = stock_tier(&[]).await;
+    assert!(commit_with(lt.preview().unwrap(), crash_after_first_move).is_err());
+    let id = lt
+        .state
+        .lock()
+        .unwrap()
+        .operations()
+        .snapshot()
+        .operation
+        .clone()
+        .unwrap()
+        .id;
+    let root = lt.state.lock().unwrap().directory.root.clone();
+    let mut plan: Plan = read_large(&root.join(plan_name(id))).unwrap();
+    for source in [
+        "Working/SGWGame/Cache.en-US",
+        "Working/SGWGame/Cache.en-U",
+        "Working/SGWGame/Cach\u{e9}.en-US/a.pak",
+        "W",
+    ] {
+        for file in &mut plan.report.files {
+            file.source_path = Some(source.to_string());
+        }
+        assert_eq!(cooked_tier(&plan), None, "{source}");
+    }
+}
