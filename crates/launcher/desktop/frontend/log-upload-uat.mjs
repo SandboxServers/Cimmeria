@@ -25,9 +25,9 @@ try{
  assert.ok(ui.document.getElementById('log-upload-panel').closest('#gear'),'the panel sits in Settings');
  assert.equal(ui.button().hidden,false);
  // First press: busy at once, before native work finishes.
- ui.press();await tick();assert.equal(ui.text(),'Uploading…');assert.equal(ui.button().textContent,'Uploading…');assert.equal(ui.button().disabled,true);
- ui.press();ui.release();await ui.app.settled();assert.match(ui.text(),/Sent 4 of 4 log lines\. Quote 0123456789abcdef in your report\./);
- ui.press();await tick();ui.release();await ui.app.settled();assert.equal(ui.text(),'Nothing new to upload');
+ ui.press();await tick();const BUSY='Sending debug logs… this can take a few minutes.';assert.equal(ui.text(),BUSY);assert.equal(ui.button().textContent,BUSY);assert.equal(ui.button().disabled,true);
+ ui.press();ui.release();await ui.app.settled();assert.match(ui.text(),/^Sent 4 log lines\. Reference 0123456789abcdef\.$/);
+ ui.press();await tick();ui.release();await ui.app.settled();assert.equal(ui.text(),'No new log lines since the last upload.');
  assert.deepEqual(ui.calls,['inspect','upload','upload']);
  await ui.app.dispose();
  // No store compiled in: the button is gone.
@@ -43,13 +43,14 @@ try{
  let installed=true;
  ui=page(command=>command==='upload'?{schema_version:1,state:'partial',lines_sent:2,lines_total:4,upload_id:'0123456789abcdef',retry_after_secs:60}:{schema_version:1,state:installed?'ready':'not_installed'});await ui.app.ready;
  ui.press();await tick();ui.release();await ui.app.settled();
- assert.match(ui.text(),/Sent 2 of 4 log lines/);assert.match(ui.text(),/Press again in 60 seconds/);
- await ui.app.refresh();assert.match(ui.text(),/Sent 2 of 4 log lines/);
+ assert.match(ui.text(),/Sent 2 of 4 lines/);assert.match(ui.text(),/press again in about 1 min/);
+ await ui.app.refresh();assert.match(ui.text(),/Sent 2 of 4 lines/);
  installed=false;await ui.app.refresh();assert.match(ui.text(),/Install the game first/);assert.equal(ui.button().disabled,true);
  await ui.app.dispose();
  // No log server for this install: the line says so and the button stays usable.
  ui=page(()=>({schema_version:1,state:'unreachable'}));await ui.app.ready;
- assert.match(ui.text(),/could not be reached/);assert.equal(ui.button().hidden,false);assert.equal(ui.button().disabled,false);
- console.log('Debug logs UAT passed: first press shows Uploading… then the sent line count and upload id; a repeat says Nothing new to upload; no store hides the button; a busy refusal says another upload is running; a partial send says when to press again and survives a ready re-inspect; an unreachable server keeps the button usable.');
+ assert.match(ui.text(),/no telemetry server/);assert.equal(ui.button().hidden,false);assert.equal(ui.button().disabled,true);
+ assert.match(ui.document.getElementById('log-upload-note').textContent,/game logs can include chat/);
+ console.log('Debug logs UAT passed: first press shows the busy text (this can take a few minutes) then the sent line count and reference; a repeat says No new log lines; no store hides the button; a busy refusal says another upload is running; a partial send says when to press again and survives a ready re-inspect; no telemetry server leaves the button visible but disabled; the note says game logs can include chat.');
  console.log('Excluded: the real native host and network (engine tests cover the reads, paced posts and offsets); the packaged window and visual layout.');
 }finally{await ui.app.dispose();}
