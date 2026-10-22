@@ -22,7 +22,7 @@ pub(super) fn start(state: &Arc<Mutex<DesktopState>>) {
         .ok()
         .and_then(|state| first_login_server(&state));
     let (config, source) = config(first.as_deref());
-    tracing::debug!(
+    tracing::info!(
         target: "launcher.pipeline",
         event = "summary_endpoint_resolved",
         outcome = source,
@@ -407,9 +407,9 @@ mod tests {
         host.note_command_failure(attempt, JobError::ManifestUnavailable);
         assert!(!root.path().join("state").exists());
 
-        // Open and opted in. This build configures no endpoint, and that alone
-        // keeps the failure from being recorded: the positive control below
-        // differs only in having one.
+        // Open and opted in. The default login server is plain http, so no endpoint
+        // is configured, and that alone keeps the failure from being recorded: the
+        // positive control below differs only in having one.
         opt_in(&host);
         host.note_command_failure(attempt, JobError::ManifestUnavailable);
         host.note_command_failure(None, JobError::ManifestUnavailable);
@@ -422,8 +422,8 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let host = NativeHost::new(root.path().join("state"));
         opt_in(&host);
-        // This build has no endpoint; give the open state one that is never
-        // contacted. No exporter is started by this call.
+        // The default login server is plain http, so there is no endpoint; give the
+        // open state one that is never contacted. No exporter is started by this call.
         host.with_state(|state| {
             state.configure_summaries(SummaryConfig {
                 launcher_version: (0, 1, 0),
