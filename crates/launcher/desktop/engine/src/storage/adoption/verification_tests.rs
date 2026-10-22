@@ -45,7 +45,7 @@ fn minimal_pe() -> Vec<u8> {
     exe[0x186..0x188].copy_from_slice(&0x40u16.to_le_bytes());
     exe
 }
-fn seed_bytes() -> Vec<u8> {
+pub(super) fn seed_bytes() -> Vec<u8> {
     let exe = minimal_pe();
     archive(&[
         ("Working/Binaries/SGW.exe", exe.as_slice()),
@@ -99,7 +99,7 @@ pub(super) fn reference(index: &[u8], sha: Option<String>) -> serde_json::Value 
         "sha256": sha.unwrap_or_else(|| hex(&Sha256::digest(index))),
     })
 }
-async fn origin(seed: &[u8], index: &[u8]) -> MockServer {
+pub(super) async fn origin(seed: &[u8], index: &[u8]) -> MockServer {
     let server = MockServer::start().await;
     Mock::given(path("/seed.zip"))
         .respond_with(ResponseTemplate::new(200).set_body_bytes(seed.to_vec()))
