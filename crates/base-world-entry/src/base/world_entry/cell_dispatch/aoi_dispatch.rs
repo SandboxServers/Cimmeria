@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_base_session::base::cooked_sync;
 use cimmeria_mercury::transport::Transport;
 
 use crate::cell::messages::{CellToBaseMsg, NpcAoIData, PlayerAoIData};
@@ -436,6 +437,13 @@ pub(super) async fn entity_method_call(
         .lock()
         .ok()
         .and_then(|m| m.get(&entity_id).copied());
+    if method_index == cooked_sync::ON_DIALOG_DISPLAY_INDEX {
+        if let (Some(addr), Some(dialog_id)) =
+            (target_addr, cooked_sync::dialog_id_from_args(&args))
+        {
+            cooked_sync::note_dialog_display(addr, dialog_id, std::time::Instant::now());
+        }
+    }
     if let Some(addr) = target_addr {
         if deferred_aoi::should_defer(connected, addr) {
             let outcome = deferred_aoi::push_deferred(

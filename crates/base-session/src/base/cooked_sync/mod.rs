@@ -25,6 +25,7 @@
 
 mod decision;
 mod order;
+mod recent_display;
 mod registry;
 mod task;
 
@@ -38,6 +39,7 @@ use std::time::{Duration, Instant};
 
 pub use decision::{resync_pending_version, VersionReply};
 pub use order::{is_held, rank, HELD_CATEGORIES};
+pub use recent_display::{dialog_id_from_args, note_dialog_display, ON_DIALOG_DISPLAY_INDEX};
 pub use registry::{
     defer_until_synced, holds_world_entry, is_syncing, DeferredAction, EnqueueOutcome, MissOutcome,
     MissRefusal, SyncJob,
@@ -121,6 +123,12 @@ pub fn serve_miss(ctx: SyncContext, category_id: u32, key: u32) -> MissOutcome {
                 "outcome" => "refused",
                 "reason" => why.reason(),
             );
+            let element_name = super::cooked_data::element_name(category_id, key);
+            let display_age_ms = if category_id == recent_display::DIALOGS_CATEGORY {
+                recent_display::display_age_ms(addr, key, now)
+            } else {
+                None
+            };
             if let Some(suppressed) = log {
                 let who = super::session_identity::identity_for_addr(&ctx.connected, addr);
                 tracing::warn!(
@@ -132,8 +140,26 @@ pub fn serve_miss(ctx: SyncContext, category_id: u32, key: u32) -> MissOutcome {
                     category_id,
                     category_name = super::resources::category_name(category_id),
                     key,
+                    element_name = element_name.as_deref(),
+                    display_age_ms,
                     suppressed,
                     "Refused a cooked-data cache miss"
+                );
+            }
+            // Outside the throttle: a repeat refusal right after a display
+            // is still the one the client is stuck on.
+            if let Some(age) = display_age_ms.filter(|age| *age < 1000) {
+                let who = super::session_identity::identity_for_addr(&ctx.connected, addr);
+                tracing::warn!(
+                    %addr,
+                    account_id = who.account_id,
+                    account_name = who.account_name,
+                    event = "dialog.cooked_miss_after_display",
+                    category_id,
+                    key,
+                    element_name = element_name.as_deref(),
+                    display_age_ms = age,
+                    "A dialog was displayed but its cooked data was refused: the client shows nothing"
                 );
             }
         }
