@@ -90,7 +90,7 @@ pub enum LogUploadState {
         retry_after_secs: u64,
     },
     /// `Inspect` or `Upload` (LF-15): no telemetry target can be built for
-    /// this install, or no log session could be minted.
+    /// this install. A failed mint is `LogUploadError::Network`, not this state.
     Unreachable,
 }
 

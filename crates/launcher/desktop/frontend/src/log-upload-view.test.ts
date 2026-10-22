@@ -5,7 +5,7 @@ import {parseHTML} from 'linkedom';
 import {makePanelContext} from './panel-context';
 import {Effect} from 'effect';
 import {decodeLogUploadStatus} from './contract';
-import {mountLogUpload,logUploadErrorText,logUploadText,logUploadUploading} from './log-upload-view';
+import {mountLogUpload,logUploadErrorText,logUploadText,logUploadUploading,logUploadNote} from './log-upload-view';
 const html=readFileSync('ui/index.html','utf8');
 type Request={command:string;schema_version:number};
 type Answer={state?:string;error?:string;fields?:Record<string,unknown>};
@@ -34,7 +34,7 @@ test('the first press shows Uploading at once, sends one upload, then says Uploa
 test('a repeat of the same logs says there is nothing new',async()=>{
  const ui=mount({inspect:{state:'ready'},upload:{state:'nothing_new'}});await ui.app.ready;
  ui.press();ui.release();await ui.app.settled();
- assert.equal(ui.text(),'Nothing new to upload');await ui.app.dispose();
+ assert.equal(ui.text(),'No new log lines since the last upload.');await ui.app.dispose();
 });
 
 test('a build with no log store hides the button and sends no upload',async()=>{
@@ -98,15 +98,39 @@ test('the decoder accepts sent, partial and unreachable, and rejects a field the
  await assert.rejects(decode({schema_version:1,state:'sent',lines_sent:3,lines_total:3,upload_id:'x',extra:1}));
 });
 
-test('sent and partial show the counts and the upload id; unreachable keeps the button usable',async()=>{
+test('sent and partial show the counts, the reference and the wait in minutes',async()=>{
  const sent={lines_sent:5,lines_total:5,upload_id:'0123456789abcdef'};
  const ui=mount({inspect:{state:'ready'},upload:{state:'sent',fields:sent}});await ui.app.ready;
  ui.press();ui.release();await ui.app.settled();
- assert.match(ui.text(),/Sent 5 of 5 log lines/);assert.match(ui.text(),/0123456789abcdef/);assert.equal(ui.button().disabled,false);
- const part=mount({inspect:{state:'ready'},upload:{state:'partial',fields:{...sent,lines_sent:2,retry_after_secs:60}}});await part.app.ready;
+ assert.equal(ui.text(),'Sent 5 log lines. Reference 0123456789abcdef.');assert.equal(ui.button().disabled,false);
+ const part=mount({inspect:{state:'ready'},upload:{state:'partial',fields:{...sent,lines_sent:2,retry_after_secs:61}}});await part.app.ready;
  part.press();part.release();await part.app.settled();
- assert.match(part.text(),/Sent 2 of 5 log lines/);assert.match(part.text(),/in 60 seconds/);
+ assert.equal(part.text(),'Sent 2 of 5 lines. The server asked us to wait; press again in about 2 min.');
+ await ui.app.dispose();await part.app.dispose();
+});
+
+test('unreachable keeps the button visible but disabled, with the reason',async()=>{
  const down=mount({inspect:{state:'unreachable'},upload:{state:'unreachable'}});await down.app.ready;
- assert.equal(down.text(),logUploadText.unreachable);assert.equal(down.button().hidden,false);assert.equal(down.button().disabled,false);
- await ui.app.dispose();await part.app.dispose();await down.app.dispose();
+ assert.equal(down.text(),"Debug logs can't be sent: this install has no telemetry server.");
+ assert.equal(down.button().hidden,false);assert.equal(down.button().disabled,true);
+ down.press();assert.deepEqual(down.calls.map(c=>c.command),['inspect']);await down.app.dispose();
+});
+
+test('the first press shows the busy text on the button and the status before the promise settles',async()=>{
+ const ui=mount({inspect:{state:'ready'},upload:{state:'sent',fields:{lines_sent:1,lines_total:1,upload_id:'0123456789abcdef'}}});await ui.app.ready;
+ ui.press();
+ assert.equal(logUploadUploading,'Sending debug logs… this can take a few minutes.');
+ assert.equal(ui.button().textContent,logUploadUploading);assert.equal(ui.text(),logUploadUploading);assert.equal(ui.button().disabled,true);
+ ui.release();await ui.app.settled();assert.equal(ui.button().textContent,'Upload debug logs');await ui.app.dispose();
+});
+
+test('the panel says what is sent, including that game logs hold chat and that pressing consents',async()=>{
+ const ui=mount({inspect:{state:'ready'},upload:{state:'sent'}});await ui.app.ready;
+ const note=ui.document.getElementById('log-upload-note')!.textContent??'';
+ assert.equal(note,logUploadNote);assert.match(note,/game logs can include chat/);assert.match(note,/even when Send game diagnostics is off/);
+ await ui.app.dispose();
+});
+
+test('no state leaves the heading with an empty line under it',()=>{
+ for(const [state,text] of Object.entries(logUploadText))assert.notEqual(text,'',state);
 });
