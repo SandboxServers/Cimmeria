@@ -78,19 +78,19 @@ pub(super) fn record_skipped(
     Ok(())
 }
 
-/// Retry the skipped ops of every incomplete patch, in ledger order, before
+/// Retry the skipped ops of every incomplete patch, in manifest order, before
 /// the manifest patches are applied. An entry whose patch has left the
 /// manifest is kept. A retry that fails keeps its entry for the next run.
 pub(super) async fn retry_incomplete(
     ctx: &InstallContext<'_>,
     state: &mut InstalledState,
 ) -> Result<(), InstallError> {
-    for incomplete in state.incomplete_patches.clone() {
-        let Some(patch) = ctx
-            .manifest
-            .patches
+    for patch in &ctx.manifest.patches {
+        let Some(incomplete) = state
+            .incomplete_patches
             .iter()
-            .find(|p| p.state_key() == incomplete.state_key)
+            .find(|i| i.state_key == patch.state_key())
+            .cloned()
         else {
             continue;
         };

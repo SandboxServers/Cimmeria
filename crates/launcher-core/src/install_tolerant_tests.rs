@@ -231,3 +231,78 @@ async fn strict_install_ignores_the_incomplete_list() {
         incomplete
     );
 }
+
+/// An incomplete entry whose patch has left the manifest is kept as it was.
+#[tokio::test]
+async fn an_entry_whose_patch_left_the_manifest_is_kept() {
+    let work = tempfile::tempdir().unwrap();
+    let zip = recipe_patch_zip(work.path());
+    let server = server_with_blob(&zip).await;
+    let dir = tempfile::tempdir().unwrap();
+    seed(
+        dir.path(),
+        InstalledState {
+            applied_patches: vec!["001".into(), "gone".into()],
+            incomplete_patches: vec![
+                IncompletePatch {
+                    state_key: "001".into(),
+                    skipped: skipped_dialog(),
+                },
+                IncompletePatch {
+                    state_key: "gone".into(),
+                    skipped: skipped_dialog(),
+                },
+            ],
+            ..fresh_ledger()
+        },
+    );
+
+    run(dir.path(), &server, &manifest_for(&zip), true)
+        .await
+        .unwrap();
+
+    let state = InstalledState::load(dir.path());
+    let keys: Vec<&str> = state
+        .incomplete_patches
+        .iter()
+        .map(|i| i.state_key.as_str())
+        .collect();
+    assert_eq!(keys, vec!["001", "gone"]);
+    let gone = state
+        .incomplete_patches
+        .iter()
+        .find(|i| i.state_key == "gone")
+        .unwrap();
+    assert_eq!(gone.skipped, skipped_dialog());
+}
+
+/// A retry whose blob cannot be fetched is logged, not returned: the run
+/// succeeds and the incomplete entry stays for the next run.
+#[tokio::test]
+async fn a_failed_retry_keeps_the_entry_and_the_run_succeeds() {
+    let work = tempfile::tempdir().unwrap();
+    let zip = recipe_patch_zip(work.path());
+    // No mock is mounted, so every request, the blob included, answers 404.
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let incomplete = vec![IncompletePatch {
+        state_key: "001".into(),
+        skipped: skipped_dialog(),
+    }];
+    seed(
+        dir.path(),
+        InstalledState {
+            applied_patches: vec!["001".into()],
+            incomplete_patches: incomplete.clone(),
+            ..fresh_ledger()
+        },
+    );
+
+    let result = run(dir.path(), &server, &manifest_for(&zip), true).await;
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(
+        InstalledState::load(dir.path()).incomplete_patches,
+        incomplete
+    );
+}
