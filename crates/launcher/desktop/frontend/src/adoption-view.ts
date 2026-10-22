@@ -3,6 +3,7 @@ import {AdoptionState,AdoptionStatus,Choice,Maintenance,adoptionBridgeLayer,cons
 import type {Invoke} from './view';
 import {fallbackText,rejectionText} from './adoption-reasons';
 import {renderIndex} from './adoption-index-view';
+import {displayPath} from './display-path';
 class Adoption extends Context.Service<Adoption,Effect.Success<typeof makeAdoptionWorkflow>>()('launcher/Adoption') {}
 type Review=NonNullable<AdoptionStatus['review']>;
 const unchanged='The original game folder is unchanged.';
@@ -49,8 +50,6 @@ const severalLead='The launcher found more than one Stargate Worlds install in t
 const doneText='This folder is now your Cimmeria install. If the game will not start, use Repair (it downloads the full game, 4.1 GB).';
 const lightConsequences='Your folder becomes the launcher’s installation. Its game files, including files you added such as PAKs placed by hand in SourceCache.en-us, are moved, not copied, into a “game” folder inside it, and the game keeps using them. Files that differ from what the patches expect are kept as they are. Desktop shortcuts and the old launcher stop working: start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Your settings and the client cache live in Documents and are not affected. The launcher rewrites its login server file and turns off address randomisation in SGW.exe.';
 const lightDoneText='Its game files, including files you added, now sit in the launcher-owned “game” folder inside it, and the game keeps using them.';
-/** The folder's own name only, never its full path. */
-const folderName=(path:string)=>path.split(/[\\/]/).filter(Boolean).pop()??path;
 const unsafeReasons:Record<UnsafeReason,string>={
  link:'a link or junction to another place. Put the real folder or file here instead, then try again.',
  cloud_file:'a OneDrive or other cloud-synced file. Move the whole game folder out of the synced folder (for example to C:\\Games), then try again.',
@@ -151,7 +150,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   found.hidden=patches.hidden=!light;
   note.hidden=details.hidden=!light||light.skipped_total===0;
   if(!light)return;
-  found.textContent=`Stargate Worlds found in ${folderName(source)}.`;
+  found.textContent=`Found Stargate Worlds in ${displayPath(source)}.`;
   patches.textContent=`Patches already applied: ${light.patches_current} of ${light.patches_total}. To apply: ${light.patches_pending} (${megabytes(light.download_bytes)} to download).`;
   note.textContent=`Some patch changes can't be applied: ${light.skipped_total===1?'1 file differs':`${light.skipped_total} files differ`} from the originals the patches expect. They stay as they are. You can still use this folder.`;
   const summary=document.createElement('summary'),list=document.createElement('ul');
@@ -212,8 +211,9 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   if(review){
    // Paths and settings come from disk and old configuration: text only, never HTML.
    const lines=reviewLines(review,s!.native.preferences.launcher_summary_consent);
-   get('adoption-source').textContent=review.source;get('adoption-destination').textContent=review.destination;
-   get('adoption-source-label').textContent=review.in_place?'Game folder to adopt:':'Original game, never changed:';
+   const shownSource=displayPath(review.source),shownDestination=displayPath(review.destination),oneFolder=shownSource===shownDestination;
+   get('adoption-source').textContent=shownSource;get('adoption-destination').textContent=shownDestination;get('adoption-destination').parentElement!.hidden=oneFolder;
+   get('adoption-source-label').textContent=oneFolder?'Folder:':'Original game, never changed:';
    get('adoption-destination-label').textContent=review.in_place?'Launcher-owned installation:':'New verified copy:';
    get('adoption-normalize-text').textContent=review.in_place?'Apply the launcher’s own setup to release files the old launcher’s setup changed.':'Use the signed reference for managed files that are modified, missing or changed by the old launcher’s setup.';
    for(const key of ['release','counts','consequences','settings','telemetry'] as const)get(`adoption-${key}`).textContent=lines[key];

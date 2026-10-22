@@ -120,7 +120,7 @@ try {
  status=await until('the review',s=>{assert.equal(s.last_error,null,'preparation failed');return !!s.review;},slow);
  const review=status.review;
  assert.equal(get('adoption-review').hidden,false);
- assert.equal(get('adoption-source').textContent,review.source);assert.equal(get('adoption-destination').textContent,before.destination);
+ assert.equal(get('adoption-source').textContent,review.source.replace(/^\\\\\?\\(?=[A-Za-z]:\\)/,''));assert.equal(get('adoption-destination').textContent,before.destination.replace(/^\\\\\?\\(?=[A-Za-z]:\\)/,''));
  assert(get('adoption-release').textContent.includes(review.release.manifest_sha256));
  assert.match(get('adoption-counts').textContent,/2 files are identical.*1 file was modified.*0 files are missing.*2 files are not part/);
  assert.deepEqual([...get('adoption-differences').querySelectorAll('li')].map(li=>li.textContent),['Modified: later.txt','Not part of the release: launcher-installed.json','Not part of the release: unknown.dll']);
@@ -140,7 +140,7 @@ try {
  await click('confirm-adoption');
  assert.equal(sent('confirm').length,0,'a stale review is never sent');
  assert.match(text(),/can no longer be confirmed\. Dismiss it and prepare a new one/);
- assert.equal(get('adoption-review').hidden,false);assert.equal(get('adoption-source').textContent,review.source);
+ assert.equal(get('adoption-review').hidden,false);assert.equal(get('adoption-source').textContent,review.source.replace(/^\\\\\?\\(?=[A-Za-z]:\\)/,''));
  assert.equal(get('confirm-adoption').disabled,true);
  assert.equal((await inspect()).review.preview_handle,review.preview_handle,'the native review is still held');
  await click('dismiss-adoption');

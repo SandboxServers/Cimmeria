@@ -164,7 +164,7 @@ test('in place: the imported folder is offered, a file that does not verify is n
   assert.equal(ui.get('choose-adoption-destination').textContent,'Use an existing game folder…');
   await ui.click('choose-adoption-destination');
   assert.match(ui.text(),/cannot be adopted in place: later\.txt\. Restore them/);
-  assert.equal(ui.get('adoption-source-label').textContent,'Game folder to adopt:');
+  assert.equal(ui.get('adoption-source-label').textContent,'Folder:');assert.equal(ui.get('adoption-destination-label').parentElement!.hidden,true,'one folder line');
   assert.equal(ui.get('adoption-destination-label').textContent,'Launcher-owned installation:');
   assert.equal(ui.get('confirm-adoption').textContent,'Adopt this folder');
   // The owner-approved warning, shown before Confirm.
@@ -419,13 +419,13 @@ test('the list is gone once a review is shown',async()=>{
   assert.equal(ui.get('adoption-unsafe').hidden,true);
  }finally{await ui.app.dispose();}
 });
-const lightReview=(skipped_total=1):NonNullable<AdoptionStatus['review']>=>({...review(),source:'/games/SGW',in_place:true,source_kind:'folder',requires_replacement:false,requires_normalization:false,requires_telemetry_acceptance:false,blocked_files:[],
+const lightReview=(skipped_total=1):NonNullable<AdoptionStatus['review']>=>({...review(),source:'/games/SGW',destination:'/games/SGW',in_place:true,source_kind:'folder',requires_replacement:false,requires_normalization:false,requires_telemetry_acceptance:false,blocked_files:[],
  light:{patches_total:3,patches_current:1,patches_pending:2,download_bytes:1048576,skipped:[{path:'Working/Data/a.lua',patch:'first-patch',reason:'modified'}],skipped_total,index_state:'compared',index_counts:{},index_files:[],index_files_total:0}});
 test('the light review names the folder, its patch counts and the skipped changes, and Use this folder stays enabled',async()=>{
  const ui=mount(request=>request==='choose'?{...reviewing('light-1'),backend:'in_place',modes:['light','copy'],review:lightReview()}:idle());
  try{await ui.app.ready;await ui.settle();
   await ui.click('choose-adoption-destination');
-  assert.equal(ui.get('adoption-light-found').textContent,'Stargate Worlds found in SGW.');assert.equal(ui.get('adoption-light-found').hidden,false);
+  assert.equal(ui.get('adoption-light-found').textContent,'Found Stargate Worlds in /games/SGW.');assert.equal(ui.get('adoption-light-found').hidden,false);
   assert.equal(ui.get('adoption-light-patches').textContent,'Patches already applied: 1 of 3. To apply: 2 (1.0 MB to download).');
   assert.equal(ui.get('adoption-light-skipped-note').hidden,false);
   assert.match(ui.get('adoption-light-skipped-note').textContent!,/Some patch changes can't be applied: 1 file differs from the originals the patches expect\. They stay as they are\. You can still use this folder\./);
@@ -524,4 +524,21 @@ test('no failure text points at a launcher log',async()=>{
   try{await ui.app.ready;await ui.settle();assert.doesNotMatch(ui.text(),/log/);
   }finally{await ui.app.dispose();}
  }
+});
+test('an in-place review shows one plain Folder line; a copy keeps its two labelled lines',async()=>{
+ const extended='\\\\?\\C:\\Games\\SGW';
+ const flags={requires_normalization:false,requires_telemetry_acceptance:false,game_telemetry_opted_in:false};
+ const inPlace:AdoptionStatus={...reviewing(),review:{...review(),source:extended,destination:extended,in_place:true,...flags}};
+ const copy:AdoptionStatus={...reviewing(),review:{...review(),source:extended,destination:'D:\\Copy\\SGW',in_place:false,...flags}};
+ let status=inPlace;
+ const ui=mount(()=>status);
+ try{await ui.app.ready;await ui.settle();
+  assert.equal(ui.get('adoption-source-label').textContent,'Folder:');assert.equal(ui.get('adoption-source').textContent,'C:\\Games\\SGW');
+  assert.equal(ui.get('adoption-destination-label').parentElement!.hidden,true,'the in-place review has one folder line');
+  status=copy;await ui.click('inspect-adoption');
+  assert.equal(ui.get('adoption-source-label').textContent,'Original game, never changed:');assert.equal(ui.get('adoption-source').textContent,'C:\\Games\\SGW');
+  assert.equal(ui.get('adoption-destination-label').parentElement!.hidden,false,'a copy keeps its destination line');
+  assert.equal(ui.get('adoption-destination-label').textContent,'New verified copy:');assert.equal(ui.get('adoption-destination').textContent,'D:\\Copy\\SGW');
+  assert.doesNotMatch(ui.get('adoption-review').textContent!,/\\\\\?\\/);
+ }finally{await ui.app.dispose();}
 });
