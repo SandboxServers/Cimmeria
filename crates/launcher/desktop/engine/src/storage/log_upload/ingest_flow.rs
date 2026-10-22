@@ -259,7 +259,7 @@ impl LogIngest {
                 }
             }
             done = end;
-            if !save_failed && offsets.save(&state_dir).is_err() {
+            if offsets.save(&state_dir).is_err() && !save_failed {
                 save_failed = true;
                 events::offsets_save_failed();
             }

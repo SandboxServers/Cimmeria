@@ -88,7 +88,7 @@ pub(super) fn collect_failed(reason: &'static str) {
 }
 
 /// A game log file was not read this press. `reason` is a closed word
-/// (`too_large`, `read_failed`); the path is never logged (R5).
+/// (`read_failed` today); the path is never logged (R5).
 pub(super) fn game_file_skipped(reason: &'static str) {
     tracing::warn!(
         target: "launcher.telemetry",
