@@ -146,14 +146,11 @@ jobs:
         run: tools/launcher-release/build-desktop.sh stage
 
       # The release stamps are on this step only. The test suites use the
-      # development manifest key and fail with the production one set, and the
-      # SAS is compiled in with `option_env!`, so no other step has them.
+      # development manifest key and fail with the production one set.
       - name: build the 64-bit desktop launcher, pinned to them
         env:
           # Ed25519, 64 hex chars (docs/client/launcher-distribution-setup.md).
           LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
-          # Settings' "Upload debug logs" target (D-LX11); unset hides it.
-          LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
           CIMMERIA_LAUNCHER_VERSION: ${{ steps.stamp.outputs.version }}
           CIMMERIA_LAUNCHER_TAG: ${{ steps.stamp.outputs.tag }}
           CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ steps.stamp.outputs.epoch }}
@@ -541,7 +538,6 @@ jobs:
       cache_key: launcher-release-desktop-macos
     secrets:
       LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
-      LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
 
   # Attaches the macOS zip after publish made the dated release, and replaces
   # the one on launcher-current when publish refreshed it (a signed,

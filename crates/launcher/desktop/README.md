@@ -115,35 +115,11 @@ engine half in `engine/src/storage/<name>/` and its host half in
 | `choose_existing_game_folder` | `mode` (`light` or `copy`; `in_place` is refused with `UnsupportedMode`); the native folder picker, then a second picker for a copy | Light, adopted where the folder is (Windows and Linux), or verified copy (every OS), as `modes` offers | AI-10; copy AI-12; Light LA-14 |
 
 > [!NOTE]
-> `upload` no longer follows the paragraph below. Since LF-15 and LF-19 it
-> reads the new launcher and game log lines and posts them to the telemetry
+> `upload` reads the new launcher and game log lines and posts them to the telemetry
 > server through a `purpose = logs` session (`engine/src/storage/log_upload/`:
 > `lines.rs`, `game_lines.rs`, `offsets.rs`, `ingest.rs`, `ingest_flow.rs`). The
 > operator side is [telemetry.md § Launcher log
-> ingest](../../../docs/operations/telemetry.md#launcher-log-ingest). The zip, SAS
-> and `uploaded-logs.json` path described next is legacy: `begin_blob_upload`
-> and `LogCollection` remain in the tree, nothing in the shell calls them, and
-> LF-18 deletes them.
-
-`log_upload_command` is filled. The legacy blob `upload` zips `Binaries/sgwdebuglog*` and the
-`*.log` files under `Binaries/sessions/` in the installed game, plus the newest three `launcher.<date>.log` files from the
-launcher's log folder, added under `launcher/` with the home folder, absolute
-paths and IP literals (`[ip]`) scrubbed in the copy only (the digest and the
-"nothing new" check cover only the game logs, and with no game logs nothing is
-uploaded), and PUTs the zip
-once to the SAS URL compiled in from `LAUNCHER_LOG_SAS_URL` as
-`logs/<host>-<utc>-<digest>.zip`. A content digest already in the
-`uploaded-logs.json` ledger (state directory, newest 100) sends nothing and
-answers `nothing_new`. It reads at most 64 MiB of logs, chosen from file
-sizes before anything is read: over that, the oldest files are left out and it
-answers `uploaded_newest`. It takes the operation gate first, so a stuck
-`ReconciliationRequired` operation refuses it with `busy`; the logs are read
-and sent without the state lock, and the ledger write after the PUT takes the
-gate again (skipped, still `uploaded`, if an operation started). The PUT
-follows no redirect. A build with no SAS URL answers `disabled` and Settings
-hides the button. Failures are the codes `collect_failed`, `logs_too_large`
-(every log alone is over the cap), `network` and `rejected`; none carries the
-URL.
+> ingest](../../../docs/operations/telemetry.md#launcher-log-ingest).
 
 The login-server and client-patches panels (`server-list-view.ts`,
 `client-patches-view.ts`, LX-03 and LX-04) save through `save_client_options`.
