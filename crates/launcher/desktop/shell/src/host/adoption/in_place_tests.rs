@@ -82,6 +82,12 @@ async fn the_imported_folder_is_adopted_in_place_once_its_release_files_verify()
     .await;
     assert_eq!(status.last_error, None);
     assert!(status.owned);
+    assert!(
+        serde_json::to_value(&status).unwrap()["completed"]
+            .get("light")
+            .is_none(),
+        "a strict adoption sends no light flag"
+    );
     assert_eq!(status.completed.map(|c| c.directory), Some(folder.clone()));
     assert_eq!(
         operation(&f.host.adoption_status().unwrap()),
@@ -245,6 +251,10 @@ async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_light() {
     .await;
     assert_eq!(status.last_error, None);
     assert!(status.owned);
+    assert_eq!(
+        serde_json::to_value(&status).unwrap()["completed"]["light"],
+        serde_json::json!(true)
+    );
     assert_eq!(status.completed.map(|c| c.directory), Some(folder.clone()));
     assert_eq!(
         operation(&f.host.adoption_status().unwrap()),

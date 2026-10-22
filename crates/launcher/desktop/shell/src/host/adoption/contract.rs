@@ -256,6 +256,10 @@ pub enum Reconciliation {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Completed {
     pub directory: PathBuf,
+    /// A light adoption: every game file was kept and moved into `game`.
+    /// Left out of the JSON for a strict in-place adoption or a copy.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub light: bool,
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct AdoptionStatus {

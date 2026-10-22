@@ -35,3 +35,10 @@ test('the scan progress item decodes, and an unknown item is refused', async () 
   assert.equal(decoded.progress?.item,'scan');
   await assert.rejects(decode({...(status(['light','copy']) as object),activity:'preparing',progress:{...progress,item:'scanning'}}));
 });
+
+test('a completed light adoption decodes its flag, and a non-boolean flag is refused', async () => {
+  const done=await decode({...(status(['light','copy']) as object),owned:true,completed:{directory:'/f',light:true}});
+  assert.equal(done.completed?.light,true);
+  assert.equal((await decode({...(status(['light','copy']) as object),completed:{directory:'/f'}})).completed?.light,undefined);
+  await assert.rejects(decode({...(status(['light','copy']) as object),completed:{directory:'/f',light:'yes'}}));
+});

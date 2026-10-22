@@ -442,6 +442,23 @@ test('a light review with no skipped changes hides the skipped note and list',as
   assert.equal(ui.get('adoption-light-found').hidden,false);
  }finally{await ui.app.dispose();}
 });
+test('a light review says every game file moves into game and stays in use',async()=>{
+ const counts={matched:40,known_transform:2,modified:0,needs_patching:3,missing:0,extra:0};
+ const ui=mount(request=>request==='choose'?{...reviewing('light-5'),backend:'in_place',modes:['light','copy'],review:{...lightReview(0),counts}}:idle());
+ try{await ui.app.ready;await ui.settle();
+  await ui.click('choose-adoption-destination');
+  assert.equal(ui.get('adoption-counts').textContent,'40 files move into the “game” folder with no patch changes. 3 files are updated by the patches. 2 bundled data files move to the folder the game loads them from.');
+  assert.equal(ui.get('adoption-consequences').textContent,'Your folder becomes the launcher’s installation. Its game files, including files you added such as PAKs placed by hand in SourceCache.en-us, are moved, not copied, into a “game” folder inside it, and the game keeps using them. Files that differ from what the patches expect are kept as they are. Desktop shortcuts and the old launcher stop working: start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Your settings and the client cache live in Documents and are not affected.');
+ }finally{await ui.app.dispose();}
+});
+test('a completed light adoption says the added files moved with it, not that they were left behind',async()=>{
+ const done:AdoptionStatus={...idle(9),native:native(9,adopt('succeeded')),backend:'in_place',modes:['light','copy'],owned:true,completed:{directory:'/games/SGW',light:true}};
+ const ui=mount(()=>done);
+ try{await ui.app.ready;await ui.settle();
+  assert.equal(ui.text(),'Adopted /games/SGW in place. Its game files, including files you added, now sit in the launcher-owned “game” folder inside it, and the game keeps using them. This folder is now your Cimmeria install. If the game will not start, use Repair (it downloads the full game, 4.1 GB).');
+  assert.doesNotMatch(ui.text(),/left where they were/);
+ }finally{await ui.app.dispose();}
+});
 test('a light review with more skipped changes than the list shows says how many are not listed',async()=>{
  const ui=mount(request=>request==='choose'?{...reviewing('light-4'),backend:'in_place',modes:['light','copy'],review:lightReview(600)}:idle());
  try{await ui.app.ready;await ui.settle();

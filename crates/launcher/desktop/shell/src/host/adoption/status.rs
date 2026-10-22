@@ -275,6 +275,7 @@ fn adoption_facts(state: &mut DesktopState, adoption: &Adoption) -> Result<Facts
                 .filter(|record| record.phase == adoption::Phase::Published)
                 .map(|record| Completed {
                     directory: record.plan.installation.destination,
+                    light: record.plan.provenance.check == adoption::FileCheck::Light,
                 });
         }
         _ => (),
