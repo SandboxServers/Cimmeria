@@ -20,13 +20,13 @@ function mount(answers:Record<string,Answer>) {
  return {document,app,calls,release,button,press:()=>button().dispatchEvent(new window.Event('click')),text:()=>document.getElementById('log-upload-status')!.textContent??''};
 }
 
-test('the first press shows Uploading at once, sends one upload, then says Uploaded',async()=>{
- const ui=mount({inspect:{state:'ready'},upload:{state:'uploaded'}});await ui.app.ready;
+test('the first press shows Uploading at once, sends one upload, then reports the sent lines',async()=>{
+ const ui=mount({inspect:{state:'ready'},upload:{state:'sent',fields:{lines_sent:3,lines_total:3,upload_id:'0123456789abcdef'}}});await ui.app.ready;
  assert.equal(ui.button().hidden,false);assert.equal(ui.button().disabled,false);
  ui.press();ui.press();
  assert.equal(ui.text(),logUploadUploading);assert.equal(ui.button().disabled,true);assert.equal(ui.button().getAttribute('aria-busy'),'true');
  ui.release();await ui.app.settled();
- assert.equal(ui.text(),'Uploaded');assert.equal(ui.button().disabled,false);
+ assert.equal(ui.text(),'Sent 3 log lines. Reference 0123456789abcdef.');assert.equal(ui.button().disabled,false);
  assert.deepEqual(ui.calls,[{command:'inspect',schema_version:1},{command:'upload',schema_version:1}]);
  await ui.app.dispose();assert.equal(ui.document.getElementById('log-upload-title'),null);
 });
@@ -37,9 +37,10 @@ test('a repeat of the same logs says there is nothing new',async()=>{
  assert.equal(ui.text(),'No new log lines since the last upload.');await ui.app.dispose();
 });
 
-test('a build with no log store hides the button and sends no upload',async()=>{
- const ui=mount({inspect:{state:'disabled'},upload:{state:'uploaded'}});await ui.app.ready;
- assert.equal(ui.button().hidden,true);ui.press();ui.release();await ui.app.settled();
+test('a missing install keeps the button shown but disabled, so it never hides',async()=>{
+ const ui=mount({inspect:{state:'not_installed'},upload:{state:'nothing_new'}});await ui.app.ready;
+ assert.equal(ui.button().hidden,false);assert.equal(ui.button().disabled,true);
+ ui.press();ui.release();await ui.app.settled();
  assert.deepEqual(ui.calls.map(c=>c.command),['inspect']);await ui.app.dispose();
 });
 
@@ -73,15 +74,15 @@ test('an undecodable status is reported to telemetry and still shows the schema 
 test('a network failure is shown, and an unknown rejection is a transport failure',async()=>{
  const ui=mount({inspect:{state:'ready'},upload:{error:'network'}});await ui.app.ready;
  ui.press();ui.release();await ui.app.settled();assert.equal(ui.text(),logUploadErrorText.network);await ui.app.dispose();
- const odd=mount({inspect:{error:'https://store.example/c?sig=secret'},upload:{state:'uploaded'}});await odd.app.ready;
+ const odd=mount({inspect:{error:'https://store.example/c?sig=secret'},upload:{state:'nothing_new'}});await odd.app.ready;
  assert.equal(odd.text(),logUploadErrorText.transport);await odd.app.dispose();
 });
 
 test('a later re-inspect keeps the result while ready, and replaces it when the state changes',async()=>{
- const answers:Record<string,Answer>={inspect:{state:'ready'},upload:{state:'uploaded_newest'}};
+ const answers:Record<string,Answer>={inspect:{state:'ready'},upload:{state:'nothing_new'}};
  const ui=mount(answers);await ui.app.ready;ui.press();ui.release();await ui.app.settled();
- assert.equal(ui.text(),logUploadText.uploaded_newest);assert.match(ui.text(),/Older logs were left out/);
- await ui.app.refresh();assert.equal(ui.text(),logUploadText.uploaded_newest);
+ assert.equal(ui.text(),logUploadText.nothing_new);
+ await ui.app.refresh();assert.equal(ui.text(),logUploadText.nothing_new);
  answers.inspect={state:'not_installed'};await ui.app.refresh();
  assert.equal(ui.text(),logUploadText.not_installed);assert.equal(ui.button().disabled,true);
  answers.inspect={state:'ready'};await ui.app.refresh();assert.equal(ui.text(),logUploadText.ready);

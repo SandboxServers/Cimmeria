@@ -30,9 +30,9 @@ try{
  ui.press();await tick();ui.release();await ui.app.settled();assert.equal(ui.text(),'No new log lines since the last upload.');
  assert.deepEqual(ui.calls,['inspect','upload','upload']);
  await ui.app.dispose();
- // No store compiled in: the button is gone.
- ui=page(()=>({schema_version:1,state:'disabled'}));await ui.app.ready;
- assert.equal(ui.button().hidden,true);await ui.app.dispose();
+ // A press is consent: a build never hides the button, even with no install.
+ ui=page(()=>({schema_version:1,state:'not_installed'}));await ui.app.ready;
+ assert.equal(ui.button().hidden,false);assert.equal(ui.button().disabled,true);await ui.app.dispose();
  // A second upload while one runs is refused with busy.
  ui=page(command=>{if(command==='upload')throw 'busy';return {schema_version:1,state:'ready'};});await ui.app.ready;
  ui.press();await tick();ui.release();await ui.app.settled();
@@ -51,6 +51,6 @@ try{
  ui=page(()=>({schema_version:1,state:'unreachable'}));await ui.app.ready;
  assert.match(ui.text(),/no telemetry server/);assert.equal(ui.button().hidden,false);assert.equal(ui.button().disabled,true);
  assert.match(ui.document.getElementById('log-upload-note').textContent,/game logs can include chat/);
- console.log('Debug logs UAT passed: first press shows the busy text (this can take a few minutes) then the sent line count and reference; a repeat says No new log lines; no store hides the button; a busy refusal says another upload is running; a partial send says when to press again and survives a ready re-inspect; no telemetry server leaves the button visible but disabled; the note says game logs can include chat.');
+ console.log('Debug logs UAT passed: first press shows the busy text (this can take a few minutes) then the sent line count and reference; a repeat says No new log lines; a missing install keeps the button visible but disabled; a busy refusal says another upload is running; a partial send says when to press again and survives a ready re-inspect; no telemetry server leaves the button visible but disabled; the note says game logs can include chat.');
  console.log('Excluded: the real native host and network (engine tests cover the reads, paced posts and offsets); the packaged window and visual layout.');
 }finally{await ui.app.dispose();}
