@@ -76,15 +76,24 @@ fn patch_zip(id: &str, ops: &[OpFixture], files: &[(&str, &[u8])]) -> Vec<u8> {
 
 /// A signed release naming `zips`, in order. The seed is signed, never used.
 fn release_of(zips: &[Vec<u8>]) -> VerifiedRelease {
+    release_with_roots(zips, &[])
+}
+
+/// Like [`release_of`], with `roots[i]` as patch `i`'s root (default when short).
+fn release_with_roots(zips: &[Vec<u8>], roots: &[&str]) -> VerifiedRelease {
     let seed = b"seed".to_vec();
     let patches: Vec<_> = zips
         .iter()
         .enumerate()
         .map(|(i, zip)| {
-            serde_json::json!({
+            let mut patch = serde_json::json!({
                 "id": format!("p{i}"), "blob": format!("p{i}.zip"),
                 "size": zip.len(), "sha256": hex(&Sha256::digest(zip)),
-            })
+            });
+            if let Some(root) = roots.get(i) {
+                patch["root"] = (*root).into();
+            }
+            patch
         })
         .collect();
     let body = serde_json::to_vec(&serde_json::json!({
@@ -109,7 +118,11 @@ struct Fixture {
 /// The light plan of `zips` over a folder holding `files`, computed the way
 /// `light_plan::plan` does, without a transport.
 fn fixture(zips: Vec<Vec<u8>>, files: &[(&str, &[u8])]) -> Fixture {
-    let release = release_of(&zips);
+    fixture_rooted(zips, &[], files)
+}
+
+fn fixture_rooted(zips: Vec<Vec<u8>>, roots: &[&str], files: &[(&str, &[u8])]) -> Fixture {
+    let release = release_with_roots(&zips, roots);
     let dir = tempfile::tempdir().unwrap();
     let mut paths = Vec::new();
     for (i, zip) in zips.iter().enumerate() {
@@ -447,5 +460,106 @@ fn the_strict_unpack_still_refuses_a_changed_source() {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, b"modded by the player").unwrap();
     let result = crate::unpack::unpack(&f.plan.zips[0], dest.path(), &sink());
-    assert!(result.is_err(), "the strict path keeps refusing");
+    assert!(
+        matches!(
+            result,
+            Err(cimmeria_launcher_core::unpack::UnpackError::PatchsetHash {
+                kind: "source_mismatch",
+                ..
+            })
+        ),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn a_replacement_keeps_the_folders_spelling() {
+    let lower = "working/data/overlay.dat";
+    let p0 = patch_zip(
+        "p0",
+        &[OpFixture {
+            target: lower,
+            sources: &[(lower, &big("stock overlay"))],
+            result: &big("patched overlay"),
+        }],
+        &[],
+    );
+    let f = fixture(vec![p0], &[(OVERLAY, &big("stock overlay"))]);
+    let done = run(&f).unwrap();
+    assert_eq!(done.replacements.len(), 1);
+    assert_eq!(done.replacements[0].path, OVERLAY);
+    assert_eq!(stored(&f, OVERLAY), big("patched overlay"));
+}
+
+#[test]
+fn an_overlay_in_a_patch_with_a_skipped_op_still_lands() {
+    let p0 = patch_zip(
+        "p0",
+        &[OpFixture {
+            target: OVERLAY,
+            sources: &[(OVERLAY, &big("stock overlay"))],
+            result: &big("patched overlay"),
+        }],
+        &[("Working/Data/Added.dat", b"added")],
+    );
+    let f = fixture(vec![p0], &[(OVERLAY, b"modded by the player")]);
+    let done = run(&f).unwrap();
+    let paths: Vec<_> = done.replacements.iter().map(|r| r.path.as_str()).collect();
+    assert_eq!(paths, ["Working/Data/Added.dat"]);
+    assert_eq!(stored(&f, "Working/Data/Added.dat"), b"added");
+    assert_eq!(done.incomplete.len(), 1);
+    assert_eq!(
+        done.incomplete[0].skipped,
+        [SkippedTarget {
+            path: OVERLAY.into(),
+            reason: "source_mismatch".into()
+        }]
+    );
+}
+
+#[test]
+fn a_sgw_game_patch_records_its_skips_under_the_client_prefix() {
+    let dialog = "UI/Dialog.lua";
+    let p0 = patch_zip(
+        "p0",
+        &[OpFixture {
+            target: dialog,
+            sources: &[(dialog, &big("stock dialog"))],
+            result: &big("patched dialog"),
+        }],
+        &[],
+    );
+    let f = fixture_rooted(
+        vec![p0],
+        &["sgw_game"],
+        &[("Working/SGWGame/UI/Dialog.lua", b"modded by the player")],
+    );
+    let done = run(&f).unwrap();
+    assert_eq!(done.incomplete.len(), 1);
+    assert_eq!(
+        done.incomplete[0].skipped,
+        [SkippedTarget {
+            path: "Working/SGWGame/UI/Dialog.lua".into(),
+            reason: "source_mismatch".into()
+        }]
+    );
+}
+
+#[test]
+fn a_cooked_source_held_under_the_stock_name_is_patched() {
+    let p0 = patch_zip(
+        "p0",
+        &[OpFixture {
+            target: COOKED_PLACED,
+            sources: &[(COOKED_PLACED, &big("stock cooked"))],
+            result: &big("patched cooked"),
+        }],
+        &[],
+    );
+    let f = fixture(vec![p0], &[(COOKED_STOCK, &big("stock cooked"))]);
+    assert_eq!(f.plan.pending, vec![0]);
+    let done = run(&f).unwrap();
+    assert!(done.incomplete.is_empty(), "{:?}", done.incomplete);
+    assert!(done.moves.is_empty());
+    assert_eq!(stored(&f, COOKED_PLACED), big("patched cooked"));
 }

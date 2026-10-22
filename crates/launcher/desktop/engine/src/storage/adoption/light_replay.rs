@@ -9,14 +9,11 @@ use super::light_plan::{stock_spelling, LightPlan};
 use super::*;
 use crate::unpack::UnpackSink;
 use cimmeria_launcher_core::manifest::PatchRoot;
+use cimmeria_launcher_core::patch_summary::SGW_GAME_DIR;
 use cimmeria_launcher_core::state::{IncompletePatch, SkippedTarget};
 use cimmeria_patchset::ApplyOptions;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-
-/// Where a `sgw_game` patch's entries land, relative to the client root. The
-/// summary (`patch_summary`) prefixes the same directory onto its paths.
-const SGW_GAME_DIR: &str = "Working/SGWGame";
 
 /// What the tolerant replay produced.
 #[derive(Debug, Default)]
@@ -103,8 +100,11 @@ fn run(
         }
         super::reference::strict_zip(zip).map_err(|e| archive_refused(&label, e))?;
         let (dest, prefix) = match patch.root {
-            PatchRoot::InstallDir => (scratch.to_path_buf(), ""),
-            PatchRoot::SgwGame => (inventory::native(scratch, SGW_GAME_DIR), "Working/SGWGame/"),
+            PatchRoot::InstallDir => (scratch.to_path_buf(), String::new()),
+            PatchRoot::SgwGame => (
+                inventory::native(scratch, SGW_GAME_DIR),
+                format!("{SGW_GAME_DIR}/"),
+            ),
         };
         let options = ApplyOptions {
             tolerate_ops: true,
@@ -119,7 +119,9 @@ fn run(
         })?;
         for output in &summary.outputs {
             if inventory::native(scratch, &output.path).is_file() {
-                present.insert(output.path.to_ascii_lowercase(), output.path.clone());
+                present
+                    .entry(output.path.to_ascii_lowercase())
+                    .or_insert_with(|| output.path.clone());
             }
         }
         if !skipped.is_empty() {
@@ -160,21 +162,29 @@ fn stage(
     {
         return Ok(());
     }
-    let name = in_folder.get(&lower).copied().or_else(|| {
+    let direct = in_folder.get(&lower).copied();
+    let name = direct.or_else(|| {
         let stock = stock_spelling(path)?;
         in_folder.get(&stock.to_ascii_lowercase()).copied()
     });
     let Some(name) = name else {
         return Ok(());
     };
-    let dest = inventory::native(scratch, path);
+    // The folder's own spelling when it holds the file; the placed cooked-data
+    // spelling (`path`) only for a stock-named file that moves.
+    let spelling = if direct.is_some() {
+        name.as_str()
+    } else {
+        path
+    };
+    let dest = inventory::native(scratch, spelling);
     match std::fs::remove_file(&dest) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }
     inventory::copy(&inventory::native(folder, name), &dest, &scan[name], cancel)?;
-    present.insert(lower, path.to_string());
+    present.insert(lower, spelling.to_string());
     Ok(())
 }
 

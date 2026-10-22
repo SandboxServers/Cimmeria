@@ -23,7 +23,7 @@ use crate::manifest::{PatchEntry, PatchRoot};
 
 /// The client's `SGWGame` directory in the stock tree, relative to the
 /// client root (`Working/SGWGame`).
-const SGW_GAME_DIR: &str = "Working/SGWGame";
+pub const SGW_GAME_DIR: &str = "Working/SGWGame";
 
 /// One file a patch depends on or produces: a client-root relative path
 /// and the lower-hex SHA-256 of its bytes.
