@@ -17,6 +17,11 @@ mod in_place_replace_tests;
 mod in_place_tests;
 mod index_source;
 mod inventory;
+// LA-10 and LA-11 read the plan; until then only the tests call it.
+#[allow(dead_code)]
+mod light_plan;
+#[cfg(test)]
+mod light_plan_tests;
 mod model;
 pub(crate) mod preparation;
 mod publication;
