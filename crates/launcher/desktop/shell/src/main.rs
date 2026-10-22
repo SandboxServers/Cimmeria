@@ -354,7 +354,7 @@ async fn adoption_command(
 
 /// Picks an existing game folder to adopt: in place, or as a verified copy made
 /// into a folder the player picks next. The webview never passes a path; a
-/// cancelled dialog returns the current status.
+/// cancelled dialog returns the status with any earlier refusal cleared.
 #[tauri::command]
 async fn choose_existing_game_folder(
     app: tauri::AppHandle,

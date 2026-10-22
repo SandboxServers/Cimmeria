@@ -26,7 +26,7 @@ test('a light review decodes its patch counts and index comparison', async () =>
 });
 
 test('a light review with an unknown field is refused by the schema', async () => {
-  await assert.rejects(decode({...(status(['light','copy']) as object),activity:'review',review:review({light:{...light,surprise:1}})}));
+  await assert.rejects(decode({...(status(['light','copy']) as object),activity:'review',review:review({light:{...light,surprise:1}})}),/\["light"\]\["surprise"\]/);
 });
 
 test('the scan progress item decodes, and an unknown item is refused', async () => {

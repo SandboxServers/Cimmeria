@@ -260,6 +260,7 @@ impl NativeHost {
     /// itself), and the folder can be written, before any download. In place
     /// (`InPlace`, no `location`) the folder itself is adopted. A copy (`Copy`) goes
     /// into a new folder inside `location`, the folder the player picked second.
+    /// A folder the engine refuses is returned as an `Ok` status that carries the refusal and its check.
     pub fn begin_folder_adoption(
         &self,
         selected: PathBuf,

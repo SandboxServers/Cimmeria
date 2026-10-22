@@ -12,7 +12,7 @@ test('the incomplete patch counts decode with the launch status', async () => {
   assert.equal(decoded.ops_skipped,3);
 });
 
-test('a launch status without the skipped op count is refused', async () => {
-  const {ops_skipped:_omitted,...withoutSkips}=initial();
-  await assert.rejects(decode(withoutSkips));
+test('a launch status without the incomplete patch counts is refused', async () => {
+  const {patches_incomplete:_incomplete,ops_skipped:_skipped,...withoutCounts}=initial();
+  await assert.rejects(decode(withoutCounts));
 });
