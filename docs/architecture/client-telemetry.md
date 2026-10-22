@@ -598,7 +598,7 @@ Kill switch: `nav_poll` in `CIMMERIA_CLIENT_HOOKS_DISABLE` turns off the whole n
 
 Not captured (R5): key codes, characters, chat text, cursor coordinates and per-frame mouse motion. The drag counters are the game's accumulated counts, not a position. The per-100 ms motion row `client.input.mouse_window` is LN-17 and is not built (D-LN1 = B only).
 
-Tested status: at the time of writing, these modules have unit tests but no lane has compiled or run them, and no row has been seen from a live client. LN-13 step 2 is the first live check. Every address is static until LN-13 confirms it.
+Tested status: the unit tests for these modules pass in the lane (fmt, clippy, i686 tests), but no row has been seen from a live client. LN-13 step 2 is the first live check. Every address is static until LN-13 confirms it. If the poll cannot read the controller it emits `client.nav.poll_unavailable` once, and `client.nav.attached` once when it first reads one.
 
 ## Session tags on `client.dll.attached`
 

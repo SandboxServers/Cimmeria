@@ -102,6 +102,7 @@ LIMIT 50
 ```
 
 Each `pose_seq` restarts at 1 with the server, so narrow the window to one server run if the join matches across a restart.
+
 ## Approach trails
 
 The approach row holds the last few positions before the interaction. Join it to its pose row on `pose_seq`, which is process-global and restarts at 1 with the server, so also bound the time (the approach row is written right after its pose row; the bound sits in `WHERE` because a ClickHouse join condition between the two sides is not available on every version):
@@ -302,6 +303,7 @@ FORMAT JSONEachRow
 ```
 
 Check before you trust it: run `SELECT DISTINCT scope_name, resources_string['service.name'] ... LIMIT 20` on a day with a camera upload. If the rows sit under another service name, change the `WHERE`, not the column list. The `pawn_*` columns are left out on purpose; add them the same way if you want the pawn pose beside the camera.
+
 ## Heading age at interact
 
 The `interact` INFO row carries `heading_age_ms`: milliseconds since the cell processed the player's last position update, so it says how old the server's heading is at the click. `-1` means no position update has been seen yet. Standing players send a position about every 3 s, so an age above 1,000 means the server heading may lag the client's turn.
