@@ -23,15 +23,12 @@ remote services, and the three keys that protect them:
 - **Launcher updates** — a Minisign key pair that signs the launcher zip and
   its updater feed. The private key is in Key Vault and a GitHub environment;
   the public key is compiled in from the `LAUNCHER_UPDATER_PUBKEY` variable.
-- **Debug-log uploads** — a single PUT per click into an Azure Blob
-  container, through a create-only SAS URL compiled in from the
-  `LAUNCHER_LOG_SAS_URL` secret. The only operator-managed infrastructure.
-  *Legacy:* the desktop launcher's **Upload debug logs** no longer uses this
-  path. It posts log lines to the telemetry server
-  ([telemetry.md § Launcher log ingest](../operations/telemetry.md#launcher-log-ingest)),
-  and LF-18 removes the SAS URL from the build.
+- **Debug-log uploads** — none. The desktop launcher's **Upload debug logs**
+  posts log lines to the telemetry server
+  ([telemetry.md § Launcher log ingest](../operations/telemetry.md#launcher-log-ingest)).
+  The retired Azure Blob path and its `LAUNCHER_LOG_SAS_URL` secret are gone (LF-18).
 
-Re-read this when rotating a key or the log-upload SAS, or when moving content
+Re-read this when rotating a key, or when moving content
 to a new release tag. How a launcher release is built and published, job by job,
 is in the [desktop launcher release guide](../../crates/launcher/desktop/docs/release.md);
 this page covers the services and keys it depends on.
