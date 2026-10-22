@@ -34,6 +34,23 @@ impl Worker {
         Ok(())
     }
 }
+/// The adoption tags of an admitted launch: the provenance's check (`light`,
+/// `full`, or `none` for a downloaded install) and how many patches the copy's
+/// own ledger lists as incomplete. An unreadable ledger counts as none.
+pub(super) fn launch_tags(
+    provenance: Option<&crate::storage::adoption::Provenance>,
+    game: &std::path::Path,
+) -> (&'static str, u64) {
+    let check = match provenance.map(|p| p.check) {
+        Some(crate::storage::adoption::FileCheck::Light) => "light",
+        Some(crate::storage::adoption::FileCheck::Full) => "full",
+        None => "none",
+    };
+    let incomplete = crate::state::InstalledState::load(game)
+        .incomplete_patches
+        .len();
+    (check, u64::try_from(incomplete).unwrap_or(0))
+}
 /// Retained task: dropping the view/Worker stops neither launch nor observation.
 pub fn dispatch(state: Arc<Mutex<DesktopState>>, id: Uuid) -> Result<Worker, IntentError> {
     let handle = tokio::runtime::Handle::try_current().map_err(|_| StorageError::Io)?;
@@ -61,7 +78,21 @@ pub fn dispatch(state: Arc<Mutex<DesktopState>>, id: Uuid) -> Result<Worker, Int
             return Err(ContractError::InvalidTransition.into());
         }
         owner.record_launch(&plan, Observation::Preparing)?;
-        events::launch_started(plan.id, plan.resources.client_telemetry.is_some());
+        // A copy that cannot be read as installed launches untagged (`none`, 0).
+        let (adoption_check, patches_incomplete) = owner
+            .installed_for_launch()
+            .ok()
+            .flatten()
+            .map_or(("none", 0), |(installed, provenance)| {
+                let game = installed.intent.destination.join("game");
+                launch_tags(provenance.as_ref(), &game)
+            });
+        events::launch_started(
+            plan.id,
+            plan.resources.client_telemetry.is_some(),
+            adoption_check,
+            patches_incomplete,
+        );
         (plan, owner.state_root().to_path_buf())
     };
     let cancel = CancellationToken::new();
