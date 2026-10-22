@@ -5,11 +5,13 @@
 //! opens again, with the count of changes that were not emitted. The cap is per
 //! fixed 1 s window, so up to twice the cap can land across a window boundary.
 
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 use std::sync::{Mutex, MutexGuard};
 
 use serde_json::json;
 
 use super::controller::{MODE_AUTORUN, MODE_JUMP, MODE_MOUSELOOK, MODE_MOUSEWALK};
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 use super::frame::NavFrame;
 use crate::hooks::entity_trace::Fields;
 
@@ -129,16 +131,20 @@ pub fn hover_fields(c: &Change<i32>) -> Fields {
 }
 
 /// The last mode word seen and emitted.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 static MODE: Mutex<RateLimitedDiff<u32>> = Mutex::new(RateLimitedDiff::new(MODE_CAP_PER_SEC, 0));
 /// The last hover id seen and emitted.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 static HOVER: Mutex<RateLimitedDiff<i32>> = Mutex::new(RateLimitedDiff::new(HOVER_CAP_PER_SEC, 0));
 
 /// Locks `m`, recovering a poisoned lock: a panic in another tick must not stop the poll.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// Drops the mode and hover baselines, for a new controller.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub(super) fn reset() {
     lock(&MODE).reset();
     lock(&HOVER).reset();
@@ -146,6 +152,7 @@ pub(super) fn reset() {
 
 /// Runs once per tick: emits a mode row and a hover row when either changed and
 /// the window has room. Each lock is released before its row is emitted.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub(super) fn step(frame: &NavFrame) {
     let mode = lock(&MODE).observe(frame.now_ms, frame.ctrl.mode);
     if let Some(c) = mode {

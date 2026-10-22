@@ -5,6 +5,7 @@
 //! [`DRAG_THRESHOLD`] make it a click, a select for LMB and an interact for RMB.
 //! Pure apart from the tracker's static and the emit call in [`step`].
 
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 use std::sync::{Mutex, MutexGuard};
 
 use serde_json::json;
@@ -223,14 +224,17 @@ fn class_name(class: ClickClass) -> &'static str {
 }
 
 /// The tracker between ticks.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 static TRACKER: Mutex<ButtonTracker> = Mutex::new(ButtonTracker::new());
 
 /// Locks `m`, recovering a poisoned lock: a panic in another tick must not stop the poll.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// Drops the tracker state, for a new controller.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub(super) fn reset() {
     lock(&TRACKER).reset();
 }
@@ -252,6 +256,7 @@ fn rows(tracker: &mut ButtonTracker, mem: &impl Mem, frame: &NavFrame) -> Vec<Fi
 
 /// Runs once per tick: emits one `client.input.button` row per edge. The lock
 /// is released before the rows are emitted.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub(super) fn step(mem: &impl Mem, frame: &NavFrame) {
     let fields = rows(&mut lock(&TRACKER), mem, frame);
     for f in fields {
