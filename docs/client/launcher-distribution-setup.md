@@ -12,7 +12,7 @@ companion_docs:
 # Launcher Distribution Setup
 
 Operational runbook for everything the launcher reads from or writes to
-remote services, and the three keys that protect them:
+remote services, and the two keys that protect them:
 
 - **Content distribution** — seed, patch zips, manifest, signature.
   Hosted on **GitHub Releases**. Anonymous read, generous bandwidth,
@@ -23,22 +23,12 @@ remote services, and the three keys that protect them:
 - **Launcher updates** — a Minisign key pair that signs the launcher zip and
   its updater feed. The private key is in Key Vault and a GitHub environment;
   the public key is compiled in from the `LAUNCHER_UPDATER_PUBKEY` variable.
-- **Debug-log uploads** — none. The desktop launcher's **Upload debug logs**
-  posts log lines to the telemetry server
-  ([telemetry.md § Launcher log ingest](../operations/telemetry.md#launcher-log-ingest)).
-  The retired Azure Blob path and its `LAUNCHER_LOG_SAS_URL` secret are gone (LF-18).
+- **Debug-log uploads** — no operator-managed storage. The desktop launcher's **Upload debug logs** posts log lines to the telemetry server ([telemetry.md § Launcher log ingest](../operations/telemetry.md#launcher-log-ingest)).
 
 Re-read this when rotating a key, or when moving content
 to a new release tag. How a launcher release is built and published, job by job,
 is in the [desktop launcher release guide](../../crates/launcher/desktop/docs/release.md);
 this page covers the services and keys it depends on.
-
-> **Why this layout?** GitHub Releases already hosts the launcher itself, so
-> reusing it for content keeps the infra footprint minimal and gives us free
-> build provenance. Log uploads can't sensibly live on GitHub Releases
-> (per-player writes from an unauthenticated client), so they stay on Azure
-> Blob with a create-only SAS — see Cady's review on PR #343 for the design
-> discussion.
 
 ---
 
@@ -336,141 +326,14 @@ compromised, and announce it as for the egui retirement
 
 ---
 
-## Part 4 — Debug-log uploads via Azure Blob
+## Part 4 — Threat model: keys in the client binary
 
-> [!WARNING]
-> **Legacy.** The desktop launcher's upload is a log ingest into SigNoz (see
-> [telemetry.md § Launcher log ingest](../operations/telemetry.md#launcher-log-ingest)),
-> and `LAUNCHER_LOG_SAS_URL` is unused by it. LF-18 removes the secret from the
-> build and this Part with it. Nothing below is needed for a launcher that ingests
-> logs. A launcher built before LF-15 still uploads here.
-
-Log uploads need a write-capable destination that the launcher can reach
-without per-user credentials; GitHub Releases doesn't support
-unauthenticated writes. The launcher's **Upload debug logs** button zips the
-game's logs and PUTs the zip once as `logs/<host>-<utc>-<digest>.zip` (D-LX11).
-
-### One-time setup
-
-```bash
-az group create --name <resource-group> --location <region>
-
-az storage account create \
-  --name <storage-account> \
-  --resource-group <resource-group> \
-  --sku Standard_LRS \
-  --kind StorageV2
-
-# Container is NOT public — only the log-upload SAS writes to it. No
-# anonymous reads needed; logs are only accessed by operators via the
-# Azure portal or `az storage blob` commands.
-az storage container create \
-  --name <container> \
-  --account-name <storage-account>
-```
-
-### Mint the log-upload SAS
-
-A SAS with **create-only** permission (`c`) on that one container, with an
-expiry about a year out. Do not grant `r`, `l`, `d`, or `w`: create cannot
-overwrite an existing blob, and every upload's name is unique, so a leaked SAS
-can add blobs but never replace other players' logs. Write (`w`) would let it
-overwrite them.
-
-```bash
-EXPIRY=$(date -u -d "+365 days" +%Y-%m-%dT%H:%MZ)
-
-az storage container generate-sas \
-  --account-name <storage-account> \
-  --name <container> \
-  --permissions c \
-  --expiry "$EXPIRY" \
-  --https-only \
-  --output tsv
-```
-
-Build the SAS URL, `https://<storage-account>.blob.core.windows.net/<container>?<sas>`,
-and store it as the GitHub Actions secret `LAUNCHER_LOG_SAS_URL`. The release
-workflow passes it to the launcher build steps, and the desktop engine compiles
-it in with `option_env!` (`engine/src/storage/log_upload/store.rs`). A build
-without it hides the button.
-
-Higher-security alternative: use a user-delegation SAS bound to a
-service principal, with a stored access policy. Skip if the threat model
-(Part 5 below) doesn't justify the extra ops.
-
-### Optional lifecycle policy
-
-Auto-delete uploaded log zips after 90 days to cap storage cost:
-
-```json
-{
-  "rules": [
-    {
-      "name": "expire-debug-logs",
-      "enabled": true,
-      "type": "Lifecycle",
-      "definition": {
-        "filters": { "blobTypes": ["blockBlob"], "prefixMatch": ["<container>/logs/"] },
-        "actions": { "baseBlob": { "delete": { "daysAfterModificationGreaterThan": 90 } } }
-      }
-    }
-  ]
-}
-```
-
----
-
-## Part 5 — Threat model: secrets in the client binary
-
-The log-upload SAS is **compiled into the released launcher** with
-`option_env!("LAUNCHER_LOG_SAS_URL")`. Anyone who can run `strings` on the
-binary or attach a debugger can extract and reuse the SAS URL. The two public
-keys are compiled in too, but they are public by design.
-
-This is a deliberate trade-off — the alternative is a server-issued
-short-lived upload token, which requires a server-side issuer endpoint
-that doesn't exist yet (see Cady's review on PR #343 for the longer
-discussion).
+No secret is compiled into the released launcher. The two public keys (manifest and updater) are compiled in, and they are public by design.
 
 | Concern | Mitigation |
 |---|---|
-| Read other players' logs | SAS has `c` (create) permission only — no read/list/delete |
-| Overwrite other players' logs | Create cannot overwrite an existing blob, and every upload name is unique |
-| Tamper with seed / patches / manifest | **Closed by manifest signing** (Part 2). Even an attacker with full container write can't ship a valid signed manifest. |
+| Tamper with seed / patches / manifest | **Closed by manifest signing** (Part 2). Even an attacker with write access to the release assets can't ship a valid signed manifest. |
 | Ship a malicious launcher update | **Closed by updater signing** (Part 3). The feed and zip must verify against the compiled-in Minisign key, and the signed version must match the offer. |
-| Storage cost amplification (junk uploads) | Lifecycle policy auto-deletes after 90 days (Part 4, optional). Account-level spending cap on the storage account caps the worst case. |
-| Identity exposure | None — SAS is a signed query string, doesn't carry account keys or AAD tokens. |
-
-### Operator action items before publishing a launcher release
-
-1. **Storage cost cap.** Subscription → Cost Management → Budgets →
-   alert at the monthly budget you're comfortable with (e.g. $10/month).
-   Alerts at 50%, 75%, 90%, 100%.
-2. **Upload-rate anomaly alert.** Storage Account → Monitoring →
-   Alerts → Signal `Transactions` filtered to `ApiName = PutBlob` and
-   `BlobType = BlockBlob`, dynamic threshold over a 1h window.
-3. **Rotation cadence.** Regenerate the log SAS every 6 months and
-   cut a new launcher release. The previous binary keeps working
-   until its baked-in SAS expires; rotation overlap is the natural
-   deprecation path for older launcher versions.
-
-If at any point the SAS is observed being abused, the rotation
-procedure below gives you a same-day path to cut off the extracted
-credential.
-
-### Rotation
-
-1. Generate a new SAS (Part 4).
-2. Update the `LAUNCHER_LOG_SAS_URL` GitHub secret with the new value.
-3. Cut a new launcher release via `/release-launcher`. The new binary
-   bakes in the new SAS, and launchers update to it from Settings.
-4. Old launcher binaries continue working until the old SAS expires.
-
-There is no revocation pathway short of expiry unless you use a
-user-delegation SAS with a stored access policy whose validity you
-can shorten. Account-key-signed SAS revocation requires rotating the storage
-account key, which would break any other use of the account.
 
 ---
 
