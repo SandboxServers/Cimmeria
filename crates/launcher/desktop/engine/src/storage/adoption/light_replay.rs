@@ -56,8 +56,10 @@ pub(super) fn replay(
     let _ = std::fs::remove_dir_all(&scratch);
     match &outcome {
         Ok(done) => replayed_event(plan.pending.len(), done),
+        // A player cancel is not a failure and logs nothing.
+        Err(Error::Cancelled) => {}
         Err(error) => {
-            tracing::warn!(target: "adoption", code = rejection::code(error), "light adoption replay failed; the replacement files were not built");
+            tracing::warn!(target: "adoption", event = "adoption_light_replay_failed", code = rejection::code(error), "light adoption replay failed; the replacement files were not built");
         }
     }
     outcome

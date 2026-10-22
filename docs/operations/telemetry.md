@@ -656,6 +656,7 @@ carries a path, URL or host: the only free text is a sample of at most 10 index 
 | --- | --- | --- | --- |
 | `adoption_light_planned` | `adoption` | info | `patches_total`, `patches_current`, `patches_pending`, `download_bytes` |
 | `adoption_light_replayed` | `adoption` | info | `patches_replayed`, `replacements`, `ops_skipped`, `patches_incomplete` |
+| `adoption_light_replay_failed` | `adoption` | warn | `code` (a closed rejection code) |
 | `adoption_index_compared` | `adoption` | info | `state`, `stock`, `patched`, `prepared`, `changed`, `missing`, `extra`, `changed_sample`, `missing_sample` |
 | `patch_incomplete` | `launcher.install` | info | `patch` (`patch:<id>`), `ops_skipped` |
 | `update_staged` (gained fields) | `launcher.game_update` | info | `mode` (`incremental` or `full`), `ops_skipped`, `stage_linked`, `stage_copied`; the full path always sends `full`, 0, 0, 0 |

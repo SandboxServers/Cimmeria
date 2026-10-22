@@ -459,6 +459,73 @@ fn the_replayed_event_carries_the_four_counts() {
     assert_eq!(event.field("patches_incomplete"), Some("1"));
 }
 
+fn replay_events(
+    f: &Fixture,
+    cancel: &CancellationToken,
+) -> (
+    Result<LightReplay, Error>,
+    Vec<crate::test_capture::Captured>,
+) {
+    let _serial = serial();
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    crate::test_capture::capture(|| {
+        tracing::callsite::rebuild_interest_cache(); // first line in the closure
+        replay(
+            &f.plan,
+            &f.release,
+            f.folder.path(),
+            &f.scan,
+            f.prep.path(),
+            cancel,
+            &sink(),
+        )
+    })
+}
+
+#[test]
+fn a_failed_replay_logs_one_closed_code_warning() {
+    let mut f = fixture(
+        two_independent_patches(),
+        &[
+            (OVERLAY, &big("stock overlay")),
+            (SECOND, &big("stock second")),
+        ],
+    );
+    std::fs::write(&f.plan.zips[1], b"not a zip").unwrap();
+    f.scan = inventory::scan(f.folder.path(), &CancellationToken::new()).unwrap();
+    let (result, events) = replay_events(&f, &CancellationToken::new());
+    let error = result.expect_err("an unusable archive is refused");
+    let rows: Vec<_> = events
+        .iter()
+        .filter(|e| e.field("event") == Some("adoption_light_replay_failed"))
+        .collect();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].target, "adoption");
+    assert_eq!(rows[0].level, tracing::Level::WARN);
+    assert_eq!(rows[0].field("code"), Some(rejection::code(&error)));
+}
+
+#[test]
+fn a_cancelled_replay_logs_no_failure_row() {
+    let f = fixture(
+        two_independent_patches(),
+        &[
+            (OVERLAY, &big("stock overlay")),
+            (SECOND, &big("stock second")),
+        ],
+    );
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let (result, events) = replay_events(&f, &cancel);
+    assert!(matches!(result, Err(Error::Cancelled)));
+    assert!(events
+        .iter()
+        .all(|e| e.field("event") != Some("adoption_light_replay_failed")));
+    assert!(events
+        .iter()
+        .all(|e| e.level != tracing::Level::WARN || e.target != "adoption"));
+}
+
 /// R-LA 10: tolerance is a per-call option. The strict unpack that downloaded
 /// installs and the full replay use still refuses the same changed source.
 #[test]
