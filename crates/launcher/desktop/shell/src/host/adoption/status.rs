@@ -75,14 +75,11 @@ impl NativeHost {
         };
         let backend = self.adoption_backend();
         // The modes this build can offer: a verified copy wherever a backend runs
-        // (macOS only through its helper), and the folder itself where the
-        // in-place backend runs too (Windows and Linux).
+        // (macOS only through its helper), and the folder itself, light first, where
+        // the in-place backend runs too (Windows and Linux).
         let modes = match backend {
             Backend::Available => vec![adoption::AdoptionMode::Copy],
-            Backend::InPlace => vec![
-                adoption::AdoptionMode::InPlace,
-                adoption::AdoptionMode::Copy,
-            ],
+            Backend::InPlace => vec![adoption::AdoptionMode::Light, adoption::AdoptionMode::Copy],
             Backend::HelperUnavailable => Vec::new(),
         };
         Ok(AdoptionStatus {

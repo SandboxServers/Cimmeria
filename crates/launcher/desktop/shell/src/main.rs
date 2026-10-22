@@ -368,7 +368,12 @@ async fn choose_existing_game_folder(
     tauri::async_runtime::spawn_blocking(move || checking.adoption_mode_allowed(mode))
         .await
         .map_err(|_| AdoptionError::Io)??;
-    let in_place = mode == cimmeria_launcher_engine::adoption::AdoptionMode::InPlace;
+    // Light adopts the folder where it is, so it counts as in place.
+    let in_place = matches!(
+        mode,
+        cimmeria_launcher_engine::adoption::AdoptionMode::InPlace
+            | cimmeria_launcher_engine::adoption::AdoptionMode::Light
+    );
     crate::host::adoption_events::mode_chosen(in_place);
     let Some(selected) = pick_folder(
         app.clone(),

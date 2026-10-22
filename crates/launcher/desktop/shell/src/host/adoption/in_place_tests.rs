@@ -194,7 +194,7 @@ pub(super) fn unimported_host(state_root: PathBuf) -> NativeHost {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_in_place() {
+async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_light() {
     let mut f = Fixture::new(serde_json::json!({}));
     let folder = f.source.game_directory.clone();
     f.host = unimported_host(f.root.path().join("plain-state"));
@@ -205,11 +205,22 @@ async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_in_place() {
     // The player picks the `Working` folder inside the game root; the root is
     // what gets adopted. The release file they edited is restored first.
     std::fs::write(folder.join("later.txt"), b"later entry").unwrap();
+    // The shell no longer offers in-place adoption, so the refusal is checked here.
+    assert!(matches!(
+        f.host.begin_folder_adoption(
+            folder.join("Working"),
+            None,
+            AdoptionMode::InPlace,
+            f.release(),
+        ),
+        Err(AdoptionError::UnsupportedMode)
+    ));
+    assert!(!folder.join("game").exists());
     f.host
         .begin_folder_adoption(
             folder.join("Working"),
             None,
-            AdoptionMode::InPlace,
+            AdoptionMode::Light,
             f.release(),
         )
         .unwrap();
@@ -230,11 +241,14 @@ async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_in_place() {
         operation(&f.host.adoption_status().unwrap()),
         Some((OperationKind::Adopt, OperationState::Succeeded))
     );
-    // Not part of the release: it stays exactly where the player left it.
+    // Light carries every folder file into `game/`, the release's and the player's
+    // own; none is lost.
+    assert!(!folder.join("unknown.dll").exists());
     assert_eq!(
-        std::fs::read(folder.join("unknown.dll")).unwrap(),
+        std::fs::read(under(&folder, "game/unknown.dll")).unwrap(),
         b"untrusted plugin"
     );
+    assert!(under(&folder, "game/Working/Binaries/SGW.exe").is_file());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
