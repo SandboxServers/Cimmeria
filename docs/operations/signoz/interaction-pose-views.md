@@ -62,6 +62,46 @@ GROUP BY kind
 ORDER BY kind
 ```
 
+## Hostile clicks and nearby hostiles
+
+A right-click on a living hostile NPC is an interaction too. Its pose row carries `route = 'hostile_attack'` (the click is rerouted to combat, so the other routes never apply to it). The same pose row also gets one `interaction_hostiles` row when a living hostile stands within 20 m of the player, listing the three nearest, nearest first. It carries the pose row's `pose_seq` and is written by the same actor's pose throttle, so it is never written without its pose row. The target itself, dead NPCs and non-hostile NPCs are left out. A pose with no hostile nearby has no `interaction_hostiles` row.
+
+| Field | Meaning |
+|---|---|
+| `event` | `interaction_hostiles` |
+| `pose_seq` | The pose row's `pose_seq`, the join key |
+| `entity_id` | The acting player's entity id |
+| `count` | How many hostiles are listed, 1 to 3 |
+| `hostile_1_id`, `hostile_2_id`, `hostile_3_id` | The hostile's entity id, absent past `count` |
+| `hostile_N_dist_m` | Horizontal distance from the player, in metres |
+| `hostile_N_bearing_deg` | `atan2(pz - tz, px - tx)` from the hostile to the player, in `[0, 360)` |
+
+```sql
+SELECT
+  p.timestamp                                   AS t,
+  toInt64(p.attributes_number['pose_seq'])      AS pose_seq,
+  p.attributes_number['radius_m']               AS radius_m,
+  h.attributes_number['count']                  AS hostile_count,
+  h.attributes_number['hostile_1_id']           AS hostile_1_id,
+  h.attributes_number['hostile_1_dist_m']       AS hostile_1_dist_m,
+  h.attributes_number['hostile_1_bearing_deg']  AS hostile_1_bearing_deg
+FROM signoz_logs.distributed_logs_v2 AS p
+INNER JOIN signoz_logs.distributed_logs_v2 AS h
+  ON toInt64(h.attributes_number['pose_seq']) = toInt64(p.attributes_number['pose_seq'])
+ AND h.resources_string['service.name'] = 'cimmeria-server'
+ AND h.scope_name = 'interaction.pose'
+ AND h.attributes_string['event'] = 'interaction_hostiles'
+WHERE p.resources_string['service.name'] = 'cimmeria-server'
+  AND p.scope_name = 'interaction.pose'
+  AND p.attributes_string['route'] = 'hostile_attack'
+  AND p.timestamp > toUnixTimestamp(now() - INTERVAL 1 DAY) * 1000000000
+  AND h.timestamp > toUnixTimestamp(now() - INTERVAL 1 DAY) * 1000000000
+  AND toInt64(h.timestamp) - toInt64(p.timestamp) BETWEEN 0 AND 5000000000
+ORDER BY t DESC
+LIMIT 50
+```
+
+Each `pose_seq` restarts at 1 with the server, so narrow the window to one server run if the join matches across a restart.
 ## Approach trails
 
 The approach row holds the last few positions before the interaction. Join it to its pose row on `pose_seq`, which is process-global and restarts at 1 with the server, so also bound the time (the approach row is written right after its pose row; the bound sits in `WHERE` because a ClickHouse join condition between the two sides is not available on every version):
