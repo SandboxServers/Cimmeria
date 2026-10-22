@@ -12,6 +12,6 @@ Ledger: [README.md](README.md) (packet status, owner risks, close-out) · Packet
 3. Delete the `LAUNCHER_LOG_SAS_URL` GitHub secret (LF-18 does not).
 4. D2 from launcher-telemetry (the `inPlaceMaintenance.abandon` wording after a light abandon) is still open.
 
-**Owner risks (accepted, D-LU3 and D-LU4):** chat and names leave the machine (per-word scrub only); 2,048-byte message floor; the server drops rows over 4,096 bytes after escaping; lines beyond 20,000 new per file are not uploaded; daily ceilings (80,000 per install, 400,000 per address); secrets under 32 characters or split by dots are kept; log rows are forgeable by a log-token holder; budgets are speed bumps; scrub gaps B2, B3 and B4. Details: [README § Close-out](README.md#close-out-2026-10-22).
+**Owner risks (accepted, D-LU3 and D-LU4):** chat and names leave the machine (per-word scrub only); 2,048-byte message floor; the server drops rows over 4,096 bytes after escaping; lines beyond 20,000 new launcher lines and 20,000 new game lines per press are not uploaded; daily ceilings (80,000 per install, 400,000 per address); secrets under 32 characters or split by dots are kept; log rows are forgeable by a log-token holder; budgets are speed bumps. Details: [README § Close-out](README.md#close-out-2026-10-22).
 
 **Gotchas for any follow-up.** `in_place.rs`, `inventory.rs`, `session.rs`, `log_upload/tests.rs` and `upload_gate.rs` sit near the line cap: call lines only. Engine tests use `cargo test`. `Plan` is digested: never add a field. Never `git worktree prune`.

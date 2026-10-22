@@ -2,7 +2,7 @@
 
 Ledger: [README.md](README.md). Rules R1-R10, the check commands, the path shorthands (`E`, `A`, `FE`, `T`) and the dispatch table are in [work-packets.md](work-packets.md); every packet here uses them. Anchors were taken at `origin/main` `3c10f3624`; re-grep them.
 
-The user's direction (2026-10-22): "We should be sending these logs to signoz on upload. Not the whole file but ingesting it in." The design keeps the launcher-session security model (R1-R16 of [security-review-launcher-session.md](../launcher-adopt-ux/worknotes/security-review-launcher-session.md)) and separates log traffic by a token claim (D-LF7).
+The user's direction (2026-10-22): "We should be sending these logs to signoz on upload. Not the whole file but ingesting it in." The design keeps the launcher-session security model (R1-R16 of `security-review-launcher-session.md` (launcher-adopt-ux worknotes, not committed)) and separates log traffic by a token claim (D-LF7).
 
 ## Contract
 
