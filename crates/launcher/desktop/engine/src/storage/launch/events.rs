@@ -4,6 +4,7 @@
 use super::Observation;
 use crate::operation_numbers;
 use crate::ContractError;
+use cimmeria_runtime_probe::game_launch::Stage;
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -51,6 +52,47 @@ pub(crate) fn launch_failed(id: Uuid, reason: &'static str) {
         event = "launch_failed",
         operation,
         reason,
+        "launch: failed"
+    );
+}
+
+/// The closed reason code for the helper stage that stopped.
+fn stage_reason(stage: Stage) -> &'static str {
+    match stage {
+        Stage::Request => "request_refused",
+        Stage::CreateProcess => "create_process_failed",
+        Stage::Inject => "inject_failed",
+        Stage::Resume => "resume_failed",
+        Stage::Wait => "wait_failed",
+    }
+}
+
+/// The game did not start, as the launch helper reported it. The reason comes
+/// from its stage; `win32` is the Win32 code, when it had one.
+pub(crate) fn launch_not_started_at(id: Uuid, stage: Option<Stage>, win32: Option<u32>) {
+    let operation = operation_numbers::number(id);
+    let reason = stage.map_or("helper_not_started", stage_reason);
+    tracing::warn!(
+        target: "launcher.launch",
+        event = "launch_not_started",
+        operation,
+        reason,
+        win32,
+        "launch: not started"
+    );
+}
+
+/// The launch failed after it began, as the launch helper reported it. The
+/// reason comes from its stage; `win32` is the Win32 code, when it had one.
+pub(crate) fn launch_failed_at(id: Uuid, stage: Option<Stage>, win32: Option<u32>) {
+    let operation = operation_numbers::number(id);
+    let reason = stage.map_or("worker_unknown", stage_reason);
+    tracing::warn!(
+        target: "launcher.launch",
+        event = "launch_failed",
+        operation,
+        reason,
+        win32,
         "launch: failed"
     );
 }
@@ -171,7 +213,13 @@ pub fn mark_uncertain_failed(error: ContractError) {
 mod tests {
     use super::*;
     use crate::test_capture::{capture, Captured};
+    use std::sync::{Mutex, MutexGuard};
     use tracing::Level;
+
+    static SERIAL: Mutex<()> = Mutex::new(());
+    fn serial() -> MutexGuard<'static, ()> {
+        SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     fn event_named<'a>(events: &'a [Captured], name: &str) -> Vec<&'a Captured> {
         events
@@ -279,6 +327,40 @@ mod tests {
         assert_eq!(dll.len(), 1);
         assert_eq!(dll[0].level, Level::WARN);
         assert_eq!(dll[0].field("reason"), Some("lab_build"));
+    }
+
+    #[test]
+    fn worker_failures_carry_stage_reason_and_win32() {
+        let _serial = serial(); // first line: one capture test of this module at a time
+                                // A second live Dispatch keeps tracing's callsite interest per dispatcher; with one,
+                                // a callsite first hit by another test with no subscriber stays disabled.
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+        let id = Uuid::new_v4();
+        let ((), events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache();
+            launch_failed_at(id, Some(Stage::Inject), Some(5));
+            launch_failed_at(id, None, None);
+            launch_not_started_at(id, Some(Stage::CreateProcess), Some(2));
+        });
+        let failed = event_named(&events, "launch_failed");
+        assert_eq!(failed.len(), 2);
+        assert_eq!(failed[0].level, Level::WARN);
+        assert_eq!(failed[0].target, "launcher.launch");
+        assert_eq!(failed[0].field("reason"), Some("inject_failed"));
+        assert_eq!(failed[0].field("win32"), Some("5"));
+        assert_eq!(failed[1].level, Level::WARN);
+        assert_eq!(failed[1].target, "launcher.launch");
+        assert_eq!(failed[1].field("reason"), Some("worker_unknown"));
+        assert_eq!(failed[1].field("win32"), None);
+        let not_started = event_named(&events, "launch_not_started");
+        assert_eq!(not_started.len(), 1);
+        assert_eq!(not_started[0].level, Level::WARN);
+        assert_eq!(not_started[0].target, "launcher.launch");
+        assert_eq!(
+            not_started[0].field("reason"),
+            Some("create_process_failed")
+        );
+        assert_eq!(not_started[0].field("win32"), Some("2"));
     }
 
     #[test]

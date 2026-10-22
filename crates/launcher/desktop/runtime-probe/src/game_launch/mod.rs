@@ -24,13 +24,38 @@ impl Request {
         Ok(value)
     }
 }
+/// Where the helper stopped. A closed set; never a path or a message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Stage {
+    Request,
+    CreateProcess,
+    Inject,
+    Resume,
+    Wait,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Event {
-    ProcessStarted { guest_pid: u32 },
-    ProcessExited { guest_pid: u32, code: i32 },
-    NotStarted,
-    Unknown,
+    ProcessStarted {
+        guest_pid: u32,
+    },
+    ProcessExited {
+        guest_pid: u32,
+        code: i32,
+    },
+    NotStarted {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stage: Option<Stage>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        win32: Option<u32>,
+    },
+    Unknown {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stage: Option<Stage>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        win32: Option<u32>,
+    },
 }
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -85,5 +110,47 @@ mod tests {
         })
         .unwrap();
         assert!(Message::decode(&bytes, id).is_err());
+    }
+
+    #[test]
+    fn an_old_helper_event_without_stage_still_decodes() {
+        let id = Uuid::from_u128(1);
+        for (event, expected) in [
+            (
+                r#"{"event":"not_started"}"#,
+                Event::NotStarted {
+                    stage: None,
+                    win32: None,
+                },
+            ),
+            (
+                r#"{"event":"unknown"}"#,
+                Event::Unknown {
+                    stage: None,
+                    win32: None,
+                },
+            ),
+        ] {
+            let bytes = serde_json::to_vec(&serde_json::json!({
+                "schema_version": 1,
+                "operation_id": id,
+                "observation": serde_json::from_str::<serde_json::Value>(event).unwrap(),
+            }))
+            .unwrap();
+            assert_eq!(Message::decode(&bytes, id).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn stage_and_win32_round_trip() {
+        let event = Event::Unknown {
+            stage: Some(Stage::Inject),
+            win32: Some(5),
+        };
+        let json = serde_json::to_value(event).unwrap();
+        assert_eq!(json["stage"], "inject");
+        assert_eq!(json["win32"], 5);
+        let decoded: Event = serde_json::from_value(json).unwrap();
+        assert_eq!(decoded, event);
     }
 }

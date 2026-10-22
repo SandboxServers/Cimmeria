@@ -95,17 +95,21 @@ pub(super) async fn run(
             events::game_started(id);
             (guest_pid, Instant::now())
         }
-        Event::NotStarted => {
+        Event::NotStarted { stage, win32 } => {
             return if tokio::time::timeout(Duration::from_secs(10), child.wait())
                 .await
                 .is_ok_and(|s| s.is_ok_and(|s| s.success()))
             {
-                events::launch_not_started(id, "helper_not_started");
+                events::launch_not_started_at(id, stage, win32);
                 Observation::NotStarted
             } else {
                 events::launch_failed(id, "helper_unclean_exit");
                 Observation::Unknown
             };
+        }
+        Event::Unknown { stage, win32 } => {
+            events::launch_failed_at(id, stage, win32);
+            return Observation::Unknown;
         }
         _ => {
             events::launch_failed(id, "unexpected_event");
@@ -124,6 +128,10 @@ pub(super) async fn run(
             }
         }
     };
+    if let Ok(Event::Unknown { stage, win32 }) = event {
+        events::launch_failed_at(id, stage, win32);
+        return Observation::Unknown;
+    }
     let Ok(Event::ProcessExited {
         guest_pid: exited_pid,
         code,
