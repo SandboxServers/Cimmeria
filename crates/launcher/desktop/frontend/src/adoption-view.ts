@@ -213,7 +213,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
    const lines=reviewLines(review,s!.native.preferences.launcher_summary_consent);
    const shownSource=displayPath(review.source),shownDestination=displayPath(review.destination),oneFolder=shownSource===shownDestination;
    get('adoption-source').textContent=shownSource;get('adoption-destination').textContent=shownDestination;get('adoption-destination').parentElement!.hidden=oneFolder;
-   get('adoption-source-label').textContent=oneFolder?'Folder:':review.in_place?'Game folder to adopt:':'Original game, never changed:';
+   get('adoption-source-label').textContent=oneFolder?'Folder:':'Original game, never changed:';
    get('adoption-destination-label').textContent=review.in_place?'Launcher-owned installation:':'New verified copy:';
    get('adoption-normalize-text').textContent=review.in_place?'Apply the launcher’s own setup to release files the old launcher’s setup changed.':'Use the signed reference for managed files that are modified, missing or changed by the old launcher’s setup.';
    for(const key of ['release','counts','consequences','settings','telemetry'] as const)get(`adoption-${key}`).textContent=lines[key];
