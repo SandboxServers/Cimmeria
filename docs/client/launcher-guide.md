@@ -264,7 +264,7 @@ found. Nothing was copied, moved or removed.
 | A OneDrive or other cloud-synced file | Move the whole game folder out of the synced folder, for example to `C:\Games`. "Always keep on this device" is not enough, because the files stay cloud files. |
 | A hard link | Replace it with a plain copy, or remove it. |
 | Not a plain file or folder | Remove it or move it out. Files compressed with `compact /EXE` count here: run `compact /U /EXE /S` in the game folder to decompress them. |
-| A name the launcher cannot use | Letters outside plain ASCII, `:` or `\`, or a name that is too long: rename or move it. |
+| A name the launcher cannot use | Control characters, `:` or `\`, or a name that is too long: rename or move it. |
 | Two names that differ only in case | Remove or rename one of them. |
 
 The check covers the whole game folder, including folders you added such as

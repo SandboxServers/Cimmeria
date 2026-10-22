@@ -56,7 +56,7 @@ const unsafeReasons:Record<UnsafeReason,string>={
  cloud_file:'a OneDrive or other cloud-synced file. Move the whole game folder out of the synced folder (for example to C:\\Games), then try again.',
  hard_link:'a hard link: the same file is stored under another name too. Replace it with a plain copy, or remove it, then try again.',
  special_file:'not a plain file or folder. Remove it or move it out of the game folder, then try again.',
- name:'its name has characters the launcher cannot use safely (letters outside plain ASCII, “:” or “\\”), or is too long. Rename it or move it out of the game folder, then try again.',
+ name:'its name has characters the launcher cannot use safely (control characters, “:” or “\\”), or is too long. Rename it or move it out of the game folder, then try again.',
  case_collision:'another entry has the same name apart from upper and lower case. Remove or rename one of them, then try again.',
 };
 type UnsafeReason=NonNullable<AdoptionStatus['unsafe_entries']>['entries'][number]['reason'];

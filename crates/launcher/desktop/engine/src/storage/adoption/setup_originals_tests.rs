@@ -105,6 +105,10 @@ async fn a_light_adoption_is_abandonable_after_setup_and_restores_the_folder() {
     let _second = tracing::Dispatch::new(tracing_subscriber::Registry::default());
     let (result, events) = capture(|| abandon(&mut lt.state.lock().unwrap(), id, revision));
     result.expect("abandons");
+    assert!(
+        events.iter().all(|e| e.level != tracing::Level::WARN),
+        "{events:?}"
+    );
     let [event] = events
         .iter()
         .filter(|e| e.field("restored_setup").is_some())
@@ -199,6 +203,24 @@ async fn a_restore_rerun_skips_a_stock_file_already_moved_home() {
     std::fs::rename(inventory::native(&game, SGW), folder.join("SGW.exe")).unwrap();
     in_place_check::restore_setup_originals(&stage, &game).unwrap();
     assert!(!inventory::native(&game, SGW).exists());
+}
+
+/// A manifest row that climbs out of `game` through a backslash is refused, and the file it
+/// names outside `game` is left alone.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_manifest_row_that_climbs_out_of_the_game_folder_is_refused() {
+    let (lt, folder) = failed_after_setup().await;
+    let stage = stage_of(&folder);
+    let game = lt.game();
+    let outside = game.parent().unwrap().join("x");
+    std::fs::write(&outside, b"keep").unwrap();
+    std::fs::write(
+        stage.join(SETUP_MANIFEST),
+        br#"{"version":1,"files":[{"path":"..\\x","existed":false}]}"#,
+    )
+    .unwrap();
+    assert!(in_place_check::restore_setup_originals(&stage, &game).is_err());
+    assert!(outside.exists());
 }
 
 /// A rerun of the copy (recovery re-enters the `Staged` branch) replaces the first set.

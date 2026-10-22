@@ -1,4 +1,4 @@
-//! Abandoning an in-place adoption that has only renamed files so far.
+//! Abandoning an in-place adoption: before setup started, or (light only) after it, from the saved setup originals.
 use super::in_place::{move_files, release_files, Way, OWNER};
 use super::in_place_check;
 use super::in_place_replace::clear_abandoned;

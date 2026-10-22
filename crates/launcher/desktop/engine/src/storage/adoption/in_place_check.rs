@@ -199,7 +199,7 @@ pub(super) fn restore_setup_originals(stage: &Path, game: &Path) -> Result<u32, 
         if row
             .path
             .split('/')
-            .any(|part| part.is_empty() || part == "..")
+            .any(|part| part.is_empty() || part == ".." || part.contains(['\\', ':']))
         {
             return Err(StorageError::Corrupt.into());
         }
