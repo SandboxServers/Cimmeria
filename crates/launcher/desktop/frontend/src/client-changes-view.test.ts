@@ -34,6 +34,8 @@ test('renders native rows grouped under their headings, with status and patch id
  await app.ready;
  assert.deepEqual(calls,[['client_changes_command',{request:{command:'inspect',schema_version:1}}]]);
  assert.match(text('client-changes-status')!,/^5 changes/);
+ assert.equal(document.getElementById('client-changes-panel')!.closest('main')?.id,'play');
+ assert.equal(document.getElementById('client-changes-details')!.hasAttribute('open'),false);
  const headings=Array.from(document.querySelectorAll('#client-changes-list h4')).map(h=>h.textContent);
  assert.deepEqual(headings,['Launcher setup','Patched files','Added when the game starts','Sent by the server while you play']);
  const launch=document.querySelector('#client-changes-list ul[data-group="launch"]')!;

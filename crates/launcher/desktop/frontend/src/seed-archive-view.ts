@@ -30,7 +30,7 @@ export function seedArchiveText(s:SeedArchiveState):string {
  if(!s.status)return 'Checking archive status…';
  const chosen=s.status.chosen;
  if(chosen)return `Using ${chosen.file_name} (verified). The launcher copies it when it needs the game files and never changes or deletes your file.`;
- return 'Already have the game archive (Stargate Worlds (0.8348.1.4046) (2009-06-30) (beta).rar)? Choose it to skip the 4.1 GB download.';
+ return 'Already have the game archive (the original 2009 beta .rar)? Choose it to skip the 4.1 GB download.';
 }
 /** True when the install area should show the archive line (idle needs no line there). */
 export const seedArchiveShowsLine=(s:SeedArchiveState)=>s.phase!==null||s.error!==null||!!s.status?.chosen;

@@ -48,7 +48,7 @@ DESKTOP_DIR="$TARGET_DIR/desktop"
 STAGED="$DESKTOP/shell/resources/windows"
 GRAPHICS="$DESKTOP/shell/resources/graphics"
 # tauri.conf.json's productName.
-APP_NAME="Stargate Worlds Launcher.app"
+APP_NAME="Cimmeria Launcher.app"
 APP="$DESKTOP_DIR/release/bundle/macos/$APP_NAME"
 # The release names (docs/analysis/launcher-consolidation/work-packets.md,
 # "Release names"); players and docs link to this exact name on

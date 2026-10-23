@@ -12,10 +12,10 @@ companion_docs:
 
 # Launcher Guide
 
-How to get the Stargate Worlds launcher, install the game with it and keep
+How to get Cimmeria Launcher, install the game with it and keep
 both up to date, and how operators publish the game patches it installs.
 
-There is one launcher: the **Stargate Worlds Launcher**, a desktop app for
+There is one launcher: **Cimmeria Launcher**, a desktop app for
 Windows and for Apple silicon Macs. It replaced the old single-file launcher,
 `sgw-launcher.exe`, which was retired on 2026-10-11 and no longer updates
 itself. If you still use that one, read
@@ -46,6 +46,7 @@ operator setup (content releases and the two signing keys) is
   - [Play](#play)
   - [Use an existing game folder](#use-an-existing-game-folder)
   - [Use a game archive you already downloaded](#use-a-game-archive-you-already-downloaded)
+  - [Main-page preferences and changes](#main-page-preferences-and-changes)
   - [Settings](#settings)
   - [Launcher updates](#launcher-updates)
   - [Where your files are](#where-your-files-are)
@@ -109,9 +110,12 @@ first start:
 - **Defender quarantines a file:** see
   [Windows Defender or SmartScreen blocks the launcher](#windows-defender-or-smartscreen-blocks-the-launcher).
 
-The window has two tabs, **Play** and **Patch Notes**, and a gear button
-(⚙, "Game settings") that opens **Settings**. The buttons for installing and
-playing are along the bottom.
+The **Cimmeria Launcher** window opens on **Play**. The gear button
+(⚙, "Game settings") opens **Settings** for folders, maintenance and recovery.
+The main page scrolls when the window is small. Below **Play**, you can toggle
+client patches, launcher diagnostics and game diagnostics. **Changes to your
+client** shows a summary; expand **View all changes** for the full list. There
+is no Patch Notes tab.
 
 ### Install the game
 
@@ -125,7 +129,7 @@ archive.org, then applies Cimmeria's patches to it. You don't need the old
    click **Choose folder…** and pick an empty folder, or a new folder inside
    one that exists. The launcher refuses a folder that already has files in
    it.
-2. Click **Install Stargate Worlds**. A progress bar shows the percent and
+2. Click **Install Cimmeria**. A progress bar shows the percent and
    size, plus the speed and time left for large downloads, and a percent
    while unpacking. The download is 4.1 GB, and the install drive needs about
    14 GB free while it unpacks.
@@ -138,8 +142,13 @@ again; that also deletes what was downloaded so far. If the launcher or the PC
 stopped part-way instead, the launcher offers **Resume installation**, which
 continues from where it stopped. Nothing is ever retried without you asking.
 
-The **Patch Notes** tab lists the patches the current release applies, read
-from the signed release manifest. **Refresh patch notes** reads it again.
+Once native inspection confirms setup is complete, **Recheck Play status** and
+**Use a downloaded game archive…** disappear from the main page and stay hidden
+while the game runs or a launcher update is offered. Settings keeps archive
+selection and a separate **Check Play status** button; pressing it immediately
+shows feedback, followed by the inspection result beside it. A launcher update can still require
+**Update and restart** before Play. A previously completed adoption does not
+need compatibility setup just because you reopened the launcher.
 
 ### Install PhysX
 
@@ -175,22 +184,24 @@ server's operator requires a newer launcher. See
 ### Use an existing game folder
 
 If the game is already on this PC, you don't have to download it again. Point
-the launcher at the folder. You don't need the old launcher for this.
+the launcher at its `SGW.exe`. You don't need the old launcher for this.
 
 1. On the main page, click **Adopt an install** beside the other game actions.
    It appears only while no valid managed or adopted install exists. A valid
    install remains valid when Play is blocked by a runtime prerequisite, a
    launcher update requirement, or another operation. An invalid registered
    install must be repaired or uninstalled before another folder can be adopted.
-   You can also open **Settings → Use an existing game folder**.
+   You can also open **Settings → Use an existing game folder → Choose SGW.exe…**.
 2. The first press opens the adoption panel and immediately shows
-   **Checking your game folder…**, then opens the folder picker. Adoption uses
+   **Checking your game folder…**, then opens **Choose SGW.exe in your existing
+   install**. Adoption uses
    your selected installation where it is on Windows, Linux and macOS; it never
    copies or relocates it into a launcher-managed game subfolder.
-3. Pick your game folder. The game root, the `Working` folder and the
-   `Binaries` folder all work. If you pick a folder that holds exactly one game
-   folder one level down, the launcher uses that one. If it holds several, the
-   launcher asks you to pick the one you want.
+3. Select the existing client's `Working\Binaries\SGW.exe`. The picker
+   filters for `.exe` files, but the launcher accepts only `SGW.exe` and
+   resolves the installation root from it. Choosing another executable is
+   refused. Cancelling changes nothing; selecting the file opens the review
+   before any installation changes.
 4. Read the review screen. It lists:
    - files that will be updated to the current release;
    - modified or missing files. The launcher replaces these only if you tick
@@ -240,7 +251,7 @@ Before you use a folder where it is, know what changes:
 - Your game settings and the client cache live in `Documents` and are not
   affected.
 - An adopted folder plays without the game diagnostics module for now, even
-  with **Send game diagnostics** on. A fresh install has it.
+  with **Game diagnostics** on. A fresh install has it.
 - With game diagnostics on, each step of the adoption is sent as it happens;
   offline, nothing is sent, and the adoption works the same.
 - A folder that is behind the current release is fine. The review lists the
@@ -355,6 +366,29 @@ fingerprint before it uses the file. A file that doesn't match is not used.
 - The project never hosts the game archive. It comes from archive.org or from
   your own copy.
 
+### Main-page preferences and changes
+
+These controls are below **Play**. Each save shows feedback and restores the
+confirmed choice if saving fails. Diagnostics are optional and off by default;
+expand **About diagnostics and privacy** to read what they share.
+
+| Control | What it does |
+|---|---|
+| **Launcher diagnostics** | Off by default. When it is on, setup diagnostics are sent over https to your first login server, if that address is https. With the default server list (plain http) they are saved but not sent yet, and the box says so. Nothing is sent while it is off. The built-in fallback address is not set yet. |
+| **Game diagnostics** | Off by default. When on, Play loads a small diagnostics module into the game, which sends game events and logs to your login server, so the developers can see what went wrong. It changes nothing in the game. When it is on, the launcher also sends its game-folder events (the steps of **Use an existing game folder**, and why a folder was refused) to your login server as they happen, without Play. They name files only by their place inside the game folder, never your user name or home folder. |
+| **Client patches** | **Load client patches** is on by default. The patches fix parts of the 2009 client; the Black Market window, for one, needs them. Turn it off only to rule them out when something misbehaves. A directly adopted folder follows the saved choice on the next Play; a legacy-bound adopted client keeps its reviewed setting until Repair. |
+| **Changes to your client** | Read-only. Every change the launcher makes to the stock client: the setup steps, each applied patch, the DLLs Play loads, and what the server sends while you play. |
+
+Direct-folder adoption follows the current saved client-patches preference on
+the next Play. A legacy-bound adopted client keeps the patch setting reviewed
+with its imported settings until Repair rebuilds it; changing the checkbox still
+saves your preference, and the adjacent status explains that binding.
+
+Game diagnostics shows a compact status. Its detailed status stays collapsed
+while idle and opens automatically when saving or reporting an error. You can
+also expand it yourself; the full privacy explanation is under **About
+diagnostics and privacy**.
+
 ### Settings
 
 Everything below is in **Settings** (⚙). Every button shows a status line as
@@ -363,15 +397,12 @@ soon as you press it.
 | Section | What it does |
 |---|---|
 | **Local install directory** | **Choose folder…** picks where a new install goes. **Show folder** opens the saved folder. Windows paths display without the internal `\\?\` prefix; the saved location stays the same. |
+| **Check Play status** | Inspects native Play availability and shows the result beside the button, with feedback on the first press. Available here even when the main-page recheck is hidden after setup. |
 | **Repair game** | Downloads the signed release again and replaces modified or missing game files in the installed folder. Confirm in the panel that opens. **Cancel** works until replacement starts. Your settings are kept. The [repair contract](../../crates/launcher/desktop/docs/repair.md) has the recovery buttons. |
 | **Uninstall…** | Removes the game files and modifications from the installed folder after you confirm with **Uninstall game**. Launcher settings stay. |
-| **Share setup diagnostics** | Off by default. When it is on, setup diagnostics are sent over https to your first login server, if that address is https. With the default server list (plain http) they are saved but not sent yet, and the box says so. Nothing is sent while it is off. The built-in fallback address is not set yet. |
-| **Send game diagnostics** | Off by default. When on, Play loads a small diagnostics module into the game, which sends game events and logs to your login server, so the developers can see what went wrong. It changes nothing in the game. When it is on, the launcher also sends its game-folder events (the steps of **Use an existing game folder**, and why a folder was refused) to your login server as they happen, without Play. They name files only by their place inside the game folder, never your user name or home folder. |
 | **Login servers** | The servers the game's login screen lists, one `Name = http://host:port` per line. **Save servers** saves them; a line the launcher cannot read is shown under the box and nothing is saved. Empty means the default Cimmeria server. |
-| **Client patches** | **Load client patches** is on by default. The patches fix parts of the 2009 client; the Black Market window, for one, needs them. Turn it off only to rule them out when something misbehaves. An adopted folder keeps the setting it was adopted with. |
-| **Debug logs** | **Upload debug logs** sends the launcher's own log lines and the game's `SGWDebugLog` and session log lines to the project's diagnostics server, in a few paced batches. It sends only lines it has not sent before, at most 20,000 launcher lines and 20,000 game lines per press, and shows "Sent N log lines. Reference `<id>`." when it is done. Quote the reference when you report a problem. File paths and addresses are removed first. Game logs can include chat and character names. Pressing the button sends the logs even when **Send game diagnostics** is off. |
+| **Debug logs** | **Upload debug logs** sends the launcher's own log lines and the game's `SGWDebugLog` and session log lines to the project's diagnostics server, in a few paced batches. It sends only lines it has not sent before, at most 20,000 launcher lines and 20,000 game lines per press, and shows "Sent N log lines. Reference `<id>`." when it is done. Quote the reference when you report a problem. File paths and addresses are removed first. Game logs can include chat and character names. Pressing the button sends the logs even when **Game diagnostics** is off. |
 | **Client cache and settings** | **Reset client cache** clears the game's downloaded data cache in `Documents\My Games\Firesky\SGWGame\Cache.en-US`; the game refills it from the server at your next login. **Reset all client state…** deletes the whole `Documents\My Games\Firesky` folder (your game settings, key bindings and cache) after you confirm with **Delete all client state**. Your characters on the server are not affected. Both refuse while the game runs. |
-| **Changes to your client** | Read-only. Every change the launcher makes to the stock client: the setup steps, each applied patch, the DLLs Play loads, and what the server sends while you play. |
 | **PhysX System Software** | Windows only. See [Install PhysX](#install-physx). |
 | **Game updates** | **Check for game updates** looks for a newer signed release of the game patches; **Update game…** applies one after you confirm. The update is built beside your install and swapped in, so a failed update leaves the old one working. |
 | **Launcher updates** | See [Launcher updates](#launcher-updates). |
@@ -919,8 +950,8 @@ install is not affected.
 
 The Black Market window needs the client patches.
 
-- Check **Settings → Client patches**: **Load client patches** must be on.
-- Check **Settings → Changes to your client**: it lists the DLLs Play loads.
+- Check **Play → Client patches**: **Load client patches** must be on.
+- Check **Play → Changes to your client**: it lists the DLLs Play loads.
 - If Defender removed a file from the launcher's `windows` folder, see
   [Windows Defender or SmartScreen blocks the launcher](#windows-defender-or-smartscreen-blocks-the-launcher).
 - The patches write `cimmeria-client-patches.log` next to `SGW.exe`. A line

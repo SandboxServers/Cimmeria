@@ -16,7 +16,7 @@ function fixture(reply:(request:UpdaterRequest)=>Promise<UpdaterStatus>){
   if(command==='launcher_command')return native;
   if(command==='launch_command'){
    if((args!.request as {command:string}).command==='play')plays++;
-   return {schema_version:1,native,installation_id:'owner',resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,observation:null};
+   return {schema_version:1,native,installation_id:'owner',setup_complete:true,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,observation:null};
   }
   return native; // Unrelated panels refuse these fixtures through their strict decoders.
  });
@@ -41,6 +41,8 @@ test('startup holds Play, checks once, then one main-page click verifies and app
   assert.equal(ui.get('update-launcher').hidden,false);assert.equal(ui.get('update-launcher').textContent,'Update and restart');
   assert.match(ui.get('launch-status').textContent!,/launcher update above/);
   assert.equal(ui.get('gear').hidden,true,'action is on the main page');
+  assert.equal(ui.get('inspect-launch').hidden,true,'content setup stays complete while the launcher needs updating');
+  assert.equal(ui.get('install-seed-archive').hidden,true,'composition shares native Play readiness with installation');
   await ui.app.play.refresh();await tick();assert.equal(ui.get('launch').disabled,true,'Play polling cannot clear updater gate');
   ui.click('update-launcher');assert.equal(ui.get('update-launcher').textContent,'Updating launcher…');
   ui.click('update-launcher');await tick();assert.equal(ui.calls.filter(r=>r.command==='prepare').length,1);

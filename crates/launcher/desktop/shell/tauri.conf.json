@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Stargate Worlds Launcher",
+  "productName": "Cimmeria Launcher",
   "version": "0.1.0",
   "identifier": "app.cimmeria.launcher.desktop",
   "build": {
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Stargate Worlds",
+        "title": "Cimmeria Launcher",
         "theme": "Dark",
         "width": 620,
         "height": 700,

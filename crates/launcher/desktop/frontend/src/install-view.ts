@@ -44,6 +44,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   let current:InstallViewState={status:null,busy:false,needsInspection:true,error:null};
   let disposed=false; let pending=false; let watching=false;
   let journeyInstallId:string|null=null;
+  let playable=false;
   let mutation:Promise<void>=Promise.resolve(); let observation:Promise<void>=Promise.resolve();
   const listeners:(()=>void)[]=[];
   const render=()=>{
@@ -57,11 +58,11 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     const ready=!!status&&!status.native.requires_reopen&&!current.needsInspection&&!current.busy&&!pending;
     repairs.render(current,ready);
     const canPrepare=!!status?.runtime_setup&&!active&&!recovery;
-    primary.hidden=operation?.kind==='launch'||adopting||(!!status?.uninstall&&!canPrepare&&!active);
+    primary.hidden=playable||operation?.kind==='launch'||adopting||(!!status?.uninstall&&!canPrepare&&!active);
     primary.disabled=!ready||active||(!canPrepare&&(!status?.install_supported||(!!operation&&!status?.can_retry)||!status.native.preferences.install_directory));
     const removed=operation?.kind==='uninstall'&&operation.state==='succeeded';
     const runtimeSetup=operation?.kind==='prepare_runtime';
-    primary.textContent=operation?.kind==='repair'?(active?'Repairing…':operation.state==='succeeded'?'Game reconstructed':'Repair stopped'):canPrepare?'Continue installation':runtimeSetup?(active?'Checking compatibility…':operation?.state==='succeeded'?'Compatibility checked':'Check compatibility status'):removed?'Install Stargate Worlds':status?.can_retry?'Retry installation':operation?.state==='succeeded'?'Content prepared':active?(operation?.kind==='uninstall'?'Removing…':'Installing…'):'Install Stargate Worlds';
+    primary.textContent=operation?.kind==='repair'?(active?'Repairing…':operation.state==='succeeded'?'Game reconstructed':'Repair stopped'):canPrepare?'Continue installation':runtimeSetup?(active?'Checking compatibility…':operation?.state==='succeeded'?'Compatibility checked':'Check compatibility status'):removed?'Install Cimmeria':status?.can_retry?'Retry installation':operation?.state==='succeeded'?'Content prepared':active?(operation?.kind==='uninstall'?'Removing…':'Installing…'):'Install Cimmeria';
     const failed=operation?.kind==='install'&&(operation.state==='failed'||operation.state==='cancelled');
     cleanup.hidden=!failed||status?.can_retry===true;
     cleanup.disabled=!ready;
@@ -98,7 +99,8 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
       else if(canPrepare)text='Game content is ready. Continue installation to check compatibility.';
       else if(runtimeSetup)text=recovery?(status.can_reconcile?'A saved compatibility result is available. Recover setup to finish checking its state.':'Compatibility setup was interrupted. Files are preserved; recovery requires inspection.'):active?(operation?.state==='cancel_requested'?'Cancellation requested. Waiting for compatibility setup to stop safely.':'Checking game compatibility…'):operation?.state==='succeeded'?'Prerequisites checked. Graphics and Play still need validation.':'Compatibility setup stopped. Game files are preserved.';
       else if(operation?.kind==='uninstall')text=recovery?'Uninstall was interrupted. Use Finish uninstall in Settings to confirm removal again.':active?'Removing game files…':'Inspect uninstall status before continuing.';
-      else if(operation?.state==='succeeded')text='Game content prepared. This build cannot continue compatibility setup for this installation.';
+      else if(operation?.kind==='adopt'&&operation.state==='succeeded')text='';
+      else if(operation?.state==='succeeded')text='Game content prepared. Recheck Play status to check readiness.';
       else if(adopting&&recovery)text='';
       else if(recovery)text=status.can_resume||status.can_reconcile?'An interrupted installation was found. Inspect files or explicitly resume the saved attempt.':'An interrupted compatibility operation was found. Files are preserved; recovery is not available in this build. You can recheck status.';
       else if(active)text=operation?.state==='cancel_requested'?'Cancellation requested. Waiting for the installer to stop safely.':
@@ -107,10 +109,11 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
       else if(status.outcome==='runtime_unavailable')text='Windows compatibility could not be prepared. Check your connection and available disk space. Existing files have been preserved.';
       else if(status.can_retry)text='Ready to retry installation.';
       else if(operation)text='Installation stopped. Partial files are preserved. Remove partial files to retry, or choose another empty folder in Settings.';
-      else if(!status.install_supported)text='This build is missing a verified compatibility helper. Settings and Patch Notes are available.';
+      else if(!status.install_supported)text='This build is missing a verified compatibility helper. Settings are available.';
       else text=status.native.preferences.install_directory?'Ready to install game content.':'Choose an empty game folder in Settings to begin.';
     }
-    get('install-status').textContent=text;
+    const idleSetup=!operation||['install','adopt','prepare_runtime','launch'].includes(operation.kind);
+    get('install-status').textContent=playable&&idleSetup&&!current.error&&!active&&!recovery?'':text;
     primary.setAttribute('aria-busy',String(pending||active));
   };
   const repairs=repairControls(document,uuid,action=>run(action));
@@ -158,13 +161,14 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   const archiveAccept=get<HTMLButtonElement>('install-seed-archive-accept');
   let archive:SeedArchiveState={status:null,phase:null,cancelling:false,error:null};let archivePressed=false;let acceptPressed=false;
   const renderArchive=()=>{const busy=archivePressed||acceptPressed||archive.phase!==null;
+    archiveButton.hidden=playable&&!busy;
     archiveButton.textContent=archivePressed?'Switching to your archive…':'Use a downloaded game archive…';
     archiveButton.disabled=busy;archiveButton.setAttribute('aria-busy',String(busy));
-    const question=seedArchiveOfferText(archive);
+    const question=playable&&!busy?null:seedArchiveOfferText(archive);
     archiveOffer.hidden=question===null;archiveOffer.textContent=question??'';
     archiveAccept.hidden=question===null;archiveAccept.disabled=busy;archiveAccept.textContent=acceptPressed?'Checking…':'Yes';
     archiveAccept.setAttribute('aria-busy',String(busy));
-    archiveLine.hidden=!seedArchiveShowsLine(archive);archiveLine.textContent=seedArchiveText(archive);};
+    archiveLine.hidden=(playable&&!busy)||!seedArchiveShowsLine(archive);archiveLine.textContent=seedArchiveText(archive);};
   const archiveWatcher=archiveRuntime.runFork(Effect.flatMap(SeedArchive,s=>Stream.runForEach(s.changes,
     value=>Effect.sync(()=>{archive=value;renderArchive();}))));
   const chooseArchive=()=>{if(archiveButton.disabled)return;archivePressed=true;renderArchive();
@@ -196,7 +200,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     void run(service=>operation?.state==='reconciliation_required'&&current.status?.can_reconcile?service.reconcile(operation.id):service.inspect);});
   const refresh=()=>run(service=>service.inspect);
   const ready=refresh();
-  return {ready,refresh,settled:()=>mutation,dispose:async()=>{
+  return {ready,refresh,setPlayable:(ready:boolean)=>{playable=ready;render();renderArchive();},settled:()=>mutation,dispose:async()=>{
     if(disposed)return;disposed=true;abort.abort();listeners.forEach(remove=>remove());repairs.dispose();
     await Effect.runPromise(Fiber.interrupt(watcher));await Promise.all([mutation,observation]);await runtime.dispose();
     await Effect.runPromise(Fiber.interrupt(archiveWatcher));await archiveHold.release();

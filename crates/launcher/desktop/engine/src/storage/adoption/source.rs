@@ -100,6 +100,39 @@ pub(super) fn request_source_with(
     Ok((source, scanned))
 }
 
+/// Resolve a native executable pick without changing or launching it.
+pub fn resolve_executable(selected: &Path) -> Result<PathBuf, Error> {
+    if !is_named(selected, "SGW.exe") {
+        return Err(rejection::reject(
+            Error::NotAGameFolder,
+            rejection::Rejection::new("not_a_game_folder")
+                .entry(".")
+                .expected("SGW.exe")
+                .found("another selection"),
+        ));
+    }
+    let metadata = std::fs::symlink_metadata(selected)?;
+    if is_link(&metadata) {
+        return Err(StorageError::UnsafeFile.into());
+    }
+    if !metadata.is_file() {
+        return Err(Error::NotAGameFolder);
+    }
+    let directory = selected.parent().ok_or(Error::NotAGameFolder)?;
+    // Resolve only its containing Binaries directory, never a neighbouring install.
+    if !is_named(directory, "Binaries")
+        || !directory.parent().is_some_and(|p| is_named(p, "Working"))
+    {
+        return Err(Error::NotAGameFolder);
+    }
+    let root = directory
+        .parent()
+        .and_then(Path::parent)
+        .ok_or(Error::NotAGameFolder)?;
+    refuse_links(root)?;
+    resolve_folder(root)
+}
+
 /// The client root a picked folder names: the folder itself, its `Working`, or
 /// its `Working\Binaries`. A flat folder (`SGW.exe` beside `SGWGame`) is not a
 /// root in either mode: copy cannot map its layout. Names match case-blind.

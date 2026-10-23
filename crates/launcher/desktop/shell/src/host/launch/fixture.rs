@@ -45,9 +45,13 @@ pub(super) fn fixture() -> (tempfile::TempDir, NativeHost) {
             preferences_revision: 1,
             release: &release,
             login_servers: vec![],
-            backend: ExtractionBackend::Wine {
-                runtime_sha256: [7; 32],
-                helper_sha256: [8; 32],
+            backend: if cfg!(windows) {
+                ExtractionBackend::Native
+            } else {
+                ExtractionBackend::Wine {
+                    runtime_sha256: [7; 32],
+                    helper_sha256: [8; 32],
+                }
             },
         })
         .unwrap()
@@ -80,30 +84,33 @@ pub(super) fn fixture() -> (tempfile::TempDir, NativeHost) {
         .observe(id, OperationState::Succeeded)
         .unwrap();
     state.installed_content().unwrap();
-    let revision = state.operations().snapshot().revision;
-    let plan = state
-        .admit_runtime_setup(Uuid::new_v4(), revision, id, [7; 32], [9; 32])
-        .unwrap()
-        .plan;
-    state.begin_runtime_dispatch(plan.id).unwrap();
-    state.record_runtime_host(plan.id, 123).unwrap();
-    let mut report =
-        cimmeria_runtime_probe::collect(cimmeria_runtime_probe::LoadResult::Loaded {}, |_| {
-            cimmeria_runtime_probe::LoadResult::Loaded {}
-        });
-    report.physx_sdk = cimmeria_runtime_probe::physx::SdkResult::InitializedAndReleased {};
-    state
-        .record_runtime_observation(
-            plan.id,
-            cimmeria_runtime_probe::prerequisite::PrepareResult {
-                schema_version: 1,
-                operation_id: plan.id,
-                prefix_generation: plan.prefix_generation,
-                result: cimmeria_runtime_probe::prerequisite::ResultKind::Probed { report },
-            },
-        )
-        .unwrap();
-    state.finish_runtime_after_stop(plan.id).unwrap();
+    #[cfg(target_os = "macos")]
+    {
+        let revision = state.operations().snapshot().revision;
+        let plan = state
+            .admit_runtime_setup(Uuid::new_v4(), revision, id, [7; 32], [9; 32])
+            .unwrap()
+            .plan;
+        state.begin_runtime_dispatch(plan.id).unwrap();
+        state.record_runtime_host(plan.id, 123).unwrap();
+        let mut report =
+            cimmeria_runtime_probe::collect(cimmeria_runtime_probe::LoadResult::Loaded {}, |_| {
+                cimmeria_runtime_probe::LoadResult::Loaded {}
+            });
+        report.physx_sdk = cimmeria_runtime_probe::physx::SdkResult::InitializedAndReleased {};
+        state
+            .record_runtime_observation(
+                plan.id,
+                cimmeria_runtime_probe::prerequisite::PrepareResult {
+                    schema_version: 1,
+                    operation_id: plan.id,
+                    prefix_generation: plan.prefix_generation,
+                    result: cimmeria_runtime_probe::prerequisite::ResultKind::Probed { report },
+                },
+            )
+            .unwrap();
+        state.finish_runtime_after_stop(plan.id).unwrap();
+    }
     drop(state);
     drop(store);
     (root, host)

@@ -103,7 +103,7 @@ test('preparation shows progress and cancel, and cannot be replaced by choosing 
   assert.match(ui.text(),/Choose where to create a separate verified copy/);assert.equal(ui.disabled('choose-adoption-destination'),false);
   assert.equal(ui.get('cancel-adoption').hidden,true);assert.equal(ui.get('adoption-progress').hidden,true);
   ui.press('choose-adoption-destination');
-  assert.equal(ui.text(),'Checking your game folder…','the first press is acknowledged at once');assert.equal(ui.disabled('choose-adoption-destination'),true);
+  assert.equal(ui.text(),'Choose SGW.exe in the native dialog; the launcher will check its game folder…','the first press is acknowledged at once');assert.equal(ui.disabled('choose-adoption-destination'),true);
   await ui.settle();
   assert.match(ui.text(),/Downloading the signed reference: 1.0 MB of 4.0 MB/);
   const progress=ui.get('adoption-progress') as HTMLProgressElement;
@@ -201,7 +201,7 @@ test('in place: the imported folder is offered, a file that does not verify is n
  try{await ui.app.ready;await ui.settle();
   assert.match(ui.text(),/Adopt your existing game folder \/old-game in place.*without copying it/);
   assert.equal(ui.get('adoption-title').textContent,'Use an existing game folder');
-  assert.equal(ui.get('choose-adoption-destination').textContent,'Use an existing game folder…');
+  assert.equal(ui.get('choose-adoption-destination').textContent,'Choose SGW.exe…');
   await ui.click('choose-adoption-destination');
   assert.match(ui.text(),/cannot be adopted in place: later\.txt\. Restore them/);
   assert.equal(ui.get('adoption-source-label').textContent,'Folder:');assert.equal(ui.get('adoption-destination-label').parentElement!.hidden,true,'one folder line');
@@ -255,7 +255,7 @@ test('unavailable backends and unsupported imported settings are stated plainly'
   [{...idle(),backend:'in_place',last_error:'leftover_launcher_files'},/already holds launcher files.*cannot be adopted/],
   [{...idle(),imported:{...idle().imported!,blocker:'unsupported_catalog'}},/custom content catalog.*will not rewrite your settings/],
   [{...idle(),imported:{...idle().imported!,blocker:'unsupported_configuration'}},/custom patch DLL.*will not silently drop/],
-  [{...idle(),imported:null},/Choose your existing game folder to start/],
+  [{...idle(),imported:null},/Choose SGW.exe from your existing install to start/],
   [{...idle(),owned:true},/desktop-owned installation already exists/],
   [{...idle(),last_error:'invalid_artifact'},/did not match the signed release and was discarded/],
   [{...idle(),last_error:'network'},/could not be downloaded/],
@@ -348,7 +348,7 @@ test('a folder review imports nothing: only the launcher’s own settings line i
  }finally{await ui.app.dispose();}
 });
 test('each new failure code renders its own text',async()=>{
- const expected:[AdoptionStatus['last_error'],RegExp][]=[['folder_not_writable',/cannot write to this folder/],['not_a_game_folder',/not a Stargate Worlds game folder/],['backup_conflict',/backup folder for replaced files already exists/],['unsupported_mode',/adoption mode is not available/],['import_required',/Import the old launcher’s settings first/]];
+ const expected:[AdoptionStatus['last_error'],RegExp][]=[['folder_not_writable',/cannot write to this folder/],['not_a_game_folder',/not a Cimmeria game folder/],['backup_conflict',/backup folder for replaced files already exists/],['unsupported_mode',/adoption mode is not available/],['import_required',/Import the old launcher’s settings first/]];
  for(const [code,text] of expected){
   const ui=mount(()=>({...idle(),last_error:code}));
   try{await ui.app.ready;await ui.settle();assert.match(ui.text(),text,code as string);assert.equal(ui.get('adoption-rejection').hidden,true);}finally{await ui.app.dispose();}
@@ -475,7 +475,7 @@ test('the light review names the folder, its patch counts and the skipped change
  const ui=mount(request=>request==='choose'?{...reviewing('light-1'),backend:'in_place',modes:['light','copy'],review:lightReview()}:idle());
  try{await ui.app.ready;await ui.settle();
   await ui.click('choose-adoption-destination');
-  assert.equal(ui.get('adoption-light-found').textContent,'Found Stargate Worlds in /games/SGW.');assert.equal(ui.get('adoption-light-found').hidden,false);
+  assert.equal(ui.get('adoption-light-found').textContent,'Found Cimmeria in /games/SGW.');assert.equal(ui.get('adoption-light-found').hidden,false);
   assert.equal(ui.get('adoption-light-patches').textContent,'Patches already applied: 1 of 3. To apply: 2.');
   assert.equal(ui.get('adoption-light-skipped-note').hidden,false);
   assert.match(ui.get('adoption-light-skipped-note').textContent!,/Some patch changes can't be applied: 1 file differs from the originals the patches expect\. They stay as they are\. You can still use this folder\./);
@@ -534,37 +534,37 @@ test('a copy review has no light lines and keeps Create verified copy',async()=>
   assert.notEqual(ui.get('confirm-adoption').textContent,'Use this folder');
  }finally{await ui.app.dispose();}
 });
-test('the first press says the folder is being checked before the preview resolves, and a cancelled picker says No folder chosen.',async()=>{
+test('the first press says the folder is being checked before the preview resolves, and a cancelled picker says No SGW.exe chosen.',async()=>{
  let finish:(s:AdoptionStatus)=>void=()=>{};
  const ui=mount(request=>request==='choose'?new Promise<AdoptionStatus>(resolve=>{finish=resolve;}):idle());
  try{await ui.app.ready;await ui.settle();
   ui.press('choose-adoption-destination');
-  assert.equal(ui.text(),'Checking your game folder…');
+  assert.equal(ui.text(),'Choose SGW.exe in the native dialog; the launcher will check its game folder…');
   finish({...reviewing('light-3'),backend:'in_place',modes:['light','copy'],review:lightReview()});
   await ui.settle();
-  assert.notEqual(ui.text(),'Checking your game folder…');
+  assert.notEqual(ui.text(),'Choose SGW.exe in the native dialog; the launcher will check its game folder…');
  }finally{await ui.app.dispose();}
  const cancelled=mount(request=>request==='choose'?idle():idle());
  try{await cancelled.app.ready;await cancelled.settle();
   await cancelled.click('choose-adoption-destination');
-  assert.equal(cancelled.text(),'No folder chosen.');
+  assert.equal(cancelled.text(),'No SGW.exe chosen.');
  }finally{await cancelled.app.dispose();}
 });
 test('a cancel notice is cleared by the next press',async()=>{
  let n=0;
  const ui=mount(request=>request==='choose'?(n++===0?idle():{...reviewing('again'),backend:'in_place',modes:['light','copy'],review:lightReview()}):idle());
  try{await ui.app.ready;await ui.settle();
-  await ui.click('choose-adoption-destination');assert.equal(ui.text(),'No folder chosen.');
-  await ui.click('choose-adoption-destination');assert.notEqual(ui.text(),'No folder chosen.');
+  await ui.click('choose-adoption-destination');assert.equal(ui.text(),'No SGW.exe chosen.');
+  await ui.click('choose-adoption-destination');assert.notEqual(ui.text(),'No SGW.exe chosen.');
  }finally{await ui.app.dispose();}
 });
 test('several game folders on the choose path: the status and the refusal line name the install, and choose is enabled again',async()=>{
  const ui=mount(request=>request==='choose'?{...idle(),backend:'in_place',modes:['light','copy'] as AdoptionStatus['modes'],last_error:'not_a_game_folder',last_rejection:{check:'several_game_folders',entry:'.',expected:'one game folder',found:'2',http_status:null}}:idle());
  try{await ui.app.ready;await ui.settle();
   await ui.click('choose-adoption-destination');
-  assert.match(ui.text(),/more than one Stargate Worlds install/);assert.doesNotMatch(ui.text(),/is not a Stargate Worlds game folder/);
+  assert.match(ui.text(),/more than one Cimmeria install/);assert.doesNotMatch(ui.text(),/is not a Cimmeria game folder/);
   assert.equal(ui.get('adoption-rejection').hidden,false);
-  assert.equal(ui.get('adoption-rejection').textContent,'This folder holds more than one Stargate Worlds install. Pick the one you want. Expected one game folder, found 2.');
+  assert.equal(ui.get('adoption-rejection').textContent,'This folder holds more than one Cimmeria install. Pick the one you want. Expected one game folder, found 2.');
   assert.equal(ui.disabled('choose-adoption-destination'),false);
  }finally{await ui.app.dispose();}
 });

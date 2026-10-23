@@ -37,6 +37,82 @@ fn layout(root: &Path) {
 }
 
 #[test]
+fn executable_pick_resolves_one_install_in_place_without_touching_any_file() {
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["Live", "Test"] {
+        layout(&dir.path().join(name));
+    }
+    let root = dir.path().join("Test");
+    let selected = root.join("Working/Binaries/SGW.exe");
+    let before = std::fs::read(&selected).unwrap();
+    assert_eq!(
+        resolve_executable(&selected).unwrap(),
+        root.canonicalize().unwrap()
+    );
+    assert_eq!(std::fs::read(&selected).unwrap(), before);
+    assert!(dir.path().join("Live/Working/Binaries/SGW.exe").is_file());
+    assert!(!root.join("game").exists());
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+}
+
+#[test]
+fn executable_pick_keeps_the_selected_outer_install_when_binaries_holds_another_layout() {
+    let dir = tempfile::tempdir().unwrap();
+    layout(dir.path());
+    layout(&dir.path().join("Working/Binaries"));
+    let selected = dir.path().join("Working/Binaries/SGW.exe");
+    assert_eq!(
+        resolve_executable(&selected).unwrap(),
+        dir.path().canonicalize().unwrap()
+    );
+    let nested = dir.path().join("Working/Binaries/Working/Binaries/SGW.exe");
+    assert_eq!(
+        resolve_executable(&nested).unwrap(),
+        dir.path().join("Working/Binaries").canonicalize().unwrap()
+    );
+    assert!(selected.is_file());
+    assert!(nested.is_file());
+}
+
+#[test]
+fn executable_pick_refuses_other_names_directories_missing_files_and_flat_layouts() {
+    let dir = tempfile::tempdir().unwrap();
+    layout(dir.path());
+    let binaries = dir.path().join("Working/Binaries");
+    let wrong = binaries.join("Launcher.exe");
+    std::fs::write(&wrong, sgw_exe()).unwrap();
+    assert!(resolve_executable(&wrong).is_err());
+    assert!(resolve_executable(&binaries).is_err());
+    assert!(resolve_executable(&dir.path().join("missing/SGW.exe")).is_err());
+    let flat = dir.path().join("SGW.exe");
+    std::fs::write(&flat, sgw_exe()).unwrap();
+    assert!(resolve_executable(&flat).is_err());
+}
+
+#[test]
+#[cfg(unix)]
+fn executable_pick_refuses_symlinks() {
+    let dir = tempfile::tempdir().unwrap();
+    layout(dir.path());
+    let exe = dir.path().join("Working/Binaries/SGW.exe");
+    std::fs::rename(&exe, exe.with_extension("original")).unwrap();
+    std::os::unix::fs::symlink(exe.with_extension("original"), &exe).unwrap();
+    assert!(resolve_executable(&exe).is_err());
+}
+
+#[test]
+#[cfg(unix)]
+fn executable_pick_refuses_linked_game_layout_before_resolving_its_root() {
+    let dir = tempfile::tempdir().unwrap();
+    let real = dir.path().join("real");
+    layout(&real);
+    let linked = dir.path().join("linked");
+    std::fs::create_dir(&linked).unwrap();
+    std::os::unix::fs::symlink(real.join("Working"), linked.join("Working")).unwrap();
+    assert!(resolve_executable(&linked.join("Working/Binaries/SGW.exe")).is_err());
+}
+
+#[test]
 fn picked_root_working_or_binaries_resolve_to_one_root() {
     let dir = tempfile::tempdir().unwrap();
     layout(dir.path());

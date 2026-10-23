@@ -21,10 +21,10 @@ let ui=mount();
 try{
  await Promise.all([ui.app.app.ready,ui.app.adoption.ready]);await settle(ui);
  assert.equal(ui.get('adopt-install').hidden,false);
- ui.press('adopt-install');assert.equal(ui.get('gear').hidden,false);assert.equal(ui.get('adoption-status').textContent,'Checking your game folder…');
+ ui.press('adopt-install');assert.equal(ui.get('gear').hidden,false);assert.equal(ui.get('adoption-status').textContent,'Choose SGW.exe in the native dialog; the launcher will check its game folder…');
  ui.press('adopt-install');ui.press('choose-adoption-destination');await tick();assert.equal(calls,1);
- pick(status());await settle(ui);assert.equal(ui.get('adoption-status').textContent,'No folder chosen.');
- choose=async()=>{throw 'not_a_game_folder';};ui.press('choose-adoption-destination');await settle(ui);assert.match(ui.get('adoption-status').textContent,/not a Stargate Worlds game folder/);
+ pick(status());await settle(ui);assert.equal(ui.get('adoption-status').textContent,'No SGW.exe chosen.');
+ choose=async()=>{throw 'not_a_game_folder';};ui.press('choose-adoption-destination');await settle(ui);assert.match(ui.get('adoption-status').textContent,/not a Cimmeria game folder/);
  choose=async()=>{valid=true;owned=true;revision++;return status();};ui.press('choose-adoption-destination');await settle(ui);assert.equal(ui.get('adopt-install').hidden,true);
  await ui.app.dispose();ui=mount();await Promise.all([ui.app.app.ready,ui.app.adoption.ready]);await settle(ui);assert.equal(ui.get('adopt-install').hidden,true,'fresh composition reads persisted native content validity');
  valid=false;owned=false;revision++;assert.equal(ui.get('gear').hidden,true);await ui.app.app.refresh();await settle(ui);assert.equal(ui.get('adopt-install').hidden,false);

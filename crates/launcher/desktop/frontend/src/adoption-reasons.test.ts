@@ -38,7 +38,7 @@ test('the file, expected and found parts follow the sentence when present',()=>{
 });
 test('the picked folder itself, entry ".", names no file; a file entry still does',()=>{
  assert.equal(rejectionText({check:'several_game_folders',entry:'.',expected:'one game folder',found:'2',http_status:null}),
-  'This folder holds more than one Stargate Worlds install. Pick the one you want. Expected one game folder, found 2.');
+  'This folder holds more than one Cimmeria install. Pick the one you want. Expected one game folder, found 2.');
  assert.equal(rejectionText({check:'destination_exists',entry:'Working',expected:null,found:null,http_status:null}),
   'The destination folder already exists. File: Working.');
 });

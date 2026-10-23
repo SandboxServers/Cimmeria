@@ -114,7 +114,7 @@ pub use index_compare::IndexState;
 pub use model::*;
 pub use publication::{abandon, inspect, interrupted, recover, Interrupted};
 use sha2::{Digest, Sha256};
-pub use source::{import_blocker, resolve_folder};
+pub use source::{import_blocker, resolve_executable, resolve_folder};
 use std::{io::Read, sync::Mutex};
 use tokio_util::sync::CancellationToken;
 #[cfg(target_os = "macos")]

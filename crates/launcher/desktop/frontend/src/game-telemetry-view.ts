@@ -30,6 +30,10 @@ export function mountGameTelemetry(document:Document,invoke:Invoke,onSaved:()=>v
   checkbox.disabled=busy||current.uncertain||!current.status||(!current.status.available&&!current.status.opted_in);
   checkbox.setAttribute('aria-busy',String(saving!==null));
   document.getElementById('game-telemetry-status')!.textContent=gameTelemetryText(current,saving);
+  const details=document.getElementById('game-telemetry-details') as HTMLDetailsElement|null;
+  const summary=document.getElementById('game-telemetry-summary');
+  if(summary)summary.textContent=saving!==null?'Saving…':current.error?'Needs attention':checkbox.checked?'On · status':'Off · status';
+  if(details&&(saving!==null||current.error))details.open=true;
   recheck.disabled=busy;recheck.hidden=!current.error&&!current.uncertain;};
  const watcher=runtime.runFork(Effect.flatMap(GameTelemetry,s=>Stream.runForEach(s.changes,value=>Effect.sync(()=>{current=value;render();}))));
  const run=(choice:boolean|null)=>{if(disposed||pending)return mutation;pending=true;saving=choice;render();

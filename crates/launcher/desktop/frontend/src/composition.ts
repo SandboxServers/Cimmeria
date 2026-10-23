@@ -24,7 +24,7 @@ const telemetryStatus = mountTelemetryStatus(document,invoke);
 // The game-telemetry save reads the checkbox after its first inspect: refresh the line once that lands.
 void gameTelemetry.ready.then(()=>telemetryStatus.refresh());
 // A finished Play changes what the last launch did about game diagnostics.
-const play = mountLaunch(document,invoke,()=>{void installation.refresh(); void app.refresh(); void updater?.refresh(); void gameTelemetry.refresh(); void telemetryStatus.refresh();},undefined,true);
+const play = mountLaunch(document,invoke,()=>{void installation.refresh(); void app.refresh(); void updater?.refresh(); void gameTelemetry.refresh(); void telemetryStatus.refresh();},undefined,true,ready=>installation.setPlayable(ready));
 let adoption: ReturnType<typeof mountAdoption> | undefined;
 const migration = mountMigration(document,invoke,()=>{void app.refresh(); void installation.refresh(); void play.refresh(); void adoption?.refresh();});
 // Adoption notifies only when a saved revision changed, so this cannot loop.

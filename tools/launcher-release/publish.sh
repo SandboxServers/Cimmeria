@@ -73,7 +73,7 @@ dated_notes() {
   if grep -qxF "$MAC_ZIP_NAME" <<<"$assets"; then
     notes="$notes
 
-$MAC_MARKER download \`${MAC_ZIP_NAME}\`, unzip it and drag \"Stargate Worlds Launcher\" to Applications in Finder before opening it. It is signed ad hoc, not by a registered Apple developer, so macOS blocks the first open: open System Settings > Privacy & Security and click Open Anyway, once. It needs Rosetta 2, and the first install downloads the Wine runtime (64 MB) from the WoWSilicon project. It does not update itself: download each new release from ${STABLE}/${MAC_ZIP_NAME}."
+$MAC_MARKER download \`${MAC_ZIP_NAME}\`, unzip it and drag \"Cimmeria Launcher\" to Applications in Finder before opening it. It is signed ad hoc, not by a registered Apple developer, so macOS blocks the first open: open System Settings > Privacy & Security and click Open Anyway, once. It needs Rosetta 2, and the first install downloads the Wine runtime (64 MB) from the WoWSilicon project. It does not update itself: download each new release from ${STABLE}/${MAC_ZIP_NAME}."
   fi
   gh release edit "$TAG" --notes "$notes"
 }

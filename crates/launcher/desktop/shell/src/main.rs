@@ -2,6 +2,7 @@
 //! macOS). It hosts the settings and Play UI and forwards its commands to the native
 //! engine.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod adoption_picker;
 mod host;
 mod panic_hook;
 #[cfg(test)]
@@ -110,7 +111,7 @@ async fn choose_install_directory(
         app.dialog()
             .file()
             .set_parent(&window)
-            .set_title("Choose the Stargate Worlds install folder")
+            .set_title("Choose the Cimmeria install folder")
             .blocking_pick_folder()
             .map(|folder| {
                 folder
@@ -360,13 +361,7 @@ async fn choose_existing_game_folder(
             | cimmeria_launcher_engine::adoption::AdoptionMode::Light
     );
     crate::host::adoption_events::mode_chosen(in_place);
-    let Some(selected) = pick_folder(
-        app.clone(),
-        window.clone(),
-        "Choose your Stargate Worlds game folder",
-    )
-    .await?
-    else {
+    let Some(selected) = adoption_picker::pick(app.clone(), window.clone()).await? else {
         crate::host::adoption_events::folder_chosen(in_place, false);
         return cancelled(host).await;
     };
@@ -500,7 +495,7 @@ async fn choose_seed_archive(
         app.dialog()
             .file()
             .set_parent(&window)
-            .set_title("Choose your downloaded Stargate Worlds archive")
+            .set_title("Choose your downloaded Cimmeria archive")
             .add_filter("RAR archive", &["rar"])
             .blocking_pick_file()
             .map(|file| file.into_path().map_err(|_| SeedArchiveError::Io))
@@ -529,7 +524,7 @@ async fn choose_seed_archive(
 /// tauri.conf.json carries the release title, so only a development build
 /// (no release tag and stamp) changes it, and a failed change never makes a
 /// release say "development".
-const DEVELOPMENT_TITLE: &str = "Stargate Worlds \u{2014} development";
+const DEVELOPMENT_TITLE: &str = "Cimmeria Launcher \u{2014} development";
 
 fn main() {
     #[cfg(windows)]

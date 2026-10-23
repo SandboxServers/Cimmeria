@@ -209,7 +209,7 @@ SHA-256 and tree digest (`engine/src/mac_runtime/`).
 
 The app is signed ad hoc, not with a Developer ID, and it is not notarized;
 both stay out of scope by D-LX14. On a Mac that has never run it, macOS blocks
-the first open. The player unzips it, drags "Stargate Worlds Launcher" to
+the first open. The player unzips it, drags "Cimmeria Launcher" to
 Applications in Finder (so it does not run from a randomized read-only copy),
 opens it once, then clicks **Open Anyway** in System Settings > Privacy &
 Security and enters their password. After that it opens normally. The app needs
@@ -249,7 +249,7 @@ the whole `.zip.sig` document:
 ```json
 {
   "version": "2026.10.11",
-  "notes": "Stargate Worlds launcher 2026.10.11 (launcher-20261011-abcdef1).",
+  "notes": "Cimmeria Launcher 2026.10.11 (launcher-20261011-abcdef1).",
   "pub_date": "2026-10-11T10:52:22Z",
   "platforms": {
     "windows-x86_64": {

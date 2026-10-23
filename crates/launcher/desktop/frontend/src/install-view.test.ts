@@ -14,6 +14,23 @@ function dom(){const {document,window}=parseHTML(html);return {document:document
   get:(id:string)=>document.getElementById(id)! as unknown as HTMLButtonElement,
   click:(id:string)=>document.getElementById(id)!.dispatchEvent(new window.Event('click'))};}
 
+test('reopening completed adoption never reports blocked compatibility; ready content hides archive setup',async()=>{
+ const ui=dom();let status:InstallStatus={...initial(),native:{...initial().native,operation:{schema_version:1,revision:1,
+  operation:{id,kind:'adopt',state:'succeeded',intent_digest:Array(32).fill(0)}}}};
+ const app=mountInstall(ui.document,async()=>status);
+ try{
+  await app.ready;await flush();assert.equal(ui.get('install-status').textContent,'');
+  assert.equal(ui.get('install-seed-archive').hidden,false,'no readiness is invented by the installer');
+  app.setPlayable(true);assert.equal(ui.get('install').hidden,true);assert.equal(ui.get('install-seed-archive').hidden,true);
+  assert.equal(ui.get('install-seed-archive-offer').hidden,true);assert.equal(ui.get('install-seed-archive-accept').hidden,true);
+  assert.equal(ui.get('install-seed-archive-status').hidden,true);
+  status={...initial(),native:{...initial().native,operation:{schema_version:1,revision:2,
+   operation:{id,kind:'install',state:'reconciliation_required',intent_digest:Array(32).fill(0)}}}};
+  app.setPlayable(false);await app.refresh();await flush();
+  assert.equal(ui.get('install-seed-archive').hidden,false);assert.match(ui.get('install-status').textContent!,/interrupted installation/);
+ }finally{await app.dispose();}
+});
+
 test('install click dispatches once; content completion never becomes Play',{timeout:5000},async()=>{
  const ui=dom();let status=initial();const commands:string[]=[];
  const app=mountInstall(ui.document,async(command,args)=>{
@@ -25,7 +42,7 @@ test('install click dispatches once; content completion never becomes Play',{tim
  try{await app.ready;await flush();assert.equal(ui.get('install').disabled,false);
    ui.click('install');ui.click('install');await app.settled();await flush();
    assert.equal(commands.filter(x=>x==='install').length,1);assert.equal(ui.get('install').textContent,'Content prepared');
-   assert.equal(ui.get('install').disabled,true);assert.match(ui.get('install-status').textContent!,/cannot continue compatibility setup/);
+   assert.equal(ui.get('install').disabled,true);assert.match(ui.get('install-status').textContent!,/Recheck Play status to check readiness/);
  }finally{await app.dispose();}
 });
 
@@ -103,7 +120,7 @@ test('uninstall requires confirmation, dismisses safely and enables reinstall on
   assert.equal(calls.every(c=>c.command==='inspect'),true);ui.click('dismiss-uninstall');assert.equal(ui.get('uninstall-confirmation').hidden,true);
   ui.click('uninstall');ui.click('confirm-uninstall');ui.click('confirm-uninstall');await app.settled();await flush();
   assert.equal(calls.filter(c=>c.command==='uninstall').length,1);assert.equal(ui.get('install').disabled,false);
-  assert.equal(ui.get('install').textContent,'Install Stargate Worlds');assert.match(ui.get('install-status').textContent!,/Game uninstalled/);
+  assert.equal(ui.get('install').textContent,'Install Cimmeria');assert.match(ui.get('install-status').textContent!,/Game uninstalled/);
   assert.equal(status.native.preferences.launcher_summary_consent,false);
  }finally{await app.dispose();}
 });

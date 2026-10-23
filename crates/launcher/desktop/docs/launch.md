@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Launcher integrators and playtesters
-> **Last updated:** 2026-10-21
+> **Last updated:** 2026-10-23
 > **Companions:** [Desktop workspace](../README.md), [prerequisites](prerequisites.md), [runtime evidence](../../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md)
 
 ## Admission and integration
@@ -34,6 +34,22 @@ an explicit graphics resource. Dispatch retains installation, prefix and runtime
 cache locks, repeats resource checks, then reuses existing `client_setup::prepare`
 (stock filename restoration, login server Lua and ASLR). The native task runs
 that preparation off the UI thread. The engine makes no downloads during Play.
+
+## Setup visibility observation
+
+Native `LaunchStatus` includes `setup_complete: bool` separately from its
+optional `installation_id`. The latter is an admission identity and may be
+withheld while a game launch or launcher update owns the operation boundary;
+its absence alone does not mean installation setup is incomplete.
+
+`setup_complete` requires verified installed content, available launch resources,
+a prepared Wine runtime when the platform requires one, no required state reopen
+and either idle state or a known launch that does not need reconciliation.
+The frontend uses this observation only to hide completed-setup prompts.
+It changes neither Play admission nor launcher-update gating and adds no Plan
+field. Settings has a separate **Check Play status** action, with immediate
+feedback and an adjacent inspection result, even when the main-page recheck is
+hidden. Actual launch admission still performs the checks above.
 
 ## Helper and lifecycle
 
@@ -312,17 +328,20 @@ Native code decides whether Play injects client patches. The renderer cannot.
 
 | Installation | Patch artifact | Play |
 |---|---|---|
-| Fresh install | Verified | Injects patches |
-| Fresh install | Absent or replaced | Unavailable |
-| Adopted, patches reviewed on | Verified | Injects patches |
-| Adopted, patches reviewed on | Absent or replaced | Unavailable |
-| Adopted, patches reviewed off | Any | Starts without patches |
+| Fresh or directly adopted, preference on | Verified | Injects patches |
+| Fresh or directly adopted, preference on | Absent or replaced | Unavailable |
+| Fresh or directly adopted, preference off | Any | Starts without patches |
+| Legacy-bound adopted, patches reviewed on | Verified | Injects patches |
+| Legacy-bound adopted, patches reviewed on | Absent or replaced | Unavailable |
+| Legacy-bound adopted, patches reviewed off | Any | Starts without patches |
 
 `DesktopState::resolve_play_resources` applies this table to the bundle, and
 `admit_launch` refuses resources that disagree with it, so a host that skips
 resolution cannot inject or drop the patch.
 
-An adopted copy's imported settings are accepted only while every independent
+A non-null `adopted_login_servers` identifies the legacy imported/reviewed
+binding. A direct-folder adoption follows the saved patch preference instead.
+A legacy-bound adopted copy's imported settings are accepted only while every independent
 record of the review agrees:
 
 - the installed index's adoption provenance;
@@ -385,8 +404,8 @@ DLL's.
 No session, a refused address or an unwritable marker means the DLL is left
 out and the game starts as it would with telemetry off. `game-telemetry-status.json`
 records which of those happened for the last launch (`attached`,
-`session_unavailable`, `endpoint_refused`, `session_not_written`), and Settings
-shows it. `attached` means the DLL was on the injection list with a marker on
+`session_unavailable`, `endpoint_refused`, `session_not_written`), and the
+main-page Game diagnostics status shows it. `attached` means the DLL was on the injection list with a marker on
 disk. It does not claim the DLL loaded or that an upload arrived; the DLL's own
 `cimmeria-client-telemetry.log` beside `SGW.exe` and the server are the evidence
 for those.

@@ -69,11 +69,11 @@ try {
  // 4. A picked folder holding two installs: the rejection is shown, the choose button is enabled on the next press, and a cancel says so.
  await scenario(twoInstalls());
  assert.match(text(),/did not pick one/);
- assert.match(get('adoption-rejection').textContent,/more than one Stargate Worlds install/);
+ assert.match(get('adoption-rejection').textContent,/more than one Cimmeria install/);
  assert.equal(get('adoption-rejection').hidden,false);
  await choose(cancelled());
- assert.equal(text(),'No folder chosen.');
- console.log('ok: two installs are rejected with the rejection line; a cancelled picker says No folder chosen.');
+ assert.equal(text(),'No SGW.exe chosen.');
+ console.log('ok: two installs are rejected with the rejection line; a cancelled picker says No SGW.exe chosen.');
  // 4b. One folder: the game folder is both the source and the destination, so one folder line is shown and the destination row is hidden.
  await scenario(reviewed({}));
  assert.equal(get('adoption-source-label').textContent,'Folder:');
@@ -116,7 +116,7 @@ try {
 
 // 4g. LF-06: an interrupted adoption gives Play one adoption line and no Recheck button.
 {const doc=parseHTML(html).document;
- const interrupted={schema_version:1,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,installation_id:'owner',observation:null,native:{...native,operation:{...native.operation,operation:{id:'op',kind:'adopt',state:'reconciliation_required',intent_digest:Array(32).fill(0)}}}};
+ const interrupted={schema_version:1,setup_complete:true,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,installation_id:'owner',observation:null,native:{...native,operation:{...native.operation,operation:{id:'op',kind:'adopt',state:'reconciliation_required',intent_digest:Array(32).fill(0)}}}};
  const play=mountLaunch(doc,async()=>interrupted,()=>{},()=>'attempt');await play.ready;await pause(10);
  assert.equal(doc.getElementById('launch-status').textContent,'Finish or abandon the interrupted adoption in the adoption panel before you play.');
  assert.equal(doc.getElementById('inspect-launch').hidden,true);
@@ -125,7 +125,7 @@ try {
 
 // 5. An install with incomplete patches: Play stays enabled and the main view names the skipped changes.
 const launchDocument=parseHTML(await readFile(new URL('./ui/index.html',import.meta.url),'utf8')).document;
-const status={schema_version:1,resources_available:true,launcher_update_required:false,patches_incomplete:1,ops_skipped:3,installation_id:'owner',observation:null,native};
+const status={schema_version:1,setup_complete:true,resources_available:true,launcher_update_required:false,patches_incomplete:1,ops_skipped:3,installation_id:'owner',observation:null,native};
 const launch=mountLaunch(launchDocument,async()=>status,()=>{},()=>'attempt');
 try {
  await launch.ready;await pause(10);

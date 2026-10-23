@@ -41,3 +41,19 @@ details > summary{cursor:pointer;list-style:none}
 details > summary::-webkit-details-marker{display:none}
 details > summary::before{content:"+ "}
 details[open] > summary::before{content:"- "}
+
+/* The main page scrolls as one surface, including Play and its saved choices. */
+.hero{min-height:128px;gap:20px}.gate{width:90px;height:90px;border-width:8px;margin:12px}
+h1{font-size:clamp(32px,7vw,48px)}
+footer{padding-top:14px}footer p:empty{display:none}
+#play-preferences{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
+.preference-card{min-width:0;border:1px solid var(--line);border-radius:9px;padding:12px}
+.preference-card .consent{margin:0;font-size:12px}.preference-card p{font-size:11px;line-height:1.45;margin:8px 0 0}
+.preference-card details{margin-top:8px;font-size:11px;color:var(--muted)}
+#client-patches-title{font-size:12px;margin:0 0 8px}#client-patches-label{display:flex;gap:8px;font-size:12px}
+#diagnostics-privacy{margin:12px 0;font-size:11px;color:var(--muted)}
+#client-changes-panel{border-top:1px solid var(--line);padding-top:16px;margin-top:16px}
+#client-changes-panel h3{font-size:15px;margin:0 0 8px}#client-changes-panel p{font-size:12px;margin:6px 0;line-height:1.5}
+#client-changes-panel summary{font-size:12px;color:var(--accent)}#client-changes-list h4{font-size:13px}
+#client-changes-list ul{padding-left:20px}#client-changes-list li{margin-bottom:12px;font-size:12px}
+@media(max-width:580px){#play-preferences{grid-template-columns:1fr}.hero{min-height:130px}.preference-card{padding:10px}}

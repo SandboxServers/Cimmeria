@@ -163,7 +163,7 @@ fn fresh_install_is_never_offered_or_admitted_without_the_patch_artifact() {
         .unwrap();
     assert_eq!(after.native.operation, before.native.operation);
 }
-#[cfg(target_os = "macos")]
+#[cfg(any(windows, target_os = "macos"))]
 #[test]
 #[ignore = "JSON-lines JS UAT fixture, no real game or runtime"]
 fn launch_uat_bridge() {
@@ -304,7 +304,8 @@ fn the_status_reports_the_admitted_copys_incomplete_patch_counts() {
     }
     .save(game.path())
     .unwrap();
-    let status = LaunchStatus::assemble(native, None, (true, false), Some(game.path()), None);
+    let status =
+        LaunchStatus::assemble(native, None, false, (true, false), Some(game.path()), None);
     let value = serde_json::to_value(status).unwrap();
     assert_eq!(value["patches_incomplete"], 2);
     assert_eq!(value["ops_skipped"], 3);

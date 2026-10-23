@@ -32,6 +32,21 @@ async function until(condition:()=>boolean) {
   assert.ok(condition(),'the launcher never reached the expected state');
 }
 
+test('ready content hides main archive discovery while Settings keeps the offer',{timeout:5000},async()=>{
+ const ui=dom();const invoke=async(command:string)=>command==='install_command'?installIdle():offered();
+ const settings=mountSeedArchive(ui.document,invoke,panelContext(),1);
+ const install=mountInstall(ui.document,invoke,()=>id);
+ try{
+  await settings.ready;await install.ready;
+  await until(()=>!ui.get('install-seed-archive-accept').hidden);
+  install.setPlayable(true);
+  for(const name of ['install-seed-archive','install-seed-archive-offer','install-seed-archive-accept','install-seed-archive-status'])
+   assert.equal(ui.get(name).hidden,true,name);
+  assert.equal(ui.get('seed-archive-accept').hidden,false,'Settings retains explicit archive access');
+  install.setPlayable(false);assert.equal(ui.get('install-seed-archive-accept').hidden,false);
+ }finally{await install.dispose();await settings.dispose();}
+});
+
 test('every archive error code has its own text',()=>{
   const expected:[string,RegExp][]=[
     ['not_a_file',/not a file the launcher can read/],
