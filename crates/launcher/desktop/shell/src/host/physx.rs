@@ -13,11 +13,22 @@ impl NativeHost {
     pub fn physx_command(&self, request: PhysxCommand) -> Result<PhysxStatus, PhysxError> {
         #[cfg(windows)]
         {
-            self.physx_command_with(
+            let result = self.physx_command_with(
                 request,
                 &windows_physx::native::System,
                 &windows_physx::native::ShellExecuteRunas,
-            )
+            );
+            let mut status = match result {
+                Err(PhysxError::InstallerUnavailable)
+                    if matches!(request, PhysxCommand::Install { .. }) =>
+                {
+                    self.install_legacy_physx()?
+                }
+                other => other?,
+            };
+            // Adopted folders need no retained seed: the pinned NVIDIA fallback is available.
+            status.installer_available = true;
+            Ok(status)
         }
         #[cfg(not(windows))]
         {
@@ -97,7 +108,9 @@ impl NativeHost {
             }
             let _running = Running(&self.physx_installing);
             // The state lock is released: msiexec can wait on the player for minutes.
-            let result = match request {
+            // The retained-installer path holds the prerequisite lease until the
+            // result is stored; the legacy path takes no lease, as on main.
+            let (result, lease) = match request {
                 PhysxCommand::InstallLegacy { .. } => {
                     let scratch = self.physx_legacy_source().inspect_err(|error| {
                         setup_events::physx_failed(
@@ -106,23 +119,40 @@ impl NativeHost {
                             "other",
                         );
                     })?;
-                    windows_physx::legacy::install(&scratch, elevate, probe)?
+                    (windows_physx::legacy::install(&scratch, elevate, probe)?, None)
                 }
                 _ => {
-                    let source = self.physx_source().inspect_err(log_source_failure)?;
-                    windows_physx::install(&source, elevate, probe)?
+                    let (source, lease) = self.physx_source().inspect_err(log_source_failure)?;
+                    (
+                        windows_physx::install(&source, elevate, probe)?,
+                        Some(lease),
+                    )
                 }
             };
             *self.physx_last.lock().map_err(|_| StorageError::Io)? = Some(result);
+            drop(lease);
         }
         self.physx_status(probe)
     }
 
     /// The install source, read under the store's lock; the lock is released before msiexec.
-    fn physx_source(&self) -> Result<windows_physx::InstallSource, PhysxError> {
+    fn physx_source(
+        &self,
+    ) -> Result<
+        (
+            windows_physx::InstallSource,
+            super::windows_prerequisites::SetupLease,
+        ),
+        PhysxError,
+    > {
         let store = self.store()?;
         let mut state = store.lock().map_err(|_| StorageError::Io)?;
-        state.physx_install_source()
+        let source = state.physx_install_source()?;
+        state.begin_prerequisite_setup()?;
+        Ok((
+            source,
+            super::windows_prerequisites::SetupLease(store.clone()),
+        ))
     }
 
     fn physx_legacy_source(&self) -> Result<std::path::PathBuf, PhysxError> {
@@ -132,18 +162,21 @@ impl NativeHost {
     }
 
     #[cfg_attr(not(any(windows, test)), allow(dead_code))]
-    fn physx_status(&self, probe: &dyn Probe) -> Result<PhysxStatus, PhysxError> {
-        let installer_available = {
+    pub(super) fn physx_status(&self, probe: &dyn Probe) -> Result<PhysxStatus, PhysxError> {
+        let (installer_available, setup_active) = {
             let store = self.store()?;
             let mut state = store.lock().map_err(|_| StorageError::Io)?;
-            state.physx_package()?.is_some()
+            (
+                state.physx_package()?.is_some(),
+                state.prerequisite_setup_active(),
+            )
         };
         Ok(PhysxStatus {
             schema_version: 1,
             supported: true,
             detection: Some(windows_physx::detect(probe)),
             installer_available,
-            installing: self.physx_installing.load(Ordering::SeqCst),
+            installing: setup_active || self.physx_installing.load(Ordering::SeqCst),
             last_result: *self.physx_last.lock().map_err(|_| StorageError::Io)?,
         })
     }

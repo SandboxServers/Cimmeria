@@ -4,7 +4,23 @@ use super::*;
 use crate::{OperationKind, OperationState};
 use cimmeria_runtime_probe::prerequisite::{decode_result, PrepareResult, ResultKind};
 mod prepared;
+pub mod windows_directx;
 pub mod windows_physx;
+
+impl super::DesktopState {
+    /// Called under the state mutex before a vendor installer runs outside it.
+    pub fn begin_prerequisite_setup(&mut self) -> Result<(), super::StorageError> {
+        self.ensure_no_active_operation()?;
+        self.external_setup = true;
+        Ok(())
+    }
+    pub fn end_prerequisite_setup(&mut self) {
+        self.external_setup = false;
+    }
+    pub fn prerequisite_setup_active(&self) -> bool {
+        self.external_setup
+    }
+}
 pub use prepared::PreparedRuntime;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;

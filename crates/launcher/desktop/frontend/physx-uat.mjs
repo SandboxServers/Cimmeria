@@ -6,6 +6,8 @@ import {readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {parseHTML} from 'linkedom';
 import {mountPhysx} from './.test-build/physx-view.mjs';
+import {mountDirectx} from './.test-build/directx-view.mjs';
+import {launchBlocked} from './.test-build/launch-workflow.mjs';
 const page=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
 const snapshot={schema_version:1,operation:{schema_version:1,revision:0,operation:null},requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},
  preferences:{schema_version:2,revision:1,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}};
@@ -41,8 +43,8 @@ function open(m) {
 
 const m=machine();
 let p=open(m);await p.app.ready;
-assert.ok(p.get('physx-panel').closest('#gear'),'the panel sits in Settings');
-assert.equal(p.get('physx-play-warning').hidden,false,'missing PhysX warns beside Play');
+assert.ok(p.get('physx-panel').closest('#play'),'setup is visible in the installation and adoption flow');
+assert.equal(p.get('physx-play-warning').hidden,false,'missing PhysX shows the Play-blocking warning beside Play');
 assert.equal(p.get('launch').disabled,true,'Play keeps its own gating; the warning does not change it');
 
 m.package='tampered';
@@ -104,6 +106,37 @@ assert.equal(p.get('install-legacy-physx').hidden,true,'reopen uses native core 
 assert.equal(adopted.legacyPresses,3,'reopen never installs automatically');
 await p.app.dispose();
 
-console.log('PhysX UAT passed: missing PhysX warns beside Play; each press shows busy first; a mismatched package is refused unrun; a declined UAC prompt reads as cancelled; an installer failure shows its exit code; another PhysX version blocking the installer gets its own line; success clears the warning and survives a reopen.');
+console.log('PhysX UAT passed: missing PhysX shows the Play-blocking warning beside Play; each press shows busy first; a mismatched package is refused unrun; a declined UAC prompt reads as cancelled; an installer failure shows its exit code; another PhysX version blocking the installer gets its own line; success clears the warning and survives a reopen.');
 console.log('Legacy follow-up passed: adopted copy without retained installer offers main-page legacy install; immediate feedback; duplicate click refused; download failure and UAC cancellation remain retryable; success hides offer across reopen without automatic install.');
 console.log('Excluded: the real engine, registry, UAC prompt and msiexec (engine tests cover detection, the pinned hash and exit-code mapping); the packaged window and visual layout.');
+
+// Drive the real DirectX panel and readiness predicate with state retained across reopen.
+let dxInstalled=false,dxInstalls=0,dxFail='cancelled_at_uac';
+const dxStatus=()=>({schema_version:1,supported:true,missing:dxInstalled?[]:['d3dx9_40.dll','xinput1_3.dll'],installing:false,last_result:null});
+const dxInvoke=async(command,args)=>{
+ assert.equal(command,'directx_command');
+ if(args.request.command==='install'){
+  dxInstalls++;
+  if(dxFail==='installed')dxInstalled=true;
+  return {...dxStatus(),last_result:dxFail==='installed'?{state:'installed',restart_required:false}:{state:'cancelled_at_uac'}};
+ }
+ return dxStatus();
+};
+const dxOpen=()=>{
+ const {document,window}=parseHTML(page);const listeners=new Set();
+ const context={snapshot:()=>snapshot,onSnapshot:l=>{listeners.add(l);return()=>listeners.delete(l);},refresh:async()=>{}};
+ const app=mountDirectx(document,dxInvoke,context);
+ return {app,get:id=>document.getElementById(id),press:()=>document.getElementById('install-directx').dispatchEvent(new window.Event('click')),publish:()=>listeners.forEach(l=>l(snapshot))};
+};
+let dx=dxOpen();await dx.app.ready;
+assert.match(dx.get('directx-state').textContent,/d3dx9_40.dll/);
+dx.press();dx.press();assert.equal(dx.get('install-directx').disabled,true);await dx.app.settled();
+assert.equal(dxInstalls,1);assert.match(dx.get('directx-status').textContent,/cancelled/);
+assert.equal(launchBlocked({prerequisites_missing:['directx'],launcher_update_required:false,native:snapshot}),true);
+dxFail='installed';dx.press();await dx.app.settled();assert.equal(dx.get('install-directx').hidden,true);
+await dx.app.dispose();dx=dxOpen();await dx.app.ready;
+assert.equal(dx.get('install-directx').hidden,true,'reopened view detects the persisted machine state');
+dxInstalled=false;dx.publish();await dx.app.settled();assert.equal(dx.get('install-directx').hidden,false,'adoption/install notifications re-probe and revoke stale readiness');
+await dx.app.dispose();
+console.log('DirectX logic UAT passed: setup/adoption refresh, first-click busy, double-click suppression, cancelled setup, native-response readiness gate, successful setup, reopen, and removal/recheck.');
+console.log('DirectX exclusions: real download, vendor UI, Windows DLL probing and native ARM execution; these controlled responses prove UI logic only.');

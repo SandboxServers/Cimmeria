@@ -6,6 +6,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, NativeHost) {
     let root = tempfile::tempdir().unwrap();
     let canonical = root.path().canonicalize().unwrap();
     let mut host = NativeHost::new(canonical.join("state"));
+    host.prerequisites_fixture = Some(vec![]);
     let path = canonical.join("inert.dll");
     std::fs::write(&path, b"").unwrap();
     let artifact = launch::Artifact::open(
@@ -202,6 +203,7 @@ pub(super) fn reopen_identity(host: NativeHost, older: bool) -> NativeHost {
     };
     let state = DesktopState::open_with_compatibility(&path, policy).unwrap();
     let mut host = NativeHost::new(path);
+    host.prerequisites_fixture = Some(vec![]);
     host.launch_resources = resources;
     *host.state.lock().unwrap() = Some(Arc::new(Mutex::new(state)));
     host

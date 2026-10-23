@@ -199,7 +199,7 @@ impl DesktopState {
     }
     /// Call from all mutation admission paths under the same DesktopState mutex.
     pub fn ensure_updater_idle(&self) -> Result<(), StorageError> {
-        if self.update_record()?.phase.busy() {
+        if self.external_setup || self.update_record()?.phase.busy() {
             return Err(StorageError::Busy);
         }
         Ok(())

@@ -76,45 +76,55 @@ impl Elevate for ShellExecuteRunas {
         let msiexec = directory(GetSystemDirectoryW)
             .ok_or(ElevateError::Win32(0))?
             .join("msiexec.exe");
-        let file = wide(msiexec.as_os_str());
-        let verb = wide(OsStr::new("runas"));
         let mut parameters = std::ffi::OsString::from("/i \"");
         parameters.push(msi.as_os_str());
         parameters.push("\" /norestart");
         let parameters = wide(&parameters);
-        // SAFETY: an all-zero SHELLEXECUTEINFOW is a valid empty request.
-        let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
-        info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
-        info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
-        info.lpVerb = verb.as_ptr();
-        info.lpFile = file.as_ptr();
-        info.lpParameters = parameters.as_ptr();
-        info.nShow = SW_SHOWNORMAL;
-        // SAFETY: every string is NUL-terminated and outlives the call.
-        if unsafe { ShellExecuteExW(&mut info) } == 0 {
-            let error = unsafe { GetLastError() };
-            return Err(if error == ERROR_CANCELLED {
-                ElevateError::Cancelled
-            } else {
-                ElevateError::Win32(error)
-            });
-        }
-        if info.hProcess.is_null() {
-            return Err(ElevateError::Win32(0));
-        }
-        // SAFETY: hProcess is the process handle SEE_MASK_NOCLOSEPROCESS returned;
-        // it is closed exactly once below.
-        unsafe {
-            let mut code = 0u32;
-            let waited = WaitForSingleObject(info.hProcess, INFINITE);
-            let read = GetExitCodeProcess(info.hProcess, &mut code);
-            let error = GetLastError();
-            CloseHandle(info.hProcess);
-            if waited != WAIT_OBJECT_0 || read == 0 {
-                Err(ElevateError::Win32(error))
-            } else {
-                Ok(code)
-            }
+        run_elevated_wide(&msiexec, Some(&parameters))
+    }
+}
+
+/// Vendor UI stays interactive; the caller authenticates and holds the payload.
+pub fn run_elevated(executable: &Path, parameters: Option<&OsStr>) -> Result<u32, ElevateError> {
+    let parameters = parameters.map(wide);
+    run_elevated_wide(executable, parameters.as_deref())
+}
+
+fn run_elevated_wide(executable: &Path, parameters: Option<&[u16]>) -> Result<u32, ElevateError> {
+    let file = wide(executable.as_os_str());
+    let verb = wide(OsStr::new("runas"));
+    // SAFETY: an all-zero SHELLEXECUTEINFOW is a valid empty request.
+    let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
+    info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
+    info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
+    info.lpVerb = verb.as_ptr();
+    info.lpFile = file.as_ptr();
+    info.lpParameters = parameters.map_or(std::ptr::null(), |value| value.as_ptr());
+    info.nShow = SW_SHOWNORMAL;
+    // SAFETY: every string is NUL-terminated and outlives the call.
+    if unsafe { ShellExecuteExW(&mut info) } == 0 {
+        let error = unsafe { GetLastError() };
+        return Err(if error == ERROR_CANCELLED {
+            ElevateError::Cancelled
+        } else {
+            ElevateError::Win32(error)
+        });
+    }
+    if info.hProcess.is_null() {
+        return Err(ElevateError::Win32(0));
+    }
+    // SAFETY: hProcess is the process handle SEE_MASK_NOCLOSEPROCESS returned;
+    // it is closed exactly once below.
+    unsafe {
+        let mut code = 0u32;
+        let waited = WaitForSingleObject(info.hProcess, INFINITE);
+        let read = GetExitCodeProcess(info.hProcess, &mut code);
+        let error = GetLastError();
+        CloseHandle(info.hProcess);
+        if waited != WAIT_OBJECT_0 || read == 0 {
+            Err(ElevateError::Win32(error))
+        } else {
+            Ok(code)
         }
     }
 }
