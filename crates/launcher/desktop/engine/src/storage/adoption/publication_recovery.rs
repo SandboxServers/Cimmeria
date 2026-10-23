@@ -1,5 +1,5 @@
 //! Reading an adoption checkpoint, and explicit recovery or abandonment of an interrupted one.
-use super::publication::{finish, name, plan_name, read_large};
+use super::publication::{name, plan_name, read_large};
 use super::*;
 
 pub fn inspect(state: &DesktopState, id: Uuid) -> Result<Record, Error> {
@@ -53,9 +53,12 @@ pub fn interrupted(state: &DesktopState, id: Uuid) -> Result<Interrupted, Error>
     }
     Ok(Interrupted {
         recoverable: inspect(state, id).is_ok()
-            && (!plan.report.in_place() || plan.schema_version == 2)
+            && plan.schema_version == 2
+            && plan.report.in_place()
             && !super::direct_abandon::started(state, &plan),
-        abandonable: if plan.report.in_place() {
+        abandonable: if plan.schema_version == 1 {
+            true // Authenticated legacy operations release metadata, never resume copying.
+        } else if plan.report.in_place() {
             super::in_place::abandonable(state, &plan)
         } else {
             matches!(
@@ -74,11 +77,6 @@ pub fn recover(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), 
         return Err(ContractError::StaleRevision.into());
     }
     let record = inspect(state, id)?;
-    if super::direct_abandon::started(state, &record.plan)
-        || (record.plan.report.in_place() && record.plan.schema_version == 1)
-    {
-        return Err(ContractError::InvalidTransition.into());
-    }
     let op = state
         .operations
         .snapshot()
@@ -87,6 +85,12 @@ pub fn recover(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), 
         .ok_or(ContractError::UnknownOperation)?;
     if op.state == OperationState::Succeeded {
         return Ok(());
+    }
+    if record.plan.schema_version != 2
+        || !record.plan.report.in_place()
+        || super::direct_abandon::started(state, &record.plan)
+    {
+        return Err(ContractError::InvalidTransition.into());
     }
     if op.state != OperationState::ReconciliationRequired {
         return Err(ContractError::InvalidTransition.into());
@@ -103,11 +107,7 @@ pub fn recover(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), 
     if saved != record.plan.installation {
         return Err(StorageError::Corrupt.into());
     }
-    let result = if record.plan.report.in_place() {
-        super::in_place::finish(state, &record.plan, &mut |_| Ok(()))
-    } else {
-        finish(state, &record.plan, &mut |_| Ok(()))
-    };
+    let result = super::in_place::finish(state, &record.plan, &mut |_| Ok(()));
     if result.is_err() {
         let _ = state.operations_mut().and_then(|op| {
             op.mark_uncertain(id)
@@ -137,7 +137,11 @@ pub fn abandon(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), 
     if op.state != OperationState::ReconciliationRequired {
         return Err(ContractError::InvalidTransition.into());
     }
-    // In place, abandonment moves the release files back where they were.
+    // Every legacy layout releases metadata without publishing or moving content.
+    if plan.schema_version == 1 {
+        return super::direct::abandon(state, &plan, Phase::Staged);
+    }
+    // Direct-root abandonment restores only the approved individual changes.
     if plan.report.in_place() {
         return super::in_place::abandon(state, &plan);
     }

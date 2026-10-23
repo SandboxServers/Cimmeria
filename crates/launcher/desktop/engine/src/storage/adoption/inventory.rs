@@ -33,7 +33,7 @@ pub(super) fn identity(path: &Path) -> Result<Identity, Error> {
     identity_of(&metadata)
 }
 #[cfg(unix)]
-fn file_identity(file: &File) -> Result<Identity, Error> {
+pub(super) fn file_identity(file: &File) -> Result<Identity, Error> {
     identity_of(&file.metadata()?)
 }
 /// Volume serial and file index stand in for device and inode. The handle is
@@ -57,7 +57,7 @@ pub(super) fn identity(path: &Path) -> Result<Identity, Error> {
     file_identity(&file)
 }
 #[cfg(windows)]
-fn file_identity(file: &File) -> Result<Identity, Error> {
+pub(super) fn file_identity(file: &File) -> Result<Identity, Error> {
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::Storage::FileSystem::{
         GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_DIRECTORY,
@@ -96,7 +96,7 @@ pub(super) fn identity(_: &Path) -> Result<Identity, Error> {
     Err(StorageError::UnsafeFile.into())
 }
 #[cfg(not(any(unix, windows)))]
-fn file_identity(_: &File) -> Result<Identity, Error> {
+pub(super) fn file_identity(_: &File) -> Result<Identity, Error> {
     Err(StorageError::UnsafeFile.into())
 }
 #[cfg(unix)]

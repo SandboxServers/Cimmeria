@@ -3,7 +3,9 @@
 //! the one stored at admission, so a mismatch names what differs and a spelling-only
 //! difference (the directory's case) no longer fails an otherwise correct adoption.
 use super::in_place::SETUP_FILES;
-use super::publication::{read_large, write_large};
+use super::publication::read_large;
+#[cfg(all(test, not(target_os = "macos")))]
+use super::publication::write_large;
 use super::tree_diff::{diff, log_tree_checked, TreeOutcome};
 use super::verification::Tree;
 use super::*;
@@ -22,6 +24,7 @@ struct Stored {
 
 /// Writes `<stage>/expected-tree.json` atomically. The work folder may not exist
 /// yet: it is created by the first replacement copy, and a light adoption can have none.
+#[cfg(all(test, not(target_os = "macos")))]
 pub(super) fn write_expected(stage: &Path, tree: &Tree) -> Result<(), Error> {
     std::fs::create_dir_all(stage)?;
     let stored = Stored {
@@ -32,6 +35,23 @@ pub(super) fn write_expected(stage: &Path, tree: &Tree) -> Result<(), Error> {
             .collect(),
     };
     write_large(stage, EXPECTED_TREE, &stored)
+}
+
+/// Write the expected tree through the retained work-directory descriptor.
+pub(super) fn write_expected_guarded(plan: &Plan, tree: &Tree) -> Result<(), Error> {
+    let path = plan.stage().join(EXPECTED_TREE);
+    let guard = super::direct_paths::Parents::new(plan, &[&path], true)?;
+    let stored = Stored {
+        version: 1,
+        tree: tree
+            .iter()
+            .map(|(path, (size, sha))| (path.clone(), (*size, to_hex(sha))))
+            .collect(),
+    };
+    guard.write(
+        &path,
+        &serde_json::to_vec(&stored).map_err(|_| StorageError::Corrupt)?,
+    )
 }
 
 /// The stored tree, or `None` when the file is absent, unreadable or not what
@@ -151,8 +171,8 @@ pub(super) fn save_setup_originals(plan: &Plan, game: &Path) -> Result<(), Error
     let stage = plan.stage();
     let manifest = stage.join(SETUP_MANIFEST);
     let stage_guard = super::direct_paths::Parents::new(plan, &[&manifest], true)?;
-    let anchored_manifest = stage_guard.path(&manifest)?;
-    remove_setup_originals(anchored_manifest.parent().ok_or(StorageError::UnsafeFile)?);
+    stage_guard.remove(&manifest, false)?;
+    stage_guard.remove_tree(&stage.join(SETUP_ORIGINALS))?;
     let copies = stage.join(SETUP_ORIGINALS);
     let mut files = Vec::new();
     for key in SETUP_FILES {
@@ -164,22 +184,15 @@ pub(super) fn save_setup_originals(plan: &Plan, game: &Path) -> Result<(), Error
             continue;
         };
         let to = inventory::native(&copies, &found);
-        if let Some(parent) = to.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
         super::direct_paths::copy(plan, &inventory::native(game, &found), &to)?;
         files.push(Original {
             path: found,
             existed: true,
         });
     }
-    write_large(
-        stage_guard
-            .path(&manifest)?
-            .parent()
-            .ok_or(StorageError::UnsafeFile)?,
-        SETUP_MANIFEST,
-        &Originals { version: 1, files },
+    stage_guard.write(
+        &manifest,
+        &serde_json::to_vec(&Originals { version: 1, files }).map_err(|_| StorageError::Corrupt)?,
     )
 }
 
@@ -191,12 +204,6 @@ fn read_originals(stage: &Path) -> Option<Originals> {
 /// Whether the work folder holds a complete, readable set of setup originals.
 pub(super) fn has_setup_originals(stage: &Path) -> bool {
     read_originals(stage).is_some()
-}
-
-/// Removes the manifest first, then the copies, so a half-removed set never looks whole.
-pub(super) fn remove_setup_originals(stage: &Path) {
-    let _ = std::fs::remove_file(stage.join(SETUP_MANIFEST));
-    let _ = std::fs::remove_dir_all(stage.join(SETUP_ORIGINALS));
 }
 
 /// Puts the setup files in `game` back as `save_setup_originals` found them: a file that
@@ -256,13 +263,11 @@ pub(super) fn restore_setup_guarded(plan: &Plan) -> Result<u32, Error> {
     let root = &plan.installation.destination;
     let manifest = stage.join(SETUP_MANIFEST);
     let guard = super::direct_paths::Parents::new(plan, &[&manifest], false)?;
-    let originals = read_originals(
-        guard
-            .path(&manifest)?
-            .parent()
-            .ok_or(StorageError::UnsafeFile)?,
-    )
-    .ok_or(StorageError::Corrupt)?;
+    let originals: Originals =
+        serde_json::from_slice(&guard.read(&manifest)?).map_err(|_| StorageError::Corrupt)?;
+    if originals.version != 1 {
+        return Err(StorageError::Corrupt.into());
+    }
     let mut touched = 0;
     for row in originals.files {
         if row

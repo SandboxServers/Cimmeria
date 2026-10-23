@@ -1,11 +1,11 @@
-//! Verified, separately owned copies on macOS; verified in-place ownership of
-//! the imported folder elsewhere (D-LX12). A legacy ledger is never verification.
+//! Verified ownership at the selected installation root on both desktop platforms.
+//! Historical copy fixtures remain test-only; a legacy ledger is never verification.
 //! Native composition only: dispatch these blocking functions on retained workers.
 mod artifacts;
 mod comparison;
 mod direct;
 mod direct_abandon;
-mod direct_paths;
+pub(crate) mod direct_paths;
 #[cfg(all(test, not(target_os = "macos")))]
 mod direct_safety_tests;
 mod direct_setup;

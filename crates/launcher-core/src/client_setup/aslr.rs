@@ -40,6 +40,12 @@ pub fn disable(exe: &Path) -> std::io::Result<AslrOutcome> {
         return Ok(AslrOutcome::NoExe);
     }
     let mut f = OpenOptions::new().read(true).write(true).open(exe)?;
+    disable_open(&mut f)
+}
+
+/// Clear dynamic-base through an already verified, retained executable handle.
+pub fn disable_open(f: &mut std::fs::File) -> std::io::Result<AslrOutcome> {
+    f.seek(SeekFrom::Start(0))?;
     let mut dos = [0u8; 64];
     f.read_exact(&mut dos)?;
     if &dos[..2] != b"MZ" {
@@ -128,6 +134,25 @@ mod tests {
         expected[0x186] = 0x00;
         assert_eq!(after, expected, "one byte changes: 0x40 -> 0x00 at 0x186");
         assert_eq!(disable(&exe).unwrap(), AslrOutcome::AlreadyOff);
+    }
+
+    #[test]
+    fn retained_handle_edit_never_reopens_a_replaced_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("SGW.exe");
+        let retained = dir.path().join("retained.exe");
+        std::fs::write(&exe, fake_exe(0x8140)).unwrap();
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&exe)
+            .unwrap();
+        std::fs::rename(&exe, &retained).unwrap();
+        let outside = fake_exe(0x9140);
+        std::fs::write(&exe, &outside).unwrap();
+        assert_eq!(disable_open(&mut file).unwrap(), AslrOutcome::Disabled);
+        assert_eq!(std::fs::read(&retained).unwrap(), fake_exe(0x8100));
+        assert_eq!(std::fs::read(&exe).unwrap(), outside);
     }
 
     #[test]

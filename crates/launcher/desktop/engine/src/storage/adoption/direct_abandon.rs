@@ -1,5 +1,5 @@
 //! Durable, plan-bound rollback progress for a shared content root.
-use super::in_place::{holds, present, Hashed, OWNER};
+use super::in_place::{Hashed, OWNER};
 use super::in_place_replace::{original_home, replaced_kind};
 use super::publication::{read_large, write_large};
 use super::*;
@@ -60,7 +60,7 @@ pub(super) fn abandon_with(
     let mut progress = load(state, plan)?;
     let marker_path = root.join(OWNER);
     let guard = super::direct_paths::Parents::new(plan, &[&marker_path], false)?;
-    let marker = match inventory::open(&guard.path(&marker_path)?) {
+    let marker = match guard.open(&marker_path, false, false) {
         Ok(marker) => {
             marker.try_lock().map_err(|_| StorageError::InUse)?;
             let saved: InstallIntent = super::super::read_open(&marker)?;
@@ -157,19 +157,22 @@ fn restore_one(plan: &Plan, replacement: &Replacement) -> Result<(), Error> {
     let mut paths = vec![target.as_path(), partial.as_path()];
     paths.extend(home.as_deref());
     let guard = super::direct_paths::Parents::new(plan, &paths, true)?;
-    let live = guard.path(&target)?;
-    let parked = home.as_ref().map(|home| guard.path(home)).transpose()?;
+    let live = &target;
+    let parked = home.as_ref();
     let expected = Hashed {
         sha256: replacement.sha256,
         size: replacement.size,
     };
-    let original = parked.as_ref().filter(|home| home.is_file());
-    if present(&live)? {
+    let original = match parked {
+        Some(home) if guard.present(home)? => Some(home),
+        _ => None,
+    };
+    if guard.present(live)? {
         let already_restored = original
             .map(|home| {
-                let hash = inventory::hash(home, &CancellationToken::new())?;
-                holds(
-                    &live,
+                let hash = guard.hash(home)?;
+                guard.holds(
+                    live,
                     &Hashed {
                         sha256: hash.sha256,
                         size: hash.size,
@@ -181,7 +184,7 @@ fn restore_one(plan: &Plan, replacement: &Replacement) -> Result<(), Error> {
         if already_restored {
             return Ok(());
         }
-        if !holds(&live, &expected)? {
+        if !guard.holds(live, &expected)? {
             if original.is_some() || kind == Classification::Missing {
                 return Err(super::in_place::refused(
                     Error::SourceChanged,
@@ -195,12 +198,12 @@ fn restore_one(plan: &Plan, replacement: &Replacement) -> Result<(), Error> {
             return Err(StorageError::Corrupt.into());
         }
     }
-    super::direct_paths::remove(plan, &partial)?;
+    guard.remove(&partial, false)?;
     if let Some(home) = home.as_ref().filter(|_| original.is_some()) {
         // Keep the only original until the completion checkpoint is durable.
-        super::direct_paths::copy(plan, home, &target)?;
-    } else if present(&live)? {
-        super::direct_paths::remove(plan, &target)?;
+        guard.copy_atomic(home, &target)?;
+    } else if guard.present(live)? {
+        guard.remove(&target, false)?;
     }
     Ok(())
 }
@@ -242,10 +245,6 @@ fn cleanup_work(
     }
     let stage = plan.stage();
     let guard = super::direct_paths::Parents::new(plan, &[&stage], false)?;
-    match std::fs::remove_dir_all(guard.path(&stage)?) {
-        Ok(()) => (),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
-        Err(error) => return Err(error.into()),
-    }
+    guard.remove_tree(&stage)?;
     Ok(())
 }

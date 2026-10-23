@@ -6,7 +6,7 @@ fn sink() -> crate::install_progress::ProgressSink {
 }
 
 #[test]
-fn every_durable_publication_fault_reopens_without_redispatch_and_preserves_source() {
+fn every_legacy_copy_fault_refuses_relocation_and_allows_metadata_only_abandon() {
     for point in [
         publication::Point::Staged,
         publication::Point::BeforePromotion,
@@ -38,14 +38,22 @@ fn every_durable_publication_fault_reopens_without_redispatch_and_preserves_sour
         );
         assert_eq!(f.source_snapshot(), before);
         let root = f.root.path().join("state");
+        let destination = f.destination();
+        let snapshot = inventory::scan(&destination, &CancellationToken::new()).unwrap();
         drop(f.state);
         let mut reopened = DesktopState::open(&root).unwrap();
-        assert!(
-            reopened.installed_content().is_err()
-                || reopened.installed_content().unwrap().is_none()
-        );
+        let offered = interrupted(&reopened, id).unwrap();
+        assert!(!offered.recoverable && offered.abandonable);
         let revision = reopened.operations().snapshot().revision;
-        recover(&mut reopened, id, revision).unwrap();
+        assert_eq!(
+            recover(&mut reopened, id, revision),
+            Err(ContractError::InvalidTransition.into())
+        );
+        assert_eq!(
+            inventory::scan(&destination, &CancellationToken::new()).unwrap(),
+            snapshot
+        );
+        abandon(&mut reopened, id, revision).unwrap();
         assert_eq!(
             reopened
                 .operations()
@@ -54,12 +62,16 @@ fn every_durable_publication_fault_reopens_without_redispatch_and_preserves_sour
                 .as_ref()
                 .unwrap()
                 .state,
-            OperationState::Succeeded
+            OperationState::Cancelled
         );
-        assert!(reopened.installed_content().unwrap().is_some());
-        let revision = reopened.operations().snapshot().revision;
-        recover(&mut reopened, id, revision).unwrap();
-        assert_eq!(reopened.operations().snapshot().revision, revision);
+        let retained = inventory::scan(&destination, &CancellationToken::new()).unwrap();
+        let mut expected = snapshot;
+        expected.remove(".cimmeria-install.json");
+        expected.remove("content-ready.json");
+        assert_eq!(
+            retained, expected,
+            "legacy content was moved or removed at {point:?}"
+        );
     }
 }
 #[test]

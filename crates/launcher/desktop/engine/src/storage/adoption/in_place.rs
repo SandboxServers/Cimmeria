@@ -89,6 +89,7 @@ pub(super) fn publish(
     }
     let store = state.directory.root.clone();
     let game = root.clone();
+    let admission_root = super::direct_paths::Parents::retain_root(&root)?;
     let admitted = admit(preview, &mut state, id, choices, &root, &game, cancel);
     let (plan, provenance, owner) = match admitted {
         Ok(admitted) => admitted,
@@ -108,7 +109,7 @@ pub(super) fn publish(
             } else {
                 // No operation names this folder yet, so nothing could recover
                 // it: take back the marker and the empty tree, never strand them.
-                let _ = std::fs::remove_file(root.join(OWNER));
+                let _ = admission_root.remove(&root.join(OWNER), false);
             }
             return Err(refused(error, "admission failed"));
         }
@@ -201,11 +202,7 @@ fn admit(
     };
     let owner_path = root.join(OWNER);
     let root_guard = super::direct_paths::Parents::new(&plan, &[&owner_path], false)?;
-    let mut owner = OpenOptions::new()
-        .write(true)
-        .read(true)
-        .create_new(true)
-        .open(root_guard.path(&owner_path)?)?;
+    let mut owner = root_guard.open(&owner_path, true, true)?;
     owner.try_lock().map_err(|_| StorageError::InUse)?;
     owner.write_all(&serde_json::to_vec(&plan.installation).map_err(|_| StorageError::Corrupt)?)?;
     owner.sync_all()?;
@@ -243,15 +240,7 @@ fn admit(
     write_large(&state.directory.root, &reviewed_name(id), &reviewed)?;
     write_large(&state.directory.root, &plan_name(id), &plan)?;
     if let Some(tree) = &preview.expected_tree {
-        let expected = plan.stage().join(in_place_check::EXPECTED_TREE);
-        let guard = super::direct_paths::Parents::new(&plan, &[&expected], true)?;
-        in_place_check::write_expected(
-            guard
-                .path(&expected)?
-                .parent()
-                .ok_or(StorageError::UnsafeFile)?,
-            tree,
-        )?;
+        in_place_check::write_expected_guarded(&plan, tree)?;
     }
     // Staged here means the moves are authorized, not that they are done.
     write_large(
@@ -302,7 +291,7 @@ fn stage_replacements(
         }
         let dest = inventory::native(&stage.join("replacements"), &replacement.path);
         let guard = super::direct_paths::Parents::new(plan, &[&dest], true)?;
-        inventory::copy(&source, &guard.path(&dest)?, &entry, cancel)?;
+        guard.copy_from(&source, &dest, &entry, cancel)?;
         staged.push(replacement.clone());
     }
     Ok(staged)
@@ -318,20 +307,15 @@ pub(super) fn present(path: &Path) -> Result<bool, Error> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) struct Hashed {
-    pub(super) sha256: [u8; 32],
-    pub(super) size: u64,
+pub(crate) struct Hashed {
+    pub(crate) sha256: [u8; 32],
+    pub(crate) size: u64,
 }
 /// Release files by index name, as the review hashed them.
 type Reviewed = BTreeMap<String, Hashed>;
 fn reviewed_name(id: Uuid) -> String {
     format!("adoption-reviewed-{id}.json")
 }
-pub(super) fn holds(path: &Path, expected: &Hashed) -> Result<bool, Error> {
-    let entry = inventory::hash(path, &CancellationToken::new())?;
-    Ok(entry.sha256 == expected.sha256 && entry.size == expected.size)
-}
-
 /// The direction of an explicitly reviewed cooked-data normalization.
 #[derive(Clone, Copy)]
 pub(super) enum Way<'a> {
@@ -437,19 +421,21 @@ pub(super) fn finish(
         super::direct_setup::prepare(plan)?;
         let ledger_path = game.join("launcher-installed.json");
         let ledger_guard = super::direct_paths::Parents::new(plan, &[&ledger_path], false)?;
-        reference::ledger(&release, &plan.incomplete_patches)
-            .save(
-                ledger_guard
-                    .path(&ledger_path)?
-                    .parent()
-                    .ok_or(StorageError::UnsafeFile)?,
-            )
-            .map_err(|_| StorageError::Io)?;
+        ledger_guard.write(
+            &ledger_path,
+            &serde_json::to_vec_pretty(&reference::ledger(&release, &plan.incomplete_patches))
+                .map_err(|_| StorageError::Corrupt)?,
+        )?;
         sync_files(&game, &SETUP_FILES)?;
         hook(Point::SetUp)?;
     }
     in_place_check::validate(&game, plan)?;
-    atomic::write(root, "content-ready.json", &plan.installation)?;
+    let receipt = root.join("content-ready.json");
+    let guard = super::direct_paths::Parents::new(plan, &[&receipt], false)?;
+    guard.write(
+        &receipt,
+        &serde_json::to_vec(&plan.installation).map_err(|_| StorageError::Corrupt)?,
+    )?;
     state.remember_adopted_content(&plan.installation, &plan.provenance)?;
     hook(Point::Receipt)?;
     if state.preferences == plan.before {
