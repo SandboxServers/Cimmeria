@@ -18,7 +18,7 @@ def stable(value):
     return version
 
 
-def choose(pages, epoch, sha, run_url):
+def choose(pages, epoch, sha, run_url, rolling_version=None):
     releases = [release for page in pages for release in page]
     day = dt.datetime.fromtimestamp(epoch, dt.timezone.utc)
     prefix = f"launcher-{day:%Y%m%d}-"
@@ -54,11 +54,17 @@ def choose(pages, epoch, sha, run_url):
                 year, month, patch = stable(match[1])
                 if (year, month) == (day.year, day.month) and patch // 100 == day.day:
                     slots.append(patch % 100)
+        if rolling_version:
+            year, month, patch = stable(rolling_version)
+            if (year, month) == (day.year, day.month) and patch // 100 == day.day:
+                slots.append(patch % 100)
         ordinal = max(slots) + 1
         if ordinal > 99:
             raise ValueError("D-LX15 supports at most 99 releases per UTC day")
         version = f"{day.year}.{day.month}.{day.day * 100 + ordinal}"
         candidate = stable(version)
+        if rolling_version and candidate <= stable(rolling_version):
+            raise ValueError("candidate is not above launcher-current")
         for release in releases:
             match = re.search(r"Stargate Worlds launcher ([0-9]+\.[0-9]+\.[0-9]+)(?:-[0-9]+)?,", release.get("body") or "")
             if match and candidate <= stable(match[1]):
@@ -84,7 +90,9 @@ def main():
         stable(saved["version"])
         identity = saved
     else:
-        identity = choose(pages, epoch, os.environ["GITHUB_SHA"], run_url)
+        rolling = Path("stamp-current/latest.json")
+        rolling_version = json.loads(rolling.read_text())["version"] if rolling.exists() else None
+        identity = choose(pages, epoch, os.environ["GITHUB_SHA"], run_url, rolling_version)
     reservation.parent.mkdir(exist_ok=True)
     reservation.write_text(json.dumps(identity) + "\n")
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:

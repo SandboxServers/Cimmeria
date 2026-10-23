@@ -37,6 +37,11 @@ class IdentityTests(unittest.TestCase):
         pages = [[release("launcher-20261023-aaaaaaa", "2026.10.2309")], []]
         self.assertEqual(choose(pages, epoch(), "bbbbbbb", RUN)["version"], "2026.10.2310")
 
+    def test_deleted_dated_release_cannot_reuse_rolling_feed_version(self):
+        self.assertEqual(choose([[]], epoch(), "aaaaaaa", RUN, "2026.10.2307")["version"], "2026.10.2308")
+        with self.assertRaisesRegex(ValueError, "not above launcher-current"):
+            choose([[]], epoch(), "aaaaaaa", RUN, "2026.11.101")
+
     def test_slot_99_and_limit(self):
         pages = [[release("launcher-20261023-aaaaaaa", "2026.10.2398")]]
         self.assertEqual(choose(pages, epoch(), "bbbbbbb", RUN)["version"], "2026.10.2399")
