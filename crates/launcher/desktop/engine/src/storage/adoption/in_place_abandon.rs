@@ -17,6 +17,9 @@ pub(super) fn abandonable(state: &DesktopState, plan: &Plan) -> bool {
     if plan.schema_version != 2 {
         return false;
     }
+    if super::direct_abandon::started(state, plan) {
+        return true;
+    }
     match phase(state, plan) {
         Some(Phase::Staged) => true,
         Some(Phase::Promoted) => {

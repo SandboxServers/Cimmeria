@@ -168,14 +168,6 @@ fn admit(
         login_servers: source::servers_of(&preview.source, &preview.before),
         backend: preview.preparation.record.descriptor.backend.clone(),
     };
-    let mut owner = OpenOptions::new()
-        .write(true)
-        .read(true)
-        .create_new(true)
-        .open(root.join(OWNER))?;
-    owner.try_lock().map_err(|_| StorageError::InUse)?;
-    owner.write_all(&serde_json::to_vec(&installation).map_err(|_| StorageError::Corrupt)?)?;
-    owner.sync_all()?;
     let (legacy_install_id, import_digest, folder_scan_digest) = publication::pins(&preview.source);
     let provenance = Provenance {
         work_id: id,
@@ -207,7 +199,17 @@ fn admit(
         replacements: Vec::new(),
         incomplete_patches: preview.incomplete_patches(),
     };
-    plan.replacements = stage_replacements(preview, &plan.stage(), cancel)?;
+    let owner_path = root.join(OWNER);
+    let root_guard = super::direct_paths::Parents::new(&plan, &[&owner_path], false)?;
+    let mut owner = OpenOptions::new()
+        .write(true)
+        .read(true)
+        .create_new(true)
+        .open(root_guard.path(&owner_path)?)?;
+    owner.try_lock().map_err(|_| StorageError::InUse)?;
+    owner.write_all(&serde_json::to_vec(&plan.installation).map_err(|_| StorageError::Corrupt)?)?;
+    owner.sync_all()?;
+    plan.replacements = stage_replacements(preview, &plan, cancel)?;
     state.save_release_evidence(owner_id, &preview.release)?;
     atomic::write(
         &state.directory.root,
@@ -241,7 +243,15 @@ fn admit(
     write_large(&state.directory.root, &reviewed_name(id), &reviewed)?;
     write_large(&state.directory.root, &plan_name(id), &plan)?;
     if let Some(tree) = &preview.expected_tree {
-        in_place_check::write_expected(&plan.stage(), tree)?;
+        let expected = plan.stage().join(in_place_check::EXPECTED_TREE);
+        let guard = super::direct_paths::Parents::new(&plan, &[&expected], true)?;
+        in_place_check::write_expected(
+            guard
+                .path(&expected)?
+                .parent()
+                .ok_or(StorageError::UnsafeFile)?,
+            tree,
+        )?;
     }
     // Staged here means the moves are authorized, not that they are done.
     write_large(
@@ -278,9 +288,10 @@ pub(super) fn release_files(report: &Report) -> Vec<&str> {
 /// checked against the size and hash the review recorded.
 fn stage_replacements(
     preview: &Preview,
-    stage: &Path,
+    plan: &Plan,
     cancel: &CancellationToken,
 ) -> Result<Vec<Replacement>, Error> {
+    let stage = plan.stage();
     let store = preview.preparation.record.directory.join("replacements");
     let mut staged = Vec::new();
     for replacement in preview.replacements() {
@@ -290,7 +301,8 @@ fn stage_replacements(
             return Err(StorageError::Corrupt.into());
         }
         let dest = inventory::native(&stage.join("replacements"), &replacement.path);
-        inventory::copy(&source, &dest, &entry, cancel)?;
+        let guard = super::direct_paths::Parents::new(plan, &[&dest], true)?;
+        inventory::copy(&source, &guard.path(&dest)?, &entry, cancel)?;
         staged.push(replacement.clone());
     }
     Ok(staged)
@@ -422,9 +434,16 @@ pub(super) fn finish(
     }
     if record.phase == Phase::Promoted {
         // Idempotent, so a recovery after a crash here applies it again.
-        crate::client_setup::prepare(&game, &plan.installation.login_servers)?;
+        super::direct_setup::prepare(plan)?;
+        let ledger_path = game.join("launcher-installed.json");
+        let ledger_guard = super::direct_paths::Parents::new(plan, &[&ledger_path], false)?;
         reference::ledger(&release, &plan.incomplete_patches)
-            .save(&game)
+            .save(
+                ledger_guard
+                    .path(&ledger_path)?
+                    .parent()
+                    .ok_or(StorageError::UnsafeFile)?,
+            )
             .map_err(|_| StorageError::Io)?;
         sync_files(&game, &SETUP_FILES)?;
         hook(Point::SetUp)?;

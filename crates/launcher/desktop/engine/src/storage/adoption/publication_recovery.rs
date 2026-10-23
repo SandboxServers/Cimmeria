@@ -53,7 +53,8 @@ pub fn interrupted(state: &DesktopState, id: Uuid) -> Result<Interrupted, Error>
     }
     Ok(Interrupted {
         recoverable: inspect(state, id).is_ok()
-            && (!plan.report.in_place() || plan.schema_version == 2),
+            && (!plan.report.in_place() || plan.schema_version == 2)
+            && !super::direct_abandon::started(state, &plan),
         abandonable: if plan.report.in_place() {
             super::in_place::abandonable(state, &plan)
         } else {
@@ -73,7 +74,9 @@ pub fn recover(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), 
         return Err(ContractError::StaleRevision.into());
     }
     let record = inspect(state, id)?;
-    if record.plan.report.in_place() && record.plan.schema_version == 1 {
+    if super::direct_abandon::started(state, &record.plan)
+        || (record.plan.report.in_place() && record.plan.schema_version == 1)
+    {
         return Err(ContractError::InvalidTransition.into());
     }
     let op = state

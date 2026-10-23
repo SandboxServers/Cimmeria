@@ -34,12 +34,6 @@ pub(super) fn write_expected(stage: &Path, tree: &Tree) -> Result<(), Error> {
     write_large(stage, EXPECTED_TREE, &stored)
 }
 
-/// Removes `<stage>/expected-tree.json` when an abandoned adoption clears its stage.
-/// A missing file is not an error: an admission may have failed before it was written.
-pub(super) fn remove_expected(stage: &Path) {
-    let _ = std::fs::remove_file(stage.join(EXPECTED_TREE));
-}
-
 /// The stored tree, or `None` when the file is absent, unreadable or not what
 /// `write_expected` writes: an adoption an earlier build began has none, and the
 /// check then has nothing to compare (it reports `unrecorded`).
@@ -155,8 +149,10 @@ pub(super) fn save_setup_originals(plan: &Plan, game: &Path) -> Result<(), Error
         return Ok(());
     }
     let stage = plan.stage();
-    std::fs::create_dir_all(&stage)?;
-    remove_setup_originals(&stage);
+    let manifest = stage.join(SETUP_MANIFEST);
+    let stage_guard = super::direct_paths::Parents::new(plan, &[&manifest], true)?;
+    let anchored_manifest = stage_guard.path(&manifest)?;
+    remove_setup_originals(anchored_manifest.parent().ok_or(StorageError::UnsafeFile)?);
     let copies = stage.join(SETUP_ORIGINALS);
     let mut files = Vec::new();
     for key in SETUP_FILES {
@@ -171,14 +167,20 @@ pub(super) fn save_setup_originals(plan: &Plan, game: &Path) -> Result<(), Error
         if let Some(parent) = to.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::copy(inventory::native(game, &found), &to)?;
-        OpenOptions::new().write(true).open(&to)?.sync_all()?;
+        super::direct_paths::copy(plan, &inventory::native(game, &found), &to)?;
         files.push(Original {
             path: found,
             existed: true,
         });
     }
-    write_large(&stage, SETUP_MANIFEST, &Originals { version: 1, files })
+    write_large(
+        stage_guard
+            .path(&manifest)?
+            .parent()
+            .ok_or(StorageError::UnsafeFile)?,
+        SETUP_MANIFEST,
+        &Originals { version: 1, files },
+    )
 }
 
 fn read_originals(stage: &Path) -> Option<Originals> {
@@ -201,6 +203,7 @@ pub(super) fn remove_setup_originals(stage: &Path) {
 /// existed is copied back over, one that did not is deleted. A file that existed and is
 /// no longer under `game` was already moved home by an earlier run, so it is skipped and
 /// not counted. Returns how many files it touched. Safe to run again after a crash.
+#[cfg(test)]
 pub(super) fn restore_setup_originals(stage: &Path, game: &Path) -> Result<u32, Error> {
     let originals = read_originals(stage).ok_or(StorageError::Corrupt)?;
     let mut touched = 0;
@@ -242,6 +245,43 @@ pub(super) fn restore_setup_originals(stage: &Path, game: &Path) -> Result<u32, 
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
                 Err(error) => return Err(error.into()),
             }
+        }
+    }
+    Ok(touched)
+}
+
+/// Plan-aware rollback uses retained parent handles for every setup mutation.
+pub(super) fn restore_setup_guarded(plan: &Plan) -> Result<u32, Error> {
+    let stage = plan.stage();
+    let root = &plan.installation.destination;
+    let manifest = stage.join(SETUP_MANIFEST);
+    let guard = super::direct_paths::Parents::new(plan, &[&manifest], false)?;
+    let originals = read_originals(
+        guard
+            .path(&manifest)?
+            .parent()
+            .ok_or(StorageError::UnsafeFile)?,
+    )
+    .ok_or(StorageError::Corrupt)?;
+    let mut touched = 0;
+    for row in originals.files {
+        if row
+            .path
+            .split('/')
+            .any(|part| part.is_empty() || part == ".." || part.contains(['\\', ':']))
+        {
+            return Err(StorageError::Corrupt.into());
+        }
+        let target = inventory::native(root, &row.path);
+        if row.existed {
+            let source = inventory::native(&stage.join(SETUP_ORIGINALS), &row.path);
+            super::direct_paths::copy(plan, &source, &target)?;
+            touched += 1;
+        } else {
+            if std::fs::symlink_metadata(&target).is_ok() {
+                touched += 1;
+            }
+            super::direct_paths::remove(plan, &target)?;
         }
     }
     Ok(touched)

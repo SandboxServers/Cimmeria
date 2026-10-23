@@ -1,6 +1,6 @@
 //! Schema-2 adoption applies reviewed content at the selected root, without
 //! relocating the installation. Schema-1 journals are never resumed as movers.
-use super::in_place::{holds, present, Hashed, Way, OWNER};
+use super::in_place::{present, Way, OWNER};
 use super::in_place_replace::{self, keeps_login, replaced_kind};
 use super::publication::Point;
 use super::*;
@@ -113,101 +113,6 @@ pub(super) fn scan(root: &Path, plan: &Plan) -> Result<inventory::Index, Error> 
     Ok(result)
 }
 
-/// Roll back reviewed per-file edits without ever moving the installation tree.
-pub(super) fn restore(plan: &Plan) -> Result<(), Error> {
-    let root = &plan.installation.destination;
-    for replacement in plan.replacements.iter().rev() {
-        let Some(kind) = replaced_kind(&replacement.path, replacement.reason) else {
-            continue;
-        };
-        let target = inventory::native(root, &replacement.path);
-        let home = in_place_replace::original_home(plan, &replacement.path, kind)?;
-        let expected = Hashed {
-            sha256: replacement.sha256,
-            size: replacement.size,
-        };
-        let has_original = home.as_ref().is_some_and(|path| path.exists());
-        let had_target = plan
-            .report
-            .files
-            .iter()
-            .find(|d| d.path == replacement.path)
-            .and_then(|d| d.source_path.as_deref())
-            .is_some_and(|source| {
-                source.eq_ignore_ascii_case(&replacement.path)
-                    || in_place_replace::cooked_tier(plan).is_some()
-            });
-        let mut partial = target.as_os_str().to_os_string();
-        partial.push(".adopt-partial");
-        let partial = PathBuf::from(partial);
-        if present(&partial)? {
-            std::fs::remove_file(&partial)?;
-        }
-        if present(&target)? && holds(&target, &expected)? {
-            if home.is_some() && !has_original && had_target {
-                return Err(StorageError::Corrupt.into());
-            }
-            std::fs::remove_file(&target)?;
-        } else if present(&target)? {
-            // An unrelated edit after interruption is never overwritten.
-            if has_original {
-                return Err(Error::SourceChanged);
-            }
-            continue;
-        }
-        if let Some(home) = home.filter(|home| home.exists()) {
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::rename(home, target)?;
-        }
-    }
-    in_place_replace::restore_cooked_tier(Way::Abandon { plan }, root)
-}
-
 pub(super) fn abandon(state: &mut DesktopState, plan: &Plan, phase: Phase) -> Result<(), Error> {
-    let root = &plan.installation.destination;
-    inventory::same_directory(root, &plan.destination_identity)?;
-    let marker = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(root.join(OWNER))?;
-    marker.try_lock().map_err(|_| StorageError::InUse)?;
-    let saved: InstallIntent = super::super::read_open(&marker)?;
-    if saved != plan.installation {
-        return Err(StorageError::Corrupt.into());
-    }
-    let mut restored_setup = 0;
-    if plan.schema_version == 2 {
-        if phase == Phase::Promoted {
-            restored_setup = super::in_place_check::restore_setup_originals(&plan.stage(), root)?;
-        }
-        restore(plan)?;
-        for path in super::in_place::release_files(&plan.report) {
-            if keeps_login(plan, path) {
-                in_place_replace::drop_login_copy(path, &inventory::native(root, path), plan)?;
-            }
-        }
-        super::in_place_replace::clear_abandoned(
-            plan,
-            &super::in_place::release_files(&plan.report),
-        )?;
-        super::in_place_check::remove_setup_originals(&plan.stage());
-        let _ = std::fs::remove_dir(plan.stage());
-    }
-    // Schema-1 recovery releases only ownership. Its partially moved content,
-    // staged originals and backups remain available for manual inspection.
-    state.forget_installed_content(&plan.installation)?;
-    match std::fs::remove_file(root.join("content-ready.json")) {
-        Ok(()) => (),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
-        Err(error) => return Err(error.into()),
-    }
-    drop(marker);
-    std::fs::remove_file(root.join(OWNER))?;
-    state
-        .operations_mut()?
-        .reconcile(plan.provenance.work_id, OperationState::Cancelled)?;
-    tracing::info!(target: "adoption", restored_setup, "abandoned adoption ownership; installation root retained");
-    Ok(())
+    super::direct_abandon::abandon(state, plan, phase)
 }
