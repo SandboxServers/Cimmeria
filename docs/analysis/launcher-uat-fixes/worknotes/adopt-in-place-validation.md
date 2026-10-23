@@ -223,6 +223,26 @@ is inferred from the local Windows checks. PR #1992 remains draft and unmerged
 at this checkpoint. Ship through CI/merge queue and verify worktree retirement
 before recording implementation complete. No release was performed.
 
+## macOS CI test-helper gate checkpoint
+
+After `89d24ab36`, CI run `39900989143` failed macOS clippy solely for unused
+`restore_setup_originals`: the test-only legacy helper was compiled on macOS,
+while its only callers in `setup_originals_tests` were excluded there. The fix
+aligns the helper's attribute to `#[cfg(all(test, not(target_os = "macos")))]`
+in `storage/adoption/in_place_check.rs`; production code is unchanged.
+
+Engine all-target clippy passes after this narrow fix
+(`20261022-235944-125636`). Targeted setup-original tests and fmt are running;
+narrow read-only review 5 and the next CI run are pending. Review 4's ship verdict
+still records the previously reviewed implementation, not acceptance of an
+uncompleted CI run. No native macOS runtime result is claimed.
+
+The older queued workflow `39899489669` ended with all packages passing. Run
+`39900989143` still has packaging and Windows checks in progress at this
+checkpoint; its macOS failure above remains an actual gate failure until a
+corrected run passes. Earlier local integration results and Task 2's merged and
+retired status remain unchanged. No release was performed.
+
 ## Browser mock and coverage limits
 
 At a 1280 × 720 viewport, a browser mock showed the main-page footer entry.
