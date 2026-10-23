@@ -11,16 +11,16 @@ native Play resolver and artifact verification consume the resulting paths.
 Mac resource packaging and all game/adoption roots remain unchanged.
 
 Local restored checks passed: engine library 988 passed/3 ignored; Windows shell
-155 passed/8 ignored; standalone workspace/all-target clippy with warnings denied;
+156 passed/8 ignored; standalone workspace/all-target clippy with warnings denied;
 frontend typecheck/build; 7 release workflow/package Python tests. The shell tests
 also check missing/mismatched build pins, and the updater tests accept an old
 sidecar installation updating to a signed single-root-EXE ZIP with one relaunch
 handoff and acknowledgment, preserving old sidecars and player files.
 
-Eight deliberate regressions failed their intended assertions: cached hash
+Nine deliberate regressions failed their intended assertions: cached hash
 verification, busy repair lease, active-version cleanup lease, unknown-file
 preservation, junction rejection, build pin verification, all required pins, and
-ZIP sidecar exclusion. Inputs were restored after each. An initial repair mutant
+ZIP sidecar exclusion, and tagged-build enforcement without the embed flag. Inputs were restored after each. An initial repair mutant
 failed cold setup and was not counted; the corrected mutant ignored only failed
 lock acquisition and exposed replacement of leased bytes. An initial junction
 mutation left the native no-follow open effective and still passed; removing
@@ -54,3 +54,4 @@ RESUME, mirrored UAT and committed project memory were updated. No Plan fields,
 consent defaults, signing secrets or generated blocks changed.
 
 Owner GO: proceed with PR/merge, then release from main, retaining the Windows ZIP.
+Independent review N1: tagged Windows builds now require complete pins even without CIMMERIA_EMBED_PAYLOAD, and the tag participates in build-script invalidation. Tests cover zero/partial/full pins, development builds and unchanged macOS behavior. Removing the tag requirement fails the new assertion; restored shell156 and all-target clippy pass.

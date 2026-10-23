@@ -18,11 +18,15 @@ const INPUTS: [(&str, &str); 3] = [
 #[cfg(not(test))]
 pub fn generate() -> io::Result<()> {
     println!("cargo:rerun-if-env-changed=CIMMERIA_EMBED_PAYLOAD");
+    println!("cargo:rerun-if-env-changed=CIMMERIA_LAUNCHER_TAG");
     for (_, key) in INPUTS {
         println!("cargo:rerun-if-env-changed={key}");
     }
     let windows = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows");
-    let required = std::env::var("CIMMERIA_EMBED_PAYLOAD").as_deref() == Ok("1");
+    let required = requires_embedding(
+        std::env::var("CIMMERIA_EMBED_PAYLOAD").ok().as_deref(),
+        std::env::var("CIMMERIA_LAUNCHER_TAG").ok().as_deref(),
+    );
     let pins: Vec<_> = INPUTS
         .iter()
         .map(|(_, key)| std::env::var(key).ok())
@@ -37,6 +41,9 @@ pub fn generate() -> io::Result<()> {
         Path::new(&std::env::var_os("OUT_DIR").unwrap()).join("embedded_payload.rs"),
         source,
     )
+}
+fn requires_embedding(flag: Option<&str>, tag: Option<&str>) -> bool {
+    flag == Some("1") || tag.is_some_and(|tag| !tag.trim().is_empty())
 }
 fn render(
     staged: &Path,
@@ -79,6 +86,42 @@ fn render(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn tagged_windows_builds_require_all_pins_even_without_the_embed_flag() {
+        let root = tempfile::tempdir().unwrap();
+        let digest: String = Sha256::digest(b"payload")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let required = requires_embedding(None, Some("launcher-20261023-fixture"));
+        for pins in [vec![None; 3], vec![Some(digest.clone()), None, None]] {
+            assert!(render(root.path(), true, required, &pins).is_err());
+        }
+        for (name, _) in INPUTS {
+            std::fs::write(root.path().join(name), b"payload").unwrap();
+        }
+        assert_eq!(
+            render(root.path(), true, required, &vec![Some(digest); 3])
+                .unwrap()
+                .matches("include_bytes!")
+                .count(),
+            3
+        );
+        assert!(render(
+            root.path(),
+            true,
+            requires_embedding(None, None),
+            &[None, None, None]
+        )
+        .is_ok());
+        assert_eq!(
+            render(root.path(), false, required, &[None, None, None])
+                .unwrap()
+                .matches("include_bytes!")
+                .count(),
+            0
+        );
+    }
     #[test]
     fn package_refuses_missing_or_changed_pins_but_mac_does_not_embed_windows_files() {
         let root = tempfile::tempdir().unwrap();
