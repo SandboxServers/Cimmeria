@@ -4,7 +4,8 @@
 use std::time::Duration;
 
 /// A release fetch failed. `reason` is `network`, `http_status`, `body`,
-/// `signature` or `invalid_manifest`; `http_status` is set only for `http_status`.
+/// `signature`, `invalid_manifest`, `signing_key_unavailable` or
+/// `development_key`; `http_status` is set only for `http_status`.
 pub(crate) fn release_fetch_failed(reason: &'static str, http_status: Option<u16>) {
     match http_status {
         Some(http_status) => tracing::warn!(

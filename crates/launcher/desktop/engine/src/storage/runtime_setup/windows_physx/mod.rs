@@ -14,6 +14,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 mod detect;
+pub mod legacy;
 #[cfg(windows)]
 pub mod native;
 pub use detect::{core_file, detect, Detection, Probe, CORE_RELATIVE};
@@ -39,11 +40,14 @@ const ERROR_PRODUCT_VERSION: u32 = 1638;
 pub enum PhysxCommand {
     Inspect { schema_version: u32 },
     Install { schema_version: u32 },
+    InstallLegacy { schema_version: u32 },
 }
 impl PhysxCommand {
     pub fn schema_version(&self) -> u32 {
         match self {
-            Self::Inspect { schema_version } | Self::Install { schema_version } => *schema_version,
+            Self::Inspect { schema_version }
+            | Self::Install { schema_version }
+            | Self::InstallLegacy { schema_version } => *schema_version,
         }
     }
 }
@@ -93,6 +97,8 @@ pub enum PhysxError {
     InstallerUnavailable,
     /// The retained installer, or the MSI inside it, is not the pinned one.
     PackageMismatch,
+    /// The fixed vendor download failed or exceeded its limits.
+    DownloadFailed,
     #[serde(untagged)]
     Storage(StorageError),
 }
@@ -122,6 +128,13 @@ pub struct InstallSource {
 }
 
 impl DesktopState {
+    /// Admission for the separately downloaded legacy bundle. No game-local
+    /// installer is required and the frontend supplies no filesystem path.
+    pub fn physx_legacy_scratch(&self) -> Result<PathBuf, StorageError> {
+        self.ensure_no_active_operation()?;
+        Ok(self.state_root().join(SCRATCH))
+    }
+
     /// The retained installer for the current installation, if it is there.
     /// Read-only: Inspect calls it without the mutation admission.
     pub fn physx_package(&mut self) -> Result<Option<PathBuf>, StorageError> {
@@ -224,7 +237,17 @@ fn install_package(
         );
         PhysxError::PackageMismatch
     })?;
-    std::fs::create_dir_all(&source.scratch).map_err(|error| {
+    install_msi(&source.scratch, payload, elevate, probe)
+}
+
+/// Run authenticated MSI bytes with the same on-disk guards for both packages.
+fn install_msi(
+    scratch: &Path,
+    payload: &[u8],
+    elevate: &dyn Elevate,
+    probe: &dyn Probe,
+) -> Result<InstallResult, PhysxError> {
+    std::fs::create_dir_all(scratch).map_err(|error| {
         tracing::warn!(
             target: "launcher.install",
             event = "physx_failed",
@@ -235,9 +258,7 @@ fn install_package(
         );
         StorageError::Io
     })?;
-    let msi = source
-        .scratch
-        .join(format!("physx-7.11.13-{}.msi", uuid::Uuid::new_v4()));
+    let msi = scratch.join(format!("physx-{}.msi", uuid::Uuid::new_v4()));
     let result = write_msi(&msi, payload).map(|_guard| {
         // `_guard` keeps a read-only, deny-write/delete handle open while msiexec runs.
         let code = elevate.run_msi(&msi);

@@ -286,12 +286,14 @@ standalone tests passed, zero failed and 11 ignored, plus the targeted server
 ingest guard. Three representative mutations failed their intended tests;
 all changes were restored and the final suite passed. Two further regression
 tests failed before correcting known-refusal outcomes, then passed in the full
-suite. Native build, clippy, format and frontend build checks passed. Earlier
-ship reviews covered the documentation/API and configuration cleanup; fresh
-review of the outcome refinements returned ship. All six desktop CI jobs and the
-root gate passed on prior head `6858d48`; corrected head `9d0b582` needs new CI
-after the push, followed by the merge queue. This checkpoint does not attest a release, new live SigNoz receipt,
-real-game performance or a completed gameplay reproduction.
+suite. Native build, clippy, format and frontend build checks passed. Fresh
+review, desktop CI and the full merge queue passed. [PR #1998](https://github.com/SandboxServers/Cimmeria/pull/1998)
+merged as `27493b05ae28dd8421419f1765b2982be3b3c04f`; its worktree is retired.
+Windows and macOS launcher `2026.10.2306` were published from that merge in
+[release run 40014376577](https://github.com/SandboxServers/Cimmeria/actions/runs/40014376577),
+with all six jobs green. Release identity, ZIP checksums and updater feed were
+verified. This establishes no new live SigNoz receipt, real-game performance
+or completed gameplay reproduction.
 
 The [anonymized SGC session review](worknotes/sgc-session-review-2026-10-23.md)
 records three mission completions, unfinished Carter progression, death/revival
@@ -299,5 +301,80 @@ and reported inability to leave the start area. It separates server/client
 measurements from player reports and lists reproduction priorities. It does not
 claim full SGC completion or first-ever coverage. Gameplay changes, live game,
 lab sessions and server deployment are outside this telemetry follow-up and
-were not performed. The previous release GO was fulfilled by 2026.10.2305;
-the owner has not requested a new release for this follow-up.
+were not performed. The standing release instruction was fulfilled by
+2026.10.2306 for this timing follow-up.
+
+## Legacy PhysX offer follow-up (2026-10-23)
+
+The owner requests an explicit offer to install the game's missing legacy
+PhysX runtime. The [design](design-legacy-physx.md) adds main-page **Install
+legacy PhysX…** when native Windows detection cannot find the exact 2.6.3 core.
+It downloads the pinned official NVIDIA 9.13.0604 MSI only after a press and
+reuses the interactive elevated installer and post-install check. Settings keeps
+the retained game installer; macOS keeps its Wine setup. No automatic install
+or Play-policy change is introduced. See the [native contract](../../../crates/launcher/desktop/docs/prerequisites.md#native-windows-physx-system-software-lx-12)
+and [player steps](../../client/launcher-guide.md#install-physx).
+
+The [validation checkpoint](worknotes/legacy-physx-validation.md) records passing
+frontend tests/build, standalone and JS REPL logic UAT, fixture browser review,
+three restored mutation proofs, authenticated vendor-package inspection and
+guarded tests without installer execution. The full desktop workspace passed
+1,183 tests with zero failures and 13 ignored; strict clippy and fresh read-only
+review passed. The native Windows build, production NVIDIA download smoke and
+authenticated fake-elevation test passed. New catalog-key work below requires
+new checks and fresh review; native/package CI, merge and release remain pending.
+These packaged acceptance rows are
+pending, mirrored in [unified UAT](../../guides/unified-uat.md#legacy-physx-offer-follow-up-lp).
+Ask before using a lab client or installing prerequisites on the owner's machine.
+
+| ID | Action | Expected |
+|---|---|---|
+| LP-U1 | On approved native Windows missing the 2.6.3 core, open an adopted install without its retained installer; press Install legacy PhysX… once, then repeat | Offer appears independently of the retained installer; immediate feedback and one download/install attempt |
+| LP-U2 | On an approved fixture, decline UAC or cancel the wizard; retry and complete it | Visible result and retry; native core recheck hides the offer only when present; requested restart is shown |
+| LP-U3 | Reopen after success, check a newer PhysX product lacking the core, and open on macOS | Native detection controls the offer after reopen; missing exact core still offers it; native Windows controls stay hidden on macOS |
+| LP-U4 | Inject download, response, size or hash failure before launch | Clear failure with retry; no MSI process starts; Play policy and consent stay unchanged |
+
+## Development catalog key follow-up (2026-10-23)
+
+The owner reports archive verification failure in a current-main development
+build. The [design](design-development-catalog-key.md) preserves signature and
+archive checks and distinguishes the build's default development key from a
+network failure. Public catalog preflight now refuses that key before fetching,
+with closed `development_key` logging; a missing usable key keeps
+`signing_key_unavailable`. Local signed fixtures are unchanged. Archive IPC
+keeps key, network and verification failures distinct, while Install maps the
+key errors to its existing signing-key refusal.
+
+Shared guidance points players to the published ZIP and developers to the
+[release public-key build recipe](../../../crates/launcher/desktop/README.md#build-against-released-game-content).
+The archive remains unchecked and unchanged when preflight refuses. No private
+signing key or trust bypass is involved. Native/frontend checks after this
+extension passed: 1,185 native tests with 13 ignored, 275 frontend tests, strict
+clippy and build. These totals predate the archive-start follow-up below; final
+review and CI remain pending. No owner-machine telemetry diagnosis or packaged
+acceptance is claimed.
+
+## Archive install handoff follow-up (2026-10-23)
+
+The owner requests that choosing an existing archive for installation starts
+Install without a second press. The [design](design-archive-start.md) adds a
+single handoff after successful verification, for explicit selection and
+Downloads acceptance from the main page or Settings. The existing Install
+method refreshes native status/revision and admission. A cancelled picker
+returns an optional, response-only `picker_cancelled: true` marker so a remembered
+old selection cannot trigger installation. Inspect/reopen, failed verification,
+lost replies, disposal, existing installs and active/recovery states do not
+trigger the handoff. No Plan fields or source-RAR changes are introduced.
+
+New tests, mutation proof, logic/visual UAT and final review/CI are pending.
+The preceding 1,185 native and 275 frontend test totals do not include this
+extension. See the [archive contract](../../../crates/launcher/desktop/docs/seed-archive.md#explicit-selection-starts-eligible-installation)
+and [player guide](../../client/launcher-guide.md#use-a-game-archive-you-already-downloaded).
+These packaged acceptance rows remain pending and are mirrored in
+[unified UAT](../../guides/unified-uat.md#archive-install-handoff-follow-up-as).
+
+| ID | Action | Expected |
+|---|---|---|
+| AS-U1 | With no installation and eligible idle native state, choose a valid archive or accept its Downloads offer from the main page and Settings | Immediate feedback, verification progress, then exactly one Install using fresh native admission; no second press |
+| AS-U2 | Cancel with a previously remembered archive; reject verification; lose a reply; reopen or dispose the view | No automatic Install, no mutation replay, source archive unchanged |
+| AS-U3 | Select an archive with an existing installation, active owner or recovery-blocked state | No new installation; normal native ownership and recovery rules remain authoritative |

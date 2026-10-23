@@ -18,6 +18,8 @@ pub enum CatalogError {
     TooLarge,
     Signature,
     SigningKeyUnavailable,
+    /// A debug build's default fixture key cannot authenticate the public catalog.
+    DevelopmentSigningKey,
     InvalidManifest,
 }
 
@@ -60,9 +62,11 @@ impl VerifiedRelease {
 }
 
 pub async fn fetch_release() -> Result<VerifiedRelease, CatalogError> {
-    if manifest::MANIFEST_SIGNING_PUBKEY.is_none() {
-        return Err(CatalogError::SigningKeyUnavailable);
-    }
+    require_release_key(
+        manifest::MANIFEST_SIGNING_PUBKEY.is_some(),
+        cfg!(debug_assertions)
+            && option_env!("LAUNCHER_MANIFEST_PUBKEY_HEX").is_none_or(|key| key.trim().is_empty()),
+    )?;
     let started = Instant::now();
     let client = reqwest::Client::builder()
         .https_only(true)
@@ -79,6 +83,26 @@ pub async fn fetch_release() -> Result<VerifiedRelease, CatalogError> {
     let release = verify_fetched(&body, &signature)?;
     events::release_fetched(started.elapsed());
     Ok(release)
+}
+
+/// The fixed public endpoint requires a release key. Local signed fixtures use
+/// `verify_release` directly and retain their development-key verification.
+fn require_release_key(present: bool, development_default: bool) -> Result<(), CatalogError> {
+    let failure = if !present {
+        Some((
+            CatalogError::SigningKeyUnavailable,
+            "signing_key_unavailable",
+        ))
+    } else if development_default {
+        Some((CatalogError::DevelopmentSigningKey, "development_key"))
+    } else {
+        None
+    };
+    if let Some((error, reason)) = failure {
+        events::release_fetch_failed(reason, None);
+        return Err(error);
+    }
+    Ok(())
 }
 
 async fn read_bounded(

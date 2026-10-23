@@ -1,6 +1,8 @@
 import {Context,Effect,Fiber,Layer,ManagedRuntime,Result,Stream} from 'effect';
 import type {Invoke} from './view';
 import type {PanelContext} from './panel-context';
+import {releaseKeyMessage} from './catalog-errors';
+import type {SeedArchiveStatus} from './contract';
 import {makeSeedArchiveWorkflow,seedArchiveBridgeLayer,type SeedArchiveFailure,type SeedArchiveState} from './seed-archive-workflow';
 export class SeedArchive extends Context.Service<SeedArchive,Effect.Success<ReturnType<typeof makeSeedArchiveWorkflow>>>()('launcher/SeedArchive') {}
 const mb=(bytes:number)=>Math.round(bytes/(1024*1024));
@@ -13,6 +15,8 @@ const errors:Record<string,string>={
  busy:'Another install, repair, update or archive check is running. Try again when it finishes.',
  io:'The launcher could not read that file. Check that no other program is using it, then try again. Nothing was changed.',
  release_unavailable:'The launcher could not reach the signed release, so it cannot check your archive. Try again later, or let the launcher download the game.',
+ signing_key_unavailable:releaseKeyMessage+' Your archive was not checked or changed.',
+ release_verification_failed:'The signed game release failed verification, so your archive was not checked. Use the published launcher ZIP or report this launcher version. Your archive was not changed.',
  transport:'The launcher could not confirm the archive check. Recheck status before choosing again; nothing was retried.',
  schema:'The launcher could not confirm the archive check. Recheck status before choosing again; nothing was retried.',
 };
@@ -27,13 +31,16 @@ export function seedArchiveText(s:SeedArchiveState):string {
   return verifying&&verifying.phase==='download'?`Checking your archive: ${mb(verifying.current)} of ${mb(verifying.total)} MB.`:'Checking your archive…';
  }
  if(s.error)return errors[s.error]??errors.transport;
+ if(s.status?.picker_cancelled)return 'Archive selection cancelled. Nothing was installed or changed.';
  if(!s.status)return 'Checking archive status…';
  const chosen=s.status.chosen;
  if(chosen)return `Using ${chosen.file_name} (verified). The launcher copies it when it needs the game files and never changes or deletes your file.`;
  return 'Already have the game archive (the original 2009 beta .rar)? Choose it to skip the 4.1 GB download.';
 }
 /** True when the install area should show the archive line (idle needs no line there). */
-export const seedArchiveShowsLine=(s:SeedArchiveState)=>s.phase!==null||s.error!==null||!!s.status?.chosen;
+export const seedArchiveShowsLine=(s:SeedArchiveState)=>s.phase!==null||s.error!==null||!!s.status?.chosen||!!s.status?.picker_cancelled;
+/** Only a successful explicit choice/offer acceptance can hand off to Install. */
+export const archiveSelectionVerified=(s:SeedArchiveStatus)=>!!s.chosen&&!s.verifying&&!s.last_error&&!s.picker_cancelled;
 /** The Downloads question Settings and the install area both ask (AI-16), or null when no offer is asked. */
 export function seedArchiveOfferText(s:SeedArchiveState):string|null{
  const found=s.status?.offer;
@@ -51,7 +58,7 @@ export function acquireSeedArchive(invoke:Invoke,pollMillis:number=500) {
  return {runtime:held.runtime,release:async()=>{held.holders--;if(held.holders>0)return;if(shared===held)shared=null;await held.runtime.dispose();}};
 }
 /** Settings panel (AI-07): choose a downloaded archive, watch its check, cancel it or forget it. */
-export function mountSeedArchive(document:Document,invoke:Invoke,context:PanelContext,pollMillis:number=500) {
+export function mountSeedArchive(document:Document,invoke:Invoke,context:PanelContext,pollMillis:number=500,onVerified:()=>Promise<unknown>=async()=>{}) {
  const panel=document.getElementById('seed-archive-panel');
  if(!panel)throw new Error('Missing launcher element seed-archive-panel');
  const make=<K extends keyof HTMLElementTagNameMap>(tag:K,id:string)=>{const e=document.createElement(tag);e.id=id;return e;};
@@ -82,16 +89,17 @@ export function mountSeedArchive(document:Document,invoke:Invoke,context:PanelCo
   forget.hidden=!chosen||s.phase==='checking';forget.disabled=busy;
  };
  const watcher=runtime.runFork(Effect.flatMap(SeedArchive,s=>Stream.runForEach(s.changes,value=>Effect.sync(()=>{current=value;render();}))));
- const run=(kind:'choose'|'accept'|'cancel'|'forget'|null,action:(s:Effect.Success<ReturnType<typeof makeSeedArchiveWorkflow>>)=>Effect.Effect<unknown,SeedArchiveFailure>,after:()=>void=()=>{})=>{
+ const run=(kind:'choose'|'accept'|'cancel'|'forget'|null,action:(s:Effect.Success<ReturnType<typeof makeSeedArchiveWorkflow>>)=>Effect.Effect<SeedArchiveStatus,SeedArchiveFailure>,after:(status:SeedArchiveStatus)=>unknown=()=>{})=>{
   if(disposed)return mutation;pressed=kind;render();
-  mutation=runtime.runPromise(Effect.flatMap(SeedArchive,s=>Effect.result(action(s)))).then(result=>{if(Result.isSuccess(result)&&!disposed)after();})
+  mutation=runtime.runPromise(Effect.flatMap(SeedArchive,s=>Effect.result(action(s)))).then(async result=>{if(Result.isSuccess(result)&&!disposed)await after(result.success);})
    .finally(()=>{pressed=null;render();})
    // A call cut short by disposal rejects with the runtime's interruption; nothing is shown for it.
    .catch(()=>{});
   return mutation;
  };
- choose.addEventListener('click',()=>{if(!choose.disabled)void run('choose',s=>s.choose,()=>{void context.refresh();});});
- yes.addEventListener('click',()=>{if(!yes.disabled)void run('accept',s=>s.accept,()=>{void context.refresh();});});
+ const selected=async(s:SeedArchiveStatus)=>{void context.refresh();if(archiveSelectionVerified(s))await onVerified();};
+ choose.addEventListener('click',()=>{if(!choose.disabled)void run('choose',s=>s.choose,selected);});
+ yes.addEventListener('click',()=>{if(!yes.disabled)void run('accept',s=>s.accept,selected);});
  cancel.addEventListener('click',()=>{if(!cancel.disabled)void run('cancel',s=>s.cancel);});
  forget.addEventListener('click',()=>{if(!forget.disabled)void run('forget',s=>s.forget,()=>{void context.refresh();});});
  const ready=run(null,s=>s.inspect);

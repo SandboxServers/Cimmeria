@@ -1,9 +1,10 @@
 import { repairControls } from './repair-view';
 import { displayPath } from './display-path';
+import { releaseKeyMessage } from './catalog-errors';
 import { Context, Effect, Fiber, Layer, ManagedRuntime, Result, Stream } from 'effect';
 import { installBridgeLayer, InstallFailure, InstallStatus, InstallViewState, makeInstallWorkflow, operationActive } from './install-workflow';
 import type { SeedArchiveState } from './seed-archive-workflow';
-import { acquireSeedArchive, seedArchiveOfferText, seedArchiveShowsLine, seedArchiveText, SeedArchive } from './seed-archive-view';
+import { acquireSeedArchive, archiveSelectionVerified, seedArchiveOfferText, seedArchiveShowsLine, seedArchiveText, SeedArchive } from './seed-archive-view';
 import type { Invoke } from './view';
 import { formatBytes, formatDuration, makeRateTracker, type TransferSample } from './transfer-rate';
 import { operationOpen } from './contract';
@@ -18,7 +19,7 @@ const errors:Record<InstallFailure['code'],string>={
   unknown_operation:'This operation is no longer the current installation. Recheck status.',identity_conflict:'This request does not match the saved installation.',
   recovery_required:'The interrupted installation needs inspection before continuing.',persistence_uncertain:'Restart the launcher to inspect uncertain saved state.',
   manifest_unavailable:'The release could not be downloaded. Check your connection and try again.',invalid_manifest:'The release could not be verified.',
-  signing_key_unavailable:'This build is missing its release verification key.',
+  signing_key_unavailable:releaseKeyMessage,
 };
 /** Application lifetime owns observation. Navigating tabs never disposes it. */
 /** `onFinished` runs each time an install, repair, uninstall or cleanup stops running. */
@@ -160,7 +161,8 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   const archiveOffer=get<HTMLElement>('install-seed-archive-offer');
   const archiveAccept=get<HTMLButtonElement>('install-seed-archive-accept');
   let archive:SeedArchiveState={status:null,phase:null,cancelling:false,error:null};let archivePressed=false;let acceptPressed=false;
-  const renderArchive=()=>{const busy=archivePressed||acceptPressed||archive.phase!==null;
+  let archiveMutation:Promise<unknown>=Promise.resolve();
+  const renderArchive=()=>{if(disposed)return;const busy=archivePressed||acceptPressed||archive.phase!==null;
     archiveButton.hidden=playable&&!busy;
     archiveButton.textContent=archivePressed?'Switching to your archive…':'Use a downloaded game archive…';
     archiveButton.disabled=busy;archiveButton.setAttribute('aria-busy',String(busy));
@@ -172,10 +174,10 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   const archiveWatcher=archiveRuntime.runFork(Effect.flatMap(SeedArchive,s=>Stream.runForEach(s.changes,
     value=>Effect.sync(()=>{archive=value;renderArchive();}))));
   const chooseArchive=()=>{if(archiveButton.disabled)return;archivePressed=true;renderArchive();
-    void archiveRuntime.runPromise(Effect.flatMap(SeedArchive,s=>Effect.result(s.choose))).finally(()=>{archivePressed=false;renderArchive();});};
+    archiveMutation=archiveRuntime.runPromise(Effect.flatMap(SeedArchive,s=>Effect.result(s.choose))).then(result=>{if(Result.isSuccess(result)&&archiveSelectionVerified(result.success))return installFromArchive();}).catch(()=>{}).finally(()=>{archivePressed=false;renderArchive();});};
   archiveButton.addEventListener('click',chooseArchive);listeners.push(()=>archiveButton.removeEventListener('click',chooseArchive));
   const acceptArchive=()=>{if(archiveAccept.disabled)return;acceptPressed=true;renderArchive();
-    void archiveRuntime.runPromise(Effect.flatMap(SeedArchive,s=>Effect.result(s.accept))).finally(()=>{acceptPressed=false;renderArchive();});};
+    archiveMutation=archiveRuntime.runPromise(Effect.flatMap(SeedArchive,s=>Effect.result(s.accept))).then(result=>{if(Result.isSuccess(result)&&archiveSelectionVerified(result.success))return installFromArchive();}).catch(()=>{}).finally(()=>{acceptPressed=false;renderArchive();});};
   archiveAccept.addEventListener('click',acceptArchive);listeners.push(()=>archiveAccept.removeEventListener('click',acceptArchive));
   renderArchive();
   const on=(element:HTMLButtonElement,action:()=>void)=>{
@@ -191,16 +193,25 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   on(cleanup,()=>{confirming=current.status?.native.operation.operation?.id??null;render();});
   on(get<HTMLButtonElement>('dismiss-cleanup'),()=>{confirming=null;render();});
   on(get<HTMLButtonElement>('confirm-cleanup'),()=>{const id=confirming;confirming=null;if(id)void run(service=>service.cleanFailed(id));});
-  on(primary,()=>{const id=uuid();const status=current.status;
+  const beginInstall=()=>{const id=uuid();const status=current.status;
     if(status?.runtime_setup&&status.native.operation.operation){journeyInstallId=null;void run(service=>service.prepareRuntime(id,status.runtime_setup!,status.native.operation.operation!.id));}
-    else {journeyInstallId=id;void run(service=>service.install(id));}});
+    else {journeyInstallId=id;void run(service=>service.install(id));}};
+  const installFromArchive=async()=>{
+    if(disposed||playable)return;
+    await mutation;
+    if(disposed||playable)return;
+    await refresh();
+    if(disposed||playable||primary.disabled||primary.hidden||current.status?.runtime_setup)return;
+    beginInstall();await mutation;
+  };
+  on(primary,beginInstall);
   on(cancel,()=>{journeyInstallId=null;const id=current.status?.native.operation.operation?.id;if(id)void run(service=>service.cancel(id));});
   on(resume,()=>{const id=current.status?.native.operation.operation?.id;if(id)void run(service=>service.resume(id));});
   on(recheck,()=>{const operation=current.status?.native.operation.operation;
     void run(service=>operation?.state==='reconciliation_required'&&current.status?.can_reconcile?service.reconcile(operation.id):service.inspect);});
   const refresh=()=>run(service=>service.inspect);
   const ready=refresh();
-  return {ready,refresh,setPlayable:(ready:boolean)=>{playable=ready;render();renderArchive();},settled:()=>mutation,dispose:async()=>{
+  return {ready,refresh,installFromArchive,setPlayable:(ready:boolean)=>{playable=ready;render();renderArchive();},settled:()=>Promise.all([mutation,archiveMutation]),dispose:async()=>{
     if(disposed)return;disposed=true;abort.abort();listeners.forEach(remove=>remove());repairs.dispose();
     await Effect.runPromise(Fiber.interrupt(watcher));await Promise.all([mutation,observation]);await runtime.dispose();
     await Effect.runPromise(Fiber.interrupt(archiveWatcher));await archiveHold.release();

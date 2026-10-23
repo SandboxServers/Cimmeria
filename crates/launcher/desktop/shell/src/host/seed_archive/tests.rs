@@ -1,6 +1,55 @@
 use super::*;
 use crate::test_capture::capture;
 
+#[test]
+fn picker_cancellation_is_explicit_on_one_reply_and_not_persisted() {
+    let root = tempfile::tempdir().unwrap();
+    let host = NativeHost::new(root.path().join("state"));
+    let cancelled = host.seed_archive_picker_cancelled().unwrap();
+    assert_eq!(
+        serde_json::to_value(cancelled).unwrap()["picker_cancelled"],
+        true
+    );
+    let normal = host
+        .seed_archive_command(SeedArchiveCommand::Inspect { schema_version: 1 }, None)
+        .unwrap();
+    assert!(serde_json::to_value(normal)
+        .unwrap()
+        .get("picker_cancelled")
+        .is_none());
+}
+
+#[test]
+fn catalog_build_key_and_verification_failures_are_not_network_failures() {
+    use cimmeria_launcher_engine::catalog::CatalogError;
+    for (error, expected) in [
+        (CatalogError::Network, "release_unavailable"),
+        (
+            CatalogError::DevelopmentSigningKey,
+            "signing_key_unavailable",
+        ),
+        (
+            CatalogError::SigningKeyUnavailable,
+            "signing_key_unavailable",
+        ),
+        (CatalogError::Signature, "release_verification_failed"),
+        (CatalogError::InvalidManifest, "release_verification_failed"),
+        (CatalogError::TooLarge, "release_verification_failed"),
+    ] {
+        assert_eq!(
+            serde_json::to_value(SeedArchiveError::from(error)).unwrap(),
+            expected
+        );
+    }
+    assert_eq!(
+        serde_json::to_value(crate::host::JobError::from(
+            CatalogError::DevelopmentSigningKey
+        ))
+        .unwrap(),
+        "signing_key_unavailable"
+    );
+}
+
 /// An offer whose file cannot be read is logged once and not offered.
 #[test]
 fn unreadable_offer_is_logged_and_not_offered() {

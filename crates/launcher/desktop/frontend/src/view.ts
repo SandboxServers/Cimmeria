@@ -33,7 +33,7 @@ const errorText: Record<BridgeFailure['code'], string> = {
 };
 
 /** Mount once per application. Tab changes only hide panels; they do not own workflows. */
-export function mountLauncher(document: Document, invoke: Invoke, onSettingsChanged: () => void = () => {}) {
+export function mountLauncher(document: Document, invoke: Invoke, onSettingsChanged: () => void = () => {}, onArchiveVerified:()=>Promise<unknown>=async()=>{}) {
   const runtime = ManagedRuntime.make(Layer.effect(Launcher, makeLauncher).pipe(
     Layer.provide(bridgeLayer(request => invoke('launcher_command', {request}))),
   ));
@@ -52,7 +52,7 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     mountClientMaintenance(document, invoke, panelFeed.context),
     mountClientChanges(document, invoke, panelFeed.context),
     mountPhysx(document, invoke, panelFeed.context),
-    mountSeedArchive(document, invoke, panelFeed.context),
+    mountSeedArchive(document, invoke, panelFeed.context,undefined,onArchiveVerified),
   ];
   const checkbox = get<HTMLInputElement>('telemetry');
   const path = get<HTMLInputElement>('install-path');

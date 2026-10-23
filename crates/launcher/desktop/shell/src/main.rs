@@ -472,7 +472,7 @@ async fn seed_archive_command(
         SeedArchiveCommand::AcceptOffer { .. } => Some(
             cimmeria_launcher_engine::catalog::fetch_release()
                 .await
-                .map_err(|_| SeedArchiveError::ReleaseUnavailable)?,
+                .map_err(SeedArchiveError::from)?,
         ),
         SeedArchiveCommand::Inspect { .. } if host.seed_archive_release_wanted() => {
             match cimmeria_launcher_engine::catalog::fetch_release().await {
@@ -517,17 +517,14 @@ async fn choose_seed_archive(
     .map_err(|_| SeedArchiveError::Io)??
     else {
         // A cancelled dialog changes nothing and reports the current status.
-        let inspect = SeedArchiveCommand::Inspect { schema_version: 1 };
-        return tauri::async_runtime::spawn_blocking(move || {
-            host.seed_archive_command(inspect, None)
-        })
-        .await
-        .map_err(|_| SeedArchiveError::Io)?;
+        return tauri::async_runtime::spawn_blocking(move || host.seed_archive_picker_cancelled())
+            .await
+            .map_err(|_| SeedArchiveError::Io)?;
     };
     // Only the fixed, signed catalog names the release; the webview cannot.
     let release = cimmeria_launcher_engine::catalog::fetch_release()
         .await
-        .map_err(|_| SeedArchiveError::ReleaseUnavailable)?;
+        .map_err(SeedArchiveError::from)?;
     tauri::async_runtime::spawn_blocking(move || host.choose_seed_archive(path, release))
         .await
         .map_err(|_| SeedArchiveError::Io)?

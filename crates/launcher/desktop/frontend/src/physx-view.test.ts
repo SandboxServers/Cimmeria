@@ -99,9 +99,62 @@ test('without the retained installer the button is disabled and says why',async(
  try{
   assert.equal(p.get('install-physx').disabled,true);
   assert.match(p.text('physx-state')!,/not in this game folder/);
-  assert.match(p.text('physx-state')!,/run Repair.*Otherwise install "NVIDIA PhysX Legacy System Software" yourself/,'a disabled button still leaves a path forward');
+  assert.match(p.text('physx-state')!,/Use Install legacy PhysX on the main page/,'the downloaded bundle leaves a path forward');
   p.press();await flush();assert.deepEqual(p.calls,['inspect'],'a disabled button sends nothing');
  }finally{await p.app.dispose();}
+});
+
+test('missing core offers the legacy installer on Play even without the retained package',async()=>{
+ let answer!:(value:unknown)=>void;
+ let installed=false;
+ const p=await mounted(request=>request.command==='inspect'?Promise.resolve(status({installer_available:false,detection:{core_registered:installed,core_present:installed}})):new Promise(resolve=>{answer=resolve;}));
+ try{
+  const button=p.get('install-legacy-physx');
+  assert.equal(button.closest('footer')!.querySelector('#launch')!==null,true);
+  assert.equal(p.get('physx-legacy-offer').hidden,false);
+  assert.equal(button.hidden,false);assert.equal(button.disabled,false);
+  button.click();button.click();
+  assert.equal(button.disabled,true);assert.equal(button.textContent,'Installing…');
+  assert.match(p.text('physx-legacy-status')!,/Downloading.*NVIDIA.*license/);
+  await flush();assert.deepEqual(p.calls,['inspect','install_legacy']);
+  installed=true;answer(status({installer_available:false,detection:{core_registered:true,core_present:true},last_result:{state:'installed',restart_required:false}}));
+  await p.app.settled();await flush();
+  assert.equal(button.hidden,true);assert.equal(p.get('physx-play-warning').hidden,true);
+  assert.equal(p.text('physx-legacy-status'),'PhysX System Software installed.');
+ }finally{await p.app.dispose();}
+});
+
+test('legacy download failure and UAC cancellation allow an explicit retry',async()=>{
+ for(const reply of [()=>Promise.reject('download_failed'),()=>Promise.resolve(status({last_result:{state:'cancelled_at_uac'}}))]){
+  const p=await mounted(request=>request.command==='inspect'?Promise.resolve(status({installer_available:false})):reply());
+  try{
+   p.get('install-legacy-physx').click();await p.app.settled();await flush();
+   assert.match(p.text('physx-legacy-status')!,/could not be downloaded from NVIDIA|cancelled at the Windows permission prompt/);
+   assert.equal(p.get('install-legacy-physx').disabled,false);
+   assert.equal(p.get('install-legacy-physx').hidden,false);
+   assert.deepEqual(p.calls,['inspect','install_legacy','inspect']);
+  }finally{await p.app.dispose();}
+ }
+});
+
+test('legacy verification failure recommends a new download rather than game repair',async()=>{
+ const p=await mounted(request=>request.command==='inspect'?Promise.resolve(status({installer_available:false})):Promise.reject('package_mismatch'));
+ try{
+  p.get('install-legacy-physx').click();await p.app.settled();await flush();
+  assert.match(p.text('physx-legacy-status')!,/NVIDIA.*failed verification.*was not run.*Retry the download/);
+  assert.doesNotMatch(p.text('physx-legacy-status')!,/Repair/);
+  assert.equal(p.get('install-legacy-physx').disabled,false);
+ }finally{await p.app.dispose();}
+});
+
+test('reopen derives the legacy offer from detection, including a newer product without the core',async()=>{
+ for(const [supported,present,expected] of [[true,true,false],[true,false,true],[false,false,false]] as const){
+  const p=await mounted(async()=>status({supported,detection:supported?{core_registered:true,core_present:present}:null}));
+  try{
+   assert.equal(!p.get('physx-legacy-offer').hidden&&!p.get('install-legacy-physx').hidden,expected);
+   assert.deepEqual(p.calls,['inspect'],'opening never downloads or installs automatically');
+  }finally{await p.app.dispose();}
+ }
 });
 
 test('a registered PhysX path without the 2.6.3 core reads as missing, and says so',async()=>{

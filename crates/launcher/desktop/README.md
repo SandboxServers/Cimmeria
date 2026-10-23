@@ -21,6 +21,11 @@ Bounded native [adoption and Play phase timing](docs/launcher-telemetry.md) uses
 Consented [launcher summaries](docs/launcher-summaries.md) are connected and
 go only over https: to the first login server when it is https, else to the built-in default. That default is not set yet, so with the default server list (plain http) nothing is sent. Real-client/platform gates remain open.
 A player's own [seed archive](docs/seed-archive.md) can replace the seed download for Install, Repair and Update; the seed is never rehosted.
+Explicit archive selection or accepting a Downloads offer starts an eligible
+fresh installation as soon as verification succeeds, from either the main page
+or Settings. The existing Install action refreshes native status and admission;
+cancellation, inspection/reopen, failures and an existing/owned installation do
+not start a new install. See the [handoff contract](docs/seed-archive.md#explicit-selection-starts-eligible-installation).
 
 Adoption on Windows and macOS uses the selected installation root directly.
 The shell offers Light only; it never copies or bulk relocates an installation.
@@ -172,9 +177,13 @@ redirected (OneDrive) Documents is followed. On macOS every request answers
 `profile_unavailable`: the Wine client writes inside its prefix, not under
 `$HOME/Documents`, and resetting there is not built yet. The other code is `io`.
 
-`physx_command` (`inspect`, `install`, LX-12) detects PhysX System Software on
-native Windows and runs the pinned vendor MSI elevated; its Settings panel is
-`physx-view.ts`. See [prerequisites](docs/prerequisites.md#native-windows-physx-system-software-lx-12).
+`physx_command` (`inspect`, `install`, `install_legacy`, LX-12) detects the exact
+2.6.3 core on native Windows. Main-page **Install legacy PhysX…** downloads the
+pinned NVIDIA 9.13.0604 MSI when that core is missing, including adopted copies
+without a retained installer. Settings retains the game-bundled installer action.
+Both require an explicit press and use the interactive elevated vendor wizard;
+post-install detection hides the offer only when the core is found. macOS keeps
+its Wine prerequisite flow. See [prerequisites](docs/prerequisites.md#native-windows-physx-system-software-lx-12).
 
 ## Effect workflows
 
@@ -331,11 +340,48 @@ parsing. Notes-only IPC exposes IDs, titles and descriptions in manifest order,
 with the ID as fallback for a missing or blank title. Errors contain safe codes
 only. Changes to the shared source also trigger the desktop CI workflow.
 
-`LAUNCHER_MANIFEST_PUBKEY_HEX` supplies the existing build-time trust key.
-Release builds without a usable key fail closed. Test/debug builds can use the
-existing development fallback; it cannot authenticate the live release. Supply
-the maintainer-approved public key when building a launcher for live content. Do
-not discover or trust a key from the manifest being verified.
+`LAUNCHER_MANIFEST_PUBKEY_HEX` supplies the build-time public verification key.
+Release builds without a usable key fail closed. Debug builds without an
+explicit value use the development test key for local signed fixtures. The
+fixed public catalog refuses that default key before networking with
+`CatalogError::DevelopmentSigningKey`, logged as `development_key`; a missing
+usable key logs `signing_key_unavailable`. Local `verify_release` fixtures keep
+their existing development-key behavior. Signature verification is unchanged.
+
+Install maps either key preflight failure to `SigningKeyUnavailable`. Archive
+selection distinguishes `signing_key_unavailable`, verification rejection
+`release_verification_failed`, and network `release_unavailable`. Key guidance
+directs players to the published ZIP and explains that the archive has not
+been checked or changed. It does not diagnose an unverified RAR as corrupt.
+See the [diagnosis](../../../docs/analysis/launcher-uat-fixes/design-development-catalog-key.md)
+and [archive contract](docs/seed-archive.md#public-catalog-preflight).
+
+### Build against released game content
+
+Set the maintainer-approved release **public verification key** before compiling
+a development launcher that will use published content. The value is 32 bytes
+encoded as 64 hexadecimal characters. It is not the private signing key; never
+copy a signing secret into a build environment or source file. Do not discover
+or trust a key from the manifest being verified.
+
+From a PowerShell session at the repository root:
+
+```powershell
+$env:LAUNCHER_MANIFEST_PUBKEY_HEX = '<approved 64-character release public key hex>'
+pwsh tools/build-lane/lane.ps1 cargo run --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --example catalog_probe
+```
+
+Replace the placeholder before running the read-only catalog probe. Keep the
+variable set while following the native build steps below. Restarting an
+already-built launcher with a new environment variable cannot change its
+compiled trust key: rebuild it. This key is independent of the launcher's
+self-update verification key. For local fixture tests that expect the debug
+key, use a separate shell without this variable or remove it before rebuilding
+the tests:
+
+```powershell
+Remove-Item Env:\LAUNCHER_MANIFEST_PUBKEY_HEX -ErrorAction SilentlyContinue
+```
 
 The main-page layout removes the Patch Notes tab and its UI fetch. The native
 read-only catalog API and its verification tests remain available to other
@@ -345,6 +391,7 @@ consumers and the probe below. The installed-client summary uses
 A read-only live check uses the same native fetcher:
 
 ```bash
+
 # Set LAUNCHER_MANIFEST_PUBKEY_HEX to the approved release public key first.
 bash tools/build-lane/lane.sh cargo run --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --example catalog_probe --target-dir target/desktop
 ```

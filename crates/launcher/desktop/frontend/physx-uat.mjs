@@ -11,15 +11,16 @@ const snapshot={schema_version:1,operation:{schema_version:1,revision:0,operatio
  preferences:{schema_version:2,revision:1,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}};
 
 function machine() {
- const m={installed:false,uac:'decline',package:'pinned',exit:0,runs:0,last:null};
+ const m={installed:false,uac:'decline',package:'pinned',exit:0,runs:0,last:null,downloadFails:false,legacyPresses:0};
  const status=()=>({schema_version:1,supported:true,detection:{core_registered:m.installed,core_present:m.installed},
-  installer_available:true,installing:false,last_result:m.last});
+  installer_available:m.package!=='absent',installing:false,last_result:m.last});
  m.invoke=async(command,args)=>{
   assert.equal(command,'physx_command');
   const request=args.request;
   if(request.command==='inspect')return status();
-  assert.equal(request.command,'install');
-  if(m.package!=='pinned')throw 'package_mismatch';
+  assert.ok(['install','install_legacy'].includes(request.command));
+  if(request.command==='install_legacy'){m.legacyPresses++;if(m.downloadFails)throw 'download_failed';}
+  else if(m.package!=='pinned')throw 'package_mismatch';
   if(m.uac==='decline'){m.last={state:'cancelled_at_uac'};return status();}
   m.runs++;
   if(m.exit===0||m.exit===3010)m.installed=true;
@@ -77,5 +78,32 @@ assert.equal(p.text('physx-status'),'PhysX System Software installed.','the last
 assert.equal(p.get('physx-play-warning').hidden,true);
 await p.app.dispose();
 
+// Continue the actual DOM logic session with an adopted copy lacking any installer.
+const adopted=machine();adopted.package='absent';adopted.downloadFails=true;
+p=open(adopted);await p.app.ready;
+assert.equal(p.get('install-physx').disabled,true);
+assert.equal(p.get('install-legacy-physx').hidden,false);
+assert.equal(p.get('install-legacy-physx').disabled,false);
+const legacyPress=async()=>{
+ p.get('install-legacy-physx').dispatchEvent(new (p.get('install-legacy-physx').ownerDocument.defaultView.Event)('click'));
+ assert.equal(p.get('install-legacy-physx').disabled,true,'feedback precedes native work');
+ assert.match(p.text('physx-legacy-status'),/Downloading.*NVIDIA/);
+ p.get('install-legacy-physx').click(); // Busy second click cannot replay installation.
+ await p.app.settled();
+};
+await legacyPress();
+assert.match(p.text('physx-legacy-status'),/could not be downloaded/);
+assert.equal(adopted.legacyPresses,1);assert.equal(adopted.runs,0);
+adopted.downloadFails=false;await legacyPress();
+assert.match(p.text('physx-legacy-status'),/cancelled at the Windows permission prompt/);
+adopted.uac='accept';await legacyPress();
+assert.equal(adopted.runs,1);assert.equal(adopted.legacyPresses,3);
+assert.equal(p.get('install-legacy-physx').hidden,true);
+await p.app.dispose();p=open(adopted);await p.app.ready;
+assert.equal(p.get('install-legacy-physx').hidden,true,'reopen uses native core detection');
+assert.equal(adopted.legacyPresses,3,'reopen never installs automatically');
+await p.app.dispose();
+
 console.log('PhysX UAT passed: missing PhysX warns beside Play; each press shows busy first; a mismatched package is refused unrun; a declined UAC prompt reads as cancelled; an installer failure shows its exit code; another PhysX version blocking the installer gets its own line; success clears the warning and survives a reopen.');
+console.log('Legacy follow-up passed: adopted copy without retained installer offers main-page legacy install; immediate feedback; duplicate click refused; download failure and UAC cancellation remain retryable; success hides offer across reopen without automatic install.');
 console.log('Excluded: the real engine, registry, UAC prompt and msiexec (engine tests cover detection, the pinned hash and exit-code mapping); the packaged window and visual layout.');

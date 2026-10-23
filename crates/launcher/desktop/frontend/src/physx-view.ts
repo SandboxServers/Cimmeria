@@ -24,7 +24,8 @@ export function physxResultText(r:PhysxResult):string {
 }
 const errorText:Record<string,string>={
  // Adopted copies, older installs and some seeds never had the retained installer.
- installer_unavailable:`The PhysX installer is not in this game folder. If the launcher installed this game, run Repair, then try again. Otherwise ${manual}.`,
+ installer_unavailable:'The original PhysX installer is not in this game folder. Use Install legacy PhysX on the main page instead.',
+ download_failed:'The legacy PhysX bundle could not be downloaded from NVIDIA. Check your connection and try again.',
  package_mismatch:'The PhysX installer in this game folder is not the expected file, so it was not run. Repair the game, then try again.',
  busy:'Another install, repair, update or game is running. Try again when it finishes.',
  persistence_uncertain:'The launcher could not confirm its saved state. Restart the launcher, then try again.',
@@ -32,20 +33,25 @@ const errorText:Record<string,string>={
  io:'The launcher could not prepare the PhysX installer. Check permissions and free disk space.',
  unavailable:'PhysX setup is only needed on Windows.',
 };
-export const physxWarning='PhysX System Software is missing, so the game may not start. Install it under Settings.';
+export const physxWarning='The legacy PhysX runtime the game needs is missing. Install it below if the game will not start.';
 export function mountPhysx(document:Document,invoke:Invoke,context:PanelContext) {
  const panel=document.getElementById('physx-panel');const warning=document.getElementById('physx-play-warning');
  if(!panel||!warning)throw new Error('Missing launcher element physx-panel or physx-play-warning');
+ const offer=document.getElementById('physx-legacy-offer');const legacy=document.getElementById('install-legacy-physx') as HTMLButtonElement|null;
+ const legacyStatus=document.getElementById('physx-legacy-status');
+ if(!offer||!legacy||!legacyStatus)throw new Error('Missing legacy PhysX offer');
  const make=<K extends keyof HTMLElementTagNameMap>(tag:K,id:string)=>{const e=document.createElement(tag);e.id=id;return e;};
  const heading=make('h3','physx-title');heading.textContent='PhysX System Software';
  const state=make('p','physx-state');
  const install=make('button','install-physx');install.textContent='Install PhysX';
  const status=make('p','physx-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+ const setStatus=(text:string)=>{status.textContent=text;legacyStatus.textContent=text;};
  panel.textContent='';panel.append(heading,state,install,status);panel.hidden=true;warning.hidden=true;
  let current:PhysxStatus|null=null;let installing=false;let disposed=false;let mutation:Promise<void>=Promise.resolve();
  const render=()=>{
   if(disposed)return;
   const s=current;const supported=!!s?.supported;panel.hidden=!supported;
+  offer.hidden=!supported;
   const missing=supported&&!physxInstalled(s!);
   warning.hidden=!missing;warning.textContent=missing?physxWarning:'';
   if(!s||!supported)return;
@@ -53,40 +59,45 @@ export function mountPhysx(document:Document,invoke:Invoke,context:PanelContext)
    :'Not installed. The game needs it to start its physics engine.';
   state.textContent=!missing?'Installed.':s.installer_available?lacking:lacking+' '+errorText.installer_unavailable!;
   const busy=installing||s.installing;
+  legacy.hidden=!missing&&!busy;legacy.disabled=busy;
+  legacy.textContent=busy?'Installing…':'Install legacy PhysX…';legacy.setAttribute('aria-busy',String(busy));
   install.hidden=!missing&&!busy;install.disabled=busy||!s.installer_available;
   install.textContent=busy?'Installing…':'Install PhysX';install.setAttribute('aria-busy',String(busy));
  };
  // Never throws synchronously into the snapshot feed, whatever the bridge does.
- const call=(command:'inspect'|'install')=>Promise.resolve().then(()=>invoke('physx_command',{request:{command,schema_version:1}}));
+ const call=(command:'inspect'|'install'|'install_legacy')=>Promise.resolve().then(()=>invoke('physx_command',{request:{command,schema_version:1}}));
  const decode=(value:unknown)=>Effect.runPromise(decodePhysxStatus(value)).catch(()=>{reportUiEvent('physx','status_decode_failed','schema');throw 'schema';});
  const inspect=()=>{
   if(disposed||installing)return mutation;
   mutation=call('inspect').then(decode).then(next=>{
    if(disposed||installing)return;current=next;
    // A press whose reply was lost still has its result line.
-   if(next.last_result&&!status.textContent)status.textContent=physxResultText(next.last_result);
+   if(next.last_result&&!status.textContent)setStatus(physxResultText(next.last_result));
    render();
-  },failure=>{if(!disposed&&current?.supported){status.textContent=failure==='schema'?'The launcher answered in an unexpected format. Restart it.':errorText[physxFailure(failure)]??'PhysX status could not be read. Try again.';render();}});
+  },failure=>{if(!disposed&&current?.supported){setStatus(failure==='schema'?'The launcher answered in an unexpected format. Restart it.':errorText[physxFailure(failure)]??'PhysX status could not be read. Try again.');render();}});
   return mutation;
  };
- const onInstall=()=>{
-  if(disposed||installing||install.disabled)return;
-  installing=true;status.textContent='Waiting for the Windows permission prompt, then the PhysX installer…';render();
-  mutation=call('install').then(decode).then(next=>{
+ const runInstall=(command:'install'|'install_legacy')=>{
+  if(disposed||installing||!current?.supported||(command==='install'?install.disabled||install.hidden:legacy.disabled||legacy.hidden))return;
+  installing=true;setStatus(command==='install_legacy'?'Downloading the verified NVIDIA legacy PhysX bundle, then opening its installer. Accept the vendor license and Windows permission prompt to continue…':'Waiting for the Windows permission prompt, then the PhysX installer…');render();
+  mutation=call(command).then(decode).then(next=>{
    if(disposed)return;current=next;
-   status.textContent=next.last_result?physxResultText(next.last_result):'The PhysX installer finished.';
+   setStatus(next.last_result?physxResultText(next.last_result):'The PhysX installer finished.');
   },failure=>{
    if(disposed)return;
    const code=failure==='schema'?'schema':physxFailure(failure);
-   status.textContent=code==='schema'?'The launcher answered in an unexpected format. Restart it, then check PhysX again.'
-    :errorText[code]??'The launcher could not confirm the result. Check PhysX again before retrying.';
+   setStatus(command==='install_legacy'&&code==='package_mismatch'?'The NVIDIA legacy PhysX download failed verification and was not run. Retry the download; if it persists, report this launcher version.'
+    :code==='schema'?'The launcher answered in an unexpected format. Restart it, then check PhysX again.'
+    :errorText[code]??'The launcher could not confirm the result. Check PhysX again before retrying.');
   }).finally(()=>{installing=false;render();}).then(()=>{if(!disposed)return inspect();});
  };
+ const onInstall=()=>runInstall('install');const onLegacy=()=>runInstall('install_legacy');
  install.addEventListener('click',onInstall);
+ legacy.addEventListener('click',onLegacy);
  // Each native snapshot (the first, and after an install, repair or uninstall, which change whether the
  // retained installer is there) re-inspects, so the panel asks nothing before the launcher has opened.
  const unsubscribe=context.onSnapshot(()=>{void inspect();});
  const ready=context.snapshot()?inspect():Promise.resolve();
  return {ready,refresh:inspect,settled:()=>mutation,dispose:async()=>{
-  disposed=true;unsubscribe();install.removeEventListener('click',onInstall);await mutation;panel.textContent='';warning.hidden=true;}};
+  disposed=true;unsubscribe();install.removeEventListener('click',onInstall);legacy.removeEventListener('click',onLegacy);await mutation;panel.textContent='';warning.hidden=true;offer.hidden=true;}};
 }

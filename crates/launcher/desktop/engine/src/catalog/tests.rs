@@ -15,6 +15,39 @@ fn signed(body: &[u8]) -> Vec<u8> {
 const BODY: &[u8] = br#"{"schema":1,"seed":{"blob":"s","size":1,"sha256":"h"},"patches":[{"id":"first","blob":"a","size":1,"sha256":"h","title":"Fix","description":"Details"},{"id":"second","blob":"b","size":1,"sha256":"h","after":"first"}]}"#;
 
 #[test]
+fn public_catalog_refuses_default_test_key_and_logs_the_actual_build_problem() {
+    for (present, development, expected, reason) in [
+        (
+            true,
+            true,
+            CatalogError::DevelopmentSigningKey,
+            "development_key",
+        ),
+        (
+            false,
+            false,
+            CatalogError::SigningKeyUnavailable,
+            "signing_key_unavailable",
+        ),
+    ] {
+        let (result, captured) = capture(|| require_release_key(present, development));
+        assert_eq!(result, Err(expected));
+        let failures = fetch_failures(&captured);
+        assert_eq!(failures.len(), 1, "{captured:?}");
+        assert_eq!(failures[0].field("reason"), Some(reason));
+    }
+    assert_eq!(
+        require_release_key(true, false),
+        Ok(()),
+        "an explicitly configured release key remains allowed"
+    );
+    assert!(
+        verify_release(BODY, &signed(BODY)).is_ok(),
+        "local signed test fixtures are still verified"
+    );
+}
+
+#[test]
 fn signed_notes_preserve_order_and_fallback_to_id() {
     let result = notes(decode_verified(BODY, &signed(BODY)).unwrap());
     assert_eq!(result.patches[0].title, "Fix");

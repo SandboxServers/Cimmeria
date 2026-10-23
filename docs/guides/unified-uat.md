@@ -1355,6 +1355,7 @@ World 58, the Stargate Command tutorial base, after the opening missions. A Huma
 | SG-10 | On the Omega arrival, read your position and facing | You stand on the gate plaza at x 34.70, y -51.28, z -142.00 | Wrong place, in a wall or in the air. Facing is recorded, not graded (the heading is not carried) | Not yet run |
 
 Known limitations: [release notes](../analysis/union-sgc-continuation/README.md#known-limitations-and-release-notes).
+
 ## Beta_Site_Evo_1
 
 World 23, the first shared Union field map. A Human, a Free Jaffa and an Asgard each arrive from Omega on a different mission and play a different arc: Human 1423 to 1427, Free Jaffa 1500 to 1502, Asgard 481 to 479. Row ids are the campaign's UB-U ids. Design and evidence: [reference page](../content/beta-site-e1.md), [ledger](../analysis/union-beta-e1-continuation/README.md), [packet spec](../analysis/union-zone-planning/beta-packets/UB-90-99.md).
@@ -1449,6 +1450,7 @@ Run in `Omega_Site` (world 18). No row needs a mission. The points of every NPC,
 Rows A1-A3 need an Asgard (archetype 5) character. Character creation has no playable Asgard start (F42), so grade them BLOCKED; any tester may click the Asgard NPCs earlier as an S12 store-open check.
 
 **Known issues (not failures).** Nothing bought on the hub sells back: every Omega vendor's sell list is list 2, which buys only designs 21, 55 and 3437, and none of them stocks those (S14 checks the refusal line, not a sale). The Black Market window needs the client patch. The inn and battlemaster do not exist. The Asgard hearing (UO-41, UO-42) is not built, and by the D-UO34 default mission 1522 stays sealed as shipped and Otin does not speak. The `.kill` command is not registered, so S8's refill half and S9 may be BLOCKED. Any FAIL or BLOCKED row from the owner's run is added here when `worknotes/UO-U1-results.md` exists.
+
 ## Mission data lock
 
 When the server cannot read a character's saved missions at login, it locks their missions instead of treating them as never taken (TG-DB-12, D-TG18). Background: [mission-system.md](../gameplay/mission-system.md#unreadable-saved-missions-tg-db-12).
@@ -1628,6 +1630,31 @@ ZIP. Ask before laptop or lab use; release GO does not authorize those sessions.
 | EP-U3 | Update an older multi-file Windows launcher with a signed single-EXE ZIP using Update and restart; separately unzip the Mac release | Windows replacement starts with verified cached resources and leaves old sidecars alone; Mac still presents one Cimmeria Launcher.app with bundled resources |
 
 **What this run risks (owner decision, D-LU3, D-LU4):** chat and character names in the game log leave the machine, and only a per-word scrub (paths, IPs, URLs, `@`, GUIDs, long hex) applies; secrets under 32 characters or split by dots are kept; log rows can be forged by a log-token holder; the install and address budgets are speed bumps. The full list is in the [ledger close-out](../analysis/launcher-uat-fixes/README.md#owner-risks-accepted-under-d-lu3-and-d-lu4-nothing-was-removed-to-avoid-them).
+
+### Legacy PhysX offer follow-up (LP)
+
+Canonical steps and acceptance state: [launcher UAT ledger](../analysis/launcher-uat-fixes/README.md#legacy-physx-offer-follow-up-2026-10-23).
+All rows are pending packaged acceptance. Installing a system prerequisite or
+using the lab requires the owner's explicit approval first.
+
+| ID | Action | Expected |
+|---|---|---|
+| LP-U1 | On approved Windows missing the 2.6.3 core, open an adopted copy without the retained installer; press Install legacy PhysX… once, then repeat | Main-page offer, immediate feedback and one download/install attempt |
+| LP-U2 | On an approved fixture, decline UAC or cancel the wizard, then retry and complete | Visible result/retry; offer hides only after native core detection; restart instruction remains visible |
+| LP-U3 | Reopen after success; check a newer PhysX product lacking the core and macOS | Native detection controls visibility after reopen; missing exact core still offers; Windows controls hidden on macOS |
+| LP-U4 | Inject download, response, size or hash failure | Clear failure/retry without MSI execution; Play policy and consent unchanged |
+
+### Archive install handoff follow-up (AS)
+
+Canonical steps and acceptance state: [launcher UAT ledger](../analysis/launcher-uat-fixes/README.md#archive-install-handoff-follow-up-2026-10-23).
+All rows are pending packaged acceptance. Use an approved fixture; ask before
+using the lab or owner machine.
+
+| ID | Action | Expected |
+|---|---|---|
+| AS-U1 | With no installation and eligible idle native state, choose a verified archive or accept its Downloads offer from the main page and Settings | First-press feedback, verification progress, exactly one Install through fresh native admission; no second press |
+| AS-U2 | Cancel with an old archive remembered, reject verification, lose a reply, reopen or dispose | No automatic Install or mutation replay; source RAR untouched |
+| AS-U3 | Choose with existing installation, active owner or recovery-blocked state | No new installation; normal ownership/recovery rules apply |
 
 ## Lab CLI (`lab.exe`)
 
