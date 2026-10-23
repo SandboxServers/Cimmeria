@@ -128,6 +128,14 @@ impl NativeHost {
             op.kind == cimmeria_launcher_engine::OperationKind::Launch
                 && op.state != cimmeria_launcher_engine::OperationState::ReconciliationRequired
         }) && observation != Some(launch::Observation::Unknown);
+        // prepared_runtime deliberately withholds admission evidence while work
+        // is active. A verified admitted launch already captured that evidence;
+        // use it only to keep setup controls hidden for the same installation.
+        let running_runtime = if !idle && known_launch {
+            state.launch_plan()?.and_then(|plan| plan.runtime)
+        } else {
+            None
+        };
         let content = if !native.requires_reopen
             && observation != Some(launch::Observation::Unknown)
             && (idle || known_launch)
@@ -137,7 +145,11 @@ impl NativeHost {
                 if installed.intent.backend.is_native() {
                     cfg!(windows)
                 } else {
-                    cfg!(target_os = "macos") && state.prepared_runtime().ok().flatten().is_some()
+                    cfg!(target_os = "macos")
+                        && (state.prepared_runtime().ok().flatten().is_some()
+                            || running_runtime
+                                .as_ref()
+                                .is_some_and(|runtime| runtime.installation == installed.intent))
                 }
             })
         } else {

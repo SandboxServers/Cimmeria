@@ -90,3 +90,5 @@ campaign scope/decision rows of docs/agents/doc-update-map.md. Updated desktop
 README/contracts, player/Mac guides, implementation ledger and mirrored ML rows.
 Project memory records the readiness and picker seams. Existing indexes suffice;
 generated blocks, shared project status and gap-analysis files were not edited.
+
+Mac CI follow-up: the running-launch regression failed because prepared_runtime intentionally withholds admission evidence during active work. Setup display now uses the digest-verified launch plan's captured runtime, only for a known active launch of the same installation. Idle admission still uses prepared_runtime; Unknown/reopen still retains inspection. Mac CI is required to confirm the platform branch.
