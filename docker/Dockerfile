@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-# Three-stage build for the self-contained Cimmeria server image:
+# Build pipeline for the self-contained Cimmeria server image:
 #   builder  → compiles cimmeria-server against the Rust workspace (and the
 #              CI login probe, exported only by the `login-probe` target).
 #   db-init  → initialises a Postgres data directory with schema + seeds.
@@ -37,7 +37,7 @@ ARG S6_OVERLAY_AMD64_SHA256=59289456ab1761e277bd456a95e737c06b03ede99158beb24f12
 ARG S6_OVERLAY_ARM64_SHA256=8b22a2eaca4bf0b27a43d36e65c89d2701738f628d1abd0cea5569619f66f785
 
 # ─── Stage 1: builder ────────────────────────────────────────────
-FROM ${RUST_IMAGE} AS builder
+FROM ${RUST_IMAGE} AS build-base
 
 ARG RECAST_VERSION
 ARG RECAST_SHA256
@@ -72,6 +72,12 @@ RUN mkdir -p external \
     && rm -rf /tmp/recast.zip /tmp/recast_extract \
     && test -f external/recast/Detour/Source/DetourAssert.cpp
 
+# Pinned build-only tool. Its cooked dependency layer is portable between
+# hosted runners; BuildKit/GHA does not export RUN cache mounts.
+RUN cargo install cargo-chef --version 0.1.78 --locked
+ENV CARGO_INCREMENTAL=0
+
+FROM build-base AS planner
 # Workspace skeleton. Cargo needs every member's manifest present even
 # when we only build `-p cimmeria-server`, so the tauri/tools members
 # come along for the manifest parse but are never compiled.
@@ -87,7 +93,26 @@ COPY entities ./entities
 COPY src-tauri ./src-tauri
 COPY tools ./tools
 
-ENV CARGO_INCREMENTAL=0
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM build-base AS dependencies
+COPY --from=planner /build/recipe.json recipe.json
+# Keep these separate: combining packages enables probe test-harness features
+# in the server graph. Cook with the same release/package options as below.
+RUN cargo chef cook --locked --release --recipe-path recipe.json -p cimmeria-server \
+ && cargo chef cook --locked --release --recipe-path recipe.json -p cimmeria-wireclient --bin login-probe \
+ && mv target /opt/cooked-target \
+ && mv /usr/local/cargo/registry /opt/cooked-registry
+
+FROM dependencies AS builder
+# Replace every dummy source with the actual workspace before building anything
+# that can enter the runtime image or be exported as the login probe.
+COPY Cargo.toml Cargo.lock ./
+COPY .cargo ./.cargo
+COPY crates ./crates
+COPY entities ./entities
+COPY src-tauri ./src-tauri
+COPY tools ./tools
 
 # Git commit baked into the binary as the OTLP `service.version` resource
 # attribute (crates/server/build.rs). `.git` is not in the build context, so
@@ -107,9 +132,15 @@ ENV CIMMERIA_GIT_SHA=${CIMMERIA_GIT_SHA}
 # layer a warm-cache CI run exports it without compiling anything.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
-    cargo build -p cimmeria-server --release \
+    seed="$(sha256sum recipe.json | cut -d' ' -f1)" \
+ && if [ ! -f "target/.cooked-$seed" ]; then \
+        cp -a /opt/cooked-target/. target/; \
+        cp -a /opt/cooked-registry/. /usr/local/cargo/registry/; \
+        touch "target/.cooked-$seed"; \
+    fi \
+ && cargo build --locked -p cimmeria-server --release \
  && cp target/release/cimmeria-server /tmp/cimmeria-server \
- && cargo build -p cimmeria-wireclient --bin login-probe --release \
+ && cargo build --locked -p cimmeria-wireclient --bin login-probe --release \
  && cp target/release/login-probe /tmp/login-probe
 
 

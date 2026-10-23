@@ -35,13 +35,17 @@ on:
       - 'rust-toolchain.toml'
       - 'tools/build-lane/**'
 
+env:
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
 permissions:
   contents: read
 
 # The small native x86 helper should not wait for unrelated desktop builds.
 concurrency:
   group: launcher-runtime-probe-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Both jobs run on the self-hosted `cimmeria-windows` pool (node3,
 # tools/ci-runners/README.md "Windows pool"). Fork and Dependabot PRs, and every run
@@ -59,10 +63,19 @@ jobs:
         with:
           components: clippy
           targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        if: runner.environment == 'github-hosted'
+        with:
+          shared-key: runtime-probe
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          workspaces: |
+            crates/launcher/desktop -> ../../../target/runtime-probe
+            . -> target/client-patches
+            . -> target/client-telemetry
       - name: Check and test native 32-bit runtime probe
         run: |
-          bash tools/build-lane/lane.sh cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-runtime-probe --target i686-pc-windows-msvc --all-targets -- -D warnings
-          bash tools/build-lane/lane.sh cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-runtime-probe --target i686-pc-windows-msvc
+          bash tools/build-lane/lane.sh cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-runtime-probe --target i686-pc-windows-msvc --target-dir target/runtime-probe --all-targets -- -D warnings
+          bash tools/build-lane/lane.sh cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-runtime-probe --target i686-pc-windows-msvc --target-dir target/runtime-probe
           bash tools/build-lane/lane.sh cargo build --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-runtime-probe --target i686-pc-windows-msvc --target-dir target/runtime-probe
           target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-runtime-probe.exe --self-test
       - name: Record launch helper identity from the native build
@@ -100,6 +113,12 @@ jobs:
       - uses: ./.github/actions/rust-toolchain
         with:
           targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        if: runner.environment == 'github-hosted'
+        with:
+          shared-key: local-lab-tools
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          workspaces: . -> target/local-lab
       - name: Build native lab supervisor and injection tools
         run: |
           bash tools/build-lane/lane.sh cargo build --locked -p cimmeria-lab --target-dir target/local-lab

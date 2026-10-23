@@ -139,6 +139,28 @@ jobs:
             echo "::notice::Only docs and agent config changed; skipping the Rust jobs."
           fi
 
+  # Stock Python contracts run alongside compilation, on the same merge-group
+  # revision. Their failure remains mandatory through gate and nightly-report.
+  contracts:
+    name: Python contracts
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full == 'true'
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',contracts,')) && 'ubuntu-latest' || needs.changes.outputs.linux || 'cimmeria-linux' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: build-lane job log tests
+        run: python3 -m unittest discover -s tools/build-lane -p "test_*.py"
+      - name: docs-gen tests
+        run: python3 -m unittest discover -s tools/docs-gen -p "test_*.py"
+      - name: token-profile contract and ingest tests
+        run: python3 -m unittest discover -s tools/token-profile -p "test_*.py"
+      - name: CI runner and workflow policy tests
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ci-policy"
+          "$RUNNER_TEMP/ci-policy/bin/python" -m pip install --disable-pip-version-check PyYAML==6.0.3
+          "$RUNNER_TEMP/ci-policy/bin/python" -m unittest discover -s tools/ci-runners -p "test_*.py"
+
   # cargo fmt is fast enough that we don't bother caching or installing
   # native deps. Fails the pipeline with a clear "run cargo fmt" message
   # instead of auto-fixing.
@@ -281,14 +303,6 @@ jobs:
         run: bash tools/live-db-schema-load.sh start
         env:
           DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
-      - name: build-lane job log tests
-        run: python3 -m unittest discover -s tools/build-lane -p "test_*.py"
-      - name: docs-gen tests
-        run: python3 -m unittest discover -s tools/docs-gen -p "test_*.py"
-      - name: token-profile contract and ingest tests
-        run: python3 -m unittest discover -s tools/token-profile -p "test_*.py"
-      - name: CI runner egress proxy tests
-        run: python3 -m unittest discover -s tools/ci-runners -p "test_*.py"
       # AB-C7: every ability method is accounted for on each side it travels
       # (or excused in the script), and the committed matrix is current. Fix
       # with `python tools/telemetry-coverage/abilities.py`.
@@ -429,7 +443,7 @@ jobs:
   # `changes` succeeded and every gating job succeeded or was skipped by design.
   gate:
     name: ci gate
-    needs: [changes, fmt, clippy, build-and-test]
+    needs: [changes, fmt, clippy, build-and-test, contracts]
     if: always()
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',gate,')) && 'ubuntu-latest' || 'cimmeria-linux-quick' }}
     steps:
@@ -452,7 +466,7 @@ jobs:
   # which stops ship.py merging code until a passing night closes it.
   nightly-report:
     name: report the nightly run
-    needs: [changes, fmt, clippy, build-and-test, overlay-lua]
+    needs: [changes, fmt, clippy, build-and-test, contracts, overlay-lua]
     # A manual dispatch on main reports too, so a fix can clear the issue without
     # waiting for the next night.
     if: always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))

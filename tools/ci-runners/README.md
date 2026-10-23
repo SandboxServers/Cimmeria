@@ -1,5 +1,8 @@
 # Self-hosted CI runners
 
+> **Type:** Reference · **Audience:** CI operators · **Updated:** 2026-10-23
+> **Companions:** [build system](../../docs/architecture/build-system.md), [pre-PR checks](../../docs/agents/pre-pr-checks.md), [container builds](../../docker/README.md)
+
 Fifteen GitHub Actions runners for Cimmeria's Linux CI: five each on node5, node2 and
 node1. Each runs in its own container, paired with its own docker-in-docker daemon. The
 `test.yml`, `wireclient.yml` and `pr-container.yml` jobs route to them through the
@@ -129,7 +132,9 @@ is baked in again.
 - **One BuildKit daemon per node.** `pr-container.yml` builds through the node's
   `buildkitd` (setup-buildx `driver: remote`, `tcp://buildkitd:1234`), so image layers
   and the Dockerfile's cargo cache mounts (registry, `/build/target`) persist across jobs.
-  GitHub's `type=gha` cache saves layers but never cache mounts, and exporting it from the
+  The Dockerfile also cooks dependencies into ordinary layers for fresh hosted
+  builders, then seeds empty/new-recipe mounts from those layers. GitHub's
+  `type=gha` cache saves layers but never cache mounts, and exporting it from the
   colo would upload GBs through the egress detour, so self-hosted runs skip it. GC keeps
   10 GB, leaves 100 GB of disk free, and caps at 50 GB (node5) or 80 GB (node2, node1).
 - **Parallel compiles per job.** `CARGO_BUILD_JOBS` comes from `deploy.ps1`: a node's `Jobs` if it has one, else its core count (never empty, which cargo rejects). Five jobs each running one compile per core oversubscribe a 16-core node five times over; on 2026-10-11 node1 spent about 19% of its CPU in the kernel under that load. Every node runs `Jobs = 8`: under the same load node1's kernel share fell from 15% to 7% with it, while node2 at 16 compiles per job stayed at 16%.
@@ -161,7 +166,7 @@ Three pools:
 
 | Pool | Jobs | Where |
 | --- | --- | --- |
-| `cimmeria-linux` | Builds: clippy, build-and-test, coverage, wireclient e2e, pr-container, client-launch coverage, spec-lint | Five per node, plus three on the operator's desktop |
+| `cimmeria-linux` | Builds: clippy, contracts, build-and-test, coverage, wireclient e2e, pr-container, client-launch coverage, spec-lint | Five per node, plus three on the operator's desktop |
 | `cimmeria-linux-quick` | Seconds-long jobs: `changes`, `fmt` (ci, client-patches, client-telemetry), `overlay-lua`, markdownlint, spec-touch, agent-skills, figure-sources, figure-style, and the `main-red` reporters (`test.yml`'s `nightly-report`, `pr-container.yml`'s `report`) | Two per node: compose `quick1`/`quick2`, no dind, 2 CPUs and 4 GB each |
 | `ubuntu-latest` | Fork PRs, Dependabot PRs, overflow, anything sent there by a variable, and jobs that publish or need tools the image lacks: release-container, regen-docs, prune-container, the release dispatchers, bootstrap-lint (PowerShell), senpai-review (opt-in, per `senpai` label) | GitHub-hosted |
 
@@ -178,7 +183,7 @@ Repository variables (Settings, Secrets and variables, Actions, Variables):
 - `CI_HOSTED_JOBS`: comma-separated job ids (e.g. `coverage-workspace,e2e`) that always run GitHub-hosted. It matches the job id, not the workflow: `lint` covers markdownlint's, figure-style's and spec-lint's `lint` jobs, and `fmt` covers every `fmt` job.
 - `CI_OVERFLOW_MIN_IDLE`: the idle-runner threshold for overflow; `0` turns overflow off. Set to 0 on 2026-10-11: GitHub's hosted pool (shared with the Windows jobs) was as full as ours, so overflowed build jobs queued there while our runners sat idle. The decision is made once per run and never revisited. The merge-queue change of the same day leaves it at 0.
 
-Since 2026-10-11 the pool's load is shaped by `main`'s merge queue ([pre-pr-checks.md § Merge queue](../../docs/agents/pre-pr-checks.md#merge-queue)): a PR push runs `fmt`, `clippy` and the quick jobs only; `build-and-test` runs in the merge queue (`merge_group`), nightly at 09:23 UTC, and on PRs labelled `full-ci`; coverage runs nightly; and `pr-container` runs on PRs only for container files and otherwise on `main` after a merge, coalesced to the newest commit. Before that, in the two weeks to 2026-10-11, the pool's p90 queue wait was 19–23 minutes against a 7-minute build + nextest, branches averaged about ten CI runs each, and `pr-container` used more runner time than the gating job.
+Since 2026-10-11 the pool's load is shaped by `main`'s merge queue ([pre-pr-checks.md § Merge queue](../../docs/agents/pre-pr-checks.md#merge-queue)): a PR push runs `fmt`, `clippy` and the quick jobs only; `build-and-test` and the independent Python `contracts` job run in the merge queue (`merge_group`), nightly at 09:23 UTC, and on PRs labelled `full-ci`; coverage runs nightly; and `pr-container` runs on PRs only for container files and otherwise on `main` after a merge, coalesced to the newest commit. Before that, in the two weeks to 2026-10-11, the pool's p90 queue wait was 19–23 minutes against a 7-minute build + nextest, branches averaged about ten CI runs each, and `pr-container` used more runner time than the gating job.
 
 ## Security
 
@@ -247,6 +252,13 @@ skip `Swatinem/rust-cache` (`if: runner.environment == 'github-hosted'`).
 Set the repository variable `CI_WINDOWS_RUNNER=hosted` to send every one of these jobs
 back to `windows-latest`, for example while node3 or the egress exit is down. There is
 no overflow: when all three runners are busy, a job waits for one.
+
+Hosted runtime-probe and local-lab-tools jobs restore main-written Rust caches;
+self-hosted jobs continue to use sccache. Superseded runtime-tool PR runs cancel;
+main runs finish to populate caches. The runtime probe uses `target/runtime-probe`,
+while player and lab-bridge telemetry remain isolated. CI dev/test debug overrides
+do not alter shipped release builds. Client-launch tests and client DLL build/test
+jobs no longer wait for independent clippy jobs.
 
 ### What is on node3
 

@@ -13,7 +13,7 @@ Not every check blocks a merge. Here's what each one is actually worth:
 
 | Check | Workflow | Blocking? | Runs when |
 |---|---|---|---|
-| `fmt`, `clippy`, `build-and-test` (no-DB and live-DB tiers in one job, so the test binaries compile once; it ends with three `lab-chaos` feature steps, a clippy run and a nextest run over base-session, base, base-world-entry and lab-mcp and a `cargo check` of the server, because no other build turns that feature on) | [test.yml](../../.github/workflows/test.yml) | **Yes** — through `ci gate`, the check main's ruleset requires ([Merge queue](#merge-queue)) | `fmt` and `clippy` on every PR push; `build-and-test` in the merge queue, nightly, and on a PR labelled `full-ci` (on other PR pushes it reports skipped, which counts as passing). All three skip and report as passed when the change is only Markdown, `.claude/` or images under `docs/`; `docs/protocol/` always runs |
+| `fmt`, `clippy`, `contracts`, `build-and-test` (no-DB and live-DB tiers in one job, so the test binaries compile once; it ends with three `lab-chaos` feature steps, a clippy run and a nextest run over base-session, base, base-world-entry and lab-mcp and a `cargo check` of the server, because no other build turns that feature on) | [test.yml](../../.github/workflows/test.yml) | **Yes** — through `ci gate`, the check main's ruleset requires ([Merge queue](#merge-queue)) | `fmt` and `clippy` on every PR push; `contracts` and `build-and-test` in the merge queue, nightly, and on a PR labelled `full-ci` (on other PR pushes it reports skipped, which counts as passing). All four skip and report as passed when the change is only Markdown, `.claude/` or images under `docs/`; `docs/protocol/` always runs |
 | `figure-sources-in-sync` | [figure-sources.yml](../../.github/workflows/figure-sources.yml) | **Yes** | Only when `docs/drafts/spec/figures/**` changes |
 | `figure-style-lint` | [figure-style.yml](../../.github/workflows/figure-style.yml) | **Yes** | Only when figures or `docs/drafts/spec/**.md` change |
 | `cargo clippy -D warnings (cimmeria-lab)`, `cargo nextest (cimmeria-lab, UAT specs)`, `lab CLI PowerShell tests` | [lab.yml](../../.github/workflows/lab.yml) | **Yes** when they run, enforced by `ship.py merge` (not branch protection: a manual `gh pr merge` ignores them) | `crates/lab/**`, `crates/client-launch/**`, `docs/guides/uat-specs/**`, `tools/lab/**`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`. The lab supervisor is excluded from the workspace jobs, so this is its only build-and-test |
@@ -39,15 +39,17 @@ Lab tests that depend on the Rust minigame crate compile Detour through
 `main` is protected by a repository ruleset. Here's what it enforces:
 
 - **A merge queue.** PRs land by squash, in groups of up to 5, with up to 5 groups building at once. Only the head of a group has to pass: its run builds the merged result of every PR in the group.
-- **One required check, `ci gate`.** It is `test.yml`'s aggregate of `cargo fmt --check`, `cargo clippy -D warnings` and `cargo build + nextest (workspace + live DB)`: it always runs, and passes only when the `changes` job succeeded and each of the three succeeded or was skipped by design. Requiring the three directly would not be safe: a job whose dependency failed is skipped, and a skipped required check passes, so a failed `changes` job would have let a group land untested. In the queue it runs on the merged result, which is the code that actually lands.
+- **One required check, `ci gate`.** It is `test.yml`'s aggregate of `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build + nextest (workspace + live DB)` and `Python contracts`: it always runs, and passes only when the `changes` job succeeded and each of the four succeeded or was skipped by design. Requiring these checks directly would not be safe: a job whose dependency failed is skipped, and a skipped required check passes, so a failed `changes` job would have let a group land untested. In the queue it runs on the merged result, which is the code that actually lands.
 - **No direct pushes to `main`.** Deploy keys may bypass the merge-queue ruleset, and the only one is `regen-docs`' write key (secret `REGEN_DOCS_DEPLOY_KEY`; a repository ruleset can't name the GitHub Actions app). Adding another write deploy key would give it the same bypass. Repository admins may bypass it, through a PR, for emergencies only. A second ruleset forbids force-pushing or deleting `main`, with no bypass at all.
 - **Head branches are deleted on merge**, which makes GitHub retarget PRs stacked on a merged branch to `main`.
 
 What that means for you:
 
-- **A PR push runs fmt, clippy and the quick jobs.** The full build + nextest + live-DB job runs in the queue, so run nextest locally through the lane before you push ([the full checklist](#the-full-checklist)). To run the full job on a PR before queueing it, add the `full-ci` label, then push (a re-run reuses the labels the run started with).
+- **A PR push runs fmt, clippy and the quick jobs.** Python contracts run independently alongside the full build + nextest + live-DB job, under the same code/full condition. Their failures also reach nightly reporting. The full job runs in the queue, so run nextest locally through the lane before you push ([the full checklist](#the-full-checklist)). To run the full job on a PR before queueing it, add the `full-ci` label, then push (a re-run reuses the labels the run started with).
 - **Merge with `ship.py merge`.** It adds the PR to the queue with a plain `gh pr merge` and waits up to `--queue-timeout` (default 60m) for it to land, then retires the worktree. Nothing goes around the queue with `--admin`, docs-only PRs included: a merge around the queue makes it rebuild every group in flight. If the queue drops the PR because it now conflicts, `ship.py` rebases and queues it again (three tries); a failed `merge_group` check gives `status=queue-failed` (exit 1), and the PR's checks say which. A timeout gives `status=queued` (exit 3): the PR still merges on its own, so rerun `ship.py merge` later to retire the worktree. `--no-wait` queues and returns `status=queued` (exit 0).
 - **Stacked PRs.** `ship.py pr --base <branch>` opens a PR on top of another PR's branch. `ship.py merge` refuses a stacked PR (its base isn't `main`): merge the base first. After a merge, `ship.py` restacks every open PR built on the merged branch onto `main` (`rebase-pr.sh --upstream <merged head> --push`, which replays only the stacked PR's own commits) and retargets it to `main`; the output lists them as `restacked=...`, and any that hit a conflict as `restack_conflict=...`.
+
+The independent contracts job runs Python suites for build-lane, docs-gen, token-profile and CI runner/workflow policy. Seed/telemetry preflight, generators and all default/chaos/live-DB Rust tiers stay in `build-and-test`. When editing CI topology, run `python -m unittest discover -s tools/ci-runners -p "test_*.py"` (PyYAML 6.0.3) and the affected script suites. See the [CI iteration design](../analysis/ci-iteration-speed.md) for baseline timings and validation limits.
 
 ## Main is red
 
@@ -69,7 +71,12 @@ workspace checks do not cover this directory; follow the
 [desktop README](../../crates/launcher/desktop/README.md) commands as well.
 The separate `.github/workflows/launcher-runtime-probe.yml` builds and tests the
 x86 prerequisite probe on native Windows; it does not wait for the desktop matrix.
-Its artifact still needs managed Wine/SDK validation. Passing these jobs is not
+Hosted runtime-tool caches save only on main; superseded PR runs cancel.
+The probe uses `target/runtime-probe` throughout, with separate player and lab
+targets. Client-launch test/coverage and client DLL build/test jobs run independently
+of clippy, retaining every check. These workflows and lab CI disable dev/test debug
+information only in CI. The probe artifact still needs managed Wine/SDK validation.
+Passing these jobs is not
 packaged UI, signing or game UAT.
 
 ## The full checklist

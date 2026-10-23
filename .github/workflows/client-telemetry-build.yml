@@ -25,6 +25,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
 
 permissions:
   contents: read
@@ -73,7 +75,6 @@ jobs:
   build:
     name: cargo build (i686-pc-windows-msvc)
     runs-on: windows-latest
-    needs: clippy
     steps:
       - uses: actions/checkout@v7
         with:
@@ -100,7 +101,6 @@ jobs:
   test:
     name: cargo nextest (i686-pc-windows-msvc)
     runs-on: windows-latest
-    needs: clippy
     steps:
       - uses: actions/checkout@v7
         with:

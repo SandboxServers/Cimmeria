@@ -2,7 +2,7 @@
 title: "Container distribution"
 type: how-to
 audience: operators
-last_updated: 2026-10-18
+last_updated: 2026-10-23
 ---
 
 # Container distribution
@@ -155,11 +155,12 @@ Take a backup first if you might want the players back: [persistent-player-data.
 
 ## Image architecture (Dockerfile stages)
 
-1. **builder** — `rust:1-bookworm`, hydrates `external/recast`, `cargo build -p cimmeria-server --release`.
-2. **db-init** — `postgres:17.9-bookworm`, `initdb`, loads `db/database.sql`, captures pgdata.
-3. **runtime** — `postgres:17.9-bookworm` + s6-overlay v3, copies the binary + cooked data + baked pgdata.
+1. **build-base / planner / dependencies** — pinned Rust toolchain and native inputs; cargo-chef 0.1.78 prepares a workspace recipe and cooks server/probe dependencies separately into reusable layers.
+2. **builder** — restores real sources, seeds empty/new-recipe Cargo cache mounts from dependency layers, then runs separate locked release builds for the server and login probe. The `login-probe` export target contains only the CI probe.
+3. **db-init** — `postgres:17.9-bookworm`, `initdb`, loads `db/database.sql`, captures pgdata.
+4. **runtime** — `postgres:17.9-bookworm` + s6-overlay v3, copies the binary + cooked data + baked pgdata.
 
-Source: [`docker/Dockerfile`](../../docker/Dockerfile). Stage names are stable and used as build-cache keys.
+Source: [`docker/Dockerfile`](../../docker/Dockerfile). The [container build reference](../../docker/README.md) explains layer versus mount reuse and cold/fresh-builder validation. Hosted publication, security scans, provenance/SBOM and smoke-before-promotion gates remain. Changing the build cache does not publish or deploy an image.
 
 ## Healthcheck
 
