@@ -210,7 +210,7 @@ pub(super) fn has_setup_originals(stage: &Path) -> bool {
 /// existed is copied back over, one that did not is deleted. A file that existed and is
 /// no longer under `game` was already moved home by an earlier run, so it is skipped and
 /// not counted. Returns how many files it touched. Safe to run again after a crash.
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "macos")))]
 pub(super) fn restore_setup_originals(stage: &Path, game: &Path) -> Result<u32, Error> {
     let originals = read_originals(stage).ok_or(StorageError::Corrupt)?;
     let mut touched = 0;
