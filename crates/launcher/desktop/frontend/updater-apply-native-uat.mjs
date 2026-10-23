@@ -15,8 +15,8 @@ const calls=[];const app=mountUpdater(document,async(name,args)=>{assert.equal(n
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const get=id=>document.getElementById(id);
 try{
- await app.ready;await tick();assert.equal(get('apply-updater').disabled,false);
- get('apply-updater').dispatchEvent(new window.Event('click'));get('apply-updater').dispatchEvent(new window.Event('click'));
+ await app.ready;await tick();assert.equal(get('update-launcher').disabled,false);assert.equal(get('update-launcher').textContent,'Update and restart');
+ get('update-launcher').dispatchEvent(new window.Event('click'));assert.match(get('updater-status').textContent,/Updating the launcher/);get('update-launcher').dispatchEvent(new window.Event('click'));
  await app.settled();await tick();assert.equal(calls.filter(v=>v.command==='apply').length,1);
  assert.match(get('updater-status').textContent,/completion is pending/);assert.equal(get('apply-updater').disabled,true);
  await assert.rejects(send({command:'try_game_mutation'}),e=>e.storage==='busy');

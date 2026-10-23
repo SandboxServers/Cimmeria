@@ -1,4 +1,5 @@
 import { repairControls } from './repair-view';
+import { displayPath } from './display-path';
 import { Context, Effect, Fiber, Layer, ManagedRuntime, Result, Stream } from 'effect';
 import { installBridgeLayer, InstallFailure, InstallStatus, InstallViewState, makeInstallWorkflow, operationActive } from './install-workflow';
 import type { SeedArchiveState } from './seed-archive-workflow';
@@ -72,7 +73,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     uninstall.textContent=status?.uninstall?.recovery?'Finish uninstall…':'Uninstall…';
     if(uninstalling?.installationId!==status?.uninstall?.installation_id)uninstalling=null;
     uninstallConfirmation.hidden=uninstalling===null;
-    get('uninstall-directory').textContent=uninstalling?.directory??'';
+    get('uninstall-directory').textContent=displayPath(uninstalling?.directory??'');
     get<HTMLButtonElement>('confirm-uninstall').disabled=!ready||active;
     get<HTMLButtonElement>('dismiss-uninstall').disabled=pending||current.busy;
     cancel.hidden=!active||(operation?.kind!=='install'&&operation?.kind!=='prepare_runtime'&&operation?.kind!=='repair');

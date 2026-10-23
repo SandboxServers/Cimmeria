@@ -73,6 +73,9 @@ impl DesktopState {
         resources: Resources,
     ) -> Result<Admission, IntentError> {
         self.ensure_updater_idle()?;
+        if self.launcher_update_blocks_play()? {
+            return Err(StorageError::Busy.into());
+        }
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain.into());
         }

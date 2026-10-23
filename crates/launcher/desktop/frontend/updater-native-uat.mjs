@@ -25,8 +25,9 @@ const desktop=mountDesktop(document,async(command,args)=>{
 const app=desktop.updater;
 const get=id=>document.getElementById(id),click=id=>get(id).dispatchEvent(new window.Event('click')),tick=()=>new Promise(resolve=>setImmediate(resolve));
 try{
- await app.ready;await tick();assert.equal(get('prepare-updater').disabled,true);
- click('check-updater');click('check-updater');await app.settled();await tick();assert.equal(calls.filter(x=>x.command==='check').length,1);
+ await app.ready;await tick();assert.equal(calls.filter(x=>x.command==='check').length,1,'startup checks automatically');
+ assert.equal(get('update-launcher').hidden,false);assert.equal(get('update-launcher').textContent,'Update and restart');
+ assert.equal(get('launch').disabled,true);
  assert.match(get('updater-status').textContent,/1.1.0 is available/);assert.equal(get('prepare-updater').disabled,false);
  assert.equal(document.getElementById('updater-notes').querySelectorAll('script').length,0);assert.match(get('updater-notes').textContent,/<script>/);
  const available=await send({command:'inspect'});

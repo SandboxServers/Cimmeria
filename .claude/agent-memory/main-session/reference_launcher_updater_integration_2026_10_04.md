@@ -12,4 +12,6 @@ will be stale after another operation. Avoid unconditional reciprocal view
 refreshes. The production-composition/native-updater UAT covers this interaction.
 
 Source: crates/launcher/desktop/docs/updater.md. A verified saved package is not
-an installed update; production configuration and Apply/recovery are still open.
+an installed update; production configuration and Apply/recovery are still open in that historical checkpoint.
+
+2026-10-23 status: native Apply/recovery are implemented; startup checks and known-offer Play admission now follow the current updater contract. See reference_launcher_display_startup_update.md. Actual packaged replacement/restart remains a separate acceptance gate.

@@ -1,8 +1,18 @@
 # Launcher UAT fixes (laptop light-adoption UAT, 2026-10-22)
 
+> **Type:** Reference
+> **Audience:** Launcher contributors and owner
+> **Last updated:** 2026-10-23
+> **Companions:** [Resume card](RESUME.md), [player guide](../../client/launcher-guide.md), [unified UAT](../../guides/unified-uat.md#launcher-uat-fixes)
+
 Ledger for the fixes that came out of the owner's laptop UAT of light in-place adoption ([launcher-telemetry/worknotes/laptop-uat-2026-10-22.md](../launcher-telemetry/worknotes/laptop-uat-2026-10-22.md); F1-F6, G1-G4 and the log-ingest proposal). Packets: [work-packets.md](work-packets.md) (rules, contract, waves 1-2) and [work-packets-logs.md](work-packets-logs.md) (log ingest, waves 3-5, close-out). Resume card: [RESUME.md](RESUME.md). Prefix `LF`. Designed 2026-10-22 against `origin/main` `3c10f3624`, where the launcher, admin-api telemetry routes, workflows and `docs/client` match the `lt-light-integration` tip `6440be457` (PR LA #1983's content). Every packet re-greps its anchors at its own base.
 
 ## Adoption follow-up (2026-10-23)
+
+[PR #1992](https://github.com/SandboxServers/Cimmeria/pull/1992) merged as
+`16ff568b8`; its worktree is retired. Windows and macOS native CI and the
+merge-queue tests passed. The owner subsequently reports successful in-place
+adoption in launcher `2026.10.2302`; that report does not attest the other UAT rows.
 
 The [approved no-relocation design](design-adopt-in-place.md) adds the main-page
 adoption entry and direct-root adoption on Windows and macOS. The owner permits
@@ -159,4 +169,29 @@ All code packets (LF-01..LF-19) are merged: U1 #1986, U2 #1984, U3 #1985, U4 #19
 
 [Design: every signed launcher release](design-repeat-releases.md) records
 owner-approved D-LX15 and the applied-content identity logging follow-up.
-Implementation and regression proof are tracked in the follow-up PR.
+[PR #1991](https://github.com/SandboxServers/Cimmeria/pull/1991) merged as
+`7be8413b0`; its worktree is retired. See the [validation worknote](worknotes/repeat-releases-validation.md).
+
+## Path display and startup update follow-up (2026-10-23)
+
+The owner requests one PR for [Windows path display](design-path-display.md) and
+[startup checking with mandatory Update and restart](design-startup-update.md).
+Formatting strips the Windows verbatim prefix only from visible folder strings;
+storage, identity and native command paths retain their exact spelling. Startup
+checks for updates without downloading; a known offer blocks Play until updated.
+A failed check without a known offer permits Play with retry feedback; a failed
+recheck retains a known offer and its gate. The [updater contract](../../../crates/launcher/desktop/docs/updater.md#startup-and-main-page-integration)
+is the detailed behavior reference.
+
+These owner UAT rows are **pending**. Frontend tests do not attest packaged
+layout, a native picker, real replacement/restart or game behavior. No release or
+laptop/lab use is authorized by this follow-up. Rows are mirrored in
+[unified UAT](../../guides/unified-uat.md#path-display-and-startup-update-follow-up-pdu).
+
+| ID | Action | Expected |
+|---|---|---|
+| PDU-U1 | Open Settings and completed adoption status for verbatim drive and UNC fixture paths; open maintenance confirmations | All visible absolute folders use normal Windows spelling; saving consent and reopening retains the exact native path and Show folder target |
+| PDU-U2 | Start a configured Windows launcher with a newer signed offer | Startup checks once with visible feedback; Play is disabled and the main page offers Update and restart; no download occurs before the press |
+| PDU-U3 | Press Update and restart once, then try a duplicate press; repeat with a saved Ready package | One inspect/prepare/apply sequence; immediate feedback; saved Ready skips download; Play stays gated until replacement startup |
+| PDU-U4 | Fail a feed check with no known offer, then fail a recheck with an existing offer | First case shows retry feedback and permits Play after the bounded check; second retains the offer and keeps Play blocked, including after refresh |
+| PDU-U5 | Fail preparation or lose its reply; reopen with active/reconciliation state | No automatic Apply or replay; Play remains blocked for owned update work; Settings exposes recovery status |

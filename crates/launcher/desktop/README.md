@@ -121,7 +121,7 @@ engine half in `engine/src/storage/<name>/` and its host half in
 | `client_changes_command` | `inspect` | `client-changes-view.ts` | LX-07 |
 | `seed_archive_command` | `inspect`, `cancel`, `forget` | available; see [seed archive](docs/seed-archive.md) | AI-06 (part B) |
 | `choose_seed_archive` | none; the native `*.rar` picker | available; see [seed archive](docs/seed-archive.md) | AI-06 (part B) |
-| `choose_existing_game_folder` | `mode` (`light` or `copy`; `in_place` is refused with `UnsupportedMode`); the native folder picker, then a second picker for a copy | Light, adopted where the folder is (Windows and Linux), or verified copy (every OS), as `modes` offers | AI-10; copy AI-12; Light LA-14 |
+| `choose_existing_game_folder` | `mode: light`; one native folder picker; `copy` and `in_place` are refused with `UnsupportedMode` | Adopts at the selected root on Windows and on macOS with a verified packaged helper; no copied installation | [Migration contract](docs/migration.md#adopting-an-existing-folder) |
 
 > [!NOTE]
 > `upload` reads the new launcher and game log lines and posts them to the telemetry
@@ -187,6 +187,20 @@ settings preserve that runtime. Consent changes show pending feedback, wait for
 native acknowledgement and restore confirmed state on failure. Folder selection
 saves through the same Effect workflow and preserves consent. Disposal removes
 handlers and interrupts frontend observation without claiming native rollback.
+
+Visible Windows folder paths omit the internal `\\?\` prefix (including the
+`\\?\UNC\` spelling for network shares). This is display formatting only:
+native snapshots, persisted preferences and command arguments keep their original
+path spelling. Settings, adoption status/backups and maintenance confirmations
+use the same formatter.
+
+The main page checks for a signed launcher update at startup. Play waits for
+that check and remains blocked when an update is known. **Update and restart**
+downloads, verifies and applies it with one press; a previously verified Ready
+package is applied without downloading again. No download or replacement starts
+automatically. A failed check with no known offer permits Play with visible retry
+feedback; a failed recheck retains a known offer and its Play gate. See the
+[updater contract](docs/updater.md#startup-and-main-page-integration).
 
 The development UI explicitly labels unavailable game operations. Verified patch
 notes describe available release patches, not installed-game status. Native
