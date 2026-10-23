@@ -281,14 +281,16 @@ startup ends at the helper's process-start reply, before rendered-frame evidence
 No Plan fields, summary schema, consent, quotas or destinations change. See the
 [desktop contract](../../../crates/launcher/desktop/docs/launcher-telemetry.md)
 and [operator recipe](../../operations/telemetry.md#launcher-adoption-and-play-phase-timing).
-The [validation worknote](worknotes/phase-timing-validation.md) records 1,178
+The [validation worknote](worknotes/phase-timing-validation.md) records 1,180
 standalone tests passed, zero failed and 11 ignored, plus the targeted server
 ingest guard. Three representative mutations failed their intended tests;
-all changes were restored and the final suite passed. Native build, clippy,
-format and frontend build checks passed. Fresh review says ship after the
-lock-boundary documentation and public API comments were corrected; the final
-test-helper configuration cleanup was also reviewed ship. PR CI and merge are
-next. This checkpoint does not attest a release, new live SigNoz receipt,
+all changes were restored and the final suite passed. Two further regression
+tests failed before correcting known-refusal outcomes, then passed in the full
+suite. Native build, clippy, format and frontend build checks passed. Earlier
+ship reviews covered the documentation/API and configuration cleanup; fresh
+review of the outcome refinements returned ship. All six desktop CI jobs and the
+root gate passed on prior head `6858d48`; corrected head `9d0b582` needs new CI
+after the push, followed by the merge queue. This checkpoint does not attest a release, new live SigNoz receipt,
 real-game performance or a completed gameplay reproduction.
 
 The [anonymized SGC session review](worknotes/sgc-session-review-2026-10-23.md)

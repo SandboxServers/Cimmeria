@@ -890,9 +890,11 @@ summary schema. The [native telemetry contract](../../../../crates/launcher/desk
 records the bounded fields, while the [anonymized SGC review](../../launcher-uat-fixes/worknotes/sgc-session-review-2026-10-23.md)
 separates three introductory mission completions from unfinished Carter
 progression and player-reported obstacles. The [timing validation worknote](../../launcher-uat-fixes/worknotes/phase-timing-validation.md)
-records 1,178 standalone tests passed, zero failed and 11 ignored, the targeted
-server-ingest guard, three restored mutation proofs, clean build/clippy/format
-checks, frontend build and fresh ship review. PR CI and merge remain next;
+records 1,180 standalone tests passed, zero failed and 11 ignored, the targeted
+server-ingest guard, three restored mutation proofs, two failing-before-fix
+outcome regressions, clean build/clippy/format checks and frontend build.
+Prior head passed all desktop CI jobs and the root gate; fresh outcome review
+returned ship, and corrected-head CI remains pending before the merge queue;
 this is not new live telemetry receipt, performance or release evidence.
 Gameplay changes and live/lab reproduction are outside this telemetry change
 and were not performed; a new release has not been requested.

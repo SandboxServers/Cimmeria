@@ -14,7 +14,7 @@
 | Wider CI iteration | #1995 merged | See [CI design](../ci-iteration-speed.md); separate from this UI follow-up |
 | Main-page layout/branding | [PR #1996](https://github.com/SandboxServers/Cimmeria/pull/1996) merged `b7364c5d0`; retired | All six desktop CI jobs and full merge queue passed; ML packaged acceptance pending |
 | Embedded Windows payload | #1997 merged `bff3b3d`; retired | Windows/Mac 2305 released from `e102a21`, run 39995348002 success; EP acceptance pending |
-| Adoption/Play phase timing | [PR #1998](https://github.com/SandboxServers/Cimmeria/pull/1998); [validation](worknotes/phase-timing-validation.md): 1,178 standalone passed, 11 ignored at previous checkpoint | Outcome review refinements active; rerun CI after the fix push, then merge queue/merge/retirement; not merged or released |
+| Adoption/Play phase timing | [PR #1998](https://github.com/SandboxServers/Cimmeria/pull/1998); [validation](worknotes/phase-timing-validation.md): 1,180 standalone passed, zero failed, 11 ignored; three mutations and two pre-fix regressions proved | Fresh review ship; rerun CI on corrected head after push, then merge queue/merge/retirement; not merged or released |
 | Early SGC session review | [Anonymized worknote](worknotes/sgc-session-review-2026-10-23.md) | Partial playthrough; reproduce prioritized reports separately |
 
 **Implementation worktree (retire after merge):** `.claude/worktrees/launcher-phase-timing`, branch `feat/launcher-phase-timing`, base `e102a21`.

@@ -111,22 +111,24 @@ fn helper_handshake_emits_spawn_and_startup_times_without_starting_a_game() {
         .iter()
         .find(|e| e.field("event") == Some("game_started"))
         .unwrap();
-    let startup = started.field("startup_ms").unwrap().parse::<u64>().unwrap();
-    let handshake = records
+    assert!(started.field("startup_ms").unwrap().parse::<u64>().is_ok());
+    // Cross-clock inequalities depend on the global bounded correlation cache.
+    // Event ordering proves startup finishes before the guest lifetime instead.
+    let at = |event: &str| {
+        records
+            .iter()
+            .position(|e| e.field("event") == Some(event))
+            .unwrap()
+    };
+    let startup_finish = records
         .iter()
-        .find(|e| {
-            e.field("phase") == Some("play_helper_handshake")
+        .position(|e| {
+            e.field("phase") == Some("play_helper_start")
                 && e.field("event") == Some("phase_finished")
         })
         .unwrap();
-    assert!(
-        startup
-            >= handshake
-                .field("duration_ms")
-                .unwrap()
-                .parse::<u64>()
-                .unwrap()
-    );
+    assert!(startup_finish < at("game_started"));
+    assert!(at("game_started") < at("game_exited"));
 }
 
 #[test]
