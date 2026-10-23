@@ -281,13 +281,15 @@ startup ends at the helper's process-start reply, before rendered-frame evidence
 No Plan fields, summary schema, consent, quotas or destinations change. See the
 [desktop contract](../../../crates/launcher/desktop/docs/launcher-telemetry.md)
 and [operator recipe](../../operations/telemetry.md#launcher-adoption-and-play-phase-timing).
-Implementation and validation are in progress in the phase-timing worktree;
-this checkpoint does not attest a released build or new player timings.
-The initial engine suite reported 995 passed, one failed and three ignored: a
-new fixture assertion assumed one application pass, while the real idempotent
-adoption fixture executes two. The assertion was corrected to accept repeated
-paired `adoption_apply` phases; this was a test assumption, not a production
-failure. Final validation and fresh review remain pending at this checkpoint.
+The [validation worknote](worknotes/phase-timing-validation.md) records 1,178
+standalone tests passed, zero failed and 11 ignored, plus the targeted server
+ingest guard. Three representative mutations failed their intended tests;
+all changes were restored and the final suite passed. Native build, clippy,
+format and frontend build checks passed. Fresh review says ship after the
+lock-boundary documentation and public API comments were corrected; the final
+test-helper configuration cleanup was also reviewed ship. PR CI and merge are
+next. This checkpoint does not attest a release, new live SigNoz receipt,
+real-game performance or a completed gameplay reproduction.
 
 The [anonymized SGC session review](worknotes/sgc-session-review-2026-10-23.md)
 records three mission completions, unfinished Carter progression, death/revival
