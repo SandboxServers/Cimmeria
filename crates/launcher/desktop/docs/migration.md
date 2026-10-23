@@ -207,11 +207,13 @@ per file, preserving unrelated extras rather than swapping the whole root.
 Launch, maintenance, receipt checks, and game-log discovery use the validated
 content-root resolver.
 
-Interrupted schema-1 movers are refused recovery: upgrading must never resume
-their old relocation sequence. Their abandon escape removes ownership metadata
+All interrupted schema-1 adoption, including legacy copy journals, is refused
+recovery/publication: upgrading must never resume relocation or finish a copy. Their abandon escape removes ownership metadata
 only, retaining existing game bytes, staged originals, and backups for manual
 inspection. It does not automatically move files back. Do not mistake this
-legacy escape for schema-2 rollback.
+legacy escape for schema-2 rollback. The legacy-copy fault fixture covers six
+checkpoints, preserving paths, bytes, and file identities through refusal and
+metadata-only abandon; it does not validate a real old installation.
 
 Uninstall of a new adopted installation removes authenticated release-managed
 files and launcher metadata selectively. It retains the selected root, unrelated

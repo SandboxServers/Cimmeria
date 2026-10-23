@@ -15,11 +15,12 @@ authorization to cut a release; historical release instructions do not override
 that boundary.
 
 The original U1-U5 PRs (#1984 through #1988) and close-out #1989 are merged.
-Task 1 is [PR #1992](https://github.com/SandboxServers/Cimmeria/pull/1992).
-Review-1 fixes N1-N6 are complete; fresh review 2 is pending. Task 2 is
-[PR #1991](https://github.com/SandboxServers/Cimmeria/pull/1991): fresh review 3
-returned ship, required CI is green, and merge waits for native CI. Neither PR
-has merged. These are independent task worktrees, not unfinished original waves.
+Task 1 is [PR #1992](https://github.com/SandboxServers/Cimmeria/pull/1992), draft:
+setup preservation fix `1cbfc54f5` and helper-unavailable UI fix `ed6940107` are complete; fresh review 4 is in progress. Integration reruns after those fixes remain pending.
+Task 2 [PR #1991](https://github.com/SandboxServers/Cimmeria/pull/1991) merged as
+`7be8413b0`; its worktree was retired at 2026-10-23T03:38:43Z. Required checks,
+native Windows/macOS/package CI, and merge-queue full tests passed for Task 2.
+No actual release was performed.
 
 ## Contract under validation
 
@@ -31,7 +32,8 @@ successful schema-1 managed/legacy installations keep `root/game`.
 Matched originals retain their paths and file IDs unless an approved individual
 content transformation requires replacement. Direct-root maintenance commits per
 file and preserves extras. Selective Uninstall retains the root and unrelated
-files. Interrupted legacy movers refuse recovery and offer metadata-only abandon,
+files. All interrupted schema-1 adoption, including legacy copy journals, refuses
+recovery and offers metadata-only abandon,
 retaining game bytes, staged originals, and backups for manual inspection.
 Schema-2 abandon rolls back approved per-file changes.
 
@@ -113,6 +115,90 @@ Additional review-fix mutations were restored before passing checks:
 The safety report distinguishes unsuccessful preliminary mutations from the
 actual failing guards; those preliminary attempts are not counted as proof.
 
+## Integrated safety follow-up
+
+The historical blocked status in `.claude/reports/launcher-adopt-in-place/fix-fd-2.md`
+is resolved by subsequent integration. Shared retained-directory guards now cover
+adoption, Repair, Update, rollback, and selective Uninstall. The authenticated
+owner's file identity binds the selected root before descendants are created or
+mutated. Tree-identity and content-ready publication also use retained parents
+bound to that owner, closing the post-promotion pathname seam identified in
+`fix-consumer-safety-2.md`; `fix-metadata-3.md` records the resolution.
+
+Unix operations use descriptor-relative `openat`/`mkdirat`/`unlinkat` and native
+exclusive rename primitives with retained parent synchronization. The former
+Darwin volfs translation is superseded; no volfs compatibility claim remains.
+Windows retains ordinary directory/file handles without delete sharing and
+executes rename-refusal and junction safety assertions. Unix descriptor
+substitution tests still need native macOS CI execution; Windows results do not
+stand in for those branches.
+
+Repair/Update backups now use a journal-owned partial copy, verification/sync,
+and exclusive publication before changing live output. Empty or prefix partials
+can recover only against the complete expected live original; malformed final
+backups and changed player content refuse. Legacy schema-1 copy recovery is also
+explicitly refused by `23b7374a4`; metadata-only abandon preserves all content.
+Successful legacy adoption keeps its recorded layout.
+
+Latest integrated checks: engine **962 passed, 3 ignored**, log
+`20261022-230703-59764`; all-target engine clippy clean,
+`20261022-230654-408180`. These supersede earlier engine totals without erasing
+the earlier regression evidence. Those integration checks passed before the later setup fix, as recorded below;
+their post-setup repeats remain pending at this checkpoint.
+
+Review-2 partial-backup mutations failed with the old final-copy behavior:
+`20261022-223819` and `20261022-225603-482080`. The latter failure and restored
+scoped passes are documented in `fix-consumer-safety-2.md`; an older-timestamp
+restoration that reused a mutant executable is explicitly superseded there.
+Replacing receipt owner binding with a root-only constructor failed the actual
+wrong-owner guard at `20261022-230640-317548`; restoration precedes the full
+962-pass suite. A preliminary zero-test invocation is not regression evidence.
+
+Initial macOS PR CI failed because a Windows-only fixture was imported in
+`provenance_tests`; conditional gating was fixed in `094f8e904`. Latest Task 1
+macOS CI is pending, not passed. Fresh review 3 found the setup-preservation gap
+below; its fix is complete and fresh review 4 remains pending.
+
+The profiler's post-merge attempt rejected unsupported transcript shapes and did
+not post cost statistics. That reporting limitation does not change test results.
+
+## Setup-preservation fix and latest checkpoint
+
+Fresh review 3 identified a setup-stage player-edit preservation gap, resolved in
+`1cbfc54f5` (`.claude/reports/launcher-adopt-in-place/fix-setup-4.md`). A separate
+versioned expectation record is bound to the pinned plan digest, recording exact
+original and approved states: presence, size, SHA-256, and filename casing. ASLR
+expectations are derived on an isolated temporary file, not the live executable.
+Recover checks every setup target before any setup write; Abandon checks every
+target before any rollback write. Later edits to a still-parseable `SGW.exe` or
+`LoginInternal.lua`, missing expected targets, or newly appeared targets refuse
+without overwriting the player's content or saved originals. If partial or full
+original snapshots exist without the expectation record, recovery refuses rather
+than re-pinning expectations to later edits. Exact original and approved states
+remain retryable. Filename normalization is covered explicitly.
+
+Six production Light interruption journeys passed (`20261022-232350-370448`).
+Disabling the original/approved comparison caused four runtime guard failures
+(`20261022-232444-389596`); restoring it preceded final engine **968 passed,
+3 ignored** (`20261022-232513-157888`), fmt `20261022-232502-457064`, and clean
+all-target engine clippy `20261022-232506-312140`. These are the latest engine
+results. No mutation remains. Fresh review 4 is pending, not a ship verdict.
+
+Before that setup fix, the identity/layout mutation failed two guards with zero
+success events (`20261022-231123`), then restored checks passed 4/4
+(`20261022-231137`). Shell tests passed 147 with 7 ignored (`20261022-231348`)
+after correcting an old legacy-copy expectation in `64985f11a`. Actual native-backed
+`npm run uat:adoption` passed again; workspace clippy passed
+(`20261022-231456`) and production debug build passed in 49.276 seconds
+(`20261022-231503`). These passes predate the setup fix and must not be presented
+as its final integration rerun.
+
+After the helper-unavailable UI fix `ed6940107`, the root frontend pass reports
+250 tests, footer REPL including helper unavailability, and build passing;
+`cimmeria-adoption-frontend-final.log` is its temporary log basename. The earlier
+Light REPL also passed. Final shell/workspace/build and native-backed UAT repeats
+after the setup fix are still running at this checkpoint.
+
 ## Browser mock and coverage limits
 
 At a 1280 × 720 viewport, a browser mock showed the main-page footer entry.
@@ -134,7 +220,8 @@ follow-up state, UAT steps, and committed project memory. Companion contracts ar
 guides, the approved design, and AIP-U1..U5. Existing generated and global status
 blocks are outside this follow-up.
 
-Complete fresh Task 1 review 2 and pending platform CI on PR #1992, then follow
-the normal ship-pr review/merge process. Task 2 PR #1991 has a ship verdict and
-green required CI but still waits for native CI before merge. No merge or release
-is claimed. Retire each worktree after its PR merges; never `git worktree prune`.
+Check PR #1992 on GitHub before resuming: if still open, finish fresh review and
+CI, then complete the ship-pr process. If merged, verify its worktree retirement
+and treat implementation as complete; remaining owner UAT is recorded separately.
+Task 2 is merged and retired. A real release requires explicit owner GO.
+Never `git worktree prune`.
