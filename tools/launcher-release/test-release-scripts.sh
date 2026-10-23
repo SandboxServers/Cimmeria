@@ -19,9 +19,19 @@ mkdir -p "$WORK/bin"
 cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
+if [ "$1" = api ]; then
+  if [[ "$*" == *releases* && "${STUB_FAIL_LISTING:-false}" == true ]]; then exit 1; fi
+  if [[ "$*" == *actions/runs* ]]; then echo "2026-10-23T12:00:00Z"; else printf '%s\n' "$STUB_LISTING"; fi
+  exit 0
+fi
 [ "$1" = release ] || { echo "stub gh: unsupported $*" >&2; exit 2; }
 cmd="$2"; shift 2
 case "$cmd" in
+  download)
+    tag="$1"; shift
+    while [ $# -gt 0 ]; do
+      case "$1" in --dir) mkdir -p "$2"; cp "$STUB_STORE/$tag/latest.json" "$2/latest.json"; shift 2 ;; *) shift ;; esac
+    done ;;
   list) printf '%s\n' "$STUB_LISTING" ;;
   view)
     tag="$1"; shift
@@ -44,6 +54,7 @@ case "$cmd" in
         --title|--target) shift 2 ;;
         --*) shift ;;
         *) name="$(basename "$1")"
+           cp "$1" "$STUB_STORE/$tag/$name"
            grep -qxF "$name" "$STUB_STORE/$tag/assets" || echo "$name" >> "$STUB_STORE/$tag/assets"
            shift ;;
       esac
@@ -56,28 +67,29 @@ export PATH="$WORK/bin:$PATH"
 export GITHUB_REPOSITORY=SandboxServers/Cimmeria GITHUB_SERVER_URL=https://github.com
 export GITHUB_RUN_ID=42 GITHUB_SHA=0123456789abcdef0123456789abcdef01234567
 
-# --- stamp.sh ---------------------------------------------------------------
-stamp() {
-  STUB_STORE="$WORK/stamp" STUB_LISTING="$1" GITHUB_OUTPUT="$WORK/out" "$HERE/stamp.sh" >/dev/null 2>&1
-}
-output() { sed -n "s/^$1=//p" "$WORK/out"; }
-BASE="$(date -u +%Y).$(date -u +%-m).$(date -u +%-d)"
-TAG="launcher-$(date -u +%Y%m%d)-0123456"
-mkdir -p "$WORK/stamp"
+# --- stamp.sh: actual script dry run, no network or signing keys -------------
+cd "$WORK"
+export STUB_STORE="$WORK/stamp"
+mkdir -p "$STUB_STORE"
+export STUB_LISTING='[[]]'
+# No API failure may become an empty release day.
 
-: > "$WORK/out"
-if stamp $'-1\n0' && [ "$(output version)" = "$BASE" ] && [ "$(output same_day)" = false ] \
-  && [ "$(output tag)" = "$TAG" ]; then pass "stamp: first release of the day"; else fail "stamp: first release of the day"; fi
-: > "$WORK/out"
-if stamp $'-1\n1' && [ "$(output version)" = "$BASE-2" ] && [ "$(output same_day)" = true ]; then
-  pass "stamp: second release of the day is -2"; else fail "stamp: second release of the day is -2"; fi
-mkdir -p "$WORK/stamp/$TAG"
-echo "built by https://github.com/SandboxServers/Cimmeria/actions/runs/42." > "$WORK/stamp/$TAG/body"
-: > "$WORK/out"
-if stamp $'0\n1' && [ "$(output version)" = "$BASE" ]; then
-  pass "stamp: a re-run keeps its place"; else fail "stamp: a re-run keeps its place"; fi
-echo "built by https://github.com/SandboxServers/Cimmeria/actions/runs/7." > "$WORK/stamp/$TAG/body"
-if stamp $'0\n1'; then fail "stamp: refuses the same commit from another run"; else pass "stamp: refuses the same commit from another run"; fi
+export GITHUB_OUTPUT="$WORK/out"
+"$HERE/stamp.sh"
+BASE=2026.10.2301
+TAG=launcher-20261023-0123456
+if grep -qx "version=$BASE" "$GITHUB_OUTPUT"; then pass "stamp: stable first daily slot"; else fail "stamp: stable first daily slot"; fi
+rm -rf stamp-reservation
+export STUB_LISTING='[[{"tag_name":"launcher-20261023-aaaaaaa","created_at":"2026-10-23T00:00:00Z","body":"legacy release"}]]'
+: > "$GITHUB_OUTPUT"
+"$HERE/stamp.sh"
+SECOND=2026.10.2302
+if grep -qx "version=$SECOND" "$GITHUB_OUTPUT"; then pass "stamp: second signed stable daily slot"; else fail "stamp: second signed stable daily slot"; fi
+export STUB_FAIL_LISTING=true
+if "$HERE/stamp.sh" >/dev/null 2>&1; then fail "stamp: API failure refuses"; else pass "stamp: API failure refuses"; fi
+unset STUB_FAIL_LISTING
+# The helper tests cover repeat releases, migration and refusal paths.
+python "$HERE/test_release_identity.py"
 
 # --- publish.sh -------------------------------------------------------------
 export TAG VERSION="$BASE"
@@ -87,7 +99,8 @@ for f in StargateWorlds-Launcher-windows-x64.zip StargateWorlds-Launcher-macos-a
   echo "$f bytes" > "artifacts/$f"
   printf '%s  %s\n' "$(sha256sum "artifacts/$f" | cut -d' ' -f1)" "$f" > "artifacts/$f.sha256"
 done
-: > artifacts/latest.json; : > artifacts/StargateWorlds-Launcher-windows-x64.zip.sig
+printf '{"version":"%s"}\n' "$BASE" > artifacts/latest.json
+printf 'stub-signature\n' > artifacts/StargateWorlds-Launcher-windows-x64.zip.sig
 ZIP_SHA="$(cut -d' ' -f1 artifacts/StargateWorlds-Launcher-windows-x64.zip.sha256)"
 
 if "$HERE/publish.sh" check artifacts/StargateWorlds-Launcher-windows-x64.zip "$ZIP_SHA" >/dev/null 2>&1; then
@@ -119,4 +132,47 @@ if grep -qF 'macos-arm64' "$STUB_STORE/launcher-current/body"; then
 if grep -qF 'macOS (Apple silicon): download StargateWorlds-Launcher-macos-arm64.zip' "$STUB_STORE/launcher-current/body"; then
   pass "current notes: the macOS link once the zip is there"; else fail "current notes: the macOS link once the zip is there"; fi
 
+mv artifacts/StargateWorlds-Launcher-windows-x64.zip.sig artifacts/saved.sig
+if "$HERE/publish.sh" dated >/dev/null 2>&1 || "$HERE/publish.sh" current >/dev/null 2>&1; then
+  fail "missing signature refuses dated and current publication"
+else
+  pass "missing signature refuses dated and current publication"
+fi
+mv artifacts/saved.sig artifacts/StargateWorlds-Launcher-windows-x64.zip.sig
+mv artifacts/latest.json artifacts/saved-feed.json
+if "$HERE/publish.sh" current >/dev/null 2>&1; then
+  fail "missing verified feed refuses current publication"
+else
+  pass "missing verified feed refuses current publication"
+fi
+mv artifacts/saved-feed.json artifacts/latest.json
+# A failed macOS build on A may be retried after B published both platforms.
+# The dated repair succeeds, but all rolling bytes and notes must remain B's.
+OLD_TAG="$TAG"
+export TAG=launcher-20261023-bbbbbbb VERSION="$SECOND"
+printf '{"version":"%s"}\n' "$VERSION" > artifacts/latest.json
+for file in artifacts/*.zip artifacts/*.sha256 artifacts/*.sig; do echo "B bytes" > "$file"; done
+"$HERE/publish.sh" dated >/dev/null
+"$HERE/publish.sh" current >/dev/null
+"$HERE/publish.sh" macos >/dev/null
+"$HERE/publish.sh" macos-current >/dev/null
+cp -r "$STUB_STORE/launcher-current" "$WORK/rolling-b"
+"$HERE/publish.sh" macos-current >/dev/null
+if diff -r "$WORK/rolling-b" "$STUB_STORE/launcher-current"; then
+  pass "equal-version macOS retry is idempotent"; else fail "equal-version macOS retry is idempotent"; fi
+export TAG="$OLD_TAG" VERSION="$BASE"
+for file in artifacts/*macos*.zip artifacts/*macos*.sha256; do echo "A repaired bytes" > "$file"; done
+"$HERE/publish.sh" macos >/dev/null
+: > "$GITHUB_OUTPUT"
+"$HERE/publish.sh" macos-current >/dev/null
+if diff -r "$WORK/rolling-b" "$STUB_STORE/launcher-current" && grep -qx status=skipped_older "$GITHUB_OUTPUT"; then
+  pass "older macOS retry preserves every newer rolling asset and notes, reporting skip"
+else
+  fail "older macOS retry preserves every newer rolling asset and notes, reporting skip"
+fi
+if cmp artifacts/StargateWorlds-Launcher-macos-arm64.zip "$STUB_STORE/$TAG/StargateWorlds-Launcher-macos-arm64.zip" \
+  && cmp artifacts/StargateWorlds-Launcher-macos-arm64.zip.sha256 "$STUB_STORE/$TAG/StargateWorlds-Launcher-macos-arm64.zip.sha256" \
+  && grep -qF '**macOS (Apple silicon):**' "$STUB_STORE/$TAG/body"; then
+  pass "older dated macOS assets and notes are repaired"; else fail "older dated macOS assets and notes are repaired"; fi
+if grep -qF 'This build is unsigned' <<<"$A"; then fail "unsigned fallback release notes removed"; fi
 exit "$FAILED"

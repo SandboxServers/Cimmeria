@@ -37,6 +37,7 @@ fn revision(state: &DesktopState) -> u64 {
 }
 #[tokio::test]
 async fn reopened_checkpoint_matrix_recovers_exact_trees_without_downloads() {
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
     for missing in [false, true] {
         for point in [
             Point::Planned,
@@ -49,7 +50,27 @@ async fn reopened_checkpoint_matrix_recovers_exact_trees_without_downloads() {
             let (root, mut state, plan) = interrupted(point, missing).await;
             let preferences = state.preferences().clone();
             let rev = revision(&state);
-            reconcile(&mut state, plan.id, rev).unwrap();
+            let (result, events) =
+                crate::test_capture::capture(|| reconcile(&mut state, plan.id, rev));
+            result.unwrap();
+            let identities: Vec<_> = events
+                .iter()
+                .filter(|e| e.field("event") == Some("applied_content_identity"))
+                .collect();
+            assert_eq!(identities.len(), 1, "{point:?}, missing={missing}");
+            let digest: String = plan
+                .release_identity()
+                .manifest_digest
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            assert_eq!(
+                identities[0].field("manifest_sha256"),
+                Some(digest.as_str())
+            );
+            assert_eq!(identities[0].field("phase"), Some("applied"));
+            assert_eq!(identities[0].field("overlay_ids"), Some("[]"));
+            assert_eq!(identities[0].field("incomplete_overlay_ids"), Some("[]"));
             assert_eq!(
                 state
                     .operations()
@@ -109,6 +130,7 @@ async fn first_rename_without_its_checkpoint_is_reconciled() {
 }
 #[tokio::test]
 async fn foreign_game_missing_backup_and_stale_requests_never_authorize_mutation() {
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
     for foreign in [false, true] {
         let (_root, mut state, plan) = interrupted(Point::AfterOriginalRename, false).await;
         let rev = revision(&state);
@@ -122,7 +144,11 @@ async fn foreign_game_missing_backup_and_stale_requests_never_authorize_mutation
             // Simulates external loss; recovery must not fabricate the old backup.
             std::fs::remove_dir_all(plan.backup()).unwrap();
         }
-        assert!(reconcile(&mut state, plan.id, rev).is_err());
+        let (result, events) = crate::test_capture::capture(|| reconcile(&mut state, plan.id, rev));
+        assert!(result.is_err());
+        assert!(!events
+            .iter()
+            .any(|e| e.field("event") == Some("applied_content_identity")));
         assert!(plan.stage().join("later.txt").is_file());
         if foreign {
             assert_eq!(

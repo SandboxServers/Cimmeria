@@ -551,3 +551,19 @@ actual game startup, login or world entry.
 The same steady-state rule applies to **Recheck Play status**: background reads
 do not toggle its disabled style. Read deduplication remains internal; launching
 a game still disables both controls until the native result is observed.
+
+## Applied content identity
+
+Native logs emit `launcher.install` / `applied_content_identity` after
+successful content publication (`phase=applied`) and successful Play
+admission (`phase=play_admitted`). Interrupted Install, Update and Repair
+recovery also emit the applied identity after successful terminal journal
+reconciliation; partial or refused recovery emits none. `manifest_sha256` hashes the retained,
+reverified installed manifest; it does not describe a newly fetched offer.
+`overlay_ids` lists fully applied signed-manifest patches rooted at
+`sgw_game`, checked against the live `launcher-installed.json` ledger via
+`has_applied_patch` and its `@sgw_game` keys. `incomplete_overlay_ids` lists
+partially applied overlays separately. Failed or staged-only content emits
+no applied identity. No file paths or secrets are emitted. Play admission
+is not proof the game process loaded an overlay. Identity logging is best
+effort and cannot fail an already committed installation.

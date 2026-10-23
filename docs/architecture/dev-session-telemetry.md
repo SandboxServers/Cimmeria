@@ -569,3 +569,16 @@ launcher exit leaves SGW.exe running. The cost is one
   owner.
 - Multi-tenant Cosmos isolation — single-tenant for now.
 - LLM auto-summary at bundle ingest — companion Functions repo issue.
+
+### Applied launcher content identity
+
+The existing `client.launcher.install` channel also carries
+`event=applied_content_identity`, `phase=applied|play_admitted`, the retained
+signed installed `manifest_sha256`, fully applied `overlay_ids`, and separate
+`incomplete_overlay_ids`. The launcher reads the live ledger with exact
+`@sgw_game` keys. Catalog offers and staging do not emit this event; Play
+admission does not prove the game loaded a particular overlay.
+The launcher-row filter retains a 64-character lowercase hex
+`manifest_sha256` only for that exact target, event and phase. Other long hex
+identifiers still receive the generic privacy scrub. Existing row, field,
+size and consent limits apply.

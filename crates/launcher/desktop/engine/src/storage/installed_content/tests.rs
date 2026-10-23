@@ -301,3 +301,67 @@ fn current_receipt_cannot_substitute_another_owner_or_another_release() {
         current
     );
 }
+
+#[test]
+fn applied_identity_is_absent_before_commit_and_names_retained_release_after_commit() {
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let (_, events) = crate::test_capture::capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        let (_root, mut state, intent) = fixture();
+        state.remember_prepared_content().unwrap();
+        crate::state::InstalledState::default()
+            .save(&intent.destination.join("game"))
+            .unwrap();
+        state.log_applied_content("staged_should_not_emit");
+        state
+            .operations_mut()
+            .unwrap()
+            .observe(intent.operation_id, OperationState::Succeeded)
+            .unwrap();
+        state.log_applied_content("applied");
+    });
+    let identities: Vec<_> = events
+        .iter()
+        .filter(|event| event.field("event") == Some("applied_content_identity"))
+        .collect();
+    assert_eq!(identities.len(), 1);
+    assert_eq!(identities[0].field("phase"), Some("applied"));
+    assert_eq!(identities[0].field("manifest_sha256").unwrap().len(), 64);
+}
+
+#[test]
+fn applied_identity_uses_committed_update_hash_and_failed_apply_logs_no_success() {
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let (_, events) = crate::test_capture::capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        let (_root, mut state, owner, current) = changed_release();
+        assert_ne!(owner.manifest_digest, current.manifest_digest);
+        crate::state::InstalledState::default()
+            .save(&owner.destination.join("game"))
+            .unwrap();
+        state.queue_install_result(
+            Uuid::new_v4(),
+            game_telemetry::install_event::Run::Update,
+            game_telemetry::install_event::Ending::Failed("test"),
+        );
+        state.log_applied_content("play_admitted");
+        let expected: String = current
+            .manifest_digest
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        tracing::info!(target: "test.expected", expected);
+    });
+    let identities: Vec<_> = events
+        .iter()
+        .filter(|event| event.field("event") == Some("applied_content_identity"))
+        .collect();
+    assert_eq!(identities.len(), 1);
+    assert_eq!(identities[0].field("phase"), Some("play_admitted"));
+    let expected = events
+        .iter()
+        .find(|event| event.target == "test.expected")
+        .unwrap()
+        .field("expected");
+    assert_eq!(identities[0].field("manifest_sha256"), expected);
+}

@@ -191,6 +191,7 @@ impl DesktopState {
         let (_, dispatch) =
             self.operations_mut()?
                 .begin(id, OperationKind::Launch, plan.digest()?, revision)?;
+        self.log_applied_content("play_admitted");
         Ok(Admission { plan, dispatch })
     }
     pub fn launch_plan(&self) -> Result<Option<Plan>, IntentError> {

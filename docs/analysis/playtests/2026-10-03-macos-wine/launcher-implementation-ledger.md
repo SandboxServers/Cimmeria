@@ -811,3 +811,15 @@ runtime, a game launch, physical power-loss recovery, or SigNoz end-to-end succe
 Native macOS CI is pending and no release is authorized by this task. See the
 [approved design](../../launcher-uat-fixes/design-adopt-in-place.md) and
 [validation evidence and limits](../../launcher-uat-fixes/worknotes/adopt-in-place-validation.md).
+
+## Launcher repeat-release policy (D-LX15)
+
+Owner-approved 2026-10-23: stable UTC `YYYY.M.(D*100+N)` versions, slots
+1..99, replace D-LX8's stable-first/prerelease-repeat policy. Every release
+requires Windows Minisign updater signing and refreshes `launcher-current`.
+Run identity is reserved before builds; old reruns cannot lower the rolling
+feed version. macOS ad-hoc application signing and manual updating remain.
+See [the design](../../launcher-uat-fixes/design-repeat-releases.md) and
+[release contract](../../../../crates/launcher/desktop/docs/release.md).
+No real release was performed by this implementation task. Live validation
+of release publication and the macOS bundle remains separate from unit tests.

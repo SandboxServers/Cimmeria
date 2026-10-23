@@ -786,3 +786,14 @@ experimental Windows x86 module-load helper and remaining integration gates.
 See [legacy migration](docs/migration.md) for the native preview/confirmed import API,
 identity and consent preservation, historical ledger limits and crash recovery.
 How a release is built and published is in [release](docs/release.md). Current import controls and signed launcher Apply/restart are documented in [migration](docs/migration.md) and [updater](docs/updater.md); production updater configuration remains disabled.
+
+## Stable repeat releases
+
+D-LX15 uses UTC stable versions `YYYY.M.(D*100+N)`, daily slots 1..99.
+Every Windows updater artifact requires a Minisign signature; the workflow
+refreshes `launcher-current` for repeat releases too. Existing installations
+on D-LX8's date versions accept the new versions. See the
+[release contract](docs/release.md#version-and-tag) for identity reservations,
+reruns, Windows file-version limits and the signing environment.
+Applied content observations read the retained installed manifest and live
+ledger; [launch.md](docs/launch.md#applied-content-identity) defines their fields.

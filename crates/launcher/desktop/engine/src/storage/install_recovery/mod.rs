@@ -114,6 +114,8 @@ pub fn reconcile(
     state
         .operations_mut()?
         .reconcile(intent.operation_id, OperationState::Succeeded)?;
+    drop(marker);
+    state.log_applied_content("applied");
     Ok(Recovery::ContentPrepared)
 }
 

@@ -294,4 +294,6 @@ pub(super) fn uninstall_artifact(
 #[cfg(all(test, not(target_os = "macos")))]
 mod direct_lifecycle_tests;
 #[cfg(test)]
+mod identity_tests;
+#[cfg(test)]
 mod journey_tests;

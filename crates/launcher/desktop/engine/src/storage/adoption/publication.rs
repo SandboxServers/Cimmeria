@@ -334,6 +334,11 @@ fn copy_and_publish(
     }
     drop(state);
     drop(owner);
+    if result.is_ok() {
+        if let Ok(state) = preview.state.lock() {
+            state.log_applied_content("applied");
+        }
+    }
     result
 }
 /// Receipt is separately typed provenance, not a fabricated successful Install.

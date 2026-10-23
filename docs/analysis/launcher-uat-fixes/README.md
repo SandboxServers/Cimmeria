@@ -154,3 +154,9 @@ All code packets (LF-01..LF-19) are merged: U1 #1986, U2 #1984, U3 #1985, U4 #19
 ### Status docs
 
 `docs/project-status.md` and `docs/gap-analysis*.md` have no launcher row, so this close-out leaves them unchanged (R2: status docs change once per campaign, and there is nothing to change). The launcher campaign's own ledger is [launcher-telemetry/RESUME.md](../launcher-telemetry/RESUME.md), which now points here for F1-F6 and G1-G4.
+
+## Repeat-release follow-up
+
+[Design: every signed launcher release](design-repeat-releases.md) records
+owner-approved D-LX15 and the applied-content identity logging follow-up.
+Implementation and regression proof are tracked in the follow-up PR.

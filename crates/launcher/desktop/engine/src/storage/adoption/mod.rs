@@ -9,6 +9,8 @@ pub(crate) mod direct_paths;
 #[cfg(all(test, not(target_os = "macos")))]
 mod direct_safety_tests;
 mod direct_setup;
+#[cfg(all(test, not(target_os = "macos")))]
+mod identity_tests;
 mod in_place;
 mod in_place_abandon;
 mod in_place_check;
