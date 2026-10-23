@@ -3,6 +3,7 @@
 //! Native composition only: dispatch these blocking functions on retained workers.
 mod artifacts;
 mod comparison;
+mod direct;
 mod in_place;
 mod in_place_abandon;
 mod in_place_check;
@@ -24,6 +25,9 @@ mod in_place_tests;
 mod index_compare;
 mod index_source;
 mod inventory;
+mod inventory_walk;
+#[cfg(test)]
+mod legacy_fixture;
 mod light;
 #[cfg(all(test, not(target_os = "macos")))]
 mod light_cooked_tests;
@@ -236,6 +240,9 @@ pub fn preview(
     cancel: CancellationToken,
     progress: crate::install_progress::ProgressSink,
 ) -> Result<Preview, Error> {
+    if request.mode == AdoptionMode::Copy {
+        return Err(Error::UnsupportedMode);
+    }
     preview_using(state, request, cancel, progress, Backend::Native, None)
 }
 
@@ -251,18 +258,19 @@ pub(super) fn preview_using(
     // where it is (D-LX12); a copy writes a separately owned tree.
     match request.mode {
         AdoptionMode::InPlace => {
-            // In place never runs the Wine helper; only a copy extracts through it.
-            let _ = backend;
-            in_place_preview::preview(state, request, cancel, progress, transport, false)
+            in_place_preview::preview(state, request, cancel, progress, backend, transport, false)
         }
         // Light adopts in place too; only the comparison differs (LA-11).
         AdoptionMode::Light => {
-            let _ = backend;
-            in_place_preview::preview(state, request, cancel, progress, transport, true)
+            in_place_preview::preview(state, request, cancel, progress, backend, transport, true)
         }
+        #[cfg(any(test, feature = "test-support"))]
         AdoptionMode::Copy => copy_preview(state, request, cancel, progress, backend, transport),
+        #[cfg(not(any(test, feature = "test-support")))]
+        AdoptionMode::Copy => Err(Error::UnsupportedMode),
     }
 }
+#[cfg(any(test, feature = "test-support"))]
 fn copy_preview(
     state: Arc<Mutex<DesktopState>>,
     request: PreviewRequest,

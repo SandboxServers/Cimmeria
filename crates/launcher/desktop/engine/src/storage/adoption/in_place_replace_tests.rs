@@ -76,7 +76,7 @@ fn adopting_with_consent_backs_up_the_modified_file_and_installs_the_release() {
         .to_string_lossy()
         .starts_with("cimmeria-adoption-backup-")));
     let expected = preview.expected_digest;
-    confirm_replacing(preview, |_| Ok(())).unwrap();
+    let provenance = confirm_replacing(preview, |_| Ok(())).unwrap();
 
     // The player's edited SGW.exe is kept byte for byte in the backup folder.
     assert_eq!(
@@ -91,14 +91,22 @@ fn adopting_with_consent_backs_up_the_modified_file_and_installs_the_release() {
         .count();
     assert_eq!(leftovers, 0);
     // The game files hold the release bytes.
-    let game = f.folder().join("game");
+    let game = f.folder().to_path_buf();
     assert_eq!(
         std::fs::read(inventory::native(&game, EXE)).unwrap(),
         exe_release
     );
     assert_eq!(
-        inventory::content_digest(&inventory::scan(&game, &CancellationToken::new()).unwrap())
-            .unwrap(),
+        inventory::content_digest(
+            &super::direct::scan(
+                &game,
+                &inspect(&f.state.lock().unwrap(), provenance.work_id)
+                    .unwrap()
+                    .plan
+            )
+            .unwrap()
+        )
+        .unwrap(),
         expected
     );
 }
@@ -107,7 +115,7 @@ fn adopting_with_consent_backs_up_the_modified_file_and_installs_the_release() {
 fn uninstalling_an_adoption_that_replaced_files_keeps_the_backup() {
     let (f, preview, _) = modified_with_replacement();
     let backup = preview.report.backup.clone().unwrap();
-    confirm_replacing(preview, |_| Ok(())).unwrap();
+    let _provenance = confirm_replacing(preview, |_| Ok(())).unwrap();
     let mut state = f.state.lock().unwrap();
     let installed = state.installed_content().unwrap().unwrap();
     let revision = state.operations().snapshot().revision;
@@ -135,17 +143,17 @@ fn a_missing_release_file_is_restored_from_its_replacement_and_the_others_are_re
     let mut extra = stored_replacement(&preview, "extra.txt", EXTRA);
     extra.reason = Classification::Missing;
     preview.replacements = vec![extra];
-    confirm_replacing(preview, |_| Ok(())).unwrap();
+    let _provenance = confirm_replacing(preview, |_| Ok(())).unwrap();
 
     // The missing file comes from its replacement; the release files still there
     // are moved into `game` as before.
-    let game = f.folder().join("game");
+    let game = f.folder().to_path_buf();
     assert_eq!(std::fs::read(game.join("extra.txt")).unwrap(), EXTRA);
     assert_eq!(
         std::fs::read(game.join("later.txt")).unwrap(),
         b"later entry"
     );
-    assert!(!f.folder().join("extra.txt").exists());
+    assert!(f.folder().join("extra.txt").exists());
 }
 
 #[test]
@@ -165,7 +173,7 @@ fn a_crash_at_replaced_is_finished_by_recovery_with_the_release_in_game() {
     recover(&mut state, id, revision).unwrap();
     drop(state);
 
-    let game = f.folder().join("game");
+    let game = f.folder().to_path_buf();
     assert_eq!(
         std::fs::read(inventory::native(&game, EXE)).unwrap(),
         exe_release
@@ -267,9 +275,9 @@ fn a_patch_added_file_and_a_folder_spelled_in_another_case_are_adopted() {
     )
     .unwrap();
     let expected = preview.expected_digest;
-    commit(preview).unwrap();
+    let provenance = commit(preview).unwrap();
 
-    let game = f.folder().join("game");
+    let game = f.folder().to_path_buf();
     assert_eq!(
         std::fs::read(inventory::native(&game, PATCH_ADDED)).unwrap(),
         PATCH_ADDED_BYTES
@@ -279,8 +287,16 @@ fn a_patch_added_file_and_a_folder_spelled_in_another_case_are_adopted() {
         CASED_BYTES
     );
     assert_eq!(
-        inventory::content_digest(&inventory::scan(&game, &CancellationToken::new()).unwrap())
-            .unwrap(),
+        inventory::content_digest(
+            &super::direct::scan(
+                &game,
+                &inspect(&f.state.lock().unwrap(), provenance.work_id)
+                    .unwrap()
+                    .plan
+            )
+            .unwrap()
+        )
+        .unwrap(),
         expected
     );
 }
@@ -301,7 +317,7 @@ fn a_custom_login_file_adopts_in_place_and_its_original_is_backed_up() {
     let preview = f.preview().unwrap();
     assert!(preview.report.login_replaced);
     let backup = preview.report.backup.clone().unwrap();
-    commit(preview).unwrap();
+    let _provenance = commit(preview).unwrap();
 
     // The player's login file is kept at the same relative path in the backup.
     assert_eq!(
@@ -309,7 +325,7 @@ fn a_custom_login_file_adopts_in_place_and_its_original_is_backed_up() {
         CUSTOM_LOGIN
     );
     // The game's login file is the setup version, not the player's.
-    let game_login = std::fs::read(inventory::native(&f.folder().join("game"), LOGIN)).unwrap();
+    let game_login = std::fs::read(inventory::native(f.folder(), LOGIN)).unwrap();
     assert_ne!(game_login, CUSTOM_LOGIN);
 }
 
@@ -397,7 +413,7 @@ fn abandoning_removes_a_partial_replacement_left_in_game() {
     let (f, preview, _) = modified_with_replacement();
     assert!(confirm_replacing(preview, crash_at_replaced).is_err());
     let f = f.reopen();
-    let mut partial = inventory::native(&f.folder().join("game"), EXE).into_os_string();
+    let mut partial = inventory::native(f.folder(), EXE).into_os_string();
     partial.push(".adopt-partial");
     let partial = PathBuf::from(partial);
     std::fs::create_dir_all(partial.parent().unwrap()).unwrap();

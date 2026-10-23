@@ -124,7 +124,7 @@ impl Light {
         })
     }
     pub(super) fn game(&self) -> PathBuf {
-        self.folder.join("game")
+        self.folder.clone()
     }
     pub(super) fn ledger(&self) -> InstalledState {
         InstalledState::load(&self.game())
@@ -349,7 +349,7 @@ async fn an_invalid_login_server_list_refuses_the_light_preview() {
     assert_eq!(recorded.check, "login_servers_invalid");
     // Nothing moved: the stock file is still in the folder and no game tier exists.
     assert!(inventory::native(&lt.folder, OVERLAY).is_file());
-    assert!(!lt.game().exists());
+    assert!(lt.game().exists());
 }
 
 /// A valid list passes the same check and the light preview still runs.

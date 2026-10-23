@@ -16,7 +16,8 @@ pub fn inspect(state: &DesktopState, id: Uuid) -> Result<Record, Error> {
     if op.id != id
         || op.kind != OperationKind::Adopt
         || op.intent_digest != plan.digest()?
-        || plan.schema_version != 1
+        || !matches!(plan.schema_version, 1 | 2)
+        || plan.installation.schema_version != plan.schema_version
         || plan.provenance.work_id != id
     {
         return Err(StorageError::Corrupt.into());
@@ -51,7 +52,8 @@ pub fn interrupted(state: &DesktopState, id: Uuid) -> Result<Interrupted, Error>
         return Err(StorageError::Corrupt.into());
     }
     Ok(Interrupted {
-        recoverable: inspect(state, id).is_ok(),
+        recoverable: inspect(state, id).is_ok()
+            && (!plan.report.in_place() || plan.schema_version == 2),
         abandonable: if plan.report.in_place() {
             super::in_place::abandonable(state, &plan)
         } else {
@@ -71,6 +73,9 @@ pub fn recover(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), 
         return Err(ContractError::StaleRevision.into());
     }
     let record = inspect(state, id)?;
+    if record.plan.report.in_place() && record.plan.schema_version == 1 {
+        return Err(ContractError::InvalidTransition.into());
+    }
     let op = state
         .operations
         .snapshot()

@@ -522,7 +522,10 @@ fn published_record(
     provenance: &Provenance,
 ) -> Result<Record, Error> {
     let record: Record = read_large(&state.directory.root.join(name(provenance.work_id)))?;
-    if record.plan.schema_version != 1 || provenance.setup_policy_version != 1 {
+    if !matches!(record.plan.schema_version, 1 | 2)
+        || record.plan.installation.schema_version != record.plan.schema_version
+        || provenance.setup_policy_version != 1
+    {
         return Err(StorageError::UnsupportedSchema.into());
     }
     match record.plan.source()? {

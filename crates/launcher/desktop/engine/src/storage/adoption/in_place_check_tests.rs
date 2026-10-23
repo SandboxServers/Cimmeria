@@ -229,11 +229,11 @@ async fn a_promoted_adoption_without_a_stored_tree_is_finished() {
 #[test]
 fn a_verified_adoption_still_fails_on_a_digest_miss() {
     let f = Fixture::new(None);
-    let game = f.folder().join("game");
+    let game = f.folder().to_path_buf();
     let (result, events) = capture(|| {
         commit_with(f.preview().unwrap(), |point| {
             if point == publication::Point::SetUp {
-                std::fs::write(game.join("extra.bin"), b"not in the release").unwrap();
+                std::fs::write(game.join("later.txt"), b"changed release bytes").unwrap();
             }
             Ok(())
         })

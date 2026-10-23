@@ -116,7 +116,11 @@ pub(super) fn replaced_kind(path: &str, reason: Classification) -> Option<Classi
 /// Where a replaced file's original is kept: a modified file's original goes to
 /// the backup (D-AI1), one that needs patching to the work folder's `originals`.
 /// A missing file has no original.
-fn original_home(plan: &Plan, path: &str, kind: Classification) -> Result<Option<PathBuf>, Error> {
+pub(super) fn original_home(
+    plan: &Plan,
+    path: &str,
+    kind: Classification,
+) -> Result<Option<PathBuf>, Error> {
     Ok(match kind {
         Classification::Modified => {
             let backup = plan.report.backup.as_ref().ok_or(StorageError::Corrupt)?;
@@ -198,51 +202,6 @@ fn partial_path(target: &Path) -> PathBuf {
     let mut partial = target.as_os_str().to_owned();
     partial.push(".adopt-partial");
     PathBuf::from(partial)
-}
-
-/// Undoes [`replace_file`] while the adoption is staged: the original goes back
-/// from where it was set aside, and the replacement copy leaves `game` only if it
-/// still holds the reviewed bytes. A file in both places keeps the folder's copy
-/// and the set-aside original stays where it is.
-pub(super) fn restore_replaced(
-    path: &str,
-    game_copy: &Path,
-    root_copy: &Path,
-    plan: &Plan,
-    replacement: &Replacement,
-    kind: Classification,
-) -> Result<(), Error> {
-    if let Some(home) = original_home(plan, path, kind)? {
-        match (present(&home)?, present(root_copy)?) {
-            (true, false) => {
-                if let Some(parent) = root_copy.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::rename(&home, root_copy)?;
-            }
-            (true, true) => {
-                tracing::warn!(target: "adoption", path, "abandoning in-place adoption: the original is in both the backup and its old path; the folder's copy stays")
-            }
-            (false, false) if kind == Classification::Modified => {
-                tracing::error!(target: "adoption", path, "abandoning in-place adoption: a modified release file is in neither place");
-                return Err(StorageError::Corrupt.into());
-            }
-            _ => (),
-        }
-    }
-    let expected = Hashed {
-        sha256: replacement.sha256,
-        size: replacement.size,
-    };
-    if present(game_copy)? && holds(game_copy, &expected)? {
-        std::fs::remove_file(game_copy)?;
-    }
-    // A copy an interrupted install left beside the release path is never the reviewed file.
-    let partial = partial_path(game_copy);
-    if present(&partial)? {
-        std::fs::remove_file(&partial)?;
-    }
-    Ok(())
 }
 
 /// Abandon's last folder steps, once the originals are back: the directories the

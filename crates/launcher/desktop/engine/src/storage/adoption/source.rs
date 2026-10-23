@@ -297,6 +297,7 @@ fn blocker(imported: &migration::LegacyImport) -> Option<(Error, rejection::Reje
 
 /// The folder a source is adopted from: the imported game folder, or the folder
 /// root a picked folder resolved to.
+#[cfg(any(test, feature = "test-support"))]
 pub(super) fn root(source: &AdoptionSource) -> &Path {
     match source {
         AdoptionSource::Legacy(imported) => &imported.source.game_directory,

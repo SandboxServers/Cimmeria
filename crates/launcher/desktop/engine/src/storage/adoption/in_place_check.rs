@@ -57,7 +57,11 @@ pub(super) fn read_expected(stage: &Path) -> Option<Tree> {
 
 pub(super) fn validate(game: &Path, plan: &Plan) -> Result<(), Error> {
     inventory::same_directory(game, &plan.stage_identity)?;
-    let scanned = inventory::scan(game, &CancellationToken::new())?;
+    let scanned = if plan.schema_version == 2 {
+        super::direct::scan(game, plan)?
+    } else {
+        inventory::scan(game, &CancellationToken::new())?
+    };
     if !matches!(plan.provenance.check, FileCheck::Light) {
         if inventory::content_digest(&scanned)? != plan.provenance.reference_digest {
             log_tree_checked("verified", TreeOutcome::Mismatch, None);

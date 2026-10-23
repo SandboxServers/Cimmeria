@@ -28,6 +28,8 @@ use refusal::refusal;
 use review::Review;
 #[cfg(all(test, not(target_os = "macos")))]
 mod copy_tests;
+#[cfg(all(test, target_os = "macos"))]
+mod direct_tests;
 #[cfg(test)]
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod fixture;
@@ -132,7 +134,7 @@ impl NativeHost {
     fn adoption_backend(&self) -> Backend {
         #[cfg(all(test, target_os = "macos"))]
         if self.adoption_fixture.is_some() {
-            return Backend::Available;
+            return Backend::InPlace;
         }
         #[cfg(target_os = "macos")]
         {
@@ -141,7 +143,7 @@ impl NativeHost {
                 .as_ref()
                 .is_some_and(|helper| helper.verify().is_ok())
             {
-                Backend::Available
+                Backend::InPlace
             } else {
                 Backend::HelperUnavailable
             }
@@ -208,7 +210,7 @@ impl NativeHost {
     /// `location` is the folder the user picked natively; the copy goes into a
     /// new folder inside it. Only tests and the UAT bridge start it now; the
     /// launcher uses the folder picker.
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg(test)]
     pub fn begin_adoption_preview(
         &self,
         location: PathBuf,

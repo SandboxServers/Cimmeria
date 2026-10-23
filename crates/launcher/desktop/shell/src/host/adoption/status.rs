@@ -13,6 +13,7 @@ pub(super) struct Facts {
     reconciliation: Option<Reconciliation>,
     preparations: Vec<Uuid>,
     owned: bool,
+    has_valid_install: bool,
     completed: Option<Completed>,
 }
 impl NativeHost {
@@ -78,8 +79,7 @@ impl NativeHost {
         // (macOS only through its helper), and the folder itself, light first, where
         // the in-place backend runs too (Windows and Linux).
         let modes = match backend {
-            Backend::Available => vec![adoption::AdoptionMode::Copy],
-            Backend::InPlace => vec![adoption::AdoptionMode::Light, adoption::AdoptionMode::Copy],
+            Backend::Available | Backend::InPlace => vec![adoption::AdoptionMode::Light],
             Backend::HelperUnavailable => Vec::new(),
         };
         Ok(AdoptionStatus {
@@ -102,6 +102,7 @@ impl NativeHost {
             reconciliation: facts.reconciliation,
             preparations: facts.preparations,
             owned: facts.owned,
+            has_valid_install: facts.has_valid_install,
             completed: facts.completed,
             last_error: adoption.last_error,
             last_rejection: adoption.last_rejection.clone(),
@@ -233,12 +234,14 @@ fn adoption_facts(state: &mut DesktopState, adoption: &Adoption) -> Result<Facts
             reconciliation: None,
             preparations: Vec::new(),
             owned: false,
+            has_valid_install: false,
             completed: None,
         });
     }
     // Adoption applies only before any desktop-owned installation exists. An
     // unreadable owner is treated as present rather than adopted over.
     let owned = !matches!(state.installed_content(), Ok(None));
+    let has_valid_install = state.has_valid_install().unwrap_or(false);
     let imported = state
         .legacy_import()
         .map_err(|_| AdoptionError::CorruptState)?
@@ -301,6 +304,7 @@ fn adoption_facts(state: &mut DesktopState, adoption: &Adoption) -> Result<Facts
         reconciliation,
         preparations,
         owned,
+        has_valid_install,
         completed,
     })
 }

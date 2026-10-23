@@ -93,8 +93,8 @@ async fn the_imported_folder_is_adopted_in_place_once_its_release_files_verify()
         operation(&f.host.adoption_status().unwrap()),
         Some((OperationKind::Adopt, OperationState::Succeeded))
     );
-    assert!(under(&folder, "game/Working/Binaries/SGW.exe").is_file());
-    assert!(!under(&folder, "Working/Binaries/SGW.exe").exists());
+    assert!(under(&folder, "Working/Binaries/SGW.exe").is_file());
+    assert!(!folder.join("game").exists());
     // The original, modified later.txt is preserved in the backup folder.
     let backup = backups(&folder);
     assert_eq!(backup.len(), 1);
@@ -262,12 +262,12 @@ async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_light() {
     );
     // Light carries every folder file into `game/`, the release's and the player's
     // own; none is lost.
-    assert!(!folder.join("unknown.dll").exists());
+    assert!(folder.join("unknown.dll").exists());
     assert_eq!(
-        std::fs::read(under(&folder, "game/unknown.dll")).unwrap(),
+        std::fs::read(under(&folder, "unknown.dll")).unwrap(),
         b"untrusted plugin"
     );
-    assert!(under(&folder, "game/Working/Binaries/SGW.exe").is_file());
+    assert!(under(&folder, "Working/Binaries/SGW.exe").is_file());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

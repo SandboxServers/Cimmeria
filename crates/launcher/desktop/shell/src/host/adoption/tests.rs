@@ -275,10 +275,7 @@ async fn production_admission_requires_the_build_pinned_helper() {
     f.host.helper = Some(
         cimmeria_launcher_engine::mac_wine::HelperResource::open(helper.clone(), &pinned).unwrap(),
     );
-    assert_eq!(
-        f.host.adoption_status().unwrap().backend,
-        Backend::Available
-    );
+    assert_eq!(f.host.adoption_status().unwrap().backend, Backend::InPlace);
     // A helper replaced after startup no longer matches its build identity.
     fs::write(&helper, b"replaced helper").unwrap();
     assert_eq!(

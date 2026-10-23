@@ -202,11 +202,13 @@ pub fn choices() -> adoption::Choices {
 /// carries a Native backend, which macOS Play admission refuses by design.
 pub fn adopt_native(legacy: &Legacy, state: &Arc<Mutex<DesktopState>>) -> adoption::Provenance {
     let request = legacy.request(&state.lock().unwrap());
-    let preview = adoption::preview(
+    let preview = adoption::preview_using(
         state.clone(),
         request,
         CancellationToken::new(),
         ProgressSink::latest().0,
+        adoption::Backend::Native,
+        None,
     )
     .unwrap();
     let handle = preview.report().preview_handle;

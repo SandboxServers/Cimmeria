@@ -278,6 +278,8 @@ pub struct AdoptionStatus {
     pub preparations: Vec<Uuid>,
     /// A desktop-owned installation exists, so nothing further can be adopted.
     pub owned: bool,
+    /// Authenticated content exists, independent of runtime and Play availability.
+    pub has_valid_install: bool,
     pub completed: Option<Completed>,
     pub last_error: Option<AdoptionError>,
     /// The check behind `last_error` when the engine recorded one.

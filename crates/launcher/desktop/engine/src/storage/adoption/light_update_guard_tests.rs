@@ -186,7 +186,7 @@ async fn a_copy_adopted_install_still_rebuilds_from_the_seed() {
     let fixture = Fixture::with_archive(None, SeedKind::Zip, archive.clone());
     let provenance = commit(fixture.preview().unwrap()).unwrap();
     assert_eq!(provenance.check, FileCheck::Full);
-    let game = fixture.folder().join("game");
+    let game = fixture.folder().to_path_buf();
     let seed_sha = fixture.release.manifest().seed.sha256.clone();
     // The copy-adoption ledger carries `seed_adopted`, which alone would refuse the
     // seedless path; rewrite it so only the provenance is left to decide.
