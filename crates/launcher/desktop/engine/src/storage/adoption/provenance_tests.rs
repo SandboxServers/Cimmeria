@@ -3,6 +3,25 @@ use super::in_place_tests::{commit, Fixture};
 use super::*;
 
 #[test]
+fn retained_adoption_plan_remains_valid_after_an_unrelated_operation() {
+    let f = Fixture::new(None);
+    commit(f.preview().unwrap()).unwrap();
+    let mut state = f.state.lock().unwrap();
+    let id = Uuid::new_v4();
+    let revision = state.operations.snapshot().revision;
+    state
+        .operations
+        .begin(id, OperationKind::Launch, [0x45; 32], revision)
+        .unwrap();
+    state
+        .operations
+        .observe(id, OperationState::Failed)
+        .unwrap();
+    assert!(state.installed_content().unwrap().is_some());
+    assert!(state.has_valid_install().unwrap());
+}
+
+#[test]
 fn installed_content_requires_the_retained_adoption_plan() {
     for corruption in ["missing", "schema", "intent"] {
         let f = Fixture::new(None);
