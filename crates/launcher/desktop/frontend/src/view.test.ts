@@ -18,6 +18,42 @@ function dom() {
   return {document: document as unknown as Document, get, click, window};
 }
 
+test('Settings displays normal Windows paths while saves and reopening retain native spelling', async () => {
+  for (const [directory, shown] of [[String.raw`\\?\C:\Temp\sgw`, String.raw`C:\Temp\sgw`],
+    [String.raw`\\?\UNC\server\share\sgw`, String.raw`\\server\share\sgw`]]) {
+    let saved = {...initial(), preferences:{...initial().preferences, install_directory:directory}};
+    const requests: Command[] = [];
+    const invoke = async (command: string, args?: Record<string, unknown>) => {
+      if (command === 'seed_archive_command') return seedIdle();
+      if (command === 'launcher_command') {
+        const request = args!.request as Command; requests.push(request);
+        if (request.command === 'save_preferences') {
+          assert.equal(request.install_directory, directory);
+          saved = {...saved, preferences:{...saved.preferences, launcher_summary_consent:request.launcher_summary_consent, revision:saved.preferences.revision+1}};
+
+        }
+      }
+      return structuredClone(saved);
+    };
+    for (const reopen of [false, true]) {
+      const ui = dom(), app = mountLauncher(ui.document, invoke);
+      try {
+        await app.ready; await flush();
+        assert.equal(ui.get<HTMLInputElement>('install-path').value, shown);
+        assert.equal(saved.preferences.install_directory, directory);
+        if (reopen) { assert.equal(saved.preferences.launcher_summary_consent, true); continue; }
+        const consent = ui.get<HTMLInputElement>('telemetry'); consent.checked = true;
+        consent.dispatchEvent(new ui.window.Event('change')); await app.settled(); await flush();
+        assert.equal(requests.filter(r => r.command === 'save_preferences').length, 1);
+        ui.click('folder'); await app.settled();
+        await app.refresh(); await flush();
+        assert.equal(ui.get<HTMLInputElement>('install-path').value, shown);
+        assert.equal(saved.preferences.install_directory, directory);
+      } finally { await app.dispose(); }
+    }
+  }
+});
+
 test('approved tabs and settings work without inventing installed state', {timeout:5000}, async () => {
   const ui = dom();
   const calls:string[]=[];

@@ -68,6 +68,36 @@ fn ready(state: &mut DesktopState) -> (updater::Config, Snapshot) {
 }
 
 #[tokio::test]
+async fn launch_inspection_uses_native_update_configuration_after_reopen() {
+    for configured in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("state");
+        let mut state = DesktopState::open(&path).unwrap();
+        let (config, _) = ready(&mut state);
+        drop(state);
+        let mut host = NativeHost::new(path);
+        host.updater_config = configured.then_some(config);
+        let update = host
+            .updater_command(UpdaterCommand::Inspect { schema_version: 1 })
+            .await
+            .unwrap();
+        assert_eq!(
+            update.phase,
+            if configured {
+                updater::Phase::Ready
+            } else {
+                updater::Phase::Disabled
+            }
+        );
+        let play = host
+            .launch_command(crate::host::LaunchCommand::Inspect { schema_version: 1 })
+            .unwrap();
+        let value = serde_json::to_value(play).unwrap();
+        assert_eq!(value["launcher_update_required"], configured);
+    }
+}
+
+#[tokio::test]
 async fn successful_engine_spawn_shuts_down_once_despite_post_spawn_persistence_failure() {
     for after_replace in [false, true] {
         let temp = tempfile::tempdir().unwrap();

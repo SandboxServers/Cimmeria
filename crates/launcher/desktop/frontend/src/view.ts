@@ -11,6 +11,7 @@ import { mountPhysx } from "./physx-view";
 import { mountSeedArchive } from "./seed-archive-view";
 import { makePanelContext } from "./panel-context";
 import { aboutText, buildBadge } from "./about";
+import { displayPath } from "./display-path";
 
 export type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 class Launcher extends Context.Service<Launcher, Effect.Success<typeof makeLauncher>>()('launcher/Application') {}
@@ -73,7 +74,7 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     const enabled = !!native && !native.requires_reopen && !current.needsInspection && !current.busy && !active;
     checkbox.checked = pendingConsent ?? native?.preferences.launcher_summary_consent ?? false;
     checkbox.disabled = !enabled;
-    path.value = native?.preferences.install_directory ?? '';
+    path.value = displayPath(native?.preferences.install_directory ?? '');
     get<HTMLButtonElement>('choose').disabled = !enabled || operationOpen(native?.operation.operation);
     get<HTMLButtonElement>('folder').disabled = !enabled || !native?.preferences.install_directory;
     const failure = localError ?? current.error;

@@ -1,6 +1,7 @@
 import {Context,Effect,Fiber,Layer,ManagedRuntime,Stream} from 'effect';
 import {Action,GameUpdateState,gameUpdateBridgeLayer,makeGameUpdateWorkflow} from './game-update-workflow';
 import type {Invoke} from './view';
+import {displayPath} from './display-path';
 class GameUpdate extends Context.Service<GameUpdate,Effect.Success<typeof makeGameUpdateWorkflow>>()('launcher/GameUpdate') {}
 const actions:Action[]=['apply','recover','abandon','discard','cleanup','rollback'];
 const labels:Record<Action,string>={apply:'Update game',recover:'Recover update',abandon:'Abandon preparation',discard:'Remove partial update',cleanup:'Remove old backup',rollback:'Restore previous release'};
@@ -53,7 +54,7 @@ export function mountGameUpdate(document:Document,invoke:Invoke,onChange:()=>voi
   if(current.review){
    const r=current.review;
    get('game-update-review-title').textContent=labels[r.action];
-   get('game-update-directory').textContent=r.directory;
+   get('game-update-directory').textContent=displayPath(r.directory);
    get('game-update-identities').hidden=!['apply','recover','rollback'].includes(r.action);
    get('game-update-identities').textContent=`Current signed release: ${r.from}\nTarget signed release: ${r.to}`;
    get('game-update-consequences').textContent=consequences[r.action];

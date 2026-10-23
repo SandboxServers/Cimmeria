@@ -1,6 +1,9 @@
 # Signed launcher updates
 
-> Reference · desktop launcher maintainers · 2026-10-11
+> **Type:** Reference
+> **Audience:** Desktop launcher maintainers
+> **Last updated:** 2026-10-23
+> **Companions:** [Desktop README](../README.md), [self-update summary](../../../../docs/client/launcher-self-update.md), [player guide](../../../../docs/client/launcher-guide.md#launcher-updates)
 
 The desktop launcher can check a native-configured release feed, download a
 package, and verify its Minisign signature and signed version before saving it.
@@ -92,6 +95,34 @@ pid wait before the single-instance guard remain native Windows gates (LX-26).
 These checks do not prove packaged Tauri IPC/layout/exit, production HTTPS,
 replacement of the actual launcher, application health or production restart. Production key custody, updater-compatible CLI signing, release
 publication, OS signing/notarization and release ordering remain separate gates.
+
+## Startup and main-page integration
+
+Before a check, retained offers that are no longer newer than the running version are cleared. A failed network check cannot revive an already installed update; a still-newer offer remains mandatory.
+
+The native host supplies its compiled updater configuration to Play inspection and admission. Inactive retained offers do not gate builds with updates disabled; active/reconciliation work still gates every build. No renderer field chooses this capability.
+
+A main-page retry labelled **Check for updates** only checks. If it discovers an offer, the player must press **Update and restart** to install it.
+
+Application startup inspects durable updater state and checks the feed once when
+that state admits a check. Play waits during this bounded check. A saved Ready
+package is reverified by inspection and does not trigger another feed check or
+download. Active or reconciliation-required updates are inspected, not replayed.
+
+The main page offers **Update and restart** for a known update. One press
+inspects current revisions, downloads and verifies an available offer, then applies
+the Ready package. A saved Ready package goes directly to Apply. Duplicate presses
+are suppressed, feedback appears immediately, and any failed or uncertain reply
+stops the sequence. Startup alone never downloads, replaces files or restarts.
+
+Both the frontend and native Play admission refuse available/Ready offers, active
+updater work and failed attempts that retain a known offer. Rechecking preserves
+the previous offer until a successful response supersedes it, including on network
+failure. A successful check finding no newer version clears that requirement;
+startup acknowledgment completes a successful replacement. A failed check with no
+known offer permits Play after the request finishes and shows failure/retry
+feedback. Disabled updater builds remain playable subject to other launch gates.
+Other operation and runtime requirements still apply.
 
 ## Settings integration
 

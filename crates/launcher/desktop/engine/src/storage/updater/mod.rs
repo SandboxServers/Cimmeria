@@ -202,6 +202,17 @@ impl DesktopState {
         }
         Ok(())
     }
+    /// A known launcher update must be installed before another game starts.
+    pub fn launcher_update_blocks_play(
+        &self,
+        config: Option<&Config>,
+    ) -> Result<bool, StorageError> {
+        let record = self.update_record()?;
+        Ok(record.phase.busy()
+            || (config.is_some()
+                && (matches!(record.phase, Phase::Available | Phase::Ready)
+                    || (record.phase == Phase::Failed && record.offer.is_some()))))
+    }
     /// Called once by DesktopState::open, never by a live worker's polling path.
     pub(crate) fn recover_launcher_update(&mut self) -> Result<(), StorageError> {
         let mut record = self.update_record()?;
@@ -290,9 +301,19 @@ impl DesktopState {
         let config = config.ok_or(Error::Disabled)?;
         config.allow(&config.endpoint)?;
         let mut record = self.update_admission(revision, operation_revision)?;
+        // An acknowledged offer may remain for cleanup. It is not a pending
+        // update when this binary already has its version (or a newer one).
+        if record
+            .offer
+            .as_ref()
+            .is_some_and(|offer| config.newer(&offer.version).is_err())
+        {
+            record.offer = None;
+        }
         record.phase = Phase::Checking;
         record.owner = Some(Uuid::new_v4());
-        record.offer = None;
+        // Keep a known offer through a failed recheck; only a successful check
+        // may clear it. Network failure must not bypass the Play requirement.
         record.failure = None;
         record.apply = None;
         let record = self.save_update(record)?;

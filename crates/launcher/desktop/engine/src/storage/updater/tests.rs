@@ -1,4 +1,5 @@
 use super::*;
+mod play_gate;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use minisign::KeyPair;
 use reqwest::Url;
@@ -9,6 +10,9 @@ use wiremock::{
 };
 const PAYLOAD: &[u8] = b"inert signed launcher fixture, never executable";
 fn fixture(version: &str) -> (Config, Offer) {
+    fixture_with_current(version, "1.0.0")
+}
+fn fixture_with_current(version: &str, current: &str) -> (Config, Offer) {
     let keys = KeyPair::generate_unencrypted_keypair().unwrap();
     let signature = minisign::sign(
         Some(&keys.pk),
@@ -21,7 +25,7 @@ fn fixture(version: &str) -> (Config, Offer) {
     let config = Config::new(
         "https://updates.example.test/feed",
         &STANDARD.encode(keys.pk.to_box().unwrap().to_string()),
-        "1.0.0",
+        current,
         "darwin-aarch64",
         vec!["updates.example.test".into()],
     )

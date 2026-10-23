@@ -2,7 +2,7 @@
 title: "Launcher Guide"
 type: how-to
 audience: players, operators
-last_updated: 2026-10-12
+last_updated: 2026-10-23
 companion_docs:
   - ../guides/macos.md
   - ../../crates/launcher/desktop/README.md
@@ -157,7 +157,9 @@ so the game may not start. Install it under Settings." Play is not blocked.
 
 ### Play
 
-Click **Play**. The launcher writes the login server list into the client,
+Wait for the startup launcher-update check to finish. If **Update and restart**
+appears on the main page, click it before playing; see [Launcher updates](#launcher-updates).
+Then click **Play**. The launcher writes the login server list into the client,
 loads the client patches (and, if you turned it on, the diagnostics module),
 and starts `SGW.exe`. The line under the button then says "Game process
 started. Login and world entry are not verified": the launcher sees the game
@@ -360,7 +362,7 @@ soon as you press it.
 
 | Section | What it does |
 |---|---|
-| **Local install directory** | **Choose folder…** picks where a new install goes. **Show folder** opens the saved folder. |
+| **Local install directory** | **Choose folder…** picks where a new install goes. **Show folder** opens the saved folder. Windows paths display without the internal `\\?\` prefix; the saved location stays the same. |
 | **Repair game** | Downloads the signed release again and replaces modified or missing game files in the installed folder. Confirm in the panel that opens. **Cancel** works until replacement starts. Your settings are kept. The [repair contract](../../crates/launcher/desktop/docs/repair.md) has the recovery buttons. |
 | **Uninstall…** | Removes the game files and modifications from the installed folder after you confirm with **Uninstall game**. Launcher settings stay. |
 | **Share setup diagnostics** | Off by default. When it is on, setup diagnostics are sent over https to your first login server, if that address is https. With the default server list (plain http) they are saved but not sent yet, and the box says so. Nothing is sent while it is off. The built-in fallback address is not set yet. |
@@ -379,18 +381,22 @@ The **Settings** heading also shows the launcher's version and release tag.
 
 ### Launcher updates
 
-The Windows launcher updates itself from the signed release feed on the
-stable link. It does not check by itself:
+The Windows launcher checks the signed release feed when it starts. **Play**
+waits while the check runs. When a newer launcher is available, the main page
+shows **Update and restart**, and you must update before playing.
 
-1. In **Settings → Launcher updates**, click **Check for updates**. When a
-   newer release exists, the section shows its version and notes.
-2. Click **Download update**. The launcher downloads the new zip and checks its
-   signature and version before it saves it. A download that fails the check
-   is not kept.
-3. Click **Apply and restart**. The launcher puts the new files in place,
-   keeping each file it replaces as `<name>.old`, starts the new launcher and
-   closes. The new launcher confirms its version and then deletes the `.old`
-   files.
+Click **Update and restart** once. The launcher downloads the zip, verifies its
+signature and version, puts the files in place and restarts. It shows progress
+from the first press; leave it open while this runs. A previously downloaded and
+verified package is reused. The old files remain as `<name>.old` until the new
+launcher starts and confirms its version, then they are deleted. Checking at
+startup does not download or install anything without your click.
+
+If the check fails before any update is known, the launcher shows the failure
+and a retry button, and you can play after the check finishes. If it already
+knows about an update, a failed recheck keeps **Play** blocked. Settings retains
+**Check for updates**, **Download update**, **Apply and restart** and
+**Recheck update status** for troubleshooting.
 
 If anything fails before the new launcher starts, the old files are put back
 and the section says so, for example "The update could not start. The original

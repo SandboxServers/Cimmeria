@@ -187,3 +187,4 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [reference_adoption_relocation_audit_2026_10_23.md](reference_adoption_relocation_audit_2026_10_23.md) — shipped rename/copy audit and ownership versus validity distinction; design pending owner decisions.
 - [Launcher release slots](launcher-release-slots.md): D-LX15 stable UTC daily slots and applied overlay identity sources.
+- [reference_launcher_display_startup_update.md](reference_launcher_display_startup_update.md) — display-only Windows paths, startup checks and known-offer Play gates; canonical updater contract.

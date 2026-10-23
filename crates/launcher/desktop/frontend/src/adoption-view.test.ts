@@ -14,6 +14,35 @@ const review=(handle='preview-1'):NonNullable<AdoptionStatus['review']>=>({previ
  login_servers:[{name:'Second',url:'https://example.invalid/second'},{name:'First',url:'https://example.invalid/first'}],client_patches_enabled:false,
  game_telemetry_opted_in:true,game_telemetry_available:false,requires_normalization:true,requires_telemetry_acceptance:true,user_data_remains_in_source:true,in_place:false,blocked_files:[]});
 const reviewing=(handle?:string):AdoptionStatus=>({...idle(3),native:native(3,adopt('running')),activity:'review',review:review(handle)});
+
+test('adoption displays drive and UNC paths throughout status and backup review without changing snapshots', async()=>{
+ for(const [directory,shown] of [[String.raw`\\?\C:\Temp\sgw`,String.raw`C:\Temp\sgw`],
+  [String.raw`\\?\UNC\server\share\sgw`,String.raw`\\server\share\sgw`]]) {
+  const backup=directory+'\\backup',base={...idle(),backend:'in_place' as const};
+  let status:AdoptionStatus=base;
+  const ui=mount(()=>status);
+  try {
+   await ui.app.ready;await ui.settle();
+   for(const next of [
+    {...base,imported:{...base.imported!,game_directory:directory}},
+    ...(['in_place','available'] as const).map(backend=>({...base,backend,reconciliation:{kind:'copy' as const,operation_id:'op',directory,can_recover:true,can_abandon:true}})),
+    ...([true,false] as const).map(light=>({...base,completed:{directory,backup_directory:backup,light}})),
+    {...base,backend:'available' as const,completed:{directory}},
+   ]) {
+    status=next;const before=structuredClone(status);
+    await ui.app.refresh();await ui.settle();
+    assert(ui.text().includes(shown),ui.text());assert(!ui.text().includes('\\\\?\\'),ui.text());
+    if(status.completed?.backup_directory&&!status.completed.light)assert(ui.text().includes(shown+'\\backup'));
+    assert.deepEqual(status,before);
+   }
+   status={...base,activity:'review',review:{...review(),in_place:true,source:directory,destination:directory,backup_directory:backup}};
+   const before=structuredClone(status);await ui.app.refresh();await ui.settle();
+   assert(ui.get('adoption-replace-row').textContent!.includes(shown+'\\backup'));
+   assert(!ui.get('adoption-replace-row').textContent!.includes('\\\\?\\'));
+   assert.deepEqual(status,before);
+  } finally {await ui.app.dispose();}
+ }
+});
 type Reply=AdoptionStatus|Promise<AdoptionStatus>;
 function mount(reply:(request:Request|'choose')=>Reply,onChange=()=>{}) {
  const {document,window}=parseHTML(html),calls:(Request|'choose')[]=[],modes:string[]=[];

@@ -1584,6 +1584,20 @@ visual, native macOS, or real-client run is attested. Ask before laptop or lab u
 | AIP-U4 | Run Repair, Update, then selective Uninstall on an adopted fixture with an unrelated extra file | Per-file maintenance preserves extras; Uninstall retains root, extras, and original-file backups |
 | AIP-U5 | Reopen interrupted schema-1 adoption and abandon; separately interrupt/abandon schema-2 adoption | Legacy recovery refuses moving and metadata-only abandon retains bytes; schema-2 abandon rolls back approved individual changes |
 
+### Path display and startup update follow-up (PDU)
+
+Use the [bundled follow-up design and canonical checklist](../analysis/launcher-uat-fixes/README.md#path-display-and-startup-update-follow-up-2026-10-23).
+**Pending owner UAT:** these rows do not attest packaged IPC/layout, a physical
+picker, real launcher replacement/restart or a game run. Ask before laptop or lab use.
+
+| ID | Action | Expected |
+|---|---|---|
+| PDU-U1 | Open Settings and completed adoption status for verbatim drive and UNC fixture paths; open maintenance confirmations | All visible absolute folders use normal Windows spelling; saving consent and reopening retains the exact native path and Show folder target |
+| PDU-U2 | Start a configured Windows launcher with a newer signed offer | Startup checks once with visible feedback; Play is disabled and the main page offers Update and restart; no download occurs before the press |
+| PDU-U3 | Press Update and restart once, then try a duplicate press; repeat with a saved Ready package | One inspect/prepare/apply sequence; immediate feedback; saved Ready skips download; Play stays gated until replacement startup |
+| PDU-U4 | Fail a feed check with no known offer, then fail a recheck with an existing offer | First case shows retry feedback and permits Play after the bounded check; second retains the offer and keeps Play blocked, including after refresh |
+| PDU-U5 | Fail preparation or lose its reply; reopen with active/reconciliation state | No automatic Apply or replay; Play remains blocked for owned update work; Settings exposes recovery status |
+
 **What this run risks (owner decision, D-LU3, D-LU4):** chat and character names in the game log leave the machine, and only a per-word scrub (paths, IPs, URLs, `@`, GUIDs, long hex) applies; secrets under 32 characters or split by dots are kept; log rows can be forged by a log-token holder; the install and address budgets are speed bumps. The full list is in the [ledger close-out](../analysis/launcher-uat-fixes/README.md#owner-risks-accepted-under-d-lu3-and-d-lu4-nothing-was-removed-to-avoid-them).
 
 ## Lab CLI (`lab.exe`)

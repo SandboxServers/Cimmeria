@@ -1,5 +1,6 @@
 import type { InstallViewState, makeInstallWorkflow } from './install-workflow';
 import type { Effect } from 'effect';
+import { displayPath } from './display-path';
 type Service = Effect.Success<typeof makeInstallWorkflow>;
 type Action = 'repair'|'recover_repair'|'abandon_repair'|'cleanup_repair';
 /** Settings confirmation is transient; native state alone authorizes mutation. */
@@ -13,7 +14,7 @@ export function repairControls(document:Document, uuid:()=>string, run:(action:(
   const show=()=>{
     const confirmation=get('repair-confirmation');if(!confirmation)return;
     confirmation.hidden=!pending;
-    get('repair-directory')!.textContent=pending?.directory??'';
+    get('repair-directory')!.textContent=displayPath(pending?.directory??'');
     get('repair-consequences')!.textContent=pending?.action==='repair'?'Rebuild the saved signed release. Game modifications will be replaced. The old game remains until replacement; settings and diagnostics consent stay unchanged. Cancel is available only before replacement begins.':pending?.action==='recover_repair'?'Finish a checkpointed replacement only after native ownership and helper checks pass. This cannot be cancelled. Unknown helper outcomes remain blocked.':pending?.action==='abandon_repair'?'Stop only interrupted preparation before a commit checkpoint. Keep the old game and all staged files. This does not repair content or free staging space. Unknown helper outcomes may prevent abandonment.':'Permanently delete the current successful repair’s old backup, including modifications there. Keep the active game and retained stages. This cannot be undone.';
   };
   for(const [id,action] of [['repair','repair'],['recover-repair','recover_repair'],['abandon-repair','abandon_repair'],['cleanup-repair','cleanup_repair']] as const)on(id,()=>{

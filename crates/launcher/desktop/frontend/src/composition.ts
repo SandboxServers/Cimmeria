@@ -24,7 +24,7 @@ const telemetryStatus = mountTelemetryStatus(document,invoke);
 // The game-telemetry save reads the checkbox after its first inspect: refresh the line once that lands.
 void gameTelemetry.ready.then(()=>telemetryStatus.refresh());
 // A finished Play changes what the last launch did about game diagnostics.
-const play = mountLaunch(document,invoke,()=>{void installation.refresh(); void app.refresh(); void updater?.refresh(); void gameTelemetry.refresh(); void telemetryStatus.refresh();});
+const play = mountLaunch(document,invoke,()=>{void installation.refresh(); void app.refresh(); void updater?.refresh(); void gameTelemetry.refresh(); void telemetryStatus.refresh();},undefined,true);
 let adoption: ReturnType<typeof mountAdoption> | undefined;
 const migration = mountMigration(document,invoke,()=>{void app.refresh(); void installation.refresh(); void play.refresh(); void adoption?.refresh();});
 // Adoption notifies only when a saved revision changed, so this cannot loop.
@@ -34,7 +34,7 @@ const stopAdoptionRefresh = app.context.onSnapshot(snapshot=>{
  const key=`${snapshot.operation.revision}:${snapshot.preferences.revision}`;
  if(key!==adoptionRevision){adoptionRevision=key;void adoption?.refresh();}
 });
-updater = mountUpdater(document,invoke,()=>{void app.refresh(); void installation.refresh(); void play.refresh();});
+updater = mountUpdater(document,invoke,()=>{void app.refresh(); void installation.refresh(); void play.refresh();},{startup:true,onPlayGate:blocked=>play.setUpdateBlocked(blocked)});
 const gameUpdate = mountGameUpdate(document,invoke,()=>{void app.refresh();void installation.refresh();void play.refresh();void updater?.refresh();});
 return {installation, app, play, migration, adoption, updater, gameUpdate, gameTelemetry, telemetryStatus,
  dispose:async()=>{stopAdoptionRefresh();telemetryStatus.dispose();await Promise.all([gameTelemetry.dispose(),gameUpdate.dispose(),adoption!.dispose(),migration.dispose(),play.dispose(),app.dispose(),installation.dispose(),updater!.dispose()]);}};

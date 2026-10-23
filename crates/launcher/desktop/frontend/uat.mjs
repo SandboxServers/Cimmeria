@@ -15,6 +15,8 @@ import { bridgeLayer, makeLauncher } from './.test-build/workflows.mjs';
 const binary = resolve(process.argv[2] ?? '');
 assert.ok(process.argv[2], 'pass the native state_bridge executable');
 const root = await mkdtemp(join(tmpdir(), 'cimmeria-logic-uat-'));
+const gameDirectory=join(root,'Game');
+const nativeDirectory=process.platform==='win32'?'\\\\?\\'+gameDirectory:gameDirectory;
 const children = [];
 function start() {
   const child = spawn(binary, [root], { stdio: ['pipe', 'pipe', 'inherit'] });
@@ -50,7 +52,7 @@ try {
     const initial = yield* launcher.inspect;
     assert.equal(initial.preferences.launcher_summary_consent, false);
     console.log('PASS first inspection: consent off, no operation');
-    const saved = yield* launcher.savePreferences(join(root, 'Game'), true);
+    const saved = yield* launcher.savePreferences(nativeDirectory, true);
     assert.equal(saved.preferences.revision, 1);
     assert.equal(saved.preferences.launcher_summary_consent, true);
     assert.equal((yield* launcher.snapshot).busy, false);
@@ -62,7 +64,7 @@ try {
   await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const launcher = yield* makeLauncher;
     const restored = yield* launcher.inspect;
-    assert.equal(restored.preferences.install_directory, join(root, 'Game'));
+    assert.equal(restored.preferences.install_directory, nativeDirectory);
     assert.equal(restored.preferences.launcher_summary_consent, true);
     assert.equal(restored.preferences.revision, 1);
     console.log('PASS process restart: install directory and consent persisted');
@@ -95,7 +97,8 @@ try {
     assert.equal((await third.invoke({command:'inspect', schema_version:1})).preferences.revision, 3);
     document.getElementById('settings').dispatchEvent(new window.Event('click'));
     assert.equal(document.getElementById('gear').hidden, false);
-    assert.equal(document.getElementById('install-path').value, join(root, 'Game'));
+    assert.equal(document.getElementById('install-path').value, gameDirectory);
+    assert.equal((await third.invoke({command:'inspect',schema_version:1})).preferences.install_directory,nativeDirectory);
     document.getElementById('choose').dispatchEvent(new window.Event('click'));
     await app.settled(); await flush();
     assert.equal((await third.invoke({command:'inspect', schema_version:1})).preferences.revision, 3);

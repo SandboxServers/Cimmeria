@@ -31,16 +31,23 @@ export function updaterText(s:UpdaterState):string {
   default:return 'Check for a signed launcher release. Apply and restart becomes available after package verification.';
  }
 }
-export function mountUpdater(document:Document,invoke:Invoke,onChange:()=>void=()=>{}) {
+export function mountUpdater(document:Document,invoke:Invoke,onChange:()=>void=()=>{},options:{startup?:boolean;onPlayGate?:(blocked:boolean)=>void}={}) {
  const runtime=ManagedRuntime.make(Layer.effect(Updater,makeUpdaterWorkflow).pipe(Layer.provide(updaterBridgeLayer(request=>invoke('updater_command',{request})))));
  const get=(id:string)=>document.getElementById(id)!;
  const button=(id:string)=>get(id) as HTMLButtonElement;
- let current:UpdaterState={status:null,pending:null,uncertain:true,error:null},pending=false,disposed=false;
+ let current:UpdaterState={status:null,pending:null,uncertain:true,error:null},pending=false,disposed=false,starting=!!options.startup,updating=false;
  let mutation:Promise<void>=Promise.resolve();
  const render=()=>{
   if(disposed)return;
   const phase=current.status?.phase,busy=pending||!!current.pending,active=phase==='checking'||phase==='downloading'||phase==='verifying'||phase==='installing'||phase==='restart_required'||phase==='reconciliation_required';
-  get('updater-status').textContent=updaterText(current);
+  const known=!!current.status?.offer&&['available','ready','failed'].includes(phase??'');
+  options.onPlayGate?.(starting||busy||active||known||!!current.status?.requires_reopen||!current.status);
+  const main=document.getElementById('update-launcher') as HTMLButtonElement|null;
+  if(main){main.hidden=!(known||active||current.error||current.status?.failure&&phase!=='disabled');main.disabled=busy||active||!!current.status?.requires_reopen;main.setAttribute('aria-busy',String(busy));
+   main.textContent=updating?'Updating launcher…':known||active?'Update and restart':'Check for updates';}
+  const text=updating?'Updating the launcher. Downloading, verifying and restarting; keep the launcher open…':updaterText(current);
+  const mainStatus=document.getElementById('launcher-update-status');if(mainStatus)mainStatus.textContent=known?`Update the launcher before playing. ${text}`:text;
+  get('updater-status').textContent=text;
   get('updater-notes').textContent=current.status?.offer?.notes??'';
   button('inspect-updater').disabled=busy;
   button('check-updater').disabled=busy||active||current.uncertain||!current.status||phase==='disabled'||!!current.status.requires_reopen;
@@ -48,8 +55,28 @@ export function mountUpdater(document:Document,invoke:Invoke,onChange:()=>void=(
   button('prepare-updater').disabled=busy||current.uncertain||phase!=='available'||!current.status?.offer||!!current.status?.requires_reopen;
  };
  const watcher=runtime.runFork(Effect.flatMap(Updater,s=>Stream.runForEach(s.changes,value=>Effect.sync(()=>{current=value;render();}))));
- const run=(action:'inspect'|'check'|'prepare'|'apply')=>{if(disposed||pending)return mutation;pending=true;render();mutation=runtime.runPromise(Effect.flatMap(Updater,s=>Effect.result(s.run(action)))).then(()=>onChange()).finally(()=>{pending=false;render();});return mutation;};
+ const run=(action:'inspect'|'check'|'prepare'|'apply'|'startup'|'update')=>{
+  if(disposed||pending)return mutation;pending=true;updating=action==='update';render();
+  mutation=runtime.runPromise(Effect.flatMap(Updater,s=>Effect.result(Effect.gen(function*(){
+   if(action==='startup'){
+    const status=yield* s.run('inspect');
+    if(!status.requires_reopen&&['idle','up_to_date','installed','available','failed'].includes(status.phase))yield* s.run('check');
+   }else if(action==='update'){
+    let status=yield* s.run('inspect');
+    if(['idle','up_to_date','installed','failed'].includes(status.phase))status=yield* s.run('check');
+    if(status.phase==='available')status=yield* s.run('prepare');
+    if(status.phase==='ready')yield* s.run('apply');
+   }else yield* s.run(action);
+  })))).then(()=>onChange()).finally(()=>{starting=false;pending=false;updating=false;render();});return mutation;
+ };
  const listeners=([['inspect-updater','inspect'],['check-updater','check'],['prepare-updater','prepare'],['apply-updater','apply']] as const).map(([id,action])=>{const listener=()=>{if(!button(id).disabled)void run(action);};button(id).addEventListener('click',listener);return ()=>button(id).removeEventListener('click',listener);});
- const ready=run('inspect');
+ const main=document.getElementById('update-launcher') as HTMLButtonElement|null;
+ const update=()=>{
+  if(!main||main.disabled)return;
+  const status=current.status,offered=!!status?.offer&&['available','ready','failed'].includes(status.phase);
+  void run(offered?'update':'startup');
+ };main?.addEventListener('click',update);
+ if(main)listeners.push(()=>main.removeEventListener('click',update));
+ const ready=run(options.startup?'startup':'inspect');
  return {ready,refresh:()=>run('inspect'),settled:()=>mutation,dispose:async()=>{disposed=true;listeners.forEach(remove=>remove());await Effect.runPromise(Fiber.interrupt(watcher));await mutation;await runtime.dispose();}};
 }

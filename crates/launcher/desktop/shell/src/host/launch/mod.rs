@@ -66,7 +66,13 @@ impl NativeHost {
                 let resources = owner
                     .resolve_play_resources(bundled)?
                     .ok_or(JobError::PlatformUnavailable)?;
-                owner.admit_launch(operation_id, operation_revision, installation_id, resources)?
+                owner.admit_launch_with_updater(
+                    operation_id,
+                    operation_revision,
+                    installation_id,
+                    resources,
+                    self.updater_config.as_ref(),
+                )?
             };
             if admission.dispatch {
                 match launch::dispatch(store.clone(), operation_id) {
@@ -110,10 +116,12 @@ impl NativeHost {
                 .operation
                 .as_ref()
                 .is_none_or(|op| op.state.terminal());
-        let launcher_update_required = idle
-            && state
-                .installed_launcher_minimum()?
-                .is_some_and(|minimum| minimum.blocks());
+        let launcher_update_required = state
+            .launcher_update_blocks_play(self.updater_config.as_ref())?
+            || (idle
+                && state
+                    .installed_launcher_minimum()?
+                    .is_some_and(|minimum| minimum.blocks()));
         let installed = if idle && playable && !launcher_update_required {
             state.installed_content()?.filter(|installed| {
                 if installed.intent.backend.is_native() {

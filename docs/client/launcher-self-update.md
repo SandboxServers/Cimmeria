@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Launcher contributors and release maintainers
-> **Last updated:** 2026-10-11
+> **Last updated:** 2026-10-23
 > **Companions:** [Desktop updater contract](../../crates/launcher/desktop/docs/updater.md) (the full contract), [release guide](../../crates/launcher/desktop/docs/release.md#the-signed-feed), [player guide](launcher-guide.md#launcher-updates), [distribution setup](launcher-distribution-setup.md#part-3--launcher-updater-signing-key)
 
 How the desktop launcher replaces itself with a newer release. This page is the
@@ -60,11 +60,19 @@ deadlines. The release job signs with the same engine code that verifies
 (`engine/examples/release_feed.rs`), so a feed a launcher would refuse fails the
 release before anything is published.
 
-**Player steps.** Settings has **Check for updates**, **Download update**
-(downloads and verifies, then saves the package; **Ready** means a verified
-saved package, not an installed update) and **Apply and restart**. The launcher
-does not check on its own. Admission refuses while any game or setup operation
-is running, Play included.
+**Player steps.** The main page checks on startup and holds Play until the check
+finishes. When an update is known, **Update and restart** downloads, verifies and
+applies it in one press; Play stays blocked until the replacement starts and
+acknowledges its version. A saved **Ready** package skips the download. Startup
+does not download or apply anything automatically. Settings retains **Check for
+updates**, **Download update**, **Apply and restart** and recheck controls for
+recovery. Updates refuse while any game or setup operation runs, Play included.
+
+**Check failures.** A failed recheck retains an existing offer and keeps Play
+blocked. If no update is known, a failed startup check permits Play after the
+bounded request finishes and displays failure/retry feedback. Disabled builds
+remain subject only to their other Play gates. The [desktop contract](../../crates/launcher/desktop/docs/updater.md#startup-and-main-page-integration)
+defines the startup sequence and native admission rules.
 
 **Swap (Windows, D-LX3).** Apply checks every zip entry before writing anything,
 extracts into a per-attempt stage beside the exe, saves the plan, then for each

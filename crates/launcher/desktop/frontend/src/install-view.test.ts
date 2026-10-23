@@ -89,7 +89,7 @@ test('Wine recovery cannot invoke native resume or reconciliation',async()=>{
 });
 
 test('uninstall requires confirmation, dismisses safely and enables reinstall only after acknowledgement',async()=>{
- const ui=dom();let status:InstallStatus={...initial(),uninstall:{installation_id:id,directory:'/owned/game',recovery:false},
+ const ui=dom();let status:InstallStatus={...initial(),uninstall:{installation_id:id,directory:String.raw`\\?\C:\Temp\sgw`,recovery:false},
   native:{...initial().native,operation:{schema_version:1,revision:3,operation:{id,kind:'install',intent_digest:Array(32).fill(0),state:'succeeded'}}}};
  const removalId='11b003de-8094-43d7-8daa-f3f3bd577c40';const calls:InstallRequest[]=[];
  const app=mountInstall(ui.document,async(_command,args)=>{const request=args!.request as InstallRequest;calls.push(request);
@@ -99,7 +99,7 @@ test('uninstall requires confirmation, dismisses safely and enables reinstall on
   return status;
  },()=>removalId);
  try{await app.ready;await flush();assert.equal(ui.get('uninstall').disabled,false);
-  ui.click('uninstall');assert.equal(ui.get('uninstall-confirmation').hidden,false);assert.equal(ui.get('uninstall-directory').textContent,'/owned/game');
+  ui.click('uninstall');assert.equal(ui.get('uninstall-confirmation').hidden,false);assert.equal(ui.get('uninstall-directory').textContent,String.raw`C:\Temp\sgw`);
   assert.equal(calls.every(c=>c.command==='inspect'),true);ui.click('dismiss-uninstall');assert.equal(ui.get('uninstall-confirmation').hidden,true);
   ui.click('uninstall');ui.click('confirm-uninstall');ui.click('confirm-uninstall');await app.settled();await flush();
   assert.equal(calls.filter(c=>c.command==='uninstall').length,1);assert.equal(ui.get('install').disabled,false);
@@ -110,7 +110,7 @@ test('uninstall requires confirmation, dismisses safely and enables reinstall on
 
 test('lost uninstall reply only inspects; explicit recovery reuses operation identity',async()=>{
  const ui=dom();const removalId='11b003de-8094-43d7-8daa-f3f3bd577c40';
- let status:InstallStatus={...initial(),uninstall:{installation_id:id,directory:'/owned/game',recovery:false},
+ let status:InstallStatus={...initial(),uninstall:{installation_id:id,directory:String.raw`\\?\C:\Temp\sgw`,recovery:false},
   native:{...initial().native,operation:{schema_version:1,revision:3,operation:{id,kind:'install',intent_digest:Array(32).fill(0),state:'succeeded'}}}};
  const calls:InstallRequest[]=[];
  const app=mountInstall(ui.document,async(_command,args)=>{const request=args!.request as InstallRequest;calls.push(request);
@@ -233,7 +233,7 @@ test('observed compatibility recovery is explicit and never dispatches setup aga
 });
 
 test('repair confirmation dismisses without mutation and duplicate confirm sends one saved-owner request',async()=>{
- const ui=dom();let status:InstallStatus={...initial(),repair:{target:{installation_id:'owner',directory:'/owned-game'},recovery:false,cleanup:false}};
+ const ui=dom();let status:InstallStatus={...initial(),repair:{target:{installation_id:'owner',directory:String.raw`\\?\UNC\server\share\sgw`},recovery:false,cleanup:false}};
  const commands:InstallRequest[]=[];
  const app=mountInstall(ui.document,async(_command,args)=>{const request=args!.request as InstallRequest;commands.push(request);
    if(request.command==='repair'){assert.equal(request.installation_id,'owner');assert.equal(request.confirmed,true);
@@ -241,7 +241,7 @@ test('repair confirmation dismisses without mutation and duplicate confirm sends
    if(request.command==='cleanup_repair')status={...status,repair:{...status.repair!,cleanup:false,backup:'removed'}};
    return status;
  },()=>id);
- try{await app.ready;await flush();ui.click('repair');assert.equal(ui.get('repair-directory').textContent,'/owned-game');
+ try{await app.ready;await flush();ui.click('repair');assert.equal(ui.get('repair-directory').textContent,String.raw`\\server\share\sgw`);
    ui.click('dismiss-repair');assert.equal(commands.some(x=>x.command==='repair'),false);
    ui.click('repair');ui.click('confirm-repair');ui.click('confirm-repair');await app.settled();await flush();
    assert.equal(commands.filter(x=>x.command==='repair').length,1);assert.match(ui.get('install-status').textContent!,/Game reconstructed/);

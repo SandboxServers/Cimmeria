@@ -26,15 +26,15 @@ export function launchText(s:LaunchState):string {
  if(status.installation_id&&status.patches_incomplete>0)return `Ready to Play. ${status.ops_skipped} patch ${status.ops_skipped===1?'change':'changes'} could not be applied. If the game crashes or misbehaves, use Repair (downloads the full game, 4.1 GB).`;
  return status.installation_id?'Ready to Play.':'Finish installation and compatibility checks to enable Play.';
 }
-export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()=>{},uuid:()=>string=()=>crypto.randomUUID()) {
+export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()=>{},uuid:()=>string=()=>crypto.randomUUID(),updateBlocked=false) {
  const runtime=ManagedRuntime.make(Layer.effect(Launch,makeLaunchWorkflow).pipe(Layer.provide(launchBridgeLayer(request=>invoke('launch_command',{request})))));
  const button=document.getElementById('launch') as HTMLButtonElement;
  const recheck=document.getElementById('inspect-launch') as HTMLButtonElement;
  let current:LaunchState={status:null,pending:false,uncertain:true,error:null};let disposed=false;let pending=false;let playing=false;
  let mutation:Promise<void>=Promise.resolve();let revision=-1;
- const render=()=>{if(disposed)return;button.hidden=!!current.status&&!current.status.installation_id&&!current.status.observation&&!current.status.launcher_update_required;button.disabled=playing||current.pending||current.uncertain||!current.status?.installation_id||launchBlocked(current.status);
+ const render=()=>{if(disposed)return;button.hidden=!!current.status&&!current.status.installation_id&&!current.status.observation&&!current.status.launcher_update_required;button.disabled=updateBlocked||playing||current.pending||current.uncertain||!current.status?.installation_id||launchBlocked(current.status);
  button.textContent=playing||current.pending?'Starting…':'Play';button.setAttribute('aria-busy',String(playing||current.pending));
- document.getElementById('launch-status')!.textContent=playing?'Starting game…':launchText(current);
+ document.getElementById('launch-status')!.textContent=playing?'Starting game…':updateBlocked?'Resolve the launcher update above before playing.':launchText(current);
  recheck.disabled=playing||current.pending;recheck.hidden=adoptLine(current)!==null;};
  const watcher=runtime.runFork(Effect.flatMap(Launch,s=>Stream.runForEach(s.changes,value=>Effect.sync(()=>{current=value;render();
  const next=value.status?.native.operation.revision;if(next!==undefined&&next!==revision){revision=next;onChange();}}))));
@@ -47,5 +47,5 @@ export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()
  // Observation belongs to the mounted application, including Settings navigation.
  const poll=setInterval(()=>{if(!disposed&&!pending&&!current.uncertain&&!current.error)void run(false);},1000);
  const ready=run(false);
- return {ready,refresh:()=>run(false),settled:()=>mutation,dispose:async()=>{disposed=true;clearInterval(poll);button.removeEventListener('click',click);recheck.removeEventListener('click',check);await Effect.runPromise(Fiber.interrupt(watcher));await mutation;await runtime.dispose();}};
+ return {ready,setUpdateBlocked:(blocked:boolean)=>{updateBlocked=blocked;render();},refresh:()=>run(false),settled:()=>mutation,dispose:async()=>{disposed=true;clearInterval(poll);button.removeEventListener('click',click);recheck.removeEventListener('click',check);await Effect.runPromise(Fiber.interrupt(watcher));await mutation;await runtime.dispose();}};
 }
