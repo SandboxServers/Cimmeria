@@ -5,8 +5,7 @@ use crate::test_capture::capture;
 use std::collections::BTreeMap;
 use tokio_util::sync::CancellationToken;
 
-#[test]
-fn helper_handshake_emits_spawn_and_startup_times_without_starting_a_game() {
+fn run_helper(starts: bool) -> (Observation, Vec<crate::test_capture::Captured>) {
     let root = tempfile::tempdir().unwrap();
     let id = Uuid::new_v4();
     let environment: BTreeMap<_, _> = ["SystemRoot", "WINDIR", "PATH", "TEMP", "TMP"]
@@ -16,10 +15,21 @@ fn helper_handshake_emits_spawn_and_startup_times_without_starting_a_game() {
     #[cfg(windows)]
     let (executable, arguments) = {
         let script = root.path().join("helper.ps1");
-        std::fs::write(&script, r#"$r = [Console]::ReadLine() | ConvertFrom-Json
+        let reply = if starts {
+            r#"
 @{schema_version=1;operation_id=$r.operation_id;observation=@{event='process_started';guest_pid=987}} | ConvertTo-Json -Depth 5 -Compress
 @{schema_version=1;operation_id=$r.operation_id;observation=@{event='process_exited';guest_pid=987;code=0}} | ConvertTo-Json -Depth 5 -Compress
-"#).unwrap();
+"#
+        } else {
+            r#"
+@{schema_version=1;operation_id=$r.operation_id;observation=@{event='not_started'}} | ConvertTo-Json -Depth 5 -Compress
+"#
+        };
+        std::fs::write(
+            &script,
+            format!("$r = [Console]::ReadLine() | ConvertFrom-Json\n{reply}"),
+        )
+        .unwrap();
         let exe = std::path::PathBuf::from(std::env::var_os("ProgramFiles").unwrap())
             .join("PowerShell/7/pwsh.exe");
         assert!(
@@ -39,7 +49,12 @@ fn helper_handshake_emits_spawn_and_startup_times_without_starting_a_game() {
     #[cfg(not(windows))]
     let (executable, arguments) = {
         let script = root.path().join("helper.py");
-        std::fs::write(&script, "import sys,json\nr=json.load(sys.stdin)\nfor e in [dict(event='process_started',guest_pid=987),dict(event='process_exited',guest_pid=987,code=0)]:\n print(json.dumps(dict(schema_version=1,operation_id=r['operation_id'],observation=e)),flush=True)\n").unwrap();
+        let replies = if starts {
+            "[dict(event='process_started',guest_pid=987),dict(event='process_exited',guest_pid=987,code=0)]"
+        } else {
+            "[dict(event='not_started')]"
+        };
+        std::fs::write(&script, format!("import sys,json\nr=json.load(sys.stdin)\nfor e in {replies}:\n print(json.dumps(dict(schema_version=1,operation_id=r['operation_id'],observation=e)),flush=True)\n")).unwrap();
         (
             std::path::PathBuf::from("/usr/bin/python3"),
             vec![script.into_os_string()],
@@ -68,6 +83,13 @@ fn helper_handshake_emits_spawn_and_startup_times_without_starting_a_game() {
             supervisor::run(spec, request, CancellationToken::new(), |_| Ok(())).await
         })
     });
+    assert!(!root.path().join("never-executed.exe").exists());
+    (observation, records)
+}
+
+#[test]
+fn helper_handshake_emits_spawn_and_startup_times_without_starting_a_game() {
+    let (observation, records) = run_helper(true);
     assert!(matches!(
         observation,
         Observation::ProcessExited { code: 0, .. }
@@ -105,5 +127,20 @@ fn helper_handshake_emits_spawn_and_startup_times_without_starting_a_game() {
                 .parse::<u64>()
                 .unwrap()
     );
-    assert!(!root.path().join("never-executed.exe").exists());
+}
+
+#[test]
+fn helper_refusal_finishes_startup_as_failed_rather_than_interrupted() {
+    let (observation, records) = run_helper(false);
+    assert!(matches!(observation, Observation::NotStarted));
+    for phase in ["play_helper_start", "play_helper_handshake"] {
+        let finish = records
+            .iter()
+            .find(|e| e.field("phase") == Some(phase) && e.field("event") == Some("phase_finished"))
+            .unwrap();
+        assert_eq!(finish.field("outcome"), Some("failed"), "{phase}");
+    }
+    assert!(!records
+        .iter()
+        .any(|e| e.field("event") == Some("game_started")));
 }

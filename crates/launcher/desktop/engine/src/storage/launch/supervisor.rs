@@ -14,14 +14,32 @@ pub(super) async fn run(
     spec: HelperCommand,
     request: Request,
     cancel: CancellationToken,
-    mut observe: impl FnMut(Observation) -> Result<(), IntentError>,
+    observe: impl FnMut(Observation) -> Result<(), IntentError>,
 ) -> Observation {
     let id = request.operation_id;
     if cancel.is_cancelled() {
         return Observation::Cancelled;
     }
-    let startup_timer = crate::phase_timing::Context::for_operation(id)
-        .start(crate::phase_timing::Phase::PlayHelperStart);
+    let mut startup_timer = Some(
+        crate::phase_timing::Context::for_operation(id)
+            .start(crate::phase_timing::Phase::PlayHelperStart),
+    );
+    let result = run_timed(spec, request, observe, &mut startup_timer).await;
+    if let Some(timer) = startup_timer {
+        timer.finish(crate::phase_timing::Outcome::Failed);
+    }
+    result
+}
+
+// The outer future owns the unfinished timer: dropping it still records an
+// interruption, while a known return before ProcessStarted records failure.
+async fn run_timed(
+    spec: HelperCommand,
+    request: Request,
+    mut observe: impl FnMut(Observation) -> Result<(), IntentError>,
+    startup_timer: &mut Option<crate::phase_timing::Timer>,
+) -> Observation {
+    let id = request.operation_id;
     let Ok(mut bytes) = serde_json::to_vec(&request) else {
         events::launch_not_started(id, "request_invalid");
         return Observation::NotStarted;
@@ -103,7 +121,9 @@ pub(super) async fn run(
                 handshake_timer.finish(crate::phase_timing::Outcome::Failed);
                 return Observation::Unknown;
             }
-            startup_timer.finish(crate::phase_timing::Outcome::Succeeded);
+            if let Some(timer) = startup_timer.take() {
+                timer.finish(crate::phase_timing::Outcome::Succeeded);
+            }
             handshake_timer.finish(crate::phase_timing::Outcome::Succeeded);
             events::game_started(id);
             (guest_pid, Instant::now())

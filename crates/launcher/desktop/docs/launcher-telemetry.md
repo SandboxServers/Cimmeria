@@ -44,13 +44,13 @@ completion code; dropping an unfinished asynchronous timer reports `interrupted`
 | `adoption_comparison` | Comparison with the reference |
 | `adoption_index` | Reference index preparation |
 | `adoption_replay` | Expected patch/setup replay |
-| `adoption_review_scan` | Review tree verification |
+| `adoption_review_scan` | Review inventory before comparison |
 | `adoption_confirmation` | Overall confirmed adoption |
 | `adoption_confirmation_scan` | Source verification at confirmation |
 | `adoption_apply` | Approved content application |
 | `adoption_publication_lock` | Wait for the state lock before publication |
 | `adoption_setup` | Client setup at the selected root |
-| `adoption_final_scan` | Final actual-tree inventory and verification |
+| `adoption_final_scan` | Final actual-tree inventory before tree comparison |
 | `play_request` | Native Play request, including pre-admission work |
 | `play_dispatch_queue` | Native Tauri IPC receipt through blocking-worker start; Play only |
 | `play_admission` | Launch admission while holding the state lock |
@@ -87,8 +87,11 @@ timer. That host lock wait is included in aggregate `play_request`, not
 `play_admission`, and has no separately timed phase.
 
 Explicit completion records success or error; a guard dropped before completion
-records interruption, or panic while unwinding. Cancellation can leave only a
-start if the process terminates abruptly. A missing finish can also mean lost
+records interruption, or panic while unwinding. Known helper startup failures
+and login-server refusal explicitly report `failed`. An unfinished future
+dropped before completion reports `interrupted`; remaining early returns can
+also report `interrupted`. Cancellation can leave only a start if the process
+terminates abruptly. A missing finish can also mean lost
 forwarding, opt-out, quota exhaustion or an upload failure; it is not proof that
 the operation is still running. Nested durations overlap and must not be added
 into a wall-clock total.

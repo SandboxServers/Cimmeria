@@ -166,7 +166,15 @@ async fn execute(
         return Ok(Observation::NotStarted);
     }
     let mint_timer = context.start(crate::phase_timing::Phase::PlayTelemetryMint);
-    let Some((servers, session)) = servers_and_session(&state, plan).await? else {
+    let prepared = match servers_and_session(&state, plan).await {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            mint_timer.finish(crate::phase_timing::Outcome::Failed);
+            return Err(error);
+        }
+    };
+    let Some((servers, session)) = prepared else {
+        mint_timer.finish(crate::phase_timing::Outcome::Failed);
         return Ok(Observation::NotStarted);
     };
     mint_timer.finish(if session.is_some() {

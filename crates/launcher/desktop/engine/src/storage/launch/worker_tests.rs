@@ -1,6 +1,45 @@
 //! Native launch preparation tests, separate from the retained worker.
 use super::*;
 
+#[test]
+fn login_server_refusal_finishes_mint_as_failed_rather_than_interrupted() {
+    let (root, mut state, plan) = super::super::tests::fixture();
+    state.preferences.login_servers = vec![LoginServer {
+        name: "Invalid fixture".into(),
+        url: "not a URL".into(),
+    }];
+    let state = Arc::new(Mutex::new(state));
+    let (updates, _) = watch::channel(Observation::Unknown);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (result, events) = crate::test_capture::capture(|| {
+        rt.block_on(execute(
+            state,
+            &plan,
+            root.path().into(),
+            CancellationToken::new(),
+            &updates,
+        ))
+    });
+    assert!(matches!(result, Ok(Observation::NotStarted)));
+    assert!(events
+        .iter()
+        .any(|e| e.field("reason") == Some("login_servers_refused")));
+    let finish = events
+        .iter()
+        .find(|e| {
+            e.field("phase") == Some("play_telemetry_mint")
+                && e.field("event") == Some("phase_finished")
+        })
+        .unwrap();
+    assert_eq!(finish.field("outcome"), Some("failed"));
+    assert!(!events
+        .iter()
+        .any(|e| e.field("phase") == Some("play_client_setup")));
+}
+
 // Inert PE32 header, sufficient for real client preparation, never spawned.
 fn inert_client(exe: &Path) {
     let mut bytes = vec![0u8; 0x200];
