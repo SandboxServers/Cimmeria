@@ -76,10 +76,7 @@ fn key_text(value: &str) -> Result<String> {
 fn sign(zip: &Path, version: &str, url: &str, notes: &str, out: &Path) -> Result<()> {
     // The launcher refuses a prerelease and anything that is not SemVer, so a
     // feed carrying one would never be offered; refuse to write it.
-    let parsed = semver::Version::parse(version)?;
-    if !parsed.pre.is_empty() {
-        return Err(format!("{version} is a prerelease, which the stable channel refuses").into());
-    }
+    stable_release(version)?;
     let secret = std::env::var(KEY_VAR).map_err(|_| format!("{KEY_VAR} is not set"))?;
     let secret = minisign::SecretKeyBox::from_string(&key_text(&secret)?)?
         .into_secret_key(Some(password()?))
@@ -154,4 +151,25 @@ fn verify(feed: &Path, zip: &Path, sig: &Path, public_key: &str, version: &str) 
     }
     println!("verified: a release launcher is offered {offered} and accepts the zip");
     Ok(())
+}
+
+/// Keep feed generation aligned with old launchers: offer stable versions only.
+fn stable_release(version: &str) -> Result<()> {
+    let parsed = semver::Version::parse(version)?;
+    if !parsed.pre.is_empty() {
+        return Err(format!("{version} is a prerelease, which the stable channel refuses").into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn daily_slot_feeds_are_stable_and_legacy_repeat_feeds_are_refused() {
+        for version in ["2026.10.2301", "2026.10.2302", "2026.10.2303", "2027.1.101"] {
+            assert!(stable_release(version).is_ok());
+        }
+        assert!(stable_release("2026.10.23-2").is_err());
+    }
 }

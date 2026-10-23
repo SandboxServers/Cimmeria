@@ -612,6 +612,7 @@ pub(super) fn finish(
             .operations_mut()?
             .observe(id, OperationState::Succeeded)?;
     }
+    state.log_applied_content("applied");
     hook(Point::Terminal)?;
     remove_work_folder(plan);
     if let Some(backup) = &plan.report.backup {

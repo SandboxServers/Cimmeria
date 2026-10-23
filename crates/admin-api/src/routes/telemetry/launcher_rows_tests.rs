@@ -219,3 +219,51 @@ fn launcher_targets_match_the_canonical_file() {
         .collect();
     assert_eq!(targets, LAUNCHER_TARGETS);
 }
+
+#[test]
+fn applied_content_public_manifest_digest_survives_but_generic_identifiers_do_not() {
+    let digest = "ab".repeat(32);
+    for (target, event, phase, expected) in [
+        (
+            "client.launcher.install",
+            "applied_content_identity",
+            "applied",
+            digest.as_str(),
+        ),
+        (
+            "client.launcher.install",
+            "applied_content_identity",
+            "play_admitted",
+            digest.as_str(),
+        ),
+        ("client.launcher.install", "other", "applied", REMOVED),
+        (
+            "client.launcher.launch",
+            "applied_content_identity",
+            "applied",
+            REMOVED,
+        ),
+        (
+            "client.launcher.install",
+            "applied_content_identity",
+            "staged",
+            REMOVED,
+        ),
+    ] {
+        let mut row = native(target, "info");
+        if let TelemetryEvent::ClientNative(row) = &mut row {
+            row.fields =
+                json!({"event":event,"phase":phase,"manifest_sha256":digest,"other_digest":digest})
+                    .as_object()
+                    .unwrap()
+                    .clone();
+        }
+        let mut rows = vec![row];
+        admit_launcher_rows(&mut rows, 1);
+        let TelemetryEvent::ClientNative(row) = &rows[0] else {
+            panic!()
+        };
+        assert_eq!(row.fields["manifest_sha256"], expected);
+        assert_eq!(row.fields["other_digest"], REMOVED);
+    }
+}

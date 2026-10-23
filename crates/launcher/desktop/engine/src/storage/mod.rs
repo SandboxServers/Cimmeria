@@ -3,6 +3,7 @@ pub mod adoption;
 mod atomic;
 pub mod client_changes;
 pub mod client_maintenance;
+mod content_identity;
 pub mod effective_settings;
 pub(crate) mod extraction_work;
 mod failed_cleanup;

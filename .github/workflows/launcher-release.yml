@@ -26,7 +26,7 @@ name: launcher-release
 #     release_feed tool before the key is in any step, signs and writes
 #     latest.json, and checks it as a launcher would.
 #   - `publish` creates or updates the dated release `launcher-YYYYMMDD-<sha7>`
-#     and, when signed, refreshes the rolling `launcher-current` (D-LX7).
+#     and refreshes the rolling `launcher-current` (D-LX7).
 #   - `mac-pieces` builds the two other Windows pieces the macOS app carries,
 #     off the Windows release's critical path.
 #   - `desktop-macos` (LX-28, D-LX14) builds the arm64 app, signs it ad hoc and
@@ -35,7 +35,7 @@ name: launcher-release
 #   - `publish-macos` attaches the macOS zip. A failed macOS build leaves the
 #     Windows release as it is.
 #
-# Windows releases ship unsigned (D-LX10): the launch worker injects DLLs,
+# Windows executables lack Authenticode signing (D-LX10): the launch worker injects DLLs,
 # which Defender and SmartScreen react to. The macOS app is signed ad hoc only;
 # a Developer ID signature, notarization and the hardened runtime are out of
 # scope by D-LX14, so a player opens it once with Privacy & Security > Open
@@ -73,8 +73,9 @@ jobs:
     name: desktop launcher (Windows) -> zip
     runs-on: windows-latest
     permissions:
-      # Reads the release list for the version; publishing is a later job.
+      # Reads releases and this run's reserved identity artifact.
       contents: read
+      actions: read
     timeout-minutes: 60
     defaults:
       run:
@@ -83,7 +84,6 @@ jobs:
       tag: ${{ steps.stamp.outputs.tag }}
       epoch: ${{ steps.stamp.outputs.epoch }}
       version: ${{ steps.stamp.outputs.version }}
-      same_day: ${{ steps.stamp.outputs.same_day }}
       zip_sha256: ${{ steps.digest.outputs.sha256 }}
       has_overlay: ${{ steps.overlay.outputs.has_overlay }}
       # SHA-256 of play-pieces.sha256, which lists the three staged Play
@@ -115,14 +115,36 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      # tools/launcher-release/stamp.sh explains the tag, the D-LX8 version
+      # tools/launcher-release/stamp.sh explains the tag, the D-LX15 version
       # and the same-day and re-run rules.
+      - name: recover this run's reserved identity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          NAME="launcher-identity-${GITHUB_RUN_ID}"
+          FOUND="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" --jq ".artifacts[] | select(.name == \"${NAME}\") | .name")"
+          if [ -n "$FOUND" ]; then
+            gh run download "$GITHUB_RUN_ID" --name "$NAME" --dir stamp-reservation
+          elif [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
+            echo "::error::No reserved identity for this rerun; dispatch a new run"
+            exit 1
+          fi
       - name: stamp tag and version
         id: stamp
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: tools/launcher-release/stamp.sh
+      - name: reserve identity before building
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: launcher-identity-${{ github.run_id }}
+          path: stamp-reservation/identity.json
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: true
+
 
       - uses: ./.github/actions/rust-toolchain
         with:
@@ -223,16 +245,11 @@ jobs:
         env:
           TAG: ${{ steps.stamp.outputs.tag }}
           VERSION: ${{ steps.stamp.outputs.version }}
-          SAME_DAY: ${{ steps.stamp.outputs.same_day }}
         run: |
           {
             echo "## Launcher ${TAG}"
             echo
             echo "Compiled version: \`${VERSION}\`"
-            if [ "${SAME_DAY}" = true ]; then
-              echo
-              echo "**Same-day build.** \`${VERSION}\` is a prerelease, which the launcher's stable channel refuses, so this build is not signed or offered to players as an update. It is published as its dated release only; \`launcher-current\` still holds the day's first release."
-            fi
             if [ -z "${LAUNCHER_UPDATER_PUBKEY}" ]; then
               echo
               echo "The build's updater is Disabled (no \`LAUNCHER_UPDATER_PUBKEY\` variable)."
@@ -275,7 +292,7 @@ jobs:
   sign:
     name: sign the zip and write the updater feed
     needs: desktop-windows
-    if: github.ref == 'refs/heads/main' && needs.desktop-windows.outputs.same_day == 'false'
+    if: github.ref == 'refs/heads/main'
     runs-on: windows-latest
     environment: launcher-release
     permissions:
@@ -295,34 +312,21 @@ jobs:
       ZIP_SHA256: ${{ needs.desktop-windows.outputs.zip_sha256 }}
       LAUNCHER_UPDATER_PUBKEY: ${{ vars.LAUNCHER_UPDATER_PUBKEY }}
     steps:
-      # 'true' or 'false' only: the key itself reaches the sign step alone.
+      # Required signing: the key itself reaches the sign step alone.
       # The key and the public-key variable go together (D-LX9); the key
       # without the variable is a misconfiguration, since the build could not
       # verify what it is offered.
-      - name: decide whether to sign
+      - name: require the signing configuration
         id: keys
         env:
           HAS_UPDATER_KEY: ${{ secrets.LAUNCHER_UPDATER_MINISIGN_KEY != '' }}
         run: |
           set -euo pipefail
-          if [ "${HAS_UPDATER_KEY}" = true ] && [ -z "${LAUNCHER_UPDATER_PUBKEY}" ]; then
-            echo "::error::LAUNCHER_UPDATER_MINISIGN_KEY is set but the LAUNCHER_UPDATER_PUBKEY variable is not; the launcher was built unable to verify what it is offered"
+          if [ "${HAS_UPDATER_KEY}" != true ] || [ -z "${LAUNCHER_UPDATER_PUBKEY}" ]; then
+            echo "::error::Every launcher release requires the updater key and public-key variable (D-LX15)"
             exit 1
           fi
-          echo "sign=${HAS_UPDATER_KEY}" >> "$GITHUB_OUTPUT"
-          {
-            echo "## Signing ${TAG}"
-            echo
-            if [ "${HAS_UPDATER_KEY}" = true ]; then
-              echo "Signed with the updater key; \`latest.json\` offers \`${VERSION}\` to every older launcher."
-            else
-              echo "**No updater key.** \`LAUNCHER_UPDATER_MINISIGN_KEY\` is not set in the \`launcher-release\` environment, so the zip is unsigned, no \`latest.json\` was written and \`launcher-current\` is skipped. This is expected until the key holder does D-LX9 (crates/launcher/desktop/docs/release.md, \"Key holder steps\")."
-              if [ -n "${LAUNCHER_UPDATER_PUBKEY}" ]; then
-                echo
-                echo "Warning: \`LAUNCHER_UPDATER_PUBKEY\` is set without the private key, so this build's updater is enabled but nothing publishes a feed for it."
-              fi
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "sign=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
         if: steps.keys.outputs.sign == 'true'
@@ -390,15 +394,14 @@ jobs:
   # Creates or updates the dated release, then refreshes launcher-current when
   # the zip was signed. Every step is safe to re-run: a re-run replaces this
   # run's own assets rather than failing on an existing tag. It runs when the
-  # signing job succeeded or was skipped (a same-day build), never when it
-  # failed.
+  # signing job succeeded; missing or skipped signing refuses publication.
   publish:
     name: dated release + launcher-current
     needs: [desktop-windows, sign]
     if: >-
       !cancelled() && github.ref == 'refs/heads/main'
       && needs.desktop-windows.result == 'success'
-      && (needs.sign.result == 'success' || needs.sign.result == 'skipped')
+      && needs.sign.result == 'success' && needs.sign.outputs.signed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -408,7 +411,6 @@ jobs:
       TAG: ${{ needs.desktop-windows.outputs.tag }}
       VERSION: ${{ needs.desktop-windows.outputs.version }}
       ZIP_SHA256: ${{ needs.desktop-windows.outputs.zip_sha256 }}
-      SIGNED: ${{ needs.sign.outputs.signed == 'true' }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
     steps:
@@ -423,7 +425,6 @@ jobs:
           name: launcher-zip-${{ needs.desktop-windows.outputs.tag }}
           path: artifacts
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
-        if: env.SIGNED == 'true'
         with:
           name: launcher-feed-${{ needs.desktop-windows.outputs.tag }}
           path: artifacts
@@ -444,7 +445,6 @@ jobs:
       # D-LX7: the stable download link; latest.json goes last. A re-run
       # repairs a refresh that failed part-way.
       - name: refresh launcher-current
-        if: env.SIGNED == 'true'
         run: tools/launcher-release/publish.sh current
 
       - name: job summary
@@ -453,11 +453,7 @@ jobs:
           {
             echo "## Published ${TAG}"
             echo
-            if [ "${SIGNED}" = true ]; then
-              echo "\`launcher-current\` now holds this release's zip, \`.sha256\`, \`.zip.sig\` and \`latest.json\`, which offers \`${VERSION}\` to every older launcher."
-            else
-              echo "Published as its dated release only; \`launcher-current\` was not changed."
-            fi
+            echo "Signed release \`${VERSION}\` published; launcher-current feed refreshed after verification."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # The five Windows pieces the macOS app carries, in their own job so they
@@ -540,8 +536,7 @@ jobs:
       LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
 
   # Attaches the macOS zip after publish made the dated release, and replaces
-  # the one on launcher-current when publish refreshed it (a signed,
-  # first-of-the-day release). It runs whenever publish succeeded and fails
+  # the one on launcher-current after a successful signed publication. It runs whenever publish succeeded and fails
   # when the macOS build did not, so "Re-run failed jobs" reruns it with the
   # failed build. No build and no third-party action: publish.sh from the
   # released commit's checkout.
@@ -559,7 +554,6 @@ jobs:
       MAC_ZIP: artifacts/StargateWorlds-Launcher-macos-arm64.zip
       TAG: ${{ needs.desktop-windows.outputs.tag }}
       MAC_OK: ${{ needs.desktop-macos.result == 'success' }}
-      SIGNED: ${{ needs.sign.outputs.signed == 'true' }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
     steps:
@@ -580,7 +574,7 @@ jobs:
           tools/launcher-release/publish.sh check "${MAC_ZIP}" "${MAC_ZIP_SHA256}"
           tools/launcher-release/publish.sh macos
       - name: refresh the macOS zip on launcher-current
-        if: env.MAC_OK == 'true' && env.SIGNED == 'true'
+        if: env.MAC_OK == 'true'
         run: tools/launcher-release/publish.sh macos-current
       - name: summary, and fail when the macOS build failed
         if: always()
@@ -589,10 +583,8 @@ jobs:
             echo "## macOS assets for ${TAG}"
             if [ "${MAC_OK}" != true ]; then
               echo "- The macOS build failed: \`${MAC_ZIP_NAME}\` is not on this release, and \`launcher-current\` keeps the macOS zip it had. \"Re-run failed jobs\" (crates/launcher/desktop/docs/release.md)."
-            elif [ "${SIGNED}" = true ]; then
-              echo "- \`${MAC_ZIP_NAME}\` is on the dated release and on \`launcher-current\`; not in \`latest.json\` (macOS updates are manual)."
             else
-              echo "- \`${MAC_ZIP_NAME}\` is on the dated release only; \`launcher-current\` was not changed."
+              echo "- \`${MAC_ZIP_NAME}\` is on the dated release and on \`launcher-current\`; not in \`latest.json\` (macOS updates are manual)."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           [ "${MAC_OK}" = true ]

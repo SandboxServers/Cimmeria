@@ -14,14 +14,15 @@ The decisions behind it are in the
 [launcher consolidation ledger](../analysis/launcher-consolidation/README.md):
 the updater swaps the release zip in place, with no installer (D-LX3); releases
 publish a rolling `launcher-current` release beside the dated ones (D-LX7); the
-compiled version is SemVer from the release date (D-LX8); and a Minisign key
+compiled version is SemVer from the release date and daily slot (D-LX15); and a Minisign key
 pair signs the feed (D-LX9).
 
 ## Contract
 
-**Identity.** A release build carries its version, `YYYY.M.D` from the release
-date (`2026.10.11`), stamped as `CIMMERIA_LAUNCHER_VERSION`, with a same-day
-rebuild as `YYYY.M.D-N`. The same value is the exe's file version, the About
+**Identity.** A release build uses stable `YYYY.M.(D*100+N)` from UTC,
+with daily slots 1..99 (`2026.10.2301`, `2026.10.2302`, ...), stamped as
+`CIMMERIA_LAUNCHER_VERSION`. Slot 100 is refused. Every release is signed
+and offered; missing signing configuration blocks publication. The same value is the exe's file version, the About
 line in Settings and what the updater compares. A build without it (any local or
 PR build) is `0.1.0`. See [release: Version and tag](../../crates/launcher/desktop/docs/release.md#version-and-tag).
 
@@ -42,7 +43,10 @@ bytes its signature covers.
 **Ordering (never downgrade).** An offer must be stable SemVer with greater
 precedence than the compiled version; prerelease offers are refused. An
 installed same-day rebuild counts as its base version, so `2026.10.11-2` is
-offered `2026.10.12` and nothing older.
+offered the new stable daily-slot versions, including `2026.10.1101`.
+Old stable installs upgrade too; same-day slots and month/year rollovers
+increase under SemVer. Build metadata cannot increase precedence. The
+rolling feed refuses version regressions, including an older run rerun.
 
 **Trust.** The launcher verifies the zip's Minisign signature and the global
 signature with `minisign-verify` before it reads the trusted comment, which must

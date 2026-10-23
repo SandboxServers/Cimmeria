@@ -409,6 +409,7 @@ pub(super) fn finish(
             .operations_mut()?
             .observe(id, OperationState::Succeeded)?;
     }
+    state.log_applied_content("applied");
     hook(Point::Terminal)?;
     Ok(())
 }

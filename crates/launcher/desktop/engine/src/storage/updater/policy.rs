@@ -77,11 +77,8 @@ impl Config {
         }
         Ok(())
     }
-    /// The stable channel offers only a release version above the installed
-    /// one. An installed prerelease counts as its base version: a same-day
-    /// rebuild is `YYYY.M.D-N` (LX-15), which SemVer orders below the day's
-    /// first build `YYYY.M.D`, so comparing with it as-is would "update" the
-    /// player back to that first build.
+    /// Stable releases use D-LX15 daily slots. Historical D-LX8 prereleases
+    /// count as their stable base, preventing an update back to the day's first build.
     pub(crate) fn newer(&self, version: &str) -> Result<Version, Error> {
         let version = Version::parse(version.trim_start_matches('v')).map_err(|_| Error::Feed)?;
         let mut installed = self.current.clone();
@@ -196,6 +193,24 @@ mod tests {
             vec!["updates.example.test".into()],
         )
         .unwrap()
+    }
+
+    #[test]
+    fn old_installs_accept_daily_slots_and_every_repeat_increases() {
+        for old in ["2026.10.23", "2026.10.23-2"] {
+            assert!(installed(old).newer("2026.10.2301").is_ok());
+        }
+        for (before, after) in [
+            ("2026.10.2301", "2026.10.2302"),
+            ("2026.10.2302", "2026.10.2303"),
+            ("2026.10.2399", "2026.10.2401"),
+            ("2026.10.3199", "2026.11.101"),
+            ("2026.12.3199", "2027.1.101"),
+        ] {
+            assert!(installed(before).newer(after).is_ok());
+            assert_eq!(installed(after).newer(before), Err(Error::NotNewer));
+            assert_eq!(installed(after).newer(after), Err(Error::NotNewer));
+        }
     }
 
     #[test]

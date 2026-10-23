@@ -17,7 +17,7 @@ stable links:
 
 | Release | Assets | Written when |
 |---|---|---|
-| Dated, `launcher-YYYYMMDD-<sha7>` | `StargateWorlds-Launcher-windows-x64.zip`, `.zip.sha256`, `.zip.sig` (with the updater key), the client-patches overlay patch when one is committed, and `StargateWorlds-Launcher-macos-arm64.zip` with its `.zip.sha256` | Every release; the macOS zip when the macOS build succeeded |
+| Dated, `launcher-YYYYMMDD-<sha7>` | `StargateWorlds-Launcher-windows-x64.zip`, `.zip.sha256`, `.zip.sig` (required updater signature), the client-patches overlay patch when one is committed, and `StargateWorlds-Launcher-macos-arm64.zip` with its `.zip.sha256` | Every release; the macOS zip when the macOS build succeeded |
 | Rolling, `launcher-current` (D-LX7) | `StargateWorlds-Launcher-windows-x64.zip`, `.zip.sha256`, `.zip.sig`, `latest.json`, `StargateWorlds-Launcher-macos-arm64.zip`, `.zip.sha256` | Only with the updater key, and only for the day's first release |
 
 The `.sha256` is in `sha256sum` format (`<hex>  <file name>`). The `.zip.sig` is
@@ -60,8 +60,8 @@ them.
 | `desktop-windows` | Refuses any ref but `main`, stamps the tag and version ([`stamp.sh`](../../../../tools/launcher-release/stamp.sh)), builds and checks the launcher, zips it, and uploads the zip and `.sha256` as one artifact and the overlay patch as another. Last, it uploads the three staged Play pieces for `mac-pieces` (`continue-on-error`, a few seconds). Its outputs carry the zip's SHA-256 and the SHA-256 of the Play pieces' list | `contents: read`; `LAUNCHER_MANIFEST_PUBKEY_HEX` on the launcher build step only; the `LAUNCHER_UPDATER_PUBKEY` variable. Never the Minisign secrets |
 | `mac-pieces` | On Windows: checks the Play pieces against `desktop-windows`' digest output before using them, builds the archive and prerequisite workers, and uploads all five with a `mac-pieces.sha256` list, kept one day. Its output carries the list's SHA-256 | `contents: read`. No secret |
 | `desktop-macos` | The reusable [`launcher-desktop-macos.yml`](../../../../.github/workflows/launcher-desktop-macos.yml), which the PR dry run also calls. On `macos-15` (arm64), from the same commit: checks the pieces against `mac-pieces`' output, stages them, fetches the pinned D9VK, builds the app, signs it ad hoc, checks it, zips it and uploads the zip and `.sha256` as an artifact. Its output carries the zip's SHA-256 | `contents: read`; `LAUNCHER_MANIFEST_PUBKEY_HEX` on the app build step only. No updater key of either kind |
-| `sign` | Not for a same-day build. In the `launcher-release` environment: downloads the zip artifact only and checks it against the build job's digest output, builds the `release_feed` tool with cargo (no node, no cache action) in a step with no secret, then signs, writes `latest.json`, checks the feed as a launcher would, and uploads the `.zip.sig` and `latest.json` as an artifact | `contents: read`; the Minisign key and password, on the sign step only; the public-key variable. Its actions are GitHub's own and this repository's toolchain action (SHA-pinned inside) |
-| `publish` | Unless the run was cancelled, when `sign` succeeded or was skipped: checks the zip's digest again, creates or updates the dated release, then, when signed, refreshes `launcher-current` | `contents: write` (the `GITHUB_TOKEN`); the artifacts. No secret |
+| `sign` | Every release. In the `launcher-release` environment: downloads the zip artifact only and checks it against the build job's digest output, builds the `release_feed` tool with cargo (no node, no cache action) in a step with no secret, then signs, writes `latest.json`, checks the feed as a launcher would, and uploads the `.zip.sig` and `latest.json` as an artifact | `contents: read`; the Minisign key and password, on the sign step only; the public-key variable. Its actions are GitHub's own and this repository's toolchain action (SHA-pinned inside) |
+| `publish` | Unless the run was cancelled, when `sign` succeeded: checks the zip's digest again, creates or updates the dated release, then refreshes `launcher-current` | `contents: write` (the `GITHUB_TOKEN`); the artifacts. No secret |
 | `publish-macos` | Unless the run was cancelled, when `publish` succeeded: checks the macOS zip against `desktop-macos`' digest output, attaches it to the dated release and rewrites its notes, replaces the macOS zip on `launcher-current` when `publish` refreshed it, and fails if the macOS build did not succeed | `contents: write`; the artifacts. No secret, no third-party action, no build |
 
 Every third-party action in the workflow is pinned to a full commit SHA.
@@ -87,33 +87,35 @@ to the macOS desktop launcher below.
 
 ## Version and tag
 
-The tag keeps its form, `launcher-YYYYMMDD-<sha7>`, from the run's UTC date and
-the dispatched commit. The compiled version (D-LX8) is SemVer `YYYY.M.D` from
-the same date, without leading zeros (`2026.10.11`), stamped as
-`CIMMERIA_LAUNCHER_VERSION`. The updater compares it with the feed's version.
-`shell/build.rs` refuses a value that is not SemVer and merges it over
-`tauri.conf.json`'s `version` through `TAURI_CONFIG` (LX-17), so the exe's file
-version, Settings' About line and the updater all read the same value. Unset
-(a local build), the version is `0.1.0`.
+The tag remains `launcher-YYYYMMDD-<sha7>`. D-LX15 (owner approved
+2026-10-23, superseding D-LX8) uses stable SemVer `YYYY.M.(D*100+N)` from
+UTC, with slots N=1..99. October 23's first three releases are
+`2026.10.2301`, `2026.10.2302`, and `2026.10.2303`. Slot 100 is refused.
+The ordinal counts legacy dated releases and exceeds existing encoded slots.
+Paginated release history prevents older pages being silently omitted.
 
-When dated `launcher-YYYYMMDD-*` releases already exist for that day, the
-version is `YYYY.M.D-N`, where N is this release's place among the day's
-releases by creation time (the second is `-2`):
+Old `2026.10.23` and `2026.10.23-2` installations accept `2026.10.2301`.
+SemVer compares year then month before patch, so month and year rollovers
+remain increasing. Build metadata cannot distinguish releases, and a fourth
+numeric component is not SemVer. Prerelease offers remain refused.
 
-- **A re-run** of a run that already published its tag keeps that tag's
-  place, so it keeps its version. The dated release's notes link the run that
-  published it, which is how the stamp step tells a re-run from a new dispatch.
-- **The same commit dispatched again on the same day** would need the same
-  tag, so the stamp step refuses it, before anything is built, with a message
-  saying so. Merge another commit first, or release it the next day (UTC).
+The workflow reserves its identity as a run artifact before building and
+uses the run's creation time. Reruns recover that identity across midnight;
+a rerun without its reservation refuses before building (retention: 90 days).
+A different run targeting the same dated commit tag is refused. An older
+rerun cannot lower the version in `launcher-current`.
 
-The stable channel refuses a prerelease, so a same-day rebuild is never offered
-as an update: it is published as its dated release only, unsigned, and
-`launcher-current` keeps the day's first release. The job summary says so. A
-player who installed a same-day rebuild by hand is not "updated" back to the
-day's first build: the updater counts an installed prerelease as its base
-version, so it offers that player the next day's release and nothing older
-([updater](updater.md)).
+`CIMMERIA_LAUNCHER_VERSION` supplies the exe file version, About line and
+updater comparison through `TAURI_CONFIG`. The build refuses numeric
+components above 65535, the Windows VERSIONINFO limit. Maximum patch is
+3199. MSI ProductVersion's year limit is incompatible; this release ships a
+zip, with no MSI compatibility promise. Local builds remain `0.1.0`.
+
+Every release requires a Minisign signature and verified updater feed.
+Missing keys, failed or skipped signing block publication. The key stays in
+the `launcher-release` GitHub environment. This does not provide Windows
+Authenticode signing or Apple notarization. macOS keeps ad-hoc application
+signing and manual updating.
 
 ## What the Windows job builds
 
@@ -146,7 +148,7 @@ zip of that layout.
 runs it in stages on an arm64 `macos-15` runner, inside the reusable
 `launcher-desktop-macos.yml`. `launcher-desktop.yml` calls the same workflow on
 every desktop-launcher PR (`desktop release build dry run (macOS)`), stamped as
-a same-day release (a tag for the PR's commit and a `YYYY.M.D-2` version) with
+a same-day release (a tag for the PR's commit and a `YYYY.M.(D*100+2)` version) with
 the development manifest key, so the tag check and the same-day Info.plist
 rule run on every PR. It has no release secret and uploads to no release. Why each
 piece is shipped, fetched or left out, and the job's design, are in the
@@ -210,7 +212,7 @@ The trusted comment is Tauri's plus the version field the launcher requires,
 separated by tabs (`\t` below), with exactly one `version:`:
 
 ```text
-timestamp:<unix seconds>\tfile:StargateWorlds-Launcher-windows-x64.zip\tversion:<YYYY.M.D>
+timestamp:<unix seconds>\tfile:StargateWorlds-Launcher-windows-x64.zip\tversion:<YYYY.M.(D*100+N)>
 ```
 
 `latest.json` is Tauri v2's static format. The platform `signature` is base64 of
@@ -257,9 +259,7 @@ and `CIMMERIA_LAUNCHER_BUILD_EPOCH` (the tag and stamp time, for a manifest's
 Done on 2026-10-11: the key pair is in Key Vault `cimmeria-kv` as
 `launcher-updater-minisign-key`, `launcher-updater-minisign-password` and
 `launcher-updater-pubkey`, and the secrets and variable below are set. The
-steps stay here for a rotation or a new repository. Without them every release
-is unsigned, `launcher-current` is not written, the stable links above do not
-resolve, and the launcher's updater is Disabled. Someone with Key Vault and
+steps stay here for a rotation or a new repository. Without them publication fails closed and `launcher-current` is not refreshed; the stable links may not resolve, and the launcher's updater is Disabled. Someone with Key Vault and
 repository-settings access does this once:
 
 1. Generate the pair with the Tauri CLI, entering a strong password when asked:
@@ -291,7 +291,7 @@ key strands every launcher built with the old one in the same way, so keep it.
 
 ## What a release does not have yet
 
-- **A signature.** The Windows zip is unsigned (D-LX10). The launch worker
+- **A signature.** The Windows executable lacks Authenticode signing (D-LX10); the updater zip has a required Minisign signature. The launch worker
   injects DLLs into the game, which is what Defender and SmartScreen react to.
   The macOS app is signed ad hoc only; Developer ID signing and notarization
   are out of scope (D-LX14).

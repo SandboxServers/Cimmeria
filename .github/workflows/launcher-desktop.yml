@@ -17,6 +17,7 @@ on:
       - 'tools/launcher-release/build-desktop-macos.sh'
       - 'tools/launcher-release/publish.sh'
       - 'tools/launcher-release/stamp.sh'
+      - 'tools/launcher-release/*.py'
       - 'tools/launcher-release/test-release-scripts.sh'
       - 'crates/client-patches/**'
       - 'crates/client-telemetry/**'
@@ -40,6 +41,7 @@ on:
       - 'tools/launcher-release/build-desktop-macos.sh'
       - 'tools/launcher-release/publish.sh'
       - 'tools/launcher-release/stamp.sh'
+      - 'tools/launcher-release/*.py'
       - 'tools/launcher-release/test-release-scripts.sh'
       - 'crates/client-patches/**'
       - 'crates/client-telemetry/**'
@@ -178,7 +180,7 @@ jobs:
       - name: sign and check the updater feed with a throwaway key
         run: |
           set -euo pipefail
-          VERSION="$(date -u +%Y).$(date -u +%-m).$(date -u +%-d)"
+          VERSION="$(date -u +%Y).$(date -u +%-m).$(( $(date -u +%-d) * 100 + 2 ))"
           tools/launcher-release/build-desktop.sh feed-dry-run "${VERSION}"
       - name: pack the client-patches overlay
         run: tools/launcher-release/build-desktop.sh overlay https://example.invalid/dry-run
@@ -231,7 +233,7 @@ jobs:
           EPOCH="$(date -u +%s)"
           {
             echo "tag=launcher-$(date -u -d "@${EPOCH}" +%Y%m%d)-${GITHUB_SHA:0:7}"
-            echo "version=$(date -u -d "@${EPOCH}" +%Y).$(date -u -d "@${EPOCH}" +%-m).$(date -u -d "@${EPOCH}" +%-d)-2"
+            echo "version=$(date -u -d "@${EPOCH}" +%Y).$(date -u -d "@${EPOCH}" +%-m).$(( $(date -u -d "@${EPOCH}" +%-d) * 100 + 2 ))"
             echo "epoch=${EPOCH}"
           } >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
@@ -272,7 +274,7 @@ jobs:
   # launcher-release.yml's desktop-macos job itself (the same reusable
   # workflow), minus publishing: the five pieces checked and staged, the pinned
   # D9VK, the release-profile .app, the ad-hoc signature, every check and the
-  # zip. Stamped as a same-day release (a tag and a `YYYY.M.D-2` version) with
+  # zip. Stamped as a same-day release (a tag and a `YYYY.M.(D*100+2)` version) with
   # the development manifest key, so the tag check and the same-day Info.plist
   # rule run here and not first at a release. No release secret, no upload to
   # a release.

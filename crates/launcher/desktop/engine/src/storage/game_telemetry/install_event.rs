@@ -65,6 +65,9 @@ impl DesktopState {
     /// Queue the result of operation `id`. Call it once per run, from the
     /// journal commit that ended it. Returns whether an event was queued.
     pub(crate) fn queue_install_result(&mut self, id: Uuid, run: Run, ending: Ending) -> bool {
+        if ending == Ending::Succeeded {
+            self.log_applied_content("applied");
+        }
         let report = match self.install_telemetry.0.take() {
             Some((owner, report)) if owner == id => Some(report),
             _ => None,
