@@ -1,5 +1,5 @@
-//! Adoption IPC: a verified copy on macOS, the imported folder in place elsewhere
-//! (D-LX12). Destinations, releases and artifacts stay native.
+//! Adoption IPC: use the selected game folder in place on both desktop platforms.
+//! Destinations, releases and artifacts stay native.
 //!
 //! Lock order: the adoption mutex, then the store. Retained engine workers take
 //! only the store, so nothing takes the two in the other order. A native preview
@@ -57,6 +57,7 @@ mod wine_tests;
 const COPY_FOLDER: &str = "Stargate Worlds";
 
 /// The saved import a legacy adoption names. A folder adoption never reads it.
+#[cfg(any(test, not(target_os = "macos")))]
 fn legacy_import(
     state: &DesktopState,
 ) -> Result<cimmeria_launcher_engine::migration::LegacyImport, AdoptionError> {
@@ -119,7 +120,7 @@ struct Session {
 struct ConfirmJob {
     worker: adoption::ConfirmationWorker,
     preview_handle: Uuid,
-    /// Admitted in-place moves are never cancelled part-way.
+    /// Admitted in-place content changes are never cancelled part-way.
     in_place: bool,
 }
 /// Signed fixture origin for host tests; production always uses the fixed catalog
@@ -155,6 +156,7 @@ impl NativeHost {
     }
     /// A legacy adoption also needs its saved import to be usable. A folder never
     /// reads the import, so an unrelated import cannot block it.
+    #[cfg(any(test, not(target_os = "macos")))]
     fn legacy_choice_allowed(&self) -> Result<(), AdoptionError> {
         self.adoption_choice_allowed()?;
         if let Some(blocker) = self

@@ -76,6 +76,8 @@ impl AdoptionCommand {
 pub enum AdoptionError {
     UnsupportedSchema,
     PlatformUnavailable,
+    // Keep this IPC error code shared even when legacy admission is test-only.
+    #[cfg_attr(all(target_os = "macos", not(test)), expect(dead_code))]
     ImportRequired,
     UnsupportedCatalog,
     UnsupportedConfiguration,
