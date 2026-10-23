@@ -104,3 +104,22 @@ test('failed initial inspection offers an enabled main-page retry and holds Play
   ui.click('update-launcher');await ui.settle();assert.equal(ui.calls.filter(r=>r.command==='check').length,1);assert.equal(ui.get('launch').disabled,false);
  }finally{await ui.app.dispose();}
 });
+
+for(const failure of ['inspection','check'] as const)test(`retry after ${failure} failure only checks; a discovered offer requires its own Update and restart press`,async()=>{
+ let saved=initial(),fail=true;
+ const ui=fixture(async request=>{
+  if(fail&&request.command===(failure==='inspection'?'inspect':'check')){fail=false;throw 'transport';}
+  if(request.command==='check')saved={...saved,phase:'available',offer};
+  if(request.command==='prepare')saved={...saved,phase:'ready'};
+  if(request.command==='apply')saved={...saved,phase:'restart_required'};
+  return saved;
+ });
+ try{
+  await ui.settle();assert.equal(ui.get('update-launcher').textContent,'Check for updates');
+  ui.click('update-launcher');await ui.settle();assert.equal(ui.get('update-launcher').textContent,'Update and restart');
+  assert.equal(ui.calls.filter(r=>r.command==='prepare'||r.command==='apply').length,0);
+  assert.equal(ui.get('launch').disabled,true);
+  ui.click('update-launcher');await ui.settle();
+  assert.equal(ui.calls.filter(r=>r.command==='prepare').length,1);assert.equal(ui.calls.filter(r=>r.command==='apply').length,1);
+ }finally{await ui.app.dispose();}
+});

@@ -71,7 +71,11 @@ export function mountUpdater(document:Document,invoke:Invoke,onChange:()=>void=(
  };
  const listeners=([['inspect-updater','inspect'],['check-updater','check'],['prepare-updater','prepare'],['apply-updater','apply']] as const).map(([id,action])=>{const listener=()=>{if(!button(id).disabled)void run(action);};button(id).addEventListener('click',listener);return ()=>button(id).removeEventListener('click',listener);});
  const main=document.getElementById('update-launcher') as HTMLButtonElement|null;
- const update=()=>{if(main&&!main.disabled)void run('update');};main?.addEventListener('click',update);
+ const update=()=>{
+  if(!main||main.disabled)return;
+  const status=current.status,offered=!!status?.offer&&['available','ready','failed'].includes(status.phase);
+  void run(offered?'update':'startup');
+ };main?.addEventListener('click',update);
  if(main)listeners.push(()=>main.removeEventListener('click',update));
  const ready=run(options.startup?'startup':'inspect');
  return {ready,refresh:()=>run('inspect'),settled:()=>mutation,dispose:async()=>{disposed=true;listeners.forEach(remove=>remove());await Effect.runPromise(Fiber.interrupt(watcher));await mutation;await runtime.dispose();}};

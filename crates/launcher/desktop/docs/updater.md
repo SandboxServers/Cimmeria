@@ -98,6 +98,8 @@ publication, OS signing/notarization and release ordering remain separate gates.
 
 ## Startup and main-page integration
 
+A main-page retry labelled **Check for updates** only checks. If it discovers an offer, the player must press **Update and restart** to install it.
+
 Application startup inspects durable updater state and checks the feed once when
 that state admits a check. Play waits during this bounded check. A saved Ready
 package is reverified by inspection and does not trigger another feed check or
