@@ -138,3 +138,33 @@ fn disabled_build_still_blocks_active_update_work() {
         Err(crate::IntentError::Storage(StorageError::Busy))
     ));
 }
+
+#[test]
+fn failed_recheck_does_not_require_an_already_installed_offer() {
+    for current in ["1.1.0", "1.2.0"] {
+        let root = tempfile::tempdir().unwrap();
+        let (config, offer) = fixture_with_current("1.1.0", current);
+        let mut state = DesktopState::open(root.path()).unwrap();
+        // Acknowledgment retains the offer for cleanup retries; only the check
+        // transition is under test, not package replacement/startup health.
+        let mut record = state.update_record().unwrap();
+        record.phase = Phase::Installed;
+        record.offer = Some(offer);
+        state.save_update(record).unwrap();
+        let saved = state.launcher_update_snapshot(Some(&config)).unwrap();
+        assert!(saved.offer.is_some());
+        let ticket = state
+            .begin_launcher_update_check(Some(&config), saved.revision, saved.operation_revision)
+            .unwrap();
+        state
+            .finish_launcher_update_check(ticket, Err(Error::Transport))
+            .unwrap();
+        let failed = state.launcher_update_snapshot(Some(&config)).unwrap();
+        assert_eq!(failed.phase, Phase::Failed);
+        assert!(
+            failed.offer.is_none(),
+            "an installed offer must not reach the frontend as pending"
+        );
+        assert!(!state.launcher_update_blocks_play(Some(&config)).unwrap());
+    }
+}

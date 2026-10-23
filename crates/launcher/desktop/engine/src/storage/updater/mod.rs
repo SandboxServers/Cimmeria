@@ -301,6 +301,15 @@ impl DesktopState {
         let config = config.ok_or(Error::Disabled)?;
         config.allow(&config.endpoint)?;
         let mut record = self.update_admission(revision, operation_revision)?;
+        // An acknowledged offer may remain for cleanup. It is not a pending
+        // update when this binary already has its version (or a newer one).
+        if record
+            .offer
+            .as_ref()
+            .is_some_and(|offer| config.newer(&offer.version).is_err())
+        {
+            record.offer = None;
+        }
         record.phase = Phase::Checking;
         record.owner = Some(Uuid::new_v4());
         // Keep a known offer through a failed recheck; only a successful check
