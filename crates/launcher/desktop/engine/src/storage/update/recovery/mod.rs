@@ -144,6 +144,7 @@ fn reconcile_with(
             &plan.backup(),
             &plan.work_directory(),
             &previous,
+            &_root_owner,
         )?;
         if tree_identity::absent(&plan.owner.content_root(), &plan).is_ok() {
             tree_identity::write(&plan.owner.content_root(), &plan, Role::Replacement)?;

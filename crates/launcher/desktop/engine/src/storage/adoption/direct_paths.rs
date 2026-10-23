@@ -50,6 +50,23 @@ impl Parents {
         result.retain_paths(paths, create)?;
         Ok(result)
     }
+    /// Bind an ordinary root to an already authenticated owner handle before creating children.
+    pub(crate) fn for_owner(
+        root: &Path,
+        paths: &[&Path],
+        create: bool,
+        owner: &File,
+    ) -> Result<Self, Error> {
+        let mut result = Self::for_root(root, &[], false)?;
+        let marker = result.open(&root.join(".cimmeria-install.json"), false, false)?;
+        let actual = inventory::file_identity(&marker)?;
+        let expected = inventory::file_identity(owner)?;
+        if actual.device != expected.device || actual.inode != expected.inode {
+            return Err(StorageError::UnsafeFile.into());
+        }
+        result.retain_paths(paths, create)?;
+        Ok(result)
+    }
     fn retain_paths(&mut self, paths: &[&Path], create: bool) -> Result<(), Error> {
         for path in paths {
             let relative = path

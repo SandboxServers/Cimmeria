@@ -1,6 +1,14 @@
 //! Selective direct-root uninstall: preserve the chosen folder and user extras.
 use super::*;
+use crate::storage::adoption::direct_paths::Parents;
 use std::collections::BTreeSet;
+
+fn storage(error: adoption::Error) -> StorageError {
+    match error {
+        adoption::Error::Storage(error) => error,
+        _ => StorageError::Corrupt,
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -97,19 +105,7 @@ impl DesktopState {
                 saved
             }
         };
-        // Validate the entire selection before deleting the first file. Never
-        // traverse links, and never remove a directory containing user extras.
-        for relative in &selection.paths {
-            validate(root, relative)?;
-        }
-        for relative in selection.paths {
-            let path = root.join(relative);
-            match std::fs::remove_file(&path) {
-                Ok(()) => sync(path.parent().ok_or(StorageError::UnsafeFile)?)?,
-                Err(error) if error.kind() == ErrorKind::NotFound => (),
-                Err(_) => return Err(StorageError::Io.into()),
-            }
-        }
+        let parents = remove_selected(root, &selection.paths, &owner, || Ok(()))?;
         if let Some(id) = installed_content::adopted_work(&self.directory.root, &plan.installation)?
         {
             let work = root.join(format!(".cimmeria-adopt-{id}"));
@@ -117,17 +113,15 @@ impl DesktopState {
                 // The exact work ID comes from this installation's retained
                 // provenance. Original-file backups and other folders stay.
                 failed_cleanup::validate_tree(&work)?;
-                std::fs::remove_dir_all(&work).map_err(|_| StorageError::Io)?;
+                parents.remove_tree(&work).map_err(storage)?;
                 sync(root)?;
             }
         }
-        match std::fs::remove_file(root.join("content-ready.json")) {
-            Ok(()) => (),
-            Err(error) if error.kind() == ErrorKind::NotFound => (),
-            Err(_) => return Err(StorageError::Io.into()),
-        }
+        parents
+            .remove(&root.join("content-ready.json"), false)
+            .map_err(storage)?;
         drop(owner);
-        std::fs::remove_file(marker).map_err(|_| StorageError::Io)?;
+        parents.remove(&marker, false).map_err(storage)?;
         sync(root)?;
         self.forget_installed_content(&plan.installation)?;
         Ok(())
@@ -162,3 +156,27 @@ fn validate(root: &Path, relative: &Path) -> Result<(), StorageError> {
     }
     Ok(())
 }
+
+// Keep ordinary parent handles from selection validation through every unlink.
+fn remove_selected(
+    root: &Path,
+    paths: &BTreeSet<PathBuf>,
+    owner: &File,
+    after_validation: impl FnOnce() -> Result<(), StorageError>,
+) -> Result<Parents, StorageError> {
+    let absolute: Vec<_> = paths.iter().map(|path| root.join(path)).collect();
+    let borrowed: Vec<_> = absolute.iter().map(PathBuf::as_path).collect();
+    let parents = Parents::for_owner(root, &borrowed, false, owner).map_err(storage)?;
+    for relative in paths {
+        validate(root, relative)?;
+    }
+    after_validation()?;
+    for path in &absolute {
+        parents.remove(path, false).map_err(storage)?;
+        // Preserve the existing unlink durability boundary on ordinary paths.
+        sync(path.parent().ok_or(StorageError::UnsafeFile)?)?;
+    }
+    Ok(parents)
+}
+#[cfg(test)]
+mod tests;

@@ -178,6 +178,7 @@ pub(super) fn replace(
                 &plan.backup(),
                 &plan.work_directory(),
                 &previous,
+                &prepared._root_owner,
             )?;
             tree_identity::write(&game, plan, tree_identity::Role::Replacement)?;
             record(&mut state, plan, Phase::Promoted)?;
