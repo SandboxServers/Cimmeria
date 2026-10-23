@@ -298,8 +298,8 @@ async fn an_interrupted_preparation_is_offered_for_removal_and_survives_reopen()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_interrupted_copy_offers_only_the_recovery_its_checkpoint_allows() {
-    // After promotion a verified staged copy exists: recovery finishes it.
+async fn an_interrupted_legacy_copy_offers_metadata_only_abandonment() {
+    // A historical copy must never finish publication after the in-place upgrade.
     let mut f = Fixture::new(serde_json::json!({}));
     let _server = f.serve().await;
     let before = source_bytes(&f.source);
@@ -319,11 +319,11 @@ async fn an_interrupted_copy_offers_only_the_recovery_its_checkpoint_allows() {
     let Some(Reconciliation::Copy {
         operation_id,
         directory,
-        can_recover: true,
-        can_abandon: false,
+        can_recover: false,
+        can_abandon: true,
     }) = failed.reconciliation.clone()
     else {
-        panic!("promoted copy must be recoverable only: {failed:?}");
+        panic!("legacy copy must offer metadata-only abandonment: {failed:?}");
     };
     assert_eq!(directory, f.destination());
     let revision = failed.native.operation.revision;
@@ -351,19 +351,21 @@ async fn an_interrupted_copy_offers_only_the_recovery_its_checkpoint_allows() {
         AdoptionError::StaleRevision
     );
     assert_eq!(
-        f.host.adoption_command(act(false, revision)).unwrap_err(),
+        f.host.adoption_command(act(true, revision)).unwrap_err(),
         AdoptionError::RecoveryRequired
     );
-    let recovered = f.host.adoption_command(act(true, revision)).unwrap();
-    assert_eq!(recovered.reconciliation, None);
-    assert_eq!(recovered.last_error, None);
+    let mut retained = tree(&directory);
+    retained.remove(&PathBuf::from(".cimmeria-install.json"));
+    retained.remove(&PathBuf::from("content-ready.json"));
+    let abandoned = f.host.adoption_command(act(false, revision)).unwrap();
+    assert_eq!(abandoned.reconciliation, None);
+    assert_eq!(abandoned.last_error, None);
+    assert_eq!(abandoned.completed, None);
     assert_eq!(
-        recovered.completed,
-        Some(Completed {
-            directory: f.destination(),
-            light: false,
-        })
+        operation(&abandoned),
+        Some((OperationKind::Adopt, OperationState::Cancelled))
     );
+    assert_eq!(tree(&directory), retained);
     assert_eq!(source_bytes(&f.source), before);
 
     // Before any checkpoint nothing can be finished: only abandonment remains,

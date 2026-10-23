@@ -19,11 +19,11 @@ mod rejection_dto;
 mod review;
 mod status;
 #[cfg(all(test, target_os = "macos"))]
-use contract::Imported;
+use contract::{Completed, Imported};
 use contract::{Activity, Backend};
 pub use contract::{AdoptionCommand, AdoptionError, AdoptionStatus};
 #[cfg(test)]
-use contract::{Completed, Phase, Reconciliation};
+use contract::{Phase, Reconciliation};
 use refusal::refusal;
 use review::Review;
 #[cfg(all(test, not(target_os = "macos")))]
