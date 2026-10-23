@@ -184,3 +184,5 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_launcher_game_update_review.md](reference_launcher_game_update_review.md) — native signed game offers, stale-review invalidation and actual store-reopen Effect UAT; Apply UI integration remains pending.
 
 - [reference_custom_debug_map.md](reference_custom_debug_map.md) — purpose-built Debug Map means newly authored geometry, not a stock-map alias; native editor commands are statically confirmed, but editor-save to clean-game load is the CM-00 gate
+
+- [reference_adoption_relocation_audit_2026_10_23.md](reference_adoption_relocation_audit_2026_10_23.md) — shipped rename/copy audit and ownership versus validity distinction; design pending owner decisions.
