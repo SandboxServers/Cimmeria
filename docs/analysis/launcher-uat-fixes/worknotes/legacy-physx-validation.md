@@ -164,3 +164,11 @@ build and the persistent JS REPL About/privacy pass succeeded again. Native
 Windows asset rebuild passed through the lane (6.237 seconds). Fresh read-only
 review verified both wording fixes and returned ship with no remaining findings.
 Final-head native/package CI, merge/retirement and release remain pending.
+
+Automated review also caught a pending mocked PhysX reply in test cleanup.
+The finally block now flushes the command microtask and resolves that reply
+before disposal. A temporary wrong first-press label failed with ERR_ASSERTION
+in 19 ms rather than hanging; restored, all eleven PhysX tests passed. All 294
+frontend tests and TypeScript checking passed again. This eighth restored
+mutation supplements the seven functional/disclosure guards above. Fresh
+read-only review checked the cleanup and stale archive-status fixes: ship.

@@ -366,9 +366,9 @@ old selection cannot trigger installation. Inspect/reopen, failed verification,
 lost replies, disposal, existing installs and active/recovery states do not
 trigger the handoff. No Plan fields or source-RAR changes are introduced.
 
-New tests, mutation proof, logic/visual UAT and final review/CI are pending.
-The preceding 1,185 native and 275 frontend test totals do not include this
-extension. See the [archive contract](../../../crates/launcher/desktop/docs/seed-archive.md#explicit-selection-starts-eligible-installation)
+Tests, mutation proof, logic/visual UAT and fresh review passed: 1,186 native
+tests (13 ignored), 294 frontend tests including the later privacy extension.
+Final-head native/package CI remains pending. See the [archive contract](../../../crates/launcher/desktop/docs/seed-archive.md#explicit-selection-starts-eligible-installation)
 and [player guide](../../client/launcher-guide.md#use-a-game-archive-you-already-downloaded).
 These packaged acceptance rows remain pending and are mirrored in
 [unified UAT](../../guides/unified-uat.md#archive-install-handoff-follow-up-as).

@@ -121,7 +121,7 @@ test('missing core offers the legacy installer on Play even without the retained
   await p.app.settled();await flush();
   assert.equal(button.hidden,true);assert.equal(p.get('physx-play-warning').hidden,true);
   assert.equal(p.text('physx-legacy-status'),'PhysX System Software installed.');
- }finally{await p.app.dispose();}
+ }finally{await flush();answer?.(status());await p.app.dispose();}
 });
 
 test('legacy download failure and UAC cancellation allow an explicit retry',async()=>{

@@ -16,5 +16,6 @@ Cancelled native pickers return optional picker_cancelled=true only on that
 response, omitted normally and never persisted. Preserve it through workflow
 settlement so an old chosen archive does not look like a fresh successful
 selection. Keep the source RAR unchanged; no Plan fields or synthetic clicks.
-Prior catalog-key checks passed 1,185 native/275 frontend tests before this
-extension; new handoff checks, final review and CI remain pending.
+Combined checks passed 1,186 native tests (13 ignored), 294 frontend tests after
+the privacy extension, handoff mutation/REPL/fixture visual checks and fresh
+review ship. Final-head native/package CI and packaged acceptance remain pending.
