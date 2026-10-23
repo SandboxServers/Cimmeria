@@ -158,3 +158,12 @@ Final second-review lane checks: engine fmt `status=ok exit=0 ran=1.161s`
 `status=ok exit=0 ran=6.361s` (`20261022-211138-457140.log`); full engine lib
 `status=ok exit=0 ran=90.371s`, 931 passed, 0 failed, 3 ignored
 (`20261022-211147-279964.log`). `git diff --check` passed.
+## Linux PR dry-run evidence
+
+PR #1991, desktop workflow run 39887446334, job 120199555023 passed
+shellcheck and the actual stubbed stamp.sh/publish.sh suite. The log confirms
+first and second stable daily slots, API-failure refusal, all 12 Python tests,
+digest refusal, convergent dated notes, rolling macOS links, missing-signature
+and missing-feed refusal, equal-version retry, and older macOS retry preserving
+every newer rolling asset and notes while permitting dated asset repair.
+This used temporary assets and a stub gh; it did not publish a real release.
