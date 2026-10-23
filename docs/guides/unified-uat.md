@@ -2,7 +2,7 @@
 title: Unified In-Game UAT Guide
 type: how-to
 audience: in-game testers (the owner and playtesters) working through the restored systems on the colo; no programming needed
-last_updated: 2026-10-18
+last_updated: 2026-10-23
 companion_docs:
   - organizations-uat.md
   - ../content/debug-hub.md
@@ -1567,6 +1567,22 @@ The launcher-uat-fixes campaign ([ledger](../analysis/launcher-uat-fixes/README.
 | U4 | Interrupt an adoption (close the launcher mid-move), then reopen it | One banner about the adoption; one recheck button; Install shows no primary button and no recovery text; Play shows one adoption line | D-LF5. LF-06 |
 | U5 | Open the adoption review | One folder line with no `\\?\` prefix; counts in one place; hashes and ids behind "Release details"; the telemetry sentence has its space; the "Recover adoption…" trigger stays usable while its confirmation is open; the two confirmation buttons are spaced. **Recheck the clipping and overlap in screenshot 2 of the laptop worknote** | F5's clipping and overlap were never verified. Record what you see, with a screenshot |
 | U6 | During a reconciliation, press "Upload debug logs"; then run the game once and press it again | First press: "Sent N lines. Reference …". One SigNoz filter on that reference shows the launcher lines. The second press sends only new lines. After a game run, the same reference also shows `client.launcher.game_log` rows | LF-15, LF-16, LF-19. A 429 or 503 ends `Partial`. Known limits: messages cut at 2,048 bytes; rows over 4,096 bytes after escaping are dropped by the server; lines beyond 20,000 new launcher lines and 20,000 new game lines per press are not uploaded; daily ceilings apply |
+
+### Adoption no-relocation follow-up (AIP)
+
+Use a build containing the [approved follow-up](../analysis/launcher-uat-fixes/README.md#adoption-follow-up-2026-10-23).
+These rows supplement U1-U6, whose results remain historical. In the follow-up,
+Recover must refuse interrupted legacy schema-1 movers; U1/U4 are not permission
+to resume their relocations. **Pending owner UAT:** no physical picker, packaged
+visual, native macOS, or real-client run is attested. Ask before laptop or lab use.
+
+| ID | Action | Expected |
+|---|---|---|
+| AIP-U1 | With no valid install, press main-page Adopt an install once; cancel, then try a picker error | Immediate visible feedback; the existing workflow handles cancel/error and can retry |
+| AIP-U2 | Adopt an approved fixture at its selected root on each supported native platform; reopen | No new content relocation into game; unchanged matched files retain names, bytes, and file IDs; approved individual changes/backups are recorded |
+| AIP-U3 | Check valid managed/adopted installs with unavailable runtime/PhysX or a launcher minimum gate | Footer adoption button stays hidden; content validity remains separate from Play readiness |
+| AIP-U4 | Run Repair, Update, then selective Uninstall on an adopted fixture with an unrelated extra file | Per-file maintenance preserves extras; Uninstall retains root, extras, and original-file backups |
+| AIP-U5 | Reopen interrupted schema-1 adoption and abandon; separately interrupt/abandon schema-2 adoption | Legacy recovery refuses moving and metadata-only abandon retains bytes; schema-2 abandon rolls back approved individual changes |
 
 **What this run risks (owner decision, D-LU3, D-LU4):** chat and character names in the game log leave the machine, and only a per-word scrub (paths, IPs, URLs, `@`, GUIDs, long hex) applies; secrets under 32 characters or split by dots are kept; log rows can be forged by a log-token holder; the install and address budgets are speed bumps. The full list is in the [ledger close-out](../analysis/launcher-uat-fixes/README.md#owner-risks-accepted-under-d-lu3-and-d-lu4-nothing-was-removed-to-avoid-them).
 

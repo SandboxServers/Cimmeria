@@ -2,6 +2,29 @@
 
 Ledger for the fixes that came out of the owner's laptop UAT of light in-place adoption ([launcher-telemetry/worknotes/laptop-uat-2026-10-22.md](../launcher-telemetry/worknotes/laptop-uat-2026-10-22.md); F1-F6, G1-G4 and the log-ingest proposal). Packets: [work-packets.md](work-packets.md) (rules, contract, waves 1-2) and [work-packets-logs.md](work-packets-logs.md) (log ingest, waves 3-5, close-out). Resume card: [RESUME.md](RESUME.md). Prefix `LF`. Designed 2026-10-22 against `origin/main` `3c10f3624`, where the launcher, admin-api telemetry routes, workflows and `docs/client` match the `lt-light-integration` tip `6440be457` (PR LA #1983's content). Every packet re-greps its anchors at its own base.
 
+## Adoption follow-up (2026-10-23)
+
+The [approved no-relocation design](design-adopt-in-place.md) adds the main-page
+adoption entry and direct-root adoption on Windows and macOS. The owner permits
+explicit per-file setup/patch changes, cooked normalization, and replacement
+backups at that root; bulk copying or relocation is prohibited. Schema-2 intent
+and pinned plan select direct-root layout, while schema-1 successful installs
+retain their layout. Interrupted legacy movers refuse recovery and offer
+metadata-only abandon with bytes retained for manual inspection.
+
+Follow-up steps AIP-U1 through AIP-U5 are mirrored in
+[unified UAT](../../guides/unified-uat.md#launcher-uat-fixes). They supplement the
+historical U1-U6 rows below and do not attest a laptop, lab, native macOS, or
+released-build run.
+
+| ID | Action | Expected |
+|---|---|---|
+| AIP-U1 | With no valid install, press main-page Adopt an install once; cancel, then try a picker error | Immediate visible feedback; the existing workflow handles cancel/error and can retry |
+| AIP-U2 | Adopt an approved fixture at its selected root on each supported native platform; reopen | No new content relocation into game; unchanged matched files retain names, bytes, and file IDs; approved individual changes/backups are recorded |
+| AIP-U3 | Check valid managed/adopted installs with unavailable runtime/PhysX or a launcher minimum gate | Footer adoption button stays hidden; content validity remains separate from Play readiness |
+| AIP-U4 | Run Repair, Update, then selective Uninstall on an adopted fixture with an unrelated extra file | Per-file maintenance preserves extras; Uninstall retains root, extras, and original-file backups |
+| AIP-U5 | Reopen interrupted schema-1 adoption and abandon; separately interrupt/abandon schema-2 adoption | Legacy recovery refuses moving and metadata-only abandon retains bytes; schema-2 abandon rolls back approved individual changes |
+
 ## Purpose
 
 1. **Unbrick light adoption (F1, blocker).** A light in-place adoption must never end in an unrecoverable `Corrupt`. The final check must be right, explain itself in SigNoz, and have an escape hatch.

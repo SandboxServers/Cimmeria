@@ -1,6 +1,6 @@
 # Adopt an install without relocating it
 
-> **Type:** Explanation / proposed design
+> **Type:** Explanation / approved design
 > **Audience:** Launcher engineers, reviewers, and the project owner
 > **Last updated:** 2026-10-23
 > **Status:** Approved for implementation (owner, 2026-10-23): macOS in-place adoption included; explicit content changes at the selected root permitted. No implementation tests executed by this design pass.
@@ -16,7 +16,7 @@ The implementation baseline is origin/main `4ed823288`, which already includes U
 
 The shipped engine violates the location requirement. In `crates/launcher/desktop/engine/src/storage/adoption/in_place.rs`, preparation creates `root/game` (line 95), and `move_files` renames each adopted release file into that directory. Its recovery path resumes those moves. Calling this operation in-place does not make it compliant.
 
-`light.rs` and `in_place_replace.rs` also rename `Cache.en-US` to `SourceCache.en-us`; replacement adoption backs up original files. Those are separate path mutations, with semantics the owner must resolve before implementation. The macOS adoption flow copies the installation; D-LX12 explicitly retained that behavior. The new requirement supersedes that allowance, but its replacement needs an explicit owner choice.
+`light.rs` and `in_place_replace.rs` also rename `Cache.en-US` to `SourceCache.en-us`; replacement adoption backs up original files. The owner approved those explicit per-file content changes and backups at the selected root. The previous macOS flow copied the installation under D-LX12; the owner now requires direct-root adoption there too.
 
 Audit the inventory, session, installed-content, launch, update, repair, uninstall, and log-upload consumers together. Removing `move_files` alone leaves readers pointing at `root/game`. Review the F1/F3-F6 copy and native prompts so every displayed statement matches the new behavior.
 
@@ -34,15 +34,15 @@ The adoption `owned` flag conservatively treats errors as owned, so it cannot su
 
 ## Proposed layout and persistence
 
-Add a small layout-resolution module that authenticates the owner, provenance, and retained pinned adoption plan. Use the existing digested `Plan.schema_version`: schema 1 keeps the legacy layout; schema 2 selects direct-root adoption deterministically. Add no fields to `Plan`. A sidecar is unnecessary: binding an independently editable layout value to a plan digest would not authenticate that value.
+Add a small layout-resolution module that authenticates the owner, provenance, and retained pinned adoption plan. Use the existing digested `Plan.schema_version` together with `InstallIntent.schema_version`: schema 1 keeps the legacy/managed layout; schema 2 selects direct-root adoption deterministically. The retained authenticated plan must enforce matching schema-2 intent. After owner/provenance/journal validation, `InstallIntent::content_root()` resolves the content directory. Add no fields to `Plan`. A sidecar is unnecessary: binding an independently editable layout value to a plan digest would not authenticate that value.
 
 The resolver distinguishes managed/legacy content in `root/game` from new adoption whose content root is the selected directory itself. Validate the plan schema and provenance before resolving the root; reject missing, mismatched, unsupported, or escaping records. The authenticated plan schema selects one immutable layout, rather than relying on directory-existence guesses or a self-authenticated sidecar.
 
-Retain the schema-2 plan durably before publishing content-ready state. Readers must reject partially persisted state and recover through the established persistence-uncertain/reopen contract. Route launch, update, repair, uninstall, executable checks, game-log discovery, and receipt/ledger consumers through this resolver. Preserve selective uninstall of authenticated launcher-managed files; never recursively delete the adopted root or its unrelated extras. Repair and update must use per-file operations for direct-root adoption, never swap the selected directory. An unregister-only uninstall that preserves the external installation is a possible stronger interpretation to review alongside the exact-file-path decision below.
+Retain the schema-2 plan durably before publishing content-ready state. Readers must reject partially persisted state and recover through the established persistence-uncertain/reopen contract. Route launch, update, repair, uninstall, executable checks, game-log discovery, and receipt/ledger consumers through this resolver. Preserve selective uninstall of authenticated launcher-managed files; never recursively delete the adopted root or its unrelated extras. Repair and update must use per-file operations for direct-root adoption, never swap the selected directory.
 
 Existing successful legacy adoptions keep their current layout. Moving their files back would itself violate the requirement and could overwrite newer files at the old location. New adoption preserves the selected installation root and unrelated files. The owner permits explicit per-file content changes, cooked-data normalization and replacement backups within that root; it must never bulk re-home the install into a game subfolder. Managed installation behavior remains unchanged.
 
-Persisted interrupted legacy adoption is a migration hazard: it must never silently resume a rename or copy after upgrading. Detect it before admitting resume. Proposed escape: leave all files untouched, mark the operation as needing explicit recovery, and let the player abandon launcher ownership metadata without deleting content. Explain that partially moved files need manual inspection before a fresh adoption. Do not offer an automatic rollback that moves them back. Implement and test that recovery escape as part of the no-relocation requirement; do not add an approval gate to leaving the files untouched.
+Persisted interrupted legacy adoption is a migration hazard: it must never silently resume a rename or copy after upgrading. Detect it before admitting resume. Recovery escape: leave all files untouched, mark the operation as needing explicit recovery, and let the player abandon launcher ownership metadata without deleting content. Explain that partially moved files need manual inspection before a fresh adoption. Do not offer an automatic rollback that moves them back. Implement and test that recovery escape as part of the no-relocation requirement; do not add an approval gate to leaving the files untouched.
 
 Keep additions to `in_place.rs`, `inventory.rs`, `session.rs`, `log_upload/tests.rs`, and `upload_gate.rs` to call lines where possible. Put layout resolution, compatibility admission, and regression fixtures in cohesive sibling modules; respect the 500/700-line limits.
 
@@ -54,9 +54,9 @@ On the first press, show an immediate choosing/busy message before awaiting the 
 
 ## Regression and UAT plan
 
-Use storage lifecycle tests for the location invariant and frontend composition tests for interaction. The decisive adoption guard snapshots relative paths, bytes, and stable filesystem file IDs before adoption, then verifies the same files remain at those exact paths afterward. File IDs catch copy-and-delete implementations that a hash-only test misses. Include unrelated extras and non-ASCII paths. Exercise the production host adoption entry point, rather than a test-only no-op mover.
+Use storage lifecycle tests for the location invariant and frontend composition tests for interaction. The decisive adoption guard snapshots relative paths, bytes, and stable filesystem file IDs before adoption, then verifies unchanged matched files remain at those exact paths afterward. Assert approved replacements, setup writes, and cooked normalization separately. File IDs catch copy-and-delete implementations that a hash-only test misses. Include unrelated extras and non-ASCII paths. Exercise the production host adoption entry point, rather than a test-only no-op mover.
 
-Cover direct-root adoption, reopen/launch resolution, repair/update resolution, selective uninstall, managed installation regression, crash and resume boundaries, cancellation/abandon, malformed or unsupported retained plans, and interrupted old-operation refusal. Add owner-approved stock/replacement/macOS cases once their semantics are settled.
+Cover direct-root adoption, reopen/launch resolution, repair/update resolution, selective uninstall, managed installation regression, crash and resume boundaries, cancellation/abandon, malformed or unsupported retained plans, and interrupted old-operation refusal. Include the approved stock/replacement/macOS direct-root contract. Schema-2 abandon undoes approved per-file changes; schema-1 interrupted abandon retains existing bytes, staged originals, and backups for manual inspection.
 
 Frontend tests cover valid managed and adopted installs hiding the button; absent/invalid installs showing it; runtime/PhysX/update-minimum/busy states retaining the validity distinction; and cancel/error/success feedback. Verify only one adoption workflow exists.
 
