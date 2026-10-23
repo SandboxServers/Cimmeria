@@ -111,11 +111,8 @@ fn copy_identity(interrupted: bool) {
             let mut state = DesktopState::open(&state_dir).unwrap();
             let revision = state.operations().snapshot().revision;
             let (result, events) = capture(|| recover(&mut state, id, revision));
-            result.unwrap();
-            assert_identity(&events, digest, "[]");
-            let revision = state.operations().snapshot().revision;
-            let (result, events) = capture(|| recover(&mut state, id, revision));
-            result.unwrap();
+            assert_eq!(result, Err(ContractError::InvalidTransition.into()));
+            // Interrupted historical copies must never be published after upgrade.
             assert!(identities(&events).is_empty());
         }
     }
@@ -134,6 +131,6 @@ fn copy_confirmation_logs_one_retained_identity() {
     copy_identity(false);
 }
 #[test]
-fn copy_recovery_logs_once_and_failed_replayed_attempts_are_silent() {
+fn interrupted_legacy_copy_recovery_refuses_publication_and_emits_no_identity() {
     copy_identity(true);
 }
