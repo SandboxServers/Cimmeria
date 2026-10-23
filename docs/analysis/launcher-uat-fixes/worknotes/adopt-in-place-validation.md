@@ -339,6 +339,34 @@ passes and three shell failures remain the actual CI state, not an overall pass.
 owner decision is required. The complete Mac job is not green; corrected CI must
 run again. No release was performed.
 
+## macOS engine and shell pass; production lint follow-up
+
+Mac run `39910259596`, job `120276089926`, now passes the engine (**925 passed,
+24 ignored**) and shell (**160 passed, 17 ignored**), including all three previous
+shell failures. Frontend 250 tests, persistence REPL and UI build pass. Ignored
+checks remain unexecuted; these passes do not establish real Wine/game behavior.
+
+Production macOS clippy still reports unused `legacy_import`,
+`legacy_choice_allowed`, and the shared IPC enum's `ImportRequired` variant.
+The coordinator's narrow fix gates the two helpers with
+`#[cfg(any(test, not(target_os = "macos")))]` to match their callers. The IPC
+variant is retained, with `expect(dead_code)` only for non-test macOS builds;
+no wire variant or runtime behavior is removed. Two stale comments about macOS
+copying/in-place moving are corrected alongside the attributes.
+
+Independent `review-8.md` returned ship: the helper gates match their callers,
+the shared IPC variant remains with a narrow expectation, and runtime behavior
+is unchanged. Final local checks pass: shell 148 with 7 ignored
+(`20261023-013855-191772`), workspace all-target clippy
+(`20261023-013906-320520`), native build (`20261023-013911-218704`), and fmt
+(`20261023-013918-79376`). Engine 969/3 ignored remains the last local engine
+result. Mac engine 925/24 ignored, shell 160/17 ignored, frontend 250/persistence
+REPL/UI build are verified in the temporary `cimmeria-adoption-mac-clippy.log`.
+Native macOS production clippy and final executable build remain pending on
+the corrected next head. The corrected next-head Mac production
+clippy run must still pass before overall CI can be recorded green. No new
+owner decision or real release is involved.
+
 ## Browser mock and coverage limits
 
 At a 1280 × 720 viewport, a browser mock showed the main-page footer entry.
