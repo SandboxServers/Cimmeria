@@ -42,7 +42,7 @@ operator setup (content releases and the two signing keys) is
   - [Download the launcher](#download-the-launcher)
   - [First start on Windows](#first-start-on-windows)
   - [Install the game](#install-the-game)
-  - [Install PhysX](#install-physx)
+  - [Set up Windows game prerequisites](#set-up-windows-game-prerequisites)
   - [Play](#play)
   - [Use an existing game folder](#use-an-existing-game-folder)
   - [Use a game archive you already downloaded](#use-a-game-archive-you-already-downloaded)
@@ -150,25 +150,47 @@ shows feedback, followed by the inspection result beside it. A launcher update c
 **Update and restart** before Play. A previously completed adoption does not
 need compatibility setup just because you reopened the launcher.
 
-### Install PhysX
+### Set up Windows game prerequisites
 
-Stargate Worlds needs AGEIA PhysX System Software 2.6.3 to start its physics
-engine. On Windows, **Settings → PhysX System Software** says whether it is
-installed. When it is missing:
+The game needs legacy **DirectX** libraries and the **PhysX 2.6.3** core,
+including on Windows 11 ARM. The DirectX version shown by Windows does not
+confirm that these older libraries are installed.
 
-1. Click **Install PhysX**. The launcher runs the PhysX installer that came
-   with the game, after checking it is the expected file.
-2. Accept the Windows permission prompt and finish the installer.
-3. If it says "Restart Windows before you play", restart.
+After a new install, installing from an existing archive, or adopting a game
+folder, the launcher checks these prerequisites. It also checks before Play.
+An installed game stays registered when a prerequisite is missing, but Play
+waits until both checks pass. The main page shows **DirectX** and **PhysX System
+Software** setup panels when needed.
 
-While PhysX is missing, the Play area shows "PhysX System Software is missing,
-so the game may not start. Install it under Settings." Play is not blocked.
+1. Click **Install DirectX** if DirectX is missing. The launcher downloads and
+   verifies Microsoft's legacy DirectX web installer. Follow the vendor wizard,
+   accept its license if you agree, and approve any Windows permission prompt.
+   Internet access is needed for the web installer to obtain the runtime files.
+2. Click **Install PhysX** if PhysX is missing. The launcher verifies and runs
+   the vendor installer retained from the game archive. If your adopted or older
+   game folder has no retained installer, it downloads and verifies NVIDIA's
+   **PhysX Legacy System Software** instead. Follow the vendor wizard and
+   Windows permission prompt. If the download fails, check your connection and
+   click **Install PhysX** again.
+3. If the installer asks for a Windows restart, restart before playing. Use
+   the prerequisite panel's refresh button after installing a runtime yourself.
+
+Each setup button shows progress on its first press. Finish or cancel its
+vendor installer before starting another setup, installing or adopting the
+game, updating the launcher, or playing. The launcher checks the runtime files
+again afterward; an installer reporting success alone does not enable Play.
+If the launcher cannot confirm an installer result, refresh its status before
+trying again. It does not repeat an installer automatically.
+
+For detection details and evidence limits, see the contributor reference
+[Windows game prerequisite checks](../../crates/launcher/desktop/docs/prerequisites.md#windows-game-prerequisite-checks).
 
 ### Play
 
 Wait for the startup launcher-update check to finish. If **Update and restart**
 appears on the main page, click it before playing; see [Launcher updates](#launcher-updates).
-Then click **Play**. The launcher writes the login server list into the client,
+Complete any [Windows game prerequisite setup](#set-up-windows-game-prerequisites)
+shown on the main page. Then click **Play**. The launcher writes the login server list into the client,
 loads the client patches (and, if you turned it on, the diagnostics module),
 and starts `SGW.exe`. The line under the button then says "Game process
 started. Login and world entry are not verified": the launcher sees the game
@@ -217,6 +239,8 @@ the launcher at its `SGW.exe`. You don't need the old launcher for this.
    files, because that mode never replaces or removes your files. The button
    reads **Use this folder**.
 5. Tick the confirmations and click the confirm button on the screen.
+6. Complete any [Windows game prerequisite setup](#set-up-windows-game-prerequisites)
+   shown afterward. Adopting game files does not install their system runtimes.
 
 The selected folder must be writable. If a protected location cannot be used,
 choose an accessible game installation. Adoption does not relocate it for you.
@@ -403,7 +427,6 @@ soon as you press it.
 | **Login servers** | The servers the game's login screen lists, one `Name = http://host:port` per line. **Save servers** saves them; a line the launcher cannot read is shown under the box and nothing is saved. Empty means the default Cimmeria server. |
 | **Debug logs** | **Upload debug logs** sends the launcher's own log lines and the game's `SGWDebugLog` and session log lines to the project's diagnostics server, in a few paced batches. It sends only lines it has not sent before, at most 20,000 launcher lines and 20,000 game lines per press, and shows "Sent N log lines. Reference `<id>`." when it is done. Quote the reference when you report a problem. File paths and addresses are removed first. Game logs can include chat and character names. Pressing the button sends the logs even when **Game diagnostics** is off. |
 | **Client cache and settings** | **Reset client cache** clears the game's downloaded data cache in `Documents\My Games\Firesky\SGWGame\Cache.en-US`; the game refills it from the server at your next login. **Reset all client state…** deletes the whole `Documents\My Games\Firesky` folder (your game settings, key bindings and cache) after you confirm with **Delete all client state**. Your characters on the server are not affected. Both refuse while the game runs. |
-| **PhysX System Software** | Windows only. See [Install PhysX](#install-physx). |
 | **Game updates** | **Check for game updates** looks for a newer signed release of the game patches; **Update game…** applies one after you confirm. The update is built beside your install and swapped in, so a failed update leaves the old one working. |
 | **Launcher updates** | See [Launcher updates](#launcher-updates). |
 | **Use an existing game folder**, **Import legacy launcher settings** and **Use a downloaded game archive** | See [Use an existing game folder](#use-an-existing-game-folder) and [Use a game archive you already downloaded](#use-a-game-archive-you-already-downloaded). |
@@ -921,6 +944,18 @@ the original installer does.
   files (resolution, keys, audio) to the defaults.
 - **No** keeps your settings, and the game asks again on the next
   launch.
+
+### Play does not open a game window on Windows
+
+Check the **DirectX** and **PhysX System Software** panels on the main page.
+Install any missing runtime, then refresh its status. Windows 11 and Windows
+on ARM still need the legacy libraries used by this 32-bit game; copying a
+game archive or adopting a game folder does not install them. See
+[Set up Windows game prerequisites](#set-up-windows-game-prerequisites).
+
+If both checks pass and no game window opens, share the Play status and
+[debug logs](#where-to-find-logs-to-share). Passing these checks confirms only
+the prerequisite files they inspect, not that every game dependency can load.
 
 ### The game shows the gate backdrop but never the login screen
 

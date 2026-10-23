@@ -29,8 +29,10 @@ mod launch;
 mod log_upload;
 mod migration;
 mod physx;
+mod windows_prerequisites;
 pub use launch::{LaunchCommand, LaunchStatus};
 pub use migration::{MigrationCommand, MigrationStatus};
+pub use windows_prerequisites::DirectxStatus;
 mod repair;
 mod runtime_setup;
 mod seed_archive;
@@ -72,6 +74,11 @@ pub struct NativeHost {
     launch_worker: Mutex<Option<cimmeria_launcher_engine::launch::Worker>>,
     /// One PhysX installer at a time; its last result outlives a lost reply.
     physx_installing: std::sync::atomic::AtomicBool,
+    #[cfg(windows)]
+    directx_last:
+        Mutex<Option<cimmeria_launcher_engine::runtime_setup::windows_physx::InstallResult>>,
+    #[cfg(test)]
+    prerequisites_fixture: Option<Vec<&'static str>>,
     physx_last:
         Mutex<Option<cimmeria_launcher_engine::runtime_setup::windows_physx::InstallResult>>,
     repair_worker: Mutex<Option<repair::Worker>>,
@@ -111,6 +118,10 @@ impl NativeHost {
             launch_resources: None,
             launch_worker: Mutex::new(None),
             physx_installing: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(windows)]
+            directx_last: Mutex::new(None),
+            #[cfg(test)]
+            prerequisites_fixture: None,
             physx_last: Mutex::new(None),
             repair_worker: Mutex::new(None),
             worker: Mutex::new(None),

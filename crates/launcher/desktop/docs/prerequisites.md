@@ -1,3 +1,14 @@
+---
+title: Prerequisite evidence and runtime probe
+type: reference
+audience: launcher contributors
+last_updated: 2026-10-23
+companion_docs:
+  - ../../../../docs/client/launcher-guide.md
+  - physx-probe.md
+  - wine-validation.md
+---
+
 # Prerequisite evidence and runtime probe
 
 Prerequisite retention is documented in [Wine validation](wine-validation.md#inert-prerequisite-retention).
@@ -495,6 +506,62 @@ This remains a synthetic durable-write boundary, not actual power-loss proof.
 explicit action, operation/revision binding, no setup replay and unchanged
 consent through controlled IPC. No native visual or game UAT is claimed.
 
+## Windows game prerequisite checks
+
+Native Windows install, archive install and adoption completion re-inspect the
+game prerequisites; completing file installation does not itself establish
+Play readiness. Play admission rechecks both legacy DirectX and PhysX before
+starting the game. Missing prerequisites block Play in native code. The main
+page exposes setup panels and refresh controls, including when an otherwise
+valid adopted installation lacks runtime software. These checks are separate
+from the experimental x86 runtime probe and the macOS Wine setup described above.
+
+**DirectX detection.** `engine/src/storage/runtime_setup/windows_directx/`
+checks `d3dx9_40.dll` and `xinput1_3.dll`, the two legacy DirectX imports listed
+in [Original client evidence](#original-client-evidence). Each must be an x86
+PE DLL in the selected game's binaries directory or the explicit x86 Windows
+system directory. The native resolver requests `IMAGE_FILE_MACHINE_I386`
+through `GetSystemWow64Directory2W`, including on Windows ARM64; it does not
+infer x86 compatibility from an ARM64 or x64 system directory. Header inspection
+checks the DOS and PE signatures, i386 machine and DLL characteristic without
+loading library code into the launcher. This is a file and architecture check,
+not a loadability, graphics or full dependency test.
+
+**DirectX setup.** An explicit **Install DirectX** press downloads Microsoft's
+Download Center item 35 web installer from this fixed HTTPS address:
+
+```text
+https://download.microsoft.com/download/1/7/1/1718ccc4-6315-4d8e-9543-8e28a4e18c4c/dxwebsetup.exe
+```
+
+The launcher requires exactly 295,320 bytes and SHA-256
+`2cf71d098c608c56e07f4655855a886c3102553f648df88458df616b26fd612f`.
+It revalidates the staged executable and holds it against writes and deletion
+while running it. The pinned download had a valid Microsoft Authenticode
+signature when inspected on 2026-10-23; this records package provenance, not
+an additional runtime signature-verification claim. Vendor UI, license consent
+and Windows elevation remain interactive. This web installer needs internet
+access to obtain runtime components. After it exits, detection runs again;
+exit code zero without the required files does not mean readiness.
+
+**Shared admission.** DirectX and PhysX setup hold the same native mutation
+lease for the vendor installer lifetime. Play, install, adoption and update
+are refused while it is held, including when the renderer loses its command
+reply. First-click feedback appears before dispatch. A lost result leads to
+status inspection, never an automatic installer retry. Installation is an
+explicit user action; detection after install or adoption does not silently
+run a vendor installer or accept its license.
+
+**Incident evidence and limits.** On 2026-10-23 a player reported that a
+Windows 11 ARM Snapdragon system installed from an existing archive but did
+not open the game. The player then installed the DirectX redistributable and
+provided a screenshot of the game login screen. Earlier telemetry ending at
+`play_helper_spawn` did not prove a helper-start failure or identify a missing
+DLL. The report supports prerequisite handling but does not establish which
+component was absent. It also does not validate these new launcher setup flows,
+real vendor-installer execution, or their behavior on native Windows ARM.
+Player steps live in the [launcher guide](../../../../docs/client/launcher-guide.md#set-up-windows-game-prerequisites).
+
 ## Native Windows PhysX System Software (LX-12)
 
 On native Windows the game runs directly, not in a Wine prefix, so the
@@ -504,7 +571,7 @@ registers; without it `NxCreatePhysicsSDK` fails ([#1121](https://github.com/San
 Decision D-LX13 has the launcher install the system software rather than write
 the `enableLocalPhysXCore` value, which is tied to a network adapter's MAC
 address. The code is `engine/src/storage/runtime_setup/windows_physx/`, the
-`physx_command` Tauri command (`shell/src/host/physx.rs`) and the Settings panel
+`physx_command` Tauri command (`shell/src/host/physx.rs`) and the panel
 `frontend/src/physx-view.ts`.
 
 **Detection.** The game loads its own `PhysXLoader.dll` from
@@ -528,15 +595,14 @@ that carries other cores only, reads as missing, and the panel says that a PhysX
 version is installed without the 2.6.3 core. The installer's entry under
 `...\CurrentVersion\Uninstall` is keyed by a product code that differs between
 PhysX releases and says nothing about which cores are on disk, so it is not
-used. The Settings panel shows the state, and when PhysX is missing a warning
-appears beside Play. The warning does not disable Play.
+used. The main-page panel shows the state; missing PhysX blocks native Play
+admission alongside missing DirectX.
 
 **Install.** "Install PhysX" uses the installer that install extraction keeps at
 `game/.cimmeria-prerequisites/PhysX/PhysX_7.11.13_SystemSoftware.exe`, the same
-file the Wine path uses. The press takes the mutation admission
-(`ensure_no_active_operation`), so it is refused while the updater, an install,
-Play, Repair or any other operation is unfinished, and only one PhysX install runs
-at a time. Native code then reads the file under deny-write sharing and calls
+file the Wine path uses. The press takes the shared native mutation lease, so it is refused while
+the updater, an install, Play, Repair or any other operation is unfinished. It
+holds that lease until the installer finishes; DirectX setup shares this lease. Native code then reads the file under deny-write sharing and calls
 `prerequisites::physx_msi`, which checks the exact size and SHA-256 above and the
 carved MSI's own SHA-256. A mismatch refuses with `package_mismatch` and starts
 no process. The MSI is written to `physx-setup/` under the launcher state root,
@@ -565,12 +631,28 @@ The host keeps the last result, so Inspect shows it again if the reply to the
 press was lost. Every refusal and failure is logged through `tracing` in the
 engine (the busy refusal in the shell goes to stderr).
 
-**No retained installer.** Adopted copies, installs made before the launcher
-kept `Data/Prerequisites`, and seeds that are not the RAR have no retained
-installer, so the button is disabled. The repo pins no download URL for this
-EXE, so the launcher does not fetch one. The panel instead tells the player to
-run Repair if the launcher installed the game, or else to install "NVIDIA PhysX
-Legacy System Software" themselves.
+**No retained installer.** Adopted copies, older installs and seeds without
+`Data/Prerequisites` can lack the original EXE. **Install PhysX** remains
+available on Windows: an explicit press downloads NVIDIA's official Legacy
+System Software MSI from this fixed HTTPS address:
+
+```text
+https://us.download.nvidia.com/Windows/9.13.0604/PhysX-9.13.0604-SystemSoftware-Legacy.msi
+```
+
+The launcher requires exactly 20,154,368 bytes and SHA-256
+`2b78df4a9004f5c4220d62c363709e5ac5e2e58df9f2284df0254cbfa4970d91`.
+The pinned download had a valid NVIDIA Corporation Authenticode signature when
+inspected on 2026-10-23; this is package provenance, not a runtime signature
+check. The staged MSI is reread and hash-verified under deny-write/delete
+sharing before the existing interactive, elevated `/norestart` installer flow.
+Post-install detection of the 2.6.3 core determines the outcome.
+
+This fallback applies only when the retained installer is unavailable. A
+retained file that fails authentication is refused rather than replaced with
+a download. Inspection and Play do not download or install anything; only the
+setup button authorizes this work. Download failure is shown with an option to
+try again explicitly. Vendor license consent and UAC remain interactive.
 
 **Tests.** Engine `windows_physx::tests` inject the registry value over a
 temporary folder (core present, registered folder without `v2.6.3\PhysXCore.dll`,
@@ -581,12 +663,11 @@ be opened for writing or deleted while its guard is held, and map a declined UAC
 prompt to `cancelled_at_uac` and exit code 1638 by what detection finds. Shell
 `host::physx::tests` check that an active operation and a running install both
 refuse with `busy`. `physx-view.test.ts` and `npm run uat:physx` cover the
-first-press busy state, each result line and the Play warning. Each guard was
+first-press busy state and each result line. The older Play-warning coverage
+predates the native prerequisite admission gate above. Each guard was
 checked by reverting it. None of these run msiexec, show a UAC prompt or read
 the real registry; that needs a native Windows UAT on a machine without PhysX.
 
-Known limit: the admission is checked when Install is pressed, but the installer
-does not hold an operation, so Play or an install can start while msiexec is
-still open. The MSI is in the launcher state folder, not the game folder, so an
-install does not touch it. The UAC prompt has no owner window, so it can open
-behind the launcher.
+The shared mutation lease closes the former gap that allowed Play or an install
+to start while msiexec was still open. The MSI remains in the launcher state
+folder. The UAC prompt has no owner window, so it can open behind the launcher.

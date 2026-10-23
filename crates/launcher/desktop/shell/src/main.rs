@@ -328,6 +328,17 @@ async fn physx_command(
 }
 
 #[tauri::command]
+async fn directx_command(
+    request: cimmeria_launcher_engine::runtime_setup::windows_directx::Command,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<host::DirectxStatus, cimmeria_launcher_engine::runtime_setup::windows_directx::Error> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.directx_command(request))
+        .await
+        .map_err(|_| cimmeria_launcher_engine::runtime_setup::windows_directx::Error::Io)?
+}
+
+#[tauri::command]
 async fn migration_command(
     request: MigrationCommand,
     state: tauri::State<'_, Arc<NativeHost>>,
@@ -621,6 +632,7 @@ fn main() {
             client_maintenance_command,
             client_changes_command,
             physx_command,
+            directx_command,
             migration_command,
             updater_command,
             game_update_command,

@@ -134,12 +134,15 @@ export const PhysxStatus = Schema.Struct({
   last_result: Schema.NullOr(PhysxResult),
 });
 export type PhysxStatus = typeof PhysxStatus.Type;
-export type PhysxError = ScaffoldError | "installer_unavailable" | "package_mismatch";
+export const DirectxStatus = Schema.Struct({schema_version:Schema.Literal(1),supported:Schema.Boolean,
+  missing:Schema.Array(Schema.Literals(['d3dx9_40.dll','xinput1_3.dll'])),installing:Schema.Boolean,last_result:Schema.NullOr(PhysxResult)});
+export type DirectxStatus = typeof DirectxStatus.Type;
+export type PhysxError = ScaffoldError | "installer_unavailable" | "package_mismatch" | "download_failed";
 export const decodePhysxStatus = (value: unknown) =>
   Schema.decodeUnknownEffect(PhysxStatus, {onExcessProperty: "error"})(value);
 /** A `physx_command` rejection, or `"transport"` for anything else it could be. */
 export function physxFailure(error: unknown): PhysxError | "transport" {
-  return error === "installer_unavailable" || error === "package_mismatch" ? error : scaffoldFailure(error);
+  return error === "installer_unavailable" || error === "package_mismatch" || error === "download_failed" ? error : scaffoldFailure(error);
 }
 
 export class BridgeFailure extends Data.TaggedError("BridgeFailure")<{

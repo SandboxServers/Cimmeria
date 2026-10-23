@@ -26,13 +26,14 @@ const errorText:Record<string,string>={
  // Adopted copies, older installs and some seeds never had the retained installer.
  installer_unavailable:`The PhysX installer is not in this game folder. If the launcher installed this game, run Repair, then try again. Otherwise ${manual}.`,
  package_mismatch:'The PhysX installer in this game folder is not the expected file, so it was not run. Repair the game, then try again.',
+ download_failed:'The NVIDIA PhysX installer could not be downloaded. Check your internet connection and try again.',
  busy:'Another install, repair, update or game is running. Try again when it finishes.',
  persistence_uncertain:'The launcher could not confirm its saved state. Restart the launcher, then try again.',
  in_use:'Another launcher is using these settings. Close it, then try again.',
  io:'The launcher could not prepare the PhysX installer. Check permissions and free disk space.',
  unavailable:'PhysX setup is only needed on Windows.',
 };
-export const physxWarning='PhysX System Software is missing, so the game may not start. Install it under Settings.';
+export const physxWarning='PhysX System Software is missing. Complete PhysX setup before playing.';
 export function mountPhysx(document:Document,invoke:Invoke,context:PanelContext) {
  const panel=document.getElementById('physx-panel');const warning=document.getElementById('physx-play-warning');
  if(!panel||!warning)throw new Error('Missing launcher element physx-panel or physx-play-warning');
@@ -40,8 +41,9 @@ export function mountPhysx(document:Document,invoke:Invoke,context:PanelContext)
  const heading=make('h3','physx-title');heading.textContent='PhysX System Software';
  const state=make('p','physx-state');
  const install=make('button','install-physx');install.textContent='Install PhysX';
+ const check=make('button','check-physx');check.textContent='Recheck PhysX';
  const status=make('p','physx-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
- panel.textContent='';panel.append(heading,state,install,status);panel.hidden=true;warning.hidden=true;
+ panel.textContent='';panel.append(heading,state,install,check,status);panel.hidden=true;warning.hidden=true;
  let current:PhysxStatus|null=null;let installing=false;let disposed=false;let mutation:Promise<void>=Promise.resolve();
  const render=()=>{
   if(disposed)return;
@@ -54,6 +56,7 @@ export function mountPhysx(document:Document,invoke:Invoke,context:PanelContext)
   state.textContent=!missing?'Installed.':s.installer_available?lacking:lacking+' '+errorText.installer_unavailable!;
   const busy=installing||s.installing;
   install.hidden=!missing&&!busy;install.disabled=busy||!s.installer_available;
+  check.disabled=busy;
   install.textContent=busy?'Installing…':'Install PhysX';install.setAttribute('aria-busy',String(busy));
  };
  // Never throws synchronously into the snapshot feed, whatever the bridge does.
@@ -71,7 +74,7 @@ export function mountPhysx(document:Document,invoke:Invoke,context:PanelContext)
  };
  const onInstall=()=>{
   if(disposed||installing||install.disabled)return;
-  installing=true;status.textContent='Waiting for the Windows permission prompt, then the PhysX installer…';render();
+  installing=true;status.textContent='Preparing PhysX setup, then waiting for the Windows permission prompt and installer…';render();
   mutation=call('install').then(decode).then(next=>{
    if(disposed)return;current=next;
    status.textContent=next.last_result?physxResultText(next.last_result):'The PhysX installer finished.';
@@ -83,10 +86,11 @@ export function mountPhysx(document:Document,invoke:Invoke,context:PanelContext)
   }).finally(()=>{installing=false;render();}).then(()=>{if(!disposed)return inspect();});
  };
  install.addEventListener('click',onInstall);
+ const recheck=()=>{void inspect();};check.addEventListener('click',recheck);
  // Each native snapshot (the first, and after an install, repair or uninstall, which change whether the
  // retained installer is there) re-inspects, so the panel asks nothing before the launcher has opened.
  const unsubscribe=context.onSnapshot(()=>{void inspect();});
  const ready=context.snapshot()?inspect():Promise.resolve();
  return {ready,refresh:inspect,settled:()=>mutation,dispose:async()=>{
-  disposed=true;unsubscribe();install.removeEventListener('click',onInstall);await mutation;panel.textContent='';warning.hidden=true;}};
+  disposed=true;unsubscribe();install.removeEventListener('click',onInstall);check.removeEventListener('click',recheck);await mutation;panel.textContent='';warning.hidden=true;}};
 }

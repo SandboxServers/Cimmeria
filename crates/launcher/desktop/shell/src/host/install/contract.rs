@@ -107,6 +107,7 @@ pub enum JobError {
     UnsupportedSchema,
     PlatformUnavailable,
     LauncherTooOld,
+    PrerequisitesMissing,
     Io,
     CorruptState,
     InvalidDirectory,

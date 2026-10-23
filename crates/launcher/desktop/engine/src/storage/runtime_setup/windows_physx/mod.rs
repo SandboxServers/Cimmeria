@@ -93,6 +93,7 @@ pub enum PhysxError {
     InstallerUnavailable,
     /// The retained installer, or the MSI inside it, is not the pinned one.
     PackageMismatch,
+    DownloadFailed,
     #[serde(untagged)]
     Storage(StorageError),
 }

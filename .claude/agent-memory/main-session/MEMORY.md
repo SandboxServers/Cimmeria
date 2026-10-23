@@ -6,6 +6,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [reference_windows_game_prerequisites_2026_10_23.md](reference_windows_game_prerequisites_2026_10_23.md) — Windows ARM archive install repaired by manual DirectX; x86 DLL checks, shared vendor-setup lease and evidence limits.
+
 - [reference_castle_continuation_evidence_2026_10_14.md](reference_castle_continuation_evidence_2026_10_14.md) - dated CS-00 snapshot, narrow entry seal, stock prop names, dormant CS-02a guard, integrated b1 Base receipt boundary, pending b2 Cell presence/travel and launch gates, partial CS-01 client evidence
 - [project_cellblock_continuation_closeout.md](project_cellblock_continuation_closeout.md) — Cellblock continuation closed out 2026-10-17: ID claims, bark and choice-bind patterns, `CIMMERIA_AUTHORING`, owner-run lab rule, ledger location
 - [reference_cellblock_lab_binding_2026_10_15.md](reference_cellblock_lab_binding_2026_10_15.md) — bind server evidence to the client's actual lab server; Livewire/screenshot stall invalidated fresh timing, and a verified post-relog Prisoner interaction received no dialog
