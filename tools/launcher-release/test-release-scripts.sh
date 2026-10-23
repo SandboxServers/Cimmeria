@@ -21,7 +21,7 @@ cat > "$WORK/bin/gh" <<'STUB'
 set -euo pipefail
 if [ "$1" = api ]; then
   if [[ "$*" == *releases* && "${STUB_FAIL_LISTING:-false}" == true ]]; then exit 1; fi
-  if [[ "$*" == *actions/runs* ]]; then date -u +%Y-%m-%dT12:00:00Z; else printf '%s\n' "$STUB_LISTING"; fi
+  if [[ "$*" == *actions/runs* ]]; then echo "2026-10-23T12:00:00Z"; else printf '%s\n' "$STUB_LISTING"; fi
   exit 0
 fi
 [ "$1" = release ] || { echo "stub gh: unsupported $*" >&2; exit 2; }
@@ -76,14 +76,14 @@ export STUB_LISTING='[[]]'
 
 export GITHUB_OUTPUT="$WORK/out"
 "$HERE/stamp.sh"
-BASE="$(date -u +%Y).$(date -u +%-m).$(( $(date -u +%-d) * 100 + 1 ))"
-TAG="launcher-$(date -u +%Y%m%d)-0123456"
+BASE=2026.10.2301
+TAG=launcher-20261023-0123456
 if grep -qx "version=$BASE" "$GITHUB_OUTPUT"; then pass "stamp: stable first daily slot"; else fail "stamp: stable first daily slot"; fi
 rm -rf stamp-reservation
-export STUB_LISTING="$(python -c 'import json,datetime; print(json.dumps([[{"tag_name":"launcher-"+datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d")+"-aaaaaaa","created_at":"2026-01-01T00:00:00Z","body":"legacy release"}]]))')"
+export STUB_LISTING='[[{"tag_name":"launcher-20261023-aaaaaaa","created_at":"2026-10-23T00:00:00Z","body":"legacy release"}]]'
 : > "$GITHUB_OUTPUT"
 "$HERE/stamp.sh"
-SECOND="$(date -u +%Y).$(date -u +%-m).$(( $(date -u +%-d) * 100 + 2 ))"
+SECOND=2026.10.2302
 if grep -qx "version=$SECOND" "$GITHUB_OUTPUT"; then pass "stamp: second signed stable daily slot"; else fail "stamp: second signed stable daily slot"; fi
 export STUB_FAIL_LISTING=true
 if "$HERE/stamp.sh" >/dev/null 2>&1; then fail "stamp: API failure refuses"; else pass "stamp: API failure refuses"; fi
