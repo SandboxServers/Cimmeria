@@ -93,6 +93,11 @@ UTC, with slots N=1..99. October 23's first three releases are
 `2026.10.2301`, `2026.10.2302`, and `2026.10.2303`. Slot 100 is refused.
 The ordinal counts legacy dated releases and exceeds existing encoded slots.
 Paginated release history prevents older pages being silently omitted.
+The rolling feed also reserves its last encoded slot if a dated release was
+deleted. Published notes with compiled identities are checked for precedence;
+historical notes without version evidence produce an explicit warning. They
+are not evidence of version zero, and this check is not an exhaustive binary
+audit of releases predating compiled-version notes.
 
 Old `2026.10.23` and `2026.10.23-2` installations accept `2026.10.2301`.
 SemVer compares year then month before patch, so month and year rollovers

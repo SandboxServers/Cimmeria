@@ -61,7 +61,7 @@ mod tests {
         ] {
             let message = validate(bad).expect_err(bad);
             assert!(message.contains("CIMMERIA_LAUNCHER_VERSION"), "{message}");
-            assert!(message.contains("YYYY.M.D"), "{message}");
+            assert!(message.contains("D-LX15"), "{message}");
         }
     }
 
