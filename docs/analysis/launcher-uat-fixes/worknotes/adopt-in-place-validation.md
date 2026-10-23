@@ -231,9 +231,13 @@ while its only callers in `setup_originals_tests` were excluded there. The fix
 aligns the helper's attribute to `#[cfg(all(test, not(target_os = "macos")))]`
 in `storage/adoption/in_place_check.rs`; production code is unchanged.
 
-Engine all-target clippy passes after this narrow fix
-(`20261022-235944-125636`). Targeted setup-original tests and fmt are running;
-narrow read-only review 5 and the next CI run are pending. Review 4's ship verdict
+The cfg-only fix is committed as `a36a5f5f5`. Engine all-target clippy passes
+(`20261022-235944-125636`); targeted setup-original tests pass 7/7 with no
+failures (`20261023-000009-174576`); fmt passes (`20261023-000042-223524`).
+Independent review 5 returned ship: `review-5.md` checked the exact one-line
+cfg gate and its callers, confirming production behavior is unchanged.
+Corrected CI run `39903463069` is queued behind `39900989143`; native macOS
+CI for the corrected head remains pending. Review 4's ship verdict
 still records the previously reviewed implementation, not acceptance of an
 uncompleted CI run. No native macOS runtime result is claimed.
 
