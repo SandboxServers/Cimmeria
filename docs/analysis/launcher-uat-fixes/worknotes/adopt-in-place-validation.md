@@ -16,7 +16,7 @@ that boundary.
 
 The original U1-U5 PRs (#1984 through #1988) and close-out #1989 are merged.
 Task 1 is [PR #1992](https://github.com/SandboxServers/Cimmeria/pull/1992), draft:
-setup preservation fix `1cbfc54f5` and helper-unavailable UI fix `ed6940107` are complete; fresh review 4 is in progress. Integration reruns after those fixes remain pending.
+setup preservation fix `1cbfc54f5` and helper-unavailable UI fix `ed6940107` are complete; fresh review 4 returned ship with no findings. Post-setup integration reruns pass; latest native macOS CI remains pending after the final push.
 Task 2 [PR #1991](https://github.com/SandboxServers/Cimmeria/pull/1991) merged as
 `7be8413b0`; its worktree was retired at 2026-10-23T03:38:43Z. Required checks,
 native Windows/macOS/package CI, and merge-queue full tests passed for Task 2.
@@ -65,8 +65,8 @@ reappeared targets, and make Abandon restoration restartable. N4 journals remova
 of previously authenticated outputs absent from a rollback target, while
 preserving live extras. N5 refuses readiness without the retained authenticated
 adoption plan. N6 qualifies the migration documentation's full-reconstruction
-backup behavior as schema-1 only. All six fixes are complete; fresh review 2 is
-pending, so this is not final review acceptance.
+backup behavior as schema-1 only. All six fixes were complete at this earlier checkpoint; subsequent reviews and
+their final acceptance are recorded below.
 
 | Post-fix check | Result | Evidence |
 |---|---|---|
@@ -144,7 +144,7 @@ Latest integrated checks: engine **962 passed, 3 ignored**, log
 `20261022-230703-59764`; all-target engine clippy clean,
 `20261022-230654-408180`. These supersede earlier engine totals without erasing
 the earlier regression evidence. Those integration checks passed before the later setup fix, as recorded below;
-their post-setup repeats remain pending at this checkpoint.
+their passing post-setup repeats are recorded in the final checkpoint below.
 
 Review-2 partial-backup mutations failed with the old final-copy behavior:
 `20261022-223819` and `20261022-225603-482080`. The latter failure and restored
@@ -157,7 +157,7 @@ wrong-owner guard at `20261022-230640-317548`; restoration precedes the full
 Initial macOS PR CI failed because a Windows-only fixture was imported in
 `provenance_tests`; conditional gating was fixed in `094f8e904`. Latest Task 1
 macOS CI is pending, not passed. Fresh review 3 found the setup-preservation gap
-below; its fix is complete and fresh review 4 remains pending.
+below; its fix is complete and fresh review 4 returned ship.
 
 The profiler's post-merge attempt rejected unsupported transcript shapes and did
 not post cost statistics. That reporting limitation does not change test results.
@@ -182,7 +182,7 @@ Disabling the original/approved comparison caused four runtime guard failures
 (`20261022-232444-389596`); restoring it preceded final engine **968 passed,
 3 ignored** (`20261022-232513-157888`), fmt `20261022-232502-457064`, and clean
 all-target engine clippy `20261022-232506-312140`. These are the latest engine
-results. No mutation remains. Fresh review 4 is pending, not a ship verdict.
+results. No mutation remains. Fresh review 4 subsequently returned ship.
 
 Before that setup fix, the identity/layout mutation failed two guards with zero
 success events (`20261022-231123`), then restored checks passed 4/4
@@ -196,8 +196,32 @@ as its final integration rerun.
 After the helper-unavailable UI fix `ed6940107`, the root frontend pass reports
 250 tests, footer REPL including helper unavailability, and build passing;
 `cimmeria-adoption-frontend-final.log` is its temporary log basename. The earlier
-Light REPL also passed. Final shell/workspace/build and native-backed UAT repeats
-after the setup fix are still running at this checkpoint.
+Light REPL also passed. The final post-setup repeats pass as recorded below.
+
+## Final local integration and review checkpoint
+
+Fresh read-only review 4 returned **ship**, with no fix notes, for
+`7be8413b0..0829e5f1a`. Its report
+`.claude/reports/launcher-adopt-in-place/review-4.md` accepts the setup expectations,
+prior safety fixes, legacy interruption escape, and helper-unavailable footer
+behavior. The reviewer read the validation reports rather than rerunning tests.
+
+The coordinator's post-setup integration checks passed:
+
+| Check | Result | Evidence |
+|---|---|---|
+| Desktop shell tests | 147 passed, 7 ignored | `20261022-233034-250280` |
+| Native-backed adoption UAT | Passed again | `npm run uat:adoption`, production host with isolated store and signed loopback |
+| Workspace all-target clippy, `-D warnings` | Clean | `20261022-233200-159608` |
+| Production desktop debug build | Passed, 24.286 seconds | `20261022-233219-365080` |
+
+Final formatting import-order correction is `6e733e12e`. The earlier remote CI
+at `64985f11a` failed formatting only in shell conditional-import ordering; that
+failure is fixed by this commit, and engine-fix formatting was unaffected. Latest
+native macOS CI is still pending after the final push; no green platform result
+is inferred from the local Windows checks. PR #1992 remains draft and unmerged
+at this checkpoint. Ship through CI/merge queue and verify worktree retirement
+before recording implementation complete. No release was performed.
 
 ## Browser mock and coverage limits
 
