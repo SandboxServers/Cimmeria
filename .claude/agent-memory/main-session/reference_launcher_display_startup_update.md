@@ -20,3 +20,4 @@ feedback. Startup alone never downloads or applies.
 Canon: `crates/launcher/desktop/docs/updater.md#startup-and-main-page-integration`.
 Design/UAT: `docs/analysis/launcher-uat-fixes/README.md` PDU follow-up. Packaged
 replacement/restart and real-client acceptance are separate from fixture evidence.
+- Inactive persisted offers gate only natively configured updater builds; active/reconciliation records gate all builds. NativeHost passes its compiled configuration to inspection and admission; never take this capability from IPC.

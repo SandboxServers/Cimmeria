@@ -63,7 +63,8 @@ struct Record {
     observation: Observation,
 }
 impl DesktopState {
-    /// Native resources only. Caller uses the last inspected revision and an
+    /// Admission for hosts without updater configuration. Configured hosts use
+    /// `admit_launch_with_updater`. Caller uses the last inspected revision and an
     /// independently generated ID. An identical retry never starts twice.
     pub fn admit_launch(
         &mut self,
@@ -72,8 +73,19 @@ impl DesktopState {
         installation_id: Uuid,
         resources: Resources,
     ) -> Result<Admission, IntentError> {
+        self.admit_launch_with_updater(id, revision, installation_id, resources, None)
+    }
+    /// Configured hosts supply their native updater capability, never renderer input.
+    pub fn admit_launch_with_updater(
+        &mut self,
+        id: Uuid,
+        revision: u64,
+        installation_id: Uuid,
+        resources: Resources,
+        updater: Option<&updater::Config>,
+    ) -> Result<Admission, IntentError> {
         self.ensure_updater_idle()?;
-        if self.launcher_update_blocks_play()? {
+        if self.launcher_update_blocks_play(updater)? {
             return Err(StorageError::Busy.into());
         }
         if self.requires_reopen() {

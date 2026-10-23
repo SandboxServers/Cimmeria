@@ -203,11 +203,15 @@ impl DesktopState {
         Ok(())
     }
     /// A known launcher update must be installed before another game starts.
-    pub fn launcher_update_blocks_play(&self) -> Result<bool, StorageError> {
+    pub fn launcher_update_blocks_play(
+        &self,
+        config: Option<&Config>,
+    ) -> Result<bool, StorageError> {
         let record = self.update_record()?;
         Ok(record.phase.busy()
-            || matches!(record.phase, Phase::Available | Phase::Ready)
-            || (record.phase == Phase::Failed && record.offer.is_some()))
+            || (config.is_some()
+                && (matches!(record.phase, Phase::Available | Phase::Ready)
+                    || (record.phase == Phase::Failed && record.offer.is_some()))))
     }
     /// Called once by DesktopState::open, never by a live worker's polling path.
     pub(crate) fn recover_launcher_update(&mut self) -> Result<(), StorageError> {

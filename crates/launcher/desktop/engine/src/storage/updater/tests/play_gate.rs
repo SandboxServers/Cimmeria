@@ -3,7 +3,7 @@ use super::*;
 use crate::launch::{Artifact, Resources};
 use sha2::{Digest, Sha256};
 
-fn assert_play_refused(state: &mut DesktopState, root: &std::path::Path) {
+fn resources(root: &std::path::Path) -> Resources {
     let helper = root.join("inert-helper");
     std::fs::write(&helper, PAYLOAD).unwrap();
     let helper = Artifact::open(
@@ -14,17 +14,22 @@ fn assert_play_refused(state: &mut DesktopState, root: &std::path::Path) {
             .collect::<String>(),
     )
     .unwrap();
+    Resources {
+        helper,
+        client_patches: None,
+        client_telemetry: None,
+        graphics: None,
+    }
+}
+
+fn assert_play_refused(state: &mut DesktopState, root: &std::path::Path, config: &Config) {
     let before = state.operations.snapshot().clone();
-    let result = state.admit_launch(
+    let result = state.admit_launch_with_updater(
         Uuid::new_v4(),
         before.revision,
         Uuid::new_v4(),
-        Resources {
-            helper,
-            client_patches: None,
-            client_telemetry: None,
-            graphics: None,
-        },
+        resources(root),
+        Some(config),
     );
     assert!(matches!(
         result,
@@ -38,19 +43,19 @@ fn known_offer_blocks_native_play_after_failed_check_and_reopen() {
     let root = tempfile::tempdir().unwrap();
     let (config, offer) = fixture("1.1.0");
     let mut state = DesktopState::open(root.path()).unwrap();
-    assert!(!state.launcher_update_blocks_play().unwrap());
+    assert!(!state.launcher_update_blocks_play(Some(&config)).unwrap());
     let offered = available(&mut state, &config, offer);
-    assert_play_refused(&mut state, root.path());
+    assert_play_refused(&mut state, root.path(), &config);
     let ticket = state
         .begin_launcher_update_check(Some(&config), offered.revision, offered.operation_revision)
         .unwrap();
     state
         .finish_launcher_update_check(ticket, Err(Error::Transport))
         .unwrap();
-    assert!(state.launcher_update_blocks_play().unwrap());
+    assert!(state.launcher_update_blocks_play(Some(&config)).unwrap());
     drop(state);
     let mut state = DesktopState::open(root.path()).unwrap();
-    assert_play_refused(&mut state, root.path());
+    assert_play_refused(&mut state, root.path(), &config);
     let saved = state.launcher_update_snapshot(Some(&config)).unwrap();
     assert!(saved.offer.is_some());
     let ticket = state
@@ -59,7 +64,7 @@ fn known_offer_blocks_native_play_after_failed_check_and_reopen() {
     state
         .finish_launcher_update_check(ticket, Ok(None))
         .unwrap();
-    assert!(!state.launcher_update_blocks_play().unwrap());
+    assert!(!state.launcher_update_blocks_play(Some(&config)).unwrap());
 }
 
 #[test]
@@ -70,7 +75,7 @@ fn ready_and_failed_download_keep_update_mandatory_but_initial_network_failure_d
         let mut state = DesktopState::open(root.path()).unwrap();
         let available = available(&mut state, &config, offer);
         prepare(&mut state, &config, available, bytes);
-        assert_play_refused(&mut state, root.path());
+        assert_play_refused(&mut state, root.path(), &config);
     }
     let root = tempfile::tempdir().unwrap();
     let (config, _) = fixture("1.1.0");
@@ -81,5 +86,55 @@ fn ready_and_failed_download_keep_update_mandatory_but_initial_network_failure_d
     state
         .finish_launcher_update_check(ticket, Err(Error::Transport))
         .unwrap();
-    assert!(!state.launcher_update_blocks_play().unwrap());
+    assert!(!state.launcher_update_blocks_play(Some(&config)).unwrap());
+}
+
+#[test]
+fn disabled_build_reopens_inactive_offers_without_an_updater_play_gate() {
+    for phase in [Phase::Available, Phase::Ready, Phase::Failed] {
+        let root = tempfile::tempdir().unwrap();
+        let (config, offer) = fixture("1.1.0");
+        let mut state = DesktopState::open(root.path()).unwrap();
+        let offered = available(&mut state, &config, offer);
+        if phase != Phase::Available {
+            prepare(
+                &mut state,
+                &config,
+                offered,
+                if phase == Phase::Ready {
+                    PAYLOAD
+                } else {
+                    b"tampered"
+                },
+            );
+        }
+        drop(state);
+        let mut state = DesktopState::open(root.path()).unwrap();
+        let snapshot = state.launcher_update_snapshot(None).unwrap();
+        assert_eq!(snapshot.phase, Phase::Disabled);
+        assert!(snapshot.offer.is_none());
+        assert!(!state.launcher_update_blocks_play(None).unwrap());
+        let result = state.admit_launch(Uuid::new_v4(), 0, Uuid::new_v4(), resources(root.path()));
+        assert!(!matches!(
+            result,
+            Err(crate::IntentError::Storage(StorageError::Busy))
+        ));
+        assert_play_refused(&mut state, root.path(), &config);
+    }
+}
+
+#[test]
+fn disabled_build_still_blocks_active_update_work() {
+    let root = tempfile::tempdir().unwrap();
+    let (config, _) = fixture("1.1.0");
+    let mut state = DesktopState::open(root.path()).unwrap();
+    state
+        .begin_launcher_update_check(Some(&config), 0, 0)
+        .unwrap();
+    assert!(state.launcher_update_blocks_play(None).unwrap());
+    let result = state.admit_launch(Uuid::new_v4(), 0, Uuid::new_v4(), resources(root.path()));
+    assert!(matches!(
+        result,
+        Err(crate::IntentError::Storage(StorageError::Busy))
+    ));
 }

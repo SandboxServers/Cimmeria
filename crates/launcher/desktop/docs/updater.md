@@ -98,6 +98,8 @@ publication, OS signing/notarization and release ordering remain separate gates.
 
 ## Startup and main-page integration
 
+The native host supplies its compiled updater configuration to Play inspection and admission. Inactive retained offers do not gate builds with updates disabled; active/reconciliation work still gates every build. No renderer field chooses this capability.
+
 A main-page retry labelled **Check for updates** only checks. If it discovers an offer, the player must press **Update and restart** to install it.
 
 Application startup inspects durable updater state and checks the feed once when
