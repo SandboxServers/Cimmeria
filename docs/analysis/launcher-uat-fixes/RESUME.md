@@ -1,17 +1,23 @@
-# Launcher UAT fixes: resume card (CLOSED)
+# Launcher UAT fixes: follow-up resume card
 
-Ledger: [README.md](README.md) (packet status, owner risks, close-out) · Packets: [work-packets.md](work-packets.md), [work-packets-logs.md](work-packets-logs.md) · Source: [laptop UAT worknote](../launcher-telemetry/worknotes/laptop-uat-2026-10-22.md) · UAT rows: [unified-uat.md](../../guides/unified-uat.md#launcher-uat-fixes)
+> **Type:** Reference · **Audience:** Resuming engineers and owner · **Updated:** 2026-10-23
+> **Companions:** [Ledger](README.md), [adoption design](design-adopt-in-place.md), [validation](worknotes/adopt-in-place-validation.md), [UAT](../../guides/unified-uat.md#launcher-uat-fixes)
 
-**State (2026-10-22): closed, pending merge of the close-out PR X.** All code is merged: U1 #1986, U2 #1984, U3 #1985, U4 #1987, U5 #1988. PR X (branch `launcher-uat-fixes/post-merge-fixes`) carries LF-20 (this ledger, UAT rows U1-U6, regenerated doc blocks) and the reviewed LF-18 follow-up fixes. Every packet row reads `UATPending`. The orchestrator empties `.claude/state/active-campaign` after X merges.
+**Baseline:** Original U1-U5 (#1984 through #1988) and close-out #1989 are merged. Historical packet results and accepted risks remain in the ledger. These two follow-ups are separate tasks, not a resumption of pending original waves.
 
-**Tested and untested.** Unit, flow and review coverage per packet, plus security passes on wave 3, LF-14 and LF-19. **No live UAT ran**: nothing on the laptop, the lab or the colo.
+**Owner approvals (2026-10-23):** macOS adopts directly at the selected root too; explicit per-file setup/patch changes, cooked normalization and replacement backups there are allowed; bulk copy/relocation is prohibited. D-LX15 stable versioning is approved. **No release is authorized as part of these tasks.**
 
-**Owner owes:**
-1. UAT rows U1-U6 (ask before any laptop use).
-2. Cut both releases together: the colo server and the launcher, the server live before or with the launcher (D-LU5; owner GO given 2026-10-22). `ops` cannot release; use `claude --agent hands-on`.
-3. Delete the `LAUNCHER_LOG_SAS_URL` GitHub secret (LF-18 does not).
-4. D2 from launcher-telemetry (the `inPlaceMaintenance.abandon` wording after a light abandon) is still open.
+| Task | Worktree / state | Next action |
+|---|---|---|
+| 1: Direct-root adoption and main-page button | `.claude/worktrees/launcher-adopt-in-place`; review fixes N1-N5 in progress, no PR yet; baseline local checks recorded; native macOS CI pending | Complete fixes, rerun affected checks, finish review, open PR and ship via ship-pr |
+| 2: Several signed releases per day + applied-content identity logs | `.claude/worktrees/launcher-repeat-releases`; [PR #1991](https://github.com/SandboxServers/Cimmeria/pull/1991) in review | Address review and CI; no real release |
 
-**Owner risks (accepted, D-LU3 and D-LU4):** chat and names leave the machine (per-word scrub only); 2,048-byte message floor; the server drops rows over 4,096 bytes after escaping; lines beyond 20,000 new launcher lines and 20,000 new game lines per press are not uploaded; daily ceilings (80,000 per install, 400,000 per address); secrets under 32 characters or split by dots are kept; log rows are forgeable by a log-token holder; budgets are speed bumps. Details: [README § Close-out](README.md#close-out-2026-10-22).
+**Task 1 pre-review-fix baseline:** engine 931 passed / 3 ignored; all-target desktop clippy clean; shell adoption 24 passed / 1 ignored; frontend 250 tests and build passed; `uat:adoption-footer` REPL passed. Restoring bulk relocation fails the invariant, then restored fix passes; frontend mutations fail 5/6 targeted checks, restored fix passes 6/6. Log IDs and attribution: [validation worknote](worknotes/adopt-in-place-validation.md).
 
-**Gotchas for any follow-up.** `in_place.rs`, `inventory.rs`, `session.rs`, `log_upload/tests.rs` and `upload_gate.rs` sit near the line cap: call lines only. Engine tests use `cargo test`. `Plan` is digested: never add a field. Never `git worktree prune`.
+**Visual boundary:** 1280 × 720 browser mock shows footer, Settings opening, immediate pending feedback and duplicate disabling. Incomplete unrelated mocks mean this is not native acceptance.
+
+**Not tested:** real macOS runtime, physical folder picker, packaged native visuals, game launch, physical power loss, SigNoz end to end. Native macOS CI pending. Owner UAT AIP-U1..U5 and historical U1..U6 remain unattested; ask before laptop/lab use.
+
+**Layout invariant:** schema-2 Plan and InstallIntent select direct-root after ownership/provenance/journal checks; no new Plan fields. Successful schema-1 installs keep root/game. Legacy interrupted movers refuse recovery; metadata-only abandon leaves bytes/originals/backups for manual inspection. Schema-2 abandon undoes approved per-file changes. Repair/Update commit per file; selective Uninstall retains root/extras.
+
+**Rules:** PowerShell only; compiling Cargo via `pwsh tools/build-lane/lane.ps1 cargo ...`; one task per worktree from origin/main. Preserve file caps, especially in_place/inventory/session/log-upload seams. Ship with ship-pr, retire on merge, never `git worktree prune`.

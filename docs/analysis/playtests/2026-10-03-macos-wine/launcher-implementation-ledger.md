@@ -793,3 +793,21 @@ files, skips operations whose source differs, and records them in `incomplete_pa
 A light-adopted install updates without the seed. None of this has had live UAT. See
 the [migration contract](../../../../crates/launcher/desktop/docs/migration.md#adopting-an-existing-folder)
 and the [light-adoption packets](../../launcher-telemetry/work-packets-light-adoption.md).
+### 2026-10-23: direct-root adoption follow-up
+
+The owner approved adoption at the selected root on Windows and macOS, including
+explicit per-file setup/patch changes, cooked normalization, and replacement
+backups there. Bulk copying or relocation is prohibited. The shell offers Light
+only. Matching schema-2 plan and intent select direct-root layout after existing
+ownership/provenance checks; successful schema-1 installs retain their layout.
+Interrupted legacy movers refuse recovery and offer metadata-only abandon that
+retains bytes, staged originals, and backups for manual inspection. Direct-root
+Repair/Update preserve unrelated live extras and back up replaced outputs.
+
+Task 1 review fixes are in progress; the recorded local engine/shell/frontend
+results are a pre-fix baseline, not completed acceptance. The browser mock and
+REPL do not establish physical picker, packaged native visuals, real macOS
+runtime, a game launch, physical power-loss recovery, or SigNoz end-to-end success.
+Native macOS CI is pending and no release is authorized by this task. See the
+[approved design](../../launcher-uat-fixes/design-adopt-in-place.md) and
+[validation evidence and limits](../../launcher-uat-fixes/worknotes/adopt-in-place-validation.md).

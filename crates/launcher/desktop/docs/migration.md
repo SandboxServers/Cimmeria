@@ -318,10 +318,12 @@ retains preparation through commit independently of the IPC reply. It exposes
 progress/cancellation, explicit recovery, abandonment, partial-file cleanup,
 backup cleanup and separately confirmed signed rollback. These actions remain
 subject to native checkpoint and ownership validation. It does not enumerate
-changed files for review. The UI must disclose full reconstruction:
-existing modifications and game-local user files remain only in the retained
-backup; they are not merged into the newly active game. That describes the full path;
-the seedless Update below keeps them.
+changed files for review. For schema-1 managed/legacy full reconstruction, the UI
+must disclose that existing modifications and game-local user files remain only
+in the retained backup; they are not merged into the newly active game.
+Schema-2 direct-root adoption preserves unrelated live extras and backs up
+replaced outputs during per-file commit. The seedless Update below also preserves
+files outside its write set.
 
 ### Seedless (incremental) Update: light-adopted installs only
 
