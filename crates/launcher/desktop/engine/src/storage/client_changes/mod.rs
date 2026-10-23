@@ -170,7 +170,7 @@ impl DesktopState {
         // when its content was prepared; a copy whose content is gone (Repair)
         // has none, and every patch reads as pending. An unreadable one reads
         // the same way, as in the egui launcher, but the list says so.
-        let game = installed.intent.destination.join("game");
+        let game = installed.intent.content_root();
         let (ledger, install_record_unreadable) = match read::<crate::state::InstalledState>(
             &crate::state::InstalledState::path(&game),
         ) {

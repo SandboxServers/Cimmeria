@@ -47,7 +47,7 @@ impl Plan {
     }
     fn valid(&self) -> bool {
         self.schema_version == 1
-            && self.owner.schema_version == 1
+            && matches!(self.owner.schema_version, 1 | 2)
             && self.owner.destination.is_absolute()
             && !self.id.is_nil()
             && self.id != self.owner.operation_id
@@ -164,7 +164,7 @@ impl DesktopState {
             return Err(ContractError::IdentityConflict.into());
         }
         let _owner = repair::lock_owner(&installed.intent)?;
-        let game = std::fs::symlink_metadata(installed.intent.destination.join("game"))
+        let game = std::fs::symlink_metadata(installed.intent.content_root())
             .map_err(|_| StorageError::Corrupt)?;
         if !failed_cleanup::plain(&game) || !game.is_dir() {
             return Err(StorageError::UnsafeFile.into());
@@ -291,5 +291,7 @@ pub(super) fn uninstall_artifact(
     Ok(true)
 }
 
+#[cfg(all(test, not(target_os = "macos")))]
+mod direct_lifecycle_tests;
 #[cfg(test)]
 mod journey_tests;

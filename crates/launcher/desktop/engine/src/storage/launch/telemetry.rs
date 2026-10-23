@@ -50,7 +50,7 @@ pub(super) async fn session(
 /// the client patches. No marker, no DLL: it would load with nothing to send to.
 pub(super) fn injected<'a>(plan: &'a Plan, session: Option<&Session>) -> Option<&'a Artifact> {
     let artifact = plan.resources.client_telemetry.as_ref()?;
-    let game = plan.installation.destination.join("game");
+    let game = plan.installation.content_root();
     let marker = crate::telemetry_session::current_session_path(&game);
     if preparation::contained(&game, &marker).is_err() {
         events::game_telemetry_skipped(plan.id, "marker_outside_game_dir");
@@ -91,7 +91,7 @@ pub(super) async fn open_session(
             }
         }
     };
-    let game = plan.installation.destination.join("game");
+    let game = plan.installation.content_root();
     match Transport::open(consent, session, servers, &game) {
         Ok(transport) => Some(SessionLoop::settle(transport).await),
         Err(code) => {
@@ -109,7 +109,7 @@ pub(super) fn begin_session(
     settled: Option<Settled>,
     patches: PatchEvents,
 ) -> Result<SessionLoop, PatchEvents> {
-    let game = plan.installation.destination.join("game");
+    let game = plan.installation.content_root();
     match settled {
         Some(settled) => Ok(settled.begin(&game, Some(patches))),
         None => Err(patches),

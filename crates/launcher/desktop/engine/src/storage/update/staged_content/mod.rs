@@ -138,6 +138,9 @@ pub(super) fn digest(
     Ok(sha.finalize().into())
 }
 pub(super) fn verify(state: &DesktopState, plan: &Plan, tree: &Path) -> Result<(), StorageError> {
+    if plan.owner.schema_version == 2 && tree == plan.owner.content_root() {
+        return super::super::repair::direct_files::verify(plan, tree, &plan.work_directory());
+    }
     let ready: Ready = read(
         &state
             .directory

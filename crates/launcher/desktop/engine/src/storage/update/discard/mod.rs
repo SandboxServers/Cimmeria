@@ -112,7 +112,7 @@ fn discard(
         .canonicalize()
         .map_err(|_| StorageError::Io)?
         != plan.owner.destination
-        || !directory_or_absent(&plan.owner.destination.join("game"))?
+        || !directory_or_absent(&plan.owner.content_root())?
         || installed_content::read_ready(&plan.owner.destination, &plan.owner)?
             != Some(plan.previous)
     {

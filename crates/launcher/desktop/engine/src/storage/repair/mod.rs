@@ -3,6 +3,7 @@ use super::*;
 pub mod abandon;
 pub mod cleanup;
 pub mod commit;
+pub(super) mod direct_files;
 pub mod events;
 pub mod preparation;
 pub mod recovery;
@@ -43,7 +44,7 @@ impl Plan {
         self.schema_version == 1
             && !self.id.is_nil()
             && self.id != self.installation.operation_id
-            && self.installation.schema_version == 1
+            && matches!(self.installation.schema_version, 1 | 2)
             && self.installation.destination.is_absolute()
     }
     fn digest(&self) -> Result<[u8; 32], StorageError> {
@@ -96,7 +97,7 @@ impl DesktopState {
             return Err(ContractError::IdentityConflict.into());
         }
         let _owner = lock_owner(&installed.intent)?;
-        let original_present = directory_or_absent(&installed.intent.destination.join("game"))?;
+        let original_present = directory_or_absent(&installed.intent.content_root())?;
         let plan = Plan {
             schema_version: 1,
             id,
@@ -190,6 +191,8 @@ pub(super) fn lock_owner(intent: &InstallIntent) -> Result<OwnerLock, StorageErr
     }
     Ok(file)
 }
+#[cfg(all(test, not(target_os = "macos")))]
+mod direct_lifecycle_tests;
 #[cfg(test)]
 mod tests;
 

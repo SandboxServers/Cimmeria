@@ -26,7 +26,7 @@ impl DesktopState {
     }
 }
 pub(super) fn prepare(plan: &Plan, servers: &[LoginServer]) -> Result<PathBuf, IntentError> {
-    let game = plan.installation.destination.join("game");
+    let game = plan.installation.content_root();
     if game.canonicalize().map_err(|_| StorageError::UnsafeFile)? != game {
         return Err(StorageError::UnsafeFile.into());
     }

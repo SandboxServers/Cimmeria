@@ -210,7 +210,7 @@ fn choose_path(
             }
             Some(previous) => {
                 let planned = incremental::plan(
-                    &plan.owner.destination.join("game"),
+                    &plan.owner.content_root(),
                     &previous.manifest().patches,
                     &release.manifest().seed.sha256,
                     &release.manifest().patches,
@@ -394,7 +394,7 @@ fn claim(plan: Plan) -> Result<Prepared, StorageError> {
         return Err(StorageError::UnsafeFile);
     }
     let root_owner = lock_owner(&plan.owner)?;
-    if !directory_or_absent(&plan.owner.destination.join("game"))? {
+    if !directory_or_absent(&plan.owner.content_root())? {
         return Err(StorageError::Corrupt);
     }
     match std::fs::symlink_metadata(plan.backup()) {

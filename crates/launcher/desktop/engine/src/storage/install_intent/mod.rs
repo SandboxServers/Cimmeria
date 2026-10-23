@@ -45,6 +45,16 @@ pub struct InstallIntent {
     pub backend: ExtractionBackend,
 }
 impl InstallIntent {
+    /// Schema 2 is authenticated direct-root adoption; schema 1 retains the
+    /// managed/legacy layout. Callers must validate the intent before use.
+    pub fn content_root(&self) -> PathBuf {
+        if self.schema_version == 2 {
+            self.destination.clone()
+        } else {
+            self.destination.join("game")
+        }
+    }
+
     pub(super) fn digest(&self) -> Result<[u8; 32], StorageError> {
         let bytes = serde_json::to_vec(self).map_err(|_| StorageError::Corrupt)?;
         Ok(Sha256::digest(bytes).into())

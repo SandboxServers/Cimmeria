@@ -3,6 +3,8 @@
 use super::*;
 use crate::{catalog::VerifiedRelease, OperationKind, OperationState};
 
+mod selection;
+
 const NAME: &str = "installed-content.json";
 
 #[derive(Serialize, Deserialize)]
@@ -100,7 +102,8 @@ impl DesktopState {
             record = read(&self.directory.root.join(NAME))?;
         }
         let record = record.ok_or(StorageError::Corrupt)?;
-        if !matches!(record.schema_version, 1..=3) || record.intent.schema_version != 1 {
+        if !matches!(record.schema_version, 1..=3) || !matches!(record.intent.schema_version, 1 | 2)
+        {
             return Err(StorageError::UnsupportedSchema);
         }
         if self
@@ -174,7 +177,9 @@ impl DesktopState {
         let record: Option<Record> = read(&self.directory.root.join(NAME))?;
         let (intent, current_release, adoption) = match record {
             Some(record) => {
-                if !matches!(record.schema_version, 1..=3) || record.intent.schema_version != 1 {
+                if !matches!(record.schema_version, 1..=3)
+                    || !matches!(record.intent.schema_version, 1 | 2)
+                {
                     return Err(StorageError::UnsupportedSchema);
                 }
                 if self
@@ -192,6 +197,7 @@ impl DesktopState {
                 {
                     return Err(StorageError::Busy);
                 }
+                self.verify_adoption_record(&record)?;
                 let adoption = adoption_shape(&record)?.cloned();
                 (record.intent, record.current_release, adoption)
             }
@@ -396,7 +402,7 @@ impl DesktopState {
             return Err(StorageError::InvalidDirectory);
         }
         ordinary_directory(&intent.destination)?;
-        let game = intent.destination.join("game");
+        let game = intent.content_root();
         match std::fs::symlink_metadata(&game) {
             Err(error) if error.kind() == ErrorKind::NotFound => (), // Repair needs identity even when all content is missing.
             Err(_) => return Err(StorageError::Io),
@@ -434,6 +440,9 @@ pub(super) fn adopted_work(
 
 /// Which index schemas may carry adoption provenance.
 fn adoption_shape(record: &Record) -> Result<Option<&super::adoption::Provenance>, StorageError> {
+    if record.intent.schema_version == 2 && record.adoption.is_none() {
+        return Err(StorageError::Corrupt);
+    }
     if (record.schema_version == 3) != record.current_release.is_some() {
         return Err(StorageError::Corrupt);
     }
@@ -459,5 +468,7 @@ fn ordinary_directory(path: &Path) -> Result<(), StorageError> {
     Ok(())
 }
 
+#[cfg(all(test, not(target_os = "macos")))]
+pub(crate) mod direct_tests;
 #[cfg(test)]
 mod tests;

@@ -111,10 +111,7 @@ impl DesktopState {
         if installed.intent.operation_id != installation_id {
             return Err(ContractError::IdentityConflict.into());
         }
-        if !install_worker::content_valid(
-            &installed.intent.destination.join("game"),
-            &installed.release,
-        ) {
+        if !install_worker::content_valid(&installed.intent.content_root(), &installed.release) {
             return Err(StorageError::Corrupt.into());
         }
         let plan = Plan {
@@ -182,10 +179,7 @@ impl DesktopState {
         }
         let installed = self.installed_content()?.ok_or(StorageError::Corrupt)?;
         if installed.intent != plan.installation
-            || !install_worker::content_valid(
-                &installed.intent.destination.join("game"),
-                &installed.release,
-            )
+            || !install_worker::content_valid(&installed.intent.content_root(), &installed.release)
         {
             return Err(StorageError::Corrupt.into());
         }

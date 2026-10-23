@@ -13,7 +13,7 @@ use tokio::sync::oneshot;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum Phase {
+pub(crate) enum Phase {
     Planned,
     OriginalMoved,
     Promoted,
@@ -21,10 +21,10 @@ pub(super) enum Phase {
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Record {
-    pub(super) schema_version: u32,
-    pub(super) plan: Plan,
-    pub(super) phase: Phase,
+pub(crate) struct Record {
+    pub(crate) schema_version: u32,
+    pub(crate) plan: Plan,
+    pub(crate) phase: Phase,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Point {
@@ -143,7 +143,7 @@ pub(super) fn replace(
     }
     let result = (|| -> Result<(), IntentError> {
         let root = &plan.owner.destination;
-        let game = root.join("game");
+        let game = plan.owner.content_root();
         if root.canonicalize().map_err(|_| StorageError::Io)? != *root
             || !directory_or_absent(&game)?
             || directory_or_absent(&plan.backup())?
@@ -167,29 +167,43 @@ pub(super) fn replace(
         if read::<Record>(&state.directory.root.join(&checkpoint))?.is_some() {
             return Err(StorageError::Corrupt.into()); // explicit recovery only
         }
-        // Markers move with the trees and distinguish interrupted renames from
-        // unrelated replacements during explicit restart recovery.
-        tree_identity::absent(&plan.stage(), plan)?;
-        tree_identity::absent(&game, plan)?;
-        tree_identity::write(&game, plan, tree_identity::Role::Original)?;
-        hook(Point::OriginalMarked)?;
-        tree_identity::write(&plan.stage(), plan, tree_identity::Role::Replacement)?;
-        hook(Point::ReplacementMarked)?;
-        record(&mut state, plan, Phase::Planned)?;
-        hook(Point::Planned)?;
-        hook(Point::BeforeOriginalRename)?;
-        std::fs::rename(&game, plan.backup()).map_err(|_| StorageError::Io)?;
-        hook(Point::AfterOriginalRename)?;
-        sync(root)?;
-        record(&mut state, plan, Phase::OriginalMoved)?;
-        hook(Point::OriginalMoved)?;
-        hook(Point::BeforePromotion)?;
-        std::fs::rename(plan.stage(), &game).map_err(|_| StorageError::Io)?;
-        hook(Point::AfterPromotion)?;
-        sync(&plan.work_directory())?;
-        sync(root)?;
-        record(&mut state, plan, Phase::Promoted)?;
-        hook(Point::Promoted)?;
+        if plan.owner.schema_version == 2 {
+            record(&mut state, plan, Phase::Planned)?;
+            super::super::repair::direct_files::apply(
+                plan,
+                &game,
+                &plan.stage(),
+                &plan.backup(),
+                &plan.work_directory(),
+            )?;
+            tree_identity::write(&game, plan, tree_identity::Role::Replacement)?;
+            record(&mut state, plan, Phase::Promoted)?;
+            hook(Point::Promoted)?;
+        } else {
+            // Markers move with the trees and distinguish interrupted renames from
+            // unrelated replacements during explicit restart recovery.
+            tree_identity::absent(&plan.stage(), plan)?;
+            tree_identity::absent(&game, plan)?;
+            tree_identity::write(&game, plan, tree_identity::Role::Original)?;
+            hook(Point::OriginalMarked)?;
+            tree_identity::write(&plan.stage(), plan, tree_identity::Role::Replacement)?;
+            hook(Point::ReplacementMarked)?;
+            record(&mut state, plan, Phase::Planned)?;
+            hook(Point::Planned)?;
+            hook(Point::BeforeOriginalRename)?;
+            std::fs::rename(&game, plan.backup()).map_err(|_| StorageError::Io)?;
+            hook(Point::AfterOriginalRename)?;
+            sync(root)?;
+            record(&mut state, plan, Phase::OriginalMoved)?;
+            hook(Point::OriginalMoved)?;
+            hook(Point::BeforePromotion)?;
+            std::fs::rename(plan.stage(), &game).map_err(|_| StorageError::Io)?;
+            hook(Point::AfterPromotion)?;
+            sync(&plan.work_directory())?;
+            sync(root)?;
+            record(&mut state, plan, Phase::Promoted)?;
+            hook(Point::Promoted)?;
+        }
         if !install_worker::content_valid(&game, &release) {
             return Err(StorageError::Corrupt.into());
         }

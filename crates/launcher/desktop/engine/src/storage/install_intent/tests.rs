@@ -2,6 +2,18 @@ use super::*;
 use crate::{catalog::verify_release, OperationState};
 use ed25519_dalek::{Signer, SigningKey};
 
+#[test]
+fn direct_adoption_resolves_selected_root_while_managed_retains_game_subfolder() {
+    let (_root, mut state) = setup();
+    let mut intent = state
+        .admit_install(Uuid::new_v4(), 0, 1, &release("seed"), vec![])
+        .unwrap()
+        .intent;
+    assert_eq!(intent.content_root(), intent.destination.join("game"));
+    intent.schema_version = 2;
+    assert_eq!(intent.content_root(), intent.destination);
+}
+
 fn release(label: &str) -> VerifiedRelease {
     let bytes = serde_json::to_vec(&serde_json::json!({
         "schema":1,"seed":{"blob":label,"size":1,"sha256":"a".repeat(64)},"patches":[]

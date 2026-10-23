@@ -127,7 +127,30 @@ fn reconcile_with(
         .verify_release_identity(plan.target)
         .map_err(|_| StorageError::Corrupt)?;
     failed_cleanup::validate_tree(&plan.work_directory())?;
-    let game = root.join("game");
+    if plan.owner.schema_version == 2 {
+        if !plan
+            .work_directory()
+            .join("direct-files.json")
+            .try_exists()
+            .map_err(|_| StorageError::Io)?
+        {
+            staged_content::verify(state, &plan, &plan.stage())?;
+        }
+        super::super::repair::direct_files::apply(
+            &plan,
+            &plan.owner.content_root(),
+            &plan.stage(),
+            &plan.backup(),
+            &plan.work_directory(),
+        )?;
+        if tree_identity::absent(&plan.owner.content_root(), &plan).is_ok() {
+            tree_identity::write(&plan.owner.content_root(), &plan, Role::Replacement)?;
+        } else if read_role(&plan.owner.content_root(), &plan)? != Some(Role::Replacement) {
+            return Err(StorageError::Corrupt.into());
+        }
+        return publish(state, &plan, &release, &mut hook);
+    }
+    let game = plan.owner.content_root();
     let shape = (
         read_role(&game, &plan)?,
         read_role(&plan.stage(), &plan)?,
@@ -176,10 +199,10 @@ fn publish(
     hook: &mut impl FnMut(Point) -> Result<(), StorageError>,
 ) -> Result<(), IntentError> {
     let root = &plan.owner.destination;
-    if !install_worker::content_valid(&root.join("game"), release) {
+    if !install_worker::content_valid(&plan.owner.content_root(), release) {
         return Err(StorageError::Corrupt.into());
     }
-    staged_content::verify(state, plan, &root.join("game"))?;
+    staged_content::verify(state, plan, &plan.owner.content_root())?;
     commit::sync(&plan.work_directory())?;
     commit::sync(root)?;
     let receipt = installed_content::read_ready(root, &plan.owner)?;

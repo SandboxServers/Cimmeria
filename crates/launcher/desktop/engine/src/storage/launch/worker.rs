@@ -419,7 +419,7 @@ mod tests {
     fn telemetry_is_injected_after_the_patches_and_only_with_its_session_marker() {
         let (root, _state, mut plan) = super::super::tests::fixture();
         let directory = root.path().canonicalize().unwrap();
-        let game = plan.installation.destination.join("game");
+        let game = plan.installation.content_root();
         inert_client(&game.join("Working/Binaries/SGW.exe"));
         let patches = super::super::tests::artifact(&directory, "patches.dll");
         let telemetry = super::super::tests::artifact(&directory, "telemetry.dll");
@@ -459,7 +459,7 @@ mod tests {
     fn a_session_marker_is_never_written_through_a_link_out_of_the_game() {
         let (root, _state, mut plan) = super::super::tests::fixture();
         let directory = root.path().canonicalize().unwrap();
-        let game = plan.installation.destination.join("game");
+        let game = plan.installation.content_root();
         inert_client(&game.join("Working/Binaries/SGW.exe"));
         plan.resources.client_telemetry =
             Some(super::super::tests::artifact(&directory, "telemetry.dll"));
@@ -476,7 +476,7 @@ mod tests {
     #[test]
     fn native_preparation_reads_locked_owner_and_retains_exclusion() {
         let (root, _state, plan) = super::super::tests::fixture();
-        let game = plan.installation.destination.join("game");
+        let game = plan.installation.content_root();
         let exe = game.join("Working/Binaries/SGW.exe");
         inert_client(&exe);
 
@@ -507,7 +507,7 @@ mod tests {
     #[test]
     fn play_writes_the_saved_login_servers_and_not_the_default() {
         let (_root, mut state, plan) = super::super::tests::fixture();
-        let game = plan.installation.destination.join("game");
+        let game = plan.installation.content_root();
         inert_client(&game.join("Working/Binaries/SGW.exe"));
         // The install was admitted with the default list; the player's saved
         // list must win over it at Play.
