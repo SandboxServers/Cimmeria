@@ -4,9 +4,9 @@ import {readFile} from 'node:fs/promises';
 import {parseHTML} from 'linkedom';
 import {mountDesktop} from './.test-build/composition.mjs';
 const html=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
-let revision=0,valid=false,owned=false,calls=0,pick;
+let revision=0,valid=false,owned=false,calls=0,pick,backend='in_place';
 const native=()=>({schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1,revision,operation:null}});
-const status=()=>({schema_version:1,native:native(),backend:'in_place',imported:null,modes:['light','in_place'],activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],has_valid_install:valid,owned,completed:null,last_error:null,last_rejection:null,unsafe_entries:null});
+const status=()=>({schema_version:1,native:native(),backend,imported:null,modes:backend==='in_place'?['light']:[],activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],has_valid_install:valid,owned,completed:null,last_error:null,last_rejection:null,unsafe_entries:null});
 let choose=()=>new Promise(resolve=>{pick=resolve;});
 const invoke=async command=>{
  if(command==='adoption_command')return status();
@@ -29,6 +29,7 @@ try{
  await ui.app.dispose();ui=mount();await Promise.all([ui.app.app.ready,ui.app.adoption.ready]);await settle(ui);assert.equal(ui.get('adopt-install').hidden,true,'fresh composition reads persisted native content validity');
  valid=false;owned=false;revision++;assert.equal(ui.get('gear').hidden,true);await ui.app.app.refresh();await settle(ui);assert.equal(ui.get('adopt-install').hidden,false);
  owned=true;revision++;await ui.app.app.refresh();await settle(ui);assert.equal(ui.get('adopt-install').disabled,true);assert.match(ui.get('adopt-install-status').textContent,/Repair it or uninstall/);
+ owned=false;backend='helper_unavailable';revision++;await ui.app.app.refresh();await settle(ui);assert.equal(ui.get('adopt-install').disabled,true);assert.match(ui.get('adopt-install-status').textContent,/Install the complete launcher build/);const before=calls;ui.press('adopt-install');await settle(ui);assert.equal(calls,before,'missing-helper feedback cannot start adoption');
  console.log('PASS: actual composition, immediate visible feedback before deferred picker, one choose per repeated press, cancellation/error, persisted success/reopen and uninstall refresh with Settings closed, invalid-owner refusal.');
  console.log('Not covered: native physical picker, filesystem effects, packaged visual layout, real game launch, macOS runtime.');
 }finally{await ui.app.dispose();}

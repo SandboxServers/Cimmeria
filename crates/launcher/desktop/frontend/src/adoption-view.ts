@@ -85,7 +85,7 @@ export function adoptionText(s:AdoptionState):string {
  if(status.native.requires_reopen)return 'Restart the launcher to inspect saved adoption state.';
  if(s.error)return failureText(s.error);
  if(status.backend==='unsupported_platform')return 'In-place adoption is not available on this operating system yet. Keep using the old launcher for this installation.';
- if(status.backend==='helper_unavailable')return 'This build does not include the verified archive helper, so verified copy adoption is unavailable.';
+ if(status.backend==='helper_unavailable')return 'This build does not include the verified archive helper, so adoption is unavailable. Install the complete launcher build to adopt this folder in place.';
  if(status.activity==='copying'||status.activity==='preparing')return activityText(status);
  const r=status.reconciliation;
  if(r?.kind==='preparation')return `Preparation was interrupted and is never repeated automatically. Remove its private files to continue. ${unchanged}`;
@@ -187,7 +187,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   main.hidden=s?.has_valid_install===true;
   main.disabled=!enabled||!idle;
   explanation.hidden=main.hidden||!main.disabled;
-  explanation.textContent=current.uncertain?'Recheck adoption status in Settings before choosing a folder.':s?.owned?'An installation is already registered. Repair it or uninstall it in Settings before adopting another folder.':busy||working?'An adoption is already in progress. Finish it in Settings.':!idle?'Finish the current operation or adoption review in Settings before choosing another folder.':'';
+  explanation.textContent=current.uncertain?'Recheck adoption status in Settings before choosing a folder.':s?.owned?'An installation is already registered. Repair it or uninstall it in Settings before adopting another folder.':s?.backend==='helper_unavailable'?'Adoption needs the archive helper bundled with the launcher. Install the complete launcher build.':busy||working?'An adoption is already in progress. Finish it in Settings.':!idle?'Finish the current operation or adoption review in Settings before choosing another folder.':'';
   button('choose-adoption-destination').textContent='Use an existing game folder…';
   button('inspect-adoption').disabled=busy;
   button('cancel-adoption').hidden=!s?.cancellable;

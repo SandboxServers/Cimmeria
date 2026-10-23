@@ -35,6 +35,9 @@ for(const kind of ['managed','adopted','busy'])test(`valid ${kind} content hides
 test('invalid registered or uncertain state is visible with actionable disabled feedback',async()=>{
  const ui=fixture({...idle(),owned:true});
  try{await ui.ready();assert.equal(ui.get('adopt-install').hidden,false);assert.equal((ui.get('adopt-install') as HTMLButtonElement).disabled,true);assert.match(ui.get('adopt-install-status').textContent!,/Repair it or uninstall/);
+  ui.save({...idle(),backend:'helper_unavailable',modes:[]});await ui.app.adoption!.refresh();await ui.settle();
+  assert.equal((ui.get('adopt-install') as HTMLButtonElement).disabled,true);assert.match(ui.get('adopt-install-status').textContent!,/Install the complete launcher build/);
+  const picks=ui.calls.filter(c=>c==='choose_existing_game_folder').length;ui.click('adopt-install');await ui.settle();assert.equal(ui.calls.filter(c=>c==='choose_existing_game_folder').length,picks);
   ui.save({...idle(),native:{...native(1),requires_reopen:true}});await ui.app.adoption!.refresh();await ui.settle();
   assert.equal((ui.get('adopt-install') as HTMLButtonElement).disabled,true);assert.match(ui.get('adopt-install-status').textContent!,/Recheck adoption status/);
  }finally{await ui.app.dispose();}
