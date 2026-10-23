@@ -15,8 +15,11 @@ authorization to cut a release; historical release instructions do not override
 that boundary.
 
 The original U1-U5 PRs (#1984 through #1988) and close-out #1989 are merged.
-Task 1's follow-up has no PR yet. Task 2 is [PR #1991](https://github.com/SandboxServers/Cimmeria/pull/1991),
-in review. Task 1 review fixes N1-N5 are in progress; the results below are the pre-fix baseline and affected checks must be rerun. These are independent task worktrees, not unfinished original waves.
+Task 1 is [PR #1992](https://github.com/SandboxServers/Cimmeria/pull/1992).
+Review-1 fixes N1-N6 are complete; fresh review 2 is pending. Task 2 is
+[PR #1991](https://github.com/SandboxServers/Cimmeria/pull/1991): fresh review 3
+returned ship, required CI is green, and merge waits for native CI. Neither PR
+has merged. These are independent task worktrees, not unfinished original waves.
 
 ## Contract under validation
 
@@ -35,7 +38,7 @@ Schema-2 abandon rolls back approved per-file changes.
 The main-page button uses content validity, independently of Play/runtime gates,
 and enters the existing adoption workflow with immediate first-press feedback.
 
-## Reported validation evidence
+## Initial reported validation baseline
 
 The implementing session supplied these results and build-lane log identifiers;
 this documentation update does not claim to have rerun them.
@@ -53,6 +56,33 @@ All compiling Cargo checks use `pwsh tools/build-lane/lane.ps1 cargo ...`.
 The three engine ignores and one shell ignore are not passing executions.
 Native macOS CI remains pending.
 
+## Review-1 fixes and updated validation
+
+N1-N3 guard nested paths through retained directories, refuse unexpected
+reappeared targets, and make Abandon restoration restartable. N4 journals removal
+of previously authenticated outputs absent from a rollback target, while
+preserving live extras. N5 refuses readiness without the retained authenticated
+adoption plan. N6 qualifies the migration documentation's full-reconstruction
+backup behavior as schema-1 only. All six fixes are complete; fresh review 2 is
+pending, so this is not final review acceptance.
+
+| Post-fix check | Result | Evidence |
+|---|---|---|
+| Safety adoption suite | 257 passed | `20261022-213247-208240`; `.claude/reports/launcher-adopt-in-place/fix-safety-1.md` |
+| Engine fmt / all-target clippy | Passed / clean | `20261022-221153-70516`, `20261022-221157-142624` |
+| Full engine after rollback fix | 939 passed, 3 ignored | `20261022-221204-254736`; `.claude/reports/launcher-adopt-in-place/fix-rollback-1.md` |
+| Restored retained-plan provenance tests | 2 passed | `20261022-221644-453132` |
+| Native-backed adoption UAT | `npm run uat:adoption` passed | Implementing session's production Effect/native-host fixture run |
+| Footer and Light REPL / frontend build | Passed again | Implementing session's post-fix results |
+
+The native-backed UAT uses the production Effect workflow and native host with
+isolated disk fixtures and a signed loopback release. It exercises modified-file
+replacement consent, hard-link refusal, a single confirmation, the executable at
+its original path, and selective Uninstall preserving an extra file. The fixture
+provides native paths for both platforms; this run does not establish macOS
+runtime behavior. It excludes Wine, Tauri windows, the physical picker, and a real
+game. The three ignored engine tests remain unexecuted.
+
 ## Regression proof
 
 Restoring bulk relocation into `root/game` made the adoption location invariant
@@ -64,6 +94,24 @@ by preserving bytes.
 The frontend agent separately mutated visibility and first-feedback behavior:
 5 of 6 targeted checks failed. Restoring the fix made all 6 pass. This is evidence
 for those guards; it does not claim mutation testing of every added assertion.
+
+Additional review-fix mutations were restored before passing checks:
+
+- N1: removing the Windows parent-open no-follow flag fails the nested-link
+  journey (`20261022-212815-159012`, 1 failure).
+- N2: disabling unexpected-target refusal makes both recovery preservation tests
+  fail (`20261022-212941-237992`, 2 failures).
+- N3: repeating setup restoration on every Abandon retry corrupts the executable
+  restoration assertion (`20261022-212952-263940`, 1 failure).
+- N4: omitting previous managed paths absent from the rollback stage fails the
+  A/B/rollback/Uninstall journey (`20261022-221126-112228`) and removal-recovery
+  guard (`20261022-221138-423724`). The restored full suite passes as above.
+- N5: allowing readiness without the retained plan fails the missing-plan guard
+  (`20261022-221612-136968`); restored provenance checks pass 2/2
+  (`20261022-221644-453132`).
+
+The safety report distinguishes unsuccessful preliminary mutations from the
+actual failing guards; those preliminary attempts are not counted as proof.
 
 ## Browser mock and coverage limits
 
@@ -86,6 +134,7 @@ follow-up state, UAT steps, and committed project memory. Companion contracts ar
 guides, the approved design, and AIP-U1..U5. Existing generated and global status
 blocks are outside this follow-up.
 
-Complete review fixes N1-N5, rerun affected checks, finish review and pending platform CI, then open Task 1's PR with these results and
-limits, and complete the normal ship-pr review/merge process. Task 2 continues in
-PR #1991. Retire each worktree after its PR merges; never `git worktree prune`.
+Complete fresh Task 1 review 2 and pending platform CI on PR #1992, then follow
+the normal ship-pr review/merge process. Task 2 PR #1991 has a ship verdict and
+green required CI but still waits for native CI before merge. No merge or release
+is claimed. Retire each worktree after its PR merges; never `git worktree prune`.

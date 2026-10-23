@@ -9,10 +9,12 @@
 
 | Task | Worktree / state | Next action |
 |---|---|---|
-| 1: Direct-root adoption and main-page button | `.claude/worktrees/launcher-adopt-in-place`; review fixes N1-N5 in progress, no PR yet; baseline local checks recorded; native macOS CI pending | Complete fixes, rerun affected checks, finish review, open PR and ship via ship-pr |
-| 2: Several signed releases per day + applied-content identity logs | `.claude/worktrees/launcher-repeat-releases`; [PR #1991](https://github.com/SandboxServers/Cimmeria/pull/1991) in review | Address review and CI; no real release |
+| 1: Direct-root adoption and main-page button | `.claude/worktrees/launcher-adopt-in-place`; [PR #1992](https://github.com/SandboxServers/Cimmeria/pull/1992); review-1 fixes N1-N6 complete; fresh review 2 pending; native CI pending | Finish fresh review and CI, then ship via ship-pr |
+| 2: Several signed releases per day + applied-content identity logs | `.claude/worktrees/launcher-repeat-releases`; [PR #1991](https://github.com/SandboxServers/Cimmeria/pull/1991); fresh review 3 ship, required CI green, awaiting native CI; unmerged | Wait for native CI before merge; no real release |
 
-**Task 1 pre-review-fix baseline:** engine 931 passed / 3 ignored; all-target desktop clippy clean; shell adoption 24 passed / 1 ignored; frontend 250 tests and build passed; `uat:adoption-footer` REPL passed. Restoring bulk relocation fails the invariant, then restored fix passes; frontend mutations fail 5/6 targeted checks, restored fix passes 6/6. Log IDs and attribution: [validation worknote](worknotes/adopt-in-place-validation.md).
+**Task 1 checks:** post-fix engine 939 passed / 3 ignored; all-target clippy clean; safety adoption 257 passed; restored provenance 2 passed. Prior shell adoption 24 passed / 1 ignored, frontend 250 passed. Native-backed `uat:adoption` now passes; footer/Light REPL and frontend build pass again. Restoring bulk relocation fails the invariant, then restored fix passes; frontend mutations fail 5/6 targeted checks, restored fix passes 6/6. N1-N5 mutations also fail their guards after reverting fixes. Log IDs and attribution: [validation worknote](worknotes/adopt-in-place-validation.md).
+
+**Native UAT boundary:** production Effect/native host, isolated disk and signed loopback fixtures cover replacement consent, hard-link refusal, single confirmation, original executable path and selective Uninstall preserving extras; not Wine/Tauri/physical picker/real game.
 
 **Visual boundary:** 1280 × 720 browser mock shows footer, Settings opening, immediate pending feedback and duplicate disabling. Incomplete unrelated mocks mean this is not native acceptance.
 
