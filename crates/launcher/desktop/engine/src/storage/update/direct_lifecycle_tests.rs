@@ -3,9 +3,9 @@ use std::io::{Cursor, Write};
 use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
-async fn direct_update_then_uninstall_preserves_selected_root_and_nested_extras() {
-    let (_temp, state, intent, seed) = installed_content::direct_tests::fixture();
-    let mut archive = zip::ZipWriter::new_append(Cursor::new(seed)).unwrap();
+async fn direct_update_rollback_then_uninstall_preserves_selected_root_and_nested_extras() {
+    let (_temp, state, intent, original_seed) = installed_content::direct_tests::fixture();
+    let mut archive = zip::ZipWriter::new_append(Cursor::new(original_seed.clone())).unwrap();
     archive
         .start_file("version-two.txt", zip::write::SimpleFileOptions::default())
         .unwrap();
@@ -61,10 +61,51 @@ async fn direct_update_then_uninstall_preserves_selected_root_and_nested_extras(
         b"keep nested notes"
     );
     assert!(!root.join("game").exists());
+    let rollback = {
+        let mut owner = state.lock().unwrap();
+        let revision = owner.operations().snapshot().revision;
+        owner
+            .admit_update_rollback(plan.id, Uuid::new_v4(), revision, plan.target, true)
+            .unwrap()
+            .plan
+    };
+    server.reset().await;
+    Mock::given(path("/seed.zip"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(original_seed))
+        .mount(&server)
+        .await;
+    let prepared = preparation::start(
+        state.clone(),
+        rollback.id,
+        reqwest::Client::new(),
+        format!("{}/manifest.json", server.uri()),
+    )
+    .unwrap()
+    .result
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        commit::start(state.clone(), prepared)
+            .unwrap()
+            .await
+            .unwrap(),
+        Ok(())
+    );
+    assert!(!root.join("version-two.txt").exists());
+    assert_eq!(
+        std::fs::read(rollback.backup().join("version-two.txt")).unwrap(),
+        b"version two"
+    );
+    assert_eq!(
+        std::fs::read(root.join("Working/Binaries/player-notes.txt")).unwrap(),
+        b"keep nested notes"
+    );
+    assert_eq!(root.canonicalize().unwrap(), intent.destination);
     let mut owner = state.lock().unwrap();
     assert_eq!(
         owner.installed_content().unwrap().unwrap().current_release,
-        plan.target
+        rollback.target
     );
     assert!(owner.has_valid_install().unwrap());
     let revision = owner.operations().snapshot().revision;

@@ -53,12 +53,19 @@ fn fixture() -> (tempfile::TempDir, Plan) {
 fn direct_reconstruction_preserves_root_metadata_and_nested_player_files() {
     let (_temp, plan) = fixture();
     let root = plan.installation.content_root();
+    // Incremental stages can contain unchanged, unverified light-adoption inputs.
+    std::fs::write(
+        plan.stage().join("Working/Binaries/player-notes.txt"),
+        b"keep me",
+    )
+    .unwrap();
     apply(
         &plan,
         &root,
         &plan.stage(),
         &plan.backup(),
         &plan.work_directory(),
+        &[],
     )
     .unwrap();
     assert_eq!(
@@ -80,6 +87,9 @@ fn direct_reconstruction_preserves_root_metadata_and_nested_player_files() {
     assert!(!root.join("game").exists());
     assert!(!plan.stage().exists());
     verify(&plan, &root, &plan.work_directory()).unwrap();
+    assert!(!paths(&plan, &plan.work_directory())
+        .unwrap()
+        .contains(&PathBuf::from("Working/Binaries/player-notes.txt")));
     // Reopen/retry is idempotent even after the stage was removed.
     apply(
         &plan,
@@ -87,6 +97,7 @@ fn direct_reconstruction_preserves_root_metadata_and_nested_player_files() {
         &plan.stage(),
         &plan.backup(),
         &plan.work_directory(),
+        &[],
     )
     .unwrap();
 }
@@ -101,6 +112,7 @@ fn direct_reconstruction_recovers_between_backup_and_file_promotion() {
             &plan.stage(),
             &plan.backup(),
             &plan.work_directory(),
+            &[],
             || Err(StorageError::Io)
         ),
         Err(StorageError::Io)
@@ -116,6 +128,7 @@ fn direct_reconstruction_recovers_between_backup_and_file_promotion() {
         &plan.stage(),
         &plan.backup(),
         &plan.work_directory(),
+        &[],
     )
     .unwrap();
     verify(&plan, &root, &plan.work_directory()).unwrap();
@@ -134,6 +147,7 @@ fn direct_reconstruction_refuses_changed_original_after_checkpoint() {
         &plan.stage(),
         &plan.backup(),
         &plan.work_directory(),
+        &[],
         || Err(StorageError::Io)
     )
     .is_err());
@@ -147,11 +161,81 @@ fn direct_reconstruction_refuses_changed_original_after_checkpoint() {
         &root,
         &plan.stage(),
         &plan.backup(),
-        &plan.work_directory()
+        &plan.work_directory(),
+        &[]
     )
     .is_err());
     assert_eq!(
         std::fs::read(root.join("Working/Binaries/SGW.exe")).unwrap(),
         b"external replacement"
     );
+}
+
+#[test]
+fn direct_removal_recovers_after_backup_without_touching_player_extras() {
+    let (_temp, plan) = fixture();
+    let root = plan.installation.content_root();
+    let removed = PathBuf::from("version-two.txt");
+    std::fs::write(root.join(&removed), b"version two").unwrap();
+    // Isolate the removal so the fault lands after its backup, before deletion.
+    let staged = plan.stage().join("Working/Binaries/SGW.exe");
+    std::fs::remove_file(staged).unwrap();
+    assert_eq!(
+        apply_with(
+            &plan,
+            &root,
+            &plan.stage(),
+            &plan.backup(),
+            &plan.work_directory(),
+            std::slice::from_ref(&removed),
+            || Err(StorageError::Io)
+        ),
+        Err(StorageError::Io)
+    );
+    assert_eq!(std::fs::read(root.join(&removed)).unwrap(), b"version two");
+    assert_eq!(
+        std::fs::read(plan.backup().join(&removed)).unwrap(),
+        b"version two"
+    );
+    apply(
+        &plan,
+        &root,
+        &plan.stage(),
+        &plan.backup(),
+        &plan.work_directory(),
+        &[],
+    )
+    .unwrap();
+    apply(
+        &plan,
+        &root,
+        &plan.stage(),
+        &plan.backup(),
+        &plan.work_directory(),
+        &[],
+    )
+    .unwrap();
+    verify(&plan, &root, &plan.work_directory()).unwrap();
+    assert!(!root.join(&removed).exists());
+    assert!(paths(&plan, &plan.work_directory()).unwrap().is_empty());
+    assert_eq!(
+        std::fs::read(root.join("Working/Binaries/player-notes.txt")).unwrap(),
+        b"keep me"
+    );
+    // An absent-output receipt also rejects a foreign file recreated afterwards.
+    std::fs::write(root.join(&removed), b"player edit").unwrap();
+    assert_eq!(
+        verify(&plan, &root, &plan.work_directory()),
+        Err(StorageError::Corrupt)
+    );
+    assert!(apply(
+        &plan,
+        &root,
+        &plan.stage(),
+        &plan.backup(),
+        &plan.work_directory(),
+        &[]
+    )
+    .is_err());
+    assert_eq!(std::fs::read(root.join(&removed)).unwrap(), b"player edit");
 }

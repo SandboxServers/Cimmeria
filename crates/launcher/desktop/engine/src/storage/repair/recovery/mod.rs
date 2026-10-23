@@ -134,12 +134,14 @@ fn reconcile_with(
         {
             return Err(StorageError::Corrupt.into());
         }
+        let previous = state.direct_reconstruction_files(&plan.installation)?;
         super::super::repair::direct_files::apply(
             &plan,
             &plan.installation.content_root(),
             &plan.stage(),
             &plan.backup(),
             &plan.work_directory(),
+            &previous,
         )?;
         if tree_identity::absent(&plan.installation.content_root(), &plan).is_ok() {
             tree_identity::write(&plan.installation.content_root(), &plan, Role::Replacement)?;

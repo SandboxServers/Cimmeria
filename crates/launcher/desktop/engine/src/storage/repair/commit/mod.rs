@@ -170,12 +170,14 @@ pub(super) fn replace(
         }
         if plan.installation.schema_version == 2 {
             record(&mut state, plan, Phase::Planned)?;
+            let previous = state.direct_reconstruction_files(&plan.installation)?;
             super::super::repair::direct_files::apply(
                 plan,
                 &game,
                 &plan.stage(),
                 &plan.backup(),
                 &plan.work_directory(),
+                &previous,
             )?;
             tree_identity::write(&game, plan, tree_identity::Role::Replacement)?;
             record(&mut state, plan, Phase::Promoted)?;

@@ -136,12 +136,14 @@ fn reconcile_with(
         {
             staged_content::verify(state, &plan, &plan.stage())?;
         }
+        let previous = state.direct_reconstruction_files(&plan.owner)?;
         super::super::repair::direct_files::apply(
             &plan,
             &plan.owner.content_root(),
             &plan.stage(),
             &plan.backup(),
             &plan.work_directory(),
+            &previous,
         )?;
         if tree_identity::absent(&plan.owner.content_root(), &plan).is_ok() {
             tree_identity::write(&plan.owner.content_root(), &plan, Role::Replacement)?;

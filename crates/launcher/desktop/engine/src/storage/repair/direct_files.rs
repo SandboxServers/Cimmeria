@@ -7,7 +7,7 @@ use std::io::Read;
 struct Entry {
     path: PathBuf,
     original: Option<[u8; 32]>,
-    replacement: [u8; 32],
+    replacement: Option<[u8; 32]>,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -23,8 +23,9 @@ pub(crate) fn apply<P: tree_identity::TreePlan>(
     stage: &Path,
     backup: &Path,
     work: &Path,
+    previous: &[PathBuf],
 ) -> Result<(), StorageError> {
-    apply_with(plan, root, stage, backup, work, || Ok(()))
+    apply_with(plan, root, stage, backup, work, previous, || Ok(()))
 }
 
 pub(crate) fn verify<P: tree_identity::TreePlan>(
@@ -34,13 +35,13 @@ pub(crate) fn verify<P: tree_identity::TreePlan>(
 ) -> Result<(), StorageError> {
     let journal: Journal<P> =
         read(&work.join("direct-files.json"))?.ok_or(StorageError::Corrupt)?;
-    if journal.schema_version != 1 || journal.plan != *plan {
+    if !matches!(journal.schema_version, 1 | 2) || journal.plan != *plan {
         return Err(StorageError::Corrupt);
     }
     for entry in journal.entries {
         validate_relative(&entry.path)?;
         checked(root, &entry.path)?;
-        if hash(&root.join(entry.path))? != Some(entry.replacement) {
+        if hash(&root.join(entry.path))? != entry.replacement {
             return Err(StorageError::Corrupt);
         }
     }
@@ -53,13 +54,13 @@ pub(crate) fn paths<P: tree_identity::TreePlan>(
 ) -> Result<Vec<PathBuf>, StorageError> {
     let journal: Journal<P> =
         read(&work.join("direct-files.json"))?.ok_or(StorageError::Corrupt)?;
-    if journal.schema_version != 1 || journal.plan != *plan {
+    if !matches!(journal.schema_version, 1 | 2) || journal.plan != *plan {
         return Err(StorageError::Corrupt);
     }
     Ok(journal
         .entries
         .into_iter()
-        .filter(|entry| entry.original != Some(entry.replacement))
+        .filter(|entry| entry.replacement.is_some() && entry.original != entry.replacement)
         .map(|entry| entry.path)
         .collect())
 }
@@ -70,11 +71,12 @@ fn apply_with<P: tree_identity::TreePlan>(
     stage: &Path,
     backup: &Path,
     work: &Path,
+    previous: &[PathBuf],
     mut after_backup: impl FnMut() -> Result<(), StorageError>,
 ) -> Result<(), StorageError> {
     let saved: Option<Journal<P>> = read(&work.join("direct-files.json"))?;
     let journal = match saved {
-        Some(saved) if saved.schema_version == 1 && saved.plan == *plan => saved,
+        Some(saved) if matches!(saved.schema_version, 1 | 2) && saved.plan == *plan => saved,
         Some(_) => return Err(StorageError::Corrupt),
         None => {
             if directory_or_absent(backup)? {
@@ -82,19 +84,27 @@ fn apply_with<P: tree_identity::TreePlan>(
             }
             let mut paths = Vec::new();
             collect(stage, stage, &mut paths)?;
+            let targets: std::collections::BTreeSet<_> = paths.iter().cloned().collect();
+            paths.extend(
+                previous
+                    .iter()
+                    .filter(|path| !targets.contains(*path))
+                    .cloned(),
+            );
             paths.sort();
+            paths.dedup();
             let mut entries = Vec::new();
             for path in paths {
                 validate_relative(&path)?;
                 checked(root, &path)?;
                 entries.push(Entry {
                     original: hash(&root.join(&path))?,
-                    replacement: hash(&stage.join(&path))?.ok_or(StorageError::Corrupt)?,
+                    replacement: hash(&stage.join(&path))?,
                     path,
                 });
             }
             let saved = Journal {
-                schema_version: 1,
+                schema_version: 2,
                 plan: plan.clone(),
                 entries,
             };
@@ -127,19 +137,23 @@ fn apply_with<P: tree_identity::TreePlan>(
         let current = hash(&live)?;
         let pending = hash(&staged)?;
         let original = hash(&held)?;
-        if current == Some(entry.replacement) && pending.is_none() {
-            if original != entry.original && entry.original != Some(entry.replacement) {
+        if entry.replacement.is_none() {
+            if pending.is_some() {
+                return Err(StorageError::Corrupt);
+            }
+            remove(&live, &held, entry.original, &mut after_backup)?;
+            continue;
+        }
+        if current == entry.replacement && pending.is_none() {
+            if original != entry.original && entry.original != entry.replacement {
                 return Err(StorageError::Corrupt);
             }
             continue;
         }
-        if pending != Some(entry.replacement) {
+        if pending != entry.replacement {
             return Err(StorageError::Corrupt);
         }
-        if entry.original == Some(entry.replacement)
-            && current == entry.original
-            && original.is_none()
-        {
+        if entry.original == entry.replacement && current == entry.original && original.is_none() {
             std::fs::remove_file(staged).map_err(|_| StorageError::Io)?;
             continue; // An unchanged file keeps its identity and path.
         }
@@ -169,6 +183,53 @@ fn apply_with<P: tree_identity::TreePlan>(
         }
         std::fs::remove_dir_all(stage).map_err(|_| StorageError::Io)?;
         commit::sync(work)?;
+    }
+    Ok(())
+}
+
+// Removal has its own durable backup boundary. Recovery accepts the original
+// still live or already absent, but never a newly appeared player replacement.
+fn remove(
+    live: &Path,
+    held: &Path,
+    expected: Option<[u8; 32]>,
+    after_backup: &mut impl FnMut() -> Result<(), StorageError>,
+) -> Result<(), StorageError> {
+    let original = hash(held)?;
+    let current = hash(live)?;
+    if original.is_none() && current == expected {
+        if expected.is_some() {
+            std::fs::create_dir_all(held.parent().ok_or(StorageError::UnsafeFile)?)
+                .map_err(|_| StorageError::Io)?;
+            let mut backup = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(held)
+                .map_err(|_| StorageError::Io)?;
+            std::io::copy(
+                &mut File::open(live).map_err(|_| StorageError::Io)?,
+                &mut backup,
+            )
+            .map_err(|_| StorageError::Io)?;
+            backup
+                .sync_all()
+                .map_err(|_| StorageError::PersistenceUncertain)?;
+            if hash(held)? != expected {
+                return Err(StorageError::Corrupt);
+            }
+            commit::sync(held.parent().ok_or(StorageError::UnsafeFile)?)?;
+            after_backup()?;
+        }
+    } else if original != expected {
+        return Err(StorageError::Corrupt);
+    }
+    match hash(live)? {
+        Some(current) if Some(current) == expected => {
+            std::fs::remove_file(live).map_err(|_| StorageError::Io)?;
+            commit::sync(live.parent().ok_or(StorageError::UnsafeFile)?)?;
+        }
+        None => (),
+        _ => return Err(StorageError::Corrupt),
     }
     Ok(())
 }
@@ -244,5 +305,6 @@ fn hash(path: &Path) -> Result<Option<[u8; 32]>, StorageError> {
     Ok(Some(digest.finalize().into()))
 }
 
+mod selection;
 #[cfg(test)]
 mod tests;
