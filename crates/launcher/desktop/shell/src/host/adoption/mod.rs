@@ -18,10 +18,10 @@ pub(crate) mod refusal;
 mod rejection_dto;
 mod review;
 mod status;
-#[cfg(all(test, target_os = "macos"))]
-use contract::{Completed, Imported};
 use contract::{Activity, Backend};
 pub use contract::{AdoptionCommand, AdoptionError, AdoptionStatus};
+#[cfg(all(test, target_os = "macos"))]
+use contract::{Completed, Imported};
 #[cfg(test)]
 use contract::{Phase, Reconciliation};
 use refusal::refusal;
