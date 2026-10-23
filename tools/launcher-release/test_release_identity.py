@@ -105,6 +105,27 @@ class IdentityTests(unittest.TestCase):
         self.assertIn("&& needs.sign.result == 'success' && needs.sign.outputs.signed == 'true'", text)
         self.assertNotIn("needs.sign.result == 'skipped'", text)
 
+    def test_macos_rolling_retry_skips_older_accepts_equal_and_refuses_invalid(self):
+        script = Path(__file__).with_name("release_identity.py").resolve()
+        with tempfile.TemporaryDirectory() as root:
+            previous = Path(root) / "latest.json"
+            previous.write_text(json.dumps({"version": "2026.10.2302"}))
+            for version, expected in [("2026.10.2301", "skipped_older"),
+                                      ("2026.10.2302", "refreshed"),
+                                      ("2026.10.2303", "refreshed")]:
+                result = subprocess.run([sys.executable, str(script), "macos-current", version, str(previous)],
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), expected)
+            for version in ["2026.10.2302-2", "2026.10.2302+2", "65536.1.1"]:
+                result = subprocess.run([sys.executable, str(script), "macos-current", version, str(previous)],
+                                        capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+            previous.write_text("not a feed")
+            result = subprocess.run([sys.executable, str(script), "macos-current", "2026.10.2302", str(previous)],
+                                    capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+
     def test_malformed_identity_and_windows_bounds(self):
         for value in ["2026.10.23-2", "2026.10.2301+2", "65536.1.1", "2026.10.65536"]:
             with self.assertRaises(ValueError):

@@ -54,7 +54,7 @@ case "$cmd" in
         --title|--target) shift 2 ;;
         --*) shift ;;
         *) name="$(basename "$1")"
-           if [ "$name" = latest.json ]; then cp "$1" "$STUB_STORE/$tag/latest.json"; fi
+           cp "$1" "$STUB_STORE/$tag/$name"
            grep -qxF "$name" "$STUB_STORE/$tag/assets" || echo "$name" >> "$STUB_STORE/$tag/assets"
            shift ;;
       esac
@@ -139,5 +139,40 @@ else
   pass "missing signature refuses dated and current publication"
 fi
 mv artifacts/saved.sig artifacts/StargateWorlds-Launcher-windows-x64.zip.sig
+mv artifacts/latest.json artifacts/saved-feed.json
+if "$HERE/publish.sh" current >/dev/null 2>&1; then
+  fail "missing verified feed refuses current publication"
+else
+  pass "missing verified feed refuses current publication"
+fi
+mv artifacts/saved-feed.json artifacts/latest.json
+# A failed macOS build on A may be retried after B published both platforms.
+# The dated repair succeeds, but all rolling bytes and notes must remain B's.
+OLD_TAG="$TAG"
+export TAG=launcher-20261023-bbbbbbb VERSION="$SECOND"
+printf '{"version":"%s"}\n' "$VERSION" > artifacts/latest.json
+for file in artifacts/*.zip artifacts/*.sha256 artifacts/*.sig; do echo "B bytes" > "$file"; done
+"$HERE/publish.sh" dated >/dev/null
+"$HERE/publish.sh" current >/dev/null
+"$HERE/publish.sh" macos >/dev/null
+"$HERE/publish.sh" macos-current >/dev/null
+cp -r "$STUB_STORE/launcher-current" "$WORK/rolling-b"
+"$HERE/publish.sh" macos-current >/dev/null
+if diff -r "$WORK/rolling-b" "$STUB_STORE/launcher-current"; then
+  pass "equal-version macOS retry is idempotent"; else fail "equal-version macOS retry is idempotent"; fi
+export TAG="$OLD_TAG" VERSION="$BASE"
+for file in artifacts/*macos*.zip artifacts/*macos*.sha256; do echo "A repaired bytes" > "$file"; done
+"$HERE/publish.sh" macos >/dev/null
+: > "$GITHUB_OUTPUT"
+"$HERE/publish.sh" macos-current >/dev/null
+if diff -r "$WORK/rolling-b" "$STUB_STORE/launcher-current" && grep -qx status=skipped_older "$GITHUB_OUTPUT"; then
+  pass "older macOS retry preserves every newer rolling asset and notes, reporting skip"
+else
+  fail "older macOS retry preserves every newer rolling asset and notes, reporting skip"
+fi
+if cmp artifacts/StargateWorlds-Launcher-macos-arm64.zip "$STUB_STORE/$TAG/StargateWorlds-Launcher-macos-arm64.zip" \
+  && cmp artifacts/StargateWorlds-Launcher-macos-arm64.zip.sha256 "$STUB_STORE/$TAG/StargateWorlds-Launcher-macos-arm64.zip.sha256" \
+  && grep -qF '**macOS (Apple silicon):**' "$STUB_STORE/$TAG/body"; then
+  pass "older dated macOS assets and notes are repaired"; else fail "older dated macOS assets and notes are repaired"; fi
 if grep -qF 'This build is unsigned' <<<"$A"; then fail "unsigned fallback release notes removed"; fi
 exit "$FAILED"

@@ -22,7 +22,7 @@
 #   macos-current    replace the macOS zip and its .sha256 on launcher-current
 #   current-notes    rewrite launcher-current's notes from its assets
 #
-# Environment: TAG; VERSION for dated; TRIGGERING_PR (optional) for dated;
+# Environment: TAG; VERSION for dated and macos-current; TRIGGERING_PR (optional) for dated;
 # GH_TOKEN, GH_REPO and the GITHUB_* variables Actions sets.
 set -euo pipefail
 
@@ -142,7 +142,9 @@ Includes the client-patches UI overlay patch. To publish it, add its \`.entry.js
 # mismatched file. The release is never marked latest, and its tag has no
 # date, which the egui launcher's self-update skips.
 current() {
-  [ -s "$ZIP.sig" ] && [ -s artifacts/latest.json ] || die "signature and verified feed are required"
+  if [[ ! -s "$ZIP.sig" || ! -s artifacts/latest.json ]]; then
+    die "signature and verified feed are required"
+  fi
   if gh release view "$CURRENT" >/dev/null 2>&1; then
     mkdir -p artifacts/previous-feed
     gh release download "$CURRENT" --pattern latest.json --dir artifacts/previous-feed --clobber
@@ -165,11 +167,20 @@ macos() {
 }
 
 macos_current() {
-  local file
+  local file status
+  mkdir -p artifacts/previous-feed
+  gh release download "$CURRENT" --pattern latest.json --dir artifacts/previous-feed --clobber
+  status="$(python "$(dirname "$0")/release_identity.py" macos-current "${VERSION:?macos-current needs VERSION}" artifacts/previous-feed/latest.json)"
+  if [ "$status" = skipped_older ]; then
+    echo "launcher-current is newer than $VERSION; keeping its macOS assets and notes"
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "status=$status" >> "$GITHUB_OUTPUT"; fi
+    return
+  fi
   for file in "$MAC_ZIP" "$MAC_ZIP.sha256"; do
     gh release upload "$CURRENT" "$file" --clobber
   done
   current_notes
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "status=$status" >> "$GITHUB_OUTPUT"; fi
 }
 
 case "${1:-}" in

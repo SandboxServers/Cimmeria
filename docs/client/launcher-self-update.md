@@ -47,6 +47,9 @@ offered the new stable daily-slot versions, including `2026.10.1101`.
 Old stable installs upgrade too; same-day slots and month/year rollovers
 increase under SemVer. Build metadata cannot increase precedence. The
 rolling feed refuses version regressions, including an older run rerun.
+Delayed older macOS retries may repair their dated download, but preserve
+the newer rolling macOS assets and release notes. Equal-version retries can
+refresh them; the workflow summary distinguishes these outcomes.
 
 **Trust.** The launcher verifies the zip's Minisign signature and the global
 signature with `minisign-verify` before it reads the trusted comment, which must

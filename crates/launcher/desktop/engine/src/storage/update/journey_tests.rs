@@ -168,6 +168,7 @@ async fn signed_update_reopen_repair_current_and_uninstall_keep_permanent_owner(
 }
 #[tokio::test]
 async fn every_update_rename_and_publication_boundary_recovers_without_replaying_downloads() {
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
     use commit::Point::*;
     for point in [
         Planned,
@@ -213,7 +214,34 @@ async fn every_update_rename_and_publication_boundary_recovers_without_replaying
                 .state,
             OperationState::ReconciliationRequired
         );
-        recovery::reconcile(&mut state, plan.id, revision).unwrap();
+        let (refused, events) =
+            crate::test_capture::capture(|| recovery::reconcile(&mut state, plan.id, revision + 1));
+        assert!(refused.is_err());
+        assert!(!events
+            .iter()
+            .any(|e| e.field("event") == Some("applied_content_identity")));
+        let (result, events) =
+            crate::test_capture::capture(|| recovery::reconcile(&mut state, plan.id, revision));
+        result.unwrap();
+        let identities: Vec<_> = events
+            .iter()
+            .filter(|e| e.field("event") == Some("applied_content_identity"))
+            .collect();
+        assert_eq!(identities.len(), 1, "{point:?}");
+        let digest: String = plan
+            .target
+            .manifest_digest
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        assert_eq!(
+            identities[0].field("manifest_sha256"),
+            Some(digest.as_str())
+        );
+        assert_ne!(plan.target.manifest_digest, plan.previous.manifest_digest);
+        assert_eq!(identities[0].field("phase"), Some("applied"));
+        assert_eq!(identities[0].field("overlay_ids"), Some("[]"));
+        assert_eq!(identities[0].field("incomplete_overlay_ids"), Some("[]"));
         assert_eq!(
             state.installed_content().unwrap().unwrap().current_release,
             plan.target
@@ -223,7 +251,12 @@ async fn every_update_rename_and_publication_boundary_recovers_without_replaying
             b"preserve old modifications"
         );
         assert_eq!(server.received_requests().await.unwrap().len(), requests);
-        assert!(recovery::reconcile(&mut state, plan.id, revision).is_err());
+        let (result, events) =
+            crate::test_capture::capture(|| recovery::reconcile(&mut state, plan.id, revision));
+        assert!(result.is_err());
+        assert!(!events
+            .iter()
+            .any(|e| e.field("event") == Some("applied_content_identity")));
     }
 }
 #[tokio::test]

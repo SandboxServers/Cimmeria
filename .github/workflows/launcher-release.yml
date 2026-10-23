@@ -554,6 +554,7 @@ jobs:
       MAC_ZIP: artifacts/StargateWorlds-Launcher-macos-arm64.zip
       TAG: ${{ needs.desktop-windows.outputs.tag }}
       MAC_OK: ${{ needs.desktop-macos.result == 'success' }}
+      VERSION: ${{ needs.desktop-windows.outputs.version }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
     steps:
@@ -574,17 +575,24 @@ jobs:
           tools/launcher-release/publish.sh check "${MAC_ZIP}" "${MAC_ZIP_SHA256}"
           tools/launcher-release/publish.sh macos
       - name: refresh the macOS zip on launcher-current
+        id: rolling-macos
         if: env.MAC_OK == 'true'
         run: tools/launcher-release/publish.sh macos-current
       - name: summary, and fail when the macOS build failed
         if: always()
+        env:
+          ROLLING_STATUS: ${{ steps.rolling-macos.outputs.status }}
         run: |
           {
             echo "## macOS assets for ${TAG}"
             if [ "${MAC_OK}" != true ]; then
               echo "- The macOS build failed: \`${MAC_ZIP_NAME}\` is not on this release, and \`launcher-current\` keeps the macOS zip it had. \"Re-run failed jobs\" (crates/launcher/desktop/docs/release.md)."
-            else
+            elif [ "${ROLLING_STATUS}" = skipped_older ]; then
+              echo "- The dated macOS assets were repaired; a newer release is current, so its macOS assets and notes were kept."
+            elif [ "${ROLLING_STATUS}" = refreshed ]; then
               echo "- \`${MAC_ZIP_NAME}\` is on the dated release and on \`launcher-current\`; not in \`latest.json\` (macOS updates are manual)."
+            else
+              echo "- macOS publication did not finish; check the failed publishing step before retrying."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           [ "${MAC_OK}" = true ]

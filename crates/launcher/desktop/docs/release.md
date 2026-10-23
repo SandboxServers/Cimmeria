@@ -108,7 +108,11 @@ The workflow reserves its identity as a run artifact before building and
 uses the run's creation time. Reruns recover that identity across midnight;
 a rerun without its reservation refuses before building (retention: 90 days).
 A different run targeting the same dated commit tag is refused. An older
-rerun cannot lower the version in `launcher-current`.
+rerun cannot lower the version in `launcher-current`. A delayed macOS retry
+still repairs its dated release, but compares its reserved stable version to
+the rolling feed before touching rolling macOS assets or notes. Older retries
+leave both intact and report the skip; equal-version retries remain allowed.
+An unreadable or invalid rolling feed fails closed.
 
 `CIMMERIA_LAUNCHER_VERSION` supplies the exe file version, About line and
 updater comparison through `TAURI_CONFIG`. The build refuses numeric

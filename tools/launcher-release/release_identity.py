@@ -73,6 +73,10 @@ def choose(pages, epoch, sha, run_url, rolling_version=None):
 
 
 def main():
+    if sys.argv[1] == "macos-current":
+        previous = json.loads(Path(sys.argv[3]).read_text())["version"]
+        print("skipped_older" if stable(sys.argv[2]) < stable(previous) else "refreshed")
+        return
     if sys.argv[1] == "current":
         candidate = json.loads(Path(sys.argv[2]).read_text())["version"]
         previous = json.loads(Path(sys.argv[3]).read_text())["version"]

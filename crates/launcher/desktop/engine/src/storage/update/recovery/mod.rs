@@ -54,6 +54,17 @@ fn reconcile_with(
     state: &mut DesktopState,
     id: Uuid,
     revision: u64,
+    hook: impl FnMut(Point) -> Result<(), StorageError>,
+) -> Result<(), IntentError> {
+    reconcile_locked(state, id, revision, hook)?;
+    // The committed identity rereads ownership; release the Windows file lock first.
+    state.log_applied_content("applied");
+    Ok(())
+}
+fn reconcile_locked(
+    state: &mut DesktopState,
+    id: Uuid,
+    revision: u64,
     mut hook: impl FnMut(Point) -> Result<(), StorageError>,
 ) -> Result<(), IntentError> {
     if state.requires_reopen() {

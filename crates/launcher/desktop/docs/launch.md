@@ -556,7 +556,9 @@ a game still disables both controls until the native result is observed.
 
 Native logs emit `launcher.install` / `applied_content_identity` after
 successful content publication (`phase=applied`) and successful Play
-admission (`phase=play_admitted`). `manifest_sha256` hashes the retained,
+admission (`phase=play_admitted`). Interrupted Install, Update and Repair
+recovery also emit the applied identity after successful terminal journal
+reconciliation; partial or refused recovery emits none. `manifest_sha256` hashes the retained,
 reverified installed manifest; it does not describe a newly fetched offer.
 `overlay_ids` lists fully applied signed-manifest patches rooted at
 `sgw_game`, checked against the live `launcher-installed.json` ledger via
