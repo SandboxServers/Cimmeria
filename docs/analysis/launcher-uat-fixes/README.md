@@ -224,8 +224,9 @@ root and retains the existing confirmation review before any changes.
 Visible branding is Cimmeria; the window title is Cimmeria Launcher. Legacy disk
 paths, identifiers and release asset filenames retain their compatibility names.
 
-Implementation is recorded in [PR #1996](https://github.com/SandboxServers/Cimmeria/pull/1996).
-Automated and fixture validation is recorded in the
+Implementation merged in [PR #1996](https://github.com/SandboxServers/Cimmeria/pull/1996)
+as `b7364c5d0`; its worktree is retired. All six desktop CI jobs and the full
+merge queue passed. Automated and fixture validation is recorded in the
 [worknote](worknotes/main-layout-validation.md); packaged acceptance is pending. No further
 release or laptop/lab use is authorized by this follow-up. The matching rows in
 [unified UAT](../../guides/unified-uat.md#main-page-layout-follow-up-ml) use these ids.
@@ -238,3 +239,30 @@ release or laptop/lab use is authorized by this follow-up. The matching rows in
 | ML-U4 | Read Changes to your client and expand View all changes; perform an operation that changes native state | Main-page summary and detailed native rows refresh; errors or unreadable records remain explicit |
 | ML-U5 | Offer a newer signed launcher while setup is complete; inspect through Settings Check Play status | Setup prompts stay hidden even when admission installation_id is withheld; Settings shows immediate feedback and its inspection result; Update and restart still blocks Play until replacement startup |
 | ML-U6 | Press Adopt an install or Settings Choose SGW.exe; select the nested Working/Binaries/SGW.exe, then cancel and try a different executable | Native SGW.exe picker gives immediate feedback; the correct executable resolves its installation root and opens the existing review; cancellation and a wrong executable change no installation files; selection alone never applies changes |
+
+## Embedded Windows payload follow-up (2026-10-23)
+
+The owner authorizes the [embedded-payload design](design-embedded-payload.md):
+keep the public Windows ZIP and put one launcher EXE inside it, embedding the
+three pinned Play pieces. Startup verifies and repairs a private app-local
+payload cache; version leases preserve active payloads during cleanup. Old
+loose sidecars stay untouched. macOS already bundles its resources inside
+Cimmeria Launcher.app and keeps that layout. Game content, WebView2 and the
+Mac Wine runtime remain separate.
+
+Implementation is active in `.claude/worktrees/launcher-embedded-payload`,
+branch `feat/launcher-embedded-payload`. Tests and packaging checks remain
+implementation evidence until reported; real packaged/game acceptance remains
+pending. The owner gave GO to merge this PR and release the launcher from main after merge, retaining the Windows ZIP. This does not authorize a live game or lab session. The
+[release contract](../../../crates/launcher/desktop/docs/release.md#what-the-windows-job-builds)
+and [native resource contract](../../../crates/launcher/desktop/docs/launch.md#embedded-windows-play-resources)
+describe the packaging and runtime boundaries.
+
+These packaged acceptance rows are pending; ask before laptop or lab use.
+They are mirrored in [unified UAT](../../guides/unified-uat.md#embedded-windows-payload-follow-up-ep).
+
+| ID | Action | Expected |
+|---|---|---|
+| EP-U1 | Unzip the new Windows ZIP into a writable clean folder and start its sole EXE | Launcher prepares verified Play resources without companion folders; no game launch or download occurs merely from opening it |
+| EP-U2 | With all launchers closed, remove one ordinary cached payload file and reopen; keep another launcher open while starting a build with changed payload bytes | Missing file is repaired from embedded bytes; the active version remains available while the new version uses its own cache |
+| EP-U3 | Update an older multi-file Windows launcher with a signed single-EXE ZIP using Update and restart; separately unzip the Mac release | Windows replacement starts with verified cached resources and leaves old sidecars alone; Mac still presents one Cimmeria Launcher.app with bundled resources |

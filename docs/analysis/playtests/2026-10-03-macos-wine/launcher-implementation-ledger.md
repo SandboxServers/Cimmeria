@@ -853,3 +853,22 @@ shipped. The native adoption picker selects SGW.exe, resolves its installation r
 retains the confirmation review before changes. Tests, logic UAT, visual review
 and ML-U1..U6 packaged acceptance are
 pending at this checkpoint. No further release is authorized.
+
+### 2026-10-23: main-page merge and embedded Windows payload work
+
+The later [PR #1996](https://github.com/SandboxServers/Cimmeria/pull/1996)
+merged as `b7364c5d0`; its worktree is retired. All six desktop CI jobs and the
+full merge queue passed. Its native-backed logic UAT and fixture browser review
+do not establish packaged picker, real game or actual update/restart acceptance;
+ML-U1..U6 remain pending in the [campaign checklist](../../launcher-uat-fixes/README.md#main-page-layout-follow-up-2026-10-23).
+
+The owner now authorizes [embedded Windows payload work](../../launcher-uat-fixes/design-embedded-payload.md):
+one root EXE inside the existing public ZIP, with the three pinned Play pieces
+prepared into a verified, versioned app-local cache. Shared leases protect active
+versions during cleanup; old loose sidecars stay untouched. macOS already puts
+its helpers and DLLs inside Cimmeria Launcher.app and keeps that layout. The
+game, WebView2 and downloaded Mac Wine runtime remain separate. Implementation
+and validation are in progress, not packaged acceptance or release evidence.
+The owner gave GO to merge the embedded-payload PR, then release the launcher
+from main with the Windows ZIP retained. Packaged/game acceptance remains
+pending; this GO does not authorize a live game or lab session.

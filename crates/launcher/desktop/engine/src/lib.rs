@@ -74,4 +74,5 @@ pub use storage::log_upload;
 pub use storage::seed_archive;
 pub use storage::update;
 pub use storage::updater;
+pub mod embedded_payload;
 mod owner_lock;

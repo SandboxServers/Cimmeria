@@ -3,8 +3,13 @@
 //! engine.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod adoption_picker;
+#[cfg(test)]
+#[path = "../build_payload.rs"]
+mod build_payload;
 mod host;
 mod panic_hook;
+#[cfg(windows)]
+mod payload_startup;
 #[cfg(test)]
 mod release_version;
 mod startup_event;
@@ -528,6 +533,8 @@ const DEVELOPMENT_TITLE: &str = "Cimmeria Launcher \u{2014} development";
 
 fn main() {
     #[cfg(windows)]
+    payload_startup::headless_probe();
+    #[cfg(windows)]
     webview2::ensure_runtime_or_exit();
     // An updater restart waits for the old launcher to exit first, so the guard
     // below finds no running instance and this start proceeds (LX-13).
@@ -582,8 +589,11 @@ fn main() {
             #[cfg(target_os = "macos")]
             let host = host.with_bundled_helper(app.path().resource_dir()?);
             let app_handle = app.handle().clone();
+            let resource_root = app.path().resource_dir()?;
+            #[cfg(windows)]
+            let resource_root = payload_startup::resources(app, resource_root)?;
             let host = host
-                .with_launch_resources(app.path().resource_dir()?)
+                .with_launch_resources(resource_root)
                 .with_compiled_updater_config()
                 .with_updater_shutdown(move || app_handle.exit(0));
             let host = Arc::new(host);

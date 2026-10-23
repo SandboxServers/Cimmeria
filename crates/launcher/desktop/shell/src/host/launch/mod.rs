@@ -35,6 +35,16 @@ pub struct LaunchStatus {
     observation: Option<launch::Observation>,
 }
 impl NativeHost {
+    /// Packaging probe uses the production resolver, including canonical paths
+    /// and player-only telemetry checks, without opening state or launching.
+    #[cfg(windows)]
+    pub(crate) fn verify_embedded_launch_bundle(directory: &std::path::Path) -> bool {
+        resources::bundled(directory).is_some_and(|resources| {
+            resources.client_patches.is_some()
+                && resources.client_telemetry.is_some()
+                && resources.verify().is_ok()
+        })
+    }
     pub fn with_launch_resources(mut self, directory: PathBuf) -> Self {
         self.launch_resources = resources::bundled(&directory);
         self

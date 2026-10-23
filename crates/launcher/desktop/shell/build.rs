@@ -1,7 +1,9 @@
+mod build_payload;
 #[path = "src/release_version.rs"]
 mod release_version;
 
 fn main() {
+    build_payload::generate().expect("embedded launcher payload could not be generated");
     println!("cargo:rerun-if-env-changed=CIMMERIA_LAUNCHER_VERSION");
     // A release build is a plain `cargo build` (tools/launcher-release), not
     // `tauri build --config`, so the version goes in here, on every build path.

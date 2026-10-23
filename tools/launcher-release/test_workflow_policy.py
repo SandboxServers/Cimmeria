@@ -2,6 +2,10 @@
 from pathlib import Path
 import tomllib
 import unittest
+import sys
+import tempfile
+import zipfile
+from unittest.mock import patch
 
 import yaml
 
@@ -13,6 +17,35 @@ def workflow(name):
 
 
 class WorkflowPolicy(unittest.TestCase):
+    def package_fixture(self, root, output):
+        script = (ROOT / "tools/launcher-release/build-desktop.sh").read_text()
+        code = script.split("stage_package() {", 1)[1].split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+        with patch.object(sys, "argv", ["package", str(root), str(output)]):
+            exec(compile(code, "build-desktop.sh/package", "exec"), {})
+
+    def test_windows_zip_contains_one_root_executable_and_preserves_its_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "package"
+            root.mkdir()
+            (root / "launcher.exe").write_bytes(b"embedded executable fixture")
+            output = Path(temporary) / "launcher.zip"
+            self.package_fixture(root, output)
+            with zipfile.ZipFile(output) as archive:
+                self.assertEqual(archive.namelist(), ["launcher.exe"])
+                self.assertEqual(archive.read("launcher.exe"), b"embedded executable fixture")
+            (root / "windows").mkdir()
+            (root / "windows/helper.exe").write_bytes(b"unexpected sidecar")
+            with self.assertRaises(SystemExit):
+                self.package_fixture(root, output)
+
+    def test_windows_build_requires_embedded_pins_and_verifies_without_sidecars(self):
+        script = (ROOT / "tools/launcher-release/build-desktop.sh").read_text()
+        launcher = script.split("stage_launcher() {", 1)[1].split("stage_verify() {", 1)[0]
+        self.assertIn("CIMMERIA_EMBED_PAYLOAD=1", launcher)
+        verify = script.split("stage_verify() {", 1)[1].split("stage_package() {", 1)[0]
+        self.assertIn("--verify-embedded-payload", verify)
+        self.assertIn("corrupt cache fixture", verify)
+
     def test_native_checks_keep_both_hosts_and_every_validation_layer(self):
         native = workflow("launcher-desktop.yml")["jobs"]["native-engine"]
         self.assertEqual(set(native["strategy"]["matrix"]["os"]),

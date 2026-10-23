@@ -63,10 +63,9 @@ env:
   MAC_ZIP_NAME: StargateWorlds-Launcher-macos-arm64.zip
 
 jobs:
-  # The zip holds cimmeria-launcher-desktop.exe at its root with a windows/
-  # directory beside it (the 32-bit launch worker and the two game DLLs) and
-  # graphics/. The launcher refuses any of those three whose SHA-256 is not the
-  # one compiled into it, so they are built, staged and pinned in this one job.
+  # The zip holds one root EXE embedding the 32-bit worker and two game DLLs.
+  # They are built, staged, independently pinned and embedded in this one job.
+  # Startup verifies/extracts them into the launcher's private versioned cache.
   # Its build runs in stages from tools/launcher-release/build-desktop.sh, the
   # same stages launcher-desktop.yml dry-runs on every desktop-launcher PR.
   desktop-windows:

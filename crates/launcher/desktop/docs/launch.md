@@ -35,6 +35,30 @@ cache locks, repeats resource checks, then reuses existing `client_setup::prepar
 (stock filename restoration, login server Lua and ASLR). The native task runs
 that preparation off the UI thread. The engine makes no downloads during Play.
 
+## Embedded Windows Play resources
+
+A packaged Windows launcher embeds the x86 launch worker, client-patches DLL
+and player telemetry DLL. The build rejects missing or mismatched staged bytes
+against independent SHA-256 pins. Before binding launch resources, startup
+verifies or repairs their ordinary files under
+`<app-local-data>/payloads/<content-digest>/windows/`. This app-local cache gives
+Windows process creation and DLL loading the real file paths they require;
+players do not manage loose sidecars. Embedded builds never fall back to nearby
+`windows/` files. Older loose files are left alone.
+
+Publication and cleanup are serialized. Each running launcher holds a shared
+lease for its payload version; cleanup skips active versions and preserves
+unknown entries. Missing or corrupt regular files are repaired atomically;
+unsafe paths, links and reparse points are refused. A setup failure produces a
+native error and closed-code startup event rather than running unverified bytes.
+Native resource hash checks still run when Play binds and dispatches resources.
+
+macOS keeps helpers, DLLs and graphics in `Cimmeria Launcher.app` resources;
+it does not use this Windows extraction cache. The game, WebView2 prerequisite
+on Windows and downloaded Wine runtime on Mac remain separate. See the
+[release stages](release.md#what-the-windows-job-builds) for clean-folder
+`--verify-embedded-payload` verification without opening the UI or game.
+
 ## Setup visibility observation
 
 Native `LaunchStatus` includes `setup_complete: bool` separately from its

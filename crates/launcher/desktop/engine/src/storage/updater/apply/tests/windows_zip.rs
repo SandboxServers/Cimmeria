@@ -124,6 +124,44 @@ fn apply(
 }
 
 #[test]
+fn an_old_sidecar_install_upgrades_to_a_single_embedded_executable_zip() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let old = windows_fixture(&root);
+    let f = with_zip(
+        &root,
+        old.install,
+        zip_swap::zip_fixture(&[(EXE, b"new embedded launcher")]),
+    );
+    let mut state = DesktopState::open(&root.join("state")).unwrap();
+    let ready = ready(&mut state, &f.config, f.offer.clone(), &f.bytes);
+    let mut starts = 0;
+    let status = apply(&mut state, &f, &ready, |path, args| {
+        starts += 1;
+        assert_eq!(fs::read(path).unwrap(), b"new embedded launcher");
+        assert_eq!(args, [RESTART_ARG, &std::process::id().to_string()]);
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(starts, 1);
+    assert_eq!(status.phase, Phase::RestartRequired);
+    drop(state);
+    let mut state = DesktopState::open(&root.join("state")).unwrap();
+    state.reconcile_launcher_update(&f.target, "1.1.0").unwrap();
+    assert!(!f.install.join(format!("{EXE}.old")).exists());
+    assert!(stages(&f.install).is_empty());
+    // Migration must not guess which older sidecars or player files to delete.
+    assert_eq!(
+        fs::read(f.install.join("windows/cimmeria-archive-worker.exe")).unwrap(),
+        b"old worker"
+    );
+    assert_eq!(
+        fs::read(f.install.join("player-notes.txt")).unwrap(),
+        b"keep me"
+    );
+}
+
+#[test]
 fn full_swap_installs_new_files_relaunches_once_and_next_start_cleans_up() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().canonicalize().unwrap();

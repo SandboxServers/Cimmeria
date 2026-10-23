@@ -105,7 +105,7 @@ Dispatched from PR #${TRIGGERING_PR}."
   fi
   body="$body
 
-**Windows:** download \`${ZIP_NAME}\`, unzip it anywhere and run \`cimmeria-launcher-desktop.exe\`; keep the \`windows\` and \`graphics\` folders beside it. It needs the WebView2 runtime (part of Windows 11). The newest release is always at ${STABLE}/${ZIP_NAME}.
+**Windows:** download \`${ZIP_NAME}\`, unzip it anywhere and run \`cimmeria-launcher-desktop.exe\`. The launcher includes its supporting files and prepares them automatically. It needs the WebView2 runtime (part of Windows 11). The newest release is always at ${STABLE}/${ZIP_NAME}.
 
 **Players of the old Windows launcher (\`sgw-launcher.exe\`):** your old launcher will no longer update. Download the zip from ${STABLE}/${ZIP_NAME} and use \`cimmeria-launcher-desktop.exe\` instead.
 

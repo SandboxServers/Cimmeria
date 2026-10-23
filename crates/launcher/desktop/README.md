@@ -35,6 +35,22 @@ the installation root. Selection only opens the existing confirmation review;
 no installation files change until approval. The IPC name remains
 `choose_existing_game_folder`; no new command or Plan field is introduced.
 
+## Windows single-executable packaging
+
+The published Windows ZIP keeps its existing name and contains one root
+`cimmeria-launcher-desktop.exe`. It embeds the three independently pinned Play
+pieces, then verifies and repairs them at startup in the native app-local
+`payloads/<content-digest>/windows/` cache. Shared version leases preserve active
+payloads during cleanup. Embedded builds ignore older loose sidecars and leave
+them untouched; players do not need to copy companion folders. Build staging
+requires the pins, and packaging verifies a clean EXE-only copy with
+`--verify-embedded-payload`. See [launch resources](docs/launch.md#embedded-windows-play-resources)
+and the [release stages](docs/release.md#what-the-windows-job-builds).
+
+macOS already distributes one `Cimmeria Launcher.app` bundle inside its ZIP;
+its internal resource layout is unchanged. WebView2, game content and the
+Mac Wine runtime remain separate prerequisites or downloads.
+
 ## Native operation and storage contracts
 
 `engine/src/operations.rs` owns a versioned snapshot with a revision and one
