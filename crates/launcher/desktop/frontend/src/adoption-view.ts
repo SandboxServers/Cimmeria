@@ -184,7 +184,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   const idle=!!s&&s.activity==='idle'&&!r&&!s.owned&&(s.backend==='available'||inPlace)&&!operationOpen(s.native.operation.operation);
   button('choose-adoption-destination').disabled=!enabled||!idle;
   const main=button('adopt-install'),explanation=get('adopt-install-status');
-  main.hidden=!s||s.has_valid_install;
+  main.hidden=s?.has_valid_install===true;
   main.disabled=!enabled||!idle;
   explanation.hidden=main.hidden||!main.disabled;
   explanation.textContent=current.uncertain?'Recheck adoption status in Settings before choosing a folder.':s?.owned?'An installation is already registered. Repair it or uninstall it in Settings before adopting another folder.':busy||working?'An adoption is already in progress. Finish it in Settings.':!idle?'Finish the current operation or adoption review in Settings before choosing another folder.':'';

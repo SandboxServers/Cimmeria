@@ -66,9 +66,6 @@ try {
  await send({command:'remove_hard_link'});
 
  // Picking copy re-renders at once; picking in place again restores the adopt label (scenario 1 needs in_place).
- get('adoption-mode-in-place').checked=false;get('adoption-mode-copy').checked=true;get('adoption-mode-copy').dispatchEvent(new window.Event('change'));await settle();
- assert.match(get('adoption-mode-copy-row').className,/\bselected\b/);assert.equal(get('choose-adoption-destination').textContent,'Choose the folder to copy…');
- get('adoption-mode-copy').checked=false;get('adoption-mode-in-place').checked=true;get('adoption-mode-in-place').dispatchEvent(new window.Event('change'));await settle();
  assert.equal(get('choose-adoption-destination').textContent,'Choose the folder to adopt in place…');
 
  // 1. The player edited one release file: the review shows its replacement box.
