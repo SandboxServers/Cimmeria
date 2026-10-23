@@ -84,6 +84,20 @@ impl DesktopState {
         resources: Resources,
         updater: Option<&updater::Config>,
     ) -> Result<Admission, IntentError> {
+        crate::phase_timing::Context::for_operation(id)
+            .measure(crate::phase_timing::Phase::PlayAdmission, || {
+                self.admit_launch_timed(id, revision, installation_id, resources, updater)
+            })
+    }
+
+    fn admit_launch_timed(
+        &mut self,
+        id: Uuid,
+        revision: u64,
+        installation_id: Uuid,
+        resources: Resources,
+        updater: Option<&updater::Config>,
+    ) -> Result<Admission, IntentError> {
         self.ensure_updater_idle()?;
         if self.launcher_update_blocks_play(updater)? {
             return Err(StorageError::Busy.into());
@@ -282,5 +296,7 @@ impl DesktopState {
 }
 #[cfg(test)]
 mod events_tests;
+#[cfg(test)]
+mod startup_timing_tests;
 #[cfg(test)]
 mod tests;

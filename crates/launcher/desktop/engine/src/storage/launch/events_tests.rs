@@ -71,6 +71,42 @@ fn a_replaced_helper_logs_launch_not_started_verify_failed() {
     assert!(operation.is_some());
     assert_eq!(not_started[0].field("operation"), operation);
     assert_eq!(finished[0].field("operation"), operation);
+    let resources: Vec<_> = launch
+        .iter()
+        .filter(|e| e.field("phase") == Some("play_resources"))
+        .collect();
+    assert_eq!(resources.len(), 2);
+    assert_eq!(resources[1].field("outcome"), Some("failed"));
+    assert!(resources[1].field("duration_ms").is_some());
+    assert!(!launch
+        .iter()
+        .any(|e| e.field("phase") == Some("play_client_setup")));
+}
+
+#[test]
+fn refused_admission_and_process_started_have_pre_game_timing() {
+    let (_, events) = capture(|| {
+        let (_root, mut state, plan) = super::tests::fixture();
+        let result = state.admit_launch(
+            Uuid::new_v4(),
+            u64::MAX,
+            plan.installation.operation_id,
+            plan.resources.clone(),
+        );
+        assert!(matches!(
+            result,
+            Err(IntentError::Operation(ContractError::StaleRevision))
+        ));
+        events::game_started(plan.id);
+    });
+    assert!(events.iter().any(
+        |e| e.field("phase") == Some("play_admission") && e.field("outcome") == Some("failed")
+    ));
+    let started = events
+        .iter()
+        .find(|e| e.field("event") == Some("game_started"))
+        .unwrap();
+    assert!(started.field("startup_ms").unwrap().parse::<u64>().is_ok());
 }
 
 #[test]

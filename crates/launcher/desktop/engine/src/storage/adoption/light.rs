@@ -87,6 +87,7 @@ pub(super) fn light_comparison(
     servers: &[crate::client_setup::LoginServer],
     cancel: &CancellationToken,
     progress: ProgressSink,
+    context: crate::phase_timing::Context,
 ) -> Result<(Compared, Light), Error> {
     if scanned.is_empty() {
         return Err(no_reusable(0));
@@ -110,16 +111,18 @@ pub(super) fn light_comparison(
     let release = &request.release;
     let plan = light_plan::plan(&transport, release, &root, scanned, cancel)?;
     // The comparison never blocks; only a cancel comes back as an error.
-    let compared = index_compare::compare_to_published(
-        &root, release, &transport, scanned, cancel, &progress,
-    )?;
+    let compared = context.measure(crate::phase_timing::Phase::AdoptionIndex, || {
+        index_compare::compare_to_published(&root, release, &transport, scanned, cancel, &progress)
+    })?;
     let prep = &preparation.record.directory;
     let sink = UnpackSink {
         progress,
         label: "Adoption replay".into(),
         cancel: cancel.clone(),
     };
-    let replayed = light_replay::replay(&plan, release, folder, scanned, prep, cancel, &sink)?;
+    let replayed = context.measure(crate::phase_timing::Phase::AdoptionReplay, || {
+        light_replay::replay(&plan, release, folder, scanned, prep, cancel, &sink)
+    })?;
 
     let mut replacements = replayed.replacements;
     let store = prep.join("replacements");

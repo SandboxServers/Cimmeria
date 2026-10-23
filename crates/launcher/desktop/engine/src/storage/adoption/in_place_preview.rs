@@ -4,6 +4,7 @@ use super::in_place::{refused, MANAGED, OWNER};
 use super::publication::read_large;
 use super::*;
 use crate::install_progress::ProgressSink;
+use crate::phase_timing::{Context, Phase as TimedPhase};
 
 /// The layout the 2009 installer and a fresh launcher install write:
 /// `SGW.exe` in `Working\Binaries`. The old launcher also manages folders that
@@ -24,6 +25,25 @@ pub(super) fn preview(
     transport: Option<artifacts::Transport>,
     light: bool,
 ) -> Result<Preview, Error> {
+    let context = Context::preview();
+    context.measure(TimedPhase::AdoptionPreview, || {
+        preview_timed(
+            state, request, cancel, progress, backend, transport, light, context,
+        )
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn preview_timed(
+    state: Arc<Mutex<DesktopState>>,
+    request: PreviewRequest,
+    cancel: CancellationToken,
+    progress: ProgressSink,
+    backend: Backend,
+    transport: Option<artifacts::Transport>,
+    light: bool,
+    context: Context,
+) -> Result<Preview, Error> {
     {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         idle(
@@ -39,13 +59,17 @@ pub(super) fn preview(
         }
     }
     // Resolved and scanned with no state guard held.
-    let (adopted, scanned) = if light {
-        // Light hashes the whole folder, so the scan reports progress (LA-11).
-        let scan = light::scan_reporting(&progress, &cancel);
-        source::request_source_with(&state, &request.source, AdoptionMode::Light, &scan)?
-    } else {
-        source::request_source(&state, &request.source, AdoptionMode::InPlace)?
+    let scan = |root: &Path| {
+        timing::scan(context, TimedPhase::AdoptionInitialScan, || {
+            if light {
+                light::scan_reporting(&progress, &cancel)(root)
+            } else {
+                inventory::scan(root, &cancel)
+            }
+        })
     };
+    let (adopted, scanned) =
+        source::request_source_with(&state, &request.source, request.mode, &scan)?;
     let (folder, before) = {
         let owner = state.lock().map_err(|_| StorageError::Io)?;
         let folder = match &adopted {
@@ -102,7 +126,12 @@ pub(super) fn preview(
     // The scan above saw any launcher-owned names this cleanup just took back;
     // only then is the folder hashed again.
     let scanned = if cleared {
-        survey::explained(&folder, inventory::scan(&folder, &cancel))?
+        survey::explained(
+            &folder,
+            timing::scan(context, TimedPhase::AdoptionCleanupScan, || {
+                inventory::scan(&folder, &cancel)
+            }),
+        )?
     } else {
         scanned
     };
@@ -131,6 +160,7 @@ pub(super) fn preview(
     };
     let mut preparation =
         preparation::Ownership::claim(state.clone(), &request, identity, servers.clone())?;
+    let comparison_timer = context.start(TimedPhase::AdoptionComparison);
     let prepared = if light {
         light::light_comparison(
             &state,
@@ -142,6 +172,7 @@ pub(super) fn preview(
             &servers,
             &cancel,
             progress,
+            context,
         )
         .map(|(compared, light)| (compared, Some(light)))
     } else {
@@ -157,9 +188,11 @@ pub(super) fn preview(
             &servers,
             &cancel,
             progress,
+            context,
         )
         .map(|compared| (compared, None))
     };
+    let prepared = comparison_timer.result(prepared);
     let (
         verification::Compared {
             reference,

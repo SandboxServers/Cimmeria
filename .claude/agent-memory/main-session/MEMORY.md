@@ -196,3 +196,4 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_launcher_display_startup_update.md](reference_launcher_display_startup_update.md) — display-only Windows paths, startup checks and known-offer Play gates; canonical updater contract.
 
 - [reference_launcher_main_layout.md](reference_launcher_main_layout.md) — main-page preferences/client changes, SGW.exe adoption selection and setup-only native readiness.
+- [reference_launcher_phase_timing.md](reference_launcher_phase_timing.md) — nested native adoption/Play timing, bounded correlation and anonymized partial SGC session evidence.

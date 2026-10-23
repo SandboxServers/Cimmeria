@@ -3,6 +3,13 @@ use super::direct_paths::Parents;
 use super::*;
 
 pub(super) fn prepare(plan: &Plan) -> Result<(), Error> {
+    crate::phase_timing::Context::for_operation(plan.provenance.work_id)
+        .measure(crate::phase_timing::Phase::AdoptionSetup, || {
+            prepare_timed(plan)
+        })
+}
+
+fn prepare_timed(plan: &Plan) -> Result<(), Error> {
     super::setup_expectations::check(plan)?;
     let root = &plan.installation.destination;
     for relative in crate::client_setup::stock_case::PATCH_TARGETS {

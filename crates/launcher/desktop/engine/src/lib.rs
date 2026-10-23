@@ -3,6 +3,7 @@ mod operations;
 pub use operations::*;
 mod error_codes;
 pub mod operation_numbers;
+pub mod phase_timing;
 
 mod storage;
 pub use storage::{

@@ -57,6 +57,9 @@ mod setup_digest;
 mod setup_expectations;
 #[cfg(all(test, not(target_os = "macos")))]
 mod setup_expectations_tests;
+mod timing;
+#[cfg(all(test, not(target_os = "macos")))]
+mod timing_tests;
 // LT-29 onward use `digest`, `relative` and `http_status`.
 #[allow(dead_code)]
 mod rejection;
@@ -371,6 +374,7 @@ fn copy_preview(
         &servers,
         &cancel,
         progress,
+        crate::phase_timing::Context::preview(),
     );
     let verification::Compared {
         reference,

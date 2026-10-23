@@ -239,14 +239,21 @@ async fn launch_command(
     request: LaunchCommand,
     state: tauri::State<'_, Arc<NativeHost>>,
 ) -> Result<LaunchStatus, JobError> {
+    let queued = request.queue_timer();
     let host = state.inner().clone();
     let attempt = request.summary_attempt();
     let worker = host.clone();
-    let result =
-        match tauri::async_runtime::spawn_blocking(move || worker.launch_command(request)).await {
-            Ok(result) => result,
-            Err(_) => Err(JobError::Io),
-        };
+    let result = match tauri::async_runtime::spawn_blocking(move || {
+        if let Some(timer) = queued {
+            timer.finish(cimmeria_launcher_engine::phase_timing::Outcome::Succeeded);
+        }
+        worker.launch_command(request)
+    })
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => Err(JobError::Io),
+    };
     if let Some(error) = result.as_ref().err().copied() {
         // Closed codes for the launcher summary only. Detached: the reply does
         // not wait for the bookkeeping, and the result is returned unchanged.

@@ -250,10 +250,13 @@ loose sidecars stay untouched. macOS already bundles its resources inside
 Cimmeria Launcher.app and keeps that layout. Game content, WebView2 and the
 Mac Wine runtime remain separate.
 
-Implementation is active in `.claude/worktrees/launcher-embedded-payload`,
-branch `feat/launcher-embedded-payload`. Tests and packaging checks remain
-implementation evidence until reported; real packaged/game acceptance remains
-pending. The owner gave GO to merge this PR and release the launcher from main after merge, retaining the Windows ZIP. This does not authorize a live game or lab session. The
+[PR #1997](https://github.com/SandboxServers/Cimmeria/pull/1997) merged as
+`bff3b3d`; its worktree is retired. The owner-authorized Windows and macOS
+release `2026.10.2305` completed from `e102a21` in
+[run 39995348002](https://github.com/SandboxServers/Cimmeria/actions/runs/39995348002).
+Native/package CI and the full merge queue passed. The Windows ZIP and checksum,
+updater feed and Mac bundle version were verified. This fulfills that release
+GO; packaged/game acceptance remains pending. The
 [release contract](../../../crates/launcher/desktop/docs/release.md#what-the-windows-job-builds)
 and [native resource contract](../../../crates/launcher/desktop/docs/launch.md#embedded-windows-play-resources)
 describe the packaging and runtime boundaries.
@@ -266,3 +269,31 @@ They are mirrored in [unified UAT](../../guides/unified-uat.md#embedded-windows-
 | EP-U1 | Unzip the new Windows ZIP into a writable clean folder and start its sole EXE | Launcher prepares verified Play resources without companion folders; no game launch or download occurs merely from opening it |
 | EP-U2 | With all launchers closed, remove one ordinary cached payload file and reopen; keep another launcher open while starting a build with changed payload bytes | Missing file is repaired from embedded bytes; the active version remains available while the new version uses its own cache |
 | EP-U3 | Update an older multi-file Windows launcher with a signed single-EXE ZIP using Update and restart; separately unzip the Mac release | Windows replacement starts with verified cached resources and leaves old sidecars alone; Mac still presents one Cimmeria Launcher.app with bundled resources |
+
+## Adoption and Play timing follow-up (2026-10-23)
+
+The owner requests telemetry for missing adoption/launch stages and a review of
+an early SGC player's session. The [design](design-phase-timing.md) adds bounded
+native start/finish pairs, monotonic durations, process-local numeric correlation
+and scan workloads through the existing consented launcher event pipeline.
+The packaged Play path also times native blocking-worker dispatch queue wait;
+startup ends at the helper's process-start reply, before rendered-frame evidence.
+No Plan fields, summary schema, consent, quotas or destinations change. See the
+[desktop contract](../../../crates/launcher/desktop/docs/launcher-telemetry.md)
+and [operator recipe](../../operations/telemetry.md#launcher-adoption-and-play-phase-timing).
+Implementation and validation are in progress in the phase-timing worktree;
+this checkpoint does not attest a released build or new player timings.
+The initial engine suite reported 995 passed, one failed and three ignored: a
+new fixture assertion assumed one application pass, while the real idempotent
+adoption fixture executes two. The assertion was corrected to accept repeated
+paired `adoption_apply` phases; this was a test assumption, not a production
+failure. Final validation and fresh review remain pending at this checkpoint.
+
+The [anonymized SGC session review](worknotes/sgc-session-review-2026-10-23.md)
+records three mission completions, unfinished Carter progression, death/revival
+and reported inability to leave the start area. It separates server/client
+measurements from player reports and lists reproduction priorities. It does not
+claim full SGC completion or first-ever coverage. Gameplay changes, live game,
+lab sessions and server deployment are outside this telemetry follow-up and
+were not performed. The previous release GO was fulfilled by 2026.10.2305;
+the owner has not requested a new release for this follow-up.

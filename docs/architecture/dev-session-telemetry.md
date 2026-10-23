@@ -1,6 +1,7 @@
 # Dev-Session Telemetry — Architecture
 
-> **Last updated**: 2026-10-11
+> **Type:** Explanation · **Audience:** Telemetry and launcher engineers · **Last updated:** 2026-10-23
+> **Companions:** [Operations](../operations/telemetry.md), [native launcher timing](../../crates/launcher/desktop/docs/launcher-telemetry.md)
 
 How the launcher streams a developer's session (Atera client log,
 BigWorld `sgwdebuglog*`, end-of-session bundle) to the cimmeria-server
@@ -91,6 +92,27 @@ client-side rows (`client.native`, `launcher.client_log`,
 `player`) and `lab`, and `client_pid` when the upload's `X-Cimmeria-Client-Pid` header carried one (absent from older DLLs, never 0); `client.native` rows add the DLL's event name as
 `client_target` and a few keys lifted out of its `fields` bag. The full
 table is in [observability.md](observability.md#log-indexes-and-parity-with-the-log-files).
+
+## Native launcher phase timing
+
+Adoption and Play add bounded native phase lifecycles to the existing event
+pipeline. Their targets remain `adoption` and `launcher.launch`; the forwarding
+layer maps them to `client.launcher.adoption` and `client.launcher.launch`.
+Accepted rows land under `client.native` with those `client_target` values and
+JSON-text `fields`. They do not go through `launcher.summary`.
+
+Monotonic durations measure native work without depending on clock corrections.
+Start/finish pairs distinguish an observed completion from incomplete evidence;
+process-local numeric operation/phase correlation avoids exporting durable
+operation UUIDs. Scan counts explain workload without a per-file event stream.
+The [desktop contract](../../crates/launcher/desktop/docs/launcher-telemetry.md)
+owns phase/outcome names and interpretation; the [operator recipe](../operations/telemetry.md#launcher-adoption-and-play-phase-timing)
+shows how to read the nested payload.
+
+Existing consent, scrubbers, event-session quotas and lossy forwarding remain
+unchanged. Missing finishes cannot establish a hang, and process start cannot
+establish login or world arrival. This adds no token fields, secret, destination,
+Plan field or server deployment requirement.
 
 ## The upload endpoint is a base
 

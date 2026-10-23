@@ -8,6 +8,56 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
 
 #[test]
+fn play_queue_timing_excludes_inspect_polls() {
+    use crate::host::LaunchCommand;
+    use cimmeria_launcher_engine::phase_timing::Outcome;
+    let (tx, rx) = std::sync::mpsc::sync_channel(8);
+    with_default(Registry::default().with(ForwardLayer::new(tx)), || {
+        assert!(LaunchCommand::Inspect { schema_version: 1 }
+            .queue_timer()
+            .is_none());
+        let play = LaunchCommand::Play {
+            schema_version: 1,
+            operation_id: uuid::Uuid::new_v4(),
+            operation_revision: 0,
+            installation_id: uuid::Uuid::new_v4(),
+        };
+        play.queue_timer().unwrap().finish(Outcome::Succeeded);
+    });
+    let records: Vec<_> = rx.try_iter().collect();
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0].fields["phase"], "play_dispatch_queue");
+    assert_eq!(records[1].fields["outcome"], "succeeded");
+    assert!(records[1].fields["duration_ms"].is_u64());
+}
+
+#[test]
+fn native_phase_pairs_reach_the_existing_forwarder_with_numeric_workload() {
+    use cimmeria_launcher_engine::game_telemetry::launcher_event::launcher_events;
+    use cimmeria_launcher_engine::phase_timing::{Context, Phase};
+    let (tx, rx) = std::sync::mpsc::sync_channel(8);
+    with_default(Registry::default().with(ForwardLayer::new(tx)), || {
+        let mut timer = Context::preview().start(Phase::AdoptionInitialScan);
+        timer.workload(31_605, 4096);
+        timer.result(Ok::<_, ()>(())).unwrap();
+    });
+    let records: Vec<_> = rx.try_iter().collect();
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0].target, "client.launcher.adoption");
+    assert_eq!(records[1].fields["event"], "phase_finished");
+    assert_eq!(records[1].fields["files"], 31_605);
+    assert!(records[1].fields["duration_ms"].is_u64());
+    let events = launcher_events(&records, &Redaction::default());
+    let encoded = serde_json::to_value(events).unwrap();
+    assert_eq!(encoded[1]["fields"]["bytes"], 4096);
+    assert_eq!(encoded[1]["fields"]["phase"], "adoption_initial_scan");
+    assert_eq!(
+        encoded[0]["fields"]["operation"],
+        encoded[1]["fields"]["operation"]
+    );
+}
+
+#[test]
 fn only_adoption_info_and_above_is_forwarded() {
     let (tx, rx) = std::sync::mpsc::sync_channel(16);
     with_default(Registry::default().with(ForwardLayer::new(tx)), || {
