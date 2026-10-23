@@ -41,6 +41,8 @@ test('startup holds Play, checks once, then one main-page click verifies and app
   assert.equal(ui.get('update-launcher').hidden,false);assert.equal(ui.get('update-launcher').textContent,'Update and restart');
   assert.match(ui.get('launch-status').textContent!,/launcher update above/);
   assert.equal(ui.get('gear').hidden,true,'action is on the main page');
+  assert.equal(ui.get('inspect-launch').hidden,true,'content setup stays complete while the launcher needs updating');
+  assert.equal(ui.get('install-seed-archive').hidden,true,'composition shares native Play readiness with installation');
   await ui.app.play.refresh();await tick();assert.equal(ui.get('launch').disabled,true,'Play polling cannot clear updater gate');
   ui.click('update-launcher');assert.equal(ui.get('update-launcher').textContent,'Updating launcher…');
   ui.click('update-launcher');await tick();assert.equal(ui.calls.filter(r=>r.command==='prepare').length,1);

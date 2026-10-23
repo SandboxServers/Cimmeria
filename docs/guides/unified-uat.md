@@ -1598,6 +1598,22 @@ picker, real launcher replacement/restart or a game run. Ask before laptop or la
 | PDU-U4 | Fail a feed check with no known offer, then fail a recheck with an existing offer | First case shows retry feedback and permits Play after the bounded check; second retains the offer and keeps Play blocked, including after refresh |
 | PDU-U5 | Fail preparation or lose its reply; reopen with active/reconciliation state | No automatic Apply or replay; Play remains blocked for owned update work; Settings exposes recovery status |
 
+### Main-page layout follow-up (ML)
+
+Use the [design and canonical checklist](../analysis/launcher-uat-fixes/README.md#main-page-layout-follow-up-2026-10-23).
+**Pending packaged/player acceptance:** component tests, logic UAT and browser
+fixtures do not attest actual packaged IPC, native macOS layout or a game run.
+Ask before laptop or lab use.
+
+| ID | Action | Expected |
+|---|---|---|
+| ML-U1 | Open a packaged launcher at normal and small window sizes; open Settings and return | Cimmeria Launcher title and gate tagline; no Patch Notes tab; Play, preferences and change summary remain reachable by scrolling |
+| ML-U2 | Reopen a ready adopted client, then inspect a ready managed client; separately open a missing or interrupted install | Ready clients hide Recheck Play status and archive selection without the false compatibility warning; genuine setup, errors and recovery remain visible; Settings retains archive/inspection access |
+| ML-U3 | Toggle client patches, launcher diagnostics and game diagnostics once each; reopen; fail one save | Immediate feedback; confirmed choices persist across reopen; failure restores confirmed state; a directly adopted client follows its saved patch choice on the next Play; a legacy-bound adopted client retains its reviewed patch binding until Repair |
+| ML-U4 | Read Changes to your client and expand View all changes; perform an operation that changes native state | Main-page summary and detailed native rows refresh; errors or unreadable records remain explicit |
+| ML-U5 | Offer a newer signed launcher while the installed game is ready | Setup prompts stay hidden; Update and restart still blocks Play until replacement startup |
+| ML-U6 | Press Adopt an install or Settings Choose SGW.exe; select the nested Working/Binaries/SGW.exe, then cancel and try a different executable | Native SGW.exe picker gives immediate feedback; the correct executable resolves its installation root and opens the existing review; cancellation and a wrong executable change no installation files; selection alone never applies changes |
+
 **What this run risks (owner decision, D-LU3, D-LU4):** chat and character names in the game log leave the machine, and only a per-word scrub (paths, IPs, URLs, `@`, GUIDs, long hex) applies; secrets under 32 characters or split by dots are kept; log rows can be forged by a log-token holder; the install and address budgets are speed bumps. The full list is in the [ledger close-out](../analysis/launcher-uat-fixes/README.md#owner-risks-accepted-under-d-lu3-and-d-lu4-nothing-was-removed-to-avoid-them).
 
 ## Lab CLI (`lab.exe`)

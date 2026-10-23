@@ -48,12 +48,12 @@ test('first footer press reveals the single workflow before awaiting picker; rep
  try{await ui.ready();assert.equal(ui.get('adopt-install').hidden,false);
   ui.click('adopt-install');
   assert.equal(ui.get('gear').hidden,false);assert.equal(ui.get('settings').getAttribute('aria-expanded'),'true');assert.equal(ui.get('play').hidden,true);
-  assert.equal(ui.get('adoption-status').textContent,'Checking your game folder…');
+  assert.equal(ui.get('adoption-status').textContent,'Choose SGW.exe in the native dialog; the launcher will check its game folder…');
   ui.click('adopt-install');ui.click('choose-adoption-destination');await flush();
   assert.equal(ui.calls.filter(c=>c==='choose_existing_game_folder').length,1);
-  finish(idle());await ui.settle();assert.equal(ui.get('adoption-status').textContent,'No folder chosen.');
+  finish(idle());await ui.settle();assert.equal(ui.get('adoption-status').textContent,'No SGW.exe chosen.');
   ui.picker(async()=>{throw 'not_a_game_folder';});ui.click('choose-adoption-destination');await ui.settle();
-  assert.match(ui.get('adoption-status').textContent!,/not a Stargate Worlds game folder/);
+  assert.match(ui.get('adoption-status').textContent!,/not a Cimmeria game folder/);
  }finally{finish?.(idle());await ui.app.dispose();}
 });
 test('closed Settings follows durable install/uninstall revisions and reopening derives visibility anew',async()=>{

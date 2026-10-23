@@ -51,7 +51,7 @@ try {
  const before=await evidence();
  assert.equal(before.owner_marker,false);assert.equal(before.owned_directory,null);assert.equal(before.executable_in_old_place,true);
  assert.match(text(),/Adopt your existing game folder .* in place/);
- assert.equal(get('choose-adoption-destination').textContent,'Use an existing game folder…');
+ assert.equal(get('choose-adoption-destination').textContent,'Choose SGW.exe…');
 
  // 0. A hard link in the folder: the refusal names both entries and the fix,
  // nothing changes, and once the link is gone scenario 1 runs as before.
@@ -66,7 +66,7 @@ try {
  await send({command:'remove_hard_link'});
 
  // Both platforms use the same entry point and preserve the selected root.
- assert.equal(get('choose-adoption-destination').textContent,'Use an existing game folder…');
+ assert.equal(get('choose-adoption-destination').textContent,'Choose SGW.exe…');
 
  // 1. The player edited one release file: the review shows its replacement box.
  // Confirm stays disabled with every other box ticked, nothing changes until the

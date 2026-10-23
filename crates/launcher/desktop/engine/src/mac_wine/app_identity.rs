@@ -14,7 +14,7 @@ use std::{
 };
 
 pub(crate) const BUNDLE_IDENTIFIER: &str = "app.cimmeria.stargate-worlds";
-pub(crate) const DISPLAY_NAME: &str = "Stargate Worlds";
+pub(crate) const DISPLAY_NAME: &str = "Cimmeria";
 /// Set to `1` in the launcher's own environment. Never read from the webview.
 const OPT_IN: &str = "CIMMERIA_WINE_APP_IDENTITY";
 const DIRECTORY: &str = "wine-app-identity";

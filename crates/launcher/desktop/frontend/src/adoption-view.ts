@@ -11,7 +11,7 @@ const unchanged='The original game folder is unchanged.';
 const failures:Record<string,string>={
  busy:'Another launcher operation is running. Wait for it to finish, then recheck.',
  in_use:'The old launcher or game still holds its lock, or the destination already exists. Close them, then recheck.',
- invalid_directory:'That location cannot be used. Choose a folder separate from the old game and launcher that does not already contain a “Stargate Worlds” folder.',
+ invalid_directory:'That selection cannot be used. Choose SGW.exe inside the existing installation’s Working\\Binaries folder.',
  unsupported_catalog:'The imported settings use a custom content catalog. Verified adoption supports only the built-in signed catalog and will not rewrite your settings. Keep using the old launcher for this installation.',
  unsupported_configuration:'The imported settings load a custom patch DLL, which the desktop launcher does not support and will not silently drop. Keep using the old launcher for this installation.',
  source_changed:`The old game folder or its launcher records changed during preparation. Close the old game and launcher, then choose a location again. ${unchanged}`,
@@ -34,7 +34,7 @@ const failures:Record<string,string>={
  game_running:'The game is running from this folder. Close the game first, then verify and adopt the folder again. Nothing was changed.',
  duplicate_release_file:'A release file is both in the launcher’s “game” folder and at its old place, and neither copy matches the reviewed file, so recovery stopped. Nothing was deleted.',
  folder_not_writable:'The launcher cannot write to this folder (for example under Program Files), so it cannot adopt it in place. Choose a writable game folder instead. Nothing was changed.',
- not_a_game_folder:'That folder is not a Stargate Worlds game folder. Choose the game root, the folder that holds “Working”, or the “Working\\Binaries” folder. Nothing was changed.',
+ not_a_game_folder:'That folder is not a Cimmeria game folder. Choose SGW.exe inside the install’s Working\\Binaries folder. Nothing was changed.',
  backup_conflict:'A backup folder for replaced files already exists, so nothing was replaced. Move or remove that folder, then prepare a new review. Nothing was changed.',
  unsupported_mode:'This adoption mode is not available in this build. Nothing was changed.',
  leftover_launcher_files:'This folder already holds launcher files (“game”, “.cimmeria-install.json” or “content-ready.json”) from an earlier installation or adoption, so it cannot be adopted. Nothing was changed.',
@@ -47,7 +47,7 @@ const archiveText='Downloading the signed game archive to check your files (no u
 /** The workflow's Code schema is closed, so this branch guards codes added to the native side before this table. */
 export const failureText=(code:string)=>unknownOutcome(code)?'The result could not be confirmed, and nothing was retried. Recheck adoption status before continuing.':failures[code]??`Adoption stopped: ${code}.`;
 const unsafeLead='These files or folders in the game folder cannot be adopted safely. Fix each one as described below, then choose the folder again. Nothing was copied, moved or removed.';
-const severalLead='The launcher found more than one Stargate Worlds install in that folder, so it did not pick one. Choose the install you want: its game root, the folder that holds “Working”, or its “Working\\Binaries” folder. Nothing was changed.';
+const severalLead='The launcher found more than one Cimmeria install in that folder, so it did not pick one. Choose SGW.exe inside the install you want, in its Working\\Binaries folder. Nothing was changed.';
 const doneText='This folder is now your Cimmeria install. If the game will not start, use Repair (it downloads the full game, 4.1 GB).';
 const lightConsequences='Your folder becomes the launcher’s installation. The installation stays at this selected root; it is never moved or copied into a new game folder. Added files stay in use. Explicit patch and setup changes are applied here, including renaming the stock cooked-data folder when required. Files that differ from what the patches expect are kept as they are. Start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Your settings and the client cache live in Documents and are not affected. The launcher rewrites its login server file and turns off address randomisation in SGW.exe.';
 const lightDoneText='The installation and added files remain at the selected root, and the game keeps using them.';
@@ -101,8 +101,8 @@ export function adoptionText(s:AdoptionState):string {
  if(status.imported?.blocker)return failureText(status.imported.blocker);
  if(status.preparations.length)return 'Leftover preparation files from an earlier attempt can be removed.';
  if(status.imported&&status.backend==='in_place')return `Legacy settings are saved. Adopt your existing game folder ${displayPath(status.imported.game_directory)} in place: the launcher checks every release file against the signed release, then takes the folder over without copying it.`;
- if(status.imported)return 'Legacy settings are saved. Choose where to create a separate verified copy; the launcher makes a new “Stargate Worlds” folder there and never changes the old one.';
- return 'Choose your existing game folder to start. Nothing is changed until you confirm.';
+ if(status.imported)return 'Legacy settings are saved. Choose where to create a separate verified copy; the launcher makes a new game folder there and never changes the old one.';
+ return 'Choose SGW.exe from your existing install to start. Nothing is changed until you confirm.';
 }
 const labels={matched:'Identical',known_transform:'Old launcher setup change',needs_patching:'Needs patching',modified:'Modified',missing:'Missing',extra:'Not part of the release'} as const;
 const maintenanceText:Record<Maintenance['action'],[string,string]>={
@@ -134,7 +134,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
  let chosen:'light'|'in_place'='in_place';
  // Set by a choose press until its reply is handled; the status then says the folder is being checked.
  let checking=false;
- // The text after a picker cancel ("No folder chosen."), cleared by the next action.
+ // The text after a picker cancel ("No SGW.exe chosen."), cleared by the next action.
  let notice:string|null=null;
  const runtime=ManagedRuntime.make(Layer.effect(Adoption,makeAdoptionWorkflow).pipe(Layer.provide(adoptionBridgeLayer(request=>request==='choose'?invoke('choose_existing_game_folder',{mode:chosen}):invoke('adoption_command',{request})))));
  const get=(id:string)=>document.getElementById(id)!;
@@ -153,7 +153,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   found.hidden=patches.hidden=!light;
   note.hidden=details.hidden=!light||light.skipped_total===0;
   if(!light)return;
-  found.textContent=`Found Stargate Worlds in ${displayPath(source)}.`;
+  found.textContent=`Found Cimmeria in ${displayPath(source)}.`;
   patches.textContent=`Patches already applied: ${light.patches_current} of ${light.patches_total}. To apply: ${light.patches_pending}.`;
   note.textContent=`Some patch changes can't be applied: ${light.skipped_total===1?'1 file differs':`${light.skipped_total} files differ`} from the originals the patches expect. They stay as they are. You can still use this folder.`;
   const summary=document.createElement('summary'),list=document.createElement('ul');
@@ -174,7 +174,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   const s=current.status,review=s?.review,r=s?.reconciliation,busy=mutating||current.pending,enabled=!busy&&!current.uncertain;
   const working=s?.activity==='preparing'||s?.activity==='copying';
   // The press itself is acknowledged before the workflow publishes anything.
-  get('adoption-status').textContent=checking?'Checking your game folder…':notice??adoptionText({...current,pending:busy});
+  get('adoption-status').textContent=checking?'Choose SGW.exe in the native dialog; the launcher will check its game folder…':notice??adoptionText({...current,pending:busy});
   // The engine's refusal for the failure shown above it, when a worker recorded one.
   const rejection=lineAfter('adoption-rejection','adoption-status');
   rejection.textContent=!busy&&!current.error&&!review&&!working&&!r&&s?.last_error&&s.last_rejection?rejectionText(s.last_rejection):'';
@@ -188,7 +188,7 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   main.disabled=!enabled||!idle;
   explanation.hidden=main.hidden||!main.disabled;
   explanation.textContent=current.uncertain?'Recheck adoption status in Settings before choosing a folder.':s?.owned?'An installation is already registered. Repair it or uninstall it in Settings before adopting another folder.':s?.backend==='helper_unavailable'?'Adoption needs the archive helper bundled with the launcher. Install the complete launcher build.':busy||working?'An adoption is already in progress. Finish it in Settings.':!idle?'Finish the current operation or adoption review in Settings before choosing another folder.':'';
-  button('choose-adoption-destination').textContent='Use an existing game folder…';
+  button('choose-adoption-destination').textContent='Choose SGW.exe…';
   button('inspect-adoption').disabled=busy;
   button('cancel-adoption').hidden=!s?.cancellable;
   button('cancel-adoption').disabled=!enabled;
@@ -271,14 +271,14 @@ export function mountAdoption(document:Document,invoke:Invoke,onChange:()=>void=
   checking=true;const picked={status:null as AdoptionStatus|null};
   void run(Effect.flatMap(Adoption,w=>w.choose).pipe(Effect.tap(s=>Effect.sync(()=>{picked.status=s;})))).then(()=>{
    const s=picked.status;checking=false;
-   if(s&&s.activity==='idle'&&!s.review&&!s.last_error)notice='No folder chosen.';
+   if(s&&s.activity==='idle'&&!s.review&&!s.last_error)notice='No SGW.exe chosen.';
    render();
   });
  };
  on('choose-adoption-destination',choose);
  on('adopt-install',()=>{
   // Reveal the single Settings workflow before the native picker can suspend.
-  get('gear').hidden=false;get('play').hidden=true;get('patches').hidden=true;
+  get('gear').hidden=false;get('play').hidden=true;
   get('settings').setAttribute('aria-expanded','true');
   choose();
   get('adoption-title').scrollIntoView?.({block:'nearest'});

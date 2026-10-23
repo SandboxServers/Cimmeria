@@ -7,8 +7,8 @@ import {mountLauncher} from './.test-build/view.mjs';
 const html=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
 const snapshot=launcher=>({schema_version:1,operation:{schema_version:1,revision:0,operation:null},preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},requires_reopen:false,adopted_login_servers:null,launcher});
 for(const [launcher,about,badge] of [
- [{version:'2026.10.11',tag:'launcher-20261011-abc1234'},'Stargate Worlds Launcher 2026.10.11 · release launcher-20261011-abc1234','Version 2026.10.11'],
- [{version:'0.1.0',tag:null},'Stargate Worlds Launcher 0.1.0 · development build','Development build'],
+ [{version:'2026.10.11',tag:'launcher-20261011-abc1234'},'Cimmeria Launcher 2026.10.11 · release launcher-20261011-abc1234','Version 2026.10.11'],
+ [{version:'0.1.0',tag:null},'Cimmeria Launcher 0.1.0 · development build','Development build'],
 ]){
  const {document}=parseHTML(html);
  const app=mountLauncher(document,async command=>command==='launcher_command'?snapshot(launcher):[]);

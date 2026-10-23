@@ -118,7 +118,7 @@ assert.equal(ui.document.getElementById('uninstall-confirmation').hidden,true);
 click('uninstall');click('confirm-uninstall');click('confirm-uninstall');await settle(ui.app);
 assert.equal(calls.filter(x=>x==='uninstall').length,1);
 assert.equal(ui.document.getElementById('install').disabled,false);
-assert.equal(ui.document.getElementById('install').textContent,'Install Stargate Worlds');
+assert.equal(ui.document.getElementById('install').textContent,'Install Cimmeria');
 assert.equal(status.native.preferences.launcher_summary_consent,false);
 await ui.app.dispose();
 console.log('PASS: uninstall requires explicit confirmation of owned folder, dismissal sends nothing, double-click dispatches once, native acknowledgement enables reinstall, consent unchanged. Native disk persistence is separately covered by Rust host tests; this pass uses fixture IPC, not real deletion or visual UAT.');

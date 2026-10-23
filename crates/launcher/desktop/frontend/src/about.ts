@@ -9,8 +9,8 @@ type Build = NativeSnapshot["launcher"];
 export function aboutText(build: Build | null, failed = false): string {
   if (!build) return failed ? 'Launcher version unavailable' : 'Reading launcher version…';
   return build.tag
-    ? `Stargate Worlds Launcher ${build.version} · release ${build.tag}`
-    : `Stargate Worlds Launcher ${build.version} · development build`;
+    ? `Cimmeria Launcher ${build.version} · release ${build.tag}`
+    : `Cimmeria Launcher ${build.version} · development build`;
 }
 
 /** The header badge: blank until the snapshot says which kind of build this is. */

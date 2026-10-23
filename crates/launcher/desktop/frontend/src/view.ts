@@ -1,4 +1,3 @@
-import { mountPatchNotes } from "./patch-notes";
 import { Context, Effect, Fiber, Layer, ManagedRuntime, Result, Schema, Stream } from "effect";
 import { BridgeFailure, operationOpen, safeFailure } from "./contract";
 import { bridgeLayer, makeLauncher, ScreenState } from "./workflows";
@@ -43,7 +42,6 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     if (!value) throw new Error(`Missing launcher element ${id}`);
     return value as T;
   };
-  const patchNotes = mountPatchNotes(document, () => invoke('fetch_patch_notes'));
   // Settings panels, one file each (LX-02 scaffold; LX-03 to LX-07 fill them).
   // One line per panel so parallel packets change separate lines.
   const panelFeed = makePanelContext(() => refresh());
@@ -107,21 +105,17 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     get(id).addEventListener(type, listener);
     listeners.push(() => get(id).removeEventListener(type, listener));
   };
-  const showTab = (notes: boolean) => {
-    get('gear').hidden = true;
+  const showHome = () => {
+    get('gear').hidden = true; get('play').hidden = false;
     get('settings').setAttribute('aria-expanded', 'false');
-    get('patches').hidden = !notes; get('play').hidden = notes;
-    get('home').setAttribute('aria-pressed', String(!notes));
-    get('notes').setAttribute('aria-pressed', String(notes));
+    get('home').setAttribute('aria-pressed', 'true');
   };
-  on('home', 'click', () => showTab(false));
-  on('notes', 'click', () => {showTab(true); patchNotes.open();});
+  on('home', 'click', showHome);
   on('settings', 'click', () => {
-    get('gear').hidden = !get('gear').hidden;
-    const opened = !get('gear').hidden;
+    const opened = get('gear').hidden;
+    get('gear').hidden = !opened; get('play').hidden = opened;
     get('settings').setAttribute('aria-expanded', String(opened));
-    get('play').hidden = opened || get('notes').getAttribute('aria-pressed') === 'true';
-    get('patches').hidden = opened || get('notes').getAttribute('aria-pressed') !== 'true';
+    get('home').setAttribute('aria-pressed', String(!opened));
   });
   on('retry', 'click', () => run(Effect.flatMap(Launcher, launcher => launcher.inspect),
     'Checking saved state…', 'Saved state checked.'));
@@ -178,13 +172,12 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     ready,
     context: panelFeed.context,
     refresh,
-    settled: () => Promise.all([queuedRefresh ?? settled, patchNotes.settled(), ...panels.map(panel => panel.settled())]),
+    settled: () => Promise.all([queuedRefresh ?? settled, ...panels.map(panel => panel.settled())]),
     dispose: async () => {
       if (disposed) return;
       disposed = true; abort.abort(); listeners.forEach(remove => remove());
       await Effect.runPromise(Fiber.interrupt(watcher));
       await settled;
-      await patchNotes.dispose();
       await Promise.all(panels.map(panel => panel.dispose()));
       await runtime.dispose();
     },

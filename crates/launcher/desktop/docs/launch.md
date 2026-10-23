@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Launcher integrators and playtesters
-> **Last updated:** 2026-10-21
+> **Last updated:** 2026-10-23
 > **Companions:** [Desktop workspace](../README.md), [prerequisites](prerequisites.md), [runtime evidence](../../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md)
 
 ## Admission and integration
@@ -312,17 +312,20 @@ Native code decides whether Play injects client patches. The renderer cannot.
 
 | Installation | Patch artifact | Play |
 |---|---|---|
-| Fresh install | Verified | Injects patches |
-| Fresh install | Absent or replaced | Unavailable |
-| Adopted, patches reviewed on | Verified | Injects patches |
-| Adopted, patches reviewed on | Absent or replaced | Unavailable |
-| Adopted, patches reviewed off | Any | Starts without patches |
+| Fresh or directly adopted, preference on | Verified | Injects patches |
+| Fresh or directly adopted, preference on | Absent or replaced | Unavailable |
+| Fresh or directly adopted, preference off | Any | Starts without patches |
+| Legacy-bound adopted, patches reviewed on | Verified | Injects patches |
+| Legacy-bound adopted, patches reviewed on | Absent or replaced | Unavailable |
+| Legacy-bound adopted, patches reviewed off | Any | Starts without patches |
 
 `DesktopState::resolve_play_resources` applies this table to the bundle, and
 `admit_launch` refuses resources that disagree with it, so a host that skips
 resolution cannot inject or drop the patch.
 
-An adopted copy's imported settings are accepted only while every independent
+A non-null `adopted_login_servers` identifies the legacy imported/reviewed
+binding. A direct-folder adoption follows the saved patch preference instead.
+A legacy-bound adopted copy's imported settings are accepted only while every independent
 record of the review agrees:
 
 - the installed index's adoption provenance;
@@ -385,8 +388,8 @@ DLL's.
 No session, a refused address or an unwritable marker means the DLL is left
 out and the game starts as it would with telemetry off. `game-telemetry-status.json`
 records which of those happened for the last launch (`attached`,
-`session_unavailable`, `endpoint_refused`, `session_not_written`), and Settings
-shows it. `attached` means the DLL was on the injection list with a marker on
+`session_unavailable`, `endpoint_refused`, `session_not_written`), and the
+main-page Game diagnostics status shows it. `attached` means the DLL was on the injection list with a marker on
 disk. It does not claim the DLL loaded or that an upload arrived; the DLL's own
 `cimmeria-client-telemetry.log` beside `SGW.exe` and the server are the evidence
 for those.

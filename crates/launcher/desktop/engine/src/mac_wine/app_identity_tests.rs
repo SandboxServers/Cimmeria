@@ -53,7 +53,8 @@ fn staged_bundle_puts_the_real_loader_directory_inside_an_application_bundle() {
         .unwrap();
     let text = |key: &str| info.get(key).and_then(|value| value.as_string());
     assert_eq!(text("CFBundleIdentifier"), Some(BUNDLE_IDENTIFIER));
-    assert_eq!(text("CFBundleName"), Some(DISPLAY_NAME));
+    assert_eq!(text("CFBundleName"), Some("Cimmeria"));
+    assert_eq!(text("CFBundleDisplayName"), Some("Cimmeria"));
     assert_eq!(text("CFBundleExecutable"), Some("wine"));
     assert_eq!(text("CFBundlePackageType"), Some("APPL"));
     // Without this every windowless Wine process becomes a second foreground app.

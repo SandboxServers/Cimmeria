@@ -39,10 +39,11 @@ released-build run.
 
 | Scope | Design | Validation status |
 |---|---|---|
-| Native Rust cache reuse, cancellation of superseded PR runs, and faster release-only CLI builds | [CI speed design](design-ci-speed.md) | Workflow-policy guards and compile/artifact checks; post-change CI timings still need measurement |
+| Native Rust cache reuse, cancellation of superseded PR runs, and faster release-only CLI builds | [CI speed design](design-ci-speed.md) | PR #1994 merged as `380e904`; native/package CI and review passed; launcher release `2026.10.2303` completed from that revision |
 
 This build-only follow-up has its own PR, separate from the bundled player-facing
-path-display and startup-update changes. No release is authorized by these checks.
+path-display and startup-update changes. The owner separately authorized the
+release after #1994 merged; that release completed. A further release needs owner GO.
 
 ## Purpose
 
@@ -183,6 +184,10 @@ owner-approved D-LX15 and the applied-content identity logging follow-up.
 
 ## Path display and startup update follow-up (2026-10-23)
 
+PR #1993 merged as `7459ef2cc`; its worktree is retired. Final Windows/macOS
+CI and merge-queue checks passed. Launcher `2026.10.2303` includes this change.
+Packaged/player acceptance below remains separate from those automated checks.
+
 The owner requests one PR for [Windows path display](design-path-display.md) and
 [startup checking with mandatory Update and restart](design-startup-update.md).
 Formatting strips the Windows verbatim prefix only from visible folder strings;
@@ -193,8 +198,8 @@ recheck retains a known offer and its gate. The [updater contract](../../../crat
 is the detailed behavior reference.
 
 These owner UAT rows are **pending**. Frontend tests do not attest packaged
-layout, a native picker, real replacement/restart or game behavior. No release or
-laptop/lab use is authorized by this follow-up. Rows are mirrored in
+layout, a native picker, real replacement/restart or game behavior. The later owner-authorized `2026.10.2303` release includes this follow-up; these
+rows still need packaged/player acceptance. Ask before laptop/lab use. Rows are mirrored in
 [unified UAT](../../guides/unified-uat.md#path-display-and-startup-update-follow-up-pdu).
 
 | ID | Action | Expected |
@@ -204,3 +209,31 @@ laptop/lab use is authorized by this follow-up. Rows are mirrored in
 | PDU-U3 | Press Update and restart once, then try a duplicate press; repeat with a saved Ready package | One inspect/prepare/apply sequence; immediate feedback; saved Ready skips download; Play stays gated until replacement startup |
 | PDU-U4 | Fail a feed check with no known offer, then fail a recheck with an existing offer | First case shows retry feedback and permits Play after the bounded check; second retains the offer and keeps Play blocked, including after refresh |
 | PDU-U5 | Fail preparation or lose its reply; reopen with active/reconciliation state | No automatic Apply or replay; Play remains blocked for owned update work; Settings exposes recovery status |
+
+## Main-page layout follow-up (2026-10-23)
+
+The [design](design-main-layout.md) moves the three existing preference controls
+and native Changes to your client summary onto Play. View all changes expands
+in place; Settings keeps maintenance, folders, servers and recovery. The Patch
+Notes tab and its UI fetch are removed. Native Play readiness hides the main-page
+archive and Recheck Play status buttons independently of the launcher-update
+gate. Completed adoption no longer masquerades as unfinished compatibility setup.
+Adoption now asks for `SGW.exe` in a native file picker, resolves its installation
+root and retains the existing confirmation review before any changes.
+Visible branding is Cimmeria; the window title is Cimmeria Launcher. Legacy disk
+paths, identifiers and release asset filenames retain their compatibility names.
+
+Implementation is in progress in `fix/launcher-main-layout`; no PR is open at
+this checkpoint. Automated and fixture validation is recorded in the
+[worknote](worknotes/main-layout-validation.md); packaged acceptance is pending. No further
+release or laptop/lab use is authorized by this follow-up. The matching rows in
+[unified UAT](../../guides/unified-uat.md#main-page-layout-follow-up-ml) use these ids.
+
+| ID | Action | Expected |
+|---|---|---|
+| ML-U1 | Open a packaged launcher at normal and small window sizes; open Settings and return | Cimmeria Launcher title and gate tagline; no Patch Notes tab; Play, preferences and change summary remain reachable by scrolling |
+| ML-U2 | Reopen a ready adopted client, then inspect a ready managed client; separately open a missing or interrupted install | Ready clients hide Recheck Play status and archive selection without the false compatibility warning; genuine setup, errors and recovery remain visible; Settings retains archive/inspection access |
+| ML-U3 | Toggle client patches, launcher diagnostics and game diagnostics once each; reopen; fail one save | Immediate feedback; confirmed choices persist across reopen; failure restores confirmed state; a directly adopted client follows its saved patch choice on the next Play; a legacy-bound adopted client retains its reviewed patch binding until Repair |
+| ML-U4 | Read Changes to your client and expand View all changes; perform an operation that changes native state | Main-page summary and detailed native rows refresh; errors or unreadable records remain explicit |
+| ML-U5 | Offer a newer signed launcher while the installed game is ready | Setup prompts stay hidden; Update and restart still blocks Play until replacement startup |
+| ML-U6 | Press Adopt an install or Settings Choose SGW.exe; select the nested Working/Binaries/SGW.exe, then cancel and try a different executable | Native SGW.exe picker gives immediate feedback; the correct executable resolves its installation root and opens the existing review; cancellation and a wrong executable change no installation files; selection alone never applies changes |

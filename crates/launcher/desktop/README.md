@@ -6,12 +6,12 @@
 > **Companions:** [Implementation plan](../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md), [build rules](../../../docs/architecture/build-system.md#standalone-desktop-launcher-validation), [test policy](../../../TESTING.md)
 
 This standalone workspace contains native Rust state, Effect workflows and a
-Tauri settings shell. The interface connects through Tauri invoke to native
-preference persistence. Play/Patch Notes tabs and the settings panel are
-implemented; patch notes load from a signed release manifest. Effect
+Tauri shell. The interface connects through Tauri invoke to native
+preference persistence. Play is the main page; Settings contains maintenance,
+folders, servers and recovery. There is no Patch Notes tab. Effect
 installation controls call native IPC on Windows and on Mac builds containing
 a helper verified against its compiled artifact identity. Mac builds without
-that resource retain settings and patch notes but cannot install. Content preparation does not establish runtime or
+that resource retain settings and the main-page change summary but cannot install. Content preparation does not establish runtime or
 Play readiness. Confirmed uninstall and interrupted-removal recovery are wired
 through Settings. Settings also connects confirmed [Repair](docs/repair.md),
 precommit cancellation, recovery/abandonment and current-backup cleanup. [Play](docs/launch.md)
@@ -28,7 +28,12 @@ can change content there. Schema-2 intent/plan validation selects that layout;
 schema-1 managed and successful legacy installs retain `root/game`. Direct-root
 Repair/Update commit per file, and Uninstall removes only managed release files,
 retaining the root and extras. See [migration](docs/migration.md#adopting-an-existing-folder)
-for validity, recovery, and verification boundaries.
+for validity, recovery, and verification boundaries. The native picker asks
+**Choose SGW.exe in your existing install** and filters for `.exe` files. Only
+`SGW.exe` is accepted; native resolution maps its `Working/Binaries` parent to
+the installation root. Selection only opens the existing confirmation review;
+no installation files change until approval. The IPC name remains
+`choose_existing_game_folder`; no new command or Plan field is introduced.
 
 ## Native operation and storage contracts
 
@@ -92,16 +97,19 @@ only at launch, so a save during Play applies to the next one); it leaves the
 install path and consent alone. A non-empty login-server list must pass the core
 parser's rules or the save fails with `invalid_server_list` and writes nothing;
 an empty list means the default server. Play writes the saved list (or the
-default) into `LoginInternal.lua` and checks it again first; an adopted copy
-keeps the list its adoption reviewed, and every snapshot carries that list as
-`adopted_login_servers` (`null` otherwise) so Settings can say so. Every
+default) into `LoginInternal.lua` and checks it again first; a legacy-bound
+adopted copy keeps the imported list its adoption reviewed, and every snapshot carries that list as
+`adopted_login_servers` (`null` otherwise) so the interface can say so. Every
 snapshot also carries `launcher`, the compiled version and release tag (`null`
 for a development build), which Settings shows on its About line. With
 `client_patches_enabled` off, Play on a copy this launcher installed injects no
 client-patches DLL, and admission refuses a launch request that carries one; the
-telemetry DLL still follows its own opt-in. An adopted copy keeps the patch
-setting its adoption reviewed, whatever the preference says; Settings still
-saves the preference there and says the copy keeps its setting. The opt-intelemetry session is minted from the same list Play writes. No command lets frontend callers set native operation outcomes or
+telemetry DLL still follows its own opt-in. A direct-folder adoption follows the
+current saved patch preference for the next Play. Only a legacy-bound adopted
+copy (`adopted_login_servers` is non-null) keeps its reviewed patch setting,
+whatever the preference says; the main-page control still saves the preference
+and explains that binding until Repair. The opt-in telemetry session is minted
+from the same list Play writes. No command lets frontend callers set native operation outcomes or
 choose the state-directory root. The shell selects app data through Tauri's
 native resolver. Native first-install intent validation and worker dispatch are
 implemented below; installation and maintenance use a separate native operation boundary.
@@ -111,17 +119,17 @@ answer `unavailable` until their packets land. Each fails with one flat code str
 code such as `busy`, the same shape `safeFailure` reads. Each takes a versioned
 request with no free-form fields, has its
 engine half in `engine/src/storage/<name>/` and its host half in
-`shell/src/host/<name>.rs`, and has a Settings panel in
-`frontend/src/<name>-view.ts`:
+`shell/src/host/<name>.rs`, and has a panel in `frontend/src/<name>-view.ts` (Settings except for the
+main-page client-change summary):
 
-| Command | Requests | Settings panel | Filled by |
+| Command | Requests | Panel | Filled by |
 |---|---|---|---|
 | `log_upload_command` | `inspect`, `upload` | `log-upload-view.ts` | LX-05 (done) |
 | `client_maintenance_command` | `inspect`, `reset_cache`, `reset_all_client_state` | `client-maintenance-view.ts` | LX-06 |
-| `client_changes_command` | `inspect` | `client-changes-view.ts` | LX-07 |
+| `client_changes_command` | `inspect` | Main-page `client-changes-view.ts` | LX-07 |
 | `seed_archive_command` | `inspect`, `cancel`, `forget` | available; see [seed archive](docs/seed-archive.md) | AI-06 (part B) |
 | `choose_seed_archive` | none; the native `*.rar` picker | available; see [seed archive](docs/seed-archive.md) | AI-06 (part B) |
-| `choose_existing_game_folder` | `mode: light`; one native folder picker; `copy` and `in_place` are refused with `UnsupportedMode` | Adopts at the selected root on Windows and on macOS with a verified packaged helper; no copied installation | [Migration contract](docs/migration.md#adopting-an-existing-folder) |
+| `choose_existing_game_folder` | `mode: light`; native SGW.exe file picker; `copy` and `in_place` are refused with `UnsupportedMode` | Adopts at the selected root on Windows and on macOS with a verified packaged helper; no copied installation | [Migration contract](docs/migration.md#adopting-an-existing-folder) |
 
 > [!NOTE]
 > `upload` reads the new launcher and game log lines and posts them to the telemetry
@@ -130,8 +138,9 @@ engine half in `engine/src/storage/<name>/` and its host half in
 > operator side is [telemetry.md § Launcher log
 > ingest](../../../docs/operations/telemetry.md#launcher-log-ingest).
 
-The login-server and client-patches panels (`server-list-view.ts`,
-`client-patches-view.ts`, LX-03 and LX-04) save through `save_client_options`.
+The Settings login-server panel and main-page client-patches panel
+(`server-list-view.ts`, `client-patches-view.ts`, LX-03 and LX-04) save through
+`save_client_options`.
 
 `client_maintenance_command` is filled (LX-06). `reset_cache` removes
 `Documents\My Games\Firesky\SGWGame\Cache.en-US`; `reset_all_client_state`
@@ -202,8 +211,24 @@ automatically. A failed check with no known offer permits Play with visible retr
 feedback; a failed recheck retains a known offer and its Play gate. See the
 [updater contract](docs/updater.md#startup-and-main-page-integration).
 
-The development UI explicitly labels unavailable game operations. Verified patch
-notes describe available release patches, not installed-game status. Native
+The Cimmeria Launcher window opens on Play. Client patches, launcher diagnostics
+and game diagnostics sit below Play, with their existing native persistence and
+separate consent gates. Diagnostics remain off by default. Game diagnostics
+shows a compact status with details collapsed at rest; saving or an error opens
+the details automatically. The full privacy copy is under About diagnostics
+and privacy. The native Changes to
+your client summary appears below them; View all changes expands the full list.
+The main page scrolls so controls remain reachable in small windows.
+
+A native launch inspection establishes readiness: an installation identity,
+available launch resources, no required reopen and no open operation. Once
+ready, the main page hides Recheck Play status and Use a downloaded game archive;
+Settings retains inspection/archive access. A known launcher update still gates
+Play independently. A completed saved adoption no longer produces an unfinished
+compatibility-setup warning; real failures and recovery remain visible. Adoption
+button visibility retains its separate content-validity predicate.
+
+The development UI explicitly labels unavailable game operations. Native
 window appearance, dialogs and actual Tauri IPC still require interactive UAT.
 Compilation and headless DOM tests do not establish those behaviors.
 
@@ -270,7 +295,7 @@ protocol limits, backend identity, cancellation/recovery boundaries, managed cac
 checks and supervised smoke commands. Game prerequisites and readiness remain
 separate gates.
 
-## Verified release patch notes
+## Retained release catalog API
 
 `engine/src/catalog/mod.rs` fetches the native-owned `content-current` manifest
 and detached signature over HTTPS. Limits: 1 MiB manifest, 256-byte signature,
@@ -290,13 +315,10 @@ existing development fallback; it cannot authenticate the live release. Supply
 the maintainer-approved public key when building a launcher for live content. Do
 not discover or trust a key from the manifest being verified.
 
-The Patch Notes tab starts an independent read-only Effect fetch on first open.
-Refresh explicitly fetches again; no automatic retries or overlapping UI loads.
-Frontend observation times out after 35 seconds. Disposal interrupts
-observation, not native network work, which remains bounded by its own
-deadlines. Successful notes stay in session memory; a failed refresh retains
-them with an explicit previously-verified label. All content renders as literal
-DOM text, never HTML.
+The main-page layout removes the Patch Notes tab and its UI fetch. The native
+read-only catalog API and its verification tests remain available to other
+consumers and the probe below. The installed-client summary uses
+`client_changes_command`, rather than presenting release notes as installed state.
 
 A read-only live check uses the same native fetcher:
 

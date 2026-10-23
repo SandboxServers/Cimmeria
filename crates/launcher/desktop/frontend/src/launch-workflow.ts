@@ -24,6 +24,8 @@ export const launchBridgeLayer=(invoke:(request:Request)=>Promise<unknown>)=>Lay
     Effect.flatMap(value=>Schema.decodeUnknownEffect(LaunchStatus,{onExcessProperty:'error'})(value).pipe(Effect.mapError(()=>new LaunchFailure({code:'schema'})))),
   )});
 export type LaunchState={status:LaunchStatus|null;pending:boolean;uncertain:boolean;error:string|null};
+/** Content readiness is independent of the launcher-update gate. */
+export const gameSetupComplete=(status:LaunchStatus)=>!!status.installation_id&&status.resources_available&&!status.native.requires_reopen&&status.observation?.phase!=='unknown'&&(!operationOpen(status.native.operation.operation)||(status.native.operation.operation?.kind==='launch'&&status.native.operation.operation.state!=='reconciliation_required'));
 export const launchBlocked=(status:LaunchStatus)=>status.launcher_update_required || status.native.requires_reopen || operationOpen(status.native.operation.operation);
 export const makeLaunchWorkflow=Effect.gen(function*(){
  const bridge=yield* LaunchBridge;const gate=yield* Semaphore.make(1);

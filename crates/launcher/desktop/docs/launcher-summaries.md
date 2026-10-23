@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Launcher contributors, and whoever prepares the rollout packet
-> **Last updated:** 2026-10-21
+> **Last updated:** 2026-10-23
 > **Companions:** [Desktop workspace](../README.md), [design and wire contract](../../../../docs/architecture/launcher-summary-telemetry.md), [operator notes](../../../../docs/operations/telemetry.md), [dashboard reading notes](../../../../docs/operations/signoz/launcher-summary-views.md), [launch](launch.md), [implementation assignment](../../../../docs/analysis/playtests/2026-10-03-macos-wine/worknotes/observability-implementation-assignment.md)
 
 **Status: the engine component, its queue, its exporter and the shell glue are
@@ -20,6 +20,12 @@ shape from anyone, within a rate limit for each address, and refuses
 everything else. So every row is self-reported: useful for spotting failure
 patterns, and never a basis for server state, alerts, success-rate claims or
 SLOs.
+
+The optional **Launcher diagnostics** checkbox is below **Play**, alongside the
+separate game-diagnostics and client-patches choices. Moving it from Settings
+does not change native consent persistence, default-off behavior or endpoint
+selection. The adjacent status reports saves and failures; the expandable
+privacy explanation describes the data shared. See the [player guide](../../../../docs/client/launcher-guide.md#main-page-preferences-and-changes).
 
 ## Module map
 
@@ -452,7 +458,7 @@ It has to change at least these. Items 1 and 2 are done; items 3 to 5 are open.
    certificate. The server may serve the route on its plain-HTTP login port
    (owner decision, 2026-10-04), but that port cannot be the launcher's
    endpoint under this policy.
-2. **Consent copy. Done in LT-23b.** The setup-diagnostics box says whether
+2. **Consent copy. Done in LT-23b.** The main-page Launcher diagnostics box says whether
    summaries are sent: "Setup diagnostics are sent over https to your login
    server.", "Setup diagnostics are saved but not sent yet: this server has no
    secure (https) address for them.", or "Nothing is sent." (`frontend/src/view.ts`).

@@ -3,8 +3,8 @@ type Rejection=NonNullable<AdoptionStatus['last_rejection']>;
 type IndexFallbackView=NonNullable<NonNullable<AdoptionStatus['review']>['index_fallback']>;
 /** One sentence per engine check (REJECTION_CHECKS, C14). Each names the failed check in plain words. */
 const checkTexts:Record<string,string>={
- not_a_game_folder:'That folder is not a Stargate Worlds game folder.',
- several_game_folders:'This folder holds more than one Stargate Worlds install. Pick the one you want.',
+ not_a_game_folder:'That folder is not a Cimmeria game folder.',
+ several_game_folders:'This folder holds more than one Cimmeria install. Pick the one you want.',
  folder_not_writable:'The launcher cannot write to this folder, so it cannot adopt or copy into it.',
  folder_in_use:'Another launcher has this folder open.',
  folder_overlaps_launcher:'The chosen folder overlaps the launcher’s own folders.',
@@ -34,7 +34,7 @@ const checkTexts:Record<string,string>={
  artifact_size_mismatch:'A signed file’s size did not match its download.',
  download_http_status:'The server refused the signed download.',
  download_failed:'The signed download failed before it finished.',
- local_seed_invalid:'The game archive you chose is not a valid Stargate Worlds archive.',
+ local_seed_invalid:'The game archive you chose is not a valid Cimmeria archive.',
  local_artifact_mismatch:'A file in your game archive did not match the signed release.',
  manifest_digest_malformed:'The signed release’s digest is malformed.',
  patch_replay_mismatch:'Replaying a signed patch did not produce the signed release file.',

@@ -67,11 +67,14 @@ test('approved tabs and settings work without inventing installed state', {timeo
     assert.equal(ui.get<HTMLButtonElement>('install').disabled, true);
     assert.equal(ui.get<HTMLButtonElement>('repair').disabled, true);
     assert.equal(ui.get<HTMLButtonElement>('uninstall').disabled, true);
-    ui.click('notes'); assert.equal(ui.get('play').hidden, true); assert.equal(ui.get('patches').hidden, false);
-    assert.equal(ui.get('patches').closest('[hidden]'), null, 'Patch Notes must not inherit hidden settings');
+    assert.equal(ui.document.getElementById('notes'), null);
+    assert.equal(ui.document.getElementById('patches'), null);
+    for (const id of ['telemetry','game-telemetry','client-patches-enabled','client-changes-panel'])
+      assert.equal(ui.get(id).closest('main')?.id, 'play');
+    assert.equal(ui.get('client-changes-details').hasAttribute('open'),false);
+    assert.equal(ui.get('client-changes-details').querySelector('summary')!.textContent,'View all changes');
     ui.click('settings'); assert.equal(ui.get('gear').hidden, false);
     assert.equal(ui.get('play').hidden, true);
-    assert.equal(ui.get('patches').hidden, true, 'settings occupies the content panel');
     ui.click('home'); assert.equal(ui.get('play').hidden, false);
     assert.equal(ui.get('gear').hidden, true);
     assert.equal(ui.get('settings').getAttribute('aria-expanded'), 'false');
@@ -80,16 +83,38 @@ test('approved tabs and settings work without inventing installed state', {timeo
     // the changes (LX-07) and PhysX (LX-12) panels each read once, on the first snapshot.
     // Settings' archive panel asks once at mount (AI-07); it is counted apart from the panels above.
     assert.equal(calls.filter(c => c === 'seed_archive_command').length, 1);
-    assert.deepEqual(calls.filter(c => c !== 'seed_archive_command'), ['log_upload_command', 'launcher_command', 'client_changes_command', 'physx_command', 'fetch_patch_notes']);
+    assert.deepEqual(calls.filter(c => c !== 'seed_archive_command'), ['log_upload_command', 'launcher_command', 'client_changes_command', 'physx_command', 'client_changes_command']);
   } finally { await app.dispose(); }
   ui.click('settings'); assert.equal(ui.get('gear').hidden, true, 'dispose removes handlers');
+});
+
+test('Cimmeria branding agrees with the native title and macOS app packaging',async()=>{
+ const ui=dom();assert.equal(ui.document.title,'Cimmeria Launcher');
+ assert.equal(ui.document.querySelector('h1')!.textContent,'Cimmeria');
+ assert.match(ui.get('play').textContent!,/Your journey through the gate begins here\./);
+ const config=JSON.parse(await readFile(new URL('../../shell/tauri.conf.json',import.meta.url),'utf8'));
+ assert.equal(config.productName,'Cimmeria Launcher');assert.equal(config.app.windows[0].title,'Cimmeria Launcher');
+ assert.equal(config.identifier,'app.cimmeria.launcher.desktop','persisted app identity stays stable');
+ const pack=await readFile('../../../../tools/launcher-release/build-desktop-macos.sh','utf8');
+ assert.ok(pack.includes(`APP_NAME="${config.productName}.app"`));
+});
+
+test('native adoption dialog targets SGW.exe before catalog access',async()=>{
+ const picker=await readFile(new URL('../../shell/src/adoption_picker.rs',import.meta.url),'utf8');
+ assert.match(picker,/blocking_pick_file\(\)/);assert.match(picker,/SGW\.exe \(game executable\)/);
+ assert.match(picker,/set_file_name\("SGW\.exe"\)/);
+ assert.match(picker,/resolve_executable\(&selected\)/);
+ const shell=await readFile(new URL('../../shell/src/main.rs',import.meta.url),'utf8');
+ const command=shell.slice(shell.indexOf('async fn choose_existing_game_folder('));
+ const picked=command.indexOf('adoption_picker::pick('),fetched=command.indexOf('catalog::fetch_release()');
+ assert.ok(picked>=0&&fetched>picked);
 });
 
 test('Settings shows the compiled version, with the release tag or "development build"', {timeout:5000}, async () => {
   for (const [launcher, about, badge] of [
     [{version:'2026.10.11', tag:'launcher-20261011-abc1234'},
-      'Stargate Worlds Launcher 2026.10.11 · release launcher-20261011-abc1234', 'Version 2026.10.11'],
-    [{version:'0.1.0', tag:null}, 'Stargate Worlds Launcher 0.1.0 · development build', 'Development build'],
+      'Cimmeria Launcher 2026.10.11 · release launcher-20261011-abc1234', 'Version 2026.10.11'],
+    [{version:'0.1.0', tag:null}, 'Cimmeria Launcher 0.1.0 · development build', 'Development build'],
   ] as const) {
     const ui = dom();
     assert.equal(ui.get('build-badge').textContent, '', 'no build kind is claimed before the snapshot');
@@ -172,7 +197,7 @@ test('the saved consent says whether setup diagnostics are sent', {timeout:5000}
 
 test('the diagnostics label says summaries go over https and never that the build sends nothing', {timeout:5000}, () => {
   const ui = dom();
-  assert.match(ui.get('telemetry').closest('label')!.textContent!, /sent over https/);
+  assert.match(ui.get('diagnostics-privacy').textContent!, /sent over https/);
   assert.doesNotMatch(html, /This build sends nothing/);
 });
 

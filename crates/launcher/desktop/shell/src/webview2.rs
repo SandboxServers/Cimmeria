@@ -100,7 +100,7 @@ fn confirm_download() -> bool {
     let text = wide(
         "The Microsoft Edge WebView2 Runtime is needed to run the launcher. Open the download page?",
     );
-    let caption = wide("Stargate Worlds Launcher");
+    let caption = wide("Cimmeria Launcher");
     // SAFETY: both strings are NUL-terminated and live for the call; no owner window.
     let answer = unsafe {
         MessageBoxW(
@@ -145,7 +145,7 @@ fn show_download_url() {
     let text = wide(&format!(
         "The download page could not be opened. Download the Microsoft Edge WebView2 Runtime from:\n\n{DOWNLOAD_URL}"
     ));
-    let caption = wide("Stargate Worlds Launcher");
+    let caption = wide("Cimmeria Launcher");
     // SAFETY: both strings are NUL-terminated and live for the call; no owner window.
     unsafe {
         MessageBoxW(

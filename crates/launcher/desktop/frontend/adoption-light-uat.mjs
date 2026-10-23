@@ -69,11 +69,11 @@ try {
  // 4. A picked folder holding two installs: the rejection is shown, the choose button is enabled on the next press, and a cancel says so.
  await scenario(twoInstalls());
  assert.match(text(),/did not pick one/);
- assert.match(get('adoption-rejection').textContent,/more than one Stargate Worlds install/);
+ assert.match(get('adoption-rejection').textContent,/more than one Cimmeria install/);
  assert.equal(get('adoption-rejection').hidden,false);
  await choose(cancelled());
- assert.equal(text(),'No folder chosen.');
- console.log('ok: two installs are rejected with the rejection line; a cancelled picker says No folder chosen.');
+ assert.equal(text(),'No SGW.exe chosen.');
+ console.log('ok: two installs are rejected with the rejection line; a cancelled picker says No SGW.exe chosen.');
  // 4b. One folder: the game folder is both the source and the destination, so one folder line is shown and the destination row is hidden.
  await scenario(reviewed({}));
  assert.equal(get('adoption-source-label').textContent,'Folder:');

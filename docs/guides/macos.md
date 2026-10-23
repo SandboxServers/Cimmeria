@@ -3,7 +3,7 @@ title: "Playing on a Mac (experimental)"
 type: how-to
 audience: players and testers on Apple Silicon Macs; no programming needed
 status: experimental (the macOS launcher has not yet been confirmed by a player, 2026-10-11)
-last_updated: 2026-10-11
+last_updated: 2026-10-23
 companion_docs:
   - ../client/launcher-guide.md
   - ../../crates/launcher/desktop/docs/release.md
@@ -44,28 +44,30 @@ the Wine runtime it needs on its own.
 1. Download
    [`StargateWorlds-Launcher-macos-arm64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip).
    This link always holds the newest release.
-2. Double-click the zip to unzip it, then drag **Stargate Worlds Launcher** into
+2. Double-click the zip to unzip it, then drag **Cimmeria Launcher** into
    **Applications** in Finder. Run it from there, not from Downloads: macOS
    runs apps opened straight from Downloads from a hidden read-only copy.
 3. Open it. macOS refuses the first time, because the app is not notarized by
    Apple (it is signed ad hoc only). Close the message without moving the app
    to the Trash.
 4. Open **System Settings → Privacy & Security**, scroll down to the message
-   about "Stargate Worlds Launcher", click **Open Anyway** and enter your password.
+   about "Cimmeria Launcher", click **Open Anyway** and enter your password.
    You do this once; after that the app opens normally.
 
-**Checkpoint A.** The launcher window opens with the **Play** and **Patch
-Notes** tabs. Open **Settings** (the ⚙ button): the line under the **Game
-settings** heading shows the launcher version. A black or empty window here is
-important to report.
+**Checkpoint A.** The **Cimmeria Launcher** window opens on **Play**, with
+preferences below the Play button and **Changes to your client** below them.
+There is no Patch Notes tab. Expand **View all changes** for details. Open
+**Settings** (the ⚙ button) to see the version under **Game settings**. Report
+a black or empty window. New bundles are named `Cimmeria Launcher.app`; download
+zip names and existing game folders keep their legacy names.
 
 ## Step 2: install the game
 
 1. In **Settings**, **Local install directory** shows where the game goes.
    Leave it, or click **Choose folder…** and pick an empty folder.
-2. Turn on **Send game diagnostics**. This is what lets us see a
+2. Turn on **Game diagnostics** below **Play**. This is what lets us see a
    Mac problem remotely without asking you for logs. It is off by default.
-3. Click **Install Stargate Worlds** and wait. The launcher downloads the Wine
+3. Click **Install Cimmeria** and wait. The launcher downloads the Wine
    runtime once, then the original 2009 client from archive.org, unpacks it with
    Wine and applies the Cimmeria patches. When the content is in place it goes
    on to the compatibility setup the game needs (PhysX under Wine). If you close
@@ -81,7 +83,7 @@ after every new launcher version.
 
 ## Step 3: start the game
 
-1. Click **Play**. Keep **Settings → Client patches → Load client patches** on.
+1. Click **Play**. Keep **Play → Client patches → Load client patches** on.
 2. The first start can take a minute; shaders are compiled on every start on
    macOS. There is an intro, then the gate courtyard, and after about 20
    seconds the login box.
@@ -122,7 +124,9 @@ window? …)"), the client patches did not load: say so.
 macOS updates are manual. On a Mac the **Launcher updates** section in Settings
 says launcher updates are unavailable, and **Check for updates** is greyed out. When a new launcher is released, download the zip from
 the same link again, quit the launcher, and replace the app in Applications
-with the new one. Your settings and the installed game stay. Expect the
+with the new one. If the old app is named **Stargate Worlds Launcher**, quit it
+and replace that older launcher in Applications with **Cimmeria Launcher.app**;
+do not move the game folder. Your settings and the installed game stay. Expect the
 folder-access question again after each new version.
 
 ## Coming from the old launcher under WoWSilicon
@@ -133,7 +137,11 @@ profile, you can install fresh (simplest), or bring that install over:
 first for the folder that held the old launcher `.exe`, then for its game
 folder (both are inside the WoWSilicon profile's Wine prefix). After
 **Confirm settings import**, click **Adopt an install** on the main page (or
-**Settings → Use an existing game folder**). macOS uses that selected installation
+**Settings → Use an existing game folder → Choose SGW.exe…**). In the file
+picker, choose the client's `Working/Binaries/SGW.exe`. Only `SGW.exe` is
+accepted; its location identifies the installation root. Cancelling changes
+nothing, and selecting it opens the review before any installation changes.
+macOS uses that selected installation
 in place, without copying or relocating it. Read the review before approving
 individual patch/setup changes and any replacement backups at that root. The
 main-page button disappears once a valid install exists, even when a missing

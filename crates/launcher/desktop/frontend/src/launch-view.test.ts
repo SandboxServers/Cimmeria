@@ -5,6 +5,24 @@ import {parseHTML} from 'linkedom';
 import {launchText,mountLaunch} from './launch-view';
 const html=readFileSync('ui/index.html','utf8');
 const initial=()=>({schema_version:1,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,installation_id:'owner',observation:null as unknown,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1,revision:0,operation:null as unknown}}});
+test('ready content hides setup recheck across launch, update gate and errors',async()=>{
+ let status=initial(),fail=false;const observed:boolean[]=[];
+ const {document}=parseHTML(html);
+ const app=mountLaunch(document,async()=>{if(fail)throw 'transport';return status;},undefined,undefined,true,ready=>observed.push(ready));
+ const check=()=>document.getElementById('inspect-launch')!.hidden;
+ const settle=async()=>{await app.refresh();await new Promise(resolve=>setImmediate(resolve));};
+ try{
+  await app.ready;await settle();assert.equal(check(),true);assert.equal(observed.at(-1),true);
+  assert.equal((document.getElementById('launch') as HTMLButtonElement).disabled,true,'updater still owns Play');
+  status={...status,native:{...status.native,operation:{...status.native.operation,revision:1,operation:{id:'saved',kind:'launch',state:'running',intent_digest:Array(32).fill(0)}}}};
+  await settle();assert.equal(check(),true,'a running game does not resurrect setup');
+  status={...status,observation:{phase:'unknown'}};await settle();assert.equal(check(),false,'unknown game state retains recheck');
+  fail=true;await settle();assert.equal(check(),false);assert.equal(observed.at(-1),false);
+  fail=false;status={...initial(),installation_id:null as any};await settle();assert.equal(check(),false);
+  status={...initial(),resources_available:false};await settle();assert.equal(check(),false);
+  status={...initial(),native:{...initial().native,requires_reopen:true}};await settle();assert.equal(check(),false);
+ }finally{await app.dispose();}
+});
 test('Play first click gives feedback, lost reply is observed without replay, unknown stays blocked',async()=>{
  let status=initial();let plays=0;let finish!:()=>void;const wait=new Promise<void>(resolve=>{finish=resolve;});
  const {document,window}=parseHTML(html);

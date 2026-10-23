@@ -3,9 +3,9 @@ import type {PanelContext} from './panel-context';
 import {scaffoldFailure} from './contract';
 import {reportUiEvent,uiCode} from './ui-event';
 /**
- * Settings panel (LX-04): "Load client patches", saved through `launcher_command`
+ * Main-page preference (LX-04): "Load client patches", saved through `launcher_command`
  * (`save_client_options`) with the saved login servers carried over unchanged. Off means Play
- * injects no client-patches DLL into a copy this launcher installed; an adopted copy keeps the
+ * injects no client-patches DLL into a copy this launcher installed; a legacy-bound adopted copy keeps the
  * setting it was adopted with, so a save there is allowed but does not change that copy.
  */
 const saveErrorText:Record<string,string>={

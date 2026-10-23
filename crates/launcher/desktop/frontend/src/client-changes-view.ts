@@ -3,12 +3,12 @@ import type {Invoke} from './view';
 import type {PanelContext} from './panel-context';
 import {ClientChangesStatus,scaffoldFailure,type ClientChangesCommand} from './contract';
 /**
- * Settings panel (LX-07): the read-only "Changes to your client" list. Native
+ * Main-page panel (LX-07): the read-only "Changes to your client" list. Native
  * code builds every row from the installed copy (`client_changes_command`);
  * this view only renders them. It re-reads on each launcher snapshot (an
  * Update, a settings save, and, through `mountDesktop`, a finished install,
  * repair or uninstall and a game-telemetry save all publish one) and each
- * time Settings opens, so the list is current whenever it can be seen, even
+ * time Play or Settings opens or the details expand, so the list stays current even
  * when the launcher's own inspect failed and published nothing.
  */
 export const clientChangesUnavailable='Changes to your client are not available in this build yet.';
@@ -28,7 +28,10 @@ export function mountClientChanges(document:Document,invoke:Invoke,context:Panel
  const status=document.createElement('p');status.id='client-changes-status';status.setAttribute('role','status');status.setAttribute('aria-live','polite');status.textContent=clientChangesLoading;
  const record=document.createElement('p');record.id='client-changes-record';record.hidden=true;record.textContent=clientChangesRecordUnreadable;
  const list=document.createElement('div');list.id='client-changes-list';
- panel.textContent='';panel.append(heading,status,record,list);
+ const details=document.createElement('details');details.id='client-changes-details';
+ const summary=document.createElement('summary');summary.textContent='View all changes';
+ details.append(summary,list);
+ panel.textContent='';panel.append(heading,status,record,details);
  let disposed=false;
  const render=(value:ClientChangesStatus)=>{
   list.textContent='';record.hidden=!value.install_record_unreadable;
@@ -79,8 +82,12 @@ export function mountClientChanges(document:Document,invoke:Invoke,context:Panel
  // click, so look once that has run. This also reads a list no snapshot ever
  // triggered, when the launcher's first inspect failed.
  const settings=document.getElementById('settings');const gear=document.getElementById('gear');
+ const home=document.getElementById('home');
+ const showChanges=()=>{if(!disposed)follow();};
+ const expanded=()=>{if(details.open)showChanges();};
  const opened=()=>{queueMicrotask(()=>{if(!disposed&&gear&&!gear.hidden)follow();});};
  settings?.addEventListener('click',opened);
+ home?.addEventListener('click',showChanges);details.addEventListener('toggle',expanded);
  // Never waits on a pending read: native may not answer before the window closes.
- return {ready,refresh,settled:()=>chain,dispose:async()=>{disposed=true;unsubscribe();settings?.removeEventListener('click',opened);first();panel.textContent='';}};
+ return {ready,refresh,settled:()=>chain,dispose:async()=>{disposed=true;unsubscribe();settings?.removeEventListener('click',opened);home?.removeEventListener('click',showChanges);details.removeEventListener('toggle',expanded);first();panel.textContent='';}};
 }

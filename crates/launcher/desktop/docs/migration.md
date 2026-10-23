@@ -125,7 +125,7 @@ patch setting and login servers, as described under
 
 After import the UI says historical content is unverified and grants no Play,
 Repair or Uninstall capability. To play this installation with this launcher,
-adopt the existing folder from Settings → **Use an existing game folder…** (see
+adopt the existing folder from Settings → **Use an existing game folder → Choose SGW.exe…** (see
 [Adopting an existing folder](#adopting-an-existing-folder)), or select a separate
 empty folder for a new desktop installation. Import does not modify legacy game
 files, replace the updater, or complete installed/update/launch parity.
@@ -141,15 +141,18 @@ remain separate gates.
 ## Adopting an existing folder
 
 **Adopt an install** at the bottom of the main page opens the same workflow as
-Settings → **Use an existing game folder…**. The main-page button appears only
+Settings → **Use an existing game folder → Choose SGW.exe…**. The main-page button appears only
 when there is no valid managed or adopted installation. Choosing acknowledges the
 first press before opening the native picker; cancellation and errors remain
 visible in that workflow. Importing legacy settings is optional and does not
 establish installation ownership.
 
-Pick the game root, `Working`, or `Working\Binaries`; all resolve to the same
-installation root. If the selected folder has exactly one direct child that is a
-game root, that child can be resolved instead. Multiple candidates are refused.
+The native file picker is titled **Choose SGW.exe in your existing install**
+and filters for `.exe` files. Only `SGW.exe` is accepted; native resolution maps
+its `Working/Binaries` parent to the installation root. Cancellation changes
+nothing. Selection opens the existing in-place confirmation review before any
+installation changes. The IPC remains `choose_existing_game_folder` with
+`mode: light`; no new IPC or Plan field is added.
 The selected installation stays at that root on Windows and macOS. The launcher
 does not bulk copy it, move it into `game`, or ask for a copy destination.
 

@@ -17,9 +17,12 @@ test('off by default; one press gives immediate feedback, one save, and never to
   if(r.command==='set'){sets.push(r.opted_in);await wait;status={...status,opted_in:r.opted_in};}return status;});
  try{await app.ready;await settle();
   assert.equal(ui.box.checked,false);assert.equal(ui.box.disabled,false);assert.match(ui.text(),/^Off\. Play loads no diagnostics module/);assert.equal(ui.recheck.hidden,true);
+  assert.equal(ui.document.getElementById('game-telemetry-details')!.hasAttribute('open'),false);
   ui.toggle(true);ui.toggle(true);
   // First press: the box, its busy state and the status line all answer before the native reply.
   assert.equal(ui.box.checked,true);assert.equal(ui.box.getAttribute('aria-busy'),'true');assert.equal(ui.box.disabled,true);assert.match(ui.text(),/Turning game diagnostics on/);
+  assert.equal((ui.document.getElementById('game-telemetry-details') as HTMLDetailsElement).open,true,'first press exposes detailed status');
+  assert.equal(ui.document.getElementById('game-telemetry-summary')!.textContent,'Saving…');
   finish();await app.settled();await settle();
   assert.deepEqual(sets,[true]);assert.equal(ui.box.checked,true);assert.equal(ui.box.disabled,false);assert.equal(ui.box.getAttribute('aria-busy'),'false');
   assert.match(ui.text(),/^On\. The next Play loads the diagnostics module/);
@@ -55,7 +58,7 @@ test('the privacy note names what game-folder events carry',()=>{
  // The note sits under the label, so removing it or renaming the label fails here.
  assert.match(html,/id="game-telemetry-privacy"/);
  assert.ok(html.includes('Game-folder events name files only by their place inside the game folder, never your user name, home folder or address. The launcher also keeps its own log on this computer for 7 days.'));
- assert.ok(html.includes('Send game diagnostics <span'));
+ assert.ok(html.includes('Game diagnostics <span'));
 });
 
 test('the status line reports what the last Play did, without claiming an upload',()=>{
