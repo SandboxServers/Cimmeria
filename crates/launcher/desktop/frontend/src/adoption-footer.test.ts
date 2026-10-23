@@ -15,6 +15,7 @@ function fixture(initial=idle()){
   if(command==='adoption_command')return saved;
   if(command==='choose_existing_game_folder')return choose();
   if(command==='launcher_command')return saved.native;
+  if(command==='launch_command')return {schema_version:1,native:saved.native,installation_id:null,resources_available:false,launcher_update_required:true,patches_incomplete:0,ops_skipped:0,observation:null};
   // Other panels keep their own strict decoders; unavailable capabilities do not gate adoption.
   if(command==='install_command')return {schema_version:1,native:saved.native,install_supported:false,can_resume:false,can_reconcile:false,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null};
   return native();
@@ -24,8 +25,9 @@ function fixture(initial=idle()){
  return {app,get,calls,save:(s:AdoptionStatus)=>{saved=s;},picker:(f:()=>Promise<unknown>)=>{choose=f;},click:(id:string)=>get(id).dispatchEvent(new window.Event('click')),settle,
  ready:async()=>{await Promise.all([app.app.ready,app.adoption!.ready]);await settle();}};
 }
-for(const kind of ['managed','adopted'])test(`valid ${kind} content hides adoption despite unrelated Play gates`,async()=>{
- const ui=fixture({...idle(),owned:true,has_valid_install:true});
+for(const kind of ['managed','adopted','busy'])test(`valid ${kind} content hides adoption despite runtime and launcher-minimum gates`,async()=>{
+ const base:AdoptionStatus=kind==='busy'?{...idle(),native:{...native(),operation:{schema_version:1,revision:1,operation:{id:'other',kind:'repair',state:'running',intent_digest:Array(32).fill(0)}}}}:idle();
+ const ui=fixture({...base,owned:true,has_valid_install:true});
  try{await ui.ready();assert.equal(ui.get('adopt-install').hidden,true);
   assert.equal((ui.get('launch') as HTMLButtonElement).disabled,true,'Play gates do not define content validity');
  }finally{await ui.app.dispose();}
@@ -49,7 +51,7 @@ test('first footer press reveals the single workflow before awaiting picker; rep
   finish(idle());await ui.settle();assert.equal(ui.get('adoption-status').textContent,'No folder chosen.');
   ui.picker(async()=>{throw 'not_a_game_folder';});ui.click('choose-adoption-destination');await ui.settle();
   assert.match(ui.get('adoption-status').textContent!,/not a Stargate Worlds game folder/);
- }finally{await ui.app.dispose();}
+ }finally{finish?.(idle());await ui.app.dispose();}
 });
 test('closed Settings follows durable install/uninstall revisions and reopening derives visibility anew',async()=>{
  const ui=fixture();
