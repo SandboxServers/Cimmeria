@@ -4,9 +4,11 @@ use std::os::unix::fs::{symlink, MetadataExt};
 
 fn exercise(mutate: impl FnOnce(&Parents, &Path) -> Result<(), Error>, verify: impl FnOnce(&Path)) {
     let temporary = tempfile::tempdir().unwrap();
-    let root = temporary.path().join("selected");
-    let displaced = temporary.path().join("retained");
-    let outside = temporary.path().join("outside");
+    // macOS temp paths may use /var while reviewed plans pin /private/var.
+    let temporary_root = temporary.path().canonicalize().unwrap();
+    let root = temporary_root.join("selected");
+    let displaced = temporary_root.join("retained");
+    let outside = temporary_root.join("outside");
     for directory in [&root, &outside] {
         std::fs::create_dir_all(directory.join("nested/tree")).unwrap();
         for (name, bytes) in [

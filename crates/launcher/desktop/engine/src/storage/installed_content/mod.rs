@@ -199,7 +199,12 @@ impl DesktopState {
                 {
                     return Err(StorageError::Busy);
                 }
-                self.verify_adoption_record(&record)?;
+                // Direct-root layout selection requires its retained Plan. Legacy
+                // owner/minimum inspection stays independent of imported settings;
+                // Play authenticates those separately before dispatch.
+                if record.intent.schema_version == 2 {
+                    self.verify_adoption_record(&record)?;
+                }
                 let adoption = adoption_shape(&record)?.cloned();
                 (record.intent, record.current_release, adoption)
             }
