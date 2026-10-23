@@ -1,5 +1,7 @@
 # Dev-Session Telemetry — Architecture
 
+> **Player privacy scope:** The [current collector inventory](../../crates/launcher/desktop/docs/privacy-inventory.md) distinguishes fixed summaries, raw game text/ZIPs, consent and running-DLL limits. Use it for disclosure; historical implementation notes below are not blanket anonymity or redaction guarantees.
+
 > **Type:** Explanation · **Audience:** Telemetry and launcher engineers · **Last updated:** 2026-10-23
 > **Companions:** [Operations](../operations/telemetry.md), [native launcher timing](../../crates/launcher/desktop/docs/launcher-telemetry.md)
 

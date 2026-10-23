@@ -16,9 +16,10 @@
 | Embedded Windows payload | #1997 merged `bff3b3d`; retired | Windows/Mac 2305 released; EP acceptance pending |
 | Adoption/Play phase timing | #1998 merged `27493b05ae28dd8421419f1765b2982be3b3c04f`; retired | Windows/Mac 2306 released, run 40014376577 all green; no new live receipt |
 | Early SGC session review | [Anonymized worknote](worknotes/sgc-session-review-2026-10-23.md) | Partial playthrough; reproduce prioritized reports separately |
-| Legacy PhysX offer | Implemented; final 1,186 native/281 frontend passed, six mutations, builds/clippy, REPL/fixture visual UAT and fresh review ship | Open combined PR; native/package CI, merge/retire, then release |
+| Legacy PhysX offer | Implemented; 1,186 native passed, 13 ignored; original six mutations/builds/clippy and prior review passed | PR #1999 open; privacy scope reviewed ship; final-head CI, then merge/retire and release |
 | Development catalog key | Implemented; native policy/error tests, shared UI and regression proof passed | Included in final combined checks; packaged acceptance pending |
-| Verified archive starts Install | [Design](design-archive-start.md); explicit main/Settings choose or Downloads acceptance hands off after verification | New tests, mutation proof, logic/visual UAT, final review and CI pending |
+| Verified archive starts Install | Pre-privacy scope: 1,186 native/281 frontend passed, 13 ignored; six restored mutation guards; fresh review ship | PR #1999 open; privacy checks/builds/review passed; final-head CI before merge |
+| Exhaustive privacy disclosure | Offline eight-section UI; 294 frontend passed, TS/build, JS REPL/browser fixture and restored field-omission mutation passed; [inventory](../../../crates/launcher/desktop/docs/privacy-inventory.md) | Native asset build passed before source-review wording corrections; corrected-head 294 tests/build/REPL and native asset build passed; fresh final review ship; CI pending |
 
 **Active worktree:** `.claude/worktrees/launcher-legacy-physx`, branch `feat/launcher-legacy-physx`, from current main after #1998.
 **PhysX design:** native Windows main-page offer when exact 2.6.3 core is missing; path-free install_legacy downloads pinned NVIDIA 9.13.0604 MSI only after a press. Reuse interactive elevated msiexec and native post-install core check; Settings retains original installer. No automatic installation or Play-policy change; Mac Wine flow unchanged.

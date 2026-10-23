@@ -378,3 +378,33 @@ These packaged acceptance rows remain pending and are mirrored in
 | AS-U1 | With no installation and eligible idle native state, choose a valid archive or accept its Downloads offer from the main page and Settings | Immediate feedback, verification progress, then exactly one Install using fresh native admission; no second press |
 | AS-U2 | Cancel with a previously remembered archive; reject verification; lose a reply; reopen or dispose the view | No automatic Install, no mutation replay, source archive unchanged |
 | AS-U3 | Select an archive with an existing installation, active owner or recovery-blocked state | No new installation; normal native ownership and recovery rules remain authoritative |
+
+## Exhaustive diagnostics disclosure follow-up (2026-10-23)
+
+Before merging PR #1999, the owner requests a complete main-page privacy
+explanation of every launcher/client telemetry channel and important limits.
+The [source-backed inventory](../../../crates/launcher/desktop/docs/privacy-inventory.md)
+records fixed summary fields separately from open game/DLL fields, live tails,
+raw exit ZIPs and explicit debug-log upload. It covers persistent UUID and
+hostname-derived identity, game-server correlation, virtual camera/input,
+engine/protocol/cache/error/performance families, consent/withdrawal, destinations,
+local queues/logs, pattern scrubbers and operator-configured retention.
+
+Important boundaries: a running DLL outlives launcher opt-out until game exit;
+raw session ZIPs do not use manual line scrubbing; live session .txt selection
+has no special key-text exclusion. Player builds exclude the separate lab
+bridge/crash handler. No new collection or live telemetry acceptance is claimed.
+The preceding 1,186 native tests, 281 frontend tests, 13 ignored and six restored
+mutation guards predate this disclosure extension. The completed offline UI
+has eight nested sections and eleven exact-schema field lists. All 294 frontend
+tests, TypeScript and production build passed. Persistent JS REPL exercised the
+actual disclosure DOM without IPC/save/consent changes in the harness; fixture
+browser review at 1280 × 720 found expanded content and long fields readable.
+Removing event_id caused the intended assertion failure; restored, all thirteen
+privacy checks passed. See the [validation worknote](worknotes/legacy-physx-validation.md#exhaustive-privacy-disclosure-extension).
+Native asset build passed before two source-review wording corrections: game-peer
+IPv4/port can be collected, and summaries select only the first effective
+login-server entry if HTTPS. Corrected-head 294 tests/build/REPL and native asset rebuild passed; fresh final review returned ship with no remaining findings. Final-head CI remains pending.
+Privacy UAT did not execute collectors/uploads, inspect retention, validate
+native persistence or open a packaged window. No MSI/game/Wine/lab acceptance
+is claimed; collector behavior is unchanged.

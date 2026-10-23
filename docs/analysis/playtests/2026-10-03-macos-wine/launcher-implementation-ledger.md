@@ -958,3 +958,33 @@ After the prior catalog-key change, 1,185 native tests passed with 13 ignored,
 this handoff extension. Its tests, regression proof, logic/visual UAT and final
 review/CI remain pending. Packaged acceptance [AS-U1..U3](../../launcher-uat-fixes/README.md#archive-install-handoff-follow-up-2026-10-23)
 remains open; no game, lab or real installer execution is claimed.
+
+### 2026-10-23: exhaustive main-page diagnostics disclosure
+
+The owner expands PR #1999 before merge to explain every launcher/client
+telemetry channel and important exclusions. The [privacy inventory](../../../../crates/launcher/desktop/docs/privacy-inventory.md)
+is a source audit of fixed summaries, allowed launcher events, adoption and
+install/patch records, live game log tails, raw exit ZIPs, DLL hook families and
+manual debug-log upload, plus identity/correlation, storage, consent and endpoints.
+It distinguishes pattern scrubbing from raw text and flags the live session
+.txt selector's lack of a special key-text exclusion. Already injected DLL
+uploads are independent of the launcher's live queue-consent generation;
+exit the game to stop the attached DLL. No collector behavior changes here.
+
+Earlier scope passed 1,186 native/281 frontend tests, 13 ignored and six restored
+mutation guards, with fresh review ship. Those results precede this disclosure
+extension. The offline UI now has eight nested sections and eleven exact-schema
+field lists. All 294 frontend tests, TypeScript and production build passed.
+Persistent JS REPL exercised actual DOM expansion with no IPC/save/consent
+mutation in that harness. Fixture browser review at 1280 × 720 verified expanded
+copy and long field lists wrap readably. Removing event_id failed the schema
+assertion; after restoration, all thirteen privacy checks passed.
+Native Windows asset build passed in 5.650 seconds before the source-review
+wording corrections: protocol data can include IPv4 game-peer address/port;
+omitted peer means receiving HTTP caller address. Summaries use the first
+effective login-server entry if HTTPS, without searching later entries.
+Corrected-head 294 tests/build/REPL and native asset rebuild passed; fresh final review returned ship with no remaining findings. Final-head CI remains pending.
+No actual collectors/uploads, live retention or native persistence were tested
+by this privacy UAT. No packaged window, MSI/game/Wine/lab execution, production
+telemetry or player acceptance is claimed. Full evidence is in the
+[combined validation worknote](../../launcher-uat-fixes/worknotes/legacy-physx-validation.md#exhaustive-privacy-disclosure-extension).

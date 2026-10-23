@@ -405,6 +405,11 @@ themselves prove that your archive is damaged.
 These controls are below **Play**. Each save shows feedback and restores the
 confirmed choice if saving fails. Diagnostics are optional and off by default;
 expand **About diagnostics and privacy** to read what they share.
+It lists the detailed data categories, local logs, automatic game-log ZIPs,
+manual-upload behavior and stopping limits. Game diagnostics can include chat,
+names, paths and persistent identifiers; they are not anonymous. The
+[source-backed privacy inventory](../../crates/launcher/desktop/docs/privacy-inventory.md)
+records exact collectors and the different redaction rules for each stream.
 
 | Control | What it does |
 |---|---|

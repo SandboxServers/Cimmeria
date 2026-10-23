@@ -203,3 +203,5 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_launcher_development_catalog_key.md](reference_launcher_development_catalog_key.md) — default debug test key cannot fetch public content; explicit compile-time release public key and distinct archive refusal guidance.
 
 - [reference_launcher_archive_start.md](reference_launcher_archive_start.md) — verified explicit archive selection hands off to eligible Install once; response-only cancellation marker prevents replay of remembered choices.
+
+- [reference_launcher_privacy_inventory.md](reference_launcher_privacy_inventory.md) — exhaustive collector disclosure; raw game streams/ZIPs, session .txt selection and running DLL consent boundaries.

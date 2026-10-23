@@ -8,7 +8,8 @@
 This checkpoint records completed checks for the PhysX implementation. Local
 workspace checks and fresh read-only review passed before the later
 [catalog-key extension](../design-development-catalog-key.md), which needs its
-own tests and final review. Native/package CI,
+own tests and final review. Later sections record the completed bundled
+follow-ups and privacy extension; earlier counts are historical. Native/package CI,
 merge and release remain pending at this checkpoint. Packaged acceptance LP-U1..U4 remains
 open. The change adds an explicit Windows main-page install offer when native
 detection cannot find the exact legacy 2.6.3 core, including adopted installs
@@ -71,7 +72,7 @@ Wine launch, lab session, production telemetry receipt or player acceptance was
 performed. The download and MSI database inspection were read-only. No
 performance improvement or completed packaged acceptance is claimed.
 
-## Final bundled follow-ups before PR
+## Bundled follow-ups before the privacy extension
 
 The development-key diagnosis and automatic archive-to-Install handoff were
 added after the initial PhysX checkpoint. Final local checks passed:
@@ -108,3 +109,58 @@ the published ZIP or a build configured with the public release verification key
 Native/package CI, merge, retirement and release remain pending at this checkpoint.
 The explicit exclusions above still apply; LP/AS packaged acceptance rows remain
 pending. No owner decision remains for the implemented scope.
+
+## Exhaustive privacy disclosure extension
+
+Before merge, the owner extends PR #1999 with a complete offline main-page
+privacy disclosure. Eight nested sections cover separate consent controls,
+launcher summaries/local logs/events, every game collector family, file selectors
+and raw-text boundaries, identifiers/destinations/server records, storage/limits/
+retention, verified exclusions and eleven exact fixed-payload field lists. The
+[source-backed inventory](../../../../crates/launcher/desktop/docs/privacy-inventory.md)
+provides collector constructors and selectors. No collector or native telemetry
+behavior changes in this extension.
+
+Validation after the disclosure change:
+
+- All 294 frontend tests passed, including new disclosure guards comparing
+  field lists with actual Rust wire DTOs. TypeScript checking and the production
+  frontend build passed.
+- The updated `about-uat.mjs` ran in the persistent JS REPL against the actual
+  DOM. Reading/expanding the disclosure caused no IPC, save or consent mutation
+  in that harness. This does not test native saved-state persistence.
+- Fixture browser review at 1280 × 720 found the expanded overview, consent
+  explanation and exact-field lists readable, with long content wrapping.
+- A restored mutation removed `event_id` from the displayed inventory. The
+  schema coverage assertion failed as intended; after restoration all thirteen
+  privacy checks passed.
+
+The prior native result remains 1,186 passed, zero failed, 13 ignored; no native
+collector code changed for this disclosure. A native Windows asset build passed in 5.650 seconds before the final
+source-review wording corrections; rebuild that corrected asset before shipping. The six earlier regression mutations plus the restored
+privacy-field mutation establish seven targeted failing-before-restoration
+guards across the combined scope. Fresh final review and final-head CI remain
+pending; prior review does not attest this extension.
+
+The privacy REPL and browser pass did not run actual collectors/uploads, inspect
+live retention, verify native persistence, or open a packaged Tauri window.
+No actual MSI/UAC, registry mutation, game/Wine/lab, production telemetry or
+player acceptance was exercised. The earlier PhysX package/download checks
+remain limited to their explicitly documented read-only/fake-elevation scope.
+
+Source review identified two disclosure corrections before final acceptance:
+protocol observations can include the remote IPv4 game-peer address and port;
+the omitted-peer statement applies to the receiving HTTP caller address, not
+to all game-peer/log address fields. Summary endpoint selection uses the first
+effective login-server entry at startup if it is HTTPS, with no search of later
+entries and no configured fallback today. UI/source inventory corrections and
+coverage guards are being applied. The prior event_id omission mutation remains
+the completed privacy regression proof; no new mutation result is asserted by
+this source-review note. Final corrected-head tests/build, review and CI must
+be recorded after those changes settle.
+
+Final corrected-head verification: all 294 frontend tests, TypeScript/production
+build and the persistent JS REPL About/privacy pass succeeded again. Native
+Windows asset rebuild passed through the lane (6.237 seconds). Fresh read-only
+review verified both wording fixes and returned ship with no remaining findings.
+Final-head native/package CI, merge/retirement and release remain pending.

@@ -54,10 +54,11 @@ test('a lost reply is never replayed: the choice stays unconfirmed until recheck
  }finally{await app.dispose();}
 });
 
-test('the privacy note names what game-folder events carry',()=>{
- // The note sits under the label, so removing it or renaming the label fails here.
+test('the privacy note distinguishes rich diagnostics from limited launcher summaries',()=>{
  assert.match(html,/id="game-telemetry-privacy"/);
- assert.ok(html.includes('Game-folder events name files only by their place inside the game folder, never your user name, home folder or address. The launcher also keeps its own log on this computer for 7 days.'));
+ assert.match(html,/Game diagnostics are not anonymous/);
+ assert.match(html,/bounded relative file names and expected\/actual hashes/);
+ assert.match(html,/Daily rotation keeps seven files, not a strict seven-calendar-day lifetime/);
  assert.ok(html.includes('Game diagnostics <span'));
 });
 
