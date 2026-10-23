@@ -291,6 +291,54 @@ passed on Windows/macOS; the old `89d24ab36` macOS native warning was fixed by
 No real native macOS guard execution is claimed successful until corrected CI
 passes. No release was performed.
 
+## macOS engine pass and shell compatibility follow-up
+
+Run `39907274967` establishes actual native macOS engine execution: **925 passed,
+24 ignored**, including all six Unix retained-descriptor substitution guards,
+the legacy owner/minimum guard, and the updater Light Busy check. Frontend
+250 tests, REPL and UI build pass. The ignored tests are not executions. This
+supersedes earlier uncertainty about those engine branches, not the real-client
+or Wine limitations below.
+
+Mac shell job `120266139979` reports **157 passed, 3 failed**. Two failures concern
+legacy installation status after an imported-settings edit or missing historical
+adoption checkpoint. Newly unconditional `verify_provenance` called strict
+`published_plan` for every schema. Restore the original `published_record` check
+for authenticated schema-1 records only; schema-2 still requires `published_plan`,
+and effective-settings validation remains strict before Play. Installed-content
+and Uninstall display must retain the authenticated legacy identity without
+admitting rejected settings or authorizing unvalidated mutations.
+
+The extended cross-platform legacy guard verifies installed-content/Uninstall
+display under both bad settings and missing checkpoint and passes locally
+(`20261023-010758-304172`). The third Mac-only test expected the now-prohibited
+legacy-copy Recover. Its replacement in shared `legacy_binding_tests.rs`,
+registered on both hosts, requires `RecoveryRequired`, metadata-only Abandon,
+no settings binding, and preservation of all content except the exact owner and
+ready metadata intentionally removed. That new guard passes locally
+(`20261023-010925-421728`).
+
+Independent `review-7.md` returned ship with no findings. Restoring strict
+`published_plan` for schema-1 provenance made the legacy guard fail at
+`installed_content` (`20261023-011012-378384`); source was restored in a finally
+block. Final post-review-7 local integration passes:
+
+| Check | Result | Evidence |
+|---|---|---|
+| Full engine | 969 passed, 3 ignored; 64.430 seconds | `20261023-011056-248396` |
+| Desktop shell | 148 passed, 7 ignored, including the shared legacy-binding guard | `20261023-011202-315260` |
+| Desktop workspace all-target clippy | Passed | `20261023-011216-407232` |
+| Native production debug build | Passed, 11.821 seconds | `20261023-011224-155080` |
+| Fmt | Passed | `20261023-011239-182448` |
+| Native-backed adoption UAT | Passed again after all fixes | `npm run uat:adoption` |
+
+The UAT still uses the production host, isolated store and signed loopback;
+it does not exercise Tauri, the physical picker, Wine or a real game.
+Corrected Mac CI must run on the next pushed head. Its current engine/frontend
+passes and three shell failures remain the actual CI state, not an overall pass. No new
+owner decision is required. The complete Mac job is not green; corrected CI must
+run again. No release was performed.
+
 ## Browser mock and coverage limits
 
 At a 1280 × 720 viewport, a browser mock showed the main-page footer entry.
