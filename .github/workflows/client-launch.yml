@@ -34,6 +34,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
 
 permissions:
   contents: read
@@ -66,7 +68,6 @@ jobs:
   test:
     name: cargo nextest (client launch, Windows)
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
-    needs: clippy
     steps:
       - uses: actions/checkout@v7
         with:
@@ -105,7 +106,6 @@ jobs:
     name: cargo llvm-cov (client launch)
     # Self-hosted cimmeria-linux (tools/ci-runners/README.md) unless a fork/Dependabot PR or a CI_* variable says GitHub-hosted.
     runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_LINUX_RUNNER == 'hosted' || contains(format(',{0},', vars.CI_HOSTED_JOBS), ',coverage,')) && 'ubuntu-latest' || 'cimmeria-linux' }}
-    needs: clippy
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7

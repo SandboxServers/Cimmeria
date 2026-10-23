@@ -26,10 +26,10 @@ PR and whenever a check fails. Every compiling command goes through the lane (se
 `lane-build` skill).
 
 - Required by `main`'s ruleset, through its one required check `ci gate`, when the change
-  is more than Markdown, `.claude/` or doc images: `fmt`, `clippy`, `build-and-test` (it
-  runs the live-DB tier too). A PR push runs
+  is more than Markdown, `.claude/` or doc images: `fmt`, `clippy`, `build-and-test` (live DB included), and parallel
+  `contracts` (Python suites). A PR push runs
   only `fmt` and `clippy`; `build-and-test` runs in the merge queue (or on a PR labelled
-  `full-ci`), so run nextest locally through the lane before you push.
+  `full-ci`); `contracts` uses the same full/code condition. Run nextest locally through the lane before you push.
 - Blocking only when figures or `docs/drafts/spec/` chapters change: `figure-sources-in-sync`,
   `figure-style-lint`.
 - Warn-only: `markdownlint`, `spec-lint`.
