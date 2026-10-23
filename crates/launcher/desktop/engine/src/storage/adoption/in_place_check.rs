@@ -259,6 +259,9 @@ pub(super) fn restore_setup_originals(stage: &Path, game: &Path) -> Result<u32, 
 
 /// Plan-aware rollback uses retained parent handles for every setup mutation.
 pub(super) fn restore_setup_guarded(plan: &Plan) -> Result<u32, Error> {
+    if plan.schema_version == 2 {
+        return super::setup_expectations::restore(plan);
+    }
     let stage = plan.stage();
     let root = &plan.installation.destination;
     let manifest = stage.join(SETUP_MANIFEST);

@@ -415,7 +415,11 @@ pub(super) fn finish(
 
         // A light adoption copies the setup files aside first, so Abandon can still
         // put them back once setup has rewritten them (D-LF2).
-        in_place_check::save_setup_originals(plan, &game)?;
+        super::setup_expectations::record(
+            plan,
+            &serde_json::to_vec_pretty(&reference::ledger(&release, &plan.incomplete_patches))
+                .map_err(|_| StorageError::Corrupt)?,
+        )?;
         // Checkpointed before setup rewrites any release bytes. A verified adoption
         // is only recoverable from here; moving its files back would not undo the setup.
         record.phase = Phase::Promoted;

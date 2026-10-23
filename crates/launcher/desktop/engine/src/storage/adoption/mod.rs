@@ -54,6 +54,9 @@ pub(crate) mod preparation;
 mod publication;
 mod publication_recovery;
 mod setup_digest;
+mod setup_expectations;
+#[cfg(all(test, not(target_os = "macos")))]
+mod setup_expectations_tests;
 // LT-29 onward use `digest`, `relative` and `http_status`.
 #[allow(dead_code)]
 mod rejection;

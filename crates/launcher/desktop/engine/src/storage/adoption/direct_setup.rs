@@ -3,6 +3,7 @@ use super::direct_paths::Parents;
 use super::*;
 
 pub(super) fn prepare(plan: &Plan) -> Result<(), Error> {
+    super::setup_expectations::check(plan)?;
     let root = &plan.installation.destination;
     for relative in crate::client_setup::stock_case::PATCH_TARGETS {
         let target = inventory::native(root, relative);
