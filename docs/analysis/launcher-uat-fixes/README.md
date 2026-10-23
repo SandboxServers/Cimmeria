@@ -223,8 +223,8 @@ root and retains the existing confirmation review before any changes.
 Visible branding is Cimmeria; the window title is Cimmeria Launcher. Legacy disk
 paths, identifiers and release asset filenames retain their compatibility names.
 
-Implementation is in progress in `fix/launcher-main-layout`; no PR is open at
-this checkpoint. Automated and fixture validation is recorded in the
+Implementation is recorded in [PR #1996](https://github.com/SandboxServers/Cimmeria/pull/1996).
+Automated and fixture validation is recorded in the
 [worknote](worknotes/main-layout-validation.md); packaged acceptance is pending. No further
 release or laptop/lab use is authorized by this follow-up. The matching rows in
 [unified UAT](../../guides/unified-uat.md#main-page-layout-follow-up-ml) use these ids.
