@@ -15,8 +15,8 @@ authorization to cut a release; historical release instructions do not override
 that boundary.
 
 The original U1-U5 PRs (#1984 through #1988) and close-out #1989 are merged.
-Task 1 is [PR #1992](https://github.com/SandboxServers/Cimmeria/pull/1992), draft:
-setup preservation fix `1cbfc54f5` and helper-unavailable UI fix `ed6940107` are complete; fresh review 4 returned ship with no findings. Post-setup integration reruns pass; latest native macOS CI remains pending after the final push.
+Task 1 is [PR #1992](https://github.com/SandboxServers/Cimmeria/pull/1992), open/ready:
+setup preservation fix `1cbfc54f5` and helper-unavailable UI fix `ed6940107` are complete; fresh review 4 returned ship with no findings. Post-setup integration reruns pass; latest native macOS CI reports nine failures; fresh review 6 returned ship and the restored full engine passes 969 tests (3 ignored); final shell/workspace/native-build and native-backed UAT passes are recorded below; next macOS CI remains pending.
 Task 2 [PR #1991](https://github.com/SandboxServers/Cimmeria/pull/1991) merged as
 `7be8413b0`; its worktree was retired at 2026-10-23T03:38:43Z. Required checks,
 native Windows/macOS/package CI, and merge-queue full tests passed for Task 2.
@@ -246,6 +246,50 @@ The older queued workflow `39899489669` ended with all packages passing. Run
 checkpoint; its macOS failure above remains an actual gate failure until a
 corrected run passes. Earlier local integration results and Task 2's merged and
 retired status remain unchanged. No release was performed.
+
+## macOS test execution and compatibility follow-up
+
+PR #1992 is now open/ready, not draft. Actual macOS run `39903893543`, job
+`120257546227`, reports **915 passed and 9 failed**. Earlier queued/pending notes
+are historical checkpoints, not evidence that the Unix guards passed.
+
+The coordinator's four-file fix under review addresses three causes:
+
+- Six Unix retained-parent fixtures need canonical temporary roots: macOS `/var`
+  and `/private/var` name the same storage, while production plans already hold
+  canonical paths. Correct the fixture, without weakening the safety assertions.
+- The updater-busy test selected now-unsupported public Copy. Use supported Light
+  and run the contract on every host.
+- Two legacy settings/minimum tests exposed a real compatibility regression:
+  unconditional adoption-plan verification in `installed_for_launch` hid the
+  schema-1 owner and launcher minimum when only imported settings were bad.
+  Restrict the new verification there to schema 2, retaining schema-1's prior
+  read-only identity/minimum view. `effective_settings::launch_binding` remains
+  strict before Play; this does not admit refused settings. Schema-2 retained-plan
+  provenance verification remains mandatory.
+
+The cross-platform guard
+`legacy_owner_minimum_survives_refused_settings_without_admitting_them` passes
+(`20261023-003711-284512`). Mutating back to unconditional verification makes it
+fail (`20261023-003829-293908`); the coordinator restored source in a finally
+block. Restored full engine run `20261023-003909-271772` passes 969 tests with
+3 ignored in 64.676 seconds. Independent `review-6.md` returned ship, confirming
+legacy read-only owner/minimum identity checks remain intact, schema-2 provenance
+stays strict, and settings are still validated before Play. Final integration passes: shell 147 tests with 7 ignored
+(`20261023-004023-392512`), desktop workspace all-target clippy
+(`20261023-004036-97380`), and native production debug build
+(`20261023-004045-181756`, 8.468 seconds). Actual `npm run uat:adoption`
+passes again after the compatibility fix, using the production host, isolated
+store and signed loopback; it excludes Tauri, physical picker and Wine.
+Latest fmt check `20261023-004122-422112` is still running at the documentation
+checkpoint; no outcome is assumed. No Mac pass is inferred from Windows checks.
+Native macOS CI must run again after the next push. No new owner decision is needed.
+
+Earlier Windows native CI passed in 22 minutes 47 seconds. Earlier package jobs
+passed on Windows/macOS; the old `89d24ab36` macOS native warning was fixed by
+`a36a5f5f5`. Those results do not supersede this new nine-failure macOS test gate.
+No real native macOS guard execution is claimed successful until corrected CI
+passes. No release was performed.
 
 ## Browser mock and coverage limits
 

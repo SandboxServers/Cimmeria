@@ -198,6 +198,12 @@ active Play, and operation admission are separate checks. Neither the conservati
 adoption `owned` flag nor `LaunchStatus.installation_id` supplies this predicate.
 Unreadable ownership must not authorize adoption over uncertain state.
 
+Schema-1 read-only owner/current-release inspection preserves the historical
+launcher-minimum view even when imported settings are refused. It does not admit
+those settings or grant Play: `effective_settings::launch_binding` validates them
+strictly before launch. Schema-2 inspection additionally requires the authenticated
+retained adoption plan; legacy compatibility never bypasses direct-root provenance.
+
 ### Recovery, maintenance, and removal
 
 Schema-2 recovery resumes validated per-file work at the selected root. Abandon
