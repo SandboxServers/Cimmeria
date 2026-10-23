@@ -175,19 +175,16 @@ server's operator requires a newer launcher. See
 If the game is already on this PC, you don't have to download it again. Point
 the launcher at the folder. You don't need the old launcher for this.
 
-1. Open **Settings** (⚙). Under **Use an existing game folder**, pick a mode
-   (Windows and Linux show both). Each mode is its own row with a short
-   description, and the picked row is outlined.
-   - **Use it where it is (recommended).** The launcher takes over that folder
-     and moves its game files, including any you added, into a `game` folder
-     inside it. It does not download the whole game: it works out which patches
-     your folder is missing and downloads only those. Shortcuts to the old
-     `SGW.exe` stop working.
-   - **Make a verified copy.** Your folder stays exactly as it is. The launcher
-     makes a checked copy in the place you choose.
-2. Click the button. It names your pick: **Choose the folder to adopt in
-   place…** or **Choose the folder to copy…**. With one mode it reads **Use an
-   existing game folder…**.
+1. On the main page, click **Adopt an install** beside the other game actions.
+   It appears only while no valid managed or adopted install exists. A valid
+   install remains valid when Play is blocked by a runtime prerequisite, a
+   launcher update requirement, or another operation. An invalid registered
+   install must be repaired or uninstalled before another folder can be adopted.
+   You can also open **Settings → Use an existing game folder**.
+2. The first press opens the adoption panel and immediately shows
+   **Checking your game folder…**, then opens the folder picker. Adoption uses
+   your selected installation where it is on Windows, Linux and macOS; it never
+   copies or relocates it into a launcher-managed game subfolder.
 3. Pick your game folder. The game root, the `Working` folder and the
    `Binaries` folder all work. If you pick a folder that holds exactly one game
    folder one level down, the launcher uses that one. If it holds several, the
@@ -208,8 +205,8 @@ the launcher at the folder. You don't need the old launcher for this.
    reads **Use this folder**.
 5. Tick the confirmations and click the confirm button on the screen.
 
-Program Files folders can't be used where they are, so use a verified copy for
-those.
+The selected folder must be writable. If a protected location cannot be used,
+choose an accessible game installation. Adoption does not relocate it for you.
 
 #### What "can't be applied" means
 
@@ -221,26 +218,23 @@ files. The rest of the patch is applied. Nothing about a skipped change stops
 the game from starting, but that part of the patch is missing until you repair.
 
 After the adoption, the main view tells you how many patch changes were skipped.
-**Repair** rebuilds the game from the release and so applies every patch in
-full. It also moves your current `game` folder aside as a backup, so files you
-added yourself stay only in that backup afterwards. An **Update** does the same
-rebuild for an install that came from a download. For an install you adopted with
-**Use it where it is**, an Update downloads only the new patches and keeps your
-files.
+**Repair** checks the signed release and repairs its managed files. For a new
+adopted installation, repairs and updates apply individual changes at the
+selected root and preserve unrelated files; they never swap or relocate the
+whole folder. An Update of a stock folder adopted with **Use this folder**
+downloads only the new patches and keeps your other files.
 
 Nothing here has been tried by a player yet: this describes how the launcher is
 built and tested, not a verified walkthrough.
 
 Before you use a folder where it is, know what changes:
 
-- `SGW.exe` and the other game files move into a new `game` folder inside your
-  folder. Desktop shortcuts to `SGW.exe` and to the old launcher stop working.
-  Start the game from this launcher from now on. Don't run the old launcher on
-  this folder again: it may download the whole game a second time.
-- Files you added yourself inside the game folders, such as PAKs you placed by
-  hand in `SourceCache.en-us`, move into `game` with everything else, and the
-  game keeps using them. (With a verified copy your folder is untouched, so
-  nothing moves.)
+- The installation stays at its selected root. Start it through this launcher
+  afterwards and do not run the old launcher on the same folder.
+- Added files, including PAKs in `SourceCache.en-us`, remain in place and stay
+  available to the game. Explicit reviewed content changes are allowed here:
+  patching individual files, normalizing the stock cooked-data directory name,
+  and keeping replaced originals in the displayed backup directory.
 - Your game settings and the client cache live in `Documents` and are not
   affected.
 - An adopted folder plays without the game diagnostics module for now, even
@@ -290,14 +284,12 @@ changes.
    copy of the old launcher's settings. Import them before you pick the folder,
    and that folder plays with them.
 
-If adoption stops part-way (the PC turns off), the launcher offers
-**Recover adoption…** to finish it or, while only file moves have happened,
-**Abandon adoption…** to put every file back. **Abandon** puts your original
-files back. After a light adoption (a stock folder adopted in place) the
-launcher keeps copies of the files its setup rewrites, so **Abandon** is still
-offered after the folder has been promoted and setup has begun, not only
-before it. **Recover** also finishes a light adoption that an older launcher
-build began. Neither runs on its own. The full rules are in the
+If adoption stops part-way, use only the recovery actions the panel offers.
+Recovery finishes the reviewed changes at the selected root. Abandoning leaves
+content in place; inspect any setup changes or backups before trying again.
+An interrupted adoption from an older launcher that had begun moving or copying
+files must be abandoned without relocating those files. Inspect that partial
+installation manually before adopting again. The full rules are in the
 [migration contract](../../crates/launcher/desktop/docs/migration.md#adopting-an-existing-folder).
 
 After adoption, the folder is the launcher's own: **Play**, **Repair game**,

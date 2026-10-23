@@ -7,7 +7,7 @@ import type {AdoptionStatus,Request} from './adoption-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
 const native=(revision:number,operation:AdoptionStatus['native']['operation']['operation']=null,preferences=1)=>({schema_version:1 as const,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2 as const,revision:preferences,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1 as const,revision,operation}});
 const adopt=(state:'running'|'reconciliation_required'|'succeeded'|'cancelled')=>({id:'op',kind:'adopt' as const,intent_digest:Array(32).fill(0),state});
-const idle=(revision=1):AdoptionStatus=>({schema_version:1,native:native(revision),backend:'available',modes:['copy'],imported:{launcher_directory:'/old-launcher',game_directory:'/old-game',blocker:null},activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],owned:false,completed:null,last_error:null,last_rejection:null,unsafe_entries:null});
+const idle=(revision=1):AdoptionStatus=>({schema_version:1,native:native(revision),backend:'available',modes:['copy'],imported:{launcher_directory:'/old-launcher',game_directory:'/old-game',blocker:null},activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],has_valid_install:false,owned:false,completed:null,last_error:null,last_rejection:null,unsafe_entries:null});
 const review=(handle='preview-1'):NonNullable<AdoptionStatus['review']>=>({preview_handle:handle,operation_revision:3,preferences_revision:1,source:'/old-game',destination:'/library/Stargate Worlds',source_kind:'legacy',
  release:{manifest_sha256:'ab'.repeat(32),seed_sha256:'cd'.repeat(32),patches:['first-patch','second-patch']},counts:{matched:40,known_transform:1,modified:2,needs_patching:0,missing:1,extra:3},requires_replacement:true,
  differences:[{path:'Working/Binaries/SGW.exe',source_path:'Working/Binaries/SGW.exe',classification:'known_transform'},{path:'<img src=x onerror=alert(1)>.lua',source_path:'x',classification:'modified'},{path:'mod.dll',source_path:'mod.dll',classification:'extra'}],differences_omitted:4,
@@ -37,7 +37,7 @@ test('review is readable, every required confirmation is visible and unchecked, 
   const listed=Array.from(ui.get('adoption-differences').querySelectorAll('li'),li=>li.textContent);
   assert.deepEqual(listed,['Old launcher setup change: Working/Binaries/SGW.exe','Modified: <img src=x onerror=alert(1)>.lua','Not part of the release: mod.dll','…and 4 more differences not listed here.']);
   assert.equal(ui.get('adoption-differences').querySelectorAll('img').length,0,'paths are text, never markup');
-  assert.match(ui.get('adoption-consequences').textContent!,/not copied or migrated: they stay in the original folder/);
+  assert.match(ui.get('adoption-consequences').textContent!,/legacy copy review is retained for inspection only/);
   assert.match(ui.get('adoption-settings').textContent!,/Second \(https:\/\/example.invalid\/second\); First .*Client patches: off, as imported/);
   assert.match(ui.get('adoption-telemetry').textContent!,/you opted in with the old launcher\. This build has no game diagnostics module, so only launcher diagnostics are sent\. Launcher setup diagnostics stay off; adoption does not change/);
   for(const id of ['adoption-normalize','adoption-closed','adoption-telemetry']){
@@ -180,27 +180,27 @@ test('in place: the imported folder is offered, a file that does not verify is n
   assert.equal(ui.get('confirm-adoption').textContent,'Adopt this folder');
   // The owner-approved warning, shown before Confirm.
   const warning=ui.get('adoption-consequences').textContent!;
-  for(const pinned of [/SGW\.exe and every release file are moved, not copied, into a “game” folder/,/desktop shortcuts and the old launcher stop working/,/Don’t run the old launcher on this folder again; it may download the game a second time/,/PAKs placed by hand in SourceCache\.en-us, stay where they are and the game will no longer use them/,/settings and the client cache live in Documents and are not affected/])assert.match(warning,pinned);
+  for(const pinned of [/installation stays at the selected root/,/never moves or copies it/,/Reviewed patch and setup changes/,/Unrelated files remain in place/])assert.match(warning,pinned);
   await ui.tick('adoption-closed');
   assert.equal(ui.disabled('confirm-adoption'),true,'a folder that does not verify is never confirmed');
   await ui.click('confirm-adoption');assert.equal(ui.sent('confirm').length,0);
   await ui.click('dismiss-adoption');
   // The player restored the file; a new review verifies.
   await ui.click('choose-adoption-destination');
-  assert.match(ui.text(),/Nothing is moved until you confirm/);
+  assert.match(ui.text(),/No changes are applied until you confirm/);
   assert.equal((ui.get('adoption-closed') as HTMLInputElement).checked,false,'a new review starts unchecked');
   await ui.tick('adoption-closed');await ui.tick('adoption-replace');assert.equal(ui.disabled('confirm-adoption'),false);
   await ui.click('confirm-adoption');assert.equal(ui.sent('confirm').length,1);
-  assert.match(ui.text(),/Moving the verified release files into the launcher-owned game folder: 1 of 3\. Nothing is copied/);
+  assert.match(ui.text(),/Applying the reviewed changes at the selected game root: 1 of 3\. The installation stays in place/);
   assert.equal(ui.get('cancel-adoption').hidden,true,'admitted moves are never cancelled part-way');
   status=placed({...idle(7),native:native(7,adopt('succeeded')),owned:true,completed:{directory:'/old-game'}});
   await ui.click('inspect-adoption');
   assert.match(ui.text(),/Adopted \/old-game in place.*uninstalling never removes them.*This folder is now your Cimmeria install\. If the game will not start, use Repair \(it downloads the full game, 4\.1 GB\)\./);
   status=placed({...idle(8),native:native(8,adopt('reconciliation_required')),reconciliation:{kind:'copy',operation_id:'adopt-1',directory:'/old-game',can_recover:true,can_abandon:true}});
   await ui.click('inspect-adoption');
-  assert.match(ui.text(),/in-place adoption of \/old-game was interrupted\. Recover to finish moving.*Abandon to put every release file back/);
+  assert.match(ui.text(),/in-place adoption of \/old-game was interrupted\. Recover to finish the reviewed changes.*without relocating/);
   await ui.click('abandon-adoption');
-  assert.match(ui.get('adoption-maintenance-consequences').textContent!,/move every release file back where it was/);
+  assert.match(ui.get('adoption-maintenance-consequences').textContent!,/without relocating game files/);
  }finally{await ui.app.dispose();}
 });
 test('other views are refreshed only when a saved revision changes',async()=>{
@@ -375,22 +375,12 @@ test('the status decoder accepts a rejection, a progress item and an index fallb
   assert.doesNotMatch(ui.text(),/could not be confirmed/);
  }finally{await ui.app.dispose();}
 });
-test('the mode choice is one row per mode, shows the pick, and the button names it',async()=>{
- const both=mount(()=>({...idle(),modes:['in_place','copy'] as AdoptionStatus['modes']})),one=mount(()=>idle());
- try{await both.app.ready;await both.settle();await one.app.ready;await one.settle();
-  assert.equal(both.get('adoption-modes').hidden,false);assert.equal(one.get('adoption-modes').hidden,true);
-  // The labels hold line breaks in the markup, so the match spans them.
-  assert.match(both.get('adoption-modes').textContent!,/Use it where it is \(recommended\)[\s\S]*Its game files move into a “game” folder[\s\S]*Make a verified copy[\s\S]*left as it is/);
-  assert.match(both.get('adoption-mode-in-place-row').className,/\bselected\b/);assert.doesNotMatch(both.get('adoption-mode-copy-row').className,/\bselected\b/);
-  assert.equal(both.get('choose-adoption-destination').textContent,'Choose the folder to adopt in place…');
-  // linkedom does not uncheck the other radio, so both are set explicitly.
-  await both.tick('adoption-mode-in-place',false);await both.tick('adoption-mode-copy');
-  assert.doesNotMatch(both.get('adoption-mode-in-place-row').className,/\bselected\b/);assert.match(both.get('adoption-mode-copy-row').className,/\bselected\b/);
-  assert.equal(both.get('choose-adoption-destination').textContent,'Choose the folder to copy…');
-  await both.click('choose-adoption-destination');
-  assert.deepEqual(both.modes,['copy']);
-  assert.equal(one.get('choose-adoption-destination').textContent,'Use an existing game folder…');
- }finally{await both.app.dispose();await one.app.dispose();}
+test('copy is never offered and the existing choose button always admits in place',async()=>{
+ const ui=mount(()=>({...idle(),modes:['in_place','copy']}));
+ try{await ui.app.ready;await ui.settle();
+  assert.equal(ui.get('adoption-modes'),null);
+  await ui.click('choose-adoption-destination');assert.deepEqual(ui.modes,['in_place']);
+ }finally{await ui.app.dispose();}
 });
 test('with copy unticked, the first offered mode is the one chosen (light, not in place)',async()=>{
  const ui=mount(()=>({...idle(),modes:['light','copy'] as AdoptionStatus['modes']}));
@@ -473,13 +463,13 @@ test('a light review with no skipped changes hides the skipped note and list',as
   assert.equal(ui.get('adoption-light-found').hidden,false);
  }finally{await ui.app.dispose();}
 });
-test('a light review says every game file moves into game and stays in use',async()=>{
+test('a light review says game files stay at the selected root and explicit changes are explained',async()=>{
  const counts={matched:40,known_transform:2,modified:0,needs_patching:3,missing:0,extra:0};
  const ui=mount(request=>request==='choose'?{...reviewing('light-5'),backend:'in_place',modes:['light','copy'],review:{...lightReview(0),counts}}:idle());
  try{await ui.app.ready;await ui.settle();
   await ui.click('choose-adoption-destination');
-  assert.equal(ui.get('adoption-counts').textContent,'40 files move into the “game” folder with no patch changes. 3 files are updated by the patches. 2 bundled data files move to the folder the game loads them from.');
-  assert.equal(ui.get('adoption-consequences').textContent,'Your folder becomes the launcher’s installation. Its game files, including files you added such as PAKs placed by hand in SourceCache.en-us, are moved, not copied, into a “game” folder inside it, and the game keeps using them. Files that differ from what the patches expect are kept as they are. Desktop shortcuts and the old launcher stop working: start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Your settings and the client cache live in Documents and are not affected. The launcher rewrites its login server file and turns off address randomisation in SGW.exe.');
+  assert.equal(ui.get('adoption-counts').textContent,'40 files stay at the selected root with no patch changes. 3 files are updated by the patches. 2 bundled data files move to the folder the game loads them from.');
+  assert.equal(ui.get('adoption-consequences').textContent,'Your folder becomes the launcher’s installation. The installation stays at this selected root; it is never moved or copied into a new game folder. Added files stay in use. Explicit patch and setup changes are applied here, including renaming the stock cooked-data folder when required. Files that differ from what the patches expect are kept as they are. Start the game from this launcher afterwards. Don’t run the old launcher on this folder again; it may download the game a second time. Your settings and the client cache live in Documents and are not affected. The launcher rewrites its login server file and turns off address randomisation in SGW.exe.');
  }finally{await ui.app.dispose();}
 });
 test('a light review shows the index comparison and its files list through the adoption view',async()=>{
@@ -495,7 +485,7 @@ test('a completed light adoption says the added files moved with it, not that th
  const done:AdoptionStatus={...idle(9),native:native(9,adopt('succeeded')),backend:'in_place',modes:['light','copy'],owned:true,completed:{directory:'/games/SGW',light:true}};
  const ui=mount(()=>done);
  try{await ui.app.ready;await ui.settle();
-  assert.equal(ui.text(),'Adopted /games/SGW in place. Its game files, including files you added, now sit in the launcher-owned “game” folder inside it, and the game keeps using them. This folder is now your Cimmeria install. If the game will not start, use Repair (it downloads the full game, 4.1 GB).');
+  assert.equal(ui.text(),'Adopted /games/SGW in place. The installation and added files remain at the selected root, and the game keeps using them. This folder is now your Cimmeria install. If the game will not start, use Repair (it downloads the full game, 4.1 GB).');
   assert.doesNotMatch(ui.text(),/left where they were/);
  }finally{await ui.app.dispose();}
 });

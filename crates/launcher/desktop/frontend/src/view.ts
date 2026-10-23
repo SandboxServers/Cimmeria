@@ -175,6 +175,7 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
   };
   return {
     ready,
+    context: panelFeed.context,
     refresh,
     settled: () => Promise.all([queuedRefresh ?? settled, patchNotes.settled(), ...panels.map(panel => panel.settled())]),
     dispose: async () => {
