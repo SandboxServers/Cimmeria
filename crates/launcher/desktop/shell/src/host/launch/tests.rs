@@ -233,6 +233,14 @@ fn launch_uat_bridge() {
     for line in std::io::stdin().lock().lines() {
         let value: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
         let result = match value["command"].as_str().unwrap() {
+            "missing_directx" | "missing_physx" | "components_ready" => {
+                host.prerequisites_fixture = Some(match value["command"].as_str().unwrap() {
+                    "missing_directx" => vec!["directx"],
+                    "missing_physx" => vec!["physx"],
+                    _ => vec![],
+                });
+                host.launch_command(LaunchCommand::Inspect { schema_version: 1 })
+            }
             "too_old" | "development" => {
                 host = super::fixture::reopen_identity(host, value["command"] == "too_old");
                 host.launch_command(LaunchCommand::Inspect { schema_version: 1 })

@@ -276,7 +276,8 @@ impl DesktopState {
             return Err(StorageError::PersistenceUncertain.into());
         }
         let record = self.update_record()?;
-        if record.phase.busy()
+        if self.external_setup
+            || record.phase.busy()
             || self
                 .operations
                 .snapshot()

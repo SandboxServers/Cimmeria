@@ -119,8 +119,24 @@ pub async fn download_pinned(
     expected_bytes: usize,
     sha256: &str,
 ) -> Result<Vec<u8>, Error> {
+    download_with_inactivity_timeout(
+        url,
+        expected_bytes,
+        sha256,
+        std::time::Duration::from_secs(30),
+    )
+    .await
+}
+
+async fn download_with_inactivity_timeout(
+    url: &str,
+    expected_bytes: usize,
+    sha256: &str,
+    inactivity: std::time::Duration,
+) -> Result<Vec<u8>, Error> {
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .read_timeout(inactivity)
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| Error::DownloadFailed)?;

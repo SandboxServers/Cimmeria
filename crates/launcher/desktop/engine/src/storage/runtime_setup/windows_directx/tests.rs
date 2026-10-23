@@ -1,4 +1,5 @@
 use super::*;
+use std::time::Duration;
 struct System(PathBuf);
 impl Probe for System {
     fn x86_directory(&self) -> Option<PathBuf> {
@@ -124,4 +125,55 @@ fn staged_vendor_payload_is_reverified_and_held_against_write_or_deletion() {
     let saved = path.to_path_buf();
     drop(path);
     assert!(!saved.exists());
+}
+
+#[tokio::test]
+async fn a_progressing_vendor_download_outlives_the_inactivity_limit_but_a_stall_is_refused() {
+    fn serve(stall: bool) -> (String, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let thread = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = [0; 4096];
+            let _ = stream.read(&mut request);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 16\r\nConnection: close\r\n\r\n")
+                .unwrap();
+            if stall {
+                std::thread::sleep(Duration::from_millis(400));
+                return;
+            }
+            for byte in b"0123456789abcdef" {
+                std::thread::sleep(Duration::from_millis(25));
+                if stream.write_all(&[*byte]).is_err() {
+                    return;
+                }
+            }
+        });
+        (format!("http://{address}/installer"), thread)
+    }
+    let hash: String = Sha256::digest(b"0123456789abcdef")
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let inactivity = Duration::from_millis(150);
+    let (url, thread) = serve(false);
+    let start = std::time::Instant::now();
+    assert_eq!(
+        download_with_inactivity_timeout(&url, 16, &hash, inactivity)
+            .await
+            .unwrap(),
+        b"0123456789abcdef"
+    );
+    assert!(start.elapsed() > inactivity);
+    thread.join().unwrap();
+    let (url, thread) = serve(true);
+    assert_eq!(
+        download_with_inactivity_timeout(&url, 16, &hash, inactivity).await,
+        Err(Error::DownloadFailed)
+    );
+    thread.join().unwrap();
 }

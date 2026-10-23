@@ -26,6 +26,16 @@ try {
  const blocked=await send({command:'inspect',schema_version:1});assert.deepEqual(blocked.native.preferences,before.native.preferences);assert.deepEqual(blocked.native.operation,before.native.operation);
  assert.equal(blocked.installation_id,null);assert.equal(blocked.setup_complete,true);assert.equal(ui.document.getElementById('inspect-launch').hidden,true);
  await send({command:'development'});await ui.app.refresh();await settle(ui);assert.equal(ui.document.getElementById('launch').disabled,false);
+ // Actual native snapshots and DesktopState persistence, with deterministic system-probe evidence.
+ const readyBefore=await send({command:'inspect',schema_version:1});
+ for(const command of ['missing_directx','missing_physx']){
+  await send({command});await ui.app.refresh();await settle(ui);
+  assert.equal(ui.document.getElementById('launch').disabled,true);assert.match(ui.document.getElementById('launch-status').textContent,/Complete (DirectX|PhysX) setup/);
+  ui.click();assert.equal(calls.filter(x=>x==='play').length,0,'missing dependencies never dispatch Play');
+  const missing=await send({command:'inspect',schema_version:1});
+  assert.deepEqual(missing.native.preferences,readyBefore.native.preferences);assert.deepEqual(missing.native.operation,readyBefore.native.operation);
+ }
+ await send({command:'components_ready'});await ui.app.refresh();await settle(ui);assert.equal(ui.document.getElementById('launch').disabled,false);
  const reads=calls.filter(x=>x==='inspect').length;ui.inspect();assert.match(ui.document.getElementById('launch-settings-status').textContent,/Checking Play status/);await settle(ui);
  assert.equal(calls.filter(x=>x==='inspect').length,reads+1);assert.match(ui.document.getElementById('launch-settings-status').textContent,/Ready to Play/);
  ui.click();ui.click();assert.match(ui.document.getElementById('launch-status').textContent,/Starting/);await settle(ui);
