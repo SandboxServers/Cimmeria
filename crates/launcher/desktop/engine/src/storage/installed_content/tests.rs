@@ -9,7 +9,7 @@ fn legacy_owner_minimum_survives_refused_settings_without_admitting_them() {
     let legacy = Legacy::new(false, true);
     let state = std::sync::Arc::new(std::sync::Mutex::new(legacy.open()));
     let provenance = adopt_native(&legacy, &state);
-    let state = state.lock().unwrap();
+    let mut state = state.lock().unwrap();
     let owner = state.installed_for_launch().unwrap().unwrap().0.intent;
     assert_eq!(owner.schema_version, 1);
     let minimum = state.installed_launcher_minimum().unwrap().unwrap();
@@ -27,8 +27,26 @@ fn legacy_owner_minimum_survives_refused_settings_without_admitting_them() {
         owner
     );
     assert_eq!(state.installed_launcher_minimum().unwrap(), Some(minimum));
+    assert_eq!(state.installed_content().unwrap().unwrap().intent, owner);
+    assert_eq!(
+        state.uninstall_target().unwrap().unwrap().directory,
+        owner.destination
+    );
     assert!(state.effective_launch_binding().is_err());
     std::fs::write(record, original).unwrap();
+    assert!(state.effective_launch_binding().unwrap().is_some());
+    let checkpoint = legacy
+        .state_root()
+        .join(format!("adoption-plan-{}.json", provenance.work_id));
+    let saved = std::fs::read(&checkpoint).unwrap();
+    std::fs::remove_file(&checkpoint).unwrap();
+    assert_eq!(state.installed_content().unwrap().unwrap().intent, owner);
+    assert_eq!(
+        state.uninstall_target().unwrap().unwrap().directory,
+        owner.destination
+    );
+    assert!(state.effective_launch_binding().is_err());
+    std::fs::write(checkpoint, saved).unwrap();
     assert!(state.effective_launch_binding().unwrap().is_some());
 }
 

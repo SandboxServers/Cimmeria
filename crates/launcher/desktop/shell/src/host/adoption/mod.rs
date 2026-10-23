@@ -36,6 +36,8 @@ mod fixture;
 #[cfg(all(test, not(target_os = "macos")))]
 mod in_place_tests;
 #[cfg(test)]
+mod legacy_binding_tests;
+#[cfg(test)]
 mod lifecycle_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod play_tests;

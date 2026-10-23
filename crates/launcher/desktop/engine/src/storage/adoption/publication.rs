@@ -497,7 +497,13 @@ pub(super) fn verify_provenance(
     intent: &InstallIntent,
     provenance: &Provenance,
 ) -> Result<(), Error> {
-    published_plan(state, intent, provenance).map(|_| ())
+    if intent.schema_version == 1 {
+        // Legacy managed layouts keep owner inspection separate from settings.
+        // Direct-root ownership additionally authenticates the layout Plan.
+        published_record(state, intent, provenance).map(|_| ())
+    } else {
+        published_plan(state, intent, provenance).map(|_| ())
+    }
 }
 /// Read-only view for effective settings. Beyond provenance, the Published plan
 /// must equal the checkpoint written before the operation began, and the journal
