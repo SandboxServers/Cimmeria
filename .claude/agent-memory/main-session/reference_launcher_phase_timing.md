@@ -19,3 +19,8 @@ three mission completions and unfinished Carter progression, not full SGC UAT.
 Historical rows lack granular adoption stages; future measurements require a
 launcher containing the new instrumentation. Keep player/machine/session query
 values and raw telemetry outside the public repository.
+
+Merged in #1998 at `27493b05ae28dd8421419f1765b2982be3b3c04f`; worktree retired.
+Windows and macOS launcher `2026.10.2306` released from that merge in run
+40014376577 (all six jobs green). This does not establish new live receipt or
+a performance improvement; source validation remains in the worknote.

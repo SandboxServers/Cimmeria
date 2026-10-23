@@ -152,17 +152,26 @@ need compatibility setup just because you reopened the launcher.
 
 ### Install PhysX
 
-Stargate Worlds needs AGEIA PhysX System Software 2.6.3 to start its physics
-engine. On Windows, **Settings → PhysX System Software** says whether it is
-installed. When it is missing:
+The game needs the legacy PhysX 2.6.3 core to start its physics engine. A newer
+PhysX installation can lack that core. On Windows, the main page offers
+**Install legacy PhysX…** whenever the required core is missing, even if you
+adopted your game without its original installer.
 
-1. Click **Install PhysX**. The launcher runs the PhysX installer that came
-   with the game, after checking it is the expected file.
-2. Accept the Windows permission prompt and finish the installer.
+1. Click **Install legacy PhysX…**. The launcher shows progress while it
+   downloads and verifies NVIDIA's legacy 9.13.0604 installer.
+2. Accept the Windows permission prompt, read the vendor license and finish
+   the installer. Nothing installs automatically when you open the launcher.
 3. If it says "Restart Windows before you play", restart.
 
-While PhysX is missing, the Play area shows "PhysX System Software is missing,
-so the game may not start. Install it under Settings." Play is not blocked.
+The launcher checks for the core again after installation and whenever you
+reopen it. The offer disappears when the core is found. A cancelled or failed
+attempt shows a result and lets you retry. Missing PhysX warns that the game
+may not start; the warning itself does not block Play.
+
+**Settings → PhysX System Software → Install PhysX** still runs the verified
+installer retained from the game archive, when present. If that older installer
+is unavailable or another version blocks it, use the main-page legacy offer.
+macOS continues to prepare PhysX inside Wine during compatibility setup.
 
 ### Play
 
@@ -356,6 +365,17 @@ The file must be the archive.org release
 4,135,724,034 bytes (about 4.1 GB). The launcher checks the size and the
 fingerprint before it uses the file. A file that doesn't match is not used.
 
+When no game installation is present and setup can begin, choosing a verified
+archive starts installation immediately, without a second **Install** press.
+The same applies when you accept the Downloads offer, from the main page or
+Settings. You see verification progress first, then installation progress.
+
+Cancelling the picker or verification does not start installation, even if a
+previous archive is remembered. Reopening the launcher also does not start it.
+An existing installation, unfinished operation or recovery state keeps its
+normal controls; choosing an archive does not replace that installation or
+bypass those checks.
+
 - The launcher copies game files from the archive when it needs them. It never
   moves, changes or deletes your file.
 - If that exact file is in the top level of your Downloads folder, the launcher
@@ -366,11 +386,30 @@ fingerprint before it uses the file. A file that doesn't match is not used.
 - The project never hosts the game archive. It comes from archive.org or from
   your own copy.
 
+#### If this build cannot verify released game content
+
+Use the [published launcher ZIP](#download-the-launcher). A development build
+can carry a test verification key that cannot verify the published game
+release. In that case the launcher stops before checking your archive and
+leaves it unchanged; downloading the RAR again does not fix the build's key.
+
+If you build the launcher yourself, compile it with the approved release
+public verification key using the [developer instructions](../../crates/launcher/desktop/README.md#build-against-released-game-content).
+You need the public key, not the private signing key. The launcher still
+verifies both the released manifest and your archive. A connection failure
+and a rejected release signature have separate messages and do not by
+themselves prove that your archive is damaged.
+
 ### Main-page preferences and changes
 
 These controls are below **Play**. Each save shows feedback and restores the
 confirmed choice if saving fails. Diagnostics are optional and off by default;
 expand **About diagnostics and privacy** to read what they share.
+It lists the detailed data categories, local logs, automatic game-log ZIPs,
+manual-upload behavior and stopping limits. Game diagnostics can include chat,
+names, paths and persistent identifiers; they are not anonymous. The
+[source-backed privacy inventory](../../crates/launcher/desktop/docs/privacy-inventory.md)
+records exact collectors and the different redaction rules for each stream.
 
 | Control | What it does |
 |---|---|
@@ -741,6 +780,7 @@ URL's container) for legacy / mixed hosting setups.
 A rough operator workflow using PowerShell + `gh`:
 
 ```powershell
+
 # 1. Build a patch zip from the changed files.
 Compress-Archive `
   -Path 'Binaries\res\server\mercury.xml' `
@@ -754,20 +794,27 @@ $size = (Get-Item 002-mercury-config.zip).Length
 "size: $size"
 
 # 3. Append a patch entry to manifest.json with the absolute URL for
+
 #    where the asset will live in the immutable release. Pick the tag
+
 #    you're about to create.
 $tag = "content-$(Get-Date -Format yyyy-MM-dd)-001"
 $blob = "https://github.com/SandboxServers/Cimmeria/releases/download/$tag/002-mercury-config.zip"
+
 # (edit manifest.json by hand or via jq)
 
 # 4. Sign the manifest with the offline private key, producing
+
 #    manifest.json.sig (Ed25519 over the exact manifest bytes, hex), and
+
 #    check it against the public key in the LAUNCHER_MANIFEST_PUBKEY_HEX
+
 #    secret.
 cargo run -p cimmeria-patchset -- sign manifest.json --key <path to manifest-signing.key>
 cargo run -p cimmeria-patchset -- verify manifest.json --pubkey <public key hex>
 
 # 5. Create the immutable release first (asset must exist before the
+
 #    manifest references it).
 gh release create "$tag" --notes "Content drop $tag" --prerelease `
   002-mercury-config.zip

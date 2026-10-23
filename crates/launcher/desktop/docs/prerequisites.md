@@ -1,5 +1,8 @@
 # Prerequisite evidence and runtime probe
 
+> **Type:** Reference · **Audience:** Launcher contributors · **Updated:** 2026-10-23
+> **Companions:** [Desktop README](../README.md), [player guide](../../../../docs/client/launcher-guide.md#install-physx), [legacy offer design](../../../../docs/analysis/launcher-uat-fixes/design-legacy-physx.md)
+
 Prerequisite retention is documented in [Wine validation](wine-validation.md#inert-prerequisite-retention).
 Retained installers are inert data; their presence does not mean installation or
 readiness. The `runtime-probe` crate belongs to the standalone desktop workspace.
@@ -528,10 +531,12 @@ that carries other cores only, reads as missing, and the panel says that a PhysX
 version is installed without the 2.6.3 core. The installer's entry under
 `...\CurrentVersion\Uninstall` is keyed by a product code that differs between
 PhysX releases and says nothing about which cores are on disk, so it is not
-used. The Settings panel shows the state, and when PhysX is missing a warning
-appears beside Play. The warning does not disable Play.
+used. The Settings panel shows the state. When the core is missing, the main page
+shows a warning and **Install legacy PhysX…**, independently of whether the game
+retained an installer. The warning does not disable Play. Reinspection on reopen
+uses native detection; frontend success is not persisted as readiness.
 
-**Install.** "Install PhysX" uses the installer that install extraction keeps at
+**Retained installer.** Settings "Install PhysX" uses the installer that install extraction keeps at
 `game/.cimmeria-prerequisites/PhysX/PhysX_7.11.13_SystemSoftware.exe`, the same
 file the Wine path uses. The press takes the mutation admission
 (`ensure_no_active_operation`), so it is refused while the updater, an install,
@@ -565,14 +570,29 @@ The host keeps the last result, so Inspect shows it again if the reply to the
 press was lost. Every refusal and failure is logged through `tracing` in the
 engine (the busy refusal in the shell goes to stderr).
 
-**No retained installer.** Adopted copies, installs made before the launcher
-kept `Data/Prerequisites`, and seeds that are not the RAR have no retained
-installer, so the button is disabled. The repo pins no download URL for this
-EXE, so the launcher does not fetch one. The panel instead tells the player to
-run Repair if the launcher installed the game, or else to install "NVIDIA PhysX
-Legacy System Software" themselves.
+**Legacy download.** Main-page **Install legacy PhysX…** sends the path-free
+`physx_command` request `install_legacy` (schema version 1). Native code chooses
+NVIDIA's fixed HTTPS 9.13.0604 legacy MSI, not a webview-supplied URL, path or
+hash. This offer remains available when adoption did not retain the game's
+installer, or the original 7.11.13 installer is blocked by another product.
+The [design](../../../../docs/analysis/launcher-uat-fixes/design-legacy-physx.md)
+records the official source, independent signature inspection and trust rationale.
 
-**Tests.** Engine `windows_physx::tests` inject the registry value over a
+Before writing or running the MSI, the downloader requires HTTP 200, refuses
+redirects, bounds size and connection/overall time, and verifies exactly
+20,154,368 bytes with SHA-256
+`2b78df4a9004f5c4220d62c363709e5ac5e2e58df9f2284df0254cbfa4970d91`.
+The scratch-file readback, deny-write/delete guard, interactive elevated system
+msiexec, restart suppression and post-install 2.6.3 core check are shared with
+the retained installer. The same mutation admission and one-installer guard
+apply. The first press shows download/install feedback and suppresses duplicate
+presses. Success hides the offer only after native detection finds the core;
+cancellation, verification/download failure and installer failure show a result
+and allow retry. Opening the launcher never downloads or installs this bundle.
+No MSI is redistributed in the release, and macOS keeps its existing Wine flow.
+
+**Existing validation.** The following LX-12 results predate the legacy download
+offer; they do not establish validation of that new path. Engine `windows_physx::tests` inject the registry value over a
 temporary folder (core present, registered folder without `v2.6.3\PhysXCore.dll`,
 value missing), refuse a same-size package with the wrong hash and a wrong-size
 package without starting the injected installer or writing an MSI, check
@@ -584,6 +604,11 @@ refuse with `busy`. `physx-view.test.ts` and `npm run uat:physx` cover the
 first-press busy state, each result line and the Play warning. Each guard was
 checked by reverting it. None of these run msiexec, show a UAC prompt or read
 the real registry; that needs a native Windows UAT on a machine without PhysX.
+
+Legacy-offer unit/host/DOM tests, frontend build, JS REPL logic UAT, fixture
+browser review, three restored mutation proofs and strict native workspace
+checks passed; see the [validation worknote](../../../../docs/analysis/launcher-uat-fixes/worknotes/legacy-physx-validation.md). Native/package CI is pending at this checkpoint. No real MSI, UAC prompt, registry change, game,
+Wine or lab execution has been performed for this follow-up.
 
 Known limit: the admission is checked when Install is pressed, but the installer
 does not hold an operation, so Play or an install can start while msiexec is

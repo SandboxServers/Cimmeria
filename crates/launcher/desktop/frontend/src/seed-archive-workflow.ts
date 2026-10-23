@@ -2,7 +2,7 @@ import {Context,Data,Effect,Layer,PubSub,Ref,Stream} from 'effect';
 import {decodeSeedArchiveStatus,type SeedArchiveCommand,type SeedArchiveStatus} from './contract';
 // Its own bridge: the archive is picked and checked natively, never by a path the webview names.
 export class SeedArchiveFailure extends Data.TaggedError('SeedArchiveFailure')<{readonly code:string}> {}
-const codes=new Set(['not_a_file','size_mismatch','hash_mismatch','changed','cancelled','busy','io','release_unavailable']);
+const codes=new Set(['not_a_file','size_mismatch','hash_mismatch','changed','cancelled','busy','io','release_unavailable','signing_key_unavailable','release_verification_failed']);
 const failure=(e:unknown)=>new SeedArchiveFailure({code:typeof e==='string'&&codes.has(e)?e:'transport'});
 /** `'choose'` opens the native file window; the other requests go to `seed_archive_command`. */
 export type SeedArchiveRequest=SeedArchiveCommand|'choose';
@@ -37,7 +37,7 @@ export const makeSeedArchiveWorkflow=(pollMillis:number=500)=>Effect.gen(functio
   yield* publish({...before,phase:'choosing',error:null});
   return yield* bridge.call('choose').pipe(
    Effect.tap(s=>patch({status:s,phase:s.verifying?'checking':'choosing'})),
-   Effect.flatMap(s=>follow(s,s.last_error===null)),
+   Effect.flatMap(s=>s.picker_cancelled?Effect.succeed(s):follow(s,s.last_error===null)),
    Effect.tap(s=>patch({status:s,error:s.last_error})),
    Effect.tapError(e=>patch({error:e.code})),
    Effect.ensuring(patch({phase:null,cancelling:false})));

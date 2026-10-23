@@ -243,6 +243,13 @@ fn requests_and_results_keep_their_wire_names() {
     let request: PhysxCommand =
         serde_json::from_str(r#"{"command":"install","schema_version":1}"#).unwrap();
     assert_eq!(request, PhysxCommand::Install { schema_version: 1 });
+    let legacy: PhysxCommand =
+        serde_json::from_str(r#"{"command":"install_legacy","schema_version":1}"#).unwrap();
+    assert_eq!(legacy, PhysxCommand::InstallLegacy { schema_version: 1 });
+    assert!(serde_json::from_str::<PhysxCommand>(
+        r#"{"command":"install_legacy","schema_version":1,"url":"https://example.test/evil.msi"}"#
+    )
+    .is_err());
     assert!(serde_json::from_str::<PhysxCommand>(
         r#"{"command":"install","schema_version":1,"msi":"C:\\evil.msi"}"#
     )

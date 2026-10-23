@@ -165,7 +165,9 @@ impl From<CatalogError> for JobError {
     fn from(error: CatalogError) -> Self {
         match error {
             CatalogError::Network => Self::ManifestUnavailable,
-            CatalogError::SigningKeyUnavailable => Self::SigningKeyUnavailable,
+            CatalogError::SigningKeyUnavailable | CatalogError::DevelopmentSigningKey => {
+                Self::SigningKeyUnavailable
+            }
             _ => Self::InvalidManifest,
         }
     }

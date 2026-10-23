@@ -1,5 +1,7 @@
 # Client-Side Telemetry — Architecture
 
+> **Player privacy scope:** The [current collector inventory](../../crates/launcher/desktop/docs/privacy-inventory.md) distinguishes fixed summaries, raw game text/ZIPs, consent and running-DLL limits. Use it for disclosure; historical implementation notes below are not blanket anonymity or redaction guarantees.
+
 > **Diátaxis type**: explanation
 > **Audience**: engineers extending or reviewing the `cimmeria-client-telemetry` DLL and its launcher-side injector (issue #417)
 > **Last updated**: 2026-10-11 (the desktop launcher is now the only launcher, LX-18)

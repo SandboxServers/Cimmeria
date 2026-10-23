@@ -57,10 +57,35 @@ test('every archive error code has its own text',()=>{
     ['busy',/Another install, repair, update or archive check is running/],
     ['io',/could not read that file/],
     ['release_unavailable',/could not reach the signed release/],
+    ['signing_key_unavailable',/default test key cannot verify released content/],
+    ['release_verification_failed',/signed game release failed verification/],
     ['transport',/could not confirm the archive check/],
     ['schema',/could not confirm the archive check/],
   ];
   for(const [error,text] of expected) assert.match(seedArchiveText({status:null,phase:null,cancelling:false,error}),text,error);
+});
+
+test('a development key failure after the picker is actionable in Settings and on Play',{timeout:5000},async()=>{
+ const ui=dom();const calls:string[]=[];
+ const invoke=async(command:string)=>{
+  calls.push(command);
+  if(command==='choose_seed_archive')throw 'signing_key_unavailable';
+  return command==='install_command'?installIdle():idle();
+ };
+ const settings=mountSeedArchive(ui.document,invoke,panelContext(),1);
+ const install=mountInstall(ui.document,invoke,()=>id);
+ try{
+  await settings.ready;await install.ready;
+  ui.click('install-seed-archive');
+  await install.settled();await new Promise<void>(resolve=>setImmediate(resolve));
+  for(const name of ['seed-archive-status','install-seed-archive-status']){
+   assert.match(ui.text(name),/published launcher ZIP.*release public verification key/);
+   assert.match(ui.text(name),/archive was not checked or changed/);
+   assert.doesNotMatch(ui.text(name),/could not reach|Download it again|Using .*verified/);
+  }
+  assert.equal(calls.filter(c=>c==='choose_seed_archive').length,1);
+  assert.equal(ui.get('seed-archive-forget').hidden,true,'no verified archive was persisted');
+ }finally{await install.dispose();await settings.dispose();}
 });
 
 test('the first press shows busy before native answers',{timeout:5000},async()=>{

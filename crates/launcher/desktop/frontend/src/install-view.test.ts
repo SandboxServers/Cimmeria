@@ -10,6 +10,18 @@ const initial=():InstallStatus=>({schema_version:1,install_supported:true,can_re
   requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},operation:{schema_version:1,revision:0,operation:null},preferences:{schema_version:2,revision:1,
     install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}}});
 const flush=()=>new Promise<void>(resolve=>setImmediate(resolve));
+
+test('an Install development-key refusal explains the build rather than blaming the game',async()=>{
+ const ui=dom();
+ const app=mountInstall(ui.document,async(_command,args)=>{
+  if((args!.request as InstallRequest).command==='install')throw 'signing_key_unavailable';
+  return initial();
+ },()=>id);
+ try{
+  await app.ready;ui.click('install');await app.settled();await flush();
+  assert.match(ui.get('install-status').textContent!,/published launcher ZIP.*release public verification key.*default test key/);
+ }finally{await app.dispose();}
+});
 function dom(){const {document,window}=parseHTML(html);return {document:document as unknown as Document,
   get:(id:string)=>document.getElementById(id)! as unknown as HTMLButtonElement,
   click:(id:string)=>document.getElementById(id)!.dispatchEvent(new window.Event('click'))};}

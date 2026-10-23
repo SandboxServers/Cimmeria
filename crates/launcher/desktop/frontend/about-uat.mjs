@@ -11,15 +11,34 @@ for(const [launcher,about,badge] of [
  [{version:'0.1.0',tag:null},'Cimmeria Launcher 0.1.0 · development build','Development build'],
 ]){
  const {document}=parseHTML(html);
- const app=mountLauncher(document,async command=>command==='launcher_command'?snapshot(launcher):[]);
+ const calls=[];
+ const app=mountLauncher(document,async command=>{calls.push(command);return command==='launcher_command'?snapshot(launcher):[];});
  try{
   await app.ready;await new Promise(resolve=>setImmediate(resolve));
   document.getElementById('settings').dispatchEvent(new document.defaultView.Event('click'));
+  await app.settled();await new Promise(resolve=>setImmediate(resolve));
   assert.equal(document.getElementById('gear').hidden,false);
   assert.equal(document.getElementById('about').textContent,about);
   assert.equal(document.getElementById('build-badge').textContent,badge);
+  // Read the actual offline disclosure while native state stays unchanged.
+  const before=JSON.stringify(snapshot(launcher)),beforeCalls=calls.length;
+  const privacy=document.getElementById('diagnostics-privacy');
+  assert.equal(privacy.hasAttribute('open'),false);
+  privacy.setAttribute('open','');privacy.dispatchEvent(new document.defaultView.Event('toggle'));
+  for(const section of privacy.querySelectorAll('details')){
+   assert.equal(section.hasAttribute('open'),false);
+   section.setAttribute('open','');section.dispatchEvent(new document.defaultView.Event('toggle'));
+   assert.ok(section.textContent.length>150);
+   section.removeAttribute('open');section.dispatchEvent(new document.defaultView.Event('toggle'));
+  }
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls.length,beforeCalls,'reading privacy must not call native IPC');
+  assert.equal(JSON.stringify(snapshot(launcher)),before,'reading privacy must not save consent');
+  for(const id of ['telemetry','game-telemetry'])assert.equal(document.getElementById(id).checked??false,false);
+  assert.equal(privacy.querySelectorAll('[data-privacy-schema]').length,11);
+  privacy.removeAttribute('open');
   console.log(`About: ${about} | header: ${badge}`);
  }finally{await app.dispose();}
 }
-console.log('About UAT passed: Settings shows the compiled version with the release tag, or "development build" when untagged.');
-console.log('Excluded: the native window title (set by the shell) and the packaged window.');
+console.log('About/privacy UAT passed: release/development identities; full static offline disclosure; expand/read/collapse all eight sections; eleven schema lists; no native IPC, saved consent or enabled diagnostic controls from reading.');
+console.log('Excluded: actual native consent persistence, real collectors/uploads, server retention, OS disclosure keyboard behavior, native window title and packaged window.');

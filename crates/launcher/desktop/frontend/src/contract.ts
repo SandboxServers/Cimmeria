@@ -113,7 +113,7 @@ export type ClientChangesStatus = typeof ClientChangesStatus.Type;
 export type ClientChangesError = ScaffoldError;
 
 // `physx_command` (engine `storage/runtime_setup/windows_physx/`, LX-12). Native Windows only.
-export type PhysxCommand = {command: "inspect"; schema_version: 1} | {command: "install"; schema_version: 1};
+export type PhysxCommand = {command: "inspect" | "install" | "install_legacy"; schema_version: 1};
 export const PhysxResult = Schema.Union([
   Schema.Struct({state: Schema.Literal("installed"), restart_required: Schema.Boolean}),
   Schema.Struct({state: Schema.Literal("cancelled_at_uac")}),
@@ -134,12 +134,12 @@ export const PhysxStatus = Schema.Struct({
   last_result: Schema.NullOr(PhysxResult),
 });
 export type PhysxStatus = typeof PhysxStatus.Type;
-export type PhysxError = ScaffoldError | "installer_unavailable" | "package_mismatch";
+export type PhysxError = ScaffoldError | "installer_unavailable" | "package_mismatch" | "download_failed";
 export const decodePhysxStatus = (value: unknown) =>
   Schema.decodeUnknownEffect(PhysxStatus, {onExcessProperty: "error"})(value);
 /** A `physx_command` rejection, or `"transport"` for anything else it could be. */
 export function physxFailure(error: unknown): PhysxError | "transport" {
-  return error === "installer_unavailable" || error === "package_mismatch" ? error : scaffoldFailure(error);
+  return error === "installer_unavailable" || error === "package_mismatch" || error === "download_failed" ? error : scaffoldFailure(error);
 }
 
 export class BridgeFailure extends Data.TaggedError("BridgeFailure")<{
@@ -178,6 +178,7 @@ export const SeedArchiveErrorCode = Schema.Union([
   Schema.Literal("not_a_file"), Schema.Literal("size_mismatch"), Schema.Literal("hash_mismatch"),
   Schema.Literal("changed"), Schema.Literal("cancelled"), Schema.Literal("busy"), Schema.Literal("io"),
   Schema.Literal("release_unavailable"),
+  Schema.Literal("signing_key_unavailable"), Schema.Literal("release_verification_failed"),
 ]);
 export type SeedArchiveError = typeof SeedArchiveErrorCode.Type;
 export const SeedArchiveStatus = Schema.Struct({
@@ -192,6 +193,7 @@ export const SeedArchiveStatus = Schema.Struct({
     current: Schema.Int, total: Schema.Int,
   })),
   last_error: Schema.NullOr(SeedArchiveErrorCode),
+  picker_cancelled: Schema.optionalKey(Schema.Literal(true)),
 });
 export type SeedArchiveStatus = typeof SeedArchiveStatus.Type;
 export const decodeSeedArchiveStatus = (value: unknown) =>

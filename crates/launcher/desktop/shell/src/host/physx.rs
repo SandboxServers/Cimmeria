@@ -34,7 +34,9 @@ impl NativeHost {
                     installing: false,
                     last_result: None,
                 }),
-                PhysxCommand::Install { .. } => Err(PhysxError::Unavailable),
+                PhysxCommand::Install { .. } | PhysxCommand::InstallLegacy { .. } => {
+                    Err(PhysxError::Unavailable)
+                }
             }
         }
     }
@@ -51,6 +53,7 @@ impl NativeHost {
         let action = match &request {
             PhysxCommand::Inspect { .. } => "inspect",
             PhysxCommand::Install { .. } => "install",
+            PhysxCommand::InstallLegacy { .. } => "install_legacy",
         };
         let result = self.physx_run(request, probe, elevate);
         if let Err(error) = &result {
@@ -71,11 +74,19 @@ impl NativeHost {
         if request.schema_version() != 1 {
             return Err(StorageError::UnsupportedSchema.into());
         }
-        if let PhysxCommand::Install { .. } = request {
+        if !matches!(request, PhysxCommand::Inspect { .. }) {
             if self.physx_installing.swap(true, Ordering::SeqCst) {
                 // The shell has no log subscriber; stderr reaches a support run.
                 eprintln!("PhysX install refused: one is already running");
-                setup_events::physx_failed("install", "busy", "other");
+                setup_events::physx_failed(
+                    if matches!(request, PhysxCommand::InstallLegacy { .. }) {
+                        "install_legacy"
+                    } else {
+                        "install"
+                    },
+                    "busy",
+                    "other",
+                );
                 return Err(StorageError::Busy.into());
             }
             struct Running<'a>(&'a std::sync::atomic::AtomicBool);
@@ -85,9 +96,23 @@ impl NativeHost {
                 }
             }
             let _running = Running(&self.physx_installing);
-            let source = self.physx_source().inspect_err(log_source_failure)?;
             // The state lock is released: msiexec can wait on the player for minutes.
-            let result = windows_physx::install(&source, elevate, probe)?;
+            let result = match request {
+                PhysxCommand::InstallLegacy { .. } => {
+                    let scratch = self.physx_legacy_source().inspect_err(|error| {
+                        setup_events::physx_failed(
+                            "install_legacy",
+                            &setup_events::code(error),
+                            "other",
+                        );
+                    })?;
+                    windows_physx::legacy::install(&scratch, elevate, probe)?
+                }
+                _ => {
+                    let source = self.physx_source().inspect_err(log_source_failure)?;
+                    windows_physx::install(&source, elevate, probe)?
+                }
+            };
             *self.physx_last.lock().map_err(|_| StorageError::Io)? = Some(result);
         }
         self.physx_status(probe)
@@ -98,6 +123,12 @@ impl NativeHost {
         let store = self.store()?;
         let mut state = store.lock().map_err(|_| StorageError::Io)?;
         state.physx_install_source()
+    }
+
+    fn physx_legacy_source(&self) -> Result<std::path::PathBuf, PhysxError> {
+        let store = self.store()?;
+        let state = store.lock().map_err(|_| StorageError::Io)?;
+        Ok(state.physx_legacy_scratch()?)
     }
 
     #[cfg_attr(not(any(windows, test)), allow(dead_code))]
@@ -153,6 +184,31 @@ mod tests {
     }
     const INSPECT: PhysxCommand = PhysxCommand::Inspect { schema_version: 1 };
     const INSTALL: PhysxCommand = PhysxCommand::Install { schema_version: 1 };
+
+    #[test]
+    fn legacy_source_needs_no_retained_package_but_obeys_admission() {
+        let root = tempfile::tempdir().unwrap();
+        let host = NativeHost::new(root.path().join("state"));
+        assert!(host.physx_legacy_source().unwrap().ends_with("physx-setup"));
+        assert!(matches!(
+            host.physx_source(),
+            Err(PhysxError::InstallerUnavailable)
+        ));
+        begin_operation(&host);
+        let (result, records) = capture(|| {
+            host.physx_command_with(
+                PhysxCommand::InstallLegacy { schema_version: 1 },
+                &Missing,
+                &Counting::default(),
+            )
+        });
+        assert_eq!(result, Err(PhysxError::Storage(StorageError::Busy)));
+        assert!(records
+            .iter()
+            .any(|r| r.field("event") == Some("physx_failed")
+                && r.field("action") == Some("install_legacy")));
+        assert!(!host.physx_installing.load(Ordering::SeqCst));
+    }
 
     /// Starts an install operation in the store, so the next install's read refuses.
     fn begin_operation(host: &NativeHost) {

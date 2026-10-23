@@ -61,6 +61,9 @@ pub struct SeedArchiveStatus {
     /// Present while a check runs: a zero placeholder until its first report.
     pub verifying: Option<JobProgress>,
     pub last_error: Option<SeedArchiveError>,
+    /// Present only on a cancelled picker response; never persisted as a choice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picker_cancelled: Option<bool>,
 }
 
 /// Flat codes the webview maps to text. A foreign schema version is refused as `io`.
@@ -75,6 +78,25 @@ pub enum SeedArchiveError {
     Busy,
     Io,
     ReleaseUnavailable,
+    /// This build lacks a usable release key (including the default debug key).
+    SigningKeyUnavailable,
+    /// The catalog was received but failed its signature, body or schema checks.
+    ReleaseVerificationFailed,
+}
+
+impl From<cimmeria_launcher_engine::catalog::CatalogError> for SeedArchiveError {
+    fn from(error: cimmeria_launcher_engine::catalog::CatalogError) -> Self {
+        use cimmeria_launcher_engine::catalog::CatalogError;
+        match error {
+            CatalogError::Network => Self::ReleaseUnavailable,
+            CatalogError::SigningKeyUnavailable | CatalogError::DevelopmentSigningKey => {
+                Self::SigningKeyUnavailable
+            }
+            CatalogError::TooLarge | CatalogError::Signature | CatalogError::InvalidManifest => {
+                Self::ReleaseVerificationFailed
+            }
+        }
+    }
 }
 
 impl From<LocalSeedError> for SeedArchiveError {
@@ -179,6 +201,14 @@ impl SeedArchive {
 }
 
 impl NativeHost {
+    /// Distinguish cancellation from successfully reselecting the same archive.
+    pub fn seed_archive_picker_cancelled(&self) -> Result<SeedArchiveStatus, SeedArchiveError> {
+        let mut status =
+            self.seed_archive_command(SeedArchiveCommand::Inspect { schema_version: 1 }, None)?;
+        status.picker_cancelled = Some(true);
+        Ok(status)
+    }
+
     /// Inspect, cancel, forget or accept the offer for the remembered archive.
     /// `release` is the signed release when the shell could fetch it; `Inspect`
     /// looks for a Downloads offer only when it is present. `AcceptOffer` needs it.
@@ -369,6 +399,7 @@ impl NativeHost {
         let seed = archive.seed.as_ref();
         Ok(SeedArchiveStatus {
             schema_version: 1,
+            picker_cancelled: None,
             native,
             chosen: state
                 .seed_archive()

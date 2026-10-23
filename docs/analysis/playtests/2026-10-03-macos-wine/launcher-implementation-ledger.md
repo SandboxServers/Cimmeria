@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Launcher contributors and reviewers
-> **Last updated:** 2026-10-04
+> **Last updated:** 2026-10-23
 > **Companions:** [Requirements and delivery plan](launcher-implementation-plan.md), [campaign handoff](README.md), [runtime evidence](runtime-provisioning.md), [desktop contracts](../../../../crates/launcher/desktop/README.md)
 
 These dated entries preserve what each packet established at its exact revision.
@@ -793,6 +793,7 @@ files, skips operations whose source differs, and records them in `incomplete_pa
 A light-adopted install updates without the seed. None of this has had live UAT. See
 the [migration contract](../../../../crates/launcher/desktop/docs/migration.md#adopting-an-existing-folder)
 and the [light-adoption packets](../../launcher-telemetry/work-packets-light-adoption.md).
+
 ### 2026-10-23: direct-root adoption follow-up
 
 The owner approved adoption at the selected root on Windows and macOS, including
@@ -893,8 +894,97 @@ progression and player-reported obstacles. The [timing validation worknote](../.
 records 1,180 standalone tests passed, zero failed and 11 ignored, the targeted
 server-ingest guard, three restored mutation proofs, two failing-before-fix
 outcome regressions, clean build/clippy/format checks and frontend build.
-Prior head passed all desktop CI jobs and the root gate; fresh outcome review
-returned ship, and corrected-head CI remains pending before the merge queue;
-this is not new live telemetry receipt, performance or release evidence.
-Gameplay changes and live/lab reproduction are outside this telemetry change
-and were not performed; a new release has not been requested.
+Fresh review, desktop CI and the full merge queue passed. [PR #1998](https://github.com/SandboxServers/Cimmeria/pull/1998)
+merged as `27493b05ae28dd8421419f1765b2982be3b3c04f`; its worktree is retired.
+Windows and macOS `2026.10.2306` were published from that merge in
+[release run 40014376577](https://github.com/SandboxServers/Cimmeria/actions/runs/40014376577),
+all six jobs green. ZIP checksums, release identity and updater feed were
+verified. This fulfills the standing release instruction for the timing change.
+No new live telemetry receipt, gameplay reproduction, performance benchmark,
+server deployment or lab execution is claimed.
+
+### 2026-10-23: explicit Windows legacy PhysX offer
+
+The owner requests an install offer if the game's legacy PhysX core is missing.
+The [design](../../launcher-uat-fixes/design-legacy-physx.md) adds a main-page
+**Install legacy PhysX…** action driven by native detection of the exact 2.6.3
+core. The path-free `install_legacy` request downloads NVIDIA's pinned 9.13.0604
+MSI, authenticates exact length/hash, and reuses interactive elevated msiexec
+and the post-install core check. It works without the retained original
+installer; Settings still offers that original when present. Nothing installs
+on startup. macOS continues its existing Wine prerequisite flow.
+
+Local native/frontend tests, builds, REPL logic UAT, fixture browser review,
+three restored mutation proofs and fresh read-only review passed; see the
+[validation worknote](../../launcher-uat-fixes/worknotes/legacy-physx-validation.md). Native/package CI is pending at this checkpoint. No actual MSI, UAC prompt, registry change,
+game/Wine launch, lab or player acceptance has been exercised. The
+[LP-U1..U4 checklist](../../launcher-uat-fixes/README.md#legacy-physx-offer-follow-up-2026-10-23)
+keeps those acceptance claims distinct from automated verification.
+
+### 2026-10-23: development build public-catalog key diagnosis
+
+Before opening the PhysX PR, the owner reports a RAR refusal and confirms a
+current-main development build. The [design](../../launcher-uat-fixes/design-development-catalog-key.md)
+adds public-catalog preflight for the default debug test key, before network
+access, without changing local fixture verification. Missing key, development
+key, network failure and manifest verification remain distinct native errors.
+Archive IPC now preserves key/network/verification distinctions; Install uses
+its existing signing-key error. Shared UI guidance directs players to the
+published ZIP and developers to compile with the approved public verification
+key. The archive is unchecked and unchanged on preflight refusal.
+
+For the earlier PhysX scope, the native Windows build, production NVIDIA
+download smoke and authenticated fake-elevation test passed without executing
+an installer. The 1,183 native tests and 273 frontend tests predate this catalog
+extension. New native/frontend tests, final review and CI remain pending.
+No actual MSI/UAC, registry mutation, game/Wine, lab or player acceptance is
+claimed. Developer setup lives in the [desktop build recipe](../../../../crates/launcher/desktop/README.md#build-against-released-game-content);
+it uses a public verification key, never the private signing key.
+
+### 2026-10-23: verified archive selection starts eligible installation
+
+The owner requests no second Install press after choosing an existing archive.
+The [design](../../launcher-uat-fixes/design-archive-start.md) hands explicit
+selection and Downloads acceptance from the main page or Settings to the same
+Install method after verification succeeds. It refreshes native status/revision
+and admission before one Install. An optional response-only picker cancellation
+marker distinguishes cancellation with an old archive remembered; it is never
+persisted. Inspect/reopen, rejection, lost replies, disposal and existing/owned
+or recovery-blocked installations do not trigger a new installation. The source
+RAR and Plan contract remain unchanged.
+
+After the prior catalog-key change, 1,185 native tests passed with 13 ignored,
+275 frontend tests passed, and strict clippy/build passed. Those totals predate
+this handoff extension. Its tests, regression proof, logic/visual UAT and final
+review/CI remain pending. Packaged acceptance [AS-U1..U3](../../launcher-uat-fixes/README.md#archive-install-handoff-follow-up-2026-10-23)
+remains open; no game, lab or real installer execution is claimed.
+
+### 2026-10-23: exhaustive main-page diagnostics disclosure
+
+The owner expands PR #1999 before merge to explain every launcher/client
+telemetry channel and important exclusions. The [privacy inventory](../../../../crates/launcher/desktop/docs/privacy-inventory.md)
+is a source audit of fixed summaries, allowed launcher events, adoption and
+install/patch records, live game log tails, raw exit ZIPs, DLL hook families and
+manual debug-log upload, plus identity/correlation, storage, consent and endpoints.
+It distinguishes pattern scrubbing from raw text and flags the live session
+.txt selector's lack of a special key-text exclusion. Already injected DLL
+uploads are independent of the launcher's live queue-consent generation;
+exit the game to stop the attached DLL. No collector behavior changes here.
+
+Earlier scope passed 1,186 native/281 frontend tests, 13 ignored and six restored
+mutation guards, with fresh review ship. Those results precede this disclosure
+extension. The offline UI now has eight nested sections and eleven exact-schema
+field lists. All 294 frontend tests, TypeScript and production build passed.
+Persistent JS REPL exercised actual DOM expansion with no IPC/save/consent
+mutation in that harness. Fixture browser review at 1280 × 720 verified expanded
+copy and long field lists wrap readably. Removing event_id failed the schema
+assertion; after restoration, all thirteen privacy checks passed.
+Native Windows asset build passed in 5.650 seconds before the source-review
+wording corrections: protocol data can include IPv4 game-peer address/port;
+omitted peer means receiving HTTP caller address. Summaries use the first
+effective login-server entry if HTTPS, without searching later entries.
+Corrected-head 294 tests/build/REPL and native asset rebuild passed; fresh final review returned ship with no remaining findings. Final-head CI remains pending.
+No actual collectors/uploads, live retention or native persistence were tested
+by this privacy UAT. No packaged window, MSI/game/Wine/lab execution, production
+telemetry or player acceptance is claimed. Full evidence is in the
+[combined validation worknote](../../launcher-uat-fixes/worknotes/legacy-physx-validation.md#exhaustive-privacy-disclosure-extension).

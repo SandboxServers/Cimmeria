@@ -2,6 +2,8 @@
 
 > **Type:** Reference
 > **Audience:** Launcher contributors
+> **Last updated:** 2026-10-23
+> **Companions:** [Catalog trust and development builds](../README.md#build-against-released-game-content), [player archive steps](../../../../docs/client/launcher-guide.md#use-a-game-archive-you-already-downloaded)
 
 See the [desktop overview](../README.md) for installation and the
 [maintenance reference](maintenance.md) for installed-content identity. The
@@ -16,6 +18,45 @@ Play tab, both behind the label `Use a downloaded game archive…`. The archive
 is `Stargate Worlds (0.8348.1.4046) (2009-06-30) (beta).rar`, 4,135,724,034
 bytes. Adoption uses the chosen archive too when it needs the seed, and its
 review says `Uses your game archive`.
+
+## Explicit selection starts eligible installation
+
+On the main page and in Settings, successful explicit archive selection or
+acceptance of a Downloads offer hands off once to the existing Install action.
+Verification must have settled with `chosen`, no active `verifying`, no
+`last_error`, and no picker cancellation. Immediate busy feedback and archive
+verification progress precede the existing installation progress.
+
+The Install action re-reads native status/revision and performs normal admission.
+An existing installation, active owner or blocked/recovery state cannot start a
+new install through this handoff. Choosing a future seed source for an existing
+installation retains its usual purpose; it does not reinstall the game.
+
+No handoff occurs on Inspect, restore, reopen, verification failure, cancellation,
+a lost mutation reply or disposal. Cancellation with a previous chosen archive
+returns optional `picker_cancelled: true` only on that native picker response;
+ordinary status omits it, and it is never persisted. The workflow retains the
+response marker rather than polling it away and mistaking the old choice for a
+new selection. Selection callbacks reuse the existing install method; they do
+not synthesize button presses, infer trust from names or replay a mutation.
+The source RAR remains untouched. Rationale and pending checks are in the
+[archive-start design](../../../../docs/analysis/launcher-uat-fixes/design-archive-start.md).
+
+## Public catalog preflight
+
+Archive selection first needs the signed public catalog. A debug build using
+its default development test key refuses that catalog before network access;
+`CatalogError::DevelopmentSigningKey` logs `development_key`. Missing usable
+keys log `signing_key_unavailable`. Both reach archive IPC as
+`signing_key_unavailable`, with guidance to use the published launcher ZIP or
+compile with the approved release public verification key. The archive has
+not been checked or changed at this point.
+
+Network failures remain `release_unavailable`; manifest/signature/schema
+rejections use `release_verification_failed`. No key failure bypasses release
+or archive verification. Local signed fixtures still call `verify_release`
+with the development key. An explicitly compiled release public key supports
+published content in debug builds; see the [build recipe](../README.md#build-against-released-game-content).
 
 ## Record and lazy check
 

@@ -197,3 +197,11 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [reference_launcher_main_layout.md](reference_launcher_main_layout.md) — main-page preferences/client changes, SGW.exe adoption selection and setup-only native readiness.
 - [reference_launcher_phase_timing.md](reference_launcher_phase_timing.md) — nested native adoption/Play timing, bounded correlation and anonymized partial SGC session evidence.
+
+- [reference_launcher_legacy_physx.md](reference_launcher_legacy_physx.md) — explicit Windows legacy MSI fallback, exact core detection and unchanged Mac prerequisites.
+
+- [reference_launcher_development_catalog_key.md](reference_launcher_development_catalog_key.md) — default debug test key cannot fetch public content; explicit compile-time release public key and distinct archive refusal guidance.
+
+- [reference_launcher_archive_start.md](reference_launcher_archive_start.md) — verified explicit archive selection hands off to eligible Install once; response-only cancellation marker prevents replay of remembered choices.
+
+- [reference_launcher_privacy_inventory.md](reference_launcher_privacy_inventory.md) — exhaustive collector disclosure; raw game streams/ZIPs, session .txt selection and running DLL consent boundaries.
