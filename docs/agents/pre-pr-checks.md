@@ -1,6 +1,6 @@
 # Pre-PR Checks
 
-> **Last updated**: 2026-10-11
+> **Last updated**: 2026-10-23
 > **Audience**: Contributors and agents about to open a PR, or looking at a red CI job
 > **Type**: Reference
 > **Companions**: [CLAUDE.md](../../CLAUDE.md) (the core that points here), [doc-update-map.md](doc-update-map.md), [TESTING.md](../../TESTING.md), [build-system.md](../architecture/build-system.md), [troubleshooting.md](../troubleshooting.md#tests--ci)
@@ -147,6 +147,23 @@ tools/lint-figure-style.ps1         # Windows PowerShell
 ```
 
 `cargo test -p <crate>` still works for quick crate-level iteration. Use nextest for anything you'd be uploading to CI.
+
+## Desktop launcher CI policy checks
+
+When changing launcher workflows, profiles or release scripts, run
+`python tools/launcher-release/test_workflow_policy.py` as well as
+python tools/launcher-release/test_release_identity.py. The workflow-policy
+suite needs PyYAML 6.0.3; CI installs it in its test virtual environment.
+The semantic guards check preserved validation coverage, standalone main-only
+cache writes, PR cancellation, `release-tools` profile use and signing isolation.
+The Linux script harness also runs shellcheck and stubbed release dry runs.
+Neither those checks nor package dry runs publish a release.
+
+Native launcher validation still requires Windows and macOS results for the
+current commit. Superseded PR runs cancel; main runs complete and save caches.
+CI-only dev/test debug overrides do not change local or shipped binaries.
+See [build-system.md](../architecture/build-system.md#standalone-desktop-launcher-validation)
+and the [release contract](../../crates/launcher/desktop/docs/release.md#build-time-and-signing-isolation).
 
 ## Markdown lint
 

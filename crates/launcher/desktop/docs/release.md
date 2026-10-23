@@ -1,6 +1,6 @@
 # Releasing the desktop launcher
 
-> How-to and reference · desktop launcher maintainers · 2026-10-11 (egui launcher retired, LX-18)
+> How-to · desktop launcher maintainers · updated 2026-10-23 · companions: [build design](../../../../docs/analysis/launcher-uat-fixes/design-ci-speed.md), [updater](updater.md)
 
 A maintainer comments `/release-launcher` on a merged PR. That dispatches
 [`launcher-release.yml`](../../../../.github/workflows/launcher-release.yml),
@@ -13,12 +13,31 @@ stable links:
 - Windows: <https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip>
 - macOS: <https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip>
 
+## Build time and signing isolation
+
+The release-only `release_feed` and overlay CLIs build with the standalone
+workspace's `release-tools` profile: release semantics, `opt-level = 0`,
+`codegen-units = 256`, and `lto = false`. The overlay CLI uses the desktop
+manifest and target directory, avoiding a second root-workspace dependency
+build. The app and shipped helpers retain their normal release profile.
+
+The signing job compiles the feed tool before it loads signing secrets. It
+still uses a clean runner with no restored cache, node or third-party action;
+the private key and password stay in the `launcher-release` environment and
+exist only in the signing step. Do not move build caches into this job to save
+time. Publication order and release authorization are unchanged.
+
+[Workflow policy tests](../../../../tools/launcher-release/test_workflow_policy.py)
+protect those boundaries. The [CI build design](../../../../docs/analysis/launcher-uat-fixes/design-ci-speed.md)
+records measured slow steps and deferred options. The first changed run is a
+measurement opportunity, not evidence of a speedup before it finishes.
+
 ## What a release publishes
 
 | Release | Assets | Written when |
 |---|---|---|
 | Dated, `launcher-YYYYMMDD-<sha7>` | `StargateWorlds-Launcher-windows-x64.zip`, `.zip.sha256`, `.zip.sig` (required updater signature), the client-patches overlay patch when one is committed, and `StargateWorlds-Launcher-macos-arm64.zip` with its `.zip.sha256` | Every release; the macOS zip when the macOS build succeeded |
-| Rolling, `launcher-current` (D-LX7) | `StargateWorlds-Launcher-windows-x64.zip`, `.zip.sha256`, `.zip.sig`, `latest.json`, `StargateWorlds-Launcher-macos-arm64.zip`, `.zip.sha256` | Only with the updater key, and only for the day's first release |
+| Rolling, `launcher-current` (D-LX7) | `StargateWorlds-Launcher-windows-x64.zip`, `.zip.sha256`, `.zip.sig`, `latest.json`, `StargateWorlds-Launcher-macos-arm64.zip`, `.zip.sha256` | Every signed release whose version does not regress the rolling feed |
 
 The `.sha256` is in `sha256sum` format (`<hex>  <file name>`). The `.zip.sig` is
 the Minisign signature document. `latest.json` is the updater feed every
@@ -140,7 +159,7 @@ or a manifest key, so the release build is tested before a release needs it.
 | `launcher` | Builds the UI, then the 64-bit launcher with `CIMMERIA_LAUNCH_HELPER_SHA256`, `CIMMERIA_CLIENT_PATCHES_SHA256` and `CIMMERIA_CLIENT_TELEMETRY_SHA256` set to the SHA-256 of the staged files |
 | `verify` | The launcher is 64-bit and carries each staged file's digest; the three files beside it are 32-bit and are the staged ones; the telemetry DLL is the player build; a release build carries its tag, its version and, when set, the updater public key |
 | `package` | Zips the launcher with the `windows/` and `graphics/` directories beside it into `artifacts/StargateWorlds-Launcher-windows-x64.zip`, and writes the `.sha256`. The executable is at the zip's root: the self-update swap refuses a zip without exactly one root `.exe` |
-| `feed-tool` | Builds the `release_feed` example (release profile) that `sign` and `verify-feed` run. The `sign` job runs it in a step with no secret: compiling it runs its dependencies' build scripts and proc macros, which must never see the key |
+| `feed-tool` | Builds the `release_feed` example (`release-tools` profile) that `sign` and `verify-feed` run. The `sign` job runs it in a step with no secret: compiling it runs its dependencies' build scripts and proc macros, which must never see the key |
 | `sign <version> <url> <notes>` | Signs the zip with the updater key and writes `artifacts/StargateWorlds-Launcher-windows-x64.zip.sig` and `artifacts/latest.json`. Runs the built tool directly, no cargo |
 | `verify-feed <version>` | Runs the launcher engine's own feed, signature and zip checks on those files against `LAUNCHER_UPDATER_PUBKEY` |
 | `feed-dry-run <version>` | `feed-tool`, then `sign` and `verify-feed` with a throwaway key made in the job; the PR dry run's step |

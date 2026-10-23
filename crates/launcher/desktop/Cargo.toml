@@ -2,3 +2,11 @@
 members = ["engine", "shell", "runtime-probe"]
 default-members = ["engine"]
 resolver = "2"
+
+# Short-lived release-side CLIs do not need LLVM optimization. Keep release
+# semantics for them; player and helper binaries still use the release profile.
+[profile.release-tools]
+inherits = "release"
+opt-level = 0
+codegen-units = 256
+lto = false

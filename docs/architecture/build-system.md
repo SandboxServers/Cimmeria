@@ -2,7 +2,7 @@
 title: "Build system: toolchain, profiles, concurrency and disk"
 type: explanation
 audience: engineers and agent operators
-last_updated: 2026-10-19
+last_updated: 2026-10-23
 ---
 
 # Build system: toolchain, profiles, concurrency and disk
@@ -270,8 +270,20 @@ desktop README also documents a development bundle command; that command does
 not open the app. These checks do not establish
 packaged-webview behavior, game compatibility or self-contained first open.
 
-Desktop validation permits one active run per branch/ref and retains the latest
-pending revision. New pushes do not cancel an active native build: frequent
-implementation milestones previously prevented Windows checks from finishing.
-A result applies only to its recorded commit; queued head revisions remain
-unvalidated until their own checks finish.
+Desktop validation cancels superseded PR runs. Runs on main finish so their
+Rust caches can be saved; a result applies only to its recorded commit. Native
+Windows and macOS jobs restore the standalone desktop graph through the pinned
+rust-cache action, with cache writes restricted to main, following §12. They set
+`CARGO_PROFILE_DEV_DEBUG=0` and `CARGO_PROFILE_TEST_DEBUG=0` in CI only; local
+builds keep their existing debug information. Native tests, clippy, executable
+builds and JS persistence UAT remain required.
+
+Release-only feed and overlay CLIs use the standalone workspace's
+`release-tools` profile: it inherits release semantics, disables LLVM
+optimization and LTO, and uses 256 codegen units. The overlay CLI shares the
+desktop manifest and target directory instead of rebuilding the root dependency
+graph. Player executables and helpers keep the normal release profile. The
+signing job compiles its feed CLI before secrets are present, on a clean runner
+without a restored cache, node or third-party action; this isolation takes
+precedence over cache reuse. See the [release contract](../../crates/launcher/desktop/docs/release.md#build-time-and-signing-isolation)
+and [measured baseline and design](../analysis/launcher-uat-fixes/design-ci-speed.md).
