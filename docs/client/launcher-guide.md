@@ -142,9 +142,11 @@ again; that also deletes what was downloaded so far. If the launcher or the PC
 stopped part-way instead, the launcher offers **Resume installation**, which
 continues from where it stopped. Nothing is ever retried without you asking.
 
-Once native inspection confirms the game is ready, **Recheck Play status** and
-**Use a downloaded game archive…** disappear from the main page. Settings keeps
-archive selection and inspection available. A launcher update can still require
+Once native inspection confirms setup is complete, **Recheck Play status** and
+**Use a downloaded game archive…** disappear from the main page and stay hidden
+while the game runs or a launcher update is offered. Settings keeps archive
+selection and a separate **Check Play status** button; pressing it immediately
+shows feedback, followed by the inspection result beside it. A launcher update can still require
 **Update and restart** before Play. A previously completed adoption does not
 need compatibility setup just because you reopened the launcher.
 
@@ -395,6 +397,7 @@ soon as you press it.
 | Section | What it does |
 |---|---|
 | **Local install directory** | **Choose folder…** picks where a new install goes. **Show folder** opens the saved folder. Windows paths display without the internal `\\?\` prefix; the saved location stays the same. |
+| **Check Play status** | Inspects native Play availability and shows the result beside the button, with feedback on the first press. Available here even when the main-page recheck is hidden after setup. |
 | **Repair game** | Downloads the signed release again and replaces modified or missing game files in the installed folder. Confirm in the panel that opens. **Cancel** works until replacement starts. Your settings are kept. The [repair contract](../../crates/launcher/desktop/docs/repair.md) has the recovery buttons. |
 | **Uninstall…** | Removes the game files and modifications from the installed folder after you confirm with **Uninstall game**. Launcher settings stay. |
 | **Login servers** | The servers the game's login screen lists, one `Name = http://host:port` per line. **Save servers** saves them; a line the launcher cannot read is shown under the box and nothing is saved. Empty means the default Cimmeria server. |

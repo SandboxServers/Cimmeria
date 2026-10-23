@@ -18,21 +18,24 @@ precedes changes; no Plan or IPC fields were added.
 
 ## Automated checks
 
-- Frontend: 266 tests pass, TypeScript/build pass. Removed the two retired
+- Frontend: 269 tests pass, TypeScript/build pass. Removed the two retired
   Patch Notes UI tests; added readiness/reopen, native-picker binding and branding
   coverage, and extended placement/first-press/composition tests.
 - Windows engine: 976 pass, 3 ignored in the library tier. Windows shell:
-  149 pass, 7 ignored. Standalone workspace all-target clippy and native executable
+  153 pass, 8 ignored. Standalone workspace all-target clippy and native executable
   build pass. Focused executable-selection tests pass after mutation restoration.
 - Launcher workflow policy: 5 Python tests pass. No release was cut for this PR.
-- Seven deliberate frontend mutations each produced an assertion failure:
+- Nine deliberate frontend mutations each produced an assertion failure:
   restored tab, ready recheck visibility, false adoption message, Settings-only
-  preferences, old product name, folder picker and hidden first-press detail.
+  preferences, old product name, folder picker, hidden first-press detail,
+  idle archive offers after setup and the Settings inspection binding.
   Two failing view runs retained handles and were stopped after their assertions;
   the restored full suite then passed cleanly.
-- Two native mutations fail the intended executable-selection tests: returning
+- Four native mutations fail their intended guards: returning
   Binaries instead of the install root, and accepting another executable name.
-  Both were restored; focused tests and clippy pass afterward.
+  The additional native mutations couple setup to the update gate and remove the
+  path-free picker-refusal event. All were restored; focused/full shell tests and
+  clippy pass afterward.
 
 The broad standalone nextest command cannot enumerate its pre-existing
 `harness=false` helper-supervisor integration binary. It fails test listing, not
@@ -47,8 +50,12 @@ game-diagnostics writes used the production native host's ignored UAT bridge.
 All three showed first-press feedback and saved correctly. Store reopen/native
 process restart and UI remount retained choices. A final compact-card pass
 confirmed collapsed idle status, expanded saving feedback and native opt-out.
-Readiness/installed/client-change responses were controlled fixtures: these do
-not attest an installed game or an actual adoption.
+The first main-page REPL used controlled readiness/installed/client-change
+responses. After review, native Play UAT also drove production launch status:
+setup_complete remains true while admission installation_id is withheld for a
+required update or running launch; unknown/reconciliation makes setup incomplete.
+Settings inspection shows immediate feedback and sends one read. These use inert
+fixture content and observations, not an installed game or an actual adoption.
 
 The browser preview used the production built HTML/CSS/app with isolated native
 fixture stores. At 620x700, Play, all three preference cards and the change
@@ -61,6 +68,16 @@ layout/focus, real signed updater replacement/restart, game launch/login, Wine,
 SigNoz reception, or macOS-only link/application-identity tests. Native Mac and
 packaging CI remain the next gates; none of these fixture checks attest player
 acceptance. No laptop/lab lease, client start or real release occurred.
+
+## Independent review fixes
+
+Review 1 found that installation_id is an admission credential and disappears
+while Play is gated. Native LaunchStatus now exposes setup_complete separately,
+using valid content, verified launch resources, runtime eligibility and known
+operation state. Play admission still uses installation_id and its existing
+gates. Settings now has its own read-only Check Play status action/result.
+Executable-picker failures also emit the existing path-free refused step before
+returning; cancellation remains a separate event. Tests cover all three findings.
 
 ## Documentation duty
 

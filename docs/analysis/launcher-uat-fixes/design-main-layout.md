@@ -24,15 +24,17 @@ consent defaults, busy/error feedback and adopted-install binding rules. Their
 status feedback remains adjacent to each control. Detailed privacy explanations
 remain available under an expandable explanation. All presses show feedback.
 
-Game readiness comes from the existing native launch inspection: a non-null
-installation_id, available launch resources, no required state reopen and no
-open setup operation. A known running launch retains completed setup; an unknown
-launch or reconciliation keeps inspection visible. No file-path heuristic or new Plan field is introduced. The
-known launcher-update gate still blocks Play independently. Share this observed
-readiness with the installer view to hide the archive and Recheck Play status
-buttons after setup. Errors and recovery remain visible; transient game launches
-must not resurrect installation prompts. Settings retains archive and inspection
-access. Preserve the adoption button's existing ownership predicate.
+Game readiness comes from a separate native LaunchStatus.setup_complete flag,
+not its temporary admission installation_id. The native flag requires authenticated
+valid content, verified launch resources, prepared Wine runtime when needed, no
+reopen, and idle or known non-reconciling launch state. No file-path heuristic or
+new Plan field is introduced. The known launcher-update gate still blocks Play
+independently. Share setup completeness with the installer to hide the archive
+button, discovered archive prompts and Recheck Play status after setup. Unknown
+state, errors and recovery retain inspection. Settings has a separate read-only
+Check Play status action with first-press feedback and an adjacent result; it
+uses the same inspection and never grants admission. Preserve the adoption
+button's existing ownership/validity predicate.
 
 The misleading compatibility message comes from install-view.ts interpreting any
 successful saved operation as an unfinished install. Completed adoption is not

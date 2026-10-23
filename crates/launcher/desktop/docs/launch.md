@@ -35,6 +35,22 @@ cache locks, repeats resource checks, then reuses existing `client_setup::prepar
 (stock filename restoration, login server Lua and ASLR). The native task runs
 that preparation off the UI thread. The engine makes no downloads during Play.
 
+## Setup visibility observation
+
+Native `LaunchStatus` includes `setup_complete: bool` separately from its
+optional `installation_id`. The latter is an admission identity and may be
+withheld while a game launch or launcher update owns the operation boundary;
+its absence alone does not mean installation setup is incomplete.
+
+`setup_complete` requires verified installed content, available launch resources,
+a prepared Wine runtime when the platform requires one, no required state reopen
+and either idle state or a known launch that does not need reconciliation.
+The frontend uses this observation only to hide completed-setup prompts.
+It changes neither Play admission nor launcher-update gating and adds no Plan
+field. Settings has a separate **Check Play status** action, with immediate
+feedback and an adjacent inspection result, even when the main-page recheck is
+hidden. Actual launch admission still performs the checks above.
+
 ## Helper and lifecycle
 
 Build the helper **natively on Windows** through the lane:

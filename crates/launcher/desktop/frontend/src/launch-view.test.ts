@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {parseHTML} from 'linkedom';
 import {launchText,mountLaunch} from './launch-view';
 const html=readFileSync('ui/index.html','utf8');
-const initial=()=>({schema_version:1,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,installation_id:'owner',observation:null as unknown,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1,revision:0,operation:null as unknown}}});
+const initial=()=>({schema_version:1,setup_complete:true,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,installation_id:'owner',observation:null as unknown,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1,revision:0,operation:null as unknown}}});
 test('ready content hides setup recheck across launch, update gate and errors',async()=>{
  let status=initial(),fail=false;const observed:boolean[]=[];
  const {document}=parseHTML(html);
@@ -14,14 +14,32 @@ test('ready content hides setup recheck across launch, update gate and errors',a
  try{
   await app.ready;await settle();assert.equal(check(),true);assert.equal(observed.at(-1),true);
   assert.equal((document.getElementById('launch') as HTMLButtonElement).disabled,true,'updater still owns Play');
-  status={...status,native:{...status.native,operation:{...status.native.operation,revision:1,operation:{id:'saved',kind:'launch',state:'running',intent_digest:Array(32).fill(0)}}}};
+  status={...status,installation_id:null as any,native:{...status.native,operation:{...status.native.operation,revision:1,operation:{id:'saved',kind:'launch',state:'running',intent_digest:Array(32).fill(0)}}}};
   await settle();assert.equal(check(),true,'a running game does not resurrect setup');
   status={...status,observation:{phase:'unknown'}};await settle();assert.equal(check(),false,'unknown game state retains recheck');
   fail=true;await settle();assert.equal(check(),false);assert.equal(observed.at(-1),false);
-  fail=false;status={...initial(),installation_id:null as any};await settle();assert.equal(check(),false);
-  status={...initial(),resources_available:false};await settle();assert.equal(check(),false);
+  fail=false;status={...initial(),installation_id:null as any,setup_complete:false};await settle();assert.equal(check(),false);
+  status={...initial(),setup_complete:false,resources_available:false};await settle();assert.equal(check(),false);
   status={...initial(),native:{...initial().native,requires_reopen:true}};await settle();assert.equal(check(),false);
  }finally{await app.dispose();}
+});
+test('Settings inspection gives first-press feedback and sends one read while ready setup stays hidden',async()=>{
+ const {document,window}=parseHTML(html);let reads=0;let finish!:()=>void;
+ const gate=new Promise<void>(resolve=>{finish=resolve;});
+ const app=mountLaunch(document,async()=>{reads++;if(reads>1)await gate;return initial();});
+ try{
+  await app.ready;await new Promise(resolve=>setImmediate(resolve));
+  document.getElementById('gear')!.hidden=false;
+  const button=document.getElementById('inspect-launch-settings') as HTMLButtonElement;
+  assert.equal(button.closest<HTMLElement>('#gear')?.hidden,false);
+  assert.equal(document.getElementById('inspect-launch')!.hidden,true);
+  button.dispatchEvent(new window.Event('click'));button.dispatchEvent(new window.Event('click'));
+  assert.equal(document.getElementById('launch-settings-status')!.textContent,'Checking Play status…');
+  assert.equal(button.disabled,true);assert.equal(button.getAttribute('aria-busy'),'true');
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(reads,2);
+  finish();await app.settled();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(document.getElementById('launch-settings-status')!.textContent,'Ready to Play.');
+ }finally{finish?.();await app.dispose();}
 });
 test('Play first click gives feedback, lost reply is observed without replay, unknown stays blocked',async()=>{
  let status=initial();let plays=0;let finish!:()=>void;const wait=new Promise<void>(resolve=>{finish=resolve;});
@@ -40,7 +58,7 @@ test('Play first click gives feedback, lost reply is observed without replay, un
  }finally{await app.dispose();}
 });
 test('unavailable verified resources never advertise Play',async()=>{
- const {document}=parseHTML(html);const status={...initial(),resources_available:false,installation_id:null};const app=mountLaunch(document,async()=>status);
+ const {document}=parseHTML(html);const status={...initial(),setup_complete:false,resources_available:false,installation_id:null};const app=mountLaunch(document,async()=>status);
  try{await app.ready;await new Promise(resolve=>setImmediate(resolve));assert.equal((document.getElementById('launch') as HTMLButtonElement).disabled,true);assert.match(document.getElementById('launch-status')!.textContent!,/missing verified/);}finally{await app.dispose();}
 });
 

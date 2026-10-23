@@ -103,7 +103,7 @@ test('native adoption dialog targets SGW.exe before catalog access',async()=>{
  const picker=await readFile(new URL('../../shell/src/adoption_picker.rs',import.meta.url),'utf8');
  assert.match(picker,/blocking_pick_file\(\)/);assert.match(picker,/SGW\.exe \(game executable\)/);
  assert.match(picker,/set_file_name\("SGW\.exe"\)/);
- assert.match(picker,/resolve_executable\(&selected\)/);
+ assert.match(picker,/resolve_selection\(&selected\)/);
  const shell=await readFile(new URL('../../shell/src/main.rs',import.meta.url),'utf8');
  const command=shell.slice(shell.indexOf('async fn choose_existing_game_folder('));
  const picked=command.indexOf('adoption_picker::pick('),fetched=command.indexOf('catalog::fetch_release()');

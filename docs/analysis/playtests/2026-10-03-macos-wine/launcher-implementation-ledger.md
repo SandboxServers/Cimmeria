@@ -843,8 +843,10 @@ The broader CI iteration change #1995 is also merged; see its
 The [main-page design](../../launcher-uat-fixes/design-main-layout.md) is being
 implemented: Play contains saved patch/diagnostics controls and the native change
 summary, with expandable details. Settings retains maintenance and recovery.
-The Patch Notes tab is removed; native readiness hides setup prompts for a
-playable client and completed adoption no longer produces an unfinished setup
+The Patch Notes tab is removed; native LaunchStatus.setup_complete hides setup
+prompts independently of the Play admission identity, including known
+non-reconciling launches. Settings keeps Check Play status with adjacent
+first-press feedback. Completed adoption no longer produces an unfinished setup
 warning. Cimmeria Launcher is the title and Mac application name; legacy data
 paths and release asset names remain compatible. This UI follow-up has not
 shipped. The native adoption picker selects SGW.exe, resolves its installation root and

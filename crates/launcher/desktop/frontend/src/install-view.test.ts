@@ -22,6 +22,8 @@ test('reopening completed adoption never reports blocked compatibility; ready co
   await app.ready;await flush();assert.equal(ui.get('install-status').textContent,'');
   assert.equal(ui.get('install-seed-archive').hidden,false,'no readiness is invented by the installer');
   app.setPlayable(true);assert.equal(ui.get('install').hidden,true);assert.equal(ui.get('install-seed-archive').hidden,true);
+  assert.equal(ui.get('install-seed-archive-offer').hidden,true);assert.equal(ui.get('install-seed-archive-accept').hidden,true);
+  assert.equal(ui.get('install-seed-archive-status').hidden,true);
   status={...initial(),native:{...initial().native,operation:{schema_version:1,revision:2,
    operation:{id,kind:'install',state:'reconciliation_required',intent_digest:Array(32).fill(0)}}}};
   app.setPlayable(false);await app.refresh();await flush();

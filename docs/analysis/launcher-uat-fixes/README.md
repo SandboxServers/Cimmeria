@@ -215,9 +215,10 @@ rows still need packaged/player acceptance. Ask before laptop/lab use. Rows are 
 The [design](design-main-layout.md) moves the three existing preference controls
 and native Changes to your client summary onto Play. View all changes expands
 in place; Settings keeps maintenance, folders, servers and recovery. The Patch
-Notes tab and its UI fetch are removed. Native Play readiness hides the main-page
-archive and Recheck Play status buttons independently of the launcher-update
-gate. Completed adoption no longer masquerades as unfinished compatibility setup.
+Notes tab and its UI fetch are removed. Native `LaunchStatus.setup_complete`
+hides the main-page archive and Recheck Play status buttons independently of
+the admission-only `installation_id` and launcher-update gate. Settings retains
+a separate Check Play status action with adjacent result and first-press feedback. Completed adoption no longer masquerades as unfinished compatibility setup.
 Adoption now asks for `SGW.exe` in a native file picker, resolves its installation
 root and retains the existing confirmation review before any changes.
 Visible branding is Cimmeria; the window title is Cimmeria Launcher. Legacy disk
@@ -232,8 +233,8 @@ release or laptop/lab use is authorized by this follow-up. The matching rows in
 | ID | Action | Expected |
 |---|---|---|
 | ML-U1 | Open a packaged launcher at normal and small window sizes; open Settings and return | Cimmeria Launcher title and gate tagline; no Patch Notes tab; Play, preferences and change summary remain reachable by scrolling |
-| ML-U2 | Reopen a ready adopted client, then inspect a ready managed client; separately open a missing or interrupted install | Ready clients hide Recheck Play status and archive selection without the false compatibility warning; genuine setup, errors and recovery remain visible; Settings retains archive/inspection access |
+| ML-U2 | Reopen a setup-complete adopted client, then inspect a setup-complete managed client; start Play and use Settings Check Play status; separately open a missing or interrupted install | Native setup_complete hides main-page recheck/archive without the false compatibility warning, including during a known non-reconciling launch; Settings gives first-press feedback and an adjacent result; genuine setup, errors and recovery remain visible |
 | ML-U3 | Toggle client patches, launcher diagnostics and game diagnostics once each; reopen; fail one save | Immediate feedback; confirmed choices persist across reopen; failure restores confirmed state; a directly adopted client follows its saved patch choice on the next Play; a legacy-bound adopted client retains its reviewed patch binding until Repair |
 | ML-U4 | Read Changes to your client and expand View all changes; perform an operation that changes native state | Main-page summary and detailed native rows refresh; errors or unreadable records remain explicit |
-| ML-U5 | Offer a newer signed launcher while the installed game is ready | Setup prompts stay hidden; Update and restart still blocks Play until replacement startup |
+| ML-U5 | Offer a newer signed launcher while setup is complete; inspect through Settings Check Play status | Setup prompts stay hidden even when admission installation_id is withheld; Settings shows immediate feedback and its inspection result; Update and restart still blocks Play until replacement startup |
 | ML-U6 | Press Adopt an install or Settings Choose SGW.exe; select the nested Working/Binaries/SGW.exe, then cancel and try a different executable | Native SGW.exe picker gives immediate feedback; the correct executable resolves its installation root and opens the existing review; cancellation and a wrong executable change no installation files; selection alone never applies changes |

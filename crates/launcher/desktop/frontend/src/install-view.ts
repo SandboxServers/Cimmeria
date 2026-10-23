@@ -164,11 +164,11 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     archiveButton.hidden=playable&&!busy;
     archiveButton.textContent=archivePressed?'Switching to your archive…':'Use a downloaded game archive…';
     archiveButton.disabled=busy;archiveButton.setAttribute('aria-busy',String(busy));
-    const question=seedArchiveOfferText(archive);
+    const question=playable&&!busy?null:seedArchiveOfferText(archive);
     archiveOffer.hidden=question===null;archiveOffer.textContent=question??'';
     archiveAccept.hidden=question===null;archiveAccept.disabled=busy;archiveAccept.textContent=acceptPressed?'Checking…':'Yes';
     archiveAccept.setAttribute('aria-busy',String(busy));
-    archiveLine.hidden=!seedArchiveShowsLine(archive);archiveLine.textContent=seedArchiveText(archive);};
+    archiveLine.hidden=(playable&&!busy)||!seedArchiveShowsLine(archive);archiveLine.textContent=seedArchiveText(archive);};
   const archiveWatcher=archiveRuntime.runFork(Effect.flatMap(SeedArchive,s=>Stream.runForEach(s.changes,
     value=>Effect.sync(()=>{archive=value;renderArchive();}))));
   const chooseArchive=()=>{if(archiveButton.disabled)return;archivePressed=true;renderArchive();

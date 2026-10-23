@@ -24,6 +24,8 @@ pub struct LaunchStatus {
     schema_version: u32,
     native: NativeSnapshot,
     installation_id: Option<Uuid>,
+    /// Verified game setup, independent of temporary Play admission/update gates.
+    setup_complete: bool,
     resources_available: bool,
     launcher_update_required: bool,
     /// Patches the installed copy applied with skipped ops; 0 when Play is not offered.
@@ -122,7 +124,15 @@ impl NativeHost {
                 && state
                     .installed_launcher_minimum()?
                     .is_some_and(|minimum| minimum.blocks()));
-        let installed = if idle && playable && !launcher_update_required {
+        let known_launch = native.operation.operation.as_ref().is_some_and(|op| {
+            op.kind == cimmeria_launcher_engine::OperationKind::Launch
+                && op.state != cimmeria_launcher_engine::OperationState::ReconciliationRequired
+        }) && observation != Some(launch::Observation::Unknown);
+        let content = if !native.requires_reopen
+            && observation != Some(launch::Observation::Unknown)
+            && (idle || known_launch)
+            && playable
+        {
             state.installed_content()?.filter(|installed| {
                 if installed.intent.backend.is_native() {
                     cfg!(windows)
@@ -130,6 +140,12 @@ impl NativeHost {
                     cfg!(target_os = "macos") && state.prepared_runtime().ok().flatten().is_some()
                 }
             })
+        } else {
+            None
+        };
+        let setup_complete = content.is_some() && state.has_valid_install()?;
+        let installed = if idle && !launcher_update_required {
+            content
         } else {
             None
         };
@@ -142,6 +158,7 @@ impl NativeHost {
         Ok(LaunchStatus::assemble(
             native,
             installation_id,
+            setup_complete,
             (available, launcher_update_required),
             game.as_deref(),
             observation,
@@ -154,6 +171,7 @@ impl LaunchStatus {
     fn assemble(
         native: NativeSnapshot,
         installation_id: Option<Uuid>,
+        setup_complete: bool,
         (resources_available, launcher_update_required): (bool, bool),
         game: Option<&std::path::Path>,
         observation: Option<launch::Observation>,
@@ -163,6 +181,7 @@ impl LaunchStatus {
             schema_version: 1,
             native,
             installation_id,
+            setup_complete,
             resources_available,
             launcher_update_required,
             patches_incomplete,
@@ -176,5 +195,7 @@ mod tests;
 
 #[cfg(all(test, target_os = "macos"))]
 mod adopted_tests;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(all(test, any(windows, target_os = "macos")))]
 mod fixture;
+#[cfg(all(test, any(windows, target_os = "macos")))]
+mod setup_tests;

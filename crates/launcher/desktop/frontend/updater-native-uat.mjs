@@ -17,7 +17,7 @@ const calls=[];
 const desktop=mountDesktop(document,async(command,args)=>{
  if(command==='updater_command'){calls.push(args.request);return send(args.request);}
  if(command==='launcher_command')return native();
- if(command==='launch_command')return {schema_version:1,native:native(),installation_id:null,resources_available:false,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,observation:null};
+ if(command==='launch_command')return {schema_version:1,native:native(),installation_id:null,setup_complete:false,resources_available:false,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,observation:null};
  if(command==='migration_command')return {schema_version:1,native:native(),imported:null,preview:null};
  if(command==='install_command')return {schema_version:1,native:native(),install_supported:false,can_resume:false,can_reconcile:false,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null};
  throw Error(`unexpected command ${command}`);

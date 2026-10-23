@@ -220,10 +220,15 @@ and privacy. The native Changes to
 your client summary appears below them; View all changes expands the full list.
 The main page scrolls so controls remain reachable in small windows.
 
-A native launch inspection establishes readiness: an installation identity,
-available launch resources, no required reopen and no open operation. Once
-ready, the main page hides Recheck Play status and Use a downloaded game archive;
-Settings retains inspection/archive access. A known launcher update still gates
+Native `LaunchStatus.setup_complete` controls setup visibility separately from
+Play admission. It requires verified installed content, available launch resources,
+a prepared Wine runtime when required, no required reopen and either idle state
+or a known non-reconciling launch. It remains independent of `installation_id`,
+which can be withheld during a launch or launcher update. Once setup is complete,
+the main page hides Recheck Play status and Use a downloaded game archive,
+including while Play runs or a launcher update is offered. Settings retains
+archive access and its own **Check Play status** button with adjacent result
+and immediate first-press feedback. A known launcher update still gates
 Play independently. A completed saved adoption no longer produces an unfinished
 compatibility-setup warning; real failures and recovery remain visible. Adoption
 button visibility retains its separate content-validity predicate.
