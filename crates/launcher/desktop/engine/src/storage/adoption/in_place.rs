@@ -150,6 +150,11 @@ pub(super) fn publish(
         });
     }
     drop(owner);
+    if result.is_ok() {
+        if let Ok(state) = preview.state.lock() {
+            state.log_applied_content("applied");
+        }
+    }
     result
 }
 
@@ -612,7 +617,6 @@ pub(super) fn finish(
             .operations_mut()?
             .observe(id, OperationState::Succeeded)?;
     }
-    state.log_applied_content("applied");
     hook(Point::Terminal)?;
     remove_work_folder(plan);
     if let Some(backup) = &plan.report.backup {

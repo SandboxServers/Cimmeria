@@ -107,6 +107,10 @@ pub fn recover(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), 
                 .map_err(|_| StorageError::PersistenceUncertain)
         });
     }
+    drop(owner);
+    if result.is_ok() {
+        state.log_applied_content("applied");
+    }
     result
 }
 /// Explicit abandonment retains quarantined bytes. It never removes an entire

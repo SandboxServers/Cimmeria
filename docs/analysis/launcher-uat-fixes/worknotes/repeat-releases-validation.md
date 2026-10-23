@@ -125,3 +125,36 @@ lib/examples `status=ok exit=0 ran=74.056s`, 927 passed, 3 ignored
 (`20261022-205615-400784.log`). Python identity suite: 12 passed. Workflow
 YAML parsing and `git diff --check` passed. Linux CI remains pending the
 parent's push; the earlier SC2015 failure has been corrected in source.
+
+## Second review: Windows publication locks (N1/N2)
+
+Normal Update now drops Prepared immediately after failure bookkeeping and before
+its single successful install-result hook. Adoption confirmation logs only after
+its exclusive owner handle is dropped; recovery drops that handle after finish
+and error bookkeeping, and logs only a successful result. Already-Succeeded
+recovery retains its early return and emits nothing. No Plan fields changed.
+
+Five new captured production-path guards cover successful Update (target digest
+distinct from previous), its cancelled commit, normal and recovered in-place
+adoption with the fully applied `p0@sgw_game` overlay, and normal and recovered
+copy publication. Interrupted/stale attempts and repeated successful recovery
+emit no applied-identity event. The Update capture installs the existing capture
+subscriber on Tokio's blocking worker through runtime callbacks; production
+threading is unchanged. Tests isolate setup's initial install event from commit.
+
+Reinstating only the old lock ordering/call placement made all five guards fail
+on Windows with zero identity events instead of one (lane
+`20261022-211053-329720.log`, 0 passed, 5 failed). All four mutated production
+files were restored byte-for-byte before final checks. Earlier three initial
+guards passed before splitting confirmation and recovery into separate tests.
+
+Documentation-map walk: this fixes the existing applied-identity event timing
+contract, with no field/schema/API/release-policy/frontend change. Its existing
+launch/telemetry documentation remains accurate; this validation worknote records
+the Windows locking constraint and proof. No real release, signing key access,
+physical updater, native macOS runtime or SigNoz ingestion was tested here.
+Final second-review lane checks: engine fmt `status=ok exit=0 ran=1.161s`
+(`20261022-211135-337020.log`); engine all-target clippy
+`status=ok exit=0 ran=6.361s` (`20261022-211138-457140.log`); full engine lib
+`status=ok exit=0 ran=90.371s`, 931 passed, 0 failed, 3 ignored
+(`20261022-211147-279964.log`). `git diff --check` passed.

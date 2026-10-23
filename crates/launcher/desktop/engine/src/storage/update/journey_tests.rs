@@ -7,7 +7,7 @@ use std::{
 };
 use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
 
-async fn fixture() -> (
+pub(super) async fn fixture() -> (
     tempfile::TempDir,
     Arc<Mutex<DesktopState>>,
     preparation::Prepared,
