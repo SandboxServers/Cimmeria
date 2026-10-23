@@ -40,8 +40,8 @@
 #                    artifacts/mac-pieces/ with a
 #                    mac-pieces.sha256 listing them, for
 #                    build-desktop-macos.sh pieces on the macOS runner
-#   feed-tool        build the release_feed example (always the release
-#                    profile) that sign and verify-feed run; never with the
+#   feed-tool        build the release_feed example (release-tools profile)
+#                    that sign and verify-feed run; never with the
 #                    signing key in the environment
 #   sign <version> <url> <notes>
 #                    Minisign-sign the zip with LAUNCHER_UPDATER_MINISIGN_KEY
@@ -62,8 +62,8 @@
 # PROFILE=release (default) or dev. Output goes under cargo's target dir
 # (CARGO_TARGET_DIR if set, else target/). The desktop launcher is its own
 # workspace, so it and the launch worker build into target/desktop; the two
-# DLLs and the overlay packer are root-workspace crates and build into
-# target/ itself.
+# DLLs build into target/ itself. Release-only feed and overlay tools use
+# the desktop graph and target/desktop/release-tools, independent of PROFILE.
 #
 # The launcher is not one file. It reads the three 32-bit pieces from a
 # windows/ directory beside the executable and refuses any whose SHA-256 is
@@ -101,7 +101,7 @@ ARCHIVE_WORKER="$OUT/cimmeria-archive-worker.exe"
 PREREQUISITE_WORKER="$DESKTOP_DIR/$I686/$PROFILE_DIR/cimmeria-prerequisite-worker.exe"
 MAC_PIECES="artifacts/mac-pieces"
 PLAY_PIECES="artifacts/play-pieces"
-PACKER="$TARGET_DIR/$PROFILE_DIR/pack-client-overlay"
+PACKER="$DESKTOP_DIR/release-tools/pack-client-overlay"
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) PACKER="$PACKER.exe" ;; esac
 
 # The staged file name of each piece and the build variable that pins it.
@@ -356,17 +356,16 @@ stage_play_pieces_in() {
   echo "took in the three Play pieces the Windows launcher was pinned to"
 }
 
-# The release-profile example that signs and checks the feed with the
-# launcher engine's own code (engine/examples/release_feed.rs). It is always a
-# release build, whatever PROFILE says.
-FEED_TOOL="$DESKTOP_DIR/release/examples/release_feed"
+# Release-side tool using the launcher's own verification code, built without
+# LLVM optimization in release-tools. Player binaries keep their release profile.
+FEED_TOOL="$DESKTOP_DIR/release-tools/examples/release_feed"
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) FEED_TOOL="$FEED_TOOL.exe" ;; esac
 
 # Built in its own step, before any key is in the environment: compiling it
 # runs build scripts and proc macros of its dependencies for the first time,
 # and none of them may see the signing key.
 stage_feed_tool() {
-  cargo build --locked --release --manifest-path "$MANIFEST" -p cimmeria-launcher-engine \
+  cargo build --locked --profile release-tools --manifest-path "$MANIFEST" -p cimmeria-launcher-engine \
     --example release_feed --target-dir "$DESKTOP_DIR"
   need "$FEED_TOOL"
 }
@@ -414,7 +413,8 @@ stage_feed_dry_run() {
 # nothing, which the release reads as "no overlay this time".
 stage_overlay() {
   local base="${1:?overlay needs the release download base URL}"
-  cargo build --locked -p cimmeria-launcher-core --bin pack-client-overlay "${PROFILE_FLAG[@]}"
+  cargo build --locked --profile release-tools --manifest-path "$MANIFEST" \
+    -p cimmeria-launcher-core --bin pack-client-overlay --target-dir "$DESKTOP_DIR"
   need "$PACKER"
   mkdir -p overlay-out
   "$PACKER" --overlay crates/client-patches/overlay --out-dir overlay-out --blob-base-url "$base"

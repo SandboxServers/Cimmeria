@@ -801,6 +801,19 @@ See [legacy migration](docs/migration.md) for the native preview/confirmed impor
 identity and consent preservation, historical ledger limits and crash recovery.
 How a release is built and published is in [release](docs/release.md). Current import controls and signed launcher Apply/restart are documented in [migration](docs/migration.md) and [updater](docs/updater.md); production updater configuration remains disabled.
 
+## Launcher build-time policy
+
+Native PR checks restore the standalone Rust graph and save caches from main
+only. Superseded PR runs cancel; main runs finish to populate those caches.
+CI disables dev/test debug information while retaining native tests, clippy,
+executable builds and JS persistence UAT. Local build settings stay unchanged.
+Release feed and overlay CLIs use a fast-compiling `release-tools` profile;
+the launcher and shipped helpers retain normal release builds. The signing
+runner remains uncached and sees its key only during signing. See the
+[release contract](docs/release.md#build-time-and-signing-isolation),
+[pre-PR checks](../../../docs/agents/pre-pr-checks.md#desktop-launcher-ci-policy-checks)
+and [measured design](../../../docs/analysis/launcher-uat-fixes/design-ci-speed.md).
+
 ## Stable repeat releases
 
 D-LX15 uses UTC stable versions `YYYY.M.(D*100+N)`, daily slots 1..99.

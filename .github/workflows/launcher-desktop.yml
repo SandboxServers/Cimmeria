@@ -54,9 +54,9 @@ permissions:
 
 concurrency:
   group: desktop-launcher-${{ github.ref }}
-  # Finish expensive native checks; frequent milestone pushes otherwise prevent
-  # Windows validation from completing. GitHub retains the newest pending run.
-  cancel-in-progress: false
+  # Validate the latest PR commit instead of queueing it behind obsolete
+  # packaging. Main finishes to populate the caches PRs restore.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Windows jobs run on the self-hosted `cimmeria-windows` pool (node3,
 # tools/ci-runners/README.md "Windows pool"). Fork and Dependabot PRs, and every run
@@ -73,6 +73,9 @@ jobs:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os != 'windows-latest' && matrix.os || ((github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows') }}
     timeout-minutes: 30
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
     defaults:
       run:
         shell: bash
@@ -81,6 +84,13 @@ jobs:
       - uses: ./.github/actions/rust-toolchain
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        if: runner.environment == 'github-hosted'
+        with:
+          shared-key: launcher-native
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          workspaces: |
+            crates/launcher/desktop -> ../../../target/desktop
       - name: Format standalone workspace
         run: cargo fmt --all --manifest-path crates/launcher/desktop/Cargo.toml -- --check
       - name: Check native engine
@@ -313,3 +323,8 @@ jobs:
         run: shellcheck tools/launcher-release/*.sh
       - name: stamp.sh and publish.sh against a stub gh
         run: bash tools/launcher-release/test-release-scripts.sh
+      - name: Workflow performance and signing-boundary guards
+        run: |
+          python3 -m venv .workflow-tests
+          .workflow-tests/bin/python -m pip install --disable-pip-version-check PyYAML==6.0.3
+          .workflow-tests/bin/python -m unittest discover -s tools/launcher-release -p 'test_*.py'

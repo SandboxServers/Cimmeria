@@ -35,6 +35,15 @@ released-build run.
 | AIP-U4 | Run Repair, Update, then selective Uninstall on an adopted fixture with an unrelated extra file | Per-file maintenance preserves extras; Uninstall retains root, extras, and original-file backups |
 | AIP-U5 | Reopen interrupted schema-1 adoption and abandon; separately interrupt/abandon schema-2 adoption | Legacy recovery refuses moving and metadata-only abandon retains bytes; schema-2 abandon rolls back approved individual changes |
 
+## CI build-time follow-up (2026-10-23)
+
+| Scope | Design | Validation status |
+|---|---|---|
+| Native Rust cache reuse, cancellation of superseded PR runs, and faster release-only CLI builds | [CI speed design](design-ci-speed.md) | Workflow-policy guards and compile/artifact checks; post-change CI timings still need measurement |
+
+This build-only follow-up has its own PR, separate from the bundled player-facing
+path-display and startup-update changes. No release is authorized by these checks.
+
 ## Purpose
 
 1. **Unbrick light adoption (F1, blocker).** A light in-place adoption must never end in an unrecoverable `Corrupt`. The final check must be right, explain itself in SigNoz, and have an escape hatch.

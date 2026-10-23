@@ -104,6 +104,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_launcher_ci_speed_2026_10_23.md](reference_launcher_ci_speed_2026_10_23.md) — native standalone Rust caches/main-only writes, PR cancellation, release-tools profile, and uncached signing boundary; no measured post-change saving yet.
+
 - [reference_castle_letter_bridge_2026_10_14.md](reference_castle_letter_bridge_2026_10_14.md) — chain 1366 advances mission 1360; mission bag 2 letter retention and production cross-service hydration seam
 - [reference_codex_workflow_uat_2026_10_16.md](reference_codex_workflow_uat_2026_10_16.md) — Codex C1-C4 written workflow checks passed; hooks failed to enforce; NO_PR cleanup needed force and exact branch deletion; ledger holds evidence
 - [reference_castle_letter_bridge_2026_10_14.md](reference_castle_letter_bridge_2026_10_14.md) — chain 1366 advances mission 1360; mission bag 2 letter retention and production cross-service hydration seam

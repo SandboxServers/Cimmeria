@@ -175,4 +175,51 @@ if cmp artifacts/StargateWorlds-Launcher-macos-arm64.zip "$STUB_STORE/$TAG/Starg
   && grep -qF '**macOS (Apple silicon):**' "$STUB_STORE/$TAG/body"; then
   pass "older dated macOS assets and notes are repaired"; else fail "older dated macOS assets and notes are repaired"; fi
 if grep -qF 'This build is unsigned' <<<"$A"; then fail "unsigned fallback release notes removed"; fi
+
+# Exercise the actual build stage dispatch without compiling or signing. Both
+# release-side tools must use the standalone graph and fast tool-only profile.
+cat > "$WORK/bin/cargo" <<'CARGO'
+#!/usr/bin/env bash
+set -euo pipefail
+[ "$1" = build ] || exit 30
+shift
+profile= manifest= target= kind= name= package=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --locked) shift ;;
+    --profile) profile="$2"; shift 2 ;;
+    --manifest-path) manifest="$2"; shift 2 ;;
+    --target-dir) target="$2"; shift 2 ;;
+    -p) package="$2"; shift 2 ;;
+    --example|--bin) kind="$1"; name="$2"; shift 2 ;;
+    *) exit 31 ;;
+  esac
+done
+[ "$profile" = release-tools ] && [ "$manifest" = crates/launcher/desktop/Cargo.toml ] || exit 32
+[ "$target" = "$CARGO_TARGET_DIR/desktop" ] || exit 33
+case "$package:$kind:$name" in
+  cimmeria-launcher-engine:--example:release_feed) output="$target/$profile/examples/$name" ;;
+  cimmeria-launcher-core:--bin:pack-client-overlay) output="$target/$profile/$name" ;;
+  *) exit 34 ;;
+esac
+mkdir -p "$(dirname "$output")"
+cat > "$output" <<'TOOL'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >> "$STUB_TOOL_LOG"
+TOOL
+chmod +x "$output"
+CARGO
+chmod +x "$WORK/bin/cargo"
+export CARGO_TARGET_DIR="$WORK/tools target" STUB_TOOL_LOG="$WORK/tool-log"
+for profile in release dev; do
+  : > "$STUB_TOOL_LOG"
+  if PROFILE="$profile" "$HERE/build-desktop.sh" feed-tool \
+    && PROFILE="$profile" "$HERE/build-desktop.sh" overlay https://example.invalid/fixture \
+    && grep -qxF -- '--blob-base-url' "$STUB_TOOL_LOG" \
+    && grep -qxF https://example.invalid/fixture "$STUB_TOOL_LOG"; then
+    pass "$profile dispatches release tools through standalone graph/profile and correct executable"
+  else
+    fail "$profile dispatches release tools through standalone graph/profile and correct executable"
+  fi
+done
 exit "$FAILED"
