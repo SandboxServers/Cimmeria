@@ -156,11 +156,16 @@ fn reconcile_locked(
             &_root_owner,
         )?;
         if tree_identity::absent(&plan.installation.content_root(), &plan).is_ok() {
-            tree_identity::write(&plan.installation.content_root(), &plan, Role::Replacement)?;
+            tree_identity::write_owned(
+                &plan.installation.content_root(),
+                &plan,
+                Role::Replacement,
+                &_root_owner,
+            )?;
         } else if read_role(&plan.installation.content_root(), &plan)? != Some(Role::Replacement) {
             return Err(StorageError::Corrupt.into());
         }
-        return publish(state, &plan, &release, &mut hook);
+        return publish(state, &plan, &release, &_root_owner, &mut hook);
     }
     let game = plan.installation.content_root();
     let shape = (
@@ -183,7 +188,7 @@ fn reconcile_locked(
             (Some(Role::Replacement), None, backup),
             Phase::OriginalMoved | Phase::Promoted | Phase::Published,
         ) if backup == plan.original_present.then_some(Role::Original) => {
-            return publish(state, &plan, &release, &mut hook);
+            return publish(state, &plan, &release, &_root_owner, &mut hook);
         }
         _ => return Err(StorageError::Corrupt.into()),
     };
@@ -206,12 +211,13 @@ fn reconcile_locked(
     commit::sync(root)?;
     commit::record(state, &plan, Phase::Promoted)?;
     hook(Point::Promoted)?;
-    publish(state, &plan, &release, &mut hook)
+    publish(state, &plan, &release, &_root_owner, &mut hook)
 }
 fn publish(
     state: &mut DesktopState,
     plan: &Plan,
     release: &crate::catalog::VerifiedRelease,
+    owner_file: &File,
     hook: &mut impl FnMut(Point) -> Result<(), StorageError>,
 ) -> Result<(), IntentError> {
     let root = &plan.installation.destination;
@@ -220,7 +226,12 @@ fn publish(
     }
     commit::sync(&plan.work_directory())?;
     commit::sync(root)?;
-    installed_content::write_ready(root, &plan.installation, plan.release_identity())?;
+    installed_content::write_ready_owned(
+        root,
+        &plan.installation,
+        plan.release_identity(),
+        owner_file,
+    )?;
     commit::record(state, plan, Phase::Published)?;
     hook(Point::Published)?;
     state

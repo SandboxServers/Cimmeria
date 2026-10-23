@@ -158,11 +158,16 @@ fn reconcile_locked(
             &_root_owner,
         )?;
         if tree_identity::absent(&plan.owner.content_root(), &plan).is_ok() {
-            tree_identity::write(&plan.owner.content_root(), &plan, Role::Replacement)?;
+            tree_identity::write_owned(
+                &plan.owner.content_root(),
+                &plan,
+                Role::Replacement,
+                &_root_owner,
+            )?;
         } else if read_role(&plan.owner.content_root(), &plan)? != Some(Role::Replacement) {
             return Err(StorageError::Corrupt.into());
         }
-        return publish(state, &plan, &release, &mut hook);
+        return publish(state, &plan, &release, &_root_owner, &mut hook);
     }
     let game = plan.owner.content_root();
     let shape = (
@@ -180,7 +185,7 @@ fn reconcile_locked(
             (Some(Role::Replacement), None, Some(Role::Original)),
             Phase::OriginalMoved | Phase::Promoted | Phase::Published,
         ) => {
-            return publish(state, &plan, &release, &mut hook);
+            return publish(state, &plan, &release, &_root_owner, &mut hook);
         }
         _ => return Err(StorageError::Corrupt.into()),
     };
@@ -204,12 +209,13 @@ fn reconcile_locked(
     commit::sync(root)?;
     commit::record(state, &plan, Phase::Promoted)?;
     hook(Point::Promoted)?;
-    publish(state, &plan, &release, &mut hook)
+    publish(state, &plan, &release, &_root_owner, &mut hook)
 }
 fn publish(
     state: &mut DesktopState,
     plan: &Plan,
     release: &crate::catalog::VerifiedRelease,
+    owner_file: &File,
     hook: &mut impl FnMut(Point) -> Result<(), StorageError>,
 ) -> Result<(), IntentError> {
     let root = &plan.owner.destination;
@@ -224,7 +230,7 @@ fn publish(
         return Err(StorageError::Corrupt.into());
     }
     hook(Point::BeforeReceipt)?;
-    let saved = installed_content::write_ready(root, &plan.owner, plan.target);
+    let saved = installed_content::write_ready_owned(root, &plan.owner, plan.target, owner_file);
     state.preferences_uncertain |= saved == Err(StorageError::PersistenceUncertain);
     saved?;
     hook(Point::AfterReceipt)?;

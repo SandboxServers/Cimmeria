@@ -179,7 +179,12 @@ pub(super) fn replace(
                 &previous,
                 &prepared._root_owner,
             )?;
-            tree_identity::write(&game, plan, tree_identity::Role::Replacement)?;
+            tree_identity::write_owned(
+                &game,
+                plan,
+                tree_identity::Role::Replacement,
+                &prepared._root_owner,
+            )?;
             record(&mut state, plan, Phase::Promoted)?;
             hook(Point::Promoted)?;
         } else {
@@ -215,7 +220,12 @@ pub(super) fn replace(
             return Err(StorageError::Corrupt.into());
         }
         hook(Point::BeforeReceipt)?;
-        let saved = installed_content::write_ready(root, &plan.owner, plan.target);
+        let saved = installed_content::write_ready_owned(
+            root,
+            &plan.owner,
+            plan.target,
+            &prepared._root_owner,
+        );
         state.preferences_uncertain |= saved == Err(StorageError::PersistenceUncertain);
         saved?;
         hook(Point::AfterReceipt)?;

@@ -3,7 +3,9 @@
 use super::*;
 use crate::{catalog::VerifiedRelease, OperationKind, OperationState};
 
+mod ready_write;
 mod selection;
+pub(crate) use ready_write::write_ready_owned;
 
 const NAME: &str = "installed-content.json";
 

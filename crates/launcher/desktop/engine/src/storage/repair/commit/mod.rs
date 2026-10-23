@@ -180,7 +180,12 @@ pub(super) fn replace(
                 &previous,
                 &prepared._root_owner,
             )?;
-            tree_identity::write(&game, plan, tree_identity::Role::Replacement)?;
+            tree_identity::write_owned(
+                &game,
+                plan,
+                tree_identity::Role::Replacement,
+                &prepared._root_owner,
+            )?;
             record(&mut state, plan, Phase::Promoted)?;
             hook(Point::Promoted)?;
         } else {
@@ -215,7 +220,12 @@ pub(super) fn replace(
         if !install_worker::content_valid(&game, &release) {
             return Err(StorageError::Corrupt.into());
         }
-        installed_content::write_ready(root, &plan.installation, plan.release_identity())?;
+        installed_content::write_ready_owned(
+            root,
+            &plan.installation,
+            plan.release_identity(),
+            &prepared._root_owner,
+        )?;
         record(&mut state, plan, Phase::Published)?;
         hook(Point::Published)?;
         state
