@@ -29,6 +29,12 @@ This page replaces the earlier setup, which ran the old Windows launcher
 2026-10-11. You no longer need WoWSilicon or CrossOver: the Mac app downloads
 the Wine runtime it needs on its own.
 
+The release ZIP already contains one **Cimmeria Launcher.app** bundle, including
+its launch helpers, patch and telemetry DLLs, and graphics resources. Keep the
+bundle together; Finder presents it as one app. The Windows single-EXE packaging
+change does not change this Mac layout. The game and downloaded Wine runtime
+remain separate from the app bundle.
+
 ## What you need
 
 - An Apple Silicon Mac (M1 or later) on macOS 12 or newer. There is no Intel

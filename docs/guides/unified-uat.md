@@ -1614,6 +1614,19 @@ Ask before laptop or lab use.
 | ML-U5 | Offer a newer signed launcher while setup is complete; inspect through Settings Check Play status | Setup prompts stay hidden even when admission installation_id is withheld; Settings shows immediate feedback and its inspection result; Update and restart still blocks Play until replacement startup |
 | ML-U6 | Press Adopt an install or Settings Choose SGW.exe; select the nested Working/Binaries/SGW.exe, then cancel and try a different executable | Native SGW.exe picker gives immediate feedback; the correct executable resolves its installation root and opens the existing review; cancellation and a wrong executable change no installation files; selection alone never applies changes |
 
+### Embedded Windows payload follow-up (EP)
+
+Use the [design and canonical checklist](../analysis/launcher-uat-fixes/README.md#embedded-windows-payload-follow-up-2026-10-23).
+These rows are pending packaged acceptance. The owner authorized a launcher
+release from main after the embedded-payload PR merges, retaining the Windows
+ZIP. Ask before laptop or lab use; release GO does not authorize those sessions.
+
+| ID | Action | Expected |
+|---|---|---|
+| EP-U1 | Unzip the new Windows ZIP into a writable clean folder and start its sole EXE | Launcher prepares verified Play resources without companion folders; no game launch or download occurs merely from opening it |
+| EP-U2 | With all launchers closed, remove one ordinary cached payload file and reopen; keep another launcher open while starting a build with changed payload bytes | Missing file is repaired from embedded bytes; the active version remains available while the new version uses its own cache |
+| EP-U3 | Update an older multi-file Windows launcher with a signed single-EXE ZIP using Update and restart; separately unzip the Mac release | Windows replacement starts with verified cached resources and leaves old sidecars alone; Mac still presents one Cimmeria Launcher.app with bundled resources |
+
 **What this run risks (owner decision, D-LU3, D-LU4):** chat and character names in the game log leave the machine, and only a per-word scrub (paths, IPs, URLs, `@`, GUIDs, long hex) applies; secrets under 32 characters or split by dots are kept; log rows can be forged by a log-token holder; the install and address budgets are speed bumps. The full list is in the [ledger close-out](../analysis/launcher-uat-fixes/README.md#owner-risks-accepted-under-d-lu3-and-d-lu4-nothing-was-removed-to-avoid-them).
 
 ## Lab CLI (`lab.exe`)

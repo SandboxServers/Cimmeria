@@ -27,7 +27,13 @@ pub(super) fn bundled(root: &Path) -> Option<Resources> {
     )
 }
 pub(super) fn bundled_with(root: &Path, digests: &Digests) -> Option<Resources> {
-    let artifact = |name: &str, digest: Option<&str>| Artifact::open(root.join(name), digest?).ok();
+    // Cache roots are canonical Windows verbatim paths: join native components
+    // instead of appending a string containing forward slashes.
+    let path = |name: &str| {
+        name.split('/')
+            .fold(root.to_path_buf(), |path, part| path.join(part))
+    };
+    let artifact = |name: &str, digest: Option<&str>| Artifact::open(path(name), digest?).ok();
     let helper = artifact("windows/cimmeria-launch-worker.exe", digests.helper)?;
     // Client patches stay part of this product's Play contract, but that policy is
     // decided per installation at admission: an absent or replaced artifact only
@@ -42,7 +48,7 @@ pub(super) fn bundled_with(root: &Path, digests: &Digests) -> Option<Resources> 
         // This build pins no telemetry DLL: nothing to report.
         None => None,
         Some(digest) => {
-            match Artifact::open(root.join("windows/cimmeria_client_telemetry.dll"), digest) {
+            match Artifact::open(path("windows/cimmeria_client_telemetry.dll"), digest) {
                 Err(_) => {
                     cimmeria_launcher_engine::launch::events::dll_artifact_unavailable(
                         "unverified",
@@ -78,9 +84,7 @@ pub(super) fn bundled_with(root: &Path, digests: &Digests) -> Option<Resources> 
         graphics,
     })
 }
-// Fixture paths join with `/` under a canonical root, which Windows verbatim
-// paths do not accept; the same code is compiled on both hosts.
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use sha2::{Digest, Sha256};
@@ -97,8 +101,12 @@ mod tests {
         for directory in ["windows", "graphics"] {
             std::fs::create_dir(root.join(directory)).unwrap();
         }
-        std::fs::write(root.join("windows/cimmeria-launch-worker.exe"), b"helper").unwrap();
-        std::fs::write(root.join("graphics/d3d9.dll"), b"d3d9").unwrap();
+        std::fs::write(
+            root.join("windows").join("cimmeria-launch-worker.exe"),
+            b"helper",
+        )
+        .unwrap();
+        std::fs::write(root.join("graphics").join("d3d9.dll"), b"d3d9").unwrap();
         let (helper, patches, d3d9) = (digest(b"helper"), digest(b"patches"), digest(b"d3d9"));
         let digests = |client_patches| Digests {
             helper: Some(&helper),
@@ -108,7 +116,7 @@ mod tests {
             rosetta_x87: None,
             rosetta_x87_library: None,
         };
-        let dll = root.join("windows/cimmeria_client_patches.dll");
+        let dll = root.join("windows").join("cimmeria_client_patches.dll");
         // Absent file, then a build that pins no patch artifact at all.
         for pinned in [Some(patches.as_str()), None] {
             let bundle = bundled_with(&root, &digests(pinned)).expect("bundle without patches");
@@ -124,7 +132,11 @@ mod tests {
         let bundle = bundled_with(&root, &digests(Some(&patches))).unwrap();
         assert!(bundle.client_patches.is_none());
         // The launch helper itself stays mandatory for every installation.
-        std::fs::write(root.join("windows/cimmeria-launch-worker.exe"), b"other").unwrap();
+        std::fs::write(
+            root.join("windows").join("cimmeria-launch-worker.exe"),
+            b"other",
+        )
+        .unwrap();
         assert!(bundled_with(&root, &digests(Some(&patches))).is_none());
     }
 }

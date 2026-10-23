@@ -83,6 +83,19 @@ The new process waits up to 30 seconds for the old pid, takes the single-instanc
 guard, and acknowledges the update only when its compiled version equals the
 offered one; then it deletes the `.old` files and the stage.
 
+**Single-executable Windows packages.** New Windows ZIPs keep the public asset
+name and contain one root launcher EXE with its three Play pieces embedded.
+The existing swap accepts that package when updating an older multi-file
+installation; older loose sidecars are left alone. On replacement startup the
+new executable verifies or repairs its app-local
+`payloads/<content-digest>/windows/` cache. Active versions hold shared leases
+and are skipped by cleanup. Cache contents come from trusted embedded bytes,
+not from an old installation's sidecars. These files are separate from the
+updater's replacement stage and game content. See the
+[native resource contract](../../crates/launcher/desktop/docs/launch.md#embedded-windows-play-resources).
+The feed, ZIP signature, restart handoff and rollback rules stay the same.
+macOS continues to distribute its existing app bundle and uses manual updates.
+
 **Rollback.** If a rename or the relaunch fails, Apply puts every `.old` file
 back and reports **Failed**; the installed files are restored byte for byte. A
 process that dies mid-swap is rolled back from the saved plan the next time the

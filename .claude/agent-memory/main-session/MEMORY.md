@@ -1,5 +1,7 @@
 # Main-Session Project Memory — Index
 
+- [reference_launcher_embedded_payload.md](reference_launcher_embedded_payload.md) — Windows single-EXE ZIP, verified app-local payload cache and active leases; macOS keeps its existing app bundle; release authorization remains separate.
+
 Dated, sourced facts from top-level sessions, committed with the change that produced them; verified facts graduate to `docs/`. Rules: [development-workflow.md § Project memory](../../../docs/agents/development-workflow.md#project-memory). One line per memory, newest first within a section.
 
 ## Open investigations

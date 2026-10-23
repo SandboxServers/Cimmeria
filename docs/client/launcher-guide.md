@@ -82,18 +82,18 @@ check your download.
 Unzip the Windows zip into a folder of its own that you can write to, such as
 `%LOCALAPPDATA%\Stargate Worlds Launcher`. Not `C:\Program Files`: the
 launcher updates itself by replacing its own files, which needs a folder it
-can write without admin rights. The zip holds:
+can write without admin rights. New ZIPs hold just:
 
 ```text
 cimmeria-launcher-desktop.exe   the launcher; start this one
-windows\                        the launch helper and the two DLLs Play loads into the game
-graphics\                       a graphics resource the launcher carries
 ```
 
-Keep the `windows` and `graphics` folders beside the exe. At **Play** the
-launcher reads its helper and DLLs from `windows\` and refuses any file whose
-checksum is not the one compiled into it, so an exe copied somewhere on its
-own cannot start the game. Make a shortcut to the exe instead of moving it.
+The launcher carries its helper and DLLs inside the EXE. On startup it checks
+and prepares its private cache automatically; you do not need companion
+`windows` or `graphics` folders. Older loose files can remain after an update;
+new builds do not use them. The download stays a ZIP. On Mac, the ZIP already
+contains one **Cimmeria Launcher.app** bundle with its helper resources inside.
+WebView2, the game download and the Mac Wine runtime remain separate.
 
 ### First start on Windows
 
@@ -450,6 +450,7 @@ How the update is verified and swapped is in
 | What | Where (Windows) |
 |---|---|
 | The launcher | The folder you unzipped it to |
+| Verified helper/DLL cache | `%LOCALAPPDATA%\app.cimmeria.launcher.desktop\payloads\<content-digest>\windows` (managed by the launcher) |
 | Launcher settings and state | `%APPDATA%\app.cimmeria.launcher.desktop\state` |
 | The game, by default | `%LOCALAPPDATA%\app.cimmeria.launcher.desktop\Stargate Worlds\game` |
 | Your game settings and the client cache | `Documents\My Games\Firesky\SGWGame` |
@@ -841,30 +842,23 @@ here don't help.
 
 ### Windows Defender or SmartScreen blocks the launcher
 
-Launcher releases are not code-signed, so Windows may warn about the launcher
-or quarantine a file in its `windows` folder. The launch helper there,
-`cimmeria-launch-worker.exe`, starts `SGW.exe` and loads the client patches
-into it, which is what antivirus heuristics look for in an unsigned program.
+Launcher releases are not Authenticode-signed, so Windows may warn about the
+launcher or quarantine an extracted helper. The embedded launch helper starts
+`SGW.exe` and loads the client patches, which antivirus heuristics can flag.
+The signed updater ZIP verifies release integrity; it does not suppress
+SmartScreen or antivirus warnings.
 
 - **SmartScreen ("Windows protected your PC")** on
   `cimmeria-launcher-desktop.exe`: choose **More info → Run anyway**. Only do
   this for a launcher you downloaded from the stable link.
-- **Defender removed a file from `windows\`:** the Play area then says "Play
-  unavailable: this build is missing verified game launch resources". Restore the file from
-  **Windows Security → Virus & threat protection → Protection history**, then
-  add an exclusion for the launcher's folder (**Virus & threat protection
-  settings → Exclusions → Add an exclusion → Folder**). The file names stay
-  the same across launcher updates, so the exclusion keeps working. From an
-  elevated PowerShell:
-
-  ```powershell
-  Add-MpPreference -ExclusionPath "C:\path\to\the\launcher\folder"
-  ```
-
-  If you would rather not add an exclusion, download the zip again and unzip
-  it over the folder.
-
-Code signing would remove the need for this; it is deferred for now.
+- **A helper is quarantined:** check **Windows Security → Virus & threat
+  protection → Protection history** and review the detection. The launcher
+  repairs missing or corrupt ordinary cache files from its embedded copy on
+  the next start. Repeated quarantine needs the detection resolved first;
+  downloading the same ZIP again does not prevent it.
+- **Payload preparation fails:** close the launcher and try again. If it still
+  fails, report the visible error and launcher version for support. Do not
+  substitute helper or DLL files from another release.
 
 ### A launcher update failed, or the launcher is gone after an update
 

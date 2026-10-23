@@ -21,7 +21,7 @@
 #   verify           check the result: bitness, the telemetry DLL is not a
 #                    lab-bridge build, the files beside the launcher are the
 #                    ones it was pinned to, and the release stamps reached it
-#   package          zip the launcher and its resources into
+#   package          zip the self-contained launcher EXE into
 #                    artifacts/StargateWorlds-Launcher-windows-x64.zip, the
 #                    executable at the zip's root as the self-update requires,
 #                    with a .sha256 beside it
@@ -65,10 +65,8 @@
 # DLLs build into target/ itself. Release-only feed and overlay tools use
 # the desktop graph and target/desktop/release-tools, independent of PROFILE.
 #
-# The launcher is not one file. It reads the three 32-bit pieces from a
-# windows/ directory beside the executable and refuses any whose SHA-256 is
-# not the one compiled in, so the package is a zip of that layout, and the
-# pins are taken from the staged files in the same run that compiles them in.
+# The Windows EXE embeds all three pinned Play pieces. The release stays a ZIP
+# containing that EXE at its root; startup owns extraction and cache cleanup.
 set -euo pipefail
 
 PROFILE="${PROFILE:-release}"
@@ -204,7 +202,7 @@ stage_launcher() {
     echo "pinning $pin"
     export "${pin?}"
   done < <(pins)
-  CIMMERIA_DESKTOP_SOURCE_REVISION="$revision" \
+  CIMMERIA_EMBED_PAYLOAD=1 CIMMERIA_DESKTOP_SOURCE_REVISION="$revision" \
   CIMMERIA_BUILD_GIT_SHA="${CIMMERIA_BUILD_GIT_SHA:-$revision}" \
   CIMMERIA_BUILD_BRANCH="${CIMMERIA_BUILD_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}" \
     cargo build --locked --manifest-path "$MANIFEST" -p cimmeria-launcher-desktop \
@@ -249,7 +247,31 @@ stage_verify() {
       || die "the launcher does not embed LAUNCHER_UPDATER_PUBKEY"
     echo "launcher embeds the updater public key"
   fi
-  echo "verified: 64-bit launcher pinned to its 32-bit launch worker and DLLs (player telemetry build)"
+  # Copy only the EXE to an empty folder: no nearby windows/ or graphics/.
+  # Exercise cold extraction, reuse and repair without WebView2 or a game.
+  python - "$(winpath "$LAUNCHER")" "$(winpath "$STAGED")" <<'PY'
+import hashlib, pathlib, shutil, subprocess, sys, tempfile
+names = ["cimmeria-launch-worker.exe", "cimmeria_client_patches.dll", "cimmeria_client_telemetry.dll"]
+expected = {name: hashlib.sha256((pathlib.Path(sys.argv[2]) / name).read_bytes()).hexdigest() for name in names}
+with tempfile.TemporaryDirectory(prefix="cimmeria-embedded-probe-") as temporary:
+    root = pathlib.Path(temporary)
+    exe = root / "launcher.exe"
+    shutil.copyfile(sys.argv[1], exe)
+    cache = root / "payloads"
+    for attempt in range(3):
+        subprocess.run([str(exe), "--verify-embedded-payload", str(cache)], check=True)
+        versions = [entry for entry in cache.iterdir() if entry.is_dir()]
+        if len(versions) != 1:
+            raise SystemExit("expected one embedded payload version")
+        windows = versions[0] / "windows"
+        actual = {entry.name: hashlib.sha256(entry.read_bytes()).hexdigest() for entry in windows.iterdir()}
+        if actual != expected:
+            raise SystemExit("embedded bytes do not match trusted staged payload")
+        if attempt == 1:
+            (windows / names[0]).write_bytes(b"corrupt cache fixture")
+print("single-EXE embedded payload: cold extraction, reuse and corrupt-cache repair passed")
+PY
+  echo "verified: self-contained 64-bit launcher with pinned 32-bit worker and DLLs"
 }
 
 stage_package() {
@@ -258,14 +280,16 @@ stage_package() {
   rm -rf "$root" "$ZIP" "$ZIP.sha256" "$ZIP.sig" "$FEED"
   mkdir -p "$root"
   cp "$LAUNCHER" "$root/"
-  # Everything the bundle configuration ships: windows/ and graphics/.
-  cp -R "$OUT/windows" "$OUT/graphics" "$root/"
+  # The payload and frontend assets are embedded; users extract one EXE.
   # The executable sits at the zip's root, not in a folder: the self-update
   # swap (engine updater/apply/zip_swap.rs) refuses a zip without exactly one
   # root .exe. Files only, sorted, `/` separators.
   python - "$(winpath "$root")" "$(winpath "$ZIP")" <<'PY'
 import os, sys, zipfile
 root, out = sys.argv[1], sys.argv[2]
+names = os.listdir(root)
+if len(names) != 1 or not names[0].lower().endswith(".exe") or not os.path.isfile(os.path.join(root, names[0])):
+    raise SystemExit("Windows release ZIP must contain exactly one root launcher EXE")
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     for here, dirs, files in os.walk(root):
         dirs.sort()

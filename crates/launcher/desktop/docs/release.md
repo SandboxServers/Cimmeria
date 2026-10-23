@@ -156,19 +156,30 @@ or a manifest key, so the release build is tested before a release needs it.
 |---|---|
 | `helpers` | Builds, for `i686-pc-windows-msvc`: `cimmeria-launch-worker.exe` (this workspace's `cimmeria-runtime-probe` package), `cimmeria_client_patches.dll` and the player build of `cimmeria_client_telemetry.dll` (root workspace, no `lab-bridge`) |
 | `stage` | Copies the three into `shell/resources/windows/` through [`tools/stage-helper.py`](../tools/stage-helper.py), which checks each one's architecture and digest and refuses a lab-bridge telemetry DLL |
-| `launcher` | Builds the UI, then the 64-bit launcher with `CIMMERIA_LAUNCH_HELPER_SHA256`, `CIMMERIA_CLIENT_PATCHES_SHA256` and `CIMMERIA_CLIENT_TELEMETRY_SHA256` set to the SHA-256 of the staged files |
-| `verify` | The launcher is 64-bit and carries each staged file's digest; the three files beside it are 32-bit and are the staged ones; the telemetry DLL is the player build; a release build carries its tag, its version and, when set, the updater public key |
-| `package` | Zips the launcher with the `windows/` and `graphics/` directories beside it into `artifacts/StargateWorlds-Launcher-windows-x64.zip`, and writes the `.sha256`. The executable is at the zip's root: the self-update swap refuses a zip without exactly one root `.exe` |
+| `launcher` | Builds the UI, then the 64-bit launcher embedding the three staged Play pieces. `CIMMERIA_LAUNCH_HELPER_SHA256`, `CIMMERIA_CLIENT_PATCHES_SHA256` and `CIMMERIA_CLIENT_TELEMETRY_SHA256` independently pin their bytes; packaging builds require all three and fail for missing or mismatched input |
+| `verify` | Checks the 64-bit launcher, compiled pins and player-only telemetry identity, then copies only the EXE to a clean directory and runs `--verify-embedded-payload` to prove headless extraction and verification. A release build carries its tag, version and, when set, updater public key |
+| `package` | Writes `artifacts/StargateWorlds-Launcher-windows-x64.zip` containing exactly one root `cimmeria-launcher-desktop.exe`, then its `.sha256`. The public ZIP name and signed updater contract stay the same |
 | `feed-tool` | Builds the `release_feed` example (`release-tools` profile) that `sign` and `verify-feed` run. The `sign` job runs it in a step with no secret: compiling it runs its dependencies' build scripts and proc macros, which must never see the key |
 | `sign <version> <url> <notes>` | Signs the zip with the updater key and writes `artifacts/StargateWorlds-Launcher-windows-x64.zip.sig` and `artifacts/latest.json`. Runs the built tool directly, no cargo |
 | `verify-feed <version>` | Runs the launcher engine's own feed, signature and zip checks on those files against `LAUNCHER_UPDATER_PUBKEY` |
 | `feed-dry-run <version>` | `feed-tool`, then `sign` and `verify-feed` with a throwaway key made in the job; the PR dry run's step |
 
-The launcher is not one file. At Play it reads the launch worker and the DLLs
-from `windows/` beside the executable and refuses any whose digest is not the
-one compiled in ([launch](launch.md)). That is why the pins are taken from the
-staged files in the same job that compiles them in, and why the package is a
-zip of that layout.
+The Windows download stays a ZIP so browsers do not need to download a bare,
+unsigned executable. Inside it, the launcher is one file. On startup it verifies
+and, when necessary, repairs its embedded worker and DLLs under
+`<app-local-data>/payloads/<content-digest>/windows/`; Play still checks the
+independent compiled digests ([launch](launch.md#embedded-windows-play-resources)).
+The digest identifies payload bytes, not the release version. Shared leases
+keep another active launcher from cleaning an in-use cache version. Cleanup
+preserves unknown entries and older loose sidecars beside the launcher.
+
+The Windows ZIP is not the macOS staging source: `mac-pieces` continues to take
+the separately staged Play pieces. macOS already packages its helpers and DLLs
+inside `Cimmeria Launcher.app` and keeps that layout. WebView2, the game and the
+Wine runtime remain separate prerequisites or downloads. Signing secrets are
+unchanged. The owner authorized the embedded-payload PR to merge, then a launcher
+release from main retaining the Windows ZIP. This is not packaged/game acceptance
+or permission for a live game or lab session.
 
 ## What the macOS job builds
 

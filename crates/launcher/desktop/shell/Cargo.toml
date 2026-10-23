@@ -9,6 +9,7 @@ default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 
 [build-dependencies]
+sha2 = "0.10"
 tauri-build = { version = "2", features = [] }
 # build.rs checks CIMMERIA_LAUNCHER_VERSION (src/release_version.rs).
 semver = "=1.0.28"

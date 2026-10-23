@@ -1,5 +1,5 @@
 //! Windows self-update by zip swap (D-LX3). The release zip holds one root
-//! `.exe` beside its `windows/` and `graphics/` folders. It is extracted into
+//! `.exe` (older packages also include `windows/` and `graphics/`). It is extracted into
 //! `<exe dir>\.update-<version>-<owner>\`, every file it replaces is renamed to
 //! `<name>.old` (Windows lets a running image be renamed, not overwritten),
 //! and the new files are renamed in. The executable moves last, so a launcher
