@@ -84,7 +84,17 @@ pub(super) fn admit_launcher_rows(events: &mut Vec<TelemetryEvent>, max_rows: us
                 continue;
             }
             row.level = clean_level(&row.level);
+            // This event's content digest is a public artifact identity, not a
+            // machine/install identifier. Keep only the exact lowercase SHA-256
+            // shape, on the existing install target and closed event/phase.
+            let manifest = public_manifest_digest(&row.target, &row.fields);
             clean_fields(&mut row.fields);
+            if let Some(manifest) = manifest.filter(|_| {
+                row.fields.contains_key("manifest_sha256") || row.fields.len() < MAX_FIELDS
+            }) {
+                row.fields
+                    .insert("manifest_sha256".into(), Value::String(manifest));
+            }
             kept.push(TelemetryEvent::ClientNative(row));
         }
     }
@@ -290,4 +300,19 @@ fn percent_var(lower: &str) -> bool {
         open = Some(i);
     }
     false
+}
+
+fn public_manifest_digest(target: &str, fields: &Map<String, Value>) -> Option<String> {
+    if target != "client.launcher.install"
+        || fields.get("event")?.as_str()? != "applied_content_identity"
+        || !matches!(fields.get("phase")?.as_str()?, "applied" | "play_admitted")
+    {
+        return None;
+    }
+    let hash = fields.get("manifest_sha256")?.as_str()?;
+    (hash.len() == 64
+        && hash
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
+    .then(|| hash.to_owned())
 }

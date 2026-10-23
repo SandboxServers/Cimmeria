@@ -2,14 +2,20 @@
 //! and by the shell's unit tests. The updater orders releases by this SemVer
 //! (docs/updater.md), so a value it cannot parse must never reach a binary.
 
-/// D-LX8: `YYYY.M.D` from the release date, `YYYY.M.D-N` for a same-day rebuild.
+/// D-LX15: stable `YYYY.M.(D*100+N)` releases, with 16-bit Windows components.
 pub fn validate(version: &str) -> Result<(), String> {
-    semver::Version::parse(version).map(drop).map_err(|error| {
-        format!(
-            "CIMMERIA_LAUNCHER_VERSION={version:?} is not SemVer ({error}). \
-             A release is YYYY.M.D, or YYYY.M.D-N for a same-day rebuild (D-LX8)."
-        )
-    })
+    let parsed = semver::Version::parse(version).map_err(|error| {
+        format!("CIMMERIA_LAUNCHER_VERSION={version:?} is not SemVer ({error}); releases use YYYY.M.(D*100+N) (D-LX15)")
+    })?;
+    if [parsed.major, parsed.minor, parsed.patch]
+        .iter()
+        .any(|part| *part > u16::MAX as u64)
+    {
+        return Err(
+            "CIMMERIA_LAUNCHER_VERSION exceeds Windows 16-bit file-version components".into(),
+        );
+    }
+    Ok(())
 }
 
 /// `TAURI_CONFIG` with `version` set: the JSON tauri-build and
@@ -34,7 +40,14 @@ mod tests {
 
     #[test]
     fn release_versions_are_semver_and_anything_else_fails_the_build() {
-        for good in ["2026.10.11", "2026.1.5", "2026.10.11-2", "0.1.0"] {
+        for good in [
+            "2026.10.11",
+            "2026.1.5",
+            "2026.10.11-2",
+            "2026.12.3199",
+            "65535.65535.65535",
+            "0.1.0",
+        ] {
             assert_eq!(validate(good), Ok(()), "{good}");
         }
         for bad in [
@@ -48,7 +61,14 @@ mod tests {
         ] {
             let message = validate(bad).expect_err(bad);
             assert!(message.contains("CIMMERIA_LAUNCHER_VERSION"), "{message}");
-            assert!(message.contains("YYYY.M.D"), "{message}");
+            assert!(message.contains("D-LX15"), "{message}");
+        }
+    }
+
+    #[test]
+    fn windows_file_version_components_must_not_truncate() {
+        for bad in ["65536.1.1", "2026.65536.1", "2026.10.65536"] {
+            assert!(validate(bad).unwrap_err().contains("16-bit"));
         }
     }
 

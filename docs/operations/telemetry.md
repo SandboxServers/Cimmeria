@@ -975,3 +975,15 @@ the `telemetry.write` scope; a 401 on refresh additionally means the
 session passed its lifetime cap, and the launcher's answer to all of
 them is to mint a fresh session. The summary route never answers 401: it
 reads no token.
+
+### Which content a launcher applied
+
+Filter launcher native rows to `client.launcher.install` and
+`event=applied_content_identity`. `manifest_sha256` names the retained signed
+installed manifest; `overlay_ids` lists fully applied overlays and
+`incomplete_overlay_ids` lists partial overlays. `phase=applied` follows
+successful publication; `phase=play_admitted` follows Play admission. Neither
+is a claim about code actually loaded by a game process. These observations
+use the existing consented launcher pipeline and its quotas; absence of a row
+is not proof no content was applied. An offered update is not installed
+content. See the [desktop launch contract](../../crates/launcher/desktop/docs/launch.md#applied-content-identity).

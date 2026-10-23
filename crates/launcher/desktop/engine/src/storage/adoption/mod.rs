@@ -3,6 +3,8 @@
 //! Native composition only: dispatch these blocking functions on retained workers.
 mod artifacts;
 mod comparison;
+#[cfg(all(test, not(target_os = "macos")))]
+mod identity_tests;
 mod in_place;
 mod in_place_abandon;
 mod in_place_check;

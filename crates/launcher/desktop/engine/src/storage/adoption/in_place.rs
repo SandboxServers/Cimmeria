@@ -150,6 +150,11 @@ pub(super) fn publish(
         });
     }
     drop(owner);
+    if result.is_ok() {
+        if let Ok(state) = preview.state.lock() {
+            state.log_applied_content("applied");
+        }
+    }
     result
 }
 

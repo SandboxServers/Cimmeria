@@ -4,7 +4,12 @@ use ed25519_dalek::{Signer, SigningKey};
 use uuid::Uuid;
 
 fn release() -> VerifiedRelease {
-    let body = serde_json::to_vec(&serde_json::json!({"schema":1,"seed":{"blob":"seed.zip","size":1,"sha256":"a".repeat(64)},"patches":[]})).unwrap();
+    let body = serde_json::to_vec(&serde_json::json!({"schema":1,
+        "seed":{"blob":"seed.zip","size":1,"sha256":"a".repeat(64)},
+        "patches":[
+            {"id":"complete","blob":"full.zip","size":1,"sha256":"b".repeat(64),"root":"sgw_game"},
+            {"id":"partial","blob":"partial.zip","size":1,"sha256":"c".repeat(64),"root":"sgw_game","after":"complete"}
+        ]})).unwrap();
     let signature = SigningKey::from_bytes(&crate::manifest::DEV_MANIFEST_PRIVKEY).sign(&body);
     let signature: String = signature
         .to_bytes()
@@ -51,9 +56,12 @@ fn prepared(intent: &InstallIntent, release: &VerifiedRelease) {
     std::fs::write(content.join("Working/Binaries/SGW.exe"), b"fixture").unwrap();
     crate::state::InstalledState {
         seed_sha256: Some(release.manifest().seed.sha256.clone()),
-        applied_patches: vec![],
+        applied_patches: vec!["complete@sgw_game".into(), "partial@sgw_game".into()],
+        incomplete_patches: vec![crate::state::IncompletePatch {
+            state_key: "partial@sgw_game".into(),
+            skipped: vec![],
+        }],
         seed_adopted: false,
-        ..Default::default()
     }
     .save(&content)
     .unwrap();
@@ -79,10 +87,15 @@ fn absent_destination_reconciles_without_creating_files() {
 
 #[test]
 fn owned_partial_content_stays_gated_and_untouched() {
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
     let (_root, mut state, intent, release) = interrupted();
     owned(&intent);
     std::fs::write(intent.destination.join("partial"), b"keep").unwrap();
-    assert_eq!(reconcile(&mut state, &release).unwrap(), Recovery::Partial);
+    let (result, events) = crate::test_capture::capture(|| reconcile(&mut state, &release));
+    assert_eq!(result.unwrap(), Recovery::Partial);
+    assert!(!events
+        .iter()
+        .any(|e| e.field("event") == Some("applied_content_identity")));
     assert_eq!(
         state
             .operations()
@@ -101,11 +114,30 @@ fn owned_partial_content_stays_gated_and_untouched() {
 
 #[test]
 fn receipt_before_terminal_journal_recovers_prepared_content() {
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
     let (root, mut state, intent, release) = interrupted();
     prepared(&intent, &release);
+    let (result, events) = crate::test_capture::capture(|| reconcile(&mut state, &release));
+    assert_eq!(result.unwrap(), Recovery::ContentPrepared);
+    let identities: Vec<_> = events
+        .iter()
+        .filter(|e| e.field("event") == Some("applied_content_identity"))
+        .collect();
+    assert_eq!(identities.len(), 1);
+    let digest: String = release
+        .digest()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     assert_eq!(
-        reconcile(&mut state, &release).unwrap(),
-        Recovery::ContentPrepared
+        identities[0].field("manifest_sha256"),
+        Some(digest.as_str())
+    );
+    assert_eq!(identities[0].field("phase"), Some("applied"));
+    assert_eq!(identities[0].field("overlay_ids"), Some("[\"complete\"]"));
+    assert_eq!(
+        identities[0].field("incomplete_overlay_ids"),
+        Some("[\"partial\"]")
     );
     drop(state);
     let mut state = DesktopState::open(&root.path().join("state")).unwrap();

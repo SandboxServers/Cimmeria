@@ -14,7 +14,7 @@
 #                    the downloaded file has the SHA-256 its build job output,
 #                    and so does its .sha256 beside it, when there is one
 #   dated            create or update the dated release $TAG: its notes, the
-#                    Windows zip, .sha256, .zip.sig when signed, and the
+#                    Windows zip, .sha256, .zip.sig (required), and the
 #                    client-patches overlay patch when one was packed
 #   current          refresh launcher-current (D-LX7) with the Windows zip,
 #                    .sha256, .zip.sig and latest.json, the feed last
@@ -22,7 +22,7 @@
 #   macos-current    replace the macOS zip and its .sha256 on launcher-current
 #   current-notes    rewrite launcher-current's notes from its assets
 #
-# Environment: TAG; VERSION for dated; TRIGGERING_PR (optional) for dated;
+# Environment: TAG; VERSION for dated and macos-current; TRIGGERING_PR (optional) for dated;
 # GH_TOKEN, GH_REPO and the GITHUB_* variables Actions sets.
 set -euo pipefail
 
@@ -109,9 +109,10 @@ Dispatched from PR #${TRIGGERING_PR}."
 
 **Players of the old Windows launcher (\`sgw-launcher.exe\`):** your old launcher will no longer update. Download the zip from ${STABLE}/${ZIP_NAME} and use \`cimmeria-launcher-desktop.exe\` instead.
 
-This build is unsigned. If Windows Defender or SmartScreen blocks it, see docs/client/launcher-guide.md."
+Updater artifacts carry a Minisign signature. The Windows executable is not Authenticode signed; for Defender or SmartScreen see docs/client/launcher-guide.md."
   local assets=("$ZIP" "$ZIP.sha256")
-  if [ -f "$ZIP.sig" ]; then assets+=("$ZIP.sig"); fi
+  [ -s "$ZIP.sig" ] || die "signed updater artifact is required"
+  assets+=("$ZIP.sig")
   shopt -s nullglob
   local overlay=(overlay-out/*.zip overlay-out/*.entry.json)
   shopt -u nullglob
@@ -141,6 +142,14 @@ Includes the client-patches UI overlay patch. To publish it, add its \`.entry.js
 # mismatched file. The release is never marked latest, and its tag has no
 # date, which the egui launcher's self-update skips.
 current() {
+  if [[ ! -s "$ZIP.sig" || ! -s artifacts/latest.json ]]; then
+    die "signature and verified feed are required"
+  fi
+  if gh release view "$CURRENT" >/dev/null 2>&1; then
+    mkdir -p artifacts/previous-feed
+    gh release download "$CURRENT" --pattern latest.json --dir artifacts/previous-feed --clobber
+    python "$(dirname "$0")/release_identity.py" current artifacts/latest.json artifacts/previous-feed/latest.json
+  fi
   if ! gh release view "$CURRENT" >/dev/null 2>&1; then
     gh release create "$CURRENT" --latest=false --target "$GITHUB_SHA" \
       --title "Launcher (current)" --notes "The newest Stargate Worlds launcher."
@@ -158,11 +167,20 @@ macos() {
 }
 
 macos_current() {
-  local file
+  local file status
+  mkdir -p artifacts/previous-feed
+  gh release download "$CURRENT" --pattern latest.json --dir artifacts/previous-feed --clobber
+  status="$(python "$(dirname "$0")/release_identity.py" macos-current "${VERSION:?macos-current needs VERSION}" artifacts/previous-feed/latest.json)"
+  if [ "$status" = skipped_older ]; then
+    echo "launcher-current is newer than $VERSION; keeping its macOS assets and notes"
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "status=$status" >> "$GITHUB_OUTPUT"; fi
+    return
+  fi
   for file in "$MAC_ZIP" "$MAC_ZIP.sha256"; do
     gh release upload "$CURRENT" "$file" --clobber
   done
   current_notes
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "status=$status" >> "$GITHUB_OUTPUT"; fi
 }
 
 case "${1:-}" in

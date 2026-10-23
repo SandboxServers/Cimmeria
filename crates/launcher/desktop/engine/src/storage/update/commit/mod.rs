@@ -81,13 +81,13 @@ pub(crate) fn start(
             std::panic::catch_unwind(AssertUnwindSafe(|| replace(&state, &prepared, |_| Ok(()))))
                 .unwrap_or(Err(Failure::ReconciliationRequired));
         let result = result.map_err(|error| preparation::finish_failure(&state, id, error));
+        // Prepared's observer is harmless once a durable terminal result exists.
+        drop(prepared);
         if result.is_ok() {
             if let Ok(mut owner) = state.lock() {
                 owner.queue_install_result(id, Run::Update, Ending::Succeeded);
             }
         }
-        // Prepared's observer is harmless once a durable terminal result exists.
-        drop(prepared);
         events::committed(&result);
         let _ = send.send(result);
     });
