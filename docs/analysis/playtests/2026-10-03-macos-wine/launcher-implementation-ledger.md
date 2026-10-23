@@ -793,3 +793,15 @@ files, skips operations whose source differs, and records them in `incomplete_pa
 A light-adopted install updates without the seed. None of this has had live UAT. See
 the [migration contract](../../../../crates/launcher/desktop/docs/migration.md#adopting-an-existing-folder)
 and the [light-adoption packets](../../launcher-telemetry/work-packets-light-adoption.md).
+
+## Launcher repeat-release policy (D-LX15)
+
+Owner-approved 2026-10-23: stable UTC `YYYY.M.(D*100+N)` versions, slots
+1..99, replace D-LX8's stable-first/prerelease-repeat policy. Every release
+requires Windows Minisign updater signing and refreshes `launcher-current`.
+Run identity is reserved before builds; old reruns cannot lower the rolling
+feed version. macOS ad-hoc application signing and manual updating remain.
+See [the design](../../launcher-uat-fixes/design-repeat-releases.md) and
+[release contract](../../../../crates/launcher/desktop/docs/release.md).
+No real release was performed by this implementation task. Live validation
+of release publication and the macOS bundle remains separate from unit tests.
