@@ -40,6 +40,7 @@ fn with_io_kind(check: rejection::Rejection, error: &std::io::Error) -> rejectio
 /// to its client root first: when the saved import names that root it is the
 /// legacy source, otherwise it is a folder source. In place, the folder must be
 /// writable; either way it must be outside the launcher state.
+#[cfg(any(test, feature = "test-support"))]
 pub(super) fn request_source(
     state: &Mutex<DesktopState>,
     request: &SourceRequest,
@@ -50,7 +51,7 @@ pub(super) fn request_source(
     })
 }
 
-/// [`request_source`] with the folder scan supplied, so a light preview can report
+/// Resolve the source with the folder scan supplied, so a preview can report
 /// hashing progress and honour its cancel token.
 pub(super) fn request_source_with(
     state: &Mutex<DesktopState>,

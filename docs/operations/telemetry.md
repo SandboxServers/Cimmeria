@@ -1,5 +1,8 @@
 # Dev-Session Telemetry — Operations
 
+> **Type:** How-to · **Audience:** Telemetry operators · **Updated:** 2026-10-23
+> **Companions:** [Architecture](../architecture/dev-session-telemetry.md), [native phase contract](../../crates/launcher/desktop/docs/launcher-telemetry.md)
+
 Operator-facing runbook for the launcher and client telemetry pipeline:
 provisioning the shared secret, rotating it, enabling it on the colo,
 enabling/disabling ingest, and reading the data downstream.
@@ -730,6 +733,66 @@ carries a path, URL or host: the only free text is a sample of at most 10 index 
   [migration contract](../../crates/launcher/desktop/docs/migration.md#adopting-an-existing-folder).
 - Nothing in this table has been seen in SigNoz from a real launcher run. The rows
   are asserted by captured-event unit tests only.
+
+## Launcher adoption and Play phase timing
+
+Use this when a player reports slow adoption or a long wait after Play. These
+are consented launcher events under `client.native`, not anonymous
+`launcher.summary` rows. Keep identifying query values and raw rows out of
+public reports.
+
+1. Bound the query to the reported time window and launcher run. Filter service
+   `cimmeria-client`, `scope_name = client.native`, and `client_target` equal to
+   `client.launcher.adoption` or `client.launcher.launch`.
+2. Read the JSON text in `attributes_string['fields']`. The phase lifecycle,
+   correlation values, duration and scan counts are nested there, not guaranteed
+   to be top-level SigNoz attributes. Confirm field names against the
+   [desktop contract](../../crates/launcher/desktop/docs/launcher-telemetry.md).
+3. Pair starts and finishes within the same process/run and operation. Sort by
+   timestamp, then compare completed durations and file/byte workloads. A slow
+   scan suggests a different next investigation from a slow admission or helper
+   handshake. These measurements do not by themselves identify a disk, antivirus,
+   network or server cause.
+   Repeated phase names can be separate legitimate passes, including idempotent
+   adoption application; use `phase_sequence` to keep their pairs separate.
+4. Compare `game_started` startup duration with later DLL initialization, login,
+   synchronization and world-entry rows separately. Do not add overlapping
+   nested phase durations or count background resynchronization as launcher
+   startup time.
+   Packaged `startup_ms` includes native blocking-worker queue wait measured by
+   `play_dispatch_queue`, but excludes browser/UI time before IPC receipt.
+   Its endpoint is the helper's `ProcessStarted` reply, not the first rendered
+   frame. Inspect requests do not produce a queue timer.
+
+For ClickHouse SQL queries against the logs table, this projection makes the
+nested data inspectable without assuming automatic field promotion. Add the
+appropriate bounded timestamp predicate in the query tool before executing it:
+
+```sql
+SELECT timestamp,
+       attributes_string['client_target'] AS client_target,
+       JSONExtractString(attributes_string['fields'], 'event') AS event,
+       JSONExtractString(attributes_string['fields'], 'phase') AS phase,
+       JSONExtractUInt(attributes_string['fields'], 'operation') AS operation,
+       JSONExtractUInt(attributes_string['fields'], 'phase_sequence') AS phase_sequence,
+       attributes_string['fields'] AS phase_fields
+FROM signoz_logs.distributed_logs_v2
+WHERE resources_string['service.name'] = 'cimmeria-client'
+  AND scope_name = 'client.native'
+  AND timestamp > toUnixTimestamp(now() - INTERVAL 1 DAY) * 1000000000
+  AND attributes_string['client_target'] IN
+      ('client.launcher.adoption', 'client.launcher.launch')
+ORDER BY timestamp
+LIMIT 200
+```
+
+This is a query recipe, not a committed live-tested dashboard. The existing
+[launcher-session limits](#launcher-sessions) still apply: 300 rows per session,
+200 per chunk and at most 16 scalar keys per row, plus the existing rate limits.
+Forwarding is opt-in and not durably queued. Opt-out, process death, quota
+exhaustion and failed uploads can each remove a finish. Report incomplete pairs
+as missing evidence, never as zero duration or a confirmed hang. An old launcher
+cannot retrospectively emit the new timings.
 
 ## Volume control and the runaway guard
 

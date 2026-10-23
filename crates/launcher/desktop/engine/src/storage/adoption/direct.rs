@@ -11,6 +11,17 @@ pub(super) fn apply(
     progress: &ProgressSink,
     hook: &mut impl FnMut(Point) -> Result<(), Error>,
 ) -> Result<(), Error> {
+    crate::phase_timing::Context::for_operation(plan.provenance.work_id)
+        .measure(crate::phase_timing::Phase::AdoptionApply, || {
+            apply_timed(plan, progress, hook)
+        })
+}
+
+fn apply_timed(
+    plan: &Plan,
+    progress: &ProgressSink,
+    hook: &mut impl FnMut(Point) -> Result<(), Error>,
+) -> Result<(), Error> {
     if plan.schema_version != 2 || plan.installation.schema_version != 2 {
         return Err(ContractError::InvalidTransition.into());
     }

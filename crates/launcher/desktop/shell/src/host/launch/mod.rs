@@ -19,6 +19,20 @@ pub enum LaunchCommand {
         installation_id: Uuid,
     },
 }
+
+impl LaunchCommand {
+    /// Start at IPC receipt, before waiting for a blocking worker. Inspect polls
+    /// produce no timing records and cannot reset the startup clock.
+    pub(crate) fn queue_timer(&self) -> Option<cimmeria_launcher_engine::phase_timing::Timer> {
+        match self {
+            Self::Play { operation_id, .. } => Some(
+                cimmeria_launcher_engine::phase_timing::Context::for_operation(*operation_id)
+                    .start(cimmeria_launcher_engine::phase_timing::Phase::PlayDispatchQueue),
+            ),
+            Self::Inspect { .. } => None,
+        }
+    }
+}
 #[derive(Debug, Serialize)]
 pub struct LaunchStatus {
     schema_version: u32,
@@ -50,6 +64,19 @@ impl NativeHost {
         self
     }
     pub fn launch_command(&self, request: LaunchCommand) -> Result<LaunchStatus, JobError> {
+        match &request {
+            LaunchCommand::Play { operation_id, .. } => {
+                cimmeria_launcher_engine::phase_timing::Context::for_operation(*operation_id)
+                    .measure(
+                        cimmeria_launcher_engine::phase_timing::Phase::PlayRequest,
+                        || self.launch_command_timed(request),
+                    )
+            }
+            _ => self.launch_command_timed(request),
+        }
+    }
+
+    fn launch_command_timed(&self, request: LaunchCommand) -> Result<LaunchStatus, JobError> {
         let version = match &request {
             LaunchCommand::Inspect { schema_version }
             | LaunchCommand::Play { schema_version, .. } => *schema_version,

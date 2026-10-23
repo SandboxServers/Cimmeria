@@ -41,7 +41,12 @@ pub(super) fn publish(
         source::verify_import(imported)?;
     }
     let root = preview.report.destination.clone();
-    if inventory::scan(&root, cancel)? != preview.scanned {
+    if super::timing::scan(
+        crate::phase_timing::Context::for_operation(id),
+        crate::phase_timing::Phase::AdoptionConfirmationScan,
+        || inventory::scan(&root, cancel),
+    )? != preview.scanned
+    {
         return Err(refused(
             Error::SourceChanged,
             "the folder changed after review",
@@ -119,7 +124,10 @@ pub(super) fn publish(
         hook(Point::Plan)?;
         // Renames run without the state guard, so status reads stay responsive.
         move_release_files(&store, &plan, progress, &mut hook)?;
-        let mut state = preview.state.lock().map_err(|_| StorageError::Io)?;
+        let mut state = crate::phase_timing::Context::for_operation(id)
+            .measure(crate::phase_timing::Phase::AdoptionPublicationLock, || {
+                preview.state.lock().map_err(|_| StorageError::Io)
+            })?;
         if state.requires_reopen() {
             return Err(StorageError::PersistenceUncertain.into());
         }

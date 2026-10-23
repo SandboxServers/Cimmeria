@@ -1,7 +1,7 @@
 # Launcher UAT fixes: follow-up resume card
 
 > **Type:** Reference · **Audience:** Resuming engineers and owner · **Updated:** 2026-10-23
-> **Companions:** [Ledger](README.md), [main layout design](design-main-layout.md), [UAT](../../guides/unified-uat.md#launcher-uat-fixes)
+> **Companions:** [Ledger](README.md), [timing design](design-phase-timing.md), [SGC session review](worknotes/sgc-session-review-2026-10-23.md)
 
 **Baseline:** U1-U5 (#1984–#1988) and close-out #1989 are merged.
 
@@ -13,10 +13,13 @@
 | Launcher CI speed | #1994 merged `380e904`; retired | Owner-authorized release 2026.10.2303 completed from this revision |
 | Wider CI iteration | #1995 merged | See [CI design](../ci-iteration-speed.md); separate from this UI follow-up |
 | Main-page layout/branding | [PR #1996](https://github.com/SandboxServers/Cimmeria/pull/1996) merged `b7364c5d0`; retired | All six desktop CI jobs and full merge queue passed; ML packaged acceptance pending |
-| Embedded Windows payload | Owner authorized; [design](design-embedded-payload.md); implementation active | One EXE inside existing ZIP; pinned app-local cache; fresh review/native/package CI/queue before merge |
+| Embedded Windows payload | #1997 merged `bff3b3d`; retired | Windows/Mac 2305 released from `e102a21`, run 39995348002 success; EP acceptance pending |
+| Adoption/Play phase timing | [PR #1998](https://github.com/SandboxServers/Cimmeria/pull/1998); [validation](worknotes/phase-timing-validation.md): 1,180 standalone passed, zero failed, 11 ignored; three mutations and two pre-fix regressions proved | Fresh review ship; rerun CI on corrected head after push, then merge queue/merge/retirement; not merged or released |
+| Early SGC session review | [Anonymized worknote](worknotes/sgc-session-review-2026-10-23.md) | Partial playthrough; reproduce prioritized reports separately |
 
-**Implementation worktree (retire after merge):** `.claude/worktrees/launcher-embedded-payload`, branch `feat/launcher-embedded-payload`.
+**Implementation worktree (retire after merge):** `.claude/worktrees/launcher-phase-timing`, branch `feat/launcher-phase-timing`, base `e102a21`.
 **Design:** main Play page holds saved patch/diagnostics controls and expandable native client changes. Settings retains maintenance. Native setup_complete hides setup buttons independently of Play admission; Settings keeps Check Play status with adjacent feedback; completed adoption must not show unfinished compatibility text. Adoption selects SGW.exe and confirms the resolved root before changes. No Patch Notes tab. Cimmeria branding preserves legacy disk/asset identities.
 **Limits:** no new packaged picker/layout, actual restart, live game, Wine or SigNoz acceptance. ML-U1..U6, PDU and unattested AIP/historical rows remain pending. Ask before laptop/lab use.
-**Approvals:** Windows/macOS adopt at selected root; explicit per-file changes/backups allowed, bulk relocation/copy prohibited. D-LX15 approved. Owner GO (2026-10-23): ship/merge the embedded-payload PR, then release the launcher with the Windows ZIP retained.
+**Timing contract:** local adoption/launcher.launch targets forward with client_target values client.launcher.adoption/client.launcher.launch under scope_name=client.native; read JSON attributes_string['fields'], not launcher.summary. Bounded durations/correlation/counts only; no Plan/schema fields, new destination, changed consent or quotas. Old rows cannot reconstruct missing durations.
+**Approvals/scope:** Windows/macOS adopt at selected root; explicit per-file changes/backups allowed, bulk relocation/copy prohibited. D-LX15 approved. Earlier release GO fulfilled by 2305; no new release requested. Gameplay fixes, deployment and live/lab reproduction are outside this telemetry change and were not performed.
 **Rules:** preserve others' edits; no Plan fields; file caps; PowerShell only; compiling Cargo through lane; ship-pr and retire after merge; never git worktree prune.

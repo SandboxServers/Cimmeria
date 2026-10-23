@@ -872,3 +872,29 @@ and validation are in progress, not packaged acceptance or release evidence.
 The owner gave GO to merge the embedded-payload PR, then release the launcher
 from main with the Windows ZIP retained. Packaged/game acceptance remains
 pending; this GO does not authorize a live game or lab session.
+
+### 2026-10-23: embedded payload released; native phase timing follow-up
+
+[PR #1997](https://github.com/SandboxServers/Cimmeria/pull/1997) merged as
+`bff3b3d`; its worktree is retired. Windows and macOS launcher `2026.10.2305`
+was published from `e102a21` in successful
+[release run 39995348002](https://github.com/SandboxServers/Cimmeria/actions/runs/39995348002).
+The Windows ZIP contains one EXE; checksum, updater feed and Mac bundle version
+were verified. Actual gameplay and replacement/restart acceptance remain open.
+This fulfills the earlier release GO.
+
+The owner subsequently requests adoption/Play phase timing and a session review.
+The [design](../../launcher-uat-fixes/design-phase-timing.md) keeps existing
+consent, quotas, event targets and scalar scrubbers; it adds no Plan fields or
+summary schema. The [native telemetry contract](../../../../crates/launcher/desktop/docs/launcher-telemetry.md)
+records the bounded fields, while the [anonymized SGC review](../../launcher-uat-fixes/worknotes/sgc-session-review-2026-10-23.md)
+separates three introductory mission completions from unfinished Carter
+progression and player-reported obstacles. The [timing validation worknote](../../launcher-uat-fixes/worknotes/phase-timing-validation.md)
+records 1,180 standalone tests passed, zero failed and 11 ignored, the targeted
+server-ingest guard, three restored mutation proofs, two failing-before-fix
+outcome regressions, clean build/clippy/format checks and frontend build.
+Prior head passed all desktop CI jobs and the root gate; fresh outcome review
+returned ship, and corrected-head CI remains pending before the merge queue;
+this is not new live telemetry receipt, performance or release evidence.
+Gameplay changes and live/lab reproduction are outside this telemetry change
+and were not performed; a new release has not been requested.

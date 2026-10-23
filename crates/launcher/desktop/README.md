@@ -17,6 +17,7 @@ through Settings. Settings also connects confirmed [Repair](docs/repair.md),
 precommit cancellation, recovery/abandonment and current-backup cleanup. [Play](docs/launch.md)
 now observes native game lifecycle and, for a player who opts in, injects the
 [game-telemetry DLL](docs/launch.md#opt-in-game-telemetry) with a server session.
+Bounded native [adoption and Play phase timing](docs/launcher-telemetry.md) uses the existing opt-in launcher event pipeline.
 Consented [launcher summaries](docs/launcher-summaries.md) are connected and
 go only over https: to the first login server when it is https, else to the built-in default. That default is not set yet, so with the default server list (plain http) nothing is sent. Real-client/platform gates remain open.
 A player's own [seed archive](docs/seed-archive.md) can replace the seed download for Install, Repair and Update; the seed is never rehosted.

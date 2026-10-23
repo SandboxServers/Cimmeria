@@ -7,6 +7,26 @@ use super::launcher_rows::*;
 
 const ADOPTION: &str = "client.launcher.adoption";
 
+#[test]
+fn native_phase_workload_and_startup_timing_survive_launcher_ingest() {
+    for target in [ADOPTION, "client.launcher.launch"] {
+        let fields = json!({"event":"phase_finished", "phase":"adoption_final_scan",
+            "operation":2, "phase_sequence":9, "outcome":"succeeded",
+            "duration_ms":1764000, "files":31605, "bytes":10737418240u64,
+            "startup_ms":3263, "launcher_version":"desktop-2026.10.2305", "os":"windows"});
+        let mut rows = vec![serde_json::from_value(json!({
+            "type":"client_native", "ts_ms":1, "seq":1,
+            "target":target, "level":"info", "fields":fields
+        }))
+        .unwrap()];
+        assert_eq!(admit_launcher_rows(&mut rows, 200), 0);
+        let TelemetryEvent::ClientNative(row) = &rows[0] else {
+            panic!("native timing row")
+        };
+        assert_eq!(row.fields, fields.as_object().unwrap().clone());
+    }
+}
+
 fn native(target: &str, level: &str) -> TelemetryEvent {
     serde_json::from_value(json!({
         "type": "client_native", "ts_ms": 1, "seq": 1,

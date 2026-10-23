@@ -303,6 +303,7 @@ async fn a_scan_with_nothing_to_reuse_is_refused() {
             &[],
             &CancellationToken::new(),
             ProgressSink::latest().0,
+            crate::phase_timing::Context::preview(),
         )
     });
     assert!(matches!(result, Err(Error::NoReusableFiles)));
@@ -341,6 +342,7 @@ async fn an_invalid_login_server_list_refuses_the_light_preview() {
                 &bad,
                 &CancellationToken::new(),
                 ProgressSink::latest().0,
+                crate::phase_timing::Context::preview(),
             )
         })
     });
@@ -378,6 +380,7 @@ async fn a_valid_login_server_list_still_previews() {
                 &servers,
                 &CancellationToken::new(),
                 ProgressSink::latest().0,
+                crate::phase_timing::Context::preview(),
             )
         })
     });

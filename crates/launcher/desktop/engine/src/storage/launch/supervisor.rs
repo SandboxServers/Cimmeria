@@ -14,12 +14,32 @@ pub(super) async fn run(
     spec: HelperCommand,
     request: Request,
     cancel: CancellationToken,
-    mut observe: impl FnMut(Observation) -> Result<(), IntentError>,
+    observe: impl FnMut(Observation) -> Result<(), IntentError>,
 ) -> Observation {
     let id = request.operation_id;
     if cancel.is_cancelled() {
         return Observation::Cancelled;
     }
+    let mut startup_timer = Some(
+        crate::phase_timing::Context::for_operation(id)
+            .start(crate::phase_timing::Phase::PlayHelperStart),
+    );
+    let result = run_timed(spec, request, observe, &mut startup_timer).await;
+    if let Some(timer) = startup_timer {
+        timer.finish(crate::phase_timing::Outcome::Failed);
+    }
+    result
+}
+
+// The outer future owns the unfinished timer: dropping it still records an
+// interruption, while a known return before ProcessStarted records failure.
+async fn run_timed(
+    spec: HelperCommand,
+    request: Request,
+    mut observe: impl FnMut(Observation) -> Result<(), IntentError>,
+    startup_timer: &mut Option<crate::phase_timing::Timer>,
+) -> Observation {
+    let id = request.operation_id;
     let Ok(mut bytes) = serde_json::to_vec(&request) else {
         events::launch_not_started(id, "request_invalid");
         return Observation::NotStarted;
@@ -40,7 +60,11 @@ pub(super) async fn run(
     #[cfg(windows)]
     command.creation_flags(0x08000000);
     // No kill-on-drop: killing the host is not equivalent to stopping its guest.
-    let Ok(mut child) = command.spawn() else {
+    let Ok(mut child) = crate::phase_timing::Context::for_operation(id)
+        .measure(crate::phase_timing::Phase::PlayHelperSpawn, || {
+            command.spawn()
+        })
+    else {
         events::launch_not_started(id, "spawn_failed");
         return Observation::NotStarted;
     };
@@ -54,6 +78,8 @@ pub(super) async fn run(
         events::launch_failed(id, "observe_failed");
         return Observation::Unknown;
     }
+    let handshake_timer = crate::phase_timing::Context::for_operation(id)
+        .start(crate::phase_timing::Phase::PlayHelperHandshake);
     let mut input = child.stdin.take().unwrap();
     let stdout = child.stdout.take().unwrap();
     bytes.push(b'\n');
@@ -65,6 +91,7 @@ pub(super) async fn run(
     .is_ok_and(|r| r.is_ok())
     {
         events::launch_failed(id, "stdin_write_failed");
+        handshake_timer.finish(crate::phase_timing::Outcome::Failed);
         return Observation::Unknown;
     }
     drop(input);
@@ -78,6 +105,7 @@ pub(super) async fn run(
         Ok(Ok(event)) => event,
         _ => {
             events::launch_failed(id, "no_first_event");
+            handshake_timer.finish(crate::phase_timing::Outcome::Failed);
             return Observation::Unknown;
         }
     };
@@ -90,12 +118,18 @@ pub(super) async fn run(
             .is_err()
             {
                 events::launch_failed(id, "observe_failed");
+                handshake_timer.finish(crate::phase_timing::Outcome::Failed);
                 return Observation::Unknown;
             }
+            if let Some(timer) = startup_timer.take() {
+                timer.finish(crate::phase_timing::Outcome::Succeeded);
+            }
+            handshake_timer.finish(crate::phase_timing::Outcome::Succeeded);
             events::game_started(id);
             (guest_pid, Instant::now())
         }
         Event::NotStarted { stage, win32 } => {
+            handshake_timer.finish(crate::phase_timing::Outcome::Failed);
             return if tokio::time::timeout(Duration::from_secs(10), child.wait())
                 .await
                 .is_ok_and(|s| s.is_ok_and(|s| s.success()))
@@ -108,11 +142,13 @@ pub(super) async fn run(
             };
         }
         Event::Unknown { stage, win32 } => {
+            handshake_timer.finish(crate::phase_timing::Outcome::Failed);
             events::launch_failed_at(id, stage, win32);
             return Observation::Unknown;
         }
         _ => {
             events::launch_failed(id, "unexpected_event");
+            handshake_timer.finish(crate::phase_timing::Outcome::Failed);
             return Observation::Unknown;
         }
     };

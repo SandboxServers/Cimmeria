@@ -31,6 +31,7 @@ pub(super) fn reference_and_comparison(
     servers: &[crate::client_setup::LoginServer],
     cancel: &CancellationToken,
     progress: crate::install_progress::ProgressSink,
+    context: crate::phase_timing::Context,
 ) -> Result<Compared, Error> {
     let (folder, legacy) = match adopted {
         AdoptionSourceRef::Legacy(imported) => (&imported.source.game_directory, Some(imported)),
@@ -54,15 +55,17 @@ pub(super) fn reference_and_comparison(
         .map_err(|_| StorageError::Io)?
         .seed_source_for(&request.release);
     // The index comes first: a published one needs no seed or patch for the reference.
-    let (index, origin) = acquire_index(
-        &root,
-        &request.release,
-        &transport,
-        &seed_source,
-        request.artifacts.as_ref(),
-        cancel,
-        &progress,
-    )?;
+    let (index, origin) = context.measure(crate::phase_timing::Phase::AdoptionIndex, || {
+        acquire_index(
+            &root,
+            &request.release,
+            &transport,
+            &seed_source,
+            request.artifacts.as_ref(),
+            cancel,
+            &progress,
+        )
+    })?;
     let reference = match origin {
         IndexOrigin::Published => None,
         IndexOrigin::Built(_) => Some(reconstructed(
@@ -113,7 +116,12 @@ pub(super) fn reference_and_comparison(
                 .found(format!("0 of {}", files.len())),
         ));
     }
-    if inventory::scan(folder, cancel)? != *scanned {
+    if timing::scan(
+        context,
+        crate::phase_timing::Phase::AdoptionReviewScan,
+        || inventory::scan(folder, cancel),
+    )? != *scanned
+    {
         return Err(rejection::reject(
             Error::SourceChanged,
             Rejection::new("folder_changed_during_check"),

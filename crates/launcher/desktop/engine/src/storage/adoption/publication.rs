@@ -72,6 +72,8 @@ pub(super) fn confirm(
     progress: &crate::install_progress::ProgressSink,
     hook: impl FnMut(Point) -> Result<(), Error>,
 ) -> Result<Provenance, Error> {
+    let timer = crate::phase_timing::Context::for_operation(id)
+        .start(crate::phase_timing::Phase::AdoptionConfirmation);
     let result = if preview.report.in_place() {
         super::in_place::publish(&preview, id, handle, choices, &cancel, progress, hook)
     } else {
@@ -85,7 +87,12 @@ pub(super) fn confirm(
             artifacts::discard_store(&state.directory.root);
         }
     }
-    result
+    if matches!(result, Err(Error::Cancelled)) {
+        timer.finish(crate::phase_timing::Outcome::Cancelled);
+        result
+    } else {
+        timer.result(result)
+    }
 }
 fn copy_and_publish(
     preview: &Preview,

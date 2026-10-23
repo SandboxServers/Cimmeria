@@ -116,10 +116,12 @@ pub(crate) fn launch_failed_at(id: Uuid, stage: Option<Stage>, win32: Option<u32
 /// The game process is running.
 pub(crate) fn game_started(id: Uuid) {
     let operation = operation_numbers::number(id);
+    let startup_ms = operation_numbers::elapsed_ms(id);
     tracing::info!(
         target: "launcher.launch",
         event = "game_started",
         operation,
+        startup_ms,
         "launch: game started"
     );
 }
