@@ -110,6 +110,17 @@ impl DesktopState {
                 Err(_) => return Err(StorageError::Io.into()),
             }
         }
+        if let Some(id) = installed_content::adopted_work(&self.directory.root, &plan.installation)?
+        {
+            let work = root.join(format!(".cimmeria-adopt-{id}"));
+            if repair::directory_or_absent(&work)? {
+                // The exact work ID comes from this installation's retained
+                // provenance. Original-file backups and other folders stay.
+                failed_cleanup::validate_tree(&work)?;
+                std::fs::remove_dir_all(&work).map_err(|_| StorageError::Io)?;
+                sync(root)?;
+            }
+        }
         match std::fs::remove_file(root.join("content-ready.json")) {
             Ok(()) => (),
             Err(error) if error.kind() == ErrorKind::NotFound => (),
