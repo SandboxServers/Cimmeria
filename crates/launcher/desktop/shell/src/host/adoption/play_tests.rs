@@ -227,52 +227,6 @@ async fn host_published_copy_binds_its_reviewed_settings_and_play_polling_never_
     );
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_recovered_copy_carries_the_same_settings_binding() {
-    let mut f = Fixture::new(serde_json::json!({"client_patches": {"enabled": true}}));
-    let _server = f.serve().await;
-    let directory = f.root.path().canonicalize().unwrap();
-    bundle(&mut f.host, &directory, true);
-    f.host
-        .begin_adoption_preview(f.location(), release(&f.seed))
-        .unwrap();
-    let review = reviewed(&f.host).await;
-    f.fault(CopyFault::AfterPromotion);
-    f.host.adoption_command(confirmation(&review)).unwrap();
-    let failed = until(
-        &f.host,
-        "the interrupted copy",
-        Duration::from_secs(30),
-        |s| s.activity == Activity::Idle,
-    )
-    .await;
-    let Some(Reconciliation::Copy { operation_id, .. }) = failed.reconciliation else {
-        panic!("the promoted copy awaits recovery: {failed:?}");
-    };
-    // Promoted but not yet recorded as installed: there is nothing to bind, and
-    // neither view fails.
-    assert_eq!(binding(&f.host), Ok(None));
-    let waiting = play_view(&f.host);
-    assert!(waiting["installation_id"].is_null());
-    assert_eq!(waiting["launcher_update_required"], false);
-    assert_eq!(f.host.install_status().unwrap().runtime_setup, None);
-    f.host
-        .adoption_command(AdoptionCommand::Recover {
-            schema_version: 1,
-            operation_id,
-            operation_revision: failed.native.operation.revision,
-            confirmed: true,
-        })
-        .unwrap();
-    assert_eq!(
-        binding(&f.host),
-        Ok(Some(LaunchBinding {
-            client_patches_enabled: true
-        }))
-    );
-    assert_eq!(play_view(&f.host)["resources_available"], true);
-}
-
 const SLOW: Duration = Duration::from_secs(600);
 
 /// Review, confirm and publish through the host with the pinned Wine helper,

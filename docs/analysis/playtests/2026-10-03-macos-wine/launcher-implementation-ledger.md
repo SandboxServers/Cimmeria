@@ -793,6 +793,32 @@ files, skips operations whose source differs, and records them in `incomplete_pa
 A light-adopted install updates without the seed. None of this has had live UAT. See
 the [migration contract](../../../../crates/launcher/desktop/docs/migration.md#adopting-an-existing-folder)
 and the [light-adoption packets](../../launcher-telemetry/work-packets-light-adoption.md).
+### 2026-10-23: direct-root adoption follow-up
+
+The owner approved adoption at the selected root on Windows and macOS, including
+explicit per-file setup/patch changes, cooked normalization, and replacement
+backups there. Bulk copying or relocation is prohibited. The shell offers Light
+only. Matching schema-2 plan and intent select direct-root layout after existing
+ownership/provenance checks; successful schema-1 installs retain their layout.
+Interrupted legacy movers refuse recovery and offer metadata-only abandon that
+retains bytes, staged originals, and backups for manual inspection. Direct-root
+Repair/Update preserve unrelated live extras and back up replaced outputs.
+
+Task 1 PR #1992 has integrated retained-parent and owner-identity guards across
+adoption, maintenance, rollback, selective Uninstall, receipts, and tree writes.
+Unix uses descriptor-relative operations, not Darwin volfs translation. All
+interrupted schema-1 adoption, including legacy copy, refuses recovery and retains
+content on metadata-only abandon. Plan-bound exact setup expectations now protect player edits during recovery
+and abandon, refusing missing/appeared targets or snapshots without expectations.
+Latest engine checks pass 968 tests (3 ignored) with clean clippy; four setup
+mutation guards fail with comparison disabled. Fresh review 4, post-setup
+integration reruns, and native macOS CI remain pending. Earlier
+frontend/REPL/native-host fixture results are recorded separately from these guards. The browser mock and
+REPL do not establish physical picker, packaged native visuals, real macOS
+runtime, a game launch, physical power-loss recovery, or SigNoz end-to-end success.
+Native macOS CI is pending and no release is authorized by this task. See the
+[approved design](../../launcher-uat-fixes/design-adopt-in-place.md) and
+[validation evidence and limits](../../launcher-uat-fixes/worknotes/adopt-in-place-validation.md).
 
 ## Launcher repeat-release policy (D-LX15)
 

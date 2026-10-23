@@ -132,9 +132,13 @@ profile, you can install fresh (simplest), or bring that install over:
 **Settings → Import legacy launcher settings → Select legacy folders…** asks
 first for the folder that held the old launcher `.exe`, then for its game
 folder (both are inside the WoWSilicon profile's Wine prefix). After
-**Confirm settings import**, **Verified copy adoption** makes a verified copy of
-the game in a new folder; your original stays untouched. An adopted copy plays
-without the game diagnostics module for now, so testers should install fresh.
+**Confirm settings import**, click **Adopt an install** on the main page (or
+**Settings → Use an existing game folder**). macOS uses that selected installation
+in place, without copying or relocating it. Read the review before approving
+individual patch/setup changes and any replacement backups at that root. The
+main-page button disappears once a valid install exists, even when a missing
+runtime or another Play prerequisite still needs attention. An adopted install
+plays without the game diagnostics module for now, so testers should install fresh.
 The details are in
 the [migration contract](../../crates/launcher/desktop/docs/migration.md#adopting-an-existing-folder).
 

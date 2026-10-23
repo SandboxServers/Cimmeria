@@ -3,7 +3,9 @@
 //! the one stored at admission, so a mismatch names what differs and a spelling-only
 //! difference (the directory's case) no longer fails an otherwise correct adoption.
 use super::in_place::SETUP_FILES;
-use super::publication::{read_large, write_large};
+use super::publication::read_large;
+#[cfg(all(test, not(target_os = "macos")))]
+use super::publication::write_large;
 use super::tree_diff::{diff, log_tree_checked, TreeOutcome};
 use super::verification::Tree;
 use super::*;
@@ -22,6 +24,7 @@ struct Stored {
 
 /// Writes `<stage>/expected-tree.json` atomically. The work folder may not exist
 /// yet: it is created by the first replacement copy, and a light adoption can have none.
+#[cfg(all(test, not(target_os = "macos")))]
 pub(super) fn write_expected(stage: &Path, tree: &Tree) -> Result<(), Error> {
     std::fs::create_dir_all(stage)?;
     let stored = Stored {
@@ -34,10 +37,21 @@ pub(super) fn write_expected(stage: &Path, tree: &Tree) -> Result<(), Error> {
     write_large(stage, EXPECTED_TREE, &stored)
 }
 
-/// Removes `<stage>/expected-tree.json` when an abandoned adoption clears its stage.
-/// A missing file is not an error: an admission may have failed before it was written.
-pub(super) fn remove_expected(stage: &Path) {
-    let _ = std::fs::remove_file(stage.join(EXPECTED_TREE));
+/// Write the expected tree through the retained work-directory descriptor.
+pub(super) fn write_expected_guarded(plan: &Plan, tree: &Tree) -> Result<(), Error> {
+    let path = plan.stage().join(EXPECTED_TREE);
+    let guard = super::direct_paths::Parents::new(plan, &[&path], true)?;
+    let stored = Stored {
+        version: 1,
+        tree: tree
+            .iter()
+            .map(|(path, (size, sha))| (path.clone(), (*size, to_hex(sha))))
+            .collect(),
+    };
+    guard.write(
+        &path,
+        &serde_json::to_vec(&stored).map_err(|_| StorageError::Corrupt)?,
+    )
 }
 
 /// The stored tree, or `None` when the file is absent, unreadable or not what
@@ -57,7 +71,11 @@ pub(super) fn read_expected(stage: &Path) -> Option<Tree> {
 
 pub(super) fn validate(game: &Path, plan: &Plan) -> Result<(), Error> {
     inventory::same_directory(game, &plan.stage_identity)?;
-    let scanned = inventory::scan(game, &CancellationToken::new())?;
+    let scanned = if plan.schema_version == 2 {
+        super::direct::scan(game, plan)?
+    } else {
+        inventory::scan(game, &CancellationToken::new())?
+    };
     if !matches!(plan.provenance.check, FileCheck::Light) {
         if inventory::content_digest(&scanned)? != plan.provenance.reference_digest {
             log_tree_checked("verified", TreeOutcome::Mismatch, None);
@@ -151,8 +169,10 @@ pub(super) fn save_setup_originals(plan: &Plan, game: &Path) -> Result<(), Error
         return Ok(());
     }
     let stage = plan.stage();
-    std::fs::create_dir_all(&stage)?;
-    remove_setup_originals(&stage);
+    let manifest = stage.join(SETUP_MANIFEST);
+    let stage_guard = super::direct_paths::Parents::new(plan, &[&manifest], true)?;
+    stage_guard.remove(&manifest, false)?;
+    stage_guard.remove_tree(&stage.join(SETUP_ORIGINALS))?;
     let copies = stage.join(SETUP_ORIGINALS);
     let mut files = Vec::new();
     for key in SETUP_FILES {
@@ -164,17 +184,16 @@ pub(super) fn save_setup_originals(plan: &Plan, game: &Path) -> Result<(), Error
             continue;
         };
         let to = inventory::native(&copies, &found);
-        if let Some(parent) = to.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::copy(inventory::native(game, &found), &to)?;
-        OpenOptions::new().write(true).open(&to)?.sync_all()?;
+        super::direct_paths::copy(plan, &inventory::native(game, &found), &to)?;
         files.push(Original {
             path: found,
             existed: true,
         });
     }
-    write_large(&stage, SETUP_MANIFEST, &Originals { version: 1, files })
+    stage_guard.write(
+        &manifest,
+        &serde_json::to_vec(&Originals { version: 1, files }).map_err(|_| StorageError::Corrupt)?,
+    )
 }
 
 fn read_originals(stage: &Path) -> Option<Originals> {
@@ -187,16 +206,11 @@ pub(super) fn has_setup_originals(stage: &Path) -> bool {
     read_originals(stage).is_some()
 }
 
-/// Removes the manifest first, then the copies, so a half-removed set never looks whole.
-pub(super) fn remove_setup_originals(stage: &Path) {
-    let _ = std::fs::remove_file(stage.join(SETUP_MANIFEST));
-    let _ = std::fs::remove_dir_all(stage.join(SETUP_ORIGINALS));
-}
-
 /// Puts the setup files in `game` back as `save_setup_originals` found them: a file that
 /// existed is copied back over, one that did not is deleted. A file that existed and is
 /// no longer under `game` was already moved home by an earlier run, so it is skipped and
 /// not counted. Returns how many files it touched. Safe to run again after a crash.
+#[cfg(all(test, not(target_os = "macos")))]
 pub(super) fn restore_setup_originals(stage: &Path, game: &Path) -> Result<u32, Error> {
     let originals = read_originals(stage).ok_or(StorageError::Corrupt)?;
     let mut touched = 0;
@@ -238,6 +252,44 @@ pub(super) fn restore_setup_originals(stage: &Path, game: &Path) -> Result<u32, 
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
                 Err(error) => return Err(error.into()),
             }
+        }
+    }
+    Ok(touched)
+}
+
+/// Plan-aware rollback uses retained parent handles for every setup mutation.
+pub(super) fn restore_setup_guarded(plan: &Plan) -> Result<u32, Error> {
+    if plan.schema_version == 2 {
+        return super::setup_expectations::restore(plan);
+    }
+    let stage = plan.stage();
+    let root = &plan.installation.destination;
+    let manifest = stage.join(SETUP_MANIFEST);
+    let guard = super::direct_paths::Parents::new(plan, &[&manifest], false)?;
+    let originals: Originals =
+        serde_json::from_slice(&guard.read(&manifest)?).map_err(|_| StorageError::Corrupt)?;
+    if originals.version != 1 {
+        return Err(StorageError::Corrupt.into());
+    }
+    let mut touched = 0;
+    for row in originals.files {
+        if row
+            .path
+            .split('/')
+            .any(|part| part.is_empty() || part == ".." || part.contains(['\\', ':']))
+        {
+            return Err(StorageError::Corrupt.into());
+        }
+        let target = inventory::native(root, &row.path);
+        if row.existed {
+            let source = inventory::native(&stage.join(SETUP_ORIGINALS), &row.path);
+            super::direct_paths::copy(plan, &source, &target)?;
+            touched += 1;
+        } else {
+            if std::fs::symlink_metadata(&target).is_ok() {
+                touched += 1;
+            }
+            super::direct_paths::remove(plan, &target)?;
         }
     }
     Ok(touched)

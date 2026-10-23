@@ -1,5 +1,5 @@
-//! Adoption IPC: a verified copy on macOS, the imported folder in place elsewhere
-//! (D-LX12). Destinations, releases and artifacts stay native.
+//! Adoption IPC: use the selected game folder in place on both desktop platforms.
+//! Destinations, releases and artifacts stay native.
 //!
 //! Lock order: the adoption mutex, then the store. Retained engine workers take
 //! only the store, so nothing takes the two in the other order. A native preview
@@ -18,21 +18,25 @@ pub(crate) mod refusal;
 mod rejection_dto;
 mod review;
 mod status;
-#[cfg(all(test, target_os = "macos"))]
-use contract::Imported;
 use contract::{Activity, Backend};
 pub use contract::{AdoptionCommand, AdoptionError, AdoptionStatus};
+#[cfg(all(test, target_os = "macos"))]
+use contract::{Completed, Imported};
 #[cfg(test)]
-use contract::{Completed, Phase, Reconciliation};
+use contract::{Phase, Reconciliation};
 use refusal::refusal;
 use review::Review;
 #[cfg(all(test, not(target_os = "macos")))]
 mod copy_tests;
+#[cfg(all(test, target_os = "macos"))]
+mod direct_tests;
 #[cfg(test)]
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod fixture;
 #[cfg(all(test, not(target_os = "macos")))]
 mod in_place_tests;
+#[cfg(test)]
+mod legacy_binding_tests;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(all(test, target_os = "macos"))]
@@ -43,7 +47,7 @@ mod rejection_tests;
 mod tests;
 #[cfg(all(test, target_os = "macos"))]
 mod uat_bridge;
-#[cfg(all(test, not(target_os = "macos")))]
+#[cfg(test)]
 mod uat_bridge_in_place;
 #[cfg(all(test, target_os = "macos"))]
 mod wine_tests;
@@ -53,6 +57,7 @@ mod wine_tests;
 const COPY_FOLDER: &str = "Stargate Worlds";
 
 /// The saved import a legacy adoption names. A folder adoption never reads it.
+#[cfg(any(test, not(target_os = "macos")))]
 fn legacy_import(
     state: &DesktopState,
 ) -> Result<cimmeria_launcher_engine::migration::LegacyImport, AdoptionError> {
@@ -115,7 +120,7 @@ struct Session {
 struct ConfirmJob {
     worker: adoption::ConfirmationWorker,
     preview_handle: Uuid,
-    /// Admitted in-place moves are never cancelled part-way.
+    /// Admitted in-place content changes are never cancelled part-way.
     in_place: bool,
 }
 /// Signed fixture origin for host tests; production always uses the fixed catalog
@@ -132,7 +137,7 @@ impl NativeHost {
     fn adoption_backend(&self) -> Backend {
         #[cfg(all(test, target_os = "macos"))]
         if self.adoption_fixture.is_some() {
-            return Backend::Available;
+            return Backend::InPlace;
         }
         #[cfg(target_os = "macos")]
         {
@@ -141,7 +146,7 @@ impl NativeHost {
                 .as_ref()
                 .is_some_and(|helper| helper.verify().is_ok())
             {
-                Backend::Available
+                Backend::InPlace
             } else {
                 Backend::HelperUnavailable
             }
@@ -151,6 +156,7 @@ impl NativeHost {
     }
     /// A legacy adoption also needs its saved import to be usable. A folder never
     /// reads the import, so an unrelated import cannot block it.
+    #[cfg(any(test, not(target_os = "macos")))]
     fn legacy_choice_allowed(&self) -> Result<(), AdoptionError> {
         self.adoption_choice_allowed()?;
         if let Some(blocker) = self
@@ -208,7 +214,7 @@ impl NativeHost {
     /// `location` is the folder the user picked natively; the copy goes into a
     /// new folder inside it. Only tests and the UAT bridge start it now; the
     /// launcher uses the folder picker.
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg(test)]
     pub fn begin_adoption_preview(
         &self,
         location: PathBuf,
@@ -228,7 +234,7 @@ impl NativeHost {
     }
     /// The imported game folder is the one adopted; there is nothing to choose.
     /// Only tests and the UAT bridge start it now; the launcher uses the folder picker.
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(test, not(target_os = "macos")))]
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn begin_adoption_in_place(
         &self,
@@ -349,7 +355,7 @@ impl NativeHost {
         }
         #[cfg(target_os = "macos")]
         {
-            // The copy must be extracted by the build-pinned helper so that the
+            // Content is checked by the build-pinned helper so that the
             // adopted installation records the Wine backend Play requires.
             let helper = self
                 .helper

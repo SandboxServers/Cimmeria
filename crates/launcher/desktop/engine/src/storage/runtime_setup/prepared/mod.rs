@@ -75,10 +75,7 @@ impl DesktopState {
         {
             return Ok(None);
         }
-        if !install_worker::content_valid(
-            &installed.intent.destination.join("game"),
-            &installed.release,
-        ) {
+        if !install_worker::content_valid(&installed.intent.content_root(), &installed.release) {
             return Ok(None);
         }
         Ok(Some(PreparedRuntime { plan }))

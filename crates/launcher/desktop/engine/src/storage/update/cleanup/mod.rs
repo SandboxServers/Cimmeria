@@ -180,7 +180,7 @@ fn cleanup(
     {
         return Err(StorageError::Corrupt.into());
     }
-    let game = root.join("game");
+    let game = plan.owner.content_root();
     if read_role(&game, &plan)? != Some(Role::Replacement) {
         return Err(StorageError::Corrupt.into());
     }

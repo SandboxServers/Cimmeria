@@ -286,27 +286,49 @@ fn rar_seed(zip_bytes: &[u8], path: &Path) -> Vec<u8> {
 
 fn adopts_in_place_from(kind: SeedKind) {
     let f = Fixture::with_seed(None, kind);
+    let originals = f.scan();
     let exe = inventory::native(f.folder(), "Working/Binaries/SGW.exe");
     let exe_identity = inventory::identity(&exe).unwrap();
     let preview = f.preview().unwrap();
     assert!(preview.report.in_place());
     assert_eq!(preview.report.blocking(preview.replacements()).count(), 0);
-    let expected = preview.reference.as_ref().unwrap().index.clone();
-    commit(preview).unwrap();
+    let _expected = preview.reference.as_ref().unwrap().index.clone();
+    let provenance = commit(preview).unwrap();
 
-    let game = f.folder().join("game");
+    assert!(!f.folder().join("game").exists());
+    for (path, before) in &originals {
+        if path == "launcher-installed.json" {
+            continue;
+        }
+        let after = inventory::identity(&inventory::native(f.folder(), path)).unwrap();
+        assert_eq!(
+            (before.identity.device, before.identity.inode),
+            (after.device, after.inode),
+            "{path} was copied or relocated"
+        );
+    }
+
+    let game = f.folder().to_path_buf();
     let moved = inventory::native(&game, "Working/Binaries/SGW.exe");
-    // Renamed, not copied: the same file, now inside the owned tree.
+    // The same file at the same original path: neither renamed nor copied.
     let identity = inventory::identity(&moved).unwrap();
     assert_eq!(
         (identity.device, identity.inode),
         (exe_identity.device, exe_identity.inode)
     );
-    assert!(!exe.exists());
+    assert!(exe.exists());
     assert_eq!(
-        inventory::content_digest(&inventory::scan(&game, &CancellationToken::new()).unwrap())
-            .unwrap(),
-        inventory::content_digest(&expected).unwrap()
+        inventory::content_digest(
+            &super::direct::scan(
+                &game,
+                &inspect(&f.state.lock().unwrap(), provenance.work_id)
+                    .unwrap()
+                    .plan
+            )
+            .unwrap()
+        )
+        .unwrap(),
+        inventory::content_digest(&_expected).unwrap()
     );
     assert_player_files_untouched(&f);
     // The old launcher's ledger is not a release file and stays; the owned
@@ -329,7 +351,7 @@ fn adopts_in_place_from(kind: SeedKind) {
 }
 
 #[test]
-fn adopts_the_folder_in_place_by_rename_and_leaves_unlisted_files_where_they_were() {
+fn adoption_preserves_original_paths_file_ids_and_unlisted_files() {
     adopts_in_place_from(SeedKind::Zip);
 }
 
@@ -338,6 +360,27 @@ fn adopts_the_folder_in_place_by_rename_and_leaves_unlisted_files_where_they_wer
 #[test]
 fn adopts_the_folder_in_place_from_a_rar_seed() {
     adopts_in_place_from(SeedKind::Rar);
+}
+
+#[test]
+fn public_adoption_refuses_a_separate_copy_and_leaves_the_source_untouched() {
+    let f = Fixture::new(None);
+    let before = f.scan();
+    let mut request = f.request();
+    request.mode = AdoptionMode::Copy;
+    request.destination = f.folder().parent().unwrap().join("separate-copy");
+    assert_eq!(
+        super::preview(
+            f.state.clone(),
+            request,
+            CancellationToken::new(),
+            crate::install_progress::ProgressSink::latest().0
+        )
+        .err(),
+        Some(Error::UnsupportedMode)
+    );
+    assert_eq!(f.scan(), before);
+    assert!(!f.folder().parent().unwrap().join("separate-copy").exists());
 }
 
 #[test]
@@ -434,7 +477,7 @@ fn uninstalling_an_adopted_folder_removes_only_what_the_launcher_manages() {
         assert!(!f.folder().join(name).exists(), "{name} was left");
     }
     assert_player_files_untouched(&f);
-    assert!(f.folder().join("launcher-installed.json").is_file());
+    assert!(!f.folder().join("launcher-installed.json").exists());
 }
 
 #[test]
@@ -453,13 +496,16 @@ fn an_interrupted_move_is_recovered_after_restart() {
     recover(&mut state, id, revision).unwrap();
     assert!(state.installed_content().unwrap().is_some());
     drop(state);
-    let game = f.folder().join("game");
+    let game = f.folder().to_path_buf();
     assert_eq!(
-        inventory::content_digest(&inventory::scan(&game, &CancellationToken::new()).unwrap())
-            .unwrap(),
+        inventory::content_digest(
+            &super::direct::scan(&game, &inspect(&f.state.lock().unwrap(), id).unwrap().plan)
+                .unwrap()
+        )
+        .unwrap(),
         expected
     );
-    assert!(!inventory::native(f.folder(), "Working/Binaries/SGW.exe").exists());
+    assert!(inventory::native(f.folder(), "Working/Binaries/SGW.exe").exists());
     assert_player_files_untouched(&f);
     assert_eq!(f.operation().1, OperationState::Succeeded);
 }

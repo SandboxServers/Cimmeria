@@ -24,6 +24,7 @@ use cimmeria_launcher_core::{patch_dest, patch_summary};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use tokio_util::sync::CancellationToken;
+mod direct;
 
 /// The progress label while the stage is seeded from the live tree.
 const PREPARING: &str = "Preparing update";
@@ -148,11 +149,12 @@ pub(super) async fn stage(
         let zip = fetch(entry, manifest_url, &work, http, cancel, progress).await?;
         zips.push((entry.clone(), zip));
     }
-    let live = plan.owner.destination.join("game");
+    let live = plan.owner.content_root();
     let target = plan.stage();
     let cancel = cancel.clone();
     let progress = progress.clone();
-    tokio::task::spawn_blocking(move || seed(&live, &target, &zips, &cancel, &progress))
+    let direct = plan.owner.schema_version == 2;
+    tokio::task::spawn_blocking(move || seed(&live, &target, &zips, &cancel, &progress, direct))
         .await
         .map_err(|_| Failure::ReconciliationRequired)?
 }
@@ -163,6 +165,7 @@ fn seed(
     zips: &[(PatchEntry, PathBuf)],
     cancel: &CancellationToken,
     progress: &ProgressSink,
+    direct: bool,
 ) -> Result<SeedStats, Failure> {
     let write_set = write_set(live, zips).ok_or_else(|| failed("write_set_unreadable"))?;
     let step = |current| {
@@ -175,9 +178,13 @@ fn seed(
     };
     step(0);
     // Hard links on Windows only; elsewhere a copy keeps the stage independent.
-    let stats = stage_seed::seed_stage(live, target, &write_set, cfg!(windows), &|| {
-        cancel.is_cancelled()
-    })
+    let stats = if direct {
+        self::direct::seed(live, target, &write_set, cancel)
+    } else {
+        stage_seed::seed_stage(live, target, &write_set, cfg!(windows), &|| {
+            cancel.is_cancelled()
+        })
+    }
     .map_err(|error| match error.kind() {
         std::io::ErrorKind::Interrupted => Failure::Cancelled,
         _ => failed("seed_stage_failed"),

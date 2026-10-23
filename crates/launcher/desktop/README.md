@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Launcher contributors
-> **Last updated:** 2026-10-21
+> **Last updated:** 2026-10-23
 > **Companions:** [Implementation plan](../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md), [build rules](../../../docs/architecture/build-system.md#standalone-desktop-launcher-validation), [test policy](../../../TESTING.md)
 
 This standalone workspace contains native Rust state, Effect workflows and a
@@ -20,6 +20,15 @@ now observes native game lifecycle and, for a player who opts in, injects the
 Consented [launcher summaries](docs/launcher-summaries.md) are connected and
 go only over https: to the first login server when it is https, else to the built-in default. That default is not set yet, so with the default server list (plain http) nothing is sent. Real-client/platform gates remain open.
 A player's own [seed archive](docs/seed-archive.md) can replace the seed download for Install, Repair and Update; the seed is never rehosted.
+
+Adoption on Windows and macOS uses the selected installation root directly.
+The shell offers Light only; it never copies or bulk relocates an installation.
+Approved per-file setup, patches, cooked normalization, and replacement backups
+can change content there. Schema-2 intent/plan validation selects that layout;
+schema-1 managed and successful legacy installs retain `root/game`. Direct-root
+Repair/Update commit per file, and Uninstall removes only managed release files,
+retaining the root and extras. See [migration](docs/migration.md#adopting-an-existing-folder)
+for validity, recovery, and verification boundaries.
 
 ## Native operation and storage contracts
 

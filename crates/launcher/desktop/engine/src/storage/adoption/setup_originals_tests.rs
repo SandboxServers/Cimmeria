@@ -128,7 +128,7 @@ async fn a_light_adoption_is_abandonable_after_setup_and_restores_the_folder() {
     );
     assert!(!inventory::native(&folder, LOGIN).exists());
     assert_eq!(files_of(&folder), before);
-    assert!(!game.exists(), "{:?}", walk(&game));
+    assert!(game.exists(), "the selected root stays in place");
     assert!(!folder.join("content-ready.json").exists());
     assert!(
         std::fs::read_dir(&folder).unwrap().all(|entry| !entry
@@ -239,16 +239,4 @@ async fn saving_the_originals_twice_replaces_the_first_set() {
         std::fs::read(inventory::native(&game, SGW)).unwrap()
     );
     assert!(in_place_check::has_setup_originals(&stage));
-}
-
-fn walk(dir: &Path) -> Vec<String> {
-    let mut out = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries {
-            let path = entry.unwrap().path();
-            out.push(path.display().to_string());
-            out.extend(walk(&path));
-        }
-    }
-    out
 }

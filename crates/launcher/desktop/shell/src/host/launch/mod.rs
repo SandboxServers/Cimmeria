@@ -130,7 +130,7 @@ impl NativeHost {
             .map(|installed| installed.intent.operation_id);
         let game = installed
             .as_ref()
-            .map(|installed| installed.intent.destination.join("game"));
+            .map(|installed| installed.intent.content_root());
         Ok(LaunchStatus::assemble(
             native,
             installation_id,

@@ -1,116 +1,108 @@
-//! In-place adoption (D-LX12) after the folder changed under an interrupted
-//! adoption, and the refusals that keep a folder from being admitted at all.
+//! Direct-root interruption and legacy relocation-journal compatibility.
 use super::in_place_tests::*;
 use super::*;
 
-/// The release file the interrupted run moved, and where it was and is now.
-struct Moved {
-    old: PathBuf,
-    game: PathBuf,
-    bytes: Vec<u8>,
-}
-/// Crash after the first rename, restart, and copy that file back to its old
-/// path, as the old launcher or a running game could.
-fn duplicated() -> (Fixture, Moved) {
-    let f = Fixture::new(None);
-    assert!(commit_with(f.preview().unwrap(), crash_after_first_move).is_err());
-    let f = f.reopen();
-    let game = f.folder().join("game");
-    let moved = inventory::scan(&game, &CancellationToken::new()).unwrap();
-    assert_eq!(moved.len(), 1, "one file was moved before the crash");
-    let path = moved.keys().next().unwrap().clone();
-    let old = inventory::native(f.folder(), &path);
-    let in_game = inventory::native(&game, &path);
-    std::fs::copy(&in_game, &old).unwrap();
-    let bytes = std::fs::read(&in_game).unwrap();
-    (
-        f,
-        Moved {
-            old,
-            game: in_game,
-            bytes,
-        },
-    )
-}
 fn recover_now(f: &Fixture) -> Result<(), Error> {
     let (id, _) = f.operation();
     let mut state = f.state.lock().unwrap();
     let revision = state.operations().snapshot().revision;
     recover(&mut state, id, revision)
 }
-fn owner(f: &Fixture) -> Uuid {
-    let marker = std::fs::read(f.folder().join(".cimmeria-install.json")).unwrap();
-    serde_json::from_slice::<InstallIntent>(&marker)
-        .unwrap()
-        .operation_id
-}
 
 #[test]
-fn a_release_file_recreated_at_its_old_path_is_left_there_and_recovery_succeeds() {
-    let (f, moved) = duplicated();
+fn interrupted_adoption_recovery_keeps_existing_paths_and_file_ids() {
+    let f = Fixture::new(None);
+    let path = f.folder().join("later.txt");
+    let before = inventory::identity(&path).unwrap();
+    assert!(commit_with(f.preview().unwrap(), crash_after_first_move).is_err());
+    let f = f.reopen();
     recover_now(&f).unwrap();
-    assert_eq!(f.operation().1, OperationState::Succeeded);
-    assert_eq!(std::fs::read(&moved.game).unwrap(), moved.bytes);
-    // Never deleted: it is now a file the release does not list.
-    assert_eq!(std::fs::read(&moved.old).unwrap(), moved.bytes);
-    assert!(f
-        .state
-        .lock()
-        .unwrap()
-        .installed_content()
-        .unwrap()
-        .is_some());
+    let after = inventory::identity(&path).unwrap();
+    assert_eq!((before.device, before.inode), (after.device, after.inode));
+    assert!(!f.folder().join("game").exists());
     assert_player_files_untouched(&f);
 }
 
 #[test]
-fn when_only_the_old_path_copy_verifies_it_replaces_the_copy_in_game_and_the_other_is_kept() {
-    let (f, moved) = duplicated();
-    std::fs::write(&moved.game, b"damaged after the move").unwrap();
-    let owner = owner(&f);
+fn an_edit_after_interruption_is_preserved_and_refuses_full_verification() {
+    let f = Fixture::new(None);
+    assert!(commit_with(f.preview().unwrap(), crash_after_first_move).is_err());
+    let f = f.reopen();
+    std::fs::write(f.folder().join("later.txt"), b"changed after review").unwrap();
+    assert_eq!(recover_now(&f), Err(StorageError::Corrupt.into()));
+    assert_eq!(
+        std::fs::read(f.folder().join("later.txt")).unwrap(),
+        b"changed after review"
+    );
+    assert!(!f.folder().join("game").exists());
+}
+
+#[test]
+fn extra_files_added_after_interruption_remain_at_their_paths() {
+    let f = Fixture::new(None);
+    assert!(commit_with(f.preview().unwrap(), crash_after_first_move).is_err());
+    let f = f.reopen();
+    std::fs::write(f.folder().join("new-notes.txt"), b"new notes").unwrap();
     recover_now(&f).unwrap();
-    assert_eq!(f.operation().1, OperationState::Succeeded);
-    assert_eq!(std::fs::read(&moved.game).unwrap(), moved.bytes);
-    assert!(!moved.old.exists());
-    let mut aside = moved.old.clone().into_os_string();
-    aside.push(format!(".adopt-conflict-{owner}"));
-    assert_eq!(std::fs::read(aside).unwrap(), b"damaged after the move");
+    assert_eq!(
+        std::fs::read(f.folder().join("new-notes.txt")).unwrap(),
+        b"new notes"
+    );
+    assert_player_files_untouched(&f);
 }
 
 #[test]
-fn when_neither_copy_verifies_recovery_stops_and_changes_nothing() {
-    let (f, moved) = duplicated();
-    std::fs::write(&moved.game, b"one changed copy").unwrap();
-    std::fs::write(&moved.old, b"another changed copy").unwrap();
-    assert_eq!(recover_now(&f), Err(Error::DuplicateReleaseFile));
-    assert_eq!(std::fs::read(&moved.game).unwrap(), b"one changed copy");
-    assert_eq!(std::fs::read(&moved.old).unwrap(), b"another changed copy");
-    assert_eq!(f.operation().1, OperationState::ReconciliationRequired);
-    assert!(f
-        .state
-        .lock()
-        .unwrap()
-        .installed_content()
-        .unwrap()
-        .is_none());
-}
-
-#[test]
-fn abandoning_with_a_file_in_both_places_keeps_the_folders_copy_and_leaves_the_other_in_game() {
-    let (f, moved) = duplicated();
-    {
-        let (id, _) = f.operation();
-        let mut state = f.state.lock().unwrap();
-        let revision = state.operations().snapshot().revision;
-        abandon(&mut state, id, revision).unwrap();
-    }
-    assert_eq!(f.operation().1, OperationState::Cancelled);
-    assert_eq!(std::fs::read(&moved.old).unwrap(), moved.bytes);
-    assert_eq!(std::fs::read(&moved.game).unwrap(), moved.bytes);
+fn legacy_interrupted_moves_are_never_resumed_and_abandon_only_unregisters() {
+    use super::publication::{name, plan_name, write_large};
+    let f = Fixture::new(None);
+    assert!(commit_with(f.preview().unwrap(), crash_after_first_move).is_err());
+    let (id, _) = f.operation();
+    let state = f.state.lock().unwrap();
+    let mut record = inspect(&state, id).unwrap();
+    record.plan.schema_version = 1;
+    record.plan.installation.schema_version = 1;
+    let root = f.folder();
+    let old_game = root.join("game");
+    std::fs::create_dir(&old_game).unwrap();
+    // Reconstruct a journal an older released launcher really could leave.
+    std::fs::rename(root.join("later.txt"), old_game.join("later.txt")).unwrap();
+    record.plan.stage_identity = inventory::identity(&old_game).unwrap();
+    write_large(&state.directory.root, &plan_name(id), &record.plan).unwrap();
+    write_large(&state.directory.root, &name(id), &record).unwrap();
+    atomic::write(root, ".cimmeria-install.json", &record.plan.installation).unwrap();
+    atomic::write(
+        &state.directory.root,
+        &format!(
+            "install-intent-{}.json",
+            record.plan.installation.operation_id
+        ),
+        &record.plan.installation,
+    )
+    .unwrap();
+    let mut snapshot = state.operations().snapshot().clone();
+    snapshot.operation.as_mut().unwrap().intent_digest = record.plan.digest().unwrap();
+    atomic::write(&state.directory.root, "operation.json", &snapshot).unwrap();
+    drop(state);
+    let f = f.reopen();
+    let before = f.scan();
+    let mut state = f.state.lock().unwrap();
+    let offered = interrupted(&state, id).unwrap();
+    assert!(!offered.recoverable && offered.abandonable);
+    let revision = state.operations().snapshot().revision;
+    assert_eq!(
+        recover(&mut state, id, revision),
+        Err(ContractError::InvalidTransition.into())
+    );
+    assert_eq!(f.scan(), before);
+    abandon(&mut state, id, revision).unwrap();
+    drop(state);
+    assert_eq!(
+        std::fs::read(old_game.join("later.txt")).unwrap(),
+        b"later entry"
+    );
+    assert!(!f.folder().join("later.txt").exists());
     assert!(!f.folder().join(".cimmeria-install.json").exists());
     assert_player_files_untouched(&f);
-    // The non-empty game folder is not a harmless leftover.
-    assert_eq!(f.preview().err(), Some(Error::LeftoverLauncherFiles));
 }
 
 /// Setup rewrites release bytes, so once it may have run only recovery is
@@ -212,7 +204,7 @@ fn a_marker_and_empty_game_from_an_admission_that_never_began_are_taken_back() {
         .installed_content()
         .unwrap()
         .is_some());
-    assert!(inventory::native(f.folder(), "game/Working/Binaries/SGW.exe").is_file());
+    assert!(inventory::native(f.folder(), "Working/Binaries/SGW.exe").is_file());
 }
 
 #[test]

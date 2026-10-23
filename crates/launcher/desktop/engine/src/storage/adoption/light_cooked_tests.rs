@@ -98,7 +98,7 @@ async fn abandon_puts_the_stock_tier_back() {
     assert_eq!(read(&lt.folder, STOCK_A), big("stock a"));
     assert_eq!(read(&lt.folder, STOCK_B), big("stock b"));
     assert!(!exists(&lt.folder, "Working/SGWGame/SourceCache.en-us"));
-    assert!(!lt.game().exists());
+    assert!(lt.game().exists());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

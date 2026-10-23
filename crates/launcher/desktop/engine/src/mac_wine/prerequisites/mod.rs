@@ -105,7 +105,7 @@ async fn run(
     };
     let env =
         environment(&resources.runtime, &resources.prefix).map_err(|_| StorageError::UnsafeFile)?;
-    let game = plan.installation.destination.join("game");
+    let game = plan.installation.content_root();
     let binaries = crate::install_layout::sgw_exe(&game)
         .parent()
         .ok_or(StorageError::Corrupt)?

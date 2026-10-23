@@ -8,7 +8,7 @@ use super::*;
 pub(super) fn adoption_tags(owner: &DesktopState) -> (&'static str, u64) {
     match owner.installed_for_launch() {
         Ok(Some((installed, provenance))) => {
-            let game = installed.intent.destination.join("game");
+            let game = installed.intent.content_root();
             launch_tags(provenance.as_ref(), &game)
         }
         Ok(None) => ("none", 0),

@@ -54,6 +54,8 @@ fn bridge() {
     });
     host.adoption_fixture = Some(TestDispatch {
         manifest_url: format!("{}/manifest.json", server.uri()),
+        #[cfg(target_os = "macos")]
+        helper: None,
         copy_fault: Mutex::new(None),
     });
     for line in std::io::stdin().lock().lines() {

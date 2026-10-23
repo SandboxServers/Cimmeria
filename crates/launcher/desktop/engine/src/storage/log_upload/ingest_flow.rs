@@ -146,7 +146,7 @@ impl DesktopState {
                         .installed_for_launch()
                         .ok()
                         .flatten()
-                        .map(|(installed, _)| installed.intent.destination.join("game")),
+                        .map(|(installed, _)| installed.intent.content_root()),
                     _busy: busy,
                 }))
             }

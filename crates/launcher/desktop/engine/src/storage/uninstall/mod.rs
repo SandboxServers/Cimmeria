@@ -5,6 +5,7 @@ use crate::repair::events;
 use crate::{OperationKind, OperationState};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+mod direct;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -231,6 +232,9 @@ impl DesktopState {
             return Err(ContractError::InvalidTransition.into());
         }
         if plan.in_place {
+            if plan.installation.schema_version == 2 {
+                return self.remove_direct(plan);
+            }
             return self.remove_in_place(plan);
         }
         let root = &plan.installation.destination;
@@ -458,7 +462,7 @@ fn managed(
     Ok(meta.is_dir()
         && (repair::uninstall_artifact(state_root, &entry.path(), intent, partial)?
             || update::uninstall_artifact(state_root, &entry.path(), intent, partial)?
-            || name == "game"
+            || name == "game" && intent.schema_version == 1
             || name == stage
             || name == cache
             || adopt)

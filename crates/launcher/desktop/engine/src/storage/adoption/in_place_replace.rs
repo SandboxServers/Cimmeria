@@ -1,7 +1,7 @@
 //! The in-place replace and restore steps: a release file that needs replacing has
 //! its original set aside first, and an abandoned adoption puts each one back. Split
 //! out of `in_place.rs`; the moves that call these stay there.
-use super::in_place::{holds, present, Hashed, Way};
+use super::in_place::{Hashed, Way};
 use super::model::FileCheck;
 use super::publication::Point;
 use super::*;
@@ -35,17 +35,6 @@ pub(super) fn cooked_tier(plan: &Plan) -> Option<(String, String)> {
     })
 }
 
-/// Whether `path` is a plain directory. Missing is `false`; a link, junction or file
-/// is refused.
-fn plain_dir(path: &Path) -> Result<bool, Error> {
-    match std::fs::symlink_metadata(path) {
-        Ok(meta) if super::super::failed_cleanup::plain(&meta) && meta.is_dir() => Ok(true),
-        Ok(_) => Err(StorageError::UnsafeFile.into()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(_) => Err(StorageError::Io.into()),
-    }
-}
-
 /// Before any file moves (adopt, and abandon too, so that a run that stopped before
 /// the rename can move files back): rename the stock tier to the placed one.
 /// Idempotent.
@@ -61,16 +50,17 @@ pub(super) fn place_cooked_tier(way: Way<'_>, from: &Path, to: &Path) -> Result<
         inventory::native(root, &stock),
         inventory::native(root, &placed),
     );
+    let guard = super::direct_paths::Parents::new(plan, &[&stock, &placed], false)?;
     // Already renamed: a re-run, a recovery, or the second call.
-    if !plain_dir(&stock)? {
+    if !guard.is_dir(&stock)? {
         return Ok(());
     }
-    if plain_dir(&placed)? && std::fs::remove_dir(&placed).is_err() {
+    if guard.is_dir(&placed)? && guard.remove(&placed, true).is_err() {
         // Both tiers hold files (a stored-move row looks like a rename row): nothing to place.
         tracing::debug!(target: "adoption", "light adoption: both cooked-data tiers hold files; the directory stays as it is");
         return Ok(());
     }
-    std::fs::rename(&stock, &placed)?;
+    guard.rename(&stock, &placed, false)?;
     tracing::debug!(target: "adoption", "light adoption: placed the bundled cooked-data tier");
     Ok(())
 }
@@ -88,8 +78,9 @@ pub(super) fn restore_cooked_tier(way: Way<'_>, to: &Path) -> Result<(), Error> 
         inventory::native(to, &stock),
         inventory::native(to, &placed),
     );
-    match (plain_dir(&placed)?, plain_dir(&stock)?) {
-        (true, false) => std::fs::rename(&placed, &stock)?,
+    let guard = super::direct_paths::Parents::new(plan, &[&stock, &placed], false)?;
+    match (guard.is_dir(&placed)?, guard.is_dir(&stock)?) {
+        (true, false) => guard.rename(&placed, &stock, false)?,
         (true, true) => {
             tracing::warn!(target: "adoption", "abandoning light adoption: both cooked-data tiers are in the folder; the placed one stays")
         }
@@ -116,7 +107,11 @@ pub(super) fn replaced_kind(path: &str, reason: Classification) -> Option<Classi
 /// Where a replaced file's original is kept: a modified file's original goes to
 /// the backup (D-AI1), one that needs patching to the work folder's `originals`.
 /// A missing file has no original.
-fn original_home(plan: &Plan, path: &str, kind: Classification) -> Result<Option<PathBuf>, Error> {
+pub(super) fn original_home(
+    plan: &Plan,
+    path: &str,
+    kind: Classification,
+) -> Result<Option<PathBuf>, Error> {
     Ok(match kind {
         Classification::Modified => {
             let backup = plan.report.backup.as_ref().ok_or(StorageError::Corrupt)?;
@@ -142,13 +137,16 @@ pub(super) fn replace_file(
     kind: Classification,
     hook: &mut impl FnMut(Point) -> Result<(), Error>,
 ) -> Result<(), Error> {
-    if let Some(home) = original_home(plan, path, kind)? {
-        match (present(source)?, present(&home)?) {
+    let home = original_home(plan, path, kind)?;
+    let staged = inventory::native(&plan.stage().join("replacements"), path);
+    let partial = partial_path(target);
+    let mut guarded = vec![source, target, staged.as_path(), partial.as_path()];
+    guarded.extend(home.as_deref());
+    let parents = super::direct_paths::Parents::new(plan, &guarded, true)?;
+    if let Some(home) = home {
+        match (parents.present(source)?, parents.present(&home)?) {
             (true, false) => {
-                if let Some(parent) = home.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::rename(source, &home)?;
+                parents.rename(source, &home, true)?;
                 tracing::debug!(target: "adoption", path, original = %home.display(), "in-place adoption: the original was set aside");
                 hook(Point::Replaced)?;
             }
@@ -164,32 +162,36 @@ pub(super) fn replace_file(
         sha256: replacement.sha256,
         size: replacement.size,
     };
-    if present(target)? {
-        if holds(target, &expected)? {
+    if parents.present(target)? {
+        if parents.holds(target, &expected)? {
             return Ok(());
+        }
+        if plan.schema_version == 2 {
+            return Err(super::in_place::refused(
+                Error::SourceChanged,
+                "a replacement target changed after admission",
+            ));
         }
         // A partial copy from an interrupted run. `game` is this launcher's own
         // tree, so the partial file is replaced rather than kept.
-        std::fs::remove_file(target)?;
+        parents.remove(target, false)?;
     }
-    let staged = inventory::native(&plan.stage().join("replacements"), path);
-    let entry = inventory::hash(&staged, &CancellationToken::new())?;
+    let entry = parents.hash(&staged)?;
     if entry.sha256 != replacement.sha256 || entry.size != replacement.size {
         tracing::error!(target: "adoption", path, "in-place adoption: a staged replacement no longer matches the review");
         return Err(StorageError::Corrupt.into());
     }
     // The copy lands beside the target and is renamed over it only once it verifies,
     // so an interrupted copy never leaves a partial file at the release path.
-    let partial = partial_path(target);
-    if present(&partial)? {
-        std::fs::remove_file(&partial)?;
+    if parents.present(&partial)? {
+        parents.remove(&partial, false)?;
     }
-    inventory::copy(&staged, &partial, &entry, &CancellationToken::new())?;
-    if !holds(&partial, &expected)? {
-        std::fs::remove_file(&partial)?;
+    parents.copy_verified(&staged, &partial, &entry)?;
+    if !parents.holds(&partial, &expected)? {
+        parents.remove(&partial, false)?;
         return Err(StorageError::Corrupt.into());
     }
-    std::fs::rename(&partial, target)?;
+    parents.rename(&partial, target, plan.schema_version == 2)?;
     Ok(())
 }
 
@@ -200,51 +202,6 @@ fn partial_path(target: &Path) -> PathBuf {
     PathBuf::from(partial)
 }
 
-/// Undoes [`replace_file`] while the adoption is staged: the original goes back
-/// from where it was set aside, and the replacement copy leaves `game` only if it
-/// still holds the reviewed bytes. A file in both places keeps the folder's copy
-/// and the set-aside original stays where it is.
-pub(super) fn restore_replaced(
-    path: &str,
-    game_copy: &Path,
-    root_copy: &Path,
-    plan: &Plan,
-    replacement: &Replacement,
-    kind: Classification,
-) -> Result<(), Error> {
-    if let Some(home) = original_home(plan, path, kind)? {
-        match (present(&home)?, present(root_copy)?) {
-            (true, false) => {
-                if let Some(parent) = root_copy.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::rename(&home, root_copy)?;
-            }
-            (true, true) => {
-                tracing::warn!(target: "adoption", path, "abandoning in-place adoption: the original is in both the backup and its old path; the folder's copy stays")
-            }
-            (false, false) if kind == Classification::Modified => {
-                tracing::error!(target: "adoption", path, "abandoning in-place adoption: a modified release file is in neither place");
-                return Err(StorageError::Corrupt.into());
-            }
-            _ => (),
-        }
-    }
-    let expected = Hashed {
-        sha256: replacement.sha256,
-        size: replacement.size,
-    };
-    if present(game_copy)? && holds(game_copy, &expected)? {
-        std::fs::remove_file(game_copy)?;
-    }
-    // A copy an interrupted install left beside the release path is never the reviewed file.
-    let partial = partial_path(game_copy);
-    if present(&partial)? {
-        std::fs::remove_file(&partial)?;
-    }
-    Ok(())
-}
-
 /// Abandon's last folder steps, once the originals are back: the directories the
 /// restored originals emptied go, then the backup folder, and so does the work
 /// folder with its replacement copies. A folder still holding a kept original
@@ -252,37 +209,35 @@ pub(super) fn restore_replaced(
 pub(super) fn clear_abandoned(plan: &Plan, files: &[&str]) -> Result<(), Error> {
     let originals = plan.stage().join("originals");
     if let Some(backup) = &plan.report.backup {
-        remove_emptied(backup, files)?;
-        remove_empty_dir(backup);
+        remove_emptied(plan, backup, files)?;
+        remove_empty_dir(plan, backup)?;
     }
-    remove_emptied(&originals, files)?;
+    remove_emptied(plan, &originals, files)?;
     let stage = plan.stage();
-    match std::fs::remove_dir_all(stage.join("replacements")) {
+    let replacements = stage.join("replacements");
+    let guard = super::direct_paths::Parents::new(plan, &[&replacements], false)?;
+    match guard.remove_tree(&replacements) {
         Ok(()) => (),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
         Err(error) => {
             tracing::warn!(target: "adoption", ?error, "abandoned in-place adoption: could not remove the staged replacements")
         }
     }
-    super::in_place_check::remove_expected(&stage);
-    remove_empty_dir(&originals);
-    // Abandon removes the setup originals last, so the stage is not empty yet.
-    if !stage.join(super::in_place_check::SETUP_ORIGINALS).exists() {
-        remove_empty_dir(&stage);
-    }
+    super::direct_paths::remove(plan, &stage.join(super::in_place_check::EXPECTED_TREE))?;
+    remove_empty_dir(plan, &originals)?;
     Ok(())
 }
 
 /// Removes `dir` if it is empty. A folder that is missing or still holds a file
 /// is left alone; a kept file is the reason it stays.
-fn remove_empty_dir(dir: &Path) {
-    match std::fs::remove_dir(dir) {
-        Ok(()) => (),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
-        Err(error) => {
-            tracing::warn!(target: "adoption", ?error, directory = %dir.display(), "abandoned in-place adoption: a folder is left in place")
-        }
+fn remove_empty_dir(plan: &Plan, dir: &Path) -> Result<(), Error> {
+    if !dir.exists() {
+        return Ok(());
     }
+    let guard = super::direct_paths::Parents::new(plan, &[dir], false)?;
+    // Missing or nonempty directories remain; never recursively delete extras.
+    let _ = guard.remove(dir, true);
+
+    Ok(())
 }
 
 /// Whether `path` is a custom `LoginInternal.lua` that setup rewrites. Its original
@@ -299,21 +254,12 @@ pub(super) fn keeps_login(plan: &Plan, path: &str) -> bool {
 pub(super) fn keep_login(path: &str, source: &Path, plan: &Plan) -> Result<(), Error> {
     let backup = plan.report.backup.as_ref().ok_or(StorageError::Corrupt)?;
     let home = inventory::native(backup, path);
-    let entry = inventory::hash(source, &CancellationToken::new())?;
-    let expected = Hashed {
-        sha256: entry.sha256,
-        size: entry.size,
-    };
-    if present(&home)? {
-        if holds(&home, &expected)? {
-            return Ok(());
-        }
-        std::fs::remove_file(&home)?;
+    let guard = super::direct_paths::Parents::new(plan, &[source, &home], true)?;
+    let expected = guard.hash(source)?;
+    if guard.present(&home)? && guard.holds(&home, &expected)? {
+        return Ok(());
     }
-    if let Some(parent) = home.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    inventory::copy(source, &home, &entry, &CancellationToken::new())?;
+    guard.copy_atomic(source, &home)?;
     tracing::debug!(target: "adoption", path, original = %home.display(), "in-place adoption: the login file's original was kept in the backup");
     Ok(())
 }
@@ -323,16 +269,16 @@ pub(super) fn keep_login(path: &str, source: &Path, plan: &Plan) -> Result<(), E
 pub(super) fn drop_login_copy(path: &str, restored: &Path, plan: &Plan) -> Result<(), Error> {
     let backup = plan.report.backup.as_ref().ok_or(StorageError::Corrupt)?;
     let home = inventory::native(backup, path);
-    if !present(&home)? {
+    if !home.exists() {
         return Ok(());
     }
-    let entry = inventory::hash(&home, &CancellationToken::new())?;
-    let expected = Hashed {
-        sha256: entry.sha256,
-        size: entry.size,
-    };
-    if present(restored)? && holds(restored, &expected)? {
-        std::fs::remove_file(&home)?;
+    let guard = super::direct_paths::Parents::new(plan, &[restored, &home], false)?;
+    if !guard.present(&home)? {
+        return Ok(());
+    }
+    let expected = guard.hash(&home)?;
+    if guard.holds(restored, &expected)? {
+        guard.remove(&home, false)?;
     }
     Ok(())
 }
@@ -342,9 +288,19 @@ pub(super) fn drop_login_copy(path: &str, restored: &Path, plan: &Plan) -> Resul
 /// The backup is a sibling of this folder and is never touched here.
 pub(super) fn remove_work_folder(plan: &Plan) {
     let stage = plan.stage();
+    if plan.schema_version == 2 {
+        let result = (|| -> Result<(), Error> {
+            let guard = super::direct_paths::Parents::new(plan, &[&stage], false)?;
+            guard.remove_tree(&stage)
+        })();
+        if let Err(error) = result {
+            tracing::warn!(target: "adoption", ?error, "adoption work cleanup refused; work retained");
+        }
+        return;
+    }
+
     match std::fs::remove_dir_all(&stage) {
         Ok(()) => (),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
         Err(error) => {
             tracing::warn!(target: "adoption", ?error, directory = %stage.display(), "in-place adoption: could not remove the work folder; it is left in place")
         }
@@ -353,7 +309,7 @@ pub(super) fn remove_work_folder(plan: &Plan) {
 
 /// Remove the directories the moves emptied, deepest first. A directory that
 /// still holds anything (the player's own files) stays.
-pub(super) fn remove_emptied(root: &Path, files: &[&str]) -> Result<(), Error> {
+pub(super) fn remove_emptied(plan: &Plan, root: &Path, files: &[&str]) -> Result<(), Error> {
     let mut directories = BTreeSet::new();
     for file in files {
         let mut parts: Vec<&str> = file.split('/').collect();
@@ -373,9 +329,8 @@ pub(super) fn remove_emptied(root: &Path, files: &[&str]) -> Result<(), Error> {
         if !super::super::failed_cleanup::plain(&meta) || !meta.is_dir() {
             continue;
         }
-        if std::fs::read_dir(&path)?.next().is_none() {
-            std::fs::remove_dir(&path)?;
-        }
+        let guard = super::direct_paths::Parents::new(plan, &[&path], false)?;
+        let _ = guard.remove(&path, true);
     }
     Ok(())
 }

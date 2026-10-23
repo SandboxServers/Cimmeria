@@ -3,6 +3,53 @@ use crate::catalog::verify_release;
 use ed25519_dalek::{Signer, SigningKey};
 use uuid::Uuid;
 
+#[test]
+fn legacy_owner_minimum_survives_refused_settings_without_admitting_them() {
+    use crate::storage::effective_settings::fixtures::{adopt_native, Legacy};
+    let legacy = Legacy::new(false, true);
+    let state = std::sync::Arc::new(std::sync::Mutex::new(legacy.open()));
+    let provenance = adopt_native(&legacy, &state);
+    let mut state = state.lock().unwrap();
+    let owner = state.installed_for_launch().unwrap().unwrap().0.intent;
+    assert_eq!(owner.schema_version, 1);
+    let minimum = state.installed_launcher_minimum().unwrap().unwrap();
+    let record = legacy
+        .state_root()
+        .join(format!("adoption-{}.json", provenance.work_id));
+    let original = std::fs::read(&record).unwrap();
+    let mut edited: serde_json::Value = serde_json::from_slice(&original).unwrap();
+    edited["plan"]["imported"]["config"]["client_patches"]["enabled"] =
+        serde_json::Value::Bool(true);
+    std::fs::write(&record, serde_json::to_vec(&edited).unwrap()).unwrap();
+    // Historic schema-1 owner/minimum inspection does not trust these settings.
+    assert_eq!(
+        state.installed_for_launch().unwrap().unwrap().0.intent,
+        owner
+    );
+    assert_eq!(state.installed_launcher_minimum().unwrap(), Some(minimum));
+    assert_eq!(state.installed_content().unwrap().unwrap().intent, owner);
+    assert_eq!(
+        state.uninstall_target().unwrap().unwrap().directory,
+        owner.destination
+    );
+    assert!(state.effective_launch_binding().is_err());
+    std::fs::write(record, original).unwrap();
+    assert!(state.effective_launch_binding().unwrap().is_some());
+    let checkpoint = legacy
+        .state_root()
+        .join(format!("adoption-plan-{}.json", provenance.work_id));
+    let saved = std::fs::read(&checkpoint).unwrap();
+    std::fs::remove_file(&checkpoint).unwrap();
+    assert_eq!(state.installed_content().unwrap().unwrap().intent, owner);
+    assert_eq!(
+        state.uninstall_target().unwrap().unwrap().directory,
+        owner.destination
+    );
+    assert!(state.effective_launch_binding().is_err());
+    std::fs::write(checkpoint, saved).unwrap();
+    assert!(state.effective_launch_binding().unwrap().is_some());
+}
+
 fn fixture() -> (tempfile::TempDir, DesktopState, InstallIntent) {
     let root = tempfile::tempdir().unwrap();
     let mut state = DesktopState::open(&root.path().join("state")).unwrap();

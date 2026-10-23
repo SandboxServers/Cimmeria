@@ -92,7 +92,7 @@ fn abandon(
     )?;
     absent(&plan.backup())?;
     if root.canonicalize().map_err(|_| StorageError::Io)? != *root
-        || directory_or_absent(&root.join("game"))? != plan.original_present
+        || directory_or_absent(&plan.installation.content_root())? != plan.original_present
     {
         return Err(StorageError::UnsafeFile.into());
     }

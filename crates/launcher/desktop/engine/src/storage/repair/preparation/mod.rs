@@ -304,7 +304,7 @@ fn claim(plan: Plan) -> Result<Prepared, StorageError> {
         return Err(StorageError::UnsafeFile);
     }
     let root_owner = lock_owner(&plan.installation)?;
-    if directory_or_absent(&plan.installation.destination.join("game"))? != plan.original_present {
+    if directory_or_absent(&plan.installation.content_root())? != plan.original_present {
         return Err(StorageError::Corrupt);
     }
     match std::fs::symlink_metadata(plan.backup()) {

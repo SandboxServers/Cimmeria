@@ -128,7 +128,7 @@ impl DesktopState {
         let Some(installed) = self.installed_content()? else {
             return Ok(None);
         };
-        let package = installed.intent.destination.join("game").join(PACKAGE);
+        let package = installed.intent.content_root().join(PACKAGE);
         let present = std::fs::symlink_metadata(&package)
             .is_ok_and(|meta| meta.is_file() && meta.len() == PHYSX_EXE_BYTES as u64);
         Ok(present.then_some(package))

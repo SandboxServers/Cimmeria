@@ -9,7 +9,7 @@ impl DesktopState {
         let Ok(Some((installed, _))) = self.installed_for_launch() else {
             return;
         };
-        let path = InstalledState::path(&installed.intent.destination.join("game"));
+        let path = InstalledState::path(&installed.intent.content_root());
         let Ok(Some(ledger)) = read::<InstalledState>(&path) else {
             return;
         };

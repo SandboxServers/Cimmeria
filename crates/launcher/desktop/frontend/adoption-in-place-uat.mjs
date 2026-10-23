@@ -51,7 +51,7 @@ try {
  const before=await evidence();
  assert.equal(before.owner_marker,false);assert.equal(before.owned_directory,null);assert.equal(before.executable_in_old_place,true);
  assert.match(text(),/Adopt your existing game folder .* in place/);
- assert.equal(get('choose-adoption-destination').textContent,'Choose the folder to adopt in place…');
+ assert.equal(get('choose-adoption-destination').textContent,'Use an existing game folder…');
 
  // 0. A hard link in the folder: the refusal names both entries and the fix,
  // nothing changes, and once the link is gone scenario 1 runs as before.
@@ -65,11 +65,8 @@ try {
  let held=await evidence();assert.equal(held.owner_marker,false);assert.equal(held.executable_in_old_place,true);
  await send({command:'remove_hard_link'});
 
- // Picking copy re-renders at once; picking in place again restores the adopt label (scenario 1 needs in_place).
- get('adoption-mode-in-place').checked=false;get('adoption-mode-copy').checked=true;get('adoption-mode-copy').dispatchEvent(new window.Event('change'));await settle();
- assert.match(get('adoption-mode-copy-row').className,/\bselected\b/);assert.equal(get('choose-adoption-destination').textContent,'Choose the folder to copy…');
- get('adoption-mode-copy').checked=false;get('adoption-mode-in-place').checked=true;get('adoption-mode-in-place').dispatchEvent(new window.Event('change'));await settle();
- assert.equal(get('choose-adoption-destination').textContent,'Choose the folder to adopt in place…');
+ // Both platforms use the same entry point and preserve the selected root.
+ assert.equal(get('choose-adoption-destination').textContent,'Use an existing game folder…');
 
  // 1. The player edited one release file: the review shows its replacement box.
  // Confirm stays disabled with every other box ticked, nothing changes until the
@@ -77,7 +74,7 @@ try {
  await click('choose-adoption-destination');
  let status=await until('the review',s=>{assert.equal(s.last_error,null,'preparation failed');return !!s.review;});
  assert.equal(status.review.in_place,true);assert.equal(status.review.requires_replacement,true);assert.deepEqual(status.review.blocked_files,[]);
- assert.match(text(),/Review the comparison and confirmations below\. Nothing is moved until you confirm\./);
+ assert.match(text(),/Review the comparison and confirmations below\. No changes are applied until you confirm\./);
  assert.equal(get('adoption-unsafe').hidden,true,'the refusal list is gone in review');
  assert.equal(get('adoption-source-label').textContent,'Folder:');assert.equal(get('adoption-source').textContent,before.folder.replace(/^\\\\\?\\(?=[A-Za-z]:\\)/,''));assert.equal(get('adoption-destination-label').parentElement.hidden,true,'one folder line');
  assert.equal(get('adoption-replace-row').hidden,false,'a modified release file shows the replacement box');
@@ -88,7 +85,7 @@ try {
  let now=await evidence();assert.equal(now.owner_marker,false);assert.equal(now.executable_in_old_place,true);
  await tick('adoption-replace');
  assert.equal(get('confirm-adoption').disabled,false,'ticking the replacement enables confirm');
- assert.match(get('adoption-consequences').textContent,/moved, not copied.*old launcher stop working.*Don’t run the old launcher on this folder again.*no longer use them.*live in Documents and are not affected/);
+ assert.match(get('adoption-consequences').textContent,/installation stays at the selected root.*never moves or copies it.*Unrelated files remain in place/);
  press('confirm-adoption');press('confirm-adoption');await settle();
  assert.equal(sent('confirm').length,1,'a double click confirms once');
  status=await until('publication',s=>s.activity==='idle');
@@ -97,15 +94,15 @@ try {
  assert.equal(get('choose-adoption-destination').disabled,true);
  now=await evidence();
  assert.equal(now.owner_marker,true);assert.equal(now.owned_directory,before.folder);assert.equal(now.uninstall_directory,before.folder);
- assert.equal(now.executable_in_game,true);assert.equal(now.executable_in_old_place,false);
+ assert.equal(now.executable_in_game,false);assert.equal(now.executable_in_old_place,true);
  assert.equal(now.player_file,'untrusted plugin','a file that is not part of the release stays where it was');
 
  // 2. Uninstalling the adopted folder removes what the launcher manages only.
  await send({command:'uninstall'});
  now=await evidence();
- assert.equal(now.owner_marker,false);assert.equal(now.owned_directory,null);assert.equal(now.executable_in_game,false);
+ assert.equal(now.owner_marker,false);assert.equal(now.owned_directory,null);assert.equal(now.executable_in_game,false);assert.equal(now.executable_in_old_place,false);
  assert.equal(now.player_file,'untrusted plugin');
  console.log('In-place adoption logic UAT passed: production Effect workflow and view against the production host with a real isolated store, imported old-launcher folder and signed loopback artifact origin.');
- console.log('Exercised: a hard link in the folder refused with both entries, their reason and fix named, nothing changed; the mode rows show the pick and the choose button names it; in-place offer text and button; a modified release file shows the replacement box, confirm held disabled until it is ticked and the folder unchanged until then; a single confirmation per double click; adoption published with owner marker, owned directory, uninstall target, executable moved into the owned tree and the unlisted file left in place; engine uninstall of the adopted folder keeping the unlisted file.');
- console.log('Excluded: Tauri IPC and the absent folder dialog, the signed production catalog and HTTPS transport, the published client and its RAR/CAB seed, interrupted-move recovery and abandonment (engine tests), the Uninstall view (G-06, LX-26), Play on the adopted folder (LX-26), and packaged visual UAT.');
+ console.log('Exercised: a hard link refused with both entries named and nothing changed; the single adoption entry point; in-place offer and button; modified-file consent before confirmation; one confirmation per double click; publication with owner marker, original root and executable path, uninstall target and unlisted file retained; selective uninstall keeping the unlisted file.');
+ console.log('Excluded: Tauri IPC and the absent folder dialog, production HTTPS/catalog/client, Wine execution (this bridge uses Native fixtures on both hosts), interrupted-application recovery and abandonment (engine tests), the Uninstall view, Play, and packaged visual UAT.');
 } finally {await app.dispose();child.stdin.end();assert.equal(await exit,0,'native bridge exits cleanly');await rm(root,{recursive:true,force:true});}

@@ -138,7 +138,38 @@ fn reconcile_locked(
         .verify_release_identity(plan.target)
         .map_err(|_| StorageError::Corrupt)?;
     failed_cleanup::validate_tree(&plan.work_directory())?;
-    let game = root.join("game");
+    if plan.owner.schema_version == 2 {
+        if !plan
+            .work_directory()
+            .join("direct-files.json")
+            .try_exists()
+            .map_err(|_| StorageError::Io)?
+        {
+            staged_content::verify(state, &plan, &plan.stage())?;
+        }
+        let previous = state.direct_reconstruction_files(&plan.owner)?;
+        super::super::repair::direct_files::apply(
+            &plan,
+            &plan.owner.content_root(),
+            &plan.stage(),
+            &plan.backup(),
+            &plan.work_directory(),
+            &previous,
+            &_root_owner,
+        )?;
+        if tree_identity::absent(&plan.owner.content_root(), &plan).is_ok() {
+            tree_identity::write_owned(
+                &plan.owner.content_root(),
+                &plan,
+                Role::Replacement,
+                &_root_owner,
+            )?;
+        } else if read_role(&plan.owner.content_root(), &plan)? != Some(Role::Replacement) {
+            return Err(StorageError::Corrupt.into());
+        }
+        return publish(state, &plan, &release, &_root_owner, &mut hook);
+    }
+    let game = plan.owner.content_root();
     let shape = (
         read_role(&game, &plan)?,
         read_role(&plan.stage(), &plan)?,
@@ -154,7 +185,7 @@ fn reconcile_locked(
             (Some(Role::Replacement), None, Some(Role::Original)),
             Phase::OriginalMoved | Phase::Promoted | Phase::Published,
         ) => {
-            return publish(state, &plan, &release, &mut hook);
+            return publish(state, &plan, &release, &_root_owner, &mut hook);
         }
         _ => return Err(StorageError::Corrupt.into()),
     };
@@ -178,19 +209,20 @@ fn reconcile_locked(
     commit::sync(root)?;
     commit::record(state, &plan, Phase::Promoted)?;
     hook(Point::Promoted)?;
-    publish(state, &plan, &release, &mut hook)
+    publish(state, &plan, &release, &_root_owner, &mut hook)
 }
 fn publish(
     state: &mut DesktopState,
     plan: &Plan,
     release: &crate::catalog::VerifiedRelease,
+    owner_file: &File,
     hook: &mut impl FnMut(Point) -> Result<(), StorageError>,
 ) -> Result<(), IntentError> {
     let root = &plan.owner.destination;
-    if !install_worker::content_valid(&root.join("game"), release) {
+    if !install_worker::content_valid(&plan.owner.content_root(), release) {
         return Err(StorageError::Corrupt.into());
     }
-    staged_content::verify(state, plan, &root.join("game"))?;
+    staged_content::verify(state, plan, &plan.owner.content_root())?;
     commit::sync(&plan.work_directory())?;
     commit::sync(root)?;
     let receipt = installed_content::read_ready(root, &plan.owner)?;
@@ -198,7 +230,7 @@ fn publish(
         return Err(StorageError::Corrupt.into());
     }
     hook(Point::BeforeReceipt)?;
-    let saved = installed_content::write_ready(root, &plan.owner, plan.target);
+    let saved = installed_content::write_ready_owned(root, &plan.owner, plan.target, owner_file);
     state.preferences_uncertain |= saved == Err(StorageError::PersistenceUncertain);
     saved?;
     hook(Point::AfterReceipt)?;

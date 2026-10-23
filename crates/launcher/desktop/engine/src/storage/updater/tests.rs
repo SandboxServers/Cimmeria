@@ -493,7 +493,6 @@ fn active_updater_refuses_early_mutation_but_preserves_consent_control() {
     assert!(!saved.launcher_summary_consent);
     assert_eq!(saved.revision, 2);
     assert_eq!(state.operations().snapshot().revision, 0);
-    #[cfg(target_os = "macos")]
     {
         let before = files(&state_path);
         let (progress, _) = crate::install_progress::ProgressSink::latest();
@@ -503,7 +502,7 @@ fn active_updater_refuses_early_mutation_but_preserves_consent_control() {
                 source: crate::adoption::SourceRequest::Legacy {
                     import_digest: "unused".into(),
                 },
-                mode: crate::adoption::AdoptionMode::Copy,
+                mode: crate::adoption::AdoptionMode::Light,
                 destination: root.path().join("adopted"),
                 operation_revision: 0,
                 preferences_revision: 2,

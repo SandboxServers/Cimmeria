@@ -53,6 +53,36 @@ pub(crate) fn write<P: TreePlan>(tree: &Path, plan: &P, role: Role) -> Result<()
         .map_err(|_| StorageError::PersistenceUncertain)?;
     commit::sync(tree)
 }
+/// Create a direct-root marker through parents bound to its authenticated owner.
+pub(crate) fn write_owned<P: TreePlan>(
+    tree: &Path,
+    plan: &P,
+    role: Role,
+    owner: &File,
+) -> Result<(), StorageError> {
+    use crate::storage::adoption::{direct_paths::Parents, Error};
+    let storage = |error| match error {
+        Error::Storage(error) => error,
+        _ => StorageError::UnsafeFile,
+    };
+    let parents = Parents::for_owner(tree, &[], false, owner).map_err(storage)?;
+    let target = tree.join(name(plan));
+    let temporary = tree.join(format!(".cimmeria-tree-{}.partial", Uuid::new_v4()));
+    let mut file = parents.open(&temporary, true, true).map_err(storage)?;
+    file.write_all(
+        &serde_json::to_vec(&Marker {
+            schema_version: 1,
+            plan: plan.clone(),
+            role,
+        })
+        .map_err(|_| StorageError::Corrupt)?,
+    )
+    .map_err(|_| StorageError::Io)?;
+    file.sync_all()
+        .map_err(|_| StorageError::PersistenceUncertain)?;
+    drop(file);
+    parents.rename(&temporary, &target, true).map_err(storage)
+}
 pub(crate) fn read_role<P: TreePlan>(tree: &Path, plan: &P) -> Result<Option<Role>, StorageError> {
     if !directory_or_absent(tree)? {
         return Ok(None);
@@ -70,3 +100,6 @@ pub(crate) fn read_role<P: TreePlan>(tree: &Path, plan: &P) -> Result<Option<Rol
     failed_cleanup::validate_tree(tree)?;
     Ok(Some(marker.role))
 }
+
+#[cfg(test)]
+mod tests;

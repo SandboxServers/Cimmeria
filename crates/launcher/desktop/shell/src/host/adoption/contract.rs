@@ -76,6 +76,8 @@ impl AdoptionCommand {
 pub enum AdoptionError {
     UnsupportedSchema,
     PlatformUnavailable,
+    // Keep this IPC error code shared even when legacy admission is test-only.
+    #[cfg_attr(all(target_os = "macos", not(test)), expect(dead_code))]
     ImportRequired,
     UnsupportedCatalog,
     UnsupportedConfiguration,
@@ -185,8 +187,8 @@ impl From<adoption::Error> for AdoptionError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Backend {
-    /// A verified copy (macOS).
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    /// Retained for decoding old verified-copy status fixtures.
+    #[allow(dead_code)]
     Available,
     /// The imported folder itself is verified and adopted (D-LX12).
     #[cfg_attr(target_os = "macos", allow(dead_code))]
@@ -278,6 +280,8 @@ pub struct AdoptionStatus {
     pub preparations: Vec<Uuid>,
     /// A desktop-owned installation exists, so nothing further can be adopted.
     pub owned: bool,
+    /// Authenticated content exists, independent of runtime and Play availability.
+    pub has_valid_install: bool,
     pub completed: Option<Completed>,
     pub last_error: Option<AdoptionError>,
     /// The check behind `last_error` when the engine recorded one.

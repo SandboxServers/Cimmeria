@@ -497,7 +497,13 @@ pub(super) fn verify_provenance(
     intent: &InstallIntent,
     provenance: &Provenance,
 ) -> Result<(), Error> {
-    published_record(state, intent, provenance).map(|_| ())
+    if intent.schema_version == 1 {
+        // Legacy managed layouts keep owner inspection separate from settings.
+        // Direct-root ownership additionally authenticates the layout Plan.
+        published_record(state, intent, provenance).map(|_| ())
+    } else {
+        published_plan(state, intent, provenance).map(|_| ())
+    }
 }
 /// Read-only view for effective settings. Beyond provenance, the Published plan
 /// must equal the checkpoint written before the operation began, and the journal
@@ -527,7 +533,10 @@ fn published_record(
     provenance: &Provenance,
 ) -> Result<Record, Error> {
     let record: Record = read_large(&state.directory.root.join(name(provenance.work_id)))?;
-    if record.plan.schema_version != 1 || provenance.setup_policy_version != 1 {
+    if !matches!(record.plan.schema_version, 1 | 2)
+        || record.plan.installation.schema_version != record.plan.schema_version
+        || provenance.setup_policy_version != 1
+    {
         return Err(StorageError::UnsupportedSchema.into());
     }
     match record.plan.source()? {

@@ -14,18 +14,16 @@ pub(super) fn full_layout(folder: &Path) -> bool {
     working.is_dir() && crate::install_layout::binaries_dir(folder).parent() == Some(&working)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn preview(
     state: Arc<Mutex<DesktopState>>,
     request: PreviewRequest,
     cancel: CancellationToken,
     progress: ProgressSink,
+    backend: Backend,
     transport: Option<artifacts::Transport>,
     light: bool,
 ) -> Result<Preview, Error> {
-    // macOS adopts only by a verified copy; it never adopts a folder in place.
-    if cfg!(target_os = "macos") {
-        return Err(Error::UnsupportedMode);
-    }
     {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         idle(
@@ -126,12 +124,13 @@ pub(super) fn preview(
     }
     let (adopted, legacy_lock) = source::resolve(adopted)?;
     let servers = source::servers_of(&adopted, &before);
-    let mut preparation = preparation::Ownership::claim(
-        state.clone(),
-        &request,
-        ExtractionBackend::Native,
-        servers.clone(),
-    )?;
+    let identity = match &backend {
+        Backend::Native => ExtractionBackend::Native,
+        #[cfg(target_os = "macos")]
+        Backend::Wine(helper) => helper.backend(),
+    };
+    let mut preparation =
+        preparation::Ownership::claim(state.clone(), &request, identity, servers.clone())?;
     let prepared = if light {
         light::light_comparison(
             &state,
@@ -149,7 +148,7 @@ pub(super) fn preview(
         verification::reference_and_comparison(
             &state,
             &request,
-            Backend::Native,
+            backend,
             transport,
             &mut preparation,
             source::borrowed(&adopted),

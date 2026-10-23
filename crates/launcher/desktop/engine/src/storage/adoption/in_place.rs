@@ -1,16 +1,12 @@
 //! In-place adoption (D-LX12). The imported folder is verified against the signed
-//! release and becomes the owner root. Its release files move by rename into the
-//! owned `game` tree, so nothing is copied; every other file stays where it was,
-//! outside that tree, and no later Repair, Update or Uninstall touches it.
+//! release and becomes the content root. Existing release files stay at their
+//! original paths; only explicitly reviewed content replacements are applied.
 pub(super) use super::in_place_abandon::{abandon, abandonable};
 use super::in_place_check;
-use super::in_place_replace::{
-    drop_login_copy, keep_login, keeps_login, remove_emptied, remove_work_folder, replace_file,
-    replaced_kind, restore_replaced,
-};
+use super::in_place_replace::remove_work_folder;
 use super::publication::{self, name, plan_name, read_large, write_large, Point};
 use super::*;
-use crate::install_progress::{ProgressReporter, ProgressSink};
+use crate::install_progress::ProgressSink;
 use std::{collections::BTreeMap, io::Write};
 
 pub(super) const OWNER: &str = ".cimmeria-install.json";
@@ -92,8 +88,8 @@ pub(super) fn publish(
         }
     }
     let store = state.directory.root.clone();
-    let game = root.join("game");
-    std::fs::create_dir(&game).map_err(|_| StorageError::InUse)?;
+    let game = root.clone();
+    let admission_root = super::direct_paths::Parents::retain_root(&root)?;
     let admitted = admit(preview, &mut state, id, choices, &root, &game, cancel);
     let (plan, provenance, owner) = match admitted {
         Ok(admitted) => admitted,
@@ -113,8 +109,7 @@ pub(super) fn publish(
             } else {
                 // No operation names this folder yet, so nothing could recover
                 // it: take back the marker and the empty tree, never strand them.
-                let _ = std::fs::remove_file(root.join(OWNER));
-                let _ = std::fs::remove_dir(&game);
+                let _ = admission_root.remove(&root.join(OWNER), false);
             }
             return Err(refused(error, "admission failed"));
         }
@@ -171,7 +166,7 @@ fn admit(
 ) -> Result<(Plan, Provenance, File), Error> {
     let owner_id = Uuid::new_v4();
     let installation = InstallIntent {
-        schema_version: 1,
+        schema_version: 2,
         operation_id: owner_id,
         preferences_revision: preview.before.revision,
         destination: root.to_path_buf(),
@@ -179,14 +174,6 @@ fn admit(
         login_servers: source::servers_of(&preview.source, &preview.before),
         backend: preview.preparation.record.descriptor.backend.clone(),
     };
-    let mut owner = OpenOptions::new()
-        .write(true)
-        .read(true)
-        .create_new(true)
-        .open(root.join(OWNER))?;
-    owner.try_lock().map_err(|_| StorageError::InUse)?;
-    owner.write_all(&serde_json::to_vec(&installation).map_err(|_| StorageError::Corrupt)?)?;
-    owner.sync_all()?;
     let (legacy_install_id, import_digest, folder_scan_digest) = publication::pins(&preview.source);
     let provenance = Provenance {
         work_id: id,
@@ -203,7 +190,7 @@ fn admit(
     after.install_directory = Some(root.to_path_buf());
     let (imported, folder) = publication::planned(&preview.source);
     let mut plan = Plan {
-        schema_version: 1,
+        schema_version: 2,
         installation,
         provenance: provenance.clone(),
         imported,
@@ -218,7 +205,13 @@ fn admit(
         replacements: Vec::new(),
         incomplete_patches: preview.incomplete_patches(),
     };
-    plan.replacements = stage_replacements(preview, &plan.stage(), cancel)?;
+    let owner_path = root.join(OWNER);
+    let root_guard = super::direct_paths::Parents::new(&plan, &[&owner_path], false)?;
+    let mut owner = root_guard.open(&owner_path, true, true)?;
+    owner.try_lock().map_err(|_| StorageError::InUse)?;
+    owner.write_all(&serde_json::to_vec(&plan.installation).map_err(|_| StorageError::Corrupt)?)?;
+    owner.sync_all()?;
+    plan.replacements = stage_replacements(preview, &plan, cancel)?;
     state.save_release_evidence(owner_id, &preview.release)?;
     atomic::write(
         &state.directory.root,
@@ -252,7 +245,7 @@ fn admit(
     write_large(&state.directory.root, &reviewed_name(id), &reviewed)?;
     write_large(&state.directory.root, &plan_name(id), &plan)?;
     if let Some(tree) = &preview.expected_tree {
-        in_place_check::write_expected(&plan.stage(), tree)?;
+        in_place_check::write_expected_guarded(&plan, tree)?;
     }
     // Staged here means the moves are authorized, not that they are done.
     write_large(
@@ -289,9 +282,10 @@ pub(super) fn release_files(report: &Report) -> Vec<&str> {
 /// checked against the size and hash the review recorded.
 fn stage_replacements(
     preview: &Preview,
-    stage: &Path,
+    plan: &Plan,
     cancel: &CancellationToken,
 ) -> Result<Vec<Replacement>, Error> {
+    let stage = plan.stage();
     let store = preview.preparation.record.directory.join("replacements");
     let mut staged = Vec::new();
     for replacement in preview.replacements() {
@@ -301,7 +295,8 @@ fn stage_replacements(
             return Err(StorageError::Corrupt.into());
         }
         let dest = inventory::native(&stage.join("replacements"), &replacement.path);
-        inventory::copy(&source, &dest, &entry, cancel)?;
+        let guard = super::direct_paths::Parents::new(plan, &[&dest], true)?;
+        guard.copy_from(&source, &dest, &entry, cancel)?;
         staged.push(replacement.clone());
     }
     Ok(staged)
@@ -317,175 +312,29 @@ pub(super) fn present(path: &Path) -> Result<bool, Error> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) struct Hashed {
-    pub(super) sha256: [u8; 32],
-    pub(super) size: u64,
+pub(crate) struct Hashed {
+    pub(crate) sha256: [u8; 32],
+    pub(crate) size: u64,
 }
 /// Release files by index name, as the review hashed them.
 type Reviewed = BTreeMap<String, Hashed>;
 fn reviewed_name(id: Uuid) -> String {
     format!("adoption-reviewed-{id}.json")
 }
-pub(super) fn holds(path: &Path, expected: &Hashed) -> Result<bool, Error> {
-    let entry = inventory::hash(path, &CancellationToken::new())?;
-    Ok(entry.sha256 == expected.sha256 && entry.size == expected.size)
-}
-
-/// Which way the release files go, and what a file found in both places means.
+/// The direction of an explicitly reviewed cooked-data normalization.
 #[derive(Clone, Copy)]
 pub(super) enum Way<'a> {
-    /// Into `game`. The old launcher or a running game can recreate a file at
-    /// its old path after the review, so a duplicate is settled by content.
-    Adopt { plan: &'a Plan, store: &'a Path },
-    /// Back out of `game`. The folder's copy is kept and `game`'s copy is left
-    /// in `game`: nothing the player may want is deleted. A replaced file's
-    /// original comes back from where it was set aside, and only a replacement
-    /// copy that still holds the reviewed bytes leaves `game`.
+    Adopt { plan: &'a Plan },
     Abandon { plan: &'a Plan },
 }
 
-/// A release file in both places while adopting. The copy the review verified
-/// goes into `game`; the other stays outside it as a file the release does not
-/// list, so the owned tree still matches the signed reference.
-fn settle_duplicate(
-    path: &str,
-    source: &Path,
-    target: &Path,
-    plan: &Plan,
-    store: &Path,
-    reviewed: &mut Option<Reviewed>,
-) -> Result<(), Error> {
-    let owner = plan.installation.operation_id;
-    let expected = match reviewed {
-        Some(reviewed) => reviewed,
-        None => reviewed.insert(read_large(
-            &store.join(reviewed_name(plan.provenance.work_id)),
-        )?),
-    }
-    .get(path)
-    .copied()
-    .ok_or(StorageError::Corrupt)?;
-    if holds(target, &expected)? {
-        tracing::warn!(target: "adoption", path, "in-place adoption: a release file reappeared at its old path; the verified copy is already in game, the other is left where it is");
-        return Ok(());
-    }
-    if holds(source, &expected)? {
-        let mut aside = source.as_os_str().to_owned();
-        aside.push(format!(".adopt-conflict-{owner}"));
-        let aside = PathBuf::from(aside);
-        if present(&aside)? {
-            tracing::error!(target: "adoption", path, "in-place adoption: a duplicate release file's conflict name is taken");
-            return Err(Error::DuplicateReleaseFile);
-        }
-        std::fs::rename(target, &aside)?;
-        std::fs::rename(source, target)?;
-        tracing::warn!(target: "adoption", path, aside = %aside.display(), "in-place adoption: the copy in game did not verify; the reviewed copy replaced it and the other was kept beside the old path");
-        return Ok(());
-    }
-    tracing::error!(target: "adoption", path, "in-place adoption: a release file is in game and at its old path, and neither copy is the one the review verified");
-    Err(Error::DuplicateReleaseFile)
-}
-
-/// Move each file from `from` to `to`. Idempotent: a file already at `to` is
-/// one an interrupted run moved. A file in neither place is refused; one in
-/// both is settled as `way` says.
-pub(super) fn move_files(
-    files: &[&str],
-    from: &Path,
-    to: &Path,
-    way: Way<'_>,
-    progress: &ProgressSink,
-    hook: &mut impl FnMut(Point) -> Result<(), Error>,
-) -> Result<(), Error> {
-    super::in_place_replace::place_cooked_tier(way, from, to)?;
-    let mut reviewed = None;
-    for (current, path) in files.iter().enumerate() {
-        progress.report(crate::install::Progress::Extracting {
-            label: "Adopting in place".into(),
-            current,
-            total: files.len(),
-            filename: path.to_string(),
-        });
-        let source = inventory::native(from, path);
-        let target = inventory::native(to, path);
-        let replaced = match way {
-            Way::Adopt { plan, .. } | Way::Abandon { plan } => plan
-                .replacements
-                .iter()
-                .find(|r| r.path == *path)
-                .and_then(|r| replaced_kind(path, r.reason).map(|kind| (r, kind))),
-        };
-        if let Some((replacement, kind)) = replaced {
-            match way {
-                Way::Adopt { plan, .. } => {
-                    replace_file(path, &source, &target, plan, replacement, kind, hook)?
-                }
-                Way::Abandon { plan } => {
-                    restore_replaced(path, &source, &target, plan, replacement, kind)?
-                }
-            }
-            continue;
-        }
-        match (present(&source)?, present(&target)?) {
-            (true, false) => {
-                if let Some(parent) = target.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                if let Way::Adopt { plan, .. } = way {
-                    if keeps_login(plan, path) {
-                        keep_login(path, &source, plan)?;
-                    }
-                }
-                std::fs::rename(&source, &target)?;
-                hook(Point::Moved)?;
-            }
-            (false, true) => (),
-            (true, true) => match way {
-                Way::Adopt { plan, store } => {
-                    settle_duplicate(path, &source, &target, plan, store, &mut reviewed)?
-                }
-                Way::Abandon { .. } => {
-                    tracing::warn!(target: "adoption", path, "abandoning in-place adoption: a release file is in both places; the folder's copy stays and game keeps the other");
-                }
-            },
-            (false, false) => {
-                tracing::error!(target: "adoption", path, "in-place adoption: a release file is in neither place");
-                return Err(StorageError::Corrupt.into());
-            }
-        }
-        if let Way::Abandon { plan } = way {
-            if keeps_login(plan, path) {
-                drop_login_copy(path, &target, plan)?;
-            }
-        }
-    }
-    progress.report(crate::install::Progress::Extracting {
-        label: "Adopting in place".into(),
-        current: files.len(),
-        total: files.len(),
-        filename: String::new(),
-    });
-    remove_emptied(from, files)?;
-    super::in_place_replace::restore_cooked_tier(way, to)
-}
-
 fn move_release_files(
-    store: &Path,
+    _store: &Path,
     plan: &Plan,
     progress: &ProgressSink,
     hook: &mut impl FnMut(Point) -> Result<(), Error>,
 ) -> Result<(), Error> {
-    let root = &plan.installation.destination;
-    hook(Point::BeforePromotion)?;
-    move_files(
-        &release_files(&plan.report),
-        root,
-        &root.join("game"),
-        Way::Adopt { plan, store },
-        progress,
-        hook,
-    )?;
-    hook(Point::AfterPromotion)
+    super::direct::apply(plan, progress, hook)
 }
 
 /// Whether the folder's `SGW.exe` is open. Windows refuses an exclusive open
@@ -544,7 +393,7 @@ pub(super) fn finish(
 ) -> Result<(), Error> {
     let id = plan.provenance.work_id;
     let root = &plan.installation.destination;
-    let game = root.join("game");
+    let game = plan.installation.content_root();
     inventory::same_directory(root, &plan.destination_identity)?;
     inventory::same_directory(&game, &plan.stage_identity)?;
     let mut record: Record = read_large(&state.directory.root.join(name(id)))?;
@@ -562,20 +411,15 @@ pub(super) fn finish(
     }
     if record.phase == Phase::Staged {
         // A first run finds every file moved; recovery finishes what it left.
-        move_files(
-            &release_files(&plan.report),
-            root,
-            &game,
-            Way::Adopt {
-                plan,
-                store: &state.directory.root,
-            },
-            &ProgressSink::latest().0,
-            &mut |_| Ok(()),
-        )?;
+        super::direct::resume_files(state, plan, &game)?;
+
         // A light adoption copies the setup files aside first, so Abandon can still
         // put them back once setup has rewritten them (D-LF2).
-        in_place_check::save_setup_originals(plan, &game)?;
+        super::setup_expectations::record(
+            plan,
+            &serde_json::to_vec_pretty(&reference::ledger(&release, &plan.incomplete_patches))
+                .map_err(|_| StorageError::Corrupt)?,
+        )?;
         // Checkpointed before setup rewrites any release bytes. A verified adoption
         // is only recoverable from here; moving its files back would not undo the setup.
         record.phase = Phase::Promoted;
@@ -583,15 +427,24 @@ pub(super) fn finish(
     }
     if record.phase == Phase::Promoted {
         // Idempotent, so a recovery after a crash here applies it again.
-        crate::client_setup::prepare(&game, &plan.installation.login_servers)?;
-        reference::ledger(&release, &plan.incomplete_patches)
-            .save(&game)
-            .map_err(|_| StorageError::Io)?;
+        super::direct_setup::prepare(plan)?;
+        let ledger_path = game.join("launcher-installed.json");
+        let ledger_guard = super::direct_paths::Parents::new(plan, &[&ledger_path], false)?;
+        ledger_guard.write(
+            &ledger_path,
+            &serde_json::to_vec_pretty(&reference::ledger(&release, &plan.incomplete_patches))
+                .map_err(|_| StorageError::Corrupt)?,
+        )?;
         sync_files(&game, &SETUP_FILES)?;
         hook(Point::SetUp)?;
     }
     in_place_check::validate(&game, plan)?;
-    atomic::write(root, "content-ready.json", &plan.installation)?;
+    let receipt = root.join("content-ready.json");
+    let guard = super::direct_paths::Parents::new(plan, &[&receipt], false)?;
+    guard.write(
+        &receipt,
+        &serde_json::to_vec(&plan.installation).map_err(|_| StorageError::Corrupt)?,
+    )?;
     state.remember_adopted_content(&plan.installation, &plan.provenance)?;
     hook(Point::Receipt)?;
     if state.preferences == plan.before {
