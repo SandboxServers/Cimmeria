@@ -45,7 +45,7 @@ mod rejection_tests;
 mod tests;
 #[cfg(all(test, target_os = "macos"))]
 mod uat_bridge;
-#[cfg(all(test, not(target_os = "macos")))]
+#[cfg(test)]
 mod uat_bridge_in_place;
 #[cfg(all(test, target_os = "macos"))]
 mod wine_tests;
@@ -230,7 +230,7 @@ impl NativeHost {
     }
     /// The imported game folder is the one adopted; there is nothing to choose.
     /// Only tests and the UAT bridge start it now; the launcher uses the folder picker.
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(test, not(target_os = "macos")))]
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn begin_adoption_in_place(
         &self,
@@ -351,7 +351,7 @@ impl NativeHost {
         }
         #[cfg(target_os = "macos")]
         {
-            // The copy must be extracted by the build-pinned helper so that the
+            // Content is checked by the build-pinned helper so that the
             // adopted installation records the Wine backend Play requires.
             let helper = self
                 .helper

@@ -492,7 +492,7 @@ pub(super) fn verify_provenance(
     intent: &InstallIntent,
     provenance: &Provenance,
 ) -> Result<(), Error> {
-    published_record(state, intent, provenance).map(|_| ())
+    published_plan(state, intent, provenance).map(|_| ())
 }
 /// Read-only view for effective settings. Beyond provenance, the Published plan
 /// must equal the checkpoint written before the operation began, and the journal

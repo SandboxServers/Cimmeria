@@ -86,6 +86,8 @@ mod index_parity_tests;
 #[cfg(test)]
 mod preparation_tests;
 #[cfg(test)]
+mod provenance_tests;
+#[cfg(test)]
 mod publication_tests;
 #[cfg(test)]
 mod recovery_tests;

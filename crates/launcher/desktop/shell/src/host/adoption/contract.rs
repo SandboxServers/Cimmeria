@@ -185,8 +185,8 @@ impl From<adoption::Error> for AdoptionError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Backend {
-    /// A verified copy (macOS).
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    /// Retained for decoding old verified-copy status fixtures.
+    #[allow(dead_code)]
     Available,
     /// The imported folder itself is verified and adopted (D-LX12).
     #[cfg_attr(target_os = "macos", allow(dead_code))]
