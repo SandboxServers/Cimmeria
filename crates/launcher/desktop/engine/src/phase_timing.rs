@@ -99,12 +99,15 @@ impl Context {
         Self::for_operation(Uuid::new_v4())
     }
 
+    /// Resolve the existing operation to process-local numeric correlation;
+    /// the UUID is never included in a timing record.
     pub fn for_operation(id: Uuid) -> Self {
         Self {
             operation: crate::operation_numbers::number(id),
         }
     }
 
+    /// Emit a start and return a guard that emits the matching finish on drop.
     pub fn start(self, phase: Phase) -> Timer {
         let timer = Timer {
             context: self,
@@ -119,6 +122,7 @@ impl Context {
         timer
     }
 
+    /// Time synchronous work, record its outcome, and return its result unchanged.
     pub fn measure<T, E>(self, phase: Phase, work: impl FnOnce() -> Result<T, E>) -> Result<T, E> {
         let timer = self.start(phase);
         timer.result(work())
@@ -138,15 +142,18 @@ pub struct Timer {
 }
 
 impl Timer {
+    /// Attach successful scan counts to the finish; no per-file data is emitted.
     pub fn workload(&mut self, files: u64, bytes: u64) {
         self.files = Some(files);
         self.bytes = Some(bytes);
     }
 
+    /// Set the explicit outcome and consume the guard, emitting its finish on drop.
     pub fn finish(mut self, outcome: Outcome) {
         self.outcome = Some(outcome);
     }
 
+    /// Set success/error from the unchanged result and emit the finish on drop.
     pub fn result<T, E>(mut self, result: Result<T, E>) -> Result<T, E> {
         self.outcome = Some(if result.is_ok() {
             Outcome::Succeeded

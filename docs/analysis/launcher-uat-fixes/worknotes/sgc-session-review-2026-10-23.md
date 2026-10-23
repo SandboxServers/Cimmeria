@@ -69,6 +69,13 @@ mismatch. Confirm the executable build and expected patch fingerprint before
 attributing any gameplay or performance symptom to it. The report establishes
 a refusal, not its root cause or impact.
 
+The applied content-manifest hash was redacted by the observed server's older
+receiver. The launcher sender preserves it, and the receiver exception is
+already merged in [PR #1991](https://github.com/SandboxServers/Cimmeria/pull/1991).
+The observed deployment predates that change. Deploying the newer server is
+needed to retain the hash in future received rows; this does not require a
+duplicate sender change and cannot recover the redacted historical value.
+
 ## Player reports and follow-up priorities
 
 Priorities are investigation order, not confirmed bug severity. Reproduce each

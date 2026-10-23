@@ -53,7 +53,7 @@ completion code; dropping an unfinished asynchronous timer reports `interrupted`
 | `adoption_final_scan` | Final actual-tree inventory and verification |
 | `play_request` | Native Play request, including pre-admission work |
 | `play_dispatch_queue` | Native Tauri IPC receipt through blocking-worker start; Play only |
-| `play_admission` | State lock and launch admission |
+| `play_admission` | Launch admission while holding the state lock |
 | `play_resources` | Native launch-resource verification |
 | `play_telemetry_mint` | Optional game-telemetry session preparation |
 | `play_client_setup` | Client setup before starting the game |
@@ -82,6 +82,9 @@ before native IPC receipt. Completion means the helper's `ProcessStarted`
 response, not a first rendered frame, login or world entry. The short
 `play_request` timer ends when the native request returns; asynchronous worker
 and helper phases can continue afterward.
+The shell acquires the state lock before entering the engine's admission
+timer. That host lock wait is included in aggregate `play_request`, not
+`play_admission`, and has no separately timed phase.
 
 Explicit completion records success or error; a guard dropped before completion
 records interruption, or panic while unwinding. Cancellation can leave only a
