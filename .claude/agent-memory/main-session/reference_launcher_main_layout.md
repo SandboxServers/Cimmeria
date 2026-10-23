@@ -19,7 +19,9 @@ folder name. Successful adoption is not an unfinished compatibility operation.
 
 The native picker targets SGW.exe. `adoption::resolve_executable` verifies its
 name/type, rejects linked layout components and resolves Working/Binaries through
-the existing folder resolver before catalog access. Selection neither runs the
+the existing folder resolver before catalog access. Pass the explicit root to
+that resolver: a nested game-shaped tree beneath Binaries must not retarget
+the executable selection. Selection neither runs the
 executable nor commits adoption. The existing review and root safety checks stay.
 The IPC name `choose_existing_game_folder` remains compatible; no Plan fields.
 

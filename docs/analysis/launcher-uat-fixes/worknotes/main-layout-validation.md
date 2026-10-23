@@ -21,7 +21,7 @@ precedes changes; no Plan or IPC fields were added.
 - Frontend: 269 tests pass, TypeScript/build pass. Removed the two retired
   Patch Notes UI tests; added readiness/reopen, native-picker binding and branding
   coverage, and extended placement/first-press/composition tests.
-- Windows engine: 976 pass, 3 ignored in the library tier. Windows shell:
+- Windows engine: 977 pass, 3 ignored in the library tier. Windows shell:
   153 pass, 8 ignored. Standalone workspace all-target clippy and native executable
   build pass. Focused executable-selection tests pass after mutation restoration.
 - Launcher workflow policy: 5 Python tests pass. No release was cut for this PR.
@@ -31,9 +31,10 @@ precedes changes; no Plan or IPC fields were added.
   idle archive offers after setup and the Settings inspection binding.
   Two failing view runs retained handles and were stopped after their assertions;
   the restored full suite then passed cleanly.
-- Four native mutations fail their intended guards: returning
+- Five native mutations fail their intended guards: returning
   Binaries instead of the install root, and accepting another executable name.
-  The additional native mutations couple setup to the update gate and remove the
+  The additional native mutations restore nested-layout retargeting, couple setup
+  to the update gate and remove the
   path-free picker-refusal event. All were restored; focused/full shell tests and
   clippy pass afterward.
 
@@ -77,7 +78,10 @@ using valid content, verified launch resources, runtime eligibility and known
 operation state. Play admission still uses installation_id and its existing
 gates. Settings now has its own read-only Check Play status action/result.
 Executable-picker failures also emit the existing path-free refused step before
-returning; cancellation remains a separate event. Tests cover all three findings.
+returning; cancellation remains a separate event. Tests cover all three findings. Review 2 confirmed those fixes and found a
+nested game-shaped layout below Binaries could retarget the executable pick.
+The resolver now passes the root derived from the selected executable’s parents;
+a regression checks both outer and nested executable selections.
 
 ## Documentation duty
 

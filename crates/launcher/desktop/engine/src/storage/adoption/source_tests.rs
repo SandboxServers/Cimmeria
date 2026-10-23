@@ -56,6 +56,25 @@ fn executable_pick_resolves_one_install_in_place_without_touching_any_file() {
 }
 
 #[test]
+fn executable_pick_keeps_the_selected_outer_install_when_binaries_holds_another_layout() {
+    let dir = tempfile::tempdir().unwrap();
+    layout(dir.path());
+    layout(&dir.path().join("Working/Binaries"));
+    let selected = dir.path().join("Working/Binaries/SGW.exe");
+    assert_eq!(
+        resolve_executable(&selected).unwrap(),
+        dir.path().canonicalize().unwrap()
+    );
+    let nested = dir.path().join("Working/Binaries/Working/Binaries/SGW.exe");
+    assert_eq!(
+        resolve_executable(&nested).unwrap(),
+        dir.path().join("Working/Binaries").canonicalize().unwrap()
+    );
+    assert!(selected.is_file());
+    assert!(nested.is_file());
+}
+
+#[test]
 fn executable_pick_refuses_other_names_directories_missing_files_and_flat_layouts() {
     let dir = tempfile::tempdir().unwrap();
     layout(dir.path());

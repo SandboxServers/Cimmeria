@@ -125,13 +125,12 @@ pub fn resolve_executable(selected: &Path) -> Result<PathBuf, Error> {
     {
         return Err(Error::NotAGameFolder);
     }
-    refuse_links(
-        directory
-            .parent()
-            .and_then(Path::parent)
-            .ok_or(Error::NotAGameFolder)?,
-    )?;
-    resolve_folder(directory)
+    let root = directory
+        .parent()
+        .and_then(Path::parent)
+        .ok_or(Error::NotAGameFolder)?;
+    refuse_links(root)?;
+    resolve_folder(root)
 }
 
 /// The client root a picked folder names: the folder itself, its `Working`, or
