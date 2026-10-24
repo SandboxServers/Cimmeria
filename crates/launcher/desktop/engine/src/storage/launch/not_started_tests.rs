@@ -82,5 +82,6 @@ fn an_unconfirmed_save_or_another_operation_is_left_alone() {
     assert_eq!(failed, [false, false]);
     assert_eq!(state_of(&state), OperationState::Starting);
     assert_eq!(state.lock().unwrap().launch_observation(), Ok(None));
+    assert_eq!(state.lock().unwrap().launch_failure(), Ok(None));
     assert!(not_started(&events).is_empty());
 }

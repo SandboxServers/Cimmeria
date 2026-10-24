@@ -204,3 +204,29 @@ fn an_oversized_request_reports_spawn_failed() {
     assert_eq!(logged[0].field("reason"), Some("request_too_large"));
     assert_eq!(logged[0].field("failure_code"), Some("spawn_failed"));
 }
+#[test]
+fn a_spawn_failure_is_noted_on_the_launch_record() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (_r, mut state, plan) = super::super::tests::fixture();
+    state.record_launch(&plan, Observation::Preparing).unwrap();
+    let (_root, mut spec, request) = fixture("pass");
+    spec.executable = "/missing-launch-fixture".into();
+    let state = Mutex::new(state);
+    let (updates, _) = watch::channel(Observation::Unknown);
+    let observation = rt.block_on(run_recorded(
+        &state,
+        &plan,
+        spec,
+        request,
+        CancellationToken::new(),
+        &updates,
+    ));
+    assert_eq!(observation, Observation::NotStarted);
+    assert_eq!(
+        state.lock().unwrap().launch_failure(),
+        Ok(Some(FailureCode::SpawnNotFound))
+    );
+}

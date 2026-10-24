@@ -95,7 +95,30 @@ fn a_not_started_record_is_one_write_with_its_failure() {
     assert_eq!(state.launch_failure(), Ok(Some(FailureCode::LocalIo)));
     let mut other = plan.clone();
     other.id = Uuid::new_v4();
+    assert_eq!(
+        state.record_not_started(&other, FailureCode::LocalIo),
+        Err(ContractError::IdentityConflict.into())
+    );
+    // The wrong-plan write changed nothing.
+    assert_eq!(state.launch_failure(), Ok(Some(FailureCode::LocalIo)));
+}
+
+#[test]
+fn noting_a_failure_never_fabricates_a_record() {
+    let (_root, mut state, plan) = super::super::tests::fixture();
     assert!(state
-        .record_not_started(&other, FailureCode::LocalIo)
+        .note_launch_failure(&plan, FailureCode::SpawnFailed)
         .is_err());
+    assert_eq!(state.launch_observation(), Ok(None));
+}
+
+#[test]
+fn a_launch_whose_observation_was_lost_has_no_failure() {
+    let (_root, mut state, plan) = super::super::tests::fixture();
+    state.record_launch(&plan, Observation::Preparing).unwrap();
+    state
+        .note_launch_failure(&plan, FailureCode::SpawnFailed)
+        .unwrap();
+    state.record_launch(&plan, Observation::Unknown).unwrap();
+    assert_eq!(state.launch_failure(), Ok(None));
 }

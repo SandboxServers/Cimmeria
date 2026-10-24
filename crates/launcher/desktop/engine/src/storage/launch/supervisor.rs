@@ -4,12 +4,43 @@ use super::*;
 use crate::failure::FailureCode;
 use crate::helper_supervisor::HelperCommand;
 use cimmeria_runtime_probe::game_launch::{Event, Message, Request, MAX_MESSAGE};
-use std::time::{Duration, Instant};
+use std::{
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::Command,
+    sync::watch,
 };
 use tokio_util::sync::CancellationToken;
+
+/// `run` for `plan`'s launch: each observation is recorded on the launch
+/// record and published on `updates`, and a spawn failure is noted on the
+/// record. Lazy: nothing is spawned until the future is awaited.
+pub(super) fn run_recorded<'a>(
+    state: &'a Mutex<DesktopState>,
+    plan: &'a Plan,
+    spec: HelperCommand,
+    request: Request,
+    cancel: CancellationToken,
+    updates: &'a watch::Sender<Observation>,
+) -> impl std::future::Future<Output = Observation> + 'a {
+    run(
+        spec,
+        request,
+        cancel,
+        move |observation| {
+            state
+                .lock()
+                .map_err(|_| StorageError::Io)?
+                .record_launch(plan, observation)?;
+            updates.send_replace(observation);
+            Ok(())
+        },
+        move |code| failure::note(state, plan, code),
+    )
+}
 
 pub(super) async fn run(
     spec: HelperCommand,

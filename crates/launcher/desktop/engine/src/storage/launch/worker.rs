@@ -230,20 +230,7 @@ async fn execute(
     };
     let binaries = spec.directory.clone();
     // Lazy: nothing is spawned until `run_game` awaits it, after Running.
-    let supervised = supervisor::run(
-        spec,
-        request,
-        cancel.clone(),
-        |observation| {
-            state
-                .lock()
-                .map_err(|_| StorageError::Io)?
-                .record_launch(plan, observation)?;
-            updates.send_replace(observation);
-            Ok(())
-        },
-        |code| failure::note(&state, plan, code),
-    );
+    let supervised = supervisor::run_recorded(&state, plan, spec, request, cancel.clone(), updates);
     run_game(&state, plan, &binaries, &cancel, settled, supervised).await
 }
 /// Commits Running, awaits the supervised game, and reports the
