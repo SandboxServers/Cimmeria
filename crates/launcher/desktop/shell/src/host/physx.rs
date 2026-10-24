@@ -119,7 +119,10 @@ impl NativeHost {
                             "other",
                         );
                     })?;
-                    (windows_physx::legacy::install(&scratch, elevate, probe)?, None)
+                    (
+                        windows_physx::legacy::install(&scratch, elevate, probe)?,
+                        None,
+                    )
                 }
                 _ => {
                     let (source, lease) = self.physx_source().inspect_err(log_source_failure)?;
