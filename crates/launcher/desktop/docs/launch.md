@@ -682,8 +682,8 @@ target per subsystem: `launcher.startup`, `launcher.crash`, `launcher.update`,
 (`launch_refused`) and `launch_not_started` are warn too. Wire rows use the same name with
 a `client.` prefix (`client.launcher.install`). The full subsystem table is in
 [observability.md](../../../../docs/architecture/observability.md). `launcher.launch` carries `launch_refused`, `launch_started`, `launch_not_started`,
-`launch_failed`, `game_started`, `game_exited`, `launch_finished` and
-`display_settings` ([Display settings before each Play](#display-settings-before-each-play)), each with the
+`launch_failed`, `game_started`, `game_exited`, `launch_finished`,
+`display_settings` ([Display settings before each Play](#display-settings-before-each-play)) and `display_placement` ([Opening the game on the remembered monitor](#opening-the-game-on-the-remembered-monitor)), each with the
 operation number (except a `launch_refused` before any operation, see above); refusals, failures and not-started launches add a closed `reason`.
 `launch_started` also carries `adoption_check` (`light`, `full`, or `none` for an
 install not adopted from a folder) and `patches_incomplete` (how many patches the
