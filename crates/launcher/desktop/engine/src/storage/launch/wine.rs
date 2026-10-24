@@ -25,7 +25,16 @@ pub(super) fn prepare(
         .as_ref()
         .ok_or(StorageError::Corrupt)?;
     graphics.d3d9.stage(&binaries.join("d3d9.dll"))?;
-    let mut environment = game_environment(&resources.runtime, &resources.prefix, graphics)?;
+    // Per-launch logs (PD-28); without the folder or its guest path, launch without logs.
+    let logs = super::game_logs::folder(state_root, plan.id)
+        .ok()
+        .and_then(|folder| Some((mac_wine::paths::guest(&folder).ok()?, folder)));
+    let mut environment = game_environment(
+        &resources.runtime,
+        &resources.prefix,
+        graphics,
+        logs.as_ref().map(|(guest, _)| guest.as_str()),
+    )?;
     let telemetry = telemetry::injected(plan, session);
     if telemetry.is_some() {
         for (key, value) in crate::game_telemetry::passthrough_environment() {
@@ -61,6 +70,7 @@ pub(super) fn prepare(
         arguments: vec![guest(plan.resources.helper.path())?.into_os_string()],
         directory: binaries,
         environment,
+        stderr_log: logs.map(|(_, folder)| folder.join("wine.log")),
     };
     Ok((spec, request, resources))
 }
@@ -68,11 +78,17 @@ pub(super) fn prepare(
 // DXVK's limiter; the client has no vsync setting and nothing else bounds its render loop.
 const FRAME_RATE_LIMIT: &str = "30";
 
+// Wine's error channels plus winemac.drv's display code (owner D4 (4)); fixmes are noise.
+const WINEDEBUG_LOGGED: &str = "err+all,fixme-all,+display";
+
 // Called only after Resources::reopen verifies and locks the pinned runtime.
+// `log_folder` is the guest path of the per-launch log folder; `None` keeps
+// Wine and DXVK quiet (`WINEDEBUG=-all`, no DXVK log).
 fn game_environment(
     runtime: &Path,
     prefix: &Path,
     graphics: &Graphics,
+    log_folder: Option<&str>,
 ) -> Result<std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString>, IntentError> {
     let descriptor = runtime.join("lib/vulkan/icd.d/MoltenVK_icd.json");
     if !std::fs::symlink_metadata(&descriptor).is_ok_and(|metadata| metadata.is_file())
@@ -91,6 +107,11 @@ fn game_environment(
     );
     environment.insert("CX_FWD_COMPAT_GL_CTX".into(), "1".into());
     environment.insert("DXVK_FRAME_RATE".into(), FRAME_RATE_LIMIT.into());
+    if let Some(folder) = log_folder {
+        environment.insert("WINEDEBUG".into(), WINEDEBUG_LOGGED.into());
+        environment.insert("DXVK_LOG_LEVEL".into(), "info".into());
+        environment.insert("DXVK_LOG_PATH".into(), folder.into());
+    }
     if let Some((executable, _)) = &graphics.rosetta_x87 {
         environment.insert(
             "ROSETTA_X87_PATH".into(),

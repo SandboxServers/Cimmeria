@@ -190,6 +190,22 @@ must stage exact artifacts, record provenance and notices and validate them with
 the real client. Successful PhysX/module prerequisites do not demonstrate device
 creation, DLL patch hooks, login or world entry.
 
+### Per-launch Wine and DXVK logs
+
+Each Mac Play writes its own logs to `logs/game/<operation>/` under the launcher
+state root (PD-28): `wine.log` is the Wine helper's stderr, at most 4 MiB
+(`STDERR_CAP`; the rest is read and dropped, so Wine never blocks on a full
+pipe), and DXVK writes its `*_d3d9.log` there through `DXVK_LOG_PATH` (the
+folder's `Z:\` guest path) with `DXVK_LOG_LEVEL=info`. With logs on,
+`WINEDEBUG` is `err+all,fixme-all,+display`: Wine's errors plus winemac.drv's
+display code. Creating the folder prunes `logs/game/` to 5 operation folders:
+the new one and the 4 newest others by folder mtime. If the folder can't be
+created, Play starts without logs and with `WINEDEBUG=-all`, as before.
+
+These logs contain local paths, so they stay on the computer: the debug log
+upload reads only the top-level `launcher.*.log` files and the game's own logs,
+never `logs/game/`. Windows Play is unchanged; its helper's stderr is discarded.
+
 ## Optional Mac application identity for the game window
 
 macOS automation that selects an application by name, bundle path or bundle

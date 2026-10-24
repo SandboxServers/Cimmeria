@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 mod adoption_tags;
 mod display;
+mod game_logs;
 mod not_started;
 pub use not_started::dispatch_failed;
 mod preparation;

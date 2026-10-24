@@ -48,6 +48,11 @@ async fn run_timed(
         events::launch_not_started(id, "request_too_large");
         return Observation::NotStarted;
     }
+    // Without a log file (or when it can't be opened) stderr is discarded, as before.
+    let stderr_log = spec
+        .stderr_log
+        .as_ref()
+        .and_then(|path| std::fs::File::create(path).ok());
     let mut command = Command::new(&spec.executable);
     command
         .args(&spec.arguments)
@@ -56,7 +61,11 @@ async fn run_timed(
         .envs(&spec.environment)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
+        .stderr(if stderr_log.is_some() {
+            std::process::Stdio::piped()
+        } else {
+            std::process::Stdio::null()
+        });
     #[cfg(windows)]
     command.creation_flags(0x08000000);
     // No kill-on-drop: killing the host is not equivalent to stopping its guest.
@@ -68,6 +77,13 @@ async fn run_timed(
         events::launch_not_started(id, "spawn_failed");
         return Observation::NotStarted;
     };
+    if let (Some(file), Some(stderr)) = (stderr_log, child.stderr.take()) {
+        game_logs::copy_capped(
+            stderr,
+            tokio::fs::File::from_std(file),
+            game_logs::STDERR_CAP,
+        );
+    }
     let host_pid = child.id().unwrap_or(0);
     let host = Observation::HostStarted { host_pid };
     if host_pid == 0 {

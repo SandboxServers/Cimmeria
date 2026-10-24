@@ -132,6 +132,7 @@ async fn run(
             .into()],
         directory: resources.root.clone(),
         environment: env.clone(),
+        stderr_log: None,
     };
     let outcome = supervisor::run(
         spec,

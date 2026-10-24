@@ -147,6 +147,7 @@ impl WineSeedExtractor {
                 .ok_or(WineError::Invalid)?
                 .to_path_buf(),
             environment,
+            stderr_log: None,
         })
     }
 }
