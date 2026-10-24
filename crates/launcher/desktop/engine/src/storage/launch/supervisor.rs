@@ -45,10 +45,12 @@ async fn run_timed(
     let id = request.operation_id;
     let Ok(mut bytes) = serde_json::to_vec(&request) else {
         events::launch_not_started(id, "request_invalid", FailureCode::SpawnFailed);
+        on_failure(FailureCode::SpawnFailed);
         return Observation::NotStarted;
     };
     if bytes.len() > MAX_MESSAGE {
         events::launch_not_started(id, "request_too_large", FailureCode::SpawnFailed);
+        on_failure(FailureCode::SpawnFailed);
         return Observation::NotStarted;
     }
     let mut command = Command::new(&spec.executable);

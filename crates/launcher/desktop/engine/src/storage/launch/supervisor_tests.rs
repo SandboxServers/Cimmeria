@@ -166,5 +166,41 @@ fn a_missing_executable_reports_spawn_not_found() {
     assert_eq!(logged[0].level, tracing::Level::WARN);
     assert_eq!(logged[0].field("reason"), Some("spawn_failed"));
     assert_eq!(logged[0].field("failure_code"), Some("spawn_not_found"));
-    assert_eq!(logged[0].field("os_error"), None);
+    assert_eq!(logged[0].field("os_error"), Some("2"));
+}
+#[test]
+fn an_oversized_request_reports_spawn_failed() {
+    // A second live Dispatch keeps tracing's callsite interest per dispatcher.
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (_root, spec, mut request) = fixture("pass");
+    request.dlls = vec!["x".repeat(MAX_MESSAGE).into()];
+    let reported = Arc::new(Mutex::new(Vec::new()));
+    let seen = reported.clone();
+    let (observation, events) = crate::test_capture::capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        rt.block_on(run(
+            spec,
+            request,
+            CancellationToken::new(),
+            |_| panic!("no host"),
+            move |code| seen.lock().unwrap().push(code),
+        ))
+    });
+    assert_eq!(observation, Observation::NotStarted);
+    assert_eq!(
+        reported.lock().unwrap().as_slice(),
+        &[FailureCode::SpawnFailed]
+    );
+    let logged: Vec<_> = events
+        .iter()
+        .filter(|e| e.target == "launcher.launch" && e.field("event") == Some("launch_not_started"))
+        .collect();
+    assert_eq!(logged.len(), 1);
+    assert_eq!(logged[0].level, tracing::Level::WARN);
+    assert_eq!(logged[0].field("reason"), Some("request_too_large"));
+    assert_eq!(logged[0].field("failure_code"), Some("spawn_failed"));
 }

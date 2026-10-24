@@ -71,9 +71,8 @@ pub(crate) fn launch_not_started(id: Uuid, reason: &'static str, failure: Failur
 
 /// The game process could not be created (C-PD3): `launch_not_started` with
 /// `reason = "spawn_failed"` and the classified `failure`. `os_error` is the raw
-/// OS error; it stays out of the event until D-PD5 allows it.
+/// OS error number, logged when the OS gave one (D-PD5).
 pub(crate) fn launch_spawn_failed(id: Uuid, failure: FailureCode, os_error: Option<i32>) {
-    let _ = os_error;
     let operation = operation_numbers::number(id);
     let failure_code = failure.code();
     tracing::warn!(
@@ -82,6 +81,7 @@ pub(crate) fn launch_spawn_failed(id: Uuid, failure: FailureCode, os_error: Opti
         operation,
         reason = "spawn_failed",
         failure_code,
+        os_error,
         "launcher launch: the game process could not be created; expected the launch helper to start; the launch ends not started"
     );
 }
