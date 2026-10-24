@@ -18,10 +18,17 @@ export type LaunchStatus=typeof LaunchStatus.Type;
 export type Request={command:'inspect';schema_version:1}|{command:'play';schema_version:1;operation_id:string;operation_revision:number;installation_id:string};
 export class LaunchFailure extends Data.TaggedError('LaunchFailure')<{readonly code:string}> {}
 export class LaunchBridge extends Context.Service<LaunchBridge,{invoke:(request:Request)=>Effect.Effect<LaunchStatus,LaunchFailure>}>()('launcher/LaunchBridge') {}
+/** Every native `JobError` code, by its serde name, and the failure code Play shows for it (C-PD1 `job_errors`). */
+export const jobErrorFailure:Readonly<Record<string,FailureCode>>={unsupported_schema:'launcher_too_old',platform_unavailable:'platform_unsupported',
+  launcher_too_old:'launcher_too_old',io:'local_io',corrupt_state:'state_corrupt',invalid_directory:'game_folder_invalid',stale_revision:'status_stale',
+  busy:'operation_busy',unknown_operation:'status_stale',identity_conflict:'identity_conflict',recovery_required:'recovery_required',
+  persistence_uncertain:'persistence_uncertain',manifest_unavailable:'manifest_unreachable',invalid_manifest:'manifest_invalid',signing_key_unavailable:'signing_key_unavailable'};
+// A known native refusal keeps its failure code; anything else (a thrown value, an unknown string) is transport.
+const refusalCode=(error:unknown):string=>typeof error==='string'&&Object.hasOwn(jobErrorFailure,error)?jobErrorFailure[error]!:'transport';
 export const launchBridgeLayer=(invoke:(request:Request)=>Promise<unknown>)=>Layer.succeed(LaunchBridge,{
   invoke:(request)=>Effect.tryPromise({try:()=>invoke(request),catch:error=>{
     if(error!=='launcher_too_old')reportUiEvent('launch','invoke_failed',uiCode(error));
-    return new LaunchFailure({code:error==='launcher_too_old'?'launcher_too_old':'transport'});
+    return new LaunchFailure({code:refusalCode(error)});
   }}).pipe(
     Effect.timeout('5 seconds'),Effect.catchTag('TimeoutError',()=>Effect.fail(new LaunchFailure({code:'transport'}))),
     Effect.flatMap(value=>Schema.decodeUnknownEffect(LaunchStatus,{onExcessProperty:'error'})(value).pipe(Effect.mapError(()=>new LaunchFailure({code:'schema'})))),
