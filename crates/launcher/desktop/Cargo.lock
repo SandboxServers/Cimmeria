@@ -617,6 +617,7 @@ dependencies = [
  "cimmeria-runtime-probe",
  "ed25519-dalek",
  "minisign",
+ "reqwest 0.12.28",
  "semver",
  "serde",
  "serde_json",
