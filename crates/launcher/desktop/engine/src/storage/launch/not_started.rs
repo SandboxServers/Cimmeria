@@ -1,6 +1,7 @@
 //! A Play whose dispatch fails before the game starts ends `Failed` with a
-//! logged reason (D-PD2). Only an unconfirmed save, an operation that already
-//! left `Starting`, or one with a launch record stays for reconciliation.
+//! logged reason (D-PD2). An unconfirmed save, an operation that already left
+//! `Starting`, one with a launch record, or one whose launch state cannot be
+//! read stays for reconciliation.
 use super::*;
 use std::sync::Mutex;
 
