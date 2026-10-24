@@ -47,6 +47,8 @@ pub struct LaunchStatus {
     patches_incomplete: u32,
     /// The ops those patches skipped.
     ops_skipped: u32,
+    prerequisites_missing: Vec<&'static str>,
+    prerequisites_installing: bool,
     observation: Option<launch::Observation>,
     /// Why the current launch did not start (C-PD3); `null` when none is known.
     failure: Option<FailureCode>,
@@ -105,6 +107,14 @@ impl NativeHost {
                 // Dispatch and its failure path lock the store themselves, so this
                 // guard must not outlive admission.
                 let mut owner = store.lock().map_err(|_| JobError::Io)?;
+                let game = owner
+                    .installed_content()?
+                    .map(|installed| installed.intent.content_root());
+                let missing = self.missing_prerequisites(game.as_deref());
+                if !missing.is_empty() {
+                    tracing::warn!(target:"launcher.launch",event="prerequisites_missing",directx=missing.contains(&"directx"),physx=missing.contains(&"physx"),"Play refused: required game components are missing");
+                    return Err(JobError::PrerequisitesMissing);
+                }
                 let Some(resources) = owner.resolve_play_resources(bundled)? else {
                     launch::events::launch_refused_before_operation("resources_unresolved");
                     return Err(JobError::PlatformUnavailable);
@@ -221,7 +231,8 @@ impl NativeHost {
         let game = installed
             .as_ref()
             .map(|installed| installed.intent.content_root());
-        Ok(LaunchStatus::assemble(
+        let missing = self.missing_prerequisites(game.as_deref());
+        let mut status = LaunchStatus::assemble(
             native,
             installation_id,
             setup_complete,
@@ -229,7 +240,10 @@ impl NativeHost {
             game.as_deref(),
             observation,
             failure,
-        ))
+        );
+        status.prerequisites_missing = missing;
+        status.prerequisites_installing = state.prerequisite_setup_active();
+        Ok(status)
     }
 }
 impl LaunchStatus {
@@ -254,6 +268,8 @@ impl LaunchStatus {
             launcher_update_required,
             patches_incomplete,
             ops_skipped,
+            prerequisites_missing: Vec::new(),
+            prerequisites_installing: false,
             observation,
             failure,
         }

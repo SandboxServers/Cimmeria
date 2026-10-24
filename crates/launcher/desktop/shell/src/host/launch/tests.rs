@@ -1,4 +1,65 @@
 use super::*;
+#[cfg(any(windows, target_os = "macos"))]
+#[test]
+fn component_setup_keeps_inspection_readable_and_blocks_play_until_the_installer_finishes() {
+    let (_root, host) = fixture::fixture();
+    let store = host.store().unwrap();
+    store.lock().unwrap().begin_prerequisite_setup().unwrap();
+    let status = host
+        .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+        .unwrap();
+    assert!(status.prerequisites_installing);
+    assert_eq!(
+        host.launch_command(LaunchCommand::Play {
+            schema_version: 1,
+            operation_id: Uuid::new_v4(),
+            operation_revision: status.native.operation.revision,
+            installation_id: status.installation_id.unwrap()
+        })
+        .unwrap_err(),
+        JobError::Busy
+    );
+    store.lock().unwrap().end_prerequisite_setup();
+    assert!(
+        !host
+            .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+            .unwrap()
+            .prerequisites_installing
+    );
+}
+#[cfg(any(windows, target_os = "macos"))]
+#[test]
+fn missing_prerequisites_block_native_play_before_any_operation_is_admitted() {
+    for missing in [vec!["directx"], vec!["physx"], vec!["directx", "physx"]] {
+        let (_root, mut host) = fixture::fixture();
+        host.prerequisites_fixture = Some(missing.clone());
+        let status = host
+            .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+            .unwrap();
+        assert_eq!(status.prerequisites_missing, missing);
+        let revision = status.native.operation.revision;
+        assert_eq!(
+            host.launch_command(LaunchCommand::Play {
+                schema_version: 1,
+                operation_id: Uuid::new_v4(),
+                operation_revision: revision,
+                installation_id: status.installation_id.unwrap()
+            })
+            .unwrap_err(),
+            JobError::PrerequisitesMissing
+        );
+        let after = host
+            .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+            .unwrap();
+        assert_eq!(after.native.operation.revision, revision);
+        host.prerequisites_fixture = Some(vec![]);
+        assert!(host
+            .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+            .unwrap()
+            .prerequisites_missing
+            .is_empty());
+    }
+}
 #[test]
 fn webview_cannot_supply_executables_hashes_or_resources() {
     for extra in ["path", "resources", "sha256", "environment"] {
@@ -191,6 +252,14 @@ fn launch_uat_bridge() {
     for line in std::io::stdin().lock().lines() {
         let value: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
         let result = match value["command"].as_str().unwrap() {
+            "missing_directx" | "missing_physx" | "components_ready" => {
+                host.prerequisites_fixture = Some(match value["command"].as_str().unwrap() {
+                    "missing_directx" => vec!["directx"],
+                    "missing_physx" => vec!["physx"],
+                    _ => vec![],
+                });
+                host.launch_command(LaunchCommand::Inspect { schema_version: 1 })
+            }
             "too_old" | "development" => {
                 host = super::fixture::reopen_identity(host, value["command"] == "too_old");
                 host.launch_command(LaunchCommand::Inspect { schema_version: 1 })
@@ -210,6 +279,7 @@ fn launch_uat_bridge() {
                 let resources = host.launch_resources.clone();
                 drop(host);
                 host = NativeHost::new(path);
+                host.prerequisites_fixture = Some(vec![]);
                 host.launch_resources = resources;
                 host.launch_command(LaunchCommand::Inspect { schema_version: 1 })
             }

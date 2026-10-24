@@ -4,9 +4,9 @@ import type {PanelContext} from './panel-context';
 import {decodePhysxStatus,physxFailure,type PhysxResult,type PhysxStatus} from './contract';
 import {reportUiEvent} from './ui-event';
 /**
- * Settings panel (LX-12, D-LX13): PhysX System Software on native Windows. Shows whether it is
+ * Main-page panel (LX-12, D-LX13): PhysX System Software on native Windows. Shows whether it is
  * installed and offers "Install PhysX", which runs the pinned vendor MSI elevated through UAC.
- * The panel also owns the non-blocking warning beside Play. Off Windows `supported` is false and
+ * The panel also owns the warning beside Play; a missing PhysX blocks native Play until it is set up. Off Windows `supported` is false and
  * both stay hidden: the macOS path sets PhysX up inside Wine during installation.
  */
 export const physxInstalled=(s:PhysxStatus)=>!!s.detection?.core_present;
@@ -33,7 +33,7 @@ const errorText:Record<string,string>={
  io:'The launcher could not prepare the PhysX installer. Check permissions and free disk space.',
  unavailable:'PhysX setup is only needed on Windows.',
 };
-export const physxWarning='The legacy PhysX runtime the game needs is missing. Install it below if the game will not start.';
+export const physxWarning='PhysX System Software is missing. Complete PhysX setup before playing.';
 export function mountPhysx(document:Document,invoke:Invoke,context:PanelContext) {
  const panel=document.getElementById('physx-panel');const warning=document.getElementById('physx-play-warning');
  if(!panel||!warning)throw new Error('Missing launcher element physx-panel or physx-play-warning');
@@ -44,9 +44,10 @@ export function mountPhysx(document:Document,invoke:Invoke,context:PanelContext)
  const heading=make('h3','physx-title');heading.textContent='PhysX System Software';
  const state=make('p','physx-state');
  const install=make('button','install-physx');install.textContent='Install PhysX';
+ const check=make('button','check-physx');check.textContent='Recheck PhysX';
  const status=make('p','physx-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
  const setStatus=(text:string)=>{status.textContent=text;legacyStatus.textContent=text;};
- panel.textContent='';panel.append(heading,state,install,status);panel.hidden=true;warning.hidden=true;
+ panel.textContent='';panel.append(heading,state,install,check,status);panel.hidden=true;warning.hidden=true;
  let current:PhysxStatus|null=null;let installing=false;let disposed=false;let mutation:Promise<void>=Promise.resolve();
  const render=()=>{
   if(disposed)return;
@@ -62,6 +63,7 @@ export function mountPhysx(document:Document,invoke:Invoke,context:PanelContext)
   legacy.hidden=!missing&&!busy;legacy.disabled=busy;
   legacy.textContent=busy?'Installing…':'Install legacy PhysX…';legacy.setAttribute('aria-busy',String(busy));
   install.hidden=!missing&&!busy;install.disabled=busy||!s.installer_available;
+  check.disabled=busy;
   install.textContent=busy?'Installing…':'Install PhysX';install.setAttribute('aria-busy',String(busy));
  };
  // Never throws synchronously into the snapshot feed, whatever the bridge does.
@@ -94,10 +96,11 @@ export function mountPhysx(document:Document,invoke:Invoke,context:PanelContext)
  const onInstall=()=>runInstall('install');const onLegacy=()=>runInstall('install_legacy');
  install.addEventListener('click',onInstall);
  legacy.addEventListener('click',onLegacy);
+ const recheck=()=>{void inspect();};check.addEventListener('click',recheck);
  // Each native snapshot (the first, and after an install, repair or uninstall, which change whether the
  // retained installer is there) re-inspects, so the panel asks nothing before the launcher has opened.
  const unsubscribe=context.onSnapshot(()=>{void inspect();});
  const ready=context.snapshot()?inspect():Promise.resolve();
  return {ready,refresh:inspect,settled:()=>mutation,dispose:async()=>{
-  disposed=true;unsubscribe();install.removeEventListener('click',onInstall);legacy.removeEventListener('click',onLegacy);await mutation;panel.textContent='';warning.hidden=true;offer.hidden=true;}};
+  disposed=true;unsubscribe();install.removeEventListener('click',onInstall);legacy.removeEventListener('click',onLegacy);check.removeEventListener('click',recheck);await mutation;panel.textContent='';warning.hidden=true;offer.hidden=true;}};
 }

@@ -105,6 +105,10 @@ fn failure(error: JobError) -> Option<(SummaryPhase, SummaryErrorCode)> {
         ),
         JobError::CorruptState => (SummaryPhase::Admission, SummaryErrorCode::StateInvalid),
         JobError::Io => (SummaryPhase::Admission, SummaryErrorCode::LocalIo),
+        JobError::PrerequisitesMissing => (
+            SummaryPhase::CompatibilityCheck,
+            SummaryErrorCode::PrerequisiteFailed,
+        ),
         JobError::UnsupportedSchema
         | JobError::StaleRevision
         | JobError::Busy

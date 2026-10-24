@@ -1,5 +1,6 @@
 use super::*;
 mod play_gate;
+mod prerequisite_setup;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use minisign::KeyPair;
 use reqwest::Url;

@@ -107,6 +107,7 @@ pub enum JobError {
     UnsupportedSchema,
     PlatformUnavailable,
     LauncherTooOld,
+    PrerequisitesMissing,
     Io,
     CorruptState,
     InvalidDirectory,
@@ -126,6 +127,7 @@ impl JobError {
         match self {
             Self::UnsupportedSchema => "unsupported_schema",
             Self::PlatformUnavailable => "platform_unavailable",
+            Self::PrerequisitesMissing => "prerequisites_missing",
             Self::LauncherTooOld => "launcher_too_old",
             Self::Io => "io",
             Self::CorruptState => "corrupt_state",
@@ -149,6 +151,7 @@ impl JobError {
         match self {
             Self::UnsupportedSchema | Self::LauncherTooOld => FailureCode::LauncherTooOld,
             Self::PlatformUnavailable => FailureCode::PlatformUnsupported,
+            Self::PrerequisitesMissing => FailureCode::PrerequisitesMissing,
             Self::Io => FailureCode::LocalIo,
             Self::CorruptState => FailureCode::StateCorrupt,
             Self::InvalidDirectory => FailureCode::GameFolderInvalid,
@@ -274,9 +277,10 @@ pub(crate) fn progress(value: &Progress) -> JobProgress {
 mod tests {
     use super::JobError;
 
-    const ALL: [JobError; 15] = [
+    const ALL: [JobError; 16] = [
         JobError::UnsupportedSchema,
         JobError::PlatformUnavailable,
+        JobError::PrerequisitesMissing,
         JobError::LauncherTooOld,
         JobError::Io,
         JobError::CorruptState,

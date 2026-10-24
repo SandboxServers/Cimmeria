@@ -34,9 +34,11 @@ function ownerLine(status:LaunchStatus):string {
 export function launchText(s:LaunchState):string {
  if(s.pending)return 'Starting game…';
  if(s.error==='launcher_too_old'||s.status?.launcher_update_required)return 'Update the launcher before playing this release. Your game files are preserved.';
+ if(s.error==='prerequisites_missing')return 'Finish DirectX and PhysX setup before playing. Your game files are installed.';
  if(s.error)return adoptLine(s)??(isFailureCode(s.error)?failureLines(s.error):'Resolve any folder-access prompt, then recheck status. Play was not retried.');
  const status=s.status;if(!status)return 'Checking Play availability…';
  const o=status.observation;
+ if(status.prerequisites_installing)return 'Game component setup is running. Finish its installer before playing.';
  if(o?.phase==='unknown')return 'Game status is unknown. Play, Repair and removal remain blocked. Preserve files and restart to inspect.';
  if(o?.phase==='process_started')return 'Game process started. Login and world entry are not verified.';
  if(o?.phase==='host_started'||o?.phase==='preparing')return 'Preparing the game and waiting for its process…';
@@ -44,6 +46,7 @@ export function launchText(s:LaunchState):string {
  if(status.failure)return failureLines(status.failure);
  if(o?.phase==='process_exited'&&o.code!==0)return failureLines('game_exited_nonzero');
  if(o?.phase==='process_exited')return o.early?`Game exited shortly after starting (code ${o.code}).`:`Game exited (code ${o.code}).`;
+ if(status.prerequisites_missing?.length)return `Complete ${status.prerequisites_missing.map(name=>name==='directx'?'DirectX':'PhysX').join(' and ')} setup before playing.`;
  if(o?.phase==='not_started')return 'Game could not start. Files are preserved; recheck before trying again. If you edited the login servers, check them under Login servers.';
  if(!status.resources_available)return 'Play unavailable: this build is missing verified game launch resources.';
  if(launchBlocked(status))return adoptLine(s)??ownerLine(status);

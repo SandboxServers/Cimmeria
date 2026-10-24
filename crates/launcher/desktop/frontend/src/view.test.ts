@@ -83,7 +83,7 @@ test('approved tabs and settings work without inventing installed state', {timeo
     // the changes (LX-07) and PhysX (LX-12) panels each read once, on the first snapshot.
     // Settings' archive panel asks once at mount (AI-07); it is counted apart from the panels above.
     assert.equal(calls.filter(c => c === 'seed_archive_command').length, 1);
-    assert.deepEqual(calls.filter(c => c !== 'seed_archive_command'), ['log_upload_command', 'launcher_command', 'client_changes_command', 'physx_command', 'client_changes_command']);
+    assert.deepEqual(calls.filter(c => c !== 'seed_archive_command'), ['log_upload_command', 'launcher_command', 'client_changes_command', 'physx_command', 'directx_command', 'client_changes_command']);
   } finally { await app.dispose(); }
   ui.click('settings'); assert.equal(ui.get('gear').hidden, true, 'dispose removes handlers');
 });

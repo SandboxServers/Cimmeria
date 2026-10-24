@@ -13,6 +13,7 @@
   "app_translocated",
   "physx_missing",
   "physx_install_failed",
+ "prerequisites_missing",
   "disk_space_low",
   "game_folder_not_chosen",
   "game_folder_missing",
@@ -50,6 +51,7 @@
  "job_errors":{
   "unsupported_schema":"launcher_too_old",
   "platform_unavailable":"platform_unsupported",
+  "prerequisites_missing":"prerequisites_missing",
   "launcher_too_old":"launcher_too_old",
   "io":"local_io",
   "corrupt_state":"state_corrupt",
