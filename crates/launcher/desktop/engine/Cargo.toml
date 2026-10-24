@@ -61,3 +61,7 @@ harness = false
 name = "prerequisite_supervisor_process"
 path = "tests/prerequisite_supervisor_process.rs"
 harness = false
+
+[[example]]
+name = "release_feed"
+test = true

@@ -222,4 +222,54 @@ for profile in release dev; do
     fail "$profile dispatches release tools through standalone graph/profile and correct executable"
   fi
 done
+
+# Release feed: sign and verify-feed pass both Windows zips (D-WA4).
+mkdir -p "$WORK/feed/artifacts" && cd "$WORK/feed"
+"$HERE/build-desktop.sh" feed-tool >/dev/null
+for name in StargateWorlds-Launcher-windows-x64.zip StargateWorlds-Launcher-windows-arm64.zip; do
+  printf x > "artifacts/$name"
+  printf x > "artifacts/$name.sig"
+done
+printf x > artifacts/latest.json
+: > "$STUB_TOOL_LOG"
+if LAUNCHER_UPDATER_MINISIGN_KEY=stub "$HERE/build-desktop.sh" sign 2026.10.2401 https://example.invalid/rel "notes" \
+  && grep -qxF sign "$STUB_TOOL_LOG" \
+  && grep -qxF windows-x86_64 "$STUB_TOOL_LOG" \
+  && grep -qxF windows-aarch64 "$STUB_TOOL_LOG" \
+  && grep -qxF https://example.invalid/rel/StargateWorlds-Launcher-windows-x64.zip "$STUB_TOOL_LOG" \
+  && grep -qxF https://example.invalid/rel/StargateWorlds-Launcher-windows-arm64.zip "$STUB_TOOL_LOG"; then
+  pass "sign passes both Windows zips, each from its own URL"
+else
+  fail "sign passes both Windows zips, each from its own URL"
+fi
+: > "$STUB_TOOL_LOG"
+if LAUNCHER_UPDATER_PUBKEY=stub "$HERE/build-desktop.sh" verify-feed 2026.10.2401 \
+  && grep -qxF verify "$STUB_TOOL_LOG" \
+  && grep -qxF "$PWD/artifacts/StargateWorlds-Launcher-windows-arm64.zip.sig" "$STUB_TOOL_LOG"; then
+  pass "verify-feed checks the arm64 zip and its signature"
+else
+  fail "verify-feed checks the arm64 zip and its signature"
+fi
+mv artifacts/StargateWorlds-Launcher-windows-arm64.zip "$WORK/aside.zip"
+: > "$STUB_TOOL_LOG"
+if LAUNCHER_UPDATER_MINISIGN_KEY=stub "$HERE/build-desktop.sh" sign 2026.10.2401 https://example.invalid/rel "notes" >/dev/null 2>&1 \
+  || grep -qxF sign "$STUB_TOOL_LOG"; then
+  fail "sign refuses a missing arm64 zip before it signs"
+else
+  pass "sign refuses a missing arm64 zip before it signs"
+fi
+mv "$WORK/aside.zip" artifacts/StargateWorlds-Launcher-windows-arm64.zip
+
+# WINDOWS_ARCH picks the zip name and the PE machine (D-WA2).
+arm_paths="$(WINDOWS_ARCH=arm64 "$HERE/build-desktop.sh" paths)"
+x64_paths="$("$HERE/build-desktop.sh" paths)"
+if grep -qxF 'ZIP=artifacts/StargateWorlds-Launcher-windows-arm64.zip' <<<"$arm_paths" \
+  && grep -qxF 'LAUNCHER_MACHINE=0xaa64' <<<"$arm_paths" \
+  && grep -qxF 'ZIP=artifacts/StargateWorlds-Launcher-windows-x64.zip' <<<"$x64_paths" \
+  && grep -qxF 'LAUNCHER_MACHINE=0x8664' <<<"$x64_paths" \
+  && ! WINDOWS_ARCH=arm "$HERE/build-desktop.sh" paths >/dev/null 2>&1; then
+  pass "WINDOWS_ARCH selects the arm64 or x64 zip and PE machine, and refuses other values"
+else
+  fail "WINDOWS_ARCH selects the arm64 or x64 zip and PE machine, and refuses other values"
+fi
 exit "$FAILED"
