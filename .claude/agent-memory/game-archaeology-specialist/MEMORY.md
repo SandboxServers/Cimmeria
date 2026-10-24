@@ -139,3 +139,8 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 - [GoauldCrystals extension rules](goauld-crystals-extension-rules.md) — victory = powered finish cell; unseeded RNG; Python is a Livewire copy; no core shared with CrystalGame
 - [BM reopen = overlay clock bug (LN-12)](bm-overlay-clock-reopen-ln12.md) — worldGetDeltaSeconds is per-frame delta; overlay now() misuses it; fix the Lua, server push is only a stopgap
 - [controller-mouse-input-model.md](controller-mouse-input-model.md) — PC mouse handlers, button/mode bits, drag/click classes, DI pump (static 2026-10-22)
+
+## Client display knobs (2026-10-24)
+
+- [Display mode knobs](client-display-knobs.md) — SavedSystemOptions windowedMode wins over ini StartupFullscreen; handler 0xd3faa0; WINDOWED/ResX=/ResY=; no borderless/vsync
+- [Mouse lock (PD-38)](client-mouse-lock-pd38.md) — verdict none: game never ClipCursors; LockMouseToWindow GIsEditor-gated; GIsEditor=0x01ead7ac; MouseLock is editor-only
