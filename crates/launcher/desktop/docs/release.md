@@ -1,16 +1,17 @@
 # Releasing the desktop launcher
 
-> How-to · desktop launcher maintainers · updated 2026-10-23 · companions: [build design](../../../../docs/analysis/launcher-uat-fixes/design-ci-speed.md), [updater](updater.md)
+> How-to · desktop launcher maintainers · updated 2026-10-24 · companions: [build design](../../../../docs/analysis/launcher-uat-fixes/design-ci-speed.md), [updater](updater.md)
 
 A maintainer comments `/release-launcher` on a merged PR. That dispatches
 [`launcher-release.yml`](../../../../.github/workflows/launcher-release.yml),
 which builds from `main` and publishes the desktop launcher as a zip for
-Windows and, ad-hoc signed, for macOS on Apple silicon (LX-28, D-LX14). A
+Windows on x64, a second zip for Windows on Arm and, ad-hoc signed, for macOS on Apple silicon (LX-28, D-LX14). A
 dispatch on any other branch fails at the build job's first step, and the
 signing job's environment admits `main` only. Players download it from the
 stable links:
 
 - Windows: <https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip>
+- Windows on Arm: <https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-arm64.zip>
 - macOS: <https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip>
 
 ## Build time and signing isolation
@@ -36,12 +37,13 @@ measurement opportunity, not evidence of a speedup before it finishes.
 
 | Release | Assets | Written when |
 |---|---|---|
-| Dated, `launcher-YYYYMMDD-<sha7>` | `StargateWorlds-Launcher-windows-x64.zip`, `.zip.sha256`, `.zip.sig` (required updater signature), the client-patches overlay patch when one is committed, and `StargateWorlds-Launcher-macos-arm64.zip` with its `.zip.sha256` | Every release; the macOS zip when the macOS build succeeded |
-| Rolling, `launcher-current` (D-LX7) | `StargateWorlds-Launcher-windows-x64.zip`, `.zip.sha256`, `.zip.sig`, `latest.json`, `StargateWorlds-Launcher-macos-arm64.zip`, `.zip.sha256` | Every signed release whose version does not regress the rolling feed |
+| Dated, `launcher-YYYYMMDD-<sha7>` | `StargateWorlds-Launcher-windows-x64.zip` and `StargateWorlds-Launcher-windows-arm64.zip`, each with `.zip.sha256` and `.zip.sig` (required updater signature), the client-patches overlay patch when one is committed, and `StargateWorlds-Launcher-macos-arm64.zip` with its `.zip.sha256` | Every release; the macOS zip when the macOS build succeeded |
+| Rolling, `launcher-current` (D-LX7) | Both Windows zips, each with `.zip.sha256` and `.zip.sig`, `latest.json`, `StargateWorlds-Launcher-macos-arm64.zip`, `.zip.sha256` | Every signed release whose version does not regress the rolling feed |
 
 The `.sha256` is in `sha256sum` format (`<hex>  <file name>`). The `.zip.sig` is
 the Minisign signature document. `latest.json` is the updater feed every
-release launcher reads ([updater](updater.md)). The macOS zip has no `.zip.sig`
+release launcher reads ([updater](updater.md)); it carries a `windows-x86_64` and a
+`windows-aarch64` entry. The macOS zip has no `.zip.sig`
 and is not in `latest.json`: macOS updates are manual (below).
 
 If a macOS build fails, the release still publishes everything else, and
@@ -50,8 +52,8 @@ Its notes name the macOS zip only while one is there, so their link never
 fails. `publish-macos` runs whenever `publish` succeeded, attaches what was
 built, and then fails if `mac-pieces` or `desktop-macos` did not succeed. So the run shows both the failed build and `publish-macos`
 red, and **"Re-run failed jobs"** reruns the two (and anything they skipped),
-which attaches the missing asset. Do it within a day: the Windows pieces the
-macOS build needs are kept one day.
+which attaches the missing asset. Do it within seven days: the Windows pieces the
+macOS build and the arm64 build need are kept seven days.
 
 **"Re-run all jobs"** is the other way, and the one to use when a job that
 succeeded must run again. The stamp step recognises the run and keeps its tag
@@ -61,7 +63,8 @@ signed, on `launcher-current`.
 
 The dated release's notes converge whatever the order of runs and re-runs:
 `publish.sh` always writes them as the release's base text plus the macOS
-paragraph while the release holds the macOS zip.
+paragraph while the release holds the macOS zip, plus a **Windows on Arm:**
+paragraph naming the arm64 zip.
 
 ### Jobs
 
@@ -72,16 +75,24 @@ that write, `publish` and `publish-macos`, run no build and no third-party
 action, only [`tools/launcher-release/publish.sh`](../../../../tools/launcher-release/publish.sh)
 from a checkout of the released commit. The macOS pieces have their own job, so
 `sign` and `publish`, which wait for all of `desktop-windows`, never wait for
-them.
+them. `sign` and `publish` do wait for the arm64 build (below).
 
 | Job | What it does | What it can see |
 |---|---|---|
-| `desktop-windows` | Refuses any ref but `main`, stamps the tag and version ([`stamp.sh`](../../../../tools/launcher-release/stamp.sh)), builds and checks the launcher, zips it, and uploads the zip and `.sha256` as one artifact and the overlay patch as another. Last, it uploads the three staged Play pieces for `mac-pieces` (`continue-on-error`, a few seconds). Its outputs carry the zip's SHA-256 and the SHA-256 of the Play pieces' list | `contents: read`, `actions: read` for the run identity reservation; `LAUNCHER_MANIFEST_PUBKEY_HEX` on the launcher build step only; the `LAUNCHER_UPDATER_PUBKEY` variable. Never the Minisign secrets |
+| `desktop-windows` | Refuses any ref but `main`, stamps the tag and version ([`stamp.sh`](../../../../tools/launcher-release/stamp.sh)), builds and checks the launcher, zips it, and uploads the zip and `.sha256` as one artifact and the overlay patch as another. Last, it uploads the three staged Play pieces for `mac-pieces` and `desktop-windows-arm64`, kept seven days (no `continue-on-error`: D-WA5). Its outputs carry the zip's SHA-256 and the SHA-256 of the Play pieces' list | `contents: read`, `actions: read` for the run identity reservation; `LAUNCHER_MANIFEST_PUBKEY_HEX` on the launcher build step only; the `LAUNCHER_UPDATER_PUBKEY` variable. Never the Minisign secrets |
+| `desktop-windows-arm64` | The reusable [`launcher-desktop-windows-arm64.yml`](../../../../.github/workflows/launcher-desktop-windows-arm64.yml), which the PR dry run also calls. On the hosted `windows-11-arm` runner, from the same commit: checks the tools, takes the i686 Play pieces from `desktop-windows` (checked against its digest output) with `build-desktop.sh play-pieces-in`, builds the native arm64 launcher, runs `verify` and `package`, and uploads the zip and `.sha256` as `launcher-zip-arm64-<tag>`. Its output carries the zip's SHA-256 | `contents: read`; `LAUNCHER_MANIFEST_PUBKEY_HEX` on the launcher build step only. No updater key of either kind |
 | `mac-pieces` | On Windows: checks the Play pieces against `desktop-windows`' digest output before using them, builds the archive and prerequisite workers, and uploads all five with a `mac-pieces.sha256` list, kept one day. Its output carries the list's SHA-256 | `contents: read`. No secret |
 | `desktop-macos` | The reusable [`launcher-desktop-macos.yml`](../../../../.github/workflows/launcher-desktop-macos.yml), which the PR dry run also calls. On `macos-15` (arm64), from the same commit: checks the pieces against `mac-pieces`' output, stages them, fetches the pinned D9VK, builds the app, signs it ad hoc, checks it, zips it and uploads the zip and `.sha256` as an artifact. Its output carries the zip's SHA-256 | `contents: read`; `LAUNCHER_MANIFEST_PUBKEY_HEX` on the app build step only. No updater key of either kind |
-| `sign` | Every release. In the `launcher-release` environment: downloads the zip artifact only and checks it against the build job's digest output, builds the `release_feed` tool with cargo (no node, no cache action) in a step with no secret, then signs, writes `latest.json`, checks the feed as a launcher would, and uploads the `.zip.sig` and `latest.json` as an artifact | `contents: read`; the Minisign key and password, on the sign step only; the public-key variable. Its actions are GitHub's own and this repository's toolchain action (SHA-pinned inside) |
-| `publish` | Unless the run was cancelled, when `sign` succeeded: checks the zip's digest again, creates or updates the dated release, then refreshes `launcher-current` | `contents: write` (the `GITHUB_TOKEN`); the artifacts. No secret |
+| `sign` | Every release. In the `launcher-release` environment: downloads the two zip artifacts only and checks each against its build job's digest output, builds the `release_feed` tool with cargo (no node, no cache action) in a step with no secret, then signs both zips in one `release_feed sign` call, writes the one `latest.json`, checks the feed as an x64 and an arm64 launcher would, and uploads the two `.zip.sig` files and `latest.json` as the `launcher-feed-<tag>` artifact | `contents: read`; the Minisign key and password, on the sign step only; the public-key variable. Its actions are GitHub's own and this repository's toolchain action (SHA-pinned inside) |
+| `publish` | Unless the run was cancelled, when `sign` succeeded: checks both zips' digests again, creates or updates the dated release with both Windows sets, then refreshes `launcher-current` with both sets and `latest.json` last | `contents: write` (the `GITHUB_TOKEN`); the artifacts. No secret |
 | `publish-macos` | Unless the run was cancelled, when `publish` succeeded: checks the macOS zip against `desktop-macos`' digest output, attaches it to the dated release and rewrites its notes, replaces the macOS zip on `launcher-current` when `publish` refreshed it, and fails if the macOS build did not succeed | `contents: write`; the artifacts. No secret, no third-party action, no build |
+
+The arm64 build is on the release's critical path (D-WA5): `sign` and `publish` need
+`desktop-windows-arm64`. A feed without `windows-aarch64` gives every arm64
+launcher `Error::Platform`, so once a release has carried the arm64 zip, every
+feed must carry both keys. If the arm64 job fails, nothing is signed or
+published; **"Re-run failed jobs"** reruns it and what it skipped. The Play
+pieces it needs stay for seven days, so a rerun on a later day still finds them.
 
 Every third-party action in the workflow is pinned to a full commit SHA.
 
@@ -151,6 +162,10 @@ signing and manual updating.
 runs it in stages. `launcher-desktop.yml` runs the same stages on every
 desktop-launcher PR (`desktop release build dry run (Windows)`), without a tag
 or a manifest key, so the release build is tested before a release needs it.
+The same workflow calls the arm64 job as `release-dry-run-arm64` (`desktop
+release build dry run (Windows arm64)`), and `release-dry-run-feed` (`desktop
+release build dry run (updater feed)`) signs and checks the two-zip feed with a
+throwaway key. These dry runs don't gate merges (D-WA7).
 
 | Stage | What it does |
 |---|---|
@@ -158,11 +173,11 @@ or a manifest key, so the release build is tested before a release needs it.
 | `stage` | Copies the three into `shell/resources/windows/` through [`tools/stage-helper.py`](../tools/stage-helper.py), which checks each one's architecture and digest and refuses a lab-bridge telemetry DLL |
 | `launcher` | Builds the UI, then the 64-bit launcher embedding the three staged Play pieces. `CIMMERIA_LAUNCH_HELPER_SHA256`, `CIMMERIA_CLIENT_PATCHES_SHA256` and `CIMMERIA_CLIENT_TELEMETRY_SHA256` independently pin their bytes; packaging builds require all three and fail for missing or mismatched input |
 | `verify` | Checks the 64-bit launcher, compiled pins and player-only telemetry identity, then copies only the EXE to a clean directory and runs `--verify-embedded-payload` to prove headless extraction and verification. A release build carries its tag, version and, when set, updater public key |
-| `package` | Writes `artifacts/StargateWorlds-Launcher-windows-x64.zip` containing exactly one root `cimmeria-launcher-desktop.exe`, then its `.sha256`. The public ZIP name and signed updater contract stay the same |
+| `package` | Writes `artifacts/StargateWorlds-Launcher-windows-x64.zip` (`WINDOWS_ARCH=arm64`: `-windows-arm64.zip`) containing exactly one root `cimmeria-launcher-desktop.exe`, then its `.sha256`. The x64 name and signed updater contract stay the same. `verify` requires PE machine `0x8664` for x64 and `0xaa64` for arm64 |
 | `feed-tool` | Builds the `release_feed` example (`release-tools` profile) that `sign` and `verify-feed` run. The `sign` job runs it in a step with no secret: compiling it runs its dependencies' build scripts and proc macros, which must never see the key |
-| `sign <version> <url> <notes>` | Signs the zip with the updater key and writes `artifacts/StargateWorlds-Launcher-windows-x64.zip.sig` and `artifacts/latest.json`. Runs the built tool directly, no cargo |
-| `verify-feed <version>` | Runs the launcher engine's own feed, signature and zip checks on those files against `LAUNCHER_UPDATER_PUBKEY` |
-| `feed-dry-run <version>` | `feed-tool`, then `sign` and `verify-feed` with a throwaway key made in the job; the PR dry run's step |
+| `sign <version> <url> <notes>` | Signs every zip in `FEED_ARCHES` (x64 and arm64) with the updater key and writes a `.zip.sig` beside each and one `artifacts/latest.json`. Runs the built tool directly, no cargo |
+| `verify-feed <version>` | Runs the launcher engine's own feed, signature and zip checks on those files, per platform, against `LAUNCHER_UPDATER_PUBKEY` |
+| `feed-dry-run <version>` | `feed-tool`, then `sign` and `verify-feed` over both zips with a throwaway key made in the job; the step of the PR dry run's feed job |
 
 The Windows download stays a ZIP so browsers do not need to download a bare,
 unsigned executable. Inside it, the launcher is one file. On startup it verifies
@@ -181,6 +196,17 @@ unchanged. The owner authorized the embedded-payload PR to merge, then a launche
 release from main retaining the Windows ZIP. This is not packaged/game acceptance
 or permission for a live game or lab session.
 
+### Windows on Arm
+
+Every release also ships a native arm64 launcher, `StargateWorlds-Launcher-windows-arm64.zip` (D-WA2: feed key `windows-aarch64`, PE machine `0xaa64`). What differs from the x64 build:
+
+- **Native launcher, emulated game.** The launcher EXE is `aarch64-pc-windows-msvc`. The three Play pieces it embeds (the launch worker and two game DLLs) stay `i686`, shared with the x64 zip: the game is 32-bit x86 and runs under Windows' x86 emulation. The arm64 job compiles no `i686` code; it takes the x64 job's staged pieces through `play-pieces-in`.
+- **Hosted runner.** The job runs on `windows-11-arm`, free for this public repository; the self-hosted pool has no Arm machine. A native runner lets `verify` run the EXE's embedded-payload probe, which a cross-compile couldn't (D-WA1).
+- **Tools step (D-WA8).** The image's tools aren't assumed. The job checks `python`, then `clang` (installs LLVM through Chocolatey when missing, because `ring` and `aws-lc-sys` need it for `aarch64-pc-windows-msvc`), then `rustup` (official `rustup-init` when missing). It pins the default host to `aarch64-pc-windows-msvc` and asserts it after the toolchain action, so a silent x64 toolchain fails there. No new third-party action is added.
+- **Compile-time key (D-WA3).** The build target picks the updater key: an arm64 launcher updates to `windows-aarch64`. An x64 launcher on an Arm PC stays x64 and updates to the x64 zip; there is no automatic cross-grade.
+- **One feed (D-WA4).** `latest.json` carries both Windows keys. Old x64 launchers read only their own key and don't change.
+
+What is tested: the PR dry run builds and verifies the arm64 zip natively and checks the two-zip feed with a throwaway key. What isn't yet: no release has carried the arm64 zip, and `launcher-release.yml`'s new wiring runs for the first time at the first release. The owner UATs WA-U1..WA-U3 in the [campaign ledger](../../../../docs/analysis/launcher-win-arm64/README.md#owner-uat-no-lab-use) are pending. The bootstrap installer and `setup.ps1` still download the x64 zip by name, which runs emulated on Arm (WA-F1 switches them after the first arm64 release).
 ## What the macOS job builds
 
 [`tools/launcher-release/build-desktop-macos.sh`](../../../../tools/launcher-release/build-desktop-macos.sh)
@@ -229,7 +255,7 @@ macOS asks again for folder access.
 
 ### macOS updates are manual
 
-The feed offers `windows-x86_64` only, and the shell builds its updater for
+The feed offers the two Windows keys only, and the shell builds its updater for
 Windows only, so every macOS build shows the updater as **Disabled**. A Mac
 player downloads each new release from the stable link. The engine's macOS
 bundle swap exists but has never run on a packaged app; turning it on needs a
@@ -254,6 +280,8 @@ separated by tabs (`\t` below), with exactly one `version:`:
 timestamp:<unix seconds>\tfile:StargateWorlds-Launcher-windows-x64.zip\tversion:<YYYY.M.(D*100+N)>
 ```
 
+(`file:` names the signed zip; the arm64 zip's comment names `StargateWorlds-Launcher-windows-arm64.zip`.)
+
 `latest.json` is Tauri v2's static format. The platform `signature` is base64 of
 the whole `.zip.sig` document:
 
@@ -266,6 +294,10 @@ the whole `.zip.sig` document:
     "windows-x86_64": {
       "signature": "<base64 of the .zip.sig file>",
       "url": "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-20261011-abcdef1/StargateWorlds-Launcher-windows-x64.zip"
+    },
+    "windows-aarch64": {
+      "signature": "<base64 of the arm64 .zip.sig file>",
+      "url": "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-20261011-abcdef1/StargateWorlds-Launcher-windows-arm64.zip"
     }
   }
 }

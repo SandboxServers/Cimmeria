@@ -34,8 +34,9 @@ See [docs/project-status.md](docs/project-status.md) for the detailed breakdown.
 Players download the launcher from a stable link, which always holds the
 newest release:
 
-- **Windows:** [`StargateWorlds-Launcher-windows-x64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip).
-  Unzip it into a folder of its own and run `cimmeria-launcher-desktop.exe`,
+- **Windows:** [`StargateWorlds-Launcher-windows-x64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip),
+  or [`StargateWorlds-Launcher-windows-arm64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-arm64.zip)
+  for Windows on Arm. Unzip it into a folder of its own and run `cimmeria-launcher-desktop.exe`,
   keeping the `windows` and `graphics` folders beside it. It updates itself
   from Settings.
 - **macOS (Apple silicon):** [`StargateWorlds-Launcher-macos-arm64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip).

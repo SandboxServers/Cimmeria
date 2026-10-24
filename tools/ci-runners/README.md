@@ -225,11 +225,11 @@ account, with its own directory, toolchain and sccache server.
 
 | Workflow | Jobs on the pool |
 | --- | --- |
-| `launcher-desktop.yml` | `native-engine (windows-latest)` (the Windows matrix leg), `desktop release build dry run (Windows)` |
+| `launcher-desktop.yml` | `native-engine (windows-latest)` (the Windows matrix leg), `desktop release build dry run (Windows)`, `desktop release build dry run (updater feed)` |
 | `client-launch.yml` | `cargo clippy -D warnings (client launch, Windows)`, `cargo nextest (client launch, Windows)` |
 | `launcher-runtime-probe.yml` | `runtime-probe`, `local-lab-tools` |
 
-`launcher-release.yml` stays on GitHub-hosted runners. Every job on the pool can write
+The arm64 dry run (`desktop release build dry run (Windows arm64)`) runs on hosted `windows-11-arm`, not the pool: the pool has no Arm machine. `launcher-release.yml` stays on GitHub-hosted runners. Every job on the pool can write
 to the shared compile cache, its own cargo registry and its toolchain, so a bad job could
 plant an artifact that a later build reuses. A signed release must never be built from
 that, so releases build from scratch on a clean hosted machine. The `client-*-build`,
