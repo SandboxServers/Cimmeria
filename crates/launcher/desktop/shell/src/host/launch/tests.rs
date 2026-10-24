@@ -16,16 +16,24 @@ fn missing_artifacts_never_admit_or_change_consent() {
         .unwrap();
     assert!(!before.resources_available);
     assert!(before.installation_id.is_none());
-    assert_eq!(
+    let (played, events) = crate::test_capture::capture(|| {
         host.launch_command(LaunchCommand::Play {
             schema_version: 1,
             operation_id: Uuid::new_v4(),
             operation_revision: 0,
-            installation_id: Uuid::new_v4()
+            installation_id: Uuid::new_v4(),
         })
-        .unwrap_err(),
-        JobError::PlatformUnavailable
-    );
+    });
+    assert_eq!(played.unwrap_err(), JobError::PlatformUnavailable);
+    // PD-02: the refusal is logged, with no operation because none was admitted.
+    let refused: Vec<_> = events
+        .iter()
+        .filter(|e| e.target == "launcher.launch" && e.field("event") == Some("launch_refused"))
+        .collect();
+    assert_eq!(refused.len(), 1);
+    assert_eq!(refused[0].level, tracing::Level::WARN);
+    assert_eq!(refused[0].field("reason"), Some("resources_unavailable"));
+    assert_eq!(refused[0].field("operation"), None);
     drop(host);
     let host = NativeHost::new(root.path().join("state"));
     let after = host
@@ -103,6 +111,8 @@ fn play_releases_the_store_before_dispatch_and_its_failure_path() {
     // Everything runs on a worker thread so a store-lock deadlock fails this test
     // rather than hanging the suite. No async runtime exists on that thread, so
     // dispatch fails after admission and its failure path locks the store again.
+    // PD-02: that failure is before anything was recorded, so the operation ends
+    // Failed rather than ReconciliationRequired.
     let (send, done) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let (_root, host) = super::fixture::fixture();
@@ -129,10 +139,7 @@ fn play_releases_the_store_before_dispatch_and_its_failure_path() {
         .expect("Play held the store lock across dispatch");
     assert_eq!(played, Err(JobError::Io));
     assert!(admitted);
-    assert_eq!(
-        state,
-        cimmeria_launcher_engine::OperationState::ReconciliationRequired
-    );
+    assert_eq!(state, cimmeria_launcher_engine::OperationState::Failed);
 }
 #[cfg(target_os = "macos")]
 #[test]

@@ -20,6 +20,18 @@ pub(crate) fn launch_refused(id: Uuid, reason: &'static str) {
     );
 }
 
+/// The shell refused Play before any operation existed (C-PD2), so the event
+/// has no `operation`; `reason` is `resources_unavailable` or
+/// `resources_unresolved`. Same event name as `launch_refused`.
+pub fn launch_refused_before_operation(reason: &'static str) {
+    tracing::warn!(
+        target: "launcher.launch",
+        event = "launch_refused",
+        reason,
+        "launcher launch: Play refused before an operation started; expected the bundled Play resources; nothing was started"
+    );
+}
+
 /// The admitted launch began; `telemetry_dll` says whether the DLL goes in.
 /// `adoption_check` is the adoption provenance's check (`light`, `full` or
 /// `none`); `patches_incomplete` counts the patches an apply left incomplete.

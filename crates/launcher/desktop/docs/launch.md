@@ -155,6 +155,16 @@ existing injection termination primitive is best effort; it cannot authorize a
 second launch. A startup reply has a 60-second bound; an observed game has no
 lifetime deadline. Observation loss leaves the operation gated.
 
+A Play that fails before the game starts ends `failed` with a logged reason. When
+dispatch fails while the operation is still Starting and no launch observation was
+recorded yet, the operation goes to Failed and `launch_not_started` (warn) carries
+the error's code as `reason` (for example `io` or `unknown_operation`). Only an
+unconfirmed save (`persistence_uncertain`), an operation that already left Starting,
+or a launch that already recorded an observation goes to reconciliation-required.
+A Play refused before any operation exists logs `launch_refused` (warn) with no
+operation number and `reason` `resources_unavailable` (no bundled Play resources) or
+`resources_unresolved` (the resources could not be resolved for this copy).
+
 ## Mac graphics and prerequisite boundaries
 
 Launch reopens the exact successful generation under `game-prefixes`, never the
@@ -515,7 +525,7 @@ target per subsystem: `launcher.startup`, `launcher.crash`, `launcher.update`,
 a `client.` prefix (`client.launcher.install`). The full subsystem table is in
 [observability.md](../../../../docs/architecture/observability.md). `launcher.launch` carries `launch_refused`, `launch_started`, `launch_not_started`,
 `launch_failed`, `game_started`, `game_exited` and `launch_finished`, each with the
-operation number; refusals, failures and not-started launches add a closed `reason`.
+operation number (except a `launch_refused` before any operation, see above); refusals, failures and not-started launches add a closed `reason`.
 `launch_started` also carries `adoption_check` (`light`, `full`, or `none` for an
 install not adopted from a folder) and `patches_incomplete` (how many patches the
 copy's `launcher-installed.json` lists in `incomplete_patches`). When the installed
