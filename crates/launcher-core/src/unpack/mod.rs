@@ -16,6 +16,7 @@
 //! Everything here is blocking file I/O; callers run it on a blocking thread.
 
 mod cab_set;
+mod mscab;
 // The portable expander runs off Windows; Windows tests compare it with FDI.
 #[cfg(any(not(windows), test))]
 mod cab_portable;

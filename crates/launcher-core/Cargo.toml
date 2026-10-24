@@ -60,7 +60,9 @@ sha2 = { workspace = true }
 zip = { workspace = true }
 
 # Gzip compression for telemetry chunk uploads.
-flate2 = "1"
+# `zlib-rs` gives `Decompress::set_dictionary`, which the MSZIP decoder
+# (src/unpack/mscab/mszip.rs) needs. Already in both lockfiles.
+flate2 = { version = "1", features = ["zlib-rs"] }
 # MSZIP blocks of the installer cabinet set off Windows
 # (src/unpack/cab_portable/mszip.rs). Already flate2's default backend.
 miniz_oxide = "0.8"
