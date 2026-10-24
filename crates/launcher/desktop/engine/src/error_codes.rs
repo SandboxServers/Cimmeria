@@ -34,6 +34,7 @@ impl StorageError {
             Self::Busy => "busy",
             Self::PersistenceUncertain => "persistence_uncertain",
             Self::InvalidServerList => "invalid_server_list",
+            Self::InvalidDisplayOptions => "invalid_display_options",
         }
     }
 }
@@ -84,6 +85,7 @@ mod tests {
             StorageError::Busy,
             StorageError::PersistenceUncertain,
             StorageError::InvalidServerList,
+            StorageError::InvalidDisplayOptions,
         ];
         for error in storage {
             assert_eq!(

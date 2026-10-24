@@ -36,6 +36,7 @@ export const logUploadErrorText:Record<LogUploadError|'transport'|'schema',strin
  stale_revision:'The launcher settings changed. Try again.',
  persistence_uncertain:'Restart the launcher before uploading logs.',
  invalid_server_list:'The saved login servers are not valid. Check them under Login servers.',
+ invalid_display_options:'The saved display setting is not valid. Check it in Settings.',
  transport:'The launcher did not answer. Try again.',
  schema:'The launcher sent an answer this page does not understand.',
 };

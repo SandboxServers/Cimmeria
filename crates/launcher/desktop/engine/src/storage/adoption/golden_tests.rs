@@ -64,6 +64,7 @@ fn preferences(revision: u64) -> Preferences {
         launcher_summary_consent: true,
         login_servers: Vec::new(),
         client_patches_enabled: true,
+        display: Default::default(),
     }
 }
 

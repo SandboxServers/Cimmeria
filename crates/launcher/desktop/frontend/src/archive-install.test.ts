@@ -18,8 +18,8 @@ async function fixture(options:{mode?:'success'|'cancel'|'hash'|'transport';prev
  const checking=new Promise<void>(resolve=>{checked=resolve;});
  let status:InstallStatus={schema_version:1,install_supported:true,can_resume:false,can_reconcile:false,can_retry:false,
   uninstall:null,runtime_setup:null,progress:null,outcome:null,native:{schema_version:1,requires_reopen:!!options.blocked,
-   adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},operation:{schema_version:1,revision:0,operation:null},
-   preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}}};
+   adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'0.1.0',tag:null},operation:{schema_version:1,revision:0,operation:null},
+   preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed' as const,width:1024,height:768}}}};
  const archive=():SeedArchiveStatus=>({schema_version:1,native:status.native,chosen:verified?{file_name:'original.rar',size:4000}:null,
   offer:options.offer&&!verified?{file_name:'original.rar',size:4000}:null,verifying:null,last_error:null});
  const choose=()=>{
