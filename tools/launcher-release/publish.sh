@@ -196,5 +196,5 @@ case "${1:-}" in
   macos) macos ;;
   macos-current) macos_current ;;
   current-notes) current_notes ;;
-  *) sed -n '2,28p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,27p' "$0" >&2; exit 2 ;;
 esac
