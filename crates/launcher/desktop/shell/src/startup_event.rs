@@ -59,6 +59,17 @@ pub(crate) fn update_reconcile_failed(reason: &'static str) {
     );
 }
 
+/// The start-up check for an interrupted repair that never started failed.
+/// Nothing changed; the repair still waits for Recover or Abandon.
+pub(crate) fn repair_reconcile_failed(reason: &'static str) {
+    tracing::warn!(
+        target: "launcher.repair",
+        event = "repair_reconcile_failed",
+        reason = reason,
+        "launcher repair: the interrupted repair could not be checked at start; expected its files to be readable, nothing changed and it still needs Recover or Abandon"
+    );
+}
+
 /// The telemetry queue check could not read the recorded choice. Nothing was
 /// touched; the queue waits for the next start.
 pub(crate) fn update_recovery_failed(reason: &'static str) {
@@ -157,6 +168,16 @@ mod tests {
         assert_eq!(events[0].level, Level::WARN);
         assert_eq!(events[0].field("event"), Some("update_reconcile_failed"));
         assert_eq!(events[0].field("reason"), Some("feed"));
+    }
+
+    #[test]
+    fn repair_reconcile_failure_warns_on_the_repair_target() {
+        let ((), events) = capture(|| repair_reconcile_failed("corrupt_state"));
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].target, "launcher.repair");
+        assert_eq!(events[0].level, Level::WARN);
+        assert_eq!(events[0].field("event"), Some("repair_reconcile_failed"));
+        assert_eq!(events[0].field("reason"), Some("corrupt_state"));
     }
 
     #[test]

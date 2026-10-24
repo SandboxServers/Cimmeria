@@ -132,7 +132,7 @@ fn abandon(
         .reconcile(id, OperationState::Cancelled)?;
     Ok(())
 }
-fn absent(path: &Path) -> Result<(), StorageError> {
+pub(super) fn absent(path: &Path) -> Result<(), StorageError> {
     match std::fs::symlink_metadata(path) {
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
         Err(_) => Err(StorageError::Io),

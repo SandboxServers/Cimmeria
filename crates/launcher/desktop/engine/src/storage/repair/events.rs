@@ -106,6 +106,18 @@ pub(crate) fn repair_not_started(id: Uuid, reason: &'static str) {
     );
 }
 
+/// Start-up found an interrupted repair that had not started and marked it
+/// failed: no repair files were on disk (D-PD3).
+pub(crate) fn repair_reconciled_unstarted(id: Uuid) {
+    tracing::info!(
+        target: "launcher.repair",
+        event = "repair_reconciled_unstarted",
+        operation = crate::operation_numbers::number(id),
+        outcome = "failed",
+        "launcher repair: an interrupted repair had not started; expected no repair files on disk and found none; marked failed"
+    );
+}
+
 /// The journal could not record an uncertain outcome. `pub` for the shell.
 pub fn mark_uncertain_failed(error: ContractError) {
     tracing::warn!(

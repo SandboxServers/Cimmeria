@@ -8,6 +8,7 @@ pub mod events;
 pub mod preparation;
 pub mod recovery;
 pub(super) mod tree_identity;
+mod unstarted;
 use crate::owner_lock::OwnerLock;
 use crate::OperationKind;
 use sha2::{Digest, Sha256};
