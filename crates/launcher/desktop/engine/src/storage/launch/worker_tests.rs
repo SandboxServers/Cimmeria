@@ -8,7 +8,9 @@ fn login_server_refusal_finishes_mint_as_failed_rather_than_interrupted() {
         name: "Invalid fixture".into(),
         url: "not a URL".into(),
     }];
+    state.record_launch(&plan, Observation::Preparing).unwrap();
     let state = Arc::new(Mutex::new(state));
+    let kept = state.clone();
     let (updates, _) = watch::channel(Observation::Unknown);
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -24,9 +26,15 @@ fn login_server_refusal_finishes_mint_as_failed_rather_than_interrupted() {
         ))
     });
     assert!(matches!(result, Ok(Observation::NotStarted)));
-    assert!(events
+    assert_eq!(
+        kept.lock().unwrap().launch_failure(),
+        Ok(Some(FailureCode::LoginServersInvalid))
+    );
+    let refused = events
         .iter()
-        .any(|e| e.field("reason") == Some("login_servers_refused")));
+        .find(|e| e.field("reason") == Some("login_servers_refused"))
+        .unwrap();
+    assert_eq!(refused.field("failure_code"), Some("login_servers_invalid"));
     let finish = events
         .iter()
         .find(|e| {
@@ -38,6 +46,42 @@ fn login_server_refusal_finishes_mint_as_failed_rather_than_interrupted() {
     assert!(!events
         .iter()
         .any(|e| e.field("phase") == Some("play_client_setup")));
+}
+
+#[test]
+fn a_failed_client_setup_is_noted_launch_prepare_failed() {
+    let (root, mut state, plan) = super::super::tests::fixture();
+    state.record_launch(&plan, Observation::Preparing).unwrap();
+    let state = Arc::new(Mutex::new(state));
+    let kept = state.clone();
+    let (updates, _) = watch::channel(Observation::Unknown);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (result, events) = crate::test_capture::capture(|| {
+        rt.block_on(execute(
+            state,
+            &plan,
+            root.path().into(),
+            CancellationToken::new(),
+            &updates,
+        ))
+    });
+    assert!(matches!(result, Ok(Observation::NotStarted)));
+    assert_eq!(
+        kept.lock().unwrap().launch_failure(),
+        Ok(Some(FailureCode::LaunchPrepareFailed))
+    );
+    let failed: Vec<_> = events
+        .iter()
+        .filter(|e| e.field("reason") == Some("prepare_failed"))
+        .collect();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(
+        failed[0].field("failure_code"),
+        Some("launch_prepare_failed")
+    );
 }
 
 // Inert PE32 header, sufficient for real client preparation, never spawned.

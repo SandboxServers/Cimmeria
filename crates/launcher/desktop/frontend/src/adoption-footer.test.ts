@@ -15,7 +15,7 @@ function fixture(initial=idle()){
   if(command==='adoption_command')return saved;
   if(command==='choose_existing_game_folder')return choose();
   if(command==='launcher_command')return saved.native;
-  if(command==='launch_command')return {schema_version:1,native:saved.native,installation_id:null,setup_complete:false,resources_available:false,launcher_update_required:true,patches_incomplete:0,ops_skipped:0,observation:null};
+  if(command==='launch_command')return {schema_version:1,native:saved.native,installation_id:null,setup_complete:false,resources_available:false,launcher_update_required:true,patches_incomplete:0,ops_skipped:0,observation:null,failure:null};
   // Other panels keep their own strict decoders; unavailable capabilities do not gate adoption.
   if(command==='install_command')return {schema_version:1,native:saved.native,install_supported:false,can_resume:false,can_reconcile:false,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null};
   return native();
