@@ -1,4 +1,5 @@
 use super::*;
+use crate::failure::FailureCode;
 use crate::game_telemetry::patch_events;
 use crate::storage::display_options::DisplayOptions;
 use futures_util::FutureExt;
@@ -163,7 +164,7 @@ async fn execute(
         .await
         .map_err(|_| StorageError::Io)?;
     if resource_timer.result(verified).is_err() {
-        events::launch_not_started(plan.id, "verify_failed");
+        failure::not_started(&state, plan, "verify_failed", FailureCode::GameFilesInvalid);
         return Ok(Observation::NotStarted);
     }
     let mint_timer = context.start(crate::phase_timing::Phase::PlayTelemetryMint);
@@ -194,7 +195,12 @@ async fn execute(
     .await
     .map_err(|_| StorageError::Io)?;
     let Ok((spec, request, _ownership)) = setup_timer.result(setup) else {
-        events::launch_not_started(plan.id, "prepare_failed");
+        failure::not_started(
+            &state,
+            plan,
+            "prepare_failed",
+            FailureCode::LaunchPrepareFailed,
+        );
         return Ok(Observation::NotStarted);
     };
     if minted {
@@ -224,14 +230,7 @@ async fn execute(
     };
     let binaries = spec.directory.clone();
     // Lazy: nothing is spawned until `run_game` awaits it, after Running.
-    let supervised = supervisor::run(spec, request, cancel.clone(), |observation| {
-        state
-            .lock()
-            .map_err(|_| StorageError::Io)?
-            .record_launch(plan, observation)?;
-        updates.send_replace(observation);
-        Ok(())
-    });
+    let supervised = supervisor::run_recorded(&state, plan, spec, request, cancel.clone(), updates);
     run_game(&state, plan, &binaries, &cancel, settled, supervised).await
 }
 /// Commits Running, awaits the supervised game, and reports the
@@ -304,7 +303,12 @@ async fn servers_and_session(
     let servers = match resolved {
         Ok(servers) => servers,
         Err(_error) => {
-            events::launch_not_started(plan.id, "login_servers_refused");
+            failure::not_started(
+                state,
+                plan,
+                "login_servers_refused",
+                FailureCode::LoginServersInvalid,
+            );
             return Ok(None);
         }
     };
@@ -397,6 +401,7 @@ fn prepare_native(
             .chain(telemetry)
             .map(|p| p.path().to_path_buf())
             .collect(),
+        args: display::arguments(display),
     };
     let environment: std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString> = [
         "SystemRoot",

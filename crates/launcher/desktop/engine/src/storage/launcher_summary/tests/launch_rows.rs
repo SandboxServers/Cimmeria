@@ -246,3 +246,28 @@ fn a_launch_whose_observation_was_lost_is_unknown_never_succeeded() {
         (SummaryOperation::Launch, SummaryOutcome::Unknown, None)
     );
 }
+
+#[test]
+fn a_dispatch_that_fails_before_it_starts_is_a_launch_not_started_row() {
+    // The PD-02 path: dispatch failed while Starting with no launch record.
+    let (_root, state, _clock, plan) = admitted();
+    let state = Mutex::new(state);
+    assert!(launch::dispatch_failed(
+        &state,
+        plan.id,
+        &crate::StorageError::Io.into(),
+        crate::failure::FailureCode::LocalIo
+    ));
+    let mut owner = state.lock().unwrap();
+    owner.finalize_summaries();
+    let rows = queued(&owner);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        (rows[0].operation, rows[0].outcome, rows[0].error_code),
+        (
+            SummaryOperation::Launch,
+            SummaryOutcome::Failed,
+            Some(SummaryErrorCode::LaunchNotStarted)
+        )
+    );
+}

@@ -2,6 +2,7 @@
 //! launch worker and supervisor log through these, one target and one shape
 //! each. Logging never changes the outcome: every helper returns nothing.
 use super::Observation;
+use crate::failure::FailureCode;
 use crate::operation_numbers;
 use crate::ContractError;
 use cimmeria_runtime_probe::game_launch::Stage;
@@ -53,23 +54,44 @@ pub(crate) fn launch_started(
     );
 }
 
-/// The game did not start; the reason is its closed code.
-pub(crate) fn launch_not_started(id: Uuid, reason: &'static str) {
+/// The game did not start; the reason is its closed code and `failure` its
+/// failure code (C-PD1).
+pub(crate) fn launch_not_started(id: Uuid, reason: &'static str, failure: FailureCode) {
     let operation = operation_numbers::number(id);
+    let failure_code = failure.code();
     tracing::warn!(
         target: "launcher.launch",
         event = "launch_not_started",
         operation,
         reason,
+        failure_code,
         "launch: not started"
     );
 }
 
+/// The game process could not be created (C-PD3): `launch_not_started` with
+/// `reason = "spawn_failed"` and the classified `failure`. `os_error` is the raw
+/// OS error number, logged when the OS gave one (D-PD5).
+pub(crate) fn launch_spawn_failed(id: Uuid, failure: FailureCode, os_error: Option<i32>) {
+    let operation = operation_numbers::number(id);
+    let failure_code = failure.code();
+    tracing::warn!(
+        target: "launcher.launch",
+        event = "launch_not_started",
+        operation,
+        reason = "spawn_failed",
+        failure_code,
+        os_error,
+        "launcher launch: the game process could not be created; expected the launch helper to start; the launch ends not started"
+    );
+}
+
 /// Test seam (launcher-telemetry LT-25): the real `launch_not_started` event, for
-/// the shell's launcher-telemetry UAT bridge. Test-support builds only.
+/// the shell's launcher-telemetry UAT bridge. Test-support builds only; the
+/// failure code is `unknown`, since the bridge names only a reason.
 #[cfg(feature = "test-support")]
 pub fn launch_not_started_for_test(id: Uuid, reason: &'static str) {
-    launch_not_started(id, reason);
+    launch_not_started(id, reason, FailureCode::Unknown);
 }
 
 /// The launch failed after it began; the reason is its closed code.

@@ -48,6 +48,11 @@ fn a_replaced_helper_logs_launch_not_started_verify_failed() {
             })
             .await
             .unwrap();
+            // The worker noted the code before its terminal record kept it.
+            assert_eq!(
+                state.lock().unwrap().launch_failure(),
+                Ok(Some(crate::failure::FailureCode::GameFilesInvalid))
+            );
         });
     });
     let launch: Vec<&Captured> = events
@@ -65,6 +70,10 @@ fn a_replaced_helper_logs_launch_not_started_verify_failed() {
     assert_eq!(not_started.len(), 1);
     assert_eq!(not_started[0].level, Level::WARN);
     assert_eq!(not_started[0].field("reason"), Some("verify_failed"));
+    assert_eq!(
+        not_started[0].field("failure_code"),
+        Some("game_files_invalid")
+    );
     assert_eq!(finished.len(), 1);
     assert_eq!(finished[0].field("outcome"), Some("not_started"));
     let operation = started[0].field("operation");

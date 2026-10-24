@@ -112,7 +112,8 @@ fn play_releases_the_store_before_dispatch_and_its_failure_path() {
     // rather than hanging the suite. No async runtime exists on that thread, so
     // dispatch fails after admission and its failure path locks the store again.
     // PD-02: that failure is before anything was recorded, so the operation ends
-    // Failed rather than ReconciliationRequired.
+    // Failed rather than ReconciliationRequired. PD-05: it first records a
+    // NotStarted launch result carrying the failure code (`io` → `local_io`).
     let (send, done) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let (_root, host) = super::fixture::fixture();
@@ -132,14 +133,25 @@ fn play_releases_the_store_before_dispatch_and_its_failure_path() {
             .launch_command(LaunchCommand::Inspect { schema_version: 1 })
             .unwrap();
         let operation = after.native.operation.operation.unwrap();
-        let _ = send.send((played, operation.id == id, operation.state));
+        let _ = send.send((
+            played,
+            operation.id == id,
+            operation.state,
+            after.observation,
+            after.failure,
+        ));
     });
-    let (played, admitted, state) = done
+    let (played, admitted, state, observation, failure) = done
         .recv_timeout(std::time::Duration::from_secs(30))
         .expect("Play held the store lock across dispatch");
     assert_eq!(played, Err(JobError::Io));
     assert!(admitted);
     assert_eq!(state, cimmeria_launcher_engine::OperationState::Failed);
+    assert_eq!(observation, Some(launch::Observation::NotStarted));
+    assert_eq!(
+        failure,
+        Some(cimmeria_launcher_engine::failure::FailureCode::LocalIo)
+    );
 }
 #[cfg(target_os = "macos")]
 #[test]
@@ -311,8 +323,15 @@ fn the_status_reports_the_admitted_copys_incomplete_patch_counts() {
     }
     .save(game.path())
     .unwrap();
-    let status =
-        LaunchStatus::assemble(native, None, false, (true, false), Some(game.path()), None);
+    let status = LaunchStatus::assemble(
+        native,
+        None,
+        false,
+        (true, false),
+        Some(game.path()),
+        None,
+        None,
+    );
     let value = serde_json::to_value(status).unwrap();
     assert_eq!(value["patches_incomplete"], 2);
     assert_eq!(value["ops_skipped"], 3);

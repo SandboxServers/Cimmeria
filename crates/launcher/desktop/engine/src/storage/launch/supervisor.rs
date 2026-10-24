@@ -1,20 +1,53 @@
 //! A helper owns the Windows process handle until exit. stdout is bounded per
 //! message; the game itself has no artificial lifetime deadline.
 use super::*;
+use crate::failure::FailureCode;
 use crate::helper_supervisor::HelperCommand;
 use cimmeria_runtime_probe::game_launch::{Event, Message, Request, MAX_MESSAGE};
-use std::time::{Duration, Instant};
+use std::{
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::Command,
+    sync::watch,
 };
 use tokio_util::sync::CancellationToken;
+
+/// `run` for `plan`'s launch: each observation is recorded on the launch
+/// record and published on `updates`, and a spawn failure is noted on the
+/// record. Lazy: nothing is spawned until the future is awaited.
+pub(super) fn run_recorded<'a>(
+    state: &'a Mutex<DesktopState>,
+    plan: &'a Plan,
+    spec: HelperCommand,
+    request: Request,
+    cancel: CancellationToken,
+    updates: &'a watch::Sender<Observation>,
+) -> impl std::future::Future<Output = Observation> + 'a {
+    run(
+        spec,
+        request,
+        cancel,
+        move |observation| {
+            state
+                .lock()
+                .map_err(|_| StorageError::Io)?
+                .record_launch(plan, observation)?;
+            updates.send_replace(observation);
+            Ok(())
+        },
+        move |code| failure::note(state, plan, code),
+    )
+}
 
 pub(super) async fn run(
     spec: HelperCommand,
     request: Request,
     cancel: CancellationToken,
     observe: impl FnMut(Observation) -> Result<(), IntentError>,
+    on_failure: impl FnOnce(FailureCode),
 ) -> Observation {
     let id = request.operation_id;
     if cancel.is_cancelled() {
@@ -24,7 +57,7 @@ pub(super) async fn run(
         crate::phase_timing::Context::for_operation(id)
             .start(crate::phase_timing::Phase::PlayHelperStart),
     );
-    let result = run_timed(spec, request, observe, &mut startup_timer).await;
+    let result = run_timed(spec, request, observe, on_failure, &mut startup_timer).await;
     if let Some(timer) = startup_timer {
         timer.finish(crate::phase_timing::Outcome::Failed);
     }
@@ -37,15 +70,18 @@ async fn run_timed(
     spec: HelperCommand,
     request: Request,
     mut observe: impl FnMut(Observation) -> Result<(), IntentError>,
+    on_failure: impl FnOnce(FailureCode),
     startup_timer: &mut Option<crate::phase_timing::Timer>,
 ) -> Observation {
     let id = request.operation_id;
     let Ok(mut bytes) = serde_json::to_vec(&request) else {
-        events::launch_not_started(id, "request_invalid");
+        events::launch_not_started(id, "request_invalid", FailureCode::SpawnFailed);
+        on_failure(FailureCode::SpawnFailed);
         return Observation::NotStarted;
     };
     if bytes.len() > MAX_MESSAGE {
-        events::launch_not_started(id, "request_too_large");
+        events::launch_not_started(id, "request_too_large", FailureCode::SpawnFailed);
+        on_failure(FailureCode::SpawnFailed);
         return Observation::NotStarted;
     }
     // Without a log file (or when it can't be opened) stderr is discarded, as before.
@@ -69,13 +105,22 @@ async fn run_timed(
     #[cfg(windows)]
     command.creation_flags(0x08000000);
     // No kill-on-drop: killing the host is not equivalent to stopping its guest.
-    let Ok(mut child) = crate::phase_timing::Context::for_operation(id)
+    let spawned = crate::phase_timing::Context::for_operation(id)
         .measure(crate::phase_timing::Phase::PlayHelperSpawn, || {
             command.spawn()
-        })
-    else {
-        events::launch_not_started(id, "spawn_failed");
-        return Observation::NotStarted;
+        });
+    let mut child = match spawned {
+        Ok(child) => child,
+        Err(error) => {
+            let failure = failure::classify_spawn(
+                error.kind(),
+                error.raw_os_error(),
+                cfg!(target_os = "macos"),
+            );
+            events::launch_spawn_failed(id, failure, error.raw_os_error());
+            on_failure(failure);
+            return Observation::NotStarted;
+        }
     };
     if let (Some(file), Some(stderr)) = (stderr_log, child.stderr.take()) {
         game_logs::copy_capped(

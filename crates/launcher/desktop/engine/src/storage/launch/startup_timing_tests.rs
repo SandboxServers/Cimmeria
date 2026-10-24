@@ -73,6 +73,7 @@ fn run_helper(starts: bool) -> (Observation, Vec<crate::test_capture::Captured>)
         exe: root.path().join("never-executed.exe"),
         directory: root.path().into(),
         dlls: vec![],
+        args: vec![],
     };
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -81,7 +82,7 @@ fn run_helper(starts: bool) -> (Observation, Vec<crate::test_capture::Captured>)
     let (observation, records) = capture(|| {
         rt.block_on(async {
             Context::for_operation(id);
-            supervisor::run(spec, request, CancellationToken::new(), |_| Ok(())).await
+            supervisor::run(spec, request, CancellationToken::new(), |_| Ok(()), |_| {}).await
         })
     });
     assert!(!root.path().join("never-executed.exe").exists());

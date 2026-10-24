@@ -64,6 +64,7 @@ pub(super) fn prepare(
             .chain(telemetry)
             .map(|p| guest(p.path()))
             .collect::<Result<_, _>>()?,
+        args: super::display::arguments(display),
     };
     let spec = HelperCommand {
         executable: mac_wine::app_identity::loader(&resources.runtime, state_root),
@@ -80,6 +81,9 @@ const FRAME_RATE_LIMIT: &str = "30";
 
 // Wine's error channels plus winemac.drv's display code (owner D4 (4)); fixmes are noise.
 const WINEDEBUG_LOGGED: &str = "err+all,fixme-all,+display";
+
+// D2: exclusive fullscreen captures every display under winemac.drv; DXVK forces windowed.
+const FORCE_WINDOWED: &str = "1";
 
 // Called only after Resources::reopen verifies and locks the pinned runtime.
 // `log_folder` is the guest path of the per-launch log folder; `None` keeps
@@ -112,6 +116,7 @@ fn game_environment(
         environment.insert("DXVK_LOG_LEVEL".into(), "info".into());
         environment.insert("DXVK_LOG_PATH".into(), folder.into());
     }
+    environment.insert("DXVK_FORCE_WINDOWED".into(), FORCE_WINDOWED.into());
     if let Some((executable, _)) = &graphics.rosetta_x87 {
         environment.insert(
             "ROSETTA_X87_PATH".into(),

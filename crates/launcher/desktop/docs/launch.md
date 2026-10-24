@@ -157,11 +157,22 @@ lifetime deadline. Observation loss leaves the operation gated.
 
 A Play that fails before the game starts ends `failed` with a logged reason. When
 dispatch fails while the operation is still Starting and no launch observation was
-recorded yet, the operation goes to Failed and `launch_not_started` (warn) carries
-the error's code as `reason` (for example `io`). An unconfirmed save
+recorded yet, the operation first records a not-started launch result
+(`not_started`) carrying `failure`, the failure code (for example `local_io`),
+then goes to Failed, and `launch_not_started` (warn) carries the error's code as
+`reason` (for example `io`) and the failure code as `failure_code`. An unconfirmed save
 (`persistence_uncertain`), an operation that already left Starting, a launch that
 already recorded an observation, or launch state that cannot be read
 (`corrupt_state`) goes to reconciliation-required instead.
+Every other not-started launch records its failure code too: `verify_failed` is
+`game_files_invalid`, `prepare_failed` is `launch_prepare_failed`,
+`login_servers_refused` is `login_servers_invalid`, and a game process that could not
+be created is `spawn_not_found`, `spawn_permission_denied`, `spawn_failed`, or on
+macOS `rosetta_missing` when the OS reports a bad CPU type (EBADARCH). The launch
+status returns it as `failure` (`null` when none is known), and the `launch_not_started`
+event carries it as `failure_code`; a spawn failure also carries `os_error`, the raw OS
+error number (for example 86 for a missing Rosetta). A launch the helper reports as not
+started (`reason` from its stage, with `win32`) has no failure code yet.
 A Play refused before any operation exists logs `launch_refused` (warn) with no
 operation number and `reason` `resources_unavailable` (no bundled Play resources) or
 `resources_unresolved` (the resources could not be resolved for this copy).
@@ -179,6 +190,10 @@ established Mac OpenGL compatibility workaround. Game preparation also sets
 runtime, so D9VK discovers the bundled MoltenVK surface implementation. A missing,
 non-file or redirected descriptor fails preparation before any helper spawn.
 This selection is native-owned; the webview cannot supply a driver path.
+`DXVK_FORCE_WINDOWED=1` makes the DXVK `d3d9.dll` present windowed whatever the
+client asks for: exclusive fullscreen would change the display mode, which
+winemac.drv turns into a capture of every display (black screen, Cmd+Tab
+freeze).
 Extraction and prerequisite operations retain their headless environment.
 
 `Graphics.rosetta_x87` optionally binds an independently pinned accelerator and
@@ -403,6 +418,15 @@ It logs one `display_settings` event on `launcher.launch` with `operation`,
 `missing`, `key_missing`, `unreadable` or `failed`). It is info when both files
 were `written` or `unchanged`, and warn with
 `failure_code = "display_settings_not_applied"` otherwise. No field carries a path.
+
+The launch helper request carries the table's helper arguments in `args`
+(`Request::args`, both the native and the Wine request). An empty list is left
+out of the JSON, so a fullscreen request is byte for byte the one before PD-25,
+and SGW.exe's command line is the bare exe as before. The helper accepts only
+the three display arguments: `-windowed`, `ResX=<n>` and `ResY=<n>` with 3-4
+ASCII digits each, at most three entries and none repeated
+(`game_launch::valid_args`). Any other list is refused before the game starts,
+the same way as an invalid exe path: `not_started` at stage `request`.
 
 ### Window sizes that fit a display
 

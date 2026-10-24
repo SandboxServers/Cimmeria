@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 mod adoption_tags;
 mod display;
+mod failure;
 mod game_logs;
 mod not_started;
 pub use not_started::dispatch_failed;
@@ -65,6 +66,9 @@ struct Record {
     id: Uuid,
     digest: [u8; 32],
     observation: Observation,
+    /// Why the launch did not start, when known (C-PD3). Old records omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    failure: Option<crate::failure::FailureCode>,
 }
 impl DesktopState {
     /// Admission for hosts without updater configuration. Configured hosts use
@@ -283,12 +287,20 @@ impl DesktopState {
         if self.launch_plan()?.as_ref() != Some(plan) {
             return Err(ContractError::IdentityConflict.into());
         }
+        // A failure noted earlier in this launch survives the next observation;
+        // an unreadable record is overwritten as before.
+        let failure = self
+            .launch_record(plan)
+            .ok()
+            .flatten()
+            .and_then(|record| record.failure);
         self.write_launch(
             &format!("launch-result-{}.json", plan.id),
             &Record {
                 id: plan.id,
                 digest: plan.digest()?,
                 observation,
+                failure,
             },
         )
     }
