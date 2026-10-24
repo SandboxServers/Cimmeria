@@ -129,7 +129,9 @@ fn staged_vendor_payload_is_reverified_and_held_against_write_or_deletion() {
 
 #[tokio::test]
 async fn a_progressing_vendor_download_outlives_the_inactivity_limit_but_a_stall_is_refused() {
-    fn serve(stall: bool) -> (String, std::thread::JoinHandle<()>) {
+    // Each byte arrives after a tenth of the limit, so scheduler jitter on a loaded
+    // runner cannot look like a stall, while the whole transfer still outlives the limit.
+    fn serve(hold: Option<std::sync::mpsc::Receiver<()>>) -> (String, std::thread::JoinHandle<()>) {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let thread = std::thread::spawn(move || {
@@ -142,12 +144,13 @@ async fn a_progressing_vendor_download_outlives_the_inactivity_limit_but_a_stall
             stream
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 16\r\nConnection: close\r\n\r\n")
                 .unwrap();
-            if stall {
-                std::thread::sleep(Duration::from_millis(400));
+            if let Some(release) = hold {
+                // Send nothing until the client gives up; only its inactivity timer can end the body.
+                let _ = release.recv_timeout(Duration::from_secs(20));
                 return;
             }
             for byte in b"0123456789abcdef" {
-                std::thread::sleep(Duration::from_millis(25));
+                std::thread::sleep(Duration::from_millis(100));
                 if stream.write_all(&[*byte]).is_err() {
                     return;
                 }
@@ -159,8 +162,8 @@ async fn a_progressing_vendor_download_outlives_the_inactivity_limit_but_a_stall
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect();
-    let inactivity = Duration::from_millis(150);
-    let (url, thread) = serve(false);
+    let inactivity = Duration::from_secs(1);
+    let (url, thread) = serve(None);
     let start = std::time::Instant::now();
     assert_eq!(
         download_with_inactivity_timeout(&url, 16, &hash, inactivity)
@@ -170,10 +173,17 @@ async fn a_progressing_vendor_download_outlives_the_inactivity_limit_but_a_stall
     );
     assert!(start.elapsed() > inactivity);
     thread.join().unwrap();
-    let (url, thread) = serve(true);
+    let (release, held) = std::sync::mpsc::channel();
+    let (url, thread) = serve(Some(held));
+    let start = std::time::Instant::now();
     assert_eq!(
         download_with_inactivity_timeout(&url, 16, &hash, inactivity).await,
         Err(Error::DownloadFailed)
     );
+    assert!(
+        start.elapsed() >= inactivity,
+        "the refusal must come from the inactivity timer"
+    );
+    drop(release);
     thread.join().unwrap();
 }

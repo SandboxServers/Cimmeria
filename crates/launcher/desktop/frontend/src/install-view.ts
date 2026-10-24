@@ -211,7 +211,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     void run(service=>operation?.state==='reconciliation_required'&&current.status?.can_reconcile?service.reconcile(operation.id):service.inspect);});
   const refresh=()=>run(service=>service.inspect);
   const ready=refresh();
-  return {ready,refresh,installFromArchive,setPlayable:(ready:boolean)=>{playable=ready;render();renderArchive();},settled:()=>Promise.all([mutation,archiveMutation]),dispose:async()=>{
+  return {ready,refresh,installFromArchive,requestRepair:repairs.request,setPlayable:(ready:boolean)=>{playable=ready;render();renderArchive();},settled:()=>Promise.all([mutation,archiveMutation]),dispose:async()=>{
     if(disposed)return;disposed=true;abort.abort();listeners.forEach(remove=>remove());repairs.dispose();
     await Effect.runPromise(Fiber.interrupt(watcher));await Promise.all([mutation,observation]);await runtime.dispose();
     await Effect.runPromise(Fiber.interrupt(archiveWatcher));await archiveHold.release();

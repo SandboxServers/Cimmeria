@@ -17,14 +17,22 @@ export function repairControls(document:Document, uuid:()=>string, run:(action:(
     get('repair-directory')!.textContent=displayPath(pending?.directory??'');
     get('repair-consequences')!.textContent=pending?.action==='repair'?'Rebuild the saved signed release. Game modifications will be replaced. The old game remains until replacement; settings and diagnostics consent stay unchanged. Cancel is available only before replacement begins.':pending?.action==='recover_repair'?'Finish a checkpointed replacement only after native ownership and helper checks pass. This cannot be cancelled. Unknown helper outcomes remain blocked.':pending?.action==='abandon_repair'?'Stop only interrupted preparation before a commit checkpoint. Keep the old game and all staged files. This does not repair content or free staging space. Unknown helper outcomes may prevent abandonment.':'Permanently delete the current successful repair’s old backup, including modifications there. Keep the active game and retained stages. This cannot be undone.';
   };
-  for(const [id,action] of [['repair','repair'],['recover-repair','recover_repair'],['abandon-repair','abandon_repair'],['cleanup-repair','cleanup_repair']] as const)on(id,()=>{
+  const begin=(action:Action)=>{
     const target=current.status?.repair?.target;const operation=current.status?.native.operation.operation;
     pending={action,id:action==='repair'?uuid():operation!.id,installationId:target?.installation_id??null,directory:target?.directory??current.status?.repair?.directory??'the saved installation'};show();get<HTMLButtonElement>('confirm-repair')?.focus();
-  });
+  };
+  for(const [id,action] of [['repair','repair'],['recover-repair','recover_repair'],['abandon-repair','abandon_repair'],['cleanup-repair','cleanup_repair']] as const)on(id,()=>begin(action));
+  /** Play's inline Abandon: open Settings (as #settings does) and confirm exactly as #abandon-repair does. */
+  const request=(action:'abandon')=>{
+    const gear=get('gear'),play=get('play');if(gear)gear.hidden=false;if(play)play.hidden=true;
+    get('settings')?.setAttribute('aria-expanded','true');get('home')?.setAttribute('aria-pressed','false');
+    // Settings alone describes a repair the native side does not offer to abandon.
+    if(action==='abandon'&&current?.status?.repair?.recovery&&current.status.native.operation.operation)begin('abandon_repair');
+  };
   on('dismiss-repair',()=>{const action=pending?.action;pending=null;show();get<HTMLButtonElement>(action==='repair'?'repair':action==='recover_repair'?'recover-repair':action==='abandon_repair'?'abandon-repair':'cleanup-repair')?.focus();});
   on('confirm-repair',()=>{const intent=pending;pending=null;show();if(!intent)return;
     run(service=>intent.action==='repair'?service.repair(intent.id,intent.installationId!):service.repairAction(intent.action,intent.id));});
-  return {render(state:InstallViewState,ready:boolean){current=state;const repair=state.status?.repair;
+  return {request,render(state:InstallViewState,ready:boolean){current=state;const repair=state.status?.repair;
     for(const [id,enabled] of [['repair',!!repair?.target],['recover-repair',repair?.recovery],['abandon-repair',repair?.recovery],['cleanup-repair',repair?.cleanup]] as const){
       const button=get<HTMLButtonElement>(id);if(button){button.disabled=!ready||!enabled;if(id!=='repair')button.hidden=!enabled;}}
     if(pending && (pending.action==='repair'?pending.installationId!==repair?.target?.installation_id:pending.id!==state.status?.native.operation.operation?.id))pending=null;
