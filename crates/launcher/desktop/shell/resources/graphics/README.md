@@ -1,8 +1,12 @@
 # Development D3D9 resource
 
-The development Mac bundle uses unmodified D9VK from WoWSilicon v3.2.2 commit
-`5276d92627f26334f6580270eabadf22361d3717`, resource
-`Sources/WoWSiliconSwift/Resources/Patching/d9vk/d3d9.dll`.
+The development Mac bundle uses an unmodified `d3d9.dll` from WoWSilicon v3.2.2
+commit `5276d92627f26334f6580270eabadf22361d3717`, resource
+`Sources/WoWSiliconSwift/Resources/Patching/d9vk/d3d9.dll`. Despite the
+upstream folder name and the notice's file name, the binary is DXVK
+v1.10.3-async (the macOS async fork of DXVK), not D9VK. Play sets
+`DXVK_FORCE_WINDOWED=1` so its exclusive-fullscreen path never changes the
+display mode.
 
 - [Pinned binary](https://github.com/WoWSilicon/WoWSilicon/blob/5276d92627f26334f6580270eabadf22361d3717/Sources/WoWSiliconSwift/Resources/Patching/d9vk/d3d9.dll)
 - [Pinned upstream notice](https://github.com/WoWSilicon/WoWSilicon/blob/5276d92627f26334f6580270eabadf22361d3717/Sources/WoWSiliconSwift/Resources/Patching/d9vk/LICENSE), retained as `D9VK-LICENSE.txt`.

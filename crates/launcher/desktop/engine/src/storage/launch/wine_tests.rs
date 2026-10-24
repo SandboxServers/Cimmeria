@@ -68,6 +68,16 @@ fn game_environment_selects_bundled_vulkan_without_changing_headless_policy() {
 }
 
 #[test]
+fn game_environment_forces_dxvk_windowed_so_the_display_mode_never_changes() {
+    let (_temp, runtime, prefix, graphics) = fixture();
+    let environment = game_environment(&runtime, &prefix, &graphics).unwrap();
+    assert_eq!(
+        environment.get(OsStr::new("DXVK_FORCE_WINDOWED")).unwrap(),
+        "1"
+    );
+}
+
+#[test]
 fn missing_or_nonordinary_descriptor_refuses_game_environment_before_spawn() {
     let (_temp, runtime, prefix, graphics) = fixture();
     let descriptor = runtime.join("lib/vulkan/icd.d/MoltenVK_icd.json");
