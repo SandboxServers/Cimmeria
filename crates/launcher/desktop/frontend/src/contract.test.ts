@@ -39,3 +39,22 @@ test('a snapshot without display_modes or with an unknown mode is rejected',()=>
  const game=wireSnapshot();(game.preferences.display as {mode:string}).mode='game';
  assert.equal(decodes(game),false);
 });
+
+// C-PD8: the displays and the sizes that fit each, as `DesktopState::inspect` sends them.
+const withDisplays=()=>({...wireSnapshot(),
+ displays:[{index:0,main:true,x:0,y:0,width:1710,height:1107,scale_percent:200,refresh_hz:120}],
+ display_sizes:[[[1024,768],[1280,720],[1280,800],[1440,900],[1600,900]]]});
+
+test('a snapshot with the displays and their sizes decodes them',()=>{
+ const decoded=Effect.runSync(decodeSnapshot(withDisplays()));
+ assert.deepEqual(decoded.displays,[{index:0,main:true,x:0,y:0,width:1710,height:1107,scale_percent:200,refresh_hz:120}]);
+ assert.deepEqual(decoded.display_sizes,[[[1024,768],[1280,720],[1280,800],[1440,900],[1600,900]]]);
+});
+
+test('a display with an unknown field or a size that is not a pair is rejected',()=>{
+ assert.equal(decodes(withDisplays()),true);
+ const extra=withDisplays();(extra.displays[0] as Record<string,unknown>).name='Built-in Retina Display';
+ assert.equal(decodes(extra),false);
+ const triple=withDisplays();(triple.display_sizes[0] as unknown[]).push([1,2,3]);
+ assert.equal(decodes(triple),false);
+});

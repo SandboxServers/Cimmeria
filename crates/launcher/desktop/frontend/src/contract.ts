@@ -18,6 +18,12 @@ export const DisplayMode = Schema.Literals(["windowed", "fullscreen"]);
 export type DisplayMode = typeof DisplayMode.Type;
 export const DisplayOptions = Schema.Struct({mode: DisplayMode, width: Schema.Number, height: Schema.Number});
 export type DisplayOptions = typeof DisplayOptions.Type;
+/** Engine `display_targets::DisplayInfo` (C-PD8): one display, in the units the game sees. */
+export const DisplayInfo = Schema.Struct({
+  index: Schema.Number, main: Schema.Boolean, x: Schema.Number, y: Schema.Number,
+  width: Schema.Number, height: Schema.Number, scale_percent: Schema.Number, refresh_hz: Schema.Number,
+});
+export type DisplayInfo = typeof DisplayInfo.Type;
 export const NativeSnapshot = Schema.Struct({
   schema_version: Schema.Literal(1),
   operation: Schema.Struct({schema_version: Schema.Literal(1), revision: Revision, operation: Schema.NullOr(Operation)}),
@@ -38,6 +44,10 @@ export const NativeSnapshot = Schema.Struct({
   setup_diagnostics_endpoint: Schema.optionalKey(Schema.Boolean),
   // The display modes this platform offers (engine `display_options::allowed_modes`).
   display_modes: Schema.Array(DisplayMode),
+  // The active displays and, per display, the window sizes that fit it (C-PD8,
+  // engine `display_targets`). Optional so older fixtures decode; the engine always sends both.
+  displays: Schema.optionalKey(Schema.Array(DisplayInfo)),
+  display_sizes: Schema.optionalKey(Schema.Array(Schema.Array(Schema.Tuple([Schema.Number, Schema.Number])))),
 });
 export type NativeSnapshot = typeof NativeSnapshot.Type;
 export type Preferences = NativeSnapshot["preferences"];
