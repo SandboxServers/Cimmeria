@@ -90,6 +90,37 @@ fn expands_unsplit_boundaries_stored_folders_and_several_folders() {
     }
 }
 
+// Reserve areas (header, per folder, per data block) sit between the
+// fixed fields and what follows; a parser that skips them in the wrong place
+// reads garbage offsets. MakeCAB writes none by default, so only this covers it.
+#[test]
+fn reserve_areas_are_skipped_in_every_record() {
+    let dir = tempfile::tempdir().unwrap();
+    // Several folders per cabinet, so a missed per-folder reserve shifts the
+    // folder table; the set still spans cabinets.
+    let files = vec![
+        ("a.bin", incompressible(11, 30_000)),
+        ("b.txt", repetitive(12, 6_000)),
+        ("c.txt", repetitive(13, 5_000)),
+        ("d.bin", incompressible(14, 20_000)),
+    ];
+    let info = write_cab_set(
+        dir.path(),
+        &files,
+        CabOptions {
+            reserve: Some((20, 3, 7)),
+            blocks_per_cab: 6,
+            files_per_folder: 1,
+            ..CabOptions::default()
+        },
+    );
+    assert!(info.cabinets.len() >= 2, "{:?}", info.cabinets);
+    let (dest, _) = expand(dir.path(), &info.cabinets, files.len()).unwrap();
+    for (name, data) in &files {
+        assert_eq!(&std::fs::read(dest.join(name)).unwrap(), data, "{name}");
+    }
+}
+
 #[test]
 fn zero_length_files_are_created_anywhere_in_a_folder() {
     let dir = tempfile::tempdir().unwrap();

@@ -27,6 +27,10 @@ pub struct CabOptions {
     pub files_per_folder: usize,
     /// `typeCompress`: 0 stored, 1 MSZIP, 3 LZX (written, never decodable).
     pub compression: u16,
+    /// Reserve sizes (header, per folder, per data block), written with
+    /// `cfhdrRESERVE_PRESENT` (the header's as zeros, the others as `0xA5`);
+    /// `None` writes none.
+    pub reserve: Option<(u16, u8, u8)>,
 }
 
 impl Default for CabOptions {
@@ -37,6 +41,7 @@ impl Default for CabOptions {
             split_blocks: true,
             files_per_folder: 0,
             compression: 1,
+            reserve: None,
         }
     }
 }
@@ -183,6 +188,7 @@ pub fn write_cab_set(dir: &Path, files: &[(&str, Vec<u8>)], opts: CabOptions) ->
             cab,
             &listed,
             opts.compression,
+            opts.reserve,
         );
     }
 
@@ -211,8 +217,26 @@ fn write_cabinet(
     blocks: &[Block],
     files: &[(String, u32, u32, u16)],
     compression: u16,
+    reserve: Option<(u16, u8, u8)>,
 ) {
     let mut flags = 0u16;
+    // cbCFHeader, cbCFFolder and cbCFData, then the header's reserve, all
+    // before the previous/next cabinet names.
+    let mut reserved = Vec::new();
+    let (folder_reserve, data_reserve) = match reserve {
+        Some((header, folder, data)) => {
+            flags |= 4;
+            reserved.extend_from_slice(&header.to_le_bytes());
+            reserved.push(folder);
+            reserved.push(data);
+            // Zeros, as reserve areas usually are: a parser that failed to
+            // skip them would read them as empty cabinet names and lose its
+            // place, where non-zero filler would merge into the next name.
+            reserved.resize(4 + usize::from(header), 0);
+            (usize::from(folder), usize::from(data))
+        }
+        None => (0, 0),
+    };
     let mut links = Vec::new();
     if index > 0 {
         flags |= 1;
@@ -224,8 +248,8 @@ fn write_cabinet(
         links.extend_from_slice(names[index + 1].as_bytes());
         links.extend_from_slice(b"\0Disc_1\0");
     }
-    let header_len = 36 + links.len();
-    let folders_len = 8 * folders.len();
+    let header_len = 36 + reserved.len() + links.len();
+    let folders_len = (8 + folder_reserve) * folders.len();
     let files_offset = header_len + folders_len;
     let mut file_table = Vec::new();
     for (name, size, offset, i_folder) in files {
@@ -248,12 +272,14 @@ fn write_cabinet(
             data.extend_from_slice(&0u32.to_le_bytes()); // no checksum
             data.extend_from_slice(&(block.data.len() as u16).to_le_bytes());
             data.extend_from_slice(&(block.uncompressed as u16).to_le_bytes());
+            data.resize(data.len() + data_reserve, 0xA5);
             data.extend_from_slice(&block.data);
             n += 1;
         }
         folder_table.extend_from_slice(&(offset as u32).to_le_bytes());
         folder_table.extend_from_slice(&n.to_le_bytes());
         folder_table.extend_from_slice(&compression.to_le_bytes());
+        folder_table.resize(folder_table.len() + folder_reserve, 0xA5);
     }
     let total = data_start + data.len();
     let mut out = Vec::with_capacity(total);
@@ -269,6 +295,7 @@ fn write_cabinet(
     out.extend_from_slice(&flags.to_le_bytes());
     out.extend_from_slice(&0x1234u16.to_le_bytes()); // setID
     out.extend_from_slice(&(index as u16).to_le_bytes());
+    out.extend_from_slice(&reserved);
     out.extend_from_slice(&links);
     out.extend_from_slice(&folder_table);
     out.extend_from_slice(&file_table);

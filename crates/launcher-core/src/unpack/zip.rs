@@ -82,7 +82,11 @@ pub(super) fn extract(
         let Some(rel) = entry.enclosed_name() else {
             continue;
         };
-        let out = dest.join(rel);
+        // Into the install's own spelling of each existing directory and
+        // file, as recipe patches do: the cabinets store `Working\binaries`,
+        // and on a case-sensitive file system `Working/Binaries/x` would
+        // otherwise land in a second directory the client never reads.
+        let out = cimmeria_patchset::resolve_existing_case(dest, &rel);
         if entry.is_dir() {
             std::fs::create_dir_all(&out)?;
         } else {
@@ -105,6 +109,43 @@ pub(super) fn extract(
 mod tests {
     use super::super::test_fixtures::sink;
     use super::*;
+
+    // Bug shape: the cabinets store `Working\binaries`, and a plain patch
+    // zip naming `Working/Binaries/SGWLogConfig.xml` made a second
+    // `Binaries` directory on a case-sensitive file system, so the client
+    // kept reading the stock file.
+    #[test]
+    fn plain_zip_entries_land_in_the_install_spelling() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let stock = out.join("Working").join("binaries");
+        std::fs::create_dir_all(&stock).unwrap();
+        std::fs::write(stock.join("SGWLogConfig.xml"), b"stock").unwrap();
+        let zip_path = dir.path().join("p.zip");
+        {
+            let mut zw = ::zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+            let opts: ::zip::write::FileOptions<()> = ::zip::write::FileOptions::default();
+            zw.start_file("Working/Binaries/SGWLogConfig.xml", opts)
+                .unwrap();
+            zw.write_all(b"patched").unwrap();
+            zw.start_file("Working/Binaries/New.txt", opts).unwrap();
+            zw.write_all(b"new").unwrap();
+            zw.finish().unwrap();
+        }
+        let (sink, _rx) = sink();
+        extract(&zip_path, &out, &sink, &ApplyOptions::default()).unwrap();
+        assert_eq!(
+            std::fs::read(stock.join("SGWLogConfig.xml")).unwrap(),
+            b"patched"
+        );
+        assert_eq!(std::fs::read(stock.join("New.txt")).unwrap(), b"new");
+        let names: Vec<_> = std::fs::read_dir(out.join("Working"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names.len(), 1, "one binaries directory: {names:?}");
+    }
 
     #[test]
     fn extract_writes_expected_files() {

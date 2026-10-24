@@ -468,8 +468,7 @@ fn rename_exclusive(source: &Path, destination: &Path) -> Result<(), Error> {
             CString::new(source.as_os_str().as_bytes()).map_err(|_| StorageError::UnsafeFile)?;
         let destination = CString::new(destination.as_os_str().as_bytes())
             .map_err(|_| StorageError::UnsafeFile)?;
-        // RENAME_NOREPLACE forbids overwriting even an empty racing destination. A
-        // filesystem without it fails with EINVAL, and the publish is refused.
+        // RENAME_NOREPLACE forbids overwriting even an empty racing destination.
         if unsafe {
             libc::renameat2(
                 libc::AT_FDCWD,
@@ -480,7 +479,14 @@ fn rename_exclusive(source: &Path, destination: &Path) -> Result<(), Error> {
             )
         } != 0
         {
-            return Err(std::io::Error::last_os_error().into());
+            let error = std::io::Error::last_os_error();
+            // A file system without it (some FUSE and network ones) answers
+            // EINVAL; refuse the configuration by name, as other hosts do,
+            // rather than as an unexplained I/O failure.
+            if matches!(error.raw_os_error(), Some(libc::EINVAL | libc::ENOSYS)) {
+                return Err(Error::UnsupportedConfiguration);
+            }
+            return Err(error.into());
         }
         Ok(())
     }
