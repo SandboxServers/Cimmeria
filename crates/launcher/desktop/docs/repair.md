@@ -36,6 +36,11 @@ Unknown helper outcomes remain gated. Preserve the game, backup, stages and jour
 for manual inspection; restarting and rechecking does not prove a helper stopped.
 Neither button promises recovery of every interruption.
 
+On start-up, an interrupted repair that never started (no work folder, prepared
+record, commit record or backup on disk) is marked `failed` automatically and logs
+`repair_reconciled_unstarted`. One with any of those files on disk still needs
+**Recover repair** or **Abandon preparation**.
+
 After durable success, **Remove old repair backup** separately confirms permanent
 removal of the current repair's backup, including modifications there. Cleanup is
 recoverable and idempotent through its native checkpoint. It does not delete stages.

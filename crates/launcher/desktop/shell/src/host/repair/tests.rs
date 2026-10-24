@@ -121,6 +121,13 @@ async fn missing_game_identity_survives_reopen_and_explicit_abandonment() {
         .unwrap()
         .plan;
     assert!(!plan.original_present);
+    // A claimed work folder: without it, start-up fails the unstarted repair (PD-03).
+    std::fs::create_dir(plan.work_directory()).unwrap();
+    std::fs::write(
+        plan.work_directory().join("owner.json"),
+        serde_json::to_vec(&plan).unwrap(),
+    )
+    .unwrap();
     let path = host.root.clone();
     let helper = host.helper.clone();
     drop(store);
@@ -172,6 +179,26 @@ async fn missing_game_identity_survives_reopen_and_explicit_abandonment() {
     assert!(response.repair.target.is_some());
     assert!(!plan.stage().exists());
     assert!(!plan.backup().exists());
+}
+#[cfg(target_os = "macos")]
+#[test]
+fn an_unstarted_repair_is_failed_when_the_store_reopens() {
+    let (_root, host, installation) = fixture();
+    let revision = host.install_status().unwrap().native.operation.revision;
+    let work = Uuid::new_v4();
+    host.store()
+        .unwrap()
+        .lock()
+        .unwrap()
+        .admit_repair(work, revision, installation, true)
+        .unwrap();
+    let path = host.root.clone();
+    drop(host);
+    let status = NativeHost::new(path).install_status().unwrap();
+    let operation = status.native.operation.operation.unwrap();
+    assert_eq!(operation.id, work);
+    assert_eq!(operation.state, OperationState::Failed);
+    assert!(!status.repair.recovery);
 }
 
 /// JS drives real durable admission/cancellation/reopen/abandonment. Preparation

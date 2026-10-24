@@ -202,6 +202,10 @@ impl NativeHost {
                     startup_event::update_reconcile_failed(startup_event::reconcile_reason(error));
                 }
             }
+            // A repair stuck before it claimed any files ends failed (D-PD3).
+            if let Err(error) = state.reconcile_unstarted_repair() {
+                startup_event::repair_reconcile_failed(error.code());
+            }
             if state.preferences().revision == 0
                 && state.preferences().install_directory.is_none()
                 && state.operations().snapshot().operation.is_none()
