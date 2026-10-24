@@ -95,12 +95,13 @@ python "$HERE/test_release_identity.py"
 export TAG VERSION="$BASE"
 cd "$WORK"
 mkdir -p artifacts
-for f in StargateWorlds-Launcher-windows-x64.zip StargateWorlds-Launcher-macos-arm64.zip; do
+for f in StargateWorlds-Launcher-windows-x64.zip StargateWorlds-Launcher-windows-arm64.zip StargateWorlds-Launcher-macos-arm64.zip; do
   echo "$f bytes" > "artifacts/$f"
   printf '%s  %s\n' "$(sha256sum "artifacts/$f" | cut -d' ' -f1)" "$f" > "artifacts/$f.sha256"
 done
 printf '{"version":"%s"}\n' "$BASE" > artifacts/latest.json
 printf 'stub-signature\n' > artifacts/StargateWorlds-Launcher-windows-x64.zip.sig
+printf 'stub-signature\n' > artifacts/StargateWorlds-Launcher-windows-arm64.zip.sig
 ZIP_SHA="$(cut -d' ' -f1 artifacts/StargateWorlds-Launcher-windows-x64.zip.sha256)"
 
 if "$HERE/publish.sh" check artifacts/StargateWorlds-Launcher-windows-x64.zip "$ZIP_SHA" >/dev/null 2>&1; then
@@ -122,12 +123,27 @@ B="$(scenario b dated macos dated)"
 C="$(scenario c dated macos dated macos)"
 if [ "$A" = "$B" ] && [ "$A" = "$C" ]; then pass "dated notes converge in any order"; else fail "dated notes converge in any order"; fi
 if [ "$(grep -cF '**macOS (Apple silicon):**' <<<"$A")" = 1 ] && grep -qF '**Windows:**' <<<"$A"; then pass "dated notes: each paragraph once"; else fail "dated notes: each paragraph once"; fi
+if [ "$(grep -cF '**Windows on Arm:**' <<<"$A")" = 1 ]; then pass "dated notes: the Windows on Arm paragraph once"; else fail "dated notes: the Windows on Arm paragraph once"; fi
 D="$(scenario d dated)"
 if grep -qF 'macOS' <<<"$D"; then fail "dated notes: no macOS paragraph without its asset"; else pass "dated notes: no macOS paragraph without its asset"; fi
 
 scenario e dated current >/dev/null
 if grep -qF 'macos-arm64' "$STUB_STORE/launcher-current/body"; then
   fail "current notes: no macOS link before the macOS zip is there"; else pass "current notes: no macOS link before the macOS zip is there"; fi
+ARM_SET="StargateWorlds-Launcher-windows-arm64.zip
+StargateWorlds-Launcher-windows-arm64.zip.sha256
+StargateWorlds-Launcher-windows-arm64.zip.sig"
+WIN_SIX="$ARM_SET
+StargateWorlds-Launcher-windows-x64.zip
+StargateWorlds-Launcher-windows-x64.zip.sha256
+StargateWorlds-Launcher-windows-x64.zip.sig"
+if [ "$(grep -cxF -f <(printf '%s\n' "$ARM_SET") "$STUB_STORE/$TAG/assets")" = 3 ]; then
+  pass "dated release carries both Windows zips and signatures"; else fail "dated release carries both Windows zips and signatures"; fi
+if [ "$(grep -cxF -f <(printf '%s\n' "$WIN_SIX") "$STUB_STORE/launcher-current/assets")" = 6 ] \
+  && [ "$(tail -n 1 "$STUB_STORE/launcher-current/assets")" = latest.json ]; then
+  pass "launcher-current: both Windows sets, the feed last"; else fail "launcher-current: both Windows sets, the feed last"; fi
+if grep -qF 'Windows on Arm: download StargateWorlds-Launcher-windows-arm64.zip' "$STUB_STORE/launcher-current/body"; then
+  pass "current notes link the arm64 zip"; else fail "current notes link the arm64 zip"; fi
 "$HERE/publish.sh" macos-current >/dev/null
 if grep -qF 'macOS (Apple silicon): download StargateWorlds-Launcher-macos-arm64.zip' "$STUB_STORE/launcher-current/body"; then
   pass "current notes: the macOS link once the zip is there"; else fail "current notes: the macOS link once the zip is there"; fi
@@ -139,6 +155,13 @@ else
   pass "missing signature refuses dated and current publication"
 fi
 mv artifacts/saved.sig artifacts/StargateWorlds-Launcher-windows-x64.zip.sig
+mv artifacts/StargateWorlds-Launcher-windows-arm64.zip.sig artifacts/saved-arm.sig
+if "$HERE/publish.sh" dated >/dev/null 2>&1 || "$HERE/publish.sh" current >/dev/null 2>&1; then
+  fail "missing arm64 signature refuses dated and current publication"
+else
+  pass "missing arm64 signature refuses dated and current publication"
+fi
+mv artifacts/saved-arm.sig artifacts/StargateWorlds-Launcher-windows-arm64.zip.sig
 mv artifacts/latest.json artifacts/saved-feed.json
 if "$HERE/publish.sh" current >/dev/null 2>&1; then
   fail "missing verified feed refuses current publication"

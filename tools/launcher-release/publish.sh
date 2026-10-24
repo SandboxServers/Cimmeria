@@ -13,11 +13,12 @@
 #   check <file> <sha256>
 #                    the downloaded file has the SHA-256 its build job output,
 #                    and so does its .sha256 beside it, when there is one
-#   dated            create or update the dated release $TAG: its notes, the
-#                    Windows zip, .sha256, .zip.sig (required), and the
-#                    client-patches overlay patch when one was packed
-#   current          refresh launcher-current (D-LX7) with the Windows zip,
-#                    .sha256, .zip.sig and latest.json, the feed last
+#   dated            create or update the dated release $TAG: its notes, both
+#                    Windows zips (x64 and Windows on Arm), their .sha256 and
+#                    .zip.sig (both required), and the client-patches overlay
+#                    patch when one was packed
+#   current          refresh launcher-current (D-LX7) with both Windows zips,
+#                    their .sha256 and .zip.sig, and latest.json, the feed last
 #   macos            attach the macOS zip and its .sha256 to $TAG
 #   macos-current    replace the macOS zip and its .sha256 on launcher-current
 #   current-notes    rewrite launcher-current's notes from its assets
@@ -30,6 +31,8 @@ ZIP_NAME=StargateWorlds-Launcher-windows-x64.zip
 MAC_ZIP_NAME=StargateWorlds-Launcher-macos-arm64.zip
 ZIP="artifacts/$ZIP_NAME"
 MAC_ZIP="artifacts/$MAC_ZIP_NAME"
+ARM_ZIP_NAME=StargateWorlds-Launcher-windows-arm64.zip
+ARM_ZIP="artifacts/$ARM_ZIP_NAME"
 CURRENT=launcher-current
 TAG="${TAG:?TAG is not set}"
 STABLE="https://github.com/${GITHUB_REPOSITORY}/releases/download/$CURRENT"
@@ -85,6 +88,7 @@ current_notes() {
   local assets notes
   assets="$(assets_of "$CURRENT")"
   notes="The newest Stargate Worlds launcher, currently ${TAG}. Windows: download ${ZIP_NAME}."
+  if grep -qxF "$ARM_ZIP_NAME" <<<"$assets"; then notes="$notes Windows on Arm: download ${ARM_ZIP_NAME}."; fi
   if grep -qxF "$MAC_ZIP_NAME" <<<"$assets"; then
     notes="$notes macOS (Apple silicon): download ${MAC_ZIP_NAME}."
   fi
@@ -107,12 +111,14 @@ Dispatched from PR #${TRIGGERING_PR}."
 
 **Windows:** download \`${ZIP_NAME}\`, unzip it anywhere and run \`cimmeria-launcher-desktop.exe\`. The launcher includes its supporting files and prepares them automatically. It needs the WebView2 runtime (part of Windows 11). The newest release is always at ${STABLE}/${ZIP_NAME}.
 
+**Windows on Arm:** on an Arm PC, download \`${ARM_ZIP_NAME}\` instead. The launcher runs natively; the game itself runs through Windows' built-in x86 emulation. The x64 zip also works on Arm, emulated, and keeps updating to x64. The newest release is always at ${STABLE}/${ARM_ZIP_NAME}.
+
 **Players of the old Windows launcher (\`sgw-launcher.exe\`):** your old launcher will no longer update. Download the zip from ${STABLE}/${ZIP_NAME} and use \`cimmeria-launcher-desktop.exe\` instead.
 
 Updater artifacts carry a Minisign signature. The Windows executable is not Authenticode signed; for Defender or SmartScreen see docs/client/launcher-guide.md."
-  local assets=("$ZIP" "$ZIP.sha256")
-  [ -s "$ZIP.sig" ] || die "signed updater artifact is required"
-  assets+=("$ZIP.sig")
+  local assets=("$ZIP" "$ZIP.sha256" "$ARM_ZIP" "$ARM_ZIP.sha256")
+  [[ -s "$ZIP.sig" && -s "$ARM_ZIP.sig" ]] || die "signed updater artifacts are required for both Windows zips"
+  assets+=("$ZIP.sig" "$ARM_ZIP.sig")
   shopt -s nullglob
   local overlay=(overlay-out/*.zip overlay-out/*.entry.json)
   shopt -u nullglob
@@ -142,8 +148,8 @@ Includes the client-patches UI overlay patch. To publish it, add its \`.entry.js
 # mismatched file. The release is never marked latest, and its tag has no
 # date, which the egui launcher's self-update skips.
 current() {
-  if [[ ! -s "$ZIP.sig" || ! -s artifacts/latest.json ]]; then
-    die "signature and verified feed are required"
+  if [[ ! -s "$ZIP.sig" || ! -s "$ARM_ZIP.sig" || ! -s artifacts/latest.json ]]; then
+    die "both signatures and the verified feed are required"
   fi
   if gh release view "$CURRENT" >/dev/null 2>&1; then
     mkdir -p artifacts/previous-feed
@@ -155,7 +161,7 @@ current() {
       --title "Launcher (current)" --notes "The newest Stargate Worlds launcher."
   fi
   local file
-  for file in "$ZIP" "$ZIP.sha256" "$ZIP.sig" artifacts/latest.json; do
+  for file in "$ZIP" "$ZIP.sha256" "$ZIP.sig" "$ARM_ZIP" "$ARM_ZIP.sha256" "$ARM_ZIP.sig" artifacts/latest.json; do
     gh release upload "$CURRENT" "$file" --clobber
   done
   current_notes
@@ -190,5 +196,5 @@ case "${1:-}" in
   macos) macos ;;
   macos-current) macos_current ;;
   current-notes) current_notes ;;
-  *) sed -n '2,26p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,28p' "$0" >&2; exit 2 ;;
 esac
