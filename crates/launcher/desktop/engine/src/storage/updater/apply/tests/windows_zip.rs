@@ -14,6 +14,10 @@ pub(super) struct Fixture {
 }
 
 fn signed(bytes: &[u8]) -> (Config, Offer) {
+    signed_for(bytes, "windows-x86_64")
+}
+
+fn signed_for(bytes: &[u8], platform: &str) -> (Config, Offer) {
     let keys = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
     let signature = minisign::sign(
         Some(&keys.pk),
@@ -27,7 +31,7 @@ fn signed(bytes: &[u8]) -> (Config, Offer) {
         "https://updates.example.test/latest.json",
         &STANDARD.encode(keys.pk.to_box().unwrap().to_string()),
         "1.0.0",
-        "windows-x86_64",
+        platform,
         vec!["updates.example.test".into()],
     )
     .unwrap();
@@ -121,6 +125,20 @@ fn apply(
         0,
         start,
     )
+}
+
+#[test]
+fn an_arm64_launcher_applies_its_own_windows_zip() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().canonicalize().unwrap();
+    let mut f = windows_fixture(&root);
+    let (config, offer) = signed_for(&f.bytes, "windows-aarch64");
+    f.config = config;
+    f.offer = offer;
+    let mut state = DesktopState::open(&root.join("state")).unwrap();
+    let ready = ready(&mut state, &f.config, f.offer.clone(), &f.bytes);
+    let status = apply(&mut state, &f, &ready, |_, _| Ok(())).unwrap();
+    assert_eq!(status.phase, Phase::RestartRequired);
 }
 
 #[test]

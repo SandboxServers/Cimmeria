@@ -25,7 +25,9 @@ artifact locations. An available offer is an unverified feed announcement;
 **Ready** means a verified saved package, not an installed update.
 
 The static feed has Tauri's `version`, optional `notes`, and `platforms` map;
-the native target selects `darwin-aarch64`, `darwin-x86_64`, or `windows-x86_64`.
+the native target selects `darwin-aarch64`, `darwin-x86_64`, `windows-x86_64`, or
+`windows-aarch64`. On Windows the build's architecture picks the key at compile time
+(D-WA3), so an x64 build on a Windows on Arm PC keeps updating to x64.
 A platform contains `url` and the base64-encoded Minisign signature document.
 HTTP 204 means no offer. Stable SemVer must have greater precedence than the
 compiled native version; build metadata does not turn an equal version into a
@@ -173,7 +175,8 @@ valid startup acknowledgment. This proves version startup, not app health.
 
 ### Windows: zip swap (D-LX3)
 
-On Windows the package is the release zip, `StargateWorlds-Launcher-windows-x64.zip`:
+On Windows the package is the release zip for the build's architecture,
+`StargateWorlds-Launcher-windows-x64.zip` or `StargateWorlds-Launcher-windows-arm64.zip`:
 one root `.exe` with `windows/` and `graphics/` beside it. There is no installer;
 an offer whose URL is not a `.zip` is refused. After the Minisign and signed
 version checks, Apply:

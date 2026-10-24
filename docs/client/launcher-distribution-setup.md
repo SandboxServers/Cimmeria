@@ -86,8 +86,8 @@ maintainer comments `/release-launcher` on a merged PR:
 
 | Tag | Mutability | Contents |
 |---|---|---|
-| `launcher-YYYYMMDD-<sha7>` | **immutable**, one per release | `StargateWorlds-Launcher-windows-x64.zip` with its `.zip.sha256` and `.zip.sig`, `StargateWorlds-Launcher-macos-arm64.zip` with its `.zip.sha256`, and the client-patches UI overlay when one is committed |
-| `launcher-current` | **mutable**, refreshed by each signed release (D-LX7) | The two zips with their `.sha256`, the Windows `.zip.sig`, and the updater feed `latest.json` |
+| `launcher-YYYYMMDD-<sha7>` | **immutable**, one per release | `StargateWorlds-Launcher-windows-x64.zip` and `StargateWorlds-Launcher-windows-arm64.zip`, each with its `.zip.sha256` and `.zip.sig`, `StargateWorlds-Launcher-macos-arm64.zip` with its `.zip.sha256`, and the client-patches UI overlay when one is committed |
+| `launcher-current` | **mutable**, refreshed by each signed release (D-LX7) | The three zips with their `.sha256`, both Windows `.zip.sig` files, and the updater feed `latest.json` (the `launcher-feed-<tag>` artifact holds the two `.sig` files and `latest.json`) |
 
 Players and docs link to the stable `launcher-current` URLs. The launcher's
 updater reads `latest.json` there, which names the zip on the dated release

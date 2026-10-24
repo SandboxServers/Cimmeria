@@ -1,5 +1,5 @@
 //! Apply is a native capability; persisted paths are compared with the running app.
-use super::{bundle, Config, DesktopState, Error, Phase, Record, Snapshot};
+use super::{bundle, Config, DesktopState, Error, Phase, Record, Snapshot, WINDOWS_PLATFORMS};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -194,7 +194,7 @@ impl DesktopState {
                 }
             }
             Target::Windows { executable } => {
-                if config.platform != "windows-x86_64" {
+                if !WINDOWS_PLATFORMS.contains(&config.platform.as_str()) {
                     return Err(Error::Platform);
                 }
                 bundle::plain(executable)?;

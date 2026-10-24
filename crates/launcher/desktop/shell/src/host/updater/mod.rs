@@ -50,8 +50,9 @@ pub(crate) use cimmeria_launcher_engine::launcher_compatibility::compiled_versio
 /// The release updater configuration: the `launcher-current` feed and its
 /// hosts (`updater::RELEASE_FEED_URL`, shared with the release workflow's
 /// feed check) and the Minisign public key compiled in as
-/// `LAUNCHER_UPDATER_PUBKEY`. Windows only: the feed carries only the
-/// `windows-x86_64` zip, so macOS stays Disabled as before. No key, or a key
+/// `LAUNCHER_UPDATER_PUBKEY`. Windows only: the feed carries a `windows-x86_64`
+/// and a `windows-aarch64` zip, and the compile target picks this build's key
+/// (`updater::WINDOWS_PLATFORM`). macOS stays Disabled as before. No key, or a key
 /// that does not decode, leaves the updater Disabled.
 fn compiled_updater_config() -> Option<updater::Config> {
     updater_config_from(
@@ -301,6 +302,7 @@ mod tests {
             "macOS stays disabled"
         );
         assert!(updater_config_from(Some(&key), Some("windows-x86_64")).is_some());
+        assert!(updater_config_from(Some(&key), Some("windows-aarch64")).is_some());
         // Without LAUNCHER_UPDATER_PUBKEY at compile time the build is Disabled.
         if option_env!("LAUNCHER_UPDATER_PUBKEY").is_none() {
             assert!(compiled_updater_config().is_none());

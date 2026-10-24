@@ -73,6 +73,10 @@ Download the newest launcher from its stable link. The link never changes and
 always holds the newest release:
 
 - **Windows (64-bit):** [`StargateWorlds-Launcher-windows-x64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip)
+- **Windows on Arm:** [`StargateWorlds-Launcher-windows-arm64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-arm64.zip).
+  On an Arm PC, download this one. The x64 zip also runs there, emulated, but it
+  stays x64 and does not move to arm64 on its own. The game itself runs under
+  Windows' x86 emulation either way.
 - **macOS (Apple silicon):** [`StargateWorlds-Launcher-macos-arm64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip),
   set up as [Playing on a Mac](../guides/macos.md) describes.
 

@@ -1,0 +1,201 @@
+name: desktop launcher Windows arm64 build
+
+# The Windows on Arm desktop launcher (D-WA1): a native aarch64-pc-windows-msvc
+# executable zipped as StargateWorlds-Launcher-windows-arm64.zip, built in
+# stages by tools/launcher-release/build-desktop.sh on windows-11-arm. Reusable:
+# launcher-release.yml calls it as `desktop-windows-arm64` for a release, and
+# launcher-desktop.yml as the arm64 dry run on desktop-launcher PRs (D-WA8), so
+# the PR runs exactly the release job. Neither uploads to a release from here;
+# launcher-release.yml's sign and publish jobs take the zip from the artifact.
+#
+# No signing key, no write token: this job runs cargo and the Rust toolchain
+# installer, and the updater key only reaches the sign job of the release. The
+# caller's x64 job builds the Play pieces the launcher carries and hands them
+# over as an artifact, with the SHA-256 of their list as a job output, a
+# channel separate from the artifact store. Every third-party action is pinned
+# to a full commit SHA; this file adds none.
+
+on:
+  workflow_call:
+    inputs:
+      pieces_artifact:
+        description: Artifact holding the three Play pieces and play-pieces.sha256
+        type: string
+        required: true
+      pieces_sha256:
+        description: SHA-256 of play-pieces.sha256, from the Windows x64 job's output
+        type: string
+        required: true
+      artifact_name:
+        description: Name of the artifact this job uploads the zip and .sha256 as
+        type: string
+        required: true
+      retention_days:
+        type: number
+        default: 30
+      tag:
+        description: Release tag; empty for an untagged build
+        type: string
+        default: ''
+      version:
+        description: CIMMERIA_LAUNCHER_VERSION; empty for 0.1.0
+        type: string
+        default: ''
+      epoch:
+        type: string
+        default: ''
+      build_branch:
+        type: string
+        default: ''
+      updater_pubkey:
+        description: The Minisign public key the build compiles in (a public half, not a secret)
+        type: string
+        default: ''
+      cache_key:
+        type: string
+        required: true
+      save_cache:
+        type: boolean
+        default: true
+    secrets:
+      LAUNCHER_MANIFEST_PUBKEY_HEX:
+        required: false
+    outputs:
+      zip_sha256:
+        description: SHA-256 of the zip
+        value: ${{ jobs.build.outputs.zip_sha256 }}
+
+permissions: {}
+
+jobs:
+  build:
+    name: desktop launcher (Windows arm64) -> zip
+    runs-on: windows-11-arm
+    permissions:
+      contents: read
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      zip_sha256: ${{ steps.digest.outputs.sha256 }}
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      WINDOWS_ARCH: arm64
+      ZIP: artifacts/StargateWorlds-Launcher-windows-arm64.zip
+      PIECES_SHA256: ${{ inputs.pieces_sha256 }}
+    steps:
+      - name: require the Play pieces digest
+        run: |
+          [[ "${PIECES_SHA256}" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::no Play pieces digest from the x64 job"; exit 1; }
+
+      # The commit the x64 job built the Play pieces from.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      # The runner image may lack these; each install is skipped when present.
+      - name: make sure python, clang and rustup are on the runner (D-WA8)
+        run: |
+          set -euo pipefail
+          python --version || { echo "::error::the windows-11-arm image has no python"; exit 1; }
+          if ! command -v clang >/dev/null; then
+            # ring and aws-lc-sys compile C for aarch64-pc-windows-msvc with clang.
+            choco install llvm -y --no-progress
+            echo 'C:\Program Files\LLVM\bin' >> "$GITHUB_PATH"
+          fi
+          if ! command -v rustup >/dev/null; then
+            curl -sSfL -o "$RUNNER_TEMP/rustup-init.exe" https://static.rust-lang.org/rustup/dist/aarch64-pc-windows-msvc/rustup-init.exe
+            "$RUNNER_TEMP/rustup-init.exe" -y --profile minimal --default-toolchain none --default-host aarch64-pc-windows-msvc
+            echo "$USERPROFILE\\.cargo\\bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: build for the arm64 host
+        run: |
+          set -euo pipefail
+          clang --version
+          rustup set default-host aarch64-pc-windows-msvc
+
+      # No targets: this build compiles no i686 code.
+      - uses: ./.github/actions/rust-toolchain
+
+      - name: check the toolchain is native arm64
+        run: |
+          set -euo pipefail
+          HOST="$(rustc -vV | tr -d '\r' | sed -n 's/^host: //p')"
+          echo "rustc host: $HOST"
+          [ "$HOST" = aarch64-pc-windows-msvc ] || { echo "::error::rustc host is $HOST, not aarch64-pc-windows-msvc"; exit 1; }
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+        with:
+          shared-key: ${{ inputs.cache_key }}
+          save-if: ${{ inputs.save_cache }}
+          workspaces: |
+            crates/launcher/desktop -> ../../../target/desktop
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '24'
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        with:
+          name: ${{ inputs.pieces_artifact }}
+          path: play-pieces
+
+      - name: take in the Play pieces, checked against the x64 job's digest
+        run: tools/launcher-release/build-desktop.sh play-pieces-in play-pieces "${PIECES_SHA256}"
+
+      # The secrets are on this step only. An empty input must reach the build
+      # as unset, not empty: the build scripts read some stamps with `.ok()`,
+      # and an empty tag would count as a release.
+      - name: build the arm64 desktop launcher, pinned to them
+        env:
+          LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
+          CIMMERIA_LAUNCHER_VERSION: ${{ inputs.version }}
+          CIMMERIA_LAUNCHER_TAG: ${{ inputs.tag }}
+          CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ inputs.epoch }}
+          CIMMERIA_BUILD_BRANCH: ${{ inputs.build_branch }}
+          CIMMERIA_BUILD_GIT_SHA: ${{ github.sha }}
+          LAUNCHER_UPDATER_PUBKEY: ${{ inputs.updater_pubkey }}
+        run: |
+          set -euo pipefail
+          for name in CIMMERIA_LAUNCHER_TAG CIMMERIA_LAUNCHER_VERSION CIMMERIA_LAUNCHER_BUILD_EPOCH CIMMERIA_BUILD_BRANCH LAUNCHER_MANIFEST_PUBKEY_HEX LAUNCHER_UPDATER_PUBKEY; do
+            if [ -z "${!name:-}" ]; then unset "$name"; fi
+          done
+          tools/launcher-release/build-desktop.sh launcher
+
+      - name: verify the artifacts
+        env:
+          CIMMERIA_LAUNCHER_TAG: ${{ inputs.tag }}
+          CIMMERIA_LAUNCHER_VERSION: ${{ inputs.version }}
+          LAUNCHER_UPDATER_PUBKEY: ${{ inputs.updater_pubkey }}
+        run: |
+          set -euo pipefail
+          for name in CIMMERIA_LAUNCHER_TAG CIMMERIA_LAUNCHER_VERSION LAUNCHER_UPDATER_PUBKEY; do
+            if [ -z "${!name:-}" ]; then unset "$name"; fi
+          done
+          tools/launcher-release/build-desktop.sh verify
+
+      - name: package
+        run: tools/launcher-release/build-desktop.sh package
+
+      - name: record the zip digest
+        id: digest
+        run: |
+          set -euo pipefail
+          SHA="$(sha256sum "${ZIP}" | cut -d' ' -f1)"
+          [ "${SHA}" = "$(cut -d' ' -f1 "${ZIP}.sha256")" ] || { echo "::error::${ZIP}.sha256 does not match the zip"; exit 1; }
+          echo "sha256=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: upload the zip
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: |
+            artifacts/StargateWorlds-Launcher-windows-arm64.zip
+            artifacts/StargateWorlds-Launcher-windows-arm64.zip.sha256
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}
+          overwrite: true
