@@ -1,5 +1,6 @@
 """The Windows on Arm launcher builds natively, is pinned, and rides the release's critical path."""
 import re
+import tomllib
 import unittest
 
 from test_workflow_policy import ROOT, workflow
@@ -72,6 +73,12 @@ class WindowsArm64Release(unittest.TestCase):
             self.assertNotIn("continue-on-error", step)
         upload = next(s for s in touching if "uses" in s)
         self.assertGreaterEqual(upload["with"]["retention-days"], 7)
+
+    def test_release_feed_example_tests_stay_enabled(self):
+        manifest = tomllib.loads(
+            (ROOT / "crates/launcher/desktop/engine/Cargo.toml").read_text())
+        example = next(e for e in manifest["example"] if e["name"] == "release_feed")
+        self.assertIs(example.get("test"), True)
 
 
 if __name__ == "__main__":
