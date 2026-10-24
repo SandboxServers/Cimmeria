@@ -69,7 +69,7 @@ fn write_probe(dir: &Path) -> bool {
     }
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn volume_free_bytes(dir: &Path) -> Option<u64> {
     use std::os::unix::ffi::OsStrExt;
 
@@ -87,6 +87,25 @@ fn volume_free_bytes(dir: &Path) -> Option<u64> {
     #[allow(clippy::unnecessary_cast)]
     let (available, fragment) = (stat.f_bavail as u64, stat.f_frsize as u64);
     available.checked_mul(fragment)
+}
+
+/// macOS: `statfs`, because `statvfs` block counts are 32-bit there and wrap
+/// above 2^32 blocks (16 TiB at 4 KiB).
+#[cfg(target_os = "macos")]
+fn volume_free_bytes(dir: &Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let c_path = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
+    let mut stat = std::mem::MaybeUninit::<libc::statfs>::zeroed();
+    // SAFETY: `c_path` is a NUL-terminated string that outlives the call and
+    // `stat` points to writable memory sized for one `statfs`.
+    let result = unsafe { libc::statfs(c_path.as_ptr(), stat.as_mut_ptr()) };
+    if result != 0 {
+        return None;
+    }
+    // SAFETY: `statfs` returned 0, so it filled `stat`.
+    let stat = unsafe { stat.assume_init() };
+    stat.f_bavail.checked_mul(u64::from(stat.f_bsize))
 }
 
 #[cfg(windows)]
