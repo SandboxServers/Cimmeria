@@ -59,7 +59,9 @@ read the Play pieces, which are kept seven days.
 
 A failed Linux build works the same way: `publish-linux` runs whenever `publish`
 succeeded, attaches what was built, and fails if `desktop-linux` did not
-succeed. The Linux build reads no Windows pieces, so its rerun has no deadline.
+succeed. The Linux build reads no Windows pieces, so a rerun only has to come
+within GitHub's 30-day re-run window, which is also how long the AppImage
+artifact is kept.
 
 **"Re-run all jobs"** is the other way, and the one to use when a job that
 succeeded must run again. The stamp step recognises the run and keeps its tag
@@ -282,6 +284,12 @@ reusable `launcher-desktop-linux.yml`; `launcher-desktop.yml` calls the same
 workflow on every desktop-launcher PR as `desktop release build dry run (Linux)`,
 with a fixed dry-run tag and version and the development manifest key.
 
+- **`tools`** (run by `app`) puts the three files the Tauri bundler would
+  download into its cache, each checked against a SHA-256 pinned in the script:
+  AppRun, linuxdeploy and linuxdeploy's AppImage plugin, which provides the
+  runtime every AppImage starts with. The bundler uses a cached file instead of
+  downloading it. The plugin comes from upstream's moving `continuous` tag, so
+  when upstream moves it, the build fails until the pin is updated on purpose.
 - **`app`** builds the UI and runs `cargo tauri build --bundles appimage`
   (release profile), with the release's version, tag and manifest key. The
   AppImage carries WebKitGTK and GTK from the build host. Ubuntu 22.04 keeps its

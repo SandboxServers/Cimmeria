@@ -7,6 +7,9 @@
 #
 # Usage: tools/launcher-release/build-desktop-linux.sh <stage>
 #
+#   tools            put the three AppImage tools the Tauri bundler would
+#                    download into its cache, each checked against its pinned
+#                    SHA-256 (app runs this first)
 #   app              build the UI and the AppImage (release profile); a release
 #                    exports CIMMERIA_LAUNCHER_TAG, CIMMERIA_LAUNCHER_BUILD_EPOCH,
 #                    CIMMERIA_LAUNCHER_VERSION and LAUNCHER_MANIFEST_PUBKEY_HEX
@@ -40,6 +43,19 @@ APPIMAGE="artifacts/$APPIMAGE_NAME"
 # The shell's Cargo package and binary.
 EXE_NAME=cimmeria-launcher-desktop
 
+# The tools tauri-bundler 2.10.1 (tauri-cli 2.12.1) fetches to build an
+# AppImage: cache file name, URL, SHA-256. It skips a download when the file is
+# already in its cache, so staging checked copies first pins them. The
+# appimage plugin comes from upstream's moving `continuous` tag and provides
+# the runtime every shipped AppImage starts with; when upstream moves it, this
+# check fails and the pin is updated on purpose. Bump all three with the CLI.
+TAURI_TOOLS="${XDG_CACHE_HOME:-$HOME/.cache}/tauri"
+APPIMAGE_TOOLS=(
+  "AppRun-x86_64 https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64 f30140a43a0a59e46db21bdefdf749b9e9f2c6946e92afabbacf98b8ae73fb4f"
+  "linuxdeploy-07333c6-x86_64.AppImage https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy-07333c6/linuxdeploy-x86_64.AppImage 36a2d7e274d12e1050d0e9ecfe11d339ed54720b2bec464c286d53f8b07f5c62"
+  "linuxdeploy-plugin-appimage.AppImage https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage 49d6a17160675a6bd1781699aae6bdf7692d98552e02a3671d2183d10547842e"
+)
+
 die() { echo "::error::$*" >&2; exit 1; }
 need() { [ -e "$1" ] || die "$1 is missing"; }
 sha() { sha256sum "$1" | cut -d' ' -f1; }
@@ -52,6 +68,28 @@ built() {
   shopt -u nullglob
   [ ${#found[@]} -eq 1 ] || die "expected one AppImage in $BUNDLE_DIR, found ${#found[@]}"
   printf '%s\n' "${found[0]}"
+}
+
+stage_tools() {
+  mkdir -p "$TAURI_TOOLS"
+  local entry name url want got tmp
+  for entry in "${APPIMAGE_TOOLS[@]}"; do
+    read -r name url want <<<"$entry"
+    if [ -f "$TAURI_TOOLS/$name" ] && [ "$(sha "$TAURI_TOOLS/$name")" = "$want" ]; then
+      echo "pinned $name (cached)"
+      continue
+    fi
+    tmp="$(mktemp "$TAURI_TOOLS/.$name.XXXXXX")"
+    curl -sSfL --retry 3 -o "$tmp" "$url" || { rm -f "$tmp"; die "cannot download $url"; }
+    got="$(sha "$tmp")"
+    if [ "$got" != "$want" ]; then
+      rm -f "$tmp"
+      die "$name from $url is $got, not the pinned $want"
+    fi
+    chmod 755 "$tmp"
+    mv -f "$tmp" "$TAURI_TOOLS/$name"
+    echo "pinned $name"
+  done
 }
 
 stage_app() {
@@ -67,6 +105,7 @@ stage_app() {
   if [ -n "${CIMMERIA_LAUNCHER_TAG:-}" ] && [ -z "${LAUNCHER_MANIFEST_PUBKEY_HEX:-}" ]; then
     die "a tagged build needs LAUNCHER_MANIFEST_PUBKEY_HEX (the release manifest's public key)"
   fi
+  stage_tools
   npm ci --ignore-scripts --prefix "$DESKTOP/frontend"
   npm run build --prefix "$DESKTOP/frontend"
   local revision; revision="$(git rev-parse HEAD)"
@@ -134,9 +173,10 @@ stage_paths() {
 }
 
 case "${1:-}" in
+  tools) stage_tools ;;
   app) stage_app ;;
   verify) stage_verify ;;
   package) stage_package ;;
   paths) stage_paths ;;
-  *) sed -n '2,25p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,28p' "$0" >&2; exit 2 ;;
 esac

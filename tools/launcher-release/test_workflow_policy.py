@@ -119,6 +119,21 @@ class WorkflowPolicy(unittest.TestCase):
         self.assertIn("publish.sh linux", commands)
         self.assertIn("publish.sh linux-current", commands)
 
+    def test_linux_appimage_tools_are_pinned_before_the_bundler_runs(self):
+        script = (ROOT / "tools/launcher-release/build-desktop-linux.sh").read_text()
+        tools = script.split("APPIMAGE_TOOLS=(", 1)[1].split("\n)", 1)[0]
+        entries = [line.strip().strip('"').split() for line in tools.strip().splitlines()]
+        self.assertEqual({e[0] for e in entries}, {
+            "AppRun-x86_64",
+            "linuxdeploy-07333c6-x86_64.AppImage",
+            "linuxdeploy-plugin-appimage.AppImage",
+        })
+        for name, url, digest in entries:
+            self.assertTrue(url.startswith("https://github.com/"), name)
+            self.assertRegex(digest, r"^[0-9a-f]{64}$", name)
+        app = script.split("stage_app() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertLess(app.index("stage_tools"), app.index("cargo tauri build"))
+
     def test_every_pr_dry_runs_the_linux_release_build(self):
         dry = workflow("launcher-desktop.yml")["jobs"]["release-dry-run-linux"]
         self.assertEqual(dry["uses"], "./.github/workflows/launcher-desktop-linux.yml")
