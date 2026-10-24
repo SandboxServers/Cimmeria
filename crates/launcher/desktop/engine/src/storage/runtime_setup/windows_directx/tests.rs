@@ -129,6 +129,8 @@ fn staged_vendor_payload_is_reverified_and_held_against_write_or_deletion() {
 
 #[tokio::test]
 async fn a_progressing_vendor_download_outlives_the_inactivity_limit_but_a_stall_is_refused() {
+    // How long the stalled server holds the socket. Only the inactivity timer may end the call earlier.
+    const STALL_HOLD: Duration = Duration::from_secs(20);
     // Each byte arrives after a tenth of the limit, so scheduler jitter on a loaded
     // runner cannot look like a stall, while the whole transfer still outlives the limit.
     fn serve(hold: Option<std::sync::mpsc::Receiver<()>>) -> (String, std::thread::JoinHandle<()>) {
@@ -146,7 +148,7 @@ async fn a_progressing_vendor_download_outlives_the_inactivity_limit_but_a_stall
                 .unwrap();
             if let Some(release) = hold {
                 // Send nothing until the client gives up; only its inactivity timer can end the body.
-                let _ = release.recv_timeout(Duration::from_secs(20));
+                let _ = release.recv_timeout(STALL_HOLD);
                 return;
             }
             for byte in b"0123456789abcdef" {
@@ -180,9 +182,14 @@ async fn a_progressing_vendor_download_outlives_the_inactivity_limit_but_a_stall
         download_with_inactivity_timeout(&url, 16, &hash, inactivity).await,
         Err(Error::DownloadFailed)
     );
+    let elapsed = start.elapsed();
     assert!(
-        start.elapsed() >= inactivity,
+        elapsed >= inactivity,
         "the refusal must come from the inactivity timer"
+    );
+    assert!(
+        elapsed < STALL_HOLD / 2,
+        "the stall must be refused by the inactivity timer, not by the server hold ending"
     );
     drop(release);
     thread.join().unwrap();
