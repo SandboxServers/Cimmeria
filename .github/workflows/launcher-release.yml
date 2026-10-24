@@ -14,19 +14,24 @@ name: launcher-release
 # moment; the triggering PR is just the cut-point marker, mirroring the policy
 # of `release-container.yml`.
 #
-# Six jobs (crates/launcher/desktop/docs/release.md, "Jobs"). The updater
+# Seven jobs (crates/launcher/desktop/docs/release.md, "Jobs"). The updater
 # signing key never shares a job with the build's third-party code, and no job
 # that runs build code can write to the repository: the only write-token jobs,
 # `publish` and `publish-macos`, run tools/launcher-release/publish.sh from a
 # checkout of the released commit and nothing else.
 #   - `desktop-windows` stamps the tag and version (stamp.sh), builds, checks
-#     and zips the launcher, and hands its three Play pieces to `mac-pieces`.
+#     and zips the launcher, and hands its three Play pieces to the other
+#     Windows builds.
+#   - `desktop-windows-arm64` builds the Windows on Arm launcher natively on
+#     `windows-11-arm` from desktop-windows' Play pieces, through the reusable
+#     `launcher-desktop-windows-arm64.yml` the PR dry run also calls.
 #   - `sign`, in the `launcher-release` environment (the Minisign key and
-#     password), checks the zip against the build job's digest, builds the
-#     release_feed tool before the key is in any step, signs and writes
-#     latest.json, and checks it as a launcher would.
+#     password), checks both Windows zips against their build jobs' digests,
+#     builds the release_feed tool before the key is in any step, signs both
+#     zips into one feed, writes latest.json, and checks it as a launcher would.
 #   - `publish` creates or updates the dated release `launcher-YYYYMMDD-<sha7>`
-#     and refreshes the rolling `launcher-current` (D-LX7).
+#     with both Windows zips, and refreshes the rolling `launcher-current`
+#     (D-LX7).
 #   - `mac-pieces` builds the two other Windows pieces the macOS app carries,
 #     off the Windows release's critical path.
 #   - `desktop-macos` (LX-28, D-LX14) builds the arm64 app, signs it ad hoc and
@@ -39,8 +44,8 @@ name: launcher-release
 # which Defender and SmartScreen react to. The macOS app is signed ad hoc only;
 # a Developer ID signature, notarization and the hardened runtime are out of
 # scope by D-LX14, so a player opens it once with Privacy & Security > Open
-# Anyway. macOS updates are manual: the feed offers `windows-x86_64` only
-# (docs/analysis/launcher-consolidation/worknotes/lx-28-redistribution.md).
+# Anyway. macOS updates are manual: the feed offers `windows-x86_64` and
+# `windows-aarch64` (docs/analysis/launcher-consolidation/worknotes/lx-28-redistribution.md).
 #
 # Every third-party action is pinned to a full commit SHA, with its version in
 # a comment, per GitHub's secure-use guide.
@@ -60,6 +65,7 @@ concurrency:
 
 env:
   ZIP_NAME: StargateWorlds-Launcher-windows-x64.zip
+  ARM_ZIP_NAME: StargateWorlds-Launcher-windows-arm64.zip
   MAC_ZIP_NAME: StargateWorlds-Launcher-macos-arm64.zip
 
 jobs:
@@ -86,7 +92,7 @@ jobs:
       zip_sha256: ${{ steps.digest.outputs.sha256 }}
       has_overlay: ${{ steps.overlay.outputs.has_overlay }}
       # SHA-256 of play-pieces.sha256, which lists the three staged Play
-      # pieces. Empty when they could not be collected.
+      # pieces.
       play_pieces_sha256: ${{ steps.playpieces.outputs.sha256 }}
     env:
       CARGO_TERM_COLOR: always
@@ -255,14 +261,13 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Last, and quick: the three staged Play pieces, for the mac-pieces job,
-      # which builds the macOS app's other two pieces off this job's critical
-      # path. continue-on-error, so a failure here fails only the macOS build.
-      # play-pieces.sha256's own digest travels as a job output, separate from
-      # the artifact store.
+      # Last, and quick: the three staged Play pieces, for the arm64 and
+      # mac-pieces jobs, which both take them up. Both jobs need these pieces,
+      # so a failure here fails the release; "Re-run failed jobs" recovers it
+      # (D-WA5). play-pieces.sha256's own digest travels as a job output,
+      # separate from the artifact store.
       - name: collect the staged Play pieces for the macOS build
         id: playpieces
-        continue-on-error: true
         timeout-minutes: 5
         run: |
           set -euo pipefail
@@ -270,15 +275,37 @@ jobs:
           echo "sha256=$(sha256sum artifacts/play-pieces/play-pieces.sha256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: upload them
         if: steps.playpieces.outcome == 'success'
-        continue-on-error: true
         timeout-minutes: 5
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: launcher-play-pieces-${{ steps.stamp.outputs.tag }}
           path: artifacts/play-pieces/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
           overwrite: true
+
+  # The Windows on Arm launcher, built natively on windows-11-arm from the Play
+  # pieces above, through the reusable workflow the PR dry run also calls.
+  # Read-only: sign and publish take its zip from the artifact store.
+  desktop-windows-arm64:
+    name: desktop launcher (Windows arm64)
+    needs: desktop-windows
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/launcher-desktop-windows-arm64.yml
+    with:
+      pieces_artifact: launcher-play-pieces-${{ needs.desktop-windows.outputs.tag }}
+      pieces_sha256: ${{ needs.desktop-windows.outputs.play_pieces_sha256 }}
+      artifact_name: launcher-zip-arm64-${{ needs.desktop-windows.outputs.tag }}
+      tag: ${{ needs.desktop-windows.outputs.tag }}
+      version: ${{ needs.desktop-windows.outputs.version }}
+      epoch: ${{ needs.desktop-windows.outputs.epoch }}
+      build_branch: main
+      updater_pubkey: ${{ vars.LAUNCHER_UPDATER_PUBKEY }}
+      cache_key: launcher-release-desktop-arm64
+    secrets:
+      LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
 
   # The only job that sees LAUNCHER_UPDATER_MINISIGN_KEY and _PASSWORD: they are
   # secrets of the `launcher-release` environment, which only main may use.
@@ -290,7 +317,7 @@ jobs:
   # sign step runs the built executable directly.
   sign:
     name: sign the zip and write the updater feed
-    needs: desktop-windows
+    needs: [desktop-windows, desktop-windows-arm64]
     if: github.ref == 'refs/heads/main'
     runs-on: windows-latest
     environment: launcher-release
@@ -306,9 +333,11 @@ jobs:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: 0
       ZIP: artifacts/StargateWorlds-Launcher-windows-x64.zip
+      ARM_ZIP: artifacts/StargateWorlds-Launcher-windows-arm64.zip
       TAG: ${{ needs.desktop-windows.outputs.tag }}
       VERSION: ${{ needs.desktop-windows.outputs.version }}
       ZIP_SHA256: ${{ needs.desktop-windows.outputs.zip_sha256 }}
+      ARM_ZIP_SHA256: ${{ needs.desktop-windows-arm64.outputs.zip_sha256 }}
       LAUNCHER_UPDATER_PUBKEY: ${{ vars.LAUNCHER_UPDATER_PUBKEY }}
     steps:
       # Required signing: the key itself reaches the sign step alone.
@@ -346,7 +375,13 @@ jobs:
           name: launcher-zip-${{ needs.desktop-windows.outputs.tag }}
           path: artifacts
 
-      - name: check the zip is the one the build job made
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        if: steps.keys.outputs.sign == 'true'
+        with:
+          name: launcher-zip-arm64-${{ needs.desktop-windows.outputs.tag }}
+          path: artifacts
+
+      - name: check the zips are the ones the build jobs made
         if: steps.keys.outputs.sign == 'true'
         run: |
           set -euo pipefail
@@ -355,11 +390,16 @@ jobs:
             || { echo "::error::the downloaded zip is ${GOT}, the build job made ${ZIP_SHA256}"; exit 1; }
           [ "$(cut -d' ' -f1 "${ZIP}.sha256")" = "${ZIP_SHA256}" ] \
             || { echo "::error::${ZIP}.sha256 does not name the build job's digest"; exit 1; }
+          GOT="$(sha256sum "${ARM_ZIP}" | cut -d' ' -f1)"
+          [ -n "${ARM_ZIP_SHA256}" ] && [ "${GOT}" = "${ARM_ZIP_SHA256}" ] \
+            || { echo "::error::the downloaded arm64 zip is ${GOT}, the arm64 build job made ${ARM_ZIP_SHA256}"; exit 1; }
+          [ "$(cut -d' ' -f1 "${ARM_ZIP}.sha256")" = "${ARM_ZIP_SHA256}" ] \
+            || { echo "::error::${ARM_ZIP}.sha256 does not name the arm64 build job's digest"; exit 1; }
 
-      # The feed offers the zip from this release's own immutable tag, not
-      # from launcher-current: the signature pins those exact bytes, so a feed
-      # read while launcher-current's assets are being replaced still names a
-      # zip that matches it.
+      # The feed offers each zip from this release's own immutable tag, not
+      # from launcher-current: the signatures pin those exact bytes, so a feed
+      # read while launcher-current's assets are being replaced still names
+      # zips that match it.
       - name: sign the zip and write the updater feed
         if: steps.keys.outputs.sign == 'true'
         env:
@@ -368,7 +408,7 @@ jobs:
         run: |
           set -euo pipefail
           tools/launcher-release/build-desktop.sh sign "${VERSION}" \
-            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ZIP_NAME}" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}" \
             "Stargate Worlds launcher ${VERSION} (${TAG})."
 
       # The launcher engine's own feed, signature and zip checks against the
@@ -385,6 +425,7 @@ jobs:
           name: launcher-feed-${{ needs.desktop-windows.outputs.tag }}
           path: |
             artifacts/StargateWorlds-Launcher-windows-x64.zip.sig
+            artifacts/StargateWorlds-Launcher-windows-arm64.zip.sig
             artifacts/latest.json
           if-no-files-found: error
           retention-days: 30
@@ -396,10 +437,11 @@ jobs:
   # signing job succeeded; missing or skipped signing refuses publication.
   publish:
     name: dated release + launcher-current
-    needs: [desktop-windows, sign]
+    needs: [desktop-windows, desktop-windows-arm64, sign]
     if: >-
       !cancelled() && github.ref == 'refs/heads/main'
       && needs.desktop-windows.result == 'success'
+      && needs.desktop-windows-arm64.result == 'success'
       && needs.sign.result == 'success' && needs.sign.outputs.signed == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -407,9 +449,11 @@ jobs:
     timeout-minutes: 20
     env:
       ZIP: artifacts/StargateWorlds-Launcher-windows-x64.zip
+      ARM_ZIP: artifacts/StargateWorlds-Launcher-windows-arm64.zip
       TAG: ${{ needs.desktop-windows.outputs.tag }}
       VERSION: ${{ needs.desktop-windows.outputs.version }}
       ZIP_SHA256: ${{ needs.desktop-windows.outputs.zip_sha256 }}
+      ARM_ZIP_SHA256: ${{ needs.desktop-windows-arm64.outputs.zip_sha256 }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
     steps:
@@ -425,6 +469,10 @@ jobs:
           path: artifacts
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
         with:
+          name: launcher-zip-arm64-${{ needs.desktop-windows.outputs.tag }}
+          path: artifacts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        with:
           name: launcher-feed-${{ needs.desktop-windows.outputs.tag }}
           path: artifacts
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
@@ -433,8 +481,10 @@ jobs:
           name: launcher-overlay-${{ needs.desktop-windows.outputs.tag }}
           path: overlay-out
 
-      - name: check the zip is the one the build job made
-        run: tools/launcher-release/publish.sh check "${ZIP}" "${ZIP_SHA256}"
+      - name: check the zips are the ones the build jobs made
+        run: |
+          tools/launcher-release/publish.sh check "${ZIP}" "${ZIP_SHA256}"
+          tools/launcher-release/publish.sh check "${ARM_ZIP}" "${ARM_ZIP_SHA256}"
 
       - name: create or update the dated release
         env:
