@@ -139,23 +139,33 @@ fn native_preparation_reads_locked_owner_and_retains_exclusion() {
 
     // Windows exercises the dispatch preparation entry point; other hosts
     // exercise the same native preparation without enabling native dispatch.
-    let prepared = if cfg!(windows) {
-        prepare(
-            &plan,
-            root.path(),
-            None,
-            &plan.installation.login_servers,
-            DisplayOptions::default(),
-        )
-    } else {
-        prepare_native(
-            &plan,
-            None,
-            &plan.installation.login_servers,
-            DisplayOptions::default(),
-        )
-    };
+    let (prepared, events) = crate::test_capture::capture(|| {
+        if cfg!(windows) {
+            prepare(
+                &plan,
+                root.path(),
+                None,
+                &plan.installation.login_servers,
+                DisplayOptions::default(),
+            )
+        } else {
+            prepare_native(
+                &plan,
+                None,
+                &plan.installation.login_servers,
+                DisplayOptions::default(),
+            )
+        }
+    });
     let (command, request, ownership) = prepared.unwrap();
+    let display: Vec<_> = events
+        .iter()
+        .filter(|e| e.field("event") == Some("display_settings"))
+        .collect();
+    assert_eq!(display.len(), 1, "{events:?}");
+    assert_eq!(display[0].target, "launcher.launch");
+    assert_eq!(display[0].field("saved_options"), Some("missing"));
+    assert_eq!(display[0].field("engine_ini"), Some("missing"));
     assert_eq!(request.operation_id, plan.id);
     assert_eq!(request.exe, exe);
     assert_eq!(command.directory, game.join("Working/Binaries"));

@@ -360,7 +360,7 @@ Launcher summary consent remains independent and is not changed by Play.
 ## Display settings before each Play
 
 The launcher owns the game's display mode (owner D3, D-PD16). Before each Play,
-after the login servers are resolved and before the helper request is built,
+after the login servers are resolved and before the launch helper command is built,
 it writes the saved display choice (`DisplayOptions::effective()`: always a
 window on a Mac, the size clamped into range; windowed 1024x768 when nothing
 was saved) into the client profile, `<Documents>/My Games/Firesky/SGWGame/`.
