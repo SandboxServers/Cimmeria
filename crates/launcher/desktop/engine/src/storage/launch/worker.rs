@@ -186,6 +186,7 @@ async fn execute(
     });
     let minted = session.is_some();
     let display = display::options(&state);
+    let place_on = window_target(&state);
     let telemetry_session = session.clone().map(|session| (session, servers.clone()));
     let prepared = plan.clone();
     let setup_timer = context.start(crate::phase_timing::Phase::PlayClientSetup);
@@ -194,7 +195,7 @@ async fn execute(
     })
     .await
     .map_err(|_| StorageError::Io)?;
-    let Ok((spec, request, _ownership)) = setup_timer.result(setup) else {
+    let Ok((spec, mut request, _ownership)) = setup_timer.result(setup) else {
         failure::not_started(
             &state,
             plan,
@@ -203,6 +204,7 @@ async fn execute(
         );
         return Ok(Observation::NotStarted);
     };
+    request.place_on = place_on;
     if minted {
         let attached = request.dlls.len() > plan.resources.client_patches.iter().count();
         telemetry::record(
@@ -316,6 +318,35 @@ async fn servers_and_session(
     let session = telemetry::session(state, plan, &servers).await;
     Ok(Some((servers, session)))
 }
+/// The monitor the helper opens the game on (PD-33): the one the current
+/// display setup remembers, as `[x, y, width, height]` in the units the game
+/// sees. The main display, an unknown setup or no displays give `None`, which
+/// sends the same request as before.
+pub(super) fn place_on(
+    placements: &[crate::storage::display_options::Placement],
+    displays: &[crate::display_targets::DisplayInfo],
+) -> Option<[i32; 4]> {
+    let d = crate::storage::display_options::placement_for(placements, displays)?;
+    if d.main {
+        return None;
+    }
+    Some([
+        d.x,
+        d.y,
+        i32::try_from(d.width).ok()?,
+        i32::try_from(d.height).ok()?,
+    ])
+}
+/// `place_on` for the saved placements and the displays connected now. The
+/// displays are listed only when a placement is saved; a lock that cannot be
+/// had gives the main display.
+fn window_target(state: &Arc<Mutex<DesktopState>>) -> Option<[i32; 4]> {
+    let placements = state.lock().ok()?.preferences.display_placements.clone();
+    if placements.is_empty() {
+        return None;
+    }
+    place_on(&placements, &crate::display_targets::list())
+}
 // Guards live through the helper's full guest lifetime, preventing Repair/uninstall.
 enum Ownership {
     Native {
@@ -402,6 +433,8 @@ fn prepare_native(
             .map(|p| p.path().to_path_buf())
             .collect(),
         args: display::arguments(display),
+        // Filled by `execute` from the remembered monitor (PD-33).
+        place_on: None,
     };
     let environment: std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString> = [
         "SystemRoot",

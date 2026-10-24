@@ -378,3 +378,57 @@ fn an_empty_list_means_the_defaults_and_an_invalid_one_never_reaches_the_client(
         Err(IntentError::Storage(StorageError::InvalidServerList))
     );
 }
+
+// PD-33: the helper is told where to open the game only for a monitor that is
+// not the main display; the main display sends the same request as before.
+#[test]
+fn place_on_is_sent_only_for_a_remembered_secondary_monitor() {
+    use crate::display_targets::{setup_key, DisplayInfo};
+    use crate::storage::display_options::Placement;
+    let display = |index: u32, main: bool, x: i32, width: u32, height: u32| DisplayInfo {
+        index,
+        main,
+        x,
+        y: 0,
+        width,
+        height,
+        scale_percent: 100,
+        refresh_hz: 60,
+    };
+    let displays = [
+        display(0, true, 0, 1512, 982),
+        display(1, false, 1512, 2560, 1440),
+    ];
+    let remembered = |d: &DisplayInfo| {
+        vec![Placement {
+            setup: setup_key(&displays),
+            x: d.x,
+            y: d.y,
+            width: d.width,
+            height: d.height,
+        }]
+    };
+    let main = place_on(&remembered(&displays[0]), &displays);
+    assert_eq!(main, None);
+    let mut request = cimmeria_runtime_probe::game_launch::Request {
+        schema_version: 1,
+        operation_id: Uuid::from_u128(1),
+        exe: "C:\\SGW.exe".into(),
+        directory: "C:\\".into(),
+        dlls: vec![],
+        args: vec![],
+        place_on: main,
+    };
+    let json = serde_json::to_value(&request).unwrap();
+    assert!(json.get("place_on").is_none(), "{json}");
+    assert_eq!(
+        place_on(&remembered(&displays[1]), &displays),
+        Some([1512, 0, 2560, 1440])
+    );
+    request.place_on = place_on(&remembered(&displays[1]), &displays);
+    let json = serde_json::to_value(&request).unwrap();
+    assert_eq!(json["place_on"], serde_json::json!([1512, 0, 2560, 1440]));
+    // Nothing remembered, or a different setup: the main display.
+    assert_eq!(place_on(&[], &displays), None);
+    assert_eq!(place_on(&remembered(&displays[1]), &displays[..1]), None);
+}
