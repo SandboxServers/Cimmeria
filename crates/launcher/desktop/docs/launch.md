@@ -179,6 +179,10 @@ established Mac OpenGL compatibility workaround. Game preparation also sets
 runtime, so D9VK discovers the bundled MoltenVK surface implementation. A missing,
 non-file or redirected descriptor fails preparation before any helper spawn.
 This selection is native-owned; the webview cannot supply a driver path.
+`DXVK_FORCE_WINDOWED=1` makes the DXVK `d3d9.dll` present windowed whatever the
+client asks for: exclusive fullscreen would change the display mode, which
+winemac.drv turns into a capture of every display (black screen, Cmd+Tab
+freeze).
 Extraction and prerequisite operations retain their headless environment.
 
 `Graphics.rosetta_x87` optionally binds an independently pinned accelerator and

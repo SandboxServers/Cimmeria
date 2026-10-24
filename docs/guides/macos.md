@@ -102,6 +102,9 @@ The launcher runs the game with stock Rosetta 2. It does not carry the faster
 x87 translator ("rosettax87") that WoWSilicon offers, so frame rates in busy
 areas may be lower than under WoWSilicon. Tell us how it feels.
 
+On a Mac the launcher always starts the game in a window, so Cmd+Tab away and
+back works; exclusive fullscreen is not available.
+
 ## Step 4: log in and play
 
 1. Log in with your account and pick the server in the list.
