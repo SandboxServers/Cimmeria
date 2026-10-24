@@ -303,8 +303,27 @@ fn an_empty_display_list_or_an_unlisted_monitor_leaves_the_placements_alone() {
         assert!(!remembered, "{revision}");
         assert_eq!(saved.display_placements, before, "{revision}");
     }
-    // Revert proof: without the guard the empty list's key would be stored.
-    assert!(before.iter().all(|p| p.setup != setup_key(&[])));
+}
+
+#[test]
+fn an_empty_display_list_never_calls_remember_even_to_remove() {
+    // Revert proof for the empty guard (amendment 1a): an entry already stored
+    // under the empty list's key survives a `None` save against an empty list.
+    // Without the guard, `remember(.., setup_key(&[]), None)` would remove it.
+    let dir = tempfile::tempdir().unwrap();
+    let seeded = format!(
+        r#"{{"schema_version":2,"revision":3,"install_directory":null,"launcher_summary_consent":false,"login_servers":[],"client_patches_enabled":true,"display_placements":[{{"setup":"{}","x":0,"y":0,"width":1710,"height":1107}}]}}"#,
+        setup_key(&[])
+    );
+    std::fs::write(dir.path().join("preferences.json"), seeded).unwrap();
+    let mut state = DesktopState::open(dir.path()).unwrap();
+    let before = state.preferences().display_placements.clone();
+    assert_eq!(before.len(), 1);
+    let (saved, remembered) = state
+        .save_display_options_on(DisplayOptions::default(), None, 3, &[])
+        .unwrap();
+    assert!(!remembered);
+    assert_eq!(saved.display_placements, before);
 }
 
 #[test]

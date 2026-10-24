@@ -367,12 +367,6 @@ mod tests {
             assert_eq!(remembered(&events).as_deref(), Some("false"));
             assert_eq!(state.preferences().display_placements, before);
         }
-        // Revert proof for the empty guard: nothing is keyed by the empty list's key.
-        assert!(state
-            .preferences()
-            .display_placements
-            .iter()
-            .all(|p| p.setup != display_targets::setup_key(&[])));
     }
 
     #[test]
