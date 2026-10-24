@@ -207,6 +207,7 @@ Every release also ships a native arm64 launcher, `StargateWorlds-Launcher-windo
 - **One feed (D-WA4).** `latest.json` carries both Windows keys. Old x64 launchers read only their own key and don't change.
 
 What is tested: the PR dry run builds and verifies the arm64 zip natively and checks the two-zip feed with a throwaway key. What isn't yet: no release has carried the arm64 zip, and `launcher-release.yml`'s new wiring runs for the first time at the first release. The owner UATs WA-U1..WA-U3 in the [campaign ledger](../../../../docs/analysis/launcher-win-arm64/README.md#owner-uat-no-lab-use) are pending. The bootstrap installer and `setup.ps1` still download the x64 zip by name, which runs emulated on Arm (WA-F1 switches them after the first arm64 release).
+
 ## What the macOS job builds
 
 [`tools/launcher-release/build-desktop-macos.sh`](../../../../tools/launcher-release/build-desktop-macos.sh)
