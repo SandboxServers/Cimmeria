@@ -35,6 +35,11 @@ lib/
 # These should be fetched/built separately, not stored in git.
 # Run setup-dependencies.ps1 to download and set up all dependencies.
 # See CLAUDE.md or setup-dependencies.ps1 for full dependency details.
+# /external ignores the symlink mk-worktree.sh creates in each worktree on macOS and
+# Linux (external/* only matches children, never the link itself). !/external/ then
+# re-includes it when it is a real directory, so the negations below still apply.
+/external
+!/external/
 external/*
 !external/boost/
 external/boost/*
