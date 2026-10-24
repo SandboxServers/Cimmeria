@@ -1,7 +1,7 @@
 //! Small versioned command surface shared by Tauri and the logic-UAT harness.
 use crate::display_targets::{self, DisplayInfo};
 use crate::launcher_compatibility::Identity;
-use crate::storage::display_options::{self, DisplayMode, DisplayOptions};
+use crate::storage::display_options::{self, DisplayMode, DisplayOptions, MonitorRect};
 use crate::storage::settings_events;
 use crate::{DesktopState, Preferences, Snapshot, StorageError};
 use cimmeria_launcher_core::client_setup::login_servers::LoginServer;
@@ -27,11 +27,15 @@ pub enum NativeCommand {
         login_servers: Vec<LoginServer>,
         client_patches_enabled: bool,
     },
-    /// Takes effect at the next Play, like the client options.
+    /// Takes effect at the next Play, like the client options. `monitor` is the
+    /// rectangle of one of the snapshot's `displays`, remembered for the current
+    /// display setup; absent or `null` means the main display (C-PD8).
     SaveDisplayOptions {
         schema_version: u32,
         expected_revision: u64,
         display: DisplayOptions,
+        #[serde(default)]
+        monitor: Option<MonitorRect>,
     },
 }
 
@@ -55,11 +59,16 @@ pub struct NativeSnapshot {
     pub displays: Vec<DisplayInfo>,
     /// Per display, the window sizes that fit it (`display_targets::sizes_for`).
     pub display_sizes: Vec<Vec<[u32; 2]>>,
+    /// The `index` in `displays` the current display setup remembers
+    /// (`display_options::placement_for`); `null` means the main display.
+    pub display_monitor: Option<u32>,
 }
 
 /// Storage omits a default `display` (R10); the snapshot always carries it, so
 /// the frontend never holds the default (C-PD6). The destructure has no `..`:
 /// a new `Preferences` field fails to compile here instead of going missing.
+/// `display_placements` stays out: the snapshot's `display_monitor` carries
+/// what the frontend needs from it.
 fn preferences_with_display<S: serde::Serializer>(
     preferences: &Preferences,
     serializer: S,
@@ -72,6 +81,7 @@ fn preferences_with_display<S: serde::Serializer>(
         login_servers,
         client_patches_enabled,
         display,
+        display_placements: _,
     } = preferences;
     #[derive(Serialize)]
     struct Mirror<'a> {
@@ -125,6 +135,11 @@ impl DesktopState {
             setup_diagnostics_endpoint: self.summary_endpoint_configured(),
             display_modes: display_options::allowed_modes().to_vec(),
             display_sizes: displays.iter().map(display_targets::size_pairs).collect(),
+            display_monitor: display_options::placement_for(
+                &self.preferences().display_placements,
+                &displays,
+            )
+            .map(|d| d.index),
             displays,
         }
     }
@@ -180,15 +195,31 @@ impl DesktopState {
                 schema_version,
                 expected_revision,
                 display,
+                monitor,
             } => {
                 if schema_version != 1 {
                     return Err(StorageError::UnsupportedSchema);
                 }
-                self.save_display_options(display, expected_revision)?;
-                settings_events::display_options_saved(self.preferences().display);
+                let displays = display_targets::list(); // once per save (PD-31 ruling 1)
+                self.save_display(display, monitor, expected_revision, &displays)?;
             }
         }
         Ok(self.inspect())
+    }
+
+    /// The `save_display_options` arm against one display list, so a test can
+    /// pass the list a sleeping Mac or a failed enumeration returns.
+    fn save_display(
+        &mut self,
+        display: DisplayOptions,
+        monitor: Option<MonitorRect>,
+        expected_revision: u64,
+        displays: &[DisplayInfo],
+    ) -> Result<(), StorageError> {
+        let (saved, remembered) =
+            self.save_display_options_on(display, monitor, expected_revision, displays)?;
+        settings_events::display_options_saved(saved.display, remembered);
+        Ok(())
     }
 }
 
@@ -272,6 +303,76 @@ mod tests {
         assert_eq!(saved[0].field("mode"), Some("windowed"));
         assert_eq!(saved[0].field("width"), Some("1600"));
         assert_eq!(saved[0].field("height"), Some("900"));
+        assert_eq!(saved[0].field("monitor_remembered"), Some("false"));
+    }
+
+    #[test]
+    fn a_monitor_saved_while_no_display_is_listed_is_not_remembered() {
+        let _serial = serial(); // first line: one capture test of this module at a time
+                                // A second live Dispatch keeps callsite interest per dispatcher.
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = DesktopState::open(dir.path()).unwrap();
+        let display = DisplayOptions::default();
+        let side = DisplayInfo {
+            index: 1,
+            main: false,
+            x: 1710,
+            y: 0,
+            width: 1920,
+            height: 1080,
+            scale_percent: 100,
+            refresh_hz: 60,
+        };
+        let main = DisplayInfo {
+            index: 0,
+            main: true,
+            x: 0,
+            y: 0,
+            width: 1710,
+            height: 1107,
+            scale_percent: 200,
+            refresh_hz: 120,
+        };
+        let monitor = Some(MonitorRect {
+            x: 1710,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        });
+        let remembered = |events: &[crate::test_capture::Captured]| {
+            let saved: Vec<_> = events
+                .iter()
+                .filter(|e| e.field("event") == Some("display_options_saved"))
+                .collect();
+            assert_eq!(saved.len(), 1);
+            saved[0].field("monitor_remembered").map(str::to_owned)
+        };
+        let (result, events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache(); // first line in the closure
+            state.save_display(display, monitor, 0, &[main, side])
+        });
+        result.unwrap();
+        assert_eq!(remembered(&events).as_deref(), Some("true"));
+        let before = state.preferences().display_placements.clone();
+        assert_eq!(before.len(), 1);
+        // An empty list (a sleeping Mac, a failed enumeration) stores, replaces
+        // and removes nothing, whether a monitor is given or not.
+        for (revision, monitor) in [(1, monitor), (2, None)] {
+            let (result, events) = capture(|| {
+                tracing::callsite::rebuild_interest_cache(); // first line in the closure
+                state.save_display(display, monitor, revision, &[])
+            });
+            result.unwrap();
+            assert_eq!(remembered(&events).as_deref(), Some("false"));
+            assert_eq!(state.preferences().display_placements, before);
+        }
+        // Revert proof for the empty guard: nothing is keyed by the empty list's key.
+        assert!(state
+            .preferences()
+            .display_placements
+            .iter()
+            .all(|p| p.setup != display_targets::setup_key(&[])));
     }
 
     #[test]
@@ -454,6 +555,7 @@ mod tests {
                     width: 1600,
                     height: 900,
                 },
+                monitor: None,
             })
             .unwrap();
         assert_eq!(

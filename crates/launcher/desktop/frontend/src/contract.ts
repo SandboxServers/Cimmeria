@@ -24,6 +24,8 @@ export const DisplayInfo = Schema.Struct({
   width: Schema.Number, height: Schema.Number, scale_percent: Schema.Number, refresh_hz: Schema.Number,
 });
 export type DisplayInfo = typeof DisplayInfo.Type;
+/** Engine `display_options::MonitorRect` (C-PD8): the `x, y, width, height` of one of the snapshot's `displays`. */
+export type MonitorRect = {x: number; y: number; width: number; height: number};
 export const NativeSnapshot = Schema.Struct({
   schema_version: Schema.Literal(1),
   operation: Schema.Struct({schema_version: Schema.Literal(1), revision: Revision, operation: Schema.NullOr(Operation)}),
@@ -48,6 +50,9 @@ export const NativeSnapshot = Schema.Struct({
   // engine `display_targets`). Optional so older fixtures decode; the engine always sends both.
   displays: Schema.optionalKey(Schema.Array(DisplayInfo)),
   display_sizes: Schema.optionalKey(Schema.Array(Schema.Array(Schema.Tuple([Schema.Number, Schema.Number])))),
+  // The `index` in `displays` the current display setup remembers; null means the main display
+  // (C-PD8, engine `display_options::placement_for`). Optional so older fixtures decode.
+  display_monitor: Schema.optionalKey(Schema.NullOr(Schema.Number)),
 });
 export type NativeSnapshot = typeof NativeSnapshot.Type;
 export type Preferences = NativeSnapshot["preferences"];
@@ -59,6 +64,8 @@ export type Command = {command: "inspect"; schema_version: 1} | {
   login_servers: readonly LoginServer[]; client_patches_enabled: boolean;
 } | {
   command: "save_display_options"; schema_version: 1; expected_revision: number; display: DisplayOptions;
+  // Remembered for the current display setup; absent or null means the main display (C-PD8).
+  monitor?: MonitorRect | null;
 };
 
 // Native storage codes as `StorageError` serializes them.
