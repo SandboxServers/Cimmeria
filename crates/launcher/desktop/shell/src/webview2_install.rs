@@ -107,7 +107,9 @@ impl Cause {
             Cause::NotAnExecutable => "The download was not a Windows installer.",
             Cause::CouldNotStart => "The installer could not be started.",
             Cause::TimedOut => "The installer was still running after 5 minutes.",
-            Cause::NoRuntimeAfterExit => "The installer finished, but the runtime is still missing.",
+            Cause::NoRuntimeAfterExit => {
+                "The installer finished, but the runtime is still missing."
+            }
         }
     }
 }
@@ -145,10 +147,7 @@ pub(crate) fn install_with(
 /// Downloads and runs the bootstrapper, then asks `present` whether the
 /// runtime is installed.
 #[cfg(windows)]
-pub(crate) fn install(
-    download_url: &str,
-    present: impl FnOnce() -> bool,
-) -> Result<(), Cause> {
+pub(crate) fn install(download_url: &str, present: impl FnOnce() -> bool) -> Result<(), Cause> {
     install_with(|| download(download_url), run, present)
 }
 
