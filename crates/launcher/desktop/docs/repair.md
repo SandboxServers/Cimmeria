@@ -56,7 +56,10 @@ Recovery buttons mean “request native validation,” not a guarantee it will s
 The host retains preparation's cancellation/progress handle and transfers only its
 result receiver to the coordinator. That coordinator consumes `Prepared` directly
 into native/Wine commit without releasing the root, work or prefix ownership.
-Dispatch failure marks reconciliation immediately. Active observation avoids
+A dispatch failure while the repair is still `Starting` (nothing has run, and no
+file changed) ends it `failed` and logs `repair_not_started` with the closed
+reason. Only an unconfirmed save (`persistence_uncertain`), or a run that already
+left `Starting`, leaves `reconciliation_required`. Active observation avoids
 reopening the worker-owned root marker, which matters for Windows file locking.
 
 The `frontend/repair-uat.mjs` exercise runs actual Effect/view logic against the
