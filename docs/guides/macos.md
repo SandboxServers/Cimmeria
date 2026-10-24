@@ -182,6 +182,18 @@ value in `~/Library/Application Support/app.cimmeria.launcher.desktop/state/game
 (in Finder, **Go → Go to Folder…** and paste the folder path). It is a random
 id that lets us find your diagnostics, nothing else.
 
+### Wine and DXVK logs after a black screen or crash
+
+Each time you press Play, the launcher keeps that game's Wine and graphics logs
+in its own folder under
+`~/Library/Application Support/app.cimmeria.launcher.desktop/state/logs/game/`
+(one folder per launch; open the newest). `wine.log` holds Wine's errors and
+display messages, and the `*_d3d9.log` file is DXVK's graphics log. After a
+black screen, a crash or an error box, zip the newest folder and send it with
+your report. The launcher keeps only the last 5 launches. These files stay on
+your Mac: the launcher's log upload never sends them, and they may contain your
+folder names, so look before you share.
+
 ## For the server owner: finding a Mac tester's telemetry
 
 With the tester's `install_id` and the times they reported, query SigNoz:

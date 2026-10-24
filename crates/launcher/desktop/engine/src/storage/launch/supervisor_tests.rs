@@ -14,6 +14,7 @@ fn fixture(script: &str) -> (tempfile::TempDir, HelperCommand, Request) {
             arguments: vec![script_path.into_os_string()],
             directory: "/".into(),
             environment: BTreeMap::new(),
+            stderr_log: None,
         },
         Request {
             schema_version: 1,
@@ -92,6 +93,44 @@ async fn lost_helper_wrong_guest_and_injection_uncertainty_are_not_success() {
             Observation::Unknown
         );
     }
+}
+// PD-28: 5 MiB of helper stderr leaves exactly STDERR_CAP bytes and a normal exit.
+// The generous deadline covers the hosted macOS runner's slow python3 start.
+#[tokio::test]
+async fn stderr_log_is_capped_and_the_helper_still_exits_normally() {
+    let (root, mut spec, request) = fixture("sys.stderr.write('e'*(5*1024*1024))\nsys.stderr.flush()\nevent('process_started',guest_pid=987)\nevent('process_exited',guest_pid=987,code=0)");
+    let log = root.path().join("wine.log");
+    spec.stderr_log = Some(log.clone());
+    let result = tokio::time::timeout(
+        Duration::from_secs(60),
+        run(spec, request, CancellationToken::new(), |_| Ok(())),
+    )
+    .await
+    .unwrap();
+    assert!(
+        matches!(
+            result,
+            Observation::ProcessExited {
+                guest_pid: 987,
+                code: 0,
+                ..
+            }
+        ),
+        "{result:?}"
+    );
+    // The copy task is detached; wait until the file stops growing.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut size = std::fs::metadata(&log).unwrap().len();
+    loop {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let now = std::fs::metadata(&log).unwrap().len();
+        if (now == size && now > 0) || Instant::now() > deadline {
+            size = now;
+            break;
+        }
+        size = now;
+    }
+    assert_eq!(size, game_logs::STDERR_CAP);
 }
 #[tokio::test]
 async fn cancellation_before_spawn_does_not_invoke_helper_and_spawn_failure_is_known() {

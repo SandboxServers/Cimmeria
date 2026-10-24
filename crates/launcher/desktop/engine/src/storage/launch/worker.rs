@@ -424,6 +424,7 @@ fn prepare_native(
             arguments: vec![],
             directory,
             environment,
+            stderr_log: None,
         },
         request,
         Ownership::Native { _owner: owner },

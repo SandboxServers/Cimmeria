@@ -67,6 +67,7 @@ fn spec(root: &Path, mode: &str) -> HelperCommand {
         arguments: vec!["--fixture".into(), mode.into()],
         directory: root.into(),
         environment: BTreeMap::new(),
+        stderr_log: None,
     }
 }
 fn request(_root: &Path) -> PrepareRequest {

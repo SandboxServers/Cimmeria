@@ -65,6 +65,7 @@ fn run_helper(starts: bool) -> (Observation, Vec<crate::test_capture::Captured>)
         arguments,
         directory: root.path().into(),
         environment,
+        stderr_log: None,
     };
     let request = cimmeria_runtime_probe::game_launch::Request {
         schema_version: 1,

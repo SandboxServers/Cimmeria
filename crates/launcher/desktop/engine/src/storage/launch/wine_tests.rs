@@ -30,7 +30,7 @@ fn fixture() -> (tempfile::TempDir, PathBuf, PathBuf, Graphics) {
 #[test]
 fn game_environment_selects_bundled_vulkan_without_changing_headless_policy() {
     let (_temp, runtime, prefix, graphics) = fixture();
-    let environment = game_environment(&runtime, &prefix, &graphics).unwrap();
+    let environment = game_environment(&runtime, &prefix, &graphics, None).unwrap();
     assert_eq!(
         environment.get(OsStr::new("VK_DRIVER_FILES")),
         Some(
@@ -68,21 +68,43 @@ fn game_environment_selects_bundled_vulkan_without_changing_headless_policy() {
 }
 
 #[test]
+fn game_environment_logs_wine_display_and_dxvk_only_with_a_log_folder() {
+    let (_temp, runtime, prefix, graphics) = fixture();
+    let folder = runtime.parent().unwrap().join("logs/game/operation");
+    let guest = mac_wine::paths::guest(&folder).unwrap();
+    assert!(guest.starts_with("Z:\\"));
+    let logged = game_environment(&runtime, &prefix, &graphics, Some(&guest)).unwrap();
+    assert_eq!(
+        logged.get(OsStr::new("WINEDEBUG")).unwrap(),
+        "err+all,fixme-all,+display"
+    );
+    assert_eq!(logged.get(OsStr::new("DXVK_LOG_LEVEL")).unwrap(), "info");
+    assert_eq!(
+        logged.get(OsStr::new("DXVK_LOG_PATH")).unwrap(),
+        OsStr::new(&guest)
+    );
+    let quiet = game_environment(&runtime, &prefix, &graphics, None).unwrap();
+    assert_eq!(quiet.get(OsStr::new("WINEDEBUG")).unwrap(), "-all");
+    assert!(!quiet.contains_key(OsStr::new("DXVK_LOG_LEVEL")));
+    assert!(!quiet.contains_key(OsStr::new("DXVK_LOG_PATH")));
+}
+
+#[test]
 fn missing_or_nonordinary_descriptor_refuses_game_environment_before_spawn() {
     let (_temp, runtime, prefix, graphics) = fixture();
     let descriptor = runtime.join("lib/vulkan/icd.d/MoltenVK_icd.json");
     std::fs::remove_file(&descriptor).unwrap();
     assert!(matches!(
-        game_environment(&runtime, &prefix, &graphics),
+        game_environment(&runtime, &prefix, &graphics, None),
         Err(IntentError::Storage(StorageError::UnsafeFile))
     ));
     std::fs::create_dir(&descriptor).unwrap();
-    assert!(game_environment(&runtime, &prefix, &graphics).is_err());
+    assert!(game_environment(&runtime, &prefix, &graphics, None).is_err());
     std::fs::remove_dir(&descriptor).unwrap();
     let outside = runtime.parent().unwrap().join("outside.json");
     std::fs::write(&outside, b"{}").unwrap();
     std::os::unix::fs::symlink(&outside, &descriptor).unwrap();
-    assert!(game_environment(&runtime, &prefix, &graphics).is_err());
+    assert!(game_environment(&runtime, &prefix, &graphics, None).is_err());
 }
 
 #[test]
@@ -92,5 +114,5 @@ fn redirected_descriptor_ancestor_refuses_game_environment_before_spawn() {
     let outside = runtime.parent().unwrap().join("outside");
     std::fs::rename(&directory, &outside).unwrap();
     std::os::unix::fs::symlink(&outside, &directory).unwrap();
-    assert!(game_environment(&runtime, &prefix, &graphics).is_err());
+    assert!(game_environment(&runtime, &prefix, &graphics, None).is_err());
 }

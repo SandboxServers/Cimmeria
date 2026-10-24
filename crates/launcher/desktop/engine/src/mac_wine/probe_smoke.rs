@@ -322,6 +322,7 @@ async fn run_prerequisite_worker(
         arguments: vec![paths::guest(worker).unwrap().into()],
         directory: prefix.parent().unwrap().into(),
         environment: env.clone(),
+        stderr_log: None,
     };
     let outcome = supervisor::run(
         spec,
