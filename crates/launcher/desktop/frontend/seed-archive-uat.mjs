@@ -8,9 +8,9 @@ import {mountSeedArchive} from './.test-build/seed-archive-view.mjs';
 import {mountInstall} from './.test-build/install-view.mjs';
 const page=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
 const MB=1024*1024;
-const native={schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},
+const native={schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed'],launcher:{version:'0.1.0',tag:null},
  operation:{schema_version:1,revision:0,operation:null},
- preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}};
+ preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed',width:1024,height:768}}};
 const idle=()=>({schema_version:1,native,chosen:null,offer:null,verifying:null,last_error:null});
 const chosen=()=>({...idle(),chosen:{file_name:'Stargate.rar',size:40*MB}});
 const offered=()=>({...idle(),offer:{file_name:'Stargate.rar',size:40*MB}});

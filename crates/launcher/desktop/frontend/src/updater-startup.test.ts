@@ -5,7 +5,7 @@ import {parseHTML} from 'linkedom';
 import {mountDesktop} from './composition';
 import type {UpdaterRequest,UpdaterStatus} from './updater-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
-const native={schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'1.0.0',tag:null},preferences:{schema_version:2,revision:0,install_directory:String.raw`\\?\C:\Temp\sgw`,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1,revision:0,operation:null}};
+const native={schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'1.0.0',tag:null},preferences:{schema_version:2,revision:0,install_directory:String.raw`\\?\C:\Temp\sgw`,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed' as const,width:1024,height:768}},operation:{schema_version:1,revision:0,operation:null}};
 const initial=():UpdaterStatus=>({schema_version:1,revision:0,operation_revision:0,phase:'idle',offer:null,failure:null,requires_reopen:false});
 const offer={id:'offer',version:'1.1.0',notes:'A signed update'};
 const tick=()=>new Promise<void>(resolve=>setTimeout(resolve,10));

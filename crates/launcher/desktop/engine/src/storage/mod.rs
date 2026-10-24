@@ -4,6 +4,7 @@ mod atomic;
 pub mod client_changes;
 pub mod client_maintenance;
 mod content_identity;
+pub mod display_options;
 pub mod effective_settings;
 pub(crate) mod extraction_work;
 mod failed_cleanup;
@@ -68,6 +69,8 @@ pub enum StorageError {
     /// A login-server list `login_servers::validate` refuses: saved, or about
     /// to be written into `LoginInternal.lua` by Play.
     InvalidServerList,
+    /// A display mode or size `DisplayOptions::valid` refuses.
+    InvalidDisplayOptions,
 }
 
 /// The preferences schema this build writes. Version 1 files still read.
@@ -84,6 +87,10 @@ pub struct Preferences {
     /// Empty means `client_setup::login_servers::default_servers()`.
     pub login_servers: Vec<LoginServer>,
     pub client_patches_enabled: bool,
+    /// A default display is stored as no key, so files and records written
+    /// before the option keep their exact bytes (R10).
+    #[serde(skip_serializing_if = "display_options::DisplayOptions::is_default")]
+    pub display: display_options::DisplayOptions,
 }
 
 impl Default for Preferences {
@@ -95,6 +102,7 @@ impl Default for Preferences {
             launcher_summary_consent: false,
             login_servers: Vec::new(),
             client_patches_enabled: true,
+            display: Default::default(),
         }
     }
 }
@@ -111,6 +119,8 @@ struct StoredPreferences {
     launcher_summary_consent: bool,
     login_servers: Option<Vec<LoginServer>>,
     client_patches_enabled: Option<bool>,
+    #[serde(default)]
+    display: display_options::DisplayOptions,
 }
 
 impl TryFrom<StoredPreferences> for Preferences {
@@ -143,13 +153,15 @@ impl TryFrom<StoredPreferences> for Preferences {
             launcher_summary_consent: stored.launcher_summary_consent,
             login_servers,
             client_patches_enabled,
+            display: stored.display,
         })
     }
 }
 
 /// The bytes a record digest covers for one `Preferences` value. A schema-1
 /// build digested the four v1 fields only, and an adoption plan it wrote can
-/// still be in flight after the upgrade. Preferences whose client options are
+/// still be in flight after the upgrade. Preferences whose client options and
+/// the display are
 /// still the defaults therefore digest in exactly that v1 shape; any other
 /// value digests in full, so a change to a v2 field still changes the digest.
 #[derive(Serialize)]
@@ -170,6 +182,7 @@ impl Preferences {
         if self.schema_version == PREFERENCES_SCHEMA
             && self.login_servers.is_empty()
             && self.client_patches_enabled
+            && self.display.is_default()
         {
             PreferencesDigest::V1 {
                 schema_version: 1,
@@ -377,6 +390,7 @@ impl DesktopState {
             launcher_summary_consent,
             login_servers: self.preferences.login_servers.clone(),
             client_patches_enabled: self.preferences.client_patches_enabled,
+            display: self.preferences.display,
         };
         validate_preferences(&next)?;
         // Withdrawal closes the summary gate before the write; granting consent

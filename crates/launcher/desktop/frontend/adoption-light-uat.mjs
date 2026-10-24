@@ -7,7 +7,7 @@ import {parseHTML} from 'linkedom';
 import {mountAdoption} from './.test-build/adoption-view.mjs';
 import {mountLaunch} from './.test-build/launch-view.mjs';
 
-const native={schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1,revision:1,operation:null}};
+const native={schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed'],launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed',width:1024,height:768}},operation:{schema_version:1,revision:1,operation:null}};
 const idle=()=>({schema_version:1,native,backend:'in_place',modes:['light','copy'],imported:{launcher_directory:'/old-launcher',game_directory:'/old-game',blocker:null},activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],has_valid_install:false,owned:false,completed:null,last_error:null,last_rejection:null,unsafe_entries:null});
 // A light review of a clean stock folder; the scenarios override the index and the skipped changes.
 const review=(light)=>({preview_handle:'light-uat',operation_revision:3,preferences_revision:1,source:'/games/SGW',destination:'/games/SGW',source_kind:'folder',

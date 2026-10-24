@@ -43,6 +43,22 @@ pub(crate) fn client_options_saved(servers: &[LoginServer], client_patches_enabl
     );
 }
 
+/// The display mode and size were saved (C-PD6). They apply at the next Play.
+pub(crate) fn display_options_saved(options: super::display_options::DisplayOptions) {
+    let mode = match options.mode {
+        super::display_options::DisplayMode::Windowed => "windowed",
+        super::display_options::DisplayMode::Fullscreen => "fullscreen",
+    };
+    tracing::info!(
+        target: "launcher.settings",
+        event = "display_options_saved",
+        mode,
+        width = options.width,
+        height = options.height,
+        "settings: display options saved"
+    );
+}
+
 /// The game diagnostics choice changed; `opted_in` is its new value.
 pub(crate) fn game_diagnostics_changed(opted_in: bool) {
     tracing::info!(

@@ -152,7 +152,8 @@ impl From<StorageError> for JobError {
             StorageError::Corrupt
             | StorageError::TooLarge
             | StorageError::UnsafeFile
-            | StorageError::InvalidServerList => Self::CorruptState,
+            | StorageError::InvalidServerList
+            | StorageError::InvalidDisplayOptions => Self::CorruptState,
             StorageError::UnsupportedSchema => Self::UnsupportedSchema,
             StorageError::InvalidDirectory => Self::InvalidDirectory,
             StorageError::StaleRevision => Self::StaleRevision,

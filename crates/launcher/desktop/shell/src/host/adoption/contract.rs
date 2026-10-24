@@ -129,9 +129,10 @@ impl From<StorageError> for AdoptionError {
             StorageError::Io => Self::Io,
             // Only client options and Play check a server list; an adoption
             // never meets one, so it can only mean a damaged state.
-            StorageError::Corrupt | StorageError::TooLarge | StorageError::InvalidServerList => {
-                Self::CorruptState
-            }
+            StorageError::Corrupt
+            | StorageError::TooLarge
+            | StorageError::InvalidServerList
+            | StorageError::InvalidDisplayOptions => Self::CorruptState,
             StorageError::UnsafeFile => Self::UnsafeFile,
             StorageError::UnsupportedSchema => Self::UnsupportedSchema,
             StorageError::InvalidDirectory => Self::InvalidDirectory,

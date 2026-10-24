@@ -7,8 +7,8 @@ import {makePanelContext} from './panel-context';
 import {mountServerList,parseServerList,serverListText} from './server-list-view';
 const html=readFileSync('ui/index.html','utf8');
 const snapshot=(revision:number,login_servers:NativeSnapshot['preferences']['login_servers']=[]):NativeSnapshot=>({
- schema_version:1,operation:{schema_version:1,revision:0,operation:null},requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},
- preferences:{schema_version:2,revision,install_directory:null,launcher_summary_consent:false,login_servers,client_patches_enabled:false},
+ schema_version:1,operation:{schema_version:1,revision:0,operation:null},requires_reopen:false,adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'0.1.0',tag:null},
+ preferences:{schema_version:2,revision,install_directory:null,launcher_summary_consent:false,login_servers,client_patches_enabled:false,display:{mode:'windowed' as const,width:1024,height:768}},
 });
 function mounted(respond:(request:any)=>Promise<unknown>=async()=>null,refresh:()=>Promise<unknown>=async()=>{},
  first:NativeSnapshot=snapshot(3,[{name:'Old',url:'http://old.example:8081'}])) {

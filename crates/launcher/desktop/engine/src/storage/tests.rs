@@ -57,6 +57,7 @@ fn v1_preferences_read_as_v2_with_client_defaults_and_save_back_as_v2() {
             launcher_summary_consent: true,
             login_servers: Vec::new(),
             client_patches_enabled: true,
+            display: Default::default(),
         }
     );
     // Opening alone rewrites nothing; the next save writes v2.
