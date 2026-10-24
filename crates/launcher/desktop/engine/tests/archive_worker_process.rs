@@ -95,6 +95,7 @@ async fn native_supervisor_consumes_the_real_windows_helper_protocol() {
             arguments: vec![],
             directory: root.path().into(),
             environment: Default::default(),
+            stderr_log: None,
         },
         ExtractRequest {
             schema_version: 1,

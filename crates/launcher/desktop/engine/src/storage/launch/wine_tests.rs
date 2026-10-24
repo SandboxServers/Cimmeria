@@ -30,7 +30,7 @@ fn fixture() -> (tempfile::TempDir, PathBuf, PathBuf, Graphics) {
 #[test]
 fn game_environment_selects_bundled_vulkan_without_changing_headless_policy() {
     let (_temp, runtime, prefix, graphics) = fixture();
-    let environment = game_environment(&runtime, &prefix, &graphics).unwrap();
+    let environment = game_environment(&runtime, &prefix, &graphics, None, 30).unwrap();
     assert_eq!(
         environment.get(OsStr::new("VK_DRIVER_FILES")),
         Some(
@@ -68,9 +68,31 @@ fn game_environment_selects_bundled_vulkan_without_changing_headless_policy() {
 }
 
 #[test]
+fn game_environment_logs_wine_display_and_dxvk_only_with_a_log_folder() {
+    let (_temp, runtime, prefix, graphics) = fixture();
+    let folder = runtime.parent().unwrap().join("logs/game/operation");
+    let guest = mac_wine::paths::guest(&folder).unwrap();
+    assert!(guest.starts_with("Z:\\"));
+    let logged = game_environment(&runtime, &prefix, &graphics, Some(&guest), 30).unwrap();
+    assert_eq!(
+        logged.get(OsStr::new("WINEDEBUG")).unwrap(),
+        "err+all,fixme-all,+display"
+    );
+    assert_eq!(logged.get(OsStr::new("DXVK_LOG_LEVEL")).unwrap(), "info");
+    assert_eq!(
+        logged.get(OsStr::new("DXVK_LOG_PATH")).unwrap(),
+        OsStr::new(&guest)
+    );
+    let quiet = game_environment(&runtime, &prefix, &graphics, None, 30).unwrap();
+    assert_eq!(quiet.get(OsStr::new("WINEDEBUG")).unwrap(), "-all");
+    assert!(!quiet.contains_key(OsStr::new("DXVK_LOG_LEVEL")));
+    assert!(!quiet.contains_key(OsStr::new("DXVK_LOG_PATH")));
+}
+
+#[test]
 fn game_environment_forces_dxvk_windowed_so_the_display_mode_never_changes() {
     let (_temp, runtime, prefix, graphics) = fixture();
-    let environment = game_environment(&runtime, &prefix, &graphics).unwrap();
+    let environment = game_environment(&runtime, &prefix, &graphics, None, 30).unwrap();
     assert_eq!(
         environment.get(OsStr::new("DXVK_FORCE_WINDOWED")).unwrap(),
         "1"
@@ -83,16 +105,16 @@ fn missing_or_nonordinary_descriptor_refuses_game_environment_before_spawn() {
     let descriptor = runtime.join("lib/vulkan/icd.d/MoltenVK_icd.json");
     std::fs::remove_file(&descriptor).unwrap();
     assert!(matches!(
-        game_environment(&runtime, &prefix, &graphics),
+        game_environment(&runtime, &prefix, &graphics, None, 30),
         Err(IntentError::Storage(StorageError::UnsafeFile))
     ));
     std::fs::create_dir(&descriptor).unwrap();
-    assert!(game_environment(&runtime, &prefix, &graphics).is_err());
+    assert!(game_environment(&runtime, &prefix, &graphics, None, 30).is_err());
     std::fs::remove_dir(&descriptor).unwrap();
     let outside = runtime.parent().unwrap().join("outside.json");
     std::fs::write(&outside, b"{}").unwrap();
     std::os::unix::fs::symlink(&outside, &descriptor).unwrap();
-    assert!(game_environment(&runtime, &prefix, &graphics).is_err());
+    assert!(game_environment(&runtime, &prefix, &graphics, None, 30).is_err());
 }
 
 #[test]
@@ -102,5 +124,30 @@ fn redirected_descriptor_ancestor_refuses_game_environment_before_spawn() {
     let outside = runtime.parent().unwrap().join("outside");
     std::fs::rename(&directory, &outside).unwrap();
     std::os::unix::fs::symlink(&outside, &directory).unwrap();
-    assert!(game_environment(&runtime, &prefix, &graphics).is_err());
+    assert!(game_environment(&runtime, &prefix, &graphics, None, 30).is_err());
+}
+
+#[test]
+fn game_environment_carries_the_chosen_frame_cap() {
+    use crate::storage::display_options::{frame_rate, DisplayOptions, FrameCap};
+    let (_temp, runtime, prefix, graphics) = fixture();
+    let rate = |cap: FrameCap, refresh_hz: u32| {
+        let environment = game_environment(
+            &runtime,
+            &prefix,
+            &graphics,
+            None,
+            frame_rate(cap, refresh_hz),
+        )
+        .unwrap();
+        environment
+            .get(OsStr::new("DXVK_FRAME_RATE"))
+            .unwrap()
+            .clone()
+    };
+    // Revert proof: a fixed "30" fails the Fps60 and Display rows.
+    assert_eq!(rate(FrameCap::Fps60, 120), "60");
+    assert_eq!(rate(FrameCap::Display, 120), "120");
+    // The default (and an older preferences file) keeps today's 30 (R10).
+    assert_eq!(rate(DisplayOptions::default().frame_cap, 120), "30");
 }

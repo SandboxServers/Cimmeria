@@ -84,6 +84,11 @@ async fn run_timed(
         on_failure(FailureCode::SpawnFailed);
         return Observation::NotStarted;
     }
+    // Without a log file (or when it can't be opened) stderr is discarded, as before.
+    let stderr_log = spec
+        .stderr_log
+        .as_ref()
+        .and_then(|path| std::fs::File::create(path).ok());
     let mut command = Command::new(&spec.executable);
     command
         .args(&spec.arguments)
@@ -92,7 +97,11 @@ async fn run_timed(
         .envs(&spec.environment)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
+        .stderr(if stderr_log.is_some() {
+            std::process::Stdio::piped()
+        } else {
+            std::process::Stdio::null()
+        });
     #[cfg(windows)]
     command.creation_flags(0x08000000);
     // No kill-on-drop: killing the host is not equivalent to stopping its guest.
@@ -113,6 +122,13 @@ async fn run_timed(
             return Observation::NotStarted;
         }
     };
+    if let (Some(file), Some(stderr)) = (stderr_log, child.stderr.take()) {
+        game_logs::copy_capped(
+            stderr,
+            tokio::fs::File::from_std(file),
+            game_logs::STDERR_CAP,
+        );
+    }
     let host_pid = child.id().unwrap_or(0);
     let host = Observation::HostStarted { host_pid };
     if host_pid == 0 {
@@ -201,14 +217,26 @@ async fn run_timed(
     };
     // Cancellation is admission/pre-spawn only. Closing the UI or cancelling a
     // start cannot silently kill a game whose own threads are already running.
-    let event = tokio::select! {
-        biased;
-        result = line(&mut reader, request.operation_id) => result,
-        _ = child.wait() => {
-            match tokio::time::timeout(Duration::from_secs(2), line(&mut reader, request.operation_id)).await {
-                Ok(result) => result,
-                Err(_) => Err(()),
+    let mut placed = false;
+    let event = loop {
+        let event = tokio::select! {
+            biased;
+            result = line(&mut reader, request.operation_id) => result,
+            _ = child.wait() => {
+                match tokio::time::timeout(Duration::from_secs(2), line(&mut reader, request.operation_id)).await {
+                    Ok(result) => result,
+                    Err(_) => Err(()),
+                }
             }
+        };
+        // PD-33: one window placement report may come before the exit; it is
+        // logged and otherwise ignored. A second one is not the exit.
+        match event {
+            Ok(Event::WindowPlaced { outcome }) if !placed => {
+                placed = true;
+                events::display_placement(id, outcome);
+            }
+            other => break other,
         }
     };
     if let Ok(Event::Unknown { stage, win32 }) = event {

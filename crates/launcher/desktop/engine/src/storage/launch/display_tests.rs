@@ -27,6 +27,7 @@ fn windowed(width: u32, height: u32) -> DisplayOptions {
         mode: DisplayMode::Windowed,
         width,
         height,
+        ..DisplayOptions::default()
     }
 }
 

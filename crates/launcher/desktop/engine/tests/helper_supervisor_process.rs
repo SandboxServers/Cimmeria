@@ -121,6 +121,7 @@ fn spec(mode: &str, dir: &std::path::Path) -> HelperCommand {
         arguments: vec!["--fixture".into(), mode.into()],
         directory: dir.into(),
         environment: BTreeMap::new(),
+        stderr_log: None,
     }
 }
 fn request(dir: &std::path::Path) -> ExtractRequest {

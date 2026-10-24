@@ -186,6 +186,7 @@ mod tests {
             arguments: Vec::new(),
             directory: PathBuf::from("relative"),
             environment: Default::default(),
+            stderr_log: None,
         };
         let request = PrepareRequest {
             schema_version: 1,

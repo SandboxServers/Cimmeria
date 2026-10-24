@@ -8,6 +8,7 @@ pub(super) fn prepare(
     session: Option<&crate::game_telemetry::Session>,
     servers: &[LoginServer],
     display: crate::storage::display_options::DisplayOptions,
+    placements: &[crate::storage::display_options::Placement],
 ) -> Result<
     (
         HelperCommand,
@@ -25,7 +26,22 @@ pub(super) fn prepare(
         .as_ref()
         .ok_or(StorageError::Corrupt)?;
     graphics.d3d9.stage(&binaries.join("d3d9.dll"))?;
-    let mut environment = game_environment(&resources.runtime, &resources.prefix, graphics)?;
+    // Per-launch logs (PD-28); without the folder or its guest path, launch without logs.
+    let logs = super::game_logs::folder(state_root, plan.id)
+        .ok()
+        .and_then(|folder| Some((mac_wine::paths::guest(&folder).ok()?, folder)));
+    // The frame cap (PD-35): `Display` follows the remembered or the main display.
+    let refresh_hz = crate::storage::display_options::launch_refresh_hz(
+        placements,
+        &crate::display_targets::list(),
+    );
+    let mut environment = game_environment(
+        &resources.runtime,
+        &resources.prefix,
+        graphics,
+        logs.as_ref().map(|(guest, _)| guest.as_str()),
+        crate::storage::display_options::frame_rate(display.frame_cap, refresh_hz),
+    )?;
     let telemetry = telemetry::injected(plan, session);
     if telemetry.is_some() {
         for (key, value) in crate::game_telemetry::passthrough_environment() {
@@ -56,27 +72,36 @@ pub(super) fn prepare(
             .map(|p| guest(p.path()))
             .collect::<Result<_, _>>()?,
         args: super::display::arguments(display),
+        // The worker fills it from the remembered monitor (PD-33).
+        place_on: None,
     };
     let spec = HelperCommand {
         executable: mac_wine::app_identity::loader(&resources.runtime, state_root),
         arguments: vec![guest(plan.resources.helper.path())?.into_os_string()],
         directory: binaries,
         environment,
+        stderr_log: logs.map(|(_, folder)| folder.join("wine.log")),
     };
     Ok((spec, request, resources))
 }
 
-// DXVK's limiter; the client has no vsync setting and nothing else bounds its render loop.
-const FRAME_RATE_LIMIT: &str = "30";
+// Wine's error channels plus winemac.drv's display code (owner D4 (4)); fixmes are noise.
+const WINEDEBUG_LOGGED: &str = "err+all,fixme-all,+display";
 
 // D2: exclusive fullscreen captures every display under winemac.drv; DXVK forces windowed.
 const FORCE_WINDOWED: &str = "1";
 
 // Called only after Resources::reopen verifies and locks the pinned runtime.
+// `log_folder` is the guest path of the per-launch log folder; `None` keeps
+// Wine and DXVK quiet (`WINEDEBUG=-all`, no DXVK log). `frame_rate` is DXVK's
+// limiter (`display_options::frame_rate`); the client has no vsync setting and
+// nothing else bounds its render loop.
 fn game_environment(
     runtime: &Path,
     prefix: &Path,
     graphics: &Graphics,
+    log_folder: Option<&str>,
+    frame_rate: u32,
 ) -> Result<std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString>, IntentError> {
     let descriptor = runtime.join("lib/vulkan/icd.d/MoltenVK_icd.json");
     if !std::fs::symlink_metadata(&descriptor).is_ok_and(|metadata| metadata.is_file())
@@ -94,7 +119,12 @@ fn game_environment(
         "d3d9=n;winemenubuilder.exe,mscoree,mshtml=d".into(),
     );
     environment.insert("CX_FWD_COMPAT_GL_CTX".into(), "1".into());
-    environment.insert("DXVK_FRAME_RATE".into(), FRAME_RATE_LIMIT.into());
+    environment.insert("DXVK_FRAME_RATE".into(), frame_rate.to_string().into());
+    if let Some(folder) = log_folder {
+        environment.insert("WINEDEBUG".into(), WINEDEBUG_LOGGED.into());
+        environment.insert("DXVK_LOG_LEVEL".into(), "info".into());
+        environment.insert("DXVK_LOG_PATH".into(), folder.into());
+    }
     environment.insert("DXVK_FORCE_WINDOWED".into(), FORCE_WINDOWED.into());
     if let Some((executable, _)) = &graphics.rosetta_x87 {
         environment.insert(

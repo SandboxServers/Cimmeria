@@ -65,6 +65,7 @@ fn preferences(revision: u64) -> Preferences {
         login_servers: Vec::new(),
         client_patches_enabled: true,
         display: Default::default(),
+        display_placements: Vec::new(),
     }
 }
 

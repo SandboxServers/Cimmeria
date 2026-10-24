@@ -209,6 +209,23 @@ must stage exact artifacts, record provenance and notices and validate them with
 the real client. Successful PhysX/module prerequisites do not demonstrate device
 creation, DLL patch hooks, login or world entry.
 
+### Per-launch Wine and DXVK logs
+
+Each Mac Play writes its own logs to `logs/game/<operation>/` under the launcher
+state root (PD-28): `wine.log` is the Wine helper's stderr, at most 4 MiB
+(`STDERR_CAP`; the rest is read and dropped, so Wine never blocks on a full
+pipe), and DXVK writes its `*_d3d9.log` there through `DXVK_LOG_PATH` (the
+folder's `Z:\` guest path) with `DXVK_LOG_LEVEL=info`. With logs on,
+`WINEDEBUG` is `err+all,fixme-all,+display`: Wine's errors plus winemac.drv's
+display code. Creating the folder prunes `logs/game/` to 5 operation folders:
+the new one and the 4 newest others by folder mtime. If the folder can't be
+created, Play starts without logs and with `WINEDEBUG=-all`, as before.
+
+These logs contain local paths, so they stay on the computer: the debug log
+upload reads only the `launcher.*.log` files in the app-data `logs/` folder (a
+sibling of `state/`, not this one) and the game's own logs, never
+`state/logs/game/`. Windows Play is unchanged; its helper's stderr is discarded.
+
 ## Optional Mac application identity for the game window
 
 macOS automation that selects an application by name, bundle path or bundle
@@ -249,8 +266,8 @@ in; an old bundle is removed without following links, and a bundle path or
 state directory that is a link is refused. The bundle is then registered with
 `lsregister -f` so lookups by name or identifier can find it. If anything
 fails before the worker starts, Play uses the stock loader and prints the
-reason to the launcher's standard error. The environment, the 30 FPS
-`DXVK_FRAME_RATE` limit, the helper protocol and host supervision are the same
+reason to the launcher's standard error. The environment, the
+`DXVK_FRAME_RATE` limit (the player's frame cap, § The frame cap), the helper protocol and host supervision are the same
 on both paths: the host PID is still the real Wine process.
 
 `LSUIElement` matters. Every Wine process of the session shares the bundle.
@@ -414,6 +431,92 @@ the three display arguments: `-windowed`, `ResX=<n>` and `ResY=<n>` with 3-4
 ASCII digits each, at most three entries and none repeated
 (`game_launch::valid_args`). Any other list is refused before the game starts,
 the same way as an invalid exe path: `not_started` at stage `request`.
+
+### Window sizes that fit a display
+
+Every snapshot lists the active displays (`displays`, engine `display_targets`:
+CoreGraphics on a Mac, `EnumDisplayMonitors` on Windows; empty when the list
+fails) and, per display, the sizes that fit it (`display_sizes`). Positions and
+sizes are in the units the game sees: points on a Mac (Wine's `RetinaMode` is
+off), and on Windows the monitor's pixels divided by its effective scale
+(`GetDpiForMonitor`), rounded to the nearest unit, because SGW.exe declares no
+DPI awareness and Windows scales its window. A 2560x1440 monitor at 150% is
+1707x960 and is offered sizes up to 1280x800. The
+size rule: a size from 1024x768, 1280x720, 1280x800, 1440x900, 1600x900,
+1680x1050, 1920x1080 and 2560x1440 fits when its width is at most the display's
+and its height plus an 80-point frame margin (menu bar or taskbar, and the title
+bar) is at most the display's. 1024x768 always stays on the list. A display
+setup is keyed by FNV-1a 64 over the sorted display rectangles, never by name. An empty list (a failure, or a Mac whose displays are
+asleep) logs one WARN `display_list_empty` on `launcher.settings`, logged again
+only after a non-empty list.
+
+### The frame cap
+
+On a Mac, `preferences.display.frame_cap` sets DXVK's limiter,
+`DXVK_FRAME_RATE` (the client has no vsync setting and nothing else bounds its
+render loop): `fps30` (the default, stored as no key, and what an older
+preferences file reads as), `fps60`, or `display`. `display` follows the
+refresh rate of the display the current setup remembers, else the main
+display. That rate is read from one display list at Play and clamped into
+30..=240; an unknown rate or an empty list gives 60. Every snapshot carries
+`frame_caps`, the caps this platform offers: all three on a Mac, and none on
+Windows, which has no limiter without a client patch and ignores the saved
+value.
+
+### The monitor per display setup
+
+`save_display_options` takes an optional `monitor`: the `x, y, width, height`
+of one of the snapshot's `displays`. Each save calls the display list once and
+computes the setup key and the matching display from that one list. A monitor
+that matches a listed display is stored in `preferences.display_placements`
+under the current setup key, replacing that key's entry; an absent or `null`
+monitor removes the entry, which means the main display. The list keeps the 8
+newest setups and drops the oldest. When the display list is empty (every failed
+enumeration and every sleeping Mac share one key), or the monitor matches no
+listed display, the save stores, replaces and removes nothing. Every snapshot
+carries `display_monitor`: the `index` of the display whose rectangle equals the
+entry stored for the current setup key, or `null` (no entry, no matching
+display, or no displays) for the main display. Rectangles are compared exactly
+as `display_targets` reports them, the same tuple the key hashes, so on Windows
+in DPI-scaled units. The snapshot's `preferences` leaves `display_placements`
+out, and an empty list is stored as no key.
+
+The save logs `display_options_saved` on `launcher.settings` (INFO) with `mode`,
+`width`, `height`, `frame_cap` (`fps30`, `fps60` or `display`) and
+`monitor_remembered`: true when this save stored a monitor for the current
+setup, false when it removed the entry or stored nothing. No field carries a
+rectangle or a setup key.
+
+### Opening the game on the remembered monitor
+
+At Play, when a placement is saved, the worker lists the displays once and asks
+for the display the current setup remembers (as `display_monitor` does). Only
+when that display is not the main display does the helper request carry
+`place_on`: `[x, y, width, height]` in the units the game sees (PD-31). The
+main display, an unknown setup or no displays leave the field out, which is the
+request from before placement; `schema_version` stays 1. The engine sends it only
+in windowed mode. With Windows exclusive fullscreen the field is left out,
+because the D3D9 device owns its adapter, and moving that window could only
+lose the device or minimize the game.
+
+After `process_started`, and only with `place_on`, the helper starts a detached
+thread that never delays its wait for the game's exit. Every 250 ms for up to
+60 s it looks for a visible, unowned top-level window of the game's process.
+It then lists the monitors and converts each `rcMonitor` to game units with the
+same rule as `display_targets` (`GetDpiForMonitor`, `MDT_EFFECTIVE_DPI`; under
+Wine the DPI reads 96, so nothing changes). The monitor with exactly the
+`place_on` rectangle is chosen, else the first with the same size. When the
+window is already on that monitor, nothing moves. Otherwise the window is
+centred in the monitor's work area with `SetWindowPos` (no resize, no z-order
+change, no activation; a window larger than the work area goes to its top-left)
+and checked again 3 s later, moved once more if it went back.
+
+The helper reports `window_placed` once, with `outcome` one of `placed`,
+`already_there`, `no_window` (no window within 60 s) or `no_monitor` (no
+monitor matches). The supervisor accepts one such report between
+`process_started` and `process_exited`, logs `display_placement` on
+`launcher.launch` (INFO, `operation`, `outcome`) and otherwise ignores it; it
+never changes the launch outcome. No field carries a rectangle.
 
 ## Patch policy per installation
 
@@ -583,8 +686,8 @@ target per subsystem: `launcher.startup`, `launcher.crash`, `launcher.update`,
 (`launch_refused`) and `launch_not_started` are warn too. Wire rows use the same name with
 a `client.` prefix (`client.launcher.install`). The full subsystem table is in
 [observability.md](../../../../docs/architecture/observability.md). `launcher.launch` carries `launch_refused`, `launch_started`, `launch_not_started`,
-`launch_failed`, `game_started`, `game_exited`, `launch_finished` and
-`display_settings` ([Display settings before each Play](#display-settings-before-each-play)), each with the
+`launch_failed`, `game_started`, `game_exited`, `launch_finished`,
+`display_settings` ([Display settings before each Play](#display-settings-before-each-play)) and `display_placement` ([Opening the game on the remembered monitor](#opening-the-game-on-the-remembered-monitor)), each with the
 operation number (except a `launch_refused` before any operation, see above); refusals, failures and not-started launches add a closed `reason`.
 `launch_started` also carries `adoption_check` (`light`, `full`, or `none` for an
 install not adopted from a folder) and `patches_incomplete` (how many patches the

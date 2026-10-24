@@ -7,6 +7,7 @@ use uuid::Uuid;
 mod adoption_tags;
 mod display;
 mod failure;
+mod game_logs;
 mod not_started;
 pub use not_started::dispatch_failed;
 mod preparation;
