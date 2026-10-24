@@ -191,6 +191,7 @@ fn native_preparation_reads_locked_owner_and_retains_exclusion() {
                 None,
                 &plan.installation.login_servers,
                 DisplayOptions::default(),
+                &[],
             )
         } else {
             prepare_native(
@@ -239,6 +240,7 @@ fn a_windowed_preference_puts_the_display_arguments_in_the_helper_request() {
         mode: crate::storage::display_options::DisplayMode::Windowed,
         width: 1600,
         height: 900,
+        ..DisplayOptions::default()
     };
     let (_, request, _ownership) =
         prepare_native(&plan, None, &plan.installation.login_servers, display).unwrap();

@@ -262,8 +262,8 @@ in; an old bundle is removed without following links, and a bundle path or
 state directory that is a link is refused. The bundle is then registered with
 `lsregister -f` so lookups by name or identifier can find it. If anything
 fails before the worker starts, Play uses the stock loader and prints the
-reason to the launcher's standard error. The environment, the 30 FPS
-`DXVK_FRAME_RATE` limit, the helper protocol and host supervision are the same
+reason to the launcher's standard error. The environment, the
+`DXVK_FRAME_RATE` limit (the player's frame cap, § The frame cap), the helper protocol and host supervision are the same
 on both paths: the host PID is still the real Wine process.
 
 `LSUIElement` matters. Every Wine process of the session shares the bundle.
@@ -446,6 +446,19 @@ setup is keyed by FNV-1a 64 over the sorted display rectangles, never by name. A
 asleep) logs one WARN `display_list_empty` on `launcher.settings`, logged again
 only after a non-empty list.
 
+### The frame cap
+
+On a Mac, `preferences.display.frame_cap` sets DXVK's limiter,
+`DXVK_FRAME_RATE` (the client has no vsync setting and nothing else bounds its
+render loop): `fps30` (the default, stored as no key, and what an older
+preferences file reads as), `fps60`, or `display`. `display` follows the
+refresh rate of the display the current setup remembers, else the main
+display. That rate is read from one display list at Play and clamped into
+30..=240; an unknown rate or an empty list gives 60. Every snapshot carries
+`frame_caps`, the caps this platform offers: all three on a Mac, and none on
+Windows, which has no limiter without a client patch and ignores the saved
+value.
+
 ### The monitor per display setup
 
 `save_display_options` takes an optional `monitor`: the `x, y, width, height`
@@ -465,9 +478,10 @@ in DPI-scaled units. The snapshot's `preferences` leaves `display_placements`
 out, and an empty list is stored as no key.
 
 The save logs `display_options_saved` on `launcher.settings` (INFO) with `mode`,
-`width`, `height` and `monitor_remembered`: true when this save stored a monitor
-for the current setup, false when it removed the entry or stored nothing. No
-field carries a rectangle or a setup key.
+`width`, `height`, `frame_cap` (`fps30`, `fps60` or `display`) and
+`monitor_remembered`: true when this save stored a monitor for the current
+setup, false when it removed the entry or stored nothing. No field carries a
+rectangle or a setup key.
 
 ## Patch policy per installation
 

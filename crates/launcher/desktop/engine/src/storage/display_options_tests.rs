@@ -10,6 +10,7 @@ fn sized(mode: DisplayMode, width: u32, height: u32) -> DisplayOptions {
         mode,
         width,
         height,
+        ..DisplayOptions::default()
     }
 }
 
@@ -351,4 +352,93 @@ fn placements_are_stored_only_when_present_and_covered_by_the_digest() {
     let digested = serde_json::to_string(&custom.digest_form()).unwrap();
     assert!(!default.contains("display_placements"));
     assert!(digested.contains("display_placements"));
+}
+
+// C-PD8 frame cap (PD-35).
+
+#[test]
+fn frame_rate_follows_the_cap_and_clamps_the_display_rate() {
+    for (cap, refresh_hz, rate) in [
+        (FrameCap::Fps30, 120, 30),
+        (FrameCap::Fps30, 0, 30),
+        // Revert proof: a fixed 30 fails this row.
+        (FrameCap::Fps60, 120, 60),
+        (FrameCap::Fps60, 0, 60),
+        (FrameCap::Display, 120, 120),
+        (FrameCap::Display, 60, 60),
+        (FrameCap::Display, 0, 60),
+        (FrameCap::Display, 360, 240),
+        (FrameCap::Display, 24, 30),
+    ] {
+        assert_eq!(
+            frame_rate(cap, refresh_hz),
+            rate,
+            "{cap:?} at {refresh_hz} Hz"
+        );
+    }
+}
+
+#[test]
+fn an_older_preferences_file_gives_todays_30_fps() {
+    // No display at all, and a display saved before the frame cap existed.
+    let with_display = OLD_FILE.replace(
+        '}',
+        r#","display":{"mode":"windowed","width":1600,"height":900}}"#,
+    );
+    for file in [OLD_FILE.to_owned(), with_display] {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("preferences.json"), &file).unwrap();
+        let state = DesktopState::open(dir.path()).unwrap();
+        let display = state.preferences().display;
+        assert_eq!(display.frame_cap, FrameCap::Fps30, "{file}");
+        assert_eq!(frame_rate(display.frame_cap, 120), 30, "{file}");
+    }
+}
+
+#[test]
+fn a_saved_frame_cap_survives_a_reopen_in_snake_case() {
+    let dir = tempfile::tempdir().unwrap();
+    let chosen = DisplayOptions {
+        frame_cap: FrameCap::Fps60,
+        ..DisplayOptions::default()
+    };
+    // Only the cap differs from the default, so the display is stored.
+    assert!(!chosen.is_default());
+    assert_eq!(chosen.effective().frame_cap, FrameCap::Fps60);
+    DesktopState::open(dir.path())
+        .unwrap()
+        .save_display_options(chosen, None, 0)
+        .unwrap();
+    let stored = std::fs::read_to_string(dir.path().join("preferences.json")).unwrap();
+    assert!(stored.contains(r#""frame_cap":"fps60""#), "{stored}");
+    let reopened = DesktopState::open(dir.path()).unwrap();
+    assert_eq!(reopened.preferences().display, chosen);
+}
+
+#[test]
+fn only_macos_offers_frame_caps() {
+    if cfg!(target_os = "macos") {
+        assert_eq!(
+            frame_caps(),
+            [FrameCap::Fps30, FrameCap::Fps60, FrameCap::Display]
+        );
+    } else {
+        assert!(frame_caps().is_empty());
+    }
+}
+
+#[test]
+fn the_display_rate_comes_from_the_remembered_display_else_the_main_one() {
+    let main = display(0, 0, 1710, 1107);
+    let side = DisplayInfo {
+        refresh_hz: 144,
+        ..display(1, 1710, 1920, 1080)
+    };
+    let setup = [main, side];
+    let mut list = Vec::new();
+    assert_eq!(launch_refresh_hz(&list, &setup), 60);
+    remember(&mut list, &setup_key(&setup), Some(rect(&side)));
+    assert_eq!(launch_refresh_hz(&list, &setup), 144);
+    // An empty list is never acted on (PD-31 ruling 1): unknown, so `Display` gives 60.
+    assert_eq!(launch_refresh_hz(&list, &[]), 0);
 }

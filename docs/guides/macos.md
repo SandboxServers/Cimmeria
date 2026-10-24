@@ -105,6 +105,13 @@ areas may be lower than under WoWSilicon. Tell us how it feels.
 On a Mac the launcher always starts the game in a window, so Cmd+Tab away and
 back works; exclusive fullscreen is not available.
 
+The game has no frame limit of its own, so on a Mac the launcher caps it. The
+default is 30 frames per second, which keeps the Mac cooler and quieter. The
+launcher's display settings also offer 60 fps, or matching the refresh rate of
+the display the game opens on (30 to 240 fps; 60 when the launcher cannot read
+the rate). The cap takes effect at the next **Play**. Windows has no frame cap
+setting.
+
 ## Step 4: log in and play
 
 1. Log in with your account and pick the server in the list.

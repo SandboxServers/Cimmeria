@@ -123,7 +123,7 @@ offer, and a default display is stored as no key. Its optional `monitor` is
 remembered per display setup ([launch.md § The monitor per display
 setup](docs/launch.md#the-monitor-per-display-setup)). Every snapshot carries
 `preferences.display` and `display_modes`, the modes this platform offers, plus
-`displays`, `display_sizes` and `display_monitor`. `save_client_options` replaces both client
+`displays`, `display_sizes`, `display_monitor` and `frame_caps` (the frame caps this platform offers; empty off macOS). `save_client_options` replaces both client
 options at once, needs the current preference revision, and is refused while the
 launcher updater or any operation other than Play is running (Play reads them
 only at launch, so a save during Play applies to the next one); it leaves the
