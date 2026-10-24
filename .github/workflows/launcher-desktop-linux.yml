@@ -1,0 +1,141 @@
+name: desktop launcher Linux build
+
+# The Linux desktop launcher: an x86-64 AppImage,
+# StargateWorlds-Launcher-linux-x86_64.AppImage, built in stages by
+# tools/launcher-release/build-desktop-linux.sh. Reusable: launcher-release.yml
+# calls it as `desktop-linux` for a release, and launcher-desktop.yml as the
+# Linux dry run on desktop-launcher PRs, so the PR runs exactly the release
+# job. Neither uploads to a release from here; launcher-release.yml's
+# publish-linux job attaches the AppImage.
+#
+# The token is read-only: this job runs npm, apt and a cargo-installed Tauri CLI.
+# The Linux launcher installs the game in-process and has no Play backend yet,
+# so unlike the macOS app it needs none of the Windows job's pieces
+# (crates/launcher/desktop/README.md, "Linux").
+#
+# Ubuntu 22.04: an AppImage runs on systems whose glibc is at least the build
+# host's, so the older runner reaches more distributions (SteamOS included).
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        description: Name of the artifact this job uploads the AppImage and .sha256 as
+        type: string
+        required: true
+      retention_days:
+        type: number
+        default: 30
+      tag:
+        description: Release tag; empty for an untagged build
+        type: string
+        default: ''
+      version:
+        description: CIMMERIA_LAUNCHER_VERSION; empty for 0.1.0
+        type: string
+        default: ''
+      epoch:
+        type: string
+        default: ''
+      build_branch:
+        type: string
+        default: ''
+      dev_manifest_key:
+        description: Compile in the development manifest key instead of the secret (dry runs only)
+        type: boolean
+        default: false
+      cache_key:
+        type: string
+        required: true
+      save_cache:
+        type: boolean
+        default: true
+    secrets:
+      LAUNCHER_MANIFEST_PUBKEY_HEX:
+        required: false
+    outputs:
+      appimage_sha256:
+        description: SHA-256 of the AppImage
+        value: ${{ jobs.build.outputs.appimage_sha256 }}
+
+permissions: {}
+
+jobs:
+  build:
+    name: Linux AppImage
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      appimage_sha256: ${{ steps.digest.outputs.sha256 }}
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      APPIMAGE: artifacts/StargateWorlds-Launcher-linux-x86_64.AppImage
+      CIMMERIA_LAUNCHER_TAG: ${{ inputs.tag }}
+      CIMMERIA_LAUNCHER_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      # Tauri's WebKitGTK prerequisites, plus clang and mold, which
+      # .cargo/config.toml names as the Linux linker, and file for verify.
+      - name: install the Linux build packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang mold file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: ./.github/actions/rust-toolchain
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+        with:
+          shared-key: ${{ inputs.cache_key }}
+          save-if: ${{ inputs.save_cache }}
+          workspaces: |
+            crates/launcher/desktop -> ../../../target/desktop
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '24'
+
+      - name: install the Tauri CLI
+        run: cargo install tauri-cli --version 2.12.1 --locked
+
+      - name: build the AppImage
+        env:
+          LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ inputs.dev_manifest_key && '197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61' || secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
+          CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ inputs.epoch }}
+          CIMMERIA_BUILD_BRANCH: ${{ inputs.build_branch }}
+          CIMMERIA_BUILD_GIT_SHA: ${{ github.sha }}
+        run: tools/launcher-release/build-desktop-linux.sh app
+
+      - name: verify the AppImage
+        run: tools/launcher-release/build-desktop-linux.sh verify
+
+      - name: package
+        run: tools/launcher-release/build-desktop-linux.sh package
+
+      - name: record the AppImage digest
+        id: digest
+        run: |
+          set -euo pipefail
+          SHA="$(sha256sum "${APPIMAGE}" | cut -d' ' -f1)"
+          [ "${SHA}" = "$(cut -d' ' -f1 "${APPIMAGE}.sha256")" ] || { echo "::error::${APPIMAGE}.sha256 does not match the AppImage"; exit 1; }
+          echo "sha256=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: upload the AppImage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: |
+            artifacts/StargateWorlds-Launcher-linux-x86_64.AppImage
+            artifacts/StargateWorlds-Launcher-linux-x86_64.AppImage.sha256
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}
+          overwrite: true

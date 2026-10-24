@@ -3,7 +3,9 @@
 use super::in_place_tests::*;
 use super::*;
 use crate::install_worker::fixtures;
+#[cfg(windows)]
 use ed25519_dalek::{Signer, SigningKey};
+#[cfg(windows)]
 use sha2::{Digest, Sha256};
 use std::io::Write;
 
@@ -205,17 +207,24 @@ fn a_crash_at_replaced_abandoned_puts_the_modified_original_back_byte_for_byte()
     assert_eq!(leftover_names(&f), 0);
 }
 
+// The fixtures below serve only the Windows test that follows them.
+#[cfg(windows)]
 /// The seed's file the folder spells in another case.
 const CASED: &str = "Working/Binaries/tool.bin";
+#[cfg(windows)]
 const CASED_BYTES: &[u8] = b"cased tool";
+#[cfg(windows)]
 /// Added by the overlay patch, so the folder has no copy of it.
 const PATCH_ADDED: &str = "Working/Binaries/added.txt";
+#[cfg(windows)]
 const PATCH_ADDED_BYTES: &[u8] = b"added by patch";
 
+#[cfg(windows)]
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+#[cfg(windows)]
 /// A release signed with the test key, whose one overlay patch is `overlay`.
 fn signed_with_overlay(seed: &[u8], overlay: &[u8]) -> VerifiedRelease {
     let body = serde_json::to_vec(&serde_json::json!({
@@ -234,6 +243,7 @@ fn signed_with_overlay(seed: &[u8], overlay: &[u8]) -> VerifiedRelease {
     crate::catalog::verify_release(&body, hex(&signature.to_bytes()).as_bytes()).unwrap()
 }
 
+#[cfg(windows)]
 /// An overlay that adds `PATCH_ADDED` and nothing else.
 fn overlay_archive() -> Vec<u8> {
     let mut out = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));

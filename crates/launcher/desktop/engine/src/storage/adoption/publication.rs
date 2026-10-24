@@ -461,7 +461,36 @@ fn rename_exclusive(source: &Path, destination: &Path) -> Result<(), Error> {
         }
         Ok(())
     }
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(target_os = "linux")]
+    {
+        use std::{ffi::CString, os::unix::ffi::OsStrExt};
+        let source =
+            CString::new(source.as_os_str().as_bytes()).map_err(|_| StorageError::UnsafeFile)?;
+        let destination = CString::new(destination.as_os_str().as_bytes())
+            .map_err(|_| StorageError::UnsafeFile)?;
+        // RENAME_NOREPLACE forbids overwriting even an empty racing destination.
+        if unsafe {
+            libc::renameat2(
+                libc::AT_FDCWD,
+                source.as_ptr(),
+                libc::AT_FDCWD,
+                destination.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        } != 0
+        {
+            let error = std::io::Error::last_os_error();
+            // A file system without it (some FUSE and network ones) answers
+            // EINVAL; refuse the configuration by name, as other hosts do,
+            // rather than as an unexplained I/O failure.
+            if matches!(error.raw_os_error(), Some(libc::EINVAL | libc::ENOSYS)) {
+                return Err(Error::UnsupportedConfiguration);
+            }
+            return Err(error.into());
+        }
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     {
         let _ = (source, destination);
         Err(Error::UnsupportedConfiguration)

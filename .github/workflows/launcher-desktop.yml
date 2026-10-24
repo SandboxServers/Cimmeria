@@ -13,9 +13,11 @@ on:
       - '.github/workflows/launcher-desktop.yml'
       - '.github/workflows/launcher-release.yml'
       - '.github/workflows/launcher-desktop-macos.yml'
+      - '.github/workflows/launcher-desktop-linux.yml'
       - '.github/workflows/launcher-desktop-windows-arm64.yml'
       - 'tools/launcher-release/build-desktop.sh'
       - 'tools/launcher-release/build-desktop-macos.sh'
+      - 'tools/launcher-release/build-desktop-linux.sh'
       - 'tools/launcher-release/publish.sh'
       - 'tools/launcher-release/stamp.sh'
       - 'tools/launcher-release/*.py'
@@ -38,9 +40,11 @@ on:
       - '.github/workflows/launcher-desktop.yml'
       - '.github/workflows/launcher-release.yml'
       - '.github/workflows/launcher-desktop-macos.yml'
+      - '.github/workflows/launcher-desktop-linux.yml'
       - '.github/workflows/launcher-desktop-windows-arm64.yml'
       - 'tools/launcher-release/build-desktop.sh'
       - 'tools/launcher-release/build-desktop-macos.sh'
+      - 'tools/launcher-release/build-desktop-linux.sh'
       - 'tools/launcher-release/publish.sh'
       - 'tools/launcher-release/stamp.sh'
       - 'tools/launcher-release/*.py'
@@ -65,14 +69,15 @@ concurrency:
 # while the repository variable CI_WINDOWS_RUNNER is `hosted`, use windows-latest.
 jobs:
   native-engine:
-    # The check names stay `native-engine (windows-latest)` / `(macos-latest)`
-    # (tools/build-lane/ship.py waits on them), so matrix.os keeps the hosted label
-    # and runs-on maps the Windows leg to the pool.
+    # The check names stay `native-engine (windows-latest)` / `(macos-latest)` /
+    # `(ubuntu-latest)` (tools/build-lane/ship.py waits on them), so matrix.os keeps
+    # the hosted label and runs-on maps the Windows leg to the pool. The Linux leg
+    # is the only build of the shell on Linux, where Install runs in-process.
     name: native-engine (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os != 'windows-latest' && matrix.os || ((github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows') }}
     timeout-minutes: 30
     env:
@@ -83,6 +88,13 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7
+      # Tauri's WebKitGTK prerequisites, plus clang and mold, which
+      # .cargo/config.toml names as the Linux linker.
+      - name: Install Linux build packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang mold libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - uses: ./.github/actions/rust-toolchain
         with:
           components: rustfmt, clippy
@@ -364,11 +376,31 @@ jobs:
       cache_key: launcher-release-desktop-macos-dry-run
       save_cache: ${{ github.ref == 'refs/heads/main' }}
 
+  # launcher-release.yml's desktop-linux job, before release time: the same
+  # reusable workflow builds, verifies and packages the AppImage. A fixed
+  # dry-run identity is stamped in so verify checks the embedded tag and
+  # version; no manifest secret (the development key), nothing published.
+  release-dry-run-linux:
+    name: desktop release build dry run (Linux)
+    permissions:
+      contents: read
+    uses: ./.github/workflows/launcher-desktop-linux.yml
+    with:
+      artifact_name: desktop-launcher-linux-dry-run
+      retention_days: 7
+      tag: launcher-19700101-0000000
+      version: 1970.1.101
+      epoch: '0'
+      dev_manifest_key: true
+      cache_key: launcher-release-desktop-linux-dry-run
+      save_cache: ${{ github.ref == 'refs/heads/main' }}
+
   # The release's shell scripts, which the jobs above do not all run:
   # shellcheck on every one, then stamp.sh and publish.sh against a stub `gh`
   # (tools/launcher-release/test-release-scripts.sh): the day's version rules,
   # the digest checks, release notes that converge in any re-run order, and
-  # launcher-current notes that link the macOS zip only while it is there.
+  # launcher-current notes that link the macOS zip and the Linux AppImage only
+# while they are there.
   release-scripts:
     name: release scripts (shellcheck and stubbed tests)
     runs-on: ubuntu-latest

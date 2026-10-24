@@ -5,8 +5,8 @@
 # (crates/launcher/desktop/docs/release.md, "Jobs"). Every command is safe to
 # re-run, in any order: uploads replace this release's own assets (--clobber),
 # and the dated release's notes are always rewritten as its base text plus the
-# macOS paragraph while the release holds the macOS zip, so any sequence of
-# runs and re-runs ends with the same notes.
+# macOS and Linux paragraphs while the release holds the macOS zip and the
+# Linux AppImage, so any sequence of runs and re-runs ends with the same notes.
 #
 # Usage: tools/launcher-release/publish.sh <command> [args]
 #
@@ -21,10 +21,14 @@
 #                    their .sha256 and .zip.sig, and latest.json, the feed last
 #   macos            attach the macOS zip and its .sha256 to $TAG
 #   macos-current    replace the macOS zip and its .sha256 on launcher-current
+#   linux            attach the Linux AppImage and its .sha256 to $TAG
+#   linux-current    replace the Linux AppImage and its .sha256 on
+#                    launcher-current
 #   current-notes    rewrite launcher-current's notes from its assets
 #
-# Environment: TAG; VERSION for dated and macos-current; TRIGGERING_PR (optional) for dated;
-# GH_TOKEN, GH_REPO and the GITHUB_* variables Actions sets.
+# Environment: TAG; VERSION for dated, macos-current and linux-current;
+# TRIGGERING_PR (optional) for dated; GH_TOKEN, GH_REPO and the GITHUB_*
+# variables Actions sets.
 set -euo pipefail
 
 ZIP_NAME=StargateWorlds-Launcher-windows-x64.zip
@@ -33,12 +37,16 @@ ZIP="artifacts/$ZIP_NAME"
 MAC_ZIP="artifacts/$MAC_ZIP_NAME"
 ARM_ZIP_NAME=StargateWorlds-Launcher-windows-arm64.zip
 ARM_ZIP="artifacts/$ARM_ZIP_NAME"
+LINUX_NAME=StargateWorlds-Launcher-linux-x86_64.AppImage
+LINUX="artifacts/$LINUX_NAME"
 CURRENT=launcher-current
 TAG="${TAG:?TAG is not set}"
 STABLE="https://github.com/${GITHUB_REPOSITORY}/releases/download/$CURRENT"
 # The macOS paragraph of the dated release's notes is one line starting with
 # this marker; nothing else in the notes contains it.
 MAC_MARKER='**macOS (Apple silicon):**'
+# The same for the Linux paragraph.
+LINUX_MARKER='**Linux (x86-64, Steam Deck):**'
 
 die() { echo "::error::$*" >&2; exit 1; }
 
@@ -58,17 +66,17 @@ check() {
 # One asset name per line.
 assets_of() { gh release view "$1" --json assets --jq '.assets[].name'; }
 
-# A release's notes without the macOS paragraph and the blank lines that
-# trailed it.
+# A release's notes without the macOS and Linux paragraphs and the blank lines
+# that trailed them.
 base_of() {
   local body
   body="$(gh release view "$1" --json body --jq .body)"
-  body="$(grep -vF -e "$MAC_MARKER" <<<"$body" || true)"
+  body="$(grep -vF -e "$MAC_MARKER" -e "$LINUX_MARKER" <<<"$body" || true)"
   printf '%s' "${body%"${body##*[![:space:]]}"}"
 }
 
-# Write the dated release's notes: the base, then the macOS paragraph only
-# while the macOS zip is on the release.
+# Write the dated release's notes: the base, then the macOS and Linux
+# paragraphs, each only while its file is on the release.
 dated_notes() {
   local base="$1" assets notes
   assets="$(assets_of "$TAG")"
@@ -78,12 +86,17 @@ dated_notes() {
 
 $MAC_MARKER download \`${MAC_ZIP_NAME}\`, unzip it and drag \"Cimmeria Launcher\" to Applications in Finder before opening it. It is signed ad hoc, not by a registered Apple developer, so macOS blocks the first open: open System Settings > Privacy & Security and click Open Anyway, once. It needs Rosetta 2, and the first install downloads the Wine runtime (64 MB) from the WoWSilicon project. It does not update itself: download each new release from ${STABLE}/${MAC_ZIP_NAME}."
   fi
+  if grep -qxF "$LINUX_NAME" <<<"$assets"; then
+    notes="$notes
+
+$LINUX_MARKER download \`${LINUX_NAME}\`, make it executable (\`chmod +x\`, or Properties > Permissions > Is executable on the Steam Deck's desktop) and run it. It installs the game and resumes an interrupted install. Play, Repair, Update and PhysX setup are not available on Linux yet. It does not update itself: download each new release from ${STABLE}/${LINUX_NAME}."
+  fi
   gh release edit "$TAG" --notes "$notes"
 }
 
-# launcher-current's notes name the macOS zip only while it is there, so the
-# link they give never 404s. The macOS zip there may be an earlier release's
-# when this release's macOS build failed.
+# launcher-current's notes name the macOS zip and the Linux AppImage only
+# while they are there, so the links they give never 404. Either may be an
+# earlier release's when this release's build of it failed.
 current_notes() {
   local assets notes
   assets="$(assets_of "$CURRENT")"
@@ -91,6 +104,9 @@ current_notes() {
   if grep -qxF "$ARM_ZIP_NAME" <<<"$assets"; then notes="$notes Windows on Arm: download ${ARM_ZIP_NAME}."; fi
   if grep -qxF "$MAC_ZIP_NAME" <<<"$assets"; then
     notes="$notes macOS (Apple silicon): download ${MAC_ZIP_NAME}."
+  fi
+  if grep -qxF "$LINUX_NAME" <<<"$assets"; then
+    notes="$notes Linux (x86-64, Steam Deck): download ${LINUX_NAME}."
   fi
   notes="$notes The desktop launcher's updater reads latest.json from here."
   gh release edit "$CURRENT" --latest=false --notes "$notes"
@@ -172,22 +188,34 @@ macos() {
   dated_notes "$(base_of "$TAG")"
 }
 
-macos_current() {
-  local file status
+# Put one platform's file and its .sha256 on launcher-current, unless
+# launcher-current already holds a newer release (a retried older build must
+# not replace it). Reports refreshed or skipped_older in $GITHUB_OUTPUT.
+platform_current() {
+  local label="$1" artifact="$2" file status
   mkdir -p artifacts/previous-feed
   gh release download "$CURRENT" --pattern latest.json --dir artifacts/previous-feed --clobber
-  status="$(python "$(dirname "$0")/release_identity.py" macos-current "${VERSION:?macos-current needs VERSION}" artifacts/previous-feed/latest.json)"
+  status="$(python "$(dirname "$0")/release_identity.py" macos-current "${VERSION:?$label-current needs VERSION}" artifacts/previous-feed/latest.json)"
   if [ "$status" = skipped_older ]; then
-    echo "launcher-current is newer than $VERSION; keeping its macOS assets and notes"
+    echo "launcher-current is newer than $VERSION; keeping its $label assets and notes"
     if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "status=$status" >> "$GITHUB_OUTPUT"; fi
     return
   fi
-  for file in "$MAC_ZIP" "$MAC_ZIP.sha256"; do
+  for file in "$artifact" "$artifact.sha256"; do
     gh release upload "$CURRENT" "$file" --clobber
   done
   current_notes
   if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "status=$status" >> "$GITHUB_OUTPUT"; fi
 }
+
+macos_current() { platform_current macOS "$MAC_ZIP"; }
+
+linux() {
+  gh release upload "$TAG" --clobber "$LINUX" "$LINUX.sha256"
+  dated_notes "$(base_of "$TAG")"
+}
+
+linux_current() { platform_current Linux "$LINUX"; }
 
 case "${1:-}" in
   check) shift; check "$@" ;;
@@ -195,6 +223,8 @@ case "${1:-}" in
   current) current ;;
   macos) macos ;;
   macos-current) macos_current ;;
+  linux) linux ;;
+  linux-current) linux_current ;;
   current-notes) current_notes ;;
-  *) sed -n '2,27p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,31p' "$0" >&2; exit 2 ;;
 esac

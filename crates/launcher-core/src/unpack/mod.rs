@@ -16,6 +16,9 @@
 //! Everything here is blocking file I/O; callers run it on a blocking thread.
 
 mod cab_set;
+// The portable expander runs off Windows; Windows tests compare it with FDI.
+#[cfg(any(not(windows), test))]
+mod cab_portable;
 mod dos_time;
 mod entry_inventory;
 #[cfg(windows)]
@@ -348,6 +351,92 @@ mod tests {
             crate::install_layout::sgw_exe(&dest),
             dest.join("Working").join("binaries").join("SGW.exe")
         );
+    }
+
+    // The same client shape on every host, from the portable cabinet writer.
+    // Bug shape: off Windows, a seed holding the installer's cabinet set
+    // failed with "needs Windows" instead of installing. On Windows this
+    // runs through FDI, which also checks the writer's cabinets.
+    #[test]
+    fn installer_rar_from_portable_cabinets_expands_on_every_host() {
+        use super::cab_portable::fixture::{write_cab_set, CabOptions};
+        let dir = tempfile::tempdir().unwrap();
+        let cab_dir = dir.path().join("cabs");
+        std::fs::create_dir_all(&cab_dir).unwrap();
+        let sgw = super::test_fixtures::incompressible(7, 150_000);
+        let ini: Vec<u8> = b"[Core.System]\r\nPaths=..\\SGWGame\\CookedPC\r\n"
+            .iter()
+            .copied()
+            .cycle()
+            .take(40_000)
+            .collect();
+        let files = vec![
+            ("Working\\binaries\\SGW.exe", sgw.clone()),
+            ("Working\\SGWGame\\Config\\DefaultEngine.ini", ini.clone()),
+            ("Common\\res\\a.def", b"<def/>".to_vec()),
+        ];
+        let set = write_cab_set(&cab_dir, &files, CabOptions::default());
+        assert!(set.cabinets.len() >= 2, "{:?}", set.cabinets);
+
+        let mut entries: Vec<(String, Vec<u8>)> = vec![
+            ("SetupQA.exe".into(), b"MZ".to_vec()),
+            (
+                "Data/Prerequisites/PhysX/PhysX_7.11.13_SystemSoftware.exe".into(),
+                b"inert vendor fixture".to_vec(),
+            ),
+        ];
+        for name in set.cabinets.iter().map(String::as_str).chain(["DATA.INF"]) {
+            entries.push((
+                format!("Data\\{name}"),
+                std::fs::read(cab_dir.join(name)).unwrap(),
+            ));
+        }
+        let refs: Vec<(&str, &[u8])> = entries
+            .iter()
+            .map(|(n, d)| (n.as_str(), d.as_slice()))
+            .collect();
+        let archive = dir.path().join("client.rar");
+        write_stored_rar4(&archive, &refs);
+
+        let dest = dir.path().join("install");
+        let (sink, _rx) = sink();
+        unpack(&archive, &dest, &sink).unwrap();
+        assert_eq!(
+            crate::install_layout::sgw_exe(&dest),
+            dest.join("Working").join("binaries").join("SGW.exe")
+        );
+        assert_eq!(
+            std::fs::read(dest.join("Working").join("binaries").join("SGW.exe")).unwrap(),
+            sgw
+        );
+        assert_eq!(
+            std::fs::read(
+                dest.join("Working")
+                    .join("SGWGame")
+                    .join("Config")
+                    .join("DefaultEngine.ini")
+            )
+            .unwrap(),
+            ini
+        );
+        assert_eq!(
+            std::fs::metadata(dest.join("Common").join("res").join("a.def"))
+                .unwrap()
+                .modified()
+                .unwrap(),
+            super::test_fixtures::fixture_mtime()
+        );
+        assert_eq!(
+            std::fs::read(
+                dest.join(prerequisites::DIRECTORY)
+                    .join("PhysX/PhysX_7.11.13_SystemSoftware.exe")
+            )
+            .unwrap(),
+            b"inert vendor fixture"
+        );
+        assert!(!dest.join("SetupQA.exe").exists());
+        assert!(!dest.join("Data").exists());
+        assert!(!dest.join(STAGING_DIR).exists());
     }
 
     // Manual check against the real archive.org client RAR (4.1 GB, about
