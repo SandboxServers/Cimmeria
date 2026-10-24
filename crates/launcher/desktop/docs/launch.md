@@ -404,6 +404,24 @@ It logs one `display_settings` event on `launcher.launch` with `operation`,
 were `written` or `unchanged`, and warn with
 `failure_code = "display_settings_not_applied"` otherwise. No field carries a path.
 
+### Window sizes that fit a display
+
+Every snapshot lists the active displays (`displays`, engine `display_targets`:
+CoreGraphics on a Mac, `EnumDisplayMonitors` on Windows; empty when the list
+fails) and, per display, the sizes that fit it (`display_sizes`). Positions and
+sizes are in the units the game sees: points on a Mac (Wine's `RetinaMode` is
+off), and on Windows the monitor's pixels divided by its effective scale
+(`GetDpiForMonitor`), rounded to the nearest unit, because SGW.exe declares no
+DPI awareness and Windows scales its window. A 2560x1440 monitor at 150% is
+1707x960 and is offered sizes up to 1280x800. The
+size rule: a size from 1024x768, 1280x720, 1280x800, 1440x900, 1600x900,
+1680x1050, 1920x1080 and 2560x1440 fits when its width is at most the display's
+and its height plus an 80-point frame margin (menu bar or taskbar, and the title
+bar) is at most the display's. 1024x768 always stays on the list. A display
+setup is keyed by FNV-1a 64 over the sorted display rectangles, never by name. An empty list (a failure, or a Mac whose displays are
+asleep) logs one WARN `display_list_empty` on `launcher.settings`, logged again
+only after a non-empty list.
+
 ## Patch policy per installation
 
 Native code decides whether Play injects client patches. The renderer cannot.

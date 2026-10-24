@@ -1,4 +1,5 @@
 //! Small versioned command surface shared by Tauri and the logic-UAT harness.
+use crate::display_targets::{self, DisplayInfo};
 use crate::launcher_compatibility::Identity;
 use crate::storage::display_options::{self, DisplayMode, DisplayOptions};
 use crate::storage::settings_events;
@@ -50,6 +51,10 @@ pub struct NativeSnapshot {
     pub setup_diagnostics_endpoint: bool,
     /// The display modes this platform offers (`display_options::allowed_modes`).
     pub display_modes: Vec<DisplayMode>,
+    /// The active displays, in the units the game sees (C-PD8).
+    pub displays: Vec<DisplayInfo>,
+    /// Per display, the window sizes that fit it (`display_targets::sizes_for`).
+    pub display_sizes: Vec<Vec<[u32; 2]>>,
 }
 
 /// Storage omits a default `display` (R10); the snapshot always carries it, so
@@ -109,6 +114,7 @@ impl LauncherBuild {
 
 impl DesktopState {
     pub fn inspect(&self) -> NativeSnapshot {
+        let displays = display_targets::list(); // once per snapshot; cheap
         NativeSnapshot {
             schema_version: 1,
             operation: self.operations().snapshot().clone(),
@@ -118,6 +124,8 @@ impl DesktopState {
             launcher: LauncherBuild::current(),
             setup_diagnostics_endpoint: self.summary_endpoint_configured(),
             display_modes: display_options::allowed_modes().to_vec(),
+            display_sizes: displays.iter().map(display_targets::size_pairs).collect(),
+            displays,
         }
     }
 
