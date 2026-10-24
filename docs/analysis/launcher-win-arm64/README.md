@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Launcher contributors, the orchestrator and the owner
-> **Last updated:** 2026-10-24
+> **Last updated:** 2026-10-24 (closed out; WA-U1..U3 owed)
 > **Companions:** [Work packets](work-packets.md), [resume card](RESUME.md), [release.md](../../../crates/launcher/desktop/docs/release.md), [updater.md](../../../crates/launcher/desktop/docs/updater.md)
 
 Every launcher release ships a native Windows arm64 desktop launcher beside the x64 one, and each architecture updates itself from the same signed `latest.json`. The owner confirmed the launcher works on their Windows on Arm laptop. Prefix `WA`. Designed 2026-10-24 against `main` `2019922fe`. Line numbers below are from that commit; every packet re-greps its anchors.
@@ -43,24 +43,29 @@ Every launcher release ships a native Windows arm64 desktop launcher beside the 
 
 **Owner decisions:** none block this campaign. The only owner call is optional: whether to make the arm64 dry run (and the existing x64 dry run) a required check (D-WA7).
 
+## Verified and not verified
+
+- **Verified:** the launcher app itself runs on the owner's arm64 Windows laptop.
+- **Not verified:** the release pipeline (hosted `windows-11-arm` build, two-zip `latest.json`, `windows-aarch64` updater pick) has not been proved by a real release. WA-U1 to WA-U3 are owed; WA-U2 is the first real test of the release wiring (F13).
+
 ## Packets
 
 Wave 1 has six packets and ships as **one PR** from the integration worktree `lwa-integration` (branch `launcher-win-arm64/integration`). Merge order into it: WA-01, WA-02, WA-03, WA-04, WA-05, WA-06. That PR's CI holds the first real arm64 compile; if it fails, the orchestrator opens a fix packet from the failed job's log.
 
 | ID | Title | Agent | Depends | Status |
 |---|---|---|---|---|
-| WA-01 | Engine: two Windows platforms, feed builder and checker | packet-coder | - | Ready |
-| WA-02 | `release_feed` CLI, example tests and `build-desktop.sh` arch rows | packet-coder | WA-01 | BlockedDependency |
-| WA-03 | `publish.sh`: both Windows zips | packet-coder | - | Ready |
-| WA-04 | Reusable arm64 workflow and the release jobs | packet-coder | - | Ready |
-| WA-05 | PR dry run: arm64 build and the two-zip feed job | packet-coder | - | Ready |
-| WA-06 | Docs | documentation-writer | - | Ready |
-| WA-07 | Close-out: status docs, unified UAT, retire | documentation-writer | wave PR merged, campaign review `ship` | BlockedDependency |
-| WA-U1 | Owner: the PR's arm64 dry-run zip on the Arm laptop | owner | wave PR CI green | BlockedDependency |
-| WA-U2 | Owner: first release, install and Play on Arm | owner | first release after merge | BlockedDependency |
-| WA-U3 | Owner: second release, self-update on arm64 and on x64-on-Arm | owner | a second release | BlockedDependency |
-| WA-F1 | Follow-up: bootstrap installer and `setup.ps1` pick the arm64 zip on Arm | later campaign | WA-U2 | BlockedDependency |
-| WA-F2 | Follow-up: split the over-cap implementation ledger | later docs packet | - | BlockedDependency |
+| WA-01 | Engine: two Windows platforms, feed builder and checker | packet-coder | - | Integrated (PR #2002) |
+| WA-02 | `release_feed` CLI, example tests and `build-desktop.sh` arch rows | packet-coder | WA-01 | Integrated (PR #2002) |
+| WA-03 | `publish.sh`: both Windows zips | packet-coder | - | Integrated (PR #2002) |
+| WA-04 | Reusable arm64 workflow and the release jobs | packet-coder | - | Integrated (PR #2002) |
+| WA-05 | PR dry run: arm64 build and the two-zip feed job | packet-coder | - | Integrated (PR #2002) |
+| WA-06 | Docs | documentation-writer | - | Integrated (PR #2002) |
+| WA-07 | Close-out: status docs, unified UAT, retire | documentation-writer | wave PR merged, campaign review `ship` | Done (this docs PR) |
+| WA-U1 | Owner: the PR's arm64 dry-run zip on the Arm laptop | owner | wave PR CI green | UATPending (owner) |
+| WA-U2 | Owner: first release, install and Play on Arm | owner | first release after merge | UATPending (owner) |
+| WA-U3 | Owner: second release, self-update on arm64 and on x64-on-Arm | owner | a second release | UATPending (owner) |
+| WA-F1 | Follow-up: bootstrap installer and `setup.ps1` pick the arm64 zip on Arm | later campaign | WA-U2 | Follow-up (open) |
+| WA-F2 | Follow-up: split the over-cap implementation ledger | later docs packet | - | Follow-up (open) |
 
 ### Owner UAT (no lab use)
 
