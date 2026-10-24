@@ -65,15 +65,25 @@ fn telemetry_is_injected_after_the_patches_and_only_with_its_session_marker() {
     let marker = game.join("Working/Binaries/sessions/current-session.json");
 
     // No session (the server gave none): the DLL stays out and nothing is written.
-    let (_, request, ownership) =
-        prepare_native(&plan, None, &plan.installation.login_servers).unwrap();
+    let (_, request, ownership) = prepare_native(
+        &plan,
+        None,
+        &plan.installation.login_servers,
+        DisplayOptions::default(),
+    )
+    .unwrap();
     assert_eq!(request.dlls, [patches.path()]);
     assert!(!marker.exists());
     drop(ownership);
 
     let session = crate::game_telemetry::Session::fixture();
-    let (_, request, ownership) =
-        prepare_native(&plan, Some(&session), &plan.installation.login_servers).unwrap();
+    let (_, request, ownership) = prepare_native(
+        &plan,
+        Some(&session),
+        &plan.installation.login_servers,
+        DisplayOptions::default(),
+    )
+    .unwrap();
     assert_eq!(request.dlls, [patches.path(), telemetry.path()]);
     let written: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&marker).unwrap()).unwrap();
@@ -85,8 +95,13 @@ fn telemetry_is_injected_after_the_patches_and_only_with_its_session_marker() {
     // A plan that does not carry the DLL ignores a session it is handed.
     plan.resources.client_telemetry = None;
     std::fs::remove_file(&marker).unwrap();
-    let (_, request, _ownership) =
-        prepare_native(&plan, Some(&session), &plan.installation.login_servers).unwrap();
+    let (_, request, _ownership) = prepare_native(
+        &plan,
+        Some(&session),
+        &plan.installation.login_servers,
+        DisplayOptions::default(),
+    )
+    .unwrap();
     assert_eq!(request.dlls, [patches.path()]);
     assert!(!marker.exists());
 }
@@ -104,8 +119,13 @@ fn a_session_marker_is_never_written_through_a_link_out_of_the_game() {
     std::fs::create_dir(&outside).unwrap();
     std::os::unix::fs::symlink(&outside, game.join("Working/Binaries/sessions")).unwrap();
     let session = crate::game_telemetry::Session::fixture();
-    let (_, request, _ownership) =
-        prepare_native(&plan, Some(&session), &plan.installation.login_servers).unwrap();
+    let (_, request, _ownership) = prepare_native(
+        &plan,
+        Some(&session),
+        &plan.installation.login_servers,
+        DisplayOptions::default(),
+    )
+    .unwrap();
     assert!(request.dlls.is_empty(), "no marker, so no DLL");
     assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
 }
@@ -119,12 +139,33 @@ fn native_preparation_reads_locked_owner_and_retains_exclusion() {
 
     // Windows exercises the dispatch preparation entry point; other hosts
     // exercise the same native preparation without enabling native dispatch.
-    let prepared = if cfg!(windows) {
-        prepare(&plan, root.path(), None, &plan.installation.login_servers)
-    } else {
-        prepare_native(&plan, None, &plan.installation.login_servers)
-    };
+    let (prepared, events) = crate::test_capture::capture(|| {
+        if cfg!(windows) {
+            prepare(
+                &plan,
+                root.path(),
+                None,
+                &plan.installation.login_servers,
+                DisplayOptions::default(),
+            )
+        } else {
+            prepare_native(
+                &plan,
+                None,
+                &plan.installation.login_servers,
+                DisplayOptions::default(),
+            )
+        }
+    });
     let (command, request, ownership) = prepared.unwrap();
+    let display: Vec<_> = events
+        .iter()
+        .filter(|e| e.field("event") == Some("display_settings"))
+        .collect();
+    assert_eq!(display.len(), 1, "{events:?}");
+    assert_eq!(display[0].target, "launcher.launch");
+    assert_eq!(display[0].field("saved_options"), Some("missing"));
+    assert_eq!(display[0].field("engine_ini"), Some("missing"));
     assert_eq!(request.operation_id, plan.id);
     assert_eq!(request.exe, exe);
     assert_eq!(command.directory, game.join("Working/Binaries"));
@@ -170,7 +211,8 @@ fn play_writes_the_saved_login_servers_and_not_the_default() {
     assert_eq!(servers, saved);
     // Not adopted, so the settings view is not told of a kept list.
     assert_eq!(state.inspect().adopted_login_servers, None);
-    let (_, _, _ownership) = prepare_native(&plan, None, &servers).unwrap();
+    let (_, _, _ownership) =
+        prepare_native(&plan, None, &servers, DisplayOptions::default()).unwrap();
     let written = std::fs::read_to_string(crate::client_setup::login_servers::path(&game)).unwrap();
     assert!(written.contains(r#"LoginMod.servers["Home"] = "http://home.example:8081""#));
     assert!(written.contains(r#"LoginMod.servers["Lab"] = "https://lab.example:8081""#));

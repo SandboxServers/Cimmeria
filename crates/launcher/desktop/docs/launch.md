@@ -357,6 +357,36 @@ The display distinguishes preparation, process start, early/normal exit and
 unknown. No message claims login or world entry from process start or zero exit.
 Launcher summary consent remains independent and is not changed by Play.
 
+## Display settings before each Play
+
+The launcher owns the game's display mode (owner D3, D-PD16). Before each Play,
+after the login servers are resolved and before the launch helper command is built,
+it writes the saved display choice (`DisplayOptions::effective()`: always a
+window on a Mac, the size clamped into range; windowed 1024x768 when nothing
+was saved) into the client profile, `<Documents>/My Games/Firesky/SGWGame/`.
+On Windows that is the player's Documents folder; on a Mac it is the one user
+folder other than `Public` under the Wine prefix's `drive_c/users`, and it must
+stay inside the prefix.
+
+| Mode | `SavedSystemOptions.xml` | `Config/SGWEngine.ini` `[WinDrv.WindowsClient]` | Helper arguments (PD-25) |
+|---|---|---|---|
+| `windowed` | `windowedMode` `valueBool="true"` | `StartupFullscreen=False`, `StartupResolutionX=<width>`, `StartupResolutionY=<height>` | `-windowed`, `ResX=<width>`, `ResY=<height>` |
+| `fullscreen` (Windows only) | `windowedMode` `valueBool="false"`; `resolution` untouched | `StartupFullscreen=True`; size untouched | none |
+
+A display change made in the game's own options lasts one session: the next
+Play writes the launcher's choice again. The step never creates either file or
+adds a missing key, never touches another ini section (`[IniVersion]` included)
+or the chain files under the game folder, keeps every other byte and the line
+endings, skips a file that is not UTF-8, writes atomically (temp file in the
+same folder, then rename) only when the content changes, and refuses a
+read-only file. It is best effort: it never fails the launch.
+
+It logs one `display_settings` event on `launcher.launch` with `operation`,
+`mode` and, per file, `saved_options` and `engine_ini` (`written`, `unchanged`,
+`missing`, `key_missing`, `unreadable` or `failed`). It is info when both files
+were `written` or `unchanged`, and warn with
+`failure_code = "display_settings_not_applied"` otherwise. No field carries a path.
+
 ## Patch policy per installation
 
 Native code decides whether Play injects client patches. The renderer cannot.
@@ -525,7 +555,8 @@ target per subsystem: `launcher.startup`, `launcher.crash`, `launcher.update`,
 (`launch_refused`) and `launch_not_started` are warn too. Wire rows use the same name with
 a `client.` prefix (`client.launcher.install`). The full subsystem table is in
 [observability.md](../../../../docs/architecture/observability.md). `launcher.launch` carries `launch_refused`, `launch_started`, `launch_not_started`,
-`launch_failed`, `game_started`, `game_exited` and `launch_finished`, each with the
+`launch_failed`, `game_started`, `game_exited`, `launch_finished` and
+`display_settings` ([Display settings before each Play](#display-settings-before-each-play)), each with the
 operation number (except a `launch_refused` before any operation, see above); refusals, failures and not-started launches add a closed `reason`.
 `launch_started` also carries `adoption_check` (`light`, `full`, or `none` for an
 install not adopted from a folder) and `patches_incomplete` (how many patches the

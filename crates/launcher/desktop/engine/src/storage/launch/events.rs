@@ -209,6 +209,26 @@ pub(crate) fn game_telemetry_record_failed(id: Uuid) {
     );
 }
 
+/// The display step before Play (C-PD7): each file's closed outcome. WARN with
+/// `failure_code` unless both were written or already right; Play goes on.
+pub(crate) fn display_settings(
+    id: Uuid,
+    mode: &'static str,
+    saved_options: &'static str,
+    engine_ini: &'static str,
+) {
+    let operation = operation_numbers::number(id);
+    let applied = |code: &str| matches!(code, "written" | "unchanged");
+    if applied(saved_options) && applied(engine_ini) {
+        tracing::info!(target: "launcher.launch", event = "display_settings", operation, mode,
+            saved_options, engine_ini, "launch: display settings applied");
+    } else {
+        tracing::warn!(target: "launcher.launch", event = "display_settings", operation, mode,
+            saved_options, engine_ini, failure_code = "display_settings_not_applied",
+            "launch: display settings not applied; the profile file was missing or not writable; the game starts anyway");
+    }
+}
+
 /// The launch helper did not stop after a kill; `error_kind` is a closed code.
 pub(crate) fn helper_stop_failed(error_kind: &'static str) {
     tracing::warn!(
