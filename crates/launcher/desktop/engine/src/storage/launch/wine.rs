@@ -55,6 +55,7 @@ pub(super) fn prepare(
             .chain(telemetry)
             .map(|p| guest(p.path()))
             .collect::<Result<_, _>>()?,
+        args: super::display::arguments(display),
     };
     let spec = HelperCommand {
         executable: mac_wine::app_identity::loader(&resources.runtime, state_root),

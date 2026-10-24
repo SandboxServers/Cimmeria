@@ -397,6 +397,7 @@ fn prepare_native(
             .chain(telemetry)
             .map(|p| p.path().to_path_buf())
             .collect(),
+        args: display::arguments(display),
     };
     let environment: std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString> = [
         "SystemRoot",

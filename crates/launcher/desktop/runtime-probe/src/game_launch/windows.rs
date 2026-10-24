@@ -4,8 +4,9 @@ use super::*;
 use cimmeria_client_launch::{
     inject::{inject_dll, InjectError},
     launch::strip_verbatim,
-    process::create_process_suspended,
+    process::create_process_suspended_with_args,
 };
+use std::ffi::OsString;
 use std::io::{Read, Write};
 
 /// The game's exe and working directory, without the verbatim prefix.
@@ -58,6 +59,7 @@ pub fn run() -> Result<(), &'static str> {
             .dlls
             .iter()
             .any(|p| !p.is_absolute() || !p.is_file())
+        || !valid_args(&request.args)
     {
         return emit(Event::NotStarted {
             stage: Some(Stage::Request),
@@ -65,7 +67,9 @@ pub fn run() -> Result<(), &'static str> {
         });
     }
     let (exe, directory) = game_paths(&request);
-    let suspended = match create_process_suspended(&exe, Some(&directory)) {
+    // An empty list gives the same command line as before: the bare exe.
+    let args: Vec<OsString> = request.args.iter().map(OsString::from).collect();
+    let suspended = match create_process_suspended_with_args(&exe, &args, Some(&directory)) {
         Ok(process) => process,
         Err(e) => {
             return emit(Event::NotStarted {
@@ -118,6 +122,7 @@ mod tests {
             exe: exe.into(),
             directory: directory.into(),
             dlls: Vec::new(),
+            args: Vec::new(),
         }
     }
 
