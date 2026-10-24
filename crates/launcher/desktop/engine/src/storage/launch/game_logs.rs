@@ -1,7 +1,7 @@
 //! Per-launch game logs (PD-28, D-PD17): Wine's stderr and DXVK's logs for one
 //! Play, under `state/logs/game/<operation>/`. They contain local paths, so they
-//! stay on this computer: the debug log upload reads only the top-level
-//! `launcher.*.log` files, never this folder.
+//! stay on this computer: the debug log upload reads only `launcher.*.log` in
+//! the app-data `logs/` folder (a sibling of `state/`), never this folder.
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;

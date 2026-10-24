@@ -203,8 +203,9 @@ the new one and the 4 newest others by folder mtime. If the folder can't be
 created, Play starts without logs and with `WINEDEBUG=-all`, as before.
 
 These logs contain local paths, so they stay on the computer: the debug log
-upload reads only the top-level `launcher.*.log` files and the game's own logs,
-never `logs/game/`. Windows Play is unchanged; its helper's stderr is discarded.
+upload reads only the `launcher.*.log` files in the app-data `logs/` folder (a
+sibling of `state/`, not this one) and the game's own logs, never
+`state/logs/game/`. Windows Play is unchanged; its helper's stderr is discarded.
 
 ## Optional Mac application identity for the game window
 
