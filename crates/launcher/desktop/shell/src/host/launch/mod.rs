@@ -96,10 +96,10 @@ impl NativeHost {
         {
             // Serialize admission and dispatch, including identical simultaneous retries.
             let mut worker = self.launch_worker.lock().map_err(|_| JobError::Io)?;
-            let bundled = self
-                .launch_resources
-                .clone()
-                .ok_or(JobError::PlatformUnavailable)?;
+            let Some(bundled) = self.launch_resources.clone() else {
+                launch::events::launch_refused_before_operation("resources_unavailable");
+                return Err(JobError::PlatformUnavailable);
+            };
             let admission = {
                 // Dispatch and its failure path lock the store themselves, so this
                 // guard must not outlive admission.
@@ -112,9 +112,10 @@ impl NativeHost {
                     tracing::warn!(target:"launcher.launch",event="prerequisites_missing",directx=missing.contains(&"directx"),physx=missing.contains(&"physx"),"Play refused: required game components are missing");
                     return Err(JobError::PrerequisitesMissing);
                 }
-                let resources = owner
-                    .resolve_play_resources(bundled)?
-                    .ok_or(JobError::PlatformUnavailable)?;
+                let Some(resources) = owner.resolve_play_resources(bundled)? else {
+                    launch::events::launch_refused_before_operation("resources_unresolved");
+                    return Err(JobError::PlatformUnavailable);
+                };
                 owner.admit_launch_with_updater(
                     operation_id,
                     operation_revision,
@@ -126,6 +127,11 @@ impl NativeHost {
             if admission.dispatch {
                 match launch::dispatch(store.clone(), operation_id) {
                     Ok(value) => *worker = Some(value),
+                    // A dispatch that failed before anything was recorded ends
+                    // Failed with its reason; anything else stays uncertain.
+                    Err(error) if launch::dispatch_failed(&store, operation_id, &error) => {
+                        return Err(error.into());
+                    }
                     Err(error) => {
                         if let Ok(mut state) = store.lock() {
                             if let Ok(operations) = state.operations_mut() {

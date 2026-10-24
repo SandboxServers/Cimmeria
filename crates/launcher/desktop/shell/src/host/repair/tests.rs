@@ -121,6 +121,13 @@ async fn missing_game_identity_survives_reopen_and_explicit_abandonment() {
         .unwrap()
         .plan;
     assert!(!plan.original_present);
+    // A claimed work folder: without it, start-up fails the unstarted repair (PD-03).
+    std::fs::create_dir(plan.work_directory()).unwrap();
+    std::fs::write(
+        plan.work_directory().join("owner.json"),
+        serde_json::to_vec(&plan).unwrap(),
+    )
+    .unwrap();
     let path = host.root.clone();
     let helper = host.helper.clone();
     drop(store);
@@ -173,6 +180,26 @@ async fn missing_game_identity_survives_reopen_and_explicit_abandonment() {
     assert!(!plan.stage().exists());
     assert!(!plan.backup().exists());
 }
+#[cfg(target_os = "macos")]
+#[test]
+fn an_unstarted_repair_is_failed_when_the_store_reopens() {
+    let (_root, host, installation) = fixture();
+    let revision = host.install_status().unwrap().native.operation.revision;
+    let work = Uuid::new_v4();
+    host.store()
+        .unwrap()
+        .lock()
+        .unwrap()
+        .admit_repair(work, revision, installation, true)
+        .unwrap();
+    let path = host.root.clone();
+    drop(host);
+    let status = NativeHost::new(path).install_status().unwrap();
+    let operation = status.native.operation.operation.unwrap();
+    assert_eq!(operation.id, work);
+    assert_eq!(operation.state, OperationState::Failed);
+    assert!(!status.repair.recovery);
+}
 
 /// JS drives real durable admission/cancellation/reopen/abandonment. Preparation
 /// is held at the engine admission seam; no Wine process/download is started.
@@ -208,14 +235,23 @@ fn repair_uat_bridge() {
                 } => {
                     let store = host.store().unwrap();
                     let mut state = store.lock().unwrap();
-                    state
+                    let plan = state
                         .admit_repair(operation_id, operation_revision, installation_id, confirmed)
-                        .unwrap();
+                        .unwrap()
+                        .plan;
                     state
                         .operations_mut()
                         .unwrap()
                         .observe(operation_id, OperationState::Running)
                         .unwrap();
+                    // A running repair has claimed its work folder; without it,
+                    // start-up fails the unstarted repair on reopen (PD-03).
+                    std::fs::create_dir(plan.work_directory()).unwrap();
+                    std::fs::write(
+                        plan.work_directory().join("owner.json"),
+                        serde_json::to_vec(&plan).unwrap(),
+                    )
+                    .unwrap();
                     drop(state);
                     host.install_status()
                 }
@@ -249,7 +285,7 @@ fn repair_uat_bridge() {
 
 #[cfg(target_os = "macos")]
 #[test]
-fn admitted_dispatch_failure_is_gated_and_duplicate_does_not_restart_work() {
+fn admitted_dispatch_failure_ends_failed_and_duplicate_does_not_restart_work() {
     let (_root, host, installation) = fixture();
     let before = host.install_status().unwrap();
     let id = Uuid::new_v4();
@@ -264,12 +300,13 @@ fn admitted_dispatch_failure_is_gated_and_duplicate_does_not_restart_work() {
         host.install_command(request.clone(), None).unwrap_err(),
         JobError::Io
     );
+    // Nothing ran before dispatch failed: it ends failed, not gated (D-PD2).
     let after = host.install_status().unwrap();
     assert_eq!(
         after.native.operation.operation.as_ref().unwrap().state,
-        OperationState::ReconciliationRequired
+        OperationState::Failed
     );
-    assert!(after.repair.recovery);
+    assert!(!after.repair.recovery);
     assert!(host.repair_worker.lock().unwrap().is_none());
     let duplicate = host.install_command(request, None).unwrap();
     assert_eq!(

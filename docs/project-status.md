@@ -2,7 +2,7 @@
 title: "Project Status"
 type: reference
 audience: anyone tracking the project
-last_updated: 2026-10-20
+last_updated: 2026-10-24
 ---
 
 # Project Status
@@ -34,6 +34,8 @@ Where the Cimmeria server emulator stands today and what's ahead.
 > **2026-10-19 update (Union Beta E1)**: the Union Beta E1 close-out (UB-99, [ledger](analysis/union-beta-e1-continuation/README.md)) built the first visit of world 23 for Human, Free Jaffa and Asgard players on the `uzp-e1` campaign branch. It is not on `main`, so no gap-analysis row changes yet. Database tests cover it; nothing has run in the lab or client ([unified-uat.md § Beta_Site_Evo_1](guides/unified-uat.md#beta_site_evo_1)).
 >
 > **2026-10-20 update**: the headline and the Minigames row follow the minigames close-out (MG-99, [ledger](analysis/minigames/README.md)): 514 features, NT 148.
+>
+> **2026-10-24 update (Windows on Arm launcher)**: the launcher campaign ([ledger](analysis/launcher-win-arm64/README.md), PR #2002) changed no gap-analysis row and no count; none of the matrix rows covers launcher platforms, so `gap-analysis*` is unchanged. The desktop launcher now ships natively for Windows on Arm beside x64: a hosted `windows-11-arm` build, a two-zip signed `latest.json` and a `windows-aarch64` updater pick. What is verified: the launcher app itself was confirmed running on the owner's arm64 Windows laptop. What is not: the new release pipeline has not been proved by a real release, and the owner checks WA-U1 to WA-U3 ([unified UAT § Launcher on Windows on Arm](guides/unified-uat.md#launcher-on-windows-on-arm)) are owed. Release proof is pending.
 >
 > **Scope note**: only work merged to `main` is counted. The black-market implementation on `feat/571-black-market-phase1` (PR #586) is real but unmerged, and is counted as missing until it lands.
 

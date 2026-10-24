@@ -20,6 +20,18 @@ pub(crate) fn launch_refused(id: Uuid, reason: &'static str) {
     );
 }
 
+/// The shell refused Play before any operation existed (C-PD2), so the event
+/// has no `operation`; `reason` is `resources_unavailable` or
+/// `resources_unresolved`. Same event name as `launch_refused`.
+pub fn launch_refused_before_operation(reason: &'static str) {
+    tracing::warn!(
+        target: "launcher.launch",
+        event = "launch_refused",
+        reason,
+        "launcher launch: Play refused before an operation started; expected the bundled Play resources; nothing was started"
+    );
+}
+
 /// The admitted launch began; `telemetry_dll` says whether the DLL goes in.
 /// `adoption_check` is the adoption provenance's check (`light`, `full` or
 /// `none`); `patches_incomplete` counts the patches an apply left incomplete.
@@ -195,6 +207,26 @@ pub(crate) fn game_telemetry_record_failed(id: Uuid) {
         reason = "status_save_failed",
         "launch: game telemetry status not saved"
     );
+}
+
+/// The display step before Play (C-PD7): each file's closed outcome. WARN with
+/// `failure_code` unless both were written or already right; Play goes on.
+pub(crate) fn display_settings(
+    id: Uuid,
+    mode: &'static str,
+    saved_options: &'static str,
+    engine_ini: &'static str,
+) {
+    let operation = operation_numbers::number(id);
+    let applied = |code: &str| matches!(code, "written" | "unchanged");
+    if applied(saved_options) && applied(engine_ini) {
+        tracing::info!(target: "launcher.launch", event = "display_settings", operation, mode,
+            saved_options, engine_ini, "launch: display settings applied");
+    } else {
+        tracing::warn!(target: "launcher.launch", event = "display_settings", operation, mode,
+            saved_options, engine_ini, failure_code = "display_settings_not_applied",
+            "launch: display settings not applied; the profile file was missing or not writable; the game starts anyway");
+    }
 }
 
 /// The launch helper did not stop after a kill; `error_kind` is a closed code.

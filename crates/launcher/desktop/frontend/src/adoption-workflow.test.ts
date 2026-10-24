@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {Effect,Schema} from 'effect';
 import {AdoptionStatus} from './adoption-workflow';
 
-const native=(revision:number)=>({schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1,revision,operation:null}});
+const native=(revision:number)=>({schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed' as const,width:1024,height:768}},operation:{schema_version:1,revision,operation:null}});
 const status=(modes:unknown[]):unknown=>({schema_version:1,native:native(1),backend:'in_place',imported:null,modes,activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],has_valid_install:false,owned:false,completed:null,last_error:null,last_rejection:null,unsafe_entries:null});
 const decode=(value:unknown)=>Effect.runPromise(Schema.decodeUnknownEffect(AdoptionStatus,{onExcessProperty:'error'})(value));
 

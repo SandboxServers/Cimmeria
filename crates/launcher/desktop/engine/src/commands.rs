@@ -1,5 +1,6 @@
 //! Small versioned command surface shared by Tauri and the logic-UAT harness.
 use crate::launcher_compatibility::Identity;
+use crate::storage::display_options::{self, DisplayMode, DisplayOptions};
 use crate::storage::settings_events;
 use crate::{DesktopState, Preferences, Snapshot, StorageError};
 use cimmeria_launcher_core::client_setup::login_servers::LoginServer;
@@ -25,12 +26,19 @@ pub enum NativeCommand {
         login_servers: Vec<LoginServer>,
         client_patches_enabled: bool,
     },
+    /// Takes effect at the next Play, like the client options.
+    SaveDisplayOptions {
+        schema_version: u32,
+        expected_revision: u64,
+        display: DisplayOptions,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct NativeSnapshot {
     pub schema_version: u32,
     pub operation: Snapshot,
+    #[serde(serialize_with = "preferences_with_display")]
     pub preferences: Preferences,
     pub requires_reopen: bool,
     /// The reviewed list an adopted copy keeps at Play (`null` otherwise):
@@ -40,6 +48,46 @@ pub struct NativeSnapshot {
     pub launcher: LauncherBuild,
     /// Whether setup diagnostics have an https endpoint to go to.
     pub setup_diagnostics_endpoint: bool,
+    /// The display modes this platform offers (`display_options::allowed_modes`).
+    pub display_modes: Vec<DisplayMode>,
+}
+
+/// Storage omits a default `display` (R10); the snapshot always carries it, so
+/// the frontend never holds the default (C-PD6). The destructure has no `..`:
+/// a new `Preferences` field fails to compile here instead of going missing.
+fn preferences_with_display<S: serde::Serializer>(
+    preferences: &Preferences,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    let Preferences {
+        schema_version,
+        revision,
+        install_directory,
+        launcher_summary_consent,
+        login_servers,
+        client_patches_enabled,
+        display,
+    } = preferences;
+    #[derive(Serialize)]
+    struct Mirror<'a> {
+        schema_version: &'a u32,
+        revision: &'a u64,
+        install_directory: &'a Option<PathBuf>,
+        launcher_summary_consent: &'a bool,
+        login_servers: &'a Vec<LoginServer>,
+        client_patches_enabled: &'a bool,
+        display: &'a DisplayOptions,
+    }
+    Mirror {
+        schema_version,
+        revision,
+        install_directory,
+        launcher_summary_consent,
+        login_servers,
+        client_patches_enabled,
+        display,
+    }
+    .serialize(serializer)
 }
 
 /// Compiled release identity. `tag` is `null` for a development build: one
@@ -69,6 +117,7 @@ impl DesktopState {
             adopted_login_servers: self.adopted_login_servers(),
             launcher: LauncherBuild::current(),
             setup_diagnostics_endpoint: self.summary_endpoint_configured(),
+            display_modes: display_options::allowed_modes().to_vec(),
         }
     }
 
@@ -118,6 +167,17 @@ impl DesktopState {
                     &after.login_servers,
                     after.client_patches_enabled,
                 );
+            }
+            NativeCommand::SaveDisplayOptions {
+                schema_version,
+                expected_revision,
+                display,
+            } => {
+                if schema_version != 1 {
+                    return Err(StorageError::UnsupportedSchema);
+                }
+                self.save_display_options(display, expected_revision)?;
+                settings_events::display_options_saved(self.preferences().display);
             }
         }
         Ok(self.inspect())
@@ -174,6 +234,36 @@ mod tests {
                 assert!(!value.contains("a.example") && !value.contains("b.example"));
             }
         }
+    }
+
+    #[test]
+    fn saving_display_options_logs_the_mode_and_size() {
+        let _serial = serial(); // first line: one capture test of this module at a time
+                                // A second live Dispatch keeps callsite interest per dispatcher.
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = DesktopState::open(dir.path()).unwrap();
+        let command: NativeCommand = serde_json::from_str(
+            r#"{"command":"save_display_options","schema_version":1,"expected_revision":0,"display":{"mode":"windowed","width":1600,"height":900}}"#,
+        )
+        .unwrap();
+        let (result, events) = capture(|| {
+            tracing::callsite::rebuild_interest_cache(); // first line in the closure
+            state.dispatch(command)
+        });
+        let snapshot = result.unwrap();
+        assert_eq!(snapshot.preferences.display.width, 1600);
+        assert_eq!(snapshot.display_modes, display_options::allowed_modes());
+        let saved: Vec<_> = events
+            .iter()
+            .filter(|e| e.field("event") == Some("display_options_saved"))
+            .collect();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].level, tracing::Level::INFO);
+        assert_eq!(saved[0].target, "launcher.settings");
+        assert_eq!(saved[0].field("mode"), Some("windowed"));
+        assert_eq!(saved[0].field("width"), Some("1600"));
+        assert_eq!(saved[0].field("height"), Some("900"));
     }
 
     #[test]
@@ -333,6 +423,34 @@ mod tests {
                 "version": crate::launcher_compatibility::compiled_version(),
                 "tag": null,
             })
+        );
+    }
+
+    #[test]
+    fn the_snapshot_always_carries_the_display_though_storage_omits_a_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut state = DesktopState::open(dir.path()).unwrap();
+        let shown = |state: &DesktopState| {
+            serde_json::to_value(state.inspect()).unwrap()["preferences"]["display"].clone()
+        };
+        assert_eq!(
+            shown(&state),
+            serde_json::json!({"mode":"windowed","width":1024,"height":768})
+        );
+        state
+            .dispatch(NativeCommand::SaveDisplayOptions {
+                schema_version: 1,
+                expected_revision: 0,
+                display: DisplayOptions {
+                    mode: DisplayMode::Windowed,
+                    width: 1600,
+                    height: 900,
+                },
+            })
+            .unwrap();
+        assert_eq!(
+            shown(&state),
+            serde_json::json!({"mode":"windowed","width":1600,"height":900})
         );
     }
 }

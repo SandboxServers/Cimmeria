@@ -260,6 +260,35 @@ async fn host_recovers_real_interrupted_promotion_then_cleans_current_backup() {
     assert_eq!(status.repair.backup, BackupStatus::Removed);
 }
 
+/// Cross-platform twin of the mac dispatch-failure test (D-PD2): with no
+/// runtime on the calling thread, preparation fails before its worker starts,
+/// so the admitted repair ends `Failed` instead of `ReconciliationRequired`.
+#[test]
+fn dispatch_failure_before_start_ends_failed() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (_root, host, installation, _server) = runtime.block_on(fixture(false, false));
+    let request = InstallCommand::Repair {
+        schema_version: 1,
+        operation_id: Uuid::new_v4(),
+        operation_revision: host.install_status().unwrap().native.operation.revision,
+        installation_id: installation,
+        confirmed: true,
+    };
+    assert_eq!(
+        host.install_command(request, None).unwrap_err(),
+        JobError::Io
+    );
+    let status = host.install_status().unwrap();
+    assert_eq!(
+        status.native.operation.operation.as_ref().unwrap().state,
+        OperationState::Failed
+    );
+    assert!(!status.repair.recovery);
+}
+
 /// JS observes real preparation/retained commit/cleanup; commands are never intercepted.
 #[test]
 #[ignore = "JSON-lines real-host bridge for repair-native-uat.mjs"]

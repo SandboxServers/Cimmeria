@@ -72,13 +72,12 @@ pub struct NativeHost {
     firesky_fixture: Option<PathBuf>,
     launch_resources: Option<cimmeria_launcher_engine::launch::Resources>,
     launch_worker: Mutex<Option<cimmeria_launcher_engine::launch::Worker>>,
-    /// One PhysX installer at a time; its last result outlives a lost reply.
-    physx_installing: std::sync::atomic::AtomicBool,
     #[cfg(windows)]
     directx_last:
         Mutex<Option<cimmeria_launcher_engine::runtime_setup::windows_physx::InstallResult>>,
     #[cfg(test)]
     prerequisites_fixture: Option<Vec<&'static str>>,
+    /// The last PhysX result; it outlives a lost reply. The install lock is the shared prerequisite lease.
     physx_last:
         Mutex<Option<cimmeria_launcher_engine::runtime_setup::windows_physx::InstallResult>>,
     repair_worker: Mutex<Option<repair::Worker>>,
@@ -117,7 +116,6 @@ impl NativeHost {
             firesky_fixture: None,
             launch_resources: None,
             launch_worker: Mutex::new(None),
-            physx_installing: std::sync::atomic::AtomicBool::new(false),
             #[cfg(windows)]
             directx_last: Mutex::new(None),
             #[cfg(test)]
@@ -212,6 +210,10 @@ impl NativeHost {
                 {
                     startup_event::update_reconcile_failed(startup_event::reconcile_reason(error));
                 }
+            }
+            // A repair stuck before it claimed any files ends failed (D-PD3).
+            if let Err(error) = state.reconcile_unstarted_repair() {
+                startup_event::repair_reconcile_failed(error.code());
             }
             if state.preferences().revision == 0
                 && state.preferences().install_directory.is_none()

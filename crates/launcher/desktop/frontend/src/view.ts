@@ -31,6 +31,8 @@ const errorText: Record<BridgeFailure['code'], string> = {
   persistence_uncertain: 'The last save could not be confirmed. Restart the launcher to inspect the saved state.',
   // Required by the Record over every code; this view's commands never return it (the server list panel shows its own).
   invalid_server_list: 'The login server list was refused. Fix it under Login servers, then try again.',
+  // Likewise only the display setting returns it.
+  invalid_display_options: 'That display size is not supported. Pick another one in Settings.',
 };
 
 /** Mount once per application. Tab changes only hide panels; they do not own workflows. */

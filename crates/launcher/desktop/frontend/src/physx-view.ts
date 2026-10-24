@@ -4,7 +4,7 @@ import type {PanelContext} from './panel-context';
 import {decodePhysxStatus,physxFailure,type PhysxResult,type PhysxStatus} from './contract';
 import {reportUiEvent} from './ui-event';
 /**
- * Settings panel (LX-12, D-LX13): PhysX System Software on native Windows. Shows whether it is
+ * Main-page panel (LX-12, D-LX13): PhysX System Software on native Windows. Shows whether it is
  * installed and offers "Install PhysX", which runs the pinned vendor MSI elevated through UAC.
  * The panel also owns the warning beside Play; a missing PhysX blocks native Play until it is set up. Off Windows `supported` is false and
  * both stay hidden: the macOS path sets PhysX up inside Wine during installation.

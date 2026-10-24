@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {parseHTML} from 'linkedom';
 import {mountGameUpdate} from './game-update-view';
 const html=readFileSync('ui/index.html','utf8');
-const initial=()=>({schema_version:1,can_check:true,checked:true,offer:{id:'offer',installation_id:'owner',directory:String.raw`\\?\C:\Temp\sgw`,current_digest:'old',target_digest:'new',current_patches:[],target_patches:[],launcher_update_required:false},progress:null,maintenance:null,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:String.raw`\\?\C:\Temp\sgw`,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1,revision:3,operation:null}}});
+const initial=()=>({schema_version:1,can_check:true,checked:true,offer:{id:'offer',installation_id:'owner',directory:String.raw`\\?\C:\Temp\sgw`,current_digest:'old',target_digest:'new',current_patches:[],target_patches:[],launcher_update_required:false},progress:null,maintenance:null,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:String.raw`\\?\C:\Temp\sgw`,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed' as const,width:1024,height:768}},operation:{schema_version:1,revision:3,operation:null}}});
 const tick=()=>new Promise<void>(resolve=>setImmediate(resolve));
 test('changed native revision invalidates confirmation before any Apply command',async()=>{
  const status=initial(),calls:string[]=[];let change=false;

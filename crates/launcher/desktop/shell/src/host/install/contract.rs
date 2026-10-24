@@ -121,6 +121,51 @@ pub enum JobError {
     InvalidManifest,
     SigningKeyUnavailable,
 }
+impl JobError {
+    /// The closed snake_case code, the same string the variant serializes to.
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::UnsupportedSchema => "unsupported_schema",
+            Self::PlatformUnavailable => "platform_unavailable",
+            Self::PrerequisitesMissing => "prerequisites_missing",
+            Self::LauncherTooOld => "launcher_too_old",
+            Self::Io => "io",
+            Self::CorruptState => "corrupt_state",
+            Self::InvalidDirectory => "invalid_directory",
+            Self::StaleRevision => "stale_revision",
+            Self::Busy => "busy",
+            Self::UnknownOperation => "unknown_operation",
+            Self::IdentityConflict => "identity_conflict",
+            Self::RecoveryRequired => "recovery_required",
+            Self::PersistenceUncertain => "persistence_uncertain",
+            Self::ManifestUnavailable => "manifest_unavailable",
+            Self::InvalidManifest => "invalid_manifest",
+            Self::SigningKeyUnavailable => "signing_key_unavailable",
+        }
+    }
+    /// The failure taxonomy code (C-PD1) the player's copy is chosen by.
+    // PD-05 records it on a launch that fails before anything starts.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn failure(self) -> cimmeria_launcher_engine::failure::FailureCode {
+        use cimmeria_launcher_engine::failure::FailureCode;
+        match self {
+            Self::UnsupportedSchema | Self::LauncherTooOld => FailureCode::LauncherTooOld,
+            Self::PlatformUnavailable => FailureCode::PlatformUnsupported,
+            Self::PrerequisitesMissing => FailureCode::PrerequisitesMissing,
+            Self::Io => FailureCode::LocalIo,
+            Self::CorruptState => FailureCode::StateCorrupt,
+            Self::InvalidDirectory => FailureCode::GameFolderInvalid,
+            Self::StaleRevision | Self::UnknownOperation => FailureCode::StatusStale,
+            Self::Busy => FailureCode::OperationBusy,
+            Self::IdentityConflict => FailureCode::IdentityConflict,
+            Self::RecoveryRequired => FailureCode::RecoveryRequired,
+            Self::PersistenceUncertain => FailureCode::PersistenceUncertain,
+            Self::ManifestUnavailable => FailureCode::ManifestUnreachable,
+            Self::InvalidManifest => FailureCode::ManifestInvalid,
+            Self::SigningKeyUnavailable => FailureCode::SigningKeyUnavailable,
+        }
+    }
+}
 impl From<StorageError> for JobError {
     fn from(error: StorageError) -> Self {
         match error {
@@ -131,7 +176,8 @@ impl From<StorageError> for JobError {
             StorageError::Corrupt
             | StorageError::TooLarge
             | StorageError::UnsafeFile
-            | StorageError::InvalidServerList => Self::CorruptState,
+            | StorageError::InvalidServerList
+            | StorageError::InvalidDisplayOptions => Self::CorruptState,
             StorageError::UnsupportedSchema => Self::UnsupportedSchema,
             StorageError::InvalidDirectory => Self::InvalidDirectory,
             StorageError::StaleRevision => Self::StaleRevision,
@@ -224,5 +270,57 @@ pub(crate) fn progress(value: &Progress) -> JobProgress {
             current: (*current as u64).min(MAX),
             total: (*total as u64).min(MAX),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::JobError;
+
+    const ALL: [JobError; 16] = [
+        JobError::UnsupportedSchema,
+        JobError::PlatformUnavailable,
+        JobError::PrerequisitesMissing,
+        JobError::LauncherTooOld,
+        JobError::Io,
+        JobError::CorruptState,
+        JobError::InvalidDirectory,
+        JobError::StaleRevision,
+        JobError::Busy,
+        JobError::UnknownOperation,
+        JobError::IdentityConflict,
+        JobError::RecoveryRequired,
+        JobError::PersistenceUncertain,
+        JobError::ManifestUnavailable,
+        JobError::InvalidManifest,
+        JobError::SigningKeyUnavailable,
+    ];
+
+    #[test]
+    fn job_error_code_is_its_serde_name() {
+        for error in ALL {
+            assert_eq!(
+                serde_json::to_string(&error).unwrap(),
+                format!("\"{}\"", error.code())
+            );
+        }
+    }
+
+    #[test]
+    fn job_error_failure_matches_the_shared_fixture() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../frontend/src/failure-codes.json"
+        )))
+        .unwrap();
+        let job_errors = fixture["job_errors"].as_object().unwrap();
+        for error in ALL {
+            assert_eq!(
+                Some(error.failure().code()),
+                job_errors[error.code()].as_str(),
+                "{error:?}"
+            );
+        }
+        assert_eq!(job_errors.len(), ALL.len(), "the fixture has extra keys");
     }
 }

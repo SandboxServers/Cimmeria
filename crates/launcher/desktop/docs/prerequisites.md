@@ -598,12 +598,12 @@ that carries other cores only, reads as missing, and the panel says that a PhysX
 version is installed without the 2.6.3 core. The installer's entry under
 `...\CurrentVersion\Uninstall` is keyed by a product code that differs between
 PhysX releases and says nothing about which cores are on disk, so it is not
-used. The Settings panel shows the state. When the core is missing, the main page
+used. The main-page PhysX panel shows the state. When the core is missing, the main page
 shows a warning, blocks native Play admission alongside missing DirectX, and offers **Install legacy PhysX…**,
 independently of whether the game retained an installer. Reinspection on reopen
 uses native detection; frontend success is not persisted as readiness.
 
-**Retained installer.** Settings "Install PhysX" uses the installer that install extraction keeps at
+**Retained installer.** The panel's "Install PhysX" uses the installer that install extraction keeps at
 `game/.cimmeria-prerequisites/PhysX/PhysX_7.11.13_SystemSoftware.exe`, the same
 file the Wine path uses. The press takes the shared native mutation lease, so it is refused while
 the updater, an install, Play, Repair or any other operation is unfinished. It
@@ -650,8 +650,7 @@ redirects, bounds size and connection/overall time, and verifies exactly
 `2b78df4a9004f5c4220d62c363709e5ac5e2e58df9f2284df0254cbfa4970d91`.
 The scratch-file readback, deny-write/delete guard, interactive elevated system
 msiexec, restart suppression and post-install 2.6.3 core check are shared with
-the retained installer. The same mutation admission and one-installer guard
-apply. The first press shows download/install feedback and suppresses duplicate
+the retained installer. The same shared prerequisite lease applies: it is taken with the admission read and held until the result is stored. The first press shows download/install feedback and suppresses duplicate
 presses. Success hides the offer only after native detection finds the core;
 cancellation, verification/download failure and installer failure show a result
 and allow retry. Opening the launcher never downloads or installs this bundle.
@@ -677,8 +676,6 @@ browser review, three restored mutation proofs and strict native workspace
 checks passed; see the [validation worknote](../../../../docs/analysis/launcher-uat-fixes/worknotes/legacy-physx-validation.md). Native/package CI is pending at this checkpoint. No real MSI, UAC prompt, registry change, game,
 Wine or lab execution has been performed for this follow-up.
 
-Known limit: the legacy install does not hold the shared mutation lease, so Play or
-an install can start while its msiexec is still open. The retained-installer install
-holds that lease. The MSI is in the launcher state folder, not the game folder, so an
+Known limits: the MSI is in the launcher state folder, not the game folder, so an
 install does not touch it. The UAC prompt has no owner window, so it can open behind
 the launcher.

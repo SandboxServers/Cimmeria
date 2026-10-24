@@ -30,10 +30,11 @@ Implementation reference: `crates/launcher/desktop/docs/prerequisites.md`
   The downloaded pin had a valid Microsoft Authenticode signature on this date.
 - Setup is an explicit action with vendor license and UAC interaction intact.
   Both setup flows hold a shared native mutation lease through vendor UI.
+  It is the only install lock; the legacy PhysX path takes it too.
   Redetect afterward; installer exit zero alone is insufficient. Lost replies
   require inspection, never an automatic retry.
 - Adopted/older copies can lack the retained authenticated PhysX installer.
-  Explicit Install PhysX then downloads NVIDIA Legacy MSI 9.13.0604, 20,154,368
+  Explicit **Install legacy PhysX…** (engine `windows_physx::legacy`, no automatic fallback from Install) downloads NVIDIA Legacy MSI 9.13.0604, 20,154,368
   bytes, SHA-256
   `2b78df4a9004f5c4220d62c363709e5ac5e2e58df9f2284df0254cbfa4970d91`.
   The downloaded pin had a valid NVIDIA Corporation Authenticode signature.

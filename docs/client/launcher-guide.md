@@ -188,7 +188,7 @@ The launcher checks for the core again after installation and whenever you reope
 offer disappears when the core is found. A cancelled or failed attempt shows a result and lets
 you retry. While PhysX is missing, Play stays blocked, as it is for a missing DirectX.
 
-**Settings → PhysX System Software → Install PhysX** still runs the verified installer retained
+The **PhysX System Software** panel's **Install PhysX** still runs the verified installer retained
 from the game archive, when present. If that older installer is unavailable or another version
 blocks it, use the main-page legacy offer. macOS continues to prepare PhysX inside Wine during
 compatibility setup.

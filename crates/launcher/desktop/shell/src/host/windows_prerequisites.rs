@@ -3,8 +3,6 @@ use super::*;
 use cimmeria_launcher_engine::runtime_setup::{windows_directx as dx, windows_physx as px};
 use serde::Serialize;
 use std::path::Path;
-#[cfg(windows)]
-mod legacy_physx;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DirectxStatus {

@@ -5,7 +5,7 @@ import {parseHTML} from 'linkedom';
 import {mountDesktop} from './composition';
 import type {AdoptionStatus} from './adoption-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
-const native=(revision=0)=>({schema_version:1 as const,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2 as const,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1 as const,revision,operation:null}});
+const native=(revision=0)=>({schema_version:1 as const,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2 as const,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed' as const,width:1024,height:768}},operation:{schema_version:1 as const,revision,operation:null}});
 const idle=():AdoptionStatus=>({schema_version:1,native:native(),backend:'in_place',imported:null,modes:['light','in_place'],activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],has_valid_install:false,owned:false,completed:null,last_error:null,last_rejection:null,unsafe_entries:null});
 const flush=()=>new Promise<void>(resolve=>setTimeout(resolve,10));
 function fixture(initial=idle()){

@@ -7,6 +7,7 @@ pub(super) fn prepare(
     state_root: &Path,
     session: Option<&crate::game_telemetry::Session>,
     servers: &[LoginServer],
+    display: crate::storage::display_options::DisplayOptions,
 ) -> Result<
     (
         HelperCommand,
@@ -36,6 +37,11 @@ pub(super) fn prepare(
             .map(PathBuf::from)
             .map_err(|_| StorageError::UnsafeFile)
     };
+    super::display::apply(
+        plan.id,
+        super::display::wine_profile(&resources.prefix).as_deref(),
+        display,
+    );
     let request = Request {
         schema_version: 1,
         operation_id: plan.id,
@@ -49,6 +55,7 @@ pub(super) fn prepare(
             .chain(telemetry)
             .map(|p| guest(p.path()))
             .collect::<Result<_, _>>()?,
+        args: super::display::arguments(display),
     };
     let spec = HelperCommand {
         executable: mac_wine::app_identity::loader(&resources.runtime, state_root),

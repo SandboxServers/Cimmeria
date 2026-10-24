@@ -155,6 +155,17 @@ existing injection termination primitive is best effort; it cannot authorize a
 second launch. A startup reply has a 60-second bound; an observed game has no
 lifetime deadline. Observation loss leaves the operation gated.
 
+A Play that fails before the game starts ends `failed` with a logged reason. When
+dispatch fails while the operation is still Starting and no launch observation was
+recorded yet, the operation goes to Failed and `launch_not_started` (warn) carries
+the error's code as `reason` (for example `io`). An unconfirmed save
+(`persistence_uncertain`), an operation that already left Starting, a launch that
+already recorded an observation, or launch state that cannot be read
+(`corrupt_state`) goes to reconciliation-required instead.
+A Play refused before any operation exists logs `launch_refused` (warn) with no
+operation number and `reason` `resources_unavailable` (no bundled Play resources) or
+`resources_unresolved` (the resources could not be resolved for this copy).
+
 ## Mac graphics and prerequisite boundaries
 
 Launch reopens the exact successful generation under `game-prefixes`, never the
@@ -346,6 +357,45 @@ The display distinguishes preparation, process start, early/normal exit and
 unknown. No message claims login or world entry from process start or zero exit.
 Launcher summary consent remains independent and is not changed by Play.
 
+## Display settings before each Play
+
+The launcher owns the game's display mode (owner D3, D-PD16). Before each Play,
+after the login servers are resolved and before the launch helper command is built,
+it writes the saved display choice (`DisplayOptions::effective()`: always a
+window on a Mac, the size clamped into range; windowed 1024x768 when nothing
+was saved) into the client profile, `<Documents>/My Games/Firesky/SGWGame/`.
+On Windows that is the player's Documents folder; on a Mac it is the one user
+folder other than `Public` under the Wine prefix's `drive_c/users`, and it must
+stay inside the prefix.
+
+| Mode | `SavedSystemOptions.xml` | `Config/SGWEngine.ini` `[WinDrv.WindowsClient]` | Helper arguments (PD-25) |
+|---|---|---|---|
+| `windowed` | `windowedMode` `valueBool="true"` | `StartupFullscreen=False`, `StartupResolutionX=<width>`, `StartupResolutionY=<height>` | `-windowed`, `ResX=<width>`, `ResY=<height>` |
+| `fullscreen` (Windows only) | `windowedMode` `valueBool="false"`; `resolution` untouched | `StartupFullscreen=True`; size untouched | none |
+
+A display change made in the game's own options lasts one session: the next
+Play writes the launcher's choice again. The step never creates either file or
+adds a missing key, never touches another ini section (`[IniVersion]` included)
+or the chain files under the game folder, keeps every other byte and the line
+endings, skips a file that is not UTF-8, writes atomically (temp file in the
+same folder, then rename) only when the content changes, and refuses a
+read-only file. It is best effort: it never fails the launch.
+
+It logs one `display_settings` event on `launcher.launch` with `operation`,
+`mode` and, per file, `saved_options` and `engine_ini` (`written`, `unchanged`,
+`missing`, `key_missing`, `unreadable` or `failed`). It is info when both files
+were `written` or `unchanged`, and warn with
+`failure_code = "display_settings_not_applied"` otherwise. No field carries a path.
+
+The launch helper request carries the table's helper arguments in `args`
+(`Request::args`, both the native and the Wine request). An empty list is left
+out of the JSON, so a fullscreen request is byte for byte the one before PD-25,
+and SGW.exe's command line is the bare exe as before. The helper accepts only
+the three display arguments: `-windowed`, `ResX=<n>` and `ResY=<n>` with 3-4
+ASCII digits each, at most three entries and none repeated
+(`game_launch::valid_args`). Any other list is refused before the game starts,
+the same way as an invalid exe path: `not_started` at stage `request`.
+
 ## Patch policy per installation
 
 Native code decides whether Play injects client patches. The renderer cannot.
@@ -514,8 +564,9 @@ target per subsystem: `launcher.startup`, `launcher.crash`, `launcher.update`,
 (`launch_refused`) and `launch_not_started` are warn too. Wire rows use the same name with
 a `client.` prefix (`client.launcher.install`). The full subsystem table is in
 [observability.md](../../../../docs/architecture/observability.md). `launcher.launch` carries `launch_refused`, `launch_started`, `launch_not_started`,
-`launch_failed`, `game_started`, `game_exited` and `launch_finished`, each with the
-operation number; refusals, failures and not-started launches add a closed `reason`.
+`launch_failed`, `game_started`, `game_exited`, `launch_finished` and
+`display_settings` ([Display settings before each Play](#display-settings-before-each-play)), each with the
+operation number (except a `launch_refused` before any operation, see above); refusals, failures and not-started launches add a closed `reason`.
 `launch_started` also carries `adoption_check` (`light`, `full`, or `none` for an
 install not adopted from a folder) and `patches_incomplete` (how many patches the
 copy's `launcher-installed.json` lists in `incomplete_patches`). When the installed

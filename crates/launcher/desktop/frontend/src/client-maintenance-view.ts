@@ -23,6 +23,7 @@ const failures:Record<ClientMaintenanceError|'transport'|'schema',string>={
  invalid_directory:'The launcher could not finish the reset (invalid_directory).',stale_revision:'The launcher could not finish the reset (stale_revision).',
  persistence_uncertain:'The launcher could not finish the reset (persistence_uncertain).',
  invalid_server_list:'The launcher could not finish the reset (invalid_server_list).',
+ invalid_display_options:'The launcher could not finish the reset (invalid_display_options).',
  transport:'The launcher could not reach its native side. Try again.',schema:'The launcher got an answer it does not understand.',
 };
 export const clientMaintenanceFailureText=(code:keyof typeof failures)=>failures[code];

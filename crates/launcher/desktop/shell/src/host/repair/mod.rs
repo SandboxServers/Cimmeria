@@ -183,7 +183,13 @@ impl NativeHost {
             let mut preparation = match result {
                 Ok(preparation) => preparation,
                 Err(error) => {
-                    mark_uncertain(&state, id);
+                    // Still `Starting` means nothing ran: fail it with a reason.
+                    // Only an unconfirmed save waits for reconciliation (D-PD2).
+                    if error == JobError::PersistenceUncertain
+                        || !repair::preparation::not_started(&state, id, error.code())
+                    {
+                        mark_uncertain(&state, id);
+                    }
                     return Err(error);
                 }
             };

@@ -5,7 +5,7 @@ import {parseHTML} from 'linkedom';
 import {mountDesktop} from './.test-build/composition.mjs';
 const html=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
 let revision=0,valid=false,owned=false,calls=0,pick,backend='in_place';
-const native=()=>({schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1,revision,operation:null}});
+const native=()=>({schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed'],launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed',width:1024,height:768}},operation:{schema_version:1,revision,operation:null}});
 const status=()=>({schema_version:1,native:native(),backend,imported:null,modes:backend==='in_place'?['light']:[],activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],has_valid_install:valid,owned,completed:null,last_error:null,last_rejection:null,unsafe_entries:null});
 let choose=()=>new Promise(resolve=>{pick=resolve;});
 const invoke=async command=>{

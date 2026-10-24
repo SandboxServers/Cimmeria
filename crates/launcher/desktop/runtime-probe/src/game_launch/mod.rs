@@ -11,6 +11,24 @@ pub struct Request {
     pub exe: PathBuf,
     pub directory: PathBuf,
     pub dlls: Vec<PathBuf>,
+    /// SGW.exe's display arguments (C-PD7). An empty list is omitted, so a
+    /// request without display arguments serializes exactly as before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+}
+/// The only game arguments the helper passes on: `-windowed`, `ResX=<n>` and
+/// `ResY=<n>` (3-4 ASCII digits each), at most once each.
+pub fn valid_args(args: &[String]) -> bool {
+    let digits = |value: Option<&str>| {
+        value.is_some_and(|v| (3..=4).contains(&v.len()) && v.bytes().all(|b| b.is_ascii_digit()))
+    };
+    args.len() <= 3
+        && args.iter().enumerate().all(|(index, arg)| {
+            !args[..index].contains(arg)
+                && (arg == "-windowed"
+                    || digits(arg.strip_prefix("ResX="))
+                    || digits(arg.strip_prefix("ResY=")))
+        })
 }
 impl Request {
     pub fn decode(bytes: &[u8]) -> Result<Self, &'static str> {
@@ -83,6 +101,9 @@ impl Message {
         Ok(value.observation)
     }
 }
+#[cfg(test)]
+#[path = "args_tests.rs"]
+mod args_tests;
 #[cfg(windows)]
 pub mod windows;
 #[cfg(test)]

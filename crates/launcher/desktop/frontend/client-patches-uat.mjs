@@ -16,8 +16,8 @@ const servers=[{name:'Home',url:'http://home.example:8081'}];
 
 function nativeFake() {
  const load=async()=>existsSync(file)?JSON.parse(await readFile(file,'utf8')):
-  {schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true};
- const snapshot=preferences=>({schema_version:1,operation:{schema_version:1,revision:0,operation:null},preferences,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null}});
+  {schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed',width:1024,height:768}};
+ const snapshot=preferences=>({schema_version:1,operation:{schema_version:1,revision:0,operation:null},preferences,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed'],launcher:{version:'0.1.0',tag:null}});
  const calls=[];
  const invoke=async(command,args)=>{
   assert.equal(command,'launcher_command');const request=args.request;calls.push(request.command);

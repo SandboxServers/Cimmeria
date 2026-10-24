@@ -13,6 +13,11 @@ export const operationOpen=(op:{state:string}|null|undefined):boolean=>!!op&&!['
 /** `cimmeria_launcher_core::client_setup::login_servers::LoginServer`. */
 export const LoginServer = Schema.Struct({name: Schema.String, url: Schema.String});
 export type LoginServer = typeof LoginServer.Type;
+/** Engine `storage::display_options` (C-PD6). macOS offers `windowed` only. */
+export const DisplayMode = Schema.Literals(["windowed", "fullscreen"]);
+export type DisplayMode = typeof DisplayMode.Type;
+export const DisplayOptions = Schema.Struct({mode: DisplayMode, width: Schema.Number, height: Schema.Number});
+export type DisplayOptions = typeof DisplayOptions.Type;
 export const NativeSnapshot = Schema.Struct({
   schema_version: Schema.Literal(1),
   operation: Schema.Struct({schema_version: Schema.Literal(1), revision: Revision, operation: Schema.NullOr(Operation)}),
@@ -21,6 +26,8 @@ export const NativeSnapshot = Schema.Struct({
     install_directory: Schema.NullOr(Schema.String), launcher_summary_consent: Schema.Boolean,
     // Empty means the built-in default server list.
     login_servers: Schema.Array(LoginServer), client_patches_enabled: Schema.Boolean,
+    // The launcher writes this into the client profile before every Play.
+    display: DisplayOptions,
   }),
   requires_reopen: Schema.Boolean,
   // An adopted copy plays with the list its adoption reviewed, whatever is saved above.
@@ -29,6 +36,8 @@ export const NativeSnapshot = Schema.Struct({
   launcher: Schema.Struct({version: Schema.String, tag: Schema.NullOr(Schema.String)}),
   // Whether setup diagnostics have an https endpoint to go to (engine `setup_diagnostics_endpoint`).
   setup_diagnostics_endpoint: Schema.optionalKey(Schema.Boolean),
+  // The display modes this platform offers (engine `display_options::allowed_modes`).
+  display_modes: Schema.Array(DisplayMode),
 });
 export type NativeSnapshot = typeof NativeSnapshot.Type;
 export type Preferences = NativeSnapshot["preferences"];
@@ -38,11 +47,14 @@ export type Command = {command: "inspect"; schema_version: 1} | {
 } | {
   command: "save_client_options"; schema_version: 1; expected_revision: number;
   login_servers: readonly LoginServer[]; client_patches_enabled: boolean;
+} | {
+  command: "save_display_options"; schema_version: 1; expected_revision: number; display: DisplayOptions;
 };
 
 // Native storage codes as `StorageError` serializes them.
 export type StorageCode = "in_use" | "io" | "corrupt" | "unsupported_schema" | "too_large" | "unsafe_file" |
-  "invalid_directory" | "stale_revision" | "busy" | "persistence_uncertain" | "invalid_server_list";
+  "invalid_directory" | "stale_revision" | "busy" | "persistence_uncertain" | "invalid_server_list" |
+  "invalid_display_options";
 /** The three scaffold commands (LX-02) fail with one flat code string: a storage code or `"unavailable"`. */
 export type ScaffoldError = StorageCode | "unavailable";
 
@@ -148,11 +160,12 @@ export function physxFailure(error: unknown): PhysxError | "transport" {
 export class BridgeFailure extends Data.TaggedError("BridgeFailure")<{
   readonly code: "transport" | "schema" | "in_use" | "io" | "corrupt" | "unsupported_schema" |
     "too_large" | "unsafe_file" | "invalid_directory" | "stale_revision" | "busy" | "persistence_uncertain" |
-    "invalid_server_list";
+    "invalid_server_list" | "invalid_display_options";
 }> {}
 
 const nativeCodes = new Set(["in_use", "io", "corrupt", "unsupported_schema", "too_large", "unsafe_file",
-  "invalid_directory", "stale_revision", "busy", "persistence_uncertain", "invalid_server_list"]);
+  "invalid_directory", "stale_revision", "busy", "persistence_uncertain", "invalid_server_list",
+  "invalid_display_options"]);
 export function safeFailure(error: unknown): BridgeFailure {
   return new BridgeFailure({code: typeof error === "string" && nativeCodes.has(error)
     ? error as BridgeFailure["code"] : "transport"});

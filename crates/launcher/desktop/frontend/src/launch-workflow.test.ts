@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {Effect,Schema} from 'effect';
 import {LaunchStatus,launchBlocked} from './launch-workflow';
 
-const initial=()=>({schema_version:1,setup_complete:true,resources_available:true,launcher_update_required:false,patches_incomplete:1,ops_skipped:3,installation_id:'owner',observation:null as unknown,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1,revision:0,operation:null as unknown}}});
+const initial=()=>({schema_version:1,setup_complete:true,resources_available:true,launcher_update_required:false,patches_incomplete:1,ops_skipped:3,installation_id:'owner',observation:null as unknown,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed' as const,width:1024,height:768}},operation:{schema_version:1,revision:0,operation:null as unknown}}});
 const decode=(value:unknown)=>Effect.runPromise(Schema.decodeUnknownEffect(LaunchStatus,{onExcessProperty:'error'})(value));
 test('missing game components and an active vendor installer each block Play',async()=>{
  for(const prerequisites_missing of [['directx'],['physx'],['directx','physx']]){

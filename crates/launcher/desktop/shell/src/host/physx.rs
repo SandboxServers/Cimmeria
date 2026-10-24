@@ -2,33 +2,22 @@
 //! verifies the package and maps results; this file owns the one-at-a-time
 //! guard and the last result, so a lost reply can be read back by Inspect.
 use super::setup_events;
+use super::windows_prerequisites::SetupLease;
 use super::NativeHost;
 use cimmeria_launcher_engine::runtime_setup::windows_physx::{
     self, Elevate, PhysxCommand, PhysxError, PhysxStatus, Probe,
 };
 use cimmeria_launcher_engine::StorageError;
-use std::sync::atomic::Ordering;
 
 impl NativeHost {
     pub fn physx_command(&self, request: PhysxCommand) -> Result<PhysxStatus, PhysxError> {
         #[cfg(windows)]
         {
-            let result = self.physx_command_with(
+            self.physx_command_with(
                 request,
                 &windows_physx::native::System,
                 &windows_physx::native::ShellExecuteRunas,
-            );
-            let mut status = match result {
-                Err(PhysxError::InstallerUnavailable)
-                    if matches!(request, PhysxCommand::Install { .. }) =>
-                {
-                    self.install_legacy_physx()?
-                }
-                other => other?,
-            };
-            // Adopted folders need no retained seed: the pinned NVIDIA fallback is available.
-            status.installer_available = true;
-            Ok(status)
+            )
         }
         #[cfg(not(windows))]
         {
@@ -86,33 +75,13 @@ impl NativeHost {
             return Err(StorageError::UnsupportedSchema.into());
         }
         if !matches!(request, PhysxCommand::Inspect { .. }) {
-            if self.physx_installing.swap(true, Ordering::SeqCst) {
-                // The shell has no log subscriber; stderr reaches a support run.
-                eprintln!("PhysX install refused: one is already running");
-                setup_events::physx_failed(
-                    if matches!(request, PhysxCommand::InstallLegacy { .. }) {
-                        "install_legacy"
-                    } else {
-                        "install"
-                    },
-                    "busy",
-                    "other",
-                );
-                return Err(StorageError::Busy.into());
-            }
-            struct Running<'a>(&'a std::sync::atomic::AtomicBool);
-            impl Drop for Running<'_> {
-                fn drop(&mut self) {
-                    self.0.store(false, Ordering::SeqCst);
-                }
-            }
-            let _running = Running(&self.physx_installing);
-            // The state lock is released: msiexec can wait on the player for minutes.
-            // The retained-installer path holds the prerequisite lease until the
-            // result is stored; the legacy path takes no lease, as on main.
+            // One install lock: the shared prerequisite lease (DirectX uses it too). The
+            // source read refuses with Busy while any installer, operation or the updater
+            // runs; the lease is held until the result is stored. The state lock is
+            // released: msiexec can wait on the player for minutes.
             let (result, lease) = match request {
                 PhysxCommand::InstallLegacy { .. } => {
-                    let scratch = self.physx_legacy_source().inspect_err(|error| {
+                    let (scratch, lease) = self.physx_legacy_source().inspect_err(|error| {
                         setup_events::physx_failed(
                             "install_legacy",
                             &setup_events::code(error),
@@ -120,53 +89,40 @@ impl NativeHost {
                         );
                     })?;
                     (
-                        windows_physx::legacy::install(&scratch, elevate, probe)?,
-                        None,
+                        windows_physx::legacy::install(&scratch, elevate, probe),
+                        lease,
                     )
                 }
                 _ => {
                     let (source, lease) = self.physx_source().inspect_err(log_source_failure)?;
-                    (
-                        windows_physx::install(&source, elevate, probe)?,
-                        Some(lease),
-                    )
+                    (windows_physx::install(&source, elevate, probe), lease)
                 }
             };
-            *self.physx_last.lock().map_err(|_| StorageError::Io)? = Some(result);
+            *self.physx_last.lock().map_err(|_| StorageError::Io)? = Some(result?);
             drop(lease);
         }
         self.physx_status(probe)
     }
 
     /// The install source, read under the store's lock; the lock is released before msiexec.
-    fn physx_source(
-        &self,
-    ) -> Result<
-        (
-            windows_physx::InstallSource,
-            super::windows_prerequisites::SetupLease,
-        ),
-        PhysxError,
-    > {
+    fn physx_source(&self) -> Result<(windows_physx::InstallSource, SetupLease), PhysxError> {
         let store = self.store()?;
         let mut state = store.lock().map_err(|_| StorageError::Io)?;
         let source = state.physx_install_source()?;
         state.begin_prerequisite_setup()?;
-        Ok((
-            source,
-            super::windows_prerequisites::SetupLease(store.clone()),
-        ))
+        Ok((source, SetupLease(store.clone())))
     }
 
-    fn physx_legacy_source(&self) -> Result<std::path::PathBuf, PhysxError> {
+    fn physx_legacy_source(&self) -> Result<(std::path::PathBuf, SetupLease), PhysxError> {
         let store = self.store()?;
-        let state = store.lock().map_err(|_| StorageError::Io)?;
-        Ok(state.physx_legacy_scratch()?)
+        let mut state = store.lock().map_err(|_| StorageError::Io)?;
+        let scratch = state.physx_legacy_scratch()?;
+        state.begin_prerequisite_setup()?;
+        Ok((scratch, SetupLease(store.clone())))
     }
-
     #[cfg_attr(not(any(windows, test)), allow(dead_code))]
     pub(super) fn physx_status(&self, probe: &dyn Probe) -> Result<PhysxStatus, PhysxError> {
-        let (installer_available, setup_active) = {
+        let (installer_available, installing) = {
             let store = self.store()?;
             let mut state = store.lock().map_err(|_| StorageError::Io)?;
             (
@@ -179,7 +135,7 @@ impl NativeHost {
             supported: true,
             detection: Some(windows_physx::detect(probe)),
             installer_available,
-            installing: setup_active || self.physx_installing.load(Ordering::SeqCst),
+            installing,
             last_result: *self.physx_last.lock().map_err(|_| StorageError::Io)?,
         })
     }
@@ -221,11 +177,23 @@ mod tests {
     const INSPECT: PhysxCommand = PhysxCommand::Inspect { schema_version: 1 };
     const INSTALL: PhysxCommand = PhysxCommand::Install { schema_version: 1 };
 
+    fn setup_active(host: &NativeHost) -> bool {
+        host.store()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .prerequisite_setup_active()
+    }
+
     #[test]
     fn legacy_source_needs_no_retained_package_but_obeys_admission() {
         let root = tempfile::tempdir().unwrap();
         let host = NativeHost::new(root.path().join("state"));
-        assert!(host.physx_legacy_source().unwrap().ends_with("physx-setup"));
+        assert!(host
+            .physx_legacy_source()
+            .unwrap()
+            .0
+            .ends_with("physx-setup"));
         assert!(matches!(
             host.physx_source(),
             Err(PhysxError::InstallerUnavailable)
@@ -243,7 +211,7 @@ mod tests {
             .iter()
             .any(|r| r.field("event") == Some("physx_failed")
                 && r.field("action") == Some("install_legacy")));
-        assert!(!host.physx_installing.load(Ordering::SeqCst));
+        assert!(!setup_active(&host));
     }
 
     /// Starts an install operation in the store, so the next install's read refuses.
@@ -319,14 +287,19 @@ mod tests {
             "an active operation refuses Install"
         );
         assert_eq!(launcher.0.get(), 0);
-        assert!(!host.physx_installing.load(Ordering::SeqCst));
+        assert!(!setup_active(&host));
     }
 
     #[test]
     fn a_second_install_while_one_runs_is_busy() {
         let root = tempfile::tempdir().unwrap();
         let host = NativeHost::new(root.path().join("state"));
-        host.physx_installing.store(true, Ordering::SeqCst);
+        host.store()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .begin_prerequisite_setup()
+            .unwrap();
         let launcher = Counting::default();
         let (result, records) = capture(|| {
             tracing::callsite::rebuild_interest_cache();
@@ -340,7 +313,7 @@ mod tests {
         assert_eq!(failed.len(), 1);
         assert_eq!(failed[0].field("reason"), Some("busy"));
         assert!(
-            host.physx_installing.load(Ordering::SeqCst),
+            setup_active(&host),
             "the refused press does not clear the running install's flag"
         );
         assert!(
@@ -351,6 +324,34 @@ mod tests {
         assert_eq!(launcher.0.get(), 0);
     }
 
+    /// The legacy path used to take no lease, so it ran beside Play, install and
+    /// the updater. It now holds the one install lock like the other installers.
+    #[test]
+    fn legacy_install_takes_the_one_install_lock() {
+        let root = tempfile::tempdir().unwrap();
+        let host = NativeHost::new(root.path().join("state"));
+        let (_, lease) = host.physx_legacy_source().unwrap();
+        assert!(setup_active(&host));
+        assert_eq!(
+            host.physx_command_with(INSTALL, &Missing, &Counting::default()),
+            Err(PhysxError::Storage(StorageError::Busy))
+        );
+        assert!(matches!(
+            host.physx_legacy_source(),
+            Err(PhysxError::Storage(StorageError::Busy))
+        ));
+        assert_eq!(
+            host.store().unwrap().lock().unwrap().ensure_updater_idle(),
+            Err(StorageError::Busy)
+        );
+        assert!(
+            host.physx_command_with(INSPECT, &Missing, &Counting::default())
+                .unwrap()
+                .installing
+        );
+        drop(lease);
+        assert!(!setup_active(&host));
+    }
     /// A successful Inspect is polled, so it logs no started or finished row.
     #[test]
     fn inspect_success_logs_no_started_or_finished_row() {

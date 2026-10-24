@@ -235,7 +235,7 @@ host, an IP, an account name or an error Display, and no hash of an address
 | `adoption` | adoption (AU, unchanged) |
 | `launcher.repair` | repair, client maintenance, uninstall, client changes |
 | `launcher.launch` | Play, launch worker, helper supervisor |
-| `launcher.settings` | preferences, both consents, server list, client patches |
+| `launcher.settings` | preferences, both consents, server list, client patches, display mode |
 | `launcher.telemetry` | game-session mint, game transport, pipeline recovery, log upload |
 | `launcher.ui` | frontend reports |
 | `launcher.login` | reserved for oidc-login; no emitter yet |

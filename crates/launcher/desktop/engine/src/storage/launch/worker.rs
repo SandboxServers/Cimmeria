@@ -1,5 +1,6 @@
 use super::*;
 use crate::game_telemetry::patch_events;
+use crate::storage::display_options::DisplayOptions;
 use futures_util::FutureExt;
 use std::{panic::AssertUnwindSafe, sync::Mutex};
 use tokio::sync::watch;
@@ -183,13 +184,15 @@ async fn execute(
         crate::phase_timing::Outcome::Unavailable
     });
     let minted = session.is_some();
+    let display = display::options(&state);
     let telemetry_session = session.clone().map(|session| (session, servers.clone()));
     let prepared = plan.clone();
     let setup_timer = context.start(crate::phase_timing::Phase::PlayClientSetup);
-    let setup =
-        tokio::task::spawn_blocking(move || prepare(&prepared, &root, session.as_ref(), &servers))
-            .await
-            .map_err(|_| StorageError::Io)?;
+    let setup = tokio::task::spawn_blocking(move || {
+        prepare(&prepared, &root, session.as_ref(), &servers, display)
+    })
+    .await
+    .map_err(|_| StorageError::Io)?;
     let Ok((spec, request, _ownership)) = setup_timer.result(setup) else {
         events::launch_not_started(plan.id, "prepare_failed");
         return Ok(Observation::NotStarted);
@@ -324,6 +327,7 @@ fn prepare(
     root: &Path,
     session: Option<&crate::game_telemetry::Session>,
     servers: &[LoginServer],
+    display: DisplayOptions,
 ) -> Result<
     (
         crate::helper_supervisor::HelperCommand,
@@ -335,7 +339,7 @@ fn prepare(
     if plan.runtime.is_some() {
         #[cfg(target_os = "macos")]
         {
-            let (spec, request, resources) = wine::prepare(plan, root, session, servers)?;
+            let (spec, request, resources) = wine::prepare(plan, root, session, servers, display)?;
             return Ok((
                 spec,
                 request,
@@ -351,12 +355,13 @@ fn prepare(
     if !cfg!(windows) {
         return Err(StorageError::Corrupt.into());
     }
-    prepare_native(plan, session, servers)
+    prepare_native(plan, session, servers, display)
 }
 fn prepare_native(
     plan: &Plan,
     session: Option<&crate::game_telemetry::Session>,
     servers: &[LoginServer],
+    display: DisplayOptions,
 ) -> Result<
     (
         crate::helper_supervisor::HelperCommand,
@@ -392,6 +397,7 @@ fn prepare_native(
             .chain(telemetry)
             .map(|p| p.path().to_path_buf())
             .collect(),
+        args: display::arguments(display),
     };
     let environment: std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString> = [
         "SystemRoot",
@@ -412,6 +418,7 @@ fn prepare_native(
             .map(|(key, value)| (key.into(), value.into())),
     )
     .collect();
+    display::apply(plan.id, display::native_profile().as_deref(), display);
     Ok((
         crate::helper_supervisor::HelperCommand {
             executable: plan.resources.helper.path().into(),

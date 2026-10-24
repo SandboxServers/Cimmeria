@@ -114,8 +114,13 @@ Preferences are `schema_version: 2`. They also hold the client options: the
 those defaults and is written back as version 2 by the next save. A file whose
 fields do not match its version is corrupt and is left untouched.
 
-`engine/src/commands.rs` exposes versioned `inspect`, `save_preferences` and
-`save_client_options` commands. `save_client_options` replaces both client
+`engine/src/commands.rs` exposes versioned `inspect`, `save_preferences`,
+`save_client_options` and `save_display_options` commands. `save_display_options`
+stores the game's display mode and window size (default windowed 1024x768) with
+the same admission as `save_client_options`; it fails with
+`invalid_display_options` on an out-of-range size or a mode the platform does not
+offer, and a default display is stored as no key. Every snapshot carries
+`preferences.display` and `display_modes`, the modes this platform offers. `save_client_options` replaces both client
 options at once, needs the current preference revision, and is refused while the
 launcher updater or any operation other than Play is running (Play reads them
 only at launch, so a save during Play applies to the next one); it leaves the

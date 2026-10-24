@@ -12,7 +12,7 @@ createInterface({input:child.stdout}).on('line',line=>{if(line.startsWith('UPDAT
 const send=request=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('native reply deadline')),10000);pending.push({resolve:x=>{clearTimeout(timer);resolve(x)},reject:x=>{clearTimeout(timer);reject(x)}});child.stdin.write(JSON.stringify(request)+'\n');});
 const {document,window}=parseHTML(await readFile(new URL('./ui/index.html',import.meta.url),'utf8'));
 let operationRevision=0;
-const native=()=>({schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},operation:{schema_version:1,revision:operationRevision,operation:null},preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}});
+const native=()=>({schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed'],launcher:{version:'0.1.0',tag:null},operation:{schema_version:1,revision:operationRevision,operation:null},preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed',width:1024,height:768}}});
 const calls=[];
 const desktop=mountDesktop(document,async(command,args)=>{
  if(command==='updater_command'){calls.push(args.request);return send(args.request);}

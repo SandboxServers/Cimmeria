@@ -10,16 +10,16 @@ import type { InstallStatus } from './install-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
 const MB=1024*1024;
 const id='d539d049-61b7-4c82-b3d7-cb9b7a991adc';
-const native:SeedArchiveStatus['native']={schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},
+const native:SeedArchiveStatus['native']={schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'0.1.0',tag:null},
   operation:{schema_version:1,revision:0,operation:null},
-  preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}};
+  preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed' as const,width:1024,height:768}}};
 const idle=():SeedArchiveStatus=>({schema_version:1,native,chosen:null,offer:null,verifying:null,last_error:null});
 const chosen=():SeedArchiveStatus=>({...idle(),chosen:{file_name:'Stargate.rar',size:40*MB}});
 const offered=():SeedArchiveStatus=>({...idle(),offer:{file_name:'Stargate.rar',size:40*MB}});
 const checking=(current:number):SeedArchiveStatus=>({...idle(),verifying:{phase:'download',current,total:400*MB}});
 const installIdle=():InstallStatus=>({schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null,native:{schema_version:1,
-  requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},operation:{schema_version:1,revision:0,operation:null},preferences:{schema_version:2,revision:1,
-    install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}}});
+  requires_reopen:false,adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'0.1.0',tag:null},operation:{schema_version:1,revision:0,operation:null},preferences:{schema_version:2,revision:1,
+    install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed' as const,width:1024,height:768}}}});
 const using='Using Stargate.rar (verified). The launcher copies it when it needs the game files and never changes or deletes your file.';
 const panelContext=(refresh?:()=>Promise<unknown>)=>makePanelContext(refresh).context;
 const requestOf=(args?:Record<string,unknown>)=>(args!.request as {command:string}).command;

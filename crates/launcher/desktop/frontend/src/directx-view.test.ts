@@ -6,8 +6,8 @@ import {mountDirectx} from './directx-view';
 import {makePanelContext} from './panel-context';
 import type {DirectxStatus,NativeSnapshot} from './contract';
 const html=readFileSync('ui/index.html','utf8');
-const snapshot:NativeSnapshot={schema_version:1,operation:{schema_version:1,revision:0,operation:null},requires_reopen:false,adopted_login_servers:null,launcher:{version:'test',tag:null},
- preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}};
+const snapshot:NativeSnapshot={schema_version:1,operation:{schema_version:1,revision:0,operation:null},requires_reopen:false,adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'test',tag:null},
+ preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed' as const,width:1024,height:768}}};
 const status=(over:Partial<DirectxStatus>={}):DirectxStatus=>({schema_version:1,supported:true,missing:['d3dx9_40.dll','xinput1_3.dll'],installing:false,last_result:null,...over});
 async function mounted(respond:(command:string)=>Promise<unknown>){
  const {document,window}=parseHTML(html);const feed=makePanelContext();feed.publish(snapshot);const calls:string[]=[];

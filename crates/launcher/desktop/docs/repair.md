@@ -36,6 +36,11 @@ Unknown helper outcomes remain gated. Preserve the game, backup, stages and jour
 for manual inspection; restarting and rechecking does not prove a helper stopped.
 Neither button promises recovery of every interruption.
 
+On start-up, an interrupted repair that never started (no work folder, prepared
+record, commit record or backup on disk) is marked `failed` automatically and logs
+`repair_reconciled_unstarted`. One with any of those files on disk still needs
+**Recover repair** or **Abandon preparation**.
+
 After durable success, **Remove old repair backup** separately confirms permanent
 removal of the current repair's backup, including modifications there. Cleanup is
 recoverable and idempotent through its native checkpoint. It does not delete stages.
@@ -56,7 +61,10 @@ Recovery buttons mean “request native validation,” not a guarantee it will s
 The host retains preparation's cancellation/progress handle and transfers only its
 result receiver to the coordinator. That coordinator consumes `Prepared` directly
 into native/Wine commit without releasing the root, work or prefix ownership.
-Dispatch failure marks reconciliation immediately. Active observation avoids
+A dispatch failure while the repair is still `Starting` (nothing has run, and no
+file changed) ends it `failed` and logs `repair_not_started` with the closed
+reason. Only an unconfirmed save (`persistence_uncertain`), or a run that already
+left `Starting`, leaves `reconciliation_required`. Active observation avoids
 reopening the worker-owned root marker, which matters for Windows file locking.
 
 The `frontend/repair-uat.mjs` exercise runs actual Effect/view logic against the
