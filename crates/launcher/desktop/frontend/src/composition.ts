@@ -6,6 +6,7 @@ import { mountLaunch } from './launch-view';
 import { mountGameTelemetry } from './game-telemetry-view';
 import { mountTelemetryStatus } from './telemetry-status-view';
 import { mountInstall } from './install-view';
+import { mountDisplay } from './display-view';
 import { mountLauncher, Invoke } from './view';
 
 /** Mount the launcher once; operation revisions refresh dependent capabilities. */
@@ -36,6 +37,8 @@ const stopAdoptionRefresh = app.context.onSnapshot(snapshot=>{
 });
 updater = mountUpdater(document,invoke,()=>{void app.refresh(); void installation.refresh(); void play.refresh();},{startup:true,onPlayGate:blocked=>play.setUpdateBlocked(blocked)});
 const gameUpdate = mountGameUpdate(document,invoke,()=>{void app.refresh();void installation.refresh();void play.refresh();void updater?.refresh();});
-return {installation, app, play, migration, adoption, updater, gameUpdate, gameTelemetry, telemetryStatus,
- dispose:async()=>{stopAdoptionRefresh();telemetryStatus.dispose();await Promise.all([gameTelemetry.dispose(),gameUpdate.dispose(),adoption!.dispose(),migration.dispose(),play.dispose(),app.dispose(),installation.dispose(),updater!.dispose()]);}};
+// The display setting (PD-26) saves through the same panel context as the other Settings panels.
+const display = mountDisplay(document,invoke,app.context);
+return {installation, app, play, migration, adoption, updater, gameUpdate, gameTelemetry, telemetryStatus, display,
+ dispose:async()=>{stopAdoptionRefresh();telemetryStatus.dispose();await Promise.all([display.dispose(),gameTelemetry.dispose(),gameUpdate.dispose(),adoption!.dispose(),migration.dispose(),play.dispose(),app.dispose(),installation.dispose(),updater!.dispose()]);}};
 }
