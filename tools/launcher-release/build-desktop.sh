@@ -489,5 +489,5 @@ case "${1:-}" in
   feed-dry-run) shift; stage_feed_dry_run "$@" ;;
   overlay) shift; stage_overlay "$@" ;;
   paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" "ARCHIVE_WORKER=$ARCHIVE_WORKER" "PREREQUISITE_WORKER=$PREREQUISITE_WORKER" "MAC_PIECES=$MAC_PIECES" "PLAY_PIECES=$PLAY_PIECES" "ZIP=$ZIP" "FEED=$FEED" "FEED_TOOL=$FEED_TOOL" "PACKER=$PACKER" "WINDOWS_ARCH=$WINDOWS_ARCH" "LAUNCHER_MACHINE=$LAUNCHER_MACHINE" ;;
-  *) sed -n '2,71p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,72p' "$0" >&2; exit 2 ;;
 esac
