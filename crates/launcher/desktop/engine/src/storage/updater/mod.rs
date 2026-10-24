@@ -11,7 +11,9 @@ mod transport;
 use super::{atomic, ensure_regular_or_absent, read, DesktopState, StorageError, MAX_REVISION};
 pub use policy::Config;
 pub use release_check::{
-    release_config, verify_windows_release, RELEASE_FEED_HOSTS, RELEASE_FEED_URL, WINDOWS_PLATFORM,
+    check_windows_feed, feed_document, release_config, verify_windows_release, FeedEntry,
+    WindowsPackage, RELEASE_FEED_HOSTS, RELEASE_FEED_URL, WINDOWS_AARCH64_PLATFORM,
+    WINDOWS_PLATFORM, WINDOWS_PLATFORMS, WINDOWS_X86_64_PLATFORM,
 };
 use serde::{Deserialize, Serialize};
 use std::io::Read;
