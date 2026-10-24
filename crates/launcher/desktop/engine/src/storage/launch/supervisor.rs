@@ -215,14 +215,26 @@ async fn run_timed(
     };
     // Cancellation is admission/pre-spawn only. Closing the UI or cancelling a
     // start cannot silently kill a game whose own threads are already running.
-    let event = tokio::select! {
-        biased;
-        result = line(&mut reader, request.operation_id) => result,
-        _ = child.wait() => {
-            match tokio::time::timeout(Duration::from_secs(2), line(&mut reader, request.operation_id)).await {
-                Ok(result) => result,
-                Err(_) => Err(()),
+    let mut placed = false;
+    let event = loop {
+        let event = tokio::select! {
+            biased;
+            result = line(&mut reader, request.operation_id) => result,
+            _ = child.wait() => {
+                match tokio::time::timeout(Duration::from_secs(2), line(&mut reader, request.operation_id)).await {
+                    Ok(result) => result,
+                    Err(_) => Err(()),
+                }
             }
+        };
+        // PD-33: one window placement report may come before the exit; it is
+        // logged and otherwise ignored. A second one is not the exit.
+        match event {
+            Ok(Event::WindowPlaced { outcome }) if !placed => {
+                placed = true;
+                events::display_placement(id, outcome);
+            }
+            other => break other,
         }
     };
     if let Ok(Event::Unknown { stage, win32 }) = event {

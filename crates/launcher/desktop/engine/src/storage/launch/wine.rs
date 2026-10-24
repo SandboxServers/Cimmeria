@@ -72,6 +72,8 @@ pub(super) fn prepare(
             .map(|p| guest(p.path()))
             .collect::<Result<_, _>>()?,
         args: super::display::arguments(display),
+        // The worker fills it from the remembered monitor (PD-33).
+        place_on: None,
     };
     let spec = HelperCommand {
         executable: mac_wine::app_identity::loader(&resources.runtime, state_root),

@@ -2,6 +2,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
+pub mod placement;
+pub use placement::PlacementOutcome;
 pub const MAX_MESSAGE: usize = 16384;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -15,6 +17,11 @@ pub struct Request {
     /// request without display arguments serializes exactly as before.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<String>,
+    /// The monitor to open the game on, as `[x, y, width, height]` in the units
+    /// the game sees (PD-33). `None` is the main display and is omitted, so the
+    /// request is the same as before; `schema_version` stays 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub place_on: Option<[i32; 4]>,
 }
 /// The only game arguments the helper passes on: `-windowed`, `ResX=<n>` and
 /// `ResY=<n>` (3-4 ASCII digits each), at most once each.
@@ -73,6 +80,11 @@ pub enum Event {
         stage: Option<Stage>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         win32: Option<u32>,
+    },
+    /// Sent at most once, after `ProcessStarted`, when the request had
+    /// `place_on` (PD-33). The engine only logs it.
+    WindowPlaced {
+        outcome: PlacementOutcome,
     },
 }
 #[derive(Debug, Serialize, Deserialize)]

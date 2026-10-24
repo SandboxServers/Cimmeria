@@ -23,6 +23,7 @@ fn fixture(script: &str) -> (tempfile::TempDir, HelperCommand, Request) {
             directory: "Z:\\".into(),
             dlls: vec![],
             args: vec![],
+            place_on: None,
         },
     )
 }
@@ -157,6 +158,7 @@ async fn cancellation_before_spawn_does_not_invoke_helper_and_spawn_failure_is_k
         directory: "y".into(),
         dlls: vec![],
         args: vec![],
+        place_on: None,
     };
     assert_eq!(
         run(
@@ -268,4 +270,49 @@ fn a_spawn_failure_is_noted_on_the_launch_record() {
         state.lock().unwrap().launch_failure(),
         Ok(Some(FailureCode::SpawnNotFound))
     );
+}
+// PD-33: one window placement report between start and exit is logged and the
+// game still ends as a normal exit; a second report is not an exit.
+#[test]
+fn a_window_placement_report_is_logged_and_the_exit_still_counts() {
+    let run_script = |script: &str| {
+        let (_root, spec, request) = fixture(script);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        crate::test_capture::capture(|| {
+            rt.block_on(async {
+                tokio::time::timeout(
+                    Duration::from_secs(60),
+                    run(spec, request, CancellationToken::new(), |_| Ok(()), |_| {}),
+                )
+                .await
+            })
+            .unwrap()
+        })
+    };
+    let (result, records) = run_script("event('process_started',guest_pid=987)\nevent('window_placed',outcome='placed')\nevent('process_exited',guest_pid=987,code=0)");
+    assert!(
+        matches!(
+            result,
+            Observation::ProcessExited {
+                guest_pid: 987,
+                code: 0,
+                ..
+            }
+        ),
+        "{result:?}"
+    );
+    let placed: Vec<_> = records
+        .iter()
+        .filter(|e| e.field("event") == Some("display_placement"))
+        .collect();
+    assert_eq!(placed.len(), 1);
+    assert_eq!(placed[0].target, "launcher.launch");
+    assert_eq!(placed[0].level, tracing::Level::INFO);
+    assert_eq!(placed[0].field("outcome"), Some("placed"));
+    assert!(placed[0].field("operation").is_some());
+    let (result, _) = run_script("event('process_started',guest_pid=987)\nevent('window_placed',outcome='placed')\nevent('window_placed',outcome='placed')\nevent('process_exited',guest_pid=987,code=0)");
+    assert_eq!(result, Observation::Unknown);
 }

@@ -5,7 +5,7 @@ use super::Observation;
 use crate::failure::FailureCode;
 use crate::operation_numbers;
 use crate::ContractError;
-use cimmeria_runtime_probe::game_launch::Stage;
+use cimmeria_runtime_probe::game_launch::{PlacementOutcome, Stage};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -249,6 +249,20 @@ pub(crate) fn display_settings(
             saved_options, engine_ini, failure_code = "display_settings_not_applied",
             "launch: display settings not applied; the profile file was missing or not writable; the game starts anyway");
     }
+}
+
+/// How the launch helper placed the game window on the remembered monitor
+/// (PD-33). Information only: the launch goes on whatever the outcome.
+pub(crate) fn display_placement(id: Uuid, outcome: PlacementOutcome) {
+    let operation = operation_numbers::number(id);
+    let outcome = outcome.code();
+    tracing::info!(
+        target: "launcher.launch",
+        event = "display_placement",
+        operation,
+        outcome,
+        "launch: game window placement"
+    );
 }
 
 /// The launch helper did not stop after a kill; `error_kind` is a closed code.

@@ -483,6 +483,37 @@ The save logs `display_options_saved` on `launcher.settings` (INFO) with `mode`,
 setup, false when it removed the entry or stored nothing. No field carries a
 rectangle or a setup key.
 
+### Opening the game on the remembered monitor
+
+At Play, when a placement is saved, the worker lists the displays once and asks
+for the display the current setup remembers (as `display_monitor` does). Only
+when that display is not the main display does the helper request carry
+`place_on`: `[x, y, width, height]` in the units the game sees (PD-31). The
+main display, an unknown setup or no displays leave the field out, which is the
+request from before placement; `schema_version` stays 1. The engine sends it only
+in windowed mode. With Windows exclusive fullscreen the field is left out,
+because the D3D9 device owns its adapter, and moving that window could only
+lose the device or minimize the game.
+
+After `process_started`, and only with `place_on`, the helper starts a detached
+thread that never delays its wait for the game's exit. Every 250 ms for up to
+60 s it looks for a visible, unowned top-level window of the game's process.
+It then lists the monitors and converts each `rcMonitor` to game units with the
+same rule as `display_targets` (`GetDpiForMonitor`, `MDT_EFFECTIVE_DPI`; under
+Wine the DPI reads 96, so nothing changes). The monitor with exactly the
+`place_on` rectangle is chosen, else the first with the same size. When the
+window is already on that monitor, nothing moves. Otherwise the window is
+centred in the monitor's work area with `SetWindowPos` (no resize, no z-order
+change, no activation; a window larger than the work area goes to its top-left)
+and checked again 3 s later, moved once more if it went back.
+
+The helper reports `window_placed` once, with `outcome` one of `placed`,
+`already_there`, `no_window` (no window within 60 s) or `no_monitor` (no
+monitor matches). The supervisor accepts one such report between
+`process_started` and `process_exited`, logs `display_placement` on
+`launcher.launch` (INFO, `operation`, `outcome`) and otherwise ignores it; it
+never changes the launch outcome. No field carries a rectangle.
+
 ## Patch policy per installation
 
 Native code decides whether Play injects client patches. The renderer cannot.
