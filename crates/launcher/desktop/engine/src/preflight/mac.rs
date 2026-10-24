@@ -16,6 +16,7 @@ const ROSETTA_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 ///
 /// `None` means the probe timed out, `Some(Err(_))` that spawning
 /// `/usr/bin/arch` failed, and `Some(Ok(success))` whether it exited 0.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn classify_rosetta(outcome: Option<std::io::Result<bool>>) -> RosettaProbe {
     match outcome {
         None => RosettaProbe::TimedOut,
