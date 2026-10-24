@@ -13,7 +13,7 @@
 #   stage            copy them into the launcher's bundled resources through
 #                    crates/launcher/desktop/tools/stage-helper.py, which
 #                    checks each one's architecture and digest
-#   launcher         build the UI and the 64-bit launcher, pinned to the
+#   launcher         build the UI and the launcher for WINDOWS_ARCH, pinned to the
 #                    SHA-256 of each staged file; a release exports
 #                    CIMMERIA_LAUNCHER_TAG, CIMMERIA_LAUNCHER_BUILD_EPOCH,
 #                    CIMMERIA_LAUNCHER_VERSION, LAUNCHER_MANIFEST_PUBKEY_HEX
@@ -22,7 +22,7 @@
 #                    lab-bridge build, the files beside the launcher are the
 #                    ones it was pinned to, and the release stamps reached it
 #   package          zip the self-contained launcher EXE into
-#                    artifacts/StargateWorlds-Launcher-windows-x64.zip, the
+#                    artifacts/StargateWorlds-Launcher-windows-<x64|arm64>.zip, the
 #                    executable at the zip's root as the self-update requires,
 #                    with a .sha256 beside it
 #   play-pieces      after stage: copy the three staged Play pieces into
@@ -43,14 +43,15 @@
 #   feed-tool        build the release_feed example (release-tools profile)
 #                    that sign and verify-feed run; never with the
 #                    signing key in the environment
-#   sign <version> <url> <notes>
-#                    Minisign-sign the zip with LAUNCHER_UPDATER_MINISIGN_KEY
-#                    (and _PASSWORD) and write artifacts/<zip>.sig and
-#                    artifacts/latest.json, the feed offering it from <url>;
+#   sign <version> <base-url> <notes>
+#                    Minisign-sign every Windows zip (FEED_ARCHES: x64 and
+#                    arm64) with LAUNCHER_UPDATER_MINISIGN_KEY (and _PASSWORD)
+#                    and write artifacts/<zip>.sig and artifacts/latest.json,
+#                    the feed offering each from <base-url>/<zip name>;
 #                    runs the built tool, no cargo
 #   verify-feed <version>
 #                    run the launcher engine's own feed, signature and zip
-#                    checks on those files against LAUNCHER_UPDATER_PUBKEY
+#                    checks on all of them against LAUNCHER_UPDATER_PUBKEY
 #   feed-dry-run <version>
 #                    feed-tool, then sign and verify-feed with a throwaway key
 #                    made here, for the PR dry run, which has no real key
@@ -67,6 +68,8 @@
 #
 # The Windows EXE embeds all three pinned Play pieces. The release stays a ZIP
 # containing that EXE at its root; startup owns extraction and cache cleanup.
+#
+# WINDOWS_ARCH=x64 (default) or arm64 picks the zip name and the PE machine verify requires.
 set -euo pipefail
 
 PROFILE="${PROFILE:-release}"
@@ -87,10 +90,21 @@ TELEMETRY_DLL="$TARGET_DIR/$I686/$PROFILE_DIR/cimmeria_client_telemetry.dll"
 STAGED="$DESKTOP/shell/resources/windows"
 OUT="$DESKTOP_DIR/$PROFILE_DIR"
 LAUNCHER="$OUT/cimmeria-launcher-desktop.exe"
-# The release names (docs/analysis/launcher-consolidation/work-packets.md,
-# "Release names"). The launcher's updater offers whatever latest.json names,
-# but players and docs link to the zip by this exact name on launcher-current.
-ZIP_NAME="StargateWorlds-Launcher-windows-x64.zip"
+# The release names (D-WA2). Players and docs link to each zip by this exact
+# name on launcher-current; the updater offers whatever latest.json names.
+WINDOWS_ARCH="${WINDOWS_ARCH:-x64}"
+# <feed platform> <zip name> <PE machine of the launcher>
+arch_row() {
+  case "$1" in
+    x64) echo "windows-x86_64 StargateWorlds-Launcher-windows-x64.zip 0x8664" ;;
+    arm64) echo "windows-aarch64 StargateWorlds-Launcher-windows-arm64.zip 0xaa64" ;;
+    *) echo "WINDOWS_ARCH must be x64 or arm64, got $1" >&2; return 2 ;;
+  esac
+}
+ROW="$(arch_row "$WINDOWS_ARCH")" || exit 2
+read -r _ ZIP_NAME LAUNCHER_MACHINE <<<"$ROW"
+# Every zip one release feed signs and offers (D-WA4).
+FEED_ARCHES=(x64 arm64)
 ZIP="artifacts/$ZIP_NAME"
 FEED="artifacts/latest.json"
 # The macOS app's Install pieces: the archive worker for the host (x86-64)
@@ -125,7 +139,7 @@ winpath() {
   if command -v cygpath >/dev/null; then cygpath -w "$p"; else echo "$p"; fi
 }
 
-# PE machine field: 0x14c = i386, 0x8664 = x86-64.
+# PE machine field: 0x14c = i386, 0x8664 = x86-64, 0xaa64 = Arm64.
 pe_machine() {
   python - "$(winpath "$1")" <<'PY'
 import struct, sys
@@ -212,7 +226,7 @@ stage_launcher() {
 
 stage_verify() {
   need "$LAUNCHER"
-  [ "$(pe_machine "$LAUNCHER")" = 0x8664 ] || die "$LAUNCHER is not 64-bit"
+  [ "$(pe_machine "$LAUNCHER")" = "$LAUNCHER_MACHINE" ] || die "$LAUNCHER is not a Windows $WINDOWS_ARCH executable (PE machine $LAUNCHER_MACHINE)"
   local name var
   for pair in "${PIECES[@]}"; do
     read -r name var <<<"$pair"
@@ -271,7 +285,7 @@ with tempfile.TemporaryDirectory(prefix="cimmeria-embedded-probe-") as temporary
             (windows / names[0]).write_bytes(b"corrupt cache fixture")
 print("single-EXE embedded payload: cold extraction, reuse and corrupt-cache repair passed")
 PY
-  echo "verified: self-contained 64-bit launcher with pinned 32-bit worker and DLLs"
+  echo "verified: self-contained Windows $WINDOWS_ARCH launcher with pinned 32-bit worker and DLLs"
 }
 
 stage_package() {
@@ -402,19 +416,33 @@ release_feed() {
 }
 
 stage_sign() {
-  local version="${1:?sign needs the version}" url="${2:?sign needs the zip URL}" notes="${3:-}"
-  need "$ZIP"
+  local version="${1:?sign needs the version}" base="${2:?sign needs the release download base URL}" notes="${3:-}"
+  local arch platform name args=()
+  for arch in "${FEED_ARCHES[@]}"; do
+    read -r platform name _ <<<"$(arch_row "$arch")"
+    need "artifacts/$name"
+    args+=("$platform" "$(winpath "artifacts/$name")" "${base%/}/$name")
+  done
   [ -n "${LAUNCHER_UPDATER_MINISIGN_KEY:-}" ] || die "sign needs LAUNCHER_UPDATER_MINISIGN_KEY"
-  release_feed sign "$(winpath "$ZIP")" "$version" "$url" "$notes" "$(winpath artifacts)"
-  need "$ZIP.sig"; need "$FEED"
+  release_feed sign "$version" "$notes" "$(winpath artifacts)" "${args[@]}"
+  for arch in "${FEED_ARCHES[@]}"; do
+    read -r platform name _ <<<"$(arch_row "$arch")"
+    need "artifacts/$name.sig"
+  done
+  need "$FEED"
 }
 
 stage_verify_feed() {
   local version="${1:?verify-feed needs the version}"
-  need "$ZIP"; need "$ZIP.sig"; need "$FEED"
   [ -n "${LAUNCHER_UPDATER_PUBKEY:-}" ] || die "verify-feed needs LAUNCHER_UPDATER_PUBKEY"
-  release_feed verify "$(winpath "$FEED")" "$(winpath "$ZIP")" "$(winpath "$ZIP.sig")" \
-    "$LAUNCHER_UPDATER_PUBKEY" "$version"
+  need "$FEED"
+  local arch platform name args=()
+  for arch in "${FEED_ARCHES[@]}"; do
+    read -r platform name _ <<<"$(arch_row "$arch")"
+    need "artifacts/$name"; need "artifacts/$name.sig"
+    args+=("$platform" "$(winpath "artifacts/$name")" "$(winpath "artifacts/$name.sig")")
+  done
+  release_feed verify "$(winpath "$FEED")" "$LAUNCHER_UPDATER_PUBKEY" "$version" "${args[@]}"
 }
 
 stage_feed_dry_run() {
@@ -426,7 +454,7 @@ stage_feed_dry_run() {
   release_feed keygen "$(winpath "$keys")"
   LAUNCHER_UPDATER_MINISIGN_KEY="$(cat "$keys/secret.key")" \
     stage_sign "$version" \
-    "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-dry-run/$ZIP_NAME" \
+    "https://github.com/SandboxServers/Cimmeria/releases/download/launcher-dry-run" \
     "Dry run $version"
   LAUNCHER_UPDATER_PUBKEY="$(cat "$keys/public.key")" stage_verify_feed "$version"
   rm -rf "$keys"
@@ -460,6 +488,6 @@ case "${1:-}" in
   verify-feed) shift; stage_verify_feed "$@" ;;
   feed-dry-run) shift; stage_feed_dry_run "$@" ;;
   overlay) shift; stage_overlay "$@" ;;
-  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" "ARCHIVE_WORKER=$ARCHIVE_WORKER" "PREREQUISITE_WORKER=$PREREQUISITE_WORKER" "MAC_PIECES=$MAC_PIECES" "PLAY_PIECES=$PLAY_PIECES" "ZIP=$ZIP" "FEED=$FEED" "FEED_TOOL=$FEED_TOOL" "PACKER=$PACKER" ;;
-  *) sed -n '2,60p' "$0" >&2; exit 2 ;;
+  paths) printf '%s\n' "WORKER=$WORKER" "PATCHES_DLL=$PATCHES_DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "LAUNCHER=$LAUNCHER" "ARCHIVE_WORKER=$ARCHIVE_WORKER" "PREREQUISITE_WORKER=$PREREQUISITE_WORKER" "MAC_PIECES=$MAC_PIECES" "PLAY_PIECES=$PLAY_PIECES" "ZIP=$ZIP" "FEED=$FEED" "FEED_TOOL=$FEED_TOOL" "PACKER=$PACKER" "WINDOWS_ARCH=$WINDOWS_ARCH" "LAUNCHER_MACHINE=$LAUNCHER_MACHINE" ;;
+  *) sed -n '2,71p' "$0" >&2; exit 2 ;;
 esac
