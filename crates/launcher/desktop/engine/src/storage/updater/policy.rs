@@ -38,7 +38,7 @@ impl Config {
         };
         if !matches!(
             platform,
-            "darwin-aarch64" | "darwin-x86_64" | "windows-x86_64"
+            "darwin-aarch64" | "darwin-x86_64" | "windows-x86_64" | "windows-aarch64"
         ) || public_key.len() > 4096
         {
             return Err(Error::Policy);
