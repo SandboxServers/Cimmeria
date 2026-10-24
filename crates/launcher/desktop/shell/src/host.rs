@@ -29,6 +29,7 @@ mod launch;
 mod log_upload;
 mod migration;
 mod physx;
+pub(crate) mod preflight;
 mod windows_prerequisites;
 pub use launch::{LaunchCommand, LaunchStatus};
 pub use migration::{MigrationCommand, MigrationStatus};

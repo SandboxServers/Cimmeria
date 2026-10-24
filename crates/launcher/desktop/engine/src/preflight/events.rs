@@ -3,8 +3,76 @@
 //!
 //! Every field is a closed snake_case code or an integer (R5): no paths, no
 //! installer output, no error text.
+//!
+//! The preflight events (`preflight_checked`, `preflight_refused`) go on the
+//! target of the operation they guard (C-PD5).
 
+use super::{CheckId, CheckStatus, PreflightOperation, Report};
 use crate::failure::FailureCode;
+
+/// The most `CheckId` codes `missing` names.
+const MISSING_MAX: usize = 8;
+
+/// One event on the target of the operation a preflight guards.
+macro_rules! on_operation_target {
+    ($operation:expr, $level:ident, $($rest:tt)*) => {
+        match $operation {
+            PreflightOperation::Play => tracing::$level!(target: "launcher.launch", $($rest)*),
+            PreflightOperation::Install => tracing::$level!(target: "launcher.install", $($rest)*),
+            PreflightOperation::Repair => tracing::$level!(target: "launcher.repair", $($rest)*),
+        }
+    };
+}
+
+/// A preflight finished: INFO when `ready`, WARN otherwise. `blocking_checks`
+/// counts the checks that block; `warning_checks` the other checks that are not
+/// Ok; `missing` joins the codes of every check that is not Ok (at most 8) and is
+/// omitted when all are Ok.
+pub fn preflight_checked(report: &Report) {
+    let operation = operation_code(report.operation);
+    let ready = report.ready;
+    let not_ok: Vec<_> = report
+        .checks
+        .iter()
+        .filter(|check| check.status != CheckStatus::Ok)
+        .collect();
+    let blocking_checks = count(not_ok.iter().filter(|check| check.blocking).count());
+    let warning_checks = count(not_ok.len()).saturating_sub(blocking_checks);
+    let missing = (!not_ok.is_empty()).then(|| {
+        not_ok
+            .iter()
+            .take(MISSING_MAX)
+            .map(|check| check_code(check.id))
+            .collect::<Vec<_>>()
+            .join(",")
+    });
+    let missing = missing.as_deref();
+    if ready {
+        on_operation_target!(
+            report.operation,
+            info,
+            event = "preflight_checked",
+            operation,
+            ready,
+            blocking_checks,
+            warning_checks,
+            missing,
+            "launcher preflight: checks finished; nothing blocks the operation; it may start"
+        );
+    } else {
+        on_operation_target!(
+            report.operation,
+            warn,
+            event = "preflight_checked",
+            operation,
+            ready,
+            blocking_checks,
+            warning_checks,
+            missing,
+            "launcher preflight: checks finished; a required check failed; the player sees what is missing and the fix"
+        );
+    }
+}
 
 /// A dependency the launcher installs for the player (owner D1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,4 +169,57 @@ pub fn dependency_install_finished(
             "launcher install: a dependency install did not finish; the dependency was expected afterwards; the player sees the manual fix"
         );
     }
+}
+
+/// `preflight_refused` (WARN, the guarded operation's target): the request
+/// returned an error, so the player got no report. `check` is omitted for
+/// Inspect; `reason` is the `JobError` code, `failure_code` its C-PD1 code.
+pub fn preflight_refused(
+    operation: PreflightOperation,
+    command: &'static str,
+    check: Option<CheckId>,
+    reason: &'static str,
+    failure: FailureCode,
+) {
+    let operation_name = operation_code(operation);
+    let check = check.map(check_code);
+    let failure_code = failure.code();
+    on_operation_target!(
+        operation,
+        warn,
+        event = "preflight_refused",
+        operation = operation_name,
+        command,
+        check,
+        reason,
+        failure_code,
+        "launcher preflight: the request was refused; expected the checks to run; the player sees the reason and can try again"
+    );
+}
+
+/// The wire code of an operation, as it serializes.
+pub(crate) fn operation_code(operation: PreflightOperation) -> &'static str {
+    match operation {
+        PreflightOperation::Play => "play",
+        PreflightOperation::Install => "install",
+        PreflightOperation::Repair => "repair",
+    }
+}
+
+/// The wire code of a check, as it serializes.
+pub(crate) fn check_code(id: CheckId) -> &'static str {
+    match id {
+        CheckId::Rosetta => "rosetta",
+        CheckId::WineRuntime => "wine_runtime",
+        CheckId::CompatibilityHelper => "compatibility_helper",
+        CheckId::DiskSpace => "disk_space",
+        CheckId::GameFolder => "game_folder",
+        CheckId::ReleaseManifest => "release_manifest",
+        CheckId::AppLocation => "app_location",
+        CheckId::Physx => "physx",
+    }
+}
+
+fn count(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
 }
