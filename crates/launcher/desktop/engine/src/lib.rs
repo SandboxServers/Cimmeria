@@ -5,6 +5,7 @@ mod error_codes;
 pub mod failure;
 pub mod operation_numbers;
 pub mod phase_timing;
+pub mod preflight;
 
 mod storage;
 pub use storage::{
