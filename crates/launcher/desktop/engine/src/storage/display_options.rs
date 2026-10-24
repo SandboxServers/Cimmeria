@@ -18,13 +18,38 @@ pub enum DisplayMode {
     Fullscreen,
 }
 
-/// The saved display choice: a mode and the window size in pixels.
+/// How fast the game may draw on macOS, through DXVK's limiter (C-PD8,
+/// D-PD20). Windows has no limiter without a client patch, so it offers none
+/// and ignores the saved value.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FrameCap {
+    /// Today's fixed value (R10), and what an older preferences file reads as.
+    #[default]
+    Fps30,
+    Fps60,
+    /// The refresh rate of the display the game opens on (`frame_rate`).
+    Display,
+}
+
+impl FrameCap {
+    /// The default (`Fps30`) is stored as no key.
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// The saved display choice: a mode, the window size in pixels and the frame cap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DisplayOptions {
     pub mode: DisplayMode,
     pub width: u32,
     pub height: u32,
+    /// `Fps30` is stored, digested and sent as no key, so a display saved
+    /// before the frame cap keeps its exact bytes (R10).
+    #[serde(default, skip_serializing_if = "FrameCap::is_default")]
+    pub frame_cap: FrameCap,
 }
 
 impl Default for DisplayOptions {
@@ -34,6 +59,7 @@ impl Default for DisplayOptions {
             mode: DisplayMode::Windowed,
             width: 1024,
             height: 768,
+            frame_cap: FrameCap::Fps30,
         }
     }
 }
@@ -49,6 +75,26 @@ pub fn allowed_modes() -> &'static [DisplayMode] {
         &[DisplayMode::Windowed]
     } else {
         &[DisplayMode::Windowed, DisplayMode::Fullscreen]
+    }
+}
+
+/// The frame caps this platform offers: all three on macOS, none elsewhere (D-PD20).
+pub fn frame_caps() -> &'static [FrameCap] {
+    if cfg!(target_os = "macos") {
+        &[FrameCap::Fps30, FrameCap::Fps60, FrameCap::Display]
+    } else {
+        &[]
+    }
+}
+
+/// The `DXVK_FRAME_RATE` a cap gives. `Display` follows `refresh_hz`, clamped
+/// into 30..=240; an unknown rate (0) gives 60.
+pub(crate) fn frame_rate(cap: FrameCap, refresh_hz: u32) -> u32 {
+    match cap {
+        FrameCap::Fps30 => 30,
+        FrameCap::Fps60 => 60,
+        FrameCap::Display if refresh_hz == 0 => 60,
+        FrameCap::Display => refresh_hz.clamp(30, 240),
     }
 }
 
@@ -76,6 +122,7 @@ impl DisplayOptions {
             mode,
             width: self.width.clamp(*WIDTH.start(), *WIDTH.end()),
             height: self.height.clamp(*HEIGHT.start(), *HEIGHT.end()),
+            frame_cap: self.frame_cap,
         }
     }
 }
@@ -144,6 +191,15 @@ pub(crate) fn placement_for(
     let stored = placements.iter().find(|p| p.setup == key)?;
     let want = (stored.x, stored.y, stored.width, stored.height);
     displays.iter().find(|d| rect_of(d) == want).copied()
+}
+
+/// The refresh rate `FrameCap::Display` follows at Play: the display the
+/// current setup remembers (`placement_for`), else the main display. An empty
+/// list (PD-31 ruling 1) or an unknown rate gives 0, which `frame_rate` maps to 60.
+pub(crate) fn launch_refresh_hz(placements: &[Placement], displays: &[DisplayInfo]) -> u32 {
+    placement_for(placements, displays)
+        .or_else(|| displays.iter().find(|d| d.main).copied())
+        .map_or(0, |d| d.refresh_hz)
 }
 
 impl DesktopState {

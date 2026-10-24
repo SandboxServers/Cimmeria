@@ -1,7 +1,7 @@
 use super::*;
 use crate::failure::FailureCode;
 use crate::game_telemetry::patch_events;
-use crate::storage::display_options::DisplayOptions;
+use crate::storage::display_options::{DisplayOptions, Placement};
 use futures_util::FutureExt;
 use std::{panic::AssertUnwindSafe, sync::Mutex};
 use tokio::sync::watch;
@@ -186,11 +186,23 @@ async fn execute(
     });
     let minted = session.is_some();
     let display = display::options(&state);
+    // The monitor per display setup: its refresh rate feeds the Mac frame cap (PD-35).
+    let placements = state
+        .lock()
+        .map(|owner| owner.preferences.display_placements.clone())
+        .unwrap_or_default();
     let telemetry_session = session.clone().map(|session| (session, servers.clone()));
     let prepared = plan.clone();
     let setup_timer = context.start(crate::phase_timing::Phase::PlayClientSetup);
     let setup = tokio::task::spawn_blocking(move || {
-        prepare(&prepared, &root, session.as_ref(), &servers, display)
+        prepare(
+            &prepared,
+            &root,
+            session.as_ref(),
+            &servers,
+            display,
+            &placements,
+        )
     })
     .await
     .map_err(|_| StorageError::Io)?;
@@ -332,6 +344,7 @@ fn prepare(
     session: Option<&crate::game_telemetry::Session>,
     servers: &[LoginServer],
     display: DisplayOptions,
+    placements: &[Placement],
 ) -> Result<
     (
         crate::helper_supervisor::HelperCommand,
@@ -343,7 +356,8 @@ fn prepare(
     if plan.runtime.is_some() {
         #[cfg(target_os = "macos")]
         {
-            let (spec, request, resources) = wine::prepare(plan, root, session, servers, display)?;
+            let (spec, request, resources) =
+                wine::prepare(plan, root, session, servers, display, placements)?;
             return Ok((
                 spec,
                 request,
@@ -355,7 +369,7 @@ fn prepare(
         #[cfg(not(target_os = "macos"))]
         return Err(StorageError::Corrupt.into());
     }
-    let _ = root;
+    let _ = (root, placements);
     if !cfg!(windows) {
         return Err(StorageError::Corrupt.into());
     }

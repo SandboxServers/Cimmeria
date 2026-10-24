@@ -1,7 +1,7 @@
 //! Small versioned command surface shared by Tauri and the logic-UAT harness.
 use crate::display_targets::{self, DisplayInfo};
 use crate::launcher_compatibility::Identity;
-use crate::storage::display_options::{self, DisplayMode, DisplayOptions, MonitorRect};
+use crate::storage::display_options::{self, DisplayMode, DisplayOptions, FrameCap, MonitorRect};
 use crate::storage::settings_events;
 use crate::{DesktopState, Preferences, Snapshot, StorageError};
 use cimmeria_launcher_core::client_setup::login_servers::LoginServer;
@@ -62,6 +62,8 @@ pub struct NativeSnapshot {
     /// The `index` in `displays` the current display setup remembers
     /// (`display_options::placement_for`); `null` means the main display.
     pub display_monitor: Option<u32>,
+    /// The frame caps this platform offers (`display_options::frame_caps`); empty off macOS.
+    pub frame_caps: Vec<FrameCap>,
 }
 
 /// Storage omits a default `display` (R10); the snapshot always carries it, so
@@ -141,6 +143,7 @@ impl DesktopState {
             )
             .map(|d| d.index),
             displays,
+            frame_caps: display_options::frame_caps().to_vec(),
         }
     }
 
@@ -304,6 +307,8 @@ mod tests {
         assert_eq!(saved[0].field("width"), Some("1600"));
         assert_eq!(saved[0].field("height"), Some("900"));
         assert_eq!(saved[0].field("monitor_remembered"), Some("false"));
+        assert_eq!(saved[0].field("frame_cap"), Some("fps30")); // no frame_cap sent: the default
+        assert_eq!(snapshot.frame_caps, display_options::frame_caps());
     }
 
     #[test]
@@ -548,6 +553,7 @@ mod tests {
                     mode: DisplayMode::Windowed,
                     width: 1600,
                     height: 900,
+                    ..DisplayOptions::default()
                 },
                 monitor: None,
             })

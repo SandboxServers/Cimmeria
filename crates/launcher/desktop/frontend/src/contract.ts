@@ -16,7 +16,11 @@ export type LoginServer = typeof LoginServer.Type;
 /** Engine `storage::display_options` (C-PD6). macOS offers `windowed` only. */
 export const DisplayMode = Schema.Literals(["windowed", "fullscreen"]);
 export type DisplayMode = typeof DisplayMode.Type;
-export const DisplayOptions = Schema.Struct({mode: DisplayMode, width: Schema.Number, height: Schema.Number});
+/** Engine `display_options::FrameCap` (C-PD8): DXVK's limit on macOS; Windows offers none. */
+export const FrameCap = Schema.Literals(["fps30", "fps60", "display"]);
+export type FrameCap = typeof FrameCap.Type;
+// `frame_cap`: the engine omits fps30 (today's cap), and a save without it stores fps30.
+export const DisplayOptions = Schema.Struct({mode: DisplayMode, width: Schema.Number, height: Schema.Number, frame_cap: Schema.optionalKey(FrameCap)});
 export type DisplayOptions = typeof DisplayOptions.Type;
 /** Engine `display_targets::DisplayInfo` (C-PD8): one display, in the units the game sees. */
 export const DisplayInfo = Schema.Struct({
@@ -53,6 +57,9 @@ export const NativeSnapshot = Schema.Struct({
   // The `index` in `displays` the current display setup remembers; null means the main display
   // (C-PD8, engine `display_options::placement_for`). Optional so older fixtures decode.
   display_monitor: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  // The frame caps this platform offers (engine `display_options::frame_caps`): all three on macOS,
+  // empty elsewhere. Optional so older fixtures decode; the engine always sends it.
+  frame_caps: Schema.optionalKey(Schema.Array(FrameCap)),
 });
 export type NativeSnapshot = typeof NativeSnapshot.Type;
 export type Preferences = NativeSnapshot["preferences"];
