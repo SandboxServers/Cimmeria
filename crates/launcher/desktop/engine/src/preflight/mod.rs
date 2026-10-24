@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 use crate::failure::FailureCode;
 
 mod disk;
+pub mod events;
 pub mod mac;
+pub mod rosetta_install;
 pub use disk::{folder_facts, free_bytes};
 
 /// The operation a preflight guards.

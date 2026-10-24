@@ -1,0 +1,139 @@
+use super::*;
+use crate::preflight::events::{dependency_install_started, Dependency};
+use crate::test_capture::{capture, Captured};
+
+fn only_event(events: &[Captured]) -> &Captured {
+    assert_eq!(events.len(), 1, "expected one event, got {events:?}");
+    &events[0]
+}
+
+#[test]
+fn a_zero_exit_with_rosetta_still_missing_is_a_failure() {
+    assert_eq!(
+        classify_install(Some(0), "", RosettaProbe::Missing),
+        InstallOutcome::Failed { exit_code: Some(0) }
+    );
+}
+
+#[test]
+fn a_cancelled_admin_prompt_is_declined() {
+    assert_eq!(
+        classify_install(
+            Some(1),
+            "0:73: execution error: User canceled. (-128)",
+            RosettaProbe::Missing
+        ),
+        InstallOutcome::Declined
+    );
+}
+
+#[test]
+fn rosetta_present_after_a_failing_exit_is_installed() {
+    assert_eq!(
+        classify_install(Some(1), "", RosettaProbe::Present),
+        InstallOutcome::Installed
+    );
+}
+
+#[test]
+fn a_probe_that_cannot_answer_after_install_is_a_failure() {
+    assert_eq!(
+        classify_install(None, "", RosettaProbe::TimedOut),
+        InstallOutcome::Failed { exit_code: None }
+    );
+}
+
+#[test]
+fn the_install_command_is_the_fixed_constant() {
+    assert_eq!(OSASCRIPT, "/usr/bin/osascript");
+    assert_eq!(
+        INSTALL_SCRIPT,
+        r#"do shell script "/usr/sbin/softwareupdate --install-rosetta --agree-to-license" with administrator privileges"#
+    );
+}
+
+#[test]
+fn the_stderr_tail_keeps_only_the_last_bytes() {
+    let mut buf = vec![b'a'; STDERR_TAIL_BYTES + 10];
+    buf.extend_from_slice(b"(-128)");
+    keep_tail(&mut buf);
+    assert_eq!(buf.len(), STDERR_TAIL_BYTES);
+    assert!(buf.ends_with(b"(-128)"));
+}
+
+#[test]
+fn the_started_event_names_the_dependency_and_its_source() {
+    let ((), events) = capture(|| dependency_install_started(Dependency::Rosetta, None));
+    let event = only_event(&events);
+    assert_eq!(event.target, "launcher.install");
+    assert_eq!(event.level, tracing::Level::INFO);
+    assert_eq!(event.field("event"), Some("dependency_install_started"));
+    assert_eq!(event.field("dependency"), Some("rosetta"));
+    assert_eq!(event.field("source"), Some("apple_software_update"));
+    assert_eq!(event.field("download_bytes"), None);
+
+    let ((), events) = capture(|| dependency_install_started(Dependency::WineRuntime, Some(42)));
+    let event = only_event(&events);
+    assert_eq!(event.field("source"), Some("wowsilicon_release"));
+    assert_eq!(event.field("download_bytes"), Some("42"));
+}
+
+#[test]
+fn an_installed_outcome_logs_info_without_a_failure_code() {
+    let ((), events) = capture(|| emit_finished(InstallOutcome::Installed, 1200));
+    let event = only_event(&events);
+    assert_eq!(event.target, "launcher.install");
+    assert_eq!(event.level, tracing::Level::INFO);
+    assert_eq!(event.field("event"), Some("dependency_install_finished"));
+    assert_eq!(event.field("dependency"), Some("rosetta"));
+    assert_eq!(event.field("outcome"), Some("installed"));
+    assert_eq!(event.field("failure_code"), None);
+    assert_eq!(event.field("elapsed_ms"), Some("1200"));
+    assert_eq!(event.field("exit_code"), None);
+}
+
+#[test]
+fn unsuccessful_outcomes_log_warn_with_their_failure_code() {
+    let cases = [
+        (
+            InstallOutcome::Failed { exit_code: Some(1) },
+            "failed",
+            "rosetta_install_failed",
+            Some("1"),
+        ),
+        (
+            InstallOutcome::Declined,
+            "declined",
+            "rosetta_install_declined",
+            None,
+        ),
+        (
+            InstallOutcome::TimedOut,
+            "timed_out",
+            "rosetta_install_failed",
+            None,
+        ),
+    ];
+    for (outcome, code, failure, exit_code) in cases {
+        let ((), events) = capture(|| emit_finished(outcome, 7));
+        let event = only_event(&events);
+        assert_eq!(event.target, "launcher.install");
+        assert_eq!(event.level, tracing::Level::WARN, "{outcome:?}");
+        assert_eq!(event.field("event"), Some("dependency_install_finished"));
+        assert_eq!(event.field("outcome"), Some(code));
+        assert_eq!(event.field("failure_code"), Some(failure));
+        assert_eq!(event.field("elapsed_ms"), Some("7"));
+        assert_eq!(event.field("exit_code"), exit_code, "{outcome:?}");
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn off_macos_nothing_is_installed() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let (outcome, events) = capture(|| runtime.block_on(install_rosetta()));
+    assert_eq!(outcome, InstallOutcome::Failed { exit_code: None });
+    assert!(events.is_empty());
+}
