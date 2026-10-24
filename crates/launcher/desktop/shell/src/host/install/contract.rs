@@ -120,6 +120,28 @@ pub enum JobError {
     InvalidManifest,
     SigningKeyUnavailable,
 }
+impl JobError {
+    /// The closed snake_case code, the same string the variant serializes to.
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::UnsupportedSchema => "unsupported_schema",
+            Self::PlatformUnavailable => "platform_unavailable",
+            Self::LauncherTooOld => "launcher_too_old",
+            Self::Io => "io",
+            Self::CorruptState => "corrupt_state",
+            Self::InvalidDirectory => "invalid_directory",
+            Self::StaleRevision => "stale_revision",
+            Self::Busy => "busy",
+            Self::UnknownOperation => "unknown_operation",
+            Self::IdentityConflict => "identity_conflict",
+            Self::RecoveryRequired => "recovery_required",
+            Self::PersistenceUncertain => "persistence_uncertain",
+            Self::ManifestUnavailable => "manifest_unavailable",
+            Self::InvalidManifest => "invalid_manifest",
+            Self::SigningKeyUnavailable => "signing_key_unavailable",
+        }
+    }
+}
 impl From<StorageError> for JobError {
     fn from(error: StorageError) -> Self {
         match error {
@@ -223,5 +245,36 @@ pub(crate) fn progress(value: &Progress) -> JobProgress {
             current: (*current as u64).min(MAX),
             total: (*total as u64).min(MAX),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::JobError;
+
+    #[test]
+    fn job_error_code_is_its_serde_name() {
+        for error in [
+            JobError::UnsupportedSchema,
+            JobError::PlatformUnavailable,
+            JobError::LauncherTooOld,
+            JobError::Io,
+            JobError::CorruptState,
+            JobError::InvalidDirectory,
+            JobError::StaleRevision,
+            JobError::Busy,
+            JobError::UnknownOperation,
+            JobError::IdentityConflict,
+            JobError::RecoveryRequired,
+            JobError::PersistenceUncertain,
+            JobError::ManifestUnavailable,
+            JobError::InvalidManifest,
+            JobError::SigningKeyUnavailable,
+        ] {
+            assert_eq!(
+                serde_json::to_string(&error).unwrap(),
+                format!("\"{}\"", error.code())
+            );
+        }
     }
 }

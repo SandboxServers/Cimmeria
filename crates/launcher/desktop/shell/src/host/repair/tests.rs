@@ -249,7 +249,7 @@ fn repair_uat_bridge() {
 
 #[cfg(target_os = "macos")]
 #[test]
-fn admitted_dispatch_failure_is_gated_and_duplicate_does_not_restart_work() {
+fn admitted_dispatch_failure_ends_failed_and_duplicate_does_not_restart_work() {
     let (_root, host, installation) = fixture();
     let before = host.install_status().unwrap();
     let id = Uuid::new_v4();
@@ -264,12 +264,13 @@ fn admitted_dispatch_failure_is_gated_and_duplicate_does_not_restart_work() {
         host.install_command(request.clone(), None).unwrap_err(),
         JobError::Io
     );
+    // Nothing ran before dispatch failed: it ends failed, not gated (D-PD2).
     let after = host.install_status().unwrap();
     assert_eq!(
         after.native.operation.operation.as_ref().unwrap().state,
-        OperationState::ReconciliationRequired
+        OperationState::Failed
     );
-    assert!(after.repair.recovery);
+    assert!(!after.repair.recovery);
     assert!(host.repair_worker.lock().unwrap().is_none());
     let duplicate = host.install_command(request, None).unwrap();
     assert_eq!(

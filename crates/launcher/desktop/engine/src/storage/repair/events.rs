@@ -93,6 +93,19 @@ pub(crate) fn repair_ended(id: Uuid, failure: &Failure) {
     }
 }
 
+/// A repair dispatch failed while it was still `Starting`; it ends failed.
+/// `reason` is the shell's closed `JobError` code.
+pub(crate) fn repair_not_started(id: Uuid, reason: &'static str) {
+    tracing::warn!(
+        target: "launcher.repair",
+        event = "repair_not_started",
+        operation = crate::operation_numbers::number(id),
+        reason,
+        failure_code = "repair_not_started",
+        "launcher repair: run stopped before it started; expected the installed copy and plan to verify; nothing on disk changed and the operation is failed"
+    );
+}
+
 /// The journal could not record an uncertain outcome. `pub` for the shell.
 pub fn mark_uncertain_failed(error: ContractError) {
     tracing::warn!(
