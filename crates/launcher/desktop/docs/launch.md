@@ -169,8 +169,10 @@ Every other not-started launch records its failure code too: `verify_failed` is
 `login_servers_refused` is `login_servers_invalid`, and a game process that could not
 be created is `spawn_not_found`, `spawn_permission_denied`, `spawn_failed`, or on
 macOS `rosetta_missing` when the OS reports a bad CPU type (EBADARCH). The launch
-status returns it as `failure` (`null` when none is known), and every
-`launch_not_started` event carries it as `failure_code`; a spawn failure also carries `os_error`, the raw OS error number (for example 86 for a missing Rosetta).
+status returns it as `failure` (`null` when none is known), and the `launch_not_started`
+event carries it as `failure_code`; a spawn failure also carries `os_error`, the raw OS
+error number (for example 86 for a missing Rosetta). A launch the helper reports as not
+started (`reason` from its stage, with `win32`) has no failure code yet.
 A Play refused before any operation exists logs `launch_refused` (warn) with no
 operation number and `reason` `resources_unavailable` (no bundled Play resources) or
 `resources_unresolved` (the resources could not be resolved for this copy).
