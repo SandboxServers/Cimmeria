@@ -30,12 +30,15 @@ PR build) is `0.1.0`. See [release: Version and tag](../../crates/launcher/deskt
 `launcher-current` release's `latest.json`, and the Minisign public key comes
 from the repository variable `LAUNCHER_UPDATER_PUBKEY` at compile time. A build
 without the key shows **Disabled** and makes no request. Every macOS build also
-shows **Disabled**: the feed offers only `windows-x86_64`, and the shell enables
+shows **Disabled**: the feed offers only the two Windows keys, and the shell enables
 the updater on Windows only.
 
 **Feed.** `latest.json` is Tauri v2's static format: `version`, optional
-`notes`, `pub_date` and a `platforms` map whose `windows-x86_64` entry holds the
-zip's URL and the base64 of its Minisign signature document. The URL names the
+`notes`, `pub_date` and a `platforms` map whose `windows-x86_64` and `windows-aarch64` entries each hold the
+zip's URL and the base64 of its Minisign signature document. One feed carries
+both keys. A launcher reads only its own: an arm64 launcher updates to the arm64
+zip and an x64 launcher to the x64 zip, including an x64 launcher running on a
+Windows on Arm PC, which has no automatic cross-grade (D-WA3). The URL names the
 zip on the **dated** release, not on `launcher-current`, because a dated
 release's assets never change, so a feed read mid-refresh still points at the
 bytes its signature covers.
