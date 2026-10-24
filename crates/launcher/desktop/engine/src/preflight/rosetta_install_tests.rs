@@ -140,3 +140,75 @@ fn off_macos_nothing_is_installed() {
     assert_eq!(outcome, InstallOutcome::Failed { exit_code: None });
     assert!(events.is_empty());
 }
+
+#[test]
+fn a_timeout_with_rosetta_present_after_is_installed() {
+    assert_eq!(
+        classify_timeout(RosettaProbe::Present),
+        InstallOutcome::Installed
+    );
+    for probe in [
+        RosettaProbe::Missing,
+        RosettaProbe::TimedOut,
+        RosettaProbe::Error,
+    ] {
+        assert_eq!(
+            classify_timeout(probe),
+            InstallOutcome::TimedOut,
+            "{probe:?}"
+        );
+    }
+}
+
+#[test]
+fn only_one_install_holds_the_gate_at_a_time() {
+    let gate = InstallGate::new();
+    let now = std::time::Instant::now();
+    let permit = gate.try_acquire(now).expect("a free gate is taken");
+    assert!(
+        gate.try_acquire(now).is_none(),
+        "a second install must wait"
+    );
+    drop(permit);
+    assert!(
+        gate.try_acquire(now).is_some(),
+        "dropping the permit frees the gate"
+    );
+}
+
+#[test]
+fn a_cancelled_install_frees_the_gate() {
+    let gate = InstallGate::new();
+    let now = std::time::Instant::now();
+    let install = async {
+        let _permit = gate.try_acquire(now);
+        std::future::pending::<()>().await;
+    };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let timed_out = tokio::time::timeout(std::time::Duration::from_millis(1), install).await;
+        assert!(timed_out.is_err());
+    });
+    assert!(gate.try_acquire(now).is_some());
+}
+
+#[test]
+fn a_timed_out_install_holds_retries_off_for_the_cooldown() {
+    let gate = InstallGate::new();
+    let now = std::time::Instant::now();
+    let until = now + TIMED_OUT_COOLDOWN;
+    gate.try_acquire(now)
+        .expect("a free gate is taken")
+        .release_with_cooldown(until);
+    assert!(
+        gate.try_acquire(now).is_none(),
+        "retry during the cool-down"
+    );
+    assert!(gate
+        .try_acquire(until - std::time::Duration::from_secs(1))
+        .is_none());
+    assert!(gate.try_acquire(until).is_some(), "the cool-down ends");
+}
