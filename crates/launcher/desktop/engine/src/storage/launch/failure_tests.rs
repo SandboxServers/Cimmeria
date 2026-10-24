@@ -37,6 +37,70 @@ fn spawn_errors_classify_to_their_failure_codes() {
 }
 
 #[test]
+fn helper_not_started_reports_classify_to_their_failure_codes() {
+    for (stage, win32, expected) in [
+        (
+            Some(Stage::Request),
+            None,
+            FailureCode::LaunchResourcesMissing,
+        ),
+        (
+            Some(Stage::CreateProcess),
+            Some(2),
+            FailureCode::SpawnNotFound,
+        ),
+        (
+            Some(Stage::CreateProcess),
+            Some(3),
+            FailureCode::SpawnNotFound,
+        ),
+        (
+            Some(Stage::CreateProcess),
+            Some(5),
+            FailureCode::SpawnPermissionDenied,
+        ),
+        (
+            Some(Stage::CreateProcess),
+            Some(225),
+            FailureCode::SpawnPermissionDenied,
+        ),
+        (
+            Some(Stage::CreateProcess),
+            Some(226),
+            FailureCode::SpawnPermissionDenied,
+        ),
+        (
+            Some(Stage::Request),
+            Some(5),
+            FailureCode::LaunchResourcesMissing,
+        ),
+        (Some(Stage::Inject), Some(5), FailureCode::SpawnFailed),
+        (Some(Stage::Resume), Some(2), FailureCode::SpawnFailed),
+        (Some(Stage::Wait), Some(193), FailureCode::SpawnFailed),
+        (None, Some(5), FailureCode::SpawnFailed),
+        (
+            Some(Stage::CreateProcess),
+            Some(193),
+            FailureCode::GameFilesInvalid,
+        ),
+        (
+            Some(Stage::CreateProcess),
+            Some(1455),
+            FailureCode::SpawnFailed,
+        ),
+        (Some(Stage::CreateProcess), None, FailureCode::SpawnFailed),
+        // A helper too old to name its stage.
+        (None, None, FailureCode::SpawnFailed),
+    ] {
+        assert_eq!(
+            classify_helper_not_started(stage, win32),
+            expected,
+            "{stage:?} {win32:?}"
+        );
+    }
+}
+
+#[test]
 fn a_noted_failure_survives_the_terminal_record() {
     let (_root, mut state, plan) = super::super::tests::fixture();
     state.record_launch(&plan, Observation::Preparing).unwrap();

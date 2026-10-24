@@ -4,6 +4,7 @@
 //! list, or a dispatch that failed before anything was recorded.
 use super::*;
 use crate::failure::FailureCode;
+use cimmeria_runtime_probe::game_launch::Stage;
 use std::sync::Mutex;
 
 /// The failure code for a game process that could not be created. EBADARCH
@@ -19,6 +20,22 @@ pub(crate) fn classify_spawn(
     match kind {
         std::io::ErrorKind::NotFound => FailureCode::SpawnNotFound,
         std::io::ErrorKind::PermissionDenied => FailureCode::SpawnPermissionDenied,
+        _ => FailureCode::SpawnFailed,
+    }
+}
+
+/// The failure code for a launch the helper reports as not started (PD-05b).
+/// A refused request means a launcher-built part is missing. For a failed
+/// `CreateProcessW` the Win32 code decides: 2 `ERROR_FILE_NOT_FOUND` and 3
+/// `ERROR_PATH_NOT_FOUND`; 5 `ERROR_ACCESS_DENIED`, 225 `ERROR_VIRUS_INFECTED`
+/// and 226 `ERROR_VIRUS_DELETED`; 193 `ERROR_BAD_EXE_FORMAT`. Anything else,
+/// and a helper too old to name its stage, is `SpawnFailed`.
+pub(crate) fn classify_helper_not_started(stage: Option<Stage>, win32: Option<u32>) -> FailureCode {
+    match (stage, win32) {
+        (Some(Stage::Request), _) => FailureCode::LaunchResourcesMissing,
+        (Some(Stage::CreateProcess), Some(2 | 3)) => FailureCode::SpawnNotFound,
+        (Some(Stage::CreateProcess), Some(5 | 225 | 226)) => FailureCode::SpawnPermissionDenied,
+        (Some(Stage::CreateProcess), Some(193)) => FailureCode::GameFilesInvalid,
         _ => FailureCode::SpawnFailed,
     }
 }

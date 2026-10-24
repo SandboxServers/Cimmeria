@@ -164,15 +164,19 @@ then goes to Failed, and `launch_not_started` (warn) carries the error's code as
 (`persistence_uncertain`), an operation that already left Starting, a launch that
 already recorded an observation, or launch state that cannot be read
 (`corrupt_state`) goes to reconciliation-required instead.
-Every other not-started launch records its failure code too: `verify_failed` is
+Every not-started launch the launcher detects itself records its failure code too: `verify_failed` is
 `game_files_invalid`, `prepare_failed` is `launch_prepare_failed`,
 `login_servers_refused` is `login_servers_invalid`, and a game process that could not
 be created is `spawn_not_found`, `spawn_permission_denied`, `spawn_failed`, or on
 macOS `rosetta_missing` when the OS reports a bad CPU type (EBADARCH). The launch
 status returns it as `failure` (`null` when none is known), and the `launch_not_started`
 event carries it as `failure_code`; a spawn failure also carries `os_error`, the raw OS
-error number (for example 86 for a missing Rosetta). A launch the helper reports as not
-started (`reason` from its stage, with `win32`) has no failure code yet.
+error number (for example 86 for a missing Rosetta). A launch the launch helper reports
+as not started keeps its `reason` (from the helper's stage) and `win32`, and records a
+failure code too: a refused request is `launch_resources_missing`; a failed process
+creation is `spawn_not_found` (Win32 2 or 3), `spawn_permission_denied` (5, 225 or 226,
+for example security software), `game_files_invalid` (193, a damaged SGW.exe) or
+`spawn_failed` (anything else, or a helper too old to name its stage).
 A Play refused before any operation exists logs `launch_refused` (warn) with no
 operation number and `reason` `resources_unavailable` (no bundled Play resources) or
 `resources_unresolved` (the resources could not be resolved for this copy).
