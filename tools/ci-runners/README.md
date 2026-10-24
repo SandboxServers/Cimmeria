@@ -244,9 +244,9 @@ Each moved job has
 runs-on: ${{ (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows' }}
 ```
 
-The `native-engine` matrix keeps `os: [macos-latest, windows-latest]` and maps only the
+The `native-engine` matrix keeps `os: [macos-latest, windows-latest, ubuntu-latest]` and maps only the
 Windows leg in `runs-on`, because `tools/build-lane/ship.py` waits on the check names
-`native-engine (windows-latest)` and `native-engine (macos-latest)`. Self-hosted jobs
+`native-engine (windows-latest)`, `native-engine (macos-latest)` and `native-engine (ubuntu-latest)`. Self-hosted jobs
 skip `Swatinem/rust-cache` (`if: runner.environment == 'github-hosted'`).
 
 Set the repository variable `CI_WINDOWS_RUNNER=hosted` to send every one of these jobs

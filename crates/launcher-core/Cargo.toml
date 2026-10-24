@@ -61,6 +61,9 @@ zip = { workspace = true }
 
 # Gzip compression for telemetry chunk uploads.
 flate2 = "1"
+# MSZIP blocks of the installer cabinet set off Windows
+# (src/unpack/cab_portable/mszip.rs). Already flate2's default backend.
+miniz_oxide = "0.8"
 # RAR seeds: the archived 2009 client is a RAR holding the original
 # installer's cabinet set (see src/unpack/). The crate is MIT/Apache and
 # builds RARLAB's UnRAR C++ source, whose licence allows extraction.

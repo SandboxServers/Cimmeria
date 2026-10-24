@@ -65,14 +65,15 @@ concurrency:
 # while the repository variable CI_WINDOWS_RUNNER is `hosted`, use windows-latest.
 jobs:
   native-engine:
-    # The check names stay `native-engine (windows-latest)` / `(macos-latest)`
-    # (tools/build-lane/ship.py waits on them), so matrix.os keeps the hosted label
-    # and runs-on maps the Windows leg to the pool.
+    # The check names stay `native-engine (windows-latest)` / `(macos-latest)` /
+    # `(ubuntu-latest)` (tools/build-lane/ship.py waits on them), so matrix.os keeps
+    # the hosted label and runs-on maps the Windows leg to the pool. The Linux leg
+    # is the only build of the shell on Linux, where Install runs in-process.
     name: native-engine (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest, windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os != 'windows-latest' && matrix.os || ((github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' || vars.CI_WINDOWS_RUNNER == 'hosted') && 'windows-latest' || 'cimmeria-windows') }}
     timeout-minutes: 30
     env:
@@ -83,6 +84,13 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7
+      # Tauri's WebKitGTK prerequisites, plus clang and mold, which
+      # .cargo/config.toml names as the Linux linker.
+      - name: Install Linux build packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang mold libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - uses: ./.github/actions/rust-toolchain
         with:
           components: rustfmt, clippy

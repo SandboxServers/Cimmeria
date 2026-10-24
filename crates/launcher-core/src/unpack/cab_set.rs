@@ -17,8 +17,9 @@
 //! The file paths inside the cabinets are the installed layout, so expanding
 //! the cabinets in order into the install directory reproduces what the
 //! installer would lay down. Files continue across cabinet boundaries (each
-//! cabinet is capped at 1 GiB), so the set has to be expanded as a chain;
-//! Windows' FDI API in `cabinet.dll` does that, see [`super::fdi`].
+//! cabinet is capped at 1 GiB), so the set has to be expanded as a chain.
+//! On Windows, the FDI API in `cabinet.dll` does that (see `super::fdi`);
+//! elsewhere `super::cab_portable` does.
 
 use std::path::{Path, PathBuf};
 
@@ -126,14 +127,11 @@ pub(super) fn expand(set: &CabSet, dest: &Path, sink: &UnpackSink) -> Result<(),
     super::fdi::expand_chain(&set.dir, &set.cabinets, dest, set.file_count, sink)
 }
 
-/// Cabinet sets are expanded with Windows' `cabinet.dll`; the game only runs
-/// on Windows, so other platforms report it instead of half-installing.
+/// Off Windows there is no `cabinet.dll`; the portable expander handles the
+/// set's MSZIP cabinets (see `super::cab_portable`).
 #[cfg(not(windows))]
-pub(super) fn expand(set: &CabSet, _dest: &Path, _sink: &UnpackSink) -> Result<(), UnpackError> {
-    Err(UnpackError::Cab(format!(
-        "expanding the cabinet set in {} needs Windows",
-        set.dir.display()
-    )))
+pub(super) fn expand(set: &CabSet, dest: &Path, sink: &UnpackSink) -> Result<(), UnpackError> {
+    super::cab_portable::expand_chain(&set.dir, &set.cabinets, dest, set.file_count, sink)
 }
 
 #[cfg(test)]

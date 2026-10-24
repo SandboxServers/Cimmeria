@@ -60,6 +60,27 @@ macOS already distributes one `Cimmeria Launcher.app` bundle inside its ZIP;
 its internal resource layout is unchanged. WebView2, game content and the
 Mac Wine runtime remain separate prerequisites or downloads.
 
+## Linux
+
+The shell builds and its tests run on Linux (`native-engine (ubuntu-latest)` in
+`launcher-desktop.yml`). Building needs WebKitGTK 4.1 and GTK 3 development
+packages, plus clang and mold for `.cargo/config.toml`'s Linux linker.
+
+**Install runs in-process, as on Windows.** The seed is the original installer's
+RAR, whose `Data/DATA*.CAB` set Windows expands with `cabinet.dll`. Linux
+expands it with the portable decoder in `cimmeria-launcher-core`
+(`unpack::cab_portable`): MSZIP and stored folders, folders and blocks that
+continue from one cabinet into the next, the cabinets' DOS timestamps, and the
+same name and file-count preflight as the FDI path. The 2009 client's four
+cabinets are all MSZIP. A Quantum or LZX folder is refused by name. Resuming an
+interrupted install works as on Windows. Adoption publishes its copy with
+`renameat2(RENAME_NOREPLACE)`, the Linux form of the exclusive rename macOS and
+Windows use; a filesystem without it refuses the publish.
+
+**Not on Linux yet:** Play (there is no Wine or Proton backend), the PhysX and
+other prerequisite setup, Repair, Update, the launcher self-update, and a
+release package. Those paths still answer `platform_unavailable`.
+
 ## Native operation and storage contracts
 
 `engine/src/operations.rs` owns a versioned snapshot with a revision and one
@@ -407,8 +428,8 @@ bash tools/build-lane/lane.sh cargo run --locked --manifest-path crates/launcher
 ## Validation
 
 Run from the repository root. Windows checks run natively on Windows; the Mac
-launcher work runs natively on macOS. All compilation uses the pinned Rust
-toolchain and repository build lane:
+launcher work runs natively on macOS, and the Linux work on Linux. All
+compilation uses the pinned Rust toolchain and repository build lane:
 
 ```bash
 bash tools/build-lane/lane.sh cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml

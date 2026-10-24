@@ -49,7 +49,7 @@ class WorkflowPolicy(unittest.TestCase):
     def test_native_checks_keep_both_hosts_and_every_validation_layer(self):
         native = workflow("launcher-desktop.yml")["jobs"]["native-engine"]
         self.assertEqual(set(native["strategy"]["matrix"]["os"]),
-                         {"windows-latest", "macos-latest"})
+                         {"windows-latest", "macos-latest", "ubuntu-latest"})
         commands = "\n".join(step.get("run", "") for step in native["steps"])
         for package in ["cimmeria-launcher-engine", "cimmeria-launcher-desktop"]:
             self.assertRegex(commands, rf"cargo test[^\n]*-p {package}(?:\s|$)")

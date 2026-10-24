@@ -423,8 +423,8 @@ Where they run:
 
 - **Engine suite.** The `desktop launcher` workflow
   (`.github/workflows/launcher-desktop.yml`) runs
-  `cargo test -p cimmeria-launcher-engine` on `windows-latest` and
-  `macos-latest`. Locally it runs on Linux through the lane:
+  `cargo test -p cimmeria-launcher-engine` on `windows-latest`,
+  `macos-latest` and `ubuntu-latest`. Locally it runs on Linux through the lane:
 
   ```bash
   bash tools/build-lane/lane.sh cargo test --locked \
@@ -432,10 +432,10 @@ Where they run:
     -p cimmeria-launcher-engine --target-dir target/desktop launcher_summary
   ```
 
-- **Shell glue.** `cimmeria-launcher-desktop` does not build on the Linux
-  development host (no GTK or WebKit), so `host/summary.rs`, the
-  `summary::start` call and the two command wrappers are first compiled, linted
-  and tested by the same workflow's shell steps on Windows and macOS.
+- **Shell glue.** `host/summary.rs`, the `summary::start` call and the two
+  command wrappers are compiled, linted and tested by the same workflow's shell
+  steps on all three hosts. A Linux development host needs the WebKitGTK and
+  GTK packages the [desktop README](../README.md#linux) lists.
 - **Server half.** The ingest tests are in `cimmeria-admin-api` and run with the
   main workspace.
 

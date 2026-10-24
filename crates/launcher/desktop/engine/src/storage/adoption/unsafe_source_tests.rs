@@ -11,6 +11,7 @@ fn layout(root: &Path) {
 }
 
 /// The write probes a check may leave in `dir`.
+#[cfg(windows)]
 fn probes(dir: &Path) -> usize {
     std::fs::read_dir(dir)
         .unwrap()
