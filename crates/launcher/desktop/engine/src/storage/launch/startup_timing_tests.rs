@@ -72,6 +72,7 @@ fn run_helper(starts: bool) -> (Observation, Vec<crate::test_capture::Captured>)
         exe: root.path().join("never-executed.exe"),
         directory: root.path().into(),
         dlls: vec![],
+        args: vec![],
     };
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()

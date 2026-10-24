@@ -183,6 +183,28 @@ fn native_preparation_reads_locked_owner_and_retains_exclusion() {
 }
 
 #[test]
+fn a_windowed_preference_puts_the_display_arguments_in_the_helper_request() {
+    let (_root, _state, plan) = super::super::tests::fixture();
+    inert_client(
+        &plan
+            .installation
+            .content_root()
+            .join("Working/Binaries/SGW.exe"),
+    );
+    let display = DisplayOptions {
+        mode: crate::storage::display_options::DisplayMode::Windowed,
+        width: 1600,
+        height: 900,
+    };
+    let (_, request, _ownership) =
+        prepare_native(&plan, None, &plan.installation.login_servers, display).unwrap();
+    assert_eq!(request.args, ["-windowed", "ResX=1600", "ResY=900"]);
+    assert!(cimmeria_runtime_probe::game_launch::valid_args(
+        &request.args
+    ));
+}
+
+#[test]
 fn play_writes_the_saved_login_servers_and_not_the_default() {
     let (_root, mut state, plan) = super::super::tests::fixture();
     let game = plan.installation.content_root();

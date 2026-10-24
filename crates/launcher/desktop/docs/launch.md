@@ -387,6 +387,15 @@ It logs one `display_settings` event on `launcher.launch` with `operation`,
 were `written` or `unchanged`, and warn with
 `failure_code = "display_settings_not_applied"` otherwise. No field carries a path.
 
+The launch helper request carries the table's helper arguments in `args`
+(`Request::args`, both the native and the Wine request). An empty list is left
+out of the JSON, so a fullscreen request is byte for byte the one before PD-25,
+and SGW.exe's command line is the bare exe as before. The helper accepts only
+the three display arguments: `-windowed`, `ResX=<n>` and `ResY=<n>` with 3-4
+ASCII digits each, at most three entries and none repeated
+(`game_launch::valid_args`). Any other list is refused before the game starts,
+the same way as an invalid exe path: `not_started` at stage `request`.
+
 ## Patch policy per installation
 
 Native code decides whether Play injects client patches. The renderer cannot.

@@ -21,6 +21,7 @@ fn fixture(script: &str) -> (tempfile::TempDir, HelperCommand, Request) {
             exe: "Z:\\SGW.exe".into(),
             directory: "Z:\\".into(),
             dlls: vec![],
+            args: vec![],
         },
     )
 }
@@ -110,6 +111,7 @@ async fn cancellation_before_spawn_does_not_invoke_helper_and_spawn_failure_is_k
         exe: "x".into(),
         directory: "y".into(),
         dlls: vec![],
+        args: vec![],
     };
     assert_eq!(
         run(spec, request, CancellationToken::new(), |_| panic!(
