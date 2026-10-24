@@ -5,6 +5,7 @@ import {parseHTML} from 'linkedom';
 import type {DisplayMode,DisplayOptions,NativeSnapshot} from './contract';
 import {makePanelContext} from './panel-context';
 import {mountDisplay,displayAppliesText,displayMacText,displayWindowsText} from './display-view';
+import {failureText} from './failure-copy';
 const html=readFileSync('ui/index.html','utf8');
 const windowsModes:DisplayMode[]=['windowed','fullscreen'];
 const macModes:DisplayMode[]=['windowed'];
@@ -114,11 +115,13 @@ test('an invalid size refusal asks for one from the list',async()=>{
  await m.app.dispose();
 });
 
-test('a busy refusal says why',async()=>{
- const m=mounted(async()=>{throw 'busy';});
- m.press();await m.app.settled();
- assert.equal(m.text('display-status'),'The launcher is installing, repairing or updating. Save again when it finishes.');
- await m.app.dispose();
+test('any other refusal reads the C-PD1 copy its job_errors code maps to, and an unmapped one reads unknown',async()=>{
+ for(const [code,failure] of [['busy','operation_busy'],['io','local_io'],['in_use','unknown']] as const){
+  const m=mounted(async()=>{throw code;});
+  m.press();await m.app.settled();
+  assert.equal(m.text('display-status'),failureText(failure).message,code);
+  await m.app.dispose();
+ }
 });
 
 test('a refresh that brings no newer snapshot says it could not reload',async()=>{

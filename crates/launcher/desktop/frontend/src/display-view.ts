@@ -2,6 +2,9 @@ import type {Invoke} from './view';
 import type {PanelContext} from './panel-context';
 import {scaffoldFailure,type DisplayMode,type DisplayOptions} from './contract';
 import {reportUiEvent,uiCode} from './ui-event';
+import type {FailureCode} from './failure-codes';
+import {failureText} from './failure-copy';
+import failureCodes from './failure-codes.json';
 /**
  * Settings panel (PD-26): how the game window starts, saved through `launcher_command`
  * (`save_display_options`, C-PD6) the way the login-server list saves (`save_client_options`): same
@@ -16,14 +19,12 @@ const sizeLabel=(width:number,height:number)=>`${width} × ${height}`;
 export const displayAppliesText='The launcher applies this every time you press Play, so a display change made inside the game is replaced at the next start.';
 export const displayWindowsText='New: the game now starts in a 1024 × 768 window by default. Choose Fullscreen here to go back.';
 export const displayMacText='On a Mac the game always runs in a window, so Cmd+Tab works.';
+// The two refusals this panel has its own line for (PD-26 step 4); every other code is the mapped C-PD1 copy.
 const saveErrorText:Record<string,string>={
  invalid_display_options:'That size can\'t be used. Pick one from the list.',
  stale_revision:'Settings changed while saving, so nothing was saved. Press Save again to save this setting.',
- busy:'The launcher is installing, repairing or updating. Save again when it finishes.',
- persistence_uncertain:'The save could not be confirmed. Restart the launcher to check the saved setting.',
- in_use:'Another launcher is using these settings. Close it, then save again.',
- io:'The setting could not be saved. Check permissions and free disk space.',
 };
+const jobErrors=failureCodes.job_errors as Record<string,FailureCode|undefined>;
 export function mountDisplay(document:Document,invoke:Invoke,context:PanelContext) {
  const panel=document.getElementById('display-panel');
  if(!panel)throw new Error('Missing launcher element display-panel');
@@ -84,7 +85,7 @@ export function mountDisplay(document:Document,invoke:Invoke,context:PanelContex
   },async failure=>{
    const code=scaffoldFailure(failure);
    if(code==='stale_revision')await context.refresh().catch(e=>reportUiEvent('settings','refresh_failed',uiCode(e)));
-   if(!disposed)status.textContent=saveErrorText[code]??'The setting could not be saved. Recheck status, then try again.';
+   if(!disposed)status.textContent=saveErrorText[code]??failureText(jobErrors[code]??'unknown').message;
   }).finally(()=>{saving=false;if(disposed)return;save.disabled=false;mode.disabled=false;size.disabled=false;save.setAttribute('aria-busy','false');sync();});
  };
  mode.addEventListener('change',onChange);size.addEventListener('change',onChange);save.addEventListener('click',onSave);
