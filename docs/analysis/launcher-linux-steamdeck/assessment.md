@@ -33,8 +33,8 @@ macOS spawns a pinned Wine loader that runs the same i686 `cimmeria-launch-worke
 | `D/shell/src/webview2.rs`, called at `D/shell/src/main.rs:542` | WebView2 check (already `cfg(windows)`; Linux needs webkit2gtk instead) |
 | `D/engine/src/archive_worker/mod.rs:170` | `cfg(windows)` for CAB/RAR handling |
 | `D/engine/src/storage/updater/apply.rs:50-82` | Only macOS and Windows targets; every other OS returns `Error::Platform` |
-| `D/engine/src/storage/updater/policy.rs:41` | Accepted platforms are `darwin-aarch64`, `darwin-x86_64`, `windows-x86_64`; no `linux-x86_64` |
-| `D/engine/src/storage/updater/release_check.rs:19` | Only `WINDOWS_PLATFORM` is defined |
+| `D/engine/src/storage/updater/policy.rs:41` | Accepted platforms are `darwin-aarch64`, `darwin-x86_64`, `windows-x86_64`, `windows-aarch64`; no `linux-x86_64` |
+| `D/engine/src/storage/updater/release_check.rs:19` | Defines `WINDOWS_X86_64_PLATFORM`, `WINDOWS_AARCH64_PLATFORM`, `WINDOWS_PLATFORMS` and the cfg-selected `WINDOWS_PLATFORM`; no Linux key |
 | `D/engine/src/storage/adoption/` | `cfg(unix)` sites (for example `direct_path_ops.rs`) were written for macOS, including `RENAME_SWAP`; whether they behave on Linux filesystems is unverified |
 
 I did not re-check `apply.rs:188,197` individually; treat them as part of the same updater gap.

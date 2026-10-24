@@ -52,8 +52,9 @@ Its notes name the macOS zip only while one is there, so their link never
 fails. `publish-macos` runs whenever `publish` succeeded, attaches what was
 built, and then fails if `mac-pieces` or `desktop-macos` did not succeed. So the run shows both the failed build and `publish-macos`
 red, and **"Re-run failed jobs"** reruns the two (and anything they skipped),
-which attaches the missing asset. Do it within seven days: the Windows pieces the
-macOS build and the arm64 build need are kept seven days.
+which attaches the missing asset. Rerun the macOS build within a day: the macOS
+pieces it reads are kept one day. The arm64 build and a rerun of `mac-pieces`
+read the Play pieces, which are kept seven days.
 
 **"Re-run all jobs"** is the other way, and the one to use when a job that
 succeeded must run again. The stamp step recognises the run and keeps its tag
@@ -175,7 +176,7 @@ throwaway key. These dry runs don't gate merges (D-WA7).
 | `verify` | Checks the 64-bit launcher, compiled pins and player-only telemetry identity, then copies only the EXE to a clean directory and runs `--verify-embedded-payload` to prove headless extraction and verification. A release build carries its tag, version and, when set, updater public key |
 | `package` | Writes `artifacts/StargateWorlds-Launcher-windows-x64.zip` (`WINDOWS_ARCH=arm64`: `-windows-arm64.zip`) containing exactly one root `cimmeria-launcher-desktop.exe`, then its `.sha256`. The x64 name and signed updater contract stay the same. `verify` requires PE machine `0x8664` for x64 and `0xaa64` for arm64 |
 | `feed-tool` | Builds the `release_feed` example (`release-tools` profile) that `sign` and `verify-feed` run. The `sign` job runs it in a step with no secret: compiling it runs its dependencies' build scripts and proc macros, which must never see the key |
-| `sign <version> <url> <notes>` | Signs every zip in `FEED_ARCHES` (x64 and arm64) with the updater key and writes a `.zip.sig` beside each and one `artifacts/latest.json`. Runs the built tool directly, no cargo |
+| `sign <version> <base-url> <notes>` | Signs every zip in `FEED_ARCHES` (x64 and arm64) with the updater key, offers each zip at `<base-url>/<zip name>`, and writes a `.zip.sig` beside each and one `artifacts/latest.json`. Runs the built tool directly, no cargo |
 | `verify-feed <version>` | Runs the launcher engine's own feed, signature and zip checks on those files, per platform, against `LAUNCHER_UPDATER_PUBKEY` |
 | `feed-dry-run <version>` | `feed-tool`, then `sign` and `verify-feed` over both zips with a throwaway key made in the job; the step of the PR dry run's feed job |
 
