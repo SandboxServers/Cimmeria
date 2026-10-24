@@ -2,7 +2,7 @@
 title: Unified In-Game UAT Guide
 type: how-to
 audience: in-game testers (the owner and playtesters) working through the restored systems on the colo; no programming needed
-last_updated: 2026-10-23
+last_updated: 2026-10-24
 companion_docs:
   - organizations-uat.md
   - ../content/debug-hub.md
@@ -60,6 +60,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Lab harness](#lab-harness) | [lab-harness close-out](../analysis/lab-harness/closeout.md#what-was-not-tested-live) |
 | [Telemetry gaps](#telemetry-gaps) | [telemetry-gaps ledger](../analysis/telemetry-gaps/README.md#packet-status) and its [close-out handoff](../analysis/telemetry-gaps/handoffs/2026-10-11-closeout.md) |
 | [Launcher UAT fixes](#launcher-uat-fixes) | [launcher-uat-fixes ledger](../analysis/launcher-uat-fixes/README.md#close-out-2026-10-22) and the [laptop UAT worknote](../analysis/launcher-telemetry/worknotes/laptop-uat-2026-10-22.md) |
+| [Launcher on Windows on Arm](#launcher-on-windows-on-arm) | [launcher-win-arm64 ledger](../analysis/launcher-win-arm64/README.md#owner-uat-no-lab-use) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
@@ -1663,6 +1664,19 @@ using the lab or owner machine.
 | AS-U2 | Cancel with an old archive remembered, reject verification, lose a reply, reopen or dispose | No automatic Install or mutation replay; source RAR untouched |
 | AS-U3 | Choose with existing installation, active owner or recovery-blocked state | No new installation; normal ownership/recovery rules apply |
 
+## Launcher on Windows on Arm
+
+The launcher-win-arm64 campaign ([ledger](../analysis/launcher-win-arm64/README.md), PR #2002) makes every launcher release carry a native Windows arm64 zip (`StargateWorlds-Launcher-windows-arm64.zip`, feed key `windows-aarch64`) beside x64, from one signed `latest.json`.
+
+**Status:** UATPending. The launcher app itself was confirmed running on the owner's arm64 Windows laptop. The new release pipeline (hosted `windows-11-arm` build, two-zip feed, `windows-aarch64` updater pick) has **not** been proved by a real release, and no step below has run. Owner only; no lab use. WA-U2 needs the first release after the merge, and WA-U3 a second one.
+
+**Prerequisites:** the Windows on Arm laptop; for WA-U1 the wave PR's CI run; for WA-U2 and WA-U3 the releases named in each row.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| WA-U1 | From the wave PR's CI run, download `desktop-launcher-windows-arm64-dry-run`, unzip it on the Arm laptop, run `cimmeria-launcher-desktop.exe`. | The window opens on the first run. Task Manager's Architecture column (Details tab) says ARM64. The main page renders. | A development build, so it isn't expected to install from the release manifest. |
+| WA-U2 | After the first release with this change, download `StargateWorlds-Launcher-windows-arm64.zip` from `launcher-current`, then Install or adopt, and press Play once. | The launcher shows ARM64 in Task Manager. Install or adoption completes. Play starts the game, which runs x86-emulated. The dated release notes show the **Windows on Arm:** paragraph. | First real test of the release wiring (finding F13). |
+| WA-U3 | After a second release, open the arm64 launcher from WA-U2, and separately an x64 launcher on the same laptop. | Each offers the new version and restarts into it. The arm64 build is still ARM64 and the x64 build is still x64. | D-WA3: no automatic cross-grade. |
 ## Lab CLI (`lab.exe`)
 
 The lab command is the Rust `lab.exe` ([lab CLI in Rust ledger](../analysis/lab-cli-rust/README.md), packets `LX-`). CI tests it, and a coordinator ran the check on the real lab on 2026-10-12 (LX-20), with the user's OK; three interactive items are still owed (see Status). Run it again after a change to a terminal view or to completion: a person has to see the colour, the terminal views and the completion. LX-U13 to LX-U15 drive a game client, so **ask the owner before running them** and wait until the lab is free; the other rows only read.

@@ -5,26 +5,17 @@
 
 **Goal:** every launcher release ships a native Windows arm64 launcher (`StargateWorlds-Launcher-windows-arm64.zip`, feed key `windows-aarch64`) beside x64, from one signed `latest.json`.
 
-**Baseline:** designed against `main` `2019922fe`. No code written, no worktree created, nothing in flight.
+**State: closed out 2026-10-24.** Wave 1 (WA-01..WA-06) merged as PR #2002; WA-07 (status docs, unified UAT, this card) ships as its own docs PR. Nothing is in flight.
 
-| Wave | Packets | Ships as | State |
-|---|---|---|---|
-| 1 | WA-01..WA-06 | one PR from `lwa-integration` (branch `launcher-win-arm64/integration`) | Ready; WA-02 waits on WA-01's review `ship` |
-| close-out | WA-07 | own docs PR | after the wave PR merges |
-| owner UAT | WA-U1..U3 | none | after CI, first and second release |
+**Verified vs not:** the launcher app itself was confirmed running on the owner's arm64 Windows laptop. The release pipeline (hosted `windows-11-arm` build, two-zip feed, `windows-aarch64` updater pick) has not been proved by a real release.
+
+**Owed (owner, no lab use):** WA-U1 (the PR's arm64 dry-run zip on the Arm laptop), WA-U2 (first release: install and Play on Arm), WA-U3 (second release: self-update on arm64 and on x64-on-Arm). Steps: [unified UAT § Launcher on Windows on Arm](../../guides/unified-uat.md#launcher-on-windows-on-arm).
 
 **Next action:**
 
-1. `ops`: create `lwa-integration` and `lwa-01`, `lwa-03`, `lwa-04`, `lwa-05`, `lwa-06` from main (`mk-worktree.ps1`).
-2. Dispatch WA-01, WA-03, WA-04, WA-05 (packet-coder) and WA-06 (documentation-writer) in the background, each with its § from work-packets.md.
-3. After WA-01's review returns `ship`: `ops` creates `lwa-02` at WA-01's reviewed head; dispatch WA-02.
-4. Merge into the integration branch in order WA-01, 02, 03, 04, 05, 06; run the wave review; open the PR.
-5. Hold the merge until the four dry-run and release-scripts checks are green (work-packets § Dispatch rules). That run is the first real arm64 compile; a failure gets a fix packet in `lwa-integration`.
+1. After the WA-07 PR merges, `ops` retires `lwa-01`..`lwa-07` and `lwa-integration` with `rm-worktree.ps1 --merged-into <PR> <names>` and posts the board handoff.
+2. The first release after the merge is the orchestrator's call under the standing launcher-release instruction, if it covers this campaign; otherwise the owner's. If that release's `sign` or `publish` fails on the arm64 job, recovery is "Re-run failed jobs" (D-WA5).
 
-**Decisions:** D-WA1..D-WA11 decided (ledger). Hosted `windows-11-arm` (free, public repo); compile-time key pick; one feed with both keys; arm64 on the release critical path.
-
-**Open owner decisions:** none blocking. Optional: make the dry runs required checks (D-WA7).
-
-**Follow-ups:** WA-F1 (bootstrap and `setup.ps1` pick arm64, after WA-U2), WA-F2 (split the over-cap implementation ledger).
+**Follow-ups:** WA-F1 (bootstrap and `setup.ps1` pick arm64, after WA-U2), WA-F2 (split the over-cap implementation ledger). Optional owner call: make the dry runs required checks (D-WA7).
 
 **Rules:** PowerShell only; compiling cargo through the lane; `.sh`/`.yml` LF, docs CRLF; never `git worktree prune`; retire worktrees on merge.
