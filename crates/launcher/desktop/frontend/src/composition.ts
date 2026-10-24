@@ -26,6 +26,10 @@ const telemetryStatus = mountTelemetryStatus(document,invoke);
 void gameTelemetry.ready.then(()=>telemetryStatus.refresh());
 // A finished Play changes what the last launch did about game diagnostics.
 const play = mountLaunch(document,invoke,()=>{void installation.refresh(); void app.refresh(); void updater?.refresh(); void gameTelemetry.refresh(); void telemetryStatus.refresh();},undefined,true,ready=>installation.setPlayable(ready));
+// Play's inline Abandon opens the same Settings confirmation as #abandon-repair.
+const abandonRepair = document.getElementById('launch-abandon-repair');
+const requestAbandon = () => installation.requestRepair('abandon');
+abandonRepair?.addEventListener('click', requestAbandon);
 let adoption: ReturnType<typeof mountAdoption> | undefined;
 const migration = mountMigration(document,invoke,()=>{void app.refresh(); void installation.refresh(); void play.refresh(); void adoption?.refresh();});
 // Adoption notifies only when a saved revision changed, so this cannot loop.
@@ -40,5 +44,5 @@ const gameUpdate = mountGameUpdate(document,invoke,()=>{void app.refresh();void 
 // The display setting (PD-26) saves through the same panel context as the other Settings panels.
 const display = mountDisplay(document,invoke,app.context);
 return {installation, app, play, migration, adoption, updater, gameUpdate, gameTelemetry, telemetryStatus, display,
- dispose:async()=>{stopAdoptionRefresh();telemetryStatus.dispose();await Promise.all([display.dispose(),gameTelemetry.dispose(),gameUpdate.dispose(),adoption!.dispose(),migration.dispose(),play.dispose(),app.dispose(),installation.dispose(),updater!.dispose()]);}};
+ dispose:async()=>{stopAdoptionRefresh();abandonRepair?.removeEventListener('click',requestAbandon);telemetryStatus.dispose();await Promise.all([display.dispose(),gameTelemetry.dispose(),gameUpdate.dispose(),adoption!.dispose(),migration.dispose(),play.dispose(),app.dispose(),installation.dispose(),updater!.dispose()]);}};
 }
