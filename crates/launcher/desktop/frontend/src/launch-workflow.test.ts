@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {Effect,Schema} from 'effect';
 import {LaunchStatus,launchBlocked} from './launch-workflow';
 
-const initial=()=>({schema_version:1,setup_complete:true,resources_available:true,launcher_update_required:false,patches_incomplete:1,ops_skipped:3,installation_id:'owner',observation:null as unknown,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed' as const,width:1024,height:768}},operation:{schema_version:1,revision:0,operation:null as unknown}}});
+const initial=()=>({schema_version:1,setup_complete:true,resources_available:true,launcher_update_required:false,patches_incomplete:1,ops_skipped:3,installation_id:'owner',observation:null as unknown,failure:null as unknown,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed' as const,width:1024,height:768}},operation:{schema_version:1,revision:0,operation:null as unknown}}});
 const decode=(value:unknown)=>Effect.runPromise(Schema.decodeUnknownEffect(LaunchStatus,{onExcessProperty:'error'})(value));
 test('missing game components and an active vendor installer each block Play',async()=>{
  for(const prerequisites_missing of [['directx'],['physx'],['directx','physx']]){
@@ -28,4 +28,13 @@ test('native setup completeness is required independently of Play admission',asy
 test('a launch status without the incomplete patch counts is refused', async () => {
   const {patches_incomplete:_incomplete,ops_skipped:_skipped,...withoutCounts}=initial();
   await assert.rejects(decode(withoutCounts));
+});
+
+test('a launch status carries the failure code of a launch that did not start', async () => {
+  const decoded=await decode({...initial(),observation:{phase:'not_started'},failure:'rosetta_missing'});
+  assert.equal(decoded.failure,'rosetta_missing');
+  assert.equal((await decode(initial())).failure,null);
+  await assert.rejects(decode({...initial(),failure:'not_a_failure_code'}));
+  const {failure:_failure,...withoutFailure}=initial();
+  await assert.rejects(decode(withoutFailure));
 });

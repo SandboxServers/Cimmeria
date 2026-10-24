@@ -1,5 +1,6 @@
 //! Path-free Play admission and durable lifecycle observation.
 use super::*;
+use cimmeria_launcher_engine::failure::FailureCode;
 use cimmeria_launcher_engine::launch;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -49,6 +50,8 @@ pub struct LaunchStatus {
     prerequisites_missing: Vec<&'static str>,
     prerequisites_installing: bool,
     observation: Option<launch::Observation>,
+    /// Why the current launch did not start (C-PD3); `null` when none is known.
+    failure: Option<FailureCode>,
 }
 impl NativeHost {
     /// Packaging probe uses the production resolver, including canonical paths
@@ -129,7 +132,14 @@ impl NativeHost {
                     Ok(value) => *worker = Some(value),
                     // A dispatch that failed before anything was recorded ends
                     // Failed with its reason; anything else stays uncertain.
-                    Err(error) if launch::dispatch_failed(&store, operation_id, &error) => {
+                    Err(error)
+                        if launch::dispatch_failed(
+                            &store,
+                            operation_id,
+                            &error,
+                            JobError::from(error).failure(),
+                        ) =>
+                    {
                         return Err(error.into());
                     }
                     Err(error) => {
@@ -150,6 +160,7 @@ impl NativeHost {
         let mut state = store.lock().map_err(|_| JobError::Io)?;
         let native = state.dispatch(NativeCommand::Inspect { schema_version: 1 })?;
         let observation = state.launch_observation()?;
+        let failure = state.launch_failure()?;
         // The build is at fault only when the patch policy needs an artifact it
         // lacks, or a shipped artifact no longer verifies. A state that cannot
         // answer (busy content, refused imported settings) withholds Play without
@@ -228,6 +239,7 @@ impl NativeHost {
             (available, launcher_update_required),
             game.as_deref(),
             observation,
+            failure,
         );
         status.prerequisites_missing = missing;
         status.prerequisites_installing = state.prerequisite_setup_active();
@@ -244,6 +256,7 @@ impl LaunchStatus {
         (resources_available, launcher_update_required): (bool, bool),
         game: Option<&std::path::Path>,
         observation: Option<launch::Observation>,
+        failure: Option<FailureCode>,
     ) -> Self {
         let (patches_incomplete, ops_skipped) = ledger::incomplete_counts(game);
         Self {
@@ -258,6 +271,7 @@ impl LaunchStatus {
             prerequisites_missing: Vec::new(),
             prerequisites_installing: false,
             observation,
+            failure,
         }
     }
 }

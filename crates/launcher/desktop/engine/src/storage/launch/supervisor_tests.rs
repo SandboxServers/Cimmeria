@@ -38,10 +38,16 @@ async fn real_host_and_guest_namespace_and_early_exit() {
     let seen = observations.clone();
     let result = tokio::time::timeout(
         Duration::from_secs(5),
-        run(spec, request, CancellationToken::new(), move |event| {
-            seen.lock().unwrap().push(event);
-            Ok(())
-        }),
+        run(
+            spec,
+            request,
+            CancellationToken::new(),
+            move |event| {
+                seen.lock().unwrap().push(event);
+                Ok(())
+            },
+            |_| {},
+        ),
     )
     .await
     .unwrap();
@@ -86,7 +92,7 @@ async fn lost_helper_wrong_guest_and_injection_uncertainty_are_not_success() {
         assert_eq!(
             tokio::time::timeout(
                 Duration::from_secs(5),
-                run(spec, request, CancellationToken::new(), |_| Ok(()))
+                run(spec, request, CancellationToken::new(), |_| Ok(()), |_| {})
             )
             .await
             .unwrap(),
@@ -100,7 +106,7 @@ async fn cancellation_before_spawn_does_not_invoke_helper_and_spawn_failure_is_k
     let cancel = CancellationToken::new();
     cancel.cancel();
     assert_eq!(
-        run(spec, request, cancel, |_| panic!("no host")).await,
+        run(spec, request, cancel, |_| panic!("no host"), |_| {}).await,
         Observation::Cancelled
     );
     let (_second, mut spec, _) = fixture("pass");
@@ -114,10 +120,199 @@ async fn cancellation_before_spawn_does_not_invoke_helper_and_spawn_failure_is_k
         args: vec![],
     };
     assert_eq!(
-        run(spec, request, CancellationToken::new(), |_| panic!(
-            "no host"
-        ))
+        run(
+            spec,
+            request,
+            CancellationToken::new(),
+            |_| panic!("no host"),
+            |_| {}
+        )
         .await,
         Observation::NotStarted
+    );
+}
+#[test]
+fn a_missing_executable_reports_spawn_not_found() {
+    // A second live Dispatch keeps tracing's callsite interest per dispatcher.
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (_root, mut spec, request) = fixture("pass");
+    spec.executable = "/missing-launch-fixture".into();
+    let reported = Arc::new(Mutex::new(Vec::new()));
+    let seen = reported.clone();
+    let (observation, events) = crate::test_capture::capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        rt.block_on(run(
+            spec,
+            request,
+            CancellationToken::new(),
+            |_| panic!("no host"),
+            move |code| seen.lock().unwrap().push(code),
+        ))
+    });
+    assert_eq!(observation, Observation::NotStarted);
+    assert_eq!(
+        reported.lock().unwrap().as_slice(),
+        &[FailureCode::SpawnNotFound]
+    );
+    let logged: Vec<_> = events
+        .iter()
+        .filter(|e| e.target == "launcher.launch" && e.field("event") == Some("launch_not_started"))
+        .collect();
+    assert_eq!(logged.len(), 1);
+    assert_eq!(logged[0].level, tracing::Level::WARN);
+    assert_eq!(logged[0].field("reason"), Some("spawn_failed"));
+    assert_eq!(logged[0].field("failure_code"), Some("spawn_not_found"));
+    assert_eq!(logged[0].field("os_error"), Some("2"));
+}
+#[test]
+fn an_oversized_request_reports_spawn_failed() {
+    // A second live Dispatch keeps tracing's callsite interest per dispatcher.
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (_root, spec, mut request) = fixture("pass");
+    request.dlls = vec!["x".repeat(MAX_MESSAGE).into()];
+    let reported = Arc::new(Mutex::new(Vec::new()));
+    let seen = reported.clone();
+    let (observation, events) = crate::test_capture::capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        rt.block_on(run(
+            spec,
+            request,
+            CancellationToken::new(),
+            |_| panic!("no host"),
+            move |code| seen.lock().unwrap().push(code),
+        ))
+    });
+    assert_eq!(observation, Observation::NotStarted);
+    assert_eq!(
+        reported.lock().unwrap().as_slice(),
+        &[FailureCode::SpawnFailed]
+    );
+    let logged: Vec<_> = events
+        .iter()
+        .filter(|e| e.target == "launcher.launch" && e.field("event") == Some("launch_not_started"))
+        .collect();
+    assert_eq!(logged.len(), 1);
+    assert_eq!(logged[0].level, tracing::Level::WARN);
+    assert_eq!(logged[0].field("reason"), Some("request_too_large"));
+    assert_eq!(logged[0].field("failure_code"), Some("spawn_failed"));
+}
+#[test]
+fn a_spawn_failure_is_noted_on_the_launch_record() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (_r, mut state, plan) = super::super::tests::fixture();
+    state.record_launch(&plan, Observation::Preparing).unwrap();
+    let (_root, mut spec, request) = fixture("pass");
+    spec.executable = "/missing-launch-fixture".into();
+    let state = Mutex::new(state);
+    let (updates, _) = watch::channel(Observation::Unknown);
+    let observation = rt.block_on(run_recorded(
+        &state,
+        &plan,
+        spec,
+        request,
+        CancellationToken::new(),
+        &updates,
+    ));
+    assert_eq!(observation, Observation::NotStarted);
+    assert_eq!(
+        state.lock().unwrap().launch_failure(),
+        Ok(Some(FailureCode::SpawnNotFound))
+    );
+}
+
+#[test]
+fn a_helper_not_started_is_noted_with_its_failure_code() {
+    // A second live Dispatch keeps tracing's callsite interest per dispatcher.
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (_root, spec, request) = fixture("event('not_started',stage='create_process',win32=5)");
+    let reported = Arc::new(Mutex::new(None));
+    let seen = reported.clone();
+    let (observation, events) = crate::test_capture::capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        rt.block_on(async {
+            tokio::time::timeout(
+                Duration::from_secs(30),
+                run(
+                    spec,
+                    request,
+                    CancellationToken::new(),
+                    |_| Ok(()),
+                    move |code| *seen.lock().unwrap() = Some(code),
+                ),
+            )
+            .await
+            .unwrap()
+        })
+    });
+    assert_eq!(observation, Observation::NotStarted);
+    assert_eq!(
+        *reported.lock().unwrap(),
+        Some(FailureCode::SpawnPermissionDenied)
+    );
+    let logged: Vec<_> = events
+        .iter()
+        .filter(|e| e.target == "launcher.launch" && e.field("event") == Some("launch_not_started"))
+        .collect();
+    assert_eq!(logged.len(), 1);
+    assert_eq!(logged[0].level, tracing::Level::WARN);
+    assert_eq!(logged[0].field("reason"), Some("create_process_failed"));
+    assert_eq!(
+        logged[0].field("failure_code"),
+        Some("spawn_permission_denied")
+    );
+    assert_eq!(logged[0].field("win32"), Some("5"));
+}
+
+#[test]
+fn a_helper_not_started_is_noted_on_the_launch_record() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (_r, mut state, plan) = super::super::tests::fixture();
+    state.record_launch(&plan, Observation::Preparing).unwrap();
+    let (_root, spec, request) = fixture("event('not_started',stage='create_process',win32=2)");
+    let state = Mutex::new(state);
+    let (updates, _) = watch::channel(Observation::Unknown);
+    let observation = rt.block_on(async {
+        tokio::time::timeout(
+            Duration::from_secs(30),
+            run_recorded(
+                &state,
+                &plan,
+                spec,
+                request,
+                CancellationToken::new(),
+                &updates,
+            ),
+        )
+        .await
+        .unwrap()
+    });
+    assert_eq!(observation, Observation::NotStarted);
+    // The worker records the terminal observation; the noted failure survives it.
+    state
+        .lock()
+        .unwrap()
+        .record_launch(&plan, observation)
+        .unwrap();
+    assert_eq!(
+        state.lock().unwrap().launch_failure(),
+        Ok(Some(FailureCode::SpawnNotFound))
     );
 }

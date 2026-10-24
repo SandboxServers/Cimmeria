@@ -69,6 +69,9 @@ pub(super) fn prepare(
 // DXVK's limiter; the client has no vsync setting and nothing else bounds its render loop.
 const FRAME_RATE_LIMIT: &str = "30";
 
+// D2: exclusive fullscreen captures every display under winemac.drv; DXVK forces windowed.
+const FORCE_WINDOWED: &str = "1";
+
 // Called only after Resources::reopen verifies and locks the pinned runtime.
 fn game_environment(
     runtime: &Path,
@@ -92,6 +95,7 @@ fn game_environment(
     );
     environment.insert("CX_FWD_COMPAT_GL_CTX".into(), "1".into());
     environment.insert("DXVK_FRAME_RATE".into(), FRAME_RATE_LIMIT.into());
+    environment.insert("DXVK_FORCE_WINDOWED".into(), FORCE_WINDOWED.into());
     if let Some((executable, _)) = &graphics.rosetta_x87 {
         environment.insert(
             "ROSETTA_X87_PATH".into(),

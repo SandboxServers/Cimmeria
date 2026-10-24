@@ -142,6 +142,8 @@ The error code of a failed attempt:
 | Prepare runtime | none | `prerequisite_failed` |
 | Repair, uninstall | none | `unspecified` |
 
+A Play whose dispatch failed before the game started records `NotStarted` too, so its row is `launch_not_started`.
+
 Detail is read only while the journal's current operation is still that failed
 attempt. Every admission therefore finalizes before its commit: launch, runtime
 setup, repair, uninstall and adoption admit through `operations_mut`, and

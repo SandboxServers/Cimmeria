@@ -16,7 +16,7 @@ function fixture(reply:(request:UpdaterRequest)=>Promise<UpdaterStatus>){
   if(command==='launcher_command')return native;
   if(command==='launch_command'){
    if((args!.request as {command:string}).command==='play')plays++;
-   return {schema_version:1,native,installation_id:'owner',setup_complete:true,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,observation:null};
+   return {schema_version:1,native,installation_id:'owner',setup_complete:true,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,observation:null,failure:null};
   }
   return native; // Unrelated panels refuse these fixtures through their strict decoders.
  });
