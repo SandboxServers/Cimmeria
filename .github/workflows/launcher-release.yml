@@ -14,11 +14,12 @@ name: launcher-release
 # moment; the triggering PR is just the cut-point marker, mirroring the policy
 # of `release-container.yml`.
 #
-# Seven jobs (crates/launcher/desktop/docs/release.md, "Jobs"). The updater
+# Nine jobs (crates/launcher/desktop/docs/release.md, "Jobs"). The updater
 # signing key never shares a job with the build's third-party code, and no job
 # that runs build code can write to the repository: the only write-token jobs,
-# `publish` and `publish-macos`, run tools/launcher-release/publish.sh from a
-# checkout of the released commit and nothing else.
+# `publish`, `publish-macos` and `publish-linux`, run
+# tools/launcher-release/publish.sh from a checkout of the released commit and
+# nothing else.
 #   - `desktop-windows` stamps the tag and version (stamp.sh), builds, checks
 #     and zips the launcher, and hands its three Play pieces to the other
 #     Windows builds.
@@ -39,6 +40,13 @@ name: launcher-release
 #     also calls.
 #   - `publish-macos` attaches the macOS zip. A failed macOS build leaves the
 #     Windows release as it is.
+#   - `desktop-linux` builds the x86-64 AppImage through the reusable
+#     `launcher-desktop-linux.yml` the PR dry run also calls. It needs only
+#     desktop-windows' tag and version: the Linux launcher carries no Windows
+#     pieces yet.
+#   - `publish-linux` attaches the AppImage after publish-macos has finished,
+#     so the two never rewrite the dated notes at once. A failed Linux build
+#     leaves the other platforms' release as it is.
 #
 # Windows executables lack Authenticode signing (D-LX10): the launch worker injects DLLs,
 # which Defender and SmartScreen react to. The macOS app is signed ad hoc only;
@@ -67,6 +75,7 @@ env:
   ZIP_NAME: StargateWorlds-Launcher-windows-x64.zip
   ARM_ZIP_NAME: StargateWorlds-Launcher-windows-arm64.zip
   MAC_ZIP_NAME: StargateWorlds-Launcher-macos-arm64.zip
+  LINUX_APPIMAGE_NAME: StargateWorlds-Launcher-linux-x86_64.AppImage
 
 jobs:
   # The zip holds one root EXE embedding the 32-bit worker and two game DLLs.
@@ -645,3 +654,84 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           [ "${MAC_OK}" = true ]
+
+  desktop-linux:
+    name: desktop launcher (Linux)
+    needs: desktop-windows
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/launcher-desktop-linux.yml
+    with:
+      artifact_name: launcher-linux-appimage-${{ needs.desktop-windows.outputs.tag }}
+      tag: ${{ needs.desktop-windows.outputs.tag }}
+      version: ${{ needs.desktop-windows.outputs.version }}
+      epoch: ${{ needs.desktop-windows.outputs.epoch }}
+      build_branch: main
+      cache_key: launcher-release-desktop-linux
+    secrets:
+      LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
+
+  # Attaches the AppImage after publish made the dated release, and replaces
+  # the one on launcher-current. It waits for publish-macos (whatever its
+  # result) because both rewrite the dated release's notes. It fails when the
+  # Linux build did not succeed, so "Re-run failed jobs" reruns it with the
+  # failed build. No build and no third-party action: publish.sh from the
+  # released commit's checkout. Linux updates are manual: latest.json has no
+  # Linux platform.
+  publish-linux:
+    name: Linux AppImage -> same release + launcher-current
+    needs: [desktop-windows, publish, publish-macos, desktop-linux]
+    if: >-
+      !cancelled() && github.ref == 'refs/heads/main'
+      && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 15
+    env:
+      LINUX_APPIMAGE: artifacts/StargateWorlds-Launcher-linux-x86_64.AppImage
+      TAG: ${{ needs.desktop-windows.outputs.tag }}
+      LINUX_OK: ${{ needs.desktop-linux.result == 'success' }}
+      VERSION: ${{ needs.desktop-windows.outputs.version }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        if: env.LINUX_OK == 'true'
+        with:
+          name: launcher-linux-appimage-${{ needs.desktop-windows.outputs.tag }}
+          path: artifacts
+      - name: attach the AppImage to the dated release
+        if: env.LINUX_OK == 'true'
+        env:
+          LINUX_APPIMAGE_SHA256: ${{ needs.desktop-linux.outputs.appimage_sha256 }}
+        run: |
+          tools/launcher-release/publish.sh check "${LINUX_APPIMAGE}" "${LINUX_APPIMAGE_SHA256}"
+          tools/launcher-release/publish.sh linux
+      - name: refresh the AppImage on launcher-current
+        id: rolling-linux
+        if: env.LINUX_OK == 'true'
+        run: tools/launcher-release/publish.sh linux-current
+      - name: summary, and fail when the Linux build failed
+        if: always()
+        env:
+          ROLLING_STATUS: ${{ steps.rolling-linux.outputs.status }}
+        run: |
+          {
+            echo "## Linux assets for ${TAG}"
+            if [ "${LINUX_OK}" != true ]; then
+              echo "- The Linux build failed: \`${LINUX_APPIMAGE_NAME}\` is not on this release, and \`launcher-current\` keeps the AppImage it had. \"Re-run failed jobs\" (crates/launcher/desktop/docs/release.md)."
+            elif [ "${ROLLING_STATUS}" = skipped_older ]; then
+              echo "- The dated Linux assets were repaired; a newer release is current, so its Linux assets and notes were kept."
+            elif [ "${ROLLING_STATUS}" = refreshed ]; then
+              echo "- \`${LINUX_APPIMAGE_NAME}\` is on the dated release and on \`launcher-current\`; not in \`latest.json\` (Linux updates are manual)."
+            else
+              echo "- Linux publication did not finish; check the failed publishing step before retrying."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "${LINUX_OK}" = true ]

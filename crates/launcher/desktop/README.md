@@ -81,9 +81,12 @@ recipe patches already were. Adoption publishes its copy with
 `renameat2(RENAME_NOREPLACE)`, the Linux form of the exclusive rename macOS and
 Windows use; a filesystem without it refuses the publish.
 
+Releases carry an x86-64 AppImage, `StargateWorlds-Launcher-linux-x86_64.AppImage`
+([release](docs/release.md#what-the-linux-job-builds)).
+
 **Not on Linux yet:** Play (there is no Wine or Proton backend), the PhysX and
-other prerequisite setup, Repair, Update, the launcher self-update, and a
-release package. Those paths still answer `platform_unavailable`.
+other prerequisite setup, Repair, Update and the launcher self-update. Those
+paths still answer `platform_unavailable`.
 
 ## Native operation and storage contracts
 

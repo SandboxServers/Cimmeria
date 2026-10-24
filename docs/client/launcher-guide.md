@@ -41,6 +41,7 @@ operator setup (content releases and the two signing keys) is
 - [Part 1 — For players](#part-1--for-players)
   - [Download the launcher](#download-the-launcher)
   - [First start on Windows](#first-start-on-windows)
+  - [First start on Linux and Steam Deck](#first-start-on-linux-and-steam-deck)
   - [Install the game](#install-the-game)
   - [Install PhysX](#install-physx)
   - [Play](#play)
@@ -79,8 +80,11 @@ always holds the newest release:
   Windows' x86 emulation either way.
 - **macOS (Apple silicon):** [`StargateWorlds-Launcher-macos-arm64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip),
   set up as [Playing on a Mac](../guides/macos.md) describes.
+- **Linux and Steam Deck (x86-64):** [`StargateWorlds-Launcher-linux-x86_64.AppImage`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-linux-x86_64.AppImage).
+  It installs the game; Play is not available on Linux yet. See
+  [First start on Linux and Steam Deck](#first-start-on-linux-and-steam-deck).
 
-Each zip has a `.sha256` file beside it on the same release if you want to
+Each download has a `.sha256` file beside it on the same release if you want to
 check your download.
 
 Unzip the Windows zip into a folder of its own that you can write to, such as
@@ -120,6 +124,28 @@ The main page scrolls when the window is small. Below **Play**, you can toggle
 client patches, launcher diagnostics and game diagnostics. **Changes to your
 client** shows a summary; expand **View all changes** for the full list. There
 is no Patch Notes tab.
+
+### First start on Linux and Steam Deck
+
+The Linux launcher is one AppImage file. On a Steam Deck, use Desktop Mode.
+
+1. Download `StargateWorlds-Launcher-linux-x86_64.AppImage` from the stable link
+   above. Keep it somewhere you can find again, such as `~/Applications`.
+2. Make it executable: in the file manager, right-click it, choose
+   **Properties → Permissions** and tick **Is executable**. Or in a terminal:
+   `chmod +x StargateWorlds-Launcher-linux-x86_64.AppImage`.
+3. Double-click it, or run `./StargateWorlds-Launcher-linux-x86_64.AppImage`.
+
+What works on Linux today:
+
+- **Install** downloads and installs the game the same way as on Windows, and
+  **Continue** resumes an interrupted install. The default game folder is
+  `~/.local/share/app.cimmeria.launcher.desktop/Stargate Worlds`.
+- **Use a game archive you already downloaded** works as on Windows.
+- **Play, Repair, Update and Install PhysX are not available on Linux yet.**
+  Running the game needs Proton, which a later launcher release will set up.
+- The launcher does not update itself on Linux. Download each new release from
+  the same link.
 
 ### Install the game
 

@@ -95,7 +95,7 @@ python "$HERE/test_release_identity.py"
 export TAG VERSION="$BASE"
 cd "$WORK"
 mkdir -p artifacts
-for f in StargateWorlds-Launcher-windows-x64.zip StargateWorlds-Launcher-windows-arm64.zip StargateWorlds-Launcher-macos-arm64.zip; do
+for f in StargateWorlds-Launcher-windows-x64.zip StargateWorlds-Launcher-windows-arm64.zip StargateWorlds-Launcher-macos-arm64.zip StargateWorlds-Launcher-linux-x86_64.AppImage; do
   echo "$f bytes" > "artifacts/$f"
   printf '%s  %s\n' "$(sha256sum "artifacts/$f" | cut -d' ' -f1)" "$f" > "artifacts/$f.sha256"
 done
@@ -126,6 +126,15 @@ if [ "$(grep -cF '**macOS (Apple silicon):**' <<<"$A")" = 1 ] && grep -qF '**Win
 if [ "$(grep -cF '**Windows on Arm:**' <<<"$A")" = 1 ]; then pass "dated notes: the Windows on Arm paragraph once"; else fail "dated notes: the Windows on Arm paragraph once"; fi
 D="$(scenario d dated)"
 if grep -qF 'macOS' <<<"$D"; then fail "dated notes: no macOS paragraph without its asset"; else pass "dated notes: no macOS paragraph without its asset"; fi
+# The macOS and Linux publish jobs each rewrite the notes; any order of them
+# and of re-runs must end with the same text, each paragraph once.
+L1="$(scenario l1 dated macos linux)"
+L2="$(scenario l2 dated linux macos dated)"
+L3="$(scenario l3 dated linux dated macos linux)"
+if [ "$L1" = "$L2" ] && [ "$L1" = "$L3" ]; then pass "dated notes with Linux converge in any order"; else fail "dated notes with Linux converge in any order"; fi
+if [ "$(grep -cF '**Linux (x86-64, Steam Deck):**' <<<"$L1")" = 1 ] && [ "$(grep -cF '**macOS (Apple silicon):**' <<<"$L1")" = 1 ]; then
+  pass "dated notes: the Linux and macOS paragraphs once each"; else fail "dated notes: the Linux and macOS paragraphs once each"; fi
+if grep -qF 'Linux' <<<"$A"; then fail "dated notes: no Linux paragraph without its asset"; else pass "dated notes: no Linux paragraph without its asset"; fi
 
 scenario e dated current >/dev/null
 if grep -qF 'macos-arm64' "$STUB_STORE/launcher-current/body"; then
@@ -147,6 +156,12 @@ if grep -qF 'Windows on Arm: download StargateWorlds-Launcher-windows-arm64.zip'
 "$HERE/publish.sh" macos-current >/dev/null
 if grep -qF 'macOS (Apple silicon): download StargateWorlds-Launcher-macos-arm64.zip' "$STUB_STORE/launcher-current/body"; then
   pass "current notes: the macOS link once the zip is there"; else fail "current notes: the macOS link once the zip is there"; fi
+if grep -qF 'linux-x86_64' "$STUB_STORE/launcher-current/body"; then
+  fail "current notes: no Linux link before the AppImage is there"; else pass "current notes: no Linux link before the AppImage is there"; fi
+"$HERE/publish.sh" linux-current >/dev/null
+if grep -qF 'Linux (x86-64, Steam Deck): download StargateWorlds-Launcher-linux-x86_64.AppImage' "$STUB_STORE/launcher-current/body" \
+  && grep -qxF StargateWorlds-Launcher-linux-x86_64.AppImage.sha256 "$STUB_STORE/launcher-current/assets"; then
+  pass "launcher-current: the AppImage, its .sha256 and its link"; else fail "launcher-current: the AppImage, its .sha256 and its link"; fi
 
 mv artifacts/StargateWorlds-Launcher-windows-x64.zip.sig artifacts/saved.sig
 if "$HERE/publish.sh" dated >/dev/null 2>&1 || "$HERE/publish.sh" current >/dev/null 2>&1; then
@@ -179,6 +194,8 @@ for file in artifacts/*.zip artifacts/*.sha256 artifacts/*.sig; do echo "B bytes
 "$HERE/publish.sh" current >/dev/null
 "$HERE/publish.sh" macos >/dev/null
 "$HERE/publish.sh" macos-current >/dev/null
+"$HERE/publish.sh" linux >/dev/null
+"$HERE/publish.sh" linux-current >/dev/null
 cp -r "$STUB_STORE/launcher-current" "$WORK/rolling-b"
 "$HERE/publish.sh" macos-current >/dev/null
 if diff -r "$WORK/rolling-b" "$STUB_STORE/launcher-current"; then
@@ -197,6 +214,20 @@ if cmp artifacts/StargateWorlds-Launcher-macos-arm64.zip "$STUB_STORE/$TAG/Starg
   && cmp artifacts/StargateWorlds-Launcher-macos-arm64.zip.sha256 "$STUB_STORE/$TAG/StargateWorlds-Launcher-macos-arm64.zip.sha256" \
   && grep -qF '**macOS (Apple silicon):**' "$STUB_STORE/$TAG/body"; then
   pass "older dated macOS assets and notes are repaired"; else fail "older dated macOS assets and notes are repaired"; fi
+# The same for a retried older Linux build.
+for file in artifacts/*linux*.AppImage artifacts/*linux*.sha256; do echo "A repaired bytes" > "$file"; done
+"$HERE/publish.sh" linux >/dev/null
+: > "$GITHUB_OUTPUT"
+"$HERE/publish.sh" linux-current >/dev/null
+if diff -r "$WORK/rolling-b" "$STUB_STORE/launcher-current" && grep -qx status=skipped_older "$GITHUB_OUTPUT"; then
+  pass "older Linux retry preserves every newer rolling asset and notes, reporting skip"
+else
+  fail "older Linux retry preserves every newer rolling asset and notes, reporting skip"
+fi
+if cmp artifacts/StargateWorlds-Launcher-linux-x86_64.AppImage "$STUB_STORE/$TAG/StargateWorlds-Launcher-linux-x86_64.AppImage" \
+  && grep -qF '**Linux (x86-64, Steam Deck):**' "$STUB_STORE/$TAG/body" \
+  && grep -qF '**macOS (Apple silicon):**' "$STUB_STORE/$TAG/body"; then
+  pass "older dated Linux assets and notes are repaired, macOS paragraph kept"; else fail "older dated Linux assets and notes are repaired, macOS paragraph kept"; fi
 if grep -qF 'This build is unsigned' <<<"$A"; then fail "unsigned fallback release notes removed"; fi
 
 # Exercise the actual build stage dispatch without compiling or signing. Both
