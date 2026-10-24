@@ -169,13 +169,18 @@ fn low_disk_only_warns_for_play() {
         free_bytes: Some(free),
         ..Facts::default()
     };
+    let check = only(Play, facts(PLAY_WARN_BYTES - 1));
     assert_check(
-        &only(Play, facts(PLAY_WARN_BYTES - 1)),
+        &check,
         CheckId::DiskSpace,
         CheckStatus::Warning,
         CheckAction::Manual,
         FailureCode::DiskSpaceLow,
         false,
+    );
+    assert_eq!(
+        (check.bytes_needed, check.bytes_free),
+        (Some(PLAY_WARN_BYTES), Some(PLAY_WARN_BYTES - 1))
     );
     // Play needs far less than an install: 1 GB free is enough.
     assert_ok(&only(Play, facts(PLAY_WARN_BYTES)), CheckId::DiskSpace);
@@ -211,7 +216,12 @@ fn absent_folder_blocks_play_and_repair_but_not_install() {
     };
     for operation in [Play, Repair] {
         let facts = Facts {
-            folder: Some(absent),
+            // What folder_facts(.., true) returns for a missing folder.
+            folder: Some(FolderFacts {
+                chosen: true,
+                exists: false,
+                writable: false,
+            }),
             ..Facts::default()
         };
         assert_check(
