@@ -158,9 +158,10 @@ lifetime deadline. Observation loss leaves the operation gated.
 A Play that fails before the game starts ends `failed` with a logged reason. When
 dispatch fails while the operation is still Starting and no launch observation was
 recorded yet, the operation goes to Failed and `launch_not_started` (warn) carries
-the error's code as `reason` (for example `io` or `unknown_operation`). Only an
-unconfirmed save (`persistence_uncertain`), an operation that already left Starting,
-or a launch that already recorded an observation goes to reconciliation-required.
+the error's code as `reason` (for example `io`). An unconfirmed save
+(`persistence_uncertain`), an operation that already left Starting, a launch that
+already recorded an observation, or launch state that cannot be read
+(`corrupt_state`) goes to reconciliation-required instead.
 A Play refused before any operation exists logs `launch_refused` (warn) with no
 operation number and `reason` `resources_unavailable` (no bundled Play resources) or
 `resources_unresolved` (the resources could not be resolved for this copy).
