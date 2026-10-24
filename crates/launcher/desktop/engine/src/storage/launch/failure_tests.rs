@@ -66,6 +66,20 @@ fn helper_not_started_reports_classify_to_their_failure_codes() {
         ),
         (
             Some(Stage::CreateProcess),
+            Some(226),
+            FailureCode::SpawnPermissionDenied,
+        ),
+        (
+            Some(Stage::Request),
+            Some(5),
+            FailureCode::LaunchResourcesMissing,
+        ),
+        (Some(Stage::Inject), Some(5), FailureCode::SpawnFailed),
+        (Some(Stage::Resume), Some(2), FailureCode::SpawnFailed),
+        (Some(Stage::Wait), Some(193), FailureCode::SpawnFailed),
+        (None, Some(5), FailureCode::SpawnFailed),
+        (
+            Some(Stage::CreateProcess),
             Some(193),
             FailureCode::GameFilesInvalid,
         ),

@@ -230,6 +230,7 @@ fn a_spawn_failure_is_noted_on_the_launch_record() {
         Ok(Some(FailureCode::SpawnNotFound))
     );
 }
+
 #[test]
 fn a_helper_not_started_is_noted_with_its_failure_code() {
     // A second live Dispatch keeps tracing's callsite interest per dispatcher.
@@ -276,6 +277,7 @@ fn a_helper_not_started_is_noted_with_its_failure_code() {
     );
     assert_eq!(logged[0].field("win32"), Some("5"));
 }
+
 #[test]
 fn a_helper_not_started_is_noted_on_the_launch_record() {
     let rt = tokio::runtime::Builder::new_current_thread()
