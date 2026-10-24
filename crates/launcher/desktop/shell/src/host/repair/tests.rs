@@ -235,14 +235,23 @@ fn repair_uat_bridge() {
                 } => {
                     let store = host.store().unwrap();
                     let mut state = store.lock().unwrap();
-                    state
+                    let plan = state
                         .admit_repair(operation_id, operation_revision, installation_id, confirmed)
-                        .unwrap();
+                        .unwrap()
+                        .plan;
                     state
                         .operations_mut()
                         .unwrap()
                         .observe(operation_id, OperationState::Running)
                         .unwrap();
+                    // A running repair has claimed its work folder; without it,
+                    // start-up fails the unstarted repair on reopen (PD-03).
+                    std::fs::create_dir(plan.work_directory()).unwrap();
+                    std::fs::write(
+                        plan.work_directory().join("owner.json"),
+                        serde_json::to_vec(&plan).unwrap(),
+                    )
+                    .unwrap();
                     drop(state);
                     host.install_status()
                 }
