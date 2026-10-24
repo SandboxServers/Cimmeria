@@ -118,15 +118,23 @@ fn stage_reason(stage: Stage) -> &'static str {
 }
 
 /// The game did not start, as the launch helper reported it. The reason comes
-/// from its stage; `win32` is the Win32 code, when it had one.
-pub(crate) fn launch_not_started_at(id: Uuid, stage: Option<Stage>, win32: Option<u32>) {
+/// from its stage; `win32` is the Win32 code, when it had one; `failure` is
+/// its failure code (C-PD1, PD-05b).
+pub(crate) fn launch_not_started_at(
+    id: Uuid,
+    stage: Option<Stage>,
+    win32: Option<u32>,
+    failure: FailureCode,
+) {
     let operation = operation_numbers::number(id);
     let reason = stage.map_or("helper_not_started", stage_reason);
+    let failure_code = failure.code();
     tracing::warn!(
         target: "launcher.launch",
         event = "launch_not_started",
         operation,
         reason,
+        failure_code,
         win32,
         "launch: not started"
     );
@@ -412,7 +420,12 @@ mod tests {
             tracing::callsite::rebuild_interest_cache();
             launch_failed_at(id, Some(Stage::Inject), Some(5));
             launch_failed_at(id, None, None);
-            launch_not_started_at(id, Some(Stage::CreateProcess), Some(2));
+            launch_not_started_at(
+                id,
+                Some(Stage::CreateProcess),
+                Some(2),
+                FailureCode::SpawnNotFound,
+            );
         });
         let failed = event_named(&events, "launch_failed");
         assert_eq!(failed.len(), 2);
@@ -433,6 +446,10 @@ mod tests {
             Some("create_process_failed")
         );
         assert_eq!(not_started[0].field("win32"), Some("2"));
+        assert_eq!(
+            not_started[0].field("failure_code"),
+            Some("spawn_not_found")
+        );
     }
 
     #[test]
