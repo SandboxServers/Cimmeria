@@ -1,9 +1,14 @@
-//! Windows displays through `EnumDisplayMonitors`, by raw FFI to user32.
+//! Windows displays through `EnumDisplayMonitors`, by raw FFI to user32 and
+//! shcore.
 //!
-//! The engine's `windows-sys` does not enable `Win32_Graphics_Gdi` or
-//! `Win32_UI_HiDpi`, so the three user32 calls are declared here and the scale
-//! is 100 (no `GetDpiForMonitor`). SGW.exe is not DPI-aware, so the reported
-//! size is the monitor size divided by that scale.
+//! The calls and the `MONITORINFOEXW`/`DEVMODEW` layouts are declared here, so the
+//! engine's `windows-sys` feature list (and the hakari workspace-hack) stays
+//! unchanged. `rcMonitor` is divided by the monitor's effective scale
+//! (`GetDpiForMonitor`, `MDT_EFFECTIVE_DPI`), because SGW.exe is not DPI-aware
+//! and Windows scales its window by that factor. In the per-monitor-aware Tauri
+//! launcher that turns pixels into the units the game sees. In a DPI-unaware
+//! process `rcMonitor` is already virtualized and the DPI reads 96, so the size
+//! comes out the same, with `scale_percent` 100.
 use super::DisplayInfo;
 use std::ffi::c_void;
 
@@ -11,6 +16,7 @@ type Bool = i32;
 type HMonitor = *mut c_void;
 type Hdc = *mut c_void;
 type LParam = isize;
+type HResult = i32;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -58,6 +64,7 @@ const _: () = assert!(std::mem::size_of::<MonitorInfoExW>() == 104);
 
 const MONITORINFOF_PRIMARY: u32 = 1;
 const ENUM_CURRENT_SETTINGS: u32 = u32::MAX;
+const MDT_EFFECTIVE_DPI: i32 = 0;
 
 type MonitorEnumProc = unsafe extern "system" fn(HMonitor, Hdc, *mut Rect, LParam) -> Bool;
 
@@ -71,6 +78,16 @@ extern "system" {
     ) -> Bool;
     fn GetMonitorInfoW(monitor: HMonitor, info: *mut MonitorInfoExW) -> Bool;
     fn EnumDisplaySettingsW(device: *const u16, mode: u32, devmode: *mut DevModeW) -> Bool;
+}
+
+#[link(name = "shcore")]
+extern "system" {
+    fn GetDpiForMonitor(
+        monitor: HMonitor,
+        dpi_type: i32,
+        dpi_x: *mut u32,
+        dpi_y: *mut u32,
+    ) -> HResult;
 }
 
 /// More monitors than anyone connects; bounds the list.
@@ -129,16 +146,24 @@ fn describe(monitor: HMonitor) -> Option<DisplayInfo> {
     } else {
         0
     };
-    let scale_percent = 100;
+    let (mut dpi_x, mut dpi_y) = (0u32, 0u32);
+    // SAFETY: `monitor` came from EnumDisplayMonitors; both out-pointers are live locals.
+    let hr = unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y) };
+    let scale_percent = if hr < 0 {
+        100
+    } else {
+        super::scale_percent_from_dpi(dpi_x)
+    };
     let rc = info.rc_monitor;
-    let logical = |pixels: i32| (pixels.max(0) as u32) * 100 / scale_percent;
+    let (x, y, width, height) =
+        super::logical_rect(rc.left, rc.top, rc.right, rc.bottom, scale_percent);
     Some(DisplayInfo {
         index: 0,
         main: info.dw_flags & MONITORINFOF_PRIMARY != 0,
-        x: rc.left,
-        y: rc.top,
-        width: logical(rc.right - rc.left),
-        height: logical(rc.bottom - rc.top),
+        x,
+        y,
+        width,
+        height,
         scale_percent,
         refresh_hz,
     })

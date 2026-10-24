@@ -39,6 +39,8 @@ extern "C" {
     ) -> CGError;
     fn CGDisplayBounds(display: CGDirectDisplayID) -> CGRect;
     fn CGMainDisplayID() -> CGDirectDisplayID;
+    #[cfg(test)]
+    fn CGDisplayIsAsleep(display: CGDirectDisplayID) -> u32;
     fn CGDisplayCopyDisplayMode(display: CGDirectDisplayID) -> CGDisplayModeRef;
     fn CGDisplayModeGetPixelWidth(mode: CGDisplayModeRef) -> usize;
     fn CGDisplayModeGetRefreshRate(mode: CGDisplayModeRef) -> f64;
@@ -47,6 +49,13 @@ extern "C" {
 
 /// More displays than anyone connects; bounds the buffer.
 const MAX_DISPLAYS: u32 = 32;
+
+/// Whether the main display is asleep (the active list is empty then).
+#[cfg(test)]
+pub(super) fn main_display_asleep() -> bool {
+    // SAFETY: plain value calls.
+    unsafe { CGDisplayIsAsleep(CGMainDisplayID()) != 0 }
+}
 
 pub(super) fn list() -> Vec<DisplayInfo> {
     let mut ids = [0 as CGDirectDisplayID; MAX_DISPLAYS as usize];

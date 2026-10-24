@@ -1,9 +1,11 @@
 //! The player's displays and the window sizes that fit each one (C-PD8).
 //!
-//! Sizes are in the units the game sees: points on a Mac (Wine's `RetinaMode`
-//! is off), and on Windows the monitor size divided by its scale, because
-//! SGW.exe's manifest declares no DPI awareness.
+//! Positions and sizes are in the units the game sees: points on a Mac (Wine's
+//! `RetinaMode` is off), and on Windows the monitor's pixels divided by its
+//! effective DPI scale (`GetDpiForMonitor`), because SGW.exe's manifest declares
+//! no DPI awareness and Windows scales its window by that factor.
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(target_os = "macos")]
 mod mac;
@@ -13,13 +15,19 @@ mod windows;
 /// One active display, indexed in the platform's list order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct DisplayInfo {
+    /// Position in the platform's display list, from 0.
     pub index: u32,
+    /// The main display (macOS) or the primary monitor (Windows).
     pub main: bool,
+    /// Origin in the desktop's global coordinates, in the units the game sees.
     pub x: i32,
+    /// Origin in the desktop's global coordinates, in the units the game sees.
     pub y: i32,
+    /// In the units the game sees: points on a Mac, pixels divided by the monitor's scale on Windows.
     pub width: u32,
+    /// In the units the game sees: points on a Mac, pixels divided by the monitor's scale on Windows.
     pub height: u32,
-    /// 100, 200, 150 ...
+    /// Pixels per game unit, in percent: 100, 125, 150, 200 ... (Windows: effective DPI / 96).
     pub scale_percent: u32,
     /// 0 = unknown.
     pub refresh_hz: u32,
@@ -63,6 +71,7 @@ pub fn size_pairs(d: &DisplayInfo) -> Vec<[u32; 2]> {
 /// Identifies a display arrangement: 16 lowercase hex digits of FNV-1a 64 over
 /// each display's `(x, y, width, height)`, sorted, so list order does not
 /// matter. It carries no display names.
+/// An empty list gives the bare FNV offset basis (`cbf29ce484222325`), the same key for every failed enumeration, so callers must not store anything under it.
 pub fn setup_key(ds: &[DisplayInfo]) -> String {
     let mut rects: Vec<(i32, i32, u32, u32)> =
         ds.iter().map(|d| (d.x, d.y, d.width, d.height)).collect();
@@ -86,16 +95,83 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
         .fold(OFFSET, |hash, &b| (hash ^ u64::from(b)).wrapping_mul(PRIME))
 }
 
+/// Windows' effective DPI as a percent scale (96 dpi is 100). 0, meaning the
+/// query failed, gives 100.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn scale_percent_from_dpi(dpi: u32) -> u32 {
+    if dpi == 0 {
+        100
+    } else {
+        (dpi * 100 + 48) / 96
+    }
+}
+
+/// Pixels to the units a DPI-unaware game sees, rounded to the nearest unit
+/// (halves away from zero).
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn to_logical(px: i32, scale_percent: u32) -> i32 {
+    let s = i64::from(scale_percent.max(1));
+    let v = i64::from(px) * 100;
+    let r = if v >= 0 {
+        (v + s / 2) / s
+    } else {
+        (v - s / 2) / s
+    };
+    r as i32
+}
+
+/// A monitor rectangle in pixels (`left, top, right, bottom`) as the
+/// `(x, y, width, height)` a DPI-unaware game sees at `scale_percent`.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn logical_rect(
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+    scale_percent: u32,
+) -> (i32, i32, u32, u32) {
+    (
+        to_logical(left, scale_percent),
+        to_logical(top, scale_percent),
+        to_logical(right.saturating_sub(left), scale_percent).max(0) as u32,
+        to_logical(bottom.saturating_sub(top), scale_percent).max(0) as u32,
+    )
+}
+
+/// Set while `list()` keeps coming back empty, so the WARN is logged once per run.
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
+static EMPTY_LOGGED: AtomicBool = AtomicBool::new(false);
+
+/// True for the first empty list after start or after a non-empty one. A
+/// non-empty list resets the latch.
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
+fn first_empty(latch: &AtomicBool, empty: bool) -> bool {
+    if empty {
+        !latch.swap(true, Ordering::Relaxed)
+    } else {
+        latch.store(false, Ordering::Relaxed);
+        false
+    }
+}
+
 /// The active displays: CoreGraphics on macOS, `EnumDisplayMonitors` on
 /// Windows. Empty on failure and on other platforms.
+/// The first empty result in a run logs one WARN `display_list_empty`.
 pub fn list() -> Vec<DisplayInfo> {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     {
-        mac::list()
-    }
-    #[cfg(windows)]
-    {
-        windows::list()
+        #[cfg(target_os = "macos")]
+        let displays = mac::list();
+        #[cfg(windows)]
+        let displays = windows::list();
+        if first_empty(&EMPTY_LOGGED, displays.is_empty()) {
+            tracing::warn!(
+                target: "launcher.settings",
+                event = "display_list_empty",
+                "displays: the platform listed no active display; the display picker stays empty"
+            );
+        }
+        displays
     }
     #[cfg(not(any(target_os = "macos", windows)))]
     {
