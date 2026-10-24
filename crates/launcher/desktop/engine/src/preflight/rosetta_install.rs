@@ -55,23 +55,20 @@ pub(crate) fn classify_install(
 
 /// Emit `dependency_install_finished` for a Rosetta install outcome.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-pub(crate) fn emit_finished(outcome: InstallOutcome, elapsed_ms: u64) {
-    let (code, failure, exit_code) = match outcome {
-        InstallOutcome::Installed => (DependencyOutcome::Installed, None, None),
-        InstallOutcome::Failed { exit_code } => (
+pub(crate) fn emit_finished(outcome: InstallOutcome, exit_code: Option<i32>, elapsed_ms: u64) {
+    let (code, failure) = match outcome {
+        InstallOutcome::Installed => (DependencyOutcome::Installed, None),
+        InstallOutcome::Failed { .. } => (
             DependencyOutcome::Failed,
             Some(FailureCode::RosettaInstallFailed),
-            exit_code,
         ),
         InstallOutcome::Declined => (
             DependencyOutcome::Declined,
             Some(FailureCode::RosettaInstallDeclined),
-            None,
         ),
         InstallOutcome::TimedOut => (
             DependencyOutcome::TimedOut,
             Some(FailureCode::RosettaInstallFailed),
-            None,
         ),
     };
     events::dependency_install_finished(Dependency::Rosetta, code, failure, elapsed_ms, exit_code);
@@ -93,8 +90,8 @@ pub async fn install_rosetta() -> InstallOutcome {
     {
         let started = std::time::Instant::now();
         events::dependency_install_started(Dependency::Rosetta, None);
-        let outcome = run_install().await;
-        emit_finished(outcome, started.elapsed().as_millis() as u64);
+        let (outcome, exit_code) = run_install().await;
+        emit_finished(outcome, exit_code, started.elapsed().as_millis() as u64);
         outcome
     }
     #[cfg(not(target_os = "macos"))]
@@ -105,7 +102,7 @@ pub async fn install_rosetta() -> InstallOutcome {
 
 /// Run the install command, then the re-probe, and classify the result.
 #[cfg(target_os = "macos")]
-async fn run_install() -> InstallOutcome {
+async fn run_install() -> (InstallOutcome, Option<i32>) {
     use std::process::Stdio;
     use tokio::io::AsyncReadExt;
 
@@ -139,14 +136,17 @@ async fn run_install() -> InstallOutcome {
             match tokio::time::timeout(INSTALL_TIMEOUT, run).await {
                 Err(_) => {
                     let _ = child.kill().await;
-                    return InstallOutcome::TimedOut;
+                    return (InstallOutcome::TimedOut, None);
                 }
                 Ok((status, tail)) => (status.ok().and_then(|status| status.code()), tail),
             }
         }
     };
     let probe_after = super::mac::rosetta().await;
-    classify_install(exit_code, &String::from_utf8_lossy(&tail), probe_after)
+    (
+        classify_install(exit_code, &String::from_utf8_lossy(&tail), probe_after),
+        exit_code,
+    )
 }
 
 #[cfg(test)]

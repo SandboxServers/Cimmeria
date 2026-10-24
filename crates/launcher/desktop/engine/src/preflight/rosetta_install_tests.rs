@@ -80,7 +80,7 @@ fn the_started_event_names_the_dependency_and_its_source() {
 
 #[test]
 fn an_installed_outcome_logs_info_without_a_failure_code() {
-    let ((), events) = capture(|| emit_finished(InstallOutcome::Installed, 1200));
+    let ((), events) = capture(|| emit_finished(InstallOutcome::Installed, Some(1), 1200));
     let event = only_event(&events);
     assert_eq!(event.target, "launcher.install");
     assert_eq!(event.level, tracing::Level::INFO);
@@ -89,7 +89,7 @@ fn an_installed_outcome_logs_info_without_a_failure_code() {
     assert_eq!(event.field("outcome"), Some("installed"));
     assert_eq!(event.field("failure_code"), None);
     assert_eq!(event.field("elapsed_ms"), Some("1200"));
-    assert_eq!(event.field("exit_code"), None);
+    assert_eq!(event.field("exit_code"), Some("1"));
 }
 
 #[test]
@@ -97,25 +97,28 @@ fn unsuccessful_outcomes_log_warn_with_their_failure_code() {
     let cases = [
         (
             InstallOutcome::Failed { exit_code: Some(1) },
+            Some(1),
             "failed",
             "rosetta_install_failed",
             Some("1"),
         ),
         (
             InstallOutcome::Declined,
+            Some(1),
             "declined",
             "rosetta_install_declined",
-            None,
+            Some("1"),
         ),
         (
             InstallOutcome::TimedOut,
+            None,
             "timed_out",
             "rosetta_install_failed",
             None,
         ),
     ];
-    for (outcome, code, failure, exit_code) in cases {
-        let ((), events) = capture(|| emit_finished(outcome, 7));
+    for (outcome, exit_code_in, code, failure, exit_code) in cases {
+        let ((), events) = capture(|| emit_finished(outcome, exit_code_in, 7));
         let event = only_event(&events);
         assert_eq!(event.target, "launcher.install");
         assert_eq!(event.level, tracing::Level::WARN, "{outcome:?}");
