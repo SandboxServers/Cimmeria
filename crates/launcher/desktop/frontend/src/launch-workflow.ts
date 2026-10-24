@@ -1,6 +1,7 @@
 import { Context, Data, Effect, Layer, PubSub, Ref, Schema, Semaphore, Stream } from 'effect';
 import { NativeSnapshot, operationOpen } from './contract';
 import { reportUiEvent, uiCode } from './ui-event';
+import { FailureCode } from './failure-codes';
 const Pid=Schema.Int.check(Schema.isBetween({minimum:1,maximum:4294967295}));
 const Count=Schema.Int.check(Schema.isBetween({minimum:0,maximum:4294967295}));
 export const LaunchStatus=Schema.Struct({schema_version:Schema.Literal(1),native:NativeSnapshot,
@@ -10,7 +11,9 @@ export const LaunchStatus=Schema.Struct({schema_version:Schema.Literal(1),native
     Schema.Struct({phase:Schema.Literal('host_started'),host_pid:Pid}),
     Schema.Struct({phase:Schema.Literal('process_started'),host_pid:Pid,guest_pid:Pid}),
     Schema.Struct({phase:Schema.Literal('process_exited'),host_pid:Pid,guest_pid:Pid,code:Schema.Int,early:Schema.Boolean}),
-  ]))});
+  ])),
+  // Why the current launch did not start (C-PD3); null when none is known.
+  failure:Schema.NullOr(FailureCode)});
 export type LaunchStatus=typeof LaunchStatus.Type;
 export type Request={command:'inspect';schema_version:1}|{command:'play';schema_version:1;operation_id:string;operation_revision:number;installation_id:string};
 export class LaunchFailure extends Data.TaggedError('LaunchFailure')<{readonly code:string}> {}
