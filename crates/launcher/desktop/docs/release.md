@@ -37,14 +37,15 @@ measurement opportunity, not evidence of a speedup before it finishes.
 
 | Release | Assets | Written when |
 |---|---|---|
-| Dated, `launcher-YYYYMMDD-<sha7>` | `StargateWorlds-Launcher-windows-x64.zip` and `StargateWorlds-Launcher-windows-arm64.zip`, each with `.zip.sha256` and `.zip.sig` (required updater signature), the client-patches overlay patch when one is committed, and `StargateWorlds-Launcher-macos-arm64.zip` with its `.zip.sha256` | Every release; the macOS zip when the macOS build succeeded |
-| Rolling, `launcher-current` (D-LX7) | Both Windows zips, each with `.zip.sha256` and `.zip.sig`, `latest.json`, `StargateWorlds-Launcher-macos-arm64.zip`, `.zip.sha256` | Every signed release whose version does not regress the rolling feed |
+| Dated, `launcher-YYYYMMDD-<sha7>` | `StargateWorlds-Launcher-windows-x64.zip` and `StargateWorlds-Launcher-windows-arm64.zip`, each with `.zip.sha256` and `.zip.sig` (required updater signature), the client-patches overlay patch when one is committed, `StargateWorlds-Launcher-macos-arm64.zip` with its `.zip.sha256`, and `StargateWorlds-Launcher-linux-x86_64.AppImage` with its `.AppImage.sha256` | Every release; the macOS zip and the AppImage when their builds succeeded |
+| Rolling, `launcher-current` (D-LX7) | Both Windows zips, each with `.zip.sha256` and `.zip.sig`, `latest.json`, `StargateWorlds-Launcher-macos-arm64.zip`, `.zip.sha256`, `StargateWorlds-Launcher-linux-x86_64.AppImage`, `.AppImage.sha256` | Every signed release whose version does not regress the rolling feed |
 
 The `.sha256` is in `sha256sum` format (`<hex>  <file name>`). The `.zip.sig` is
 the Minisign signature document. `latest.json` is the updater feed every
 release launcher reads ([updater](updater.md)); it carries a `windows-x86_64` and a
-`windows-aarch64` entry. The macOS zip has no `.zip.sig`
-and is not in `latest.json`: macOS updates are manual (below).
+`windows-aarch64` entry. The macOS zip and the Linux AppImage have no
+signature and are not in `latest.json`: macOS and Linux updates are manual
+(below).
 
 If a macOS build fails, the release still publishes everything else, and
 `launcher-current` keeps whatever macOS zip it had beside the new Windows one.
@@ -56,6 +57,12 @@ which attaches the missing asset. Rerun the macOS build within a day: the macOS
 pieces it reads are kept one day. The arm64 build and a rerun of `mac-pieces`
 read the Play pieces, which are kept seven days.
 
+A failed Linux build works the same way: `publish-linux` runs whenever `publish`
+succeeded, attaches what was built, and fails if `desktop-linux` did not
+succeed. The Linux build reads no Windows pieces, so a rerun only has to come
+within GitHub's 30-day re-run window, which is also how long the AppImage
+artifact is kept.
+
 **"Re-run all jobs"** is the other way, and the one to use when a job that
 succeeded must run again. The stamp step recognises the run and keeps its tag
 and version; every job builds again, `sign` signs the rebuilt zip, and the
@@ -64,16 +71,18 @@ signed, on `launcher-current`.
 
 The dated release's notes converge whatever the order of runs and re-runs:
 `publish.sh` always writes them as the release's base text plus the macOS
-paragraph while the release holds the macOS zip, plus a **Windows on Arm:**
-paragraph naming the arm64 zip.
+paragraph while the release holds the macOS zip and the Linux paragraph while
+it holds the AppImage, plus a **Windows on Arm:** paragraph naming the arm64
+zip. `publish-linux` waits for `publish-macos`, so the two never rewrite the
+notes at once.
 
 ### Jobs
 
 The updater signing key never shares a job with the build's third-party code
 (node, npm packages, the cache action, the Tauri CLI), and the build jobs never
-see it. No job that runs that code has a token that can write: the two jobs
-that write, `publish` and `publish-macos`, run no build and no third-party
-action, only [`tools/launcher-release/publish.sh`](../../../../tools/launcher-release/publish.sh)
+see it. No job that runs that code has a token that can write: the three jobs
+that write, `publish`, `publish-macos` and `publish-linux`, run no build and no
+third-party action, only [`tools/launcher-release/publish.sh`](../../../../tools/launcher-release/publish.sh)
 from a checkout of the released commit. The macOS pieces have their own job, so
 `sign` and `publish`, which wait for all of `desktop-windows`, never wait for
 them. `sign` and `publish` do wait for the arm64 build (below).
@@ -87,6 +96,8 @@ them. `sign` and `publish` do wait for the arm64 build (below).
 | `sign` | Every release. In the `launcher-release` environment: downloads the two zip artifacts only and checks each against its build job's digest output, builds the `release_feed` tool with cargo (no node, no cache action) in a step with no secret, then signs both zips in one `release_feed sign` call, writes the one `latest.json`, checks the feed as an x64 and an arm64 launcher would, and uploads the two `.zip.sig` files and `latest.json` as the `launcher-feed-<tag>` artifact | `contents: read`; the Minisign key and password, on the sign step only; the public-key variable. Its actions are GitHub's own and this repository's toolchain action (SHA-pinned inside) |
 | `publish` | Unless the run was cancelled, when `sign` succeeded: checks both zips' digests again, creates or updates the dated release with both Windows sets, then refreshes `launcher-current` with both sets and `latest.json` last | `contents: write` (the `GITHUB_TOKEN`); the artifacts. No secret |
 | `publish-macos` | Unless the run was cancelled, when `publish` succeeded: checks the macOS zip against `desktop-macos`' digest output, attaches it to the dated release and rewrites its notes, replaces the macOS zip on `launcher-current` when `publish` refreshed it, and fails if the macOS build did not succeed | `contents: write`; the artifacts. No secret, no third-party action, no build |
+| `desktop-linux` | The reusable [`launcher-desktop-linux.yml`](../../../../.github/workflows/launcher-desktop-linux.yml), which the PR dry run also calls. On `ubuntu-22.04`, from the same commit, with `desktop-windows`' tag, version and epoch: installs the WebKitGTK build packages, builds the AppImage, checks it, and uploads it and its `.sha256` as an artifact. Its output carries the AppImage's SHA-256 | `contents: read`; `LAUNCHER_MANIFEST_PUBKEY_HEX` on the build step only. No updater key of either kind |
+| `publish-linux` | After `publish-macos` finished, unless the run was cancelled, when `publish` succeeded: checks the AppImage against `desktop-linux`' digest output, attaches it to the dated release and rewrites its notes, replaces the AppImage on `launcher-current` unless a newer release is current, and fails if the Linux build did not succeed | `contents: write`; the artifacts. No secret, no third-party action, no build |
 
 The arm64 build is on the release's critical path (D-WA5): `sign` and `publish` need
 `desktop-windows-arm64`. A feed without `windows-aarch64` gives every arm64
@@ -265,6 +276,41 @@ bundle swap exists but has never run on a packaged app; turning it on needs a
 platforms and a Mac update UAT (the worknote's "Self-update on macOS", a
 follow-up packet).
 
+## What the Linux job builds
+
+[`tools/launcher-release/build-desktop-linux.sh`](../../../../tools/launcher-release/build-desktop-linux.sh)
+builds an x86-64 AppImage in stages (`app`, `verify`, `package`), run by the
+reusable `launcher-desktop-linux.yml`; `launcher-desktop.yml` calls the same
+workflow on every desktop-launcher PR as `desktop release build dry run (Linux)`,
+with a fixed dry-run tag and version and the development manifest key.
+
+- **`tools`** (run by `app`) puts the three files the Tauri bundler would
+  download into its cache, each checked against a SHA-256 pinned in the script:
+  AppRun, linuxdeploy and linuxdeploy's AppImage plugin, which provides the
+  runtime every AppImage starts with. The bundler uses a cached file instead of
+  downloading it. The plugin comes from upstream's moving `continuous` tag, so
+  when upstream moves it, the build fails until the pin is updated on purpose.
+- **`app`** builds the UI and runs `cargo tauri build --bundles appimage`
+  (release profile), with the release's version, tag and manifest key. The
+  AppImage carries WebKitGTK and GTK from the build host. Ubuntu 22.04 keeps its
+  glibc old enough for SteamOS and other current distributions.
+- **`verify`** checks that it is an x86-64 ELF that extracts, that the extracted
+  launcher is x86-64 and embeds the release tag and version, and that it
+  carries no Windows executable or DLL.
+- **`package`** writes `artifacts/StargateWorlds-Launcher-linux-x86_64.AppImage`
+  and its `.sha256`.
+
+The Linux launcher installs the game in-process ([README](../README.md#linux)).
+It has no Play, Repair, Update or prerequisite backend yet, so it carries none
+of the Windows pieces. A download from GitHub loses the executable bit: the
+player sets it once (the release notes say how).
+
+### Linux updates are manual
+
+As on macOS: the feed has no Linux key and the shell builds its updater for
+Windows only, so the updater shows **Disabled** and a Linux player downloads
+each new release from the stable link.
+
 ## The signed feed
 
 `sign` and `verify-feed` run
@@ -373,3 +419,5 @@ key strands every launcher built with the old one in the same way, so keep it.
   and offers Microsoft's download page instead of exiting silently.
 - **macOS self-update.** Manual, above.
 - **An Intel Mac build.** The macOS zip is arm64 only.
+- **Linux self-update, Play and an Arm build.** Linux updates are manual (above);
+  Play has no Wine or Proton backend; the AppImage is x86-64 only.

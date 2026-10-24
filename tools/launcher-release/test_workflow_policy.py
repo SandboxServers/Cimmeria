@@ -94,6 +94,54 @@ class WorkflowPolicy(unittest.TestCase):
         build = next(s for s in sign["steps"] if "build-desktop.sh feed-tool" in s.get("run", ""))
         self.assertLess(sign["steps"].index(build), sign["steps"].index(key_steps[0]))
 
+    def test_linux_release_builds_read_only_and_publishes_without_build_code(self):
+        release = workflow("launcher-release.yml")["jobs"]
+        build = release["desktop-linux"]
+        self.assertEqual(build["uses"], "./.github/workflows/launcher-desktop-linux.yml")
+        self.assertEqual(build["permissions"], {"contents": "read"})
+        self.assertEqual(set(build["secrets"]), {"LAUNCHER_MANIFEST_PUBKEY_HEX"})
+        reusable = workflow("launcher-desktop-linux.yml")
+        self.assertEqual(reusable["permissions"], {})
+        self.assertEqual(reusable["jobs"]["build"]["permissions"], {"contents": "read"})
+
+        publish = release["publish-linux"]
+        self.assertEqual(publish["permissions"], {"contents": "write"})
+        # Both platform publish jobs rewrite the dated notes; never at once.
+        self.assertIn("publish-macos", publish["needs"])
+        self.assertIn("!cancelled()", publish["if"])
+        for step in publish["steps"]:
+            if "uses" in step:
+                self.assertRegex(step["uses"], r"^actions/(checkout|download-artifact)@[0-9a-f]{40}")
+            if "run" in step:
+                self.assertNotRegex(step["run"], r"\b(cargo|npm|node|apt-get)\b")
+        commands = "\n".join(s.get("run", "") for s in publish["steps"])
+        self.assertIn("publish.sh check", commands)
+        self.assertIn("publish.sh linux", commands)
+        self.assertIn("publish.sh linux-current", commands)
+
+    def test_linux_appimage_tools_are_pinned_before_the_bundler_runs(self):
+        script = (ROOT / "tools/launcher-release/build-desktop-linux.sh").read_text()
+        tools = script.split("APPIMAGE_TOOLS=(", 1)[1].split("\n)", 1)[0]
+        entries = [line.strip().strip('"').split() for line in tools.strip().splitlines()]
+        self.assertEqual({e[0] for e in entries}, {
+            "AppRun-x86_64",
+            "linuxdeploy-07333c6-x86_64.AppImage",
+            "linuxdeploy-plugin-appimage.AppImage",
+        })
+        for name, url, digest in entries:
+            self.assertTrue(url.startswith("https://github.com/"), name)
+            self.assertRegex(digest, r"^[0-9a-f]{64}$", name)
+        app = script.split("stage_app() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertLess(app.index("stage_tools"), app.index("cargo tauri build"))
+
+    def test_every_pr_dry_runs_the_linux_release_build(self):
+        dry = workflow("launcher-desktop.yml")["jobs"]["release-dry-run-linux"]
+        self.assertEqual(dry["uses"], "./.github/workflows/launcher-desktop-linux.yml")
+        self.assertIs(dry["with"]["dev_manifest_key"], True)
+        self.assertTrue(dry["with"]["tag"])
+        self.assertTrue(dry["with"]["version"])
+        self.assertNotIn("secrets", dry)
+
     def test_tool_profile_retains_release_semantics_without_changing_player_profile(self):
         manifest = tomllib.loads((ROOT / "crates/launcher/desktop/Cargo.toml").read_text())
         profiles = manifest["profile"]
