@@ -89,6 +89,7 @@ pub fn frame_caps() -> &'static [FrameCap] {
 
 /// The `DXVK_FRAME_RATE` a cap gives. `Display` follows `refresh_hz`, clamped
 /// into 30..=240; an unknown rate (0) gives 60.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn frame_rate(cap: FrameCap, refresh_hz: u32) -> u32 {
     match cap {
         FrameCap::Fps30 => 30,
@@ -196,6 +197,7 @@ pub(crate) fn placement_for(
 /// The refresh rate `FrameCap::Display` follows at Play: the display the
 /// current setup remembers (`placement_for`), else the main display. An empty
 /// list (PD-31 ruling 1) or an unknown rate gives 0, which `frame_rate` maps to 60.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn launch_refresh_hz(placements: &[Placement], displays: &[DisplayInfo]) -> u32 {
     placement_for(placements, displays)
         .or_else(|| displays.iter().find(|d| d.main).copied())
