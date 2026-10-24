@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {parseHTML} from 'linkedom';
 import {launchText,mountLaunch} from './launch-view';
+import {jobErrorFailure,LaunchBridge,launchBridgeLayer} from './launch-workflow';
+import {FailureCode} from './failure-codes';
+import {failureText} from './failure-copy';
+import {mountDesktop} from './composition';
 const html=readFileSync('ui/index.html','utf8');
 const initial=()=>({schema_version:1,setup_complete:true,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,installation_id:'owner',observation:null as unknown,failure:null as unknown,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed' as const,width:1024,height:768}},operation:{schema_version:1,revision:0,operation:null as unknown}}});
 test('ready content hides setup recheck across launch, update gate and errors',async()=>{
@@ -192,9 +196,92 @@ test('an interrupted adoption gives Play one adoption line in place of the owner
  assert.equal(launchText(play(withOperation('adopt','running'))),'An adoption review is open. Finish or cancel it in the adoption panel.');
  assert.equal(launchText(play(withOperation('adopt','running'),'io')),'An adoption review is open. Finish or cancel it in the adoption panel.');
 });
-test('an install operation keeps the generic owner line and error line',()=>{
- assert.equal(launchText({status:withOperation('install','running'),pending:false,uncertain:false,error:null} as any),'Another operation owns the game. Wait for it to finish.');
- assert.match(launchText({status:withOperation('install','running'),pending:false,uncertain:false,error:'io'} as any),/Resolve any folder-access prompt/);
+test('an install operation names the busy launcher, and an uncoded error keeps the generic line',()=>{
+ assert.equal(launchText({status:withOperation('install','running'),pending:false,uncertain:false,error:null} as any),'The launcher is busy (install). Play is available when it finishes.');
+ assert.match(launchText({status:withOperation('install','running'),pending:false,uncertain:false,error:'transport'} as any),/Resolve any folder-access prompt/);
+});
+const text=(status:any,error:string|null=null)=>launchText({status,pending:false,uncertain:false,error});
+test('Play names what blocks it, per operation kind and state',()=>{
+ const lines:[string,string,string][]=[
+  ['repair','reconciliation_required','An earlier repair was interrupted. Abandon it to play, or recover it in Settings.'],
+  ['repair','running','A repair is running. Play is available when it finishes.'],
+  ['repair','starting','A repair is running. Play is available when it finishes.'],
+  ['install','reconciliation_required','An earlier install was interrupted. Resume or abandon it in the install panel.'],
+  ['install','running','The launcher is busy (install). Play is available when it finishes.'],
+  ['update','running','The launcher is busy (game update). Play is available when it finishes.'],
+  ['uninstall','running','The launcher is busy (uninstall). Play is available when it finishes.'],
+  ['prepare_runtime','cancel_requested','The launcher is busy (compatibility setup). Play is available when it finishes.'],
+  ['update','reconciliation_required','An earlier game update was interrupted. Recover or abandon it in Settings.'],
+  ['launch','running','Another operation owns the game. Wait for it to finish.'],
+  ['uninstall','reconciliation_required','Another operation owns the game. Wait for it to finish.'],
+  ['adopt','reconciliation_required','Finish or abandon the interrupted adoption in the adoption panel before you play.'],
+ ];
+ for(const [kind,state,line] of lines)assert.equal(text(withOperation(kind,state)),line,`${kind} ${state}`);
+ assert.equal(text({...initial(),native:{...initial().native,requires_reopen:true}}),'The launcher needs to restart to check its saved state. Close and reopen it.');
+ assert.equal(text(withOperation('mystery','running')),'Another operation owns the game. Wait for it to finish.');
+});
+test('a coded Play failure shows its message and fix; no code keeps the generic lines',()=>{
+ const rosetta=failureText('rosetta_missing');
+ assert.equal(text({...initial(),observation:{phase:'not_started'},failure:'rosetta_missing'}),`${rosetta.message}\n${rosetta.fix}`);
+ // Every C-PD1 code renders through failureText, including codes Play has no special case for.
+ for(const code of FailureCode.literals){const copy=failureText(code);
+  assert.equal(text({...initial(),observation:{phase:'not_started'},failure:code}),`${copy.message}\n${copy.fix}`,code);}
+ const exited=failureText('game_exited_nonzero');
+ assert.equal(text({...initial(),observation:{phase:'process_exited',host_pid:1,guest_pid:2,code:3,early:true}}),`${exited.message}\n${exited.fix}`);
+ assert.equal(text({...initial(),observation:{phase:'process_exited',host_pid:1,guest_pid:2,code:0,early:false}}),'Game exited (code 0).');
+ assert.match(text({...initial(),observation:{phase:'not_started'}}),/^Game could not start\./);
+ const io=failureText('local_io');
+ assert.equal(text(initial(),'local_io'),`${io.message}\n${io.fix}`);
+ assert.match(text(initial(),'transport'),/Resolve any folder-access prompt/);
+});
+test('every native JobError code keeps its C-PD1 failure code; anything else is transport',async()=>{
+ const fixture=JSON.parse(readFileSync('src/failure-codes.json','utf8')) as {job_errors:Record<string,string>};
+ assert.deepEqual({...jobErrorFailure},fixture.job_errors);
+ const {Effect,Result}=await import('effect');
+ const code=async(thrown:unknown)=>{const result=await Effect.runPromise(Effect.result(Effect.flatMap(LaunchBridge,b=>b.invoke({command:'inspect',schema_version:1})).pipe(Effect.provide(launchBridgeLayer(async()=>{throw thrown;})))));
+  assert.ok(Result.isFailure(result));return result.failure.code;};
+ assert.equal(await code('io'),'local_io');assert.equal(await code('busy'),'operation_busy');assert.equal(await code('unsupported_schema'),'launcher_too_old');
+ assert.equal(await code('toString'),'transport');assert.equal(await code(new Error('x')),'transport');assert.equal(await code('mystery'),'transport');
+});
+test('a status with failure rosetta_missing shows the Rosetta message and fix on Play',async()=>{
+ const status={...initial(),observation:{phase:'not_started'},failure:'rosetta_missing'};const {document}=parseHTML(html);
+ const app=mountLaunch(document,async()=>status,()=>{},()=>'attempt');
+ try{await app.ready;await new Promise(resolve=>setImmediate(resolve));
+  const {message,fix}=failureText('rosetta_missing');
+  assert.equal(document.getElementById('launch-status')!.textContent,`${message}\n${fix}`);
+ }finally{await app.dispose();}
+});
+const installStatus=(native:any,recovery:boolean)=>({schema_version:1,native,install_supported:true,can_resume:false,can_reconcile:false,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null,repair:{directory:'/fixture',target:null,recovery,cleanup:false}});
+function desktop(kind:string,state:string,recovery=true){
+ const {document,window}=parseHTML(html);const launch=withOperation(kind,state);const calls:any[]=[];
+ const app=mountDesktop(document,async(command,args:any)=>{calls.push([command,args?.request?.command]);
+  if(command==='launch_command')return launch;
+  if(command==='install_command')return installStatus(launch.native,recovery);
+  return launch.native;});
+ const get=(id:string)=>document.getElementById(id)!;
+ const settle=async()=>{await Promise.all([app.play.ready,app.installation.ready]);await app.play.settled();await app.installation.settled();await new Promise(resolve=>setTimeout(resolve,10));};
+ return {app,get,calls,settle,click:(id:string)=>get(id).dispatchEvent(new window.Event('click'))};
+}
+test('the inline Abandon shows only for an interrupted repair, and its first press opens the Settings confirmation',async()=>{
+ for(const [kind,state] of [['repair','running'],['install','reconciliation_required'],['update','reconciliation_required']]){
+  const ui=desktop(kind,state);
+  try{await ui.settle();assert.equal(ui.get('launch-abandon-repair').hidden,true,`${kind} ${state}`);}finally{await ui.app.dispose();}
+ }
+ const ui=desktop('repair','reconciliation_required');
+ try{await ui.settle();
+  assert.equal(ui.get('launch-abandon-repair').hidden,false);
+  assert.equal(ui.get('gear').hidden,true);assert.equal(ui.get('repair-confirmation').hidden,true);
+  ui.click('launch-abandon-repair');
+  assert.equal(ui.get('gear').hidden,false);assert.equal(ui.get('play').hidden,true);assert.equal(ui.get('settings').getAttribute('aria-expanded'),'true');
+  assert.equal(ui.get('repair-confirmation').hidden,false);
+  assert.match(ui.get('repair-consequences').textContent!,/^Stop only interrupted preparation/);
+  assert.equal(ui.calls.some(([,request])=>request==='abandon_repair'),false,'the press only asks; Confirm sends');
+ }finally{await ui.app.dispose();}
+ const declined=desktop('repair','reconciliation_required',false);
+ try{await declined.settle();declined.click('launch-abandon-repair');
+  assert.equal(declined.get('gear').hidden,false,'Settings opens even when native offers no abandon');
+  assert.equal(declined.get('repair-confirmation').hidden,true);
+ }finally{await declined.app.dispose();}
 });
 test('Play hides Recheck while an adoption is open',async()=>{
  const status=withOperation('adopt','reconciliation_required');const {document}=parseHTML(html);

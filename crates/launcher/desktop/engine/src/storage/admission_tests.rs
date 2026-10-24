@@ -10,6 +10,7 @@ use uuid::Uuid;
 enum Blocker {
     Operation(OperationKind),
     Updater,
+    PrerequisiteSetup,
 }
 
 /// A fresh state directory with `blocker` nonterminal. The updater ticket is
@@ -18,6 +19,10 @@ fn blocked(blocker: Blocker) -> (tempfile::TempDir, DesktopState, Option<updater
     let root = tempfile::tempdir().unwrap();
     let mut state = DesktopState::open(root.path()).unwrap();
     let ticket = match blocker {
+        Blocker::PrerequisiteSetup => {
+            state.begin_prerequisite_setup().unwrap();
+            None
+        }
         Blocker::Operation(kind) => {
             let revision = state.operations().snapshot().revision;
             state
@@ -64,7 +69,8 @@ fn files(root: &Path) -> BTreeMap<String, Vec<u8>> {
         .collect()
 }
 
-const BLOCKERS: [Blocker; 4] = [
+const BLOCKERS: [Blocker; 5] = [
+    Blocker::PrerequisiteSetup,
     Blocker::Operation(OperationKind::Launch),
     Blocker::Operation(OperationKind::Install),
     Blocker::Operation(OperationKind::Repair),

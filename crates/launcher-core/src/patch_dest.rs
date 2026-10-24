@@ -24,14 +24,20 @@ pub struct NoSgwGameDir {
 /// `install_dir`: the sibling of the directory holding `SGW.exe`
 /// ([`install_layout::binaries_dir`]), which is `Working\SGWGame` in the
 /// stock tree, else `<install_dir>/SGWGame` for a flattened client.
+/// The directory is found in whatever case it has on disk, so a
+/// case-sensitive file system finds a differently spelled one.
 pub fn sgw_game_dir(install_dir: &Path) -> Option<PathBuf> {
     let binaries = install_layout::binaries_dir(install_dir);
-    if let Some(sibling) = binaries.parent().map(|p| p.join("SGWGame")) {
+    let sgw_game = Path::new("SGWGame");
+    if let Some(sibling) = binaries
+        .parent()
+        .map(|p| cimmeria_patchset::resolve_existing_case(p, sgw_game))
+    {
         if sibling.is_dir() {
             return Some(sibling);
         }
     }
-    let inside = install_dir.join("SGWGame");
+    let inside = cimmeria_patchset::resolve_existing_case(install_dir, sgw_game);
     inside.is_dir().then_some(inside)
 }
 
@@ -115,6 +121,25 @@ mod tests {
         assert_eq!(
             patch_dest(dir.path(), &patch(PatchRoot::SgwGame)).unwrap(),
             dir.path().join("SGWGame")
+        );
+    }
+
+    // Bug shape: on a case-sensitive file system an install whose cabinets
+    // spelled the directory `sgwgame` was refused ("no SGWGame"), or a patch
+    // went into a second directory the client never reads.
+    #[test]
+    fn sgw_game_is_found_in_the_case_it_has_on_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let binaries = dir.path().join("Working").join("binaries");
+        std::fs::create_dir_all(&binaries).unwrap();
+        std::fs::write(binaries.join("SGW.exe"), b"").unwrap();
+        std::fs::create_dir_all(dir.path().join("Working").join("sgwgame")).unwrap();
+        let found = patch_dest(dir.path(), &patch(PatchRoot::SgwGame)).unwrap();
+        assert!(found.is_dir(), "{}", found.display());
+        assert!(
+            found.file_name().unwrap().eq_ignore_ascii_case("sgwgame"),
+            "{}",
+            found.display()
         );
     }
 

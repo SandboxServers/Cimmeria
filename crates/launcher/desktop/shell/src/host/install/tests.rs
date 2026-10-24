@@ -36,7 +36,7 @@ fn observation_uses_saved_native_state_and_has_no_invented_progress() {
     assert!(snapshot.native.operation.operation.is_none());
     assert!(snapshot.progress.is_none());
     assert!(snapshot.outcome.is_none());
-    assert_eq!(snapshot.install_supported, cfg!(windows));
+    assert_eq!(snapshot.install_supported, NATIVE_INSTALL);
     let folder = root.path().join("selected");
     host.dispatch(NativeCommand::SavePreferences {
         schema_version: 1,
@@ -62,7 +62,18 @@ fn observation_uses_saved_native_state_and_has_no_invented_progress() {
     );
 }
 
-#[cfg(not(windows))]
+// Bug shape: Linux reported "missing a verified compatibility helper" and
+// refused Install, although it expands the seed in-process like Windows.
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_installs_natively_without_a_helper() {
+    let root = tempfile::tempdir().unwrap();
+    let host = NativeHost::new(root.path().join("state"));
+    assert_eq!(host.require_install_support(), Ok(()));
+    assert!(host.install_status().unwrap().install_supported);
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 #[test]
 fn unsupported_platform_rejects_install_before_storage_or_network() {
     let root = tempfile::tempdir().unwrap();

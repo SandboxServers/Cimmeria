@@ -195,7 +195,9 @@ async fn run_timed(
                 .await
                 .is_ok_and(|s| s.is_ok_and(|s| s.success()))
             {
-                events::launch_not_started_at(id, stage, win32);
+                let failure = failure::classify_helper_not_started(stage, win32);
+                events::launch_not_started_at(id, stage, win32, failure);
+                on_failure(failure);
                 Observation::NotStarted
             } else {
                 events::launch_failed(id, "helper_unclean_exit");

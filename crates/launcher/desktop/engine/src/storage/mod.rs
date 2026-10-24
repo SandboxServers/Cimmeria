@@ -249,6 +249,7 @@ pub struct DesktopState {
     seed_source: SeedSourceHandle,
     /// The stored choice, not yet checked against a release. See `seed_archive`.
     seed_archive: Option<seed_archive::SeedArchiveRecord>,
+    external_setup: bool,
 }
 
 impl DesktopState {
@@ -316,6 +317,7 @@ impl DesktopState {
             install_telemetry: Default::default(),
             seed_source: SeedSourceHandle::download(),
             seed_archive,
+            external_setup: false,
         };
         state.recover_legacy_import()?;
         state.recover_launcher_update()?;

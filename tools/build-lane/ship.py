@@ -84,9 +84,10 @@ CONDITIONAL = (
     "build-lane PowerShell tests",
     "build-lane shell scripts (Linux)",
     # launcher-desktop.yml's matrix: the only build of the desktop launcher's
-    # macOS-only code, which a Windows workstation cannot compile.
+    # macOS-only and Linux-only code, which a Windows workstation cannot compile.
     "native-engine (macos-latest)",
     "native-engine (windows-latest)",
+    "native-engine (ubuntu-latest)",
 )
 PROTECTED = ("main", "master")
 

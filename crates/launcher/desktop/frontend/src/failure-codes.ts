@@ -15,6 +15,7 @@ export const FailureCode=Schema.Literals([
  'app_translocated',
  'physx_missing',
  'physx_install_failed',
+ 'prerequisites_missing',
  'disk_space_low',
  'game_folder_not_chosen',
  'game_folder_missing',

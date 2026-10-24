@@ -170,6 +170,9 @@ export const PhysxStatus = Schema.Struct({
   last_result: Schema.NullOr(PhysxResult),
 });
 export type PhysxStatus = typeof PhysxStatus.Type;
+export const DirectxStatus = Schema.Struct({schema_version:Schema.Literal(1),supported:Schema.Boolean,
+  missing:Schema.Array(Schema.Literals(['d3dx9_40.dll','xinput1_3.dll'])),installing:Schema.Boolean,last_result:Schema.NullOr(PhysxResult)});
+export type DirectxStatus = typeof DirectxStatus.Type;
 export type PhysxError = ScaffoldError | "installer_unavailable" | "package_mismatch" | "download_failed";
 export const decodePhysxStatus = (value: unknown) =>
   Schema.decodeUnknownEffect(PhysxStatus, {onExcessProperty: "error"})(value);

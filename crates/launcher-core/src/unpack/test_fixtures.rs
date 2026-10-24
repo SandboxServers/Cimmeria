@@ -37,7 +37,6 @@ pub fn fixture_mtime() -> std::time::SystemTime {
 
 /// Poorly compressible bytes (xorshift), so a small `MaxDiskSize` really
 /// makes a cabinet set span several cabinets.
-#[cfg(windows)]
 pub fn incompressible(seed: u8, len: usize) -> Vec<u8> {
     let mut x = u32::from(seed) | 1;
     (0..len)

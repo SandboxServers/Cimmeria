@@ -148,7 +148,7 @@ fn spawn_worker(
     let owned_state = state.clone();
     let owned_cancel = cancel.clone();
     events::install_started(id, input.ownership.is_some());
-    runtime.spawn(watch_phases(Arc::downgrade(&state), id, observed.clone()));
+    let phases = runtime.spawn(watch_phases(Arc::downgrade(&state), id, observed.clone()));
     // Intentionally detached from the webview. No external owner can abort it.
     runtime.spawn(async move {
         let TaskInputs {
@@ -227,6 +227,11 @@ fn spawn_worker(
                 events::install_seed_forget_failed(id);
             }
         }
+        // The install dropped its progress sink, so the watcher is finishing:
+        // let it mark the last phase before publish finalizes the summary row.
+        // (A seed that extracts in a moment otherwise loses `extraction`.)
+        // Bounded, in case a copy of the sink outlives the install.
+        let _ = tokio::time::timeout(PHASE_DRAIN, phases).await;
         let published = publish(&owned_state, id, outcome);
         events::install_finished(id, published);
         result.send_replace(Some(published));
@@ -239,6 +244,9 @@ fn spawn_worker(
         result: results,
     }
 }
+
+/// How long the worker waits for the phase watcher before publishing.
+const PHASE_DRAIN: Duration = Duration::from_secs(2);
 
 // Ends when the worker drops its progress sink. It holds no strong state
 // handle, and takes the lock only for one call, never across an await.

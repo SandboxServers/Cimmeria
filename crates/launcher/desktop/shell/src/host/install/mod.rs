@@ -8,6 +8,11 @@ use cimmeria_launcher_engine::{
 };
 use uuid::Uuid;
 
+/// Hosts that install, resume and reconcile in-process. macOS installs
+/// through its verified Wine helper instead; Linux expands the installer
+/// cabinets with the portable decoder in `cimmeria-launcher-core`.
+const NATIVE_INSTALL: bool = cfg!(any(windows, target_os = "linux"));
+
 pub(super) mod contract;
 pub(super) use contract::progress;
 pub use contract::{InstallCommand, InstallStatus, JobError};
@@ -18,7 +23,7 @@ impl NativeHost {
         self.platform_backend()?.verify()
     }
     fn platform_backend(&self) -> Result<PlatformBackend, JobError> {
-        if cfg!(windows) {
+        if NATIVE_INSTALL {
             return Ok(PlatformBackend::Native);
         }
         #[cfg(target_os = "macos")]
@@ -114,7 +119,7 @@ impl NativeHost {
             schema_version: 1,
             native,
             install_supported: self.platform_backend().is_ok(),
-            can_resume: recovery && install_recovery && native_backend && cfg!(windows),
+            can_resume: recovery && install_recovery && native_backend && NATIVE_INSTALL,
             can_reconcile: recovery
                 && ((install_recovery && (native_backend || cfg!(target_os = "macos")))
                     || runtime_recovery),
@@ -223,7 +228,7 @@ impl NativeHost {
                 operation_revision,
                 ..
             } => {
-                if !cfg!(windows) {
+                if !NATIVE_INSTALL {
                     return Err(JobError::PlatformUnavailable);
                 }
                 *worker = Some(install_worker::resume(

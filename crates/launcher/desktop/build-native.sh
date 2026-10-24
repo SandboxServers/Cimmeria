@@ -4,8 +4,8 @@ set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 case "$(uname -s)" in
-  Darwin|MINGW*|MSYS*) ;;
-  *) echo 'Build the desktop launcher natively on macOS or Windows.' >&2; exit 2 ;;
+  Darwin|MINGW*|MSYS*|Linux) ;;
+  *) echo 'Build the desktop launcher natively on macOS, Windows or Linux.' >&2; exit 2 ;;
 esac
 npm ci --ignore-scripts --prefix crates/launcher/desktop/frontend
 npm run build --prefix crates/launcher/desktop/frontend

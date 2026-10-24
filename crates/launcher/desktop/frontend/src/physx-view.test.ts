@@ -32,7 +32,7 @@ test('off Windows the panel and the Play warning stay hidden',async()=>{
  }finally{await p.app.dispose();}
 });
 
-test('missing PhysX warns beside Play without disabling it, and Install shows busy on the first press',async()=>{
+test('missing PhysX shows the Play-blocking warning beside Play, and Install shows busy on the first press',async()=>{
  let answer!:(value:unknown)=>void;
  const p=await mounted(request=>request.command==='inspect'?Promise.resolve(status()):new Promise(resolve=>{answer=resolve;}));
  try{
