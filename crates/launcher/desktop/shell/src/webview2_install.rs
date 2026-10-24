@@ -1,8 +1,13 @@
 //! Installs the WebView2 runtime for the player (PD-41, owner D1). The
 //! Evergreen Bootstrapper runs with `/silent /install` and no elevation, which
 //! installs the runtime for the current user (Microsoft Learn, WebView2
-//! distribution). This runs before the window and before the tracing pipeline,
-//! so it logs nothing; the decisions are pure and tested on every host.
+//! distribution). The download and install run on a worker thread behind a
+//! launcher-owned notice (PD-41 ruling 1). This runs before the window and
+//! before the tracing pipeline, so it logs nothing; the decisions are pure and
+//! tested on every host.
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 /// The question the missing-runtime dialog asks. Yes runs the install.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -13,6 +18,18 @@ pub(crate) const INSTALL_PROMPT: &str = "Install the Microsoft Edge WebView2 Run
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) const INSTALL_DID_NOT_FINISH: &str = "The automatic install didn't finish.";
 
+/// The notice shown while the download and install run.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) const INSTALLING_NOTICE: &str = "Installing the Microsoft Edge WebView2 Runtime. This can take a few minutes; this message closes by itself when the install is done.";
+
+/// The box a second launch shows before it exits.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) const ALREADY_SETTING_UP: &str = "The Cimmeria Launcher is already setting up the Microsoft Edge WebView2 Runtime in another window. It opens when that is done.";
+
+/// How often the worker asks a still-open notice to close.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) const NOTICE_CLOSE_POLL: Duration = Duration::from_millis(100);
+
 /// The bootstrapper's arguments, in this order: it ignores `/silent` unless it
 /// comes first.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -20,7 +37,7 @@ pub(crate) const BOOTSTRAPPER_ARGS: [&str; 2] = ["/silent", "/install"];
 
 /// How long the bootstrapper may run before the launcher stops waiting.
 #[cfg_attr(not(windows), allow(dead_code))]
-pub(crate) const INSTALL_WAIT: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+pub(crate) const INSTALL_WAIT: Duration = Duration::from_secs(5 * 60);
 
 /// The largest download accepted. The bootstrapper is about 2 MB; anything
 /// far larger is not it.
@@ -69,6 +86,32 @@ pub(crate) fn after_install(present: bool, outcome: InstallOutcome) -> Next {
     }
 }
 
+/// Why an install attempt did not leave a runtime behind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) enum Cause {
+    DownloadFailed,
+    NotAnExecutable,
+    CouldNotStart,
+    TimedOut,
+    NoRuntimeAfterExit,
+}
+
+impl Cause {
+    /// The sentence the download-page dialog shows under
+    /// [`INSTALL_DID_NOT_FINISH`].
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn sentence(self) -> &'static str {
+        match self {
+            Cause::DownloadFailed => "The installer could not be downloaded.",
+            Cause::NotAnExecutable => "The download was not a Windows installer.",
+            Cause::CouldNotStart => "The installer could not be started.",
+            Cause::TimedOut => "The installer was still running after 5 minutes.",
+            Cause::NoRuntimeAfterExit => "The installer finished, but the runtime is still missing.",
+        }
+    }
+}
+
 /// One install attempt, never repeated: download, refuse anything that is
 /// not an executable, run it, then re-read the registry. The steps are
 /// parameters so the order and the refusal are tested off Windows.
@@ -77,22 +120,107 @@ pub(crate) fn install_with(
     download: impl FnOnce() -> Option<Vec<u8>>,
     run: impl FnOnce(&[u8]) -> InstallOutcome,
     present: impl FnOnce() -> bool,
-) -> Next {
+) -> Result<(), Cause> {
     let Some(bytes) = download() else {
-        return after_install(false, InstallOutcome::Failed);
+        return Err(Cause::DownloadFailed);
     };
     if !is_executable(&bytes) {
-        return after_install(false, InstallOutcome::Failed);
+        return Err(Cause::NotAnExecutable);
     }
     let outcome = run(&bytes);
-    after_install(present(), outcome)
+    let present = present();
+    let result = match (outcome, present) {
+        (InstallOutcome::Failed, _) => Err(Cause::CouldNotStart),
+        (InstallOutcome::TimedOut, _) => Err(Cause::TimedOut),
+        (InstallOutcome::Exited, false) => Err(Cause::NoRuntimeAfterExit),
+        (InstallOutcome::Exited, true) => Ok(()),
+    };
+    debug_assert_eq!(
+        after_install(present, outcome) == Next::Continue,
+        result.is_ok()
+    );
+    result
 }
 
 /// Downloads and runs the bootstrapper, then asks `present` whether the
 /// runtime is installed.
 #[cfg(windows)]
-pub(crate) fn install(download_url: &str, present: impl FnOnce() -> bool) -> Next {
+pub(crate) fn install(
+    download_url: &str,
+    present: impl FnOnce() -> bool,
+) -> Result<(), Cause> {
     install_with(|| download(download_url), run, present)
+}
+
+/// Whether a second launch may go on to set the runtime up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) enum SetupLock {
+    /// This process took the setup mutex.
+    Created,
+    /// Another launcher already holds it.
+    AlreadyExists,
+    /// The mutex could not be created.
+    Unavailable,
+}
+
+/// What a start does after trying for the setup lock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) enum Gate {
+    Proceed,
+    AlreadyRunning,
+}
+
+/// A broken lock must never keep the player out, so only a lock held by
+/// another launcher stops this one.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn setup_gate(lock: SetupLock) -> Gate {
+    match lock {
+        SetupLock::Created | SetupLock::Unavailable => Gate::Proceed,
+        SetupLock::AlreadyExists => Gate::AlreadyRunning,
+    }
+}
+
+/// Runs `work` on a worker thread while the calling thread keeps a notice up.
+/// `show` blocks while the notice is up and is called again whenever it
+/// returns before the work is done, so a dismissed notice comes back. `close`
+/// must make a pending or future `show` return; the worker calls it every
+/// [`NOTICE_CLOSE_POLL`] until the calling thread has left its show loop.
+/// After a worker panic the box closes only when the player presses OK.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn with_notice<R: Send>(
+    work: impl FnOnce() -> R + Send,
+    mut show: impl FnMut(),
+    close: impl Fn() + Sync,
+) -> std::thread::Result<R> {
+    struct SetOnDrop<'a>(&'a AtomicBool);
+    impl Drop for SetOnDrop<'_> {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    let done = AtomicBool::new(false);
+    let notice_loop_left = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        let worker = scope.spawn(|| {
+            let result = {
+                let _guard = SetOnDrop(&done);
+                work()
+            };
+            while !notice_loop_left.load(Ordering::SeqCst) {
+                close();
+                std::thread::sleep(NOTICE_CLOSE_POLL);
+            }
+            result
+        });
+        while !done.load(Ordering::SeqCst) {
+            show();
+        }
+        notice_loop_left.store(true, Ordering::SeqCst);
+        worker.join()
+    })
 }
 
 /// Fetches the bootstrapper over HTTPS on a runtime of its own (Tauri has not

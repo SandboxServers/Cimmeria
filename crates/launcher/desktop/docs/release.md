@@ -420,10 +420,12 @@ key strands every launcher built with the old one in the same way, so keep it.
   Microsoft's Evergreen Bootstrapper over HTTPS, refuses anything that isn't a
   Windows executable, runs it with `/silent /install` without elevation, waits
   at most 5 minutes, then checks the registry again; when the runtime is there,
-  the launcher opens. No, or an install that didn't finish, shows the old
-  dialog that offers Microsoft's download page (led by "The automatic install
-  didn't finish." after an attempt), then the launcher exits. It tries the
-  install once per start. This runs before logging starts, so it writes no
+  the launcher opens. While it works, an "Installing..." notice stays up (it
+  comes back if dismissed and closes by itself), and a second launch shows
+  "already setting up" and exits. No, or an install that didn't finish, shows
+  the old dialog that offers Microsoft's download page (led by "The automatic
+  install didn't finish." followed by the reason, after an attempt), then the
+  launcher exits. It tries the install once per start. This runs before logging starts, so it writes no
   telemetry events.
 - **macOS self-update.** Manual, above.
 - **An Intel Mac build.** The macOS zip is arm64 only.
