@@ -2,11 +2,6 @@ import {Effect,Schema} from 'effect';
 import {FailureCode} from './failure-codes';
 import {failureText} from './failure-copy';
 import type {Check,CheckId,PreflightFailure,PreflightOperation,PreflightWorkflow,Report} from './preflight-workflow';
-/**
- * The preflight panel (PD-11, requirement 2): for each check that is not Ok, what is missing, what the
- * launcher will do about it, and the button that does it. `show` renders a report; it never starts the
- * guarded operation itself (PD-12 wires `#preflight-continue` through `onContinue`).
- */
 const verbs:Record<PreflightOperation,string>={play:'play',install:'install',repair:'repair'};
 const isFailureCode=Schema.is(FailureCode);
 // Transport and schema failures have no C-PD1 code of their own; they read as `unknown`.
@@ -25,6 +20,11 @@ export function nextStep(check:Check,operation:PreflightOperation):Next {
  // AskUser + Rosetta (`Unknown`) points at the panel's own `#preflight-recheck`; Manual and the rest say the fix.
  return {text:fix};
 }
+/**
+ * The preflight panel (PD-11, requirement 2): for each check that is not Ok, what is missing, what the
+ * launcher will do about it, and the button that does it. `show` renders a report; it never starts the
+ * guarded operation itself (PD-12 wires `#preflight-continue` through `onContinue`).
+ */
 export function mountPreflight(document:Document,workflow:PreflightWorkflow,onContinue:(operation:PreflightOperation)=>void=()=>{}) {
  const panel=document.getElementById('preflight-panel');
  if(!panel)throw new Error('Missing launcher element preflight-panel');
@@ -38,7 +38,6 @@ export function mountPreflight(document:Document,workflow:PreflightWorkflow,onCo
  const render=()=>{
   if(disposed||!current)return;
   const verb=verbs[current.operation];const open=current.checks.filter(check=>check.status!=='ok');
-  const warnings=open.some(check=>check.status==='warning');
   heading.textContent=`Before you ${verb}`;
   summary.textContent=!open.length?`Everything needed to ${verb} is ready.`:current.ready?`You can ${verb}. Some things may cause problems:`:`Fix these before you ${verb}:`;
   list.textContent='';
@@ -57,17 +56,17 @@ export function mountPreflight(document:Document,workflow:PreflightWorkflow,onCo
    list.append(row);
   }
   recheck.textContent=busy==='recheck'?'Checking…':'Check again';recheck.disabled=busy!==null;recheck.setAttribute('aria-busy',String(busy==='recheck'));
-  proceed.hidden=!(current.ready&&warnings);proceed.disabled=busy!==null;
+  proceed.hidden=!(current.ready&&open.length>0);proceed.disabled=busy!==null;
  };
  const show=(report:Report)=>{if(disposed)return;current=report;status.textContent='';panel.hidden=false;render();};
  const hide=()=>{panel.hidden=true;};
  // One call at a time; the pressed button shows it is working before the native reply.
  const call=(what:'recheck'|CheckId,effect:(operation:PreflightOperation)=>Effect.Effect<Report,PreflightFailure>)=>{
   if(disposed||busy!==null||!current)return mutation;
-  const operation=current.operation;busy=what;status.textContent='';render();
+  const started=current;const operation=current.operation;busy=what;status.textContent='';render();
   mutation=Effect.runPromise(Effect.result(effect(operation))).then(result=>{
    if(disposed)return;
-   if(result._tag==='Success'){current=result.success;status.textContent='';}else status.textContent=failureLines(result.failure);
+   if(current!==started)return;if(result._tag==='Success'){current=result.success;status.textContent='';}else status.textContent=failureLines(result.failure);
   }).finally(()=>{busy=null;render();});
   return mutation;
  };

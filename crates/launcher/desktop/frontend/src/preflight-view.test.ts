@@ -116,3 +116,25 @@ test('Choose game folder opens Settings, and Check again re-inspects with visibl
   assert.equal(p.text('preflight-summary'),'Everything needed to repair is ready.');
  }finally{await p.app.dispose();}
 });
+
+test('a ready report whose open checks are all non-blocking offers Continue, even with no warning row',async()=>{
+ const p=mounted();
+ try{
+  p.app.show(report([check({status:'unknown',action:'ask_user',failure:'rosetta_check_timed_out',blocking:false})]));
+  assert.equal(p.get('preflight-continue').hidden,false);
+  p.app.show(report([check({id:'wine_runtime',action:'download',failure:'wine_runtime_missing',blocking:false})],{operation:'install'}));
+  assert.equal(p.get('preflight-continue').hidden,false);
+ }finally{await p.app.dispose();}
+});
+
+test('a reply for an older report does not overwrite a newer one',async()=>{
+ let answer!:(value:Report)=>void;
+ const p=mounted(()=>new Promise(resolve=>{answer=resolve;}));
+ try{
+  p.app.show(report([check()]));p.press('preflight-install-rosetta');
+  p.app.show(report([check({id:'game_folder',action:'ask_user',failure:'game_folder_not_chosen'})],{operation:'install'}));
+  answer(report([]));await p.app.settled();
+  assert.equal(p.text('preflight-summary'),'Fix these before you install:');
+  assert.equal(p.get('preflight-choose-folder').disabled,false);
+ }finally{await p.app.dispose();}
+});

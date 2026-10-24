@@ -35,3 +35,17 @@ test('the workflow sends preflight_command requests and maps a JobError to its f
  const thrown=preflightWorkflow(async()=>{throw new Error('ipc closed');});
  assert.equal((await Effect.runPromise(Effect.flip(thrown.inspectPreflight('play')))).code,'transport');
 });
+
+test('a thrown IPC error is reported to telemetry; a native refusal is not',async()=>{
+ const uiCalls:unknown[]=[];
+ Object.assign(globalThis,{window:{__TAURI__:{core:{invoke:async(command:string,args:unknown)=>{uiCalls.push([command,args]);}}}}});
+ try{
+  const thrown=preflightWorkflow(async()=>{throw new Error('ipc closed');});
+  assert.equal((await Effect.runPromise(Effect.flip(thrown.inspectPreflight('play')))).code,'transport');
+  assert.deepEqual(uiCalls,[['ui_event',{area:'launch',event:'preflight_invoke_failed',code:'transport',level:'warn'}]]);
+  uiCalls.length=0;
+  const refused=preflightWorkflow(async()=>{throw 'busy';});
+  assert.equal((await Effect.runPromise(Effect.flip(refused.inspectPreflight('play')))).code,'operation_busy');
+  assert.deepEqual(uiCalls,[]);
+ }finally{Reflect.deleteProperty(globalThis,'window');}
+});

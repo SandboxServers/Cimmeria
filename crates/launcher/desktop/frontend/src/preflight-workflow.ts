@@ -1,7 +1,7 @@
 import {Context,Data,Effect,Layer,Schema} from 'effect';
 import {FailureCode} from './failure-codes';
 import {jobErrorFailure} from './launch-workflow';
-import {reportUiEvent,type UiArea} from './ui-event';
+import {reportUiEvent,uiCode,type UiArea} from './ui-event';
 // The preflight report (C-PD4), mirroring the Rust `preflight::Report` field for field.
 export const PreflightOperation=Schema.Literals(['play','install','repair']);
 export type PreflightOperation=typeof PreflightOperation.Type;
@@ -23,7 +23,7 @@ export class PreflightBridge extends Context.Service<PreflightBridge,{invoke:(re
 const area:Record<PreflightOperation,UiArea>={play:'launch',install:'install',repair:'repair'};
 const refusalCode=(error:unknown):FailureCode|'transport'=>typeof error==='string'&&Object.hasOwn(jobErrorFailure,error)?jobErrorFailure[error]!:'transport';
 export const preflightBridgeLayer=(invoke:(request:Request)=>Promise<unknown>)=>Layer.succeed(PreflightBridge,{
-  invoke:(request)=>Effect.tryPromise({try:()=>invoke(request),catch:error=>new PreflightFailure({code:refusalCode(error)})}).pipe(
+  invoke:(request)=>Effect.tryPromise({try:()=>invoke(request),catch:error=>{const code=refusalCode(error);if(code==='transport')reportUiEvent(area[request.operation],'preflight_invoke_failed',uiCode(error));return new PreflightFailure({code});}}).pipe(
     Effect.flatMap(value=>decodeReport(value).pipe(Effect.mapError(()=>{reportUiEvent(area[request.operation],'preflight_decode_failed','schema');return new PreflightFailure({code:'schema'});}))),
   )});
 export const makePreflightWorkflow=Effect.gen(function*(){
@@ -31,7 +31,7 @@ export const makePreflightWorkflow=Effect.gen(function*(){
  // Inspect probes Rosetta (5 s) and may fetch the release manifest; an install waits on an
  // administrator prompt and a download, so it has no timeout.
  const inspectPreflight=(operation:PreflightOperation)=>bridge.invoke({command:'inspect',schema_version:1,operation}).pipe(
-  Effect.timeout('30 seconds'),Effect.catchTag('TimeoutError',()=>Effect.fail(new PreflightFailure({code:'transport'}))));
+  Effect.timeout('30 seconds'),Effect.catchTag('TimeoutError',()=>{reportUiEvent(area[operation],'preflight_timed_out','transport');return Effect.fail(new PreflightFailure({code:'transport'}));}));
  const installDependency=(operation:PreflightOperation,check:CheckId)=>bridge.invoke({command:'install',schema_version:1,operation,check});
  return {inspectPreflight,installDependency};
 });
