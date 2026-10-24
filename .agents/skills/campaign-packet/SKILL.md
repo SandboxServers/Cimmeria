@@ -51,6 +51,14 @@ Dispatch `architect` with the goal and the campaign folder
   return formats), then one section per packet, grouped into waves.
 - `RESUME.md`: the resume card (section 5).
 
+The architect works to a soft budget of about 60 tool calls and 120k tokens
+of context per run. At the limit it writes `architect-notes.md` in the
+campaign folder and returns `blocked` with the reason `budget`, rather than
+compacting; dispatch a fresh architect with those notes. It reads each file
+once and keeps notes, hands long research to Explore or the domain advisors
+and writes from their summaries, and leaves git, `gh` and worktree checks to
+`ops` or the orchestrator.
+
 The architect never asks the user. It marks owner decisions
 `BlockedDecision` and lists them in its report; the orchestrator asks them
 with AskUserQuestion before dispatching the packets that depend on them.
