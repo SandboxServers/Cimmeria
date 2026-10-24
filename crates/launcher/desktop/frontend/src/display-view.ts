@@ -21,7 +21,9 @@ export const displayMonitorNoteText='Remembered for this set of displays.';
 export const displayWindowedOnlyText='Applies to windowed mode.';
 // `Main display`, then `Display 2`, `Display 3` ... in list order, each with its size in the units the game sees.
 const monitorLabels=(displays:readonly DisplayInfo[])=>{let n=1;return displays.map(d=>`${d.main?'Main display':`Display ${++n}`} (${sizeLabel(d.width,d.height)})`);};
-const frameCapLabel=(cap:FrameCap,refreshHz:number)=>cap==='fps30'?'30 fps (cooler, quieter)':cap==='fps60'?'60 fps':`Match display (${refreshHz} Hz)`;
+// Mirrors engine `display_options::frame_rate`: an unknown rate (0) runs at 60, any other is clamped into 30..=240.
+const matchRate=(refreshHz:number)=>refreshHz>0?Math.min(240,Math.max(30,refreshHz)):60;
+const frameCapLabel=(cap:FrameCap,refreshHz:number)=>cap==='fps30'?'30 fps (cooler, quieter)':cap==='fps60'?'60 fps':`Match display (${matchRate(refreshHz)} Hz)`;
 export const displayAppliesText='The launcher applies this every time you press Play, so a display change made inside the game is replaced at the next start.';
 export const displayWindowsText='New: the game now starts in a 1024 × 768 window by default. Choose Fullscreen here to go back.';
 export const displayMacText='On a Mac the game always runs in a window, so Cmd+Tab works.';

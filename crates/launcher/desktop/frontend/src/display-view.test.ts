@@ -121,6 +121,20 @@ test('a Mac snapshot has the frame-cap select with the saved cap, and Match disp
  await m.app.dispose();
 });
 
+test('Match display shows the rate the engine runs: 60 for an unknown (0 Hz) display, 240 for a faster one',async()=>{
+ const fast:DisplayInfo={...laptop,refresh_hz:360};const unknown:DisplayInfo={...external,refresh_hz:0};
+ const m=mounted(undefined,undefined,snapshot(3,{mode:'windowed',width:1024,height:768,frame_cap:'display'},macModes,{...twoDisplays,displays:[fast,unknown],frame_caps:macCaps}));
+ const cap=m.document.getElementById('display-frame-cap') as unknown as HTMLSelectElement;
+ const monitor=m.document.getElementById('display-monitor') as unknown as HTMLSelectElement;
+ // Revert proof: the raw refresh_hz label reads 360 Hz and 0 Hz.
+ assert.equal(m.options(cap)[2]![1],'Match display (240 Hz)');
+ m.choose(monitor,'1');
+ assert.equal(m.options(cap)[2]![1],'Match display (60 Hz)');
+ m.choose(monitor,'0');
+ assert.equal(m.options(cap)[2]![1],'Match display (240 Hz)');
+ await m.app.dispose();
+});
+
 test('choosing Fullscreen disables the monitor select and shows the note on the first change, keeping the monitor',async()=>{
  const m=mounted(undefined,undefined,snapshot(3,undefined,windowsModes,{...twoDisplays,display_monitor:1}));
  const monitor=m.document.getElementById('display-monitor') as unknown as HTMLSelectElement;
