@@ -476,7 +476,10 @@ for the display the current setup remembers (as `display_monitor` does). Only
 when that display is not the main display does the helper request carry
 `place_on`: `[x, y, width, height]` in the units the game sees (PD-31). The
 main display, an unknown setup or no displays leave the field out, which is the
-request from before placement; `schema_version` stays 1.
+request from before placement; `schema_version` stays 1. The engine sends it only
+in windowed mode. With Windows exclusive fullscreen the field is left out,
+because the D3D9 device owns its adapter, and moving that window could only
+lose the device or minimize the game.
 
 After `process_started`, and only with `place_on`, the helper starts a detached
 thread that never delays its wait for the game's exit. Every 250 ms for up to

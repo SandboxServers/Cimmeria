@@ -186,7 +186,13 @@ async fn execute(
     });
     let minted = session.is_some();
     let display = display::options(&state);
-    let place_on = window_target(&state);
+    // The monitor per display setup: its refresh rate feeds the Mac frame cap (PD-35),
+    // and in windowed mode the helper opens the game on it (PD-33).
+    let placements = state
+        .lock()
+        .map(|owner| owner.preferences.display_placements.clone())
+        .unwrap_or_default();
+    let place_on = window_target(&placements, display.effective().mode);
     let telemetry_session = session.clone().map(|session| (session, servers.clone()));
     let prepared = plan.clone();
     let setup_timer = context.start(crate::phase_timing::Phase::PlayClientSetup);
@@ -320,12 +326,18 @@ async fn servers_and_session(
 }
 /// The monitor the helper opens the game on (PD-33): the one the current
 /// display setup remembers, as `[x, y, width, height]` in the units the game
-/// sees. The main display, an unknown setup or no displays give `None`, which
-/// sends the same request as before.
+/// sees. Only a window is placed: exclusive fullscreen owns its adapter, so
+/// moving it could only lose the device. The main display, fullscreen, an
+/// unknown setup or no displays give `None`, which sends the same request as
+/// before.
 pub(super) fn place_on(
+    mode: crate::storage::display_options::DisplayMode,
     placements: &[crate::storage::display_options::Placement],
     displays: &[crate::display_targets::DisplayInfo],
 ) -> Option<[i32; 4]> {
+    if mode != crate::storage::display_options::DisplayMode::Windowed {
+        return None;
+    }
     let d = crate::storage::display_options::placement_for(placements, displays)?;
     if d.main {
         return None;
@@ -338,14 +350,15 @@ pub(super) fn place_on(
     ])
 }
 /// `place_on` for the saved placements and the displays connected now. The
-/// displays are listed only when a placement is saved; a lock that cannot be
-/// had gives the main display.
-fn window_target(state: &Arc<Mutex<DesktopState>>) -> Option<[i32; 4]> {
-    let placements = state.lock().ok()?.preferences.display_placements.clone();
-    if placements.is_empty() {
+/// displays are listed only when a window is to be placed somewhere saved.
+fn window_target(
+    placements: &[crate::storage::display_options::Placement],
+    mode: crate::storage::display_options::DisplayMode,
+) -> Option<[i32; 4]> {
+    if placements.is_empty() || mode != crate::storage::display_options::DisplayMode::Windowed {
         return None;
     }
-    place_on(&placements, &crate::display_targets::list())
+    place_on(mode, placements, &crate::display_targets::list())
 }
 // Guards live through the helper's full guest lifetime, preventing Repair/uninstall.
 enum Ownership {
