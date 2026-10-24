@@ -1,6 +1,13 @@
 //! WebView2 runtime check. Tauri renders the window through the Edge WebView2
-//! Runtime, so a machine without it gets a message and a download link instead
-//! of a launcher that exits without a word.
+//! Runtime, so a machine without it is offered an install (PD-41) and, when
+//! that is declined or doesn't finish, a download link instead of a launcher
+//! that exits without a word.
+
+#[path = "webview2_install.rs"]
+mod install;
+
+#[cfg(windows)]
+use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_ICONQUESTION};
 
 /// Edge update client key that records the installed WebView2 runtime version.
 #[cfg(windows)]
@@ -27,24 +34,51 @@ pub fn runtime_present_in(reads: &[Option<String>]) -> bool {
     reads.iter().flatten().any(|pv| version_is_present(pv))
 }
 
-/// Exits the launcher with code 1 when the WebView2 runtime is missing, after
-/// offering the download page. Returns when the runtime is present.
+/// The download-page question, led by [`install::INSTALL_DID_NOT_FINISH`]
+/// when an install attempt came first.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn download_prompt(after_install: bool) -> String {
+    let ask =
+        "The Microsoft Edge WebView2 Runtime is needed to run the launcher. Open the download page?";
+    if after_install {
+        format!("{}\n\n{ask}", install::INSTALL_DID_NOT_FINISH)
+    } else {
+        ask.to_string()
+    }
+}
+
+/// Returns when the WebView2 runtime is present, or once an install the player
+/// accepted leaves one behind. Otherwise offers the download page and exits
+/// the launcher with code 1. The install is tried at most once per start.
 #[cfg(windows)]
 pub fn ensure_runtime_or_exit() {
-    let reads: Vec<Option<String>> = registry_locations()
-        .into_iter()
-        .map(|(root, path)| read_pv(root, path))
-        .collect();
+    let reads = read_all_pv();
     if runtime_present_in(&reads) {
         return;
     }
     // Release builds have no console, but a support run from a terminal or a
     // redirected stderr shows what each location held.
     eprintln!("WebView2 runtime not found; pv reads (HKLM wow, HKLM, HKCU wow, HKCU): {reads:?}");
-    if confirm_download() && !open_download_page() {
+    let tried_install = ask_yes_no(install::INSTALL_PROMPT, MB_ICONQUESTION);
+    if tried_install
+        && install::install(DOWNLOAD_URL, || runtime_present_in(&read_all_pv()))
+            == install::Next::Continue
+    {
+        return;
+    }
+    if ask_yes_no(&download_prompt(tried_install), MB_ICONERROR) && !open_download_page() {
         show_download_url();
     }
     std::process::exit(1);
+}
+
+/// The `pv` read at every location [`registry_locations`] names, in its order.
+#[cfg(windows)]
+fn read_all_pv() -> Vec<Option<String>> {
+    registry_locations()
+        .into_iter()
+        .map(|(root, path)| read_pv(root, path))
+        .collect()
 }
 
 /// HKLM, then HKCU, each with and without WOW6432Node.
@@ -92,14 +126,15 @@ fn read_pv(root: windows_sys::Win32::System::Registry::HKEY, path: &str) -> Opti
     )
 }
 
-/// Asks whether to open the download page. Yes means open it.
+/// Asks a yes-or-no question with the given icon. True means Yes.
 #[cfg(windows)]
-fn confirm_download() -> bool {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_ICONERROR, MB_YESNO};
+fn ask_yes_no(
+    question: &str,
+    icon: windows_sys::Win32::UI::WindowsAndMessaging::MESSAGEBOX_STYLE,
+) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_YESNO};
 
-    let text = wide(
-        "The Microsoft Edge WebView2 Runtime is needed to run the launcher. Open the download page?",
-    );
+    let text = wide(question);
     let caption = wide("Cimmeria Launcher");
     // SAFETY: both strings are NUL-terminated and live for the call; no owner window.
     let answer = unsafe {
@@ -107,7 +142,7 @@ fn confirm_download() -> bool {
             std::ptr::null_mut(),
             text.as_ptr(),
             caption.as_ptr(),
-            MB_YESNO | MB_ICONERROR,
+            MB_YESNO | icon,
         )
     };
     answer == IDYES
@@ -140,7 +175,7 @@ fn open_download_page() -> bool {
 /// Shows the download address when the browser could not be opened.
 #[cfg(windows)]
 fn show_download_url() {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_OK};
 
     let text = wide(&format!(
         "The download page could not be opened. Download the Microsoft Edge WebView2 Runtime from:\n\n{DOWNLOAD_URL}"
@@ -188,6 +223,15 @@ mod tests {
             Some(String::new()),
             None,
         ]));
+    }
+
+    #[test]
+    fn the_download_prompt_says_when_an_install_did_not_finish() {
+        let plain = download_prompt(false);
+        assert!(plain.starts_with("The Microsoft Edge WebView2 Runtime is needed"));
+        let after = download_prompt(true);
+        assert!(after.starts_with("The automatic install didn't finish.\n\n"));
+        assert!(after.ends_with(&plain));
     }
 
     #[test]

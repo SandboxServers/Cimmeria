@@ -111,10 +111,14 @@ first start:
 - **SmartScreen, "Windows protected your PC":** choose **More info → Run
   anyway**. Only do this for a launcher you downloaded from the stable link
   above.
-- **"The Microsoft Edge WebView2 Runtime is needed to run the launcher":**
-  the launcher draws its window with WebView2. Windows 11 has it, and Windows
-  10 usually does. Answer **Yes** to open Microsoft's download page, install
-  the runtime, then start the launcher again.
+- **"Install the Microsoft Edge WebView2 Runtime now?":** the launcher draws
+  its window with WebView2. Windows 11 has it, and Windows 10 usually does.
+  Answer **Yes** and the launcher downloads Microsoft's installer (about 2 MB),
+  installs the runtime for your user account without an administrator prompt,
+  and opens; this can take a few minutes. If you answer **No**, or the install
+  doesn't finish, the launcher offers Microsoft's download page instead
+  ("The automatic install didn't finish." means it tried): install the runtime
+  from there, then start the launcher again.
 - **Defender quarantines a file:** see
   [Windows Defender or SmartScreen blocks the launcher](#windows-defender-or-smartscreen-blocks-the-launcher).
 

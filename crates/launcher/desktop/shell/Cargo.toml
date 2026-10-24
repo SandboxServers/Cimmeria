@@ -30,6 +30,9 @@ tracing-appender = "0.2"
 serde_json = "1"
 
 [target.'cfg(windows)'.dependencies]
+# The engine's HTTP client (same version and TLS), used before Tauri starts to
+# fetch the WebView2 bootstrapper (PD-41); no new crate in Cargo.lock.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
