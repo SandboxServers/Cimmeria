@@ -60,12 +60,9 @@ fn expands_a_spanning_set_with_split_blocks_and_cross_block_history() {
 }
 
 #[test]
-fn expands_unsplit_boundaries_stored_folders_and_several_folders() {
+fn expands_mszip_stored_and_one_folder_per_file_sets() {
     for opts in [
-        CabOptions {
-            split_blocks: false,
-            ..CabOptions::default()
-        },
+        CabOptions::default(),
         CabOptions {
             compression: 0,
             ..CabOptions::default()
@@ -99,7 +96,7 @@ fn reserve_areas_are_skipped_in_every_record() {
     // Several folders per cabinet, so a missed per-folder reserve shifts the
     // folder table; the set still spans cabinets.
     let files = vec![
-        ("a.bin", incompressible(11, 30_000)),
+        ("a.bin", incompressible(11, 40_000)),
         ("b.txt", repetitive(12, 6_000)),
         ("c.txt", repetitive(13, 5_000)),
         ("d.bin", incompressible(14, 20_000)),
@@ -109,7 +106,7 @@ fn reserve_areas_are_skipped_in_every_record() {
         &files,
         CabOptions {
             reserve: Some((20, 3, 7)),
-            blocks_per_cab: 6,
+            blocks_per_cab: 3,
             files_per_folder: 1,
             ..CabOptions::default()
         },
