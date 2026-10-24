@@ -91,6 +91,10 @@ pub struct Preferences {
     /// before the option keep their exact bytes (R10).
     #[serde(skip_serializing_if = "display_options::DisplayOptions::is_default")]
     pub display: display_options::DisplayOptions,
+    /// The monitor per display setup (C-PD8), oldest first, at most 8. Empty is
+    /// stored as no key (R10).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub display_placements: Vec<display_options::Placement>,
 }
 
 impl Default for Preferences {
@@ -103,6 +107,7 @@ impl Default for Preferences {
             login_servers: Vec::new(),
             client_patches_enabled: true,
             display: Default::default(),
+            display_placements: Vec::new(),
         }
     }
 }
@@ -121,6 +126,8 @@ struct StoredPreferences {
     client_patches_enabled: Option<bool>,
     #[serde(default)]
     display: display_options::DisplayOptions,
+    #[serde(default)]
+    display_placements: Vec<display_options::Placement>,
 }
 
 impl TryFrom<StoredPreferences> for Preferences {
@@ -154,14 +161,15 @@ impl TryFrom<StoredPreferences> for Preferences {
             login_servers,
             client_patches_enabled,
             display: stored.display,
+            display_placements: stored.display_placements,
         })
     }
 }
 
 /// The bytes a record digest covers for one `Preferences` value. A schema-1
 /// build digested the four v1 fields only, and an adoption plan it wrote can
-/// still be in flight after the upgrade. Preferences whose client options and
-/// the display are
+/// still be in flight after the upgrade. Preferences whose client options,
+/// display and display placements are
 /// still the defaults therefore digest in exactly that v1 shape; any other
 /// value digests in full, so a change to a v2 field still changes the digest.
 #[derive(Serialize)]
@@ -183,6 +191,7 @@ impl Preferences {
             && self.login_servers.is_empty()
             && self.client_patches_enabled
             && self.display.is_default()
+            && self.display_placements.is_empty()
         {
             PreferencesDigest::V1 {
                 schema_version: 1,
@@ -391,6 +400,7 @@ impl DesktopState {
             login_servers: self.preferences.login_servers.clone(),
             client_patches_enabled: self.preferences.client_patches_enabled,
             display: self.preferences.display,
+            display_placements: self.preferences.display_placements.clone(),
         };
         validate_preferences(&next)?;
         // Withdrawal closes the summary gate before the write; granting consent

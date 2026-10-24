@@ -422,6 +422,29 @@ setup is keyed by FNV-1a 64 over the sorted display rectangles, never by name. A
 asleep) logs one WARN `display_list_empty` on `launcher.settings`, logged again
 only after a non-empty list.
 
+### The monitor per display setup
+
+`save_display_options` takes an optional `monitor`: the `x, y, width, height`
+of one of the snapshot's `displays`. Each save calls the display list once and
+computes the setup key and the matching display from that one list. A monitor
+that matches a listed display is stored in `preferences.display_placements`
+under the current setup key, replacing that key's entry; an absent or `null`
+monitor removes the entry, which means the main display. The list keeps the 8
+newest setups and drops the oldest. When the display list is empty (every failed
+enumeration and every sleeping Mac share one key), or the monitor matches no
+listed display, the save stores, replaces and removes nothing. Every snapshot
+carries `display_monitor`: the `index` of the display whose rectangle equals the
+entry stored for the current setup key, or `null` (no entry, no matching
+display, or no displays) for the main display. Rectangles are compared exactly
+as `display_targets` reports them, the same tuple the key hashes, so on Windows
+in DPI-scaled units. The snapshot's `preferences` leaves `display_placements`
+out, and an empty list is stored as no key.
+
+The save logs `display_options_saved` on `launcher.settings` (INFO) with `mode`,
+`width`, `height` and `monitor_remembered`: true when this save stored a monitor
+for the current setup, false when it removed the entry or stored nothing. No
+field carries a rectangle or a setup key.
+
 ## Patch policy per installation
 
 Native code decides whether Play injects client patches. The renderer cannot.

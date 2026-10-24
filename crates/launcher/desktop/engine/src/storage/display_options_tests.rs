@@ -1,4 +1,5 @@
 use super::*;
+use crate::display_targets::setup_key;
 use crate::OperationKind;
 use uuid::Uuid;
 
@@ -59,7 +60,7 @@ fn a_saved_display_survives_a_reopen() {
     let chosen = sized(DisplayMode::Windowed, 1600, 900);
     {
         let mut state = DesktopState::open(dir.path()).unwrap();
-        let saved = state.save_display_options(chosen, 0).unwrap();
+        let saved = state.save_display_options(chosen, None, 0).unwrap();
         assert_eq!(saved.revision, 1);
         assert_eq!(saved.display, chosen);
         // The other preferences are untouched.
@@ -80,7 +81,7 @@ fn an_out_of_range_size_is_refused_and_writes_nothing() {
         sized(DisplayMode::Windowed, 8000, 768),
     ] {
         assert_eq!(
-            state.save_display_options(invalid, 0),
+            state.save_display_options(invalid, None, 0),
             Err(StorageError::InvalidDisplayOptions),
             "{invalid:?}"
         );
@@ -94,7 +95,7 @@ fn a_stale_revision_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let mut state = DesktopState::open(dir.path()).unwrap();
     assert_eq!(
-        state.save_display_options(sized(DisplayMode::Windowed, 1600, 900), 4),
+        state.save_display_options(sized(DisplayMode::Windowed, 1600, 900), None, 4),
         Err(StorageError::StaleRevision)
     );
     assert!(!dir.path().join("preferences.json").exists());
@@ -110,7 +111,7 @@ fn an_open_install_refuses_the_save() {
         .begin(Uuid::new_v4(), OperationKind::Install, [1; 32], 0)
         .unwrap();
     assert_eq!(
-        state.save_display_options(sized(DisplayMode::Windowed, 1600, 900), 0),
+        state.save_display_options(sized(DisplayMode::Windowed, 1600, 900), None, 0),
         Err(StorageError::Busy)
     );
     assert_eq!(state.preferences(), &Preferences::default());
@@ -180,4 +181,174 @@ fn the_display_is_covered_by_the_record_digest() {
     assert!(!a.contains("display"));
     assert!(a.contains(r#""schema_version":1"#));
     assert!(b.contains("display"));
+}
+
+// C-PD8 placements (PD-32).
+
+fn display(index: u32, x: i32, width: u32, height: u32) -> DisplayInfo {
+    DisplayInfo {
+        index,
+        main: index == 0,
+        x,
+        y: 0,
+        width,
+        height,
+        scale_percent: 100,
+        refresh_hz: 60,
+    }
+}
+
+fn rect(d: &DisplayInfo) -> MonitorRect {
+    MonitorRect {
+        x: d.x,
+        y: d.y,
+        width: d.width,
+        height: d.height,
+    }
+}
+
+fn at(x: i32) -> MonitorRect {
+    MonitorRect {
+        x,
+        y: 0,
+        width: 1920,
+        height: 1080,
+    }
+}
+
+#[test]
+fn remember_replaces_removes_and_keeps_the_newest_eight() {
+    let mut list = Vec::new();
+    remember(&mut list, "a", Some(at(0)));
+    remember(&mut list, "b", Some(at(1)));
+    remember(&mut list, "a", Some(at(2)));
+    // One entry per key; the replacement is now the newest.
+    assert_eq!(list.len(), 2);
+    assert_eq!((list[1].setup.as_str(), list[1].x), ("a", 2));
+    remember(&mut list, "a", None);
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].setup, "b");
+    remember(&mut list, "absent", None);
+    assert_eq!(list.len(), 1);
+    for i in 0..10 {
+        remember(&mut list, &format!("k{i}"), Some(at(i)));
+    }
+    assert_eq!(list.len(), MAX_PLACEMENTS);
+    let keys: Vec<&str> = list.iter().map(|p| p.setup.as_str()).collect();
+    assert_eq!(keys, ["k2", "k3", "k4", "k5", "k6", "k7", "k8", "k9"]);
+}
+
+#[test]
+fn placement_for_needs_the_setup_key_and_a_matching_display() {
+    let main = display(0, 0, 1710, 1107);
+    let side = display(1, 1710, 1920, 1080);
+    let setup = [main, side];
+    let mut list = Vec::new();
+    remember(&mut list, &setup_key(&setup), Some(rect(&side)));
+    assert_eq!(placement_for(&list, &setup), Some(side));
+    // Revert proof: another setup that holds the same rectangle is unknown, so
+    // it gives None; matching on the rectangle alone would return `side`.
+    let other = [main, side, display(2, -1920, 1920, 1080)];
+    assert_eq!(placement_for(&list, &other), None);
+    // No displays, and a stored rectangle no display has, give None.
+    assert_eq!(placement_for(&list, &[]), None);
+    let mut moved = Vec::new();
+    remember(&mut moved, &setup_key(&setup), Some(at(9999)));
+    assert_eq!(placement_for(&moved, &setup), None);
+}
+
+#[test]
+fn a_saved_monitor_is_found_again_after_a_reopen() {
+    let dir = tempfile::tempdir().unwrap();
+    let setup = [display(0, 0, 1710, 1107), display(1, 1710, 1920, 1080)];
+    {
+        let mut state = DesktopState::open(dir.path()).unwrap();
+        let (saved, remembered) = state
+            .save_display_options_on(DisplayOptions::default(), Some(rect(&setup[1])), 0, &setup)
+            .unwrap();
+        assert!(remembered);
+        assert_eq!(saved.display_placements.len(), 1);
+        assert_eq!(saved.display_placements[0].setup, setup_key(&setup));
+    }
+    let mut reopened = DesktopState::open(dir.path()).unwrap();
+    assert_eq!(
+        placement_for(&reopened.preferences().display_placements, &setup),
+        Some(setup[1])
+    );
+    // None removes the entry: the game opens on the main display again.
+    let (saved, remembered) = reopened
+        .save_display_options_on(DisplayOptions::default(), None, 1, &setup)
+        .unwrap();
+    assert!(!remembered);
+    assert!(saved.display_placements.is_empty());
+}
+
+#[test]
+fn an_empty_display_list_or_an_unlisted_monitor_leaves_the_placements_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = DesktopState::open(dir.path()).unwrap();
+    let setup = [display(0, 0, 1710, 1107)];
+    state
+        .save_display_options_on(DisplayOptions::default(), Some(rect(&setup[0])), 0, &setup)
+        .unwrap();
+    let before = state.preferences().display_placements.clone();
+    for (revision, monitor, displays) in [
+        (1, Some(at(0)), &[][..]),
+        (2, None, &[][..]),
+        (3, Some(at(4242)), &setup[..]),
+    ] {
+        let (saved, remembered) = state
+            .save_display_options_on(DisplayOptions::default(), monitor, revision, displays)
+            .unwrap();
+        assert!(!remembered, "{revision}");
+        assert_eq!(saved.display_placements, before, "{revision}");
+    }
+}
+
+#[test]
+fn an_empty_display_list_never_calls_remember_even_to_remove() {
+    // Revert proof for the empty guard (amendment 1a): an entry already stored
+    // under the empty list's key survives a `None` save against an empty list.
+    // Without the guard, `remember(.., setup_key(&[]), None)` would remove it.
+    let dir = tempfile::tempdir().unwrap();
+    let seeded = format!(
+        r#"{{"schema_version":2,"revision":3,"install_directory":null,"launcher_summary_consent":false,"login_servers":[],"client_patches_enabled":true,"display_placements":[{{"setup":"{}","x":0,"y":0,"width":1710,"height":1107}}]}}"#,
+        setup_key(&[])
+    );
+    std::fs::write(dir.path().join("preferences.json"), seeded).unwrap();
+    let mut state = DesktopState::open(dir.path()).unwrap();
+    let before = state.preferences().display_placements.clone();
+    assert_eq!(before.len(), 1);
+    let (saved, remembered) = state
+        .save_display_options_on(DisplayOptions::default(), None, 3, &[])
+        .unwrap();
+    assert!(!remembered);
+    assert_eq!(saved.display_placements, before);
+}
+
+#[test]
+fn a_preferences_file_from_before_the_placements_reads_an_empty_list() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("preferences.json"), OLD_FILE).unwrap();
+    let state = DesktopState::open(dir.path()).unwrap();
+    assert!(state.preferences().display_placements.is_empty());
+}
+
+#[test]
+fn placements_are_stored_only_when_present_and_covered_by_the_digest() {
+    let mut custom = Preferences::default();
+    remember(
+        &mut custom.display_placements,
+        "0123456789abcdef",
+        Some(at(0)),
+    );
+    let text = serde_json::to_string(&custom).unwrap();
+    assert!(text.contains(
+        r#""display_placements":[{"setup":"0123456789abcdef","x":0,"y":0,"width":1920,"height":1080}]"#
+    ));
+    assert_eq!(serde_json::from_str::<Preferences>(&text).unwrap(), custom);
+    let default = serde_json::to_string(&Preferences::default().digest_form()).unwrap();
+    let digested = serde_json::to_string(&custom.digest_form()).unwrap();
+    assert!(!default.contains("display_placements"));
+    assert!(digested.contains("display_placements"));
 }
