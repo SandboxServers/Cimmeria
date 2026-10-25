@@ -32,6 +32,8 @@ async function mounted(inspected: Record<string, unknown>, respond: (request: Re
   calls.push(request);
   return request.command === 'inspect' ? inspected : respond(request);
  }, feed.context);
+ // The sign-in panel announces its state; the account panel follows that event.
+ document.dispatchEvent(new window.CustomEvent('cimmeria-sign-in', {detail: inspected}));
  await app.ready;
  await flush();
  const panel = document.getElementById('account-panel')!;

@@ -191,7 +191,7 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
  signAgain.addEventListener('click', signAgainPress);
  cancel.addEventListener('click', cancelPress);
 
- // Each snapshot re-inspects; a sign-in finished elsewhere shows up through the event too.
+ // The sign-in panel announces its status on every inspect, so this panel follows that event instead of inspecting on its own.
  const inspect = () => {
   if (disposed || busy) return mutation;
   mutation = call({command: 'inspect'}).then(decodeReply).then(next => { if (!disposed && !busy) adopt(next); }, () => undefined);
@@ -199,10 +199,9 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
  };
  const onSignIn = (event: Event) => { if (!disposed) adopt((event as CustomEvent<SignInStatus>).detail); };
  document.addEventListener('cimmeria-sign-in', onSignIn);
- const unsubscribe = context.onSnapshot(() => { void inspect(); });
- const ready = context.snapshot() ? inspect() : Promise.resolve();
+ const ready = Promise.resolve();
  return {ready, refresh: inspect, settled: () => mutation, dispose: async () => {
-  disposed = true; unsubscribe(); document.removeEventListener('cimmeria-sign-in', onSignIn); await mutation;
+  disposed = true; document.removeEventListener('cimmeria-sign-in', onSignIn); await mutation;
   panel.textContent = ''; panel.hidden = true;
  }};
 }
