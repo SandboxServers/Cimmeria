@@ -203,3 +203,72 @@ assert.equal(screen.document.getElementById('install').disabled,true);
 assert.equal(journey.native.preferences.launcher_summary_consent,false);
 await journeyApp.dispose();
 console.log('PASS: observed compatibility recovery requires an explicit click, binds current operation/revision, never replays setup and never enables Play. Controlled IPC only; native stop/wait and persistence are tested separately.');
+
+// PP-21 install copy UAT: the real view fed two scripted progress sequences, as the engine
+// reports them. Local archive: copy → check (total 0) → extraction → expansion.
+// Downloaded archive: download → check (total > 0) → check (total 0) → extraction → expansion.
+// Prints one PASS/FAIL line per row of the install copy table and exits 1 on a FAIL.
+const MiB=1024*1024;
+const phaseFlush=()=>new Promise(resolve=>setImmediate(resolve));
+function runningWith(progress) {
+  return {schema_version:1,install_supported:true,can_resume:false,can_reconcile:false,can_retry:false,uninstall:null,runtime_setup:null,outcome:null,progress,
+    native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed'],launcher:{version:'0.1.0',tag:null},
+      operation:{schema_version:1,revision:2,operation:{id,kind:'install',intent_digest:Array(32).fill(0),state:'running'}},
+      preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed',width:1024,height:768}}}};
+}
+// Each step: the fake clock in ms, the engine event, and for a table row the row name and its exact line.
+const localSequence=[
+  {at:0,progress:{phase:'copy',current:0,total:40*MiB}},
+  {at:1000,progress:{phase:'copy',current:10*MiB,total:40*MiB},row:'copy',expect:'Copying your archive… 10 MB of 40 MB · 10 MB/s · about 3 s left'},
+  {at:2000,progress:{phase:'check',current:0,total:0},row:'check, total 0',expect:'Reading the archive index…'},
+  {at:3000,progress:{phase:'extraction',current:0,total:50}},
+  {at:4000,progress:{phase:'extraction',current:10,total:50},row:'extraction',expect:'Unpacking the archive… 20% · 10 files/s · about 4 s left'},
+  {at:5000,progress:{phase:'expansion',current:0,total:50}},
+  {at:6000,progress:{phase:'expansion',current:5,total:50},row:'expansion',expect:'Expanding game files… 10% · 5 files/s · about 9 s left'},
+];
+const downloadSequence=[
+  {at:0,progress:{phase:'download',current:0,total:100*MiB}},
+  {at:1000,progress:{phase:'download',current:12*MiB,total:100*MiB},row:'download',expect:'Downloading verified game content… 12% · 12 MB of 100 MB · 12 MB/s · about 7 s left'},
+  {at:2000,progress:{phase:'check',current:0,total:40*MiB}},
+  {at:3000,progress:{phase:'check',current:10*MiB,total:40*MiB},row:'check, total > 0',expect:'Checking the download… 25% · 10 MB/s · about 3 s left'},
+  {at:4000,progress:{phase:'check',current:0,total:0},row:'check, total 0',expect:'Reading the archive index…'},
+  {at:5000,progress:{phase:'extraction',current:0,total:50}},
+  {at:6000,progress:{phase:'extraction',current:10,total:50},row:'extraction',expect:'Unpacking the archive… 20% · 10 files/s · about 4 s left'},
+  {at:7000,progress:{phase:'expansion',current:0,total:50}},
+  {at:8000,progress:{phase:'expansion',current:5,total:50},row:'expansion',expect:'Expanding game files… 10% · 5 files/s · about 9 s left'},
+];
+// Mounts a fresh install view, feeds the sequence on the fake clock, and returns the status line after each step.
+async function playPhases(steps) {
+  const {document}=parseHTML(html);let t=0;let current=runningWith(steps[0].progress);
+  const app=mountInstall(document,async()=>current,()=>id,()=>{},()=>t);
+  const lines=[];
+  try {
+    await app.ready;await phaseFlush();
+    for (const step of steps) {
+      t=step.at;current=runningWith(step.progress);await app.refresh();await phaseFlush();
+      lines.push(document.getElementById('install-status').textContent);
+    }
+  } finally {await app.dispose();}
+  return lines;
+}
+const rowResults=new Map();
+const localLines=await playPhases(localSequence);
+const downloadLines=await playPhases(downloadSequence);
+for (const [steps,lines] of [[localSequence,localLines],[downloadSequence,downloadLines]]) {
+  steps.forEach((step,i)=>{
+    if (!step.row) return;
+    const ok=lines[i]===step.expect;
+    rowResults.set(step.row,(rowResults.get(step.row)??true)&&ok);
+    if (!ok) console.log(`  expected "${step.expect}" got "${lines[i]}"`);
+  });
+}
+// A local archive has no download hash pass, so its sequence must never say "Checking the download".
+rowResults.set('local never checks the download',!localLines.some(line=>line.includes('Checking the download')));
+let phaseFailures=0;
+for (const row of ['download','copy','check, total > 0','check, total 0','extraction','expansion','local never checks the download']) {
+  const ok=rowResults.get(row)===true;
+  if (!ok) phaseFailures++;
+  console.log(`${ok?'PASS':'FAIL'} install copy: ${row}`);
+}
+if (phaseFailures) {console.log(`FAIL: ${phaseFailures} install copy row(s) did not match`);process.exitCode=1;}
+else console.log('PASS: install copy rows match the copy table; a local archive never shows the download check.');

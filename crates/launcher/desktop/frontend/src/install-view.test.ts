@@ -344,7 +344,7 @@ test('active download and extraction show percent and bytes, not a bare label',a
  try{await app.ready;await flush();
   assert.equal(ui.get('install-status').textContent,'Downloading verified game content… 42% · 42 MB of 100 MB');
   status=runningWith({phase:'extraction',current:18,total:50});await app.refresh();await flush();
-  assert.equal(ui.get('install-status').textContent,'Extracting game content… 36%');
+  assert.equal(ui.get('install-status').textContent,'Unpacking the archive… 36%');
  }finally{await app.dispose();}
 });
 
@@ -361,7 +361,7 @@ test('large download shows speed and time left; small patch blob and phase chang
   const patch=await step(3000,dl(20*MiB,40*MiB));
   assert.equal(patch,'Downloading verified game content… 50% · 20 MB of 40 MB');
   assert.doesNotMatch(patch,/\/s|left/);
-  assert.equal(await step(4000,runningWith({phase:'extraction',current:10,total:50})),'Extracting game content… 20%');
+  assert.equal(await step(4000,runningWith({phase:'extraction',current:10,total:50})),'Unpacking the archive… 20%');
  }finally{await app.dispose();}
 });
 
@@ -378,5 +378,34 @@ test('a phase change or an idle gap restarts the rate window',async()=>{
   // Operation no longer active (cancelled, progress still reported): the next run must not reuse the old baseline.
   await step(4000,{...dl(40*MiB,SEED),native:{...initial().native,operation:{schema_version:1,revision:2,operation:{id,kind:'install',intent_digest:Array(32).fill(0),state:'cancelled'}}}});
   assert.doesNotMatch(await step(5000,dl(49*MiB,SEED)),/\/s/);
+ }finally{await app.dispose();}
+});
+
+test('copy, check, unpacking and expansion each say what they do, with a rate and ETA once measured',async()=>{
+ const ui=dom();let t=0;let status=runningWith({phase:'copy',current:0,total:40*MiB});
+ const app=mountInstall(ui.document,async()=>status,()=>id,()=>{},()=>t);
+ const step=async(ms:number,next:InstallStatus)=>{t=ms;status=next;await app.refresh();await flush();return ui.get('install-status').textContent!;};
+ try{await app.ready;await flush();
+  // A local copy shows speed from 40 MB on: the 100 MiB floor is for downloads only.
+  assert.equal(await step(1000,runningWith({phase:'copy',current:10*MiB,total:40*MiB})),'Copying your archive… 10 MB of 40 MB · 10 MB/s · about 3 s left');
+  assert.equal(await step(2000,runningWith({phase:'check',current:0,total:0})),'Reading the archive index…');
+  assert.equal(await step(3000,runningWith({phase:'check',current:0,total:40*MiB})),'Checking the download… 0%');
+  assert.equal(await step(4000,runningWith({phase:'check',current:10*MiB,total:40*MiB})),'Checking the download… 25% · 10 MB/s · about 3 s left');
+  assert.equal(await step(5000,runningWith({phase:'extraction',current:0,total:50})),'Unpacking the archive… 0%');
+  assert.equal(await step(6000,runningWith({phase:'extraction',current:10,total:50})),'Unpacking the archive… 20% · 10 files/s · about 4 s left');
+  assert.equal(await step(7000,runningWith({phase:'expansion',current:0,total:50})),'Expanding game files… 0%');
+  assert.equal(await step(8000,runningWith({phase:'expansion',current:5,total:50})),'Expanding game files… 10% · 5 files/s · about 9 s left');
+ }finally{await app.dispose();}
+});
+
+test('the rate restarts when the phase changes from unpacking to expansion',async()=>{
+ const ui=dom();let t=0;let status=runningWith({phase:'extraction',current:0,total:50});
+ const app=mountInstall(ui.document,async()=>status,()=>id,()=>{},()=>t);
+ const step=async(ms:number,next:InstallStatus)=>{t=ms;status=next;await app.refresh();await flush();return ui.get('install-status').textContent!;};
+ try{await app.ready;await flush();
+  assert.equal(ui.get('install-status').textContent,'Unpacking the archive… 0%');
+  assert.match(await step(2000,runningWith({phase:'extraction',current:10,total:50})),/^Unpacking the archive… 20% · 5 files\/s/);
+  // Same total and a higher count: only the phase change can have dropped the unpacking baseline.
+  assert.equal(await step(2500,runningWith({phase:'expansion',current:25,total:50})),'Expanding game files… 50%');
  }finally{await app.dispose();}
 });
