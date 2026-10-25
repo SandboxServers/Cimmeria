@@ -118,6 +118,8 @@ pub struct LauncherSender {
     session: Mutex<Option<Live>>,
     hold_until: Mutex<Option<Instant>>,
     mint_failures: Mutex<u32>,
+    /// The scheme and host of the last URL a batch posted to (log uploads read it).
+    endpoint: Mutex<Option<(String, String)>>,
 }
 
 impl Default for LauncherSender {
@@ -151,6 +153,7 @@ impl LauncherSender {
             session: Mutex::new(None),
             hold_until: Mutex::new(None),
             mint_failures: Mutex::new(0),
+            endpoint: Mutex::new(None),
         }
     }
 
@@ -247,14 +250,14 @@ impl LauncherSender {
             Ok(live) => live,
             Err(reason) => return BatchOutcome::MintFailed { reason },
         };
-        let mut posted = self.post(&live, batch).await;
+        let mut posted = self.post_logged(&live, batch).await;
         if matches!(posted, Err(ChunkError::TokenRejected)) {
             *locked(&self.session) = None;
             live = match self.mint(target).await {
                 Ok(fresh) => fresh,
                 Err(reason) => return BatchOutcome::MintFailed { reason },
             };
-            posted = self.post(&live, batch).await;
+            posted = self.post_logged(&live, batch).await;
         }
         match posted {
             Ok(()) => BatchOutcome::Posted,
@@ -329,6 +332,32 @@ impl LauncherSender {
         chunk::post_chunk(&self.http, &live.upload_url, &block.token, batch).await
     }
 
+    /// `post`, then the `log_upload_post` line for its response. Logs only the
+    /// scheme, the host and the status, never the URL.
+    async fn post_logged(&self, live: &Live, batch: &[TelemetryEvent]) -> Result<(), ChunkError> {
+        let posted = self.post(live, batch).await;
+        let parts = endpoint_parts(&live.upload_url);
+        let (scheme, host) = match &parts {
+            Some((scheme, host)) => (scheme.as_str(), host.as_str()),
+            None => ("-", "-"),
+        };
+        tracing::info!(
+            target: "launcher.telemetry",
+            event = "log_upload_post",
+            scheme,
+            host,
+            status = response_status(&posted),
+            "launcher log upload: chunk posted"
+        );
+        *locked(&self.endpoint) = parts;
+        posted
+    }
+
+    /// The scheme and host of the last URL a batch posted to, if any.
+    pub fn last_endpoint(&self) -> Option<(String, String)> {
+        locked(&self.endpoint).clone()
+    }
+
     fn held(&self) -> bool {
         locked(&self.hold_until).is_some_and(|until| until > Instant::now())
     }
@@ -370,9 +399,60 @@ fn mint_reason(failure: MintFailure) -> &'static str {
     failure.reason
 }
 
+/// The scheme and host of an upload URL; `None` when it does not parse or has no host.
+fn endpoint_parts(upload_url: &str) -> Option<(String, String)> {
+    let url = reqwest::Url::parse(upload_url).ok()?;
+    Some((url.scheme().to_owned(), url.host_str()?.to_owned()))
+}
+
+/// The HTTP status a chunk post answered with, for the log line; 0 when no
+/// response came back. `post_chunk` does not return the code of a 2xx, so any
+/// success is logged as 200.
+fn response_status(posted: &Result<(), ChunkError>) -> u16 {
+    match posted {
+        Ok(()) => 200,
+        Err(ChunkError::Status { status, .. } | ChunkError::Rejected { status, .. }) => *status,
+        Err(ChunkError::TokenRejected) => 401,
+        Err(ChunkError::KillSwitch { .. }) => 503,
+        Err(ChunkError::RateLimited { .. }) => 429,
+        Err(ChunkError::Http(err)) => err.status().map_or(0, |status| status.as_u16()),
+        Err(ChunkError::Io(_) | ChunkError::Json(_)) => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upload_urls_log_only_scheme_and_host() {
+        assert_eq!(
+            endpoint_parts("https://play.example:8443/api/telemetry/upload-chunk?k=1"),
+            Some(("https".into(), "play.example".into()))
+        );
+        assert_eq!(endpoint_parts("not a url"), None);
+    }
+
+    #[test]
+    fn responses_map_to_their_status_and_no_response_to_zero() {
+        assert_eq!(response_status(&Ok(())), 200);
+        assert_eq!(response_status(&Err(ChunkError::TokenRejected)), 401);
+        assert_eq!(
+            response_status(&Err(ChunkError::KillSwitch {
+                retry_after_secs: 60
+            })),
+            503
+        );
+        assert_eq!(
+            response_status(&Err(ChunkError::Rejected {
+                status: 413,
+                body: String::new(),
+            })),
+            413
+        );
+        let io = std::io::Error::other("no socket");
+        assert_eq!(response_status(&Err(ChunkError::Io(io))), 0);
+    }
 
     #[test]
     fn mint_failures_keep_the_c8_reason() {
