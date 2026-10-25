@@ -144,6 +144,22 @@ pub(crate) fn install_stage_failed(id: Uuid, error: &InstallError) {
         detail = %error, "install: stage failure detail (local log only)");
 }
 
+/// The destination could not be used. `stage` is `check` (the ownership claim),
+/// `create` (the staging folder) or `promote` (moving the staged game into
+/// place); `cause` is a closed code from `causes`.
+pub(crate) fn destination_unavailable(id: Uuid, stage: &'static str, cause: &'static str) {
+    let operation = operation_numbers::number(id);
+    tracing::warn!(
+        target: "launcher.install",
+        event = "destination_unavailable",
+        operation,
+        stage,
+        cause,
+        failure_code = "game_folder_not_writable",
+        "install: the game folder could not be used; expected a writable folder the launcher owns; the install stops"
+    );
+}
+
 /// The install could not record its uncertain state; the shell calls this too.
 pub fn mark_uncertain_failed(error: ContractError) {
     tracing::warn!(

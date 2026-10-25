@@ -30,14 +30,15 @@ fn public_catalog_refuses_default_test_key_and_logs_the_actual_build_problem() {
             "signing_key_unavailable",
         ),
     ] {
-        let (result, captured) = capture(|| require_release_key(present, development));
+        let (result, captured) =
+            capture(|| require_release_key(Purpose::Update, present, development));
         assert_eq!(result, Err(expected));
         let failures = fetch_failures(&captured);
         assert_eq!(failures.len(), 1, "{captured:?}");
         assert_eq!(failures[0].field("reason"), Some(reason));
     }
     assert_eq!(
-        require_release_key(true, false),
+        require_release_key(Purpose::Update, true, false),
         Ok(()),
         "an explicitly configured release key remains allowed"
     );
@@ -101,7 +102,7 @@ async fn transport_bounds_declared_and_chunked_bodies_and_rejects_http_errors() 
             let _ = socket.write_all(response.as_bytes());
         });
         let client = reqwest::Client::builder().no_proxy().timeout(Duration::from_secs(3)).build().unwrap();
-        assert_eq!(read_bounded(&client, &url, 5).await.unwrap_err(), expected);
+        assert_eq!(read_bounded(Purpose::Update, &client, &url, 5).await.unwrap_err(), expected);
         worker.join().unwrap();
     }
 }
@@ -124,7 +125,7 @@ fn release_fetch_failed_reports_network_reason_for_closed_port() {
             .enable_all()
             .build()
             .unwrap()
-            .block_on(read_bounded(&client, &url, 5))
+            .block_on(read_bounded(Purpose::Update, &client, &url, 5))
     });
     assert_eq!(result.unwrap_err(), CatalogError::Network);
     let failed: Vec<_> = captured
@@ -188,7 +189,7 @@ fn fetch_failure_rows_name_the_http_status_and_the_declared_body_size() {
                 .enable_all()
                 .build()
                 .unwrap()
-                .block_on(read_bounded(&client, &url, 5))
+                .block_on(read_bounded(Purpose::Update, &client, &url, 5))
         });
         worker.join().unwrap();
         assert_eq!(result.unwrap_err(), expected);
@@ -211,7 +212,8 @@ fn release_fetched_row_carries_the_fetch_duration() {
 
 #[test]
 fn fetch_verification_reports_one_signature_row_but_stored_verification_reports_none() {
-    let (result, captured) = capture(|| verify_fetched(b"tampered", &signed(BODY)));
+    let (result, captured) =
+        capture(|| verify_fetched(Purpose::Update, b"tampered", &signed(BODY)));
     assert!(result.is_err());
     let failed = fetch_failures(&captured);
     assert_eq!(failed.len(), 1, "{captured:?}");
@@ -220,4 +222,30 @@ fn fetch_verification_reports_one_signature_row_but_stored_verification_reports_
     let (result, captured) = capture(|| verify_release(b"tampered", &signed(BODY)));
     assert!(result.is_err());
     assert!(fetch_failures(&captured).is_empty(), "{captured:?}");
+}
+
+#[test]
+fn a_fetch_failure_row_names_its_purpose() {
+    let (result, captured) = capture(|| require_release_key(Purpose::Install, false, false));
+    assert_eq!(result, Err(CatalogError::SigningKeyUnavailable));
+    let failed = fetch_failures(&captured);
+    assert_eq!(failed.len(), 1, "{captured:?}");
+    assert_eq!(failed[0].target, "launcher.game_update");
+    assert_eq!(failed[0].level, tracing::Level::WARN);
+    assert_eq!(failed[0].field("purpose"), Some("install"));
+    assert_eq!(failed[0].field("reason"), Some("signing_key_unavailable"));
+}
+
+#[test]
+fn every_purpose_has_its_closed_code() {
+    for (purpose, code) in [
+        (Purpose::Install, "install"),
+        (Purpose::Update, "update"),
+        (Purpose::Adopt, "adopt"),
+        (Purpose::Seed, "seed"),
+        (Purpose::Preflight, "preflight"),
+    ] {
+        let ((), captured) = capture(|| events::release_fetch_failed(purpose, "network", None));
+        assert_eq!(fetch_failures(&captured)[0].field("purpose"), Some(code));
+    }
 }

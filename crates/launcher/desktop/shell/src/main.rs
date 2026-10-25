@@ -23,6 +23,7 @@ mod test_capture;
 mod updater_restart;
 mod webview2;
 
+use cimmeria_launcher_engine::catalog::Purpose;
 use cimmeria_launcher_engine::client_changes::{
     ClientChangesCommand, ClientChangesError, ClientChangesStatus,
 };
@@ -197,11 +198,9 @@ async fn run_install_command(
     let release = if request.needs_release() {
         host.require_install_support()?;
         Some(
-            select_install_release(
-                host.clone(),
-                request.clone(),
-                cimmeria_launcher_engine::catalog::fetch_release,
-            )
+            select_install_release(host.clone(), request.clone(), || {
+                cimmeria_launcher_engine::catalog::fetch_release_for(Purpose::Install)
+            })
             .await?,
         )
     } else {
@@ -401,7 +400,7 @@ async fn choose_existing_game_folder(
         None
     };
     // Only the fixed, signed catalog names the release; the webview cannot.
-    let release = cimmeria_launcher_engine::catalog::fetch_release()
+    let release = cimmeria_launcher_engine::catalog::fetch_release_for(Purpose::Adopt)
         .await
         .map_err(|_| {
             crate::host::adoption_refusal(
@@ -481,12 +480,12 @@ async fn seed_archive_command(
     // so the 500 ms poll makes no network request. Cancel and Forget never fetch.
     let release = match request {
         SeedArchiveCommand::AcceptOffer { .. } => Some(
-            cimmeria_launcher_engine::catalog::fetch_release()
+            cimmeria_launcher_engine::catalog::fetch_release_for(Purpose::Seed)
                 .await
                 .map_err(SeedArchiveError::from)?,
         ),
         SeedArchiveCommand::Inspect { .. } if host.seed_archive_release_wanted() => {
-            match cimmeria_launcher_engine::catalog::fetch_release().await {
+            match cimmeria_launcher_engine::catalog::fetch_release_for(Purpose::Seed).await {
                 Ok(release) => Some(release),
                 Err(_) => {
                     host.seed_archive_release_failed();
@@ -533,7 +532,7 @@ async fn choose_seed_archive(
             .map_err(|_| SeedArchiveError::Io)?;
     };
     // Only the fixed, signed catalog names the release; the webview cannot.
-    let release = cimmeria_launcher_engine::catalog::fetch_release()
+    let release = cimmeria_launcher_engine::catalog::fetch_release_for(Purpose::Seed)
         .await
         .map_err(SeedArchiveError::from)?;
     tauri::async_runtime::spawn_blocking(move || host.choose_seed_archive(path, release))

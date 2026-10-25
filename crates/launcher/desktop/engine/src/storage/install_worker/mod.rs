@@ -344,8 +344,13 @@ async fn install_owned(
     cancel: CancellationToken,
     progress: ProgressSink,
 ) -> Staged {
-    let Ok(_ownership) = claim(intent, state_root) else {
-        return (Outcome::DestinationUnavailable, None);
+    let _ownership = match claim(intent, state_root) {
+        Ok(marker) => marker,
+        Err(error) => {
+            let cause = causes::storage_cause(&error);
+            events::destination_unavailable(intent.operation_id, "check", cause);
+            return (Outcome::DestinationUnavailable, None);
+        }
     };
     install_stage(
         intent,
@@ -378,7 +383,11 @@ async fn install_stage(
     match std::fs::create_dir(&stage) {
         Ok(()) => (),
         Err(error) if error.kind() == ErrorKind::AlreadyExists => (),
-        Err(_) => return (Outcome::DestinationUnavailable, None),
+        Err(error) => {
+            let cause = causes::io_cause(&error);
+            events::destination_unavailable(intent.operation_id, "create", cause);
+            return (Outcome::DestinationUnavailable, None);
+        }
     }
     let (result, report) = install::install_all(InstallContext {
         manifest_url,
@@ -420,9 +429,15 @@ fn promote(intent: &InstallIntent, stage: &Path) -> Outcome {
     let content = intent.destination.join("game");
     match std::fs::symlink_metadata(&content) {
         Err(error) if error.kind() == ErrorKind::NotFound => (),
-        _ => return Outcome::DestinationUnavailable,
+        found => {
+            let cause = found.map_or_else(|error| causes::io_cause(&error), |_| "already_exists");
+            events::destination_unavailable(intent.operation_id, "promote", cause);
+            return Outcome::DestinationUnavailable;
+        }
     }
-    if std::fs::rename(stage, &content).is_err() {
+    if let Err(error) = std::fs::rename(stage, &content) {
+        let cause = causes::io_cause(&error);
+        events::destination_unavailable(intent.operation_id, "promote", cause);
         return Outcome::InstallFailed;
     }
     // Promotion is now visible: inability to persist its receipt is uncertain.
@@ -515,6 +530,8 @@ mod summary_tests;
 mod telemetry_tests;
 
 pub mod events;
+
+mod causes;
 
 mod resume;
 pub use resume::{resume, ResumeError};

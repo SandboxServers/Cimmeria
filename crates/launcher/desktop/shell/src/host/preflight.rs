@@ -5,7 +5,7 @@
 //! checks again. Every `Err` logs `preflight_refused` once, in `run` (C-PD5).
 use super::windows_prerequisites::SetupLease;
 use super::{JobError, NativeHost};
-use cimmeria_launcher_engine::catalog::CatalogError;
+use cimmeria_launcher_engine::catalog::{CatalogError, Purpose};
 #[cfg(target_os = "macos")]
 use cimmeria_launcher_engine::preflight::events::{Dependency, DependencyOutcome};
 use cimmeria_launcher_engine::preflight::{
@@ -95,7 +95,7 @@ async fn inspect(host: Arc<NativeHost>, operation: PreflightOperation) -> Result
     let manifest = match operation {
         PreflightOperation::Play => None,
         PreflightOperation::Install | PreflightOperation::Repair => Some(manifest_probe(
-            cimmeria_launcher_engine::catalog::fetch_release()
+            cimmeria_launcher_engine::catalog::fetch_release_for(Purpose::Preflight)
                 .await
                 .map(drop),
         )),

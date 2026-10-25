@@ -1,6 +1,6 @@
 # Launcher native phase timing
 
-> **Type:** Reference · **Audience:** Launcher engineers and telemetry operators · **Updated:** 2026-10-23
+> **Type:** Reference · **Audience:** Launcher engineers and telemetry operators · **Updated:** 2026-10-24
 > **Companions:** [Desktop overview](../README.md), [dev-session architecture](../../../../docs/architecture/dev-session-telemetry.md), [operator queries](../../../../docs/operations/telemetry.md#launcher-adoption-and-play-phase-timing), [design](../../../../docs/analysis/launcher-uat-fixes/design-phase-timing.md)
 
 ## Purpose and transport
@@ -104,6 +104,21 @@ scan workloads, not downloaded bytes or proof of relocation. No per-file event
 is emitted. The timers add no path, account name, machine identity, token,
 operation UUID or arbitrary error text. The `launcher.install.detail` and
 `launcher.repair.detail` targets stay in the local log and are never forwarded.
+
+## Install destination and release fetch causes
+
+Two failure rows name why an install or a release fetch stopped, with closed
+codes only (no path, URL or error text):
+
+| Event | Target, level | Fields |
+|---|---|---|
+| `destination_unavailable` | `launcher.install`, WARN | `operation`; `stage`: `check` (the ownership claim on the chosen folder), `create` (the staging folder) or `promote` (moving the staged game into place); `cause`: `permission_denied`, `not_found`, `already_exists`, `directory_not_empty`, `read_only`, `storage_full` or `other` from the I/O error kind, or for `check` the refused claim (`invalid_directory`, `unsafe_file`, `in_use`, `corrupt`, `io`, `other`); `failure_code = game_folder_not_writable` |
+| `release_fetch_failed` | `launcher.game_update`, WARN | existing `reason` and `http_status`, plus `purpose`: `install`, `update`, `adopt`, `seed` or `preflight` |
+
+`destination_unavailable` is logged beside the install's own outcome, which is
+unchanged: a failed `promote` rename still ends `install_failed`, and every other
+row ends `destination_unavailable`. `release_fetch_failed` keeps its target for
+every purpose; `purpose = update` is the game update check and patch notes.
 
 ## Delivery limits
 

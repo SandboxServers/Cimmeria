@@ -23,6 +23,29 @@ pub enum CatalogError {
     InvalidManifest,
 }
 
+/// Why a release is fetched. The fetch failure row names it, so an install or
+/// adoption failure is not reported as a game update one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Purpose {
+    Install,
+    Update,
+    Adopt,
+    Seed,
+    Preflight,
+}
+impl Purpose {
+    /// The closed snake_case code logged as `purpose`.
+    pub fn code(self) -> &'static str {
+        match self {
+            Purpose::Install => "install",
+            Purpose::Update => "update",
+            Purpose::Adopt => "adopt",
+            Purpose::Seed => "seed",
+            Purpose::Preflight => "preflight",
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct PatchNotes {
     pub schema_version: u32,
@@ -61,8 +84,15 @@ impl VerifiedRelease {
     }
 }
 
+/// Fetch the release for a game update check (and patch notes).
 pub async fn fetch_release() -> Result<VerifiedRelease, CatalogError> {
+    fetch_release_for(Purpose::Update).await
+}
+
+/// Fetch and verify the signed release; a failure row names `purpose`.
+pub async fn fetch_release_for(purpose: Purpose) -> Result<VerifiedRelease, CatalogError> {
     require_release_key(
+        purpose,
         manifest::MANIFEST_SIGNING_PUBKEY.is_some(),
         cfg!(debug_assertions)
             && option_env!("LAUNCHER_MANIFEST_PUBKEY_HEX").is_none_or(|key| key.trim().is_empty()),
@@ -75,19 +105,24 @@ pub async fn fetch_release() -> Result<VerifiedRelease, CatalogError> {
         .redirect(reqwest::redirect::Policy::limited(5))
         .build()
         .map_err(|_| {
-            events::release_fetch_failed("network", None);
+            events::release_fetch_failed(purpose, "network", None);
             CatalogError::Network
         })?;
-    let body = read_bounded(&client, URL, MAX_BODY).await?;
-    let signature = read_bounded(&client, &manifest::sig_url_for(URL), MAX_SIGNATURE).await?;
-    let release = verify_fetched(&body, &signature)?;
+    let body = read_bounded(purpose, &client, URL, MAX_BODY).await?;
+    let signature =
+        read_bounded(purpose, &client, &manifest::sig_url_for(URL), MAX_SIGNATURE).await?;
+    let release = verify_fetched(purpose, &body, &signature)?;
     events::release_fetched(started.elapsed());
     Ok(release)
 }
 
 /// The fixed public endpoint requires a release key. Local signed fixtures use
 /// `verify_release` directly and retain their development-key verification.
-fn require_release_key(present: bool, development_default: bool) -> Result<(), CatalogError> {
+fn require_release_key(
+    purpose: Purpose,
+    present: bool,
+    development_default: bool,
+) -> Result<(), CatalogError> {
     let failure = if !present {
         Some((
             CatalogError::SigningKeyUnavailable,
@@ -99,13 +134,14 @@ fn require_release_key(present: bool, development_default: bool) -> Result<(), C
         None
     };
     if let Some((error, reason)) = failure {
-        events::release_fetch_failed(reason, None);
+        events::release_fetch_failed(purpose, reason, None);
         return Err(error);
     }
     Ok(())
 }
 
 async fn read_bounded(
+    purpose: Purpose,
     client: &reqwest::Client,
     url: &str,
     limit: usize,
@@ -122,23 +158,23 @@ async fn read_bounded(
             } else {
                 "network"
             };
-            events::release_fetch_failed(reason, http_status);
+            events::release_fetch_failed(purpose, reason, http_status);
             CatalogError::Network
         })?;
     if response
         .content_length()
         .is_some_and(|size| size > limit as u64)
     {
-        events::release_fetch_failed("body", None);
+        events::release_fetch_failed(purpose, "body", None);
         return Err(CatalogError::TooLarge);
     }
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|_| {
-        events::release_fetch_failed("network", None);
+        events::release_fetch_failed(purpose, "network", None);
         CatalogError::Network
     })? {
         if chunk.len() > limit.saturating_sub(body.len()) {
-            events::release_fetch_failed("body", None);
+            events::release_fetch_failed(purpose, "body", None);
             return Err(CatalogError::TooLarge);
         }
         body.extend_from_slice(&chunk);
@@ -180,14 +216,18 @@ fn decode_verified(body: &[u8], signature: &[u8]) -> Result<Manifest, CatalogErr
 }
 
 /// Verify a body fetched from the release server. Its failure is the fetch failure row.
-fn verify_fetched(body: &[u8], signature: &[u8]) -> Result<VerifiedRelease, CatalogError> {
+fn verify_fetched(
+    purpose: Purpose,
+    body: &[u8],
+    signature: &[u8],
+) -> Result<VerifiedRelease, CatalogError> {
     verify_release(body, signature).inspect_err(|&error| {
         let reason = match error {
             CatalogError::InvalidManifest => "invalid_manifest",
             CatalogError::TooLarge => "body",
             _ => "signature",
         };
-        events::release_fetch_failed(reason, None);
+        events::release_fetch_failed(purpose, reason, None);
     })
 }
 
