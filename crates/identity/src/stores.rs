@@ -509,8 +509,15 @@ mod tests {
         let grant = store.issue(identity("s3"), t0);
         let subject = |store: &LinkGrants, at: Instant| store.peek(&grant, at).map(|i| i.subject);
         assert_eq!(subject(&store, t0), Some("s3".to_owned()));
-        assert_eq!(subject(&store, t0), Some("s3".to_owned()), "peek spends nothing");
-        assert!(store.take(&grant, t0).is_some(), "take still works after peeks");
+        assert_eq!(
+            subject(&store, t0),
+            Some("s3".to_owned()),
+            "peek spends nothing"
+        );
+        assert!(
+            store.take(&grant, t0).is_some(),
+            "take still works after peeks"
+        );
         assert!(store.peek(&grant, t0).is_none(), "a taken grant is gone");
         let late = store.issue(identity("s4"), t0);
         let after = t0 + LINK_GRANT_LIFE;
