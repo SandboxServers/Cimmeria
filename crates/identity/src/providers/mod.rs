@@ -42,6 +42,16 @@ impl Providers {
     pub fn dev_mock(&self) -> Option<&Arc<DevMockProvider>> {
         self.dev_mock.as_ref()
     }
+
+    /// Assembles a set of providers directly, so route tests can inject a
+    /// provider backed by a fake server.
+    #[cfg(test)]
+    pub(crate) fn from_parts(
+        list: Vec<Arc<dyn IdentityProvider>>,
+        dev_mock: Option<Arc<DevMockProvider>>,
+    ) -> Providers {
+        Providers { list, dev_mock }
+    }
 }
 
 /// Builds the providers the config names, sharing one HTTP client.
