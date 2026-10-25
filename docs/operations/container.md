@@ -67,6 +67,8 @@ Add `-v cimmeria-server-pgdata:/var/lib/postgresql/data` to keep the database ac
 
 Every variable that [`crates/server/src/main.rs`](../../crates/server/src/main.rs) reads is overridable at `docker run` time. The image bakes defaults for the subset below (see the `ENV` block at [`docker/Dockerfile:254-268`](../../docker/Dockerfile)); the full catalogue, including anything not listed here, is the env-var table in `main.rs`'s module header.
 
+Account sign-in has its own variables (`CIMMERIA_AUTH_PROVIDERS`, `CIMMERIA_IDP_*`, `AUTH_TLS_*`, `AUTH_PROXY_*`), none baked into the image: see [launcher sign-in](../technical/launcher-sign-in.md#kill-switches-and-environment) and [auth-https.md (added in a later PR)](auth-https.md).
+
 | Variable | Default | Notes |
 |---|---|---|
 | `AUTH_HOST` | `0.0.0.0` | Auth bind address |

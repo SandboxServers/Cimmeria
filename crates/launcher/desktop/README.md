@@ -3,7 +3,7 @@
 > **Type:** Reference
 > **Audience:** Launcher contributors
 > **Last updated:** 2026-10-23
-> **Companions:** [Implementation plan](../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md), [build rules](../../../docs/architecture/build-system.md#standalone-desktop-launcher-validation), [test policy](../../../TESTING.md)
+> **Companions:** [Implementation plan](../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md), [build rules](../../../docs/architecture/build-system.md#standalone-desktop-launcher-validation), [test policy](../../../TESTING.md), [sign-in, relay and ticket file](docs/sign-in.md) ([end-to-end flow](../../../docs/technical/launcher-sign-in.md))
 
 This standalone workspace contains native Rust state, Effect workflows and a
 Tauri shell. The interface connects through Tauri invoke to native
