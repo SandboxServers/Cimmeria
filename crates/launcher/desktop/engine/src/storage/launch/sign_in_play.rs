@@ -32,7 +32,7 @@ pub(super) enum ClientLogin {
     /// A one-time ticket for the first server, through the relay.
     Ticket {
         relay: RelayHandle,
-        login: TicketLogin,
+        login: Box<TicketLogin>,
         sign_in: Arc<SignIn>,
         launch_id: String,
     },
@@ -124,7 +124,7 @@ pub(super) async fn plan(
                 list,
                 ClientLogin::Ticket {
                     relay,
-                    login,
+                    login: Box::new(login),
                     sign_in,
                     launch_id,
                 },
