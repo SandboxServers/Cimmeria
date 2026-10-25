@@ -4,6 +4,7 @@ import {operationOpen} from './contract';
 import {FailureCode} from './failure-codes';
 import {failureText} from './failure-copy';
 import type {Invoke} from './view';
+import {noPreflight,type PreflightGate} from './preflight-view';
 class Launch extends Context.Service<Launch,Effect.Success<typeof makeLaunchWorkflow>>()('launcher/Play') {}
 // An adopt operation that is not terminal is owned by the adoption panel; Play says one line about it.
 function adoptLine(s:LaunchState):string|null {
@@ -54,7 +55,7 @@ export function launchText(s:LaunchState):string {
  if(status.installation_id&&status.patches_incomplete>0)return `Ready to Play. ${status.ops_skipped} patch ${status.ops_skipped===1?'change':'changes'} could not be applied. If the game crashes or misbehaves, use Repair (downloads the full game, 4.1 GB).`;
  return status.installation_id?'Ready to Play.':'Finish installation and compatibility checks to enable Play.';
 }
-export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()=>{},uuid:()=>string=()=>crypto.randomUUID(),updateBlocked=false,onReadiness:(ready:boolean)=>void=()=>{}) {
+export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()=>{},uuid:()=>string=()=>crypto.randomUUID(),updateBlocked=false,onReadiness:(ready:boolean)=>void=()=>{},gate:PreflightGate=noPreflight) {
  const runtime=ManagedRuntime.make(Layer.effect(Launch,makeLaunchWorkflow).pipe(Layer.provide(launchBridgeLayer(request=>invoke('launch_command',{request})))));
  const button=document.getElementById('launch') as HTMLButtonElement;
  const recheck=document.getElementById('inspect-launch') as HTMLButtonElement;
@@ -67,9 +68,11 @@ export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()
  let current:LaunchState={status:null,pending:false,uncertain:true,error:null};let disposed=false;let pending=false;let playing=false;
  let mutation:Promise<void>=Promise.resolve();let revision=-1;
  let inspecting=false;
- const render=()=>{if(disposed)return;button.hidden=!!current.status&&!current.status.installation_id&&!current.status.observation&&!current.status.launcher_update_required;button.disabled=updateBlocked||playing||current.pending||current.uncertain||!current.status?.installation_id||launchBlocked(current.status);
- button.textContent=playing||current.pending?'Starting…':'Play';button.setAttribute('aria-busy',String(playing||current.pending));
- statusLine.textContent=playing?'Starting game…':updateBlocked?'Resolve the launcher update above before playing.':launchText(current);
+ // PD-12: Play runs preflight first; `attention` holds until the next press or a Continue.
+ let checking=false;let attention=false;
+ const render=()=>{if(disposed)return;button.hidden=!!current.status&&!current.status.installation_id&&!current.status.observation&&!current.status.launcher_update_required;button.disabled=updateBlocked||checking||playing||current.pending||current.uncertain||!current.status?.installation_id||launchBlocked(current.status);
+ button.textContent=checking?'Checking…':playing||current.pending?'Starting…':'Play';button.setAttribute('aria-busy',String(checking||playing||current.pending));
+ statusLine.textContent=checking?'Checking what Play needs…':playing?'Starting game…':attention?'Play needs attention: see below.':updateBlocked?'Resolve the launcher update above before playing.':launchText(current);
  const ready=!!current.status&&!current.uncertain&&!current.error&&gameSetupComplete(current.status);
  recheck.disabled=playing||current.pending;recheck.hidden=ready||adoptLine(current)!==null;
  settingsCheck.disabled=playing||current.pending||inspecting;
@@ -83,12 +86,14 @@ export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()
  if(disposed||(play?playing:pending||playing))return mutation;
  if(play)playing=true;else pending=true;render();
  mutation=runtime.runPromise(Effect.flatMap(Launch,s=>Effect.result(play?s.play(uuid()):s.inspect))).then(()=>{}).finally(()=>{if(play)playing=false;else pending=false;render();});return mutation;};
- const click=()=>{if(!button.disabled)void run(true);};const check=()=>{if(!recheck.disabled)void run(false);};
+ const play=()=>{checking=false;attention=false;render();if(!button.disabled)void run(true);};
+ const click=()=>{if(button.disabled)return;checking=true;attention=false;render();
+  void gate('play',play).then(outcome=>{checking=false;attention=outcome!=='proceeded';render();});};const check=()=>{if(!recheck.disabled)void run(false);};
  const inspectSettings=()=>{if(settingsCheck.disabled)return;inspecting=true;render();void run(false).finally(()=>{inspecting=false;render();});};
  button.addEventListener('click',click);recheck.addEventListener('click',check);
  settingsCheck.addEventListener('click',inspectSettings);
  // Observation belongs to the mounted application, including Settings navigation.
  const poll=setInterval(()=>{if(!disposed&&!pending&&!current.uncertain&&!current.error)void run(false);},1000);
  const ready=run(false);
- return {ready,setUpdateBlocked:(blocked:boolean)=>{updateBlocked=blocked;render();},refresh:()=>run(false),settled:()=>mutation,dispose:async()=>{disposed=true;clearInterval(poll);button.removeEventListener('click',click);recheck.removeEventListener('click',check);settingsCheck.removeEventListener('click',inspectSettings);await Effect.runPromise(Fiber.interrupt(watcher));await mutation;await runtime.dispose();}};
+ return {ready,clearAttention:()=>{if(!attention)return;attention=false;render();},setUpdateBlocked:(blocked:boolean)=>{updateBlocked=blocked;render();},refresh:()=>run(false),settled:()=>mutation,dispose:async()=>{disposed=true;clearInterval(poll);button.removeEventListener('click',click);recheck.removeEventListener('click',check);settingsCheck.removeEventListener('click',inspectSettings);await Effect.runPromise(Fiber.interrupt(watcher));await mutation;await runtime.dispose();}};
 }

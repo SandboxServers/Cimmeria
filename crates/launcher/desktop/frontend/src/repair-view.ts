@@ -1,10 +1,11 @@
 import type { InstallViewState, makeInstallWorkflow } from './install-workflow';
 import type { Effect } from 'effect';
 import { displayPath } from './display-path';
+import { noPreflight, type PreflightGate } from './preflight-view';
 type Service = Effect.Success<typeof makeInstallWorkflow>;
 type Action = 'repair'|'recover_repair'|'abandon_repair'|'cleanup_repair';
 /** Settings confirmation is transient; native state alone authorizes mutation. */
-export function repairControls(document:Document, uuid:()=>string, run:(action:(service:Service)=>ReturnType<Service['repair']>)=>unknown) {
+export function repairControls(document:Document, uuid:()=>string, run:(action:(service:Service)=>ReturnType<Service['repair']>)=>unknown,gate:PreflightGate=noPreflight) {
   const get=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T|null;
   let current:InstallViewState;
   let pending:{action:Action,id:string,installationId:string|null,directory:string}|null=null;
@@ -31,7 +32,10 @@ export function repairControls(document:Document, uuid:()=>string, run:(action:(
   };
   on('dismiss-repair',()=>{const action=pending?.action;pending=null;show();get<HTMLButtonElement>(action==='repair'?'repair':action==='recover_repair'?'recover-repair':action==='abandon_repair'?'abandon-repair':'cleanup-repair')?.focus();});
   on('confirm-repair',()=>{const intent=pending;pending=null;show();if(!intent)return;
-    run(service=>intent.action==='repair'?service.repair(intent.id,intent.installationId!):service.repairAction(intent.action,intent.id));});
+    // PD-12: a repair run checks what it needs first; recover, abandon and cleanup do not.
+    const action=intent.action;
+    if(action==='repair')void gate('repair',()=>run(service=>service.repair(intent.id,intent.installationId!)));
+    else run(service=>service.repairAction(action,intent.id));});
   return {request,render(state:InstallViewState,ready:boolean){current=state;const repair=state.status?.repair;
     for(const [id,enabled] of [['repair',!!repair?.target],['recover-repair',repair?.recovery],['abandon-repair',repair?.recovery],['cleanup-repair',repair?.cleanup]] as const){
       const button=get<HTMLButtonElement>(id);if(button){button.disabled=!ready||!enabled;if(id!=='repair')button.hidden=!enabled;}}

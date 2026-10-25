@@ -8,6 +8,7 @@ import { acquireSeedArchive, archiveSelectionVerified, seedArchiveOfferText, see
 import type { Invoke } from './view';
 import { formatBytes, formatDuration, makeRateTracker, type TransferSample } from './transfer-rate';
 import { operationOpen } from './contract';
+import { noPreflight, type PreflightGate } from './preflight-view';
 class Installation extends Context.Service<Installation,Effect.Success<typeof makeInstallWorkflow>>()('launcher/Installation') {}
 const errors:Record<InstallFailure['code'],string>={
   launcher_too_old:'Update the launcher before installing or playing this release. Your game files are preserved.',
@@ -23,7 +24,7 @@ const errors:Record<InstallFailure['code'],string>={
 };
 /** Application lifetime owns observation. Navigating tabs never disposes it. */
 /** `onFinished` runs each time an install, repair, uninstall or cleanup stops running. */
-export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=>crypto.randomUUID(),onFinished:()=>void=()=>{},now:()=>number=()=>performance.now()) {
+export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=>crypto.randomUUID(),onFinished:()=>void=()=>{},now:()=>number=()=>performance.now(),gate:PreflightGate=noPreflight) {
   const runtime=ManagedRuntime.make(Layer.effect(Installation,makeInstallWorkflow).pipe(
     Layer.provide(installBridgeLayer(request=>invoke('install_command',{request}))),
   ));
@@ -117,7 +118,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     get('install-status').textContent=playable&&idleSetup&&!current.error&&!active&&!recovery?'':text;
     primary.setAttribute('aria-busy',String(pending||active));
   };
-  const repairs=repairControls(document,uuid,action=>run(action));
+  const repairs=repairControls(document,uuid,action=>run(action),gate);
   // The operation that last stopped running; undefined until the first status,
   // so one already finished at startup is not reported as just finished.
   let stopped:string|null|undefined;
@@ -204,7 +205,8 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     if(disposed||playable||primary.disabled||primary.hidden||current.status?.runtime_setup)return;
     beginInstall();await mutation;
   };
-  on(primary,beginInstall);
+  // PD-12: a new install runs preflight first; continuing a prepared install does not.
+  on(primary,()=>current.status?.runtime_setup&&current.status.native.operation.operation?beginInstall():void gate('install',()=>{if(!primary.disabled&&!primary.hidden)beginInstall();}));
   on(cancel,()=>{journeyInstallId=null;const id=current.status?.native.operation.operation?.id;if(id)void run(service=>service.cancel(id));});
   on(resume,()=>{const id=current.status?.native.operation.operation?.id;if(id)void run(service=>service.resume(id));});
   on(recheck,()=>{const operation=current.status?.native.operation.operation;

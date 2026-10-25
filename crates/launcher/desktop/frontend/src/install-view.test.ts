@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { parseHTML } from 'linkedom';
 import { mountInstall } from './install-view';
 import type { InstallRequest, InstallStatus } from './install-workflow';
+import { mountPreflight } from './preflight-view';
+import { preflightWorkflow } from './preflight-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
 const id='d539d049-61b7-4c82-b3d7-cb9b7a991adc';
 const initial=():InstallStatus=>({schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null,native:{schema_version:1,
@@ -379,4 +381,60 @@ test('a phase change or an idle gap restarts the rate window',async()=>{
   await step(4000,{...dl(40*MiB,SEED),native:{...initial().native,operation:{schema_version:1,revision:2,operation:{id,kind:'install',intent_digest:Array(32).fill(0),state:'cancelled'}}}});
   assert.doesNotMatch(await step(5000,dl(49*MiB,SEED)),/\/s/);
  }finally{await app.dispose();}
+});
+
+// PD-12: the install primary and a repair run check their dependencies first.
+const blockingFolder=(operation:string)=>({schema_version:1,operation,ready:false,checks:[{id:'game_folder',status:'missing',action:'manual',failure:'game_folder_not_writable',blocking:true,bytes_needed:null,bytes_free:null,download_bytes:null}]});
+const allReady=(operation:string)=>({schema_version:1,operation,ready:true,checks:[]});
+function gatedInstall(status:()=>InstallStatus,onRequest:(request:InstallRequest)=>void=()=>{},preflight?:(request:{command:string;operation:string})=>Promise<unknown>){
+ const ui=dom();const sent:string[]=[];let ready=false;
+ const invoke=async(command:string,args?:Record<string,unknown>)=>{
+  if(command==='preflight_command'){const request=args!.request as {command:string;operation:string};sent.push(`${request.command}:${request.operation}`);if(preflight)return preflight(request);return ready?allReady(request.operation):blockingFolder(request.operation);}
+  const request=args!.request as InstallRequest;sent.push(request.command);onRequest(request);return status();};
+ const panel=mountPreflight(ui.document,preflightWorkflow(invoke));
+ const app=mountInstall(ui.document,invoke,()=>id,undefined,undefined,panel.gate);
+ const settle=async()=>{await panel.settled();await app.settled();await flush();};
+ return {ui,app,panel,sent,settle,allow:()=>{ready=true;},dispose:async()=>{await panel.dispose();await app.dispose();}};
+}
+test('Install checks preflight first: a blocking report sends no install, a ready one sends exactly one',async()=>{
+ const g=gatedInstall(()=>initial());
+ try{await g.app.ready;await flush();
+  g.ui.click('install');
+  assert.equal(g.ui.get('preflight-panel').hidden,false,'the first press shows the check at once');
+  await g.settle();
+  assert.equal(g.sent.filter(c=>c==='install').length,0);assert.ok(g.sent.includes('inspect:install'));
+  assert.match(g.ui.get('preflight-summary').textContent!,/Fix these before you install:/);
+  g.allow();g.ui.click('install');await g.settle();
+  assert.equal(g.sent.filter(c=>c==='install').length,1);assert.equal(g.ui.get('preflight-panel').hidden,true);
+ }finally{await g.dispose();}
+});
+test('a repair run checks preflight first, and the panel takes over from Settings',async()=>{
+ const status:InstallStatus={...initial(),repair:{target:{installation_id:'owner',directory:'/fixture'},recovery:false,cleanup:false}};
+ const g=gatedInstall(()=>status);
+ try{await g.app.ready;await flush();
+  g.ui.get('gear').hidden=false;g.ui.get('play').hidden=true;
+  g.ui.click('repair');g.ui.click('confirm-repair');await g.settle();
+  assert.equal(g.sent.filter(c=>c==='repair').length,0);assert.ok(g.sent.includes('inspect:repair'));
+  assert.equal(g.ui.get('play').hidden,false,'the panel is on the home view, so Settings gives way to it');
+  assert.equal(g.ui.get('preflight-panel').hidden,false);
+  g.allow();g.ui.click('repair');g.ui.click('confirm-repair');await g.settle();
+  assert.equal(g.sent.filter(c=>c==='repair').length,1);
+ }finally{await g.dispose();}
+});
+test('a repair confirmed while a panel install is running is never dropped silently',async()=>{
+ const status:InstallStatus={...initial(),repair:{target:{installation_id:'owner',directory:'/fixture'},recovery:false,cleanup:false}};
+ const rosetta={schema_version:1,operation:'repair',ready:false,checks:[{id:'rosetta',status:'missing',action:'auto_install',failure:'rosetta_missing',blocking:true,bytes_needed:null,bytes_free:null,download_bytes:null}]};
+ // The install stays pending until the test ends; it is released before dispose, which awaits it.
+ let release!:(value:unknown)=>void;
+ const g=gatedInstall(()=>status,()=>{},request=>request.command==='install'?new Promise(resolve=>{release=resolve;}):Promise.resolve(rosetta));
+ try{await g.app.ready;await flush();
+  g.ui.get('gear').hidden=false;g.ui.get('play').hidden=true;
+  g.ui.click('repair');g.ui.click('confirm-repair');await g.settle();
+  g.ui.click('preflight-install-rosetta');
+  g.ui.get('gear').hidden=false;g.ui.get('play').hidden=true;
+  g.ui.click('repair');g.ui.click('confirm-repair');await g.app.settled();await flush();
+  assert.equal(g.sent.filter(c=>c==='repair').length,0);
+  assert.equal(g.ui.get('play').hidden,false,'the panel is on the home view, so Settings gives way to it');
+  assert.match(g.ui.get('preflight-status').textContent!,/press Repair again/);
+ }finally{release?.(rosetta);await g.dispose();}
 });
