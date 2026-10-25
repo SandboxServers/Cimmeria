@@ -188,7 +188,12 @@ pub(super) fn grant(env: &Env, identity: VerifiedIdentity) -> String {
 
 /// Sends a JSON `POST` to `uri` from `peer` and returns the status and the
 /// parsed body (`Null` when there is none).
-async fn post_from(env: &Env, peer: &str, uri: &str, body: Value) -> (StatusCode, Value) {
+pub(super) async fn post_from(
+    env: &Env,
+    peer: &str,
+    uri: &str,
+    body: Value,
+) -> (StatusCode, Value) {
     let peer: SocketAddr = peer.parse().expect("peer address");
     let request = Request::builder()
         .method("POST")

@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use cimmeria_test_support::require_db_or_skip;
 use serde_json::json;
 
-use super::tests_live_db::{clean, grant, harness, post_json, verified};
+use super::tests_live_db::{clean, grant, harness, post_from, post_json, verified};
 
 /// A name the grammar refuses gets `invalid_request` before any credential is
 /// checked (the answer without the guard is 401 `invalid_credentials`).
@@ -34,7 +34,9 @@ async fn live_db_link_existing_refuses_a_malformed_name() {
 }
 
 /// The global link-code cap: 50 redeems are charged whatever their answer, and
-/// the 51st is refused with 429 before it is redeemed.
+/// the 51st is refused with 429 before it is redeemed. Each redeem comes from its
+/// own peer, since the per-IP `LinkExistingIp` limit (5 per 15 min) also applies
+/// to the code path and would otherwise answer first.
 #[tokio::test]
 async fn live_db_link_code_global_cap() {
     let pool = require_db_or_skip!();
@@ -42,8 +44,10 @@ async fn live_db_link_code_global_cap() {
     let env = harness(&pool);
     for i in 0..50 {
         let g = grant(&env, verified("dev", &format!("ct26-cap-{i}"), None, false));
-        let (status, body) = post_json(
+        let peer = format!("203.0.113.{}:41000", i + 1);
+        let (status, body) = post_from(
             &env,
+            &peer,
             "/link/existing",
             json!({
                 "link_grant": g,
@@ -55,8 +59,9 @@ async fn live_db_link_code_global_cap() {
         assert_eq!(status, StatusCode::UNAUTHORIZED, "redeem {i}: {body}");
     }
     let g = grant(&env, verified("dev", "ct26-cap-51", None, false));
-    let (status, body) = post_json(
+    let (status, body) = post_from(
         &env,
+        "203.0.113.51:41000",
         "/link/existing",
         json!({
             "link_grant": g,
