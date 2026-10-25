@@ -249,6 +249,7 @@ async fn refresh_grant(
                     .await
                     .map_err(ApiError::from_repo)?;
                 state.ctx.stores.access.revoke_account(account_id);
+                state.deps.launch_tickets.revoke_account(account_id);
                 tracing::Span::current().record("account_id", account_id);
                 note("refused");
                 return Ok(ApiError::AccountDisabled.into_response());
@@ -346,20 +347,23 @@ pub async fn logout(
     StatusCode::NO_CONTENT.into_response()
 }
 
-/// Revokes the family of `presented` and the family's access tokens.
+/// Revokes the family of `presented`, the family's access tokens and the
+/// account's launch ticket.
 async fn end_session(state: &RouteState, pool: &PgPool, presented: &str) -> Result<(), ApiError> {
     let digest = Sha256::digest(presented.as_bytes());
-    let family: Option<(String,)> =
-        sqlx::query_as("SELECT family_id FROM auth_refresh_token WHERE token_hash = $1")
-            .bind(&digest[..])
-            .fetch_optional(pool)
-            .await
-            .map_err(ApiError::from_repo)?;
+    let family: Option<(String, i32)> = sqlx::query_as(
+        "SELECT family_id, account_id FROM auth_refresh_token WHERE token_hash = $1",
+    )
+    .bind(&digest[..])
+    .fetch_optional(pool)
+    .await
+    .map_err(ApiError::from_repo)?;
     refresh::revoke_token(pool, presented, Utc::now())
         .await
         .map_err(ApiError::from_repo)?;
-    if let Some((family_id,)) = family {
+    if let Some((family_id, account_id)) = family {
         state.ctx.stores.access.revoke_family(&family_id);
+        state.deps.launch_tickets.revoke_account(account_id as u32);
     }
     Ok(())
 }
