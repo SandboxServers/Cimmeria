@@ -181,6 +181,7 @@ pub(super) async fn handle_user_auth(
             state.launch_tickets.revoke_account(account_id);
             tracing::warn!(
                 account_id,
+                account_name = %req.account_name,
                 reason = "ticket_requires_tls",
                 "launch ticket presented over plain HTTP; ticket revoked"
             );
@@ -213,6 +214,7 @@ pub(super) async fn handle_user_auth(
                 state.launch_tickets.revoke_account(ticket_id);
                 tracing::info!(
                     account_id = ticket_id,
+                    account_name = %req.account_name,
                     reason = "ticket_account_missing",
                     "Launch ticket names an account with no row; ticket revoked"
                 );
@@ -223,6 +225,7 @@ pub(super) async fn handle_user_auth(
                 state.launch_tickets.revoke_account(ticket_id);
                 tracing::info!(
                     account_id = ticket_id,
+                    account_name = %req.account_name,
                     reason = "ticket_account_disabled",
                     "Launch ticket account is disabled; ticket revoked"
                 );
@@ -230,7 +233,12 @@ pub(super) async fn handle_user_auth(
                 return login_error(5, "This account has been suspended.");
             }
             Err(AuthCredError::DbError(e)) => {
-                tracing::error!(account_id = ticket_id, error = %e, "ticket account lookup failed");
+                tracing::error!(
+                    account_id = ticket_id,
+                    account_name = %req.account_name,
+                    error = %e,
+                    "ticket account lookup failed"
+                );
                 audit!(LoginOutcome::DbError);
                 return login_error(10, "A request to the database server failed.");
             }
