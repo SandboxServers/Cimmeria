@@ -490,4 +490,56 @@ mod tests {
             "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
         );
     }
+
+    #[test]
+    fn revoke_account_ends_every_token_of_the_account() {
+        let store = AccessTokens::default();
+        let t0 = Instant::now();
+        let a1 = store.mint(7, "fam-a", true, t0);
+        let a2 = store.mint(7, "fam-b", false, t0);
+        let other = store.mint(8, "fam-c", true, t0);
+        store.revoke_account(7);
+        assert!(store.check(&a1, t0).is_none());
+        assert!(store.check(&a2, t0).is_none());
+        assert!(store.check(&other, t0).is_some(), "another account is kept");
+    }
+
+    #[test]
+    fn stores_reap_drops_expired_records_and_keeps_live_ones() {
+        let stores = Stores::default();
+        let t0 = Instant::now();
+        let redirect = "http://127.0.0.1:4000/cb";
+        let challenge = pkce_challenge("launcher-verifier");
+        let state = stores.pending.insert(pending("dev"), t0);
+        let code = stores
+            .handoff
+            .issue(outcome("s1"), &challenge, redirect, t0);
+        let token = stores.access.mint(7, "fam-a", true, t0);
+        let grant = stores.grants.issue(identity("s2"), t0);
+        // 5 min on: the 60 s handoff code is spent-by-age; the rest are live.
+        stores.reap(t0 + Duration::from_secs(5 * 60));
+        assert!(stores
+            .handoff
+            .codes
+            .lock()
+            .expect("lock")
+            .get(&code)
+            .is_none());
+        assert!(stores
+            .pending
+            .inner
+            .lock()
+            .expect("lock")
+            .by_state
+            .contains_key(&state));
+        assert!(stores.access.check(&token, t0).is_some());
+        assert!(stores.grants.take(&grant, t0).is_some());
+        // 16 min on: everything is past its life.
+        let late = t0 + Duration::from_secs(16 * 60);
+        stores.reap(late);
+        let p = stores.pending.inner.lock().expect("lock");
+        assert!(p.by_state.is_empty() && p.by_age.is_empty());
+        drop(p);
+        assert!(stores.access.by_hash.lock().expect("lock").is_empty());
+    }
 }
