@@ -272,10 +272,12 @@ impl AccessTokens {
         locked(&self.by_hash).retain(|_, grant| grant.account_id != account_id);
     }
 
-    /// Ends every token of `account_id` except `keep_token`, the caller's own.
-    pub fn revoke_account_except(&self, account_id: u32, keep_token: &str) {
-        let keep = hash_of(keep_token);
-        locked(&self.by_hash).retain(|hash, grant| grant.account_id != account_id || *hash == keep);
+    /// Ends every token of `account_id` except those of `keep_family`, the
+    /// caller's own family. A family keeps all its access tokens, so an older
+    /// token of the caller's sign-in still works.
+    pub fn revoke_account_except(&self, account_id: u32, keep_family: &str) {
+        locked(&self.by_hash)
+            .retain(|_, grant| grant.account_id != account_id || grant.family_id == keep_family);
     }
 
     /// Drops the tokens past their life.
@@ -640,16 +642,21 @@ mod tests {
     }
 
     #[test]
-    fn revoke_account_except_keeps_only_the_callers_token() {
+    fn revoke_account_except_keeps_the_callers_family() {
         let store = AccessTokens::default();
         let t0 = Instant::now();
         let own = store.mint(7, "fam-a", true, t0);
+        let own_older = store.mint(7, "fam-a", false, t0);
         let other_device = store.mint(7, "fam-b", false, t0);
         let other_account = store.mint(8, "fam-c", true, t0);
-        store.revoke_account_except(7, &own);
+        store.revoke_account_except(7, "fam-a");
         assert!(
             store.check(&own, t0).is_some(),
             "the caller's token is kept"
+        );
+        assert!(
+            store.check(&own_older, t0).is_some(),
+            "an older token of the caller's family is kept"
         );
         assert!(store.check(&other_device, t0).is_none());
         assert!(
