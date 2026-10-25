@@ -57,6 +57,7 @@ pub(super) const IN_PROCESS_CRATES: &[&str] = &[
     "lab-mcp",
     "mercury",
     "minigame",
+    "identity",
     "names",
     "observability",
     "occluder",
