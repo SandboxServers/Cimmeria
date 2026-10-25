@@ -293,6 +293,25 @@ impl LinkGrants {
         live(issued, now, LINK_GRANT_LIFE).then_some(identity)
     }
 
+    /// Returns a copy of the identity behind `grant` without spending it, while
+    /// it is inside [`LINK_GRANT_LIFE`]. A link answers its refusals with the
+    /// grant still held, so a wrong password does not burn it.
+    pub fn peek(&self, grant: &str, now: Instant) -> Option<VerifiedIdentity> {
+        let grants = locked(&self.grants);
+        let (identity, issued) = grants.get(grant)?;
+        // `VerifiedIdentity` is not `Clone` (its `Debug` hides the subject and
+        // email), so the copy is made field by field.
+        live(*issued, now, LINK_GRANT_LIFE).then(|| VerifiedIdentity {
+            provider: identity.provider.clone(),
+            issuer: identity.issuer.clone(),
+            subject: identity.subject.clone(),
+            display_name: identity.display_name.clone(),
+            email: identity.email.clone(),
+            email_verified: identity.email_verified,
+            provider_account_created_ms: identity.provider_account_created_ms,
+        })
+    }
+
     /// Drops the grants past their life.
     pub fn reap(&self, now: Instant) {
         locked(&self.grants).retain(|_, (_, issued)| live(*issued, now, LINK_GRANT_LIFE));
@@ -481,6 +500,21 @@ mod tests {
         let grant = store.issue(identity("s2"), t0);
         assert!(store.take(&grant, t0).is_some());
         assert!(store.take(&grant, t0).is_none(), "second take is refused");
+    }
+
+    #[test]
+    fn link_grant_peek_keeps_the_grant() {
+        let store = LinkGrants::default();
+        let t0 = Instant::now();
+        let grant = store.issue(identity("s3"), t0);
+        let subject = |store: &LinkGrants, at: Instant| store.peek(&grant, at).map(|i| i.subject);
+        assert_eq!(subject(&store, t0), Some("s3".to_owned()));
+        assert_eq!(subject(&store, t0), Some("s3".to_owned()), "peek spends nothing");
+        assert!(store.take(&grant, t0).is_some(), "take still works after peeks");
+        assert!(store.peek(&grant, t0).is_none(), "a taken grant is gone");
+        let late = store.issue(identity("s4"), t0);
+        let after = t0 + LINK_GRANT_LIFE;
+        assert!(store.peek(&late, after).is_none(), "gone after 10 min");
     }
 
     #[test]

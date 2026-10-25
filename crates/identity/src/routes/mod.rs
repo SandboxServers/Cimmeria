@@ -7,6 +7,7 @@
 
 pub mod ctx;
 pub mod error;
+pub mod link;
 pub mod signin;
 pub mod token;
 
@@ -39,7 +40,9 @@ pub fn router(deps: AuthRouteDeps, ctx: IdentityCtx) -> Router {
         .route("/authorize", get(signin::authorize))
         .route("/callback/{provider}", get(signin::callback))
         .route("/token", post(token::token))
-        .route("/logout", post(token::logout));
+        .route("/logout", post(token::logout))
+        .route("/link/new", post(link::new))
+        .route("/link/existing", post(link::existing));
     if developer_mode {
         app = app.route(
             "/dev-mock/authorize",
