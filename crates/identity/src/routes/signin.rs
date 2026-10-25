@@ -9,6 +9,7 @@
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Instant;
 
+use axum::extract::rejection::QueryRejection;
 use axum::extract::{ConnectInfo, Form, Path, Query, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
@@ -105,7 +106,7 @@ pub async fn providers(State(state): State<RouteState>) -> Response {
 pub async fn authorize(
     State(state): State<RouteState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    Query(query): Query<AuthorizeQuery>,
+    query: Result<Query<AuthorizeQuery>, QueryRejection>,
 ) -> Response {
     let span = tracing::info_span!(
         "auth.idp.authorize",
@@ -116,6 +117,11 @@ pub async fn authorize(
     );
     let started = Instant::now();
     let ip = client_ip(ConnectInfo(peer));
+    let Ok(Query(query)) = query else {
+        let response = ApiError::InvalidRequest.into_response();
+        record_outcome(&span, started, &response);
+        return response;
+    };
     let response = match start_authorize(&state, &ip, query)
         .instrument(span.clone())
         .await
@@ -167,7 +173,14 @@ async fn start_authorize(
         .cloned()
         .ok_or(ApiError::UnknownProvider)?;
     tracing::Span::current().record("provider", running.id().as_str());
-    running.prepare().await.map_err(|_| ApiError::Unavailable)?;
+    running.prepare().await.map_err(|error| {
+        tracing::warn!(
+            provider = running.id().as_str(),
+            reason = error.reason(),
+            "auth.idp.prepare_failed"
+        );
+        ApiError::Unavailable
+    })?;
 
     let verifier = random_b64url(32);
     let server_challenge = pkce_challenge(&verifier);
@@ -194,7 +207,7 @@ async fn start_authorize(
 pub async fn callback(
     State(state): State<RouteState>,
     Path(provider): Path<String>,
-    Query(query): Query<CallbackQuery>,
+    query: Result<Query<CallbackQuery>, QueryRejection>,
 ) -> Response {
     let span = tracing::info_span!(
         "auth.idp.callback",
@@ -204,9 +217,14 @@ pub async fn callback(
         latency_ms = tracing::field::Empty,
     );
     let started = Instant::now();
-    let response = complete_callback(&state, &provider, query)
-        .instrument(span.clone())
-        .await;
+    let response = match query {
+        Ok(Query(query)) => {
+            complete_callback(&state, &provider, query)
+                .instrument(span.clone())
+                .await
+        }
+        Err(_) => expired_page(),
+    };
     record_outcome(&span, started, &response);
     response
 }
@@ -224,17 +242,20 @@ async fn complete_callback(state: &RouteState, provider: &str, query: CallbackQu
         _ => return expired_page(),
     };
     tracing::Span::current().record("provider", provider);
-    let refused = |error: &str| {
-        redirect_to(
-            &pending.redirect_uri,
-            &[("error", error), ("state", pending.launcher_state.as_str())],
+    let refused = |error: &str, reason: &'static str| {
+        with_reason(
+            redirect_to(
+                &pending.redirect_uri,
+                &[("error", error), ("state", pending.launcher_state.as_str())],
+            ),
+            reason,
         )
     };
     if query.error.is_some() {
-        return refused("access_denied");
+        return refused("access_denied", "provider_error");
     }
     let Some(code) = query.code.as_deref() else {
-        return refused("access_denied");
+        return refused("access_denied", "no_code");
     };
     let Some(running) = state.ctx.providers.get(provider).cloned() else {
         return expired_page();
@@ -262,19 +283,29 @@ async fn complete_callback(state: &RouteState, provider: &str, query: CallbackQu
                 ],
             )
         }
-        Err(ProviderError::Denied) => refused("access_denied"),
-        Err(_) => refused("server_error"),
+        Err(ProviderError::Denied) => refused("access_denied", "denied"),
+        Err(error) => {
+            tracing::warn!(
+                provider,
+                reason = error.reason(),
+                "auth.idp.exchange_failed"
+            );
+            refused("server_error", error.reason())
+        }
     }
 }
 
 /// `GET /dev-mock/authorize`: the developer-mode identity form (C4).
 pub async fn dev_mock_form(
     State(state): State<RouteState>,
-    Query(query): Query<DevMockQuery>,
+    query: Result<Query<DevMockQuery>, QueryRejection>,
 ) -> Response {
     if state.ctx.providers.dev_mock().is_none() {
         return ApiError::NotFound.into_response();
     }
+    let Ok(Query(query)) = query else {
+        return ApiError::InvalidRequest.into_response();
+    };
     let Some(server_state) = query.state.as_deref().filter(|s| valid_state(s)) else {
         return ApiError::InvalidRequest.into_response();
     };
@@ -385,16 +416,31 @@ fn expired_page() -> Response {
         .into_response()
 }
 
+/// The refusal reason a route attaches to a response. It is never sent to
+/// the client; `record_outcome` reads it for the span.
+#[derive(Clone, Copy)]
+struct Reason(&'static str);
+
+/// Attaches the fixed refusal `reason` to `response`.
+fn with_reason(mut response: Response, reason: &'static str) -> Response {
+    response.extensions_mut().insert(Reason(reason));
+    response
+}
+
 /// Records the span's outcome, reason and latency from the response.
 fn record_outcome(span: &tracing::Span, started: Instant, response: &Response) {
     let status = response.status();
-    let outcome = if status.is_client_error() || status.is_server_error() {
+    let reason = response.extensions().get::<Reason>().map(|r| r.0);
+    let outcome = if reason.is_some() || status.is_client_error() || status.is_server_error() {
         "refused"
     } else {
         "ok"
     };
     span.record("outcome", outcome);
-    span.record("reason", status.canonical_reason().unwrap_or("unknown"));
+    span.record(
+        "reason",
+        reason.unwrap_or_else(|| status.canonical_reason().unwrap_or("unknown")),
+    );
     span.record("latency_ms", started.elapsed().as_millis() as u64);
 }
 

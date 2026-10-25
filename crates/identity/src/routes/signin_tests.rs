@@ -37,6 +37,11 @@ const REDIRECT: &str = "http://127.0.0.1:5000/cb";
 const DISCORD_TABLE: &str = r#"
 public_base_url = "https://play.example.org"
 
+[links]
+website = "https://example.org"
+account = "https://example.org/account"
+forums = "https://example.org/forums"
+
 [[provider]]
 id = "discord"
 kind = "discord"
@@ -111,6 +116,21 @@ fn harness(base: &str, developer_mode: bool, idp_disabled: bool) -> Harness {
 async fn get(router: &Router, uri: &str) -> Response {
     let mut req = Request::get(uri)
         .body(Body::empty())
+        .expect("the test URI is valid");
+    req.extensions_mut()
+        .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 40000))));
+    router
+        .clone()
+        .oneshot(req)
+        .await
+        .expect("the router is infallible")
+}
+
+/// Sends a form `POST` of `body` to `uri` from the loopback peer.
+async fn post_form(router: &Router, uri: &str, body: &str) -> Response {
+    let mut req = Request::post(uri)
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(body.to_owned()))
         .expect("the test URI is valid");
     req.extensions_mut()
         .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 40000))));
@@ -219,7 +239,12 @@ async fn providers_lists_configured_providers_and_links() {
             "providers": [
                 {"id": "discord", "display_name": "Discord"},
                 {"id": "dev", "display_name": "Developer sign-in"}
-            ]
+            ],
+            "links": {
+                "website": "https://example.org",
+                "account": "https://example.org/account",
+                "forums": "https://example.org/forums"
+            }
         })
     );
 }
@@ -257,6 +282,13 @@ async fn authorize_refuses_bad_state_and_challenge() {
         let resp = get(&h.router, &authorize_uri(&overrides)).await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{overrides:?}");
     }
+    let resp = get(
+        &h.router,
+        "/authorize?state=aaaaaaaaaaaaaaaa&state=bbbbbbbbbbbbbbbb",
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(body_text(resp).await.contains("invalid_request"));
 }
 
 #[tokio::test]
@@ -274,6 +306,14 @@ async fn authorize_redirects_to_the_provider() {
         "the two PKCE legs stay separate"
     );
     assert!(pair(&pairs, "code_challenge").is_some());
+    assert_ne!(
+        pair(&pairs, "code_challenge"),
+        Some(pkce_challenge(VERIFIER).as_str())
+    );
+    assert_eq!(
+        pair(&pairs, "redirect_uri"),
+        Some("https://play.example.org/auth/v1/callback/discord")
+    );
 }
 
 #[tokio::test]
@@ -374,4 +414,71 @@ async fn dev_mock_absent_without_developer_mode() {
     )
     .await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn callback_exchange_failure_redirects_server_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/oauth2/token"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+    let h = harness(&server.uri(), false, false);
+    let state = server_state(&h.router).await;
+    let uri = format!("/callback/discord?code=code&state={state}");
+    let resp = get(&h.router, &uri).await;
+    assert_eq!(resp.status(), StatusCode::FOUND);
+    let target = location(&resp);
+    assert!(target.starts_with(REDIRECT), "{target}");
+    let pairs = query_pairs(&target);
+    assert_eq!(pair(&pairs, "error"), Some("server_error"));
+    assert_eq!(pair(&pairs, "state"), Some(LAUNCHER_STATE));
+    // The pending record is spent by the first callback, whatever it answered.
+    let resp = get(&h.router, &uri).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn dev_mock_form_escapes_and_round_trips() {
+    let server = MockServer::start().await;
+    let h = harness(&server.uri(), true, false);
+    let resp = get(&h.router, &authorize_uri(&[("provider", "dev")])).await;
+    assert_eq!(resp.status(), StatusCode::FOUND);
+    let pairs = query_pairs(&location(&resp));
+    let state = pair(&pairs, "state").expect("a server state").to_owned();
+
+    let resp = get(&h.router, &format!("/dev-mock/authorize?state={state}")).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(body_text(resp).await.contains(&state));
+    let resp = get(&h.router, "/dev-mock/authorize?state=%3Cscript%3Ex").await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(!body_text(resp).await.contains("<script>"));
+
+    // Refused identities mint nothing, so the same state stays usable.
+    let bad_subject = format!("state={state}&subject=bad%20subject&display_name=Ada");
+    let resp = post_form(&h.router, "/dev-mock/authorize", &bad_subject).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let bad_email = format!("state={state}&subject=ada&email=not-an-email");
+    let resp = post_form(&h.router, "/dev-mock/authorize", &bad_email).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let body =
+        format!("state={state}&subject=ada&display_name=Ada&email=ada%40example.org&verified=on");
+    let resp = post_form(&h.router, "/dev-mock/authorize", &body).await;
+    assert_eq!(resp.status(), StatusCode::FOUND);
+    let target = location(&resp);
+    assert!(
+        target.starts_with("/auth/v1/callback/dev?code="),
+        "{target}"
+    );
+    let callback = target
+        .strip_prefix("/auth/v1")
+        .expect("the mock redirects to its callback");
+    let resp = get(&h.router, callback).await;
+    assert_eq!(resp.status(), StatusCode::FOUND);
+    let target = location(&resp);
+    assert!(target.starts_with(REDIRECT), "{target}");
+    let pairs = query_pairs(&target);
+    assert_eq!(pair(&pairs, "state"), Some(LAUNCHER_STATE));
 }
