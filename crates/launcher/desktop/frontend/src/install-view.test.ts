@@ -411,6 +411,18 @@ test('the rate restarts when the phase changes from unpacking to expansion',asyn
  }finally{await app.dispose();}
 });
 
+test('a running repair names its copy, check and expansion phases instead of the generic line',async()=>{
+ const repairing=(progress:InstallStatus['progress']):InstallStatus=>({...initial(),progress,native:{...initial().native,operation:{schema_version:1,revision:2,
+  operation:{id,kind:'repair',intent_digest:Array(32).fill(0),state:'running'}}}});
+ const ui=dom();let t=0;let status=repairing({phase:'expansion',current:0,total:2});
+ const app=mountInstall(ui.document,async()=>status,()=>id,()=>{},()=>t);
+ const step=async(ms:number,next:InstallStatus)=>{t=ms;status=next;await app.refresh();await flush();return ui.get('install-status').textContent!;};
+ try{await app.ready;await flush();
+  assert.match(await step(1000,repairing({phase:'expansion',current:1,total:2})),/^Expanding game files… 50%/);
+  assert.equal(await step(2000,repairing({phase:'check',current:0,total:0})),'Reading the archive index…');
+ }finally{await app.dispose();}
+});
+
 test('the install area shows the saved game folder; Change shows a new one and a cancelled dialog changes nothing',async()=>{
  const ui=dom();let status=initial();let picked:string|null='/games/second';let chooses=0;
  const app=mountInstall(ui.document,async()=>status,()=>id,()=>{},undefined,async()=>{

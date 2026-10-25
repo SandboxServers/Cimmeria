@@ -460,5 +460,5 @@ fn complete(handle: File, file: &PlannedFile, path: &Path, progress: &Progress<'
     let done = progress.done.fetch_add(1, Ordering::Relaxed) + 1;
     progress
         .sink
-        .report("expanding cabinets", done, progress.total, path);
+        .report(super::progress::CABINET_STEP, done, progress.total, path);
 }

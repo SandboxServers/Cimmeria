@@ -210,10 +210,10 @@ console.log('PASS: observed compatibility recovery requires an explicit click, b
 // Prints one PASS/FAIL line per row of the install copy table and exits 1 on a FAIL.
 const MiB=1024*1024;
 const phaseFlush=()=>new Promise(resolve=>setImmediate(resolve));
-function runningWith(progress) {
+function runningWith(progress,kind='install') {
   return {schema_version:1,install_supported:true,can_resume:false,can_reconcile:false,can_retry:false,uninstall:null,runtime_setup:null,outcome:null,progress,
     native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed'],launcher:{version:'0.1.0',tag:null},
-      operation:{schema_version:1,revision:2,operation:{id,kind:'install',intent_digest:Array(32).fill(0),state:'running'}},
+      operation:{schema_version:1,revision:2,operation:{id,kind,intent_digest:Array(32).fill(0),state:'running'}},
       preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed',width:1024,height:768}}}};
 }
 // Each step: the fake clock in ms, the engine event, and for a table row the row name and its exact line.
@@ -237,15 +237,20 @@ const downloadSequence=[
   {at:7000,progress:{phase:'expansion',current:0,total:50}},
   {at:8000,progress:{phase:'expansion',current:5,total:50},row:'expansion',expect:'Expanding game files… 10% · 5 files/s · about 9 s left'},
 ];
+// A repair runs the same install pipeline, so it reports the same phases under its own operation kind.
+const repairSequence=[
+  {at:0,progress:{phase:'expansion',current:0,total:2}},
+  {at:1000,progress:{phase:'expansion',current:1,total:2},row:'repair expansion',expect:'Expanding game files… 50% · 1 files/s · about 1 s left'},
+];
 // Mounts a fresh install view, feeds the sequence on the fake clock, and returns the status line after each step.
-async function playPhases(steps) {
-  const {document}=parseHTML(html);let t=0;let current=runningWith(steps[0].progress);
+async function playPhases(steps,kind='install') {
+  const {document}=parseHTML(html);let t=0;let current=runningWith(steps[0].progress,kind);
   const app=mountInstall(document,async()=>current,()=>id,()=>{},()=>t);
   const lines=[];
   try {
     await app.ready;await phaseFlush();
     for (const step of steps) {
-      t=step.at;current=runningWith(step.progress);await app.refresh();await phaseFlush();
+      t=step.at;current=runningWith(step.progress,kind);await app.refresh();await phaseFlush();
       lines.push(document.getElementById('install-status').textContent);
     }
   } finally {await app.dispose();}
@@ -254,7 +259,8 @@ async function playPhases(steps) {
 const rowResults=new Map();
 const localLines=await playPhases(localSequence);
 const downloadLines=await playPhases(downloadSequence);
-for (const [steps,lines] of [[localSequence,localLines],[downloadSequence,downloadLines]]) {
+const repairLines=await playPhases(repairSequence,'repair');
+for (const [steps,lines] of [[localSequence,localLines],[downloadSequence,downloadLines],[repairSequence,repairLines]]) {
   steps.forEach((step,i)=>{
     if (!step.row) return;
     const ok=lines[i]===step.expect;
@@ -265,7 +271,7 @@ for (const [steps,lines] of [[localSequence,localLines],[downloadSequence,downlo
 // A local archive has no download hash pass, so its sequence must never say "Checking the download".
 rowResults.set('local never checks the download',!localLines.some(line=>line.includes('Checking the download')));
 let phaseFailures=0;
-for (const row of ['download','copy','check, total > 0','check, total 0','extraction','expansion','local never checks the download']) {
+for (const row of ['download','copy','check, total > 0','check, total 0','extraction','expansion','repair expansion','local never checks the download']) {
   const ok=rowResults.get(row)===true;
   if (!ok) phaseFailures++;
   console.log(`${ok?'PASS':'FAIL'} install copy: ${row}`);

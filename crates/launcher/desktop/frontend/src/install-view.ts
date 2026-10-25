@@ -98,7 +98,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     else if(pending)text='Checking installation status…';
     else if(status){
       if(operation?.kind==='launch')text='';
-      else if(operation?.kind==='repair')text=recovery?'Repair needs recovery. In Settings, finish checkpointed replacement or abandon preparation. Unknown helper outcomes stay blocked; preserve files and restart to recheck.':active?(operation.state==='cancel_requested'?'Cancellation requested. Waiting for repair to stop safely.':status.progress?.phase==='download'?progressLine('Downloading repair content…',status.progress,transfer):status.progress?.phase==='extraction'?progressLine('Reconstructing game content…',status.progress,transfer):'Preparing or committing repair…'):operation.state==='succeeded'?repairSuccess(status.repair?.backup):operation.state==='cancelled'?'Repair cancelled. The old game and retained staging files are preserved.':'Repair stopped. Recheck status; retained files are preserved.';
+      else if(operation?.kind==='repair')text=recovery?'Repair needs recovery. In Settings, finish checkpointed replacement or abandon preparation. Unknown helper outcomes stay blocked; preserve files and restart to recheck.':active?(operation.state==='cancel_requested'?'Cancellation requested. Waiting for repair to stop safely.':status.progress?repairPhaseLine(status.progress,transfer):'Preparing or committing repair…'):operation.state==='succeeded'?repairSuccess(status.repair?.backup):operation.state==='cancelled'?'Repair cancelled. The old game and retained staging files are preserved.':'Repair stopped. Recheck status; retained files are preserved.';
       else if(removed)text='Game uninstalled. You can install it again when ready.';
       else if(canPrepare)text='Game content is ready. Continue installation to check compatibility.';
       else if(runtimeSetup)text=recovery?(status.can_reconcile?'A saved compatibility result is available. Recover setup to finish checking its state.':'Compatibility setup was interrupted. Files are preserved; recovery requires inspection.'):active?(operation?.state==='cancel_requested'?'Cancellation requested. Waiting for compatibility setup to stop safely.':'Checking game compatibility…'):operation?.state==='succeeded'?'Prerequisites checked. Graphics and Play still need validation.':'Compatibility setup stopped. Game files are preserved.';
@@ -241,6 +241,15 @@ function installPhaseLine(progress: InstallStatus['progress'], transfer: Transfe
     case 'extraction': return progressLine('Unpacking the archive…', progress, transfer);
     case 'expansion': return progressLine('Expanding game files…', progress, transfer);
     default: return 'Preparing installation…';
+  }
+}
+
+/** The repair line: its own download and reconstruction copy, otherwise the install phase copy. */
+function repairPhaseLine(progress: NonNullable<InstallStatus['progress']>, transfer: TransferSample | null): string {
+  switch (progress.phase) {
+    case 'download': return progressLine('Downloading repair content…', progress, transfer);
+    case 'extraction': return progressLine('Reconstructing game content…', progress, transfer);
+    default: return installPhaseLine(progress, transfer);
   }
 }
 
