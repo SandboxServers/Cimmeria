@@ -127,56 +127,31 @@ async fn live_db_create_account_skips_taken_names() {
 }
 
 #[tokio::test]
-async fn live_db_create_account_is_safe_against_racing_creates() {
+async fn live_db_create_account_waits_for_the_advisory_lock() {
     let pool = require_db_or_skip!();
-    let a = "ct15_race_a".to_owned();
-    let b = "ct15_race_b".to_owned();
-    let _ = sqlx::query("DELETE FROM account WHERE lower(account_name) IN ($1, $2)")
-        .bind(&a)
-        .bind(&b)
+    let name = "ct15_lock_a".to_owned();
+    let _ = sqlx::query("DELETE FROM account WHERE lower(account_name) = $1")
+        .bind(&name)
         .execute(&pool)
         .await;
-    let names = [a.clone(), b.clone()];
-    let (r1, r2, r3, r4, r5, r6) = tokio::join!(
-        account::create(&pool, &names),
-        account::create(&pool, &names),
-        account::create(&pool, &names),
-        account::create(&pool, &names),
-        account::create(&pool, &names),
-        account::create(&pool, &names),
+    let mut holder = pool.begin().await.expect("begin the lock holder");
+    sqlx::query("SELECT pg_advisory_xact_lock(2000201)")
+        .execute(&mut *holder)
+        .await
+        .expect("take the create lock");
+    let creator_pool = pool.clone();
+    let candidates = [name.clone()];
+    let task = tokio::spawn(async move { account::create(&creator_pool, &candidates).await });
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let ran_early = task.is_finished();
+    holder.commit().await.expect("release the lock");
+    let (id, got) = task.await.expect("join").expect("create after the lock");
+    cleanup(&pool, id).await;
+    assert!(
+        !ran_early,
+        "create ran while another transaction held the lock"
     );
-    let mut ids = Vec::new();
-    let mut got = Vec::new();
-    for result in [r1, r2, r3, r4, r5, r6] {
-        match result {
-            Ok((id, name)) => {
-                ids.push(id);
-                got.push(name);
-            }
-            Err(super::RepoError::Conflict) => {}
-            Err(other) => panic!("unexpected create error: {other:?}"),
-        }
-    }
-    let rows: (i64,) =
-        sqlx::query_as("SELECT count(*) FROM account WHERE lower(account_name) IN ($1, $2)")
-            .bind(&a)
-            .bind(&b)
-            .fetch_one(&pool)
-            .await
-            .expect("count the raced names");
-    for id in &ids {
-        cleanup(&pool, *id).await;
-    }
-    let mut unique = got.clone();
-    unique.sort();
-    unique.dedup();
-    assert_eq!(
-        unique.len(),
-        got.len(),
-        "one name handed out twice: {got:?}"
-    );
-    assert!(ids.len() <= 2, "more creates than names: {ids:?}");
-    assert_eq!(rows.0 as usize, ids.len());
+    assert_eq!(got, name);
 }
 
 #[tokio::test]
