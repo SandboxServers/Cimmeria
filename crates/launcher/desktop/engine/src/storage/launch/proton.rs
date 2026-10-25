@@ -80,7 +80,6 @@ fn prepare_in(
     // Every Play: a Proton prefix upgrade may rewrite syswow64 (C-8).
     (search.directx)(&claimed, &plan.installation.content_root())
         .map_err(|_| PrepareError(FailureCode::ProtonSetupFailed))?;
-    // PP-17 display
     let game = plan.installation.content_root();
     // Client setup, as `wine.rs` runs it: login servers, stock names, ASLR, containment.
     preparation::prepare(plan, servers)?;
@@ -106,6 +105,13 @@ fn prepare_in(
             physx_log.as_deref(),
         ))
         .map_err(|_| PrepareError(FailureCode::ProtonSetupFailed))?;
+    // The display step (PP-17): windowed, and the first Play seeds the saved options.
+    super::display::apply_proton(
+        plan.id,
+        &claimed.pfx,
+        &super::display::proton_profile(&claimed),
+        display,
+    );
     let guest = |p: &Path| {
         paths::guest(p)
             .map(PathBuf::from)

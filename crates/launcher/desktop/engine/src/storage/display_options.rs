@@ -69,9 +69,10 @@ pub const WIDTH: std::ops::RangeInclusive<u32> = 640..=7680;
 /// The heights a save accepts.
 pub const HEIGHT: std::ops::RangeInclusive<u32> = 480..=4320;
 
-/// The modes this platform offers (D-PD15, D-PD21).
+/// The modes this platform offers (D-PD15, D-PD21). macOS and Linux are windowed
+/// only (D-PP13: Linux fullscreen under Proton never draws).
 pub fn allowed_modes() -> &'static [DisplayMode] {
-    if cfg!(target_os = "macos") {
+    if cfg!(any(target_os = "macos", target_os = "linux")) {
         &[DisplayMode::Windowed]
     } else {
         &[DisplayMode::Windowed, DisplayMode::Fullscreen]
@@ -112,9 +113,9 @@ impl DisplayOptions {
             && HEIGHT.contains(&self.height)
     }
 
-    /// What Play applies: on macOS always a window, and the size clamped into range.
+    /// What Play applies: on macOS and Linux always a window, and the size clamped into range.
     pub fn effective(self) -> DisplayOptions {
-        let mode = if cfg!(target_os = "macos") {
+        let mode = if cfg!(any(target_os = "macos", target_os = "linux")) {
             DisplayMode::Windowed
         } else {
             self.mode

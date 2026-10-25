@@ -258,3 +258,19 @@ fn a_missing_prerequisite_worker_is_proton_setup_failed() {
         Err(PrepareError(FailureCode::ProtonSetupFailed))
     );
 }
+
+#[test]
+fn display_rewrites_windowed_mode_in_an_existing_prefix_profile() {
+    let f = fixture(SETUP_OK);
+    let (_, _, prefix) = run_ok(&f, &f.plan);
+    let profile = display::proton_profile(&prefix);
+    std::fs::create_dir_all(&profile).unwrap();
+    let saved = profile.join("SavedSystemOptions.xml");
+    let windowed_off = r#"<options valueBool="false" version="1" optionName="windowedMode" groupName="video"></options>"#;
+    std::fs::write(&saved, windowed_off).unwrap();
+    // The first run's claim must go before the second run claims the prefix.
+    drop(prefix);
+    run_ok(&f, &f.plan);
+    let text = std::fs::read_to_string(&saved).unwrap();
+    assert!(text.contains(r#"valueBool="true""#), "{text}");
+}
