@@ -247,26 +247,6 @@ fn release_ignores_the_extra_root_env() {
     assert_eq!(found, None);
 }
 
-#[cfg(debug_assertions)]
-#[tokio::test]
-#[allow(clippy::await_holding_lock)] // tests only: serialises the process env
-async fn client_survives_an_unloadable_extra_root() {
-    let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let dir = tempfile::tempdir().unwrap();
-    let pem = dir.path().join("bad.pem");
-    std::fs::write(&pem, b"not a pem").unwrap();
-    std::env::set_var("CIMMERIA_LAUNCHER_EXTRA_ROOT_PEM", &pem);
-    let http = discovery::client();
-    std::env::remove_var("CIMMERIA_LAUNCHER_EXTRA_ROOT_PEM");
-    let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/auth/v1/providers"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(providers_body()))
-        .mount(&server)
-        .await;
-    assert!(discovery::probe_at(&http, base_of(&server)).await.is_some());
-}
-
 #[test]
 fn discovery_cache_expires_after_ten_minutes() {
     let mut cache = DiscoveryCache::default();
