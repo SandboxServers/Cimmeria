@@ -428,5 +428,37 @@ test('the install area shows the saved game folder; Change shows a new one and a
   assert.equal(chooses,2);
   assert.equal(ui.get('install-folder').textContent,`Game folder: ${displayPath('/games/second')}`);
   assert.equal(ui.get('install-status').textContent,before,'a cancelled dialog says nothing');
+  app.setPlayable(true);assert.equal(ui.get('install-folder').hidden,true);assert.equal(ui.get('install-folder-change').hidden,true);
+  app.setPlayable(false);assert.equal(ui.get('install-folder-change').hidden,false);
+ }finally{await app.dispose();}
+});
+test('Change is disabled while an interrupted install is open, and enabled once it failed',async()=>{
+ const ui=dom();const withState=(state:'reconciliation_required'|'failed'):InstallStatus=>({...initial(),native:{...initial().native,operation:{schema_version:1,revision:2,
+  operation:{id,kind:'install',intent_digest:Array(32).fill(0),state}}}});
+ let status=withState('reconciliation_required');
+ const app=mountInstall(ui.document,async()=>status,()=>id);
+ try{
+  await app.ready;await flush();
+  assert.equal(ui.get('install-folder-change').disabled,true,'Settings refuses the same action while the operation is open');
+  status=withState('failed');await app.refresh();await flush();
+  assert.equal(ui.get('install-folder-change').disabled,false);
+ }finally{await app.dispose();}
+});
+test('Change is disabled while the archive check runs, and enabled after a cancelled dialog',async()=>{
+ const ui=dom();let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
+ const archive=(extra:object)=>({schema_version:1,native:initial().native,chosen:null,offer:null,verifying:null,last_error:null,...extra});
+ const app=mountInstall(ui.document,async(command)=>{
+  if(command==='choose_seed_archive'){await gate;return archive({picker_cancelled:true});}
+  if(command==='seed_archive_command')return archive({});
+  return initial();
+ },()=>id);
+ try{
+  await app.ready;await flush();
+  ui.click('install-seed-archive');await flush();
+  assert.equal(ui.get('install-seed-archive').textContent,'Switching to your archive…');
+  assert.equal(ui.get('install-folder-change').disabled,true);
+  release();
+  for(let i=0;i<20&&ui.get('install-seed-archive').textContent!=='Use a downloaded game archive…';i++)await flush();
+  assert.equal(ui.get('install-folder-change').disabled,false);
  }finally{await app.dispose();}
 });

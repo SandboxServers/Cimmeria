@@ -48,7 +48,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   let current:InstallViewState={status:null,busy:false,needsInspection:true,error:null};
   let disposed=false; let pending=false; let watching=false;
   let journeyInstallId:string|null=null;
-  let playable=false;
+  let playable=false;let archiveBusy=false;
   let mutation:Promise<void>=Promise.resolve(); let observation:Promise<void>=Promise.resolve();
   const listeners:(()=>void)[]=[];
   const render=()=>{
@@ -121,7 +121,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     // The saved folder the native side returned; the frontend only displays it.
     const folder=status?.native.preferences.install_directory;
     folderLine.textContent=status?(folder?`Game folder: ${displayPath(folder)}`:'Game folder: not chosen'):'';
-    folderChange.disabled=!ready||active;
+    folderChange.disabled=!ready||operationOpen(operation)||archiveBusy;
   };
   const repairs=repairControls(document,uuid,action=>run(action));
   // The operation that last stopped running; undefined until the first status,
@@ -168,7 +168,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   const archiveAccept=get<HTMLButtonElement>('install-seed-archive-accept');
   let archive:SeedArchiveState={status:null,phase:null,cancelling:false,error:null};let archivePressed=false;let acceptPressed=false;
   let archiveMutation:Promise<unknown>=Promise.resolve();
-  const renderArchive=()=>{if(disposed)return;const busy=archivePressed||acceptPressed||archive.phase!==null;
+  const renderArchive=()=>{if(disposed)return;const busy=archivePressed||acceptPressed||archive.phase!==null;archiveBusy=busy;
     archiveButton.hidden=playable&&!busy;
     archiveButton.textContent=archivePressed?'Switching to your archive…':'Use a downloaded game archive…';
     archiveButton.disabled=busy;archiveButton.setAttribute('aria-busy',String(busy));
@@ -177,7 +177,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     archiveAccept.hidden=question===null;archiveAccept.disabled=busy;archiveAccept.textContent=acceptPressed?'Checking…':'Yes';
     archiveAccept.setAttribute('aria-busy',String(busy));
     archiveLine.hidden=(playable&&!busy)||!seedArchiveShowsLine(archive);archiveLine.textContent=seedArchiveText(archive);
-    folderLine.hidden=archiveButton.hidden;folderChange.hidden=archiveButton.hidden;};
+    folderLine.hidden=archiveButton.hidden;folderChange.hidden=archiveButton.hidden;render();};
   const archiveWatcher=archiveRuntime.runFork(Effect.flatMap(SeedArchive,s=>Stream.runForEach(s.changes,
     value=>Effect.sync(()=>{archive=value;renderArchive();}))));
   const chooseArchive=()=>{if(archiveButton.disabled)return;archivePressed=true;renderArchive();
