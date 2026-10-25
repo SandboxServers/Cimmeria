@@ -21,7 +21,7 @@ use tracing::Instrument;
 
 use crate::limits::Bucket;
 use crate::link::{self, LinkFacts, LinkHint, Refusal, Resolution};
-use crate::provider::{IdentityProvider, VerifiedIdentity};
+use crate::provider::VerifiedIdentity;
 use crate::repo::event::{self, EventKind};
 use crate::repo::refresh::{self, Rotation};
 use crate::repo::{account, identity, RepoError};
