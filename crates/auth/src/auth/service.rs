@@ -21,8 +21,8 @@ use super::cert_watcher::spawn_cert_watcher;
 use super::handlers::{handle_server_selection, handle_user_auth};
 use super::tls::{hsts_layer, tls_marker_layer, TlsCertStore, TlsListener};
 use super::{
-    AuthError, HandlerState, PendingLogin, SessionRecord, ShardInfo, REAPER_INTERVAL, SESSION_TTL,
-    TICKET_TTL,
+    AuthError, HandlerState, LaunchTicketStore, PendingLogin, SessionRecord, ShardInfo,
+    REAPER_INTERVAL, SESSION_TTL, TICKET_TTL,
 };
 
 // ── AuthService ──────────────────────────────────────────────────────────────
@@ -53,6 +53,8 @@ pub struct AuthService {
     pub shards: Vec<ShardInfo>,
     /// Pending logins keyed by ticket; shared with the BaseService for Phase 3 validation.
     pending_logins: Arc<Mutex<HashMap<String, PendingLogin>>>,
+    /// Launch tickets (CT-21), shared with `HandlerState` and the identity routes.
+    launch_tickets: Arc<LaunchTicketStore>,
     developer_mode: bool,
     /// A database is configured (`ServerConfig::database_configured`).
     db_configured: bool,
@@ -90,6 +92,7 @@ impl AuthService {
             is_running: false,
             shards: Vec::new(),
             pending_logins: Arc::new(Mutex::new(HashMap::new())),
+            launch_tickets: Arc::new(LaunchTicketStore::default()),
             developer_mode: config.developer_mode,
             db_configured: config.database_configured(),
             db_pool: None,
@@ -162,6 +165,7 @@ impl AuthService {
         // Clone Arcs for the reaper task *before* moving into HandlerState.
         let reaper_sessions = Arc::clone(&sessions);
         let reaper_pending = Arc::clone(&pending_logins);
+        let reaper_tickets = Arc::clone(&self.launch_tickets);
 
         let state = Arc::new(HandlerState {
             shards: self.shards.clone(),
@@ -170,6 +174,7 @@ impl AuthService {
             developer_mode: self.developer_mode,
             db_configured: self.db_configured,
             db: self.db_pool.clone(),
+            launch_tickets: Arc::clone(&self.launch_tickets),
             login_tx: self.login_tx.clone(),
             login_buffer: self.login_buffer.clone(),
         });
@@ -203,16 +208,19 @@ impl AuthService {
         {
             let sessions = reaper_sessions;
             let pending = reaper_pending;
+            let tickets = reaper_tickets;
             tokio::spawn(async move {
                 loop {
                     tokio::time::sleep(REAPER_INTERVAL).await;
                     let now = std::time::Instant::now();
                     let (expired_sessions, expired_tickets) =
                         reap_expired(&sessions, &pending, now);
-                    if expired_sessions > 0 || expired_tickets > 0 {
+                    let expired_launch_tickets = tickets.reap(now);
+                    if expired_sessions > 0 || expired_tickets > 0 || expired_launch_tickets > 0 {
                         tracing::debug!(
                             expired_sessions,
                             expired_tickets,
+                            expired_launch_tickets,
                             "Reaped expired auth entries"
                         );
                     }
@@ -379,6 +387,11 @@ impl AuthService {
     /// before starting services, so the BaseService can validate Phase 3 tickets.
     pub fn pending_logins_arc(&self) -> Arc<Mutex<HashMap<String, PendingLogin>>> {
         Arc::clone(&self.pending_logins)
+    }
+
+    /// The per-launch ticket store (CT-21), shared with the login handlers.
+    pub fn launch_tickets(&self) -> Arc<LaunchTicketStore> {
+        Arc::clone(&self.launch_tickets)
     }
 }
 

@@ -31,7 +31,7 @@ use super::password_hash::{migrate_to_argon2id, verify_argon2id};
 const MAX_PLAINTEXT_LEN: usize = 128;
 
 /// Stored-password scheme selectors (mirror `account.password_algo`).
-const ALGO_SHA1_LEGACY: i16 = 1;
+pub(super) const ALGO_SHA1_LEGACY: i16 = 1;
 pub(super) const ALGO_ARGON2ID: i16 = 2;
 
 /// A credential supplied by the client, classified by shape.
@@ -226,7 +226,7 @@ pub(super) async fn validate_credentials(
 
 /// Compute the uppercase-hex SHA-1 of `input` — the exact form the original
 /// client put on the wire.
-fn sha1_upper_hex(input: &str) -> String {
+pub(super) fn sha1_upper_hex(input: &str) -> String {
     let digest = Sha1::digest(input.as_bytes());
     let mut out = String::with_capacity(40);
     for byte in digest {
