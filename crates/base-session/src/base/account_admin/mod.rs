@@ -111,6 +111,61 @@ fn log_outcome(
     );
 }
 
+/// What [`remove_identity`] did.
+enum Removal {
+    /// The account would be left with no sign-in method.
+    LastMethod,
+    /// The identity row is not this account's.
+    NotLinked,
+    /// The row was removed; carries its provider.
+    Removed(String),
+}
+
+/// Removes one identity in a single transaction that locks the account row
+/// first, so two unlinks cannot both pass the last-method check (C15 e);
+/// the unlink event commits with the delete. Mirrors `remove_identity` in
+/// `cimmeria_identity::routes::account`.
+async fn remove_identity(
+    pool: &PgPool,
+    account_id: u32,
+    identity_id: i64,
+) -> Result<Removal, RepoError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT account_id FROM account WHERE account_id = $1 FOR UPDATE")
+        .bind(account_id as i32)
+        .fetch_optional(&mut *tx)
+        .await?;
+    let (methods,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM account_identity WHERE account_id = $1")
+            .bind(account_id as i32)
+            .fetch_one(&mut *tx)
+            .await?;
+    if methods <= 1 {
+        return Ok(Removal::LastMethod);
+    }
+    let removed: Option<(String,)> = sqlx::query_as(
+        "DELETE FROM account_identity WHERE account_id = $1 AND identity_id = $2 \
+         RETURNING provider",
+    )
+    .bind(account_id as i32)
+    .bind(identity_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((provider,)) = removed else {
+        return Ok(Removal::NotLinked);
+    };
+    event::record_tx(
+        &mut tx,
+        account_id,
+        Some(identity_id),
+        EventKind::Unlink,
+        Some(&provider),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Removal::Removed(provider))
+}
+
 /// Answers one command as the lines the GM reads, logging its outcome. With
 /// no pool the answer is the `db_unavailable` line.
 pub async fn run(
@@ -136,18 +191,21 @@ pub async fn run(
     };
     match answer(caller, target, action, pool, codes, now).await {
         Ok(lines) => lines,
-        Err(_) => {
+        Err(error) => {
             tracing::warn!(
                 target: "account_admin",
                 event = "gm_action",
                 action = action.label(),
                 result = "refused",
                 reason = "db_error",
+                error = %error,
                 gm_account_id = caller.account_id,
                 entity_id = caller.entity_id,
                 "account command could not read the identity tables"
             );
-            vec!["account: the identity tables could not be read; see the server log".to_owned()]
+            vec![
+                "account: the identity tables could not be read or updated; check the result with .account identities <name> and see the server log".to_owned(),
+            ]
         }
     }
 }
@@ -197,57 +255,61 @@ async fn answer(
             Ok(lines)
         }
         AdminAction::Unlink { identity_id } => {
-            if identity::count_methods(pool, account_id).await? <= 1 {
-                log_outcome(
-                    caller,
-                    name,
-                    false,
-                    Some("last_method"),
-                    ids,
-                    Some(identity_id),
-                );
-                return Ok(vec![format!(
-                    "account: refusing to remove the last sign-in method of {target}"
-                )]);
+            match remove_identity(pool, account_id, identity_id).await? {
+                Removal::LastMethod => {
+                    log_outcome(
+                        caller,
+                        name,
+                        false,
+                        Some("last_method"),
+                        ids,
+                        Some(identity_id),
+                    );
+                    Ok(vec![format!(
+                        "account: refusing to remove the last sign-in method of {target}"
+                    )])
+                }
+                Removal::NotLinked => {
+                    log_outcome(
+                        caller,
+                        name,
+                        false,
+                        Some("not_linked"),
+                        ids,
+                        Some(identity_id),
+                    );
+                    Ok(vec![format!(
+                        "account: identity #{identity_id} is not linked to {target}"
+                    )])
+                }
+                Removal::Removed(provider) => {
+                    // A wrongly linked identity must lose the sign-ins it made.
+                    if refresh::revoke_account(pool, account_id, Utc::now())
+                        .await
+                        .is_err()
+                    {
+                        tracing::warn!(
+                            target: "account_admin",
+                            event = "gm_action",
+                            action = name,
+                            result = "ok",
+                            reason = "revoke_failed",
+                            gm_account_id = caller.account_id,
+                            entity_id = caller.entity_id,
+                            target_account_id = account_id,
+                            identity_id,
+                            "identity removed but its sign-ins could not be revoked"
+                        );
+                        return Ok(vec![format!(
+                        "account: removed identity #{identity_id} ({provider}) from {target}; revoking its launcher sign-ins FAILED, see the server log"
+                    )]);
+                    }
+                    log_outcome(caller, name, true, None, ids, Some(identity_id));
+                    Ok(vec![format!(
+                    "account: removed identity #{identity_id} ({provider}) from {target}; its launcher sign-ins are revoked"
+                )])
+                }
             }
-            // The provider is read before the delete, for the event row and
-            // the reply.
-            let provider = identity::list_for_account(pool, account_id)
-                .await?
-                .into_iter()
-                .find(|row| row.identity_id == identity_id)
-                .map(|row| row.provider);
-            let removed = match &provider {
-                Some(_) => identity::delete(pool, account_id, identity_id).await?,
-                None => false,
-            };
-            let (true, Some(provider)) = (removed, provider) else {
-                log_outcome(
-                    caller,
-                    name,
-                    false,
-                    Some("not_linked"),
-                    ids,
-                    Some(identity_id),
-                );
-                return Ok(vec![format!(
-                    "account: identity #{identity_id} is not linked to {target}"
-                )]);
-            };
-            event::record(
-                pool,
-                account_id,
-                Some(identity_id),
-                EventKind::Unlink,
-                Some(&provider),
-            )
-            .await?;
-            // A wrongly linked identity must lose the sign-ins it made.
-            refresh::revoke_account(pool, account_id, Utc::now()).await?;
-            log_outcome(caller, name, true, None, ids, Some(identity_id));
-            Ok(vec![format!(
-                "account: removed identity #{identity_id} ({provider}) from {target}; its launcher sign-ins are revoked"
-            )])
         }
         AdminAction::LinkCode => {
             if !link::linkable(&facts) {

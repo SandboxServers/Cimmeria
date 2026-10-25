@@ -13,7 +13,7 @@ use cimmeria_identity::repo::{identity, refresh};
 use cimmeria_test_support::require_db_or_skip;
 use sqlx::PgPool;
 
-use super::{run, AdminAction, AdminCaller};
+use super::{date, run, sanitize, AdminAction, AdminCaller};
 
 const ID_LIST: u32 = 2_000_701;
 const ID_UNLINK: u32 = 2_000_702;
@@ -26,6 +26,7 @@ const ID_STAFF: u32 = 2_000_708;
 const ID_TEST: u32 = 2_000_709;
 const ID_CODE: u32 = 2_000_710;
 const ID_UNKNOWN: u32 = 2_000_711;
+const ID_RACE: u32 = 2_000_712;
 
 /// The GM who types the commands in these checks.
 const GM: AdminCaller = AdminCaller {
@@ -96,7 +97,12 @@ async fn live_db_identities_lists_without_subjects_or_emails() {
     let pool = require_db_or_skip!();
     // Linking clears a legacy password (C15 a), so the account starts without one.
     insert_account(&pool, ID_LIST, "ct45_list_701", None).await;
-    link(&pool, ID_LIST, "ct45-subject-701").await;
+    let mut with_email = verified("ct45-subject-701");
+    with_email.email = Some("p701@example.org".to_owned());
+    with_email.email_verified = true;
+    identity::insert(&pool, ID_LIST, &with_email, true)
+        .await
+        .expect("link identity");
     let lines = run(
         &GM,
         "ct45_list_701",
@@ -115,7 +121,7 @@ async fn live_db_identities_lists_without_subjects_or_emails() {
     assert!(lines[1].contains("devmock") && lines[1].contains("CT45 Player"));
     assert!(lines
         .iter()
-        .all(|l| !l.contains("ct45-") && !l.contains("example.org")));
+        .all(|l| !l.contains("ct45-") && !l.contains("example.org") && !l.contains("p701")));
 }
 
 #[tokio::test]
@@ -195,6 +201,54 @@ async fn live_db_unlink_refuses_the_last_method() {
         vec!["account: refusing to remove the last sign-in method of ct45_last_703".to_owned()]
     );
     assert_eq!(methods, 1, "the last row is kept");
+}
+
+/// Two unlinks of one two-method account run on two worker threads at once.
+/// Without the account row lock both read two methods and both delete.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn live_db_concurrent_unlinks_keep_one_method() {
+    let pool = require_db_or_skip!();
+    insert_account(&pool, ID_RACE, "ct45_race_712", None).await;
+    let a = link(&pool, ID_RACE, "ct45-subject-712a").await;
+    let b = link(&pool, ID_RACE, "ct45-subject-712b").await;
+    let (pool_a, pool_b) = (pool.clone(), pool.clone());
+    let first = tokio::spawn(async move {
+        run(
+            &GM,
+            "ct45_race_712",
+            AdminAction::Unlink { identity_id: a },
+            Some(&pool_a),
+            &LinkCodeStore::default(),
+            Instant::now(),
+        )
+        .await
+    });
+    let second = tokio::spawn(async move {
+        run(
+            &GM,
+            "ct45_race_712",
+            AdminAction::Unlink { identity_id: b },
+            Some(&pool_b),
+            &LinkCodeStore::default(),
+            Instant::now(),
+        )
+        .await
+    });
+    let (first, second) = (
+        first.await.expect("first unlink task"),
+        second.await.expect("second unlink task"),
+    );
+    let methods = identity::count_methods(&pool, ID_RACE)
+        .await
+        .expect("count");
+    cleanup(&pool, ID_RACE).await;
+
+    assert_eq!(methods, 1, "one identity survives: {first:?} {second:?}");
+    let removed = [&first, &second]
+        .iter()
+        .filter(|l| l[0].starts_with("account: removed identity #"))
+        .count();
+    assert_eq!(removed, 1, "exactly one unlink wins: {first:?} {second:?}");
 }
 
 #[tokio::test]
@@ -303,12 +357,24 @@ async fn live_db_linkcode_refuses_staff_and_test_accounts() {
         Instant::now(),
     )
     .await;
+    let issued = count(
+        &pool,
+        "SELECT COUNT(*) FROM account_identity_event WHERE account_id = $1 AND kind = 'link_code_issued'",
+        ID_STAFF,
+    )
+    .await
+        + count(
+            &pool,
+            "SELECT COUNT(*) FROM account_identity_event WHERE account_id = $1 AND kind = 'link_code_issued'",
+            ID_TEST,
+        )
+        .await;
     cleanup(&pool, ID_STAFF).await;
     cleanup(&pool, ID_TEST).await;
 
     assert!(staff[0].contains("(not_linkable)"), "{staff:?}");
     assert!(test[0].contains("(not_linkable)"), "{test:?}");
-    assert!(codes.redeem("ABCDEFGHJK", Instant::now()).is_none());
+    assert_eq!(issued, 0, "no code was issued or recorded");
 }
 
 #[tokio::test]
@@ -376,4 +442,36 @@ async fn no_pool_answers_unavailable() {
         lines,
         vec!["account: the database is not available".to_owned()]
     );
+}
+
+#[tokio::test]
+async fn live_db_closed_pool_answers_db_error() {
+    let pool = require_db_or_skip!();
+    pool.close().await;
+    let lines = run(
+        &GM,
+        "Player_9999",
+        AdminAction::Identities,
+        Some(&pool),
+        &LinkCodeStore::default(),
+        Instant::now(),
+    )
+    .await;
+    assert_eq!(
+        lines,
+        vec!["account: the identity tables could not be read or updated; check the result with .account identities <name> and see the server log".to_owned()]
+    );
+}
+
+#[test]
+fn sanitize_keeps_printable_ascii_drops_quotes_and_caps_length() {
+    assert_eq!(sanitize("a\"b\u{7}c\u{e9}d"), "abcd");
+    assert_eq!(sanitize(&"x".repeat(40)).len(), 32);
+}
+
+#[test]
+fn date_formats_utc_days_and_survives_out_of_range() {
+    assert_eq!(date(0), "1970-01-01");
+    assert_eq!(date(1_700_000_000_000), "2023-11-14");
+    assert_eq!(date(i64::MAX), "unknown");
 }
