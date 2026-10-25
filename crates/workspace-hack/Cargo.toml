@@ -56,7 +56,7 @@ slab = { version = "0.4" }
 smallvec = { version = "1", default-features = false, features = ["const_new", "serde"] }
 sqlx-core = { version = "0.9", features = ["_rt-tokio", "any", "json", "migrate", "offline"] }
 sqlx-postgres = { version = "0.9", default-features = false, features = ["any", "migrate", "offline"] }
-subtle = { version = "2", default-features = false, features = ["const-generics"] }
+subtle = { version = "2", features = ["const-generics"] }
 sync_wrapper = { version = "1", default-features = false, features = ["futures"] }
 thiserror = { version = "2" }
 time = { version = "0.3", default-features = false, features = ["formatting", "macros", "parsing"] }
