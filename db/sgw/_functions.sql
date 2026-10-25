@@ -273,6 +273,32 @@ BEGIN
 END;
 $$;
 
+-- Enforces "no password on an account with a linked identity".
+CREATE FUNCTION account_password_guard() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF (NEW.password IS NOT NULL OR NEW.password_hash_v2 IS NOT NULL)
+       AND EXISTS (SELECT 1 FROM account_identity WHERE account_id = NEW.account_id) THEN
+        RAISE EXCEPTION 'account_has_identity' USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+-- Enforces "no password on an account with a linked identity".
+CREATE FUNCTION account_identity_password_guard() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM account WHERE account_id = NEW.account_id
+               AND (password IS NOT NULL OR password_hash_v2 IS NOT NULL) FOR SHARE) THEN
+        RAISE EXCEPTION 'account_has_password' USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
 --
 -- Function: bm_player_before_delete()
 -- Trigger:  sgw_player_before_delete_auctions (_triggers.sql)

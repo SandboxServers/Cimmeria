@@ -1,0 +1,52 @@
+# Identity providers for the account sign-in on the launcher's login screen.
+#
+# Copy this file to config/auth-providers.toml and edit it. The real file is
+# gitignored, so your client ids and the links below stay local. Without the
+# real file the server runs with no providers (the launcher offers no sign-in).
+#
+# Secrets never go in this file. Each provider names the environment variable
+# that holds its client secret (client_secret_env); a literal client_secret key
+# anywhere in the file stops the server from starting. A provider whose
+# variable is unset or empty is skipped with a WARN line.
+#
+# Discord: register the redirect URL {public_base_url}/auth/v1/callback/discord
+# in the Discord developer portal, using the public_base_url below. The same
+# applies to every provider: its callback is {public_base_url}/auth/v1/callback/<id>.
+#
+# Microsoft: do not set trusted_email = true for a Microsoft issuer
+# (login.microsoftonline.com or login.live.com). Their email claim can change,
+# so the server refuses that combination at startup.
+#
+# Kill switches (environment, read once at startup): CIMMERIA_IDP_DISABLED=1
+# turns every provider off, CIMMERIA_IDP_SIGNUP_DISABLED=1 closes sign-up.
+
+public_base_url = "https://play.example.org"   # no trailing slash; https only
+signup_open = true
+
+[limits]
+signups_per_ip_per_day = 3
+signups_global_per_hour = 30
+min_provider_account_age_days = 0
+
+[links]                                         # optional; shown in the game's login screen
+website = "https://example.org"
+account = "https://example.org/account"
+forums = "https://example.org/forums"
+
+[[provider]]
+id = "discord"
+kind = "discord"
+display_name = "Discord"
+client_id = "000000000000000000"
+client_secret_env = "CIMMERIA_IDP_DISCORD_SECRET"
+trusted_email = true
+
+[[provider]]
+id = "google"
+kind = "oidc"
+display_name = "Google"
+issuer = "https://accounts.google.com"
+client_id = "example.apps.googleusercontent.com"
+client_secret_env = "CIMMERIA_IDP_GOOGLE_SECRET"
+scopes = ["openid", "email", "profile"]
+trusted_email = true
