@@ -35,7 +35,7 @@ url = { workspace = true }
 # Random verifier, state and link bytes for the sign-in PKCE pair (C9).
 getrandom = "0.3"
 # The OS credential store for the sign-in refresh token (C9); other targets use memory only.
-keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native"] }
+keyring = { workspace = true }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync", "fs", "io-util", "process"] }
 tokio-util = "0.7"
 futures-util = "0.3"

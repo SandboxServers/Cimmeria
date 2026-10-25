@@ -12,7 +12,7 @@ use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 use super::api::AccountView;
 use super::discovery;
 use super::oauth::{challenge_for, CodeGrant};
-use super::session::{Outcome, SignIn};
+use super::session::{scheme_allowed, Outcome, SignIn};
 use super::store::{CredentialStore, MemoryStore, Stored};
 use super::SignInError;
 
@@ -387,4 +387,130 @@ async fn oversized_reply_is_protocol() {
     let session = SignIn::restore(base_of(&server), discovery::client(), store_with("r0"))
         .expect("a stored entry restores");
     assert_eq!(session.account().await.err(), Some(SignInError::Protocol));
+}
+
+#[tokio::test]
+async fn a_rejected_access_token_is_refreshed_once() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/auth/v1/token"))
+        .and(body_partial_json(json!({
+            "grant_type": "refresh_token",
+            "refresh_token": "r0",
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(signed_in_body("a1", "r1", 900)))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/auth/v1/token"))
+        .and(body_partial_json(json!({
+            "grant_type": "refresh_token",
+            "refresh_token": "r1",
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(signed_in_body("a2", "r2", 900)))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/auth/v1/account"))
+        .and(header("authorization", "Bearer a1"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(json!({ "error": "invalid_token" })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/auth/v1/account"))
+        .and(header("authorization", "Bearer a2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "account_name": "alice",
+            "display_name": "Alice",
+            "identities": [],
+        })))
+        .mount(&server)
+        .await;
+
+    let store = store_with("r0");
+    let session = SignIn::restore(base_of(&server), discovery::client(), store.clone())
+        .expect("a stored entry restores");
+    assert!(
+        session.account().await.is_ok(),
+        "the refreshed token is used"
+    );
+    assert_eq!(store.get(HOST).unwrap().refresh_token, "r2");
+}
+
+#[tokio::test]
+async fn concurrent_calls_spend_the_refresh_token_once() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/auth/v1/token"))
+        .and(body_partial_json(json!({
+            "grant_type": "refresh_token",
+            "refresh_token": "r0",
+        })))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(signed_in_body("a1", "r1", 900))
+                .set_delay(std::time::Duration::from_millis(300)),
+        )
+        .mount(&server)
+        .await;
+
+    let session = SignIn::restore(base_of(&server), discovery::client(), store_with("r0"))
+        .expect("a stored entry restores");
+    let (first, second) = tokio::join!(session.access_token(), session.access_token());
+    assert_eq!(first.expect("first caller"), "a1");
+    assert_eq!(second.expect("second caller"), "a1");
+    let posts = server
+        .received_requests()
+        .await
+        .expect("request recording is on")
+        .len();
+    assert_eq!(posts, 1, "the refresh token was spent more than once");
+}
+
+#[tokio::test]
+async fn link_existing_sends_the_removal_ack() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/auth/v1/link/existing"))
+        .and(body_partial_json(json!({
+            "link_grant": "lg1",
+            "account_name": "alice",
+            "password": "pw",
+            "password_removal_ack": true,
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(signed_in_body("a1", "r1", 900)))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/auth/v1/link/existing"))
+        .and(body_partial_json(json!({
+            "link_grant": "lg2",
+            "link_code": "ABCDE23456",
+            "password_removal_ack": true,
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(signed_in_body("a1", "r1", 900)))
+        .mount(&server)
+        .await;
+
+    let session = SignIn::new(
+        base_of(&server),
+        discovery::client(),
+        Arc::new(MemoryStore::default()),
+    );
+    let by_password = session.link_existing_password("lg1", "alice", "pw").await;
+    let by_code = session.link_existing_code("lg2", "ABCDE23456").await;
+    assert!(
+        matches!(by_password, Ok(Outcome::SignedIn(_))),
+        "{by_password:?}"
+    );
+    assert!(matches!(by_code, Ok(Outcome::SignedIn(_))), "{by_code:?}");
+}
+
+#[test]
+fn scheme_allowed_needs_https_outside_debug() {
+    let plain = Url::parse("http://play.example.org/").unwrap();
+    let secure = Url::parse("https://play.example.org/").unwrap();
+    assert!(!scheme_allowed(&plain, false));
+    assert!(scheme_allowed(&plain, true));
+    assert!(scheme_allowed(&secure, false));
 }

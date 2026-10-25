@@ -210,6 +210,7 @@ impl SignIn {
             }
             Ok(TokenReply::NeedsLink(_)) => Err(SignInError::Protocol),
             Err(SignInError::Server(code)) if code == "invalid_grant" => {
+                tracing::info!(target: "launcher.sign_in", event = "failed", outcome = "failed", reason = "signed_out");
                 self.forget(&mut state);
                 Err(signed_out())
             }
@@ -219,15 +220,13 @@ impl SignIn {
 
     /// The account and its linked methods (C6 `GET /account`).
     pub async fn account(&self) -> Result<AccountView, SignInError> {
-        let token = self.access_token().await?;
-        self.json(Method::GET, "account", Some(&token), None).await
+        self.json_authed(Method::GET, "account", None).await
     }
 
     /// Removes one linked method (C6 `DELETE /identities/{identity_id}`).
     pub async fn unlink(&self, identity_id: i64) -> Result<(), SignInError> {
-        let token = self.access_token().await?;
         let path = format!("identities/{identity_id}");
-        self.send(Method::DELETE, &path, Some(&token), None)
+        self.send_authed(Method::DELETE, &path, None)
             .await
             .map(drop)
     }
@@ -256,7 +255,6 @@ impl SignIn {
     /// it returns. Any error drops the listener.
     pub async fn add_method(&self, provider: &str) -> Result<BrowserFlow, SignInError> {
         let pending = oauth::prepare().await?;
-        let token = self.access_token().await?;
         let body = json!({
             "provider": provider,
             "redirect_uri": pending.redirect_uri(),
@@ -265,30 +263,23 @@ impl SignIn {
             "code_challenge_method": "S256",
         });
         let start: LinkStart = self
-            .json(Method::POST, "link/start", Some(&token), Some(body))
+            .json_authed(Method::POST, "link/start", Some(body))
             .await?;
         pending.with_intent(&self.base, start.authorize_url)
     }
 
     /// A launch ticket for `launch_id` (C6 `POST /launch-ticket`).
     pub async fn launch_ticket(&self, launch_id: &str) -> Result<TicketView, SignInError> {
-        let token = self.access_token().await?;
         let body = json!({ "launch_id": launch_id });
-        self.json(Method::POST, "launch-ticket", Some(&token), Some(body))
+        self.json_authed(Method::POST, "launch-ticket", Some(body))
             .await
     }
 
     /// Keeps a launch alive. `Ok(false)` when the server no longer knows it (C6 `404`).
     pub async fn heartbeat(&self, launch_id: &str) -> Result<bool, SignInError> {
-        let token = self.access_token().await?;
         let body = json!({ "launch_id": launch_id });
         match self
-            .send(
-                Method::POST,
-                "launch-ticket/heartbeat",
-                Some(&token),
-                Some(body),
-            )
+            .send_authed(Method::POST, "launch-ticket/heartbeat", Some(body))
             .await
         {
             Ok(_) => Ok(true),
@@ -299,9 +290,8 @@ impl SignIn {
 
     /// Ends a launch. The server answers the same when it is already gone (C6 `204`).
     pub async fn end_ticket(&self, launch_id: &str) -> Result<(), SignInError> {
-        let token = self.access_token().await?;
         let body = json!({ "launch_id": launch_id });
-        self.send(Method::POST, "launch-ticket/end", Some(&token), Some(body))
+        self.send_authed(Method::POST, "launch-ticket/end", Some(body))
             .await
             .map(drop)
     }
@@ -346,6 +336,51 @@ impl SignIn {
         state.account = None;
     }
 
+    /// A Bearer request. The server keeps access tokens in memory only, so a restart
+    /// voids the cached one: on `invalid_token` the cached token is dropped, a
+    /// refresh runs once and the request is sent once more.
+    async fn send_authed(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<reqwest::Response, SignInError> {
+        let token = self.access_token().await?;
+        match self
+            .send(method.clone(), path, Some(&token), body.clone())
+            .await
+        {
+            Err(SignInError::Server(code)) if code == "invalid_token" => {
+                let mut state = self.state.lock().await;
+                if state
+                    .access
+                    .as_ref()
+                    .is_some_and(|(cached, _)| *cached == token)
+                {
+                    state.access = None;
+                }
+                drop(state);
+                let fresh = self.access_token().await?;
+                self.send(method, path, Some(&fresh), body).await
+            }
+            other => other,
+        }
+    }
+
+    /// [`Self::send_authed`], then the body read as `T`.
+    async fn json_authed<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> Result<T, SignInError> {
+        let response = self.send_authed(method, path, body).await?;
+        let bytes = discovery::read_capped(response, MAX_BODY)
+            .await
+            .ok_or(SignInError::Protocol)?;
+        serde_json::from_slice(&bytes).map_err(|_| SignInError::Protocol)
+    }
+
     /// Sends one request and reads its body as `T`.
     async fn json<T: DeserializeOwned>(
         &self,
@@ -369,6 +404,9 @@ impl SignIn {
         bearer: Option<&str>,
         body: Option<Value>,
     ) -> Result<reqwest::Response, SignInError> {
+        if !scheme_allowed(&self.base, cfg!(any(test, debug_assertions))) {
+            return Err(SignInError::Protocol);
+        }
         let url = self
             .base
             .join(&format!("auth/v1/{path}"))
@@ -396,6 +434,12 @@ impl SignIn {
 /// The auth host, which keys the store. An auth base always has one.
 fn host_of(base: &Url) -> &str {
     base.host_str().unwrap_or_default()
+}
+
+/// Tokens and passwords go over TLS only. Debug builds and tests may use a plain
+/// local server (`CIMMERIA_LAUNCHER_AUTH_BASE`, `wiremock`).
+pub(super) fn scheme_allowed(base: &Url, relaxed: bool) -> bool {
+    base.scheme() == "https" || relaxed
 }
 
 fn signed_out() -> SignInError {
@@ -429,7 +473,9 @@ fn record(result: Result<Outcome, SignInError>) -> Result<Outcome, SignInError> 
         Ok(Outcome::NeedsLink(_)) => {
             tracing::info!(target: "launcher.sign_in", event = "completed", outcome = "needs_link")
         }
-        Err(e) => tracing::info!(target: "launcher.sign_in", event = "failed", reason = e.reason()),
+        Err(e) => {
+            tracing::info!(target: "launcher.sign_in", event = "failed", outcome = "failed", reason = e.reason())
+        }
     }
     result
 }
