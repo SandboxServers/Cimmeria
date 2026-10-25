@@ -19,10 +19,13 @@ tracing = { workspace = true }
 reqwest = { workspace = true }
 async-trait = { workspace = true }
 url = { workspace = true }
+base64 = { workspace = true }
 rand = { workspace = true }
 # The identity repositories (`repo/`) run runtime-checked queries on the
 # account database, as cimmeria-auth does.
 sqlx = { workspace = true }
+serde_json = { workspace = true }
+jsonwebtoken = { workspace = true, features = ["aws_lc_rs"] }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]
@@ -31,3 +34,9 @@ tokio = { workspace = true }
 # The live-DB gate (`require_db_or_skip!`) for the `repo` tests. Listed in
 # tools/test-live-db.ps1 already.
 cimmeria-test-support = { workspace = true }
+# The OIDC tests: an ES256 key per test (rcgen, as crates/auth uses it), the
+# base64url of the JWK, and the wiremock issuer. base64 is a normal dependency
+# above, so the tests see it without a dev entry.
+rcgen = "0.14"
+# Stubs Discord's endpoints in the provider tests.
+wiremock = { workspace = true }
