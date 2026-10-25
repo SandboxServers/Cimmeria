@@ -149,12 +149,13 @@ fn window_len(bucket: Bucket) -> Duration {
     }
 }
 
-/// Drops the window that expires soonest. The global sign-up window is never
-/// dropped, so a flood of other keys cannot reopen the server-wide cap.
+/// Drops the window that expires soonest. The two server-wide windows (sign-up
+/// and link-code) are never dropped, so a flood of other keys cannot reopen
+/// their caps.
 fn evict_oldest(windows: &mut HashMap<(Bucket, String), Window>) {
     let victim = windows
         .iter()
-        .filter(|((b, _), _)| *b != Bucket::SignupGlobal)
+        .filter(|((b, _), _)| !matches!(b, Bucket::SignupGlobal | Bucket::LinkCodeGlobal))
         .min_by_key(|((b, _), w)| w.start + window_len(*b))
         .map(|(k, _)| k.clone());
     if let Some(key) = victim {
@@ -264,21 +265,43 @@ mod tests {
         let t1 = t0 + Duration::from_secs(1);
         for i in 0..MAX_KEYS {
             let key = format!("flood-{i}");
-            assert!(rl.check(Bucket::AnyRoute, &key, t1).is_ok());
+            assert!(rl.check(Bucket::SignupIp, &key, t1).is_ok());
         }
         let t2 = t0 + Duration::from_secs(2);
         assert!(rl.check(Bucket::SignupGlobal, "", t2).is_err());
     }
 
     #[test]
+    fn limiter_eviction_spares_the_link_code_window() {
+        let limits = Limits {
+            signups_per_ip_per_day: 3,
+            signups_global_per_hour: 1,
+            min_provider_account_age_days: 0,
+        };
+        let rl = RateLimiter::with_limits(&limits);
+        let t0 = Instant::now();
+        for _ in 0..50 {
+            assert!(rl.check(Bucket::LinkCodeGlobal, "", t0).is_ok());
+        }
+        let t1 = t0 + Duration::from_secs(1);
+        for i in 0..MAX_KEYS {
+            let key = format!("flood-{i}");
+            assert!(rl.check(Bucket::SignupIp, &key, t1).is_ok());
+        }
+        let t2 = t0 + Duration::from_secs(2);
+        assert!(rl.check(Bucket::LinkCodeGlobal, "", t2).is_err());
+    }
+
+    #[test]
     fn bucket_limits_and_windows_match_c7() {
         let t0 = Instant::now();
-        let cases: [(Bucket, u32, u64); 5] = [
+        let cases: [(Bucket, u32, u64); 6] = [
             (Bucket::AnyRoute, 60, 60),
             (Bucket::Authorize, 20, 600),
             (Bucket::Token, 30, 600),
             (Bucket::LinkExistingIp, 5, 900),
             (Bucket::LinkExistingAccount, 5, 900),
+            (Bucket::LinkCodeGlobal, 50, 900),
         ];
         for (bucket, limit, window_secs) in cases {
             let rl = limiter();
