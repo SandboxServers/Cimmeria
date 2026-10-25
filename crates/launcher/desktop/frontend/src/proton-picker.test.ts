@@ -56,7 +56,7 @@ test('a refused choice says why and puts the previous selection back',async()=>{
 });
 test('a reply that does not decode hides the picker rather than offering a bad list',async()=>{
  const {document}=parseHTML(html);
- const app=mountProton(document as unknown as Document,async()=>({available:'nope'}),document.getElementById('display-panel') as unknown as HTMLElement);
+ const app=mountProton(document as unknown as Document,async()=>({available:[{id:'x'}],selected:null,preferred:null}),document.getElementById('display-panel') as unknown as HTMLElement);
  await app.ready;
  assert.equal(document.getElementById('proton-picker')!.hidden,true);
 });

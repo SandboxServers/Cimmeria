@@ -22,11 +22,11 @@ const snapshot=(revision:number,display:DisplayOptions={mode:'windowed',width:10
  schema_version:1,operation:{schema_version:1,revision:0,operation:null},requires_reopen:false,adopted_login_servers:null,display_modes,launcher:{version:'0.1.0',tag:null},
  preferences:{schema_version:2,revision,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display},
 });
-function mounted(respond:(request:any)=>Promise<unknown>=async()=>null,refresh:()=>Promise<unknown>=async()=>{},first:NativeSnapshot|null=snapshot(3)) {
+function mounted(respond:(request:any)=>Promise<unknown>=async()=>null,refresh:()=>Promise<unknown>=async()=>{},first:NativeSnapshot|null=snapshot(3),proton:unknown=null) {
  const {document,window}=parseHTML(html);const calls:{command:string;request:any}[]=[];
  const feed=makePanelContext(()=>refresh());if(first)feed.publish(first);
- // The Proton picker (PP-12) shares this invoke; it answers null here, so the picker stays hidden and records nothing.
- const app=mountDisplay(document as unknown as Document,async(command,args)=>{if(command==='proton_command')return null;const request=(args as {request:unknown}).request;calls.push({command,request});return respond(request);},feed.context);
+ // The Proton picker (PP-12) shares this invoke; it answers `proton` (null by default, so the picker stays hidden) and records nothing.
+ const app=mountDisplay(document as unknown as Document,async(command,args)=>{if(command==='proton_command')return proton;const request=(args as {request:unknown}).request;calls.push({command,request});return respond(request);},feed.context);
  const el=<T>(id:string)=>document.getElementById(id) as unknown as T;
  const mode=el<HTMLSelectElement>('display-mode');const size=el<HTMLSelectElement>('display-size');const save=el<HTMLButtonElement>('display-save');
  const choose=(select:HTMLSelectElement,value:string)=>{(select.querySelector(`option[value="${value}"]`) as HTMLOptionElement).selected=true;select.dispatchEvent(new window.Event('change'));};
@@ -265,5 +265,13 @@ test('Save is disabled until settings load',async()=>{
  const m=mounted(undefined,undefined,null);
  assert.equal(m.save.disabled,true);
  m.feed.publish(snapshot(1));assert.equal(m.save.disabled,false);
+ await m.app.dispose();
+});
+
+test('the Proton picker is mounted in the display panel, and offers the Proton it finds',async()=>{
+ const m=mounted(undefined,undefined,snapshot(3),{available:[{id:'valve',name:'Proton Experimental',kind:'steam'}],selected:'valve',preferred:null});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(m.document.getElementById('proton-picker')!.hidden,false);
+ assert.equal((m.document.getElementById('proton-select') as unknown as HTMLSelectElement).querySelectorAll('option').length,2);
  await m.app.dispose();
 });

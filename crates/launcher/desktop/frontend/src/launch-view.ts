@@ -31,8 +31,8 @@ function ownerLine(status:LaunchStatus):string {
  }
  return 'Another operation owns the game. Wait for it to finish.';
 }
-// Names of the missing pieces in Play's copy; Proton is named "Proton" (PP-12).
-const pieceName:Record<string,string>={directx:'DirectX',physx:'PhysX',proton:'Proton'};
+// Names of the missing pieces in Play's copy; a list with Proton never reaches here (PP-12).
+const pieceName:Record<string,string>={directx:'DirectX',physx:'PhysX'};
 const pieceNames=(names:readonly string[])=>names.map(name=>pieceName[name]??name).join(' and ');
 /** Play's copy when no Proton is found: where to get one, then reopen the launcher (PP-12). */
 export const protonInstallText='Install Proton to play. In Steam, install Proton Experimental, or install GE-Proton with ProtonUp-Qt. Then reopen the launcher.';
