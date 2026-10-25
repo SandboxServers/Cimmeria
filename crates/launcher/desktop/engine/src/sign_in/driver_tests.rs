@@ -91,6 +91,7 @@ impl Drop for Fixture {
 impl Fixture {
     /// `providers` mounts a working `/providers`; without it the route is a 404.
     /// `reachable: false` points the auth base at a closed port instead.
+    #[allow(clippy::await_holding_lock)] // tests only: serialises the process env
     async fn new(providers: bool, reachable: bool) -> Self {
         let env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let server = MockServer::start().await;
@@ -144,8 +145,11 @@ impl Fixture {
     }
 
     async fn inspect(&self) -> Reply {
-        self.run(json!({"command": "inspect", "schema_version": 1}), &SilentBrowser::default())
-            .await
+        self.run(
+            json!({"command": "inspect", "schema_version": 1}),
+            &SilentBrowser::default(),
+        )
+        .await
     }
 
     fn has_session(&self) -> bool {
@@ -187,7 +191,9 @@ fn needs_link_body() -> Value {
 async fn mount_token(server: &MockServer, body: Value) {
     Mock::given(method("POST"))
         .and(path("/auth/v1/token"))
-        .and(body_partial_json(json!({"grant_type": "authorization_code"})))
+        .and(body_partial_json(
+            json!({"grant_type": "authorization_code"}),
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(body))
         .mount(server)
         .await;
@@ -221,7 +227,10 @@ fn commands_deserialize_and_refuse_unknown_fields() {
         json!({"command": "sign_out", "schema_version": 1}),
     ];
     for request in good {
-        assert!(serde_json::from_value::<SignInCommand>(request.clone()).is_ok(), "{request}");
+        assert!(
+            serde_json::from_value::<SignInCommand>(request.clone()).is_ok(),
+            "{request}"
+        );
     }
     let extra = json!({"command": "inspect", "schema_version": 1, "extra": 1});
     assert!(serde_json::from_value::<SignInCommand>(extra).is_err());
@@ -234,7 +243,10 @@ fn commands_deserialize_and_refuse_unknown_fields() {
 async fn unsupported_schema_is_refused() {
     let fx = Fixture::new(true, true).await;
     let reply = fx
-        .run(json!({"command": "inspect", "schema_version": 2}), &SilentBrowser::default())
+        .run(
+            json!({"command": "inspect", "schema_version": 2}),
+            &SilentBrowser::default(),
+        )
         .await;
     assert_eq!(reply, Err(SignInFailure::UnsupportedSchema));
 }
@@ -288,7 +300,10 @@ async fn begin_needs_link_then_link_new() {
     }
     assert!(!fx.has_session());
     let done = fx
-        .run(json!({"command": "link_new", "schema_version": 1}), &SilentBrowser::default())
+        .run(
+            json!({"command": "link_new", "schema_version": 1}),
+            &SilentBrowser::default(),
+        )
         .await
         .unwrap();
     assert!(matches!(done.state, SignInStateView::SignedIn { .. }));
@@ -300,7 +315,10 @@ async fn begin_needs_link_then_link_new() {
 async fn link_without_pending_choice_is_refused() {
     let fx = Fixture::new(true, true).await;
     let reply = fx
-        .run(json!({"command": "link_new", "schema_version": 1}), &SilentBrowser::default())
+        .run(
+            json!({"command": "link_new", "schema_version": 1}),
+            &SilentBrowser::default(),
+        )
         .await;
     assert_eq!(reply, Err(SignInFailure::NoPendingLink));
 }
@@ -312,7 +330,9 @@ async fn wrong_password_keeps_the_pending_link() {
     Mock::given(method("POST"))
         .and(path("/auth/v1/link/existing"))
         .and(body_partial_json(json!({"password": "bad"})))
-        .respond_with(ResponseTemplate::new(401).set_body_json(json!({"error": "invalid_credentials"})))
+        .respond_with(
+            ResponseTemplate::new(401).set_body_json(json!({"error": "invalid_credentials"})),
+        )
         .mount(&fx.server)
         .await;
     Mock::given(method("POST"))
@@ -326,7 +346,10 @@ async fn wrong_password_keeps_the_pending_link() {
     let wrong = fx.run(password_link(true, "bad"), &silent).await;
     assert_eq!(
         wrong,
-        Err(SignInFailure::Server { code: "invalid_credentials".to_owned(), retry_after: None })
+        Err(SignInFailure::Server {
+            code: "invalid_credentials".to_owned(),
+            retry_after: None
+        })
     );
     let right = fx.run(password_link(true, "good"), &silent).await.unwrap();
     assert!(matches!(right.state, SignInStateView::SignedIn { .. }));
@@ -354,7 +377,10 @@ async fn link_without_ack_sends_nothing() {
         .await;
     assert_eq!(code, Err(SignInFailure::PasswordRemovalNotAcknowledged));
     assert!(fx.requests_to("/auth/v1/link/existing").await.is_empty());
-    assert!(matches!(fx.inspect().await.unwrap().state, SignInStateView::NeedsLink { .. }));
+    assert!(matches!(
+        fx.inspect().await.unwrap().state,
+        SignInStateView::NeedsLink { .. }
+    ));
 
     fx.run(password_link(true, "pw"), &silent).await.unwrap();
     let sent = fx.requests_to("/auth/v1/link/existing").await;
@@ -366,8 +392,14 @@ async fn link_without_ack_sends_nothing() {
 async fn status_carries_play_refusal() {
     let fx = Fixture::new(true, true).await;
     assert_eq!(fx.inspect().await.unwrap().play_refusal, None);
-    fx.state.lock().unwrap().set_play_refusal(Some("ticket_unavailable"));
-    assert_eq!(fx.inspect().await.unwrap().play_refusal, Some("ticket_unavailable"));
+    fx.state
+        .lock()
+        .unwrap()
+        .set_play_refusal(Some("ticket_unavailable"));
+    assert_eq!(
+        fx.inspect().await.unwrap().play_refusal,
+        Some("ticket_unavailable")
+    );
 }
 
 #[tokio::test]
@@ -384,7 +416,10 @@ async fn second_begin_is_busy_and_cancel_ends_the_first() {
         }
         let second = fx.run(begin(), &SilentBrowser::default()).await;
         let cancel = fx
-            .run(json!({"command": "cancel", "schema_version": 1}), &SilentBrowser::default())
+            .run(
+                json!({"command": "cancel", "schema_version": 1}),
+                &SilentBrowser::default(),
+            )
             .await;
         (second, cancel)
     };
@@ -422,11 +457,17 @@ async fn rate_limited_carries_retry_after() {
         .await;
     fx.run(begin(), &CallbackBrowser::default()).await.unwrap();
     let reply = fx
-        .run(json!({"command": "link_new", "schema_version": 1}), &SilentBrowser::default())
+        .run(
+            json!({"command": "link_new", "schema_version": 1}),
+            &SilentBrowser::default(),
+        )
         .await;
     assert_eq!(
         reply,
-        Err(SignInFailure::Server { code: "rate_limited".to_owned(), retry_after: Some(30) })
+        Err(SignInFailure::Server {
+            code: "rate_limited".to_owned(),
+            retry_after: Some(30)
+        })
     );
 }
 
@@ -446,11 +487,17 @@ async fn reauth_required_passes_through_as_its_own_failure() {
         .mount(&fx.server)
         .await;
     let reply = fx
-        .run(json!({"command": "account", "schema_version": 1}), &SilentBrowser::default())
+        .run(
+            json!({"command": "account", "schema_version": 1}),
+            &SilentBrowser::default(),
+        )
         .await;
     assert_eq!(
         reply,
-        Err(SignInFailure::Server { code: "reauth_required".to_owned(), retry_after: None })
+        Err(SignInFailure::Server {
+            code: "reauth_required".to_owned(),
+            retry_after: None
+        })
     );
 }
 
@@ -458,11 +505,17 @@ async fn reauth_required_passes_through_as_its_own_failure() {
 async fn account_when_signed_out_is_a_signed_out_failure() {
     let fx = Fixture::new(true, true).await;
     let reply = fx
-        .run(json!({"command": "account", "schema_version": 1}), &SilentBrowser::default())
+        .run(
+            json!({"command": "account", "schema_version": 1}),
+            &SilentBrowser::default(),
+        )
         .await;
     assert_eq!(
         reply,
-        Err(SignInFailure::Server { code: "signed_out".to_owned(), retry_after: None })
+        Err(SignInFailure::Server {
+            code: "signed_out".to_owned(),
+            retry_after: None
+        })
     );
 }
 
@@ -474,7 +527,10 @@ async fn sign_out_clears_state_offline() {
     fx.inspect().await.unwrap();
     assert!(fx.has_session());
     let status = fx
-        .run(json!({"command": "sign_out", "schema_version": 1}), &SilentBrowser::default())
+        .run(
+            json!({"command": "sign_out", "schema_version": 1}),
+            &SilentBrowser::default(),
+        )
         .await
         .unwrap();
     assert!(matches!(status.state, SignInStateView::SignedOut));

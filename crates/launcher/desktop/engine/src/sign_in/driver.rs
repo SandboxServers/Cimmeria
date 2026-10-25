@@ -233,8 +233,8 @@ impl SignInDriver {
                 return Ok(Some(session));
             }
         }
-        let restored = SignIn::restore(base.clone(), self.http.clone(), self.store.clone())
-            .map(Arc::new);
+        let restored =
+            SignIn::restore(base.clone(), self.http.clone(), self.store.clone()).map(Arc::new);
         guard(state)?.set_sign_in(restored.clone());
         Ok(restored)
     }
@@ -285,11 +285,7 @@ impl SignInDriver {
     }
 
     /// Completes a `needs_link` choice. A retryable failure keeps the choice.
-    async fn link(
-        &self,
-        site: &Site<'_>,
-        link: Link<'_>,
-    ) -> Result<SignInStatus, SignInFailure> {
+    async fn link(&self, site: &Site<'_>, link: Link<'_>) -> Result<SignInStatus, SignInFailure> {
         let pending = self.take_pending()?.ok_or(SignInFailure::NoPendingLink)?;
         let session = Arc::new(SignIn::new(
             pending.base.clone(),
@@ -300,7 +296,9 @@ impl SignInDriver {
         let result = match link {
             Link::New => session.link_new(grant).await,
             Link::Password { account, password } => {
-                session.link_existing_password(grant, account, password).await
+                session
+                    .link_existing_password(grant, account, password)
+                    .await
             }
             Link::Code(code) => session.link_existing_code(grant, code).await,
         };
@@ -446,7 +444,13 @@ impl SignInDriver {
             server_name: site.server.map(str::to_owned),
             signup_open: discovery.is_some_and(|d| d.signup_open),
             providers: discovery
-                .map(|d| d.providers.iter().cloned().map(ProviderEntry::from).collect())
+                .map(|d| {
+                    d.providers
+                        .iter()
+                        .cloned()
+                        .map(ProviderEntry::from)
+                        .collect()
+                })
                 .unwrap_or_default(),
             waiting,
             state: view,
