@@ -393,6 +393,25 @@ async fn authorize_is_rate_limited() {
     assert!(resp.headers().contains_key(header::RETRY_AFTER));
 }
 
+/// W3-8: a refused provider must not burn the single-use link intent.
+#[tokio::test]
+async fn unknown_provider_does_not_spend_the_link_intent() {
+    let server = MockServer::start().await;
+    let h = harness(&server.uri(), false, false);
+    let token = h
+        .stores
+        .intents
+        .issue(crate::stores::LinkIntent { account_id: 7 }, Instant::now());
+    let resp = get(
+        &h.router,
+        &authorize_uri(&[("provider", "nope"), ("intent", token.as_str())]),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let kept = h.stores.intents.take(&token, Instant::now());
+    assert_eq!(kept.map(|i| i.account_id), Some(7));
+}
+
 #[tokio::test]
 async fn idp_disabled_answers_503_except_providers() {
     let server = MockServer::start().await;

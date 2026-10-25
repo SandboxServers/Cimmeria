@@ -156,20 +156,6 @@ async fn start_authorize(
         return Err(ApiError::InvalidRequest);
     }
     state.ctx.limit(Bucket::Authorize, ip, now)?;
-    // `intent` comes from `link/start`: a known one is spent here, an unknown
-    // one is refused.
-    let intent = match query.intent.as_deref() {
-        Some(token) => Some(
-            state
-                .ctx
-                .stores
-                .intents
-                .take(token, now)
-                .ok_or(ApiError::InvalidRequest)?,
-        ),
-        None => None,
-    };
-
     let running = state
         .ctx
         .providers
@@ -185,6 +171,21 @@ async fn start_authorize(
         );
         ApiError::Unavailable
     })?;
+
+    // `intent` comes from `link/start`: a known one is spent here, an unknown
+    // one is refused. Spent only after the provider checks, so an unknown or
+    // unavailable provider does not burn the user's single-use token (W3-8).
+    let intent = match query.intent.as_deref() {
+        Some(token) => Some(
+            state
+                .ctx
+                .stores
+                .intents
+                .take(token, now)
+                .ok_or(ApiError::InvalidRequest)?,
+        ),
+        None => None,
+    };
 
     let verifier = random_b64url(32);
     let server_challenge = pkce_challenge(&verifier);
