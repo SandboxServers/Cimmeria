@@ -75,7 +75,11 @@ fn stderr_for(log: Option<&Path>) -> Result<Stdio, ProtonError> {
     match log {
         None => Ok(Stdio::null()),
         Some(path) => {
-            let file = File::options().create(true).append(true).open(path)?;
+            let file = File::options()
+                .create(true)
+                .append(true)
+                .open(path)
+                .map_err(|_| ProtonError::Setup("prefix"))?;
             Ok(Stdio::from(file))
         }
     }
