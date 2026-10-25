@@ -13,6 +13,10 @@
 //! | `AUTH_HOST` | `0.0.0.0` | Auth service bind address |
 //! | `AUTH_PORT` | `13001` | Auth service port (BaseApp connections) |
 //! | `LOGON_PORT` | `8081` | Auth HTTP port (SOAP client login). Also serves the four launcher telemetry routes (`/api/auth/dev-session`, `/api/auth/dev-session/refresh`, `/api/telemetry/upload-{chunk,bundle}`) and nothing else from the admin API, so remote launchers need no config (decision @Cadacious, 2026-09-29). A fifth, `/api/telemetry/launcher-summary` (desktop launcher attempt summaries), is merged beside them. It is anonymous (no token; an `Authorization` header is never read), accepts only its exact schema-1 JSON payload and is rate-limited per address by `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`. The owner approved serving it on this port on 2026-10-04, which extends that decision to it. No launcher build has a summary endpoint yet, so nothing calls it. |
+//! | `AUTH_TLS_CERT_PATH` | unset | PEM certificate chain for the auth HTTPS listener. The TLS listener starts only when both cert and key paths are set. |
+//! | `AUTH_TLS_KEY_PATH` | unset | PEM private key for the auth HTTPS listener (paired with `AUTH_TLS_CERT_PATH`). |
+//! | `AUTH_PROXY_ADDR` | unset | Bind address of the auth reverse-proxy listener, e.g. `0.0.0.0:13480`. For a TLS-terminating reverse proxy only: the proxy must send `X-Forwarded-Proto: https` and `X-Forwarded-For`. It must never be published to the internet. Unparsable values log `reason=bad_auth_proxy_addr` and leave it off. |
+//! | `AUTH_PROXY_TRUSTED_PEERS` | `127.0.0.0/8,::1,172.16.0.0/12` | Comma-separated CIDR networks allowed to send the proxy's `X-Forwarded-*` headers. Any other socket peer is treated as plain HTTP. A list with a bad entry logs `reason=bad_auth_proxy_trusted_peers` and keeps the default. |
 //! | `AUTH_TLS_RELOAD_INTERVAL_SECS` | `30` | How often the background watcher polls the auth TLS cert/key file mtimes and hot-reloads the live config when either changes (e.g. a Let's Encrypt renewal), without restarting the server. `0` disables the watcher. Only active when the TLS listener is configured (cert + key paths set). |
 //! | `BASE_HOST` | `0.0.0.0` | BaseApp UDP bind address |
 //! | `BASE_EXTERNAL` | `127.0.0.1` | BaseApp address advertised to game clients |
@@ -69,6 +73,7 @@ use cimmeria_common::ServerConfig;
 use cimmeria_services::audit::{LoginEvent, LoginEventBuffer};
 use cimmeria_services::orchestrator::Orchestrator;
 
+mod config_env_auth;
 mod db_check;
 mod logging;
 mod otel;
@@ -424,29 +429,7 @@ async fn audit_writer_loop(pool: sqlx::PgPool, mut rx: broadcast::Receiver<Login
 fn config_from_env() -> ServerConfig {
     let mut cfg = ServerConfig::default();
 
-    if let Ok(v) = std::env::var("AUTH_HOST") {
-        cfg.auth_host = v;
-    }
-    if let Ok(v) = std::env::var("AUTH_PORT") {
-        if let Ok(p) = v.parse() {
-            cfg.auth_port = p;
-        }
-    }
-    if let Ok(v) = std::env::var("LOGON_PORT") {
-        if let Ok(p) = v.parse() {
-            cfg.logon_port = p;
-        }
-    }
-    if let Ok(v) = std::env::var("AUTH_TLS_RELOAD_INTERVAL_SECS") {
-        if let Ok(secs) = v.parse() {
-            cfg.auth_tls_reload_interval_secs = secs;
-        } else {
-            tracing::warn!(
-                value = %v,
-                "AUTH_TLS_RELOAD_INTERVAL_SECS is not a number; keeping default"
-            );
-        }
-    }
+    config_env_auth::apply(&mut cfg);
     if let Ok(v) = std::env::var("BASE_HOST") {
         cfg.base_host = v;
     }
