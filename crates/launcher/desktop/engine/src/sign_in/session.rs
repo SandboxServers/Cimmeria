@@ -127,6 +127,11 @@ impl SignIn {
         })
     }
 
+    /// The auth server this session signs in to (`https://<host>/`).
+    pub fn base(&self) -> &Url {
+        &self.base
+    }
+
     /// The names of the signed-in account, as last stored or refreshed. `None` when signed out.
     pub async fn summary(&self) -> Option<AccountSummary> {
         self.state.lock().await.account.clone()

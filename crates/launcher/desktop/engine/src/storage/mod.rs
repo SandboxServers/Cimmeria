@@ -10,6 +10,7 @@ pub(crate) mod extraction_work;
 mod failed_cleanup;
 pub mod game_telemetry;
 mod helper_journal;
+mod sign_in_state;
 pub mod launch;
 pub mod launcher_summary;
 pub mod log_upload;
@@ -250,6 +251,10 @@ pub struct DesktopState {
     /// The stored choice, not yet checked against a release. See `seed_archive`.
     seed_archive: Option<seed_archive::SeedArchiveRecord>,
     external_setup: bool,
+    /// The sign-in Play uses, when the player is signed in. See `sign_in_state`.
+    sign_in: Option<Arc<crate::sign_in::session::SignIn>>,
+    /// Why the last Play did not start (C9), cleared when the next Play starts.
+    play_refusal: Option<&'static str>,
 }
 
 impl DesktopState {
@@ -318,6 +323,8 @@ impl DesktopState {
             seed_source: SeedSourceHandle::download(),
             seed_archive,
             external_setup: false,
+            sign_in: None,
+            play_refusal: None,
         };
         state.recover_legacy_import()?;
         state.recover_launcher_update()?;
