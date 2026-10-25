@@ -210,7 +210,12 @@ async fn execute(
                 .lock()
                 .map_err(|_| StorageError::Io)?
                 .set_play_refusal(Some(refusal.reason()));
-            failure::not_started(&state, plan, refusal.reason(), FailureCode::LaunchPrepareFailed);
+            failure::not_started(
+                &state,
+                plan,
+                refusal.reason(),
+                FailureCode::LaunchPrepareFailed,
+            );
             return Ok(Observation::NotStarted);
         }
     };

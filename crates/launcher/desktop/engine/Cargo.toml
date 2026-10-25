@@ -54,6 +54,7 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage
 [dev-dependencies]
 minisign = "=0.8.0"
 wiremock = "0.6"
+cimmeria-launcher-relay = { path = "../relay", features = ["test-support"] }
 crc32fast = "1"
 # The dev manifest signing key and the archive fixtures the storage tests use.
 cimmeria-launcher-core = { path = "../../../launcher-core", features = ["test-fixtures"] }

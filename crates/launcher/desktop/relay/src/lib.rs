@@ -107,7 +107,7 @@ struct Shared {
 
 /// Starts the relay on `127.0.0.1:0`, forwarding to `cfg.upstream`.
 pub async fn start(cfg: RelayConfig) -> Result<RelayHandle, RelayError> {
-    check_upstream(&cfg.upstream, cfg!(test))?;
+    check_upstream(&cfg.upstream, cfg!(any(test, feature = "test-support")))?;
     let client = build_client(&cfg)?;
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
     let addr = listener.local_addr()?;

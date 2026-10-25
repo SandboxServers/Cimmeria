@@ -4,6 +4,11 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+# Admits `http://127.0.0.1:<port>` upstreams for the engine's wiremock tests. Only
+# the engine's dev-dependency enables it, so release builds never see it.
+test-support = []
+
 [dependencies]
 tokio = { version = "1", features = ["macros", "rt", "net", "sync", "time"] }
 hyper = { workspace = true }
