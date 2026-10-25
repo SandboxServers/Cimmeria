@@ -21,6 +21,20 @@ pub(crate) fn launch_refused(id: Uuid, reason: &'static str) {
     );
 }
 
+/// An admission guard refused Play (PD-13): `reason` is the error's code and
+/// `check` names the guard that refused it.
+pub(crate) fn admission_refused(id: Uuid, reason: &'static str, check: &'static str) {
+    let operation = operation_numbers::number(id);
+    tracing::warn!(
+        target: "launcher.launch",
+        event = "launch_refused",
+        operation,
+        reason,
+        check,
+        "launcher launch: Play refused at admission; the named check did not pass; nothing was started"
+    );
+}
+
 /// The shell refused Play before any operation existed (C-PD2), so the event
 /// has no `operation`; `reason` is `resources_unavailable` or
 /// `resources_unresolved`. Same event name as `launch_refused`.

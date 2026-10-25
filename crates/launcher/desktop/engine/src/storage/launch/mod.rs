@@ -108,12 +108,23 @@ impl DesktopState {
     ) -> Result<Admission, IntentError> {
         self.ensure_updater_idle()?;
         if self.launcher_update_blocks_play(updater)? {
+            events::admission_refused(id, StorageError::Busy.code(), "launcher_update_pending");
             return Err(StorageError::Busy.into());
         }
         if self.requires_reopen() {
+            events::admission_refused(
+                id,
+                StorageError::PersistenceUncertain.code(),
+                "reopen_required",
+            );
             return Err(StorageError::PersistenceUncertain.into());
         }
         if id.is_nil() {
+            events::admission_refused(
+                id,
+                ContractError::IdentityConflict.code(),
+                "nil_operation_id",
+            );
             return Err(ContractError::IdentityConflict.into());
         }
         if self
@@ -139,6 +150,7 @@ impl DesktopState {
             });
         }
         if revision != self.operations.snapshot().revision {
+            events::admission_refused(id, ContractError::StaleRevision.code(), "revision_mismatch");
             return Err(ContractError::StaleRevision.into());
         }
         if self
@@ -148,6 +160,7 @@ impl DesktopState {
             .as_ref()
             .is_some_and(|op| !op.state.terminal())
         {
+            events::admission_refused(id, ContractError::Busy.code(), "operation_open");
             return Err(ContractError::Busy.into());
         }
         let (installed, adoption) = self.installed_for_launch()?.ok_or(StorageError::Corrupt)?;
@@ -158,6 +171,11 @@ impl DesktopState {
         // The signed minimum is the owner's; it is reported whatever the state of
         // an adopted copy's imported settings.
         if self.compatibility.for_release(&installed.release).blocks() {
+            events::admission_refused(
+                id,
+                IntentError::LauncherTooOld.code(),
+                "release_minimum_unmet",
+            );
             return Err(IntentError::LauncherTooOld);
         }
         // The DLL is admitted only for a player who is opted in right now, and a
@@ -191,17 +209,28 @@ impl DesktopState {
             }
         }
         if !install_worker::content_valid(&installed.intent.content_root(), &installed.release) {
+            events::admission_refused(id, StorageError::Corrupt.code(), "content_invalid");
             return Err(StorageError::Corrupt.into());
         }
         let runtime = match installed.intent.backend {
             ExtractionBackend::Native => {
                 if !cfg!(windows) {
+                    events::admission_refused(
+                        id,
+                        StorageError::Corrupt.code(),
+                        "native_backend_unsupported",
+                    );
                     return Err(StorageError::Corrupt.into());
                 }
                 None
             }
             ExtractionBackend::Wine { .. } => {
                 if !cfg!(target_os = "macos") || resources.graphics.is_none() {
+                    events::admission_refused(
+                        id,
+                        StorageError::Corrupt.code(),
+                        "wine_backend_unsupported",
+                    );
                     return Err(StorageError::Corrupt.into());
                 }
                 Some(self.prepared_runtime()?.ok_or(StorageError::Corrupt)?.plan)

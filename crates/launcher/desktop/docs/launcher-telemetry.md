@@ -105,6 +105,33 @@ is emitted. The timers add no path, account name, machine identity, token,
 operation UUID or arbitrary error text. The `launcher.install.detail` and
 `launcher.repair.detail` targets stay in the local log and are never forwarded.
 
+## Refused commands and Play admission
+
+Every Tauri command that returns a `JobError` to the window logs one
+`command_failed` record (`shell/src/host/command_failure.rs`). The target is
+the command's area: `install_command` on `launcher.install`, `launch_command`
+on `launcher.launch`, `game_update_command` on `launcher.game_update` and
+`game_telemetry_command` on `launcher.settings`. `busy` and `stale_revision`
+log at INFO, because they are routine double-clicks; every other error logs at
+WARN.
+
+| Field | Values and meaning |
+|---|---|
+| `event` | `command_failed` |
+| `command` | The Tauri command's name, for example `install_command` |
+| `error` | The `JobError` code the window received, for example `invalid_directory` |
+| `failure_code` | Its failure taxonomy code (C-PD1), for example `game_folder_invalid` |
+
+A Play request that an engine admission guard refuses logs `launch_refused`
+on `launcher.launch` at WARN, with `operation`, `reason` (the error's code) and
+`check`, the guard that refused it: `launcher_update_pending`,
+`reopen_required`, `nil_operation_id`, `revision_mismatch`, `operation_open`,
+`release_minimum_unmet`, `content_invalid`, `native_backend_unsupported` or
+`wine_backend_unsupported`. The older refusals keep their `reason` codes
+(`retry_without_plan`, `retry_plan_mismatch`, `not_the_installed_copy`,
+`telemetry_not_opted_in`, `client_patches_off`, `plan_exists`) and carry no
+`check`.
+
 ## Delivery limits
 
 This uses the existing launcher sender and server scalar scrubber, with no new

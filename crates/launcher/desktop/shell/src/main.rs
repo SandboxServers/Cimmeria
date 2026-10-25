@@ -36,6 +36,7 @@ use cimmeria_launcher_engine::runtime_setup::windows_physx::{
     PhysxCommand, PhysxError, PhysxStatus,
 };
 use cimmeria_launcher_engine::{LauncherBuild, NativeCommand, NativeSnapshot, StorageError};
+use host::command_failure::{self, CommandKind};
 use host::{
     AdoptionCommand, AdoptionError, AdoptionStatus, GameTelemetryCommand, GameTelemetryStatus,
     GameUpdateCommand, GameUpdateStatus, InstallCommand, InstallStatus, JobError, LaunchCommand,
@@ -51,41 +52,47 @@ async fn game_update_command(
     request: GameUpdateCommand,
     state: tauri::State<'_, Arc<NativeHost>>,
 ) -> Result<GameUpdateStatus, JobError> {
-    request.validate()?;
     let host = state.inner().clone();
-    match request {
-        GameUpdateCommand::Inspect { .. } => {
-            tauri::async_runtime::spawn_blocking(move || host.game_update_status())
+    async move {
+        request.validate()?;
+        match request {
+            GameUpdateCommand::Inspect { .. } => {
+                tauri::async_runtime::spawn_blocking(move || host.game_update_status())
+                    .await
+                    .map_err(|_| JobError::Io)?
+            }
+            request @ (GameUpdateCommand::Maintain { .. } | GameUpdateCommand::Rollback { .. }) => {
+                tauri::async_runtime::spawn_blocking(move || host.maintain_game_update(request))
+                    .await
+                    .map_err(|_| JobError::Io)?
+            }
+            request @ (GameUpdateCommand::Apply { .. } | GameUpdateCommand::Cancel { .. }) => {
+                tauri::async_runtime::spawn_blocking(move || host.apply_game_update(request))
+                    .await
+                    .map_err(|_| JobError::Io)?
+            }
+            GameUpdateCommand::Check {
+                operation_revision, ..
+            } => {
+                let checking = host.clone();
+                let check = tauri::async_runtime::spawn_blocking(move || {
+                    checking.begin_game_update_check(operation_revision)
+                })
+                .await
+                .map_err(|_| JobError::Io)??;
+                let release = cimmeria_launcher_engine::catalog::fetch_release().await?;
+                tauri::async_runtime::spawn_blocking(move || {
+                    host.finish_game_update_check(check, release)
+                })
                 .await
                 .map_err(|_| JobError::Io)?
-        }
-        request @ (GameUpdateCommand::Maintain { .. } | GameUpdateCommand::Rollback { .. }) => {
-            tauri::async_runtime::spawn_blocking(move || host.maintain_game_update(request))
-                .await
-                .map_err(|_| JobError::Io)?
-        }
-        request @ (GameUpdateCommand::Apply { .. } | GameUpdateCommand::Cancel { .. }) => {
-            tauri::async_runtime::spawn_blocking(move || host.apply_game_update(request))
-                .await
-                .map_err(|_| JobError::Io)?
-        }
-        GameUpdateCommand::Check {
-            operation_revision, ..
-        } => {
-            let checking = host.clone();
-            let check = tauri::async_runtime::spawn_blocking(move || {
-                checking.begin_game_update_check(operation_revision)
-            })
-            .await
-            .map_err(|_| JobError::Io)??;
-            let release = cimmeria_launcher_engine::catalog::fetch_release().await?;
-            tauri::async_runtime::spawn_blocking(move || {
-                host.finish_game_update_check(check, release)
-            })
-            .await
-            .map_err(|_| JobError::Io)?
+            }
         }
     }
+    .await
+    .inspect_err(|error| {
+        command_failure::log(CommandKind::GameUpdate, "game_update_command", *error)
+    })
 }
 
 #[tauri::command]
@@ -162,6 +169,7 @@ async fn install_command(
     let attempt = request.summary_attempt();
     let result = run_install_command(request, host.clone()).await;
     if let Some(error) = result.as_ref().err().copied() {
+        command_failure::log(CommandKind::Install, "install_command", error);
         // Closed codes for the launcher summary only. Detached: the reply does
         // not wait for the bookkeeping, and the result is returned unchanged.
         drop(tauri::async_runtime::spawn_blocking(move || {
@@ -255,6 +263,7 @@ async fn launch_command(
         Err(_) => Err(JobError::Io),
     };
     if let Some(error) = result.as_ref().err().copied() {
+        command_failure::log(CommandKind::Launch, "launch_command", error);
         // Closed codes for the launcher summary only. Detached: the reply does
         // not wait for the bookkeeping, and the result is returned unchanged.
         drop(tauri::async_runtime::spawn_blocking(move || {
@@ -270,9 +279,13 @@ async fn game_telemetry_command(
     state: tauri::State<'_, Arc<NativeHost>>,
 ) -> Result<GameTelemetryStatus, JobError> {
     let host = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || host.game_telemetry_command(request))
+    let result = tauri::async_runtime::spawn_blocking(move || host.game_telemetry_command(request))
         .await
-        .map_err(|_| JobError::Io)?
+        .map_err(|_| JobError::Io)?;
+    if let Err(error) = &result {
+        command_failure::log(CommandKind::Settings, "game_telemetry_command", *error)
+    }
+    result
 }
 
 #[tauri::command]

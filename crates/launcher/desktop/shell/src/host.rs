@@ -12,6 +12,7 @@ pub(crate) use adoption::events as adoption_events;
 pub(crate) use adoption::refusal::refusal as adoption_refusal;
 mod client_changes;
 mod client_maintenance;
+pub(crate) mod command_failure;
 mod game_telemetry;
 mod game_update;
 #[cfg(test)]

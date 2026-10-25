@@ -272,3 +272,34 @@ fn an_unreadable_record_launches_untagged_and_logs_one_closed_warning() {
     assert_eq!(rows[0].target, "launcher.launch");
     assert_eq!(rows[0].level, Level::WARN);
 }
+
+#[test]
+fn a_second_play_while_one_is_open_logs_the_refusing_check() {
+    // A second live Dispatch keeps tracing's callsite interest per dispatcher; with one,
+    // a callsite first hit by another test with no subscriber stays disabled.
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let (_, events) = capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        let (_root, mut state, plan) = super::tests::fixture();
+        let revision = state.operations.snapshot().revision;
+        let result = state.admit_launch(
+            Uuid::new_v4(),
+            revision,
+            plan.installation.operation_id,
+            plan.resources.clone(),
+        );
+        assert!(matches!(
+            result,
+            Err(IntentError::Operation(ContractError::Busy))
+        ));
+    });
+    let refused: Vec<&Captured> = events
+        .iter()
+        .filter(|e| e.target == "launcher.launch" && e.field("event") == Some("launch_refused"))
+        .collect();
+    assert_eq!(refused.len(), 1);
+    assert_eq!(refused[0].level, Level::WARN);
+    assert_eq!(refused[0].field("check"), Some("operation_open"));
+    assert_eq!(refused[0].field("reason"), Some("busy"));
+    assert!(refused[0].field("operation").is_some());
+}
