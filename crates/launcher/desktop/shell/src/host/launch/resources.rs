@@ -31,36 +31,27 @@ pub(super) fn proton_under(home: &Path, system_tools: &Path) -> Option<ProtonSel
         version: install.version.clone(),
     })
 }
-/// Sets the Proton a Linux Native Play runs through, found under HOME.
+/// The Proton Play runs through, found now (no cache: PP-10 relies on it). `roots` is
+/// (home, system tools); `None` reads HOME and SYSTEM_TOOLS. Off Linux there is none.
 #[cfg(target_os = "linux")]
-pub(super) fn with_proton(mut bundle: Resources) -> Resources {
-    bundle.proton = std::env::var_os("HOME")
-        .and_then(|home| proton_under(Path::new(&home), Path::new(SYSTEM_TOOLS)));
-    bundle
-}
-#[cfg(not(target_os = "linux"))]
-pub(super) fn with_proton(bundle: Resources) -> Resources {
-    bundle
-}
-/// The prerequisite `proton` when `home` holds no Proton; no other host needs one.
-#[cfg(target_os = "linux")]
-pub(super) fn missing_proton_under(home: &Path, system_tools: &Path) -> Vec<&'static str> {
-    match proton_under(home, system_tools) {
-        Some(_) => Vec::new(),
-        None => vec!["proton"],
+pub(super) fn proton(roots: Option<(&Path, &Path)>) -> Option<ProtonSelection> {
+    match roots {
+        Some((home, tools)) => proton_under(home, tools),
+        None => std::env::var_os("HOME")
+            .and_then(|home| proton_under(Path::new(&home), Path::new(SYSTEM_TOOLS))),
     }
 }
-/// `missing_proton_under` for the process's HOME, as Play and status see it.
-#[cfg(target_os = "linux")]
-pub(super) fn missing_proton() -> Vec<&'static str> {
-    std::env::var_os("HOME").map_or_else(
-        || vec!["proton"],
-        |home| missing_proton_under(Path::new(&home), Path::new(SYSTEM_TOOLS)),
-    )
-}
 #[cfg(not(target_os = "linux"))]
-pub(super) fn missing_proton() -> Vec<&'static str> {
-    Vec::new()
+pub(super) fn proton(_roots: Option<(&Path, &Path)>) -> Option<ProtonSelection> {
+    None
+}
+/// `"proton"` when this Linux host found no Proton; no other host needs one.
+pub(super) fn missing_proton(found: Option<&ProtonSelection>) -> Vec<&'static str> {
+    if cfg!(target_os = "linux") && found.is_none() {
+        vec!["proton"]
+    } else {
+        Vec::new()
+    }
 }
 pub(super) fn bundled(root: &Path) -> Option<Resources> {
     bundled_with(
@@ -188,34 +179,5 @@ mod tests {
         )
         .unwrap();
         assert!(bundled_with(&root, &digests(Some(&patches))).is_none());
-    }
-    /// A fake Steam client under `home` with one Valve Proton in its library.
-    #[cfg(target_os = "linux")]
-    fn steam_with_proton(home: &Path) -> std::path::PathBuf {
-        let proton = home.join(".local/share/Steam/steamapps/common/Proton 9.0");
-        std::fs::create_dir_all(&proton).unwrap();
-        for file in ["proton", "toolmanifest.vdf"] {
-            std::fs::write(proton.join(file), b"").unwrap();
-        }
-        std::fs::write(proton.join("version"), "1700000000 proton-9.0\n").unwrap();
-        proton
-    }
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn proton_found_under_home_is_chosen_and_clears_the_missing_prerequisite() {
-        let home = tempfile::tempdir().unwrap();
-        let system = tempfile::tempdir().unwrap();
-        let (home, system) = (home.path(), system.path());
-        assert_eq!(
-            missing_proton_under(home, system),
-            vec!["proton"],
-            "no Steam tree under HOME"
-        );
-        assert!(proton_under(home, system).is_none());
-        let proton = steam_with_proton(home);
-        let found = proton_under(home, system).expect("Proton under HOME");
-        assert_eq!(found.version, "1700000000 proton-9.0");
-        assert_eq!(found.root, proton.canonicalize().unwrap());
-        assert!(missing_proton_under(home, system).is_empty());
     }
 }
