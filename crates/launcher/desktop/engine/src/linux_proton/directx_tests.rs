@@ -102,6 +102,7 @@ fn wrong_target_is_replaced() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn a_symlink_at_the_target_is_replaced_by_a_regular_file() {
     let root = tempfile::tempdir().unwrap();
@@ -137,6 +138,49 @@ fn wrong_extracted_bytes_are_refused_and_leave_the_old_target_untouched() {
         .join(SYSWOW64)
         .join("d3dx9_40.dll.cimmeria-tmp")
         .exists());
+}
+
+#[test]
+fn extracted_bytes_of_the_right_length_but_the_wrong_hash_are_refused() {
+    let root = tempfile::tempdir().unwrap();
+    let prefix = prefix_with_syswow64(root.path());
+    let game = game_with_cab(root.path(), "DX9.0c");
+    let pins = [pin("d3dx9_40.dll", GOOD)];
+    let old = b"old dll".to_vec();
+    fs::write(target_path(&prefix, "d3dx9_40.dll"), &old).unwrap();
+    let calls = Cell::new(0);
+    // Same length as the pin, different bytes: only the hash can refuse them.
+    let wrong = vec![b'y'; GOOD.len()];
+    let err = ensure_with(&prefix, &game, &pins, fake(&wrong, &calls)).unwrap_err();
+    assert!(matches!(err, ProtonError::Setup("directx")));
+    assert_eq!(fs::read(target_path(&prefix, "d3dx9_40.dll")).unwrap(), old);
+    assert!(!prefix
+        .pfx
+        .join(SYSWOW64)
+        .join("d3dx9_40.dll.cimmeria-tmp")
+        .exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlink_at_the_temporary_file_is_not_followed() {
+    let root = tempfile::tempdir().unwrap();
+    let prefix = prefix_with_syswow64(root.path());
+    let game = game_with_cab(root.path(), "DX9.0c");
+    let pins = [pin("d3dx9_40.dll", GOOD)];
+    let outside = root.path().join("outside.dll");
+    fs::write(&outside, b"outside").unwrap();
+    let temp = prefix.pfx.join(SYSWOW64).join("d3dx9_40.dll.cimmeria-tmp");
+    std::os::unix::fs::symlink(&outside, &temp).unwrap();
+    let calls = Cell::new(0);
+    ensure_with(&prefix, &game, &pins, fake(GOOD, &calls)).unwrap();
+    assert_eq!(fs::read(&outside).unwrap(), b"outside");
+    let meta = fs::symlink_metadata(target_path(&prefix, "d3dx9_40.dll")).unwrap();
+    assert!(meta.is_file());
+    assert_eq!(
+        fs::read(target_path(&prefix, "d3dx9_40.dll")).unwrap(),
+        GOOD
+    );
 }
 
 #[test]
@@ -186,7 +230,16 @@ fn the_production_pins_name_both_dlls_and_their_overrides() {
     assert_eq!(DLLS[0].dll, "d3dx9_40.dll");
     assert_eq!(DLLS[1].dll, "xinput1_3.dll");
     assert_eq!(OVERRIDES, "d3dx9_40=n;xinput1_3=n");
-    for dll in &DLLS {
-        assert_eq!(dll.sha256.len(), 64);
-    }
+    assert_eq!(DLLS[0].cab, "Nov2008_d3dx9_40_x86.cab");
+    assert_eq!(DLLS[0].bytes, 4_379_984);
+    assert_eq!(
+        DLLS[0].sha256,
+        "16fd909aeb68d0d1aca8529dc7f78880b97d6649d70ce8d03a2c858bc28e216b"
+    );
+    assert_eq!(DLLS[1].cab, "APR2007_xinput_x86.cab");
+    assert_eq!(DLLS[1].bytes, 81_768);
+    assert_eq!(
+        DLLS[1].sha256,
+        "8d540d484ea41e374fd0107d55d253f87ded4ce780d515d8fd59bbe8c98970a7"
+    );
 }

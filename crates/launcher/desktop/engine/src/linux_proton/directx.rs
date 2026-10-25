@@ -10,7 +10,9 @@ use std::fs;
 use std::io::{ErrorKind, Write};
 use std::path::Path;
 
-use cimmeria_launcher_core::unpack::{extract_cab_member, UnpackError};
+#[cfg(target_os = "linux")]
+use cimmeria_launcher_core::unpack::extract_cab_member;
+use cimmeria_launcher_core::unpack::UnpackError;
 use sha2::{Digest, Sha256};
 
 use super::prefix::{Prefix, ProtonError};
@@ -56,8 +58,13 @@ const SYSWOW64: &str = "drive_c/windows/syswow64";
 /// Puts the pinned DLLs in the prefix's `syswow64` folder, extracting each one
 /// that is missing or wrong. Any failure is `Setup("directx")`, and a DLL whose
 /// bytes do not match its pin never replaces the file in the prefix.
+#[cfg(target_os = "linux")]
 pub fn ensure(prefix: &Prefix, game_root: &Path) -> Result<(), ProtonError> {
-    ensure_with(prefix, game_root, &DLLS, extract_cab_member)
+    let result = ensure_with(prefix, game_root, &DLLS, extract_cab_member);
+    if result.is_err() {
+        tracing::warn!(target: "launcher.launch", event = "proton_directx_failed", "proton: directx failed");
+    }
+    result
 }
 
 /// `ensure` with the pins and the extractor as parameters, so the tests can use
@@ -109,11 +116,17 @@ fn is_current(target: &Path, pin: &Pinned) -> Result<bool, ProtonError> {
 }
 
 /// Writes `bytes` to `<dll>.cimmeria-tmp` in `folder`, syncs it, then renames it
-/// over `target`. A failed write removes the temporary file.
+/// over `target`. A stale temporary file or symlink is removed first, and the
+/// new file is created exclusively, so the write never follows a link. A failed
+/// write removes the temporary file.
 fn write_over(folder: &Path, target: &Path, dll: &str, bytes: &[u8]) -> Result<(), ProtonError> {
     let temp = folder.join(format!("{dll}.cimmeria-tmp"));
+    let _ = fs::remove_file(&temp);
     let written = (|| -> std::io::Result<()> {
-        let mut file = fs::File::create(&temp)?;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)?;
         file.write_all(bytes)?;
         file.sync_all()?;
         drop(file);

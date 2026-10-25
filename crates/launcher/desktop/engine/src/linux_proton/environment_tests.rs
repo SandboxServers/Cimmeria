@@ -119,6 +119,15 @@ fn game_puts_the_native_directx_overrides_in_front_of_the_base_ones() {
 }
 
 #[test]
+fn game_sets_only_the_native_directx_overrides_without_an_inherited_value() {
+    let game = game(BTreeMap::new(), 60, None);
+    assert_eq!(
+        game.get(&OsString::from("WINEDLLOVERRIDES")),
+        Some(&OsString::from("d3dx9_40=n;xinput1_3=n"))
+    );
+}
+
+#[test]
 fn game_sets_the_frame_cap_and_log_variables_only_with_a_log_folder() {
     let root = tempfile::tempdir().unwrap();
     let prefix = prefix_in(root.path());
