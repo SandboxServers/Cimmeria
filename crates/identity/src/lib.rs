@@ -24,3 +24,5 @@ pub mod routes;
 pub mod stores;
 pub mod telemetry;
 pub mod wiring;
+#[cfg(test)]
+mod wiring_smoke_live_db;

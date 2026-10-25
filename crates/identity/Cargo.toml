@@ -52,3 +52,5 @@ rcgen = "0.14"
 wiremock = { workspace = true }
 # Drives the route tests with `oneshot`.
 tower = { workspace = true }
+# The smoke test computes the SHA-1 ticket the `UserAuth` password carries.
+sha1 = { workspace = true }
