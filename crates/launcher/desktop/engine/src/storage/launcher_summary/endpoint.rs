@@ -66,7 +66,7 @@ impl SummaryEndpoint {
     }
 
     /// An http login server on a public DNS name: the same name over https on 443,
-    /// with `/api/` as the base. The game keeps http; summaries never do.
+    /// with `/api/` as the base. Game telemetry uses the same rule (https_upgrade_origin).
     /// IP literals, localhost, `*.localhost`, single-label names and credentials are refused.
     pub fn upgraded_from_http_login_server(login_server: &str) -> Option<Self> {
         Self::parse(&format!("{}/api/", https_upgrade_origin(login_server)?))

@@ -206,7 +206,8 @@ never rewritten. There is no http fallback.
 The telemetry HTTP client never follows redirects, so a checked request
 cannot be bounced elsewhere.
 
-The desktop launcher mints from `<first login server>/api/auth/dev-session`,
+The desktop launcher mints from `<first login server>/api/auth/dev-session`
+(`https://<name>/api/auth/dev-session` for an http login server on a DNS name),
 so with the default server list that is the public login port. (The retired
 egui launcher kept a separate `telemetry.auth_url` setting, defaulting to
 `http://play.cimmeria.app:8081/api`; an imported legacy record keeps that
