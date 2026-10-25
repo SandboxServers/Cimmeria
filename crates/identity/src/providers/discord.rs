@@ -10,6 +10,7 @@ use url::Url;
 use super::encode_pairs;
 use crate::config::{ProviderConfig, Secret};
 use crate::http::{read_capped, transport_error, PROVIDER_BODY_CAP};
+use crate::limits::discord_created_ms;
 use crate::provider::{IdentityProvider, ProviderError, ProviderId, VerifiedIdentity};
 
 /// The issuer every Discord identity carries.
@@ -17,9 +18,6 @@ const ISSUER: &str = "https://discord.com";
 
 /// The base every production call uses; tests point `with_base` elsewhere.
 const DEFAULT_BASE: &str = "https://discord.com";
-
-/// Discord's snowflake epoch (2015-01-01) in Unix milliseconds (contract C7).
-const DISCORD_EPOCH_MS: i64 = 1_420_070_400_000;
 
 /// The Discord provider. `Debug` is derived: the secret's own `Debug` hides it.
 #[derive(Debug)]
@@ -171,11 +169,6 @@ impl IdentityProvider for DiscordProvider {
             provider_account_created_ms: Some(discord_created_ms(snowflake)),
         })
     }
-}
-
-/// The account creation time, in Unix milliseconds, encoded in a snowflake id.
-pub fn discord_created_ms(snowflake: u64) -> i64 {
-    (snowflake >> 22) as i64 + DISCORD_EPOCH_MS
 }
 
 /// The token endpoint's answer; only the access token is read.
