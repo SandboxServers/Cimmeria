@@ -579,6 +579,7 @@ fn main() {
     };
     builder
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(host::sign_in::close_guard)
         .setup(move |app| {
             if LauncherBuild::current().tag.is_none() {
                 if let Some(window) = app.get_webview_window("main") {
@@ -629,6 +630,7 @@ fn main() {
             client_maintenance_command,
             client_changes_command,
             physx_command,
+            host::sign_in::sign_in_command,
             directx_command,
             migration_command,
             updater_command,
