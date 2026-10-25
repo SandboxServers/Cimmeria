@@ -1,5 +1,6 @@
-import { Context, Effect, Fiber, Layer, ManagedRuntime, Result, Schema, Stream } from "effect";
+import { Context, Effect, Fiber, Layer, ManagedRuntime, Result, Stream } from "effect";
 import { BridgeFailure, operationOpen, safeFailure } from "./contract";
+import { chooseInstallFolder } from "./install-folder";
 import { bridgeLayer, makeLauncher, ScreenState } from "./workflows";
 import { mountServerList } from "./server-list-view";
 import { mountClientPatches } from "./client-patches-view";
@@ -135,25 +136,21 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
       return yield* launcher.savePreferences(state.native?.preferences.install_directory ?? null, consent);
     })), 'Saving your diagnostics choice…', done);
   });
-  on('choose', 'click', () => {
-    if (get<HTMLButtonElement>('choose').disabled) return;
+  // The Settings button and the install area's Change button share this flow. Resolves once it has settled.
+  const chooseFolder = (): Promise<void> => {
+    if (get<HTMLButtonElement>('choose').disabled) return settled;
     let selected = false;
-    const effect = Effect.gen(function* () {
-      const raw = yield* Effect.tryPromise({try: () => invoke('choose_install_directory'), catch: safeFailure});
-      const directory = yield* Schema.decodeUnknownEffect(Schema.NullOr(Schema.String))(raw).pipe(
-        Effect.mapError(() => new BridgeFailure({code:'schema'})),
-      );
-      if (directory === null) return;
-      selected = true;
-      const launcher = yield* Launcher;
+    const effect = chooseInstallFolder(invoke, directory => Effect.flatMap(Launcher, launcher => Effect.gen(function* () {
       const state = yield* launcher.snapshot;
-      yield* launcher.savePreferences(directory, state.native?.preferences.launcher_summary_consent ?? false);
-    });
+      return yield* launcher.savePreferences(directory, state.native?.preferences.launcher_summary_consent ?? false);
+    }))).pipe(Effect.map(saved => { selected = saved; }));
     run(effect, 'Choose a game folder in the native dialog…', 'Folder selection finished.');
     settled = settled.then(() => {
       if (!disposed && !localError) { notice = selected ? 'Game folder saved.' : 'Folder selection cancelled. Nothing changed.'; render(); }
     });
-  });
+    return settled;
+  };
+  on('choose', 'click', () => { void chooseFolder(); });
   on('folder', 'click', () => {
     if (get<HTMLButtonElement>('folder').disabled) return;
     run(Effect.tryPromise({try: () => invoke('show_install_directory'), catch: safeFailure}),
@@ -176,6 +173,7 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     ready,
     context: panelFeed.context,
     refresh,
+    chooseFolder,
     settled: () => Promise.all([queuedRefresh ?? settled, ...panels.map(panel => panel.settled())]),
     dispose: async () => {
       if (disposed) return;

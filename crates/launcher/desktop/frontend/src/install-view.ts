@@ -23,7 +23,7 @@ const errors:Record<InstallFailure['code'],string>={
 };
 /** Application lifetime owns observation. Navigating tabs never disposes it. */
 /** `onFinished` runs each time an install, repair, uninstall or cleanup stops running. */
-export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=>crypto.randomUUID(),onFinished:()=>void=()=>{},now:()=>number=()=>performance.now()) {
+export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=>crypto.randomUUID(),onFinished:()=>void=()=>{},now:()=>number=()=>performance.now(),chooseFolder:()=>Promise<unknown>=async()=>{}) {
   const runtime=ManagedRuntime.make(Layer.effect(Installation,makeInstallWorkflow).pipe(
     Layer.provide(installBridgeLayer(request=>invoke('install_command',{request}))),
   ));
@@ -32,6 +32,9 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   const cancel=get<HTMLButtonElement>('cancel-install');
   const resume=get<HTMLButtonElement>('resume-install');
   const recheck=get<HTMLButtonElement>('inspect-install');
+  // The game folder line sits beside the archive button: it shows where the archive would install.
+  const folderLine=get<HTMLElement>('install-folder');
+  const folderChange=get<HTMLButtonElement>('install-folder-change');
   const cleanup=get<HTMLButtonElement>('clean-failed-install');
   const confirmation=get('cleanup-confirmation');
   let confirming:string|null=null;
@@ -45,7 +48,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   let current:InstallViewState={status:null,busy:false,needsInspection:true,error:null};
   let disposed=false; let pending=false; let watching=false;
   let journeyInstallId:string|null=null;
-  let playable=false;
+  let playable=false;let archiveBusy=false;
   let mutation:Promise<void>=Promise.resolve(); let observation:Promise<void>=Promise.resolve();
   const listeners:(()=>void)[]=[];
   const render=()=>{
@@ -115,6 +118,10 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     const idleSetup=!operation||['install','adopt','prepare_runtime','launch'].includes(operation.kind);
     get('install-status').textContent=playable&&idleSetup&&!current.error&&!active&&!recovery?'':text;
     primary.setAttribute('aria-busy',String(pending||active));
+    // The saved folder the native side returned; the frontend only displays it.
+    const folder=status?.native.preferences.install_directory;
+    folderLine.textContent=status?(folder?`Game folder: ${displayPath(folder)}`:'Game folder: not chosen'):'';
+    folderChange.disabled=!ready||operationOpen(operation)||archiveBusy;
   };
   const repairs=repairControls(document,uuid,action=>run(action));
   // The operation that last stopped running; undefined until the first status,
@@ -161,7 +168,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   const archiveAccept=get<HTMLButtonElement>('install-seed-archive-accept');
   let archive:SeedArchiveState={status:null,phase:null,cancelling:false,error:null};let archivePressed=false;let acceptPressed=false;
   let archiveMutation:Promise<unknown>=Promise.resolve();
-  const renderArchive=()=>{if(disposed)return;const busy=archivePressed||acceptPressed||archive.phase!==null;
+  const renderArchive=()=>{if(disposed)return;const busy=archivePressed||acceptPressed||archive.phase!==null;archiveBusy=busy;
     archiveButton.hidden=playable&&!busy;
     archiveButton.textContent=archivePressed?'Switching to your archive…':'Use a downloaded game archive…';
     archiveButton.disabled=busy;archiveButton.setAttribute('aria-busy',String(busy));
@@ -169,7 +176,8 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     archiveOffer.hidden=question===null;archiveOffer.textContent=question??'';
     archiveAccept.hidden=question===null;archiveAccept.disabled=busy;archiveAccept.textContent=acceptPressed?'Checking…':'Yes';
     archiveAccept.setAttribute('aria-busy',String(busy));
-    archiveLine.hidden=(playable&&!busy)||!seedArchiveShowsLine(archive);archiveLine.textContent=seedArchiveText(archive);};
+    archiveLine.hidden=(playable&&!busy)||!seedArchiveShowsLine(archive);archiveLine.textContent=seedArchiveText(archive);
+    folderLine.hidden=archiveButton.hidden;folderChange.hidden=archiveButton.hidden;render();};
   const archiveWatcher=archiveRuntime.runFork(Effect.flatMap(SeedArchive,s=>Stream.runForEach(s.changes,
     value=>Effect.sync(()=>{archive=value;renderArchive();}))));
   const chooseArchive=()=>{if(archiveButton.disabled)return;archivePressed=true;renderArchive();
@@ -209,6 +217,8 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   on(recheck,()=>{const operation=current.status?.native.operation.operation;
     void run(service=>operation?.state==='reconciliation_required'&&current.status?.can_reconcile?service.reconcile(operation.id):service.inspect);});
   const refresh=()=>run(service=>service.inspect);
+  // Change saves through Settings' flow; the re-inspect then shows the folder the native side saved.
+  on(folderChange,()=>{void chooseFolder().then(()=>refresh());});
   const ready=refresh();
   return {ready,refresh,installFromArchive,requestRepair:repairs.request,setPlayable:(ready:boolean)=>{playable=ready;render();renderArchive();},settled:()=>Promise.all([mutation,archiveMutation]),dispose:async()=>{
     if(disposed)return;disposed=true;abort.abort();listeners.forEach(remove=>remove());repairs.dispose();

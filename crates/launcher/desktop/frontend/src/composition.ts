@@ -14,7 +14,7 @@ export function mountDesktop(document:Document,invoke:Invoke) {
 // A finished install, repair or uninstall, and a game-telemetry save, change what
 // Settings panels describe (LX-07): re-inspect so each gets a new snapshot.
 let refreshLauncher = () => {};
-const installation = mountInstall(document,invoke,undefined,()=>refreshLauncher());
+const installation = mountInstall(document,invoke,undefined,()=>refreshLauncher(),undefined,()=>app.chooseFolder());
 const app = mountLauncher(document,invoke,()=>{void installation.refresh();},()=>installation.installFromArchive());
 refreshLauncher = () => { void app.refresh(); };
 let updater: ReturnType<typeof mountUpdater> | undefined;
