@@ -23,6 +23,21 @@ const SETUP_OK: &str = concat!(
     ": > \"$STEAM_COMPAT_DATA_PATH/pfx/system.reg\"\n",
 );
 
+/// The fixture's DirectX step. It passes only once setup has run (`system.reg`
+/// exists), so a call moved in front of `setup::ensure` fails every success test.
+/// `directx_tests.rs` covers the real `directx::ensure`.
+fn directx_after_setup(prefix: &Prefix, _game: &Path) -> Result<(), ProtonError> {
+    if prefix.pfx.join("system.reg").is_file() {
+        Ok(())
+    } else {
+        Err(ProtonError::Setup("directx"))
+    }
+}
+
+fn directx_refuses(_prefix: &Prefix, _game: &Path) -> Result<(), ProtonError> {
+    Err(ProtonError::Setup("directx"))
+}
+
 /// A tempdir with a Steam client, one Proton build with a `proton` script, a
 /// game folder whose binaries folder is lower case, and a helper.
 struct Fixture {
@@ -52,6 +67,7 @@ fn fixture(script: &str) -> Fixture {
     let search = Search {
         home,
         system_tools: base.join("no-system-tools"),
+        directx: directx_after_setup,
     };
     let id = discovery::discover(
         &discovery::steam_roots(&search.home).unwrap(),
@@ -195,6 +211,16 @@ fn a_changed_version_file_is_proton_missing() {
 #[test]
 fn a_failed_setup_is_proton_setup_failed() {
     let f = fixture("#!/bin/sh\nexit 1\n");
+    assert_eq!(
+        run(&f, &f.plan).map(|_| ()),
+        Err(PrepareError(FailureCode::ProtonSetupFailed))
+    );
+}
+
+#[test]
+fn a_directx_failure_is_proton_setup_failed() {
+    let mut f = fixture(SETUP_OK);
+    f.search.directx = directx_refuses;
     assert_eq!(
         run(&f, &f.plan).map(|_| ()),
         Err(PrepareError(FailureCode::ProtonSetupFailed))

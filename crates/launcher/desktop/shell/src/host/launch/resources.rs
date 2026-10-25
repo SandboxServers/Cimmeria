@@ -1,5 +1,10 @@
-use cimmeria_launcher_engine::launch::{Artifact, Graphics, Resources};
+use cimmeria_launcher_engine::launch::{Artifact, Graphics, ProtonSelection, Resources};
+#[cfg(target_os = "linux")]
+use cimmeria_launcher_engine::linux_proton::discovery;
 use std::path::Path;
+/// Where the system-wide Proton builds live (C-1). The engine keeps its copy private.
+#[cfg(target_os = "linux")]
+const SYSTEM_TOOLS: &str = "/usr/share/steam/compatibilitytools.d";
 /// Expected identities come from the trusted build, never from the bundle.
 pub(super) struct Digests<'a> {
     pub helper: Option<&'a str>,
@@ -12,6 +17,41 @@ pub(super) struct Digests<'a> {
 /// Whether this build pins a client telemetry DLL: the digest `bundled` reads.
 pub(crate) fn dll_bundled() -> bool {
     option_env!("CIMMERIA_CLIENT_TELEMETRY_SHA256").is_some()
+}
+/// The Proton under `home` that Play runs through (C-1). No saved preference yet
+/// (PP-10), so `choose` takes the best one found.
+#[cfg(target_os = "linux")]
+pub(super) fn proton_under(home: &Path, system_tools: &Path) -> Option<ProtonSelection> {
+    let roots = discovery::steam_roots(home)?;
+    let found = discovery::discover(&roots, system_tools);
+    let install = discovery::choose(&found, None)?;
+    Some(ProtonSelection {
+        id: install.id.clone(),
+        root: install.root.clone(),
+        version: install.version.clone(),
+    })
+}
+/// The Proton Play runs through, found now (no cache: PP-10 relies on it). `roots` is
+/// (home, system tools); `None` reads HOME and SYSTEM_TOOLS. Off Linux there is none.
+#[cfg(target_os = "linux")]
+pub(super) fn proton(roots: Option<(&Path, &Path)>) -> Option<ProtonSelection> {
+    match roots {
+        Some((home, tools)) => proton_under(home, tools),
+        None => std::env::var_os("HOME")
+            .and_then(|home| proton_under(Path::new(&home), Path::new(SYSTEM_TOOLS))),
+    }
+}
+#[cfg(not(target_os = "linux"))]
+pub(super) fn proton(_roots: Option<(&Path, &Path)>) -> Option<ProtonSelection> {
+    None
+}
+/// `"proton"` when this Linux host found no Proton; no other host needs one.
+pub(super) fn missing_proton(found: Option<&ProtonSelection>) -> Vec<&'static str> {
+    if cfg!(target_os = "linux") && found.is_none() {
+        vec!["proton"]
+    } else {
+        Vec::new()
+    }
 }
 pub(super) fn bundled(root: &Path) -> Option<Resources> {
     bundled_with(

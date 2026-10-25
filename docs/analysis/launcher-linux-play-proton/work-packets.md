@@ -508,8 +508,11 @@ fmt, clippy, `test --lib linux_proton`.
 
 **Agent:** packet-coder. **Depends:** PP-02, PP-06. **Commit:** `feat(launcher): the Linux launcher offers Play when a Proton is found (PP-09)`.
 
-Files: `S/host/launch/mod.rs` (lines 104-120 and 209-213 only),
-`S/host/launch/resources.rs`, their tests.
+Files: `S/host/launch/mod.rs` (Play admission, the status block, the
+`with_launch_resources` line, a `proton()` helper and the test module line),
+`S/host/launch/resources.rs`, `S/host.rs` (one `#[cfg(test)] proton_fixture`
+field and its initializer only), new `S/host/launch/proton_status_tests.rs`,
+and the one-token `ProtonSelection` re-export in `E/storage/launch/mod.rs`.
 
 1. Playable on Linux: `Native` content with `cfg!(target_os = "linux")`
    counts as playable when a Proton is chosen.
@@ -519,9 +522,14 @@ Files: `S/host/launch/mod.rs` (lines 104-120 and 209-213 only),
    status still reports `resources_available` from the payload alone.
 3. `setup_complete` on Linux needs a chosen Proton but **not** a prepared
    prefix (the first Play prepares it, D-PP7).
+4. Discover on every Play and status call (no cache; PP-10 step 3 relies on
+   it) and use that one result for the bundle's `proton`, the playable check
+   and `prerequisites_missing`. Tests read a `#[cfg(test)]` fixture, never
+   HOME.
 
-Tests: status with a fake Steam tree (`HOME` injected through the function
-that reads it; add a parameter if needed): Proton found → playable and
-`prerequisites_missing` empty; none → `["proton"]`.
+Tests: host-level, Linux: status with a fake Steam tree through
+`proton_fixture`: none → `["proton"]`, then the tree is added and the same
+host reports `[]`; Play with none → `PrerequisitesMissing` and a
+`proton=true` warn. The playable arm is covered by PP-U (PP-09-ruling-1).
 
-Lane (R1): shell fmt, clippy, `test --lib launch`.
+Lane (R1): shell fmt, clippy, `test --bin cimmeria-launcher-desktop launch`.

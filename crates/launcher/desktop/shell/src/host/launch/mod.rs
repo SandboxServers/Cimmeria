@@ -68,6 +68,16 @@ impl NativeHost {
         self.launch_resources = resources::bundled(&directory);
         self
     }
+    #[cfg(not(test))]
+    fn proton(&self) -> Option<launch::ProtonSelection> {
+        resources::proton(None)
+    }
+    /// Tests never read the player's Steam: no fixture, no Proton (R3).
+    #[cfg(test)]
+    fn proton(&self) -> Option<launch::ProtonSelection> {
+        let (home, tools) = self.proton_fixture.as_ref()?;
+        resources::proton(Some((home, tools)))
+    }
     pub fn launch_command(&self, request: LaunchCommand) -> Result<LaunchStatus, JobError> {
         match &request {
             LaunchCommand::Play { operation_id, .. } => {
@@ -99,10 +109,12 @@ impl NativeHost {
         {
             // Serialize admission and dispatch, including identical simultaneous retries.
             let mut worker = self.launch_worker.lock().map_err(|_| JobError::Io)?;
-            let Some(bundled) = self.launch_resources.clone() else {
+            let proton = self.proton();
+            let Some(mut bundled) = self.launch_resources.clone() else {
                 launch::events::launch_refused_before_operation("resources_unavailable");
                 return Err(JobError::PlatformUnavailable);
             };
+            bundled.proton = proton.clone();
             let admission = {
                 // Dispatch and its failure path lock the store themselves, so this
                 // guard must not outlive admission.
@@ -110,9 +122,10 @@ impl NativeHost {
                 let game = owner
                     .installed_content()?
                     .map(|installed| installed.intent.content_root());
-                let missing = self.missing_prerequisites(game.as_deref());
+                let mut missing = self.missing_prerequisites(game.as_deref());
+                missing.extend(resources::missing_proton(proton.as_ref()));
                 if !missing.is_empty() {
-                    tracing::warn!(target:"launcher.launch",event="prerequisites_missing",directx=missing.contains(&"directx"),physx=missing.contains(&"physx"),"Play refused: required game components are missing");
+                    tracing::warn!(target:"launcher.launch",event="prerequisites_missing",directx=missing.contains(&"directx"),physx=missing.contains(&"physx"),proton=missing.contains(&"proton"),"Play refused: required game components are missing");
                     return Err(JobError::PrerequisitesMissing);
                 }
                 let Some(resources) = owner.resolve_play_resources(bundled)? else {
@@ -165,7 +178,12 @@ impl NativeHost {
         // lacks, or a shipped artifact no longer verifies. A state that cannot
         // answer (busy content, refused imported settings) withholds Play without
         // failing Inspect or blaming the bundle.
-        let (available, playable) = match &self.launch_resources {
+        let proton = self.proton();
+        let bundled = self.launch_resources.clone().map(|mut bundle| {
+            bundle.proton = proton.clone();
+            bundle
+        });
+        let (available, playable) = match &bundled {
             None => (false, false),
             Some(bundled) => match state.resolve_play_resources(bundled.clone()) {
                 Ok(Some(resources)) => {
@@ -207,7 +225,13 @@ impl NativeHost {
         {
             state.installed_content()?.filter(|installed| {
                 if installed.intent.backend.is_native() {
+                    // Linux Native is playable once a Proton is chosen (C-1); the
+                    // prefix is prepared by the first Play (D-PP7), not here.
                     cfg!(windows)
+                        || (cfg!(target_os = "linux")
+                            && bundled
+                                .as_ref()
+                                .is_some_and(|bundle| bundle.native_admitted()))
                 } else {
                     cfg!(target_os = "macos")
                         && (state.prepared_runtime().ok().flatten().is_some()
@@ -231,7 +255,8 @@ impl NativeHost {
         let game = installed
             .as_ref()
             .map(|installed| installed.intent.content_root());
-        let missing = self.missing_prerequisites(game.as_deref());
+        let mut missing = self.missing_prerequisites(game.as_deref());
+        missing.extend(resources::missing_proton(proton.as_ref()));
         let mut status = LaunchStatus::assemble(
             native,
             installation_id,
@@ -282,5 +307,7 @@ mod tests;
 mod adopted_tests;
 #[cfg(all(test, any(windows, target_os = "macos")))]
 mod fixture;
+#[cfg(all(test, target_os = "linux"))]
+mod proton_status_tests;
 #[cfg(all(test, any(windows, target_os = "macos")))]
 mod setup_tests;

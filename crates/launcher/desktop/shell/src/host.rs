@@ -81,6 +81,9 @@ pub struct NativeHost {
         Mutex<Option<cimmeria_launcher_engine::runtime_setup::windows_physx::InstallResult>>,
     #[cfg(test)]
     prerequisites_fixture: Option<Vec<&'static str>>,
+    /// Home and system-tools roots Proton discovery reads in tests; None = no Proton, so tests never read the player's Steam (R3).
+    #[cfg(test)]
+    proton_fixture: Option<(PathBuf, PathBuf)>,
     /// The last PhysX result; it outlives a lost reply. The install lock is the shared prerequisite lease.
     physx_last:
         Mutex<Option<cimmeria_launcher_engine::runtime_setup::windows_physx::InstallResult>>,
@@ -126,6 +129,8 @@ impl NativeHost {
             directx_last: Mutex::new(None),
             #[cfg(test)]
             prerequisites_fixture: None,
+            #[cfg(test)]
+            proton_fixture: None,
             physx_last: Mutex::new(None),
             repair_worker: Mutex::new(None),
             worker: Mutex::new(None),

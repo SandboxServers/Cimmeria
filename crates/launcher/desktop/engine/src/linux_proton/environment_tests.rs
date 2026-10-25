@@ -105,6 +105,29 @@ fn base_sets_the_steam_paths_and_wine_overrides() {
 }
 
 #[test]
+fn game_puts_the_native_directx_overrides_in_front_of_the_base_ones() {
+    let root = tempfile::tempdir().unwrap();
+    let prefix = prefix_in(root.path());
+    let env = BTreeMap::new();
+    let game = game(base(get(&env), &prefix, Path::new("/steam")), 60, None);
+    assert_eq!(
+        game.get(&OsString::from("WINEDLLOVERRIDES")),
+        Some(&OsString::from(
+            "d3dx9_40=n;xinput1_3=n;winemenubuilder.exe=d;mscoree=d;mshtml=d"
+        ))
+    );
+}
+
+#[test]
+fn game_sets_only_the_native_directx_overrides_without_an_inherited_value() {
+    let game = game(BTreeMap::new(), 60, None);
+    assert_eq!(
+        game.get(&OsString::from("WINEDLLOVERRIDES")),
+        Some(&OsString::from("d3dx9_40=n;xinput1_3=n"))
+    );
+}
+
+#[test]
 fn game_sets_the_frame_cap_and_log_variables_only_with_a_log_folder() {
     let root = tempfile::tempdir().unwrap();
     let prefix = prefix_in(root.path());
