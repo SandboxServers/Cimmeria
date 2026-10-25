@@ -1,47 +1,37 @@
 # RESUME: launcher-linux-play-proton
 
-Ledger: README.md. Packets: work-packets.md (rules R1-R9, contract, waves
-0-2), work-packets-w1b.md (wave 1B, R10, C-7), work-packets-w2b.md (PP-S2,
-PP-15, PP-16, PP-08W, C-8), work-packets-w3.md (waves 3-4). Host: linux.
+Ledger: README.md. Packets: work-packets.md, -w1b.md, -w2b.md, -w3.md.
 
-## State (2026-10-25)
+## State (2026-10-25, waves 0-3 closed)
 
-- PP-S1 done and ruled (worknotes/PP-S1-ruling.md). Base: origin/main 0a25ef5d4.
-- PP-S2 done and ruled (worknotes/PP-S2-ruling.md). The probe fails at
-  AddDllDirectory on the `\\?\` path (F-24). PP-08W is specced and Ready.
-  PP-17 step 3 seeds SavedSystemOptions.xml on the first Play (D-PP27).
-  Linux stays windowed only (D-PP13 final). C-8 is unchanged.
-- In flight: PP-01, PP-02, PP-20 (0e64f5b3a, PP-20-ruling-1), PP-24, PP-25.
+- Integration tip 94f2e0af9, pushed. Draft PR #2032 (integration -> main).
+  Full CI also dispatched (run 40236283045). Not for merge until PP-U passes
+  and the campaign review is ship.
+- All packets of waves 1, 1B, 2 and 3 are merged and reviewed ship.
+- Wave 3 ruling (Linux frame cap 30 or 60): wave3-ruling-1.md.
+- Next: fix PR CI failures (RESUME length; native-engine macOS and Windows),
+  then PP-U on the PR's AppImage (owner authorised hands-on; artifact
+  desktop-launcher-linux-dry-run), then PP-14 close-out (split launch.md, over
+  the 700-line cap), campaign review, one update of project-status.md.
 
 ## Owner rules
 
-- One final PR (D-PP17). Packets merge-noff into
-  `launcher-linux-play-proton/integration` (worktree pp-integration).
-- No Wine for cabinet expansion. No client patch beyond what macOS does.
-- OD-1..OD-4 decided 2026-10-25. OD-4: wait for U3 (the owner chose the
-  default). No early draft PR; the i686 worker is built by CI at the final
-  PR, and the PP-08W Deck check runs then. PhysX risk stays open until U3.
-- Pass-through from reviews: PP-02 telemetry-DLL wording ("stays optional" vs
-  all pins required) needs an architect confirm; tagged Linux builds need
-  PP-03's fourth pin (PP-03 in review).
-- Merged to integration (tip a51239334): PP-02, PP-25, PP-01, PP-03, PP-04,
-  PP-24. Wave 1 review pass 1: ship (all four). PP-08W reviewed ship
-  (b74d28aa5), merge after PP-08. PP-20 in review pass 2 (fix 1 09fe38073).
-- Packet worktrees from the integration tip need a hands-on agent
-  (mk-worktree.sh cuts from origin/main only).
+- One final PR. Packets merge-noff into the integration branch. No Wine for
+  cabinet expansion. No client patch beyond what macOS does.
+- OD-1 to OD-3 as decided; OD-4 reversed: draft PR early for the AppImage.
+- Packet worktrees from the integration tip need a hands-on agent.
 
-## Next action
+## Open items
 
-1. Copy PP-S2-findings.md to worknotes/PP-S2.md (ops commits the ledger).
-2. Dispatch PP-08W (rust-gameserver-dev, worktree pp-08w). It can run now
-   and merges after PP-08. Then ops gets the CI artifact (OD-4), and a
-   hands-on Deck check writes worknotes/PP-08W-deck.md.
-3. W1B: PP-20a, then PP-20b; ops merges pp-20 after PP-25; then PP-22,
-   PP-21, PP-23, then the wave-1B Deck UAT.
-4. W2 after W1: PP-05, PP-06, PP-07, PP-15, PP-16, PP-08, PP-09, PP-08W.
-
-## Waves (merge order)
-
-W1 PP-01, PP-04, PP-02, PP-03 | W1B PP-24, PP-25, PP-20 (a+b), PP-22, PP-21,
-PP-23 | W2 PP-05, PP-06, PP-07, PP-15, PP-16, PP-08, PP-09, PP-08W | W3
-PP-10, PP-11, PP-17, PP-12, PP-13 | W4 PP-U, PP-14.
+- PhysX under Proton is unproven until PP-U (i686 worker built by the PR jobs).
+- PP-02 telemetry-DLL wording (optional vs required) unconfirmed.
+- Follow-ups FU-13..FU-17 are in the ledger README (stale Play button
+  corrupt_state, uat:launch cannot run on Linux, scratch folders, SYSTEM_TOOLS
+  dup, directx log DLL name).
+- Wave-1B Deck UAT timing check not yet scheduled with the owner.
+- Owner: colo check of the 53 uploaded log lines? Fresh launcher release?
+- First-campaign cleanup (branches, li-* worktrees, build output) needs
+  hands-on. Never run git worktree prune.
+- Flake seen once: prefix::tests::second_claim_is_busy_while_the_first_is_held;
+  adoption::light_update_tests::repair_of_a_light_adopted_install... (not
+  reproduced in about 260 runs).
