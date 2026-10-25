@@ -12,7 +12,7 @@ Everything below is merged code with unit and live-database tests. Three things 
 
 - **The client overlay in the live game** (patch `017-launcher-sign-in`): whether the stock `Login.lua` accepts the rewritten `LoginInternal.lua` and shows the signed-in screen. The ticket is pre-filled into the stock login boxes, so the player may need to press Login. Auto-submit stays off (`TICKET_AUTO_SUBMIT = false`).
 - **The relay under Wine** on macOS and Linux.
-- **The packaged keyring** on Windows (Credential Manager) and macOS (Keychain). The code path is covered by an in-memory store in tests; the real stores have not been exercised from a packaged build.
+- **The packaged keyring** on Windows (Credential Manager) and macOS (Keychain). The code path is covered by an in-memory store in tests; the real stores have not been exercised from a packaged build. Off Windows and macOS the store is memory only, so a sign-in on Linux or WSL ends when the launcher closes.
 
 The live lab UAT has not happened. Treat the sections below as a description of the code, not of observed behavior.
 
@@ -133,9 +133,9 @@ Spans (`crates/identity`, target `cimmeria_identity`): `auth.idp.authorize`, `au
 
 The auth reaper writes one DEBUG line `Reaped expired auth entries` with the counts `expired_sessions`, `expired_tickets` and `expired_launch_tickets`, only when a count is above 0.
 
-Launcher events: `launcher.sign_in.{started,completed,failed}` and `launcher.relay.{started,stopped}` (also `ticket_failed`, `scrub_failed`, `heartbeat_stopped`, `close_prompt`), each with outcome and reason only.
+Launcher events: `launcher.sign_in.{started,completed,failed}` and `launcher.relay.{started,stopped}` (also `ticket_failed`, `relay_start_failed`, `scrub_failed`, `end_failed`, `heartbeat_stopped`, `close_prompt`), each with outcome and reason; the relay `started` and `stopped` events also carry `mode`. No event carries a ticket, token, code or password.
 
-GM `.account` commands log one `gm_action` event on the `account_admin` target: `action`, `result`, a stable `reason` on refusals, and the GM and target ids. A refusal the GM caused is INFO; one the server caused (no pool, a failed query) is WARN.
+GM `.account` commands log one `gm_action` event on the `account_admin` target: `action`, `result`, a stable `reason` on refusals, and the GM and target ids. A refusal the GM caused is INFO; one the server caused (no pool, a failed query) is WARN. A non-GM caller is logged with `reason=not_gm`; a closed base channel with `reason=base_channel_closed` (WARN).
 
 Both targets (`cimmeria_identity`, `account_admin`) have a row in the [observability target catalog](../architecture/observability-target-catalog.md).
 

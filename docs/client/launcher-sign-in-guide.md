@@ -18,8 +18,8 @@ This feature is new and has not been tried against the live game yet. The steps 
 The first time, the launcher may say **Link your account**. That means no game account is tied to this sign-in yet. You can:
 
 - **Create a new account.** Only offered while the server accepts new accounts.
-- **Link an existing account** with its name and password. Read the warning: **linking removes that account's password for good.** After that, the account can only be played through this launcher. Press **Remove password and link** to go ahead, or **Keep password** to stop.
-- **Link with a code** if you have no password (or lost it). Ask the server staff for a link code. The same warning applies.
+- **Link an existing account.** Type the account name and password and press **Link**. Read the warning: **linking removes that account's password for good.** After that, the account can only be played through this launcher. Press **Remove password and link** to go ahead, or **Keep password** to stop.
+- **Link with a code** if you have no password (or lost it). Ask the server staff for a link code. The same warning applies. Type the code and press **Link with a code**, then confirm the same way.
 
 Accounts you link this way never have a password again. The old game login screen will not work for them.
 
