@@ -19,10 +19,11 @@ use crate::credential_redaction::CredentialPrefix;
 
 use super::cert_watcher::spawn_cert_watcher;
 use super::handlers::{handle_server_selection, handle_user_auth};
+use super::proxy::{proxy_layer, require_tls};
 use super::tls::{hsts_layer, tls_marker_layer, TlsCertStore, TlsListener};
 use super::{
-    AuthError, HandlerState, LaunchTicketStore, PendingLogin, SessionRecord, ShardInfo,
-    REAPER_INTERVAL, SESSION_TTL, TICKET_TTL,
+    AuthError, AuthRouteDeps, HandlerState, IdentityRoutes, LaunchTicketStore, PendingLogin,
+    SessionRecord, ShardInfo, REAPER_INTERVAL, SESSION_TTL, TICKET_TTL,
 };
 
 // ── AuthService ──────────────────────────────────────────────────────────────
@@ -55,6 +56,10 @@ pub struct AuthService {
     pending_logins: Arc<Mutex<HashMap<String, PendingLogin>>>,
     /// Launch tickets (CT-21), shared with `HandlerState` and the identity routes.
     launch_tickets: Arc<LaunchTicketStore>,
+    /// `/auth/v1` route builder from `set_identity_routes`; `start` takes it.
+    pub(super) identity_routes: Option<IdentityRoutes>,
+    /// Bind address of the reverse-proxy listener (`AUTH_PROXY_ADDR`).
+    auth_proxy_addr: Option<SocketAddr>,
     developer_mode: bool,
     /// A database is configured (`ServerConfig::database_configured`).
     db_configured: bool,
@@ -93,6 +98,8 @@ impl AuthService {
             shards: Vec::new(),
             pending_logins: Arc::new(Mutex::new(HashMap::new())),
             launch_tickets: Arc::new(LaunchTicketStore::default()),
+            identity_routes: None,
+            auth_proxy_addr: config.auth_proxy_addr,
             developer_mode: config.developer_mode,
             db_configured: config.database_configured(),
             db_pool: None,
@@ -191,6 +198,18 @@ impl AuthService {
             tracing::info!(addr = %self.logon_addr, "Login listener also serves extra public routes");
             app = app.merge(extra);
         }
+        // Identity routes (CT-22): built once the pool is known and nested at
+        // `/auth/v1` behind `require_tls`, so a request without `TlsConn` gets
+        // 403. Nested before the HSTS layer so the header covers them too.
+        if let Some(build) = self.identity_routes.take() {
+            let deps = AuthRouteDeps {
+                db: self.db_pool.clone(),
+                launch_tickets: Arc::clone(&self.launch_tickets),
+                developer_mode: self.developer_mode,
+            };
+            let routes = build(deps).layer(axum::middleware::from_fn(require_tls));
+            app = app.nest("/auth/v1", routes);
+        }
         let app = app.layer(axum::middleware::from_fn(hsts_layer));
 
         tracing::trace!(addr = %self.logon_addr, "Binding TCP listener for auth HTTP");
@@ -202,6 +221,28 @@ impl AuthService {
         // `local_addr()` can fail on an unusual socket state and we already
         // know where we bound.
         tracing::info!(addr = %listener.local_addr().unwrap_or(self.logon_addr), "Auth HTTP listener bound");
+
+        // Reverse-proxy listener (CT-22): the same routes, served only to a
+        // TLS-terminating proxy. `proxy_layer` vets its headers and adds the
+        // TLS marker; the plain and TLS listeners never run it.
+        if let Some(proxy_addr) = self.auth_proxy_addr {
+            let proxy_listener = TcpListener::bind(proxy_addr).await.map_err(|e| {
+                tracing::error!(addr = %proxy_addr, error = %e, "Failed to bind auth proxy listener");
+                e
+            })?;
+            tracing::info!(addr = %proxy_listener.local_addr().unwrap_or(proxy_addr), "Auth proxy listener bound");
+            let proxy_app = app.clone().layer(axum::middleware::from_fn(proxy_layer));
+            tokio::spawn(async move {
+                if let Err(e) = axum::serve(
+                    proxy_listener,
+                    proxy_app.into_make_service_with_connect_info::<SocketAddr>(),
+                )
+                .await
+                {
+                    tracing::error!("Auth proxy server error: {e}");
+                }
+            });
+        }
 
         // Spawn the session/ticket reaper before the HTTP server so it's
         // already running when the first request arrives.
@@ -450,185 +491,5 @@ fn reap_expired(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// An expired SID and an expired ticket are each dropped with one INFO
-    /// row carrying their account pair and a redacted prefix, a young ticket
-    /// survives, and no captured event holds a full SID or ticket.
-    #[test]
-    fn reap_expired_logs_unconsumed_ticket_with_account() {
-        use crate::test_support::LogCapture;
-        use std::net::Ipv4Addr;
-        use std::time::Duration;
-        use tracing::Level;
-
-        let capture = LogCapture::install();
-        let sessions = Mutex::new(HashMap::new());
-        let pending = Mutex::new(HashMap::new());
-        // Anchor every entry to `base` and reap at `base + SESSION_TTL + 1s`,
-        // so no `now - duration` subtraction can underflow the clock on Windows.
-        let base = Instant::now();
-        let now = base + SESSION_TTL + Duration::from_secs(1);
-
-        let sid = "SIDQRSTUV0123456789W".to_string();
-        sessions.lock().unwrap().insert(
-            sid.clone(),
-            SessionRecord {
-                account_id: 7,
-                access_level: 0,
-                test_account: false,
-                account_name: "reaper-sid".to_string(),
-                client_ip: Ipv4Addr::LOCALHOST.into(),
-                created: base,
-            },
-        );
-
-        let expired_ticket = "ABCDEF0123456789ABCD".to_string();
-        let young_ticket = "ZYXWVU9876543210TSRQ".to_string();
-        for (ticket, created) in [
-            (expired_ticket.clone(), base),
-            (young_ticket.clone(), base + SESSION_TTL),
-        ] {
-            pending.lock().unwrap().insert(
-                ticket.clone(),
-                PendingLogin {
-                    account_id: 42,
-                    account_name: "reaper-user".to_string(),
-                    access_level: 0,
-                    test_account: false,
-                    ticket,
-                    session_key: String::new(),
-                    client_ip: Ipv4Addr::LOCALHOST.into(),
-                    created,
-                },
-            );
-        }
-
-        let (sessions_dropped, tickets_dropped) = reap_expired(&sessions, &pending, now);
-
-        assert_eq!((sessions_dropped, tickets_dropped), (1, 1));
-        assert!(sessions.lock().unwrap().is_empty());
-        {
-            let map = pending.lock().unwrap();
-            assert_eq!(map.len(), 1, "only the young ticket may survive");
-            assert!(map.contains_key(&young_ticket));
-        }
-
-        let sid_row = capture
-            .find_event(Level::INFO, "expired before it was used", "sid_unconsumed")
-            .expect("expired SID must log an INFO row with reason `sid_unconsumed`");
-        assert!(sid_row.has_field("account_id", "7"));
-        assert!(sid_row.has_field("sid_prefix", &CredentialPrefix(&sid).to_string()));
-
-        let ticket_row = capture
-            .find_message(Level::INFO, "expired before BaseApp consumed")
-            .expect("expired ticket must log an INFO row");
-        assert!(ticket_row.has_field("account_id", "42"));
-        assert!(ticket_row.has_field("reason", "ticket_unconsumed"));
-        assert!(ticket_row.has_field("ticket_prefix", "ABCDEF…"));
-
-        for event in capture.all() {
-            for secret in [sid.as_str(), expired_ticket.as_str()] {
-                let leaked = event.message.as_deref().is_some_and(|m| m.contains(secret))
-                    || event.fields.values().any(|v| v.contains(secret));
-                assert!(!leaked, "full secret leaked into event: {event:?}");
-            }
-        }
-    }
-
-    #[test]
-    fn new_service_is_not_running() {
-        let config = ServerConfig::default();
-        let svc = AuthService::new(&config);
-        assert!(!svc.is_running);
-        assert_eq!(svc.listener_addr.port(), 13001);
-        assert_eq!(svc.logon_addr.port(), 8081);
-    }
-
-    /// The unchecked developer login needs developer mode AND no database
-    /// configured. Developer mode alone, with the default (configured)
-    /// connection string, must not enable it.
-    #[test]
-    fn dev_login_fallback_needs_dev_mode_and_no_configured_db() {
-        let dev_with_db = ServerConfig {
-            developer_mode: true,
-            ..ServerConfig::loopback()
-        };
-        assert!(!AuthService::new(&dev_with_db).dev_login_fallback_active());
-
-        let no_dev_no_db = ServerConfig {
-            db_connection_string: String::new(),
-            ..ServerConfig::loopback()
-        };
-        assert!(!AuthService::new(&no_dev_no_db).dev_login_fallback_active());
-
-        let dev_no_db = ServerConfig {
-            developer_mode: true,
-            db_connection_string: String::new(),
-            ..ServerConfig::loopback()
-        };
-        assert!(AuthService::new(&dev_no_db).dev_login_fallback_active());
-    }
-
-    #[tokio::test]
-    async fn start_sets_running() {
-        let config = ServerConfig {
-            logon_port: 0, // OS-assigned port to avoid conflicts in tests
-            ..ServerConfig::loopback()
-        };
-        let mut svc = AuthService::new(&config);
-        svc.start().await.unwrap();
-        assert!(svc.is_running);
-    }
-
-    /// The composition root mounts launcher telemetry on the login port
-    /// through `set_public_routes`; the extra routes must answer next to
-    /// the SOAP routes, with connect info available to their handlers.
-    #[tokio::test]
-    async fn public_routes_are_served_on_the_login_listener() {
-        use axum::extract::ConnectInfo;
-        use axum::routing::post;
-
-        let port = {
-            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            l.local_addr().unwrap().port()
-        };
-        let config = ServerConfig {
-            logon_port: port,
-            ..ServerConfig::loopback()
-        };
-        let mut svc = AuthService::new(&config);
-        svc.set_public_routes(Router::new().route(
-            "/api/telemetry/upload-chunk",
-            post(|ConnectInfo(peer): ConnectInfo<SocketAddr>| async move { peer.ip().to_string() }),
-        ));
-        svc.start().await.unwrap();
-
-        let client = reqwest::Client::new();
-        let base = format!("http://127.0.0.1:{port}");
-        let extra = client
-            .post(format!("{base}/api/telemetry/upload-chunk"))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(extra.status(), 200);
-        assert_eq!(extra.text().await.unwrap(), "127.0.0.1");
-
-        // The SOAP route is still there (an empty body is a client error,
-        // not a missing route).
-        let soap = client
-            .post(format!("{base}/SGWLogin/UserAuth"))
-            .send()
-            .await
-            .unwrap();
-        assert_ne!(soap.status(), 404);
-
-        let absent = client
-            .post(format!("{base}/api/telemetry/nope"))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(absent.status(), 404);
-    }
-}
+#[path = "service_tests.rs"]
+mod tests;
