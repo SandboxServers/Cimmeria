@@ -270,5 +270,25 @@ for (const row of ['download','copy','check, total > 0','check, total 0','extrac
   if (!ok) phaseFailures++;
   console.log(`${ok?'PASS':'FAIL'} install copy: ${row}`);
 }
+// Game folder beside the archive button: shown from the saved preference, Change shows the new folder, cancel changes nothing.
+{
+  const {document,window}=parseHTML(html);let folder='/games/first';const picked=['/games/second',null];let chooses=0;
+  const status=()=>({schema_version:1,install_supported:true,can_resume:false,can_reconcile:false,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed'],launcher:{version:'0.1.0',tag:null},operation:{schema_version:1,revision:0,operation:null},preferences:{schema_version:2,revision:1,install_directory:folder,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed',width:1024,height:768}}}});
+  const app=mountInstall(document,async()=>status(),()=>id,()=>{},undefined,async()=>{const next=picked[chooses++];if(next!==null)folder=next;});
+  const line=()=>document.getElementById('install-folder');
+  const press=()=>document.getElementById('install-folder-change').dispatchEvent(new window.Event('click'));
+  await app.ready;await phaseFlush();
+  const shown=line().textContent;
+  press();await settle(app);await phaseFlush();
+  const changed=line().textContent;
+  const before=document.getElementById('install-status').textContent;
+  press();await settle(app);await phaseFlush();
+  const cancelled=line().textContent;
+  const quiet=document.getElementById('install-status').textContent===before;
+  await app.dispose();
+  const ok=shown==='Game folder: /games/first'&&changed==='Game folder: /games/second'&&cancelled===changed&&quiet&&chooses===2;
+  console.log(`${ok?'PASS':'FAIL'} install folder: shown "${shown}", after change "${changed}", after cancel "${cancelled}", status unchanged on cancel: ${quiet}`);
+  if(!ok)process.exitCode=1;
+}
 if (phaseFailures) {console.log(`FAIL: ${phaseFailures} install copy row(s) did not match`);process.exitCode=1;}
 else console.log('PASS: install copy rows match the copy table; a local archive never shows the download check.');

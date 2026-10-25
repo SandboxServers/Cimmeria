@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { parseHTML } from 'linkedom';
 import { mountInstall } from './install-view';
+import { displayPath } from './display-path';
 import type { InstallRequest, InstallStatus } from './install-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
 const id='d539d049-61b7-4c82-b3d7-cb9b7a991adc';
@@ -407,5 +408,25 @@ test('the rate restarts when the phase changes from unpacking to expansion',asyn
   assert.match(await step(2000,runningWith({phase:'extraction',current:10,total:50})),/^Unpacking the archive… 20% · 5 files\/s/);
   // Same total and a higher count: only the phase change can have dropped the unpacking baseline.
   assert.equal(await step(2500,runningWith({phase:'expansion',current:25,total:50})),'Expanding game files… 50%');
+ }finally{await app.dispose();}
+});
+
+test('the install area shows the saved game folder; Change shows a new one and a cancelled dialog changes nothing',async()=>{
+ const ui=dom();let status=initial();let picked:string|null='/games/second';let chooses=0;
+ const app=mountInstall(ui.document,async()=>status,()=>id,()=>{},undefined,async()=>{
+  chooses++;
+  if(picked!==null)status={...status,native:{...status.native,preferences:{...status.native.preferences,install_directory:picked}}};
+ });
+ try{
+  await app.ready;await flush();
+  assert.equal(ui.get('install-folder').hidden,false);
+  assert.equal(ui.get('install-folder').textContent,`Game folder: ${displayPath('/fixture')}`);
+  ui.click('install-folder-change');await flush();await app.settled();await flush();
+  assert.equal(ui.get('install-folder').textContent,`Game folder: ${displayPath('/games/second')}`);
+  picked=null;const before=ui.get('install-status').textContent;
+  ui.click('install-folder-change');await flush();await app.settled();await flush();
+  assert.equal(chooses,2);
+  assert.equal(ui.get('install-folder').textContent,`Game folder: ${displayPath('/games/second')}`);
+  assert.equal(ui.get('install-status').textContent,before,'a cancelled dialog says nothing');
  }finally{await app.dispose();}
 });
