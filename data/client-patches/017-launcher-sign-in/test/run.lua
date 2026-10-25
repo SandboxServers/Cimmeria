@@ -74,6 +74,9 @@ cases[#cases + 1] = { name = 'ticket, manual', run = function()
     shown('Login_StatusText')
     eq(Login_StatusText:getText(), 'Signed in as Player ('..ACCOUNT..')', 'status text')
     eq(Login_LoginButton:getText(), 'Enter', 'login button')
+    eq(LoginMod.cimmeriaOverlayVersion, 1, 'overlay version')
+    eq(Login_AccountEdit:getText(), '', 'account box not pre-filled by the overlay')
+    eq(Login_PasswordEdit:getText(), '', 'password box not pre-filled by the overlay')
     shown('Login_PasswordModeButton')
     hidden('Login_WebsiteButton')
     hidden('Login_AccountButton')
@@ -112,6 +115,8 @@ end }
 
 cases[#cases + 1] = { name = 'use password', run = function()
     boot(GOLDEN)
+    Login_AccountEdit:setText('stale-name')
+    Login_PasswordEdit:setText('stale-pw')
     Stubs.press('Login_PasswordModeButton')
     for _, name in ipairs({ 'Login_AccountEdit', 'Login_PasswordEdit', 'Login_AccountLabel',
                             'Login_PasswordLabel', 'Login_RememberCheck' }) do
@@ -156,6 +161,18 @@ cases[#cases + 1] = { name = 'stock', run = function()
     eq(Stubs.opened[1], STOCK_SITE, 'stock website')
     eq(Stubs.opened[2], STOCK_ACCOUNT_PAGE, 'stock account page')
     eq(Stubs.opened[3], STOCK_SITE, 'stock forums')
+end }
+
+cases[#cases + 1] = { name = 'failure, prompt outside ticket mode', run = function()
+    boot(STOCK_INTERNAL)
+    LoginMod.onLoginFailure(nil, nil, 'bad login', 13)
+    eq(Stubs.prompts[1], '13 - bad login', 'stock prompt')
+
+    boot(GOLDEN)
+    Stubs.press('Login_PasswordModeButton')
+    LoginMod.onLoginFailure(nil, nil, 'server text', 5)
+    eq(Stubs.prompts[1], '5 - This account is suspended. Contact the server staff.', 'launcher text replaces the server text')
+    eq(Login_LoginButton:getText(), 'Login', 'button stays Login')
 end }
 
 cases[#cases + 1] = { name = 'links', run = function()
