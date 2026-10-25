@@ -172,8 +172,9 @@ Lane (R1): engine fmt, clippy, `test --lib display`, `test --lib launch`.
 
 **Agent:** packet-coder. **Depends:** PP-10. **Commit:** `feat(launcher): Linux Play copy and a Proton picker in Settings (PP-12)`.
 
-Files: `D/frontend/src/launch-view.ts` (lines 49 and 51 copy only), the
-Settings view file that hosts the display options (find with
+Files: `D/frontend/src/launch-view.ts` (lines 37, 49 and 51 copy only),
+`D/frontend/src/launch-workflow.ts` (line 9: add `'proton'` to the
+`prerequisites_missing` literals only), the Settings view file that hosts the display options (find with
 `grep -rln "display" D/frontend/src/*settings*`), new
 `D/frontend/src/proton-picker.ts`, its test file beside the existing
 frontend tests, new `D/frontend/proton-uat.mjs`, `D/frontend/package.json`
@@ -182,14 +183,17 @@ frontend tests, new `D/frontend/proton-uat.mjs`, `D/frontend/package.json`
 1. Copy: when `prerequisites_missing` holds `"proton"`, the Play panel says
    "Install Proton to play. In Steam, install Proton Experimental, or install
    GE-Proton with ProtonUp-Qt. Then reopen the launcher." Remove the line-51
-   text that says Play is not available on Linux.
+   text that says Play is not available on Linux. Line 49 names `proton` as
+   "Proton", never "PhysX". Line 37 (the Play-refusal text) names only the
+   missing pieces, Proton included. A status carrying `"proton"` decodes; it
+   is never a `schema` failure.
 2. Picker (Settings, Linux only, hidden when `available` is empty): a select
    of `name` values; changing it calls `proton_command {op:"select", id}`;
    "Automatic" sends `id: null`. Show "Saved." on success and the refusal
    text on error, on the first change (project rule: visible feedback).
 3. `proton-uat.mjs`: a REPL-style logic UAT modelled on `launch-uat.mjs`
    with a fake IPC: (a) no Proton → Play disabled and the install copy
-   shown; (b) two Protons → picker lists both in order, select → "Saved.";
+   shown and the status decodes without a `schema` failure; (b) two Protons → picker lists both in order, select → "Saved.";
    (c) unknown id refused → error text, selection unchanged;
    (d) `proton_missing` and `proton_setup_failed` failures render their C-6
    titles. Print one PASS/FAIL line per step; exit 1 on any FAIL.
@@ -249,6 +253,8 @@ the integration branch (`ops` runs the Linux AppImage job on it). Rows: README
 `logs/game/<op>/` file, the SigNoz query for the telemetry row) in
 `worknotes/PP-U.md` (CRLF). U6 (Game Mode) gates the merge only if the owner
 rules so on OD-2. A FAIL goes back to the architect for a ruling.
+The Play rows also cover PP-09's Linux playable arm and the per-call Proton
+selection, which have no unit test (PP-09-ruling-1).
 
 ### PP-14: Close-out
 

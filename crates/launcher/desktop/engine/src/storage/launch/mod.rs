@@ -14,7 +14,7 @@ mod preparation;
 mod prepare_error;
 use prepare_error::PrepareError;
 mod resource;
-pub use resource::{Artifact, Graphics, Resources};
+pub use resource::{Artifact, Graphics, ProtonSelection, Resources};
 mod worker;
 pub use worker::{dispatch, Worker};
 pub mod events;
