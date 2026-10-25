@@ -258,3 +258,7 @@ pub(super) async fn account_name(
             .await?;
     Ok(row.map(|(name,)| name))
 }
+
+#[cfg(test)]
+#[path = "account_tests_live_db.rs"]
+mod tests_live_db;
