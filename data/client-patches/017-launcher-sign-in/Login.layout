@@ -19,10 +19,10 @@
 
         <!-- Login | Password Areas -->
         <Window Type="DefaultWindow">
-            <Property Name="UnifiedAreaRect" Value="{{0.5,-100},{0.5,-240},{0.5,100},{0.5,-40}}" />
+            <Property Name="UnifiedAreaRect" Value="{{0.5,-100},{0.5,-240},{0.5,100},{0.5,-10}}" />
 
             <!-- User Name Title & Text Area -->
-            <Window Type="StaticText_2" >
+            <Window Type="StaticText_2" Name="Login_AccountLabel" >
                 <Property Name="Font" Value="Verdana_8pt" />
                 <Property Name="Text" Value="Account Name" />
                 <Property Name="HorzFormatting" Value="WordWrapCentred" />
@@ -33,8 +33,18 @@
                 <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-140},{1,0},{1,-110}}" />
             </Window>
 
+            <!-- Launcher Sign-In Status (shown instead of the account name box) -->
+            <Window Type="StaticText_2" Name="Login_StatusText" >
+                <Property Name="Visible" Value="False" />
+                <Property Name="Font" Value="Verdana_8pt" />
+                <Property Name="Text" Value="" />
+                <Property Name="HorzFormatting" Value="WordWrapCentred" />
+                <Property Name="VertFormatting" Value="VertCentred" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-160},{1,0},{1,-110}}" />
+            </Window>
+
             <!-- Password Title & Text Area -->
-            <Window Type="StaticText_2" >
+            <Window Type="StaticText_2" Name="Login_PasswordLabel" >
                 <Property Name="Font" Value="Verdana_8pt" />
                 <Property Name="Text" Value="Password" />
                 <Property Name="HorzFormatting" Value="WordWrapCentred" />
@@ -57,7 +67,14 @@
             <!-- Login Button -->
             <Window Type="TextButton_2" Name="Login_LoginButton" >
                 <Property Name="Text" Value="Login" />
-                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-35},{1,0},{1,0}}" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-65},{1,0},{1,-30}}" />
+            </Window>
+
+            <!-- Use Password Button (shown in launcher sign-in; types the password instead) -->
+            <Window Type="TextButton_2" Name="Login_PasswordModeButton" >
+                <Property Name="Visible" Value="False" />
+                <Property Name="Text" Value="Use password" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-30},{1,0},{1,-5}}" />
             </Window>
 
         </Window>
