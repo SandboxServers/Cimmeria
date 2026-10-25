@@ -4,6 +4,7 @@ import {scaffoldFailure,type DisplayInfo,type DisplayMode,type DisplayOptions,ty
 import {reportUiEvent,uiCode} from './ui-event';
 import type {FailureCode} from './failure-codes';
 import {failureText} from './failure-copy';
+import {mountProton} from './proton-picker';
 import failureCodes from './failure-codes.json';
 /**
  * Settings panel (PD-26): how the game window starts, saved through `launcher_command`
@@ -54,6 +55,8 @@ export function mountDisplay(document:Document,invoke:Invoke,context:PanelContex
  const applies=make('p','display-applies');applies.textContent=displayAppliesText;
  const windows=make('p','display-windows-note');windows.textContent=displayWindowsText;windows.hidden=true;
  panel.textContent='';panel.append(heading,modeLabelEl,mode,mac,monitorLabelEl,monitor,monitorNote,monitorWindowed,sizeLabelEl,size,capLabelEl,cap,save,status,applies,windows);
+ // The Linux Proton picker (PP-12) sits under the display options; it stays hidden where no Proton is found.
+ const proton=mountProton(document,invoke,panel);
  let dirty=false;let saving=false;let disposed=false;let mutation:Promise<void>=Promise.resolve();
  // `selected` on the option, not `select.value =`: it is what every DOM (and linkedom in the tests) supports.
  const option=(value:string,label:string,selected:boolean)=>{const o=document.createElement('option');o.value=value;o.textContent=label;o.selected=selected;return o;};
@@ -144,5 +147,5 @@ export function mountDisplay(document:Document,invoke:Invoke,context:PanelContex
  const ready=Promise.resolve();
  return {ready,refresh:()=>{sync();return mutation;},settled:()=>mutation,dispose:async()=>{
   disposed=true;unsubscribe();mode.removeEventListener('change',onChange);size.removeEventListener('change',onChange);
-  cap.removeEventListener('change',onChange);monitor.removeEventListener('change',onMonitor);save.removeEventListener('click',onSave);await mutation;panel.textContent='';}};
+  cap.removeEventListener('change',onChange);monitor.removeEventListener('change',onMonitor);save.removeEventListener('click',onSave);await mutation;await proton.dispose();panel.textContent='';}};
 }
