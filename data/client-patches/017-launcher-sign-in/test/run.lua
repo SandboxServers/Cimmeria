@@ -113,6 +113,25 @@ cases[#cases + 1] = { name = 'failure', run = function()
     eq(#Stubs.prompts, 0, 'prompts in ticket mode')
 end }
 
+-- Bug shape: a LoginInternal.lua with no links or errors tables raised a Lua
+-- error in Login.lua; the failure must still show the generic text and no links.
+cases[#cases + 1] = { name = 'no links or errors tables', run = function()
+    local src = GOLDEN
+    for _, from in ipairs({ 'CimmeriaLogin.links = {}', 'CimmeriaLogin.errors = {}',
+                            'CimmeriaLogin.errors[4] = "Your sign-in for this launch is no longer valid. '..
+                                'Close the game and press Play in the launcher."',
+                            'CimmeriaLogin.errors[5] = "This account is suspended. Contact the server staff."' }) do
+        src = plain(src, from, '')
+    end
+    boot(src)
+    hidden('Login_WebsiteButton')
+    hidden('Login_AccountButton')
+    hidden('Login_ForumsButton')
+    LoginMod.onLoginFailure(nil, nil, 'x', 4)
+    ok(Login_StatusText:getText():find('Login failed (4)', 1, true), 'generic status for 4')
+    eq(Login_LoginButton:getText(), 'Retry', 'button for 4')
+end }
+
 cases[#cases + 1] = { name = 'use password', run = function()
     boot(GOLDEN)
     Login_AccountEdit:setText('stale-name')
