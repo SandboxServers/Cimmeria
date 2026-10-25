@@ -88,7 +88,7 @@ export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()
  mutation=runtime.runPromise(Effect.flatMap(Launch,s=>Effect.result(play?s.play(uuid()):s.inspect))).then(()=>{}).finally(()=>{if(play)playing=false;else pending=false;render();});return mutation;};
  const play=()=>{checking=false;attention=false;render();if(!button.disabled)void run(true);};
  const click=()=>{if(button.disabled)return;checking=true;attention=false;render();
-  void gate('play',play).then(outcome=>{checking=false;attention=outcome==='attention';render();});};const check=()=>{if(!recheck.disabled)void run(false);};
+  void gate('play',play).then(outcome=>{checking=false;attention=outcome!=='proceeded';render();});};const check=()=>{if(!recheck.disabled)void run(false);};
  const inspectSettings=()=>{if(settingsCheck.disabled)return;inspecting=true;render();void run(false).finally(()=>{inspecting=false;render();});};
  button.addEventListener('click',click);recheck.addEventListener('click',check);
  settingsCheck.addEventListener('click',inspectSettings);

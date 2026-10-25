@@ -114,7 +114,9 @@ export function mountPreflight(document:Document,workflow:PreflightWorkflow,onCo
   get('settings')?.setAttribute('aria-expanded','false');get('home')?.setAttribute('aria-pressed','true');
  };
  const gate:PreflightGate=(operation,next)=>{
-  if(disposed||checking||busy!==null)return Promise.resolve('busy');
+  if(disposed)return Promise.resolve('busy');
+  // Another check or install is running: say so where the panel is, so the press is never silent.
+  if(checking||busy!==null){reveal();panel.hidden=false;status.textContent=`Wait for the check below to finish, then press ${labels[operation]} again.`;return Promise.resolve('busy');}
   // The panel shows the check at once, so every gated press has visible feedback before the reply.
   generation++;checking=operation;current=null;refusal=null;waiting=null;status.textContent='';reveal();panel.hidden=false;render();
   const outcome=Effect.runPromise(Effect.result(workflow.inspectPreflight(operation))).then((result):GateOutcome=>{

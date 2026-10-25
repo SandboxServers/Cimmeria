@@ -368,3 +368,16 @@ test('after a dependency install the panel says Ready. Press Play again. and doe
   ui.press('launch');await ui.settle();assert.equal(ui.plays(),1,'the next press re-checks and launches');
  }finally{await ui.dispose();}
 });
+test('Play pressed while a panel install is running is never silent: it says to wait and launches nothing',async()=>{
+ // The install stays pending until the test ends; it is released before dispose, which awaits it.
+ let release!:(value:unknown)=>void;
+ const ui=gated(request=>request.command==='install'?new Promise(resolve=>{release=resolve;}):Promise.resolve(pfReport([pfCheck()])));
+ const settleApp=async()=>{await ui.app.settled();await new Promise(resolve=>setImmediate(resolve));};
+ try{await ui.ready();ui.press('launch');await ui.settle();
+  ui.press('preflight-install-rosetta');
+  ui.press('launch');await settleApp();
+  assert.deepEqual(ui.sent,['inspect:play','install:play:rosetta']);assert.equal(ui.plays(),0);
+  assert.equal(ui.get('preflight-status').textContent,'Wait for the check below to finish, then press Play again.');
+  assert.equal(ui.get('launch-status').textContent,'Play needs attention: see below.');
+ }finally{release?.(pfReport([pfCheck()]));await ui.dispose();}
+});
