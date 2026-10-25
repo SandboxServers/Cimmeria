@@ -221,6 +221,12 @@ async fn mint_ticket(
 #[tokio::test]
 async fn live_db_dev_mock_sign_in_reaches_userauth() {
     let pool = require_db_or_skip!();
+    // A run that failed early leaves its account behind; clear it first so the
+    // sign-in below starts from a new subject again.
+    let _ = sqlx::query("DELETE FROM account WHERE account_id IN (SELECT account_id FROM account_identity WHERE provider = 'dev' AND subject = $1)")
+        .bind(SUBJECT)
+        .execute(&pool)
+        .await;
     std::env::set_var(SECRET_ENV, "ct31-smoke-secret-value");
     let path =
         std::env::temp_dir().join(format!("ct31-auth-providers-{}.toml", std::process::id()));

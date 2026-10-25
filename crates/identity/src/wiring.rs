@@ -113,6 +113,12 @@ pub fn reap_once(stores: &Stores, codes: &LinkCodeStore, now: Instant) {
 mod tests {
     use super::*;
 
+    /// The reaper runs once a minute (C12).
+    #[test]
+    fn reaper_period_is_sixty_seconds() {
+        assert_eq!(REAP_EVERY, Duration::from_secs(60));
+    }
+
     /// The reaper drops an expired access token on its own: with the reap
     /// call removed from `run_reaper`, the token is still there afterwards.
     #[tokio::test]

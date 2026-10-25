@@ -57,11 +57,17 @@ pub async fn token(
     body: Result<Json<TokenRequest>, JsonRejection>,
 ) -> Response {
     let span = telemetry::idp_token();
+    let started = Instant::now();
     let result = answer(&state, peer, body).instrument(span.clone()).await;
     match result {
-        Ok(response) => response,
+        Ok(response) => {
+            span.record("latency_ms", started.elapsed().as_millis() as u64);
+            response
+        }
         Err(error) => {
             span.record("outcome", "refused");
+            span.record("reason", error.code());
+            span.record("latency_ms", started.elapsed().as_millis() as u64);
             error.into_response()
         }
     }
@@ -368,3 +374,74 @@ async fn end_session(state: &RouteState, pool: &PgPool, presented: &str) -> Resu
 #[cfg(test)]
 #[path = "token_tests_live_db.rs"]
 mod tests_live_db;
+
+/// Span tests of the token and ticket routes (C11), on a state with no
+/// database. Shared with the launch-ticket tests.
+#[cfg(test)]
+pub(crate) mod span_tests {
+    use std::sync::Arc;
+
+    use cimmeria_auth::auth::{AuthRouteDeps, LaunchTicketStore};
+
+    use super::*;
+    use crate::config;
+    use crate::limits::RateLimiter;
+    use crate::link_code::LinkCodeStore;
+    use crate::providers::Providers;
+    use crate::routes::ctx::IdentityCtx;
+    use crate::stores::Stores;
+    use crate::telemetry::RecordedFields;
+
+    const TABLE: &str = r#"
+public_base_url = "https://play.example.org"
+
+[links]
+website = "https://example.org"
+account = "https://example.org/account"
+forums = "https://example.org/forums"
+"#;
+
+    /// A route state with no database, no providers and the default limits.
+    pub(crate) fn test_state() -> RouteState {
+        let (cfg, _) = config::load(TABLE, &|_| None, false).expect("the fixture loads");
+        RouteState {
+            deps: Arc::new(AuthRouteDeps {
+                db: None,
+                launch_tickets: Arc::new(LaunchTicketStore::default()),
+                developer_mode: false,
+            }),
+            ctx: IdentityCtx {
+                limiter: Arc::new(RateLimiter::with_limits(&cfg.limits)),
+                cfg: Arc::new(cfg),
+                providers: Arc::new(Providers::from_parts(Vec::new(), None)),
+                stores: Arc::new(Stores::default()),
+                link_codes: Box::leak(Box::new(LinkCodeStore::default())),
+            },
+        }
+    }
+
+    /// A refused `/token` records its reason and latency on the span.
+    #[tokio::test]
+    async fn refusal_records_reason_and_latency() {
+        let recorder = RecordedFields::default();
+        let _subscriber = tracing::subscriber::set_default(recorder.clone());
+        let body = TokenRequest {
+            grant_type: Some("bogus".to_owned()),
+            code: None,
+            code_verifier: None,
+            redirect_uri: None,
+            refresh_token: None,
+        };
+        let peer = SocketAddr::from(([127, 0, 0, 1], 40_000));
+        let _response = token(State(test_state()), ConnectInfo(peer), Ok(Json(body))).await;
+        let names = recorder.names();
+        assert!(
+            names.contains(&"reason"),
+            "a refused token lacks its reason"
+        );
+        assert!(
+            names.contains(&"latency_ms"),
+            "a refused token lacks latency"
+        );
+    }
+}

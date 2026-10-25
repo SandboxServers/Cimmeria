@@ -207,4 +207,62 @@ mod tests {
             );
         }
     }
+
+    /// Records the outcome, reason and latency of a finished span.
+    #[test]
+    fn finish_records_outcome_reason_and_latency() {
+        let recorder = RecordedFields::default();
+        recorder.scope(|| finish(&idp_token(), "ok", "ok", Instant::now()));
+        let names = recorder.names();
+        for field in ["outcome", "reason", "latency_ms"] {
+            assert!(names.contains(&field), "finish does not record {field}");
+        }
+    }
+}
+
+/// A subscriber that keeps the names of the fields recorded on spans, so the
+/// route tests can check the C11 fields a route sets. Test builds only.
+#[cfg(test)]
+#[derive(Clone, Default)]
+pub(crate) struct RecordedFields(std::sync::Arc<std::sync::Mutex<Vec<&'static str>>>);
+
+#[cfg(test)]
+impl RecordedFields {
+    /// Runs `body` with this recorder as the thread's subscriber.
+    pub(crate) fn scope<T>(&self, body: impl FnOnce() -> T) -> T {
+        tracing::subscriber::with_default(self.clone(), body)
+    }
+
+    /// The names of the fields recorded so far, in order.
+    pub(crate) fn names(&self) -> Vec<&'static str> {
+        self.0.lock().expect("the recorder lock").clone()
+    }
+}
+
+#[cfg(test)]
+impl tracing::Subscriber for RecordedFields {
+    fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+        true
+    }
+    fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+        tracing::span::Id::from_u64(1)
+    }
+    fn record(&self, _: &tracing::span::Id, values: &tracing::span::Record<'_>) {
+        values.record(&mut FieldNames(&self.0));
+    }
+    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+    fn event(&self, _: &tracing::Event<'_>) {}
+    fn enter(&self, _: &tracing::span::Id) {}
+    fn exit(&self, _: &tracing::span::Id) {}
+}
+
+/// Pushes the name of each recorded field into the recorder.
+#[cfg(test)]
+struct FieldNames<'a>(&'a std::sync::Mutex<Vec<&'static str>>);
+
+#[cfg(test)]
+impl tracing::field::Visit for FieldNames<'_> {
+    fn record_debug(&mut self, field: &tracing::field::Field, _: &dyn std::fmt::Debug) {
+        self.0.lock().expect("the recorder lock").push(field.name());
+    }
 }

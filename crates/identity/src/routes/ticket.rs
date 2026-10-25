@@ -141,16 +141,17 @@ pub async fn end(
     body: Result<Json<LaunchRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let launch_id = launch_id_of(body)?;
+    let started = Instant::now();
     let span = telemetry::launch_ticket_end(grant.account_id);
-    span.record("outcome", "ok");
     let _entered = span.enter();
     state.deps.launch_tickets.end(grant.account_id, &launch_id);
+    telemetry::finish(&span, "ok", "ok", started);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::valid_launch_id;
+    use super::*;
 
     #[test]
     fn launch_id_length_bounds() {
@@ -166,5 +167,30 @@ mod tests {
         assert!(!valid_launch_id("abc_123_xyz_9876_ab"));
         assert!(!valid_launch_id("abc 123 xyz 9876 ab"));
         assert!(!valid_launch_id("abc.123.xyz.9876.ab"));
+    }
+
+    /// A retired ticket records its outcome, reason and latency on the span.
+    #[tokio::test]
+    async fn end_records_outcome_reason_and_latency() {
+        use crate::routes::token::span_tests::test_state;
+        use crate::telemetry::RecordedFields;
+
+        let recorder = RecordedFields::default();
+        let _subscriber = tracing::subscriber::set_default(recorder.clone());
+        let grant = AccessGrant {
+            account_id: 7,
+            family_id: "family".to_owned(),
+            via_code: true,
+            issued_at: Instant::now(),
+        };
+        let body = Ok(Json(LaunchRequest {
+            launch_id: Some("abcdefghijklmnop".to_owned()),
+        }));
+        let result = end(State(test_state()), Bearer(grant), body).await;
+        assert!(result.is_ok());
+        let names = recorder.names();
+        for field in ["outcome", "reason", "latency_ms"] {
+            assert!(names.contains(&field), "a retired ticket lacks {field}");
+        }
     }
 }

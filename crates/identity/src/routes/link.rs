@@ -60,8 +60,9 @@ pub async fn new(
     body: Result<Json<NewRequest>, JsonRejection>,
 ) -> Response {
     let span = telemetry::idp_link();
+    let started = Instant::now();
     let result = create(&state, peer, body).instrument(span.clone()).await;
-    answered(&span, result)
+    answered(&span, started, result)
 }
 
 /// `POST /link/existing`: links the grant's identity to an existing account,
@@ -72,10 +73,11 @@ pub async fn existing(
     body: Result<Json<ExistingRequest>, JsonRejection>,
 ) -> Response {
     let span = telemetry::idp_link();
+    let started = Instant::now();
     let result = link_existing(&state, peer, body)
         .instrument(span.clone())
         .await;
-    answered(&span, result)
+    answered(&span, started, result)
 }
 
 /// The body of [`new`]: the grant, the sign-up gates, then the account.
@@ -248,8 +250,12 @@ async fn check_password(pool: &PgPool, name: &str, password: &str) -> Result<u32
 
 /// Turns the body's result into the response and records the refusal on the
 /// span. A success recorded its own outcome inside the body.
-fn answered(span: &tracing::Span, result: Result<Response, ApiError>) -> Response {
-    match result {
+fn answered(
+    span: &tracing::Span,
+    started: Instant,
+    result: Result<Response, ApiError>,
+) -> Response {
+    let response = match result {
         Ok(response) => response,
         Err(error) => {
             let outcome = if error == ApiError::InvalidCredentials {
@@ -258,9 +264,12 @@ fn answered(span: &tracing::Span, result: Result<Response, ApiError>) -> Respons
                 "refused"
             };
             span.record("outcome", outcome);
+            span.record("reason", error.code());
             error.into_response()
         }
-    }
+    };
+    span.record("latency_ms", started.elapsed().as_millis() as u64);
+    response
 }
 
 /// The database pool, or `unavailable` when none is configured.
@@ -274,3 +283,35 @@ mod tests_guards_live_db;
 #[cfg(test)]
 #[path = "link_tests_live_db.rs"]
 mod tests_live_db;
+
+#[cfg(test)]
+mod answered_tests {
+    use super::*;
+    use crate::telemetry::RecordedFields;
+    use serde_json::json;
+
+    /// A refused link records its reason and latency on the span.
+    #[test]
+    fn refusal_records_reason_and_latency() {
+        let recorder = RecordedFields::default();
+        recorder.scope(|| {
+            let span = telemetry::idp_link();
+            answered(&span, Instant::now(), Err(ApiError::InvalidRequest));
+        });
+        let names = recorder.names();
+        assert!(names.contains(&"reason"), "a refusal lacks its reason");
+        assert!(names.contains(&"latency_ms"), "a refusal lacks latency");
+    }
+
+    /// A signed-in link records its latency on the span.
+    #[test]
+    fn success_records_latency() {
+        let recorder = RecordedFields::default();
+        recorder.scope(|| {
+            let span = telemetry::idp_link();
+            let response = Json(json!({"result": "signed_in"})).into_response();
+            answered(&span, Instant::now(), Ok(response));
+        });
+        assert!(recorder.names().contains(&"latency_ms"));
+    }
+}

@@ -353,6 +353,11 @@ impl IntentStore {
         let (intent, issued) = locked(&self.by_hash).remove(&hash_of(token))?;
         live(issued, now, INTENT_LIFE).then_some(intent)
     }
+
+    /// Drops the intents past their life.
+    pub fn reap(&self, now: Instant) {
+        locked(&self.by_hash).retain(|_, (_, issued)| live(*issued, now, INTENT_LIFE));
+    }
 }
 
 /// The sign-in state the routes share: every store, built once.
@@ -377,6 +382,7 @@ impl Stores {
         self.handoff.reap(now);
         self.access.reap(now);
         self.grants.reap(now);
+        self.intents.reap(now);
     }
 }
 
