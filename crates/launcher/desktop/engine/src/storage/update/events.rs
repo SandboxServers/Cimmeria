@@ -2,11 +2,14 @@
 //! committed, recovered, discarded or abandoned update, and a warn row when an
 //! operation cannot be marked uncertain. Only closed codes and counts are written (R5).
 use super::preparation::Failure;
+use crate::failure::FailureCode;
+use crate::operation_numbers;
 use crate::operations::ContractError;
-use crate::storage::IntentError;
+use crate::storage::{IntentError, StorageError};
 use serde::Serialize;
 use std::path::Path;
 use std::time::Duration;
+use uuid::Uuid;
 
 /// The serde code of `value` (snake_case), or `"other"` when it has none.
 fn code<T: Serialize>(value: T) -> String {
@@ -104,15 +107,54 @@ pub(super) fn staged(files: u64, bytes: u64, elapsed: Duration, staging: Staging
     );
 }
 
-/// A replacement commit finished. `outcome` is `ok` or the failure's code.
+/// The failure code of an intent error, when it maps to one (C-PD1).
+fn intent_failure(error: &IntentError) -> Option<FailureCode> {
+    match error {
+        IntentError::Storage(StorageError::Io) => Some(FailureCode::LocalIo),
+        IntentError::Storage(StorageError::InvalidDirectory) => {
+            Some(FailureCode::GameFolderInvalid)
+        }
+        IntentError::Storage(StorageError::Corrupt) => Some(FailureCode::StateCorrupt),
+        _ => None,
+    }
+}
+
+/// Update preparation failed at `stage`, a closed name. `error` is the intent
+/// error when the stage has one; `error` and `failure_code` are omitted otherwise.
+pub(super) fn prepare_failed(id: Uuid, stage: &'static str, error: Option<&IntentError>) {
+    let operation = operation_numbers::number(id);
+    let failure_code = error.and_then(intent_failure).map(FailureCode::code);
+    let error = error.map(intent_code);
+    tracing::warn!(
+        target: "launcher.game_update",
+        event = "update_prepare_failed",
+        operation,
+        stage,
+        error = error.as_deref(),
+        failure_code,
+        "game update: preparation failed; expected a staged replacement tree; the update stops and the installed game is unchanged"
+    );
+}
+
+/// A replacement commit finished. `outcome` is `ok` or the failure's code; a
+/// failed commit logs at WARN.
 pub(super) fn committed(result: &Result<(), Failure>) {
     let outcome = outcome_of(result, |failure| failure_code(failure).to_owned());
-    tracing::info!(
-        target: "launcher.game_update",
-        event = "update_committed",
-        outcome,
-        "game update: the replacement commit finished; expected the install to name the target release"
-    );
+    if result.is_ok() {
+        tracing::info!(
+            target: "launcher.game_update",
+            event = "update_committed",
+            outcome,
+            "game update: the replacement commit finished; expected the install to name the target release"
+        );
+    } else {
+        tracing::warn!(
+            target: "launcher.game_update",
+            event = "update_committed",
+            outcome,
+            "game update: the replacement commit failed; expected the install to name the target release; the update stops"
+        );
+    }
 }
 
 /// An interrupted checkpointed commit was reconciled. `outcome` is `ok` or the code.
@@ -184,7 +226,6 @@ pub(super) fn incremental_failed(reason: &'static str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::StorageError;
     use crate::test_capture::{capture, Captured};
     use tracing::Level;
 
@@ -255,7 +296,12 @@ mod tests {
         ];
         for (result, expected) in cases {
             let ((), captured) = capture(|| committed(&result));
-            let row = only_row(&captured, Level::INFO);
+            let level = if result.is_ok() {
+                Level::INFO
+            } else {
+                Level::WARN
+            };
+            let row = only_row(&captured, level);
             assert_eq!(row.field("event"), Some("update_committed"));
             assert_eq!(row.field("outcome"), Some(expected));
         }
@@ -288,6 +334,35 @@ mod tests {
             let row = only_row(&captured, Level::INFO);
             assert_eq!(row.field("event"), Some("update_abandoned"));
             assert_eq!(row.field("reason"), Some(expected));
+        }
+    }
+
+    #[test]
+    fn prepare_failed_row_names_stage_error_and_failure_code() {
+        let id = Uuid::new_v4();
+        let cases: [(Option<IntentError>, Option<&str>, Option<&str>); 5] = [
+            (Some(StorageError::Io.into()), Some("io"), Some("local_io")),
+            (
+                Some(StorageError::InvalidDirectory.into()),
+                Some("invalid_directory"),
+                Some("game_folder_invalid"),
+            ),
+            (
+                Some(StorageError::Corrupt.into()),
+                Some("corrupt"),
+                Some("state_corrupt"),
+            ),
+            (Some(StorageError::Busy.into()), Some("busy"), None),
+            (None, None, None),
+        ];
+        for (error, expected_error, expected_failure) in cases {
+            let ((), captured) = capture(|| prepare_failed(id, "digest", error.as_ref()));
+            let row = only_row(&captured, Level::WARN);
+            assert_eq!(row.field("event"), Some("update_prepare_failed"));
+            assert_eq!(row.field("stage"), Some("digest"));
+            assert!(row.field("operation").is_some());
+            assert_eq!(row.field("error"), expected_error);
+            assert_eq!(row.field("failure_code"), expected_failure);
         }
     }
 

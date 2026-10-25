@@ -246,7 +246,10 @@ async fn reconstruct(
     let mut prepared = tokio::task::spawn_blocking(move || claim(candidate))
         .await
         .map_err(|_| Failure::ReconciliationRequired)?
-        .map_err(|_| Failure::Failed)?;
+        .map_err(|error| {
+            events::prepare_failed(plan.id, "claim", Some(&error.into()));
+            Failure::Failed
+        })?;
     let stage = plan.stage();
     let mut staging = events::Staging::FULL;
     let (seed_source, tolerant) = match path {
@@ -298,8 +301,14 @@ async fn reconstruct(
                 crate::mac_wine::WineError::Runtime(
                     crate::mac_runtime::RuntimeError::Cancelled,
                 ) => Failure::Cancelled,
-                crate::mac_wine::WineError::Invalid => Failure::ReconciliationRequired,
-                _ => Failure::Failed,
+                crate::mac_wine::WineError::Invalid => {
+                    events::prepare_failed(plan.id, "wine_extractor", None);
+                    Failure::ReconciliationRequired
+                }
+                _ => {
+                    events::prepare_failed(plan.id, "wine_extractor", None);
+                    Failure::Failed
+                }
             })?;
             let cache = plan.work_directory().join("cache");
             let backend = install::SeedBackend {
@@ -323,10 +332,14 @@ async fn reconstruct(
         Err(install::InstallError::SeedExtractionUncertain) => {
             return Err(Failure::ReconciliationRequired)
         }
-        Err(_) => return Err(Failure::Failed),
+        Err(_) => {
+            events::prepare_failed(plan.id, "install", None);
+            return Err(Failure::Failed);
+        }
         Ok(()) => (),
     }
     if !install_worker::content_valid(&stage, &release) {
+        events::prepare_failed(plan.id, "content_check", None);
         return Err(Failure::Failed);
     }
     let scan_plan = plan.clone();
@@ -336,10 +349,11 @@ async fn reconstruct(
     })
     .await
     .map_err(|_| Failure::ReconciliationRequired)?
-    .map_err(|_| {
+    .map_err(|error| {
         if cancel.is_cancelled() {
             Failure::Cancelled
         } else {
+            events::prepare_failed(plan.id, "digest", Some(&error.into()));
             Failure::Failed
         }
     })?;
