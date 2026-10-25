@@ -55,11 +55,16 @@ pub async fn facts_by_name(pool: &PgPool, name: &str) -> Result<Option<AccountFa
 /// new id and the name it got.
 ///
 /// The `account` table has no unique index on `lower(account_name)`, so the
-/// free check is a `NOT EXISTS` in the same statement. It is not safe against
-/// two creates racing for one name; the sign-up path serializes them.
+/// free check is a `NOT EXISTS` in the same statement. Creates are serialized
+/// by a transaction-scoped advisory lock, so two racing creates never get one
+/// name.
 ///
 /// Returns [`RepoError::Conflict`] when every candidate is taken.
 pub async fn create(pool: &PgPool, candidates: &[String]) -> Result<(u32, String), RepoError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(2000201)")
+        .execute(&mut *tx)
+        .await?;
     for name in candidates {
         let row: Option<(i32,)> = sqlx::query_as(
             "INSERT INTO account (account_name, accesslevel, enabled, test_account) \
@@ -68,12 +73,14 @@ pub async fn create(pool: &PgPool, candidates: &[String]) -> Result<(u32, String
              RETURNING account_id",
         )
         .bind(name)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *tx)
         .await?;
         if let Some((id,)) = row {
+            tx.commit().await?;
             return Ok((id as u32, name.clone()));
         }
     }
+    tx.commit().await?;
     Err(RepoError::Conflict)
 }
 
