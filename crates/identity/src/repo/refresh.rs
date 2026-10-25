@@ -261,6 +261,25 @@ pub async fn revoke_token(
     Ok(())
 }
 
+/// Deletes the rows of each family that has passed `family_expires_at`, or
+/// whose every token has been idle longer than [`REFRESH_IDLE`]. A live family
+/// keeps all its rows, spent ones too, so a replayed token still answers
+/// `Reused`. Returns how many rows went. `now` is the caller's clock, as in
+/// [`rotate`].
+pub async fn purge_expired(pool: &PgPool, now: DateTime<Utc>) -> Result<u64, RepoError> {
+    let done = sqlx::query(
+        "DELETE FROM auth_refresh_token t WHERE t.family_expires_at < $2::timestamptz \
+         OR NOT EXISTS (SELECT 1 FROM auth_refresh_token s \
+           WHERE s.family_id = t.family_id \
+           AND s.last_used_at + make_interval(secs => $1::float8) >= $2::timestamptz)",
+    )
+    .bind(REFRESH_IDLE.num_seconds() as f64)
+    .bind(micros(now))
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected())
+}
+
 /// Revokes the live rows of one family on the given connection, so it commits
 /// with the caller's transaction.
 async fn revoke_family_on(
@@ -294,6 +313,9 @@ mod tests {
     const ID_ACCOUNT: u32 = 2_000_305;
     const ID_LOGOUT: u32 = 2_000_306;
     const ID_CONCURRENT: u32 = 2_000_307;
+    const ID_PURGE: u32 = 2_000_308;
+    const ID_PURGE_FAMILY: u32 = 2_000_309;
+    const ID_PURGE_CLOCK: u32 = 2_000_310;
 
     /// The fixed clock every test starts from.
     fn base() -> DateTime<Utc> {
@@ -430,6 +452,88 @@ mod tests {
             matches!(after, Ok(Rotation::Reused { .. })),
             "an expired family stays revoked"
         );
+    }
+
+    /// **Purge (C12).** `purge_expired` deletes the row of a family past its
+    /// limit and keeps a live row. With the DELETE replaced by a no-op the dead
+    /// row stays. Each running live-DB test has its own database clone
+    /// (`.config/nextest.toml`), so no other test's purge reaches these rows.
+    /// The count is at least 1, not exactly 1: the clone may still hold a dead
+    /// row that an earlier failed test left behind.
+    #[tokio::test]
+    async fn live_db_purge_expired_deletes_only_dead_rows() {
+        let pool = require_db_or_skip!();
+        insert_account(&pool, ID_PURGE).await;
+        // Family limit passed 220 days ago, so the row is dead at `base() + 1`.
+        issue(&pool, ID_PURGE, None, at(-400)).await.expect("issue");
+        let (live, _) = issue(&pool, ID_PURGE, None, base()).await.expect("issue");
+        let deleted = purge_expired(&pool, at(1)).await;
+        let kept: Vec<(Vec<u8>,)> =
+            sqlx::query_as("SELECT token_hash FROM auth_refresh_token WHERE account_id = $1")
+                .bind(ID_PURGE as i32)
+                .fetch_all(&pool)
+                .await
+                .expect("select the account's rows");
+        cleanup(&pool, ID_PURGE).await;
+        assert!(deleted.expect("purge") >= 1, "the dead row is deleted");
+        assert_eq!(
+            kept,
+            vec![(hash_of(&live).to_vec(),)],
+            "only the live row remains"
+        );
+    }
+
+    /// **Purge keeps a live family (N1).** A family still inside its idle and
+    /// family limits keeps every row, the spent one included, so reuse is still
+    /// detected. Its parent row was last used 40 days before the purge, which
+    /// only the per-row rule would delete. With that rule the count is 1.
+    #[tokio::test]
+    async fn live_db_purge_keeps_spent_rows_of_a_live_family() {
+        let pool = require_db_or_skip!();
+        insert_account(&pool, ID_PURGE_FAMILY).await;
+        let (_, family) = issue(&pool, ID_PURGE_FAMILY, None, at(-40))
+            .await
+            .expect("issue");
+        issue(&pool, ID_PURGE_FAMILY, Some(&family), base())
+            .await
+            .expect("issue");
+        purge_expired(&pool, at(1)).await.expect("purge");
+        let left: (i64,) =
+            sqlx::query_as("SELECT count(*) FROM auth_refresh_token WHERE account_id = $1")
+                .bind(ID_PURGE_FAMILY as i32)
+                .fetch_one(&pool)
+                .await
+                .expect("count the account's rows");
+        cleanup(&pool, ID_PURGE_FAMILY).await;
+        assert_eq!(left.0, 2, "a live family keeps its rotated-out row");
+    }
+
+    /// **Purge clock.** `purge_expired` judges the rows against the `now` it is
+    /// given, as `rotate` does, not the database clock. The family ends at
+    /// `base() + 28 days`, so at `base() + 29 days` it is past its limit, while
+    /// against the real clock it is still live. With the DB `now()` restored the
+    /// family stays and this test fails.
+    #[tokio::test]
+    async fn live_db_purge_uses_the_callers_clock() {
+        let pool = require_db_or_skip!();
+        insert_account(&pool, ID_PURGE_CLOCK).await;
+        let (old, family) = issue(&pool, ID_PURGE_CLOCK, None, at(-152))
+            .await
+            .expect("issue");
+        // Rotate every 25 days, so each token is used within the idle limit.
+        let mut token = old;
+        for day in (-125..=0).step_by(25) {
+            token = rotated_token(rotate(&pool, &token, at(day)).await);
+        }
+        purge_expired(&pool, at(29)).await.expect("purge");
+        let left: (i64,) =
+            sqlx::query_as("SELECT count(*) FROM auth_refresh_token WHERE family_id = $1")
+                .bind(&family)
+                .fetch_one(&pool)
+                .await
+                .expect("count the family's rows");
+        cleanup(&pool, ID_PURGE_CLOCK).await;
+        assert_eq!(left.0, 0, "the family past its limit at the caller's clock");
     }
 
     #[tokio::test]

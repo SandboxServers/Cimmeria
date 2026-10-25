@@ -34,6 +34,13 @@ use crate::telemetry;
 /// token does not qualify, so a stolen refresh token cannot remove a method.
 const REAUTH_LIFE: Duration = Duration::from_secs(10 * 60);
 
+/// Whether `grant` is a code sign-in token no older than `REAUTH_LIFE` at `now`.
+/// Adding a method needs it as much as removing one: a method added from a
+/// stolen token would otherwise pass the unlink check (W3-1).
+fn fresh_code_token(grant: &AccessGrant, now: Instant) -> bool {
+    grant.via_code && now.duration_since(grant.issued_at) <= REAUTH_LIFE
+}
+
 /// The body of `POST /link/start` (C6). Every field is optional here so that a
 /// missing one is our `400 invalid_request`.
 #[derive(Deserialize)]
@@ -47,14 +54,35 @@ pub struct LinkStartRequest {
 
 /// `POST /link/start`: a signed-in player asks to add a provider. The answer is
 /// an `/authorize` URL carrying a single-use `intent` that names the account
-/// (C6). The body is validated like `authorize`'s query.
+/// (C6). The body is validated like `authorize`'s query. Needs a fresh code
+/// sign-in, like unlink (W3-1).
 pub async fn link_start(
     State(state): State<RouteState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Bearer(grant): Bearer,
     body: Result<Json<LinkStartRequest>, JsonRejection>,
+) -> Response {
+    let span = telemetry::idp_link_start();
+    let started = Instant::now();
+    let result = start_link(&state, peer, &grant, body)
+        .instrument(span.clone())
+        .await;
+    let response = result.unwrap_or_else(IntoResponse::into_response);
+    record_outcome(&span, started, &response);
+    response
+}
+
+/// The work of `link_start`.
+async fn start_link(
+    state: &RouteState,
+    peer: SocketAddr,
+    grant: &AccessGrant,
+    body: Result<Json<LinkStartRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let now = Instant::now();
+    if !fresh_code_token(grant, now) {
+        return Err(ApiError::ReauthRequired);
+    }
     let Json(request) = body.map_err(|_| ApiError::InvalidRequest)?;
     let provider = request
         .provider
@@ -114,6 +142,20 @@ pub async fn link_start(
     Ok(Json(json!({"authorize_url": url.as_str()})).into_response())
 }
 
+/// Refuses a disabled account with `403 account_disabled`, the answer `mint`
+/// and `link_start` give (C6). A row that is gone is `invalid_token`.
+pub(super) async fn require_enabled(pool: &sqlx::PgPool, account_id: u32) -> Result<(), ApiError> {
+    let facts = account::facts(pool, account_id)
+        .await
+        .map_err(ApiError::from_repo)?
+        .ok_or(ApiError::InvalidToken)?;
+    if facts.enabled {
+        Ok(())
+    } else {
+        Err(ApiError::AccountDisabled)
+    }
+}
+
 /// `GET /account`: the account's name, its display name and its linked
 /// identities. The display name is the most recently used identity's, else the
 /// account name. Never a subject or an email (C6, C15).
@@ -123,10 +165,7 @@ pub async fn get_account(
 ) -> Result<Response, ApiError> {
     let pool = state.deps.db.as_deref().ok_or(ApiError::Unavailable)?;
     let account_id = grant.account_id;
-    account::facts(pool, account_id)
-        .await
-        .map_err(ApiError::from_repo)?
-        .ok_or(ApiError::InvalidToken)?;
+    require_enabled(pool, account_id).await?;
     let name = account_name(pool, account_id)
         .await
         .map_err(ApiError::from_repo)?
@@ -191,11 +230,12 @@ async fn remove_identity(
     identity_id: i64,
 ) -> Result<(), ApiError> {
     let now = Instant::now();
-    if !grant.via_code || now.duration_since(grant.issued_at) > REAUTH_LIFE {
+    if !fresh_code_token(grant, now) {
         return Err(ApiError::ReauthRequired);
     }
     let pool = state.deps.db.as_deref().ok_or(ApiError::Unavailable)?;
     let account_id = grant.account_id;
+    require_enabled(pool, account_id).await?;
     let mut tx = pool.begin().await.map_err(ApiError::from_repo)?;
     let locked: Option<(i32,)> =
         sqlx::query_as("SELECT account_id FROM account WHERE account_id = $1 FOR UPDATE")
@@ -256,3 +296,7 @@ pub(super) async fn account_name(
 #[cfg(test)]
 #[path = "account_tests_live_db.rs"]
 mod tests_live_db;
+
+#[cfg(test)]
+#[path = "account_disabled_tests_live_db.rs"]
+mod disabled_tests_live_db;

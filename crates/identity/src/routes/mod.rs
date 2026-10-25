@@ -18,6 +18,7 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Request, State};
+use axum::http::{header, HeaderValue};
 use axum::middleware::{from_fn_with_state, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
@@ -64,7 +65,8 @@ pub fn router(deps: AuthRouteDeps, ctx: IdentityCtx) -> Router {
 }
 
 /// Runs before every route: the `CIMMERIA_IDP_DISABLED` kill switch, then the
-/// per-IP `AnyRoute` limit (C7).
+/// per-IP `AnyRoute` limit (C7). Every answer carries `Cache-Control: no-store`,
+/// so no token, ticket or error body is cached by a proxy or the client.
 async fn guard(
     State(state): State<RouteState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -73,12 +75,17 @@ async fn guard(
 ) -> Response {
     let path = req.uri().path();
     let always_open = path == "/providers" || path.starts_with("/launch-ticket");
-    if state.ctx.cfg.kill.idp_disabled && !always_open {
-        return ApiError::Disabled.into_response();
-    }
-    let key = client_ip(ConnectInfo(peer));
-    match state.ctx.limit(Bucket::AnyRoute, &key, Instant::now()) {
-        Ok(()) => next.run(req).await,
-        Err(refused) => refused.into_response(),
-    }
+    let mut response = if state.ctx.cfg.kill.idp_disabled && !always_open {
+        ApiError::Disabled.into_response()
+    } else {
+        let key = client_ip(ConnectInfo(peer));
+        match state.ctx.limit(Bucket::AnyRoute, &key, Instant::now()) {
+            Ok(()) => next.run(req).await,
+            Err(refused) => refused.into_response(),
+        }
+    };
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
 }

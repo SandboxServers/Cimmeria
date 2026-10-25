@@ -690,3 +690,6 @@ async fn live_db_link_start_refusals() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["error"], "invalid_request");
 }
+
+#[path = "account_gate_tests_live_db.rs"]
+mod gate;

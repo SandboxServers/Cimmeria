@@ -101,8 +101,7 @@ impl RateLimiter {
             start: now,
             count: 0,
         });
-        let elapsed = now.saturating_duration_since(entry.start);
-        if elapsed >= window_len {
+        if is_stale(bucket, entry, now) {
             *entry = Window {
                 start: now,
                 count: 0,
@@ -115,6 +114,20 @@ impl RateLimiter {
         let left = window_len.saturating_sub(now.saturating_duration_since(entry.start));
         let secs = left.as_secs() + u64::from(left.subsec_nanos() > 0);
         Err(RetryAfter { secs: secs.max(1) })
+    }
+
+    /// Drops every window that has run its length by `now`. `check` would reset
+    /// such a window to empty anyway, so dropping it changes no answer; this
+    /// only frees the memory of keys that have gone quiet.
+    pub fn reap(&self, now: Instant) {
+        self.lock()
+            .retain(|(bucket, _), window| !is_stale(*bucket, window, now));
+    }
+
+    /// The number of windows held, for the reaper's tests.
+    #[cfg(test)]
+    pub(crate) fn window_count(&self) -> usize {
+        self.lock().len()
     }
 
     /// The limit and window length of one bucket.
@@ -147,6 +160,12 @@ fn window_len(bucket: Bucket) -> Duration {
         Bucket::SignupGlobal => HOUR,
         Bucket::SignupIp => DAY,
     }
+}
+
+/// Whether `window` has run its length by `now`. `check` starts a fresh window
+/// on this test and `reap` drops on it, so the two agree.
+fn is_stale(bucket: Bucket, window: &Window, now: Instant) -> bool {
+    now.saturating_duration_since(window.start) >= window_len(bucket)
 }
 
 /// Drops the window that expires soonest. The two server-wide windows (sign-up

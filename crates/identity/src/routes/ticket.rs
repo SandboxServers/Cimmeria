@@ -19,7 +19,7 @@ use tracing::Instrument;
 
 use crate::limits::Bucket;
 use crate::repo::account;
-use crate::routes::account::account_name;
+use crate::routes::account::{account_name, require_enabled};
 use crate::routes::bearer::Bearer;
 use crate::routes::ctx::{client_ip, RouteState};
 use crate::routes::error::ApiError;
@@ -115,13 +115,32 @@ async fn mint_ticket(
 }
 
 /// `POST /launch-ticket/heartbeat`: keeps the launch's ticket alive. `404` when
-/// no live ticket of this account holds `launch_id` (C6).
+/// no live ticket of this account holds `launch_id` (C6). The span is
+/// `auth.launch_ticket.heartbeat`, and it covers every answer, refusals too.
 pub async fn heartbeat(
     State(state): State<RouteState>,
     Bearer(grant): Bearer,
     body: Result<Json<LaunchRequest>, JsonRejection>,
+) -> Response {
+    let span = telemetry::launch_ticket_heartbeat(grant.account_id);
+    let started = Instant::now();
+    let result = heartbeat_ticket(&state, &grant, body)
+        .instrument(span.clone())
+        .await;
+    let response = result.unwrap_or_else(IntoResponse::into_response);
+    record_outcome(&span, started, &response);
+    response
+}
+
+/// The work of `heartbeat`.
+async fn heartbeat_ticket(
+    state: &RouteState,
+    grant: &AccessGrant,
+    body: Result<Json<LaunchRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let launch_id = launch_id_of(body)?;
+    let pool = state.deps.db.as_deref().ok_or(ApiError::Unavailable)?;
+    require_enabled(pool, grant.account_id).await?;
     let alive = state
         .deps
         .launch_tickets
@@ -133,19 +152,34 @@ pub async fn heartbeat(
     }
 }
 
-/// `POST /launch-ticket/end`: retires the launch's ticket. Always `204`, also
-/// when the ticket is already gone (C6). The span is `auth.launch_ticket.end`.
+/// `POST /launch-ticket/end`: retires the launch's ticket. `204` also when the
+/// ticket is already gone (C6). The span is `auth.launch_ticket.end`, and it
+/// covers every answer, refusals too.
 pub async fn end(
     State(state): State<RouteState>,
     Bearer(grant): Bearer,
     body: Result<Json<LaunchRequest>, JsonRejection>,
+) -> Response {
+    let span = telemetry::launch_ticket_end(grant.account_id);
+    let started = Instant::now();
+    let result = end_ticket(&state, &grant, body)
+        .instrument(span.clone())
+        .await;
+    let response = result.unwrap_or_else(IntoResponse::into_response);
+    record_outcome(&span, started, &response);
+    response
+}
+
+/// The work of `end`.
+async fn end_ticket(
+    state: &RouteState,
+    grant: &AccessGrant,
+    body: Result<Json<LaunchRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let launch_id = launch_id_of(body)?;
-    let started = Instant::now();
-    let span = telemetry::launch_ticket_end(grant.account_id);
-    let _entered = span.enter();
+    let pool = state.deps.db.as_deref().ok_or(ApiError::Unavailable)?;
+    require_enabled(pool, grant.account_id).await?;
     state.deps.launch_tickets.end(grant.account_id, &launch_id);
-    telemetry::finish(&span, "ok", "ok", started);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -169,7 +203,8 @@ mod tests {
         assert!(!valid_launch_id("abc.123.xyz.9876.ab"));
     }
 
-    /// A retired ticket records its outcome, reason and latency on the span.
+    /// `end` records its outcome, reason and latency on the span on every answer;
+    /// with no database it refuses (`503`) and the fields are still recorded.
     #[tokio::test]
     async fn end_records_outcome_reason_and_latency() {
         use crate::routes::token::span_tests::test_state;
@@ -186,8 +221,8 @@ mod tests {
         let body = Ok(Json(LaunchRequest {
             launch_id: Some("abcdefghijklmnop".to_owned()),
         }));
-        let result = end(State(test_state()), Bearer(grant), body).await;
-        assert!(result.is_ok());
+        let response = end(State(test_state()), Bearer(grant), body).await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         let names = recorder.names();
         for field in ["outcome", "reason", "latency_ms"] {
             assert!(names.contains(&field), "a retired ticket lacks {field}");
