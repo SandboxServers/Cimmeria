@@ -7,6 +7,8 @@ import {jobErrorFailure,LaunchBridge,launchBridgeLayer} from './launch-workflow'
 import {FailureCode} from './failure-codes';
 import {failureText} from './failure-copy';
 import {mountDesktop} from './composition';
+import {mountPreflight} from './preflight-view';
+import {preflightWorkflow} from './preflight-workflow';
 const html=readFileSync('ui/index.html','utf8');
 const initial=()=>({schema_version:1,setup_complete:true,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,installation_id:'owner',observation:null as unknown,failure:null as unknown,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed' as const],launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed' as const,width:1024,height:768}},operation:{schema_version:1,revision:0,operation:null as unknown}}});
 test('ready content hides setup recheck across launch, update gate and errors',async()=>{
@@ -290,4 +292,79 @@ test('Play hides Recheck while an adoption is open',async()=>{
   assert.equal((document.getElementById('inspect-launch') as HTMLButtonElement).hidden,true);
   assert.equal(document.getElementById('launch-status')!.textContent,'Finish or abandon the interrupted adoption in the adoption panel before you play.');
  }finally{await app.dispose();}
+});
+// PD-12: Play runs preflight first.
+const pfCheck=(over:Record<string,unknown>={})=>({id:'rosetta',status:'missing',action:'auto_install',failure:'rosetta_missing',blocking:true,bytes_needed:null,bytes_free:null,download_bytes:null,...over});
+const pfReport=(checks:ReturnType<typeof pfCheck>[],operation='play')=>({schema_version:1,operation,checks,ready:!checks.some(c=>c.blocking)});
+const pfWarning=pfCheck({id:'app_location',status:'warning',action:'manual',failure:'app_translocated',blocking:false});
+function gated(preflight:(request:any)=>Promise<unknown>){
+ const {document,window}=parseHTML(html);const sent:string[]=[];
+ const invoke=async(command:string,args?:any)=>{
+  if(command==='preflight_command'){sent.push(`${args.request.command}:${args.request.operation}${args.request.check?`:${args.request.check}`:''}`);return preflight(args.request);}
+  if(args?.request?.command==='play')sent.push('play');
+  return initial();};
+ const panel=mountPreflight(document as unknown as Document,preflightWorkflow(invoke));
+ const app=mountLaunch(document,invoke,()=>{},()=>'attempt',false,()=>{},panel.gate);
+ const get=(id:string)=>document.getElementById(id) as HTMLButtonElement;
+ const press=(id:string)=>get(id).dispatchEvent(new window.Event('click'));
+ const settle=async()=>{await panel.settled();await app.settled();await new Promise(resolve=>setImmediate(resolve));};
+ const plays=()=>sent.filter(s=>s==='play').length;
+ return {app,panel,get,press,settle,sent,plays,ready:async()=>{await app.ready;await new Promise(resolve=>setImmediate(resolve));},
+  dispose:async()=>{await panel.dispose();await app.dispose();}};
+}
+test('Play with a blocking preflight report sends no launch command, shows the panel and says Play needs attention',async()=>{
+ let answer!:(value:unknown)=>void;const ui=gated(()=>new Promise(resolve=>{answer=resolve;}));
+ try{await ui.ready();
+  ui.press('launch');ui.press('launch');
+  assert.equal(ui.get('launch').textContent,'Checking…','the first press shows it is working');assert.equal(ui.get('launch').disabled,true);
+  assert.equal(ui.get('launch-status').textContent,'Checking what Play needs…');
+  assert.equal(ui.get('preflight-panel').hidden,false);
+  answer(pfReport([pfCheck()]));await ui.settle();
+  assert.deepEqual(ui.sent,['inspect:play'],'one inspect, no launch');assert.equal(ui.plays(),0);
+  assert.equal(ui.get('preflight-panel').hidden,false);assert.equal(ui.get('preflight-continue').hidden,true);
+  assert.equal(ui.get('launch-status').textContent,'Play needs attention: see below.');
+  assert.equal(ui.get('launch').textContent,'Play');assert.equal(ui.get('launch').disabled,false);
+ }finally{await ui.dispose();}
+});
+test('Play with a ready preflight report sends exactly one launch command',async()=>{
+ const ui=gated(async()=>pfReport([pfCheck({status:'ok',action:'none',failure:null,blocking:false})]));
+ try{await ui.ready();ui.press('launch');await ui.settle();
+  assert.equal(ui.plays(),1);assert.equal(ui.sent[0],'inspect:play');assert.equal(ui.get('preflight-panel').hidden,true);
+ }finally{await ui.dispose();}
+});
+test('Play with a warning report waits for Continue, which launches once',async()=>{
+ const ui=gated(async()=>pfReport([pfWarning]));
+ try{await ui.ready();ui.press('launch');await ui.settle();
+  assert.equal(ui.plays(),0);assert.equal(ui.get('preflight-continue').hidden,false);
+  assert.equal(ui.get('launch-status').textContent,'Play needs attention: see below.');
+  ui.press('preflight-continue');ui.press('preflight-continue');await ui.settle();
+  assert.equal(ui.plays(),1);assert.equal(ui.get('preflight-panel').hidden,true);
+ }finally{await ui.dispose();}
+});
+test('a preflight transport error never blocks Play silently: it shows the failure and Continue anyway',async()=>{
+ const ui=gated(async()=>{throw new Error('ipc down');});
+ try{await ui.ready();ui.press('launch');await ui.settle();
+  assert.equal(ui.plays(),0);
+  const {message,fix}=failureText('unknown');
+  assert.equal(ui.get('preflight-summary').textContent,`${message}\n${fix}`);
+  assert.equal(ui.get('preflight-continue').hidden,false);assert.equal(ui.get('preflight-continue').textContent,'Continue anyway');
+  ui.press('preflight-continue');await ui.settle();assert.equal(ui.plays(),1);
+ }finally{await ui.dispose();}
+});
+test('a refused preflight shows the mapped JobError copy',async()=>{
+ const ui=gated(async()=>{throw 'busy';});
+ try{await ui.ready();ui.press('launch');await ui.settle();
+  const {message,fix}=failureText('operation_busy');
+  assert.equal(ui.get('preflight-summary').textContent,`${message}\n${fix}`);assert.equal(ui.get('preflight-continue').textContent,'Continue anyway');
+ }finally{await ui.dispose();}
+});
+test('after a dependency install the panel says Ready. Press Play again. and does not launch by itself',async()=>{
+ let installed=false;const ok=()=>pfReport([pfCheck({status:'ok',action:'none',failure:null,blocking:false})]);
+ const ui=gated(async request=>{if(request.command==='install')installed=true;return installed?ok():pfReport([pfCheck()]);});
+ try{await ui.ready();ui.press('launch');await ui.settle();
+  ui.press('preflight-install-rosetta');assert.equal(ui.get('preflight-install-rosetta').textContent,'Installing…');await ui.settle();
+  assert.deepEqual(ui.sent,['inspect:play','install:play:rosetta']);assert.equal(ui.plays(),0);
+  assert.equal(ui.get('preflight-status').textContent,'Ready. Press Play again.');
+  ui.press('launch');await ui.settle();assert.equal(ui.plays(),1,'the next press re-checks and launches');
+ }finally{await ui.dispose();}
 });
