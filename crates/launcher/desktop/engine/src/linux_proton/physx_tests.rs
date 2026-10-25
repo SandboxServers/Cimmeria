@@ -23,6 +23,7 @@ fn fake_worker(dir: &Path, result: &str) -> ProtonInstall {
     let script = dir.join("proton");
     let body = format!(
         r#"[ "$1" = runinprefix ] || exit 2
+echo physx-stderr-marker >&2
 req=$(cat)
 op=$(printf '%s' "$req" | sed 's/.*"operation_id":"\([^"]*\)".*/\1/')
 gen=$(printf '%s' "$req" | sed 's/.*"prefix_generation":"\([^"]*\)".*/\1/')
@@ -153,4 +154,60 @@ async fn a_failed_probe_or_an_uninitialized_sdk_is_never_installed() {
             "{result}"
         );
     }
+}
+
+/// A log file that cannot be opened never stops the install: stderr is discarded,
+/// as the game launch does (PD-28). Reverting `stderr_for` to refuse fails this.
+#[tokio::test]
+async fn an_unwritable_log_does_not_stop_the_install() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let prefix = prefix::claim(root.path()).unwrap();
+    let install = fake_worker(
+        &dir.path().join("proton"),
+        &format!(r#"{{"state":"probed","report":{PROBED_OK}}}"#),
+    );
+    let game_binaries = root.path().join("game").join("Working").join("Binaries");
+    std::fs::create_dir_all(&game_binaries).unwrap();
+    let log = dir.path().join("no-such-folder").join("physx.log");
+    ensure_physx(
+        &install,
+        &prefix,
+        &env_for(&prefix),
+        &dir.path().join("cimmeria-prerequisite-worker.exe"),
+        &game_binaries,
+        Uuid::new_v4(),
+        Some(&log),
+    )
+    .await
+    .unwrap();
+}
+
+/// The worker's stderr is appended to the log file. Reverting `stderr_for` in
+/// `prerequisites/supervisor.rs` to `Stdio::null()` leaves no file and fails this.
+#[tokio::test]
+async fn the_workers_stderr_is_appended_to_the_log() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let prefix = prefix::claim(root.path()).unwrap();
+    let install = fake_worker(
+        &dir.path().join("proton"),
+        &format!(r#"{{"state":"probed","report":{PROBED_OK}}}"#),
+    );
+    let game_binaries = root.path().join("game").join("Working").join("Binaries");
+    std::fs::create_dir_all(&game_binaries).unwrap();
+    let log = dir.path().join("physx.log");
+    ensure_physx(
+        &install,
+        &prefix,
+        &env_for(&prefix),
+        &dir.path().join("cimmeria-prerequisite-worker.exe"),
+        &game_binaries,
+        Uuid::new_v4(),
+        Some(&log),
+    )
+    .await
+    .unwrap();
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert!(text.contains("physx-stderr-marker"), "{text}");
 }

@@ -200,3 +200,33 @@ fn a_failed_setup_is_proton_setup_failed() {
         Err(PrepareError(FailureCode::ProtonSetupFailed))
     );
 }
+
+/// Setup succeeds, but the PhysX worker exits without a result.
+const PHYSX_REFUSES: &str = concat!(
+    "#!/bin/sh\n",
+    "if [ \"$1\" = runinprefix ]; then\n",
+    "cat > /dev/null\n",
+    "exit 1\n",
+    "fi\n",
+    "mkdir -p \"$STEAM_COMPAT_DATA_PATH/pfx\"\n",
+    ": > \"$STEAM_COMPAT_DATA_PATH/pfx/system.reg\"\n",
+);
+
+#[test]
+fn a_physx_failure_is_proton_setup_failed() {
+    let f = fixture(PHYSX_REFUSES);
+    assert_eq!(
+        run(&f, &f.plan).map(|_| ()),
+        Err(PrepareError(FailureCode::ProtonSetupFailed))
+    );
+}
+
+#[test]
+fn a_missing_prerequisite_worker_is_proton_setup_failed() {
+    let f = fixture(SETUP_OK);
+    std::fs::remove_file(f.base.join("cimmeria-prerequisite-worker.exe")).unwrap();
+    assert_eq!(
+        run(&f, &f.plan).map(|_| ()),
+        Err(PrepareError(FailureCode::ProtonSetupFailed))
+    );
+}
