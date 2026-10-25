@@ -72,7 +72,7 @@ expands it with the portable decoder in `cimmeria-launcher-core`
 (`unpack::cab_portable`): MSZIP and stored folders, folders and blocks that
 continue from one cabinet into the next, the cabinets' DOS timestamps, and the
 same name and file-count preflight as the FDI path. The 2009 client's four
-cabinets are all MSZIP. A Quantum or LZX folder is refused by name. Resuming an
+cabinets are all MSZIP. Independent folders expand on up to four threads; a folder never splits across them. A Quantum or LZX folder is refused by name. Resuming an
 interrupted install works as on Windows. Linux file systems are case-sensitive
 and the cabinets spell `Working\binaries` in lower case, so plain patch zips
 (such as `004-log-config`'s `Working/Binaries/SGWLogConfig.xml`) and the

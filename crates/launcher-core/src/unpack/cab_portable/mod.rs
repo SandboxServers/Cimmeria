@@ -20,25 +20,39 @@
 
 mod format;
 mod mszip;
+mod positional;
+mod schedule;
 
 #[cfg(test)]
 pub(super) mod fixture;
 #[cfg(test)]
+mod parallel_tests;
+#[cfg(test)]
 mod tests;
 
 use std::fs::File;
-use std::io::{BufReader, Seek, SeekFrom, Write};
+use std::io::{BufReader, Write};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use format::{Cabinet, Compression};
+use positional::PositionalReader;
 
 use super::{dos_time, entry_inventory::EntryInventory, UnpackError, UnpackSink};
+
+/// Most folders expanded at once. Each thread holds a decoder and a read
+/// buffer; more than a few gain little on the cabinets' sizes.
+const MAX_WORKERS: usize = 4;
 
 /// One cabinet's share of a folder's data blocks.
 struct Part {
     cabinet: usize,
     data_offset: u32,
     blocks: u16,
+    /// Compressed bytes this part spans: up to the next folder's data in its
+    /// cabinet, or to the cabinet's end.
+    bytes: u64,
 }
 
 struct PlannedFile {
@@ -66,8 +80,30 @@ pub(super) fn expand_chain(
     total: usize,
     sink: &UnpackSink,
 ) -> Result<(), UnpackError> {
+    let workers = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
+    expand_chain_with(
+        cab_dir,
+        cabinets,
+        dest,
+        total,
+        sink,
+        workers.min(MAX_WORKERS),
+    )
+}
+
+/// [`expand_chain`] with at most `workers` threads. Folders are the unit of
+/// work, so the count is also capped by the number of folders.
+pub(super) fn expand_chain_with(
+    cab_dir: &Path,
+    cabinets: &[String],
+    dest: &Path,
+    total: usize,
+    sink: &UnpackSink,
+    workers: usize,
+) -> Result<(), UnpackError> {
     let mut cabinet_names = EntryInventory::default();
     let mut sources = Vec::new();
+    let mut lens = Vec::new();
     let mut parsed = Vec::new();
     for name in cabinets {
         sink.check_cancel()?;
@@ -79,6 +115,7 @@ pub(super) fn expand_chain(
         let file = File::open(cab_dir.join(name))
             .map_err(|error| UnpackError::Cab(format!("cannot open {name}: {error}")))?;
         parsed.push(format::parse(&file).map_err(|error| in_cabinet(name, error))?);
+        lens.push(file.metadata()?.len());
         sources.push(file);
     }
 
@@ -96,18 +133,37 @@ pub(super) fn expand_chain(
             paths.len()
         )));
     }
-    let folders = plan(cabinets, &parsed, paths)?;
+    let folders = plan(cabinets, &parsed, &lens, paths)?;
 
     std::fs::create_dir_all(dest)?;
-    let mut out = Progress {
+    let progress = Progress {
         sink,
-        done: 0,
+        done: AtomicUsize::new(0),
         total,
     };
-    for folder in folders {
-        expand_folder(&folder, cabinets, &parsed, &sources, dest, &mut out)?;
-    }
-    Ok(())
+    let set = Set {
+        names: cabinets,
+        cabinets: &parsed,
+        sources: &sources,
+        lens: &lens,
+    };
+    let sizes: Vec<u64> = folders
+        .iter()
+        .map(|folder| folder.parts.iter().map(|part| part.bytes).sum())
+        .collect();
+    let lanes = schedule::assign(&sizes, workers.min(folders.len()).max(1));
+    schedule::run(&lanes, |index, stop| {
+        expand_folder(&folders[index], &set, dest, &progress, stop)
+    })
+}
+
+/// The cabinet set a folder reads from: names for messages, parsed headers,
+/// open handles, and each file's length.
+struct Set<'a> {
+    names: &'a [String],
+    cabinets: &'a [Cabinet],
+    sources: &'a [File],
+    lens: &'a [u64],
 }
 
 fn in_cabinet(name: &str, error: UnpackError) -> UnpackError {
@@ -118,10 +174,12 @@ fn in_cabinet(name: &str, error: UnpackError) -> UnpackError {
 }
 
 /// Join continued folders across cabinets and assign each file to its
-/// folder. `paths` are the preflighted install paths, in listing order.
+/// folder. `paths` are the preflighted install paths, in listing order and
+/// `lens` the cabinets' file lengths.
 fn plan(
     names: &[String],
     cabinets: &[Cabinet],
+    lens: &[u64],
     paths: Vec<PathBuf>,
 ) -> Result<Vec<Folder>, UnpackError> {
     let mut paths = paths.into_iter();
@@ -171,10 +229,17 @@ fn plan(
                     folder.compression
                 )));
             }
+            // Folders sit in data order within a cabinet, so the next one's
+            // offset ends this one's data; the last runs to the cabinet's end.
+            let data_end = cabinet
+                .folders
+                .get(slot + 1)
+                .map_or(lens[index], |next| u64::from(next.data_offset));
             let part = Part {
                 cabinet: index,
                 data_offset: folder.data_offset,
                 blocks: folder.blocks,
+                bytes: data_end.saturating_sub(u64::from(folder.data_offset)),
             };
             match folders.last_mut() {
                 Some(joined) if slot == 0 && continues => {
@@ -220,20 +285,20 @@ fn plan(
     Ok(folders)
 }
 
+/// Files finished so far across all workers, for the progress reports.
 struct Progress<'a> {
     sink: &'a UnpackSink,
-    done: usize,
+    done: AtomicUsize,
     total: usize,
 }
 
 /// Decode one folder and write its files as their bytes stream past.
 fn expand_folder(
     folder: &Folder,
-    names: &[String],
-    cabinets: &[Cabinet],
-    sources: &[File],
+    set: &Set<'_>,
     dest: &Path,
-    progress: &mut Progress<'_>,
+    progress: &Progress<'_>,
+    stop: &schedule::Stop,
 ) -> Result<(), UnpackError> {
     let mut files: Vec<&PlannedFile> = folder.files.iter().collect();
     files.sort_by_key(|f| (f.start, f.end));
@@ -250,13 +315,17 @@ fn expand_folder(
     // A block split across a cabinet boundary collects here.
     let mut block = Vec::new();
     for part in &folder.parts {
-        let name = &names[part.cabinet];
-        let mut source = &sources[part.cabinet];
-        source.seek(SeekFrom::Start(u64::from(part.data_offset)))?;
+        let name = &set.names[part.cabinet];
+        let source = PositionalReader::new(
+            &set.sources[part.cabinet],
+            set.lens[part.cabinet],
+            u64::from(part.data_offset),
+        );
         let mut r = BufReader::with_capacity(64 * 1024, source);
-        let reserve = cabinets[part.cabinet].data_reserve;
+        let reserve = set.cabinets[part.cabinet].data_reserve;
         for n in 0..part.blocks {
             progress.sink.check_cancel()?;
+            stop.check()?;
             let header =
                 format::read_block_header(&mut r, reserve).map_err(|e| in_cabinet(name, e))?;
             format::read_block_data(&mut r, header, &mut block).map_err(|e| in_cabinet(name, e))?;
@@ -307,7 +376,7 @@ struct FolderWriter<'a> {
 impl FolderWriter<'_> {
     /// Open every file that starts at the current position; zero-length ones
     /// are complete at once.
-    fn open_ready(&mut self, progress: &mut Progress<'_>) -> Result<(), UnpackError> {
+    fn open_ready(&mut self, progress: &Progress<'_>) -> Result<(), UnpackError> {
         while self.current.is_none() {
             let Some(&file) = self.files.get(self.next) else {
                 return Ok(());
@@ -336,7 +405,7 @@ impl FolderWriter<'_> {
         Ok(())
     }
 
-    fn write(&mut self, mut data: &[u8], progress: &mut Progress<'_>) -> Result<(), UnpackError> {
+    fn write(&mut self, mut data: &[u8], progress: &Progress<'_>) -> Result<(), UnpackError> {
         while !data.is_empty() {
             self.open_ready(progress)?;
             let until = match &self.current {
@@ -361,7 +430,7 @@ impl FolderWriter<'_> {
         Ok(())
     }
 
-    fn finish(mut self, progress: &mut Progress<'_>) -> Result<(), UnpackError> {
+    fn finish(mut self, progress: &Progress<'_>) -> Result<(), UnpackError> {
         self.open_ready(progress)?;
         let pending = self
             .current
@@ -379,11 +448,12 @@ impl FolderWriter<'_> {
 }
 
 /// Stamp the cabinet's date and time (see [`dos_time`]), close, report.
-fn complete(handle: File, file: &PlannedFile, path: &Path, progress: &mut Progress<'_>) {
+fn complete(handle: File, file: &PlannedFile, path: &Path, progress: &Progress<'_>) {
     dos_time::apply(&handle, file.date, file.time, path);
     drop(handle);
-    progress.done += 1;
+    // Workers finish in any order, so two reports can race past each other.
+    let done = progress.done.fetch_add(1, Ordering::Relaxed) + 1;
     progress
         .sink
-        .report("expanding cabinets", progress.done, progress.total, path);
+        .report("expanding cabinets", done, progress.total, path);
 }
