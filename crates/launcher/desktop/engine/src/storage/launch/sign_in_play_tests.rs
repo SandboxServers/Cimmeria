@@ -51,7 +51,7 @@ fn discovery_at(base: Url) -> Discovery {
 }
 
 /// A session restored from a stored entry for `base`'s host.
-fn signed_in(base: Url) -> Arc<SignIn> {
+pub(super) fn signed_in(base: Url) -> Arc<SignIn> {
     let store = Arc::new(MemoryStore::default());
     store.set(
         base.host_str().expect("host"),
@@ -230,11 +230,57 @@ fn telemetry_keeps_the_real_servers() {
 }
 
 #[test]
-fn play_refusal_is_recorded_and_cleared() {
+fn play_refusal_accessors_round_trip() {
     let (_dir, mut state, _plan) = fixture();
     assert_eq!(state.play_refusal(), None);
     state.set_play_refusal(Some("ticket_unavailable"));
     assert_eq!(state.play_refusal(), Some("ticket_unavailable"));
     state.set_play_refusal(None);
     assert_eq!(state.play_refusal(), None);
+}
+
+#[tokio::test]
+async fn signed_in_without_discovery_is_refused() {
+    let (_dir, plan) = install();
+    let list = servers();
+    let base = discovery::auth_base(&list[0].url).expect("domain host");
+    let result = sign_in_play::plan(Some(signed_in(base)), &plan, &list, None).await;
+    assert!(matches!(result, Err(TicketRefusal::Unavailable)));
+    let other = signed_in(Url::parse("https://other.example.org/").expect("url"));
+    let (client, login) = sign_in_play::plan(Some(other), &plan, &list, None)
+        .await
+        .unwrap_or_else(|e| panic!("refused: {e:?}"));
+    assert_eq!(client, list);
+    assert!(matches!(login, ClientLogin::Plain));
+}
+
+#[tokio::test]
+async fn signed_in_with_the_relay_disabled_is_refused() {
+    let (_dir, plan) = install();
+    let base = Url::parse("https://play.example.org/").expect("url");
+    let mut found = discovery_at(base.clone());
+    found.soap_relay = false;
+    let result = sign_in_play::plan(Some(signed_in(base)), &plan, &servers(), Some(found)).await;
+    assert!(matches!(result, Err(TicketRefusal::Unavailable)));
+}
+
+#[tokio::test]
+async fn signed_in_relay_start_failure_is_refused() {
+    // The relay refuses a plain-http upstream that is not loopback, so start fails.
+    let (_dir, plan) = install();
+    let list = servers();
+    let base = Url::parse("http://play.example.org/").expect("url");
+    let result = sign_in_play::plan(
+        Some(signed_in(base.clone())),
+        &plan,
+        &list,
+        Some(discovery_at(base.clone())),
+    )
+    .await;
+    assert!(matches!(result, Err(TicketRefusal::Unavailable)));
+    let (client, login) = sign_in_play::plan(None, &plan, &list, Some(discovery_at(base)))
+        .await
+        .unwrap_or_else(|e| panic!("refused: {e:?}"));
+    assert_eq!(client, list);
+    assert!(matches!(login, ClientLogin::Plain));
 }

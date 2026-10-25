@@ -61,13 +61,17 @@ impl TicketRefusal {
 /// `None` when the list is empty, the server does not answer, or it does not
 /// describe its sign-in.
 pub(super) async fn discover(servers: &[LoginServer]) -> Option<Discovery> {
+    // Unit and shell tests never probe a real server; plan() tests pass a Discovery directly.
+    if cfg!(any(test, feature = "test-support")) {
+        return None;
+    }
     let first = servers.first()?;
     let cache = DISCOVERY.get_or_init(|| tokio::sync::Mutex::new(DiscoveryCache::default()));
     let mut cache = cache.lock().await;
     discovery::probe_cached(&mut cache, &discovery::client(), &first.url, Instant::now()).await
 }
 
-/// The list the client gets and how it logs in. `Err` ends the launch before `prepare`.
+/// The list the client gets and how it logs in. `Err` ends the launch before `prepare`; a signed-in player gets `Err` whenever no ticket can be had (C15 d).
 pub(super) async fn plan(
     sign_in: Option<Arc<SignIn>>,
     plan: &Plan,
@@ -75,9 +79,21 @@ pub(super) async fn plan(
     discovery: Option<Discovery>,
 ) -> Result<(Vec<LoginServer>, ClientLogin), TicketRefusal> {
     let plain = || (servers.to_vec(), ClientLogin::Plain);
-    let (Some(discovery), Some(first)) = (discovery.filter(|d| d.soap_relay), servers.first())
-    else {
+    let Some(first) = servers.first() else {
         return Ok(plain());
+    };
+    // The sign-in this Play is for (D-CT21): the session for the first server's
+    // auth base. Without discovery that base comes from the server URL itself.
+    let base = match &discovery {
+        Some(found) => Some(found.auth_base.clone()),
+        None => discovery::auth_base(&first.url),
+    };
+    let sign_in = sign_in.filter(|s| base.as_ref() == Some(s.base()));
+    let signed_in = sign_in.is_some();
+    let discovery = match discovery {
+        Some(found) if found.soap_relay => found,
+        Some(_) => return without_relay(signed_in, "soap_relay_disabled").map(|()| plain()),
+        None => return without_relay(signed_in, "no_discovery").map(|()| plain()),
     };
     let config = RelayConfig {
         upstream: discovery.auth_base.clone(),
@@ -88,7 +104,7 @@ pub(super) async fn plan(
         Ok(relay) => relay,
         Err(_) => {
             tracing::info!(target: "launcher.relay", event = "relay_start_failed", reason = "relay_start_failed");
-            return Ok(plain());
+            return without_relay(signed_in, "relay_start_failed").map(|()| plain());
         }
     };
     let relay_url = relay.soap_url();
@@ -97,8 +113,7 @@ pub(super) async fn plan(
         list[0].url = url;
         list
     };
-    let signed_in = sign_in.filter(|s| s.base() == &discovery.auth_base);
-    let Some(sign_in) = signed_in else {
+    let Some(sign_in) = sign_in else {
         let list = first_only(relay_url);
         tracing::info!(target: "launcher.relay", event = "started", mode = "relay_password");
         return Ok((list, ClientLogin::RelayPassword { relay }));
@@ -141,6 +156,16 @@ pub(super) async fn plan(
             Err(refusal)
         }
     }
+}
+
+/// No relay for this Play. C15 (d): a signed-in player is refused, never handed
+/// the password screen; anyone else keeps the plain list.
+fn without_relay(signed_in: bool, cause: &'static str) -> Result<(), TicketRefusal> {
+    if !signed_in {
+        return Ok(());
+    }
+    tracing::info!(target: "launcher.relay", event = "ticket_failed", reason = cause);
+    Err(TicketRefusal::Unavailable)
 }
 
 /// The telemetry list and the client list for one Play (C9). Telemetry always
