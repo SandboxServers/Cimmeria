@@ -2,10 +2,11 @@
 //! worker logs through these, one target and one shape each. Logging never
 //! changes the outcome: every helper returns nothing.
 use super::Outcome;
-use crate::install::InstallError;
+use crate::install::{InstallError, Progress};
 use crate::launcher_summary::TimedPhase;
 use crate::operation_numbers;
 use crate::ContractError;
+use std::time::Instant;
 use uuid::Uuid;
 
 /// The install began; `resumed` when it continues an earlier attempt.
@@ -103,6 +104,92 @@ impl PhaseLog {
             "install: phase"
         );
     }
+}
+
+/// Tracks the C-7 phase (`phase` on the wire) of one install. Each phase that
+/// ends is logged once with its last counters, when the next phase begins and
+/// when the job ends.
+pub(crate) struct PhaseTally {
+    id: Uuid,
+    open: Option<OpenPhase>,
+}
+
+/// The phase in progress, with the last counters it reported.
+struct OpenPhase {
+    phase: &'static str,
+    bytes: u64,
+    files: u64,
+    started: Instant,
+}
+
+impl PhaseTally {
+    pub(crate) fn new(id: Uuid) -> Self {
+        Self { id, open: None }
+    }
+
+    /// Records one progress event. A different phase closes the open one first.
+    pub(crate) fn observe(&mut self, progress: &Progress) {
+        let (phase, bytes, files) = wire_counts(progress);
+        match &mut self.open {
+            Some(open) if open.phase == phase => {
+                open.bytes = bytes;
+                open.files = files;
+            }
+            _ => {
+                self.finish();
+                self.open = Some(OpenPhase {
+                    phase,
+                    bytes,
+                    files,
+                    started: Instant::now(),
+                });
+            }
+        }
+    }
+
+    /// Logs the open phase, if any, and leaves no phase open.
+    pub(crate) fn finish(&mut self) {
+        let Some(open) = self.open.take() else {
+            return;
+        };
+        let elapsed_ms = u64::try_from(open.started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        install_phase_finished(self.id, open.phase, open.bytes, open.files, elapsed_ms);
+    }
+}
+
+/// The C-7 wire name of a progress event, with its byte count (`download`,
+/// `copy`, and `check` with a known total) and its file count (`extraction`,
+/// `expansion`). The RAR index pass (`check` with no total) is not a byte phase.
+fn wire_counts(progress: &Progress) -> (&'static str, u64, u64) {
+    match *progress {
+        Progress::Downloading { downloaded, .. } => ("download", downloaded, 0),
+        Progress::Copying { copied, .. } => ("copy", copied, 0),
+        Progress::Checking { read, total } => ("check", if total > 0 { read } else { 0 }, 0),
+        Progress::Extracting { current, .. } => ("extraction", 0, current as u64),
+        Progress::Expanding { current, .. } => ("expansion", 0, current as u64),
+    }
+}
+
+/// A C-7 install phase ended. `bytes` and `files` are its last counters, and
+/// `elapsed_ms` is how long it lasted.
+pub(crate) fn install_phase_finished(
+    id: Uuid,
+    phase: &str,
+    bytes: u64,
+    files: u64,
+    elapsed_ms: u64,
+) {
+    let operation = operation_numbers::number(id);
+    tracing::info!(
+        target: "launcher.install",
+        event = "install_phase_finished",
+        operation,
+        phase,
+        bytes,
+        files,
+        elapsed_ms,
+        "install: phase finished"
+    );
 }
 
 /// The worker task panicked, so the install's outcome is unknown.
@@ -301,5 +388,88 @@ mod tests {
             capture(|| install_stage_failed(Uuid::new_v4(), &InstallError::Cancelled));
         let failed = event_named(&events, "install_stage_failed");
         assert_eq!(failed[0].field("unpack_kind"), None);
+    }
+
+    fn phase_finished(events: &[Captured]) -> Vec<&Captured> {
+        event_named(events, "install_phase_finished")
+    }
+
+    #[test]
+    fn a_copy_then_check_closes_the_copy_with_its_bytes() {
+        let ((), events) = capture(|| {
+            let mut tally = PhaseTally::new(Uuid::new_v4());
+            tally.observe(&Progress::Copying {
+                copied: 10,
+                total: 100,
+            });
+            tally.observe(&Progress::Copying {
+                copied: 100,
+                total: 100,
+            });
+            tally.observe(&Progress::Checking {
+                read: 0,
+                total: 100,
+            });
+            tally.observe(&Progress::Checking {
+                read: 40,
+                total: 100,
+            });
+            tally.finish();
+        });
+        let finished = phase_finished(&events);
+        assert_eq!(finished.len(), 2, "{events:?}");
+        assert_eq!(finished[0].field("phase"), Some("copy"));
+        assert_eq!(finished[0].field("bytes"), Some("100"));
+        assert_eq!(finished[1].field("phase"), Some("check"));
+        assert_eq!(finished[1].field("bytes"), Some("40"));
+        assert!(finished[1].field("elapsed_ms").is_some());
+    }
+
+    #[test]
+    fn the_rar_index_pass_is_a_check_with_no_bytes() {
+        let ((), events) = capture(|| {
+            let mut tally = PhaseTally::new(Uuid::new_v4());
+            tally.observe(&Progress::Checking { read: 7, total: 0 });
+            tally.observe(&Progress::Extracting {
+                label: "RAR".into(),
+                current: 3,
+                total: 9,
+                filename: "a.cab".into(),
+            });
+            tally.finish();
+        });
+        let finished = phase_finished(&events);
+        assert_eq!(finished.len(), 2, "{events:?}");
+        assert_eq!(finished[0].field("phase"), Some("check"));
+        assert_eq!(finished[0].field("bytes"), Some("0"));
+        assert_eq!(finished[1].field("phase"), Some("extraction"));
+        assert_eq!(finished[1].field("files"), Some("3"));
+        assert_eq!(finished[1].field("bytes"), Some("0"));
+    }
+
+    #[test]
+    fn expansion_counts_its_files_and_ends_with_the_job() {
+        let ((), events) = capture(|| {
+            let mut tally = PhaseTally::new(Uuid::new_v4());
+            tally.observe(&Progress::Expanding {
+                label: "cabinets".into(),
+                current: 2,
+                total: 5,
+                filename: "b.cab".into(),
+            });
+            tally.observe(&Progress::Expanding {
+                label: "cabinets".into(),
+                current: 5,
+                total: 5,
+                filename: "e.cab".into(),
+            });
+            tally.finish();
+            // Nothing is open after the job ends, so a second finish logs nothing.
+            tally.finish();
+        });
+        let finished = phase_finished(&events);
+        assert_eq!(finished.len(), 1, "{events:?}");
+        assert_eq!(finished[0].field("phase"), Some("expansion"));
+        assert_eq!(finished[0].field("files"), Some("5"));
     }
 }
