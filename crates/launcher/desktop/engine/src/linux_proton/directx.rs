@@ -62,7 +62,7 @@ const SYSWOW64: &str = "drive_c/windows/syswow64";
 pub fn ensure(prefix: &Prefix, game_root: &Path) -> Result<(), ProtonError> {
     let result = ensure_with(prefix, game_root, &DLLS, extract_cab_member);
     if result.is_err() {
-        tracing::warn!(target: "launcher.launch", event = "proton_directx_failed", "proton: directx failed");
+        tracing::warn!(target: "launcher.proton", event = "proton_directx_failed", "proton: directx failed");
     }
     result
 }
@@ -150,7 +150,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// logged, never a path (R8).
 fn log(dll: &'static str, state: &'static str) {
     tracing::info!(
-        target: "launcher.launch",
+        target: "launcher.proton",
         event = "proton_directx",
         dll,
         state,

@@ -135,8 +135,8 @@ async fn run_attempt(
     }
 }
 
-/// A fresh `<state_root>/proton/scratch/<operation>` folder for the worker. The
-/// prefix's `compat` folder sits in `<state_root>/proton`.
+/// The path `<state_root>/proton/scratch/<operation>` for the worker to create. Only
+/// the parent exists; the worker's `create_dir` refuses an existing folder.
 fn prepare_scratch(prefix: &Prefix, operation: Uuid) -> Result<PathBuf, Logged> {
     let proton = prefix
         .compat
@@ -144,10 +144,7 @@ fn prepare_scratch(prefix: &Prefix, operation: Uuid) -> Result<PathBuf, Logged> 
         .ok_or(Logged::new("failed", "scratch_unavailable"))?;
     let scratch = proton.join("scratch");
     std::fs::create_dir_all(&scratch).map_err(|_| Logged::new("failed", "scratch_unavailable"))?;
-    let folder = scratch.join(operation.to_string());
-    // `create_dir` refuses an existing folder: the worker never overlays an attempt.
-    std::fs::create_dir(&folder).map_err(|_| Logged::new("failed", "scratch_unavailable"))?;
-    Ok(folder)
+    Ok(scratch.join(operation.to_string()))
 }
 
 /// A Windows guest path for the worker request, or a `failed` reason.

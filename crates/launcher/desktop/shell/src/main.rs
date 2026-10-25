@@ -607,8 +607,6 @@ fn main() {
             let resource_root = app.path().resource_dir()?;
             #[cfg(any(windows, target_os = "linux"))]
             let resource_root = payload_startup::resources(app, resource_root)?;
-            #[cfg(target_os = "linux")]
-            let host = host.with_prerequisite_worker(&resource_root);
             let host = host
                 .with_launch_resources(resource_root)
                 .with_compiled_updater_config()

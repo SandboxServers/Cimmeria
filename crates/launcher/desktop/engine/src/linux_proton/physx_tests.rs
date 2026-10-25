@@ -25,6 +25,8 @@ fn fake_worker(dir: &Path, result: &str) -> ProtonInstall {
         r#"[ "$1" = runinprefix ] || exit 2
 echo physx-stderr-marker >&2
 req=$(cat)
+scratch=$(printf '%s' "$req" | sed 's/.*"scratch":"\([^"]*\)".*/\1/; s/^Z://; s/\\\\/\//g')
+mkdir "$scratch" || exit 3
 op=$(printf '%s' "$req" | sed 's/.*"operation_id":"\([^"]*\)".*/\1/')
 gen=$(printf '%s' "$req" | sed 's/.*"prefix_generation":"\([^"]*\)".*/\1/')
 printf '%s' '{{"schema_version":1,"operation_id":"'"$op"'","prefix_generation":"'"$gen"'","result":{result}}}'"#
@@ -117,6 +119,31 @@ async fn a_probed_and_released_sdk_is_installed_once() {
     )
     .await;
     again.unwrap();
+}
+
+/// A second attempt after a failed one gets a fresh scratch folder and installs.
+/// Reverting `prepare_scratch` to reuse or pre-create the folder makes the
+/// worker's `create_dir` refuse it, so the second call fails.
+#[tokio::test]
+async fn a_second_attempt_gets_a_fresh_scratch_folder() {
+    let (first, prefix, dir, root) = run_once(r#"{"state":"failed","reason":"probe"}"#).await;
+    assert!(matches!(first, Err(ProtonError::Setup("physx"))));
+    let install = fake_worker(
+        &dir.path().join("proton"),
+        &format!(r#"{{"state":"probed","report":{PROBED_OK}}}"#),
+    );
+    let game_binaries = root.path().join("game").join("Working").join("Binaries");
+    let second = ensure_physx(
+        &install,
+        &prefix,
+        &env_for(&prefix),
+        &dir.path().join("helper.exe"),
+        &game_binaries,
+        Uuid::new_v4(),
+        None,
+    )
+    .await;
+    second.unwrap();
 }
 
 /// An installer exit code stamps `Failed` and stops the Play with `physx`.

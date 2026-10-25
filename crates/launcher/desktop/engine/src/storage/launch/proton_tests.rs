@@ -14,6 +14,8 @@ const SETUP_OK: &str = concat!(
     "#!/bin/sh\n",
     "if [ \"$1\" = runinprefix ]; then\n",
     "req=$(cat)\n",
+    "scratch=$(printf '%s' \"$req\" | sed 's/.*\"scratch\":\"\\([^\"]*\\)\".*/\\1/; s/^Z://; s/\\\\\\\\/\\//g')\n",
+    "mkdir \"$scratch\" || exit 3\n",
     "op=$(printf '%s' \"$req\" | sed 's/.*\"operation_id\":\"\\([^\"]*\\)\".*/\\1/')\n",
     "gen=$(printf '%s' \"$req\" | sed 's/.*\"prefix_generation\":\"\\([^\"]*\\)\".*/\\1/')\n",
     "printf '%s' '{\"schema_version\":1,\"operation_id\":\"'\"$op\"'\",\"prefix_generation\":\"'\"$gen\"'\",\"result\":{\"state\":\"probed\",\"report\":{\"schema_version\":2,\"architecture\":\"x86\",\"activation_context\":{\"state\":\"loaded\"},\"modules\":[{\"component\":\"vc80_crt\",\"result\":{\"state\":\"loaded\"}},{\"component\":\"vc80_cpp\",\"result\":{\"state\":\"loaded\"}},{\"component\":\"d3dx9_40\",\"result\":{\"state\":\"loaded\"}},{\"component\":\"xinput_1_3\",\"result\":{\"state\":\"loaded\"}},{\"component\":\"physx_loader\",\"result\":{\"state\":\"loaded\"}}],\"physx_sdk\":{\"state\":\"initialized_and_released\"},\"game_started\":false}}}'\n",
