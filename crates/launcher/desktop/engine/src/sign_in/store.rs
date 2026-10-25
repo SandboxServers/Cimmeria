@@ -77,7 +77,7 @@ impl KeyringStore {
         match keyring::Entry::new(SERVICE, host) {
             Ok(entry) => Some(entry),
             Err(_) => {
-                tracing::tracing::debug!("sign-in store: the credential entry could not be opened");
+                tracing::debug!("sign-in store: the credential entry could not be opened");
                 None
             }
         }
@@ -90,7 +90,7 @@ impl CredentialStore for KeyringStore {
         let secret = match Self::entry(host)?.get_password() {
             Ok(secret) => secret,
             Err(_) => {
-                tracing::tracing::debug!("sign-in store: the entry could not be read");
+                tracing::debug!("sign-in store: the entry could not be read");
                 return None;
             }
         };
@@ -105,7 +105,7 @@ impl CredentialStore for KeyringStore {
             return;
         };
         if entry.set_password(&secret).is_err() {
-            tracing::tracing::debug!("sign-in store: the entry could not be written");
+            tracing::debug!("sign-in store: the entry could not be written");
         }
     }
 
@@ -114,7 +114,7 @@ impl CredentialStore for KeyringStore {
             return;
         };
         if entry.delete_credential().is_err() {
-            tracing::tracing::debug!("sign-in store: the entry could not be removed");
+            tracing::debug!("sign-in store: the entry could not be removed");
         }
     }
 }

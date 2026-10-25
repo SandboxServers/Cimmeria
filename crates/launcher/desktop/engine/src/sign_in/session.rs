@@ -106,7 +106,11 @@ impl SignIn {
 
     /// The session a stored entry for `base` gives, with no network call. `None`
     /// when nothing is stored. The access token is fetched on first use.
-    pub fn restore(base: Url, http: reqwest::Client, store: Arc<dyn CredentialStore>) -> Option<Self> {
+    pub fn restore(
+        base: Url,
+        http: reqwest::Client,
+        store: Arc<dyn CredentialStore>,
+    ) -> Option<Self> {
         let stored = store.get(host_of(&base))?;
         let account = AccountSummary {
             account_name: stored.account_name,
@@ -169,7 +173,11 @@ impl SignIn {
     }
 
     /// Links the grant to an existing account with a GM link code (C6 `POST /link/existing`).
-    pub async fn link_existing_code(&self, link_grant: &str, code: &str) -> Result<Outcome, SignInError> {
+    pub async fn link_existing_code(
+        &self,
+        link_grant: &str,
+        code: &str,
+    ) -> Result<Outcome, SignInError> {
         let body = json!({
             "link_grant": link_grant,
             "link_code": code,
@@ -189,10 +197,7 @@ impl SignIn {
                 return Ok(token.clone());
             }
         }
-        let stored = self
-            .store
-            .get(host_of(&self.base))
-            .ok_or_else(signed_out)?;
+        let stored = self.store.get(host_of(&self.base)).ok_or_else(signed_out)?;
         let body = json!({
             "grant_type": "refresh_token",
             "refresh_token": stored.refresh_token,
@@ -278,11 +283,16 @@ impl SignIn {
         let token = self.access_token().await?;
         let body = json!({ "launch_id": launch_id });
         match self
-            .send(Method::POST, "launch-ticket/heartbeat", Some(&token), Some(body))
+            .send(
+                Method::POST,
+                "launch-ticket/heartbeat",
+                Some(&token),
+                Some(body),
+            )
             .await
         {
             Ok(_) => Ok(true),
-            Err(SignInError::Server(code)) if code == "not_found" => Ok(false),
+            Err(SignInError::Server(code)) if code == "not_found" || code == "404" => Ok(false),
             Err(e) => Err(e),
         }
     }
@@ -363,7 +373,10 @@ impl SignIn {
             .base
             .join(&format!("auth/v1/{path}"))
             .map_err(|_| SignInError::Protocol)?;
-        let mut request = self.http.request(method, url).header(ACCEPT, "application/json");
+        let mut request = self
+            .http
+            .request(method, url)
+            .header(ACCEPT, "application/json");
         if let Some(token) = bearer {
             request = request.header(AUTHORIZATION, format!("Bearer {token}"));
         }
