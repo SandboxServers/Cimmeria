@@ -1,9 +1,13 @@
 //! The identity providers the server runs (contract C12). [`build`] turns the
 //! validated config into one provider per `[[provider]]` table. A provider
-//! that cannot run is skipped with a `WARN` line, as C4 says.
+//! that cannot run is skipped with a `WARN` line, as C4 says. The generic
+//! OpenID Connect provider lives in [`oidc`], with its discovery and key cache
+//! in [`oidc_keys`].
 
 pub mod dev_mock;
 pub mod discord;
+pub mod oidc;
+pub mod oidc_keys;
 
 use std::sync::Arc;
 
@@ -13,6 +17,7 @@ use crate::config::IdentityConfig;
 use crate::provider::{IdentityProvider, ProviderKind};
 use dev_mock::DevMockProvider;
 use discord::DiscordProvider;
+use oidc::OidcProvider;
 
 /// The providers the server runs, in config order.
 pub struct Providers {
@@ -50,12 +55,10 @@ pub fn build(cfg: &IdentityConfig, http: reqwest::Client) -> Providers {
                 list.push(Arc::new(discord));
             }
             ProviderKind::Oidc => {
-                // CT-13 replaces this arm with `oidc::OidcProvider::new`.
-                tracing::warn!(
-                    reason = "oidc_unavailable",
-                    provider = provider.id.as_str(),
-                    "identity provider skipped"
-                );
+                // Discovery is lazy: the provider fetches its document on the
+                // first `prepare`, so building it never touches the network.
+                let oidc = OidcProvider::new(provider, http.clone());
+                list.push(Arc::new(oidc));
             }
             ProviderKind::DevMock => {
                 if dev_mock.is_some() {
