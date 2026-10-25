@@ -132,7 +132,13 @@ impl PhaseTally {
         let (phase, bytes, files) = wire_counts(progress);
         match &mut self.open {
             Some(open) if open.phase == phase => {
-                open.bytes = bytes;
+                // The RAR index pass shares the `check` phase with the archive
+                // hash; it reports no bytes, so it keeps the hashed count.
+                // The RAR index pass shares the `check` phase with the archive
+                // hash; it reports no bytes, so it keeps the hashed count.
+                if !matches!(progress, Progress::Checking { total: 0, .. }) {
+                    open.bytes = bytes;
+                }
                 open.files = files;
             }
             _ => {
@@ -445,6 +451,36 @@ mod tests {
         assert_eq!(finished[1].field("phase"), Some("extraction"));
         assert_eq!(finished[1].field("files"), Some("3"));
         assert_eq!(finished[1].field("bytes"), Some("0"));
+    }
+
+    #[test]
+    fn the_index_pass_keeps_the_hashed_bytes_of_its_check() {
+        let ((), events) = capture(|| {
+            let mut tally = PhaseTally::new(Uuid::new_v4());
+            tally.observe(&Progress::Downloading {
+                label: "archive".into(),
+                downloaded: 50,
+                total: 100,
+            });
+            tally.observe(&Progress::Checking {
+                read: 100,
+                total: 100,
+            });
+            tally.observe(&Progress::Checking { read: 7, total: 0 });
+            tally.observe(&Progress::Extracting {
+                label: "RAR".into(),
+                current: 1,
+                total: 2,
+                filename: "a.cab".into(),
+            });
+            tally.finish();
+        });
+        let finished = phase_finished(&events);
+        assert_eq!(finished.len(), 3, "{events:?}");
+        assert_eq!(finished[0].field("phase"), Some("download"));
+        assert_eq!(finished[1].field("phase"), Some("check"));
+        assert_eq!(finished[1].field("bytes"), Some("100"));
+        assert_eq!(finished[2].field("phase"), Some("extraction"));
     }
 
     #[test]
