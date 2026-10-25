@@ -34,7 +34,7 @@ cimmeria-launcher-relay = { path = "../relay" }
 url = { workspace = true }
 # Random verifier, state and link bytes for the sign-in PKCE pair (C9).
 getrandom = "0.3"
-tokio ={ version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync", "fs", "io-util", "process"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync", "fs", "io-util", "process"] }
 tokio-util = "0.7"
 futures-util = "0.3"
 sha2 = "0.11"

@@ -4,7 +4,10 @@
 //! auth base is `https://<host>`. A login server given as an IP literal has no
 //! certificate that can name it, so it gets no sign-in. The probe is
 //! `GET /auth/v1/providers` (C6); a reply with an `api` other than 1 counts as
-//! no sign-in, so an older launcher never reads a newer shape.
+//! no sign-in, so an older launcher never reads a newer shape. `client()` is the
+//! one HTTP client for sign-in; in debug builds `CIMMERIA_LAUNCHER_EXTRA_ROOT_PEM`
+//! (a PEM file path) adds a trusted root, and `CIMMERIA_LAUNCHER_AUTH_BASE`
+//! replaces the derived base.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -19,6 +22,12 @@ pub const PROBE_TIMEOUT: Duration = Duration::from_secs(4);
 pub const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 /// The only `api` version this launcher reads.
 const API_VERSION: u32 = 1;
+/// Every sign-in request's limit (C9 session: 10 s). The probe overrides it with [`PROBE_TIMEOUT`].
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// The largest sign-in reply the launcher reads (the relay caps SOAP at 256 KiB; JSON needs far less).
+pub const MAX_BODY: usize = 64 * 1024;
+/// Debug builds only: path of a PEM file whose root certificate the sign-in client and relay also trust.
+const EXTRA_ROOT_ENV: &str = "CIMMERIA_LAUNCHER_EXTRA_ROOT_PEM";
 /// Debug builds only: replaces the derived auth base (for a local server).
 const AUTH_BASE_ENV: &str = "CIMMERIA_LAUNCHER_AUTH_BASE";
 
@@ -58,6 +67,65 @@ pub fn auth_base(login_url: &str) -> Option<Url> {
     Url::parse(&format!("https://{host}/")).ok()
 }
 
+/// Debug builds only: the bytes of the PEM file `CIMMERIA_LAUNCHER_EXTRA_ROOT_PEM`
+/// names, so a local server on a private CA can be reached. `None` in release
+/// builds, when the variable is unset, or when the file cannot be read.
+pub fn extra_root_pem() -> Option<Vec<u8>> {
+    if !cfg!(debug_assertions) {
+        return None;
+    }
+    let path = std::env::var_os(EXTRA_ROOT_ENV)?;
+    match std::fs::read(path) {
+        Ok(pem) => Some(pem),
+        Err(e) => {
+            tracing::debug!(kind = ?e.kind(), "sign-in: the extra root file could not be read");
+            None
+        }
+    }
+}
+
+/// The HTTP client every sign-in request uses (discovery, the session, the
+/// driver): rustls, TLS 1.2 minimum, no redirects, [`REQUEST_TIMEOUT`], plus the
+/// debug extra root when it loads.
+pub fn client() -> reqwest::Client {
+    if let Some(pem) = extra_root_pem() {
+        match reqwest::Certificate::from_pem(&pem)
+            .and_then(|root| client_builder().add_root_certificate(root).build())
+        {
+            Ok(client) => return client,
+            Err(_) => {
+                tracing::warn!(
+                    "sign-in: the extra root did not load; using the built-in roots only"
+                )
+            }
+        }
+    }
+    client_builder()
+        .build()
+        .expect("the sign-in client builds with the built-in roots")
+}
+
+fn client_builder() -> reqwest::ClientBuilder {
+    reqwest::Client::builder()
+        .use_rustls_tls()
+        .min_tls_version(reqwest::tls::Version::TLS_1_2)
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(REQUEST_TIMEOUT)
+}
+
+/// Reads a reply body up to `cap` bytes. A longer body or a read error gives `None`.
+pub(crate) async fn read_capped(mut response: reqwest::Response, cap: usize) -> Option<Vec<u8>> {
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.ok()? {
+        if body.len() + chunk.len() > cap {
+            tracing::debug!("sign-in: reply too large");
+            return None;
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Some(body)
+}
+
 /// Asks the login server's sign-in service what it offers. Any failure gives `None`.
 pub async fn probe(http: &reqwest::Client, login_url: &str) -> Option<Discovery> {
     let base = match auth_base(login_url) {
@@ -84,7 +152,7 @@ pub(crate) async fn probe_at(http: &reqwest::Client, base: Url) -> Option<Discov
         tracing::debug!("sign-in discovery: status {}", response.status().as_u16());
         return None;
     }
-    let body = response.bytes().await.ok()?;
+    let body = read_capped(response, MAX_BODY).await?;
     parse(&body, base)
 }
 

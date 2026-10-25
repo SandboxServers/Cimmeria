@@ -4,6 +4,9 @@
 //! challenge) and a `state` of 32 random bytes. It opens `{base}/auth/v1/authorize`
 //! in the system browser, waits up to five minutes for the redirect to its
 //! loopback listener, and hands the code and verifier to `/token` (C6).
+//! Adding a sign-in method uses [`prepare`] first, because `link/start` needs the
+//! listener's `redirect_uri`, the `state` and the challenge before it answers with
+//! the page to open.
 
 use std::time::Duration;
 
@@ -68,49 +71,90 @@ pub struct CodeGrant {
     pub redirect_uri: String,
 }
 
-/// Starts a sign-in with `provider` on the server at `base`.
-///
-/// Binds the loopback listener and builds the authorize URL. When `intent_url`
-/// is given (the page from `link/start`), it must begin with this server's
-/// `/auth/v1/authorize?`; any other host gives [`SignInError::Protocol`].
-pub async fn begin(
-    base: &Url,
-    provider: &str,
-    intent_url: Option<String>,
-) -> Result<BrowserFlow, SignInError> {
-    let server = CallbackServer::bind()
-        .await
-        .map_err(|_| SignInError::Protocol)?;
-    let pkce = new_pkce();
-    let state = new_state();
-    let redirect_uri = server.redirect_uri();
-    let authorize_url = match intent_url {
-        Some(url) => {
-            let prefix = format!("{base}auth/v1/authorize?");
-            if !url.starts_with(&prefix) {
-                return Err(SignInError::Protocol);
-            }
-            url
-        }
-        None => {
-            let mut url = base
-                .join("auth/v1/authorize")
-                .map_err(|_| SignInError::Protocol)?;
-            url.query_pairs_mut()
-                .append_pair("provider", provider)
-                .append_pair("redirect_uri", &redirect_uri)
-                .append_pair("state", &state)
-                .append_pair("code_challenge", &pkce.challenge)
-                .append_pair("code_challenge_method", "S256");
-            url.into()
-        }
-    };
-    Ok(BrowserFlow {
-        authorize_url,
+/// A sign-in whose loopback listener is bound and whose PKCE pair and `state`
+/// exist, before the browser page is chosen. A plain sign-in calls
+/// [`PendingFlow::authorize`]; adding a method sends [`PendingFlow::redirect_uri`],
+/// [`PendingFlow::state`] and [`PendingFlow::code_challenge`] to `link/start` (C6)
+/// and hands its `authorize_url` to [`PendingFlow::with_intent`].
+pub struct PendingFlow {
+    server: CallbackServer,
+    state: String,
+    pkce: Pkce,
+}
+
+/// Binds the loopback listener and makes the PKCE pair and `state`.
+pub async fn prepare() -> Result<PendingFlow, SignInError> {
+    let server = CallbackServer::bind().await.map_err(|e| {
+        tracing::debug!(kind = ?e.kind(), "sign-in: the loopback listener did not bind");
+        SignInError::Protocol
+    })?;
+    Ok(PendingFlow {
         server,
-        state,
-        verifier: pkce.verifier,
+        state: new_state(),
+        pkce: new_pkce(),
     })
+}
+
+impl PendingFlow {
+    /// `http://127.0.0.1:<port>/cb`, the listener this flow waits on.
+    pub fn redirect_uri(&self) -> String {
+        self.server.redirect_uri()
+    }
+
+    /// The `state` the redirect must carry.
+    pub fn state(&self) -> &str {
+        &self.state
+    }
+
+    /// The S256 challenge of this flow's verifier.
+    pub fn code_challenge(&self) -> &str {
+        &self.pkce.challenge
+    }
+
+    /// A plain sign-in: `{base}auth/v1/authorize?..` with this flow's values.
+    pub fn authorize(self, base: &Url, provider: &str) -> Result<BrowserFlow, SignInError> {
+        let redirect_uri = self.redirect_uri();
+        let mut url = base
+            .join("auth/v1/authorize")
+            .map_err(|_| SignInError::Protocol)?;
+        url.query_pairs_mut()
+            .append_pair("provider", provider)
+            .append_pair("redirect_uri", &redirect_uri)
+            .append_pair("state", &self.state)
+            .append_pair("code_challenge", &self.pkce.challenge)
+            .append_pair("code_challenge_method", "S256");
+        Ok(self.into_flow(url.into()))
+    }
+
+    /// Adding a method: `authorize_url` is the `link/start` reply, which the server
+    /// built from this flow's values. It must begin with this server's
+    /// `/auth/v1/authorize?`; anything else gives [`SignInError::Protocol`].
+    pub fn with_intent(
+        self,
+        base: &Url,
+        authorize_url: String,
+    ) -> Result<BrowserFlow, SignInError> {
+        let prefix = format!("{base}auth/v1/authorize?");
+        if !authorize_url.starts_with(&prefix) {
+            return Err(SignInError::Protocol);
+        }
+        Ok(self.into_flow(authorize_url))
+    }
+
+    fn into_flow(self, authorize_url: String) -> BrowserFlow {
+        BrowserFlow {
+            authorize_url,
+            server: self.server,
+            state: self.state,
+            verifier: self.pkce.verifier,
+        }
+    }
+}
+
+/// Starts a plain sign-in with `provider` on the server at `base`: [`prepare`],
+/// then [`PendingFlow::authorize`].
+pub async fn begin(base: &Url, provider: &str) -> Result<BrowserFlow, SignInError> {
+    prepare().await?.authorize(base, provider)
 }
 
 impl BrowserFlow {
