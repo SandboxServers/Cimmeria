@@ -299,10 +299,16 @@ async fn live_db_signup_stores_email_only_when_trusted_and_verified() {
         &env,
         verified("untrusted", "ct26-3", Some("player@example.org"), true),
     );
+    let unverified = grant(
+        &env,
+        verified("dev", "ct26-4", Some("player3@example.org"), false),
+    );
     let (s1, b1) = post_json(&env, "/link/new", json!({"link_grant": trusted})).await;
     let (s2, b2) = post_json(&env, "/link/new", json!({"link_grant": untrusted})).await;
+    let (s3, b3) = post_json(&env, "/link/new", json!({"link_grant": unverified})).await;
     let id1 = b1["account"]["account_id"].as_u64().unwrap_or(0) as u32;
     let id2 = b2["account"]["account_id"].as_u64().unwrap_or(0) as u32;
+    let id3 = b3["account"]["account_id"].as_u64().unwrap_or(0) as u32;
     let email_of = |id: u32| {
         let pool = pool.clone();
         async move {
@@ -317,13 +323,19 @@ async fn live_db_signup_stores_email_only_when_trusted_and_verified() {
     };
     let trusted_null = email_of(id1).await;
     let untrusted_null = email_of(id2).await;
+    let unverified_null = email_of(id3).await;
     clean(&pool).await;
     assert_eq!(s1, StatusCode::OK, "{b1}");
     assert_eq!(s2, StatusCode::OK, "{b2}");
+    assert_eq!(s3, StatusCode::OK, "{b3}");
     assert!(!trusted_null, "a trusted, verified email is stored");
     assert!(
         untrusted_null,
         "an untrusted provider's email is not stored"
+    );
+    assert!(
+        unverified_null,
+        "a trusted provider's unverified email is not stored"
     );
 }
 
