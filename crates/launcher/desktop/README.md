@@ -22,7 +22,7 @@ The [privacy inventory](docs/privacy-inventory.md) lists every collector family,
 fixed-schema field category, raw-log boundary, consent effect and storage limit
 behind the expanded main-page disclosure. Game diagnostics are not anonymous.
 Consented [launcher summaries](docs/launcher-summaries.md) are connected and
-go only over https: to the first login server when it is https, else to the built-in default. That default is not set yet, so with the default server list (plain http) nothing is sent. Real-client/platform gates remain open.
+go only over https: to the first login server when it is https, else to the https upgrade of an http DNS-name login server (the same name on 443, LI-06), else to the built-in default, which is not set yet; an IP, local or single-label http server sends nothing. Real-client/platform gates remain open.
 A player's own [seed archive](docs/seed-archive.md) can replace the seed download for Install, Repair and Update; the seed is never rehosted.
 Explicit archive selection or accepting a Downloads offer starts an eligible
 fresh installation as soon as verification succeeds, from either the main page
@@ -134,7 +134,7 @@ Preferences persist an optional absolute install path and separate default-off
 active operation blocks path changes but permits consent changes. The path check
 does not establish installation ownership or safe deletion. The flag gates
 [launcher summaries](docs/launcher-summaries.md) only, never game/DLL telemetry. Opt-out aborts a
-send in flight. With no https endpoint (the default server list is plain http and the built-in default is not set yet), nothing is tracked, queued or sent.
+send in flight. With no https endpoint (an IP, local or single-label http login server, and the built-in default is not set yet), nothing is tracked, queued or sent.
 
 Preferences are `schema_version: 2`. They also hold the client options: the
 `login_servers` list (empty means the built-in default list) and

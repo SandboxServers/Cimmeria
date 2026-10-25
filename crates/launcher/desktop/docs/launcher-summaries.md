@@ -6,7 +6,7 @@
 > **Companions:** [Desktop workspace](../README.md), [design and wire contract](../../../../docs/architecture/launcher-summary-telemetry.md), [operator notes](../../../../docs/operations/telemetry.md), [dashboard reading notes](../../../../docs/operations/signoz/launcher-summary-views.md), [launch](launch.md), [implementation assignment](../../../../docs/analysis/playtests/2026-10-03-macos-wine/worknotes/observability-implementation-assignment.md)
 
 **Status: the engine component, its queue, its exporter and the shell glue are
-connected. The endpoint is the first login server when it is https, else the built-in default, which is not set yet. The default server list is plain http, so a build with the default list collects nothing and sends nothing; a player whose first login server is https sends once opted in. Frontend UAT, the built-in default and native evidence are open rollout gates.** Nothing here ran against a real server.
+connected. The endpoint is the first login server when it is https, else that server's https upgrade when it is an http DNS name (LI-06), else the built-in default, which is not set yet. A plain-http login server on an IP, a local name or a single-label name collects nothing and sends nothing; a player whose first login server is https, or is an http DNS name, sends once opted in. Frontend UAT, the built-in default and native evidence are open rollout gates.** Nothing here ran against a real server.
 
 A launcher summary is one terminal row per install, runtime-setup, repair,
 uninstall or launch attempt: closed enums, bounded integers and two engine-minted
@@ -452,9 +452,9 @@ It has to change at least these. Items 1 and 2 are done; items 3 to 5 are open.
 
 1. **Endpoint configuration. Done in LT-23a, with no default yet.**
    `shell/src/host/summary.rs` passes the first login server's endpoint when
-   it is https, else `DEFAULT_SUMMARY_BASE`, which is `None` until the built-in
-   https default is set (LT-41). The default server list is plain http, so no
-   build with it has an endpoint. The endpoint comes from native configuration. There is deliberately no environment override. Today
+   it is https, else the https upgrade of an http DNS-name login server (LI-06),
+   else `DEFAULT_SUMMARY_BASE`, which is `None` until the built-in https default
+   is set (LT-41). An IP, local or single-label http login server has no endpoint. The endpoint comes from native configuration. There is deliberately no environment override. Today
    `SummaryEndpoint::parse` refuses plain `http://` to anything but loopback,
    so the base must be an `https://` address with a publicly trusted
    certificate. The server may serve the route on its plain-HTTP login port

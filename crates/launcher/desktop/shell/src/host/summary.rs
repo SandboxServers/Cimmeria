@@ -46,8 +46,8 @@ fn first_login_server(state: &DesktopState) -> Option<String> {
     servers.first().map(|server| server.url.clone())
 }
 
-// The config, with the endpoint source (`login_server`, `default` or
-// `no_https_endpoint`) for the event.
+// The config, with the endpoint source (`login_server`, `login_server_https_upgrade`,
+// `default` or `no_https_endpoint`) for the event.
 fn config(first_login_server: Option<&str>) -> (SummaryConfig, &'static str) {
     let (endpoint, source) = SummaryEndpoint::resolve(first_login_server);
     let config = SummaryConfig {
@@ -355,12 +355,39 @@ mod tests {
         root.path().join("state").join("launcher-summaries.json")
     }
 
+    fn revision(host: &NativeHost) -> u64 {
+        host.dispatch(cimmeria_launcher_engine::NativeCommand::Inspect { schema_version: 1 })
+            .unwrap()
+            .preferences
+            .revision
+    }
+
     fn opt_in(host: &NativeHost) {
         host.dispatch(cimmeria_launcher_engine::NativeCommand::SavePreferences {
             schema_version: 1,
-            expected_revision: 0,
+            expected_revision: revision(host),
             install_directory: None,
             launcher_summary_consent: true,
+        })
+        .unwrap();
+    }
+
+    // Saves a loopback login server before the test's own host first opens the state.
+    // The endpoint is resolved once, at that first open, and an IP literal is never
+    // upgraded to https, unlike the default server (an http DNS name). The saving host
+    // is dropped here, so it does not stay open.
+    fn save_loopback_login_server(state: &std::path::Path) {
+        let host = NativeHost::new(state.to_path_buf());
+        host.dispatch(cimmeria_launcher_engine::NativeCommand::SaveClientOptions {
+            schema_version: 1,
+            expected_revision: revision(&host),
+            login_servers: vec![
+                cimmeria_launcher_engine::client_setup::login_servers::LoginServer {
+                    name: "Loopback".into(),
+                    url: "http://127.0.0.1:8081".into(),
+                },
+            ],
+            client_patches_enabled: false,
         })
         .unwrap();
     }
@@ -377,8 +404,13 @@ mod tests {
         assert_eq!(source, "login_server");
 
         let (resolved, source) = config(Some("http://play.example:8081"));
-        assert!(resolved.endpoint.is_none());
-        assert_eq!(source, "no_https_endpoint");
+        assert_eq!(
+            resolved
+                .endpoint
+                .map(|endpoint| endpoint.ingest_url().to_string()),
+            Some("https://play.example/api/telemetry/launcher-summary".to_string())
+        );
+        assert_eq!(source, "login_server_https_upgrade");
 
         let (resolved, source) = config(None);
         assert!(resolved.endpoint.is_none());
@@ -406,14 +438,16 @@ mod tests {
     #[test]
     fn noting_a_failure_never_opens_the_state_and_changes_nothing_once_open() {
         let root = tempfile::tempdir().unwrap();
-        let host = NativeHost::new(root.path().join("state"));
+        let state = root.path().join("state");
+        let host = NativeHost::new(state.clone());
         let attempt = Some((SummaryOperation::Install, Some(Uuid::new_v4())));
         host.note_command_failure(attempt, JobError::ManifestUnavailable);
-        assert!(!root.path().join("state").exists());
+        assert!(!state.exists());
 
-        // Open and opted in. The default login server is plain http, so no endpoint
-        // is configured, and that alone keeps the failure from being recorded: the
-        // positive control below differs only in having one.
+        // Open and opted in. The loopback login server gives no endpoint (the default
+        // one would be upgraded to https), and that alone keeps the failure from being
+        // recorded: the positive control below differs only in having one.
+        save_loopback_login_server(&state);
         opt_in(&host);
         host.note_command_failure(attempt, JobError::ManifestUnavailable);
         host.note_command_failure(None, JobError::ManifestUnavailable);
@@ -424,10 +458,12 @@ mod tests {
     #[test]
     fn a_journey_failure_reaches_the_queue_once_an_endpoint_is_configured() {
         let root = tempfile::tempdir().unwrap();
-        let host = NativeHost::new(root.path().join("state"));
+        let state = root.path().join("state");
+        // The loopback login server gives no endpoint, so the open state has none
+        // until the one below, which is never contacted. No exporter is started by this call.
+        save_loopback_login_server(&state);
+        let host = NativeHost::new(state);
         opt_in(&host);
-        // The default login server is plain http, so there is no endpoint; give the
-        // open state one that is never contacted. No exporter is started by this call.
         host.with_state(|state| {
             state.configure_summaries(SummaryConfig {
                 launcher_version: (0, 1, 0),
