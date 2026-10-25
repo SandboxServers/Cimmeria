@@ -35,6 +35,7 @@ use std::io::{BufReader, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
 
 use format::{Cabinet, Compression};
 use positional::PositionalReader;
@@ -140,6 +141,7 @@ pub(super) fn expand_chain_with(
         sink,
         done: AtomicUsize::new(0),
         total,
+        gate: Mutex::new(()),
     };
     let set = Set {
         names: cabinets,
@@ -290,6 +292,7 @@ struct Progress<'a> {
     sink: &'a UnpackSink,
     done: AtomicUsize,
     total: usize,
+    gate: Mutex<()>,
 }
 
 /// Decode one folder and write its files as their bytes stream past.
@@ -451,7 +454,8 @@ impl FolderWriter<'_> {
 fn complete(handle: File, file: &PlannedFile, path: &Path, progress: &Progress<'_>) {
     dos_time::apply(&handle, file.date, file.time, path);
     drop(handle);
-    // Workers finish in any order, so two reports can race past each other.
+    // One report at a time, so `current` never goes backwards at the sink.
+    let _turn = progress.gate.lock().unwrap_or_else(PoisonError::into_inner);
     let done = progress.done.fetch_add(1, Ordering::Relaxed) + 1;
     progress
         .sink

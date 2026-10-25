@@ -4,6 +4,7 @@
 
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::ThreadId;
 
@@ -14,7 +15,7 @@ use super::super::test_fixtures::sink;
 use super::super::UnpackSink;
 use super::fixture::{write_cab_set, CabOptions, CabSetInfo};
 use super::format;
-use super::schedule::assign;
+use super::schedule::{assign, run};
 use super::{expand_chain_with, UnpackError};
 
 /// Text-like bytes with long repeats, so MSZIP history reaches across blocks.
@@ -149,8 +150,9 @@ fn folders_report_from_several_threads() {
     );
 }
 
-// Guards the error path in `schedule::Stop::fail`: a corrupt folder must
-// give the same error on one worker and on four.
+// Guards only that the corrupt-block error reaches the caller unchanged: a
+// corrupt folder must give the same error on one worker and on four. The
+// first-error and stop rules are guarded by the schedule test below.
 #[test]
 fn a_corrupt_folder_fails_the_same_way_on_any_worker_count() {
     let dir = tempfile::tempdir().unwrap();
@@ -190,6 +192,84 @@ fn a_corrupt_folder_fails_the_same_way_on_any_worker_count() {
         messages.push(err.to_string());
     }
     assert_eq!(messages[0], messages[1]);
+}
+
+// Guards `Stop::fail` (first error wins) and the `stop.check()` before each
+// folder in `schedule::run`.
+#[test]
+fn the_first_error_wins_and_a_failed_run_starts_no_more_folders() {
+    let late_folder_ran = AtomicBool::new(false);
+    let lanes = vec![vec![0], vec![1, 2], vec![3]];
+    let result = run(&lanes, |folder, stop| match folder {
+        0 => Err(UnpackError::Cab("first".into())),
+        1 => {
+            while stop.check().is_ok() {
+                std::thread::yield_now();
+            }
+            Ok(())
+        }
+        2 => {
+            late_folder_ran.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+        _ => {
+            while stop.check().is_ok() {
+                std::thread::yield_now();
+            }
+            Err(UnpackError::Cancelled)
+        }
+    });
+    assert!(
+        matches!(&result, Err(UnpackError::Cab(m)) if m == "first"),
+        "{result:?}"
+    );
+    assert!(!late_folder_ran.load(Ordering::SeqCst));
+}
+
+/// Reporter that keeps the `current` of every extraction report, in order.
+#[derive(Default)]
+struct CurrentLog(Mutex<Vec<usize>>);
+
+impl ProgressReporter for CurrentLog {
+    fn report(&self, value: crate::install::Progress) {
+        if let crate::install::Progress::Extracting { current, .. } = value {
+            let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+            seen.push(current);
+        }
+    }
+}
+
+// Guards the report gate in `complete`: with several workers finishing at
+// once, the `current` values must reach the sink in order. Without the gate
+// this is a race, so a revert can pass on some runs.
+#[test]
+fn reports_arrive_in_order_across_workers() {
+    let dir = tempfile::tempdir().unwrap();
+    let names: Vec<String> = (0..60).map(|i| format!("g{i:02}.txt")).collect();
+    let files: Vec<(&str, Vec<u8>)> = names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (name.as_str(), text(u8::try_from(i).unwrap(), 2000)))
+        .collect();
+    let info = write_cab_set(
+        dir.path(),
+        &files,
+        CabOptions {
+            files_per_folder: 1,
+            blocks_per_cab: 1000,
+            ..CabOptions::default()
+        },
+    );
+    let log = Arc::new(CurrentLog::default());
+    let sink = UnpackSink {
+        progress: ProgressSink::Checkpoint(log.clone()),
+        label: "test".into(),
+        cancel: CancellationToken::new(),
+    };
+    let dest = dir.path().join("out");
+    expand_chain_with(dir.path(), &info.cabinets, &dest, files.len(), &sink, 4).unwrap();
+    let seen = log.0.lock().unwrap_or_else(PoisonError::into_inner);
+    assert_eq!(*seen, (1..=files.len()).collect::<Vec<_>>());
 }
 
 // Guards the cancel check before any output: a cancelled token must stop the
