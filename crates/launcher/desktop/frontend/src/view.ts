@@ -7,6 +7,7 @@ import { mountLogUpload } from "./log-upload-view";
 import { mountClientMaintenance } from "./client-maintenance-view";
 import { mountClientChanges } from "./client-changes-view";
 import { mountPhysx } from "./physx-view";
+import { mountSignIn } from "./sign-in-view";
 import { mountDirectx } from "./directx-view";
 import { mountSeedArchive } from "./seed-archive-view";
 import { makePanelContext } from "./panel-context";
@@ -50,6 +51,7 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
   const panelFeed = makePanelContext(() => refresh());
   const panels: {settled: () => Promise<unknown>; dispose: () => Promise<void>}[] = [
     mountServerList(document, invoke, panelFeed.context),
+    mountSignIn(document, invoke, panelFeed.context),
     mountClientPatches(document, invoke, panelFeed.context),
     mountLogUpload(document, invoke, panelFeed.context),
     mountClientMaintenance(document, invoke, panelFeed.context),
