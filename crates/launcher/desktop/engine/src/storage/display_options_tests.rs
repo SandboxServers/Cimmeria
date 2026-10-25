@@ -416,12 +416,15 @@ fn a_saved_frame_cap_survives_a_reopen_in_snake_case() {
 }
 
 #[test]
-fn only_macos_offers_frame_caps() {
+fn frame_caps_per_platform() {
+    // Revert proof (wave 3 ruling 1): an empty Linux list fails the Linux arm.
     if cfg!(target_os = "macos") {
         assert_eq!(
             frame_caps(),
             [FrameCap::Fps30, FrameCap::Fps60, FrameCap::Display]
         );
+    } else if cfg!(target_os = "linux") {
+        assert_eq!(frame_caps(), [FrameCap::Fps30, FrameCap::Fps60]);
     } else {
         assert!(frame_caps().is_empty());
     }

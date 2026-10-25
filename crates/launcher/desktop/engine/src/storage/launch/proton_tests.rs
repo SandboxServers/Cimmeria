@@ -109,7 +109,11 @@ fn fixture(script: &str) -> Fixture {
 }
 
 /// Runs `prepare_in` inside a runtime, as the worker's `spawn_blocking` does.
-fn run(f: &Fixture, plan: &Plan) -> Result<(HelperCommand, Request, Prefix), PrepareError> {
+fn run_with(
+    f: &Fixture,
+    plan: &Plan,
+    display: DisplayOptions,
+) -> Result<(HelperCommand, Request, Prefix), PrepareError> {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let _entered = runtime.enter();
     prepare_in(
@@ -117,10 +121,14 @@ fn run(f: &Fixture, plan: &Plan) -> Result<(HelperCommand, Request, Prefix), Pre
         &f.state,
         None,
         &crate::client_setup::login_servers::default_servers(),
-        DisplayOptions::default(),
+        display,
         &[],
         &f.search,
     )
+}
+
+fn run(f: &Fixture, plan: &Plan) -> Result<(HelperCommand, Request, Prefix), PrepareError> {
+    run_with(f, plan, DisplayOptions::default())
 }
 
 fn run_ok(f: &Fixture, plan: &Plan) -> (HelperCommand, Request, Prefix) {
@@ -273,4 +281,28 @@ fn display_rewrites_windowed_mode_in_an_existing_prefix_profile() {
     run_ok(&f, &f.plan);
     let text = std::fs::read_to_string(&saved).unwrap();
     assert!(text.contains(r#"valueBool="true""#), "{text}");
+}
+
+#[test]
+fn the_frame_cap_sets_dxvk_frame_rate() {
+    use crate::storage::display_options::FrameCap;
+    let f = fixture(SETUP_OK);
+    let (spec, _, prefix) = run_ok(&f, &f.plan);
+    assert_eq!(
+        spec.environment.get(OsStr::new("DXVK_FRAME_RATE")).unwrap(),
+        "30"
+    );
+    // The first run's claim must go before the second run claims the prefix.
+    drop(prefix);
+    let sixty = DisplayOptions {
+        frame_cap: FrameCap::Fps60,
+        ..DisplayOptions::default()
+    };
+    let (spec, _, _) = run_with(&f, &f.plan, sixty)
+        .unwrap_or_else(|err| panic!("preparation refused: {:?}", err.0));
+    // Revert proof: a fixed 30 in `proton.rs` fails here.
+    assert_eq!(
+        spec.environment.get(OsStr::new("DXVK_FRAME_RATE")).unwrap(),
+        "60"
+    );
 }

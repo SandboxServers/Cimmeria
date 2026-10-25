@@ -9,7 +9,7 @@ import {mountProton} from './.test-build/proton-picker.mjs';
 const html=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
 // A launch status the native side would send: the same shape the launch-view tests decode.
 const status=(extra={})=>({schema_version:1,setup_complete:true,resources_available:true,launcher_update_required:false,patches_incomplete:0,ops_skipped:0,installation_id:'owner',observation:null,failure:null,...extra,native:{schema_version:1,requires_reopen:false,adopted_login_servers:null,display_modes:['windowed'],launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2,revision:1,install_directory:'/fixture',launcher_summary_consent:false,login_servers:[],client_patches_enabled:true,display:{mode:'windowed',width:1024,height:768}},operation:{schema_version:1,revision:0,operation:null}}});
-const protons=[{id:'valve',name:'Proton Experimental',kind:'steam'},{id:'ge',name:'GE-Proton 9-2',kind:'compat'}];
+const protons=[{id:'valve',name:'Proton Experimental',kind:'experimental'},{id:'ge',name:'GE-Proton 9-2',kind:'ge'}];
 let launchStatus=status({prerequisites_missing:['proton']});
 let found=protons;let saved=null;const protonCalls=[];
 // The fake IPC: `proton_command` refuses an id the picker is not offered now, as the native side does.

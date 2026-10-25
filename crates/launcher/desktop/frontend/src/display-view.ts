@@ -10,9 +10,9 @@ import failureCodes from './failure-codes.json';
  * Settings panel (PD-26): how the game window starts, saved through `launcher_command`
  * (`save_display_options`, C-PD6) the way the login-server list saves (`save_client_options`): same
  * `expected_revision`, same reload check, same stale-revision recovery. The modes come from
- * `snapshot.display_modes`; a Mac offers `windowed` only, so it gets a line instead of the mode select.
+ * `snapshot.display_modes`; a Mac or a Linux PC offers `windowed` only, so it gets a line instead of the mode select.
  * PD-34: the sizes are the ones that fit the chosen monitor (`display_sizes`), the monitor select shows only
- * with two or more displays, and the frame cap only where the platform offers one (`frame_caps`, macOS).
+ * with two or more displays, and the frame cap only where the platform offers one (`frame_caps`: three on a Mac, 30 and 60 on Linux).
  */
 const modeLabel:Record<DisplayMode,string>={windowed:'Windowed',fullscreen:'Fullscreen (uses the resolution chosen in the game)'};
 const sizeValue=(width:number,height:number)=>`${width}x${height}`;
@@ -27,7 +27,7 @@ const matchRate=(refreshHz:number)=>refreshHz>0?Math.min(240,Math.max(30,refresh
 const frameCapLabel=(cap:FrameCap,refreshHz:number)=>cap==='fps30'?'30 fps (cooler, quieter)':cap==='fps60'?'60 fps':`Match display (${matchRate(refreshHz)} Hz)`;
 export const displayAppliesText='The launcher applies this every time you press Play, so a display change made inside the game is replaced at the next start.';
 export const displayWindowsText='New: the game now starts in a 1024 × 768 window by default. Choose Fullscreen here to go back.';
-export const displayMacText='On a Mac the game always runs in a window, so Cmd+Tab works.';
+export const displayMacText='The game always runs in a window on this computer, so you can switch to other apps.';
 // The two refusals this panel has its own line for (PD-26 step 4); every other code is the mapped C-PD1 copy.
 const saveErrorText:Record<string,string>={
  invalid_display_options:'That size can\'t be used. Pick one from the list.',

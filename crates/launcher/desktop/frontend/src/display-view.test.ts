@@ -104,6 +104,22 @@ test('one display renders no monitor select',async()=>{
  await m.app.dispose();
 });
 
+test('a Linux snapshot (no display list) offers 30 and 60 fps, and Save sends the cap on the first press',async()=>{
+ const linux:Extra={displays:[],display_sizes:[],display_monitor:null,frame_caps:['fps30','fps60']};
+ const m=mounted(async()=>null,async()=>{m.feed.publish(snapshot(4,{mode:'windowed',width:1024,height:768,frame_cap:'fps60'},macModes,linux));},snapshot(3,undefined,macModes,linux));
+ const cap=m.document.getElementById('display-frame-cap') as unknown as HTMLSelectElement;
+ assert.equal(m.hidden('display-frame-cap'),false);assert.equal(m.hidden('display-frame-cap-label'),false);
+ assert.deepEqual(m.options(cap),[['fps30','30 fps (cooler, quieter)'],['fps60','60 fps']]);
+ assert.equal(cap.value,'fps30');
+ m.choose(cap,'fps60');m.press();
+ assert.equal(m.text('display-status'),'Saving…');
+ await m.app.settled();
+ assert.deepEqual(m.calls[0]!.request.display,{mode:'windowed',width:1024,height:768,frame_cap:'fps60'});
+ assert.equal(m.calls[0]!.request.monitor,null);
+ assert.equal(m.text('display-status'),'Saved. Applies the next time you press Play.');
+ await m.app.dispose();
+});
+
 test('a Windows snapshot (frame_caps empty) has no frame-cap select',async()=>{
  const m=mounted(undefined,undefined,snapshot(3,undefined,windowsModes,twoDisplays));
  assert.equal(m.hidden('display-frame-cap'),true);assert.equal(m.hidden('display-frame-cap-label'),true);
@@ -269,7 +285,7 @@ test('Save is disabled until settings load',async()=>{
 });
 
 test('the Proton picker is mounted in the display panel, and offers the Proton it finds',async()=>{
- const m=mounted(undefined,undefined,snapshot(3),{available:[{id:'valve',name:'Proton Experimental',kind:'steam'}],selected:'valve',preferred:null});
+ const m=mounted(undefined,undefined,snapshot(3),{available:[{id:'valve',name:'Proton Experimental',kind:'experimental'}],selected:'valve',preferred:null});
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(m.document.getElementById('proton-picker')!.hidden,false);
  assert.equal((m.document.getElementById('proton-select') as unknown as HTMLSelectElement).querySelectorAll('option').length,2);

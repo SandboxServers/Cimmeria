@@ -4,8 +4,8 @@ import {readFileSync} from 'node:fs';
 import {parseHTML} from 'linkedom';
 import {mountProton,protonSavedText} from './proton-picker';
 const html=readFileSync('ui/index.html','utf8');
-const experimental={id:'valve',name:'Proton Experimental',kind:'steam'};
-const ge={id:'ge',name:'GE-Proton 9-2',kind:'compat'};
+const experimental={id:'valve',name:'Proton Experimental',kind:'experimental'};
+const ge={id:'ge',name:'GE-Proton 9-2',kind:'ge'};
 // A fake `proton_command`: `known` is what discovery finds now, `saved` is the stored choice.
 function mounted(known:(typeof experimental)[],saved:string|null=null) {
  const {document,window}=parseHTML(html);const calls:Record<string,unknown>[]=[];
