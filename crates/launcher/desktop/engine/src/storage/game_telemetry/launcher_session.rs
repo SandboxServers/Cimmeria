@@ -337,18 +337,7 @@ impl LauncherSender {
     async fn post_logged(&self, live: &Live, batch: &[TelemetryEvent]) -> Result<(), ChunkError> {
         let posted = self.post(live, batch).await;
         let parts = endpoint_parts(&live.upload_url);
-        let (scheme, host) = match &parts {
-            Some((scheme, host)) => (scheme.as_str(), host.as_str()),
-            None => ("-", "-"),
-        };
-        tracing::info!(
-            target: "launcher.telemetry",
-            event = "log_upload_post",
-            scheme,
-            host,
-            status = response_status(&posted),
-            "launcher log upload: chunk posted"
-        );
+        log_post(parts.as_ref(), response_status(&posted));
         *locked(&self.endpoint) = parts;
         posted
     }
@@ -420,6 +409,22 @@ fn response_status(posted: &Result<(), ChunkError>) -> u16 {
     }
 }
 
+/// The `log_upload_post` line: scheme and host only (`-` when unknown), never the URL.
+fn log_post(endpoint: Option<&(String, String)>, status: u16) {
+    let (scheme, host) = match endpoint {
+        Some((scheme, host)) => (scheme.as_str(), host.as_str()),
+        None => ("-", "-"),
+    };
+    tracing::info!(
+        target: "launcher.telemetry",
+        event = "log_upload_post",
+        scheme,
+        host,
+        status,
+        "launcher log upload: chunk posted"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -452,6 +457,28 @@ mod tests {
         );
         let io = std::io::Error::other("no socket");
         assert_eq!(response_status(&Err(ChunkError::Io(io))), 0);
+    }
+
+    #[test]
+    fn the_post_line_carries_scheme_host_and_status() {
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+        let endpoint = ("https".to_owned(), "play.example".to_owned());
+        let ((), logged) = crate::test_capture::capture(|| {
+            log_post(Some(&endpoint), 413);
+            log_post(None, 0);
+        });
+        let posts: Vec<_> = logged
+            .iter()
+            .filter(|e| e.field("event") == Some("log_upload_post"))
+            .collect();
+        assert_eq!(posts.len(), 2);
+        assert_eq!(posts[0].target, "launcher.telemetry");
+        assert_eq!(posts[0].field("scheme"), Some("https"));
+        assert_eq!(posts[0].field("host"), Some("play.example"));
+        assert_eq!(posts[0].field("status"), Some("413"));
+        assert_eq!(posts[1].field("scheme"), Some("-"));
+        assert_eq!(posts[1].field("host"), Some("-"));
+        assert_eq!(posts[1].field("status"), Some("0"));
     }
 
     #[test]
