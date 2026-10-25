@@ -207,7 +207,7 @@ async fn attach(
         Some((_, bound)) if bound.account_id == account_id => {}
         Some(_) => return Err(ApiError::InvalidGrant),
         None => {
-            let trusted = trusted_email(state, &verified);
+            let trusted = trusted_email(state, &verified) && verified.email_verified;
             identity::insert(pool, account_id, &verified, trusted)
                 .await
                 .map_err(db)?;

@@ -27,7 +27,7 @@ use crate::providers::Providers;
 use crate::repo::identity;
 use crate::routes::ctx::IdentityCtx;
 use crate::routes::router;
-use crate::stores::{pkce_challenge, HandoffOutcome, Stores};
+use crate::stores::{pkce_challenge, HandoffOutcome, LinkIntent, Stores};
 
 const FIRST_ID: u32 = 2_000_501;
 const LAST_ID: u32 = 2_000_515;
@@ -38,6 +38,7 @@ const ID_STAFF: u32 = 2_000_505;
 const ID_REUSE: u32 = 2_000_506;
 const ID_DISABLED: u32 = 2_000_507;
 const ID_LOGOUT: u32 = 2_000_508;
+const ID_ATTACH: u32 = 2_000_509;
 
 /// The launcher's PKCE verifier and redirect for every code grant here.
 const VERIFIER: &str = "launcher-verifier-0123456789abcdefghijklmnopqrstuvw";
@@ -381,6 +382,50 @@ async fn live_db_disabled_account_refresh_is_403() {
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert_eq!(after_status, StatusCode::BAD_REQUEST);
     assert_eq!(live, 0);
+}
+
+/// An attach (`/link/start` intent) from a trusted provider whose email is
+/// unverified links the identity but stores no email (D-CT9, C5). Dropping
+/// the `email_verified` half of `attach` stores it.
+#[tokio::test]
+async fn live_db_attach_stores_no_unverified_email() {
+    let pool = require_db_or_skip!();
+    clean(&pool).await;
+    insert_account(&pool, ID_ATTACH, "ct25_attach_509", 0).await;
+    let env = harness(&pool);
+    let identity = verified("dev", "ct25-10", Some("ct25-10@example.org"), false);
+    let code = env.stores.handoff.issue(
+        HandoffOutcome {
+            identity,
+            intent: Some(LinkIntent {
+                account_id: ID_ATTACH,
+            }),
+        },
+        &pkce_challenge(VERIFIER),
+        REDIRECT,
+        Instant::now(),
+    );
+    let (status, body) = post_json(
+        &env,
+        "/token",
+        json!({
+            "grant_type": "authorization_code",
+            "code": code,
+            "code_verifier": VERIFIER,
+            "redirect_uri": REDIRECT,
+        }),
+    )
+    .await;
+    let (email_is_null,): (bool,) =
+        sqlx::query_as("SELECT email IS NULL FROM account_identity WHERE account_id = $1")
+            .bind(ID_ATTACH as i32)
+            .fetch_one(&pool)
+            .await
+            .expect("attached identity");
+    clean(&pool).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["result"], "signed_in");
+    assert!(email_is_null, "an unverified email must not be stored");
 }
 
 #[tokio::test]
