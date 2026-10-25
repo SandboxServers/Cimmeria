@@ -11,9 +11,9 @@ use tokio::sync::mpsc;
 use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
 use super::{
-    abilities, aggro, bank, black_market, bookmark, crafting, duel, entity, give, give_ability, gm,
-    mail, mission, net, org, org_create, patrol, pet, placement, query, seed, server, social,
-    spawn, squad, stats, travel,
+    abilities, account, aggro, bank, black_market, bookmark, crafting, duel, entity, give,
+    give_ability, gm, mail, mission, net, org, org_create, patrol, pet, placement, query, seed,
+    server, social, spawn, squad, stats, travel,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -399,6 +399,7 @@ pub async fn exec(
         "aggro" => aggro::toggle(caller_id, args, tx, space_mgr).await,
         "bank" => bank::open(caller_id, tx, space_mgr).await,
         "bankdump" => bank::dump(caller_id, args, tx, space_mgr).await,
+        "account" => account::run(caller_id, args, tx, space_mgr).await,
         "bankexpand" => bank::expand(caller_id, tx, space_mgr).await,
         "orgvaultexpand" => bank::org_expand(caller_id, args, tx, space_mgr).await,
         // Black Market GM tools (BM-07)
