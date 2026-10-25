@@ -6,6 +6,7 @@
 //! need no ordering.
 
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -13,6 +14,9 @@ use std::time::Instant;
 use axum::extract::ConnectInfo;
 use sqlx::PgPool;
 use tokio::sync::broadcast;
+use tracing::field::{Field, Visit};
+use tracing::span::{Attributes, Record};
+use tracing::{Event, Id, Metadata, Subscriber};
 
 use super::credentials::sha1_upper_hex;
 use super::handlers::handle_user_auth;
@@ -354,5 +358,148 @@ async fn live_db_verify_account_password_keeps_legacy_rows() {
     );
     let (_cookie, xml) = post_login(state, &login_body(&name, &stored), false).await;
     assert!(xml.contains("SGWLoginSuccess"), "got: {xml}");
+    cleanup(&pool, id).await;
+}
+
+/// One span seen by [`SpanCapture`]: its name and the values recorded on it,
+/// as text.
+#[derive(Clone, Debug)]
+struct SeenSpan {
+    name: &'static str,
+    fields: HashMap<String, String>,
+}
+
+/// Collects field values into `fields` as text. Strings are stored without
+/// quotes; every other type goes through its `Debug` form.
+struct FieldText<'a>(&'a mut HashMap<String, String>);
+
+impl Visit for FieldText<'_> {
+    fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
+        self.0
+            .insert(field.name().to_string(), format!("{value:?}"));
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        self.0.insert(field.name().to_string(), value.to_string());
+    }
+}
+
+/// A subscriber that keeps every span it sees, with the values recorded on it,
+/// and emits no events. It catches a span the handler opens and records, and
+/// leaves the test output clean.
+#[derive(Clone, Default)]
+struct SpanCapture(Arc<Mutex<Vec<SeenSpan>>>);
+
+impl Subscriber for SpanCapture {
+    fn enabled(&self, _: &Metadata<'_>) -> bool {
+        true
+    }
+
+    fn new_span(&self, attrs: &Attributes<'_>) -> Id {
+        let mut fields = HashMap::new();
+        attrs.record(&mut FieldText(&mut fields));
+        let mut spans = self.0.lock().unwrap();
+        spans.push(SeenSpan {
+            name: attrs.metadata().name(),
+            fields,
+        });
+        Id::from_u64(spans.len() as u64)
+    }
+
+    fn record(&self, span: &Id, values: &Record<'_>) {
+        let mut spans = self.0.lock().unwrap();
+        if let Some(seen) = spans.get_mut(span.into_u64() as usize - 1) {
+            values.record(&mut FieldText(&mut seen.fields));
+        }
+    }
+
+    fn record_follows_from(&self, _: &Id, _: &Id) {}
+
+    fn event(&self, _: &Event<'_>) {}
+
+    fn enter(&self, _: &Id) {}
+
+    fn exit(&self, _: &Id) {}
+}
+
+/// Every `auth.launch_ticket.consume` span the capture saw, in order.
+fn consume_spans(capture: &SpanCapture) -> Vec<SeenSpan> {
+    capture
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|seen| seen.name == "auth.launch_ticket.consume")
+        .cloned()
+        .collect()
+}
+
+/// **Consume span (C11), valid ticket.** A ticket spent over TLS opens exactly
+/// one `auth.launch_ticket.consume` span carrying the account id, `outcome=ok`,
+/// `reason=ok` and a latency. Removing the `record_consume` call on the Ok arm,
+/// or the span, fails this test.
+#[tokio::test]
+async fn live_db_ticket_spend_opens_a_consume_span() {
+    let pool = require_db_or_skip!();
+    let id = BASE + 6;
+    let name = format!("ticket-{id}");
+    insert_account(&pool, id, &name, None, true).await;
+
+    let tickets = Arc::new(LaunchTicketStore::default());
+    let minted = tickets.mint(id as u32, &name, "launch-4", Instant::now());
+    let state = live_state(&pool, tickets, LoginEventBuffer::new());
+    let capture = SpanCapture::default();
+
+    let guard = tracing::subscriber::set_default(capture.clone());
+    let body = login_body(&name, &sha1_upper_hex(&minted.ticket));
+    let (_cookie, xml) = post_login(state, &body, true).await;
+    drop(guard);
+
+    assert!(xml.contains("SGWLoginSuccess"), "got: {xml}");
+    let spans = consume_spans(&capture);
+    assert_eq!(spans.len(), 1, "one consume span, got {spans:?}");
+    let fields = &spans[0].fields;
+    assert_eq!(fields.get("account_id"), Some(&id.to_string()));
+    assert_eq!(fields.get("outcome").map(String::as_str), Some("ok"));
+    assert_eq!(fields.get("reason").map(String::as_str), Some("ok"));
+    assert!(fields.contains_key("latency_ms"), "got {fields:?}");
+    cleanup(&pool, id).await;
+}
+
+/// **Consume span (C11), disabled account.** A live ticket for a disabled
+/// account opens one consume span with `outcome=refused` and
+/// `reason=ticket_account_disabled`, and no ticket text in it. Removing the
+/// `AccountDisabled` record fails this test.
+#[tokio::test]
+async fn live_db_ticket_for_a_disabled_account_records_a_refused_consume_span() {
+    let pool = require_db_or_skip!();
+    let id = BASE + 7;
+    let name = format!("ticket-{id}");
+    insert_account(&pool, id, &name, None, false).await;
+
+    let tickets = Arc::new(LaunchTicketStore::default());
+    let minted = tickets.mint(id as u32, &name, "launch-5", Instant::now());
+    let state = live_state(&pool, Arc::clone(&tickets), LoginEventBuffer::new());
+    let capture = SpanCapture::default();
+
+    let guard = tracing::subscriber::set_default(capture.clone());
+    let body = login_body(&name, &sha1_upper_hex(&minted.ticket));
+    let (_cookie, xml) = post_login(state, &body, true).await;
+    drop(guard);
+
+    assert!(xml.contains("SGWLoginError"), "got: {xml}");
+    let spans = consume_spans(&capture);
+    assert_eq!(spans.len(), 1, "one consume span, got {spans:?}");
+    let fields = &spans[0].fields;
+    assert_eq!(fields.get("account_id"), Some(&id.to_string()));
+    assert_eq!(fields.get("outcome").map(String::as_str), Some("refused"));
+    assert_eq!(
+        fields.get("reason").map(String::as_str),
+        Some("ticket_account_disabled")
+    );
+    assert!(
+        !fields.values().any(|v| v.contains(&minted.ticket)),
+        "the ticket text must not appear in the span"
+    );
     cleanup(&pool, id).await;
 }
