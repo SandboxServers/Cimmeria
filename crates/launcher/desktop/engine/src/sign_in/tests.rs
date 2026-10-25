@@ -306,23 +306,41 @@ async fn browser_flow_round_trip() {
 }
 
 #[tokio::test]
-async fn browser_flow_rejects_a_mismatched_state() {
+async fn browser_flow_ignores_a_mismatched_state() {
     let base = Url::parse("https://play.example.org/").unwrap();
     let flow = oauth::begin(&base, "dev")
         .await
         .expect("the loopback listener binds");
     let authorize = Url::parse(&flow.authorize_url).unwrap();
-    let redirect_uri = authorize
-        .query_pairs()
-        .find(|(k, _)| k == "redirect_uri")
-        .map(|(_, v)| v.into_owned())
-        .unwrap();
+    let query = |name: &str| {
+        authorize
+            .query_pairs()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.into_owned())
+            .unwrap()
+    };
+    let (redirect_uri, state) = (query("redirect_uri"), query("state"));
 
-    // A redirect carrying some other state must not yield a code.
-    let browser =
-        reqwest::Client::new().get(format!("{redirect_uri}?code=c&state=not-the-launchers"));
-    let (grant, _) = tokio::join!(flow.finish(), browser.send());
-    assert_eq!(grant.err(), Some(SignInError::StateMismatch));
+    // A redirect carrying some other state is refused with 400, and the wait goes on:
+    // only the launcher's own redirect, for the expected state, completes the grant.
+    let browser = async {
+        let wrong = reqwest::Client::new()
+            .get(format!("{redirect_uri}?code=c&state=not-the-launchers"))
+            .send()
+            .await
+            .expect("the listener answers");
+        assert_eq!(wrong.status(), 400);
+        reqwest::Client::new()
+            .get(format!("{redirect_uri}?code=c&state={state}"))
+            .send()
+            .await
+    };
+    let (grant, reply) = tokio::join!(flow.finish(), browser);
+    assert!(reply.is_ok());
+    assert_eq!(
+        grant.expect("the matching redirect carries the code").code,
+        "c"
+    );
 }
 
 #[tokio::test]

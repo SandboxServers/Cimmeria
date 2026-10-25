@@ -224,9 +224,10 @@ async fn execute(
         .clone()
         .map(|session| (session, telemetry_servers.to_vec()));
     let prepared = plan.clone();
-    let ticket_root = root.clone();
+    // The ticket file lives in the game install, where `prepare` writes the plain list.
+    let ticket_root = plan.installation.content_root();
     let setup_timer = context.start(crate::phase_timing::Phase::PlayClientSetup);
-    let setup = tokio::task::spawn_blocking(move || {
+    let setup_result = tokio::task::spawn_blocking(move || {
         prepare(
             &prepared,
             &root,
@@ -236,8 +237,15 @@ async fn execute(
             &placements,
         )
     })
-    .await
-    .map_err(|_| StorageError::Io)?;
+    .await;
+    // A panicked `prepare` still ends the ticket and stops the relay.
+    let setup = match setup_result {
+        Ok(setup) => setup,
+        Err(_) => {
+            sign_in_play::finish(&ticket_root, &servers, login).await;
+            return Err(StorageError::Io.into());
+        }
+    };
     let Ok((spec, mut request, _ownership)) = setup_timer.result(setup) else {
         sign_in_play::finish(&ticket_root, &servers, login).await;
         failure::not_started(

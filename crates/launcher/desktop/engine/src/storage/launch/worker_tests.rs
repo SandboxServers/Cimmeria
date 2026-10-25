@@ -50,7 +50,7 @@ fn login_server_refusal_finishes_mint_as_failed_rather_than_interrupted() {
 
 #[test]
 fn a_failed_client_setup_is_noted_launch_prepare_failed() {
-    let (root, mut state, plan) = super::super::tests::fixture();
+    let (_root, mut state, plan) = super::super::tests::fixture();
     state.record_launch(&plan, Observation::Preparing).unwrap();
     let state = Arc::new(Mutex::new(state));
     let kept = state.clone();
@@ -59,16 +59,19 @@ fn a_failed_client_setup_is_noted_launch_prepare_failed() {
         .enable_all()
         .build()
         .unwrap();
+    // The state root is a separate directory: the plain list must land in the install.
+    let other = tempfile::tempdir().unwrap();
     let (result, events) = crate::test_capture::capture(|| {
         rt.block_on(execute(
             state,
             &plan,
-            root.path().into(),
+            other.path().into(),
             CancellationToken::new(),
             &updates,
         ))
     });
     assert!(matches!(result, Ok(Observation::NotStarted)));
+    assert!(!other.path().join("Working").exists());
     assert_eq!(
         kept.lock().unwrap().launch_failure(),
         Ok(Some(FailureCode::LaunchPrepareFailed))

@@ -214,6 +214,11 @@ pub(super) async fn heartbeat_loop(login: &ClientLogin) {
 /// End the ticket, stop the relay, and put the plain list back on disk so no
 /// ticket stays in the install. Runs on every exit after the game started.
 pub(super) async fn finish(root: &Path, plain: &[LoginServer], login: ClientLogin) {
+    // Scrub before the ticket is ended on the network, so a slow or dead server
+    // never keeps the live ticket in the install.
+    if let Err(error) = login_servers::write(root, plain) {
+        tracing::warn!(target: "launcher.relay", event = "scrub_failed", reason = %error.kind());
+    }
     let mode = match login {
         ClientLogin::Plain => "plain",
         ClientLogin::RelayPassword { relay } => {
@@ -233,9 +238,6 @@ pub(super) async fn finish(root: &Path, plain: &[LoginServer], login: ClientLogi
             "ticket"
         }
     };
-    if let Err(error) = login_servers::write(root, plain) {
-        tracing::warn!(target: "launcher.relay", event = "scrub_failed", reason = %error.kind());
-    }
     tracing::info!(target: "launcher.relay", event = "stopped", mode);
 }
 
