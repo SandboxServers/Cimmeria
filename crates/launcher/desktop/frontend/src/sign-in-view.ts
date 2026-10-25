@@ -10,7 +10,7 @@ import {reportUiEvent} from './ui-event';
  * the password is sent once and never kept in the DOM after a send.
  */
 export const linkWarning = "Linking removes this account's password for good. After linking you can play it only through this launcher; a game started without the launcher can no longer log in to it.";
-const opening = 'Opening your browser. Finish signing in there, then come back here.';
+export const opening ='Opening your browser. Finish signing in there, then come back here.';
 const decodeReply = (value: unknown) => Effect.runPromise(decodeSignInStatus(value)).catch(() => { throw 'schema'; });
 
 export function mountSignIn(document: Document, invoke: Invoke, context: PanelContext) {
