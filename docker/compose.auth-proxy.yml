@@ -6,9 +6,9 @@
 # Caddy; runbook: docs/operations/auth-https.md.
 #
 # The listener trusts X-Forwarded-* headers from its trusted peers, so
-# port 13480 must never be in a public `ports:` entry (docker/compose.yml's
-# 8081/8443/50000 list) and never edge-forwarded. This overlay publishes
-# it on 127.0.0.1 and nowhere else.
+# port 13480 must never be in a public `ports:` entry (the 32832/udp,
+# 8081 and 30000 entries of docker/compose.yml) and never edge-forwarded.
+# This overlay publishes it on 127.0.0.1 and nowhere else.
 #
 # Through a loopback publish the server does not see 127.0.0.1 as the peer:
 # it sees the bridge gateway of the container's network. The default trusted
