@@ -10,6 +10,8 @@ fn launcher_env() -> BTreeMap<&'static str, &'static str> {
         ("LD_PRELOAD", "/tmp/evil.so"),
         ("WINEPREFIX", "/somewhere"),
         ("APPDIR", "/tmp/app"),
+        ("APPIMAGE", "/tmp/app.AppImage"),
+        ("OWD", "/tmp"),
     ])
 }
 
@@ -43,12 +45,43 @@ fn base_copies_display_but_not_the_proton_or_steam_debug_variables() {
         "LD_PRELOAD",
         "WINEPREFIX",
         "APPDIR",
+        "APPIMAGE",
+        "OWD",
     ] {
         assert!(
             !base.contains_key(&OsString::from(absent)),
             "{absent} leaked"
         );
     }
+}
+
+#[test]
+fn base_copies_every_passthrough_variable() {
+    let root = tempfile::tempdir().unwrap();
+    let prefix = prefix_in(root.path());
+    let mut env: BTreeMap<&'static str, &'static str> =
+        PASSTHROUGH.iter().map(|&key| (key, "v")).collect();
+    env.insert("APPIMAGE", "leak");
+    env.insert("OWD", "leak");
+    env.insert("STEAM_COMPAT_DATA_PATH", "leak");
+    let base = base(get(&env), &prefix, Path::new("/steam"));
+    for &key in PASSTHROUGH {
+        assert_eq!(
+            base.get(&OsString::from(key)),
+            Some(&OsString::from("v")),
+            "{key} was not copied"
+        );
+    }
+    for absent in ["APPIMAGE", "OWD"] {
+        assert!(
+            !base.contains_key(&OsString::from(absent)),
+            "{absent} leaked"
+        );
+    }
+    assert_eq!(
+        base.get(&OsString::from("STEAM_COMPAT_DATA_PATH")),
+        Some(&prefix.compat.clone().into_os_string())
+    );
 }
 
 #[test]

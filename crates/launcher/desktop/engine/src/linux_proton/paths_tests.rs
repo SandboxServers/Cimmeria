@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(unix)]
 #[test]
 fn maps_an_absolute_path_with_a_space_to_a_z_drive_path() {
     assert_eq!(
@@ -13,6 +14,7 @@ fn refuses_relative_paths() {
     assert!(guest(Path::new("games/x.exe")).is_err());
 }
 
+#[cfg(unix)]
 #[test]
 fn refuses_windows_invalid_names() {
     assert!(guest(Path::new("/home/deck/CON")).is_err());

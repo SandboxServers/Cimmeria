@@ -1,4 +1,6 @@
 // Twin of mac_wine/paths.rs; FU-5 merges them.
+//! Maps a host path to a Wine `Z:\` path for the Proton prefix.
+
 use std::path::{Component, Path};
 
 /// Why a host path cannot be shown to Wine as a `Z:\` path.

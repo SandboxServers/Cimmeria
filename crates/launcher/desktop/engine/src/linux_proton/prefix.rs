@@ -34,6 +34,7 @@ pub struct Stamp {
     pub schema_version: u32,
     /// `ProtonInstall::version` used by the last good setup.
     pub proton_version: String,
+    /// Whether the PhysX redistributable is installed in the prefix.
     #[serde(default)]
     pub physx: PhysxState,
 }
@@ -42,21 +43,28 @@ pub struct Stamp {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PhysxState {
+    /// Not installed yet.
     #[default]
     NotInstalled,
+    /// Installed and verified.
     Installed,
+    /// The last install attempt failed.
     Failed,
 }
 
 /// Why a prefix could not be used.
 #[derive(Debug, thiserror::Error)]
 pub enum ProtonError {
+    /// No usable Proton install was found.
     #[error("no usable Proton")]
     Missing,
+    /// Another launcher holds the prefix lock.
     #[error("the Proton prefix is in use")]
     Busy,
+    /// A setup step failed; the text is fixed and carries no path.
     #[error("Proton setup failed: {0}")]
     Setup(&'static str),
+    /// A file operation failed.
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
