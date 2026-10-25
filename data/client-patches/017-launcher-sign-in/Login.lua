@@ -213,7 +213,7 @@ function LoginMod.onLoginFailure( this, window, errorStr, errorNum )
     end
 
     -- the launcher's text for this error replaces the server's, when it has one
-    if errorNum and CimmeriaLogin and CimmeriaLogin.errors[errorNum] then
+    if errorNum and CimmeriaLogin and CimmeriaLogin.errors and CimmeriaLogin.errors[errorNum] then
         errorStr = CimmeriaLogin.errors[errorNum]
     end
 
@@ -243,7 +243,7 @@ end
 -- Opens the launcher's link when there is a launcher sign-in, else the stock URL.
 function LoginMod.openLink( name, stockUrl )
     local url = stockUrl
-    if CimmeriaLogin then
+    if CimmeriaLogin and CimmeriaLogin.links then
         url = CimmeriaLogin.links[name]
     end
     if url then

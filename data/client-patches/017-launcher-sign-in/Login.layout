@@ -14,7 +14,7 @@
             <Property Name="FrameEnabled" Value="True" />
             <Property Name="BackgroundEnabled" Value="True" />
             <Property Name="ZOrderChangeEnabled" Value="False" />
-            <Property Name="UnifiedAreaRect" Value="{{0.5,-110},{0.5,-220},{0.5,110},{0.5,-30}}" />
+            <Property Name="UnifiedAreaRect" Value="{{0.5,-110},{0.5,-220},{0.5,110},{0.5,-10}}" />
         </Window>
 
         <!-- Login | Password Areas -->
@@ -27,10 +27,10 @@
                 <Property Name="Text" Value="Account Name" />
                 <Property Name="HorzFormatting" Value="WordWrapCentred" />
                 <Property Name="VertFormatting" Value="TopAligned" />
-                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-160},{1,0},{1,-140}}" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-190},{1,0},{1,-170}}" />
             </Window>
             <Window Type="Editbox_2" Name="Login_AccountEdit" >
-                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-140},{1,0},{1,-110}}" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-170},{1,0},{1,-140}}" />
             </Window>
 
             <!-- Launcher Sign-In Status (shown instead of the account name box) -->
@@ -40,7 +40,7 @@
                 <Property Name="Text" Value="" />
                 <Property Name="HorzFormatting" Value="WordWrapCentred" />
                 <Property Name="VertFormatting" Value="VertCentred" />
-                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-160},{1,0},{1,-110}}" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-190},{1,0},{1,-120}}" />
             </Window>
 
             <!-- Password Title & Text Area -->
@@ -49,10 +49,10 @@
                 <Property Name="Text" Value="Password" />
                 <Property Name="HorzFormatting" Value="WordWrapCentred" />
                 <Property Name="VertFormatting" Value="TopAligned" />
-                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-110},{1,0},{1,-90}}" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-140},{1,0},{1,-120}}" />
             </Window>
             <Window Type="Editbox_2" Name="Login_PasswordEdit" >
-                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-90},{1,0},{1,-60}}" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-120},{1,0},{1,-90}}" />
                 <Property Name="MaskText" Value="True" />
             </Window>
 
@@ -61,7 +61,7 @@
                 <Property Name="ClippedByParent" Value="False" />
                 <Property Name="Font" Value="Verdana_8pt" />
                 <Property Name="Text" >Remember Account Name</Property>
-                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-55},{1,0},{1,-35}}" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-85},{1,0},{1,-65}}" />
             </Window>
 
             <!-- Login Button -->
