@@ -151,7 +151,7 @@ add no progress code to `mod.rs`. Docs: none (PP-13).
 Files: `E/linux_proton/mod.rs` (add `pub mod directx;`), new
 `E/linux_proton/directx.rs`, new `E/linux_proton/directx_tests.rs`,
 `E/linux_proton/environment.rs` (`game()` only), `E/storage/launch/proton.rs`
-(one call), `E/linux_proton/environment_tests.rs`.
+(one call, and the `Search.directx` hook per PP-16-ruling-1), `E/storage/launch/proton_tests.rs`, `E/linux_proton/environment_tests.rs`.
 
 1. `directx.rs` per C-8. `ensure` calls an inner
    `ensure_with(prefix, game_root, pins: &[Pinned], extract: impl Fn(&Path, &str, u64) -> Result<Vec<u8>, UnpackError>)`;

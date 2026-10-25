@@ -295,7 +295,7 @@ Files: `D/shell/build_payload.rs`, `S/payload_startup.rs`, `S/main.rs`,
 1. `build_payload.rs`: embed when `CARGO_CFG_TARGET_OS` is `windows` **or**
    `linux`. Same three pins as Windows, plus on Linux the prerequisite worker
    pinned by the existing `CIMMERIA_PREREQUISITE_HELPER_SHA256`
-   (`S/host.rs:171`) at `windows/cimmeria-prerequisite-worker.exe`. Keep the
+   at `windows/cimmeria-prerequisite-worker.exe`, which `launch/proton.rs` finds as the sibling of `helper.exe`. Keep the
    rule "all required pins under `CIMMERIA_EMBED_PAYLOAD=1` or a tagged build";
    the telemetry DLL stays optional. A Linux build with no pins and no
    `CIMMERIA_EMBED_PAYLOAD` still builds (developer builds), with no payload.
