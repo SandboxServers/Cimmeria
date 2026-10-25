@@ -13,6 +13,7 @@ use axum::{
     Extension,
 };
 use rand::RngExt;
+use tracing::Instrument;
 
 use crate::audit::{emit_login_event, LoginOutcome};
 use crate::credential_redaction::CredentialPrefix;
@@ -178,6 +179,8 @@ pub(super) async fn handle_user_auth(
     };
     let ticket_id = match ticket {
         TicketCheck::Valid { account_id } if !over_tls => {
+            let consume = consume_span(account_id);
+            record_consume(&consume, Instant::now(), "refused", "ticket_requires_tls");
             state.launch_tickets.revoke_account(account_id);
             tracing::warn!(
                 account_id,
@@ -201,14 +204,29 @@ pub(super) async fn handle_user_auth(
     let (account_id, access_level, test_account): (u32, u32, bool) = if let Some(ticket_id) =
         ticket_id
     {
-        match ticket_account(
+        let consume = consume_span(ticket_id);
+        let started = Instant::now();
+        let looked_up = ticket_account(
             state.db.as_deref(),
             state.developer_mode,
             state.db_configured,
             ticket_id,
         )
-        .await
-        {
+        .instrument(consume.clone())
+        .await;
+        match &looked_up {
+            Ok(_) => record_consume(&consume, started, "ok", "ok"),
+            Err(AuthCredError::InvalidCredentials) => {
+                record_consume(&consume, started, "refused", "ticket_account_missing")
+            }
+            Err(AuthCredError::AccountDisabled) => {
+                record_consume(&consume, started, "refused", "ticket_account_disabled")
+            }
+            Err(AuthCredError::DbError(_)) => {
+                record_consume(&consume, started, "error", "db_error")
+            }
+        }
+        match looked_up {
             Ok(acct) => acct,
             Err(AuthCredError::InvalidCredentials) => {
                 state.launch_tickets.revoke_account(ticket_id);
@@ -537,6 +555,27 @@ pub(super) async fn handle_server_selection(
 }
 
 // ── XML helpers ──────────────────────────────────────────────────────────────
+
+/// `auth.launch_ticket.consume` (C11): the spend of a launch ticket. It carries
+/// the account id, the outcome and the reason only, never the ticket or the name.
+fn consume_span(account_id: u32) -> tracing::Span {
+    tracing::info_span!(
+        target: "cimmeria_auth",
+        "auth.launch_ticket.consume",
+        account_id,
+        outcome = tracing::field::Empty,
+        reason = tracing::field::Empty,
+        latency_ms = tracing::field::Empty,
+    )
+}
+
+/// Records how a ticket spend ended on `span`: `outcome`, `reason` and the
+/// whole-millisecond latency since `started`.
+fn record_consume(span: &tracing::Span, started: Instant, outcome: &str, reason: &str) {
+    span.record("outcome", outcome);
+    span.record("reason", reason);
+    span.record("latency_ms", started.elapsed().as_millis() as u64);
+}
 
 fn extract_sid(headers: &HeaderMap) -> Option<String> {
     let cookie = headers.get(header::COOKIE)?.to_str().ok()?;
