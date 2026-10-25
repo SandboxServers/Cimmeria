@@ -21,6 +21,7 @@
 #   compose.discord-file.yml   Discord notifications from ./config/discord.toml
 #   compose.discord.yml        Discord notifications, release-rendered (env)
 #   compose.lab.yml            Live Research Lab endpoint on a private address
+#   compose.auth-proxy.yml     Auth proxy listener on host loopback (launcher sign-in)
 #
 # Full runbook: docs/operations/colo-deploy.md.
 #
