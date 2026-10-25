@@ -4,7 +4,7 @@
 //! the unknown-account line. Sentinel account ids `2_000_701..=2_000_712`;
 //! cleanup deletes by exact id, before and after each test.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use cimmeria_identity::link_code::LinkCodeStore;
@@ -249,6 +249,57 @@ async fn live_db_concurrent_unlinks_keep_one_method() {
         .filter(|l| l[0].starts_with("account: removed identity #"))
         .count();
     assert_eq!(removed, 1, "exactly one unlink wins: {first:?} {second:?}");
+}
+
+/// An unlink waits for the account row lock. The test holds `FOR UPDATE` on
+/// the account row and drops the second method under that lock. The unlink
+/// must wait, then count one method and refuse. Without the lock it counts
+/// two before the drop commits and removes the first method too. This is
+/// deterministic, unlike the race above, which only sometimes loses.
+#[tokio::test]
+async fn live_db_unlink_waits_for_the_account_row_lock() {
+    let pool = require_db_or_skip!();
+    insert_account(&pool, ID_RACE, "ct45_race_712", None).await;
+    let a = link(&pool, ID_RACE, "ct45-subject-712a").await;
+    let b = link(&pool, ID_RACE, "ct45-subject-712b").await;
+    let mut holder = pool.begin().await.expect("begin");
+    sqlx::query("SELECT account_id FROM account WHERE account_id = $1 FOR UPDATE")
+        .bind(ID_RACE as i32)
+        .fetch_one(&mut *holder)
+        .await
+        .expect("lock the account row");
+    sqlx::query("DELETE FROM account_identity WHERE identity_id = $1")
+        .bind(b)
+        .execute(&mut *holder)
+        .await
+        .expect("drop the second method under the lock");
+    let worker_pool = pool.clone();
+    let task = tokio::spawn(async move {
+        run(
+            &GM,
+            "ct45_race_712",
+            AdminAction::Unlink { identity_id: a },
+            Some(&worker_pool),
+            &LinkCodeStore::default(),
+            Instant::now(),
+        )
+        .await
+    });
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let waited = !task.is_finished();
+    holder.commit().await.expect("release the lock");
+    let lines = task.await.expect("unlink task");
+    let methods = identity::count_methods(&pool, ID_RACE)
+        .await
+        .expect("count");
+    cleanup(&pool, ID_RACE).await;
+
+    assert!(waited, "the unlink must wait for the account row lock");
+    assert!(
+        lines[0].starts_with("account: refusing to remove the last sign-in method"),
+        "{lines:?}"
+    );
+    assert_eq!(methods, 1, "the last row is kept");
 }
 
 #[tokio::test]
