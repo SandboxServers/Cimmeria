@@ -39,6 +39,17 @@ pub(crate) fn seed_archive_release_failed(reason: &str, http_status: Option<u16>
     tracing::warn!(target: TARGET, event = "seed_archive_release_failed", reason, http_status, "seed release fetch failed");
 }
 
+/// An archive was picked and its check starts; `bytes` is the archive's size.
+pub(crate) fn seed_archive_picked(bytes: u64) {
+    tracing::info!(target: TARGET, event = "seed_archive_picked", bytes, "seed archive picked");
+}
+
+/// A pick was refused; `reason` is a closed code (`signing_key_unavailable`,
+/// `release_unavailable`, `verify_failed` or `busy`).
+pub(crate) fn seed_archive_pick_refused(reason: &str) {
+    tracing::warn!(target: TARGET, event = "seed_archive_pick_refused", reason, "seed archive pick refused");
+}
+
 // PhysX install start and outcome are logged by the engine's `install()`; the shell
 // logs only an Inspect failure and the install refusal that never reaches it.
 /// A PhysX command failed; `reason` is its closed error code.

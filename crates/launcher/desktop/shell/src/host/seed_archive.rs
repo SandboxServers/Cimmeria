@@ -85,17 +85,20 @@ pub enum SeedArchiveError {
 }
 
 impl From<cimmeria_launcher_engine::catalog::CatalogError> for SeedArchiveError {
+    /// The release a pick needs was refused, so that pick is logged here as refused.
     fn from(error: cimmeria_launcher_engine::catalog::CatalogError) -> Self {
         use cimmeria_launcher_engine::catalog::CatalogError;
-        match error {
-            CatalogError::Network => Self::ReleaseUnavailable,
+        let (mapped, reason) = match error {
+            CatalogError::Network => (Self::ReleaseUnavailable, "release_unavailable"),
             CatalogError::SigningKeyUnavailable | CatalogError::DevelopmentSigningKey => {
-                Self::SigningKeyUnavailable
+                (Self::SigningKeyUnavailable, "signing_key_unavailable")
             }
             CatalogError::TooLarge | CatalogError::Signature | CatalogError::InvalidManifest => {
-                Self::ReleaseVerificationFailed
+                (Self::ReleaseVerificationFailed, "verify_failed")
             }
-        }
+        };
+        setup_events::seed_archive_pick_refused(reason);
+        mapped
     }
 }
 
@@ -194,6 +197,12 @@ impl SeedArchive {
         };
         if let Some(outcome) = finished {
             self.worker = None;
+            // A cancelled check is the player's choice, not a refused pick.
+            if let Err(error) = outcome {
+                if !matches!(error, LocalSeedError::Cancelled) {
+                    setup_events::seed_archive_pick_refused("verify_failed");
+                }
+            }
             self.last_error = outcome.err().map(SeedArchiveError::from);
         }
         self.worker.is_some()
@@ -275,6 +284,7 @@ impl NativeHost {
             SeedArchiveCommand::AcceptOffer { .. } => {
                 let release = release.ok_or(SeedArchiveError::ReleaseUnavailable)?;
                 if archive.settle() {
+                    setup_events::seed_archive_pick_refused("busy");
                     return Err(SeedArchiveError::Busy);
                 }
                 // Nothing offered (a stale click): report the current status unchanged.
@@ -339,6 +349,8 @@ impl NativeHost {
     ) -> Result<(), SeedArchiveError> {
         let store = self.store()?;
         archive.seed = Some(release.manifest().seed.clone());
+        // Logged by size only: the path stays native.
+        setup_events::seed_archive_picked(std::fs::metadata(&path).map_or(0, |meta| meta.len()));
         archive.worker = Some(seed_archive::start_verify(store, release, path));
         archive.last_error = None;
         Ok(())
@@ -375,6 +387,7 @@ impl NativeHost {
     ) -> Result<SeedArchiveStatus, SeedArchiveError> {
         let mut archive = self.seed_archive.lock().map_err(|_| SeedArchiveError::Io)?;
         if archive.settle() {
+            setup_events::seed_archive_pick_refused("busy");
             return Err(SeedArchiveError::Busy);
         }
         self.start_check(&mut archive, release, path)?;

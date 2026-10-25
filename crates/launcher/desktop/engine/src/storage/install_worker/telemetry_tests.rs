@@ -243,3 +243,32 @@ fn opting_out_before_the_run_ends_queues_nothing() {
     publish(&state, id, Outcome::InstallFailed);
     assert!(queue_is_empty(&state));
 }
+
+#[test]
+fn the_phase_watcher_logs_the_open_phase_when_the_sink_closes() {
+    // The state is gone (`Weak::new`), so the watcher takes its `break` path;
+    // the open `copy` phase must still be logged once with its bytes.
+    let ((), events) = crate::test_capture::capture(|| {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let (tx, rx) = watch::channel(None);
+            tx.send_replace(Some(install::Progress::Copying {
+                copied: 5,
+                total: 5,
+            }));
+            let task = tokio::spawn(watch_phases(std::sync::Weak::new(), Uuid::new_v4(), rx));
+            drop(tx);
+            task.await.unwrap();
+        });
+    });
+    let finished: Vec<_> = events
+        .iter()
+        .filter(|e| e.field("event") == Some("install_phase_finished"))
+        .collect();
+    assert_eq!(finished.len(), 1, "{events:?}");
+    assert_eq!(finished[0].field("phase"), Some("copy"));
+    assert_eq!(finished[0].field("bytes"), Some("5"));
+}
