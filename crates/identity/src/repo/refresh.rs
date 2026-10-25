@@ -261,6 +261,22 @@ pub async fn revoke_token(
     Ok(())
 }
 
+/// Deletes the rows no check can accept again: a row whose family has passed
+/// `family_expires_at`, or whose token has been idle longer than
+/// [`REFRESH_IDLE`]. Returns how many rows went. An expired or unknown token
+/// already answers `invalid_grant`, so this does not weaken reuse detection for
+/// rows past their life.
+pub async fn purge_expired(pool: &PgPool) -> Result<u64, RepoError> {
+    let done = sqlx::query(
+        "DELETE FROM auth_refresh_token WHERE family_expires_at < now() \
+         OR last_used_at < now() - make_interval(secs => $1::float8)",
+    )
+    .bind(REFRESH_IDLE.num_seconds() as f64)
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected())
+}
+
 /// Revokes the live rows of one family on the given connection, so it commits
 /// with the caller's transaction.
 async fn revoke_family_on(
@@ -294,6 +310,7 @@ mod tests {
     const ID_ACCOUNT: u32 = 2_000_305;
     const ID_LOGOUT: u32 = 2_000_306;
     const ID_CONCURRENT: u32 = 2_000_307;
+    const ID_PURGE: u32 = 2_000_308;
 
     /// The fixed clock every test starts from.
     fn base() -> DateTime<Utc> {
@@ -429,6 +446,36 @@ mod tests {
         assert!(
             matches!(after, Ok(Rotation::Reused { .. })),
             "an expired family stays revoked"
+        );
+    }
+
+    /// **Purge (C12).** `purge_expired` deletes the row of a family past its
+    /// limit and keeps a live row, and returns how many it deleted. With the
+    /// DELETE replaced by a no-op the count is 0 and the dead row stays.
+    #[tokio::test]
+    async fn live_db_purge_expired_deletes_only_dead_rows() {
+        let pool = require_db_or_skip!();
+        insert_account(&pool, ID_PURGE).await;
+        // Family limit passed 220 days ago, so the row is dead by `now()`.
+        issue(&pool, ID_PURGE, None, Utc::now() - Duration::days(400))
+            .await
+            .expect("issue");
+        let (live, _) = issue(&pool, ID_PURGE, None, Utc::now())
+            .await
+            .expect("issue");
+        let deleted = purge_expired(&pool).await;
+        let kept: Vec<(Vec<u8>,)> =
+            sqlx::query_as("SELECT token_hash FROM auth_refresh_token WHERE account_id = $1")
+                .bind(ID_PURGE as i32)
+                .fetch_all(&pool)
+                .await
+                .expect("select the account's rows");
+        cleanup(&pool, ID_PURGE).await;
+        assert_eq!(deleted.expect("purge"), 1, "one dead row is deleted");
+        assert_eq!(
+            kept,
+            vec![(hash_of(&live).to_vec(),)],
+            "only the live row remains"
         );
     }
 

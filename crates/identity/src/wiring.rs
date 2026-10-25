@@ -11,12 +11,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use cimmeria_auth::auth::AuthService;
+use sqlx::PgPool;
 
 use crate::config::{self, ConfigError};
 use crate::http;
 use crate::limits::RateLimiter;
 use crate::link_code::{self, LinkCodeStore};
 use crate::providers;
+use crate::repo::refresh::purge_expired;
 use crate::routes;
 use crate::routes::ctx::IdentityCtx;
 use crate::stores::Stores;
@@ -26,6 +28,9 @@ pub const DEFAULT_PROVIDERS_PATH: &str = "config/auth-providers.toml";
 
 /// How often the reaper drops expired sign-in state.
 pub const REAP_EVERY: Duration = Duration::from_secs(60);
+
+/// How often the refresh-token purge deletes dead rows (C12).
+pub const PURGE_EVERY: Duration = Duration::from_secs(60 * 60);
 
 /// Installs the `/auth/v1` routes on `auth` and starts the reaper.
 ///
@@ -76,8 +81,27 @@ pub(crate) fn install_with(
         Instant::now,
         REAP_EVERY,
     ));
-    auth.set_identity_routes(Box::new(move |deps| routes::router(deps, ctx)));
+    // The pool is only known once the auth service hands over its deps, so the
+    // purge starts here, and only when a database is configured.
+    auth.set_identity_routes(Box::new(move |deps| {
+        if let Some(pool) = deps.db.clone() {
+            tokio::spawn(run_purge(pool, PURGE_EVERY));
+        }
+        routes::router(deps, ctx)
+    }));
     Ok(())
+}
+
+/// Calls [`purge_expired`] every `period` until the task is dropped. A failed
+/// run logs its reason only (no row data) and waits for the next tick.
+async fn run_purge(pool: Arc<PgPool>, period: Duration) {
+    let mut ticks = tokio::time::interval(period);
+    loop {
+        ticks.tick().await;
+        if purge_expired(&pool).await.is_err() {
+            tracing::warn!(reason = "refresh_purge_failed", "auth refresh purge failed");
+        }
+    }
 }
 
 /// The providers file path: `CIMMERIA_AUTH_PROVIDERS` when set and non-empty.
