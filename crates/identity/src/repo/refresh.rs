@@ -243,6 +243,37 @@ pub async fn revoke_account(
     Ok(())
 }
 
+/// Revokes every live token of an account except those of `keep_family`, the
+/// caller's own family (client-tls-oidc D1). Locks the live rows first, as
+/// [`revoke_account`] does.
+pub async fn revoke_account_except(
+    pool: &PgPool,
+    account_id: u32,
+    keep_family: &str,
+    now: DateTime<Utc>,
+) -> Result<(), RepoError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "SELECT 1 FROM auth_refresh_token \
+         WHERE account_id = $1 AND family_id <> $2 AND revoked_at IS NULL FOR UPDATE",
+    )
+    .bind(account_id as i32)
+    .bind(keep_family)
+    .fetch_all(&mut *tx)
+    .await?;
+    sqlx::query(
+        "UPDATE auth_refresh_token SET revoked_at = $3::timestamptz \
+         WHERE account_id = $1 AND family_id <> $2 AND revoked_at IS NULL",
+    )
+    .bind(account_id as i32)
+    .bind(keep_family)
+    .bind(micros(now))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 /// Logout (C6): revokes the family of a presented token. A token no row holds
 /// does nothing.
 pub async fn revoke_token(

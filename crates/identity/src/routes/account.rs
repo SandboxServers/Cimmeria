@@ -11,9 +11,10 @@ use std::time::{Duration, Instant};
 
 use axum::extract::rejection::{JsonRejection, PathRejection};
 use axum::extract::{ConnectInfo, Path, State};
-use axum::http::StatusCode;
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use chrono::Utc;
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::PgPool;
@@ -22,7 +23,7 @@ use url::Url;
 
 use crate::limits::Bucket;
 use crate::repo::event::{self, EventKind};
-use crate::repo::{account, identity};
+use crate::repo::{account, identity, refresh};
 use crate::routes::bearer::Bearer;
 use crate::routes::ctx::{client_ip, RouteState};
 use crate::routes::error::ApiError;
@@ -203,14 +204,21 @@ pub async fn get_account(
 pub async fn unlink(
     State(state): State<RouteState>,
     Bearer(grant): Bearer,
+    headers: HeaderMap,
     identity_id: Result<Path<i64>, PathRejection>,
 ) -> Response {
     let span = telemetry::idp_unlink(grant.account_id);
     let started = Instant::now();
+    // The `Bearer` extractor already checked this header, so the text is here.
+    let token = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .unwrap_or_default();
     let result = match identity_id {
         // A path that is not a number names no row: the same answer as a miss.
         Err(_) => Err(ApiError::NotFound),
-        Ok(Path(identity_id)) => remove_identity(&state, &grant, identity_id)
+        Ok(Path(identity_id)) => remove_identity(&state, &grant, token, identity_id)
             .instrument(span.clone())
             .await
             .map(|()| StatusCode::NO_CONTENT.into_response()),
@@ -224,9 +232,14 @@ pub async fn unlink(
 /// holds the account row lock, so two unlinks of one account run one after the
 /// other and the second sees the first. Without the lock both could read two
 /// methods and both delete, leaving none (C15 e).
+///
+/// After the delete it ends every other session of the account: the refresh
+/// families except the caller's, and the access tokens and launch tickets
+/// except the caller's own token (client-tls-oidc D1).
 async fn remove_identity(
     state: &RouteState,
     grant: &AccessGrant,
+    token: &str,
     identity_id: i64,
 ) -> Result<(), ApiError> {
     let now = Instant::now();
@@ -275,6 +288,15 @@ async fn remove_identity(
     .await
     .map_err(ApiError::from_repo)?;
     tx.commit().await.map_err(ApiError::from_repo)?;
+    refresh::revoke_account_except(pool, account_id, &grant.family_id, Utc::now())
+        .await
+        .map_err(ApiError::from_repo)?;
+    state
+        .ctx
+        .stores
+        .access
+        .revoke_account_except(account_id, token);
+    state.deps.launch_tickets.revoke_account(account_id);
     tracing::Span::current().record("provider", provider.as_str());
     Ok(())
 }

@@ -19,6 +19,7 @@ use crate::limits::RateLimiter;
 use crate::link_code::{self, LinkCodeStore};
 use crate::providers;
 use crate::repo::refresh::purge_expired;
+use crate::revoke;
 use crate::routes;
 use crate::routes::ctx::IdentityCtx;
 use crate::stores::Stores;
@@ -88,6 +89,7 @@ pub(crate) fn install_with(
         if let Some(pool) = deps.db.clone() {
             tokio::spawn(run_purge(pool, PURGE_EVERY));
         }
+        revoke::register(Arc::clone(&ctx.stores), Arc::clone(&deps.launch_tickets));
         routes::router(deps, ctx)
     }));
     Ok(())

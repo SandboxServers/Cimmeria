@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use cimmeria_auth::auth::{AuthRouteDeps, LaunchTicketStore};
@@ -79,7 +79,7 @@ async fn live_db_disabled_account_is_refused_on_bearer_routes() {
         get_account(State(state(&pool)), grant())
             .await
             .unwrap_or_else(IntoResponse::into_response),
-        unlink(State(state(&pool)), grant(), Ok(Path(1))).await,
+        unlink(State(state(&pool)), grant(), HeaderMap::new(), Ok(Path(1))).await,
         heartbeat(State(state(&pool)), grant(), launch_body()).await,
         end(State(state(&pool)), grant(), launch_body()).await,
     ];
