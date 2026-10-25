@@ -1,5 +1,6 @@
 //! `CellToBaseMsg` — messages sent from CellApp to BaseApp.
 
+use super::account_cell_to_base::AccountCellToBase;
 use super::ammo_reserve::AmmoReserveRequest;
 use super::bank_cell_to_base::BankCellToBase;
 use super::black_market_cell_to_base::BlackMarketCellToBase;
@@ -589,6 +590,9 @@ pub enum CellToBaseMsg {
     /// One nested enum, so bank packets add variants in
     /// `bank_cell_to_base.rs` instead of here.
     Bank(BankCellToBase),
+
+    /// The GM `.account` commands (client-tls-oidc C10), answered by the base.
+    Account(AccountCellToBase),
 
     /// A content chain's `send_system_mail` action (SS-U3): one system mail
     /// to the chain's player, behind an optional per-player cooldown.

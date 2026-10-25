@@ -322,6 +322,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_services=debug,\
                 cimmeria_resources=debug,\
                 cimmeria_auth=debug,\
+                cimmeria_identity=info,\
                 cimmeria_wire::ability_tree=debug,\
                 cimmeria_wire::base=debug,\
                 cimmeria_wire::black_market=debug,\
@@ -409,6 +410,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 duel=debug,\
                 chatter=debug,\
                 bank=debug,\
+                account_admin=debug,\
                 ammo=debug,\
                 vitals=debug,\
                 console.feedback=debug,\
@@ -508,7 +510,7 @@ pub(crate) struct FileLayer {
 pub(crate) const FILE_LAYERS: &[FileLayer] = &[
     FileLayer {
         file: "auth.log",
-        directives: "off,cimmeria_auth::auth=trace",
+        directives: "off,cimmeria_auth::auth=trace,cimmeria_identity=info",
     },
     FileLayer {
         file: "base.log",
