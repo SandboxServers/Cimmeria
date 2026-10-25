@@ -83,7 +83,7 @@ fn run(f: &Fixture, plan: &Plan) -> Result<(HelperCommand, Request, Prefix), Pre
         plan,
         &f.state,
         None,
-        &[],
+        &crate::client_setup::login_servers::default_servers(),
         DisplayOptions::default(),
         &[],
         &f.search,
@@ -123,6 +123,16 @@ fn guest_paths_follow_the_lower_case_binaries_folder() {
         .directory
         .to_string_lossy()
         .ends_with("Working\\binaries"));
+}
+
+#[test]
+fn prepare_writes_the_login_servers_into_the_lower_case_install() {
+    let f = fixture(SETUP_OK);
+    run_ok(&f, &f.plan);
+    let lua = std::fs::read_to_string(crate::client_setup::login_servers::path(&f.game)).unwrap();
+    let server = &crate::client_setup::login_servers::default_servers()[0];
+    assert!(lua.contains(&server.url));
+    assert!(!f.game.join("Working/Binaries").exists());
 }
 
 #[test]

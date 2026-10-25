@@ -51,9 +51,6 @@ fn prepare_in(
     placements: &[Placement],
     search: &Search,
 ) -> Result<(HelperCommand, Request, Prefix), PrepareError> {
-    // The login servers reach the client through client setup, which this path
-    // does not run yet (see the PP-07 report).
-    let _ = servers;
     let selection = plan
         .resources
         .proton
@@ -75,6 +72,8 @@ fn prepare_in(
         .map_err(|_| PrepareError(FailureCode::ProtonSetupFailed))?;
     // PP-16 directx, PP-08 physx, PP-17 display
     let game = plan.installation.content_root();
+    // Client setup, as `wine.rs` runs it: login servers, stock names, ASLR, containment.
+    preparation::prepare(plan, servers)?;
     let binaries = cimmeria_patchset::resolve_existing_case(&game, Path::new("Working/Binaries"));
     let guest = |p: &Path| {
         paths::guest(p)
