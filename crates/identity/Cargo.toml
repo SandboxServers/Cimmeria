@@ -20,8 +20,14 @@ reqwest = { workspace = true }
 async-trait = { workspace = true }
 url = { workspace = true }
 rand = { workspace = true }
+# The identity repositories (`repo/`) run runtime-checked queries on the
+# account database, as cimmeria-auth does.
+sqlx = { workspace = true }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]
 # The local listener for the `read_capped` test in http.rs.
 tokio = { workspace = true }
+# The live-DB gate (`require_db_or_skip!`) for the `repo` tests. Listed in
+# tools/test-live-db.ps1 already.
+cimmeria-test-support = { workspace = true }

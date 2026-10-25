@@ -15,3 +15,4 @@ pub mod limits;
 pub mod link;
 pub mod names;
 pub mod provider;
+pub mod repo;
