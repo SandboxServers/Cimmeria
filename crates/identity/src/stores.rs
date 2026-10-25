@@ -666,3 +666,6 @@ mod tests {
         assert!(stores.access.by_hash.lock().expect("lock").is_empty());
     }
 }
+#[cfg(test)]
+#[path = "stores_intent_tests.rs"]
+mod intent_tests;

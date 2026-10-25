@@ -278,7 +278,7 @@ async fn complete_callback(state: &RouteState, provider: &str, query: CallbackQu
             let handoff = state.ctx.stores.handoff.issue(
                 HandoffOutcome {
                     identity,
-                    intent: None,
+                    intent: pending.intent,
                 },
                 &pending.launcher_challenge,
                 &pending.redirect_uri,

@@ -1,8 +1,9 @@
 //! Live-DB checks for the CT-30 routes: `GET /account`, `DELETE /identities/{id}`,
 //! `POST /link/start`, and the launch-ticket mint, heartbeat and end. Covers the
 //! identity list shape, the reauth and last-method refusals, the account-scoped
-//! unlink, the concurrent unlink (C15 e), the disabled and bad-id refusals, the
-//! no-store header and the rate limit. Sentinel account ids `2_000_601..=2_000_608`;
+//! unlink and its audit event, the concurrent unlink (C15 e), the bearer and
+//! `link/start` refusals, the add-method flow through `/authorize`, the
+//! disabled and bad-id refusals, the no-store header and the rate limit. Sentinel account ids `2_000_601..=2_000_608`;
 //! subjects `ct30-<n>`; account names `CT30-<id>`. Cleanup deletes the sentinel
 //! range and every `CT30-` account before and after each test.
 
@@ -19,6 +20,7 @@ use cimmeria_test_support::require_db_or_skip;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use tower::ServiceExt;
+use url::Url;
 
 use crate::config;
 use crate::limits::RateLimiter;
@@ -28,7 +30,7 @@ use crate::providers::dev_mock::DevMockProvider;
 use crate::providers::Providers;
 use crate::routes::ctx::IdentityCtx;
 use crate::routes::router;
-use crate::stores::Stores;
+use crate::stores::{pkce_challenge, Stores};
 
 const FIRST_ID: i32 = 2_000_601;
 const LAST_ID: i32 = 2_000_608;
@@ -43,6 +45,9 @@ const ACC_LINK: u32 = 2_000_608;
 const PEER: &str = "127.0.0.1:41000";
 const LAUNCH: &str = "CT30-LAUNCH-0000001";
 const OTHER_LAUNCH: &str = "CT30-LAUNCH-0000002";
+/// The launcher's PKCE verifier (43 characters) and its redirect.
+const VERIFIER: &str = "ct30-verifier-0123456789abcdefghijklmnopqrs";
+const CB: &str = "http://127.0.0.1:49152/cb";
 
 /// The config: one trusted dev-mock provider `dev`, the one `link/start` names.
 const TABLE: &str = r#"
@@ -218,6 +223,75 @@ async fn mint(env: &Env, bearer: &str, launch_id: &str) -> (StatusCode, HeaderMa
     .await
 }
 
+/// Sends a form `POST` of `body` to `uri` from the loopback peer; returns the
+/// status and headers.
+async fn post_form(router: &Router, uri: &str, body: &str) -> (StatusCode, HeaderMap) {
+    let peer: SocketAddr = PEER.parse().expect("peer address");
+    let request = Request::post(uri)
+        .extension(ConnectInfo(peer))
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(body.to_owned()))
+        .expect("request");
+    let response = router.clone().oneshot(request).await.expect("served");
+    (response.status(), response.headers().clone())
+}
+
+/// `target` (absolute or relative) parsed as a URL.
+fn redirect(target: &str) -> Url {
+    let base = Url::parse("http://ct30.test").expect("a base");
+    base.join(target).expect("a redirect target")
+}
+
+/// The value of `key` in the query of `target`.
+fn query_of(target: &str, key: &str) -> String {
+    let url = redirect(target);
+    let found = url.query_pairs().find(|(k, _)| k == key);
+    found.expect("the query key").1.into_owned()
+}
+
+/// `target` as a router path: the path without `/auth/v1`, and its query.
+fn route_of(target: &str) -> String {
+    let url = redirect(target);
+    let path = url
+        .path()
+        .strip_prefix("/auth/v1")
+        .expect("an /auth/v1 path");
+    match url.query() {
+        Some(query) => format!("{path}?{query}"),
+        None => path.to_owned(),
+    }
+}
+
+/// A valid `POST /link/start` body for `provider` with challenge `method`.
+fn link_body(provider: &str, method: &str) -> Value {
+    json!({
+        "provider": provider,
+        "redirect_uri": CB,
+        "state": "ct30StateAAAAAAAAAAAAAAAA",
+        "code_challenge": pkce_challenge(VERIFIER),
+        "code_challenge_method": method,
+    })
+}
+
+/// The number of `unlink` events recorded for `account_id`.
+async fn unlink_events(pool: &PgPool, account_id: u32) -> i64 {
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM account_identity_event WHERE account_id = $1 AND kind = 'unlink'",
+    )
+    .bind(account_id as i32)
+    .fetch_one(pool)
+    .await
+    .expect("count unlink events");
+    count
+}
+
+/// `POST /link/start` with `bearer` and `body`; returns the status and body.
+async fn link_start(env: &Env, bearer: &str, body: Value) -> (StatusCode, Value) {
+    let (status, _, json) =
+        send(&env.router, "POST", "/link/start", Some(bearer), Some(body)).await;
+    (status, json)
+}
+
 /// `DELETE /identities/{id}` with `bearer`; returns the status only.
 async fn unlink(env: &Env, bearer: &str, identity_id: i64) -> StatusCode {
     send(
@@ -273,9 +347,11 @@ async fn live_db_unlink_needs_a_fresh_code_token() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(body["error"], "reauth_required");
     assert!(identity_exists(&pool, first).await);
+    assert_eq!(unlink_events(&pool, ACC_MAIN).await, 0);
     let code = code_token(&env, ACC_MAIN);
     assert_eq!(unlink(&env, &code, first).await, StatusCode::NO_CONTENT);
     assert!(!identity_exists(&pool, first).await);
+    assert_eq!(unlink_events(&pool, ACC_MAIN).await, 1);
 }
 
 #[tokio::test]
@@ -398,6 +474,61 @@ async fn live_db_link_start_names_the_account_in_an_intent() {
 }
 
 #[tokio::test]
+async fn live_db_link_start_attaches_a_second_identity() {
+    let pool = require_db_or_skip!();
+    clean(&pool).await;
+    insert_account(&pool, ACC_LINK, true).await;
+    insert_identity(&pool, ACC_LINK, 20).await;
+    let env = harness(&pool);
+    let t = code_token(&env, ACC_LINK);
+    let (status, body) = link_start(&env, &t, link_body("dev", "S256")).await;
+    assert_eq!(status, StatusCode::OK);
+    let authorize_url = body["authorize_url"].as_str().expect("authorize_url");
+    let intent = query_of(authorize_url, "intent");
+    let authorize = route_of(authorize_url);
+    // `/authorize` spends the intent and redirects to the dev-mock form.
+    let (status, headers, _) = send(&env.router, "GET", &authorize, None, None).await;
+    assert_eq!(status, StatusCode::FOUND);
+    let form = headers[header::LOCATION].to_str().expect("text").to_owned();
+    assert!(form.contains("/dev-mock/authorize?state="), "{form}");
+    let server_state = query_of(&form, "state");
+    // The form posts the identity; the mock redirects to its callback.
+    let posted = format!("state={server_state}&subject=ct30-21&display_name=CT30+Player");
+    let (status, headers) = post_form(&env.router, "/dev-mock/authorize", &posted).await;
+    assert_eq!(status, StatusCode::FOUND);
+    let callback = route_of(headers[header::LOCATION].to_str().expect("text"));
+    // The callback hands back the launcher's code.
+    let (status, headers, _) = send(&env.router, "GET", &callback, None, None).await;
+    assert_eq!(status, StatusCode::FOUND);
+    let handoff = query_of(headers[header::LOCATION].to_str().expect("text"), "code");
+    let (status, _, _) = send(
+        &env.router,
+        "POST",
+        "/token",
+        None,
+        Some(json!({
+            "grant_type": "authorization_code",
+            "code": handoff,
+            "code_verifier": VERIFIER,
+            "redirect_uri": CB,
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(methods(&pool, ACC_LINK).await, 2);
+    let (status, _, body) = send(&env.router, "GET", "/account", Some(&t), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["identities"].as_array().map(Vec::len), Some(2));
+    // An unknown intent, and the spent one (the same URL again), are refused.
+    let nope = authorize.replace(&intent, "nope");
+    for uri in [nope, authorize] {
+        let (status, _, body) = send(&env.router, "GET", &uri, None, None).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"], "invalid_request");
+    }
+}
+
+#[tokio::test]
 async fn live_db_launch_ticket_is_no_store_and_names_the_account() {
     let pool = require_db_or_skip!();
     clean(&pool).await;
@@ -496,4 +627,65 @@ async fn live_db_launch_ticket_mint_is_rate_limited_per_ip() {
     let (status, _, body) = mint(&env, &t, LAUNCH).await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(body["error"], "rate_limited");
+}
+
+#[tokio::test]
+async fn live_db_routes_refuse_a_missing_or_unknown_bearer() {
+    let pool = require_db_or_skip!();
+    clean(&pool).await;
+    insert_account(&pool, ACC_TICKET, true).await;
+    let env = harness(&pool);
+    let ticket = json!({"launch_id": LAUNCH});
+    let routes = [
+        ("GET", "/account", None),
+        ("DELETE", "/identities/1", None),
+        ("POST", "/link/start", None),
+        ("POST", "/launch-ticket", Some(ticket.clone())),
+        ("POST", "/launch-ticket/heartbeat", Some(ticket.clone())),
+        ("POST", "/launch-ticket/end", Some(ticket)),
+    ];
+    for (method, uri, body) in routes {
+        for bearer in [None, Some("not-a-token")] {
+            let (status, _, json) = send(&env.router, method, uri, bearer, body.clone()).await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {uri}");
+            assert_eq!(json["error"], "invalid_token", "{method} {uri}");
+        }
+    }
+    // A token past its 15 minute access life is refused too.
+    let old = Instant::now()
+        .checked_sub(Duration::from_secs(16 * 60))
+        .expect("an instant 16 minutes back");
+    let expired = token(&env, ACC_TICKET, true, old);
+    let (status, _, json) = send(&env.router, "GET", "/account", Some(&expired), None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(json["error"], "invalid_token");
+    // Another scheme than `Bearer` is refused.
+    let peer: SocketAddr = PEER.parse().expect("peer address");
+    let basic = Request::get("/account")
+        .extension(ConnectInfo(peer))
+        .header(header::AUTHORIZATION, "Basic abc")
+        .body(Body::empty())
+        .expect("request");
+    let response = env.router.clone().oneshot(basic).await.expect("served");
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn live_db_link_start_refusals() {
+    let pool = require_db_or_skip!();
+    clean(&pool).await;
+    insert_account(&pool, ACC_DISABLED, false).await;
+    insert_account(&pool, ACC_LINK, true).await;
+    let env = harness(&pool);
+    let disabled = code_token(&env, ACC_DISABLED);
+    let (status, body) = link_start(&env, &disabled, link_body("dev", "S256")).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body["error"], "account_disabled");
+    let t = code_token(&env, ACC_LINK);
+    let (status, body) = link_start(&env, &t, link_body("nope", "S256")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"], "unknown_provider");
+    let (status, body) = link_start(&env, &t, link_body("dev", "plain")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"], "invalid_request");
 }
