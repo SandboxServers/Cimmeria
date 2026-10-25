@@ -13,9 +13,11 @@ mod cert_watcher;
 pub mod client_telemetry;
 mod credentials;
 mod handlers;
+mod identity_hook;
 pub mod launch_ticket;
 mod password_check;
 mod password_hash;
+mod proxy;
 mod service;
 mod session_kind;
 mod soap_request;
@@ -44,6 +46,7 @@ mod handlers_ticket_tests;
 #[cfg(test)]
 mod tls_smoke;
 
+pub use identity_hook::{AuthRouteDeps, IdentityRoutes};
 pub use launch_ticket::{LaunchTicketStore, MintedTicket, TicketCheck};
 pub use password_check::{verify_account_password, PasswordCheck};
 pub use service::AuthService;
