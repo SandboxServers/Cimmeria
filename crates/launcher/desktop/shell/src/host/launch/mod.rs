@@ -5,7 +5,7 @@ use cimmeria_launcher_engine::launch;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 mod ledger;
-mod resources;
+pub(super) mod resources;
 pub(crate) use resources::dll_bundled;
 #[derive(Debug, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
@@ -68,15 +68,17 @@ impl NativeHost {
         self.launch_resources = resources::bundled(&directory);
         self
     }
+    /// `preferred` is the saved Proton id; the caller already holds the store
+    /// when it has one, so this never locks it again.
     #[cfg(not(test))]
-    fn proton(&self) -> Option<launch::ProtonSelection> {
-        resources::proton(None)
+    fn proton(&self, preferred: Option<&str>) -> Option<launch::ProtonSelection> {
+        resources::proton(None, preferred)
     }
     /// Tests never read the player's Steam: no fixture, no Proton (R3).
     #[cfg(test)]
-    fn proton(&self) -> Option<launch::ProtonSelection> {
+    fn proton(&self, preferred: Option<&str>) -> Option<launch::ProtonSelection> {
         let (home, tools) = self.proton_fixture.as_ref()?;
-        resources::proton(Some((home, tools)))
+        resources::proton(Some((home, tools)), preferred)
     }
     pub fn launch_command(&self, request: LaunchCommand) -> Result<LaunchStatus, JobError> {
         match &request {
@@ -109,7 +111,7 @@ impl NativeHost {
         {
             // Serialize admission and dispatch, including identical simultaneous retries.
             let mut worker = self.launch_worker.lock().map_err(|_| JobError::Io)?;
-            let proton = self.proton();
+            let proton = self.proton(self.saved_proton().as_deref());
             let Some(mut bundled) = self.launch_resources.clone() else {
                 launch::events::launch_refused_before_operation("resources_unavailable");
                 return Err(JobError::PlatformUnavailable);
@@ -178,7 +180,7 @@ impl NativeHost {
         // lacks, or a shipped artifact no longer verifies. A state that cannot
         // answer (busy content, refused imported settings) withholds Play without
         // failing Inspect or blaming the bundle.
-        let proton = self.proton();
+        let proton = self.proton(state.preferences().proton_preference.as_deref());
         let bundled = self.launch_resources.clone().map(|mut bundle| {
             bundle.proton = proton.clone();
             bundle
