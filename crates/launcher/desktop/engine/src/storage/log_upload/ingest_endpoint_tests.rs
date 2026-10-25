@@ -1,5 +1,10 @@
 use super::*;
+use crate::client_setup::login_servers::LoginServer;
+use crate::game_telemetry::Identity;
 use crate::test_capture::capture;
+use uuid::Uuid;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const UPLOAD_ID: &str = "0123456789abcdef";
 
@@ -100,4 +105,56 @@ fn a_failed_finish_line_names_the_scheme_and_host_too() {
         .expect("a failed finish event");
     assert_eq!(finished.field("scheme"), Some("https"));
     assert_eq!(finished.field("host"), Some("play.example"));
+}
+
+#[tokio::test]
+async fn the_real_sink_reports_the_endpoint_its_sender_posted_to() {
+    let server = MockServer::start().await;
+    let expires_at_ms = chrono::Utc::now().timestamp_millis() + 3_600_000;
+    Mock::given(method("POST"))
+        .and(path("/api/auth/dev-session"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "session_id": "session-1", "token": "payload.sig", "expires_at_ms": expires_at_ms,
+            "upload_endpoint": format!("{}/api/telemetry", server.uri()),
+            "chunk_max_bytes": 1_048_576, "flush_interval_ms": 2_000,
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/telemetry/upload-chunk"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let sender = LauncherSender::logs();
+    let target = LauncherTarget {
+        identity: Identity {
+            install_id: Uuid::from_u128(7),
+            machine_id: "0123456789abcdef".into(),
+        },
+        servers: vec![LoginServer {
+            name: "fixture".into(),
+            url: server.uri(),
+        }],
+    };
+    let lines = [LogLine {
+        file: "launcher.log".into(),
+        line_no: 1,
+        end: 100,
+        ts_ms: None,
+        level: None,
+        target: None,
+        message: "line".into(),
+        truncated: false,
+    }];
+    let events = rows(&lines, LAUNCHER_LOG_TARGET, UPLOAD_ID, "v", "win");
+    let mut sink = SenderSink {
+        sender: &sender,
+        target: &target,
+    };
+    assert_eq!(sink.endpoint(), None);
+    assert_eq!(sink.post(&events).await, BatchOutcome::Posted);
+    assert_eq!(
+        sink.endpoint(),
+        Some(("http".to_owned(), "127.0.0.1".to_owned()))
+    );
 }
