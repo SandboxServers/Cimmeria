@@ -169,9 +169,14 @@ async fn link_existing(
             let (Some(name), Some(password)) = (request.account_name, request.password) else {
                 return Err(ApiError::InvalidRequest);
             };
+            // A name outside the account-name grammar cannot exist, so it is refused
+            // before the limiter: its key is bounded by the grammar, not the body.
+            if !names::is_valid_account_name(&name) {
+                return Err(ApiError::InvalidRequest);
+            }
             state
                 .ctx
-                .limit(Bucket::LinkExistingAccount, &name.to_lowercase(), now)?;
+                .limit(Bucket::LinkExistingAccount, &name.to_ascii_lowercase(), now)?;
             check_password(pool, &name, &password).await?
         }
     };
