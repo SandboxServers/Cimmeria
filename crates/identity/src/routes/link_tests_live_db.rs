@@ -45,6 +45,7 @@ const ID_TEST: u32 = 2_000_521;
 const ID_CODE_ONCE: u32 = 2_000_522;
 const ID_ACK: u32 = 2_000_523;
 const ID_REFUSED: u32 = 2_000_524;
+const ID_LINK_DISABLED: u32 = 2_000_525;
 
 /// The SHA-1 (uppercase hex) of the plaintext `password`: the stored form of a
 /// legacy (algo 1) row whose plaintext is `password`.
@@ -555,6 +556,32 @@ async fn live_db_link_code_links_once() {
     assert_eq!(first_body["account"]["account_id"], ID_CODE_ONCE);
     assert_eq!(second_status, StatusCode::UNAUTHORIZED, "{second_body}");
     assert_eq!(second_body["error"], "invalid_credentials");
+}
+
+/// A disabled account refuses a link by code with `account_disabled`, the same
+/// answer the password path gives (C6), not `not_linkable`.
+#[tokio::test]
+async fn live_db_link_code_to_disabled_account_is_account_disabled() {
+    let pool = require_db_or_skip!();
+    clean(&pool).await;
+    insert_row(&pool, ID_LINK_DISABLED, "ct26_disabled_525", None, 0, false).await;
+    sqlx::query("UPDATE account SET enabled = false WHERE account_id = $1")
+        .bind(ID_LINK_DISABLED as i32)
+        .execute(&pool)
+        .await
+        .expect("disable sentinel account");
+    let env = harness(&pool);
+    let code = env.codes.issue(ID_LINK_DISABLED, Instant::now());
+    let link_grant = grant(&env, verified("dev", "ct26-disabled", None, false));
+    let (status, body) = post_json(
+        &env,
+        "/link/existing",
+        json!({"link_grant": link_grant, "link_code": code, "password_removal_ack": true}),
+    )
+    .await;
+    clean(&pool).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(body["error"], "account_disabled");
 }
 
 #[tokio::test]

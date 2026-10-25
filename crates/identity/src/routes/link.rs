@@ -181,6 +181,9 @@ async fn link_existing(
         .map_err(ApiError::from_repo)?
         .ok_or(ApiError::NotLinkable)?;
     let provider = peeked.provider.as_str();
+    if !facts.enabled {
+        return Err(ApiError::AccountDisabled);
+    }
     if !link::linkable(&facts) {
         event::record(
             pool,
