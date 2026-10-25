@@ -8,7 +8,7 @@ use crate::game_telemetry::Session;
 use crate::helper_supervisor::HelperCommand;
 use crate::linux_proton::discovery::{self, ProtonInstall, SteamRoots};
 use crate::linux_proton::prefix::{self, Prefix, ProtonError};
-use crate::linux_proton::{environment, invocation, paths, setup};
+use crate::linux_proton::{directx, environment, invocation, paths, setup};
 use crate::storage::display_options::{self, DisplayOptions, Placement};
 use cimmeria_runtime_probe::game_launch::Request;
 
@@ -19,6 +19,9 @@ const SYSTEM_TOOLS: &str = "/usr/share/steam/compatibilitytools.d";
 struct Search {
     home: PathBuf,
     system_tools: PathBuf,
+    /// The DirectX step (C-8). Production uses `directx::ensure`; the tests
+    /// replace it, because the real pins need the game's own 4 MB DLL.
+    directx: fn(&Prefix, &Path) -> Result<(), ProtonError>,
 }
 
 /// Prepares a Linux Play through the selected Proton. A coded refusal is
@@ -35,6 +38,7 @@ pub(super) fn prepare(
     let search = Search {
         home: PathBuf::from(home),
         system_tools: PathBuf::from(SYSTEM_TOOLS),
+        directx: directx::ensure,
     };
     prepare_in(
         plan, state_root, session, servers, display, placements, &search,
@@ -70,7 +74,10 @@ fn prepare_in(
     tokio::runtime::Handle::current()
         .block_on(setup::ensure(&install, &claimed, &base, setup_log))
         .map_err(|_| PrepareError(FailureCode::ProtonSetupFailed))?;
-    // PP-16 directx, PP-08 physx, PP-17 display
+    // Every Play: a Proton prefix upgrade may rewrite syswow64 (C-8).
+    (search.directx)(&claimed, &plan.installation.content_root())
+        .map_err(|_| PrepareError(FailureCode::ProtonSetupFailed))?;
+    // PP-08 physx, PP-17 display
     let game = plan.installation.content_root();
     // Client setup, as `wine.rs` runs it: login servers, stock names, ASLR, containment.
     preparation::prepare(plan, servers)?;
