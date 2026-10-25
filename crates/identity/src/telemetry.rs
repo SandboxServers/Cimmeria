@@ -68,6 +68,18 @@ pub fn idp_link() -> Span {
     )
 }
 
+/// `auth.idp.link_start`: a signed-in player asks for an `/authorize` URL that
+/// adds a provider. The account is the bearer's, so it is not a field.
+pub fn idp_link_start() -> Span {
+    tracing::info_span!(
+        target: "cimmeria_identity",
+        "auth.idp.link_start",
+        outcome = tracing::field::Empty,
+        reason = tracing::field::Empty,
+        latency_ms = tracing::field::Empty,
+    )
+}
+
 /// `auth.idp.unlink`: the removal of a linked provider identity.
 pub fn idp_unlink(account_id: u32) -> Span {
     tracing::info_span!(
@@ -93,12 +105,12 @@ pub fn launch_ticket_mint(account_id: u32) -> Span {
     )
 }
 
-/// `auth.launch_ticket.consume`: a launch ticket spent by the login handshake.
-pub fn launch_ticket_consume() -> Span {
+/// `auth.launch_ticket.heartbeat`: the launcher's keep-alive for a session.
+pub fn launch_ticket_heartbeat(account_id: u32) -> Span {
     tracing::info_span!(
         target: "cimmeria_identity",
-        "auth.launch_ticket.consume",
-        account_id = tracing::field::Empty,
+        "auth.launch_ticket.heartbeat",
+        account_id,
         outcome = tracing::field::Empty,
         reason = tracing::field::Empty,
         latency_ms = tracing::field::Empty,
@@ -148,9 +160,10 @@ mod tests {
                 ("callback", idp_callback()),
                 ("token", idp_token()),
                 ("link", idp_link()),
+                ("link_start", idp_link_start()),
                 ("unlink", idp_unlink(1)),
                 ("mint", launch_ticket_mint(1)),
-                ("consume", launch_ticket_consume()),
+                ("heartbeat", launch_ticket_heartbeat(1)),
                 ("end", launch_ticket_end(1)),
             ];
             spans

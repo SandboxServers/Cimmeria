@@ -115,10 +115,27 @@ async fn mint_ticket(
 }
 
 /// `POST /launch-ticket/heartbeat`: keeps the launch's ticket alive. `404` when
-/// no live ticket of this account holds `launch_id` (C6).
+/// no live ticket of this account holds `launch_id` (C6). The span is
+/// `auth.launch_ticket.heartbeat`, and it covers every answer, refusals too.
 pub async fn heartbeat(
     State(state): State<RouteState>,
     Bearer(grant): Bearer,
+    body: Result<Json<LaunchRequest>, JsonRejection>,
+) -> Response {
+    let span = telemetry::launch_ticket_heartbeat(grant.account_id);
+    let started = Instant::now();
+    let result = heartbeat_ticket(&state, &grant, body)
+        .instrument(span.clone())
+        .await;
+    let response = result.unwrap_or_else(IntoResponse::into_response);
+    record_outcome(&span, started, &response);
+    response
+}
+
+/// The work of `heartbeat`.
+async fn heartbeat_ticket(
+    state: &RouteState,
+    grant: &AccessGrant,
     body: Result<Json<LaunchRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let launch_id = launch_id_of(body)?;
