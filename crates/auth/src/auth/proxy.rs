@@ -29,13 +29,23 @@ const X_FORWARDED_FOR: &str = "x-forwarded-for";
 pub(super) async fn proxy_layer(mut req: Request, next: Next) -> Response {
     let https = req
         .headers()
-        .get(X_FORWARDED_PROTO)
+        .get_all(X_FORWARDED_PROTO)
+        .iter()
+        .next_back()
         .and_then(|v| v.to_str().ok())
         == Some("https");
     if !https {
+        tracing::warn!(
+            reason = "proxy_missing_https_proto",
+            "Auth proxy listener refused a request without X-Forwarded-Proto: https"
+        );
         return StatusCode::BAD_REQUEST.into_response();
     }
     let Some(ip) = rightmost_forwarded_for(req.headers()) else {
+        tracing::warn!(
+            reason = "proxy_bad_forwarded_for",
+            "Auth proxy listener refused a request with a missing or unparsable X-Forwarded-For"
+        );
         return StatusCode::BAD_REQUEST.into_response();
     };
     req.extensions_mut()
@@ -125,6 +135,16 @@ mod tests {
 
         let (status, _) = send(&[fwd, ("x-forwarded-proto", "https")]).await;
         assert_eq!(status, StatusCode::OK);
+
+        // A client-sent `https` followed by a proxy-appended `http` is the
+        // last line, so it is refused.
+        let (status, _) = send(&[
+            fwd,
+            ("x-forwarded-proto", "https"),
+            ("x-forwarded-proto", "http"),
+        ])
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 
     /// The client address is the rightmost `X-Forwarded-For` entry, so a
