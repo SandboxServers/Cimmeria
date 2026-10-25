@@ -4,7 +4,7 @@
 //! Handlers read the clock; the stores and the limiter take `now` as an
 //! argument (contract C12).
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -58,10 +58,18 @@ pub struct RouteState {
 
 /// The per-request key for the IP buckets: the peer address, as text.
 ///
-/// The peer is the address the listener saw. The keys stay in memory only and
-/// are never logged (contract C11).
+/// The peer is the address the listener saw. An IPv6 peer is keyed by its /64
+/// prefix, since one customer network holds 2^64 addresses that would
+/// otherwise each get a fresh bucket. The keys stay in memory only and are
+/// never logged (contract C11).
 pub fn client_ip(ConnectInfo(peer): ConnectInfo<SocketAddr>) -> String {
-    peer.ip().to_string()
+    match peer.ip() {
+        IpAddr::V4(v4) => v4.to_string(),
+        IpAddr::V6(v6) => {
+            let [a, b, c, d, ..] = v6.segments();
+            format!("{a:x}:{b:x}:{c:x}:{d:x}::/64")
+        }
+    }
 }
 
 /// Records the span's outcome.
@@ -76,5 +84,28 @@ impl RouteState {
             .providers
             .get(verified.provider.as_str())
             .is_some_and(|provider| provider.trusted_email())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(peer: &str) -> String {
+        client_ip(ConnectInfo(peer.parse().expect("socket address")))
+    }
+
+    #[test]
+    fn ipv4_is_keyed_by_the_full_address() {
+        assert_eq!(key("192.0.2.7:443"), "192.0.2.7");
+    }
+
+    #[test]
+    fn ipv6_is_keyed_by_its_slash_64_prefix() {
+        assert_eq!(key("[2001:db8:1:2:aaaa::9]:443"), "2001:db8:1:2::/64");
+        assert_eq!(
+            key("[2001:db8:1:2::1]:443"),
+            key("[2001:db8:1:2:ffff::7]:80")
+        );
     }
 }
