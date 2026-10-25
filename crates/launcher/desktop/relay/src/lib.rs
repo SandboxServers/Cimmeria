@@ -9,7 +9,7 @@ pub mod callback;
 mod tests;
 
 use std::convert::Infallible;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -34,6 +34,9 @@ const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(20);
 /// In-flight requests get this long to finish once the relay is asked to stop.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 const MAX_CONNECTIONS: usize = 64;
+/// A connection that is still open after this long is closed, so idle or slow sockets cannot
+/// hold a connection slot for ever. Longer than [`UPSTREAM_TIMEOUT`].
+const CONNECTION_LIFETIME: Duration = Duration::from_secs(120);
 const SOAP_PATHS: [&str; 2] = ["/SGWLogin/UserAuth", "/SGWLogin/ServerSelection"];
 
 /// Configuration for [`start`].
@@ -49,6 +52,7 @@ pub struct RelayConfig {
 /// A running relay. Stop it with [`RelayHandle::shutdown`].
 pub struct RelayHandle {
     port: u16,
+    addr: SocketAddr,
     stop: oneshot::Sender<()>,
     join: JoinHandle<()>,
 }
@@ -75,7 +79,7 @@ impl RelayHandle {
 
     /// The relay's base URL, `http://127.0.0.1:<port>`.
     pub fn soap_url(&self) -> String {
-        format!("http://127.0.0.1:{}", self.port)
+        format!("http://{}", self.addr)
     }
 
     /// Stops accepting, waits at most two seconds for in-flight requests, then returns.
@@ -106,7 +110,8 @@ pub async fn start(cfg: RelayConfig) -> Result<RelayHandle, RelayError> {
     check_upstream(&cfg.upstream, cfg!(test))?;
     let client = build_client(&cfg)?;
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
-    let port = listener.local_addr()?.port();
+    let addr = listener.local_addr()?;
+    let port = addr.port();
     let shared = Arc::new(Shared {
         upstream: cfg.upstream.as_str().trim_end_matches('/').to_owned(),
         host: format!("127.0.0.1:{port}"),
@@ -115,8 +120,17 @@ pub async fn start(cfg: RelayConfig) -> Result<RelayHandle, RelayError> {
     });
     let (stop, stop_rx) = oneshot::channel();
     let join = tokio::spawn(run(listener, shared, stop_rx));
-    tracing::info!(event = "launcher.relay.started", "relay started");
-    Ok(RelayHandle { port, stop, join })
+    tracing::info!(
+        event = "launcher.relay.started",
+        outcome = "started",
+        "relay started"
+    );
+    Ok(RelayHandle {
+        port,
+        addr,
+        stop,
+        join,
+    })
 }
 
 /// Refuses any upstream that is not `https` with a bare origin. `allow_test_http` admits
@@ -175,18 +189,25 @@ async fn run(listener: TcpListener, shared: Arc<Shared>, mut stop: oneshot::Rece
             _ = &mut stop => break,
             Some(_) = conns.join_next(), if !conns.is_empty() => {}
             accepted = listener.accept() => {
-                if let Ok((stream, _)) = accepted {
-                    let shared = Arc::clone(&shared);
-                    conns.spawn(async move {
-                        let _permit = permit;
-                        let service = service_fn(move |req| {
-                            let shared = Arc::clone(&shared);
-                            async move { handle(shared, req).await }
-                        });
-                        let _ = http1::Builder::new()
-                            .serve_connection(TokioIo::new(stream), service)
+                match accepted {
+                    Ok((stream, _)) => {
+                        let shared = Arc::clone(&shared);
+                        conns.spawn(async move {
+                            let _permit = permit;
+                            let service = service_fn(move |req| {
+                                let shared = Arc::clone(&shared);
+                                async move { handle(shared, req).await }
+                            });
+                            let _ = tokio::time::timeout(
+                                CONNECTION_LIFETIME,
+                                http1::Builder::new().serve_connection(TokioIo::new(stream), service),
+                            )
                             .await;
-                    });
+                        });
+                    }
+                    // Accept can fail under descriptor exhaustion. Back off instead of
+                    // spinning on the error.
+                    Err(_) => tokio::time::sleep(Duration::from_millis(10)).await,
                 }
             }
         }

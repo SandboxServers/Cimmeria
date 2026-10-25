@@ -2,7 +2,8 @@
 //! error) for the state the launcher expects, and answers the browser with a static page.
 
 use std::convert::Infallible;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::Arc;
 use std::time::Duration;
 
 use http_body_util::Full;
@@ -12,11 +13,16 @@ use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 use url::form_urlencoded;
 
 /// Query strings above this size are refused without parsing.
 const MAX_QUERY: usize = 4 * 1024;
+/// Connections open at once. Further connections wait in the accept queue.
+const MAX_CONNECTIONS: usize = 16;
+/// A connection that is still open after this long is closed. Browsers finish a redirect
+/// within this time, and an idle socket cannot pin a slot for the whole sign-in wait.
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
 const CLOSE_TAB_PAGE: &str = "<!doctype html><meta charset=\"utf-8\"><title>Cimmeria</title>\
 <p>You can close this tab and return to the Cimmeria launcher.</p>";
 const CANCELLED_PAGE: &str = "<!doctype html><meta charset=\"utf-8\"><title>Cimmeria</title>\
@@ -25,7 +31,7 @@ const CANCELLED_PAGE: &str = "<!doctype html><meta charset=\"utf-8\"><title>Cimm
 /// The loopback listener that receives the OAuth redirect.
 pub struct CallbackServer {
     listener: TcpListener,
-    port: u16,
+    pub(crate) addr: SocketAddr,
 }
 
 /// How a sign-in redirect ended.
@@ -45,13 +51,13 @@ impl CallbackServer {
     /// Binds `127.0.0.1` on an ephemeral port.
     pub async fn bind() -> std::io::Result<CallbackServer> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
-        let port = listener.local_addr()?.port();
-        Ok(CallbackServer { listener, port })
+        let addr = listener.local_addr()?;
+        Ok(CallbackServer { listener, addr })
     }
 
     /// The redirect URI to register with the provider, `http://127.0.0.1:<port>/cb`.
     pub fn redirect_uri(&self) -> String {
-        format!("http://127.0.0.1:{}/cb", self.port)
+        format!("http://{}/cb", self.addr)
     }
 
     /// Waits for the first `/cb` request that ends the sign-in, or for `timeout`.
@@ -59,28 +65,32 @@ impl CallbackServer {
     pub async fn wait(self, expected_state: &str, timeout: Duration) -> CallbackResult {
         let (tx, mut rx) = mpsc::channel::<CallbackResult>(1);
         tokio::select! {
-            _ = accept_loop(&self.listener, expected_state, &tx, timeout) => CallbackResult::TimedOut,
+            _ = accept_loop(&self.listener, expected_state, &tx) => CallbackResult::TimedOut,
             result = rx.recv() => result.unwrap_or(CallbackResult::TimedOut),
             () = tokio::time::sleep(timeout) => CallbackResult::TimedOut,
         }
     }
 }
 
-/// Accepts connections forever. Each connection runs on its own task, bounded by `limit`.
+/// Accepts connections forever. Each connection runs on its own task, holding one of
+/// [`MAX_CONNECTIONS`] permits until it closes or [`CONNECTION_TIMEOUT`] passes.
 async fn accept_loop(
     listener: &TcpListener,
     expected_state: &str,
     tx: &mpsc::Sender<CallbackResult>,
-    limit: Duration,
 ) {
+    let slots = Arc::new(Semaphore::new(MAX_CONNECTIONS));
     loop {
+        let Ok(permit) = Arc::clone(&slots).acquire_owned().await else {
+            return;
+        };
         match listener.accept().await {
             Ok((stream, _)) => {
                 tokio::spawn(serve_connection(
                     stream,
                     expected_state.to_owned(),
                     tx.clone(),
-                    limit,
+                    permit,
                 ));
             }
             Err(_) => tokio::time::sleep(Duration::from_millis(10)).await,
@@ -92,7 +102,7 @@ async fn serve_connection(
     stream: TcpStream,
     expected_state: String,
     tx: mpsc::Sender<CallbackResult>,
-    limit: Duration,
+    _permit: OwnedSemaphorePermit,
 ) {
     let service = service_fn(move |req: Request<Incoming>| {
         let expected_state = expected_state.clone();
@@ -100,7 +110,7 @@ async fn serve_connection(
         async move { Ok::<_, Infallible>(answer(&req, &expected_state, &tx)) }
     });
     let serve = http1::Builder::new().serve_connection(TokioIo::new(stream), service);
-    let _ = tokio::time::timeout(limit, serve).await;
+    let _ = tokio::time::timeout(CONNECTION_TIMEOUT, serve).await;
 }
 
 /// Decides what one request means for the sign-in and builds the reply.
@@ -134,8 +144,10 @@ fn answer(
         )
     } else {
         match code {
-            Some(code) => (CallbackResult::Code(code), StatusCode::OK, CLOSE_TAB_PAGE),
-            None => (CallbackResult::Denied, StatusCode::OK, CANCELLED_PAGE),
+            Some(code) if !code.is_empty() => {
+                (CallbackResult::Code(code), StatusCode::OK, CLOSE_TAB_PAGE)
+            }
+            _ => (CallbackResult::Denied, StatusCode::OK, CANCELLED_PAGE),
         }
     };
     let _ = tx.try_send(result);

@@ -2,9 +2,12 @@
 //! `127.0.0.1`, which only the `cfg(test)` exemption admits.
 
 use std::io;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use tokio::io::AsyncReadExt;
+use tokio::net::TcpStream;
 use url::Url;
 use wiremock::matchers::{body_string, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -152,7 +155,59 @@ async fn binds_loopback_only() {
         .await
         .expect("relay starts");
     assert!(relay.soap_url().starts_with("http://127.0.0.1:"));
+    assert_eq!(relay.addr.ip(), IpAddr::V4(Ipv4Addr::LOCALHOST));
     assert_ne!(relay.soap_port(), 0);
+    relay.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn idle_connection_is_closed() {
+    let relay = start(config("http://127.0.0.1:9"))
+        .await
+        .expect("relay starts");
+    let mut stream = TcpStream::connect(("127.0.0.1", relay.soap_port()))
+        .await
+        .expect("connect to relay");
+    // Send nothing. The relay must close the socket, so the read sees end of file. The
+    // outer timeout only stops a broken relay from hanging the test.
+    let mut buf = [0u8; 1];
+    let read = tokio::time::timeout(Duration::from_secs(300), stream.read(&mut buf)).await;
+    assert!(matches!(read, Ok(Ok(0))), "read: {read:?}");
+    relay.shutdown().await;
+}
+
+#[tokio::test]
+async fn oversized_upstream_reply_is_502() {
+    let big = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![b'x'; 256 * 1024 + 1]))
+        .mount(&big)
+        .await;
+    let relay = start(config(&big.uri())).await.expect("relay starts");
+    let resp = client()
+        .post(format!("{}/SGWLogin/UserAuth", relay.soap_url()))
+        .body("request")
+        .send()
+        .await
+        .expect("relay answers");
+    assert_eq!(resp.status(), 502);
+    assert!(resp.bytes().await.expect("body").is_empty());
+    relay.shutdown().await;
+
+    let exact = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![b'x'; 256 * 1024]))
+        .mount(&exact)
+        .await;
+    let relay = start(config(&exact.uri())).await.expect("relay starts");
+    let resp = client()
+        .post(format!("{}/SGWLogin/UserAuth", relay.soap_url()))
+        .body("request")
+        .send()
+        .await
+        .expect("relay answers");
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.bytes().await.expect("body").len(), 256 * 1024);
     relay.shutdown().await;
 }
 
@@ -223,6 +278,7 @@ async fn callback_returns_the_code_for_the_right_state() {
     let cb = CallbackServer::bind().await.expect("bind");
     let uri = cb.redirect_uri();
     assert!(uri.starts_with("http://127.0.0.1:") && uri.ends_with("/cb"));
+    assert_eq!(cb.addr.ip(), IpAddr::V4(Ipv4Addr::LOCALHOST));
     let wait = tokio::spawn(cb.wait("state-1", Duration::from_secs(5)));
 
     let resp = client()
@@ -246,6 +302,7 @@ async fn callback_state_mismatch_and_denied_and_timeout() {
     for (query, expected) in [
         ("code=abc&state=wrong", CallbackResult::StateMismatch),
         ("error=access_denied&state=s", CallbackResult::Denied),
+        ("code=&state=s", CallbackResult::Denied),
     ] {
         let cb = CallbackServer::bind().await.expect("bind");
         let uri = cb.redirect_uri();
@@ -257,10 +314,10 @@ async fn callback_state_mismatch_and_denied_and_timeout() {
             .expect("callback answers");
         assert_eq!(
             resp.status(),
-            if expected == CallbackResult::Denied {
-                200
-            } else {
+            if matches!(expected, CallbackResult::StateMismatch) {
                 400
+            } else {
+                200
             }
         );
         assert_eq!(wait.await.expect("wait task"), expected, "query {query}");
@@ -269,6 +326,19 @@ async fn callback_state_mismatch_and_denied_and_timeout() {
     let cb = CallbackServer::bind().await.expect("bind");
     let result = cb.wait("s", Duration::from_millis(100)).await;
     assert_eq!(result, CallbackResult::TimedOut);
+}
+
+#[tokio::test(start_paused = true)]
+async fn callback_closes_idle_connections() {
+    let cb = CallbackServer::bind().await.expect("bind");
+    let addr = cb.addr;
+    let _wait = tokio::spawn(cb.wait("s", Duration::from_secs(300)));
+    let mut stream = TcpStream::connect(addr).await.expect("connect to callback");
+    // Send nothing. The listener must close the socket after its connection timeout. The
+    // outer timeout only stops a broken listener from hanging the test.
+    let mut buf = [0u8; 1];
+    let read = tokio::time::timeout(Duration::from_secs(60), stream.read(&mut buf)).await;
+    assert!(matches!(read, Ok(Ok(0))), "read: {read:?}");
 }
 
 #[tokio::test]
