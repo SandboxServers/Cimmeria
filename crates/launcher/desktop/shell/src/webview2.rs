@@ -1,6 +1,18 @@
 //! WebView2 runtime check. Tauri renders the window through the Edge WebView2
-//! Runtime, so a machine without it gets a message and a download link instead
-//! of a launcher that exits without a word.
+//! Runtime, so a machine without it is offered an install (PD-41) and, when
+//! that is declined or doesn't finish, a download link instead of a launcher
+//! that exits without a word. The install runs silently behind a launcher
+//! notice, and a second launch during it is turned away (PD-41 ruling 1).
+
+#[path = "webview2_install.rs"]
+mod install;
+
+#[cfg(windows)]
+use windows_sys::Win32::{
+    Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS, HANDLE},
+    System::Threading::GetCurrentThreadId,
+    UI::WindowsAndMessaging::{MB_ICONERROR, MB_ICONQUESTION},
+};
 
 /// Edge update client key that records the installed WebView2 runtime version.
 #[cfg(windows)]
@@ -27,24 +39,145 @@ pub fn runtime_present_in(reads: &[Option<String>]) -> bool {
     reads.iter().flatten().any(|pv| version_is_present(pv))
 }
 
-/// Exits the launcher with code 1 when the WebView2 runtime is missing, after
-/// offering the download page. Returns when the runtime is present.
+/// The download-page question, led by [`install::INSTALL_DID_NOT_FINISH`] and
+/// the cause when an install attempt came first.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn download_prompt(cause: Option<install::Cause>) -> String {
+    let ask =
+        "The Microsoft Edge WebView2 Runtime is needed to run the launcher. Open the download page?";
+    match cause {
+        Some(c) => format!(
+            "{}\n{}\n\n{ask}",
+            install::INSTALL_DID_NOT_FINISH,
+            c.sentence()
+        ),
+        None => ask.to_string(),
+    }
+}
+
+/// Returns when the WebView2 runtime is present, or once an install the player
+/// accepted leaves one behind. Otherwise offers the download page and exits
+/// the launcher with code 1. The install is tried at most once per start.
 #[cfg(windows)]
 pub fn ensure_runtime_or_exit() {
-    let reads: Vec<Option<String>> = registry_locations()
-        .into_iter()
-        .map(|(root, path)| read_pv(root, path))
-        .collect();
+    let reads = read_all_pv();
     if runtime_present_in(&reads) {
         return;
     }
     // Release builds have no console, but a support run from a terminal or a
     // redirected stderr shows what each location held.
     eprintln!("WebView2 runtime not found; pv reads (HKLM wow, HKLM, HKCU wow, HKCU): {reads:?}");
-    if confirm_download() && !open_download_page() {
+    // Held until this function returns, or the process exits.
+    let (lock, _guard) = take_setup_lock();
+    if install::setup_gate(lock) == install::Gate::AlreadyRunning {
+        show_notice(install::ALREADY_SETTING_UP);
+        std::process::exit(0);
+    }
+    let cause = if ask_yes_no(install::INSTALL_PROMPT, MB_ICONQUESTION) {
+        // SAFETY: GetCurrentThreadId has no preconditions.
+        let main_thread = unsafe { GetCurrentThreadId() };
+        let result = install::with_notice(
+            || install::install(DOWNLOAD_URL, || runtime_present_in(&read_all_pv())),
+            || show_notice(install::INSTALLING_NOTICE),
+            || close_thread_notices(main_thread),
+        );
+        let cause = match result {
+            Ok(Ok(())) => return,
+            Ok(Err(cause)) => cause,
+            Err(_) => install::Cause::CouldNotStart,
+        };
+        eprintln!("WebView2 install did not finish: {cause:?}");
+        Some(cause)
+    } else {
+        None
+    };
+    if ask_yes_no(&download_prompt(cause), MB_ICONERROR) && !open_download_page() {
         show_download_url();
     }
     std::process::exit(1);
+}
+
+/// Closes the setup mutex handle when `ensure_runtime_or_exit` returns.
+#[cfg(windows)]
+struct SetupLockGuard(HANDLE);
+
+#[cfg(windows)]
+impl Drop for SetupLockGuard {
+    fn drop(&mut self) {
+        // SAFETY: the handle came from CreateMutexW and is closed once.
+        unsafe { CloseHandle(self.0) };
+    }
+}
+
+/// Takes the per-session setup mutex. A launcher that finds it held is a
+/// second launch during an install. A null handle means no lock at all.
+#[cfg(windows)]
+fn take_setup_lock() -> (install::SetupLock, Option<SetupLockGuard>) {
+    use windows_sys::Win32::System::Threading::CreateMutexW;
+
+    let name = wide(r"Local\CimmeriaLauncher-WebView2-Setup");
+    // SAFETY: the name is NUL-terminated and lives for the call; null
+    // security attributes and no initial owner are accepted.
+    let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
+    if handle.is_null() {
+        return (install::SetupLock::Unavailable, None);
+    }
+    // SAFETY: read straight after CreateMutexW on the same thread.
+    let lock = if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+        install::SetupLock::AlreadyExists
+    } else {
+        install::SetupLock::Created
+    };
+    (lock, Some(SetupLockGuard(handle)))
+}
+
+/// Shows an OK-only notice and returns when it is closed.
+#[cfg(windows)]
+fn show_notice(text: &str) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        MessageBoxW, MB_ICONINFORMATION, MB_OK, MB_SETFOREGROUND,
+    };
+
+    let text = wide(text);
+    let caption = wide("Cimmeria Launcher");
+    // SAFETY: both strings are NUL-terminated and live for the call; no owner window.
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            text.as_ptr(),
+            caption.as_ptr(),
+            MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND,
+        );
+    }
+}
+
+/// Posts the OK button's command to every top-level window of one thread, which
+/// closes a message box that thread has open. Searching only that thread keeps
+/// other processes' windows out of reach.
+#[cfg(windows)]
+fn close_thread_notices(thread_id: u32) {
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EnumThreadWindows, PostMessageW, IDOK, WM_COMMAND,
+    };
+
+    unsafe extern "system" fn post_ok(hwnd: HWND, _: LPARAM) -> windows_sys::core::BOOL {
+        // SAFETY: PostMessageW takes any window handle; a stale one just fails.
+        unsafe { PostMessageW(hwnd, WM_COMMAND, IDOK as WPARAM, 0) };
+        1
+    }
+    // SAFETY: the callback matches WNDENUMPROC and uses no state. The result
+    // is FALSE when the thread has no windows, which is normal.
+    unsafe { EnumThreadWindows(thread_id, Some(post_ok), 0) };
+}
+
+/// The `pv` read at every location [`registry_locations`] names, in its order.
+#[cfg(windows)]
+fn read_all_pv() -> Vec<Option<String>> {
+    registry_locations()
+        .into_iter()
+        .map(|(root, path)| read_pv(root, path))
+        .collect()
 }
 
 /// HKLM, then HKCU, each with and without WOW6432Node.
@@ -92,14 +225,15 @@ fn read_pv(root: windows_sys::Win32::System::Registry::HKEY, path: &str) -> Opti
     )
 }
 
-/// Asks whether to open the download page. Yes means open it.
+/// Asks a yes-or-no question with the given icon. True means Yes.
 #[cfg(windows)]
-fn confirm_download() -> bool {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_ICONERROR, MB_YESNO};
+fn ask_yes_no(
+    question: &str,
+    icon: windows_sys::Win32::UI::WindowsAndMessaging::MESSAGEBOX_STYLE,
+) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_YESNO};
 
-    let text = wide(
-        "The Microsoft Edge WebView2 Runtime is needed to run the launcher. Open the download page?",
-    );
+    let text = wide(question);
     let caption = wide("Cimmeria Launcher");
     // SAFETY: both strings are NUL-terminated and live for the call; no owner window.
     let answer = unsafe {
@@ -107,7 +241,7 @@ fn confirm_download() -> bool {
             std::ptr::null_mut(),
             text.as_ptr(),
             caption.as_ptr(),
-            MB_YESNO | MB_ICONERROR,
+            MB_YESNO | icon,
         )
     };
     answer == IDYES
@@ -140,7 +274,7 @@ fn open_download_page() -> bool {
 /// Shows the download address when the browser could not be opened.
 #[cfg(windows)]
 fn show_download_url() {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_OK};
 
     let text = wide(&format!(
         "The download page could not be opened. Download the Microsoft Edge WebView2 Runtime from:\n\n{DOWNLOAD_URL}"
@@ -188,6 +322,16 @@ mod tests {
             Some(String::new()),
             None,
         ]));
+    }
+
+    #[test]
+    fn the_download_prompt_says_when_an_install_did_not_finish() {
+        let plain = download_prompt(None);
+        assert!(plain.starts_with("The Microsoft Edge WebView2 Runtime is needed"));
+        let after = download_prompt(Some(install::Cause::TimedOut));
+        assert!(after.starts_with("The automatic install didn't finish.\n"));
+        assert!(after.contains(install::Cause::TimedOut.sentence()));
+        assert!(after.ends_with(&plain));
     }
 
     #[test]

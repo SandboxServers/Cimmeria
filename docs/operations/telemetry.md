@@ -714,6 +714,8 @@ carries a path, URL or host: the only free text is a sample of at most 10 index 
 | `adoption_index_compared` | `adoption` | info | `state`, `stock`, `patched`, `prepared`, `changed`, `missing`, `extra`, `changed_sample`, `missing_sample` |
 | `patch_incomplete` | `launcher.install` | info | `patch` (`patch:<id>`), `ops_skipped` |
 | `patch_retry_failed` | `launcher.install` | warn | `patch` (`patch:<id>`), `reason` (a closed install error code) |
+| `install_stage_failed` | `launcher.install` | warn | `reason` (a closed install error code), `http_status` (when the server replied), `unpack_kind` (a closed unpack code, only for `reason = unpack`) |
+| `repair_stage_failed` | `launcher.repair` | warn | `reason` (a closed install error code), `http_status` (when the server replied), `unpack_kind` (a closed unpack code, only for `reason = unpack`) |
 | `update_staged` (gained fields) | `launcher.game_update` | info | `mode` (`incremental` or `full`), `ops_skipped`, `stage_linked`, `stage_copied`; the full path always sends `full`, 0, 0, 0 |
 | `update_seedless_declined` | `launcher.game_update` | info | `reason`: `previous_release_unverified` or `ledger_mismatch` |
 | `update_incremental_failed` | `launcher.game_update` | warn | `reason`: `fetch_failed`, `hash_mismatch`, `write_set_unreadable`, `seed_stage_failed` or `rename_failed` |
@@ -723,6 +725,9 @@ carries a path, URL or host: the only free text is a sample of at most 10 index 
 - `changed_sample` and `missing_sample` hold at most 10 paths, comma-joined, at most
   600 characters, taken only from index entries the release names (`changed`,
   `missing`), never from `extra` files (D-LA17).
+- The `launcher.install.detail` and `launcher.repair.detail` targets (events
+  `install_stage_detail` and `repair_stage_detail`) stay in the local log and are
+  never forwarded.
 - The shell's `mode_chosen` and `folder_chosen` steps on `client.launcher.adoption`
   count a Light adoption as `in_place` (`decision_outcome = in_place` and
   `mode = in_place`). A funnel that splits `in_place` from `copy` therefore cannot

@@ -105,6 +105,13 @@ areas may be lower than under WoWSilicon. Tell us how it feels.
 On a Mac the launcher always starts the game in a window, so Cmd+Tab away and
 back works; exclusive fullscreen is not available.
 
+The game has no frame limit of its own, so on a Mac the launcher caps it. The
+default is 30 frames per second, which keeps the Mac cooler and quieter. The
+launcher's display settings also offer 60 fps, or matching the refresh rate of
+the display the game opens on (30 to 240 fps; 60 when the launcher cannot read
+the rate). The cap takes effect at the next **Play**. Windows has no frame cap
+setting.
+
 ## Step 4: log in and play
 
 1. Log in with your account and pick the server in the list.
@@ -184,6 +191,18 @@ With game diagnostics on, also send your install id: it is the `install_id`
 value in `~/Library/Application Support/app.cimmeria.launcher.desktop/state/game-telemetry.json`
 (in Finder, **Go → Go to Folder…** and paste the folder path). It is a random
 id that lets us find your diagnostics, nothing else.
+
+### Wine and DXVK logs after a black screen or crash
+
+Each time you press Play, the launcher keeps that game's Wine and graphics logs
+in its own folder under
+`~/Library/Application Support/app.cimmeria.launcher.desktop/state/logs/game/`
+(one folder per launch; open the newest). `wine.log` holds Wine's errors and
+display messages, and the `*_d3d9.log` file is DXVK's graphics log. After a
+black screen, a crash or an error box, zip the newest folder and send it with
+your report. The launcher keeps only the last 5 launches. These files stay on
+your Mac: the launcher's log upload never sends them, and they may contain your
+folder names, so look before you share.
 
 ## For the server owner: finding a Mac tester's telemetry
 

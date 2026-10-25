@@ -44,10 +44,21 @@ pub(crate) fn client_options_saved(servers: &[LoginServer], client_patches_enabl
 }
 
 /// The display mode and size were saved (C-PD6). They apply at the next Play.
-pub(crate) fn display_options_saved(options: super::display_options::DisplayOptions) {
+/// `monitor_remembered`: this save stored a monitor for the current display
+/// setup; false when it removed the entry or stored nothing (C-PD8). No field carries a rectangle or a key.
+/// `frame_cap`: the saved cap (`fps30`, `fps60` or `display`), stored on every platform (C-PD8).
+pub(crate) fn display_options_saved(
+    options: super::display_options::DisplayOptions,
+    monitor_remembered: bool,
+) {
     let mode = match options.mode {
         super::display_options::DisplayMode::Windowed => "windowed",
         super::display_options::DisplayMode::Fullscreen => "fullscreen",
+    };
+    let frame_cap = match options.frame_cap {
+        super::display_options::FrameCap::Fps30 => "fps30",
+        super::display_options::FrameCap::Fps60 => "fps60",
+        super::display_options::FrameCap::Display => "display",
     };
     tracing::info!(
         target: "launcher.settings",
@@ -55,6 +66,8 @@ pub(crate) fn display_options_saved(options: super::display_options::DisplayOpti
         mode,
         width = options.width,
         height = options.height,
+        monitor_remembered,
+        frame_cap,
         "settings: display options saved"
     );
 }

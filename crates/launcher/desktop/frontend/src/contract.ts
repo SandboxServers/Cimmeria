@@ -16,8 +16,20 @@ export type LoginServer = typeof LoginServer.Type;
 /** Engine `storage::display_options` (C-PD6). macOS offers `windowed` only. */
 export const DisplayMode = Schema.Literals(["windowed", "fullscreen"]);
 export type DisplayMode = typeof DisplayMode.Type;
-export const DisplayOptions = Schema.Struct({mode: DisplayMode, width: Schema.Number, height: Schema.Number});
+/** Engine `display_options::FrameCap` (C-PD8): DXVK's limit on macOS; Windows offers none. */
+export const FrameCap = Schema.Literals(["fps30", "fps60", "display"]);
+export type FrameCap = typeof FrameCap.Type;
+// `frame_cap`: the engine omits fps30 (today's cap), and a save without it stores fps30.
+export const DisplayOptions = Schema.Struct({mode: DisplayMode, width: Schema.Number, height: Schema.Number, frame_cap: Schema.optionalKey(FrameCap)});
 export type DisplayOptions = typeof DisplayOptions.Type;
+/** Engine `display_targets::DisplayInfo` (C-PD8): one display, in the units the game sees. */
+export const DisplayInfo = Schema.Struct({
+  index: Schema.Number, main: Schema.Boolean, x: Schema.Number, y: Schema.Number,
+  width: Schema.Number, height: Schema.Number, scale_percent: Schema.Number, refresh_hz: Schema.Number,
+});
+export type DisplayInfo = typeof DisplayInfo.Type;
+/** Engine `display_options::MonitorRect` (C-PD8): the `x, y, width, height` of one of the snapshot's `displays`. */
+export type MonitorRect = {x: number; y: number; width: number; height: number};
 export const NativeSnapshot = Schema.Struct({
   schema_version: Schema.Literal(1),
   operation: Schema.Struct({schema_version: Schema.Literal(1), revision: Revision, operation: Schema.NullOr(Operation)}),
@@ -38,6 +50,16 @@ export const NativeSnapshot = Schema.Struct({
   setup_diagnostics_endpoint: Schema.optionalKey(Schema.Boolean),
   // The display modes this platform offers (engine `display_options::allowed_modes`).
   display_modes: Schema.Array(DisplayMode),
+  // The active displays and, per display, the window sizes that fit it (C-PD8,
+  // engine `display_targets`). Optional so older fixtures decode; the engine always sends both.
+  displays: Schema.optionalKey(Schema.Array(DisplayInfo)),
+  display_sizes: Schema.optionalKey(Schema.Array(Schema.Array(Schema.Tuple([Schema.Number, Schema.Number])))),
+  // The `index` in `displays` the current display setup remembers; null means the main display
+  // (C-PD8, engine `display_options::placement_for`). Optional so older fixtures decode.
+  display_monitor: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  // The frame caps this platform offers (engine `display_options::frame_caps`): all three on macOS,
+  // empty elsewhere. Optional so older fixtures decode; the engine always sends it.
+  frame_caps: Schema.optionalKey(Schema.Array(FrameCap)),
 });
 export type NativeSnapshot = typeof NativeSnapshot.Type;
 export type Preferences = NativeSnapshot["preferences"];
@@ -49,6 +71,8 @@ export type Command = {command: "inspect"; schema_version: 1} | {
   login_servers: readonly LoginServer[]; client_patches_enabled: boolean;
 } | {
   command: "save_display_options"; schema_version: 1; expected_revision: number; display: DisplayOptions;
+  // Remembered for the current display setup; absent or null means the main display (C-PD8).
+  monitor?: MonitorRect | null;
 };
 
 // Native storage codes as `StorageError` serializes them.

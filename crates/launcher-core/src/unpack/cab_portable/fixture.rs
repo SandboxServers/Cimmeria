@@ -5,7 +5,8 @@
 //! encoder whose matches reach back into earlier blocks, as real MSZIP does:
 //! a decoder that drops history between blocks or cabinets fails on them.
 //! A folder that crosses a cabinet boundary can have its last block split
-//! across the two cabinets, as MakeCAB writes them.
+//! across the two cabinets, and carries on only with the file that crosses
+//! it, as MakeCAB writes them. Every block but a folder's last is 32 KiB.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -16,12 +17,8 @@ use super::mszip::WINDOW;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CabOptions {
-    /// Uncompressed bytes per data block (at most 32 KiB).
-    pub block_size: usize,
     /// Data blocks per cabinet before the set moves on to the next one.
     pub blocks_per_cab: usize,
-    /// Split the block at each cabinet boundary across both cabinets.
-    pub split_blocks: bool,
     /// Start a new folder before each file whose index is a multiple of this
     /// (0: one folder for everything).
     pub files_per_folder: usize,
@@ -36,9 +33,7 @@ pub struct CabOptions {
 impl Default for CabOptions {
     fn default() -> Self {
         Self {
-            block_size: 4096,
-            blocks_per_cab: 16,
-            split_blocks: true,
+            blocks_per_cab: 2,
             files_per_folder: 0,
             compression: 1,
             reserve: None,
@@ -56,22 +51,36 @@ pub struct CabSetInfo {
 
 struct Block {
     folder: usize,
+    /// Where the block's output starts in its folder's stream.
+    start: u64,
+    /// The block's whole output, also for either part of a split block.
+    size: usize,
     data: Vec<u8>,
+    /// `cbUncomp` as written: 0 for the first part of a split block.
     uncompressed: usize,
+    /// The second part of a split block, opening the next cabinet.
+    tail: bool,
 }
 
-/// Write `DATA1.CAB`.. and `DATA.INF` for `files` into `dir`.
-pub fn write_cab_set(dir: &Path, files: &[(&str, Vec<u8>)], opts: CabOptions) -> CabSetInfo {
-    assert!(opts.block_size > 0 && opts.block_size <= WINDOW);
-    // Folders: file ranges within each folder's stream.
-    let mut folders: Vec<Vec<usize>> = Vec::new();
-    for i in 0..files.len() {
-        if folders.is_empty() || (opts.files_per_folder > 0 && i % opts.files_per_folder == 0) {
-            folders.push(Vec::new());
-        }
-        folders.last_mut().unwrap().push(i);
-    }
-    // (folder, start, end) per file.
+/// What one cabinet holds of one folder: where the blocks that start in it
+/// begin and end (`None` when it holds only a split block's tail), and the
+/// data it completes.
+#[derive(Clone, Copy)]
+struct Share {
+    starts: Option<(u64, u64)>,
+    data: (u64, u64),
+}
+
+/// The blocks dealt into cabinets, each file's (folder, start, end), what each
+/// cabinet covers of each folder's stream, and the cross-block match count.
+struct Layout {
+    cabs: Vec<Vec<Block>>,
+    ranges: Vec<(usize, u64, u64)>,
+    covered: Vec<HashMap<usize, Share>>,
+    cross_block_matches: usize,
+}
+
+fn layout(files: &[(&str, Vec<u8>)], folders: &[Vec<usize>], opts: CabOptions) -> Layout {
     let mut ranges = vec![(0, 0u64, 0u64); files.len()];
     let mut blocks = Vec::new();
     let mut cross_block_matches = 0;
@@ -83,16 +92,22 @@ pub fn write_cab_set(dir: &Path, files: &[(&str, Vec<u8>)], opts: CabOptions) ->
             ranges[i] = (f, start, stream.len() as u64);
         }
         let mut encoder = Encoder::default();
-        for chunk_start in (0..stream.len().max(1)).step_by(opts.block_size) {
-            let chunk_end = (chunk_start + opts.block_size).min(stream.len());
+        // Every block but a folder's last holds exactly 32 KiB: Windows' FDI
+        // and 7-Zip refuse a folder of shorter blocks, which libmspack and
+        // the portable decoder would accept.
+        for chunk_start in (0..stream.len().max(1)).step_by(WINDOW) {
+            let chunk_end = (chunk_start + WINDOW).min(stream.len());
             let data = match opts.compression {
                 1 => encoder.block(&stream, chunk_start, chunk_end),
                 _ => stream[chunk_start..chunk_end].to_vec(),
             };
             blocks.push(Block {
                 folder: f,
+                start: chunk_start as u64,
+                size: chunk_end - chunk_start,
                 data,
                 uncompressed: chunk_end - chunk_start,
+                tail: false,
             });
         }
         cross_block_matches += encoder.cross_block_matches;
@@ -108,36 +123,110 @@ pub fn write_cab_set(dir: &Path, files: &[(&str, Vec<u8>)], opts: CabOptions) ->
     }
     // Split the last block of each cabinet whose folder carries on: the
     // first part stays with an uncompressed size of 0, and the rest, with
-    // the block's real size, opens the next cabinet.
-    if opts.split_blocks {
-        for c in 0..cabs.len().saturating_sub(1) {
-            let next_folder = cabs[c + 1][0].folder;
-            let last = cabs[c].last_mut().unwrap();
-            if last.folder == next_folder && last.data.len() >= 2 {
-                let tail = Block {
-                    folder: last.folder,
-                    data: last.data.split_off(last.data.len() / 2),
-                    uncompressed: std::mem::replace(&mut last.uncompressed, 0),
-                };
-                cabs[c + 1].insert(0, tail);
-            }
+    // the block's real size, opens the next cabinet. libmspack and FDI both
+    // count a carried-on folder's blocks that way, so MakeCAB always splits.
+    for c in 0..cabs.len().saturating_sub(1) {
+        let next_folder = cabs[c + 1][0].folder;
+        let last = cabs[c].last_mut().unwrap();
+        if last.folder != next_folder {
+            continue;
         }
+        assert!(last.data.len() >= 2, "fixture: a block too small to split");
+        let tail = Block {
+            folder: last.folder,
+            start: last.start,
+            size: last.size,
+            data: last.data.split_off(last.data.len() / 2),
+            uncompressed: std::mem::replace(&mut last.uncompressed, 0),
+            tail: true,
+        };
+        cabs[c + 1].insert(0, tail);
     }
 
-    // Uncompressed stream range each cabinet covers, per folder.
-    let mut covered: Vec<HashMap<usize, (u64, u64)>> = Vec::new();
-    let mut folder_pos = vec![0u64; folders.len()];
+    let mut covered: Vec<HashMap<usize, Share>> = Vec::new();
     for cab in &cabs {
-        let mut map = HashMap::new();
+        let mut map: HashMap<usize, Share> = HashMap::new();
         for block in cab {
-            let entry = map
-                .entry(block.folder)
-                .or_insert((folder_pos[block.folder], folder_pos[block.folder]));
-            folder_pos[block.folder] += block.uncompressed as u64;
-            entry.1 = folder_pos[block.folder];
+            let end = block.start + block.size as u64;
+            let share = map.entry(block.folder).or_insert(Share {
+                starts: None,
+                data: (block.start, block.start),
+            });
+            if !block.tail {
+                let lo = share.starts.map_or(block.start, |(lo, _)| lo);
+                share.starts = Some((lo, end));
+            }
+            if block.uncompressed > 0 {
+                share.data.1 = end;
+            }
         }
         covered.push(map);
     }
+    Layout {
+        cabs,
+        ranges,
+        covered,
+        cross_block_matches,
+    }
+}
+
+/// MakeCAB's rule for a folder that reaches a cabinet boundary: it carries
+/// on into the next cabinet only as far as the file that crosses the
+/// boundary, and the next file starts a new folder (the 2009 seed's DATA2
+/// and DATA3 each open with such a one-file folder). Windows' FDI refuses
+/// more files in the continued part. Returns the folder grouping with that
+/// break added at the first boundary that needs one, or `None` when none does.
+fn break_at_boundary(folders: &[Vec<usize>], l: &Layout) -> Option<Vec<Vec<usize>>> {
+    for c in 0..l.cabs.len().saturating_sub(1) {
+        let f = l.cabs[c].last().unwrap().folder;
+        if l.cabs[c + 1][0].folder != f {
+            continue;
+        }
+        // Files that start in the next cabinet's own blocks don't belong in
+        // the carried-on part. Zero-length ones need no data, so they never
+        // make a folder of their own (an empty folder's only block would read
+        // as the first half of a split block).
+        let Some((_, hi)) = l.covered[c][&f].starts else {
+            continue;
+        };
+        let members = &folders[f];
+        let Some(keep) = members.iter().position(|&i| l.ranges[i].1 >= hi) else {
+            continue;
+        };
+        if members[keep..]
+            .iter()
+            .any(|&i| l.ranges[i].2 > l.ranges[i].1)
+        {
+            let mut out = folders.to_vec();
+            let rest = out[f].split_off(keep);
+            out.insert(f + 1, rest);
+            return Some(out);
+        }
+    }
+    None
+}
+
+/// Write `DATA1.CAB`.. and `DATA.INF` for `files` into `dir`.
+pub fn write_cab_set(dir: &Path, files: &[(&str, Vec<u8>)], opts: CabOptions) -> CabSetInfo {
+    // Folders: file indices in each folder's stream.
+    let mut folders: Vec<Vec<usize>> = Vec::new();
+    for i in 0..files.len() {
+        if folders.is_empty() || (opts.files_per_folder > 0 && i % opts.files_per_folder == 0) {
+            folders.push(Vec::new());
+        }
+        folders.last_mut().unwrap().push(i);
+    }
+    let mut l = layout(files, &folders, opts);
+    while let Some(split) = break_at_boundary(&folders, &l) {
+        folders = split;
+        l = layout(files, &folders, opts);
+    }
+    let Layout {
+        cabs,
+        ranges,
+        covered,
+        cross_block_matches,
+    } = l;
 
     let names: Vec<String> = (1..=cabs.len()).map(|n| format!("DATA{n}.CAB")).collect();
     for (c, cab) in cabs.iter().enumerate() {
@@ -150,14 +239,23 @@ pub fn write_cab_set(dir: &Path, files: &[(&str, Vec<u8>)], opts: CabOptions) ->
         let mut listed = Vec::new();
         for (i, (name, data)) in files.iter().enumerate() {
             let (f, start, end) = ranges[i];
-            let Some(&(lo, hi)) = covered[c].get(&f) else {
+            let Some(&share) = covered[c].get(&f) else {
                 continue;
             };
             let last_cab_of_folder = covered[c + 1..].iter().all(|m| !m.contains_key(&f));
-            let starts_here = (start >= lo && start < hi) || (start == hi && last_cab_of_folder);
-            let before = start < lo;
-            let after = end > hi;
-            if !(starts_here || (before && end > lo)) {
+            // A file is listed where its data starts, and again in each
+            // cabinet its data reaches; a split block's tail belongs to the
+            // cabinet the block started in.
+            let (starts_here, before) = match share.starts {
+                Some((lo, hi)) => (
+                    (start >= lo && start < hi) || (start == hi && last_cab_of_folder),
+                    start < lo,
+                ),
+                None => (false, true),
+            };
+            let (data_lo, data_hi) = share.data;
+            let after = end > data_hi;
+            if !(starts_here || (before && end > data_lo)) {
                 continue;
             }
             let slot = cab_folders.iter().position(|&x| x == f).unwrap() as u16;
@@ -334,6 +432,7 @@ impl Encoder {
         bits.put(1, 1); // BFINAL
         bits.put(1, 2); // BTYPE = fixed Huffman
         let mut pos = from;
+        let mut matches = 0;
         while pos < to {
             let mut best = (0usize, 0usize);
             if pos + 3 <= to {
@@ -353,6 +452,7 @@ impl Encoder {
             let step = if best.0 >= 3 {
                 if pos - best.1 < from {
                     self.cross_block_matches += 1;
+                    matches += 1;
                 }
                 emit_match(&mut bits, best.0, best.1);
                 best.0
@@ -371,6 +471,17 @@ impl Encoder {
         emit_code(&mut bits, 256);
         let mut out = b"CK".to_vec();
         out.extend(bits.finish());
+        // Like MakeCAB, store a block that does not compress: MSZIP allows at
+        // most 32 KiB + 12 bytes per block, which FDI and 7-Zip enforce.
+        if out.len() > 2 + 5 + (to - from) {
+            self.cross_block_matches -= matches;
+            out.truncate(2);
+            let len = (to - from) as u16;
+            out.push(0b001); // BFINAL, BTYPE 00 (stored), then byte-aligned
+            out.extend_from_slice(&len.to_le_bytes());
+            out.extend_from_slice(&(!len).to_le_bytes());
+            out.extend_from_slice(&stream[from..to]);
+        }
         out
     }
 }

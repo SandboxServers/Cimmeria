@@ -21,6 +21,8 @@ pub struct HelperCommand {
     pub arguments: Vec<OsString>,
     pub directory: PathBuf,
     pub environment: BTreeMap<OsString, OsString>,
+    /// The Wine game launch's per-launch stderr log (PD-28); `None` discards stderr.
+    pub stderr_log: Option<PathBuf>,
 }
 #[derive(Clone, Copy)]
 pub struct Deadlines {

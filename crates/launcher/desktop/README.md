@@ -147,8 +147,11 @@ fields do not match its version is corrupt and is left untouched.
 stores the game's display mode and window size (default windowed 1024x768) with
 the same admission as `save_client_options`; it fails with
 `invalid_display_options` on an out-of-range size or a mode the platform does not
-offer, and a default display is stored as no key. Every snapshot carries
-`preferences.display` and `display_modes`, the modes this platform offers. `save_client_options` replaces both client
+offer, and a default display is stored as no key. Its optional `monitor` is
+remembered per display setup ([launch.md § The monitor per display
+setup](docs/launch.md#the-monitor-per-display-setup)). Every snapshot carries
+`preferences.display` and `display_modes`, the modes this platform offers, plus
+`displays`, `display_sizes`, `display_monitor` and `frame_caps` (the frame caps this platform offers; empty off macOS). `save_client_options` replaces both client
 options at once, needs the current preference revision, and is refused while the
 launcher updater or any operation other than Play is running (Play reads them
 only at launch, so a save during Play applies to the next one); it leaves the
