@@ -371,8 +371,6 @@ fn live(issued: Instant, now: Instant, life: Duration) -> bool {
     now.saturating_duration_since(issued) < life
 }
 
-/// Locks a store's map, ignoring poisoning: a panicked holder leaves the map
-/// in a state every method can still read.
 /// Past `cap` entries, drops the one issued longest ago, so a flood of issues
 /// cannot grow a store without bound. Runs only when the store is full.
 fn make_room<K, V>(map: &mut HashMap<K, V>, cap: usize, issued: impl Fn(&V) -> Instant)
@@ -391,6 +389,8 @@ where
     }
 }
 
+/// Locks a store's map, ignoring poisoning: a panicked holder leaves the map
+/// in a state every method can still read.
 fn locked<T>(map: &Mutex<T>) -> MutexGuard<'_, T> {
     map.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -432,6 +432,31 @@ mod tests {
             identity: identity(subject),
             intent: None,
         }
+    }
+
+    #[test]
+    fn link_grants_are_capped_and_the_oldest_goes_first() {
+        let grants = LinkGrants::default();
+        let t0 = Instant::now();
+        let first = grants.issue(identity("first"), t0);
+        let t1 = t0 + Duration::from_secs(1);
+        for i in 0..STORE_CAP {
+            grants.issue(identity(&format!("subject-{i}")), t1);
+        }
+        assert!(grants.peek(&first, t1).is_none());
+        assert!(locked(&grants.grants).len() <= STORE_CAP);
+    }
+
+    #[test]
+    fn make_room_drops_the_entry_issued_longest_ago() {
+        let mut map: HashMap<u32, Instant> = HashMap::new();
+        let t0 = Instant::now();
+        map.insert(1, t0 + Duration::from_secs(2));
+        map.insert(2, t0);
+        map.insert(3, t0 + Duration::from_secs(1));
+        make_room(&mut map, 3, |issued| *issued);
+        assert_eq!(map.len(), 2);
+        assert!(!map.contains_key(&2));
     }
 
     #[test]
