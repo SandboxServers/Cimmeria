@@ -104,8 +104,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
       else if(operation?.state==='succeeded')text='Game content prepared. Recheck Play status to check readiness.';
       else if(adopting&&recovery)text='';
       else if(recovery)text=status.can_resume||status.can_reconcile?'An interrupted installation was found. Inspect files or explicitly resume the saved attempt.':'An interrupted compatibility operation was found. Files are preserved; recovery is not available in this build. You can recheck status.';
-      else if(active)text=operation?.state==='cancel_requested'?'Cancellation requested. Waiting for the installer to stop safely.':
-        status.progress?.phase==='download'?progressLine('Downloading verified game content…',status.progress,transfer):status.progress?.phase==='extraction'?progressLine('Extracting game content…',status.progress,transfer):'Preparing installation…';
+      else if(active)text=operation?.state==='cancel_requested'?'Cancellation requested. Waiting for the installer to stop safely.':installPhaseLine(status.progress,transfer);
       else if(status.outcome==='rosetta_required')text='Rosetta is required to prepare Windows game compatibility on this Mac. No game was launched.';
       else if(status.outcome==='runtime_unavailable')text='Windows compatibility could not be prepared. Check your connection and available disk space. Existing files have been preserved.';
       else if(status.can_retry)text='Ready to retry installation.';
@@ -221,20 +220,41 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
 /** Downloads smaller than this (100 MiB) show percent and size only, without speed or ETA. */
 const SPEED_MIN_TOTAL_BYTES = 100 * 1024 * 1024;
 
+/** The active install line for the phase the installer reports; the phase copy is in one place. */
+function installPhaseLine(progress: InstallStatus['progress'], transfer: TransferSample | null): string {
+  if (!progress) return 'Preparing installation…';
+  switch (progress.phase) {
+    case 'download': return progressLine('Downloading verified game content…', progress, transfer);
+    case 'copy': return progressLine('Copying your archive…', progress, transfer);
+    // A local archive reports no hash pass (total 0), so only a downloaded, cached or patch archive says "Checking the download".
+    case 'check': return progressLine(progress.total > 0 ? 'Checking the download…' : 'Reading the archive index…', progress, transfer);
+    case 'extraction': return progressLine('Unpacking the archive…', progress, transfer);
+    case 'expansion': return progressLine('Expanding game files…', progress, transfer);
+    default: return 'Preparing installation…';
+  }
+}
+
 /**
- * Appends percent, size, speed and ETA to an active progress label. Download shows
- * bytes; extraction counts are unitless, so it shows only the percent.
+ * Appends the percent (or byte counts for copy and download), speed and ETA to an active
+ * progress label. Byte phases show MB/s; unpacking and expansion count files, so files/s.
  */
 function progressLine(label: string, progress: NonNullable<InstallStatus['progress']>, transfer: TransferSample | null): string {
   if (!transfer || progress.total <= 0) return label;
-  if (progress.phase === 'extraction') return `${label} ${transfer.percent}%`;
-  const parts = [`${label} ${transfer.percent}%`, `${formatBytes(progress.current)} of ${formatBytes(progress.total)}`];
-  // Small blobs (patches) finish in seconds, so a speed and a jumping ETA would be noise.
-  if (progress.total >= SPEED_MIN_TOTAL_BYTES) {
-    if (transfer.rateBytesPerSec !== null) parts.push(`${formatBytes(transfer.rateBytesPerSec)}/s`);
+  const files = progress.phase === 'extraction' || progress.phase === 'expansion';
+  const sizes = `${formatBytes(progress.current)} of ${formatBytes(progress.total)}`;
+  const parts = progress.phase === 'copy' ? [`${label} ${sizes}`] : [`${label} ${transfer.percent}%`];
+  if (progress.phase === 'download') parts.push(sizes);
+  // Small downloads (patches) finish in seconds, so a speed and a jumping ETA would be noise.
+  if (progress.phase !== 'download' || progress.total >= SPEED_MIN_TOTAL_BYTES) {
+    if (transfer.rateBytesPerSec !== null) parts.push(files ? `${filesPerSecond(transfer.rateBytesPerSec)} files/s` : `${formatBytes(transfer.rateBytesPerSec)}/s`);
     if (transfer.etaSeconds !== null) parts.push(`about ${formatDuration(transfer.etaSeconds)} left`);
   }
   return parts.join(' · ');
+}
+
+/** A file rate with one decimal below 10 files/s, so a slow expansion does not read as 0. */
+function filesPerSecond(rate: number): string {
+  return String(Number(rate.toFixed(rate < 10 ? 1 : 0)));
 }
 
 function repairSuccess(backup: NonNullable<InstallStatus['repair']>['backup']): string {
