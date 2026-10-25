@@ -1,3 +1,4 @@
+use super::sign_in_play;
 use super::*;
 use crate::failure::FailureCode;
 use crate::game_telemetry::patch_events;
@@ -153,6 +154,11 @@ async fn execute(
     cancel: CancellationToken,
     updates: &watch::Sender<Observation>,
 ) -> Result<Observation, IntentError> {
+    // Every Play start clears the last refusal first (C9).
+    state
+        .lock()
+        .map_err(|_| StorageError::Io)?
+        .set_play_refusal(None);
     if cancel.is_cancelled() {
         return Ok(Observation::Cancelled);
     }
@@ -193,15 +199,34 @@ async fn execute(
         .map(|owner| owner.preferences.display_placements.clone())
         .unwrap_or_default();
     let place_on = window_target(&placements, display.effective().mode);
-    let telemetry_session = session.clone().map(|session| (session, servers.clone()));
+    // Sign-in (C9): the relay or ticket is started here and owned by `login` until `finish`.
+    let discovery = sign_in_play::discover(&servers).await;
+    let sign_in = state.lock().map_err(|_| StorageError::Io)?.sign_in();
+    let planned = sign_in_play::plan(sign_in, plan, &servers, discovery).await;
+    let (client_servers, login) = match planned {
+        Ok(planned) => planned,
+        Err(refusal) => {
+            state
+                .lock()
+                .map_err(|_| StorageError::Io)?
+                .set_play_refusal(Some(refusal.reason()));
+            failure::not_started(&state, plan, refusal.reason(), FailureCode::LaunchPrepareFailed);
+            return Ok(Observation::NotStarted);
+        }
+    };
+    let (telemetry_servers, client_servers) = sign_in_play::lists_for(&servers, client_servers);
+    let telemetry_session = session
+        .clone()
+        .map(|session| (session, telemetry_servers.to_vec()));
     let prepared = plan.clone();
+    let ticket_root = root.clone();
     let setup_timer = context.start(crate::phase_timing::Phase::PlayClientSetup);
     let setup = tokio::task::spawn_blocking(move || {
         prepare(
             &prepared,
             &root,
             session.as_ref(),
-            &servers,
+            &client_servers,
             display,
             &placements,
         )
@@ -209,6 +234,7 @@ async fn execute(
     .await
     .map_err(|_| StorageError::Io)?;
     let Ok((spec, mut request, _ownership)) = setup_timer.result(setup) else {
+        sign_in_play::finish(&ticket_root, &servers, login).await;
         failure::not_started(
             &state,
             plan,
@@ -217,6 +243,16 @@ async fn execute(
         );
         return Ok(Observation::NotStarted);
     };
+    if sign_in_play::write(&ticket_root, &login).is_err() {
+        sign_in_play::finish(&ticket_root, &servers, login).await;
+        failure::not_started(
+            &state,
+            plan,
+            "ticket_write_failed",
+            FailureCode::LaunchPrepareFailed,
+        );
+        return Ok(Observation::NotStarted);
+    }
     request.place_on = place_on;
     if minted {
         let attached = request.dlls.len() > plan.resources.client_patches.iter().count();
@@ -246,7 +282,13 @@ async fn execute(
     let binaries = spec.directory.clone();
     // Lazy: nothing is spawned until `run_game` awaits it, after Running.
     let supervised = supervisor::run_recorded(&state, plan, spec, request, cancel.clone(), updates);
-    run_game(&state, plan, &binaries, &cancel, settled, supervised).await
+    // The heartbeat never returns; dropping it when the game ends is its stop.
+    let observed = tokio::select! {
+        result = run_game(&state, plan, &binaries, &cancel, settled, supervised) => result,
+        () = sign_in_play::heartbeat_loop(&login) => unreachable!("heartbeat_loop pends"),
+    };
+    sign_in_play::finish(&ticket_root, &servers, login).await;
+    observed
 }
 /// Commits Running, awaits the supervised game, and reports the
 /// client-patches events: live through the telemetry session when one is

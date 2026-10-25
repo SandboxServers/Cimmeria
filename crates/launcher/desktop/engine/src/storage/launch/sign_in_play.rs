@@ -58,17 +58,13 @@ impl TicketRefusal {
 }
 
 /// The discovery for the first login server, through the process-wide cache.
-/// `None` when the server does not answer or does not describe its sign-in.
-pub(super) async fn discover(server: &LoginServer) -> Option<Discovery> {
+/// `None` when the list is empty, the server does not answer, or it does not
+/// describe its sign-in.
+pub(super) async fn discover(servers: &[LoginServer]) -> Option<Discovery> {
+    let first = servers.first()?;
     let cache = DISCOVERY.get_or_init(|| tokio::sync::Mutex::new(DiscoveryCache::default()));
     let mut cache = cache.lock().await;
-    discovery::probe_cached(
-        &mut cache,
-        &discovery::client(),
-        &server.url,
-        Instant::now(),
-    )
-    .await
+    discovery::probe_cached(&mut cache, &discovery::client(), &first.url, Instant::now()).await
 }
 
 /// The list the client gets and how it logs in. `Err` ends the launch before `prepare`.
