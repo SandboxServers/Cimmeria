@@ -142,6 +142,20 @@ async fn start_link(
     Ok(Json(json!({"authorize_url": url.as_str()})).into_response())
 }
 
+/// Refuses a disabled account with `403 account_disabled`, the answer `mint`
+/// and `link_start` give (C6). A row that is gone is `invalid_token`.
+pub(super) async fn require_enabled(pool: &sqlx::PgPool, account_id: u32) -> Result<(), ApiError> {
+    let facts = account::facts(pool, account_id)
+        .await
+        .map_err(ApiError::from_repo)?
+        .ok_or(ApiError::InvalidToken)?;
+    if facts.enabled {
+        Ok(())
+    } else {
+        Err(ApiError::AccountDisabled)
+    }
+}
+
 /// `GET /account`: the account's name, its display name and its linked
 /// identities. The display name is the most recently used identity's, else the
 /// account name. Never a subject or an email (C6, C15).
@@ -151,10 +165,7 @@ pub async fn get_account(
 ) -> Result<Response, ApiError> {
     let pool = state.deps.db.as_deref().ok_or(ApiError::Unavailable)?;
     let account_id = grant.account_id;
-    account::facts(pool, account_id)
-        .await
-        .map_err(ApiError::from_repo)?
-        .ok_or(ApiError::InvalidToken)?;
+    require_enabled(pool, account_id).await?;
     let name = account_name(pool, account_id)
         .await
         .map_err(ApiError::from_repo)?
@@ -224,6 +235,7 @@ async fn remove_identity(
     }
     let pool = state.deps.db.as_deref().ok_or(ApiError::Unavailable)?;
     let account_id = grant.account_id;
+    require_enabled(pool, account_id).await?;
     let mut tx = pool.begin().await.map_err(ApiError::from_repo)?;
     let locked: Option<(i32,)> =
         sqlx::query_as("SELECT account_id FROM account WHERE account_id = $1 FOR UPDATE")
@@ -284,3 +296,7 @@ pub(super) async fn account_name(
 #[cfg(test)]
 #[path = "account_tests_live_db.rs"]
 mod tests_live_db;
+
+#[cfg(test)]
+#[path = "account_disabled_tests_live_db.rs"]
+mod disabled_tests_live_db;
