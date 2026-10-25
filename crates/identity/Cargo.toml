@@ -19,8 +19,15 @@ tracing = { workspace = true }
 reqwest = { workspace = true }
 async-trait = { workspace = true }
 url = { workspace = true }
+serde_json = { workspace = true }
+jsonwebtoken = { workspace = true, features = ["aws_lc_rs"] }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]
 # The local listener for the `read_capped` test in http.rs.
 tokio = { workspace = true }
+# The OIDC tests: an ES256 key per test (rcgen, as crates/auth uses it), the
+# base64url of the JWK, and the wiremock issuer.
+rcgen = "0.14"
+base64 = { workspace = true }
+wiremock = { workspace = true }

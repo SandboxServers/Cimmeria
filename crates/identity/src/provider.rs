@@ -145,6 +145,11 @@ pub trait IdentityProvider: Send + Sync {
     fn display_name(&self) -> &str;
     /// Whether the provider's `email` claim may be trusted as verified.
     fn trusted_email(&self) -> bool;
+    /// Does the work `authorize_url` needs (an OIDC discovery fetch). The
+    /// default does nothing; the sign-in route awaits it before `authorize_url`.
+    async fn prepare(&self) -> Result<(), ProviderError> {
+        Ok(())
+    }
     /// `redirect_uri` is `{public_base_url}/auth/v1/callback/{id}`.
     fn authorize_url(
         &self,
