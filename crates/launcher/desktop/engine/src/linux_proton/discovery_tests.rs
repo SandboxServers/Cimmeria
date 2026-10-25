@@ -299,3 +299,15 @@ fn other_builds_with_equal_numbers_rank_by_build_stamp_then_id() {
         vec!["other:Proton 9.0 (Beta)", "other:Zeta", "other:Alpha"]
     );
 }
+
+#[test]
+fn a_relative_library_path_in_the_vdf_is_ignored() {
+    let tmp = TempDir::new().unwrap();
+    let client = tmp.path().join("home/.local/share/Steam");
+    fs::create_dir_all(client.join("steamapps")).unwrap();
+    // "." canonicalizes to the test's working directory, which exists.
+    let folders = "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\".\"\n\t}\n}\n";
+    fs::write(client.join("steamapps/libraryfolders.vdf"), folders).unwrap();
+    let roots = steam_roots(&tmp.path().join("home")).unwrap();
+    assert_eq!(roots.libraries, vec![roots.client.clone()]);
+}
