@@ -171,6 +171,7 @@ fn admission_requires_prepared_runtime_and_graphics_and_preserves_consent() {
     let (root, mut state, installed) = runtime_setup::tests::fixture_with_runtime([7; 32]);
     let directory = root.path().canonicalize().unwrap();
     let resources = Resources {
+        proton: None,
         helper: artifact(&directory, "helper.exe"),
         client_patches: None,
         client_telemetry: None,

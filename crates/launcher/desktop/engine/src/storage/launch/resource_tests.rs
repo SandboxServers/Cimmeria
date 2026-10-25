@@ -90,3 +90,16 @@ fn proton_selection_round_trips_and_refuses_unknown_fields() {
     extra["proton"]["extra"] = "x".into();
     assert!(serde_json::from_value::<Resources>(extra).is_err());
 }
+
+#[test]
+fn a_plan_without_a_proton_selection_hashes_without_the_field() {
+    // `Plan::digest` hashes exactly these bytes, so an earlier plan keeps its digest.
+    let plan = Plan {
+        id: Uuid::new_v4(),
+        installation: crate::storage::runtime_setup::tests::fixture_with_runtime([7; 32]).2,
+        runtime: None,
+        resources: resources(None),
+    };
+    let bytes = serde_json::to_vec(&plan).unwrap();
+    assert!(!String::from_utf8(bytes).unwrap().contains("proton"));
+}

@@ -208,14 +208,12 @@ async fn execute(
     })
     .await
     .map_err(|_| StorageError::Io)?;
-    let Ok((spec, mut request, _ownership)) = setup_timer.result(setup) else {
-        failure::not_started(
-            &state,
-            plan,
-            "prepare_failed",
-            FailureCode::LaunchPrepareFailed,
-        );
-        return Ok(Observation::NotStarted);
+    let (spec, mut request, _ownership) = match setup_timer.result(setup) {
+        Ok(prepared) => prepared,
+        Err(PrepareError(code)) => {
+            failure::not_started(&state, plan, "prepare_failed", code);
+            return Ok(Observation::NotStarted);
+        }
     };
     request.place_on = place_on;
     if minted {
@@ -394,7 +392,7 @@ fn prepare(
         cimmeria_runtime_probe::game_launch::Request,
         Ownership,
     ),
-    IntentError,
+    PrepareError,
 > {
     if plan.runtime.is_some() {
         #[cfg(target_os = "macos")]
@@ -426,7 +424,7 @@ fn prepare(
     if !cfg!(windows) {
         return Err(StorageError::Corrupt.into());
     }
-    prepare_native(plan, session, servers, display)
+    prepare_native(plan, session, servers, display).map_err(PrepareError::from)
 }
 fn prepare_native(
     plan: &Plan,

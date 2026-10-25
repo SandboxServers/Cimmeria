@@ -11,6 +11,8 @@ mod game_logs;
 mod not_started;
 pub use not_started::dispatch_failed;
 mod preparation;
+mod prepare_error;
+use prepare_error::PrepareError;
 mod resource;
 pub use resource::{Artifact, Graphics, Resources};
 mod worker;
@@ -317,6 +319,8 @@ impl DesktopState {
 }
 #[cfg(test)]
 mod events_tests;
+#[cfg(all(test, target_os = "linux"))]
+mod proton_admission_tests;
 #[cfg(test)]
 mod startup_timing_tests;
 #[cfg(test)]
