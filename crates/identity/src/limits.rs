@@ -41,6 +41,9 @@ pub enum Bucket {
     LinkExistingIp,
     /// `link/existing`, per target account name.
     LinkExistingAccount,
+    /// `link/existing` with a link code, across the whole server (key `""`).
+    /// A code is 50 bits, so the cap bounds guessing even behind spoofed IPs.
+    LinkCodeGlobal,
     /// Account creation, per IP.
     SignupIp,
     /// Account creation, across the whole server (key `""`).
@@ -121,6 +124,7 @@ impl RateLimiter {
             Bucket::Authorize => 20,
             Bucket::Token => 30,
             Bucket::LinkExistingIp | Bucket::LinkExistingAccount => 5,
+            Bucket::LinkCodeGlobal => 50,
             Bucket::SignupIp => self.signups_per_ip_per_day,
             Bucket::SignupGlobal => self.signups_global_per_hour,
         };
@@ -137,7 +141,9 @@ fn window_len(bucket: Bucket) -> Duration {
     match bucket {
         Bucket::AnyRoute => MINUTE,
         Bucket::Authorize | Bucket::Token => TEN_MINUTES,
-        Bucket::LinkExistingIp | Bucket::LinkExistingAccount => FIFTEEN_MINUTES,
+        Bucket::LinkExistingIp | Bucket::LinkExistingAccount | Bucket::LinkCodeGlobal => {
+            FIFTEEN_MINUTES
+        }
         Bucket::SignupGlobal => HOUR,
         Bucket::SignupIp => DAY,
     }

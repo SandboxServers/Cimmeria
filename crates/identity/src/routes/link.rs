@@ -86,11 +86,13 @@ async fn create(
     let now = Instant::now();
     let Json(request) = body.map_err(|_| ApiError::InvalidRequest)?;
     let grant = request.link_grant.ok_or(ApiError::InvalidRequest)?;
-    let verified = state
+    // Peek, then take only once the sign-up checks pass, so a refused sign-up
+    // keeps the grant and the provider sign-in is not repeated (C7).
+    let peeked = state
         .ctx
         .stores
         .grants
-        .take(&grant, now)
+        .peek(&grant, now)
         .ok_or(ApiError::InvalidGrant)?;
     if !state.ctx.cfg.signup_open {
         return Err(ApiError::SignupClosed);
@@ -101,11 +103,17 @@ async fn create(
     state.ctx.limit(Bucket::SignupGlobal, "", now)?;
     let min_days = state.ctx.cfg.limits.min_provider_account_age_days;
     let now_ms = Utc::now().timestamp_millis();
-    if !old_enough(verified.provider_account_created_ms, now_ms, min_days) {
+    if !old_enough(peeked.provider_account_created_ms, now_ms, min_days) {
         return Err(ApiError::SignupClosed);
     }
 
     let pool = db_pool(state)?;
+    let verified = state
+        .ctx
+        .stores
+        .grants
+        .take(&grant, now)
+        .ok_or(ApiError::InvalidGrant)?;
     let base = names::base_from_display(&verified.display_name);
     let candidates = names::candidates(&base, &mut rand::rng());
     let (account_id, _name) = account::create(pool, &candidates)
@@ -160,11 +168,15 @@ async fn link_existing(
         .ok_or(ApiError::InvalidGrant)?;
 
     let account_id = match request.link_code {
-        Some(code) => state
-            .ctx
-            .link_codes
-            .redeem(&code, now)
-            .ok_or(ApiError::InvalidCredentials)?,
+        Some(code) => {
+            // Every redeem counts, right or wrong, against one server-wide cap.
+            state.ctx.limit(Bucket::LinkCodeGlobal, "", now)?;
+            state
+                .ctx
+                .link_codes
+                .redeem(&code, now)
+                .ok_or(ApiError::InvalidCredentials)?
+        }
         None => {
             let (Some(name), Some(password)) = (request.account_name, request.password) else {
                 return Err(ApiError::InvalidRequest);

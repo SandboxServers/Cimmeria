@@ -27,6 +27,10 @@ pub const PENDING_LIFE: Duration = Duration::from_secs(10 * 60);
 /// The most pending authorizations held; the oldest is dropped past this.
 pub const PENDING_CAP: usize = 10_000;
 
+/// Most entries the handoff, access-token and link-grant stores hold. Past it
+/// the oldest entry goes first.
+pub const STORE_CAP: usize = 50_000;
+
 /// How long a handoff code can be redeemed at `/token`.
 pub const HANDOFF_LIFE: Duration = Duration::from_secs(60);
 
@@ -185,6 +189,7 @@ impl HandoffStore {
         let code = random_b64url(32);
         let mut codes = locked(&self.codes);
         codes.retain(|_, entry| live(entry.issued, now, HANDOFF_LIFE));
+        make_room(&mut codes, STORE_CAP, |entry| entry.issued);
         codes.insert(
             code.clone(),
             HandoffEntry {
@@ -234,6 +239,7 @@ impl AccessTokens {
         let token = random_b64url(32);
         let mut by_hash = locked(&self.by_hash);
         by_hash.retain(|_, grant| live(grant.issued_at, now, ACCESS_LIFE));
+        make_room(&mut by_hash, STORE_CAP, |grant| grant.issued_at);
         by_hash.insert(
             hash_of(&token),
             AccessGrant {
@@ -282,6 +288,7 @@ impl LinkGrants {
         let grant = random_b64url(32);
         let mut grants = locked(&self.grants);
         grants.retain(|_, (_, issued)| live(*issued, now, LINK_GRANT_LIFE));
+        make_room(&mut grants, STORE_CAP, |(_, issued)| *issued);
         grants.insert(grant.clone(), (identity, now));
         grant
     }
@@ -366,6 +373,24 @@ fn live(issued: Instant, now: Instant, life: Duration) -> bool {
 
 /// Locks a store's map, ignoring poisoning: a panicked holder leaves the map
 /// in a state every method can still read.
+/// Past `cap` entries, drops the one issued longest ago, so a flood of issues
+/// cannot grow a store without bound. Runs only when the store is full.
+fn make_room<K, V>(map: &mut HashMap<K, V>, cap: usize, issued: impl Fn(&V) -> Instant)
+where
+    K: Clone + Eq + std::hash::Hash,
+{
+    while map.len() >= cap {
+        let Some(oldest) = map
+            .iter()
+            .min_by_key(|(_, entry)| issued(entry))
+            .map(|(key, _)| key.clone())
+        else {
+            break;
+        };
+        map.remove(&oldest);
+    }
+}
+
 fn locked<T>(map: &Mutex<T>) -> MutexGuard<'_, T> {
     map.lock().unwrap_or_else(PoisonError::into_inner)
 }
