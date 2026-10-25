@@ -314,6 +314,10 @@ pub async fn route_cell_message(
 
         CellToBaseMsg::Bank(bank) => bank_dispatch::route(bank, &ctx).await,
 
+        // CT-45 routes this (the GM `.account` base handler); until it merges,
+        // the message is dropped here.
+        CellToBaseMsg::Account(_) => {}
+
         // A migrated feature's message (#962, plugin ADR §3.4): the base
         // plugin that consumes its payload type handles it; one nobody
         // consumes is dropped with a WARN (`reason = "no_consumer"`).

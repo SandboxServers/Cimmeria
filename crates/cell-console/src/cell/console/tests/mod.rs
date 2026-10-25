@@ -31,6 +31,7 @@ mod ch13_spawn_batch;
 mod cr05_allcraft;
 #[cfg(test)]
 mod craft_grants;
+mod ct44_account;
 #[cfg(test)]
 mod despawn_releases_combat;
 #[cfg(test)]

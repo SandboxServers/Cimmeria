@@ -13,6 +13,7 @@ const schemas: Record<string, string> = {
   DevSessionRequest:'crates/launcher-core/src/telemetry/auth.rs',
   BundleMetadata:'crates/launcher-core/src/telemetry/bundle.rs',
   ClientLogEvent:events, DebugLogEvent:events, ClientNativeEvent:events, SessionMetaEvent:events,
+  Stored:'crates/launcher/desktop/engine/src/sign_in/store.rs',
 };
 
 // Controlled Rust DTO declarations, not a general Rust parser. Fail closed if a
@@ -51,6 +52,9 @@ test('privacy distinguishes identities, raw logs, consent withdrawal and network
   assert.match(text('privacy-identity'), /first server is HTTP, a later HTTPS entry does not enable sending/);
   assert.match(text('privacy-identity'), /omit the receiving HTTP caller's connection address/);
   assert.match(text('privacy-storage'), /not a verified live retention guarantee/);
+  assert.match(text('privacy-sign-in'), /operating system's credential store/);
+  assert.match(text('privacy-sign-in'), /only for providers the server operator marks as verifying email/);
+  assert.match(text('privacy-sign-in'), /none of this goes to diagnostics/);
   assert.match(text('privacy-exclusions'), /No webcam or microphone recording/);
   assert.match(text('privacy-exclusions'), /No browser-history, clipboard, password-manager or personal-document crawler/);
   assert.match(text('privacy-exclusions'), /No lab remote-control bridge in the distributed player module/);
@@ -59,7 +63,7 @@ test('privacy distinguishes identities, raw logs, consent withdrawal and network
 test('complete disclosure is offline and collapsed without moving or enabling consent controls', () => {
   const {document} = parseHTML(html);
   const privacy = document.getElementById('diagnostics-privacy')!;
-  const sections = ['choices','launcher','game','files','identity','storage','exclusions','fields'];
+  const sections = ['choices','launcher','game','files','identity','storage','exclusions','sign-in','fields'];
   assert.equal(privacy.hasAttribute('open'), false);
   for (const section of sections) {
     const details = document.getElementById(`privacy-${section}`)!;

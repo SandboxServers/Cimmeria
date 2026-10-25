@@ -50,8 +50,78 @@ fn login_server_refusal_finishes_mint_as_failed_rather_than_interrupted() {
 
 #[test]
 fn a_failed_client_setup_is_noted_launch_prepare_failed() {
+    let (_root, mut state, plan) = super::super::tests::fixture();
+    state.record_launch(&plan, Observation::Preparing).unwrap();
+    let state = Arc::new(Mutex::new(state));
+    let kept = state.clone();
+    let (updates, _) = watch::channel(Observation::Unknown);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    // The state root is a separate directory: the plain list must land in the install.
+    let other = tempfile::tempdir().unwrap();
+    let (result, events) = crate::test_capture::capture(|| {
+        rt.block_on(execute(
+            state,
+            &plan,
+            other.path().into(),
+            CancellationToken::new(),
+            &updates,
+        ))
+    });
+    assert!(matches!(result, Ok(Observation::NotStarted)));
+    assert!(!other.path().join("Working").exists());
+    assert_eq!(
+        kept.lock().unwrap().launch_failure(),
+        Ok(Some(FailureCode::LaunchPrepareFailed))
+    );
+    let failed: Vec<_> = events
+        .iter()
+        .filter(|e| e.field("reason") == Some("prepare_failed"))
+        .collect();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(
+        failed[0].field("failure_code"),
+        Some("launch_prepare_failed")
+    );
+}
+
+#[test]
+fn a_play_start_clears_the_last_refusal() {
     let (root, mut state, plan) = super::super::tests::fixture();
     state.record_launch(&plan, Observation::Preparing).unwrap();
+    state.set_play_refusal(Some("ticket_unavailable"));
+    let state = Arc::new(Mutex::new(state));
+    let kept = state.clone();
+    let (updates, _) = watch::channel(Observation::Unknown);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let result = rt.block_on(execute(
+        state,
+        &plan,
+        root.path().into(),
+        CancellationToken::new(),
+        &updates,
+    ));
+    assert!(matches!(result, Ok(Observation::NotStarted)));
+    assert_eq!(kept.lock().unwrap().play_refusal(), None);
+}
+
+#[test]
+fn a_signed_in_play_without_a_ticket_records_the_refusal() {
+    let (root, mut state, plan) = super::super::tests::fixture();
+    state.record_launch(&plan, Observation::Preparing).unwrap();
+    let first = state
+        .launch_login_servers(&plan.installation)
+        .ok()
+        .and_then(|servers| servers.into_iter().next())
+        .expect("the fixture has a login server");
+    let base = crate::sign_in::discovery::auth_base(&first.url)
+        .expect("the fixture's first server has a domain host");
+    state.set_sign_in(Some(super::super::sign_in_play_tests::signed_in(base)));
     let state = Arc::new(Mutex::new(state));
     let kept = state.clone();
     let (updates, _) = watch::channel(Observation::Unknown);
@@ -69,19 +139,18 @@ fn a_failed_client_setup_is_noted_launch_prepare_failed() {
         ))
     });
     assert!(matches!(result, Ok(Observation::NotStarted)));
+    let owner = kept.lock().unwrap();
+    assert_eq!(owner.play_refusal(), Some("ticket_unavailable"));
     assert_eq!(
-        kept.lock().unwrap().launch_failure(),
+        owner.launch_failure(),
         Ok(Some(FailureCode::LaunchPrepareFailed))
     );
-    let failed: Vec<_> = events
+    assert!(events
         .iter()
-        .filter(|e| e.field("reason") == Some("prepare_failed"))
-        .collect();
-    assert_eq!(failed.len(), 1);
-    assert_eq!(
-        failed[0].field("failure_code"),
-        Some("launch_prepare_failed")
-    );
+        .any(|e| e.field("reason") == Some("ticket_unavailable")));
+    assert!(!events
+        .iter()
+        .any(|e| e.field("phase") == Some("play_client_setup")));
 }
 
 // Inert PE32 header, sufficient for real client preparation, never spawned.
