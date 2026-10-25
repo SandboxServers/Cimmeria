@@ -23,12 +23,12 @@ fn intent_expires_after_ten_minutes() {
     let t0 = Instant::now();
     let early = store.issue(intent(8), t0);
     let late = store.issue(intent(9), t0);
-    let just_inside = t0 + INTENT_LIFE - Duration::from_secs(1);
+    let just_inside = t0 + Duration::from_secs(10 * 60 - 1);
     assert_eq!(
         store.take(&early, just_inside).map(|i| i.account_id),
         Some(8)
     );
-    let just_outside = t0 + INTENT_LIFE + Duration::from_secs(1);
+    let just_outside = t0 + Duration::from_secs(10 * 60 + 1);
     assert!(store.take(&late, just_outside).is_none());
 }
 
