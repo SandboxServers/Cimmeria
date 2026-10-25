@@ -14,6 +14,7 @@ use cimmeria_auth::AuthRouteDeps;
 use crate::config::IdentityConfig;
 use crate::limits::{Bucket, RateLimiter};
 use crate::link_code::LinkCodeStore;
+use crate::provider::VerifiedIdentity;
 use crate::providers::Providers;
 use crate::routes::error::ApiError;
 use crate::stores::Stores;
@@ -61,4 +62,19 @@ pub struct RouteState {
 /// are never logged (contract C11).
 pub fn client_ip(ConnectInfo(peer): ConnectInfo<SocketAddr>) -> String {
     peer.ip().to_string()
+}
+
+/// Records the span's outcome.
+pub(super) fn note(outcome: &'static str) {
+    tracing::Span::current().record("outcome", outcome);
+}
+
+impl RouteState {
+    /// Whether the provider of `verified` is admin-trusted for its email claim.
+    pub(super) fn trusts_email(&self, verified: &VerifiedIdentity) -> bool {
+        self.ctx
+            .providers
+            .get(verified.provider.as_str())
+            .is_some_and(|provider| provider.trusted_email())
+    }
 }

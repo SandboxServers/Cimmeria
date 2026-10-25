@@ -9,6 +9,8 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::json;
 
+use crate::repo::RepoError;
+
 /// One C6 error answer. [`IntoResponse`] gives the status and JSON body.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApiError {
@@ -46,6 +48,15 @@ pub enum ApiError {
 }
 
 impl ApiError {
+    /// Maps a repository failure: a conflict is the caller's `invalid_grant`, a
+    /// database failure is `unavailable`.
+    pub(super) fn from_repo(error: impl Into<RepoError>) -> ApiError {
+        match error.into() {
+            RepoError::Conflict => ApiError::InvalidGrant,
+            RepoError::Db => ApiError::Unavailable,
+        }
+    }
+
     /// The C6 error code, the `error` field of the JSON body.
     pub fn code(&self) -> &'static str {
         match self {

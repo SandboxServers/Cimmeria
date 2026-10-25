@@ -22,10 +22,9 @@ use tracing::Instrument;
 use crate::limits::{old_enough, Bucket};
 use crate::link;
 use crate::names;
-use crate::provider::VerifiedIdentity;
 use crate::repo::event::{self, EventKind};
-use crate::repo::{account, identity, RepoError};
-use crate::routes::ctx::{client_ip, RouteState};
+use crate::repo::{account, identity};
+use crate::routes::ctx::{client_ip, note, RouteState};
 use crate::routes::error::ApiError;
 use crate::routes::token::signed_in;
 
@@ -109,14 +108,16 @@ async fn create(
     let pool = db_pool(state)?;
     let base = names::base_from_display(&verified.display_name);
     let candidates = names::candidates(&base, &mut rand::rng());
-    let (account_id, _name) = account::create(pool, &candidates).await.map_err(db)?;
-    let store_email = trusted_email(state, &verified) && verified.email_verified;
+    let (account_id, _name) = account::create(pool, &candidates)
+        .await
+        .map_err(ApiError::from_repo)?;
+    let store_email = state.trusts_email(&verified) && verified.email_verified;
     let linked = match identity::insert(pool, account_id, &verified, store_email).await {
         Ok(linked) => linked,
         Err(error) => {
             // No identity row: drop the account just made so no orphan keeps the name.
             let _ = account::remove_unlinked(pool, account_id).await;
-            return Err(db(error));
+            return Err(ApiError::from_repo(error));
         }
     };
     let provider = verified.provider.as_str();
@@ -128,7 +129,7 @@ async fn create(
         Some(provider),
     )
     .await
-    .map_err(db)?;
+    .map_err(ApiError::from_repo)?;
     note("signup");
     signed_in(state, account_id, None, true, now).await
 }
@@ -177,7 +178,7 @@ async fn link_existing(
 
     let facts = account::facts(pool, account_id)
         .await
-        .map_err(db)?
+        .map_err(ApiError::from_repo)?
         .ok_or(ApiError::NotLinkable)?;
     let provider = peeked.provider.as_str();
     if !link::linkable(&facts) {
@@ -189,7 +190,7 @@ async fn link_existing(
             Some(provider),
         )
         .await
-        .map_err(db)?;
+        .map_err(ApiError::from_repo)?;
         return Err(ApiError::NotLinkable);
     }
 
@@ -199,10 +200,10 @@ async fn link_existing(
         .grants
         .take(&grant, now)
         .ok_or(ApiError::InvalidGrant)?;
-    let store_email = trusted_email(state, &verified) && verified.email_verified;
+    let store_email = state.trusts_email(&verified) && verified.email_verified;
     let linked = identity::insert(pool, account_id, &verified, store_email)
         .await
-        .map_err(db)?;
+        .map_err(ApiError::from_repo)?;
     tracing::Span::current().record("account_id", account_id);
     tracing::Span::current().record("password_cleared", linked.password_cleared);
     note("link");
@@ -252,32 +253,9 @@ fn answered(span: &tracing::Span, result: Result<Response, ApiError>) -> Respons
     }
 }
 
-/// Records the span's outcome.
-fn note(outcome: &'static str) {
-    tracing::Span::current().record("outcome", outcome);
-}
-
 /// The database pool, or `unavailable` when none is configured.
 fn db_pool(state: &RouteState) -> Result<&PgPool, ApiError> {
     state.deps.db.as_deref().ok_or(ApiError::Unavailable)
-}
-
-/// Whether the provider of `verified` is admin-trusted for its email claim.
-fn trusted_email(state: &RouteState, verified: &VerifiedIdentity) -> bool {
-    state
-        .ctx
-        .providers
-        .get(verified.provider.as_str())
-        .is_some_and(|provider| provider.trusted_email())
-}
-
-/// Maps a repository failure: a conflict is the caller's `invalid_grant`, a
-/// database failure is `unavailable`.
-fn db(error: impl Into<RepoError>) -> ApiError {
-    match error.into() {
-        RepoError::Conflict => ApiError::InvalidGrant,
-        RepoError::Db => ApiError::Unavailable,
-    }
 }
 
 #[cfg(test)]

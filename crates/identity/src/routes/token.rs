@@ -24,8 +24,8 @@ use crate::link::{self, LinkFacts, LinkHint, Refusal, Resolution};
 use crate::provider::VerifiedIdentity;
 use crate::repo::event::{self, EventKind};
 use crate::repo::refresh::{self, Rotation};
-use crate::repo::{account, identity, RepoError};
-use crate::routes::ctx::{client_ip, RouteState};
+use crate::repo::{account, identity};
+use crate::routes::ctx::{client_ip, note, RouteState};
 use crate::routes::error::ApiError;
 use crate::stores::{HandoffOutcome, LinkIntent, ACCESS_LIFE, LINK_GRANT_LIFE};
 
@@ -115,16 +115,16 @@ async fn code_grant(
     }
 
     let provider = identity.provider.as_str().to_owned();
-    let trusted = trusted_email(state, &identity);
+    let trusted = state.trusts_email(&identity);
     let bound = identity::find_bound(pool, &provider, &identity.issuer, &identity.subject)
         .await
-        .map_err(db)?;
+        .map_err(ApiError::from_repo)?;
     let bound_id = bound.as_ref().map(|(id, _)| *id);
     let email_candidates = match identity.email.as_deref() {
         Some(email) if trusted && identity.email_verified => {
             identity::email_candidates(pool, &email.to_lowercase())
                 .await
-                .map_err(db)?
+                .map_err(ApiError::from_repo)?
         }
         _ => Vec::new(),
     };
@@ -140,7 +140,7 @@ async fn code_grant(
             if let Some(id) = bound_id {
                 identity::touch(pool, id, Utc::now().timestamp_millis())
                     .await
-                    .map_err(db)?;
+                    .map_err(ApiError::from_repo)?;
             }
             note("signed_in");
             signed_in(state, account_id, None, true, now).await
@@ -148,7 +148,7 @@ async fn code_grant(
         Resolution::AutoLink(account_id) => {
             let linked = identity::insert(pool, account_id, &identity, trusted)
                 .await
-                .map_err(db)?;
+                .map_err(ApiError::from_repo)?;
             event::record(
                 pool,
                 account_id,
@@ -157,7 +157,7 @@ async fn code_grant(
                 Some(provider.as_str()),
             )
             .await
-            .map_err(db)?;
+            .map_err(ApiError::from_repo)?;
             note("auto_link");
             signed_in(state, account_id, None, true, now).await
         }
@@ -194,7 +194,10 @@ async fn attach(
     account_id: u32,
     now: Instant,
 ) -> Result<Response, ApiError> {
-    match account::facts(pool, account_id).await.map_err(db)? {
+    match account::facts(pool, account_id)
+        .await
+        .map_err(ApiError::from_repo)?
+    {
         Some(facts) if facts.enabled => {}
         Some(_) => return Err(ApiError::AccountDisabled),
         None => return Err(ApiError::InvalidGrant),
@@ -202,15 +205,15 @@ async fn attach(
     let provider = verified.provider.as_str();
     match identity::find_bound(pool, provider, &verified.issuer, &verified.subject)
         .await
-        .map_err(db)?
+        .map_err(ApiError::from_repo)?
     {
         Some((_, bound)) if bound.account_id == account_id => {}
         Some(_) => return Err(ApiError::InvalidGrant),
         None => {
-            let trusted = trusted_email(state, &verified) && verified.email_verified;
+            let trusted = state.trusts_email(&verified) && verified.email_verified;
             identity::insert(pool, account_id, &verified, trusted)
                 .await
-                .map_err(db)?;
+                .map_err(ApiError::from_repo)?;
         }
     }
     note("signed_in");
@@ -230,7 +233,7 @@ async fn refresh_grant(
         .ok_or(ApiError::InvalidRequest)?;
     match refresh::rotate(pool, presented, Utc::now())
         .await
-        .map_err(db)?
+        .map_err(ApiError::from_repo)?
     {
         Rotation::Rotated {
             account_id,
@@ -239,12 +242,12 @@ async fn refresh_grant(
         } => {
             let facts = account::facts(pool, account_id)
                 .await
-                .map_err(db)?
+                .map_err(ApiError::from_repo)?
                 .ok_or(ApiError::InvalidGrant)?;
             if !facts.enabled {
                 refresh::revoke_account(pool, account_id, Utc::now())
                     .await
-                    .map_err(db)?;
+                    .map_err(ApiError::from_repo)?;
                 state.ctx.stores.access.revoke_account(account_id);
                 tracing::Span::current().record("account_id", account_id);
                 note("refused");
@@ -259,7 +262,7 @@ async fn refresh_grant(
         } => {
             event::record(pool, account_id, None, EventKind::RefreshReuse, None)
                 .await
-                .map_err(db)?;
+                .map_err(ApiError::from_repo)?;
             state.ctx.stores.access.revoke_family(&family_id);
             tracing::Span::current().record("account_id", account_id);
             note("reuse");
@@ -282,7 +285,7 @@ pub(super) async fn signed_in(
     let pool = state.deps.db.as_deref().ok_or(ApiError::Unavailable)?;
     let pair = refresh::issue(pool, account_id, family, Utc::now())
         .await
-        .map_err(db)?;
+        .map_err(ApiError::from_repo)?;
     session(state, pool, account_id, pair, via_code, now).await
 }
 
@@ -302,7 +305,7 @@ async fn session(
             .bind(account_id as i32)
             .fetch_optional(pool)
             .await
-            .map_err(db)?
+            .map_err(ApiError::from_repo)?
             .ok_or(ApiError::InvalidGrant)?;
     tracing::Span::current().record("account_id", account_id);
     let access_token = state
@@ -351,37 +354,14 @@ async fn end_session(state: &RouteState, pool: &PgPool, presented: &str) -> Resu
             .bind(&digest[..])
             .fetch_optional(pool)
             .await
-            .map_err(db)?;
+            .map_err(ApiError::from_repo)?;
     refresh::revoke_token(pool, presented, Utc::now())
         .await
-        .map_err(db)?;
+        .map_err(ApiError::from_repo)?;
     if let Some((family_id,)) = family {
         state.ctx.stores.access.revoke_family(&family_id);
     }
     Ok(())
-}
-
-/// Whether the provider of `verified` is admin-trusted for its email claim.
-fn trusted_email(state: &RouteState, verified: &VerifiedIdentity) -> bool {
-    state
-        .ctx
-        .providers
-        .get(verified.provider.as_str())
-        .is_some_and(|provider| provider.trusted_email())
-}
-
-/// Records the span's outcome.
-fn note(outcome: &'static str) {
-    tracing::Span::current().record("outcome", outcome);
-}
-
-/// Maps a repository failure: a conflict is the caller's `invalid_grant`, a
-/// database failure is `unavailable`.
-fn db(error: impl Into<RepoError>) -> ApiError {
-    match error.into() {
-        RepoError::Conflict => ApiError::InvalidGrant,
-        RepoError::Db => ApiError::Unavailable,
-    }
 }
 
 #[cfg(test)]
