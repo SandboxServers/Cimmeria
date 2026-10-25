@@ -177,9 +177,9 @@ impl TryFrom<StoredPreferences> for Preferences {
 /// The bytes a record digest covers for one `Preferences` value. A schema-1
 /// build digested the four v1 fields only, and an adoption plan it wrote can
 /// still be in flight after the upgrade. Preferences whose client options,
-/// display and display placements are
-/// still the defaults therefore digest in exactly that v1 shape; any other
-/// value digests in full, so a change to a v2 field still changes the digest.
+/// display, display placements and Proton preference are still the defaults
+/// therefore digest in exactly that v1 shape; any other value digests in full,
+/// so a change to a v2 field still changes the digest.
 #[derive(Serialize)]
 #[serde(untagged)]
 pub(crate) enum PreferencesDigest<'a> {
@@ -526,8 +526,21 @@ impl DesktopState {
     }
 
     /// Saves the Proton Linux Play runs through (PP-10); `None` clears it. The
-    /// caller checks that the id is one discovery finds.
+    /// caller checks that the id is one discovery finds. Refuses with `Busy`
+    /// during any non-launch operation, as the display options do: an adoption
+    /// compares the whole preferences value at recovery.
     pub fn save_proton_preference(&mut self, id: Option<String>) -> Result<(), StorageError> {
+        self.finalize_summaries();
+        self.ensure_updater_idle()?;
+        if self
+            .operations
+            .snapshot()
+            .operation
+            .as_ref()
+            .is_some_and(|op| !op.state.terminal() && op.kind != crate::OperationKind::Launch)
+        {
+            return Err(StorageError::Busy);
+        }
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain);
         }

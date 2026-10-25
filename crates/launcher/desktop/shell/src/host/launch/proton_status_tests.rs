@@ -1,6 +1,7 @@
 //! Linux host wiring for Proton discovery (PP-09): status and Play find a Proton on
 //! every call. Discovery reads `proton_fixture`, never the player's Steam (R3).
 use super::*;
+use crate::host::ProtonCommand;
 use cimmeria_launcher_engine::launch::{Artifact, Resources};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -102,4 +103,44 @@ fn play_without_proton_is_refused_as_a_missing_prerequisite_and_logged() {
     steam_with_proton(&home);
     // No content is installed, so another refusal follows; it is not this one.
     assert_ne!(play(&host).err(), Some(JobError::PrerequisitesMissing));
+}
+
+/// A fake Steam client under `home` with the Valve Proton 9.0 and a GE-Proton.
+fn steam_with_two_protons(home: &Path) {
+    steam_with_proton(home);
+    let ge = home.join(".local/share/Steam/compatibilitytools.d/GE-Proton11-11-x86_64");
+    std::fs::create_dir_all(&ge).unwrap();
+    for file in ["proton", "toolmanifest.vdf"] {
+        std::fs::write(ge.join(file), b"").unwrap();
+    }
+    std::fs::write(ge.join("version"), "1792432585 GE-Proton11-11\n").unwrap();
+}
+
+#[test]
+fn a_saved_proton_reaches_play_and_inspect_and_a_missing_one_falls_back() {
+    const GE: &str = "ge:GE-Proton11-11-x86_64";
+    const VALVE: &str = "valve:Proton 9.0";
+    let root = tempfile::tempdir().unwrap();
+    let (host, home) = host(root.path(), true);
+    steam_with_two_protons(&home);
+    let system = root.path().join("system");
+    let id_for = |preferred: Option<&str>| {
+        resources::proton(Some((home.as_path(), system.as_path())), preferred).map(|p| p.id)
+    };
+    assert_eq!(id_for(Some(VALVE)).as_deref(), Some(VALVE));
+    assert_eq!(id_for(Some("valve:Proton 8.0")).as_deref(), Some(GE));
+    assert_eq!(
+        host.proton(Some(VALVE)).map(|p| p.id).as_deref(),
+        Some(VALVE)
+    );
+    host.proton_command(ProtonCommand::Select {
+        id: Some(VALVE.to_owned()),
+    })
+    .unwrap();
+    let saved = host.saved_proton();
+    assert_eq!(
+        host.proton(saved.as_deref()).map(|p| p.id).as_deref(),
+        Some(VALVE)
+    );
+    assert!(inspect(&host).prerequisites_missing.is_empty());
 }

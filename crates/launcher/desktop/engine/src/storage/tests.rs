@@ -380,3 +380,20 @@ fn uncertain_preference_save_blocks_operations_until_disk_is_reopened() {
     assert!(reopened.preferences().launcher_summary_consent);
     assert_eq!(reopened.preferences().revision, 1);
 }
+
+#[test]
+fn a_proton_preference_save_is_refused_while_an_install_is_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = DesktopState::open(dir.path()).unwrap();
+    state
+        .operations_mut()
+        .unwrap()
+        .begin(Uuid::new_v4(), OperationKind::Install, [1; 32], 0)
+        .unwrap();
+    assert_eq!(
+        state.save_proton_preference(Some("valve:Proton 9.0".into())),
+        Err(StorageError::Busy)
+    );
+    assert!(state.preferences().proton_preference.is_none());
+    assert!(!dir.path().join("preferences.json").exists());
+}

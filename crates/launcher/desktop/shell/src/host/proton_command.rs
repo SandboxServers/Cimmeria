@@ -26,16 +26,22 @@ pub enum ProtonCommand {
 /// The picker's view: the Protons found, best first, and which one Play uses.
 #[derive(Debug, Serialize)]
 pub struct ProtonView {
+    /// The Protons found now, best first.
     pub available: Vec<ProtonChoice>,
+    /// The id Play runs through: the saved choice if still found, else the best.
     pub selected: Option<String>,
+    /// The saved choice, even when it is no longer found.
     pub preferred: Option<String>,
 }
 
 /// One Proton the picker can offer.
 #[derive(Debug, Serialize)]
 pub struct ProtonChoice {
+    /// The C-1 id.
     pub id: String,
+    /// The display name; never a path.
     pub name: String,
+    /// Where the build came from.
     pub kind: ProtonKind,
 }
 
@@ -86,11 +92,21 @@ impl NativeHost {
         if let ProtonCommand::Select { id } = request {
             if let Some(wanted) = &id {
                 if !installs.iter().any(|install| &install.id == wanted) {
+                    tracing::warn!(target: "launcher.proton", event = "proton_refused", reason = "unknown_proton", "Proton choice refused");
                     return Err("unknown_proton".to_owned());
                 }
             }
             self.with_state(|state| state.save_proton_preference(id))
-                .map_err(|_| "preference_unsaved".to_owned())?;
+                .map_err(|error| {
+                    // `busy` while an operation is open, else the generic refusal.
+                    let reason = if error == StorageError::Busy {
+                        "busy"
+                    } else {
+                        "preference_unsaved"
+                    };
+                    tracing::warn!(target: "launcher.proton", event = "proton_refused", reason, "Proton choice not saved");
+                    reason.to_owned()
+                })?;
         }
         let preferred = self.saved_proton();
         let selected = discovery::choose(&installs, preferred.as_deref()).map(|i| i.id.clone());
