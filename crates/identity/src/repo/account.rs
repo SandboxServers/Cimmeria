@@ -84,6 +84,19 @@ pub async fn create(pool: &PgPool, candidates: &[String]) -> Result<(u32, String
     Err(RepoError::Conflict)
 }
 
+/// Deletes `account_id` when it holds no identity row. Returns whether a row was removed.
+/// `link/new` calls it when the identity insert fails, so no orphan account is left.
+pub async fn remove_unlinked(pool: &PgPool, account_id: u32) -> Result<bool, RepoError> {
+    let done = sqlx::query(
+        "DELETE FROM account a WHERE a.account_id = $1 \
+         AND NOT EXISTS (SELECT 1 FROM account_identity i WHERE i.account_id = a.account_id)",
+    )
+    .bind(account_id as i32)
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
 /// Whether the account holds a password (`password` or `password_hash_v2`).
 /// A missing account has none. Read by CT-45 only.
 pub async fn has_password(pool: &PgPool, account_id: u32) -> Result<bool, RepoError> {

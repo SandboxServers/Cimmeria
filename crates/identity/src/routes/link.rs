@@ -111,9 +111,14 @@ async fn create(
     let candidates = names::candidates(&base, &mut rand::rng());
     let (account_id, _name) = account::create(pool, &candidates).await.map_err(db)?;
     let store_email = trusted_email(state, &verified) && verified.email_verified;
-    let linked = identity::insert(pool, account_id, &verified, store_email)
-        .await
-        .map_err(db)?;
+    let linked = match identity::insert(pool, account_id, &verified, store_email).await {
+        Ok(linked) => linked,
+        Err(error) => {
+            // No identity row: drop the account just made so no orphan keeps the name.
+            let _ = account::remove_unlinked(pool, account_id).await;
+            return Err(db(error));
+        }
+    };
     let provider = verified.provider.as_str();
     event::record(
         pool,

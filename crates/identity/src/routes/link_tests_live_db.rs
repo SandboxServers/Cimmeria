@@ -123,11 +123,12 @@ fn harness_with(pool: &PgPool, table: &str) -> Env {
     }
 }
 
-/// Deletes the sentinel accounts and every account with a `ct26-` identity;
-/// identities and events cascade.
+/// Deletes the sentinel accounts, the signed-up `CT26Player` accounts and every
+/// account with a `ct26-` identity; identities and events cascade.
 async fn clean(pool: &PgPool) {
     let _ = sqlx::query(
         "DELETE FROM account WHERE account_id BETWEEN $1 AND $2 \
+         OR account_name LIKE 'CT26Player%' \
          OR account_id IN (SELECT account_id FROM account_identity WHERE subject LIKE 'ct26-%')",
     )
     .bind(FIRST_ID as i32)
@@ -372,6 +373,32 @@ async fn live_db_signup_refuses_young_provider_accounts() {
 }
 
 #[tokio::test]
+async fn live_db_signup_conflict_leaves_no_orphan_account() {
+    let pool = require_db_or_skip!();
+    clean(&pool).await;
+    let env = harness(&pool);
+    let first = grant(&env, verified("dev", "ct26-20", None, false));
+    let (first_status, first_body) =
+        post_json(&env, "/link/new", json!({"link_grant": first})).await;
+    // The same identity again: the account is created, then the identity insert conflicts.
+    let second = grant(&env, verified("dev", "ct26-20", None, false));
+    let (second_status, second_body) =
+        post_json(&env, "/link/new", json!({"link_grant": second})).await;
+    let (orphans,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM account a WHERE a.account_name LIKE 'CT26Player%' \
+         AND NOT EXISTS (SELECT 1 FROM account_identity i WHERE i.account_id = a.account_id)",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count orphan accounts");
+    clean(&pool).await;
+    assert_eq!(first_status, StatusCode::OK, "{first_body}");
+    assert_eq!(second_status, StatusCode::BAD_REQUEST, "{second_body}");
+    assert_eq!(second_body["error"], "invalid_grant");
+    assert_eq!(orphans, 0);
+}
+
+#[tokio::test]
 async fn live_db_link_existing_wrong_password_keeps_the_grant() {
     let pool = require_db_or_skip!();
     clean(&pool).await;
@@ -390,12 +417,17 @@ async fn live_db_link_existing_wrong_password_keeps_the_grant() {
         link_password(&env, PEER, &g, "ct26_wrong_516", "not-the-password", true).await;
     let (right_status, right) =
         link_password(&env, PEER, &g, "ct26_wrong_516", LEGACY_PASSWORD, true).await;
+    // The successful link spent the grant, so a replay is refused before the credential.
+    let (replay_status, replay) =
+        link_password(&env, PEER, &g, "ct26_wrong_516", LEGACY_PASSWORD, true).await;
     clean(&pool).await;
     assert_eq!(wrong_status, StatusCode::UNAUTHORIZED, "{wrong}");
     assert_eq!(wrong["error"], "invalid_credentials");
     assert_eq!(right_status, StatusCode::OK, "{right}");
     assert_eq!(right["result"], "signed_in");
     assert_eq!(right["account"]["account_id"], ID_WRONG);
+    assert_eq!(replay_status, StatusCode::BAD_REQUEST, "{replay}");
+    assert_eq!(replay["error"], "invalid_grant");
 }
 
 #[tokio::test]
@@ -417,6 +449,32 @@ async fn live_db_link_existing_is_rate_limited_per_account() {
     for i in 1..=6 {
         let peer = format!("203.0.113.{i}:41000");
         let (status, _) = link_password(&env, &peer, &g, "ct26_limited_519", "wrong", true).await;
+        statuses.push(status);
+    }
+    clean(&pool).await;
+    let mut expected = vec![StatusCode::UNAUTHORIZED; 5];
+    expected.push(StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(statuses, expected);
+}
+
+#[tokio::test]
+async fn live_db_link_existing_is_rate_limited_per_ip() {
+    let pool = require_db_or_skip!();
+    clean(&pool).await;
+    let env = harness(&pool);
+    let g = grant(&env, verified("dev", "ct26-21", None, false));
+    let mut statuses = Vec::new();
+    for _ in 1..=6 {
+        let (status, _) = post_json(
+            &env,
+            "/link/existing",
+            json!({
+                "link_grant": g,
+                "link_code": "AAAAAAAAAA",
+                "password_removal_ack": true,
+            }),
+        )
+        .await;
         statuses.push(status);
     }
     clean(&pool).await;
