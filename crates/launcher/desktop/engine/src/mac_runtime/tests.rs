@@ -141,7 +141,13 @@ async fn streaming_download_rejects_chunked_overflow_and_truncation() {
             &ProgressSink::latest().0,
         )
         .await;
-        assert!(matches!(result, Err(RuntimeError::Verification)));
+        assert!(matches!(
+            result,
+            Err(download::Failure {
+                error: RuntimeError::Verification,
+                ..
+            })
+        ));
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
         server.await.unwrap();
     }
@@ -183,7 +189,13 @@ async fn cancel_interrupts_stalled_response_and_removes_partial_archive() {
     )
     .await
     .unwrap();
-    assert!(matches!(result, Err(RuntimeError::Cancelled)));
+    assert!(matches!(
+        result,
+        Err(download::Failure {
+            error: RuntimeError::Cancelled,
+            ..
+        })
+    ));
     cancelling.await.unwrap();
     server.abort();
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
@@ -219,6 +231,145 @@ async fn wrong_declared_length_is_rejected_before_waiting_for_body() {
     .await
     .unwrap();
     server.abort();
-    assert!(matches!(result, Err(RuntimeError::Verification)));
+    assert!(matches!(
+        result,
+        Err(download::Failure {
+            error: RuntimeError::Verification,
+            ..
+        })
+    ));
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+}
+
+async fn fetch_from(server: &wiremock::MockServer, root: &Path) -> Result<(), download::Failure> {
+    download::fetch(
+        &reqwest::Client::new(),
+        &format!("{}/archive", server.uri()),
+        4,
+        root,
+        &CancellationToken::new(),
+        &ProgressSink::latest().0,
+    )
+    .await
+    .map(drop)
+}
+
+#[tokio::test]
+async fn http_error_status_is_a_network_failure_with_its_status() {
+    use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(path("/archive"))
+        .respond_with(ResponseTemplate::new(404).set_body_bytes(b"1234".to_vec()))
+        .mount(&server)
+        .await;
+    let root = tempfile::tempdir().unwrap();
+    assert_eq!(
+        fetch_from(&server, root.path()).await,
+        Err(download::Failure {
+            error: RuntimeError::Network,
+            http_status: Some(404),
+        })
+    );
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+}
+
+#[tokio::test]
+async fn success_with_wrong_content_length_is_a_verification_failure() {
+    use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(path("/archive"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"12345".to_vec()))
+        .mount(&server)
+        .await;
+    let root = tempfile::tempdir().unwrap();
+    assert_eq!(
+        fetch_from(&server, root.path()).await,
+        Err(download::Failure {
+            error: RuntimeError::Verification,
+            http_status: None,
+        })
+    );
+}
+
+#[test]
+fn runtime_errors_map_to_failure_codes() {
+    use crate::failure::FailureCode;
+    assert_eq!(
+        RuntimeError::Network.failure(),
+        Some(FailureCode::WineRuntimeDownloadFailed)
+    );
+    assert_eq!(
+        RuntimeError::Verification.failure(),
+        Some(FailureCode::WineRuntimeInvalid)
+    );
+    assert_eq!(
+        RuntimeError::Extraction.failure(),
+        Some(FailureCode::WineRuntimeInvalid)
+    );
+    assert_eq!(
+        RuntimeError::Busy.failure(),
+        Some(FailureCode::WineRuntimeBusy)
+    );
+    assert_eq!(RuntimeError::Io.failure(), Some(FailureCode::LocalIo));
+    assert_eq!(RuntimeError::Cancelled.failure(), None);
+}
+
+#[test]
+fn runtime_prepare_failed_pins_its_fields() {
+    let ((), rows) = crate::test_capture::capture(|| {
+        events::runtime_prepare_failed(&RuntimeError::Network, Some(404));
+        events::runtime_prepare_failed(&RuntimeError::Extraction, None);
+        events::runtime_prepare_failed(&RuntimeError::Cancelled, None);
+    });
+    assert_eq!(rows.len(), 2, "a cancellation logs nothing");
+    for row in &rows {
+        assert_eq!(row.target, "launcher.install");
+        assert_eq!(row.level, tracing::Level::WARN);
+        assert_eq!(row.field("event"), Some("runtime_prepare_failed"));
+    }
+    assert_eq!(rows[0].field("error"), Some("network"));
+    assert_eq!(
+        rows[0].field("failure_code"),
+        Some("wine_runtime_download_failed")
+    );
+    assert_eq!(rows[0].field("http_status"), Some("404"));
+    assert_eq!(rows[1].field("error"), Some("extraction"));
+    assert_eq!(rows[1].field("failure_code"), Some("wine_runtime_invalid"));
+    assert_eq!(rows[1].field("http_status"), None);
+}
+
+#[test]
+fn early_cancelled_prepare_logs_nothing_and_io_failure_logs_once() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (results, rows) = crate::test_capture::capture(|| {
+        runtime.block_on(async {
+            let cancel = CancellationToken::new();
+            cancel.cancel();
+            let cancelled = prepare(
+                tempfile::tempdir().unwrap().path().join("runtimes"),
+                cancel,
+                ProgressSink::latest().0,
+            )
+            .await;
+            let relative = prepare(
+                PathBuf::from("relative/runtimes"),
+                CancellationToken::new(),
+                ProgressSink::latest().0,
+            )
+            .await;
+            (cancelled, relative)
+        })
+    });
+    assert_eq!(results.0, Err(RuntimeError::Cancelled));
+    assert_eq!(results.1, Err(RuntimeError::Io));
+    let failed: Vec<_> = rows
+        .iter()
+        .filter(|row| row.field("event") == Some("runtime_prepare_failed"))
+        .collect();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].field("error"), Some("io"));
+    assert_eq!(failed[0].field("failure_code"), Some("local_io"));
 }

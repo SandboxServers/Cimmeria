@@ -4,6 +4,27 @@ use crate::install_progress::ProgressReporter;
 use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 
+/// A runtime preparation error and, when the download got a non-success HTTP
+/// status, that status (PD-14). `RuntimeError` stays a unit enum.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct Failure {
+    pub error: RuntimeError,
+    pub http_status: Option<u16>,
+}
+impl From<RuntimeError> for Failure {
+    fn from(error: RuntimeError) -> Self {
+        Self {
+            error,
+            http_status: None,
+        }
+    }
+}
+impl From<std::io::Error> for Failure {
+    fn from(error: std::io::Error) -> Self {
+        RuntimeError::from(error).into()
+    }
+}
+
 pub(super) async fn fetch(
     http: &reqwest::Client,
     url: &str,
@@ -11,29 +32,34 @@ pub(super) async fn fetch(
     root: &Path,
     cancel: &CancellationToken,
     progress: &ProgressSink,
-) -> Result<tempfile::NamedTempFile, RuntimeError> {
-    let response = tokio::select! {_ = cancel.cancelled()=>return Err(RuntimeError::Cancelled),
+) -> Result<tempfile::NamedTempFile, Failure> {
+    let response = tokio::select! {_ = cancel.cancelled()=>return Err(RuntimeError::Cancelled.into()),
     result=http.get(url).send()=>result.map_err(|_|RuntimeError::Network)?};
-    if !response.status().is_success()
-        || response
-            .content_length()
-            .is_some_and(|declared| declared != size)
+    if !response.status().is_success() {
+        return Err(Failure {
+            error: RuntimeError::Network,
+            http_status: Some(response.status().as_u16()),
+        });
+    }
+    if response
+        .content_length()
+        .is_some_and(|declared| declared != size)
     {
-        return Err(RuntimeError::Verification);
+        return Err(RuntimeError::Verification.into());
     }
     let archive = tempfile::NamedTempFile::new_in(root)?;
     let mut output = tokio::fs::File::from_std(archive.reopen()?);
     let mut received = 0;
     let mut stream = response.bytes_stream();
     loop {
-        let next = tokio::select! {_ = cancel.cancelled()=>return Err(RuntimeError::Cancelled),next=stream.next()=>next};
+        let next = tokio::select! {_ = cancel.cancelled()=>return Err(RuntimeError::Cancelled.into()),next=stream.next()=>next};
         let Some(bytes) = next else {
             break;
         };
         let bytes = bytes.map_err(|_| RuntimeError::Network)?;
         received += bytes.len() as u64;
         if received > size {
-            return Err(RuntimeError::Verification);
+            return Err(RuntimeError::Verification.into());
         }
         output.write_all(&bytes).await?;
         progress.report(Progress::Downloading {
@@ -45,7 +71,7 @@ pub(super) async fn fetch(
     output.sync_all().await?;
     drop(output);
     if received != size {
-        return Err(RuntimeError::Verification);
+        return Err(RuntimeError::Verification.into());
     }
     Ok(archive)
 }

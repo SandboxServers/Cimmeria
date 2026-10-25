@@ -79,6 +79,43 @@ fn preparation_errors_keep_cancellation_and_uncertainty_distinct() {
     );
 }
 
+#[test]
+fn preparation_failures_log_their_cause_and_cancellation_does_not() {
+    let (outcomes, rows) = crate::test_capture::capture(|| {
+        [
+            preparation_outcome(WineError::Runtime(RuntimeError::Network)),
+            preparation_outcome(WineError::RosettaRequired),
+            preparation_outcome(WineError::Invalid),
+            preparation_outcome(WineError::Runtime(RuntimeError::Cancelled)),
+        ]
+    });
+    assert_eq!(
+        outcomes,
+        [
+            Outcome::RuntimeUnavailable,
+            Outcome::RosettaRequired,
+            Outcome::ReconciliationRequired,
+            Outcome::Cancelled,
+        ]
+    );
+    let rows: Vec<_> = rows
+        .iter()
+        .filter(|row| row.field("event") == Some("wine_preparation_failed"))
+        .collect();
+    assert_eq!(rows.len(), 3, "a cancellation logs nothing");
+    let expected = [
+        ("network", "wine_runtime_download_failed"),
+        ("rosetta_required", "rosetta_missing"),
+        ("invalid", "wine_runtime_unavailable"),
+    ];
+    for (row, (error, failure_code)) in rows.iter().zip(expected) {
+        assert_eq!(row.target, "launcher.install");
+        assert_eq!(row.level, tracing::Level::WARN);
+        assert_eq!(row.field("error"), Some(error));
+        assert_eq!(row.field("failure_code"), Some(failure_code));
+    }
+}
+
 #[tokio::test]
 #[ignore = "requires Windows-native helper; provisions pinned Wine and exercises retained install worker headlessly"]
 async fn retained_wine_worker_prepares_content_after_observer_drop() {

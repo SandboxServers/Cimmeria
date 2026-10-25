@@ -301,3 +301,30 @@ async fn cancelled_before_dispatch_never_starts_helper_or_server_cleanup() {
     assert!(state.lock().unwrap().helper_record(id).unwrap().is_none());
     assert!(!stage.exists());
 }
+
+#[test]
+fn rosetta_gate_names_each_result_and_keeps_rosetta_required() {
+    let cases: [(Option<std::io::Result<bool>>, &str, tracing::Level); 4] = [
+        (Some(Ok(true)), "present", tracing::Level::INFO),
+        (Some(Ok(false)), "missing", tracing::Level::WARN),
+        (None, "timed_out", tracing::Level::WARN),
+        (
+            Some(Err(std::io::ErrorKind::NotFound.into())),
+            "spawn_error",
+            tracing::Level::WARN,
+        ),
+    ];
+    for (outcome, result, level) in cases {
+        let present = result == "present";
+        let (gate, rows) = crate::test_capture::capture(|| rosetta_gate(outcome));
+        assert_eq!(gate.is_ok(), present);
+        if !present {
+            assert!(matches!(gate, Err(WineError::RosettaRequired)));
+        }
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].target, "launcher.install");
+        assert_eq!(rows[0].level, level);
+        assert_eq!(rows[0].field("event"), Some("rosetta_probe"));
+        assert_eq!(rows[0].field("result"), Some(result));
+    }
+}

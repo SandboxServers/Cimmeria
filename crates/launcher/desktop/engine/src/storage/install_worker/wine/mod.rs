@@ -1,6 +1,7 @@
 //! Retained Mac install worker. Resource paths are supplied only by native code.
 use super::*;
 use crate::{
+    failure::FailureCode,
     mac_runtime::RuntimeError,
     mac_wine::{WineError, WineSeedExtractor},
 };
@@ -137,6 +138,21 @@ async fn install_claimed(
     (finish_stage(intent, release, &stage, result), Some(report))
 }
 fn preparation_outcome(error: WineError) -> Outcome {
+    let failure = match &error {
+        WineError::RosettaRequired => Some(("rosetta_required", FailureCode::RosettaMissing)),
+        WineError::Invalid => Some(("invalid", FailureCode::WineRuntimeUnavailable)),
+        WineError::Runtime(error) => error.failure().map(|failure| (error.code(), failure)),
+    };
+    if let Some((error, failure)) = failure {
+        let failure_code = failure.code();
+        tracing::warn!(
+            target: "launcher.install",
+            event = "wine_preparation_failed",
+            error,
+            failure_code,
+            "launcher install: Wine preparation failed; expected a ready Wine adapter; the install stops"
+        );
+    }
     match error {
         WineError::RosettaRequired => Outcome::RosettaRequired,
         WineError::Runtime(RuntimeError::Cancelled) => Outcome::Cancelled,

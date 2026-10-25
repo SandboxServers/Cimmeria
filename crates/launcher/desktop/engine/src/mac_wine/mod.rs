@@ -104,14 +104,11 @@ impl WineSeedExtractor {
             .stderr(std::process::Stdio::null())
             .kill_on_drop(true)
             .status();
-        if !tokio::time::timeout(std::time::Duration::from_secs(5), rosetta)
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(5), rosetta)
             .await
-            .map_err(|_| WineError::RosettaRequired)?
-            .map_err(|_| WineError::RosettaRequired)?
-            .success()
-        {
-            return Err(WineError::RosettaRequired);
-        }
+            .ok()
+            .map(|result| result.map(|status| status.success()));
+        rosetta_gate(outcome)?;
         let runtime =
             mac_runtime::prepare(state_root.join("runtimes"), cancel.clone(), progress).await?;
         if cancel.is_cancelled() {
@@ -327,6 +324,18 @@ fn verify_file(path: &Path, expected: &[u8; 32]) -> Result<(), WineError> {
     }
     Ok(())
 }
+/// Name and log the Rosetta check's outcome (PD-14). A timeout or spawn error
+/// still means `RosettaRequired`, as before.
+fn rosetta_gate(outcome: Option<std::io::Result<bool>>) -> Result<(), WineError> {
+    let probe = crate::preflight::mac::classify_rosetta(outcome);
+    mac_runtime::events::rosetta_probe(probe);
+    if probe == crate::preflight::RosettaProbe::Present {
+        Ok(())
+    } else {
+        Err(WineError::RosettaRequired)
+    }
+}
+
 #[cfg(test)]
 mod tests;
 

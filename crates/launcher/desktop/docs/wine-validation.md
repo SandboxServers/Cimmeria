@@ -134,6 +134,20 @@ owns the lock, archive and staging directory, so dropping an observer cannot
 remove staging while tar is writing. The experimental adapter and retained native
 worker use this cache; shell resource binding and game prerequisites remain open.
 
+A non-success HTTP status is a `Network` failure; a declared length that differs
+from the pinned size stays a `Verification` failure. Every failed preparation
+except a cancellation logs one `runtime_prepare_failed` WARN on
+`launcher.install` with `error` (the variant: `io`, `busy`, `network`,
+`verification`, `extraction`), `failure_code` (`wine_runtime_download_failed`,
+`wine_runtime_invalid`, `wine_runtime_busy` or `local_io`) and, when the server
+answered with an error status, `http_status`. The install worker adds one
+`wine_preparation_failed` WARN (`error`: `rosetta_required`, `invalid` or the
+runtime variant; `failure_code`: `rosetta_missing`, `wine_runtime_unavailable`
+or the runtime code). The adapter's Rosetta check logs `rosetta_probe` with
+`result` = `present` (INFO), `missing`, `timed_out` or `spawn_error` (WARN); a
+timeout or spawn error still stops preparation as `RosettaRequired`. No URL,
+path or error text is written.
+
 The pinned-archive extraction/full-tree smoke passed when explicitly invoked
 with `CIMMERIA_RUNTIME_ARCHIVE`; its normal suite entry remains ignored without
 that asset. It did not execute Wine. Ordinary tests cover tree changes, cache

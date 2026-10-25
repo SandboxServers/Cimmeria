@@ -1,6 +1,7 @@
 //! Pinned Wine cache preparation. Does not execute Wine, initialize a prefix or
 //! claim game readiness. All paths are chosen by the native coordinator.
 mod download;
+pub(crate) mod events;
 mod tree;
 use crate::install_progress::ProgressSink;
 use sha2::{Digest, Sha256};
@@ -93,11 +94,25 @@ fn hex(bytes: &[u8]) -> String {
 /// Caller retains the native operation scope. Download is cancellable; tar
 /// extraction is a blocking phase with cancellation checked before promotion.
 /// Existing corrupt caches fail closed and are preserved for explicit repair.
+/// Every failure except a cancellation logs `runtime_prepare_failed` once.
 pub async fn prepare(
     root: PathBuf,
     cancel: CancellationToken,
     progress: ProgressSink,
 ) -> Result<PathBuf, RuntimeError> {
+    prepare_logged(root, cancel, progress)
+        .await
+        .map_err(|failure| {
+            events::runtime_prepare_failed(&failure.error, failure.http_status);
+            failure.error
+        })
+}
+
+async fn prepare_logged(
+    root: PathBuf,
+    cancel: CancellationToken,
+    progress: ProgressSink,
+) -> Result<PathBuf, download::Failure> {
     cancelled(&cancel)?;
     let root_for_lock = root.clone();
     let owner = tokio::task::spawn_blocking(move || lock(&root_for_lock))
@@ -107,13 +122,13 @@ pub async fn prepare(
     if std::fs::symlink_metadata(&destination).is_ok() {
         let candidate = destination.clone();
         let token = cancel.clone();
-        return tokio::task::spawn_blocking(move || {
+        return Ok(tokio::task::spawn_blocking(move || {
             let _owner = owner;
             tree::verify(&candidate, TREE, &token)?;
-            Ok(candidate)
+            Ok::<_, RuntimeError>(candidate)
         })
         .await
-        .map_err(|_| RuntimeError::Io)?;
+        .map_err(|_| RuntimeError::Io)??);
     }
     let http = reqwest::Client::builder()
         .https_only(true)
@@ -123,14 +138,14 @@ pub async fn prepare(
         .build()
         .map_err(|_| RuntimeError::Network)?;
     let archive = download::fetch(&http, URL, SIZE, &root, &cancel, &progress).await?;
-    tokio::task::spawn_blocking(move || {
+    Ok(tokio::task::spawn_blocking(move || {
         // Own lock, archive and staging inside the task: dropping a UI future
         // cannot delete staging while tar is still writing into it.
         let _owner = owner;
         publish(&root, &destination, archive.path(), &cancel)
     })
     .await
-    .map_err(|_| RuntimeError::Io)?
+    .map_err(|_| RuntimeError::Io)??)
 }
 
 /// Recovery never downloads or repairs a runtime. Retain its cache lock while
