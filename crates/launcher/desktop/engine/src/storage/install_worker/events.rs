@@ -134,8 +134,6 @@ impl PhaseTally {
             Some(open) if open.phase == phase => {
                 // The RAR index pass shares the `check` phase with the archive
                 // hash; it reports no bytes, so it keeps the hashed count.
-                // The RAR index pass shares the `check` phase with the archive
-                // hash; it reports no bytes, so it keeps the hashed count.
                 if !matches!(progress, Progress::Checking { total: 0, .. }) {
                     open.bytes = bytes;
                 }
