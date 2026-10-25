@@ -199,9 +199,10 @@ and at each refresh), against one rule
 
 Anything else is refused before a byte is sent. An http login server on a
 DNS name is reached as `https://<name>` on 443, by the rule summaries use
-(`https_upgrade_origin`). An IP or LAN http login server gets no game
-telemetry. A plain-http upload URL that the server hands back is refused,
-never rewritten. There is no http fallback.
+(`https_upgrade_origin`). An IP or single-word http login server gets no game
+telemetry. A dotted LAN name such as `nas.lan` is tried over https, and a
+failed connection sends nothing. A plain-http upload URL that the server hands
+back is refused, never rewritten. There is no http fallback.
 
 The telemetry HTTP client never follows redirects, so a checked request
 cannot be bounced elsewhere.

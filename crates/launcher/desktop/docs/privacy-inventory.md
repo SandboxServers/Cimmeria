@@ -186,7 +186,7 @@ and names and cannot guarantee removal of every sensitive value.
 
 **Destination and retention.** Session diagnostics use your configured login
 server's telemetry service. HTTPS is supported; native policy also permits HTTP
-to loopback only; an HTTP login server on a DNS name is reached over HTTPS on 443 and an IP or single-word login server gets no session diagnostics; a dotted LAN name is tried over HTTPS and a failed connection sends nothing. Summaries consider only the first effective login server at launcher startup, send over HTTPS only (an HTTP login server on a DNS name is upgraded to the same name on 443; IPs and local names get none) and currently
+to loopback only; an HTTP login server on a DNS name is reached over HTTPS on 443 and an IP or single-word login server gets no session diagnostics; a dotted LAN name is tried over HTTPS and a failed connection sends nothing. Summaries consider only the first effective login server at launcher startup, send over HTTPS only (an HTTP login server on a DNS name is upgraded to the same name on 443; IPs, localhost and single-word names get none) and currently
 have no fallback destination. Local queues/logs and server logging/SigNoz can
 retain data. Server retention is configured by the operator, not the launcher.
 

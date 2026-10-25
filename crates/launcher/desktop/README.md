@@ -134,7 +134,7 @@ Preferences persist an optional absolute install path and separate default-off
 active operation blocks path changes but permits consent changes. The path check
 does not establish installation ownership or safe deletion. The flag gates
 [launcher summaries](docs/launcher-summaries.md) only, never game/DLL telemetry. Opt-out aborts a
-send in flight. With no https endpoint (an IP, local or single-label http login server, and the built-in default is not set yet), nothing is tracked, queued or sent.
+send in flight. With no https endpoint (an IP, localhost or single-label http login server, and the built-in default is not set yet), nothing is tracked, queued or sent.
 
 Preferences are `schema_version: 2`. They also hold the client options: the
 `login_servers` list (empty means the built-in default list) and
