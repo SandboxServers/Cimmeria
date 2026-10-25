@@ -2,7 +2,8 @@
 //! document, the JWKS and the token endpoint; each test generates its own
 //! ES256 key. Nothing reaches a real identity provider.
 
-use std::time::Instant;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
@@ -292,6 +293,108 @@ async fn oidc_refetches_jwks_once_for_a_new_kid() {
         assert_eq!(refused, ProviderError::Token("unknown_kid"));
     }
     assert_eq!(jwks_fetches(&server).await, 2);
+}
+
+#[tokio::test]
+async fn oidc_unknown_kid_refetch_is_claimed_once() {
+    let known = TestKey::new("k1");
+    let stranger = TestKey::new("k3");
+    let server = start_issuer(None).await;
+    let issuer = server.uri();
+    // A slow JWKS, so the refetches of concurrent exchanges overlap.
+    Mock::given(method("GET"))
+        .and(path("/jwks"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({ "keys": [known.jwk()] }))
+                .set_delay(Duration::from_millis(200)),
+        )
+        .mount(&server)
+        .await;
+    let provider = Arc::new(oidc_provider(&issuer));
+    provider
+        .verify(&known.sign(&good_claims(&issuer)), NONCE, Instant::now())
+        .await
+        .expect("the known key verifies");
+    assert_eq!(jwks_fetches(&server).await, 1);
+
+    let unknown = stranger.sign(&good_claims(&issuer));
+    let tasks: Vec<_> = (0..8)
+        .map(|_| {
+            let provider = Arc::clone(&provider);
+            let token = unknown.clone();
+            tokio::spawn(async move { provider.verify(&token, NONCE, Instant::now()).await })
+        })
+        .collect();
+    for task in tasks {
+        let refused = task
+            .await
+            .expect("the task completes")
+            .expect_err("an unknown kid is refused");
+        assert_eq!(refused, ProviderError::Token("unknown_kid"));
+    }
+    assert_eq!(jwks_fetches(&server).await, 2);
+}
+
+#[tokio::test]
+async fn oidc_failed_refetch_starts_the_gap() {
+    let known = TestKey::new("k1");
+    let stranger = TestKey::new("k3");
+    let server = start_issuer(None).await;
+    let issuer = server.uri();
+    Mock::given(method("GET"))
+        .and(path("/jwks"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "keys": [known.jwk()] })))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/jwks"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+    let provider = oidc_provider(&issuer);
+    provider
+        .verify(&known.sign(&good_claims(&issuer)), NONCE, Instant::now())
+        .await
+        .expect("the known key verifies");
+    assert_eq!(jwks_fetches(&server).await, 1);
+
+    let unknown = stranger.sign(&good_claims(&issuer));
+    let failed = provider
+        .verify(&unknown, NONCE, Instant::now())
+        .await
+        .expect_err("the failed refetch refuses the token");
+    assert_eq!(failed, ProviderError::Http(500));
+    let gapped = provider
+        .verify(&unknown, NONCE, Instant::now())
+        .await
+        .expect_err("the gap refuses the token");
+    assert_eq!(gapped, ProviderError::Token("unknown_kid"));
+    assert_eq!(jwks_fetches(&server).await, 2);
+}
+
+#[tokio::test]
+async fn oidc_issuer_with_trailing_slash() {
+    let server = MockServer::start().await;
+    let uri = server.uri();
+    let issuer = format!("{uri}/");
+    Mock::given(method("GET"))
+        .and(path("/.well-known/openid-configuration"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issuer": issuer,
+            "authorization_endpoint": format!("{uri}/authorize"),
+            "token_endpoint": format!("{uri}/token"),
+            "jwks_uri": format!("{uri}/jwks"),
+        })))
+        .mount(&server)
+        .await;
+    let provider = oidc_provider(&issuer);
+
+    provider
+        .prepare()
+        .await
+        .expect("discovery is fetched without a doubled slash");
 }
 
 #[tokio::test]

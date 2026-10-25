@@ -52,7 +52,10 @@ impl Discovery {
     /// Fetches the discovery document of `issuer` and checks it against that
     /// issuer. A document naming another issuer is refused (mix-up defence).
     pub async fn fetch(http: &reqwest::Client, issuer: &str) -> Result<Discovery, ProviderError> {
-        let url = format!("{issuer}/.well-known/openid-configuration");
+        let url = format!(
+            "{}/.well-known/openid-configuration",
+            issuer.trim_end_matches('/')
+        );
         let body = get_capped(http, &url).await?;
         let raw: RawDiscovery =
             serde_json::from_slice(&body).map_err(|_| ProviderError::BadResponse("json"))?;
@@ -90,8 +93,6 @@ struct Keys {
     set: JwkSet,
     /// When `set` was fetched.
     fetched: Instant,
-    /// When the last refetch for an unknown `kid` ran, if one has.
-    last_refetch: Option<Instant>,
 }
 
 /// The issuer's signing keys, cached for an hour (contract C4).
@@ -99,6 +100,9 @@ struct Keys {
 pub struct KeyCache {
     /// `None` until the first fetch.
     state: Mutex<Option<Keys>>,
+    /// When the last refetch for an unknown `kid` started, if one has. Set
+    /// before the fetch runs, so a failed refetch also starts the gap.
+    last_refetch: Mutex<Option<Instant>>,
 }
 
 impl KeyCache {
@@ -116,15 +120,15 @@ impl KeyCache {
             return Ok(jwk);
         }
         if !self.is_fresh(now) {
-            self.fetch(http, jwks_uri, now, false).await?;
+            self.fetch(http, jwks_uri, now).await?;
             if let Some(jwk) = self.fresh_key(kid, now) {
                 return Ok(jwk);
             }
         }
-        if !self.refetch_allowed(now) {
+        if !self.claim_refetch(now) {
             return Err(ProviderError::Token("unknown_kid"));
         }
-        self.fetch(http, jwks_uri, now, true).await?;
+        self.fetch(http, jwks_uri, now).await?;
         self.fresh_key(kid, now)
             .ok_or(ProviderError::Token("unknown_kid"))
     }
@@ -158,37 +162,35 @@ impl KeyCache {
             .is_some_and(|keys| now.duration_since(keys.fetched) < CACHE_LIFETIME)
     }
 
-    /// Whether a refetch for an unknown `kid` may run now.
-    fn refetch_allowed(&self, now: Instant) -> bool {
-        self.lock()
-            .as_ref()
-            .and_then(|keys| keys.last_refetch)
-            .is_none_or(|at| now.duration_since(at) >= REFETCH_GAP)
+    /// Claims the refetch for an unknown `kid`. Returns `false` when a refetch
+    /// started less than `REFETCH_GAP` ago; otherwise it records `now` as the
+    /// start of a new refetch and returns `true`. The check and the record
+    /// happen under one lock, so concurrent callers cannot both claim it.
+    fn claim_refetch(&self, now: Instant) -> bool {
+        let mut last = self
+            .last_refetch
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some(at) = *last {
+            if now.duration_since(at) < REFETCH_GAP {
+                return false;
+            }
+        }
+        *last = Some(now);
+        true
     }
 
-    /// Fetches the JWKS and stores it. `refetch` marks the fetch as the one
-    /// that answers an unknown `kid`, which starts the one-minute gap.
+    /// Fetches the JWKS and stores it.
     async fn fetch(
         &self,
         http: &reqwest::Client,
         jwks_uri: &str,
         now: Instant,
-        refetch: bool,
     ) -> Result<(), ProviderError> {
         let body = get_capped(http, jwks_uri).await?;
         let set: JwkSet =
             serde_json::from_slice(&body).map_err(|_| ProviderError::BadResponse("json"))?;
-        let mut guard = self.lock();
-        let last_refetch = if refetch {
-            Some(now)
-        } else {
-            guard.as_ref().and_then(|keys| keys.last_refetch)
-        };
-        *guard = Some(Keys {
-            set,
-            fetched: now,
-            last_refetch,
-        });
+        *self.lock() = Some(Keys { set, fetched: now });
         Ok(())
     }
 
@@ -239,7 +241,9 @@ mod tests {
         let cache = KeyCache::default();
         let now = Instant::now();
         assert!(!cache.is_fresh(now));
-        assert!(cache.refetch_allowed(now));
         assert!(matches!(cache.lookup("k1", now), Lookup::Unknown));
+        assert!(cache.claim_refetch(now));
+        assert!(!cache.claim_refetch(now));
+        assert!(cache.claim_refetch(now + REFETCH_GAP));
     }
 }
