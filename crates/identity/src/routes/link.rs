@@ -27,6 +27,7 @@ use crate::repo::{account, identity};
 use crate::routes::ctx::{client_ip, note, RouteState};
 use crate::routes::error::ApiError;
 use crate::routes::token::signed_in;
+use crate::telemetry;
 
 /// The longest password the link form checks, in bytes. The check runs
 /// before any hash is computed, so an oversized body costs nothing more.
@@ -58,7 +59,7 @@ pub async fn new(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     body: Result<Json<NewRequest>, JsonRejection>,
 ) -> Response {
-    let span = link_span();
+    let span = telemetry::idp_link();
     let result = create(&state, peer, body).instrument(span.clone()).await;
     answered(&span, result)
 }
@@ -70,7 +71,7 @@ pub async fn existing(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     body: Result<Json<ExistingRequest>, JsonRejection>,
 ) -> Response {
-    let span = link_span();
+    let span = telemetry::idp_link();
     let result = link_existing(&state, peer, body)
         .instrument(span.clone())
         .await;
@@ -243,17 +244,6 @@ async fn check_password(pool: &PgPool, name: &str, password: &str) -> Result<u32
         PasswordCheck::Disabled => Err(ApiError::AccountDisabled),
         PasswordCheck::DbError => Err(ApiError::Unavailable),
     }
-}
-
-/// The span every link route runs in: the outcome, then the account and
-/// whether a password was cleared (C15). Never the name.
-fn link_span() -> tracing::Span {
-    tracing::info_span!(
-        "auth.idp.link",
-        outcome = tracing::field::Empty,
-        account_id = tracing::field::Empty,
-        password_cleared = tracing::field::Empty,
-    )
 }
 
 /// Turns the body's result into the response and records the refusal on the

@@ -25,6 +25,7 @@ use crate::routes::ctx::{client_ip, RouteState};
 use crate::routes::error::ApiError;
 use crate::routes::signin::record_outcome;
 use crate::stores::AccessGrant;
+use crate::telemetry;
 
 /// The shortest and longest `launch_id` (C6).
 const LAUNCH_ID_LEN: std::ops::RangeInclusive<usize> = 16..=64;
@@ -60,13 +61,7 @@ pub async fn mint(
     Bearer(grant): Bearer,
     body: Result<Json<LaunchRequest>, JsonRejection>,
 ) -> Response {
-    let span = tracing::info_span!(
-        "auth.launch_ticket.mint",
-        account_id = grant.account_id,
-        outcome = tracing::field::Empty,
-        reason = tracing::field::Empty,
-        latency_ms = tracing::field::Empty,
-    );
+    let span = telemetry::launch_ticket_mint(grant.account_id);
     let started = Instant::now();
     let ip = client_ip(ConnectInfo(peer));
     let mut response = match mint_ticket(&state, &ip, &grant, body)
@@ -146,11 +141,8 @@ pub async fn end(
     body: Result<Json<LaunchRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let launch_id = launch_id_of(body)?;
-    let span = tracing::info_span!(
-        "auth.launch_ticket.end",
-        account_id = grant.account_id,
-        outcome = "ok",
-    );
+    let span = telemetry::launch_ticket_end(grant.account_id);
+    span.record("outcome", "ok");
     let _entered = span.enter();
     state.deps.launch_tickets.end(grant.account_id, &launch_id);
     Ok(StatusCode::NO_CONTENT.into_response())

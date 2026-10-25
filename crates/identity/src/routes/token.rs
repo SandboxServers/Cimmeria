@@ -28,6 +28,7 @@ use crate::repo::{account, identity};
 use crate::routes::ctx::{client_ip, note, RouteState};
 use crate::routes::error::ApiError;
 use crate::stores::{HandoffOutcome, LinkIntent, ACCESS_LIFE, LINK_GRANT_LIFE};
+use crate::telemetry;
 
 /// The `POST /token` body (C6). Every field is optional here so that a missing
 /// one is our `400 invalid_request`, not the extractor's.
@@ -55,11 +56,7 @@ pub async fn token(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     body: Result<Json<TokenRequest>, JsonRejection>,
 ) -> Response {
-    let span = tracing::info_span!(
-        "auth.idp.token",
-        outcome = tracing::field::Empty,
-        account_id = tracing::field::Empty,
-    );
+    let span = telemetry::idp_token();
     let result = answer(&state, peer, body).instrument(span.clone()).await;
     match result {
         Ok(response) => response,

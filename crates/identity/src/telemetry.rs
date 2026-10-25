@@ -53,7 +53,8 @@ pub fn idp_token() -> Span {
     )
 }
 
-/// `auth.idp.link`: a link of a provider identity to an account.
+/// `auth.idp.link`: a link of a provider identity to an account, with whether
+/// the link cleared a password (C15).
 pub fn idp_link() -> Span {
     tracing::info_span!(
         target: "cimmeria_identity",
@@ -62,6 +63,7 @@ pub fn idp_link() -> Span {
         outcome = tracing::field::Empty,
         reason = tracing::field::Empty,
         account_id = tracing::field::Empty,
+        password_cleared = tracing::field::Empty,
         latency_ms = tracing::field::Empty,
     )
 }
@@ -181,6 +183,17 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The link span keeps the C15 `password_cleared` flag that its route records.
+    #[test]
+    fn link_span_declares_password_cleared() {
+        let fields = all_fields()
+            .into_iter()
+            .find(|(span, _)| *span == "link")
+            .map(|(_, fields)| fields)
+            .expect("the link span is listed");
+        assert!(fields.contains(&"password_cleared"));
     }
 
     /// Every helper declares the C11 outcome and latency fields it records.
