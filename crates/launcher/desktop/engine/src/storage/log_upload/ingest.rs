@@ -211,6 +211,11 @@ impl Pacer for TokioPacer {
 /// pacing tests use a recording fake.
 pub(crate) trait ChunkSink {
     fn post(&mut self, batch: &[TelemetryEvent]) -> impl Future<Output = BatchOutcome> + Send;
+
+    /// The scheme and host the sink last posted to, for the finish line (`None` when unknown).
+    fn endpoint(&self) -> Option<(String, String)> {
+        None
+    }
 }
 
 struct SenderSink<'a> {
@@ -221,6 +226,10 @@ struct SenderSink<'a> {
 impl ChunkSink for SenderSink<'_> {
     fn post(&mut self, batch: &[TelemetryEvent]) -> impl Future<Output = BatchOutcome> + Send {
         self.sender.post_batch(self.target, batch)
+    }
+
+    fn endpoint(&self) -> Option<(String, String)> {
+        self.sender.last_endpoint()
     }
 }
 
@@ -299,7 +308,7 @@ pub(crate) async fn send_with(
     let events: Arc<[TelemetryEvent]> = events[..events.len().min(MAX_UPLOAD_ROWS)].into();
     let planning = Arc::clone(&events);
     let Ok(Some(steps)) = tokio::task::spawn_blocking(move || plan(&planning)).await else {
-        log_finished("failed", "plan_failed", 0, 0, 0);
+        log_finished("failed", "plan_failed", 0, 0, 0, sink.endpoint());
         return IngestOutcome::Failed;
     };
     let (steps, chunks_capped) = cap_sends(steps);
@@ -317,7 +326,7 @@ pub(crate) async fn send_with(
             Step::Send(range) => range,
         };
         if cancel.is_cancelled() {
-            return cancelled(lines_sent, chunks, dropped);
+            return cancelled(lines_sent, chunks, dropped, sink.endpoint());
         }
         if let Some(previous) = last_start {
             let since = pacer.now_ms().saturating_sub(previous);
@@ -330,7 +339,7 @@ pub(crate) async fn send_with(
         }
         // Checked again: the sleep may have ended because of the cancel.
         if cancel.is_cancelled() {
-            return cancelled(lines_sent, chunks, dropped);
+            return cancelled(lines_sent, chunks, dropped, sink.endpoint());
         }
         last_start = Some(pacer.now_ms());
         let rows = range.len();
@@ -354,26 +363,52 @@ pub(crate) async fn send_with(
             BatchOutcome::MintFailed { reason } => (IngestOutcome::Failed, reason),
             BatchOutcome::Failed => (IngestOutcome::Failed, "post_failed"),
         };
-        log_finished(outcome_name(outcome), reason, lines_sent, chunks, dropped);
+        log_finished(
+            outcome_name(outcome),
+            reason,
+            lines_sent,
+            chunks,
+            dropped,
+            sink.endpoint(),
+        );
         return outcome;
     }
     if skipped > 0 {
         on_chunk_sent(skipped);
     }
     if capped {
-        log_finished("partial", "upload_cap", lines_sent, chunks, dropped);
+        log_finished(
+            "partial",
+            "upload_cap",
+            lines_sent,
+            chunks,
+            dropped,
+            sink.endpoint(),
+        );
         return IngestOutcome::Partial {
             lines_sent,
             retry_after_secs: MIN_RETRY_SECS,
         };
     }
-    log_finished("sent", "none", lines_sent, chunks, dropped);
+    log_finished("sent", "none", lines_sent, chunks, dropped, sink.endpoint());
     IngestOutcome::Sent { lines_sent }
 }
 
 /// A cancel keeps what was sent; the caller's offsets already stop at the last chunk.
-fn cancelled(lines_sent: u64, chunks: u64, dropped: u64) -> IngestOutcome {
-    log_finished("partial", "cancelled", lines_sent, chunks, dropped);
+fn cancelled(
+    lines_sent: u64,
+    chunks: u64,
+    dropped: u64,
+    endpoint: Option<(String, String)>,
+) -> IngestOutcome {
+    log_finished(
+        "partial",
+        "cancelled",
+        lines_sent,
+        chunks,
+        dropped,
+        endpoint,
+    );
     IngestOutcome::Partial {
         lines_sent,
         retry_after_secs: MIN_RETRY_SECS,
@@ -416,13 +451,19 @@ fn log_started(lines: usize) {
 }
 
 /// `reason` is a closed code: `none` on success, else why the upload stopped.
+/// `scheme` and `host` name the endpoint the last post went to; `-` when none did.
 fn log_finished(
     outcome: &'static str,
     reason: &'static str,
     lines_sent: u64,
     chunks: u64,
     rows_dropped: u64,
+    endpoint: Option<(String, String)>,
 ) {
+    let (scheme, host) = match &endpoint {
+        Some((scheme, host)) => (scheme.as_str(), host.as_str()),
+        None => ("-", "-"),
+    };
     tracing::info!(
         target: "launcher.telemetry",
         event = "log_upload_finished",
@@ -431,6 +472,8 @@ fn log_finished(
         lines_sent,
         chunks,
         rows_dropped,
+        scheme,
+        host,
         "launcher log upload: finished"
     );
 }
@@ -438,3 +481,7 @@ fn log_finished(
 #[cfg(test)]
 #[path = "ingest_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "ingest_endpoint_tests.rs"]
+mod endpoint_tests;
