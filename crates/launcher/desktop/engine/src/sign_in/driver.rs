@@ -342,13 +342,24 @@ impl SignInDriver {
                     url: flow.authorize_url.clone(),
                 });
             }
-            tracing::info!(target: "launcher.sign_in", event = "started", outcome = "opened");
+            tracing::info!(target: "launcher.sign_in", event = "started", outcome = "opened", reason = "browser_opened");
             tokio::select! {
                 grant = flow.finish() => grant.map_err(SignInFailure::from),
                 _ = &mut cancel_rx => Err(SignInFailure::Cancelled),
             }
         }
         .await;
+        if let Err(failure) = &result {
+            let reason = match failure {
+                SignInFailure::BrowserFailed { .. } => "browser_failed",
+                SignInFailure::Cancelled => "cancelled",
+                SignInFailure::Denied => "denied",
+                SignInFailure::TimedOut => "timed_out",
+                SignInFailure::Offline => "offline",
+                _ => "flow_failed",
+            };
+            tracing::info!(target: "launcher.sign_in", event = "failed", outcome = "failed", reason);
+        }
         if let Ok(mut waiting) = self.waiting.lock() {
             *waiting = None;
         }

@@ -520,6 +520,46 @@ async fn account_when_signed_out_is_a_signed_out_failure() {
 }
 
 #[tokio::test]
+async fn unlink_replies_with_the_remaining_identities_and_times() {
+    let fx = Fixture::new(true, true).await;
+    fx.store_entry("r0");
+    Mock::given(method("POST"))
+        .and(path("/auth/v1/token"))
+        .and(body_partial_json(json!({"grant_type": "refresh_token"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(signed_in_body("r6")))
+        .mount(&fx.server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/auth/v1/identities/7"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&fx.server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/auth/v1/account"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "account_name": "alice", "display_name": "Alice",
+            "identities": [{"identity_id": 8, "provider": "dev", "display_name": "Dev",
+                            "created_at": 1_700_000_000_000_i64,
+                            "last_used_at": 1_700_000_100_000_i64}],
+        })))
+        .mount(&fx.server)
+        .await;
+    let status = fx
+        .run(
+            json!({"command": "unlink", "schema_version": 1, "identity_id": 7}),
+            &SilentBrowser::default(),
+        )
+        .await
+        .unwrap();
+    let account = status.account.expect("unlink fills the account view");
+    assert_eq!(account.identities.len(), 1);
+    assert_eq!(account.identities[0].identity_id, 8);
+    assert_eq!(account.identities[0].created_at, 1_700_000_000_000);
+    assert_eq!(account.identities[0].last_used_at, 1_700_000_100_000);
+    assert_eq!(fx.requests_to("/auth/v1/identities/7").await.len(), 1);
+}
+
+#[tokio::test]
 async fn sign_out_clears_state_offline() {
     let fx = Fixture::new(false, false).await;
     fx.store_entry("r0");
