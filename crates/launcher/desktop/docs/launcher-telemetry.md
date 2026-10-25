@@ -102,7 +102,8 @@ duplicate or infer a second adoption from it.
 Scan completions report file and byte counts for workload comparison. These are
 scan workloads, not downloaded bytes or proof of relocation. No per-file event
 is emitted. The timers add no path, account name, machine identity, token,
-operation UUID or arbitrary error text.
+operation UUID or arbitrary error text. The `launcher.install.detail` and
+`launcher.repair.detail` targets stay in the local log and are never forwarded.
 
 ## Delivery limits
 

@@ -127,7 +127,8 @@ pub(crate) fn install_seed_forget_failed(id: Uuid) {
     );
 }
 
-/// A stage failed. Carries the closed code and the HTTP status, never the URL.
+/// A stage failed. Carries the closed code, the HTTP status and the unpack kind,
+/// never the URL. The error text goes to the local log only, under its own target.
 pub(crate) fn install_stage_failed(id: Uuid, error: &InstallError) {
     let operation = operation_numbers::number(id);
     tracing::warn!(
@@ -136,8 +137,11 @@ pub(crate) fn install_stage_failed(id: Uuid, error: &InstallError) {
         operation,
         reason = error.code(),
         http_status = error.http_status(),
+        unpack_kind = error.unpack_code(),
         "install: a stage failed"
     );
+    tracing::warn!(target: "launcher.install.detail", event = "install_stage_detail", operation,
+        detail = %error, "install: stage failure detail (local log only)");
 }
 
 /// The install could not record its uncertain state; the shell calls this too.
@@ -240,9 +244,10 @@ mod tests {
         assert_eq!(failed[0].level, Level::WARN);
         assert_eq!(failed[0].field("reason"), Some("unexpected_status"));
         assert_eq!(failed[0].field("http_status"), Some("503"));
-        assert!(events
-            .iter()
-            .all(|e| e.fields.values().all(|v| !v.contains("example.invalid"))));
+        assert!(failed[0]
+            .fields
+            .values()
+            .all(|v| !v.contains("example.invalid")));
     }
 
     #[test]
@@ -253,5 +258,48 @@ mod tests {
         assert_eq!(failed[0].level, Level::WARN);
         assert_eq!(failed[0].field("reason"), Some("persistence_failed"));
         assert_eq!(failed[0].field("operation"), None);
+    }
+
+    fn unpack_failure() -> InstallError {
+        InstallError::Unpack(crate::unpack::UnpackError::Cab(
+            "expanding the cabinet set in /home/u/x/Data needs Windows".into(),
+        ))
+    }
+
+    #[test]
+    fn an_unpack_failure_logs_its_detail_locally() {
+        let ((), events) = capture(|| install_stage_failed(Uuid::new_v4(), &unpack_failure()));
+        let detail: Vec<_> = events
+            .iter()
+            .filter(|e| e.target == "launcher.install.detail")
+            .collect();
+        assert_eq!(detail.len(), 1);
+        assert_eq!(detail[0].field("event"), Some("install_stage_detail"));
+        assert!(detail[0].field("detail").unwrap().contains("needs Windows"));
+        assert_eq!(
+            crate::storage::game_telemetry::launcher_event::wire_target("launcher.install.detail"),
+            None
+        );
+    }
+
+    #[test]
+    fn the_forwarded_failure_carries_a_closed_kind_and_no_text() {
+        let ((), events) = capture(|| install_stage_failed(Uuid::new_v4(), &unpack_failure()));
+        let failed = event_named(&events, "install_stage_failed");
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].field("reason"), Some("unpack"));
+        assert_eq!(failed[0].field("unpack_kind"), Some("cab"));
+        assert!(failed[0]
+            .fields
+            .values()
+            .all(|v| !v.contains("/home/") && !v.contains("needs Windows")));
+    }
+
+    #[test]
+    fn a_non_unpack_failure_has_no_unpack_kind() {
+        let ((), events) =
+            capture(|| install_stage_failed(Uuid::new_v4(), &InstallError::Cancelled));
+        let failed = event_named(&events, "install_stage_failed");
+        assert_eq!(failed[0].field("unpack_kind"), None);
     }
 }

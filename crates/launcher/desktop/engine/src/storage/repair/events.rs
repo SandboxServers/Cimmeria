@@ -26,15 +26,25 @@ pub(crate) fn repair_claim_failed(id: Uuid, error: StorageError) {
     );
 }
 
-/// Staging the rebuilt content failed; `reason` is the closed install code.
+/// Staging the rebuilt content failed; `reason` is the closed install code. The
+/// error text goes to the local log only, under its own target.
 pub(crate) fn repair_stage_failed(id: Uuid, error: &InstallError) {
+    let operation = crate::operation_numbers::number(id);
     tracing::warn!(
         target: "launcher.repair",
         event = "repair_stage_failed",
-        operation = crate::operation_numbers::number(id),
+        operation,
         reason = error.code(),
         http_status = error.http_status(),
+        unpack_kind = error.unpack_code(),
         "launcher repair: staging failed; expected the release content over https; the run stops and the install is unchanged"
+    );
+    tracing::warn!(
+        target: "launcher.repair.detail",
+        event = "repair_stage_detail",
+        operation,
+        detail = %error,
+        "launcher repair: staging failure detail (local log only)"
     );
 }
 
@@ -242,5 +252,50 @@ mod tests {
         assert_eq!(events[0].target, "launcher.repair");
         assert_eq!(events[0].field("event"), Some("uninstall_failed"));
         assert_eq!(events[0].field("reason"), Some("storage"));
+    }
+
+    fn unpack_failure() -> InstallError {
+        InstallError::Unpack(crate::unpack::UnpackError::Cab(
+            "expanding the cabinet set in /home/u/x/Data needs Windows".into(),
+        ))
+    }
+
+    #[test]
+    fn an_unpack_failure_logs_its_detail_locally() {
+        let ((), events) = capture(|| repair_stage_failed(id(), &unpack_failure()));
+        let detail: Vec<_> = events
+            .iter()
+            .filter(|e| e.target == "launcher.repair.detail")
+            .collect();
+        assert_eq!(detail.len(), 1);
+        assert_eq!(detail[0].field("event"), Some("repair_stage_detail"));
+        assert!(detail[0].field("detail").unwrap().contains("needs Windows"));
+        assert_eq!(
+            crate::storage::game_telemetry::launcher_event::wire_target("launcher.repair.detail"),
+            None
+        );
+    }
+
+    #[test]
+    fn the_forwarded_failure_carries_a_closed_kind_and_no_text() {
+        let ((), events) = capture(|| repair_stage_failed(id(), &unpack_failure()));
+        let failed: Vec<_> = events
+            .iter()
+            .filter(|e| e.field("event") == Some("repair_stage_failed"))
+            .collect();
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].target, "launcher.repair");
+        assert_eq!(failed[0].field("reason"), Some("unpack"));
+        assert_eq!(failed[0].field("unpack_kind"), Some("cab"));
+        assert!(failed[0]
+            .fields
+            .values()
+            .all(|v| !v.contains("/home/") && !v.contains("needs Windows")));
+    }
+
+    #[test]
+    fn a_non_unpack_repair_failure_has_no_unpack_kind() {
+        let ((), events) = capture(|| repair_stage_failed(id(), &InstallError::Cancelled));
+        assert_eq!(events[0].field("unpack_kind"), None);
     }
 }
