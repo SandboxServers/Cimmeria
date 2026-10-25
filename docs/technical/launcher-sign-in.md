@@ -107,7 +107,7 @@ All JSON, TLS only (`403 https_required` otherwise), all `Cache-Control: no-stor
 | `POST /token` | Authorization-code or refresh grant; `signed_in` or `needs_link` |
 | `POST /link/new`, `POST /link/existing` | Finish a `needs_link` |
 | `POST /link/start` | Begin adding a method to a signed-in account |
-| `GET /account`, `DELETE /identities/{id}` | Account view; remove a method |
+| `GET /account`, `DELETE /identities/{id}` | Account view; remove a method; ends the account's other sessions (refresh families, access tokens, launch tickets) except the caller's own family |
 | `POST /launch-ticket`, `/launch-ticket/heartbeat`, `/launch-ticket/end` | Ticket life cycle |
 | `POST /logout` | Revoke a refresh token |
 
