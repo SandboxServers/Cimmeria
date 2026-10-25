@@ -86,8 +86,12 @@ pub fn render_ticket(t: &TicketLogin) -> Result<String, String> {
     };
     login_servers::validate(std::slice::from_ref(&server))
         .map_err(|_| "server_name or relay_url: not a valid login server".to_string())?;
-    if !t.relay_url.starts_with("http://127.0.0.1:") {
-        return Err("relay_url must start with http://127.0.0.1:".into());
+    let port = t
+        .relay_url
+        .strip_prefix("http://127.0.0.1:")
+        .map(|rest| rest.split('/').next().unwrap_or(""));
+    if !port.is_some_and(|p| (1..=5).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_digit())) {
+        return Err("relay_url must be http://127.0.0.1:<port>".into());
     }
     if !is_account(&t.account) {
         return Err("account must be 3 to 20 letters, digits, _ or -".into());
@@ -192,7 +196,9 @@ pub fn write_ticket(install_dir: &Path, t: &TicketLogin) -> std::io::Result<()> 
     }
     let tmp = path.with_extension("lua.tmp");
     std::fs::write(&tmp, content)?;
-    std::fs::rename(&tmp, &path)
+    std::fs::rename(&tmp, &path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
 }
 
 #[cfg(test)]
@@ -241,6 +247,14 @@ mod tests {
             },
             TicketLogin {
                 relay_url: "http://example.org:1".into(),
+                ..fixture()
+            },
+            TicketLogin {
+                relay_url: "http://127.0.0.1:1@example.org/".into(),
+                ..fixture()
+            },
+            TicketLogin {
+                relay_url: "http://127.0.0.1:50123.example.org".into(),
                 ..fixture()
             },
         ];
@@ -299,6 +313,18 @@ mod tests {
             std::fs::read_to_string(&path).unwrap(),
             render_ticket(&fixture()).unwrap()
         );
+        assert!(!path.with_extension("lua.tmp").exists());
+    }
+
+    #[test]
+    fn write_ticket_cleans_up_when_rename_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let path = login_servers::path(&root);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // A directory where the file should be makes the rename fail.
+        std::fs::create_dir(&path).unwrap();
+        assert!(write_ticket(&root, &fixture()).is_err());
         assert!(!path.with_extension("lua.tmp").exists());
     }
 }
