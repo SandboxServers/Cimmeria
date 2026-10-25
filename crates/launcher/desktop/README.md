@@ -347,8 +347,9 @@ pipeline, not simulated progress. It does not download or launch SGW.
 
 Windows expands the original archive's spanning cabinet set with FDI. Linux and
 the Steam Deck use the portable MSZIP expander (`unpack::cab_portable`), with no
-Wine. macOS keeps the Wine helper. Native Mac ZIP/RAR tests do not prove Wine cabinet extraction. The next integration
-needs to invoke the Windows helper, establish managed runtime/prefix ownership,
+Wine. macOS keeps the Wine helper. Native Mac ZIP/RAR tests do not prove Wine
+cabinet extraction. The next integration needs to invoke the Windows helper,
+establish managed runtime/prefix ownership,
 validated operation intents, reconciliation, cancellation and terminal readiness
 checks. The legacy pipeline's success can occur without SGW.exe; a new readiness
 adapter must not equate it with Play-ready. Existing install state is not an
