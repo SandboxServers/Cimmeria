@@ -17,6 +17,8 @@ pub mod session;
 pub mod store;
 
 #[cfg(test)]
+mod driver_tests;
+#[cfg(test)]
 mod session_tests;
 #[cfg(test)]
 mod tests;
