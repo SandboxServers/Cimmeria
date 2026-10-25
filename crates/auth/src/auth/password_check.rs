@@ -4,12 +4,23 @@
 //! (algo 1) row keeps its SHA-1 hash, so an account whose link is refused still
 //! logs in with the unmodified client, which only sends `SHA1HEX` (D-CT7).
 
+use std::sync::OnceLock;
+
 use sqlx::PgPool;
 
 use super::credentials::{
     sha1_upper_hex, validate_credentials, AuthCredError, ClientCredential, ALGO_ARGON2ID,
     ALGO_SHA1_LEGACY,
 };
+use super::password_hash::{hash_argon2id, verify_argon2id};
+
+/// The argon2id hash an unknown account name is checked against. It is built
+/// once, with the same cost as a real row, so a miss takes as long as a wrong
+/// password on an argon2id account.
+fn dummy_argon2id_hash() -> &'static str {
+    static DUMMY: OnceLock<String> = OnceLock::new();
+    DUMMY.get_or_init(|| hash_argon2id("cimmeria-unknown-account").unwrap_or_default())
+}
 
 /// Outcome of [`verify_account_password`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,6 +56,9 @@ pub async fn verify_account_password(
             }
         };
     let Some(algo) = algo else {
+        // Spend the same argon2id verify a known argon2id account would, so the
+        // answer for an unknown name is not visibly faster than a wrong password.
+        let _ = verify_argon2id(plaintext, dummy_argon2id_hash());
         return PasswordCheck::Invalid;
     };
 
