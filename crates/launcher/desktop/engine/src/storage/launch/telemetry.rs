@@ -31,12 +31,7 @@ pub(super) async fn session(
         };
         choice.opted_in.then_some(choice.identity).flatten()?
     };
-    let backend = if plan.runtime.is_some() {
-        "wine"
-    } else {
-        "native"
-    };
-    let tags = ["desktop-launcher", std::env::consts::OS, backend];
+    let tags = session_tags(plan);
     match game_telemetry::start(&identity, servers, &tags).await {
         Ok(session) => Some(session),
         Err(outcome) => {
@@ -44,6 +39,19 @@ pub(super) async fn session(
             None
         }
     }
+}
+
+/// The tags on a Play's game session: the OS, then the backend the game runs
+/// on. A Proton Play is `proton` (it has no Wine runtime), a Wine plan `wine`.
+fn session_tags(plan: &Plan) -> [&'static str; 3] {
+    let backend = if plan.resources.proton.is_some() {
+        "proton"
+    } else if plan.runtime.is_some() {
+        "wine"
+    } else {
+        "native"
+    };
+    ["desktop-launcher", std::env::consts::OS, backend]
 }
 
 /// Write the session marker beside the game and return the DLL to inject after
@@ -143,3 +151,7 @@ pub(super) fn record(state: &Arc<Mutex<DesktopState>>, plan: &Plan, outcome: Out
         }
     }
 }
+
+#[cfg(test)]
+#[path = "telemetry_tests.rs"]
+mod tests;
