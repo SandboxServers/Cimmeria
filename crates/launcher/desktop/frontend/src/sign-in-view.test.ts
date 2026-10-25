@@ -112,6 +112,12 @@ test('link warns and needs a confirm press', async () => {
   await p.app.settled();
   p.field('input[maxlength="10"]').value = 'abc123';
   p.press(p.button('Link with a code'));
+  await flush();
+  assert.equal(p.calls.length, 2, 'Link with a code sends nothing');
+  p.press(p.button('Keep password'));
+  await flush();
+  assert.equal(p.calls.length, 2, 'Keep password sends nothing');
+  p.press(p.button('Link with a code'));
   p.press(p.button('Remove password and link'));
   await p.app.settled();
   assert.deepEqual(p.calls[2], {schema_version: 1, command: 'link_existing_code', link_code: 'ABC123', acknowledge_password_removal: true});
@@ -136,5 +142,23 @@ test('browser_failed shows the address', async () => {
   const field = p.field('[readonly]');
   assert.equal(field.value, 'https://example.org/auth');
   assert.equal(p.statusText(), 'Your browser could not be opened. Copy this address into your browser:');
+ } finally { await p.app.dispose(); }
+});
+
+test('a final link failure re-inspects and offers sign-in again', async () => {
+ const seen = needsLink();
+ const p = await mounted(seen, async request => {
+  if (request.command === 'link_new') {
+   Object.assign(seen, status());
+   throw {error: 'server', code: 'signup_closed'};
+  }
+  return status();
+ });
+ try {
+  p.press(p.button('Create a new account'));
+  await p.app.settled();
+  assert.equal(p.calls.filter(c => c.command === 'inspect').length, 2);
+  assert.equal(p.button('Sign in with Discord').parentElement!.hidden, false);
+  assert.equal(p.statusText(), 'This server is not accepting new accounts right now. Link an existing account instead.');
  } finally { await p.app.dispose(); }
 });

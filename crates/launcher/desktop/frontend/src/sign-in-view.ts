@@ -55,6 +55,7 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
  let providerKey = '';
  let providerButtons: HTMLButtonElement[] = [];
  let disposed = false;
+ let reinspect = false; // a link failure the engine treats as final: the state may have moved on
  let mutation: Promise<void> = Promise.resolve();
  const setStatus = (text: string) => { status.textContent = text; };
  // Never throws synchronously into the caller, whatever the bridge does.
@@ -112,13 +113,24 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
  // One command and its reply. Reports the outcome by name only; no request field is ever reported.
  const exchange = (request: Record<string, unknown>, provider?: string) => call(request).then(decodeReply).then(
   next => { if (!disposed) { reportUiEvent('sign_in', String(request.command), 'ok', 'info'); settle(next); } },
-  failure => { if (!disposed) reportUiEvent('sign_in', String(request.command), fail(failure, provider)); },
+  failure => {
+   if (disposed) return;
+   reportUiEvent('sign_in', String(request.command), fail(failure, provider));
+   // The engine drops a pending link on every failure but these server codes; the panel must read the state again.
+   const f = signInFailure(failure);
+   const keeps = f !== 'schema' && f.error === 'server' && ['invalid_credentials', 'rate_limited', 'not_linkable'].includes(f.code);
+   if (String(request.command).startsWith('link_') && !keeps) reinspect = true;
+  },
  );
  // A press that starts a command: the status text goes first, then the command.
  const send = (request: Record<string, unknown>, pending: string, provider?: string) => {
   if (disposed || busy) return;
   busy = true; setStatus(pending); render();
-  mutation = exchange(request, provider).finally(() => { busy = false; beginning = false; render(); });
+  mutation = exchange(request, provider).finally(() => { busy = false; beginning = false; render(); }).then(() => {
+   if (!reinspect) return;
+   reinspect = false;
+   return inspect();
+  });
  };
  const beginPress = (p: SignInProvider) => {
   if (disposed || busy) return;
