@@ -361,11 +361,12 @@ async fn live_db_verify_account_password_keeps_legacy_rows() {
     cleanup(&pool, id).await;
 }
 
-/// One span seen by [`SpanCapture`]: its name and the values recorded on it,
-/// as text.
+/// One span seen by [`SpanCapture`]: its name, its target and the values
+/// recorded on it, as text.
 #[derive(Clone, Debug)]
 struct SeenSpan {
     name: &'static str,
+    target: &'static str,
     fields: HashMap<String, String>,
 }
 
@@ -401,6 +402,7 @@ impl Subscriber for SpanCapture {
         let mut spans = self.0.lock().unwrap();
         spans.push(SeenSpan {
             name: attrs.metadata().name(),
+            target: attrs.metadata().target(),
             fields,
         });
         Id::from_u64(spans.len() as u64)
@@ -502,4 +504,24 @@ async fn live_db_ticket_for_a_disabled_account_records_a_refused_consume_span() 
         "the ticket text must not appear in the span"
     );
     cleanup(&pool, id).await;
+}
+
+/// **Consume span target (C11, auth.log).** The `auth.log` filter is
+/// `cimmeria_auth::auth=trace`, so a span whose target sits outside that prefix
+/// is dropped before it reaches the log. The consume span must sit under it.
+/// Changing its target back to `cimmeria_auth` fails this test.
+#[test]
+fn consume_span_target_is_inside_the_auth_log_directive() {
+    let capture = SpanCapture::default();
+    let guard = tracing::subscriber::set_default(capture.clone());
+    let _span = super::handlers::consume_span(7);
+    drop(guard);
+
+    let spans = consume_spans(&capture);
+    assert_eq!(spans.len(), 1, "one consume span, got {spans:?}");
+    assert!(
+        spans[0].target.starts_with("cimmeria_auth::auth"),
+        "target {} is outside cimmeria_auth::auth",
+        spans[0].target
+    );
 }
