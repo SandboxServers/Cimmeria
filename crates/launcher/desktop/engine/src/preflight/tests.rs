@@ -428,14 +428,13 @@ fn free_bytes_is_positive_on_a_temp_dir() {
 fn free_bytes_on_a_missing_child_reads_the_existing_ancestor() {
     let dir = tempfile::tempdir().unwrap();
     let child = dir.path().join("absent").join("deeper");
-    // Other tests write to the same volume, so allow a few tries for the two
-    // reads to land between writes.
-    let matched = (0..5).any(|_| {
-        let parent = free_bytes(dir.path());
-        let missing = free_bytes(&child);
-        parent.is_some() && parent == missing
-    });
-    assert!(matched);
+    // Assert on the resolved directory, not on byte counts: other tests write
+    // to the same volume, so two live free-space reads need not agree.
+    assert_eq!(
+        disk::nearest_existing_dir(&child).as_deref(),
+        Some(dir.path())
+    );
+    assert!(free_bytes(&child).is_some());
 }
 
 #[test]

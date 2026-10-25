@@ -40,7 +40,7 @@ pub fn folder_facts(path: Option<&Path>, must_exist: bool) -> FolderFacts {
 }
 
 /// The path itself or its closest ancestor that is an existing directory.
-fn nearest_existing_dir(path: &Path) -> Option<PathBuf> {
+pub(super) fn nearest_existing_dir(path: &Path) -> Option<PathBuf> {
     path.ancestors()
         .map(|ancestor| {
             if ancestor.as_os_str().is_empty() {
