@@ -33,6 +33,9 @@ mod login_smoke;
 mod handlers_tests;
 
 #[cfg(test)]
+mod identity_schema_live_db;
+
+#[cfg(test)]
 mod tls_smoke;
 
 pub use service::AuthService;

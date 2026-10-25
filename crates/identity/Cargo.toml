@@ -1,0 +1,27 @@
+[package]
+name = "cimmeria-identity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Identity providers for the Cimmeria server emulator: the provider types (Discord, generic OIDC, dev mock), the shared provider HTTP client and the auth-providers.toml loader"
+
+# Sits above cimmeria-auth: it may depend on the auth crate and on common, and
+# nothing below it may depend on this crate. See docs/analysis/client-tls-oidc/
+# (contract C3, C4 and C12).
+[dependencies]
+cimmeria-auth = { workspace = true }
+cimmeria-common = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+reqwest = { workspace = true }
+async-trait = { workspace = true }
+url = { workspace = true }
+rand = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+# The local listener for the `read_capped` test in http.rs.
+tokio = { workspace = true }
