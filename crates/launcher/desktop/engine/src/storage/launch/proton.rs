@@ -8,12 +8,15 @@ use crate::game_telemetry::Session;
 use crate::helper_supervisor::HelperCommand;
 use crate::linux_proton::discovery::{self, ProtonInstall, SteamRoots};
 use crate::linux_proton::prefix::{self, Prefix, ProtonError};
-use crate::linux_proton::{environment, invocation, paths, setup};
+use crate::linux_proton::{environment, invocation, paths, physx, setup};
 use crate::storage::display_options::{self, DisplayOptions, Placement};
 use cimmeria_runtime_probe::game_launch::Request;
 
 /// Where the system-wide Proton builds live (C-1).
 const SYSTEM_TOOLS: &str = "/usr/share/steam/compatibilitytools.d";
+
+/// The PhysX prerequisite worker, shipped beside the launch worker (PP-02).
+const PREREQUISITE_WORKER: &str = "cimmeria-prerequisite-worker.exe";
 
 /// The folders Proton searches, as the launcher sees them. Tests replace them.
 struct Search {
@@ -70,11 +73,32 @@ fn prepare_in(
     tokio::runtime::Handle::current()
         .block_on(setup::ensure(&install, &claimed, &base, setup_log))
         .map_err(|_| PrepareError(FailureCode::ProtonSetupFailed))?;
-    // PP-16 directx, PP-08 physx, PP-17 display
+    // PP-16 directx, PP-17 display
     let game = plan.installation.content_root();
     // Client setup, as `wine.rs` runs it: login servers, stock names, ASLR, containment.
     preparation::prepare(plan, servers)?;
     let binaries = cimmeria_patchset::resolve_existing_case(&game, Path::new("Working/Binaries"));
+    // PhysX (PP-08): the prerequisite worker is the launch worker's sibling in `windows/`.
+    let prerequisite = plan
+        .resources
+        .helper
+        .path()
+        .with_file_name(PREREQUISITE_WORKER);
+    if !prerequisite.is_file() {
+        return Err(PrepareError(FailureCode::ProtonSetupFailed));
+    }
+    let physx_log = logs.as_ref().map(|folder| folder.join("physx.log"));
+    tokio::runtime::Handle::current()
+        .block_on(physx::ensure_physx(
+            &install,
+            &claimed,
+            &base,
+            &prerequisite,
+            &binaries,
+            plan.id,
+            physx_log.as_deref(),
+        ))
+        .map_err(|_| PrepareError(FailureCode::ProtonSetupFailed))?;
     let guest = |p: &Path| {
         paths::guest(p)
             .map(PathBuf::from)

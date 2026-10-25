@@ -68,6 +68,20 @@ pub async fn run(
     outcome
 }
 
+/// Where the worker's stderr goes: appended to `path`, or discarded. None when
+/// the file cannot be opened, so the run never starts without its log.
+fn stderr_for(path: Option<&std::path::Path>) -> Option<Stdio> {
+    match path {
+        None => Some(Stdio::null()),
+        Some(path) => std::fs::File::options()
+            .create(true)
+            .append(true)
+            .open(path)
+            .ok()
+            .map(Stdio::from),
+    }
+}
+
 /// The closed snake_case name of a helper fault, for the `launcher.install` log.
 fn fault_name(fault: &Fault) -> &'static str {
     match fault {
@@ -105,6 +119,10 @@ async fn run_helper(
     if cancel.is_cancelled() {
         return Outcome::NotStarted(Fault::Cancelled);
     }
+    // The worker's stderr is appended to `stderr_log` when given (PP-08 physx.log).
+    let Some(stderr) = stderr_for(spec.stderr_log.as_deref()) else {
+        return Outcome::NotStarted(Fault::Spawn);
+    };
     let mut command = Command::new(spec.executable);
     command
         .args(spec.arguments)
@@ -113,7 +131,7 @@ async fn run_helper(
         .envs(spec.environment)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(stderr)
         .kill_on_drop(true);
     #[cfg(windows)]
     command.creation_flags(0x08000000);
