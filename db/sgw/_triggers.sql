@@ -42,6 +42,13 @@ CREATE TRIGGER sgw_player_before_delete_lock_orgs BEFORE DELETE ON sgw_player FO
 
 CREATE TRIGGER account_before_delete_lock_orgs BEFORE DELETE ON account FOR EACH ROW EXECUTE FUNCTION org_account_before_delete();
 
+-- Enforces "no password on an account with a linked identity".
+CREATE TRIGGER account_password_guard BEFORE INSERT OR UPDATE OF password, password_hash_v2 ON account
+    FOR EACH ROW EXECUTE FUNCTION account_password_guard();
+
+-- Enforces "no password on an account with a linked identity".
+CREATE TRIGGER account_identity_password_guard BEFORE INSERT ON account_identity
+    FOR EACH ROW EXECUTE FUNCTION account_identity_password_guard();
 --
 -- Name: sgw_player_before_delete_auctions; Type: TRIGGER; Schema: public; Owner: -
 --
