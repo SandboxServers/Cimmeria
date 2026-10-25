@@ -210,12 +210,11 @@ async fn execute(
                 .lock()
                 .map_err(|_| StorageError::Io)?
                 .set_play_refusal(Some(refusal.reason()));
-            failure::not_started(
-                &state,
-                plan,
-                refusal.reason(),
-                FailureCode::LaunchPrepareFailed,
-            );
+            let code = match refusal {
+                sign_in_play::TicketRefusal::Unavailable => FailureCode::TicketUnavailable,
+                sign_in_play::TicketRefusal::SignInEnded => FailureCode::SignInEnded,
+            };
+            failure::not_started(&state, plan, refusal.reason(), code);
             return Ok(Observation::NotStarted);
         }
     };
@@ -262,7 +261,7 @@ async fn execute(
             &state,
             plan,
             "ticket_write_failed",
-            FailureCode::LaunchPrepareFailed,
+            FailureCode::TicketUnavailable,
         );
         return Ok(Observation::NotStarted);
     }
