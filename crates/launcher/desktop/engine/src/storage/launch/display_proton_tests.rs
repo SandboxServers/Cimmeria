@@ -101,3 +101,19 @@ fn a_documents_folder_linked_out_of_the_prefix_writes_nothing() {
     assert_eq!(event.field("saved_options"), Some("failed"));
     assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0);
 }
+
+#[test]
+fn a_first_play_with_an_existing_engine_ini_is_reported_as_applied() {
+    let pfx = tempfile::tempdir().unwrap();
+    let profile = profile_in(pfx.path());
+    std::fs::create_dir_all(profile.join("Config")).unwrap();
+    std::fs::write(
+        profile.join(ENGINE_INI),
+        "[WinDrv.WindowsClient]\r\nStartupFullscreen=True\r\nStartupResolutionX=800\r\nStartupResolutionY=600\r\n",
+    )
+    .unwrap();
+    let event = applied(pfx.path(), &profile, DisplayOptions::default());
+    assert_eq!(event.field("saved_options"), Some("seeded"));
+    assert_eq!(event.field("engine_ini"), Some("written"));
+    assert_eq!(event.level, Level::INFO);
+}
