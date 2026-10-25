@@ -345,8 +345,9 @@ persists installed state. Its second pass makes no further blob requests, while
 a stalled watch receiver retains the newest progress. This exercises the real
 pipeline, not simulated progress. It does not download or launch SGW.
 
-The original archive's spanning cabinet set still requires Windows FDI. Native
-Mac ZIP/RAR tests do not prove Wine cabinet extraction. The next integration
+Windows expands the original archive's spanning cabinet set with FDI. Linux and
+the Steam Deck use the portable MSZIP expander (`unpack::cab_portable`), with no
+Wine. macOS keeps the Wine helper. Native Mac ZIP/RAR tests do not prove Wine cabinet extraction. The next integration
 needs to invoke the Windows helper, establish managed runtime/prefix ownership,
 validated operation intents, reconciliation, cancellation and terminal readiness
 checks. The legacy pipeline's success can occur without SGW.exe; a new readiness
