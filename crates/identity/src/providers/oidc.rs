@@ -12,9 +12,9 @@ use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
 
-use super::oidc_keys::{send_error, Discovery, KeyCache, CACHE_LIFETIME};
+use super::oidc_keys::{Discovery, KeyCache, CACHE_LIFETIME};
 use crate::config::{ProviderConfig, Secret};
-use crate::http::{read_capped, PROVIDER_BODY_CAP};
+use crate::http::{read_capped, transport_error, PROVIDER_BODY_CAP};
 use crate::provider::{IdentityProvider, ProviderError, ProviderId, VerifiedIdentity};
 
 /// The clock skew the `exp` check allows, in seconds.
@@ -280,7 +280,7 @@ impl IdentityProvider for OidcProvider {
             .body(body)
             .send()
             .await
-            .map_err(send_error)?;
+            .map_err(transport_error)?;
         let status = resp.status();
         if status == reqwest::StatusCode::BAD_REQUEST || status == reqwest::StatusCode::UNAUTHORIZED
         {

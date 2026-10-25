@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use jsonwebtoken::jwk::{Jwk, JwkSet};
 use serde::Deserialize;
 
-use crate::http::{read_capped, PROVIDER_BODY_CAP};
+use crate::http::{read_capped, transport_error, PROVIDER_BODY_CAP};
 use crate::provider::ProviderError;
 
 /// How long a discovery document or a JWKS stays fresh.
@@ -207,21 +207,12 @@ pub(crate) async fn get_capped(
     http: &reqwest::Client,
     url: &str,
 ) -> Result<Vec<u8>, ProviderError> {
-    let resp = http.get(url).send().await.map_err(send_error)?;
+    let resp = http.get(url).send().await.map_err(transport_error)?;
     let status = resp.status();
     if !status.is_success() {
         return Err(ProviderError::Http(status.as_u16()));
     }
     read_capped(resp, PROVIDER_BODY_CAP).await
-}
-
-/// Maps a failed send to the provider error the spans report.
-pub(crate) fn send_error(err: reqwest::Error) -> ProviderError {
-    if err.is_timeout() {
-        ProviderError::Timeout
-    } else {
-        ProviderError::BadResponse("transport")
-    }
 }
 
 #[cfg(test)]
