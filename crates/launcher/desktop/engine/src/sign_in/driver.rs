@@ -67,10 +67,10 @@ pub fn default_store() -> Arc<dyn CredentialStore> {
 
 /// What a reply names: the login server (none when the launcher has none) and
 /// its discovery (none while the server cannot be reached).
-struct Site<'a> {
-    state: &'a Mutex<DesktopState>,
-    server: Option<&'a str>,
-    discovery: Option<&'a Discovery>,
+pub(super) struct Site<'a> {
+    pub(super) state: &'a Mutex<DesktopState>,
+    pub(super) server: Option<&'a str>,
+    pub(super) discovery: Option<&'a Discovery>,
 }
 
 /// How a `needs_link` choice is completed.
@@ -450,7 +450,7 @@ impl SignInDriver {
     }
 
     /// Signs out (it works offline), then drops the sign-in and any pending choice.
-    async fn sign_out(
+    pub(super) async fn sign_out(
         &self,
         site: &Site<'_>,
         session: Option<Arc<SignIn>>,
