@@ -41,7 +41,7 @@ pub async fn read_capped(
 }
 
 /// Maps a transport failure to the provider error the spans report.
-fn transport_error(err: reqwest::Error) -> ProviderError {
+pub(crate) fn transport_error(err: reqwest::Error) -> ProviderError {
     if err.is_timeout() {
         ProviderError::Timeout
     } else {

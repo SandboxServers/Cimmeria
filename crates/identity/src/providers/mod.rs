@@ -83,3 +83,40 @@ fn encode_pairs(pairs: &[(&str, &str)]) -> String {
         .finish()
         .replace('+', "%20")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config;
+
+    /// Two developer-mode mock tables; only the first may run.
+    const CONFIG: &str = r#"
+public_base_url = "https://play.example.org"
+
+[[provider]]
+id = "dev"
+kind = "dev_mock"
+display_name = "Developer sign-in"
+client_id = "dev-client"
+client_secret_env = "CIMMERIA_IDP_DEV_SECRET"
+trusted_email = true
+
+[[provider]]
+id = "dev2"
+kind = "dev_mock"
+display_name = "Developer sign-in"
+client_id = "dev-client"
+client_secret_env = "CIMMERIA_IDP_DEV_SECRET"
+trusted_email = true
+"#;
+
+    #[test]
+    fn a_second_dev_mock_table_is_skipped() {
+        let env = |name: &str| (name == "CIMMERIA_IDP_DEV_SECRET").then(|| "dev-secret".to_owned());
+        let (cfg, _) = config::load(CONFIG, &env, true).expect("the fixture loads");
+        let providers = build(&cfg, crate::http::provider_client());
+        assert_eq!(providers.list().len(), 1);
+        assert_eq!(providers.dev_mock().unwrap().id().as_str(), "dev");
+        assert!(providers.get("dev2").is_none());
+    }
+}

@@ -21,7 +21,6 @@ const CODE_LIFE: Duration = Duration::from_secs(60);
 const ISSUER: &str = "dev-mock";
 
 /// The developer-mode mock. Only built when developer mode is on (C4).
-#[derive(Debug)]
 pub struct DevMockProvider {
     id: ProviderId,
     display_name: String,
@@ -30,6 +29,16 @@ pub struct DevMockProvider {
     base_url: String,
     /// Issued codes, each with the identity the form posted and its issue time.
     codes: Mutex<HashMap<String, (VerifiedIdentity, Instant)>>,
+}
+
+/// Hand-written so that `{:?}` never prints the live single-use codes (R7, C11).
+impl std::fmt::Debug for DevMockProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DevMockProvider")
+            .field("id", &self.id)
+            .field("base_url", &self.base_url)
+            .finish_non_exhaustive()
+    }
 }
 
 impl DevMockProvider {
@@ -46,15 +55,36 @@ impl DevMockProvider {
 
     /// Stores `identity` under a fresh code and returns the code. Codes issued
     /// more than 60 seconds ago are dropped on the way.
-    pub fn issue(&self, mut identity: VerifiedIdentity) -> String {
+    pub fn issue(&self, identity: VerifiedIdentity) -> String {
+        self.issue_at(identity, Instant::now())
+    }
+
+    /// The body of `issue`, with the clock passed in so tests can drive it.
+    fn issue_at(&self, mut identity: VerifiedIdentity, now: Instant) -> String {
         identity.issuer = ISSUER.to_owned();
         let mut rng = rand::rng();
         let bytes: [u8; 32] = std::array::from_fn(|_| rng.random());
         let code = URL_SAFE_NO_PAD.encode(bytes);
         let mut codes = self.codes.lock().unwrap_or_else(PoisonError::into_inner);
-        codes.retain(|_, (_, issued)| issued.elapsed() < CODE_LIFE);
-        codes.insert(code.clone(), (identity, Instant::now()));
+        codes.retain(|_, (_, issued)| now.saturating_duration_since(*issued) < CODE_LIFE);
+        codes.insert(code.clone(), (identity, now));
         code
+    }
+
+    /// The body of `exchange`, with the clock passed in so tests can drive it.
+    fn take_at(&self, code: &str, now: Instant) -> Result<VerifiedIdentity, ProviderError> {
+        // Removing the entry makes the code single-use, even when it is replayed.
+        let taken = self
+            .codes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(code);
+        match taken {
+            Some((identity, issued)) if now.saturating_duration_since(issued) < CODE_LIFE => {
+                Ok(identity)
+            }
+            _ => Err(ProviderError::Token("invalid_grant")),
+        }
     }
 }
 
@@ -90,16 +120,7 @@ impl IdentityProvider for DevMockProvider {
         _nonce: &str,
         _redirect_uri: &str,
     ) -> Result<VerifiedIdentity, ProviderError> {
-        // Removing the entry makes the code single-use, even when it is replayed.
-        let taken = self
-            .codes
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(code);
-        match taken {
-            Some((identity, issued)) if issued.elapsed() < CODE_LIFE => Ok(identity),
-            _ => Err(ProviderError::Token("invalid_grant")),
-        }
+        self.take_at(code, Instant::now())
     }
 }
 
@@ -179,6 +200,26 @@ trusted_email = true
             mock.exchange("never-issued", "", "", "").await.err(),
             Some(ProviderError::Token("invalid_grant"))
         );
+    }
+
+    #[test]
+    fn dev_mock_debug_hides_codes() {
+        let m = mock();
+        let code = m.issue(identity());
+        assert!(!format!("{m:?}").contains(&code));
+    }
+
+    #[test]
+    fn dev_mock_codes_expire_after_sixty_seconds() {
+        let m = mock();
+        let t0 = Instant::now();
+        let old = m.issue_at(identity(), t0);
+        assert!(m.take_at(&old, t0 + Duration::from_secs(61)).is_err());
+        let kept = m.issue_at(identity(), t0);
+        assert!(m.take_at(&kept, t0 + Duration::from_secs(59)).is_ok());
+        let stale = m.issue_at(identity(), t0);
+        let _fresh = m.issue_at(identity(), t0 + Duration::from_secs(61));
+        assert!(m.take_at(&stale, t0 + Duration::from_secs(61)).is_err());
     }
 
     #[test]

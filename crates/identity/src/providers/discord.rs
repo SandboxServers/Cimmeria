@@ -9,7 +9,7 @@ use url::Url;
 
 use super::encode_pairs;
 use crate::config::{ProviderConfig, Secret};
-use crate::http::{read_capped, PROVIDER_BODY_CAP};
+use crate::http::{read_capped, transport_error, PROVIDER_BODY_CAP};
 use crate::provider::{IdentityProvider, ProviderError, ProviderId, VerifiedIdentity};
 
 /// The issuer every Discord identity carries.
@@ -178,15 +178,6 @@ pub fn discord_created_ms(snowflake: u64) -> i64 {
     (snowflake >> 22) as i64 + DISCORD_EPOCH_MS
 }
 
-/// Maps a transport failure to the provider error the spans report.
-fn transport_error(err: reqwest::Error) -> ProviderError {
-    if err.is_timeout() {
-        ProviderError::Timeout
-    } else {
-        ProviderError::BadResponse("transport")
-    }
-}
-
 /// The token endpoint's answer; only the access token is read.
 #[derive(Deserialize)]
 struct TokenReply {
@@ -211,7 +202,7 @@ mod tests {
     use std::collections::HashMap;
 
     use serde_json::json;
-    use wiremock::matchers::{header, method, path};
+    use wiremock::matchers::{body_string_contains, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
@@ -248,10 +239,19 @@ trusted_email = true
         DiscordProvider::with_base(&discord_config(), crate::http::provider_client(), base)
     }
 
-    /// Mounts a token answer that accepts any form body.
+    /// Mounts a token answer that matches only the form the spec names.
     async fn mount_token(server: &MockServer, status: u16) {
         Mock::given(method("POST"))
             .and(path("/api/oauth2/token"))
+            .and(header("content-type", "application/x-www-form-urlencoded"))
+            .and(body_string_contains("grant_type=authorization_code"))
+            .and(body_string_contains("code=code"))
+            .and(body_string_contains(
+                "redirect_uri=https%3A%2F%2Fplay.example.org%2Fcb",
+            ))
+            .and(body_string_contains("code_verifier=verifier"))
+            .and(body_string_contains("client_id=000000000000000000"))
+            .and(body_string_contains(format!("client_secret={SECRET}")))
             .respond_with(
                 ResponseTemplate::new(status).set_body_json(json!({ "access_token": "tok" })),
             )
