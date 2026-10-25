@@ -81,7 +81,7 @@ pub enum Outcome {
     Attached,
     /// The server gave no session (unreachable, refused, kill switch, bad reply).
     SessionUnavailable,
-    /// The mint or upload address is plain http to a host that is not a login server.
+    /// The mint or upload address is plain http to another machine (D-LI11), so nothing was sent.
     EndpointRefused,
     /// A session was minted but its marker could not be written beside the game.
     SessionNotWritten,

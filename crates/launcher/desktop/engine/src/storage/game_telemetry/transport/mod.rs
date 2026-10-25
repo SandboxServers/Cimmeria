@@ -126,7 +126,7 @@ pub enum TransportError {
     Choice,
     #[error("the server gave no usable telemetry session")]
     SessionUnavailable,
-    #[error("a telemetry address is plain http to a host that is not a login server")]
+    #[error("a telemetry address is plain http to another machine, so nothing was sent")]
     EndpointRefused,
     #[error("the telemetry queue could not be read or written")]
     Queue,
