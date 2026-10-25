@@ -1,8 +1,10 @@
 //! # cimmeria-identity
 //!
-//! The identity providers of the Cimmeria server emulator: the provider types
-//! (Discord, generic OpenID Connect, and the developer-mode mock), the HTTP
-//! client their calls share, and the loader for `config/auth-providers.toml`.
+//! The identity layer of the Cimmeria server emulator: the provider types
+//! (Discord, generic OpenID Connect and the developer-mode mock), the HTTP
+//! client their calls share, the loader for `config/auth-providers.toml`, the
+//! database repository, the in-memory sign-in stores, the rate limits and the
+//! `/auth/v1` routes.
 //!
 //! This crate sits above `cimmeria-auth` and may depend on it. Nothing below
 //! the auth crate may depend on this one, so the login handshake stays
