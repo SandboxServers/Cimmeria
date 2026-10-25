@@ -37,6 +37,7 @@ mod repair;
 mod runtime_setup;
 mod seed_archive;
 mod setup_events;
+pub(crate) mod sign_in;
 mod summary;
 pub(crate) mod telemetry_status;
 pub(crate) mod ui_event;
@@ -60,6 +61,8 @@ pub struct NativeHost {
     migration_preview: Mutex<Option<migration::Preview>>,
     adoption: Mutex<adoption::Adoption>,
     seed_archive: Mutex<seed_archive::SeedArchive>,
+    /// The launcher's sign-in driver (C13); building it touches no keyring.
+    sign_in: cimmeria_launcher_engine::sign_in::driver::SignInDriver,
     #[cfg(test)]
     repair_fixture: Option<repair::TestDispatch>,
     #[cfg(test)]
@@ -106,6 +109,9 @@ impl NativeHost {
             migration_preview: Mutex::new(None),
             adoption: Mutex::new(adoption::Adoption::default()),
             seed_archive: Mutex::new(seed_archive::SeedArchive::default()),
+            sign_in: cimmeria_launcher_engine::sign_in::driver::SignInDriver::new(
+                cimmeria_launcher_engine::sign_in::driver::default_store(),
+            ),
             #[cfg(test)]
             repair_fixture: None,
             #[cfg(test)]
