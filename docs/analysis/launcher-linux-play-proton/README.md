@@ -160,6 +160,11 @@ BlockedDecision / Writing / Review / Integrated / UATPending / Done.
 - FU-10 The first Linux Play runs at 1024x768 whatever size was chosen (D-PP27). Test a seeded minimal `SGWEngine.ini` on the Deck before writing one.
 - FU-11 Fullscreen under Proton (F-27): it never draws, and Alt+Tab kills touch input. Try `-fullscreen`, other sizes or gamescope first.
 - FU-12 Play on Proton Experimental and 9.0 with the DX changes (F-26). Find out why 9.0's prerequisite worker hangs before msiexec; PP-08's 180 s deadline makes it `proton_setup_failed` meanwhile.
+- FU-13 A stale Play button after the selected Proton is removed is refused as `corrupt_state`, not `proton_missing`: the status that enabled the button predates the removal, and admission keeps `StorageError::Corrupt` (PP-06 ruling). Make admission answer `proton_missing`.
+- FU-14 `npm run uat:launch` cannot run on Linux: `launch_uat_bridge` and its fixture are gated to windows and macos. It needs a Linux fixture before the REPL-style launch UAT can cover Proton.
+- FU-15 Scratch folders under `<state>/proton/scratch/<operation>` (the PhysX worker's) are never cleaned.
+- FU-16 `SYSTEM_TOOLS` (`/usr/share/steam/compatibilitytools.d`) is defined twice, in the shell (`host/launch/resources.rs`) and in the engine (`storage/launch/proton.rs`). Keep one.
+- FU-17 `directx::ensure` logs `proton_directx_failed` with no DLL name; add the closed `dll` field so a failure says which cabinet member failed.
 
 ## Close-out
 

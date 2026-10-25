@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Launcher contributors
-> **Last updated:** 2026-10-23
+> **Last updated:** 2026-10-25
 > **Companions:** [Implementation plan](../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md), [build rules](../../../docs/architecture/build-system.md#standalone-desktop-launcher-validation), [test policy](../../../TESTING.md)
 
 This standalone workspace contains native Rust state, Effect workflows and a
@@ -73,7 +73,8 @@ expands it with the portable decoder in `cimmeria-launcher-core`
 continue from one cabinet into the next, the cabinets' DOS timestamps, and the
 same name and file-count preflight as the FDI path. The 2009 client's four
 cabinets are all MSZIP. Independent folders expand on up to four threads; a
-folder never splits across them. A Quantum or LZX folder is refused by name.
+folder never splits across them. A Quantum or LZX folder is refused by name (Play reads the DirectX cabinets
+separately, one LZX member at a time).
 Resuming an interrupted install works as on Windows. Linux file systems are
 case-sensitive and the cabinets spell `Working\binaries` in lower case, so plain
 patch zips (such as `004-log-config`'s `Working/Binaries/SGWLogConfig.xml`) and
@@ -85,9 +86,15 @@ Windows use; a filesystem without it refuses the publish.
 Releases carry an x86-64 AppImage, `StargateWorlds-Launcher-linux-x86_64.AppImage`
 ([release](docs/release.md#what-the-linux-job-builds)).
 
-**Not on Linux yet:** Play (there is no Wine or Proton backend), the PhysX and
-other prerequisite setup, Repair, Update and the launcher self-update. Those
-paths still answer `platform_unavailable`.
+**Play runs through Proton.** Linux Play needs a Proton build the player already
+has (Proton Experimental or a numbered Proton from Steam, or GE-Proton from
+ProtonUp-Qt); the launcher downloads none. It keeps a private prefix, extracts
+the game's own DirectX DLLs from its cabinets, installs PhysX once and starts
+the game windowed. The details, the failure codes and the checklist are in
+[Linux (Proton)](docs/launch.md#linux-proton).
+
+**Not on Linux yet:** Repair, Update and the launcher self-update. Those paths
+still answer `platform_unavailable`.
 
 ## Native operation and storage contracts
 
@@ -152,7 +159,7 @@ offer, and a default display is stored as no key. Its optional `monitor` is
 remembered per display setup ([launch.md § The monitor per display
 setup](docs/launch.md#the-monitor-per-display-setup)). Every snapshot carries
 `preferences.display` and `display_modes`, the modes this platform offers, plus
-`displays`, `display_sizes`, `display_monitor` and `frame_caps` (the frame caps this platform offers; empty off macOS). `save_client_options` replaces both client
+`displays`, `display_sizes`, `display_monitor` and `frame_caps` (the frame caps this platform offers: three on macOS, `fps30` and `fps60` on Linux, none on Windows). `save_client_options` replaces both client
 options at once, needs the current preference revision, and is refused while the
 launcher updater or any operation other than Play is running (Play reads them
 only at launch, so a save during Play applies to the next one); it leaves the
