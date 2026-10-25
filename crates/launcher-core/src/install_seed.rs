@@ -132,6 +132,7 @@ async fn fetch_seed<'s>(
     let expected = seed.sha256.clone();
     let size = seed.size;
     let cancel = ctx.cancel.clone();
+    let progress = ctx.progress.clone();
     let complete = tokio::task::spawn_blocking(move || -> Result<bool, InstallError> {
         if cancel.is_cancelled() {
             return Err(InstallError::Cancelled);
@@ -147,7 +148,7 @@ async fn fetch_seed<'s>(
         if meta.len() != size {
             return Ok(false);
         }
-        match verify_sha256(&cached, &expected, "seed") {
+        match verify_sha256_reporting(&cached, &expected, "seed", Some(&progress)) {
             Ok(()) => Ok(true),
             Err(InstallError::HashMismatch { .. }) => {
                 if cancel.is_cancelled() {

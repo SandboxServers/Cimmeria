@@ -19,10 +19,10 @@
 //!    Idempotent; it also runs before every launch.
 
 use std::collections::BTreeSet;
-use std::io::Read;
 use std::path::Path;
 
 use cimmeria_patchset::{ApplyOptions, SkippedOp};
+#[cfg(test)]
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
@@ -32,8 +32,12 @@ use tracing::{info, warn};
 #[path = "install_seed.rs"]
 mod seed;
 pub use seed::{SeedBackend, SeedExtraction, SeedExtractor};
+#[path = "install_hash.rs"]
+mod hash;
 #[path = "install_tolerant.rs"]
 mod tolerant;
+pub use hash::hash_file;
+use hash::{verify_sha256, verify_sha256_reporting};
 
 use crate::install_layout;
 use crate::install_progress::{ProgressReporter, ProgressSink};
@@ -152,6 +156,18 @@ pub enum Progress {
         total: u64,
     },
     Extracting {
+        label: String,
+        current: usize,
+        total: usize,
+        filename: String,
+    },
+    /// The local archive copy (`VerifiedLocalSeed::copy_into`).
+    Copying { copied: u64, total: u64 },
+    /// SHA-256 of a downloaded, cached or patch archive (`total > 0`), or the
+    /// RAR index pass (`total == 0`: no known total).
+    Checking { read: u64, total: u64 },
+    /// Cabinet expansion inside a RAR seed; fields as in `Extracting`.
+    Expanding {
         label: String,
         current: usize,
         total: usize,
@@ -417,10 +433,12 @@ async fn verify_and_unpack(
         tolerate_ops: opts.tolerate_ops,
         only_targets,
     };
+    let check_progress = ctx.progress.clone();
     let label = label.to_string();
     tokio::task::spawn_blocking(move || {
         if let Some(expected) = expected {
-            if let Err(e) = verify_sha256(&tmp, &expected, &label) {
+            if let Err(e) = verify_sha256_reporting(&tmp, &expected, &label, Some(&check_progress))
+            {
                 if matches!(e, InstallError::HashMismatch { .. }) {
                     let _ = std::fs::remove_file(&tmp);
                 }
@@ -541,39 +559,6 @@ pub async fn download_to_file(
         total,
     });
     Ok(())
-}
-
-fn verify_sha256(path: &Path, expected: &str, what: &str) -> Result<(), InstallError> {
-    let actual = hash_file(path)?;
-    if !actual.eq_ignore_ascii_case(expected) {
-        return Err(InstallError::HashMismatch {
-            what: what.to_string(),
-            expected: expected.to_string(),
-            actual,
-        });
-    }
-    Ok(())
-}
-
-/// Lower-case hex SHA-256 of the file at `path`.
-pub fn hash_file(path: &Path) -> std::io::Result<String> {
-    let mut f = std::fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    let mut buf = [0u8; 1024 * 64];
-    loop {
-        let n = f.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
-    // digest 0.11's `Array` output no longer implements `LowerHex`, so the old
-    // `{:x}` no longer compiles — hex-encode the bytes explicitly.
-    Ok(hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect())
 }
 
 #[cfg(test)]
