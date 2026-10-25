@@ -167,10 +167,7 @@ async fn start_authorize(
         .cloned()
         .ok_or(ApiError::UnknownProvider)?;
     tracing::Span::current().record("provider", running.id().as_str());
-    running
-        .prepare()
-        .await
-        .map_err(|_| ApiError::Unavailable)?;
+    running.prepare().await.map_err(|_| ApiError::Unavailable)?;
 
     let verifier = random_b64url(32);
     let server_challenge = pkce_challenge(&verifier);
@@ -281,13 +278,19 @@ pub async fn dev_mock_form(
     let Some(server_state) = query.state.as_deref().filter(|s| valid_state(s)) else {
         return ApiError::InvalidRequest.into_response();
     };
-    let action = format!("{}/auth/v1/dev-mock/authorize", state.ctx.cfg.public_base_url);
+    let action = format!(
+        "{}/auth/v1/dev-mock/authorize",
+        state.ctx.cfg.public_base_url
+    );
     Html(form_page(&action, server_state)).into_response()
 }
 
 /// `POST /dev-mock/authorize`: issues the mock's code for the posted identity
 /// and redirects to the mock's callback (C4).
-pub async fn dev_mock_post(State(state): State<RouteState>, Form(form): Form<DevMockForm>) -> Response {
+pub async fn dev_mock_post(
+    State(state): State<RouteState>,
+    Form(form): Form<DevMockForm>,
+) -> Response {
     match issue_dev_mock(&state, form) {
         Ok(response) => response,
         Err(error) => error.into_response(),
@@ -295,11 +298,7 @@ pub async fn dev_mock_post(State(state): State<RouteState>, Form(form): Form<Dev
 }
 
 fn issue_dev_mock(state: &RouteState, form: DevMockForm) -> Result<Response, ApiError> {
-    let dev = state
-        .ctx
-        .providers
-        .dev_mock()
-        .ok_or(ApiError::NotFound)?;
+    let dev = state.ctx.providers.dev_mock().ok_or(ApiError::NotFound)?;
     let server_state = form
         .state
         .as_deref()
@@ -310,9 +309,8 @@ fn issue_dev_mock(state: &RouteState, form: DevMockForm) -> Result<Response, Api
         .as_deref()
         .filter(|s| valid_subject(s))
         .ok_or(ApiError::InvalidRequest)?;
-    let display_name = VerifiedIdentity::sanitized_display_name(
-        form.display_name.as_deref().unwrap_or_default(),
-    );
+    let display_name =
+        VerifiedIdentity::sanitized_display_name(form.display_name.as_deref().unwrap_or_default());
     let email = match form.email.as_deref().map(str::trim) {
         None | Some("") => None,
         Some(raw) if valid_email(raw) => Some(raw.to_owned()),
@@ -435,10 +433,7 @@ fn valid_challenge(raw: &str) -> bool {
 
 /// A dev-mock subject: 1 to 64 characters of `[A-Za-z0-9_.:-]`.
 fn valid_subject(raw: &str) -> bool {
-    (1..=64).contains(&raw.len())
-        && raw
-            .bytes()
-            .all(|b| is_b64url(b) || b == b'.' || b == b':')
+    (1..=64).contains(&raw.len()) && raw.bytes().all(|b| is_b64url(b) || b == b'.' || b == b':')
 }
 
 /// A plain address check for the dev-mock form: one `@`, a dotted domain,
