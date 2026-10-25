@@ -460,6 +460,12 @@ mod tests {
             started.elapsed()
         );
         assert!(crate::install_layout::sgw_exe(&dest).is_file());
+        assert_eq!(
+            std::fs::metadata(crate::install_layout::sgw_exe(&dest))
+                .unwrap()
+                .len(),
+            31_228_448
+        );
     }
 
     // A leftover staging dir from a crashed run must not leak stale files

@@ -56,6 +56,10 @@ them automatically. Local Mac tests cover real RAR listing/extraction and the
 shared inventory. FDI and spanning-cabinet compatibility require native Windows
 CI and subsequent Wine validation of that rebuilt helper.
 
+Linux no longer reaches the Wine cabinet path: it expands the set in-process with
+`unpack::cab_portable` (#2020). This section's Wine requirements apply to macOS
+only.
+
 Stdin remains open as the ownership channel. A control frame with the same
 schema/operation ID and `cancel: true` requests cooperative cancellation. EOF or
 malformed controls also cancel; valid frames for a different ID are ignored.
