@@ -41,6 +41,8 @@ export const FailureCode=Schema.Literals([
  'launch_resources_missing',
  'login_servers_invalid',
  'launch_prepare_failed',
+ 'ticket_unavailable',
+ 'sign_in_ended',
  'spawn_failed',
  'spawn_permission_denied',
  'spawn_not_found',

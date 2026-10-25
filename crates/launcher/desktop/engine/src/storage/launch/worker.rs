@@ -210,19 +210,16 @@ async fn execute(
                 .lock()
                 .map_err(|_| StorageError::Io)?
                 .set_play_refusal(Some(refusal.reason()));
-            failure::not_started(
-                &state,
-                plan,
-                refusal.reason(),
-                FailureCode::LaunchPrepareFailed,
-            );
+            let code = match refusal {
+                sign_in_play::TicketRefusal::Unavailable => FailureCode::TicketUnavailable,
+                sign_in_play::TicketRefusal::SignInEnded => FailureCode::SignInEnded,
+            };
+            failure::not_started(&state, plan, refusal.reason(), code);
             return Ok(Observation::NotStarted);
         }
     };
-    let (telemetry_servers, client_servers) = sign_in_play::lists_for(&servers, client_servers);
-    let telemetry_session = session
-        .clone()
-        .map(|session| (session, telemetry_servers.to_vec()));
+    // Telemetry always gets the real servers, so the relay is never its endpoint (C9).
+    let telemetry_session = session.clone().map(|session| (session, servers.clone()));
     let prepared = plan.clone();
     // The ticket file lives in the game install, where `prepare` writes the plain list.
     let ticket_root = plan.installation.content_root();
@@ -262,7 +259,7 @@ async fn execute(
             &state,
             plan,
             "ticket_write_failed",
-            FailureCode::LaunchPrepareFailed,
+            FailureCode::TicketUnavailable,
         );
         return Ok(Observation::NotStarted);
     }

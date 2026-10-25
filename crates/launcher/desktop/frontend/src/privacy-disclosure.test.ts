@@ -53,6 +53,8 @@ test('privacy distinguishes identities, raw logs, consent withdrawal and network
   assert.match(text('privacy-identity'), /omit the receiving HTTP caller's connection address/);
   assert.match(text('privacy-storage'), /not a verified live retention guarantee/);
   assert.match(text('privacy-sign-in'), /operating system's credential store/);
+  assert.match(text('privacy-sign-in'), /memory only and ends when you close the launcher/);
+  assert.match(text('privacy-sign-in'), /relay on this computer/);
   assert.match(text('privacy-sign-in'), /only for providers the server operator marks as verifying email/);
   assert.match(text('privacy-sign-in'), /no token, password or code goes to diagnostics, only event names and error codes/);
   assert.match(text('privacy-sign-in'), /writes your account name and a one-time launch ticket into the game's LoginInternal\.lua/);

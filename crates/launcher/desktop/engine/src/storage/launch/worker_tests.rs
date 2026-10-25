@@ -141,9 +141,10 @@ fn a_signed_in_play_without_a_ticket_records_the_refusal() {
     assert!(matches!(result, Ok(Observation::NotStarted)));
     let owner = kept.lock().unwrap();
     assert_eq!(owner.play_refusal(), Some("ticket_unavailable"));
+    // A refused ticket is its own code, not the Repair advice of launch_prepare_failed.
     assert_eq!(
         owner.launch_failure(),
-        Ok(Some(FailureCode::LaunchPrepareFailed))
+        Ok(Some(FailureCode::TicketUnavailable))
     );
     assert!(events
         .iter()

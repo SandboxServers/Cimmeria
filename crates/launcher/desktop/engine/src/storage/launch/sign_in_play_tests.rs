@@ -247,18 +247,6 @@ async fn finish_scrubs_the_file_before_a_silent_end_ticket_returns() {
 }
 
 #[test]
-fn telemetry_keeps_the_real_servers() {
-    let list = servers();
-    let relayed = vec![LoginServer {
-        name: list[0].name.clone(),
-        url: "http://127.0.0.1:1/SGWLogin".into(),
-    }];
-    let (telemetry, client) = sign_in_play::lists_for(&list, relayed.clone());
-    assert_eq!(telemetry, list.as_slice());
-    assert_eq!(client, relayed);
-}
-
-#[test]
 fn play_refusal_accessors_round_trip() {
     let (_dir, mut state, _plan) = fixture();
     assert_eq!(state.play_refusal(), None);

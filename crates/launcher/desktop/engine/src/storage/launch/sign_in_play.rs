@@ -179,15 +179,6 @@ fn without_relay(signed_in: bool, cause: &'static str) -> Result<(), TicketRefus
     Err(TicketRefusal::Unavailable)
 }
 
-/// The telemetry list and the client list for one Play (C9). Telemetry always
-/// gets the real servers, so the relay is never its endpoint.
-pub(super) fn lists_for(
-    servers: &[LoginServer],
-    client: Vec<LoginServer>,
-) -> (&[LoginServer], Vec<LoginServer>) {
-    (servers, client)
-}
-
 /// Write the ticket file after `prepare` wrote the plain one. Other modes write nothing.
 pub(super) fn write(root: &Path, login: &ClientLogin) -> std::io::Result<()> {
     match login {
@@ -243,7 +234,7 @@ pub(super) async fn finish(root: &Path, plain: &[LoginServer], login: ClientLogi
             ..
         } => {
             if let Err(error) = sign_in.end_ticket(&launch_id).await {
-                tracing::info!(target: "launcher.relay", event = "end_failed", reason = ?error);
+                tracing::info!(target: "launcher.relay", event = "end_failed", reason = error.reason());
             }
             relay.shutdown().await;
             "ticket"

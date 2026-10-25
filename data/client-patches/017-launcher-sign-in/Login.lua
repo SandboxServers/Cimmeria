@@ -87,13 +87,13 @@ function LoginMod.applyCimmeria()
     Login_PasswordModeButton:show()
 
     -- a link the launcher did not return has no button
-    if nil == CimmeriaLogin.links.website then
+    if nil == CimmeriaLogin.links or nil == CimmeriaLogin.links.website then
         Login_WebsiteButton:hide()
     end
-    if nil == CimmeriaLogin.links.account then
+    if nil == CimmeriaLogin.links or nil == CimmeriaLogin.links.account then
         Login_AccountButton:hide()
     end
-    if nil == CimmeriaLogin.links.forums then
+    if nil == CimmeriaLogin.links or nil == CimmeriaLogin.links.forums then
         Login_ForumsButton:hide()
     end
 
@@ -204,7 +204,7 @@ end
 function LoginMod.onLoginFailure( this, window, errorStr, errorNum )
     if LoginMod.isTicketMode() then
         Login_LoginButton:setText("Retry")
-        if errorNum and CimmeriaLogin.errors[errorNum] then
+        if errorNum and CimmeriaLogin.errors and CimmeriaLogin.errors[errorNum] then
             Login_StatusText:setText(CimmeriaLogin.errors[errorNum])
         else
             Login_StatusText:setText("Login failed (" .. tostring(errorNum) .. "). Keep the launcher open, then press Retry.")

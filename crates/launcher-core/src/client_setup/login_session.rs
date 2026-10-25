@@ -24,7 +24,7 @@ pub struct Links {
 }
 
 /// Everything one ticket-mode `LoginInternal.lua` says.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TicketLogin {
     pub server_name: String,
     pub relay_url: String,
@@ -34,6 +34,22 @@ pub struct TicketLogin {
     pub links: Links,
     /// Error number and the text the login screen shows for it.
     pub errors: Vec<(u32, String)>,
+}
+
+// The ticket is a live credential: `Debug` shows it as `<hidden>`, so a
+// `{:?}` in a log or an assertion message never prints it.
+impl std::fmt::Debug for TicketLogin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TicketLogin")
+            .field("server_name", &self.server_name)
+            .field("relay_url", &self.relay_url)
+            .field("account", &self.account)
+            .field("ticket", &"<hidden>")
+            .field("display", &self.display)
+            .field("links", &self.links)
+            .field("errors", &self.errors)
+            .finish()
+    }
 }
 
 /// The texts for the two failures a ticket login can show (C8): 4 is a
@@ -261,6 +277,18 @@ mod tests {
         for t in bad {
             assert!(render_ticket(&t).is_err(), "{t:?}");
         }
+    }
+
+    // Bug shape: `{:?}` of a launch ticket printed the live credential.
+    #[test]
+    fn ticket_login_debug_hides_the_ticket() {
+        let shown = format!("{:?}", fixture());
+        assert!(
+            !shown.contains("AbCdEf0123456789AbCdEf0123456789"),
+            "{shown}"
+        );
+        assert!(shown.contains("<hidden>"));
+        assert!(shown.contains("Player_1234"));
     }
 
     #[test]

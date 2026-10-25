@@ -23,7 +23,7 @@ Nothing here has run against the live game. The client overlay in the live game,
 
 - Binds `127.0.0.1:0`. Accepts only `POST /SGWLogin/UserAuth` and `POST /SGWLogin/ServerSelection`; anything else is 404. `Host` must be `127.0.0.1:<port>` (421), any `Origin` header is refused (403), bodies are capped at 64 KiB (413).
 - Forwards body, `Content-Type`, `SOAPAction` and `Cookie` to the server's HTTPS auth base and returns status, body, `Content-Type` and `Set-Cookie`. Upstream failure answers 502 with an empty body. No log line carries a body, cookie or header value.
-- It starts only when the server's discovery says `soap_relay: true`. It is never the telemetry endpoint: telemetry keeps the real server list.
+- It starts only when the server's discovery says `soap_relay: true`. It is never the telemetry endpoint: telemetry keeps the real server list. The panel and Play each keep their own 10-minute discovery cache (`DISCOVERY` in `storage/launch/sign_in_play.rs` and `SignInDriver.discovery`), so Play can probe the server again right after the panel did.
 
 ## The ticket file and the scrub
 
@@ -33,7 +33,7 @@ Signed in, Play mints a launch ticket with a `launch_id` derived from the operat
 2. It then calls `POST /launch-ticket/end` and stops the relay.
 3. While the game runs, a heartbeat goes out every 10 minutes; three failures in a row stop it without ending the game.
 
-If the launcher is closed while a relayed game runs, the shell asks first ("Game still signed in": Keep running or Close anyway), because the game cannot change server or log in again without the relay. "Close anyway" is the only answer that closes it.
+If the launcher is closed while a relayed game runs, the shell asks first ("Game still connected": Keep running or Close anyway), because the game cannot change server or log in again without the relay. "Close anyway" is the only answer that closes it.
 
 ## Never a password fallback
 

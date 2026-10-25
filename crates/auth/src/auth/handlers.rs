@@ -558,9 +558,9 @@ pub(super) async fn handle_server_selection(
 
 /// `auth.launch_ticket.consume` (C11): the spend of a launch ticket. It carries
 /// the account id, the outcome and the reason only, never the ticket or the name.
-fn consume_span(account_id: u32) -> tracing::Span {
+pub(super) fn consume_span(account_id: u32) -> tracing::Span {
     tracing::info_span!(
-        target: "cimmeria_auth",
+        target: "cimmeria_auth::auth::handlers",
         "auth.launch_ticket.consume",
         account_id,
         outcome = tracing::field::Empty,
