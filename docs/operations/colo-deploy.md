@@ -32,12 +32,13 @@ The game container reaches the collector as `otel-collector:4317` on the externa
 | `32832/udp` | BaseApp, all game traffic after login | Players | all interfaces |
 | `30000/tcp` | Minigame SmartFoxServer. One connection per valid ticket, 30 s to log in, 4 KiB frames, 30 min idle ([admission](../gameplay/minigame-system.md#connection-admission)) | Players | all interfaces |
 | `8443/tcp` | Admin REST API. **No authentication** (#439) | Operators only | `ADMIN_PUBLISH`, default `127.0.0.1` |
+| `13480/tcp` | Auth proxy listener (overlay `compose.auth-proxy.yml`) | The board's Caddy on the same host | `127.0.0.1` only |
 | `8444/tcp` | Live Research Lab endpoint (overlay) | The owner's dev box over the VPN | `CIMMERIA_WG_IP` only |
 | `8082/tcp` | SigNoz UI and query API (container port 8080) | Operators | `SIGNOZ_UI_BIND`, default `127.0.0.1` |
 | `8080/tcp`, `2022/tcp` | **Not Cimmeria:** the Wisp game-panel daemon and its SFTP, which share the colo host. Never publish a Cimmeria or SigNoz port on them | The wisp.gg panel | `/var/lib/wisp/docker-compose.yml`, run by `wisp.service` |
 | `4317/tcp`, `4318/tcp` | OTLP gRPC / HTTP into the collector. **No authentication** | Exporters outside Docker on the private network (a native server, workstation Claude Code telemetry) | `OTLP_BIND`, default `127.0.0.1` |
 
-Forward only `8081/tcp`, `32832/udp` and `30000/tcp` from the internet. Docker-published ports bypass the host's `INPUT` firewall chain, so the network edge (the router or the provider's firewall) is what keeps the rest private. Ports `13001` and `50000/udp` appear in the image's `EXPOSE` list, but nothing binds them; don't publish or forward them.
+Forward only `8081/tcp`, `32832/udp` and `30000/tcp` from the internet. The host's `443/tcp` and `80/tcp` belong to the board's Caddy (`board-proxy`), which serves `https://play.cimmeria.app` and forwards Cimmeria's https routes; Cimmeria publishes nothing on them. Docker-published ports bypass the host's `INPUT` firewall chain, so the network edge (the router or the provider's firewall) is what keeps the rest private. Ports `13001` and `50000/udp` appear in the image's `EXPOSE` list, but nothing binds them; don't publish or forward them.
 
 **How player telemetry reaches SigNoz.** An opted-in launcher anywhere on the internet asks `:8081/api/auth/dev-session` for an HMAC-signed token, then uploads to `:8081/api/telemetry/*`. The game server checks the token and replays the rows into the collector over `signoz-net`, where they land as `service.name = cimmeria-client`. Nothing a player runs talks to SigNoz's own ports, so neither `8082` nor `4317`/`4318` needs to be reachable from the internet.
 
@@ -49,8 +50,10 @@ Forward only `8081/tcp`, `32832/udp` and `30000/tcp` from the internet. Docker-p
 ├── compose.lab.yml             docker/compose.lab.yml               (overlay)
 ├── compose.discord-file.yml    docker/compose.discord-file.yml      (overlay)
 ├── compose.discord.yml         release asset, if you use that route (overlay)
+├── compose.auth-proxy.yml      docker/compose.auth-proxy.yml        (overlay, launcher sign-in)
 ├── .env                        from docker/.env.example, 0600, never committed
 ├── config/discord.toml         your Discord config, uid 1001, 0440, never committed
+├── config/auth-providers.toml  sign-in providers, uid 1001, 0440, never committed
 └── signoz/
     ├── compose.yaml            docker/signoz/compose.yaml
     ├── otel-collector-config.yaml
@@ -191,6 +194,14 @@ CIMMERIA_LAB_MCP_TOKEN=<openssl rand -hex 32>
 ```
 
 and `compose.lab.yml` to `COMPOSE_FILE`. Compose refuses to start the overlay if either value is missing. The address is also the endpoint's `Host` allowlist; anything else gets `403 Host header is not allowed`. From the dev box: `http://$CIMMERIA_WG_IP:8444/mcp` with `Authorization: Bearer <token>`, in the `lab-server` entry of `.mcp.json` ([.mcp.json.example](../../.mcp.json.example)). Every call logs one `lab.tool_call` event to SigNoz. On the colo, touch only the lab character and what it spawns unless the owner says otherwise in that session.
+
+### Launcher sign-in (HTTPS)
+
+[`compose.auth-proxy.yml`](../../docker/compose.auth-proxy.yml) turns on the auth proxy listener and publishes it on host `127.0.0.1:13480` only.
+The board's Caddy forwards `/auth/v1/*` and `/SGWLogin/*` from `https://play.cimmeria.app` to it.
+Never publish or edge-forward 13480: the listener trusts `X-Forwarded-*` from its trusted peers.
+Create `config/auth-providers.toml` before `docker compose up -d`, or Docker makes a directory in its place.
+Steps, checks and rollback: [auth-https.md](auth-https.md). Not yet applied on the colo.
 
 ### Client telemetry from players
 

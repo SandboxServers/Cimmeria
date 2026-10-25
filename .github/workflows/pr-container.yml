@@ -244,6 +244,19 @@ jobs:
           BASE_EXTERNAL: 127.0.0.1
           CIMMERIA_BACKUP_DIR: ${{ runner.temp }}/backups
 
+      - name: validate docker/compose.auth-proxy.yml
+        # The loopback guard: the auth proxy port (13480) must be published
+        # on 127.0.0.1 only, never on every interface.
+        run: |
+          set -euo pipefail
+          docker compose -f docker/compose.yml -f docker/compose.auth-proxy.yml config -q
+          docker compose -f docker/compose.yml -f docker/compose.auth-proxy.yml config --format json | python3 -c 'import json,sys; p=[x for x in json.load(sys.stdin)["services"]["cimmeria"]["ports"] if str(x.get("target"))=="13480"]; assert p and all(x.get("host_ip")=="127.0.0.1" for x in p), p'
+        env:
+          # compose.yml requires BASE_EXTERNAL (`${BASE_EXTERNAL:?...}`), so
+          # `config` fails without it.
+          BASE_EXTERNAL: 127.0.0.1
+          CIMMERIA_BACKUP_DIR: ${{ runner.temp }}/backups
+
       - name: persistence smoke (keep / rebuild / restore / wipe)
         run: |
           bash tools/container-persistence-smoke.sh \

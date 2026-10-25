@@ -101,6 +101,10 @@ path:
 - `POST /api/telemetry/upload-bundle`
 - `POST /api/telemetry/launcher-summary`
 
+Once [auth-https.md](auth-https.md) is applied (it is not yet), the same
+Caddy also forwards `/auth/v1/*` and `/SGWLogin/*` to the auth proxy
+listener on loopback `:13480`.
+
 Plain `http://play.cimmeria.app:8081` still serves the same five routes, so
 a launcher that predates this change keeps working. Nothing else from the
 admin API is reachable on either address. Launchers from LI-09 on never use
@@ -109,12 +113,14 @@ that route, and the Caddyfile it depends on (OPS-LT1), carries all game
 telemetry from those launchers.
 
 The Caddyfile is host config. It is not generated and, until OPS-LT1 is
-done, it is not in any repository. **If `board-proxy` is redeployed from the
-agent-board repo before the file is mirrored there, the redeploy removes the
-route**, and the symptom is a 404 from every launcher call on the https
-address. OPS-LT1 (an owner or ops task, tracked in the launcher-telemetry
-README under "Owner and ops tasks") is to copy the live Caddyfile into the
-private agent-board repo before the next redeploy.
+done, it is not in any repository. **If `board-proxy` is redeployed from
+the agent-board repo before the file is mirrored there, the redeploy
+removes the route** (and the sign-in routes, once auth-https.md is
+applied), and the symptom is a 404 from every launcher call on the https
+address. OPS-LT1 (an owner or ops task, tracked in the
+launcher-telemetry README under "Owner and ops tasks") is to copy the
+live Caddyfile into the private agent-board repo before the next
+redeploy.
 
 Rollback: restore the newest `Caddyfile.bak-*` beside the live file, then
 run `docker restart board-proxy`. The https route disappears and the plain
