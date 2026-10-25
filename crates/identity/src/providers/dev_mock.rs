@@ -217,9 +217,9 @@ trusted_email = true
         assert!(m.take_at(&old, t0 + Duration::from_secs(61)).is_err());
         let kept = m.issue_at(identity(), t0);
         assert!(m.take_at(&kept, t0 + Duration::from_secs(59)).is_ok());
-        let stale = m.issue_at(identity(), t0);
+        let _stale = m.issue_at(identity(), t0);
         let _fresh = m.issue_at(identity(), t0 + Duration::from_secs(61));
-        assert!(m.take_at(&stale, t0 + Duration::from_secs(61)).is_err());
+        assert_eq!(m.codes.lock().unwrap().len(), 1);
     }
 
     #[test]
