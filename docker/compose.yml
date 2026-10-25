@@ -20,6 +20,7 @@
 # Overlays, chosen with COMPOSE_FILE in .env (colon-separated):
 #   compose.discord-file.yml   Discord notifications from ./config/discord.toml
 #   compose.discord.yml        Discord notifications, release-rendered (env)
+#   compose.auth.yml           Sign-in providers from ./config/auth-providers.toml
 #   compose.lab.yml            Live Research Lab endpoint on a private address
 #
 # Full runbook: docs/operations/colo-deploy.md.
@@ -110,6 +111,16 @@ services:
       CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP:-}"
       CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP:-}"
       CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP:-}"
+      # Sign-in providers (identity). Blank means the default: no file path
+      # override, no secret, all switches off. See .env.example.
+      CIMMERIA_AUTH_PROVIDERS: "${CIMMERIA_AUTH_PROVIDERS:-}"
+      CIMMERIA_IDP_DISCORD_SECRET: "${CIMMERIA_IDP_DISCORD_SECRET:-}"
+      CIMMERIA_IDP_GOOGLE_SECRET: "${CIMMERIA_IDP_GOOGLE_SECRET:-}"
+      CIMMERIA_IDP_DISABLED: "${CIMMERIA_IDP_DISABLED:-}"
+      CIMMERIA_IDP_SIGNUP_DISABLED: "${CIMMERIA_IDP_SIGNUP_DISABLED:-}"
+      CIMMERIA_SOAP_RELAY_DISABLED: "${CIMMERIA_SOAP_RELAY_DISABLED:-}"
+      AUTH_PROXY_ADDR: "${AUTH_PROXY_ADDR:-}"
+      AUTH_PROXY_TRUSTED_PEERS: "${AUTH_PROXY_TRUSTED_PEERS:-}"
       # Developer mode, off unless .env sets DEVELOPER_MODE=true. With the
       # bundled database it only skips the client protocol-digest check; it
       # never bypasses the password check while DB_URL is set. Images before
