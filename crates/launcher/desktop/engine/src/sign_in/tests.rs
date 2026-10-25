@@ -169,6 +169,26 @@ async fn browser_flow_round_trip() {
 }
 
 #[tokio::test]
+async fn browser_flow_rejects_a_mismatched_state() {
+    let base = Url::parse("https://play.example.org/").unwrap();
+    let flow = oauth::begin(&base, "dev", None)
+        .await
+        .expect("the loopback listener binds");
+    let authorize = Url::parse(&flow.authorize_url).unwrap();
+    let redirect_uri = authorize
+        .query_pairs()
+        .find(|(k, _)| k == "redirect_uri")
+        .map(|(_, v)| v.into_owned())
+        .unwrap();
+
+    // A redirect carrying some other state must not yield a code.
+    let browser =
+        reqwest::Client::new().get(format!("{redirect_uri}?code=c&state=not-the-launchers"));
+    let (grant, _) = tokio::join!(flow.finish(), browser.send());
+    assert_eq!(grant.err(), Some(SignInError::StateMismatch));
+}
+
+#[tokio::test]
 async fn intent_url_must_point_at_the_same_server() {
     let base = Url::parse("https://play.example.org/").unwrap();
     assert_eq!(
