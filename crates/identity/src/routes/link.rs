@@ -274,3 +274,7 @@ fn db(error: impl Into<RepoError>) -> ApiError {
         RepoError::Db => ApiError::Unavailable,
     }
 }
+
+#[cfg(test)]
+#[path = "link_tests_live_db.rs"]
+mod tests_live_db;
