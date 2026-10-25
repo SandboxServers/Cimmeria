@@ -31,7 +31,15 @@ impl From<sqlx::Error> for RepoError {
     fn from(error: sqlx::Error) -> RepoError {
         match error.as_database_error().and_then(|e| e.code()).as_deref() {
             Some("23505" | "23514") => RepoError::Conflict,
-            _ => RepoError::Db,
+            code => {
+                tracing::warn!(
+                    target: "cimmeria_identity",
+                    reason = "db_error",
+                    sqlstate = code.unwrap_or("none"),
+                    "identity repository query failed"
+                );
+                RepoError::Db
+            }
         }
     }
 }

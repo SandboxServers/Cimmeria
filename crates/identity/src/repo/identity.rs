@@ -113,16 +113,16 @@ pub async fn insert(
     let provider = identity.provider.as_str();
     let mut tx = pool.begin().await?;
 
-    let locked: Option<(Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT password, password_hash_v2 FROM account WHERE account_id = $1 FOR UPDATE",
+    let locked: Option<(bool,)> = sqlx::query_as(
+        "SELECT (password IS NOT NULL OR password_hash_v2 IS NOT NULL) \
+         FROM account WHERE account_id = $1 FOR UPDATE",
     )
     .bind(account)
     .fetch_optional(&mut *tx)
     .await?;
     // A missing account has no password; the identity insert then fails its
     // foreign key, which maps to `Db`.
-    let (password, hash_v2) = locked.unwrap_or((None, None));
-    let password_cleared = password.is_some() || hash_v2.is_some();
+    let password_cleared = locked.is_some_and(|(has,)| has);
     if password_cleared {
         sqlx::query(
             "UPDATE account SET password = NULL, password_hash_v2 = NULL, password_algo = 1 \
