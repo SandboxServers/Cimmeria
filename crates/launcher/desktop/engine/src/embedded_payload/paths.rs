@@ -10,11 +10,21 @@ fn plain(metadata: &fs::Metadata) -> bool {
     }
     !metadata.is_symlink()
 }
+/// Linux payload directories are private to the launcher's user (0700).
+#[cfg(target_os = "linux")]
+fn create_directory(path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    fs::DirBuilder::new().mode(0o700).create(path)
+}
+#[cfg(not(target_os = "linux"))]
+fn create_directory(path: &Path) -> io::Result<()> {
+    fs::create_dir(path)
+}
 pub(super) fn directory(path: &Path, create: bool) -> io::Result<File> {
     if create {
         match fs::symlink_metadata(path) {
             Ok(_) => (),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => match fs::create_dir(path) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => match create_directory(path) {
                 Ok(()) => (),
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => (),
                 Err(error) => return Err(error),
@@ -102,5 +112,11 @@ pub(super) fn replace(path: &Path, bytes: &[u8]) -> io::Result<()> {
     temporary.write_all(bytes)?;
     temporary.as_file().sync_all()?;
     temporary.persist(path).map_err(|error| error.error)?;
+    // Temporary files are created 0600; Linux payload files are 0644 in a 0700 directory.
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o644))?;
+    }
     plain_file(path)
 }

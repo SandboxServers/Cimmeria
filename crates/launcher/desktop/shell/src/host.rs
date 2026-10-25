@@ -71,6 +71,10 @@ pub struct NativeHost {
     #[cfg(test)]
     firesky_fixture: Option<PathBuf>,
     launch_resources: Option<cimmeria_launcher_engine::launch::Resources>,
+    /// Linux: the verified prerequisite worker in the payload cache; PP-08 reads it.
+    #[cfg(target_os = "linux")]
+    #[allow(dead_code)]
+    prerequisite_worker: Option<PathBuf>,
     launch_worker: Mutex<Option<cimmeria_launcher_engine::launch::Worker>>,
     #[cfg(windows)]
     directx_last:
@@ -115,6 +119,8 @@ impl NativeHost {
             #[cfg(test)]
             firesky_fixture: None,
             launch_resources: None,
+            #[cfg(target_os = "linux")]
+            prerequisite_worker: None,
             launch_worker: Mutex::new(None),
             #[cfg(windows)]
             directx_last: Mutex::new(None),
@@ -175,6 +181,16 @@ impl NativeHost {
                 )
                 .ok()
             });
+        self
+    }
+
+    /// Linux: the prerequisite worker the payload cache extracted. A build that
+    /// pins none, or a root without the file, leaves it absent.
+    #[cfg(target_os = "linux")]
+    pub fn with_prerequisite_worker(mut self, resource_directory: &std::path::Path) -> Self {
+        self.prerequisite_worker = option_env!("CIMMERIA_PREREQUISITE_HELPER_SHA256")
+            .map(|_| resource_directory.join("windows/cimmeria-prerequisite-worker.exe"))
+            .filter(|path| path.is_file());
         self
     }
 
