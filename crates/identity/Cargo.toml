@@ -25,6 +25,8 @@ rand = { workspace = true }
 # SHA-256 of a token (C6, C5).
 chrono = { workspace = true }
 sha2 = { workspace = true }
+# The constant-time PKCE and link-code compares (`stores.rs`, `link_code.rs`).
+subtle = "2"
 # The identity repositories (`repo/`) run runtime-checked queries on the
 # account database, as cimmeria-auth does.
 sqlx = { workspace = true }
