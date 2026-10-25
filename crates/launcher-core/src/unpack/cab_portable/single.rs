@@ -77,15 +77,18 @@ fn decode_member(
     folder: &Folder,
     entry: &format::FileEntry,
 ) -> Result<Vec<u8>, UnpackError> {
-    let end = u64::from(entry.folder_offset) + u64::from(entry.size);
+    let start = u64::from(entry.folder_offset);
+    let end = start + u64::from(entry.size);
     let mut reader = BufReader::new(file);
     reader.seek(SeekFrom::Start(u64::from(folder.data_offset)))?;
 
     let mut decoder = Decoder::for_folder(folder)?;
+    // Only the member's own bytes are kept; the folder's earlier members are decoded and dropped.
     let mut out: Vec<u8> = Vec::new();
+    let mut produced: u64 = 0;
     let mut block = Vec::new();
     for _ in 0..folder.blocks {
-        if out.len() as u64 >= end {
+        if produced >= end {
             break;
         }
         let header = format::read_block_header(&mut reader, cabinet.data_reserve)?;
@@ -108,17 +111,20 @@ fn decode_member(
                 .decompress_next(&block, size)
                 .map_err(|error| UnpackError::Cab(format!("LZX data does not decode: {error}")))?,
         };
-        out.extend_from_slice(bytes);
+        let len = bytes.len() as u64;
+        let lo = start.saturating_sub(produced).min(len) as usize;
+        let hi = end.saturating_sub(produced).min(len) as usize;
+        out.extend_from_slice(&bytes[lo..hi]);
+        produced += len;
         block.clear();
     }
 
-    if (out.len() as u64) < end {
+    if produced < end {
         return Err(UnpackError::Cab(
             "the folder ends before the member does".into(),
         ));
     }
-    let start = entry.folder_offset as usize;
-    Ok(out[start..end as usize].to_vec())
+    Ok(out)
 }
 
 /// The decoder one folder's blocks need, chosen by its `typeCompress`.

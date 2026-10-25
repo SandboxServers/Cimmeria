@@ -132,6 +132,32 @@ fn a_folder_spanning_into_another_cabinet_is_refused() {
 }
 
 #[test]
+fn a_member_after_a_continued_file_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    // The writer keeps a zero-length file in the carried-on folder (it needs no
+    // data), so the last cabinet lists it as a normal entry beside big.bin's
+    // continuation. A file with data there would be moved to a folder of its own.
+    let files = vec![
+        ("Working\\big.bin", incompressible(7, 150_000)),
+        ("Working\\empty.txt", Vec::new()),
+    ];
+    let info = write_cab_set(
+        dir.path(),
+        &files,
+        CabOptions {
+            blocks_per_cab: 2,
+            ..CabOptions::default()
+        },
+    );
+    assert!(info.cabinets.len() >= 2, "{:?}", info.cabinets);
+    let last = dir.path().join(info.cabinets.last().unwrap());
+    match extract_member(&last, "Working\\empty.txt", u64::MAX).unwrap_err() {
+        UnpackError::Cab(message) => assert!(message.contains("spans"), "{message}"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
 fn a_quantum_folder_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let info = write_cab_set(
