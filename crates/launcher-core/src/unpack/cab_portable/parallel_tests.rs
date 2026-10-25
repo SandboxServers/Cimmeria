@@ -232,7 +232,10 @@ struct CurrentLog(Mutex<Vec<usize>>);
 
 impl ProgressReporter for CurrentLog {
     fn report(&self, value: crate::install::Progress) {
-        if let crate::install::Progress::Extracting { current, .. } = value {
+        // Cabinet expansion reports `Expanding` (C-7), so both phases count.
+        if let crate::install::Progress::Extracting { current, .. }
+        | crate::install::Progress::Expanding { current, .. } = value
+        {
             let mut seen = self.0.lock().unwrap_or_else(PoisonError::into_inner);
             seen.push(current);
         }
