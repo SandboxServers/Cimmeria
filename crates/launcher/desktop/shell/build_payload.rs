@@ -28,6 +28,10 @@ fn inputs(target_os: &str) -> Vec<(&'static str, &'static str)> {
     }
     inputs
 }
+/// Whether a build for this target embeds the Windows pieces.
+fn embeds_payload(target_os: &str) -> bool {
+    matches!(target_os, "windows" | "linux")
+}
 #[cfg(not(test))]
 pub fn generate() -> io::Result<()> {
     println!("cargo:rerun-if-env-changed=CIMMERIA_EMBED_PAYLOAD");
@@ -36,7 +40,7 @@ pub fn generate() -> io::Result<()> {
         println!("cargo:rerun-if-env-changed={key}");
     }
     let target = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    let embeds = matches!(target.as_str(), "windows" | "linux");
+    let embeds = embeds_payload(&target);
     let inputs = inputs(&target);
     let required = requires_embedding(
         std::env::var("CIMMERIA_EMBED_PAYLOAD").ok().as_deref(),
@@ -186,5 +190,26 @@ mod tests {
         assert_eq!(source.matches("include_bytes!").count(), 4);
         // Windows keeps its three entries and never embeds the Linux worker.
         assert_eq!(inputs("windows").len(), 3);
+    }
+    #[test]
+    fn linux_embedding_rules() {
+        assert!(
+            embeds_payload("linux")
+                && embeds_payload("windows")
+                && !embeds_payload("macos")
+                && !embeds_payload("")
+        );
+        let root = tempfile::tempdir().unwrap();
+        let linux = inputs("linux");
+        for (name, _) in &linux {
+            std::fs::write(root.path().join(name), b"payload").unwrap();
+        }
+        // A tagged Linux build with the worker pin absent is refused.
+        let mut missing = vec![Some(digest_of(b"payload")); 4];
+        missing[3] = None;
+        assert!(render(root.path(), &linux, true, true, &missing).is_err());
+        // A developer Linux build with no pins and no flag builds with no payload.
+        let dev = render(root.path(), &linux, true, false, &[None, None, None, None]).unwrap();
+        assert_eq!(dev.matches("include_bytes!").count(), 0);
     }
 }
