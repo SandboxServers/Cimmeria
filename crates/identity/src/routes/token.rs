@@ -122,7 +122,9 @@ async fn code_grant(
     let bound_id = bound.as_ref().map(|(id, _)| *id);
     let email_candidates = match identity.email.as_deref() {
         Some(email) if trusted && identity.email_verified => {
-            identity::email_candidates(pool, email).await.map_err(db)?
+            identity::email_candidates(pool, &email.to_lowercase())
+                .await
+                .map_err(db)?
         }
         _ => Vec::new(),
     };
@@ -244,8 +246,9 @@ async fn refresh_grant(
                     .await
                     .map_err(db)?;
                 state.ctx.stores.access.revoke_account(account_id);
+                tracing::Span::current().record("account_id", account_id);
                 note("refused");
-                return Err(ApiError::AccountDisabled);
+                return Ok(ApiError::AccountDisabled.into_response());
             }
             note("signed_in");
             session(state, pool, account_id, (token, family_id), false, now).await
@@ -258,8 +261,9 @@ async fn refresh_grant(
                 .await
                 .map_err(db)?;
             state.ctx.stores.access.revoke_family(&family_id);
+            tracing::Span::current().record("account_id", account_id);
             note("reuse");
-            Err(ApiError::InvalidGrant)
+            Ok(ApiError::InvalidGrant.into_response())
         }
         Rotation::Expired | Rotation::Unknown => Err(ApiError::InvalidGrant),
     }

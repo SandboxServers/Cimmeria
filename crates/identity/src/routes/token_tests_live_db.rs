@@ -370,9 +370,17 @@ async fn live_db_disabled_account_refresh_is_403() {
         .expect("disable");
     let (status, body) = refresh(&env, &old).await;
     let (after_status, _) = refresh(&env, &old).await;
+    let (live,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM auth_refresh_token WHERE account_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(ID_DISABLED as i32)
+    .fetch_one(&pool)
+    .await
+    .expect("count live tokens");
     clean(&pool).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert_eq!(after_status, StatusCode::BAD_REQUEST);
+    assert_eq!(live, 0);
 }
 
 #[tokio::test]
@@ -396,4 +404,17 @@ async fn live_db_logout_revokes() {
     clean(&pool).await;
     assert_eq!(logout_status, StatusCode::NO_CONTENT);
     assert_eq!(after_status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn live_db_token_limit_answers_429_before_redeeming() {
+    let pool = require_db_or_skip!();
+    let env = harness(&pool);
+    for _ in 0..30 {
+        let (status, _) = post_json(&env, "/token", json!({"grant_type": "bogus"})).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let (status, body) = code_grant(&env, verified("dev", "ct25-9", None, false)).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
+    assert_eq!(body["error"], "rate_limited");
 }
