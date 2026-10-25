@@ -78,4 +78,6 @@ pub use storage::seed_archive;
 pub use storage::update;
 pub use storage::updater;
 pub mod embedded_payload;
+#[cfg(any(target_os = "linux", test))]
+pub mod linux_proton;
 mod owner_lock;
