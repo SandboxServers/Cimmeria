@@ -33,9 +33,15 @@ pub fn end_live_sessions(account_id: u32) -> bool {
     let Some((stores, launch_tickets)) = handle.as_ref() else {
         return false;
     };
+    end_in(stores, launch_tickets, account_id);
+    true
+}
+
+/// Ends the access tokens and launch tickets of `account_id` in the given
+/// stores. [`end_live_sessions`] calls it with the registered stores.
+fn end_in(stores: &Stores, launch_tickets: &LaunchTicketStore, account_id: u32) {
     stores.access.revoke_account(account_id);
     launch_tickets.revoke_account(account_id);
-    true
 }
 
 #[cfg(test)]
@@ -45,10 +51,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn end_live_sessions_ends_the_tokens_and_tickets_of_the_account() {
-        let stores = Arc::new(Stores::default());
-        let tickets = Arc::new(LaunchTicketStore::default());
-        register(Arc::clone(&stores), Arc::clone(&tickets));
+    fn end_in_ends_the_tokens_and_tickets_of_the_account() {
+        // Local stores and no `register`: the process-wide handle is shared with
+        // other tests in one `cargo test` process, so this one stays off it.
+        let stores = Stores::default();
+        let tickets = LaunchTicketStore::default();
         let now = Instant::now();
         let kept = stores.access.mint(8, "family-b", false, now);
         let token = stores.access.mint(7, "family-a", false, now);
@@ -56,7 +63,7 @@ mod tests {
         assert!(stores.access.check(&token, now).is_some());
         assert_eq!(tickets.live_count(), 1);
 
-        assert!(end_live_sessions(7));
+        end_in(&stores, &tickets, 7);
 
         assert!(stores.access.check(&token, now).is_none());
         assert!(stores.access.check(&kept, now).is_some());
