@@ -59,6 +59,10 @@ login_outcomes! {
     NoShards => "no_shards",
     /// A plaintext password arrived over plain HTTP.
     PlaintextRequiresTls => "plaintext_requires_tls",
+    /// A launch ticket matched and the sign-in was accepted.
+    LaunchTicket => "launch_ticket",
+    /// A matching launch ticket arrived over plain HTTP and was revoked.
+    TicketRequiresTls => "ticket_requires_tls",
 }
 
 /// A single login audit event.

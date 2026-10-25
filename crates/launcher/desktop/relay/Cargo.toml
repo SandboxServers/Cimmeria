@@ -1,0 +1,25 @@
+[package]
+name = "cimmeria-launcher-relay"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+# Admits `http://127.0.0.1:<port>` upstreams for the engine's wiremock tests. Only
+# the engine's dev-dependency enables it, so release builds never see it.
+test-support = []
+
+[dependencies]
+tokio = { version = "1", features = ["macros", "rt", "net", "sync", "time"] }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+http-body-util = { workspace = true }
+url = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "net", "sync", "time", "test-util"] }
+wiremock = "0.6"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
