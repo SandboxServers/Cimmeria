@@ -1,5 +1,6 @@
 //! Where summaries may be sent. The value comes only from native configuration,
 //! never from a response, the webview or the environment.
+use crate::telemetry_endpoint::https_upgrade_origin;
 use reqwest::Url;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
@@ -68,16 +69,7 @@ impl SummaryEndpoint {
     /// with `/api/` as the base. The game keeps http; summaries never do.
     /// IP literals, localhost, `*.localhost`, single-label names and credentials are refused.
     pub fn upgraded_from_http_login_server(login_server: &str) -> Option<Self> {
-        let url = Url::parse(login_server).ok()?;
-        if url.scheme() != "http" || !url.username().is_empty() || url.password().is_some() {
-            return None;
-        }
-        let name = url.host_str()?;
-        // `Url` normalises IPv4 literals and wraps IPv6 in brackets.
-        if name.parse::<Ipv4Addr>().is_ok() || name.starts_with('[') || !upgradable(name) {
-            return None;
-        }
-        Self::parse(&format!("https://{name}/api/"))
+        Self::parse(&format!("{}/api/", https_upgrade_origin(login_server)?))
     }
 
     /// The endpoint to use, with its source: the first login server when it is https,
@@ -95,14 +87,6 @@ impl SummaryEndpoint {
             None => (None, "no_https_endpoint"),
         }
     }
-}
-
-// A dotted DNS name that is not a local name. The caller has already refused IP literals.
-fn upgradable(name: &str) -> bool {
-    name.contains('.')
-        && !name.ends_with('.')
-        && name != "localhost"
-        && !name.ends_with(".localhost")
 }
 
 // Only the exact name and literal loopback addresses; no resolver is consulted.

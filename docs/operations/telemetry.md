@@ -107,7 +107,9 @@ admin API port (`8443`, private, no authentication) and the public SOAP
 login port (`LOGON_PORT`, `8081`), which every player's game client
 already reaches. On the colo a Caddy reverse proxy also serves exactly
 these routes, and the summary route, at `https://play.cimmeria.app`; see
-[the colo route](telemetry-upload-endpoint.md#the-colo-route).
+[the colo route](telemetry-upload-endpoint.md#the-colo-route). A launcher
+reaches the login port's routes only as `https://<name>` on 443. Plain http
+goes only to this machine.
 
 The code also merges a fifth route, `/api/telemetry/launcher-summary`, on
 both listeners (see [Launcher summaries](#launcher-summaries)). Unlike the
@@ -166,7 +168,8 @@ endpoint is missing or not https; see
 
 1. **Generate the secret** on any machine: `openssl rand -hex 64`.
 2. **Check the https route.** Players do not need it (launchers reach the
-   telemetry routes on the public login port), but it is the address the
+   telemetry routes as `https://<name>` on 443, never over plain http from
+   LI-09 on), but it is the address the
    server hands out. The colo's Caddy (`board-proxy`) forwards only the five
    telemetry routes from `https://play.cimmeria.app` to the server's login
    port on loopback `:8081` and answers 404 for everything else. No

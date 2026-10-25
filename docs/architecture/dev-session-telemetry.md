@@ -195,21 +195,16 @@ and at each refresh), against one rule
 `EndpointPolicy`):
 
 - `https://` anywhere;
-- plain `http://` to loopback;
-- plain `http://` to the exact host and port of one of the launcher's
-  `http://` login servers.
+- plain `http://` to loopback.
 
-Anything else is refused before a byte is sent. The third case exists for
-the login-port mount above: the player already talks to that host and port
-in plaintext. Another port on the same host (the admin API's 8443) and
-look-alike hosts are refused, and an `https://` login server does not
-vouch for plain http to its host. The telemetry HTTP client never follows
-redirects, so a checked request cannot be bounced elsewhere.
+Anything else is refused before a byte is sent. An http login server on a
+DNS name is reached as `https://<name>` on 443, by the rule summaries use
+(`https_upgrade_origin`). An IP or LAN http login server gets no game
+telemetry. A plain-http upload URL that the server hands back is refused,
+never rewritten. There is no http fallback.
 
-The server no longer depends on the third case: it hands out only https
-URLs, except for a loopback dev box or an explicit operator override. The
-launcher-side rule is unchanged here and is being tightened in
-launcher-telemetry wave 2.
+The telemetry HTTP client never follows redirects, so a checked request
+cannot be bounced elsewhere.
 
 The desktop launcher mints from `<first login server>/api/auth/dev-session`,
 so with the default server list that is the public login port. (The retired

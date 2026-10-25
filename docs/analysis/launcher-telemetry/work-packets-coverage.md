@@ -272,6 +272,7 @@ Moved to [work-packets-wave4.md](work-packets-wave4.md) by amendment 7: LT-18 (l
 - **Docs:** `docs/operations/telemetry.md`: LT-04 already describes the Caddy route; LT-41 changes only the lines that say the built-in default is `None`, to name `https://play.cimmeria.app`, and says the env var is an optional override (CRLF).
 - **Commit:** `LT-41: built-in https telemetry and summary default`.
 - Amended by launcher-linux-install-telemetry LI-06: an http login server on a DNS name now resolves to `login_server_https_upgrade` before the default, so LT-41's tests must use an IP or single-label http server to reach `default`.
+- Amended by launcher-linux-install-telemetry LI-09: `session::upload_for` upgrades an http login server on a DNS name before `effective_upload_endpoint`, so LT-41's tests reach `DEFAULT_UPLOAD_ENDPOINT` only from an IP or single-label http server.
 
 ### LT-27: close-out (PR X)
 

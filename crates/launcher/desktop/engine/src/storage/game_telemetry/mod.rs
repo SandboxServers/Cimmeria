@@ -19,6 +19,8 @@ mod launcher_session_tests;
 pub mod patch_events;
 mod session;
 mod session_events;
+#[cfg(test)]
+mod session_https_tests;
 pub use session::{passthrough_environment, start, Session};
 pub mod session_loop;
 #[cfg(test)]
