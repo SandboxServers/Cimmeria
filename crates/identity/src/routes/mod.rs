@@ -8,6 +8,7 @@
 pub mod ctx;
 pub mod error;
 pub mod signin;
+pub mod token;
 
 use std::net::SocketAddr;
 use std::time::Instant;
@@ -15,7 +16,7 @@ use std::time::Instant;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Request, State};
 use axum::middleware::{from_fn_with_state, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use cimmeria_auth::AuthRouteDeps;
 
@@ -36,7 +37,9 @@ pub fn router(deps: AuthRouteDeps, ctx: IdentityCtx) -> Router {
     let mut app = Router::new()
         .route("/providers", get(signin::providers))
         .route("/authorize", get(signin::authorize))
-        .route("/callback/{provider}", get(signin::callback));
+        .route("/callback/{provider}", get(signin::callback))
+        .route("/token", post(token::token))
+        .route("/logout", post(token::logout));
     if developer_mode {
         app = app.route(
             "/dev-mock/authorize",
