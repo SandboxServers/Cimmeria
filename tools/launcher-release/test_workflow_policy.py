@@ -142,6 +142,24 @@ class WorkflowPolicy(unittest.TestCase):
         self.assertTrue(dry["with"]["version"])
         self.assertNotIn("secrets", dry)
 
+    def test_real_key_linux_dry_run_is_manual_and_artifact_only(self):
+        desktop = workflow("launcher-desktop.yml")
+        triggers = desktop[True]  # PyYAML reads the `on:` key as True
+        self.assertIn("workflow_dispatch", triggers)
+        real = desktop["jobs"]["release-dry-run-linux-real-key"]
+        self.assertEqual(real["if"], "github.event_name == 'workflow_dispatch'")
+        self.assertEqual(real["uses"], "./.github/workflows/launcher-desktop-linux.yml")
+        self.assertEqual(real["permissions"], {"contents": "read"})
+        self.assertIs(real["with"]["dev_manifest_key"], False)
+        self.assertIs(real["with"]["save_cache"], False)
+        self.assertNotEqual(real["with"]["artifact_name"],
+                            desktop["jobs"]["release-dry-run-linux"]["with"]["artifact_name"])
+        self.assertEqual(set(real["secrets"]), {"LAUNCHER_MANIFEST_PUBKEY_HEX"})
+        # Nothing in this workflow can write to a release.
+        self.assertEqual(desktop["permissions"], {"contents": "read"})
+        for job in desktop["jobs"].values():
+            self.assertNotIn("write", set((job.get("permissions") or {}).values()))
+
     def test_linux_build_pins_embeds_and_verifies_the_four_windows_pieces(self):
         script = (ROOT / "tools/launcher-release/build-desktop-linux.sh").read_text()
         pieces = script.split("PIECES=(", 1)[1].split("\n)", 1)[0]

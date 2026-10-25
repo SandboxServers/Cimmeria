@@ -283,6 +283,11 @@ builds an x86-64 AppImage in stages (`pieces`, `app`, `verify`, `package`), run 
 reusable `launcher-desktop-linux.yml`; `launcher-desktop.yml` calls the same
 workflow on every desktop-launcher PR as `desktop release build dry run (Linux)`,
 with a fixed dry-run tag and version and the development manifest key.
+A manual `workflow_dispatch` of `launcher-desktop.yml` on any branch also runs
+`desktop release build dry run (Linux, release manifest key)`: the same build
+with the release manifest public key, uploaded as the
+`desktop-launcher-linux-real-key-dry-run` artifact and never published, for a
+device UAT against the live release.
 
 - **`tools`** (run by `app`) puts the three files the Tauri bundler would
   download into its cache, each checked against a SHA-256 pinned in the script:
