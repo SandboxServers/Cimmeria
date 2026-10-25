@@ -14,7 +14,8 @@
 #                    exports CIMMERIA_LAUNCHER_TAG, CIMMERIA_LAUNCHER_BUILD_EPOCH,
 #                    CIMMERIA_LAUNCHER_VERSION and LAUNCHER_MANIFEST_PUBKEY_HEX
 #   verify           check the result: an x86-64 ELF AppImage whose extracted
-#                    launcher is x86-64, carries no Windows Play pieces, and
+#                    launcher is x86-64, embeds the four pinned Windows pieces (when staged) and
+#                    runs --verify-embedded-payload, carries no loose Windows executable or DLL, and
 #                    embeds the release stamps
 #   package          copy it to
 #                    artifacts/StargateWorlds-Launcher-linux-x86_64.AppImage,
@@ -29,7 +30,8 @@
 # The Linux launcher embeds the four Windows pieces the Windows zip and the
 # macOS app carry (D-PP8), pinned by SHA-256 and staged from the Windows job's
 # artifact, so they exist only inside the launcher binary. A run with no
-# artifact (the PR dry run) builds without the payload and says so.
+# artifact (a developer build) builds without the payload and says so; a tagged
+# build without the pieces fails in shell/build_payload.rs.
 set -euo pipefail
 
 [ "$(uname -s)" = Linux ] || { echo "Run natively on Linux." >&2; exit 2; }
@@ -160,7 +162,7 @@ stage_app() {
   # shell/build.rs puts the version in the binary; the CLI names and stamps the
   # AppImage from its own reading of the config, so it gets the version too.
   # Staged pieces are pinned and embedded (CIMMERIA_EMBED_PAYLOAD=1); none
-  # staged is a build without the payload, as a developer or the PR dry run has.
+  # staged is a build without the payload, as a developer build has.
   local name kind var embed=0
   if staged_pieces; then
     for entry in "${PIECES[@]}"; do

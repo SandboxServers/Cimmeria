@@ -12,7 +12,7 @@ name: desktop launcher Linux build
 # The Linux launcher embeds the four Windows pieces the macOS app also carries
 # (launch and prerequisite workers, the two game DLLs). The caller hands them
 # over as an artifact with the SHA-256 of their list; a caller without them
-# (a PR dry run with no artifact) builds without the payload.
+# (none today) builds without the payload, which a tagged build refuses.
 #
 # Ubuntu 22.04: an AppImage runs on systems whose glibc is at least the build
 # host's, so the older runner reaches more distributions (SteamOS included).
@@ -46,7 +46,7 @@ on:
         type: boolean
         default: false
       pieces_artifact:
-        description: Artifact holding the Windows pieces and mac-pieces.sha256; empty builds without the payload (PR dry runs without it)
+        description: Artifact holding the Windows pieces and mac-pieces.sha256; empty builds without the payload (refused for a tagged build)
         type: string
         default: ''
       pieces_sha256:

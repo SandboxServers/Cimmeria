@@ -288,7 +288,7 @@ jobs:
 
   # launcher-release.yml's mac-pieces job: the Play pieces checked against the
   # Windows dry run's digest, the archive and prerequisite workers built, and
-  # all five handed to the macOS dry run with their list's digest. It also
+  # all five handed to the macOS and Linux dry runs with their list's digest. It also
   # stamps the macOS dry run as a same-day release of this commit.
   release-dry-run-mac-pieces:
     name: desktop release build dry run (Windows pieces for macOS)

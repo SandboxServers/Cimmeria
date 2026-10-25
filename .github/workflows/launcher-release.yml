@@ -41,9 +41,9 @@ name: launcher-release
 #   - `publish-macos` attaches the macOS zip. A failed macOS build leaves the
 #     Windows release as it is.
 #   - `desktop-linux` builds the x86-64 AppImage through the reusable
-#     `launcher-desktop-linux.yml` the PR dry run also calls. It needs only
-#     desktop-windows' tag and version: the Linux launcher carries no Windows
-#     pieces yet.
+#     `launcher-desktop-linux.yml` the PR dry run also calls. It needs
+#     desktop-windows' tag and version and takes mac-pieces' artifact: the Linux
+#     launcher embeds four of the Windows pieces.
 #   - `publish-linux` attaches the AppImage after publish-macos has finished,
 #     so the two never rewrite the dated notes at once. A failed Linux build
 #     leaves the other platforms' release as it is.
