@@ -4,13 +4,13 @@ import type {PanelContext} from './panel-context';
 import {decodeSignInStatus, signInFailure, type SignInAccount, type SignInFailure, type SignInProvider, type SignInStatus} from './sign-in-contract';
 import {failureText} from './sign-in-workflow';
 import {reportUiEvent} from './ui-event';
+import {opening} from './sign-in-view';
 /**
  * Account panel (CT-43, C6, C13, C15): the linked sign-in methods of a signed-in account. Removing or
  * adding a method needs a fresh sign-in (`reauth_required`); a linked account never shows a password.
  * Every command goes through `sign_in_command`.
  */
 export const noPasswordLine = 'This account has no password: it plays only through this launcher.';
-const opening = 'Opening your browser. Finish signing in there, then come back here.';
 const reauthRemove = 'To remove a sign-in method, sign in again first. Removing is allowed for 10 minutes after a fresh sign-in.';
 const reauthAdd = 'To add a sign-in method, sign in again first. Adding is allowed for 10 minutes after a fresh sign-in.';
 const lastMethod = 'You cannot remove your last sign-in method. Add another method first. If you lose access to every method, ask the server staff for a link code.';
@@ -58,11 +58,11 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
  // Never throws synchronously into the caller, whatever the bridge does.
  const call = (request: Record<string, unknown>) => Promise.resolve().then(() => invoke('sign_in_command', {request: {schema_version: 1, ...request}}));
  const signedIn = () => !!current?.available && current.state.state === 'signed_in';
- // The provider of the identity used most recently; the first offered provider when the account is not loaded.
+ // The provider of the identity used most recently (the account must be loaded); undefined when there is none.
  const lastUsedProvider = (): string | undefined => {
   const latest = (account?.identities ?? []).reduce<SignInAccount['identities'][number] | undefined>(
    (a, b) => (!a || b.last_used_at > a.last_used_at ? b : a), undefined);
-  return latest?.provider ?? current?.providers[0]?.id;
+  return latest?.provider;
  };
 
  const drawList = () => {
@@ -90,10 +90,12 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
   panel.hidden = !signedIn();
   if (!signedIn()) return;
   show.disabled = busy;
+  show.setAttribute('aria-busy', String(busy));
   drawList();
   reauthBox.hidden = !reauth;
   if (reauth) reauthText.textContent = reauth.add ? reauthAdd : reauthRemove;
   signAgain.disabled = busy;
+  signAgain.setAttribute('aria-busy', String(busy));
   const providers: readonly SignInProvider[] = current?.providers ?? [];
   const key = providers.map(p => `${p.id}\n${p.display_name}`).join('\n');
   if (key !== providerKey) {
@@ -166,10 +168,11 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
   if (!reauth || disposed || busy) return;
   const {retry} = reauth;
   const who = accountName;
-  const providerId = lastUsedProvider();
-  if (!providerId) return;
-  const name = current?.providers.find(p => p.id === providerId)?.display_name ?? providerId;
   guard(opening, async () => {
+   if (!account && !(await exchange({command: 'account'}))) return;
+   const providerId = lastUsedProvider();
+   if (!providerId) return;
+   const name = current?.providers.find(p => p.id === providerId)?.display_name ?? providerId;
    const next = await exchange({command: 'begin', provider: providerId}, name);
    if (!next) return;
    if (next.state.state !== 'signed_in' || next.state.account_name !== who) {
@@ -178,6 +181,7 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
     return;
    }
    reauth = null;
+   setStatus(retry.command === 'unlink' ? 'Removing…' : opening);
    await exchange(retry);
   }, true);
  };
@@ -191,7 +195,6 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
  signAgain.addEventListener('click', signAgainPress);
  cancel.addEventListener('click', cancelPress);
 
- // The sign-in panel announces its status on every inspect, so this panel follows that event instead of inspecting on its own.
  const inspect = () => {
   if (disposed || busy) return mutation;
   mutation = call({command: 'inspect'}).then(decodeReply).then(next => { if (!disposed && !busy) adopt(next); }, () => undefined);
@@ -199,9 +202,11 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
  };
  const onSignIn = (event: Event) => { if (!disposed) adopt((event as CustomEvent<SignInStatus>).detail); };
  document.addEventListener('cimmeria-sign-in', onSignIn);
- const ready = Promise.resolve();
+ // Each snapshot re-inspects (as the sign-in panel does), so a restored sign-in or a server switch shows up; the sign-in panel's own events keep it in step between inspects.
+ const unsubscribe = context.onSnapshot(() => { void inspect(); });
+ const ready = context.snapshot() ? inspect() : Promise.resolve();
  return {ready, refresh: inspect, settled: () => mutation, dispose: async () => {
-  disposed = true; document.removeEventListener('cimmeria-sign-in', onSignIn); await mutation;
+  disposed = true; unsubscribe(); document.removeEventListener('cimmeria-sign-in', onSignIn); await mutation;
   panel.textContent = ''; panel.hidden = true;
  }};
 }
