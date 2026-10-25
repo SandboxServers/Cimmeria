@@ -456,8 +456,10 @@ mod tests {
 
     /// **Purge (C12).** `purge_expired` deletes the row of a family past its
     /// limit and keeps a live row. With the DELETE replaced by a no-op the dead
-    /// row stays. The count is at least 1, not exactly 1: the purge tests run in
-    /// parallel on one database and may delete the same dead row.
+    /// row stays. Each running live-DB test has its own database clone
+    /// (`.config/nextest.toml`), so no other test's purge reaches these rows.
+    /// The count is at least 1, not exactly 1: the clone may still hold a dead
+    /// row that an earlier failed test left behind.
     #[tokio::test]
     async fn live_db_purge_expired_deletes_only_dead_rows() {
         let pool = require_db_or_skip!();
