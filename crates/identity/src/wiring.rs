@@ -64,7 +64,7 @@ pub(crate) fn install_with(
         cfg: Arc::clone(&cfg),
         providers: Arc::clone(&providers),
         stores: Arc::clone(&stores),
-        limiter,
+        limiter: Arc::clone(&limiter),
         link_codes: link_code::shared(),
     };
     tracing::info!(
@@ -78,6 +78,7 @@ pub(crate) fn install_with(
     tokio::spawn(run_reaper(
         stores,
         link_code::shared(),
+        limiter,
         Instant::now,
         REAP_EVERY,
     ));
@@ -117,25 +118,29 @@ fn providers_path() -> PathBuf {
 pub async fn run_reaper(
     stores: Arc<Stores>,
     codes: &'static LinkCodeStore,
+    limiter: Arc<RateLimiter>,
     clock: impl Fn() -> Instant + Send + 'static,
     period: Duration,
 ) {
     let mut ticks = tokio::time::interval(period);
     loop {
         ticks.tick().await;
-        reap_once(&stores, codes, clock());
+        reap_once(&stores, codes, &limiter, clock());
     }
 }
 
-/// Drops every expired record of the sign-in stores and the link-code store.
-pub fn reap_once(stores: &Stores, codes: &LinkCodeStore, now: Instant) {
+/// Drops every expired record of the sign-in stores, the link-code store and
+/// the rate limiter's windows that have run their length.
+pub fn reap_once(stores: &Stores, codes: &LinkCodeStore, limiter: &RateLimiter, now: Instant) {
     stores.reap(now);
     codes.reap(now);
+    limiter.reap(now);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::limits::Bucket;
 
     /// The reaper runs once a minute (C12).
     #[test]
@@ -152,15 +157,34 @@ mod tests {
         let t0 = Instant::now();
         let token = stores.access.mint(7, "fam-reaper", false, t0);
         let later = t0 + Duration::from_secs(60 * 60 * 24);
+        let limiter = Arc::new(RateLimiter::with_limits(&crate::config::Limits::default()));
         let reaper = tokio::spawn(run_reaper(
             Arc::clone(&stores),
             codes,
+            Arc::clone(&limiter),
             move || later,
             Duration::from_millis(5),
         ));
         tokio::time::sleep(Duration::from_millis(60)).await;
         reaper.abort();
         assert!(stores.access.check(&token, t0).is_none());
+    }
+
+    /// The reaper also drops rate-limit windows that have run their length, so
+    /// a flood of distinct keys does not sit in the map until it is full.
+    #[test]
+    fn reap_once_drops_stale_limiter_windows() {
+        let stores = Stores::default();
+        let codes = LinkCodeStore::default();
+        let limiter = RateLimiter::with_limits(&crate::config::Limits::default());
+        let t0 = Instant::now();
+        for i in 0..1_000 {
+            let key = format!("ip-{i}");
+            assert!(limiter.check(Bucket::AnyRoute, &key, t0).is_ok());
+        }
+        assert_eq!(limiter.window_count(), 1_000);
+        reap_once(&stores, &codes, &limiter, t0 + Duration::from_secs(3600));
+        assert_eq!(limiter.window_count(), 0);
     }
 
     /// A missing providers file is a valid empty configuration (C4), not an error.
