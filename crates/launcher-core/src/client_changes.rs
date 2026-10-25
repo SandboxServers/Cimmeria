@@ -415,6 +415,14 @@ pub fn builtin_description(id: &str) -> Option<(&'static str, &'static str)> {
              no ranged attack now says so. Changes ActionProfileDefault1.lua and needs the \
              weapon shot patch (015) first.",
         ),
+        "017-launcher-sign-in" => (
+            "Login screen: sign in through the launcher",
+            "Lets the launcher sign you in: when you pressed Play after signing in, the login \
+             screen shows who you are signed in as and an Enter button instead of the name and \
+             password boxes, with a Use password button to type them instead. Without a launcher \
+             sign-in it behaves like the stock screen. Replaces Login.lua and Login.layout with \
+             whole files.",
+        ),
         _ if id.starts_with(DEFAULT_ID_PREFIX) => (OVERLAY_TITLE, OVERLAY_DESCRIPTION),
         _ => return None,
     };
