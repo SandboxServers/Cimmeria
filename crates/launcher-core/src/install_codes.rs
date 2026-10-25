@@ -28,6 +28,31 @@ impl InstallError {
             _ => None,
         }
     }
+    /// The unpack error's closed code, only for an unpack failure (`unpack_kind`).
+    pub fn unpack_code(&self) -> Option<&'static str> {
+        match self {
+            Self::Unpack(error) => Some(error.code()),
+            _ => None,
+        }
+    }
+}
+
+impl crate::unpack::UnpackError {
+    /// The closed contract code of an unpack error. Never the entry name or path.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Io(_) => "io",
+            Self::Zip(_) => "zip",
+            Self::Rar(_) => "rar",
+            Self::Cab(_) => "cab",
+            Self::UnknownFormat(_) => "unknown_format",
+            Self::UnsafePath(_) => "unsafe_path",
+            Self::EntryConflict(_) => "entry_conflict",
+            Self::Patchset(_) => "patchset",
+            Self::PatchsetHash { .. } => "patchset_hash",
+            Self::Cancelled => "cancelled",
+        }
+    }
 }
 
 impl LocalSeedError {
@@ -66,6 +91,49 @@ mod tests {
     #[test]
     fn io_is_io() {
         assert_eq!(InstallError::Io(std::io::Error::other("x")).code(), "io");
+    }
+
+    #[test]
+    fn every_unpack_variant_has_its_contract_code() {
+        use crate::unpack::UnpackError;
+        let cases = [
+            (UnpackError::Io(std::io::Error::other("x")), "io"),
+            (
+                UnpackError::Zip(::zip::result::ZipError::FileNotFound),
+                "zip",
+            ),
+            (UnpackError::Rar("x".into()), "rar"),
+            (UnpackError::Cab("x".into()), "cab"),
+            (UnpackError::UnknownFormat("x".into()), "unknown_format"),
+            (UnpackError::UnsafePath("x".into()), "unsafe_path"),
+            (UnpackError::EntryConflict("x".into()), "entry_conflict"),
+            (UnpackError::Patchset("x".into()), "patchset"),
+            (
+                UnpackError::PatchsetHash {
+                    kind: "source_mismatch",
+                    path: "x".into(),
+                    expected: "a".into(),
+                    actual: "b".into(),
+                    message: "x".into(),
+                },
+                "patchset_hash",
+            ),
+            (UnpackError::Cancelled, "cancelled"),
+        ];
+        for (error, code) in cases {
+            assert_eq!(error.code(), code);
+        }
+    }
+
+    #[test]
+    fn only_an_unpack_failure_has_an_unpack_code() {
+        let error = InstallError::Unpack(crate::unpack::UnpackError::Cab("x".into()));
+        assert_eq!(error.unpack_code(), Some("cab"));
+        assert_eq!(InstallError::Cancelled.unpack_code(), None);
+        assert_eq!(
+            InstallError::Io(std::io::Error::other("x")).unpack_code(),
+            None
+        );
     }
 
     #[test]

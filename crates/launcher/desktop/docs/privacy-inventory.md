@@ -103,6 +103,10 @@ Sources: [bookmark snapshot](../../../cell-console/src/cell/console/bookmark.rs)
 | Stream/bundle receiver | Default 30,000 events/minute/session plus 3,000 priority; bundle request 32 MiB, expanded 64 MiB, 1,024 replayed entries/250,000 lines with separate hard ZIP-entry guard. Truncation bounds resources, not sensitive content. | [Session budget](../../../admin-api/src/routes/telemetry/session_budget.rs), [caps](../../../admin-api/src/routes/telemetry/mod.rs), [field caps](../../../admin-api/src/routes/telemetry/field_caps.rs) |
 | Remote retention | Server sinks/SigNoz/ClickHouse configured by operator. Guidance proposes 30-day logs/14-day traces/90-day metrics; actual TTL, backups and other sinks were not inspected and are not controlled by launcher toggles. | [Retention guidance](../../../../docs/operations/signoz-deployment.md#retention), [operator runbook](../../../../docs/operations/telemetry.md) |
 
+The stage-failure detail (`launcher.install.detail` and `launcher.repair.detail`)
+holds the error text and paths. It leaves the machine only through **Upload debug
+logs**, which scrubs it.
+
 ## Redaction and verified exclusions
 
 - **Summary schema:** closed fields exclude arbitrary text, names, paths and

@@ -21,8 +21,15 @@ impl Captured {
     /// Only forwarded targets count (`launcher*` and `cimmeria*`, the telemetry
     /// layer's rule): a third-party event such as hyper's loopback pool log is not a
     /// row. The panic names the event and the field key, never the address.
+    /// The stage-failure detail targets stay in the local log, so they may hold a URL.
     fn assert_no_ip(&self) {
         if !(self.target.starts_with("launcher") || self.target.starts_with("cimmeria")) {
+            return;
+        }
+        if matches!(
+            self.target.as_str(),
+            "launcher.install.detail" | "launcher.repair.detail"
+        ) {
             return;
         }
         for (key, value) in &self.fields {
