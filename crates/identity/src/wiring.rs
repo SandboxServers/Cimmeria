@@ -99,7 +99,7 @@ async fn run_purge(pool: Arc<PgPool>, period: Duration) {
     let mut ticks = tokio::time::interval(period);
     loop {
         ticks.tick().await;
-        if purge_expired(&pool).await.is_err() {
+        if purge_expired(&pool, chrono::Utc::now()).await.is_err() {
             tracing::warn!(reason = "refresh_purge_failed", "auth refresh purge failed");
         }
     }
