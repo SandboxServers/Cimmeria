@@ -16,6 +16,7 @@ use axum::body::{to_bytes, Body};
 use axum::extract::ConnectInfo;
 use axum::http::{header, HeaderMap, Request, StatusCode};
 use axum::Router;
+use chrono::Utc;
 use cimmeria_auth::auth::{AuthRouteDeps, LaunchTicketStore};
 use cimmeria_test_support::require_db_or_skip;
 use serde_json::{json, Value};
@@ -29,12 +30,13 @@ use crate::link_code::LinkCodeStore;
 use crate::provider::IdentityProvider;
 use crate::providers::dev_mock::DevMockProvider;
 use crate::providers::Providers;
+use crate::repo::refresh;
 use crate::routes::ctx::IdentityCtx;
 use crate::routes::router;
 use crate::stores::{pkce_challenge, Stores};
 
 const FIRST_ID: i32 = 2_000_601;
-const LAST_ID: i32 = 2_000_608;
+const LAST_ID: i32 = 2_000_609;
 const ACC_MAIN: u32 = 2_000_601;
 const ACC_OTHER: u32 = 2_000_602;
 const ACC_LAST: u32 = 2_000_603;
@@ -43,6 +45,7 @@ const ACC_CONCURRENT: u32 = 2_000_605;
 const ACC_TICKET: u32 = 2_000_606;
 const ACC_RATE: u32 = 2_000_607;
 const ACC_LINK: u32 = 2_000_608;
+const ACC_UNLINK: u32 = 2_000_609;
 const PEER: &str = "127.0.0.1:41000";
 const LAUNCH: &str = "CT30-LAUNCH-0000001";
 const OTHER_LAUNCH: &str = "CT30-LAUNCH-0000002";
@@ -63,10 +66,12 @@ client_secret_env = "CIMMERIA_IDP_TEST_SECRET"
 trusted_email = true
 "#;
 
-/// A router under test and the stores it shares, so a test can mint tokens.
+/// A router under test and the stores it shares, so a test can mint tokens and
+/// read the launch tickets.
 struct Env {
     router: Router,
     stores: Arc<Stores>,
+    tickets: Arc<LaunchTicketStore>,
 }
 
 /// Builds the routes with the fixture config in developer mode.
@@ -88,14 +93,16 @@ fn harness(pool: &PgPool) -> Env {
         stores: Arc::clone(&stores),
         link_codes: codes,
     };
+    let tickets = Arc::new(LaunchTicketStore::default());
     let deps = AuthRouteDeps {
         db: Some(Arc::new(pool.clone())),
-        launch_tickets: Arc::new(LaunchTicketStore::default()),
+        launch_tickets: Arc::clone(&tickets),
         developer_mode: true,
     };
     Env {
         router: router(deps, ctx),
         stores,
+        tickets,
     }
 }
 
@@ -437,6 +444,56 @@ async fn live_db_unlink_concurrent_leaves_one_method() {
     statuses.sort_by_key(|status| status.as_u16());
     assert_eq!(statuses, [StatusCode::NO_CONTENT, StatusCode::CONFLICT]);
     assert_eq!(methods(&pool, ACC_CONCURRENT).await, 1);
+}
+
+/// D1: an unlink ends the account's other sessions (the other refresh family,
+/// its access tokens and the launch tickets) and keeps the caller's own family.
+#[tokio::test]
+async fn live_db_unlink_ends_the_other_sessions_and_keeps_the_callers() {
+    let pool = require_db_or_skip!();
+    clean(&pool).await;
+    insert_account(&pool, ACC_UNLINK, true).await;
+    let first = insert_identity(&pool, ACC_UNLINK, 1).await;
+    insert_identity(&pool, ACC_UNLINK, 2).await;
+    let now = Utc::now();
+    let own = refresh::issue(&pool, ACC_UNLINK, None, now)
+        .await
+        .expect("own family");
+    let other = refresh::issue(&pool, ACC_UNLINK, None, now)
+        .await
+        .expect("other family");
+    let env = harness(&pool);
+    let caller = env
+        .stores
+        .access
+        .mint(ACC_UNLINK, &own.1, true, Instant::now());
+    let other_token = env
+        .stores
+        .access
+        .mint(ACC_UNLINK, &other.1, false, Instant::now());
+    env.tickets.mint(
+        ACC_UNLINK,
+        &format!("CT30-{ACC_UNLINK}"),
+        LAUNCH,
+        Instant::now(),
+    );
+    assert_eq!(unlink(&env, &caller, first).await, StatusCode::NO_CONTENT);
+    assert!(env
+        .stores
+        .access
+        .check(&other_token, Instant::now())
+        .is_none());
+    assert!(env.stores.access.check(&caller, Instant::now()).is_some());
+    assert_eq!(env.tickets.live_count(), 0);
+    let families: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT family_id FROM auth_refresh_token \
+         WHERE account_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(ACC_UNLINK as i32)
+    .fetch_all(&pool)
+    .await
+    .expect("live families");
+    assert_eq!(families, vec![(own.1.clone(),)]);
 }
 
 #[tokio::test]
