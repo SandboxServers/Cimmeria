@@ -410,6 +410,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 duel=debug,\
                 chatter=debug,\
                 bank=debug,\
+                account_admin=debug,\
                 ammo=debug,\
                 vitals=debug,\
                 console.feedback=debug,\

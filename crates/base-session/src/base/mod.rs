@@ -24,6 +24,7 @@ use crate::mercury::{PlayerLoadData, WorldEntryInfo};
 
 // ── Submodules ───────────────────────────────────────────────────────────────
 
+pub mod account_admin;
 pub mod bank_dump;
 pub mod bank_expand;
 pub mod cinematic_aoi_hold;
