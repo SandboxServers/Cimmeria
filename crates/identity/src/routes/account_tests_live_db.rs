@@ -3,9 +3,10 @@
 //! identity list shape, the reauth and last-method refusals, the account-scoped
 //! unlink and its audit event, the concurrent unlink (C15 e), the bearer and
 //! `link/start` refusals, the add-method flow through `/authorize`, the
-//! disabled and bad-id refusals, the no-store header and the rate limit. Sentinel account ids `2_000_601..=2_000_608`;
-//! subjects `ct30-<n>`; account names `CT30-<id>`. Cleanup deletes the sentinel
-//! range and every `CT30-` account before and after each test.
+//! disabled and bad-id refusals, the no-store header and the rate limit.
+//! Sentinel account ids `2_000_601..=2_000_608`; subjects `ct30-<n>`; account
+//! names `CT30-<id>`. Cleanup deletes the sentinel range and every `CT30-`
+//! account before and after each test.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
