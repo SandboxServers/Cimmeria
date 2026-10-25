@@ -33,7 +33,7 @@ Press **Sign out**. The launcher forgets your sign-in on this computer.
 
 ## While the game runs
 
-The launcher stays open and passes your sign-in to the game. If you close it, it asks **Game still signed in**. **Keep running** leaves it open. **Close anyway** closes it, and the game can no longer change server or log in again until you press Play next time.
+The launcher stays open and passes your sign-in to the game. If you close it, it asks **Game still connected**. **Keep running** leaves it open. **Close anyway** closes it, and the game can no longer change server or log in again until you press Play next time.
 
 ## When Play stops
 
