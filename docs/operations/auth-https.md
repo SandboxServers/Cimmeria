@@ -12,7 +12,7 @@ This runbook puts the launcher's sign-in on `https://play.cimmeria.app`. The boa
 | Piece | State |
 |---|---|
 | `docker/compose.auth-proxy.yml` overlay | In the repo. CI runs `docker compose config -q` on it and asserts that 13480 is published on `127.0.0.1` only. |
-| Proxy listener code (`AUTH_PROXY_ADDR`, `proxy_layer`) | Built on the `client-tls-oidc/campaign` branch, not on `main` yet. An image without it ignores `AUTH_PROXY_ADDR`, so step 1 is harmless there but nothing answers on 13480. The same branch holds config/auth-providers.toml.example. |
+| Proxy listener code (`AUTH_PROXY_ADDR`, `proxy_layer`) | Built on the `client-tls-oidc/campaign` branch, not on `main` yet. An image without it ignores `AUTH_PROXY_ADDR`, so step 1 is harmless there but nothing answers on 13480. The same branch holds `config/auth-providers.toml.example`. |
 | Caddy route (step 2) | **Not applied.** The apply packet is CT-52. |
 | Anything on this page | **Never run against the colo.** Every command, status code and log line below comes from reading the code and the compose files. |
 
@@ -56,7 +56,7 @@ sudo cp -p .env .env.bak-$(date +%Y%m%d-%H%M)
 $EDITOR .env      # append :compose.auth-proxy.yml to COMPOSE_FILE
 ```
 
-**Optional: narrow the trusted peers.** Do this before the docker compose up -d below, so the game server restarts once. Through a loopback publish the server sees the bridge gateway of the container's network, not `127.0.0.1`. The default list `127.0.0.0/8,::1,172.16.0.0/12` covers that gateway, but it also trusts the `signoz` and `otel-collector` containers, which can reach `cimmeria:13480` directly and could forge `X-Forwarded-For`. To trust the gateway alone, put it in a shell variable and append it to `.env` without printing it:
+**Optional: narrow the trusted peers.** Do this before the `docker compose up -d` below, so the game server restarts once. Through a loopback publish the server sees the bridge gateway of the container's network, not `127.0.0.1`. The default list `127.0.0.0/8,::1,172.16.0.0/12` covers that gateway, but it also trusts the `signoz` and `otel-collector` containers, which can reach `cimmeria:13480` directly and could forge `X-Forwarded-For`. To trust the gateway alone, put it in a shell variable and append it to `.env` without printing it:
 
 ```bash
 gw=$(docker network inspect signoz-net --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}')
@@ -141,13 +141,13 @@ The peer is the bridge gateway because Docker forwards a loopback-published port
 
 ## Kill switches
 
-Each is a line in .env that the overlay passes to the container; only the value 1 turns it on. Run docker compose up -d after you set it.
+Each is a line in `.env` that the overlay passes to the container; only the value `1` turns it on. Run `docker compose up -d` after you set it.
 
 | Variable | Effect |
 |---|---|
-| `CIMMERIA_IDP_DISABLED=1` | Providers off: /auth/v1 answers 503 {"error":"disabled"} except providers and the launch-ticket routes |
+| `CIMMERIA_IDP_DISABLED=1` | Providers off: `/auth/v1` answers `503 {"error":"disabled"}` except providers and the launch-ticket routes |
 | `CIMMERIA_IDP_SIGNUP_DISABLED=1` | Sign-up closed |
-| `CIMMERIA_SOAP_RELAY_DISABLED=1` | GET /auth/v1/providers reports soap_relay=false, so launchers skip the SOAP relay |
+| `CIMMERIA_SOAP_RELAY_DISABLED=1` | `GET /auth/v1/providers` reports `soap_relay=false`, so launchers skip the SOAP relay |
 | `CIMMERIA_PASSWORD_REHASH_DISABLED=1` | Planned with CT-54; not in the code yet |
 
 ## Rollback
