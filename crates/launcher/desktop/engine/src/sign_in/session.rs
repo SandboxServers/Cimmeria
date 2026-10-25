@@ -216,7 +216,7 @@ impl SignIn {
             Ok(TokenReply::NeedsLink(_)) => Err(SignInError::Protocol),
             Err(SignInError::Server(code)) if code == "invalid_grant" => {
                 tracing::info!(target: "launcher.sign_in", event = "failed", outcome = "failed", reason = "signed_out");
-                self.forget(&mut state);
+                self.forget_if_stored(&mut state, &stored.refresh_token);
                 Err(signed_out())
             }
             Err(e) => Err(e),
@@ -337,6 +337,22 @@ impl SignIn {
     /// Clears the stored sign-in and the memory.
     fn forget(&self, state: &mut Inner) {
         self.store.delete(host_of(&self.base));
+        state.access = None;
+        state.account = None;
+    }
+
+    /// Clears the memory and the stored sign-in only if the store still holds
+    /// `used`, the refresh token this instance used. A newer sign-in stored since
+    /// (a reauth on the same host) is left alone.
+    fn forget_if_stored(&self, state: &mut Inner, used: &str) {
+        let host = host_of(&self.base);
+        if self
+            .store
+            .get(host)
+            .is_none_or(|now| now.refresh_token == used)
+        {
+            self.store.delete(host);
+        }
         state.access = None;
         state.account = None;
     }
