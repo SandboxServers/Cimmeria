@@ -7,7 +7,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use cimmeria_auth::auth::LaunchTicketStore;
+/// The launch ticket store [`register`] takes, re-exported so a caller that
+/// registers the handle needs no auth dependency of its own.
+pub use cimmeria_auth::auth::LaunchTicketStore;
 
 use crate::stores::Stores;
 
