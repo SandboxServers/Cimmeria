@@ -438,6 +438,6 @@ key strands every launcher built with the old one in the same way, so keep it.
   telemetry events.
 - **macOS self-update.** Manual, above.
 - **An Intel Mac build.** The macOS zip is arm64 only.
-- **Linux self-update, Play and an Arm build.** Linux updates are manual (above);
-  Play has no Wine or Proton backend yet, so the embedded Windows pieces are
-  carried but not run; the AppImage is x86-64 only.
+- **Linux self-update and an Arm build.** Linux updates are manual (above);
+  Play runs the embedded Windows pieces through a Proton the player already has
+  ([Linux (Proton)](launch.md#linux-proton)); the AppImage is x86-64 only.

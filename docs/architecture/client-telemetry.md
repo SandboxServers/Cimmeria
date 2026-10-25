@@ -604,7 +604,7 @@ Tested status: the unit tests for these modules pass in the lane (fmt, clippy, i
 
 ## Session tags on `client.dll.attached`
 
-A launcher may label its session in `current-session.json` (`tags`, an array of strings). The desktop launcher sends `desktop-launcher`, the host OS and `wine` or `native`. The server takes the same tags in the mint request but does not put them on the session's events, so the DLL repeats them as `session_tags` on `client.dll.attached` (2026-10-04). A marker without `tags`, or with an empty list, adds no field.
+A launcher may label its session in `current-session.json` (`tags`, an array of strings). The desktop launcher sends `desktop-launcher`, the host OS and `wine`, `proton` or `native`. The server takes the same tags in the mint request but does not put them on the session's events, so the DLL repeats them as `session_tags` on `client.dll.attached` (2026-10-04). A marker without `tags`, or with an empty list, adds no field.
 
 ## Cooked-data cache: `client.cooked.*`
 
