@@ -65,7 +65,7 @@ impl NativeHost {
         })
     }
     pub fn with_launch_resources(mut self, directory: PathBuf) -> Self {
-        self.launch_resources = resources::bundled(&directory);
+        self.launch_resources = resources::bundled(&directory).map(resources::with_proton);
         self
     }
     pub fn launch_command(&self, request: LaunchCommand) -> Result<LaunchStatus, JobError> {
@@ -110,7 +110,8 @@ impl NativeHost {
                 let game = owner
                     .installed_content()?
                     .map(|installed| installed.intent.content_root());
-                let missing = self.missing_prerequisites(game.as_deref());
+                let mut missing = self.missing_prerequisites(game.as_deref());
+                missing.extend(resources::missing_proton());
                 if !missing.is_empty() {
                     tracing::warn!(target:"launcher.launch",event="prerequisites_missing",directx=missing.contains(&"directx"),physx=missing.contains(&"physx"),"Play refused: required game components are missing");
                     return Err(JobError::PrerequisitesMissing);
@@ -207,7 +208,14 @@ impl NativeHost {
         {
             state.installed_content()?.filter(|installed| {
                 if installed.intent.backend.is_native() {
+                    // Linux Native is playable once a Proton is chosen (C-1); the
+                    // prefix is prepared by the first Play (D-PP7), not here.
                     cfg!(windows)
+                        || (cfg!(target_os = "linux")
+                            && self
+                                .launch_resources
+                                .as_ref()
+                                .is_some_and(|bundle| bundle.proton.is_some()))
                 } else {
                     cfg!(target_os = "macos")
                         && (state.prepared_runtime().ok().flatten().is_some()
@@ -231,7 +239,8 @@ impl NativeHost {
         let game = installed
             .as_ref()
             .map(|installed| installed.intent.content_root());
-        let missing = self.missing_prerequisites(game.as_deref());
+        let mut missing = self.missing_prerequisites(game.as_deref());
+        missing.extend(resources::missing_proton());
         let mut status = LaunchStatus::assemble(
             native,
             installation_id,
