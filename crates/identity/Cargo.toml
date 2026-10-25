@@ -21,6 +21,10 @@ async-trait = { workspace = true }
 url = { workspace = true }
 base64 = { workspace = true }
 rand = { workspace = true }
+# The refresh-token repository: the expiry clock (`repo/refresh.rs`) and the
+# SHA-256 of a token (C6, C5).
+chrono = { workspace = true }
+sha2 = { workspace = true }
 # The identity repositories (`repo/`) run runtime-checked queries on the
 # account database, as cimmeria-auth does.
 sqlx = { workspace = true }

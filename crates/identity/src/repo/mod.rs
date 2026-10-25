@@ -8,6 +8,7 @@
 pub mod account;
 pub mod event;
 pub mod identity;
+pub mod refresh;
 
 #[cfg(test)]
 #[path = "tests_live_db.rs"]
