@@ -7,4 +7,7 @@
 //! Steam and Proton ship.
 
 pub mod discovery;
+pub mod environment;
+pub mod paths;
+pub mod prefix;
 mod vdf;
