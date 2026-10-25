@@ -173,9 +173,9 @@ endpoint is missing or not https; see
 1. **Generate the secret** on any machine: `openssl rand -hex 64`.
 2. **Check the https route.** Launchers from LI-09 on need it: they mint,
    refresh and upload through `https://<name>` on 443 and never over plain
-   http. It is also the address the server hands out. The colo's Caddy (`board-proxy`) forwards only the five
-   telemetry routes from `https://play.cimmeria.app` to the server's login
-   port on loopback `:8081` and answers 404 for everything else. No
+   http. It is also the address the server hands out. The colo's Caddy (`board-proxy`) forwards the five
+   telemetry routes (and the sign-in routes, see `auth-https.md`) from
+   `https://play.cimmeria.app` and answers 404 for everything else. No
    Cloudflare Tunnel is involved: one was planned and was never deployed.
    The Caddyfile is host config and is not yet mirrored into the
    agent-board repo (OPS-LT1), so a `board-proxy` redeploy can drop the
