@@ -68,20 +68,21 @@ fn a_failed_client_setup_is_noted_launch_prepare_failed() {
             &updates,
         ))
     });
+    // On Linux the fixture's Native plan reaches the Proton arm, whose refusal
+    // carries its own code (PP-06 ruling 1).
+    let (code, wire) = if cfg!(target_os = "linux") {
+        (FailureCode::ProtonMissing, "proton_missing")
+    } else {
+        (FailureCode::LaunchPrepareFailed, "launch_prepare_failed")
+    };
     assert!(matches!(result, Ok(Observation::NotStarted)));
-    assert_eq!(
-        kept.lock().unwrap().launch_failure(),
-        Ok(Some(FailureCode::LaunchPrepareFailed))
-    );
+    assert_eq!(kept.lock().unwrap().launch_failure(), Ok(Some(code)));
     let failed: Vec<_> = events
         .iter()
         .filter(|e| e.field("reason") == Some("prepare_failed"))
         .collect();
     assert_eq!(failed.len(), 1);
-    assert_eq!(
-        failed[0].field("failure_code"),
-        Some("launch_prepare_failed")
-    );
+    assert_eq!(failed[0].field("failure_code"), Some(wire));
 }
 
 // Inert PE32 header, sufficient for real client preparation, never spawned.
@@ -200,6 +201,7 @@ fn native_preparation_reads_locked_owner_and_retains_exclusion() {
                 &plan.installation.login_servers,
                 DisplayOptions::default(),
             )
+            .map_err(PrepareError::from)
         }
     });
     let (command, request, ownership) = prepared.unwrap();

@@ -11,11 +11,15 @@ mod game_logs;
 mod not_started;
 pub use not_started::dispatch_failed;
 mod preparation;
+mod prepare_error;
+use prepare_error::PrepareError;
 mod resource;
 pub use resource::{Artifact, Graphics, Resources};
 mod worker;
 pub use worker::{dispatch, Worker};
 pub mod events;
+#[cfg(target_os = "linux")]
+mod proton;
 mod supervisor;
 mod telemetry;
 #[cfg(target_os = "macos")]
@@ -195,7 +199,10 @@ impl DesktopState {
         }
         let runtime = match installed.intent.backend {
             ExtractionBackend::Native => {
-                if !cfg!(windows) {
+                // On Linux this is the Proton gate (PP-06): no selection, a graphics
+                // pass or a changed Proton version is refused, as macOS refuses Native.
+                if !resources.native_admitted() {
+                    events::launch_refused(id, "native_not_admitted");
                     return Err(StorageError::Corrupt.into());
                 }
                 None
@@ -312,6 +319,8 @@ impl DesktopState {
 }
 #[cfg(test)]
 mod events_tests;
+#[cfg(all(test, target_os = "linux"))]
+mod proton_admission_tests;
 #[cfg(test)]
 mod startup_timing_tests;
 #[cfg(test)]

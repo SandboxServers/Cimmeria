@@ -417,13 +417,14 @@ and the matching tests.
    literal in engine tests with `proton: None`.
 2. Gate: `Native` passes on Windows as now; on Linux it passes only when
    `resources.proton` is `Some`, `resources.graphics` is `None`, and
-   `root/version` (trimmed) equals `version`; a mismatch is refused with
-   `proton_missing` (use the existing refusal path that carries a failure code).
+   `root/version` (trimmed) equals `version`; anything else is refused with
+   `StorageError::Corrupt` and `launch_refused(id, "native_not_admitted")`.
+   `proton_missing` reaches the UI from `prepare` (PP-06 ruling 1).
 3. `worker.rs`: add `#[cfg(target_os = "linux")] Proton { _prefix: linux_proton::prefix::Prefix }`
    to `Ownership`, and in `prepare` a Linux branch that calls
    `super::proton::prepare(...)` with the same arguments `wine::prepare` takes.
    Create `E/storage/launch/proton.rs` with only a stub returning
-   `Err(<proton_missing refusal>)` and `#[cfg(target_os = "linux")] mod proton;`
+   `Err(PrepareError(FailureCode::ProtonMissing))` and `#[cfg(target_os = "linux")] mod proton;`
    in `launch/mod.rs`; PP-07 fills it.
 4. C-6: add the two codes everywhere the taxonomy test requires (run it to find out).
 
@@ -441,12 +442,15 @@ Lane (R1): engine fmt, clippy, `test --lib launch`; then R2 `npm test`.
 Files: `E/storage/launch/proton.rs`, new `E/storage/launch/proton_tests.rs`.
 Model it on `E/storage/launch/wine.rs` (read it fully first).
 
-`pub(super) fn prepare(plan, state_root, session, servers, display, placements) -> Result<(HelperCommand, Request, linux_proton::prefix::Prefix), IntentError>`:
+`pub(super) fn prepare(plan, state_root, session, servers, display, placements) -> Result<(HelperCommand, Request, linux_proton::prefix::Prefix), PrepareError>`.
+A coded refusal is `Err(PrepareError(FailureCode::…))`. Any other error goes through `?` (`From`
+`IntentError`, `StorageError`, `ContractError`) and reports `launch_prepare_failed`.
+Do not touch `worker.rs`; `execute()` already records the code (PP-06 ruling 1).
 1. Rediscover (`steam_roots(home)`, `discover`), find `plan.resources.proton.id`;
-   missing or version changed → `proton_missing`.
-2. `prefix::claim(state_root)`; `Busy` → the existing busy refusal.
+   missing or version changed → `Err(PrepareError(FailureCode::ProtonMissing))`.
+2. `prefix::claim(state_root)`; `Busy` → `ContractError::Busy` through `?`.
 3. `setup::ensure(...)` (blocking on the runtime the worker already uses);
-   failure → `proton_setup_failed`. Then, in this order, PP-16 adds
+   failure → `Err(PrepareError(FailureCode::ProtonSetupFailed))`. Then, in this order, PP-16 adds
    `directx::ensure` and PP-08 adds PhysX here; leave a
    `// PP-16 directx, PP-08 physx, PP-17 display` comment at the spot.
    Do not write the display profile here (PP-17 does, D-PP22).
@@ -464,7 +468,7 @@ Tests: with a fake Steam tree and a fake `proton` script that writes
 `pfx/system.reg`: the command's argv (bare `proton runinprefix <Z:\ worker>`), the request's guest
 paths with a lower-case `Working/binaries` folder on disk (fails if step 4 is a
 literal join), DLL order, no `PROTON_LOG` in the environment, and
-`proton_missing` when the selected Proton's version file changes.
+`Err(PrepareError(FailureCode::ProtonMissing))` when the selected Proton's version file changes.
 
 Lane (R1): engine fmt, clippy, `test --lib launch`.
 

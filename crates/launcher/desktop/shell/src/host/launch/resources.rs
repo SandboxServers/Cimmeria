@@ -78,6 +78,7 @@ pub(super) fn bundled_with(root: &Path, digests: &Digests) -> Option<Resources> 
         None
     };
     Some(Resources {
+        proton: None,
         helper,
         client_patches,
         client_telemetry,

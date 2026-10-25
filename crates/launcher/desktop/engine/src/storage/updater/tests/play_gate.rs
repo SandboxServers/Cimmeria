@@ -15,6 +15,7 @@ fn resources(root: &std::path::Path) -> Resources {
     )
     .unwrap();
     Resources {
+        proton: None,
         helper,
         client_patches: None,
         client_telemetry: None,

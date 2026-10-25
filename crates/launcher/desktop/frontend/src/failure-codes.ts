@@ -41,6 +41,8 @@ export const FailureCode=Schema.Literals([
  'launch_resources_missing',
  'login_servers_invalid',
  'launch_prepare_failed',
+ 'proton_missing',
+ 'proton_setup_failed',
  'spawn_failed',
  'spawn_permission_denied',
  'spawn_not_found',

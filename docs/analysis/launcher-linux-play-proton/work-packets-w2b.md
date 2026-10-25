@@ -169,7 +169,7 @@ Files: `E/linux_proton/mod.rs` (add `pub mod directx;`), new
    `format!("{};{}", directx::OVERRIDES, <the C-4 value>)`. Proton appends its own.
 3. `proton.rs` `prepare`: call `directx::ensure(&prefix, game_root)` right after
    `setup::ensure` succeeds and before PhysX; an error →
-   `proton_setup_failed` (the same refusal path `setup` uses). It runs on
+   `Err(PrepareError(FailureCode::ProtonSetupFailed))` (the same refusal `setup` uses). It runs on
    every Play, because a Proton prefix upgrade may rewrite `syswow64`.
 
 Tests (unit, TempDir; the fake extractor counts calls and returns fixed
