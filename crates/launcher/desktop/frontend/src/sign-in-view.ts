@@ -70,6 +70,8 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
    for (const el of [heading, stateLine, signupNote, providers, cancel, linkBox, signOut, urlBox]) el.hidden = true;
    return;
   }
+  // Back online: the offline branch hid these, so show them again before the state renders.
+  heading.hidden = false; stateLine.hidden = false; urlBox.hidden = !urlField.value;
   const st = s.state;
   const out = st.state === 'signed_out';
   heading.textContent = out ? 'Sign in' : st.state === 'needs_link' ? 'Link your account' : 'Your account';

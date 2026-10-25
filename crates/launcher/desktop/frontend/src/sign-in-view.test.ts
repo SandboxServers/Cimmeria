@@ -33,7 +33,7 @@ async function mounted(inspected: Record<string, unknown>, respond: (request: Re
  const field = (id: string) => document.querySelector(`#sign-in-panel ${id}`) as unknown as HTMLInputElement;
  const press = (el: HTMLElement) => el.dispatchEvent(new window.Event('click'));
  const statusText = () => document.querySelector('#sign-in-panel [role="status"]')!.textContent;
- return {calls, app, document, button, field, press, statusText};
+ return {calls, app, document, button, field, press, statusText, feed};
 }
 
 test('unavailable hides the panel', async () => {
@@ -51,6 +51,20 @@ test('unavailable with a play_refusal shows the refusal and no controls', async 
   assert.equal(p.statusText(), playRefusalText('ticket_unavailable'));
   assert.equal((p.document.getElementById('sign-in-title') as unknown as HTMLElement).hidden, true);
   for (const label of ['Cancel', 'Sign out']) assert.equal((p.button(label) as unknown as HTMLElement).hidden, true, label);
+ } finally { await p.app.dispose(); }
+});
+
+test('the panel comes back after an offline snapshot', async () => {
+ const reply = status({available: false, play_refusal: 'ticket_unavailable'});
+ const p = await mounted(reply);
+ try {
+  Object.assign(reply, status({state: {state: 'signed_in', account_name: 'pilot', display_name: 'Pilot'}}));
+  p.feed.publish({} as NativeSnapshot);
+  await flush();
+  assert.equal((p.document.getElementById('sign-in-title') as unknown as HTMLElement).hidden, false);
+  const line = Array.from(p.document.querySelectorAll('#sign-in-panel p')).find(el => !el.getAttribute('role')) as unknown as HTMLElement;
+  assert.equal(line.hidden, false);
+  assert.notEqual(line.textContent, '');
  } finally { await p.app.dispose(); }
 });
 
