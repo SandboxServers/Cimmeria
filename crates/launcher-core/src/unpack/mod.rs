@@ -24,6 +24,7 @@ mod entry_inventory;
 #[cfg(windows)]
 mod fdi;
 mod prerequisites;
+mod progress;
 mod rar;
 mod zip;
 
@@ -35,8 +36,7 @@ use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
-use crate::install::Progress;
-use crate::install_progress::{ProgressReporter, ProgressSink};
+use crate::install_progress::ProgressSink;
 
 /// Name of the staging directory a RAR is extracted into, under the
 /// destination. Removed when unpacking finishes, and cleared before a retry.
@@ -93,15 +93,6 @@ impl UnpackSink {
         } else {
             Ok(())
         }
-    }
-
-    fn report(&self, step: &str, current: usize, total: usize, path: &Path) {
-        self.progress.report(Progress::Extracting {
-            label: format!("{} ({step})", self.label),
-            current,
-            total,
-            filename: path.display().to_string(),
-        });
     }
 }
 

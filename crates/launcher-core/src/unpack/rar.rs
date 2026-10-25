@@ -77,6 +77,7 @@ fn extract_within(
         listed += 1;
         bytes = bytes.saturating_add(entry.unpacked_size);
         check_bounds(limits, listed, bytes)?;
+        sink.report_index(listed);
     }
     std::fs::create_dir_all(dest)?;
 

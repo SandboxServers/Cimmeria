@@ -53,18 +53,39 @@ pub(super) fn progress_item(observed: &Observed) -> Option<ProgressItem> {
             label if label.starts_with("patch ") => Some(ProgressItem::Patch),
             _ => None,
         },
-        Observed::Extracting { label, .. } => match label.as_str() {
-            "File index" => Some(ProgressItem::IndexBuild),
-            "Authenticated adoption reference" => Some(ProgressItem::Reference),
-            "Adoption replay" => Some(ProgressItem::Patch),
-            "Scanning" => Some(ProgressItem::Scan),
-            _ => None,
-        },
+        Observed::Extracting { label, .. } | Observed::Expanding { label, .. } => {
+            match label.as_str() {
+                "File index" => Some(ProgressItem::IndexBuild),
+                "Authenticated adoption reference" => Some(ProgressItem::Reference),
+                "Adoption replay" => Some(ProgressItem::Patch),
+                "Scanning" => Some(ProgressItem::Scan),
+                _ => None,
+            }
+        }
+        Observed::Copying { .. } | Observed::Checking { .. } => None,
     }
+}
+/// Whether adoption shows this event. The RAR index pass (`Checking` with no
+/// total) counts entries, not bytes, so it is not shown.
+pub(super) fn progress_shown(observed: &Observed) -> bool {
+    !matches!(observed, Observed::Checking { total: 0, .. })
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_rar_index_pass_is_hidden_but_a_hash_is_shown() {
+        assert!(!progress_shown(&Observed::Checking {
+            read: 256,
+            total: 0
+        }));
+        assert!(progress_shown(&Observed::Checking { read: 1, total: 2 }));
+        assert!(progress_shown(&Observed::Copying {
+            copied: 1,
+            total: 2
+        }));
+    }
 
     #[test]
     fn progress_items_map_the_engine_labels() {

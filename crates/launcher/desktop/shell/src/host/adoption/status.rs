@@ -43,31 +43,45 @@ impl NativeHost {
         let (activity, progress) = if let Some(job) = &adoption.confirm {
             (
                 Activity::Copying,
-                job.worker.progress.borrow().as_ref().map(|observed| {
-                    let (current, total) = counts(observed);
-                    Progress {
-                        phase: Phase::Copy,
-                        current,
-                        total,
-                        item: None,
-                    }
-                }),
+                job.worker
+                    .progress
+                    .borrow()
+                    .as_ref()
+                    .filter(|observed| super::rejection_dto::progress_shown(observed))
+                    .map(|observed| {
+                        let (current, total) = counts(observed);
+                        Progress {
+                            phase: Phase::Copy,
+                            current,
+                            total,
+                            item: None,
+                        }
+                    }),
             )
         } else if let Some(worker) = &adoption.preview {
             (
                 Activity::Preparing,
-                worker.progress.borrow().as_ref().map(|observed| {
-                    let (current, total) = counts(observed);
-                    Progress {
-                        phase: match observed {
-                            Observed::Downloading { .. } => Phase::Download,
-                            Observed::Extracting { .. } => Phase::Extraction,
-                        },
-                        current,
-                        total,
-                        item: super::rejection_dto::progress_item(observed),
-                    }
-                }),
+                worker
+                    .progress
+                    .borrow()
+                    .as_ref()
+                    .filter(|observed| super::rejection_dto::progress_shown(observed))
+                    .map(|observed| {
+                        let (current, total) = counts(observed);
+                        Progress {
+                            phase: match observed {
+                                Observed::Downloading { .. }
+                                | Observed::Copying { .. }
+                                | Observed::Checking { .. } => Phase::Download,
+                                Observed::Extracting { .. } | Observed::Expanding { .. } => {
+                                    Phase::Extraction
+                                }
+                            },
+                            current,
+                            total,
+                            item: super::rejection_dto::progress_item(observed),
+                        }
+                    }),
             )
         } else if adoption.session.is_some() {
             (Activity::Review, None)
@@ -218,9 +232,20 @@ fn counts(observed: &Observed) -> (u64, u64) {
     const MAX: u64 = 9_007_199_254_740_991;
     match observed {
         Observed::Downloading {
-            downloaded, total, ..
-        } => ((*downloaded).min(MAX), (*total).min(MAX)),
-        Observed::Extracting { current, total, .. } => {
+            downloaded: current,
+            total,
+            ..
+        }
+        | Observed::Copying {
+            copied: current,
+            total,
+        }
+        | Observed::Checking {
+            read: current,
+            total,
+        } => ((*current).min(MAX), (*total).min(MAX)),
+        Observed::Extracting { current, total, .. }
+        | Observed::Expanding { current, total, .. } => {
             ((*current as u64).min(MAX), (*total as u64).min(MAX))
         }
     }
