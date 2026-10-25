@@ -94,7 +94,8 @@ async fn count(pool: &PgPool, sql: &'static str, account_id: u32) -> i64 {
 #[tokio::test]
 async fn live_db_identities_lists_without_subjects_or_emails() {
     let pool = require_db_or_skip!();
-    insert_account(&pool, ID_LIST, "ct45_list_701", Some("legacy")).await;
+    // Linking clears a legacy password (C15 a), so the account starts without one.
+    insert_account(&pool, ID_LIST, "ct45_list_701", None).await;
     link(&pool, ID_LIST, "ct45-subject-701").await;
     let lines = run(
         &GM,
@@ -108,7 +109,7 @@ async fn live_db_identities_lists_without_subjects_or_emails() {
     cleanup(&pool, ID_LIST).await;
 
     assert!(
-        lines[0].contains("1 sign-in methods; password set"),
+        lines[0].contains("1 sign-in methods; password none"),
         "{lines:?}"
     );
     assert!(lines[1].contains("devmock") && lines[1].contains("CT45 Player"));
