@@ -8,7 +8,7 @@ use axum::extract::{ConnectInfo, State};
 use axum::http::{header, StatusCode};
 
 use super::handlers::*;
-use super::{HandlerState, SessionRecord};
+use super::{HandlerState, LaunchTicketStore, SessionRecord};
 
 /// **Seed-GM guard.** The dev/seed accounts must be at least GameMaster
 /// (accesslevel 2) so they can run GM commands and reach protected shards
@@ -91,6 +91,7 @@ fn test_handler_state_shards(
         developer_mode,
         db_configured,
         db: None,
+        launch_tickets: Arc::new(LaunchTicketStore::default()),
         login_tx: None,
         login_buffer: None,
     })

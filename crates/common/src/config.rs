@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 /// Server configuration loaded from XML config files.
@@ -37,6 +38,15 @@ pub struct ServerConfig {
     /// Path to the PEM-encoded TLS private key (PKCS#8, PKCS#1/RSA, or SEC1/EC)
     /// for the auth HTTPS listener. `None` disables TLS.
     pub auth_tls_key_path: Option<PathBuf>,
+
+    /// Bind address of the auth reverse-proxy listener (env
+    /// `AUTH_PROXY_ADDR`). It serves the same `/SGWLogin/*` and `/auth/v1`
+    /// routes as the plain listener, but only for requests a TLS-terminating
+    /// reverse proxy forwards with `X-Forwarded-Proto: https` and a
+    /// `X-Forwarded-For` header. The listener is for that proxy only and must
+    /// never be published to the internet. `None` (the default) leaves it
+    /// off.
+    pub auth_proxy_addr: Option<SocketAddr>,
 
     /// How often (in seconds) the background watcher polls the auth TLS
     /// cert/key file mtimes and hot-reloads the live `rustls::ServerConfig`
@@ -157,6 +167,7 @@ impl Default for ServerConfig {
             auth_tls_port: 13443,
             auth_tls_cert_path: None,
             auth_tls_key_path: None,
+            auth_proxy_addr: None,
             // Poll the cert/key mtimes every 30s by default. Cheap (two stats)
             // and picks up a rotated cert within half a minute. Operators who
             // never rotate certs at runtime can set this to 0 to disable polling.
