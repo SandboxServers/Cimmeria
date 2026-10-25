@@ -210,11 +210,22 @@ pub(super) async fn handle_user_auth(
         {
             Ok(acct) => acct,
             Err(AuthCredError::InvalidCredentials) => {
+                state.launch_tickets.revoke_account(ticket_id);
+                tracing::info!(
+                    account_id = ticket_id,
+                    reason = "ticket_account_missing",
+                    "Launch ticket names an account with no row; ticket revoked"
+                );
                 audit!(LoginOutcome::InvalidCredentials);
                 return login_error(4, "The account name or password is incorrect.");
             }
             Err(AuthCredError::AccountDisabled) => {
                 state.launch_tickets.revoke_account(ticket_id);
+                tracing::info!(
+                    account_id = ticket_id,
+                    reason = "ticket_account_disabled",
+                    "Launch ticket account is disabled; ticket revoked"
+                );
                 audit!(LoginOutcome::AccountDisabled);
                 return login_error(5, "This account has been suspended.");
             }
