@@ -6,9 +6,10 @@
 //! `LD_PRELOAD`, is left out on purpose.
 
 use std::collections::BTreeMap;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
+use super::directx;
 use super::prefix::Prefix;
 
 /// The launcher variables a Proton child may inherit.
@@ -61,13 +62,24 @@ pub fn base(
     env
 }
 
-/// The base environment plus what a game process needs: the frame cap, and
-/// the DXVK log settings when `log_guest` names a log folder (a `Z:\` path).
+/// The base environment plus what a game process needs: the frame cap, the
+/// native DirectX overrides (C-8) in front of the base ones, and the DXVK log
+/// settings when `log_guest` names a log folder (a `Z:\` path).
 pub fn game(
     mut base: BTreeMap<OsString, OsString>,
     frame_rate: u32,
     log_guest: Option<&str>,
 ) -> BTreeMap<OsString, OsString> {
+    let inherited = base
+        .get(OsStr::new("WINEDLLOVERRIDES"))
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let overrides = if inherited.is_empty() {
+        directx::OVERRIDES.to_string()
+    } else {
+        format!("{};{inherited}", directx::OVERRIDES)
+    };
+    base.insert("WINEDLLOVERRIDES".into(), overrides.into());
     base.insert("DXVK_FRAME_RATE".into(), frame_rate.to_string().into());
     if let Some(folder) = log_guest {
         base.insert("DXVK_LOG_LEVEL".into(), "info".into());

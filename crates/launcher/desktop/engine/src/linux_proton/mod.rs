@@ -6,6 +6,7 @@
 //! (D-PP9). `discovery` finds and ranks the installs; `vdf` reads the text files
 //! Steam and Proton ship.
 
+pub mod directx;
 pub mod discovery;
 pub mod environment;
 pub mod invocation;
