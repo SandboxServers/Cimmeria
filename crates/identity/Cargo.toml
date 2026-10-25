@@ -19,6 +19,8 @@ tracing = { workspace = true }
 reqwest = { workspace = true }
 async-trait = { workspace = true }
 url = { workspace = true }
+# The sign-in routes (`routes/`): the `/auth/v1` router the auth crate nests.
+axum = { workspace = true }
 base64 = { workspace = true }
 rand = { workspace = true }
 # The refresh-token repository: the expiry clock (`repo/refresh.rs`) and the
@@ -46,3 +48,5 @@ cimmeria-test-support = { workspace = true }
 rcgen = "0.14"
 # Stubs Discord's endpoints in the provider tests.
 wiremock = { workspace = true }
+# Drives the route tests with `oneshot`.
+tower = { workspace = true }
