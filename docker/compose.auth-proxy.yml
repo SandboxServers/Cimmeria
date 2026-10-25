@@ -49,6 +49,10 @@ services:
       CIMMERIA_AUTH_PROVIDERS: "/opt/cimmeria/config/auth-providers.toml"
       CIMMERIA_IDP_DISCORD_SECRET: "${CIMMERIA_IDP_DISCORD_SECRET:-}"
       CIMMERIA_IDP_OIDC_SECRET: "${CIMMERIA_IDP_OIDC_SECRET:-}"
+      # Kill switches (docs/operations/auth-https.md). Only the literal 1 turns one on.
+      CIMMERIA_IDP_DISABLED: "${CIMMERIA_IDP_DISABLED:-}"
+      CIMMERIA_IDP_SIGNUP_DISABLED: "${CIMMERIA_IDP_SIGNUP_DISABLED:-}"
+      CIMMERIA_SOAP_RELAY_DISABLED: "${CIMMERIA_SOAP_RELAY_DISABLED:-}"
     ports:
       # Host loopback ONLY, for a TLS-terminating proxy on this host.
       # Never "13480:13480": that publishes it on every interface.

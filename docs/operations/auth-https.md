@@ -3,7 +3,7 @@
 > **Type:** How-to (runbook)
 > **Audience:** Ops on the colo, and self-hosters running a TLS proxy next to the server
 > **Last updated:** 2026-10-25
-> **Companions:** [colo-deploy.md](colo-deploy.md), [telemetry-upload-endpoint.md § The colo route](telemetry-upload-endpoint.md#the-colo-route), [docker/compose.auth-proxy.yml](../../docker/compose.auth-proxy.yml), [config/auth-providers.toml.example](../../config/auth-providers.toml.example)
+> **Companions:** [colo-deploy.md](colo-deploy.md), [telemetry-upload-endpoint.md § The colo route](telemetry-upload-endpoint.md#the-colo-route), [docker/compose.auth-proxy.yml](../../docker/compose.auth-proxy.yml), `config/auth-providers.toml.example` (on the campaign branch)
 
 This runbook puts the launcher's sign-in on `https://play.cimmeria.app`. The board's Caddy terminates TLS and forwards two path families to the server's auth proxy listener on host loopback `127.0.0.1:13480`. Plain `8081` keeps working for unmodified clients.
 
@@ -12,7 +12,7 @@ This runbook puts the launcher's sign-in on `https://play.cimmeria.app`. The boa
 | Piece | State |
 |---|---|
 | `docker/compose.auth-proxy.yml` overlay | In the repo. CI runs `docker compose config -q` on it and asserts that 13480 is published on `127.0.0.1` only. |
-| Proxy listener code (`AUTH_PROXY_ADDR`, `proxy_layer`) | Built on the `client-tls-oidc/campaign` branch, not on `main` yet. An image without it ignores `AUTH_PROXY_ADDR`, so step 1 is harmless there but nothing answers on 13480. |
+| Proxy listener code (`AUTH_PROXY_ADDR`, `proxy_layer`) | Built on the `client-tls-oidc/campaign` branch, not on `main` yet. An image without it ignores `AUTH_PROXY_ADDR`, so step 1 is harmless there but nothing answers on 13480. The same branch holds config/auth-providers.toml.example. |
 | Caddy route (step 2) | **Not applied.** The apply packet is CT-52. |
 | Anything on this page | **Never run against the colo.** Every command, status code and log line below comes from reading the code and the compose files. |
 
@@ -54,20 +54,22 @@ flowchart LR
 cd /opt/cimmeria
 sudo cp -p .env .env.bak-$(date +%Y%m%d-%H%M)
 $EDITOR .env      # append :compose.auth-proxy.yml to COMPOSE_FILE
-docker compose up -d
 ```
 
-Use `sudo` for `docker compose` too if `.env` is root-only ([colo-deploy.md](colo-deploy.md)). This recreates `cimmeria` and restarts the game server, like a watchtower swap. Do it at a quiet time.
-
-**Optional: narrow the trusted peers.** Through a loopback publish the server sees the bridge gateway of the container's network, not `127.0.0.1`. The default list `127.0.0.0/8,::1,172.16.0.0/12` covers that gateway, but it also trusts the `signoz` and `otel-collector` containers, which can reach `cimmeria:13480` directly and could forge `X-Forwarded-For`. To trust the gateway alone, put it in a shell variable and append it to `.env` without printing it:
+**Optional: narrow the trusted peers.** Do this before the docker compose up -d below, so the game server restarts once. Through a loopback publish the server sees the bridge gateway of the container's network, not `127.0.0.1`. The default list `127.0.0.0/8,::1,172.16.0.0/12` covers that gateway, but it also trusts the `signoz` and `otel-collector` containers, which can reach `cimmeria:13480` directly and could forge `X-Forwarded-For`. To trust the gateway alone, put it in a shell variable and append it to `.env` without printing it:
 
 ```bash
 gw=$(docker network inspect signoz-net --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}')
 [ -n "$gw" ] && echo "AUTH_PROXY_TRUSTED_PEERS=$gw/32" | sudo tee -a .env >/dev/null
-docker compose up -d
 ```
 
 Never write the value into a file in the repo, a ticket or a log.
+
+```bash
+docker compose up -d
+```
+
+Use `sudo` for `docker compose` too if `.env` is root-only ([colo-deploy.md](colo-deploy.md)). This recreates `cimmeria` and restarts the game server, like a watchtower swap. Do it at a quiet time.
 
 **Host checks:**
 
@@ -139,13 +141,13 @@ The peer is the bridge gateway because Docker forwards a loopback-published port
 
 ## Kill switches
 
-Each needs `docker compose up -d` after you set it in `.env`.
+Each is a line in .env that the overlay passes to the container; only the value 1 turns it on. Run docker compose up -d after you set it.
 
 | Variable | Effect |
 |---|---|
-| `CIMMERIA_IDP_DISABLED=1` | Every provider off |
+| `CIMMERIA_IDP_DISABLED=1` | Providers off: /auth/v1 answers 503 {"error":"disabled"} except providers and the launch-ticket routes |
 | `CIMMERIA_IDP_SIGNUP_DISABLED=1` | Sign-up closed |
-| `CIMMERIA_SOAP_RELAY_DISABLED=1` | The SOAP relay off |
+| `CIMMERIA_SOAP_RELAY_DISABLED=1` | GET /auth/v1/providers reports soap_relay=false, so launchers skip the SOAP relay |
 | `CIMMERIA_PASSWORD_REHASH_DISABLED=1` | Planned with CT-54; not in the code yet |
 
 ## Rollback
