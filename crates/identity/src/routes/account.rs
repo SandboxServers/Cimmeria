@@ -288,15 +288,15 @@ async fn remove_identity(
     .await
     .map_err(ApiError::from_repo)?;
     tx.commit().await.map_err(ApiError::from_repo)?;
-    refresh::revoke_account_except(pool, account_id, &grant.family_id, Utc::now())
-        .await
-        .map_err(ApiError::from_repo)?;
     state
         .ctx
         .stores
         .access
         .revoke_account_except(account_id, token);
     state.deps.launch_tickets.revoke_account(account_id);
+    refresh::revoke_account_except(pool, account_id, &grant.family_id, Utc::now())
+        .await
+        .map_err(ApiError::from_repo)?;
     tracing::Span::current().record("provider", provider.as_str());
     Ok(())
 }
