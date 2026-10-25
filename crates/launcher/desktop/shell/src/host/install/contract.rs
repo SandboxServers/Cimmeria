@@ -255,7 +255,10 @@ pub struct InstallStatus {
 #[serde(tag = "phase", rename_all = "snake_case")]
 pub enum JobProgress {
     Download { current: u64, total: u64 },
+    Copy { current: u64, total: u64 },
+    Check { current: u64, total: u64 },
     Extraction { current: u64, total: u64 },
+    Expansion { current: u64, total: u64 },
 }
 pub(crate) fn progress(value: &Progress) -> JobProgress {
     const MAX: u64 = 9_007_199_254_740_991;
@@ -266,7 +269,19 @@ pub(crate) fn progress(value: &Progress) -> JobProgress {
             current: (*downloaded).min(MAX),
             total: (*total).min(MAX),
         },
+        Progress::Copying { copied, total } => JobProgress::Copy {
+            current: (*copied).min(MAX),
+            total: (*total).min(MAX),
+        },
+        Progress::Checking { read, total } => JobProgress::Check {
+            current: (*read).min(MAX),
+            total: (*total).min(MAX),
+        },
         Progress::Extracting { current, total, .. } => JobProgress::Extraction {
+            current: (*current as u64).min(MAX),
+            total: (*total as u64).min(MAX),
+        },
+        Progress::Expanding { current, total, .. } => JobProgress::Expansion {
             current: (*current as u64).min(MAX),
             total: (*total as u64).min(MAX),
         },
@@ -295,6 +310,29 @@ mod tests {
         JobError::InvalidManifest,
         JobError::SigningKeyUnavailable,
     ];
+
+    #[test]
+    fn new_install_phases_serialise_flat_without_paths() {
+        use super::{progress, Progress};
+        let json = |event: &Progress| serde_json::to_string(&progress(event)).unwrap();
+        let copy = Progress::Copying {
+            copied: 3,
+            total: 9,
+        };
+        assert_eq!(json(&copy), r#"{"phase":"copy","current":3,"total":9}"#);
+        let check = Progress::Checking { read: 4, total: 0 };
+        assert_eq!(json(&check), r#"{"phase":"check","current":4,"total":0}"#);
+        let expand = Progress::Expanding {
+            label: "private".into(),
+            current: 1,
+            total: 2,
+            filename: "/private/file".into(),
+        };
+        assert_eq!(
+            json(&expand),
+            r#"{"phase":"expansion","current":1,"total":2}"#
+        );
+    }
 
     #[test]
     fn job_error_code_is_its_serde_name() {

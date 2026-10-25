@@ -7,7 +7,7 @@ export const InstallStatus = Schema.Struct({
   runtime_setup:Schema.NullOr(Schema.String),
   repair:Schema.optionalKey(Schema.Struct({directory:Schema.optionalKey(Schema.NullOr(Schema.String)),target:Schema.NullOr(Schema.Struct({installation_id:Schema.String,directory:Schema.String})),recovery:Schema.Boolean,cleanup:Schema.Boolean,backup:Schema.optionalKey(Schema.Literals(['unavailable','not_retained','retained','cleanup_pending','removed']))})),
   uninstall:Schema.NullOr(Schema.Struct({installation_id:Schema.String,directory:Schema.String,recovery:Schema.Boolean})),
-  progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction']), current:Count, total:Count})),
+  progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','copy','check','extraction','expansion']), current:Count, total:Count})),
   outcome:Schema.NullOr(Schema.Literals(['content_prepared','cancelled','destination_unavailable','install_failed','content_invalid','reconciliation_required','rosetta_required','runtime_unavailable'])),
 });
 export type InstallStatus = typeof InstallStatus.Type;

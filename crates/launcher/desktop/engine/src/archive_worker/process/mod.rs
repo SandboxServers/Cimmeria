@@ -112,7 +112,7 @@ pub async fn serve_stdio() -> i32 {
             _=tick.tick()=>{
                 if receiver.has_changed().unwrap_or(false) {
                     let latest=receiver.borrow_and_update().clone();
-                    if let Some(Progress::Extracting {current,total,..})=latest {
+                    if let Some(Progress::Extracting {current,total,..} | Progress::Expanding {current,total,..})=latest {
                         let event=WorkerEvent {schema_version:1,operation_id:Some(id),event:EventKind::Progress {current:current as u64,total:total as u64}};
                         if matches!(events.try_send((event,None)),Err(mpsc::TrySendError::Disconnected(_))) {cancel.cancel();}
                     }

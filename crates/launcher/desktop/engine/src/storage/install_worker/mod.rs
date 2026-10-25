@@ -259,8 +259,14 @@ async fn watch_phases(
     let mut phases = events::PhaseLog::new(id);
     while progress.changed().await.is_ok() {
         let phase = match &*progress.borrow_and_update() {
-            Some(install::Progress::Downloading { .. }) => TimedPhase::Download,
-            Some(install::Progress::Extracting { .. }) => TimedPhase::Extraction,
+            Some(
+                install::Progress::Downloading { .. }
+                | install::Progress::Copying { .. }
+                | install::Progress::Checking { .. },
+            ) => TimedPhase::Download,
+            Some(install::Progress::Extracting { .. } | install::Progress::Expanding { .. }) => {
+                TimedPhase::Extraction
+            }
             None => continue,
         };
         // Only a change of kind is a phase change; a patch reopens `download`.
