@@ -657,7 +657,7 @@ jobs:
 
   desktop-linux:
     name: desktop launcher (Linux)
-    needs: desktop-windows
+    needs: [desktop-windows, mac-pieces]
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
@@ -668,6 +668,8 @@ jobs:
       version: ${{ needs.desktop-windows.outputs.version }}
       epoch: ${{ needs.desktop-windows.outputs.epoch }}
       build_branch: main
+      pieces_artifact: launcher-mac-pieces-${{ needs.desktop-windows.outputs.tag }}
+      pieces_sha256: ${{ needs.mac-pieces.outputs.sha256 }}
       cache_key: launcher-release-desktop-linux
     secrets:
       LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}

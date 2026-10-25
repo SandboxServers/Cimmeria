@@ -59,9 +59,10 @@ read the Play pieces, which are kept seven days.
 
 A failed Linux build works the same way: `publish-linux` runs whenever `publish`
 succeeded, attaches what was built, and fails if `desktop-linux` did not
-succeed. The Linux build reads no Windows pieces, so a rerun only has to come
-within GitHub's 30-day re-run window, which is also how long the AppImage
-artifact is kept.
+succeed. The Linux build also reads the one-day `mac-pieces` artifact the macOS app
+reads (see above), so a rerun that needs it must come within that day.
+Otherwise it only has to come within GitHub's 30-day re-run window, which
+is also how long the AppImage artifact is kept.
 
 **"Re-run all jobs"** is the other way, and the one to use when a job that
 succeeded must run again. The stamp step recognises the run and keeps its tag
@@ -279,7 +280,7 @@ follow-up packet).
 ## What the Linux job builds
 
 [`tools/launcher-release/build-desktop-linux.sh`](../../../../tools/launcher-release/build-desktop-linux.sh)
-builds an x86-64 AppImage in stages (`app`, `verify`, `package`), run by the
+builds an x86-64 AppImage in stages (`pieces`, `app`, `verify`, `package`), run by the
 reusable `launcher-desktop-linux.yml`; `launcher-desktop.yml` calls the same
 workflow on every desktop-launcher PR as `desktop release build dry run (Linux)`,
 with a fixed dry-run tag and version and the development manifest key.
@@ -290,20 +291,29 @@ with a fixed dry-run tag and version and the development manifest key.
   runtime every AppImage starts with. The bundler uses a cached file instead of
   downloading it. The plugin comes from upstream's moving `continuous` tag, so
   when upstream moves it, the build fails until the pin is updated on purpose.
+- **`pieces <dir> <sha256>`** (run before `app` with the `mac-pieces` artifact
+  and its digest from the Windows job) checks `mac-pieces.sha256` against that
+  digest, then stages the four Windows pieces the macOS app carries (the launch
+  and prerequisite workers and the two game DLLs) through `stage-helper.py`,
+  which refuses a wrong digest, architecture or role, and a lab-bridge telemetry
+  DLL. The PR dry run has no artifact, so it stages nothing.
 - **`app`** builds the UI and runs `cargo tauri build --bundles appimage`
   (release profile), with the release's version, tag and manifest key. The
   AppImage carries WebKitGTK and GTK from the build host. Ubuntu 22.04 keeps its
   glibc old enough for SteamOS and other current distributions.
 - **`verify`** checks that it is an x86-64 ELF that extracts, that the extracted
   launcher is x86-64 and embeds the release tag and version, and that it
-  carries no Windows executable or DLL.
+  carries no Windows executable or DLL. With the four pieces staged, it also
+  embeds each pinned piece and runs `--verify-embedded-payload` on them.
 - **`package`** writes `artifacts/StargateWorlds-Launcher-linux-x86_64.AppImage`
   and its `.sha256`.
 
 The Linux launcher installs the game in-process ([README](../README.md#linux)).
-It has no Play, Repair, Update or prerequisite backend yet, so it carries none
-of the Windows pieces. A download from GitHub loses the executable bit: the
-player sets it once (the release notes say how).
+It embeds the four Windows pieces the macOS app carries, pinned by SHA-256, so
+they exist only inside the launcher binary and never beside it in the AppImage.
+A build with no pieces staged (the PR dry run) carries no payload. A download
+from GitHub loses the executable bit: the player sets it once (the release
+notes say how).
 
 ### Linux updates are manual
 
@@ -430,4 +440,5 @@ key strands every launcher built with the old one in the same way, so keep it.
 - **macOS self-update.** Manual, above.
 - **An Intel Mac build.** The macOS zip is arm64 only.
 - **Linux self-update, Play and an Arm build.** Linux updates are manual (above);
-  Play has no Wine or Proton backend; the AppImage is x86-64 only.
+  Play has no Wine or Proton backend yet, so the embedded Windows pieces are
+  carried but not run; the AppImage is x86-64 only.

@@ -9,9 +9,10 @@ name: desktop launcher Linux build
 # publish-linux job attaches the AppImage.
 #
 # The token is read-only: this job runs npm, apt and a cargo-installed Tauri CLI.
-# The Linux launcher installs the game in-process and has no Play backend yet,
-# so unlike the macOS app it needs none of the Windows job's pieces
-# (crates/launcher/desktop/README.md, "Linux").
+# The Linux launcher embeds the four Windows pieces the macOS app also carries
+# (launch and prerequisite workers, the two game DLLs). The caller hands them
+# over as an artifact with the SHA-256 of their list; a caller without them
+# (a PR dry run with no artifact) builds without the payload.
 #
 # Ubuntu 22.04: an AppImage runs on systems whose glibc is at least the build
 # host's, so the older runner reaches more distributions (SteamOS included).
@@ -44,6 +45,14 @@ on:
         description: Compile in the development manifest key instead of the secret (dry runs only)
         type: boolean
         default: false
+      pieces_artifact:
+        description: Artifact holding the Windows pieces and mac-pieces.sha256; empty builds without the payload (PR dry runs without it)
+        type: string
+        default: ''
+      pieces_sha256:
+        description: SHA-256 of mac-pieces.sha256, from the Windows job's output; empty with pieces_artifact is refused
+        type: string
+        default: ''
       cache_key:
         type: string
         required: true
@@ -106,6 +115,21 @@ jobs:
 
       - name: install the Tauri CLI
         run: cargo install tauri-cli --version 2.12.1 --locked
+
+      # The Windows job's pieces, the same artifact the macOS app takes, checked
+      # against its digest. A run without one builds without the payload.
+      - name: take in the Windows pieces, checked against the Windows job's digest
+        if: inputs.pieces_artifact != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8
+        with:
+          name: ${{ inputs.pieces_artifact }}
+          path: mac-pieces
+
+      - name: stage the Windows pieces
+        if: inputs.pieces_artifact != ''
+        env:
+          PIECES_SHA256: ${{ inputs.pieces_sha256 }}
+        run: tools/launcher-release/build-desktop-linux.sh pieces mac-pieces "${PIECES_SHA256}"
 
       - name: build the AppImage
         env:

@@ -382,6 +382,7 @@ jobs:
   # version; no manifest secret (the development key), nothing published.
   release-dry-run-linux:
     name: desktop release build dry run (Linux)
+    needs: release-dry-run-mac-pieces
     permissions:
       contents: read
     uses: ./.github/workflows/launcher-desktop-linux.yml
@@ -392,6 +393,8 @@ jobs:
       version: 1970.1.101
       epoch: '0'
       dev_manifest_key: true
+      pieces_artifact: desktop-mac-pieces-dry-run
+      pieces_sha256: ${{ needs.release-dry-run-mac-pieces.outputs.mac_pieces_sha256 }}
       cache_key: launcher-release-desktop-linux-dry-run
       save_cache: ${{ github.ref == 'refs/heads/main' }}
 
