@@ -864,7 +864,7 @@ of closed values per attempt, with no session, install or machine
 identifier. The design and the wire contract are in
 [launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md).
 
-**No launcher sends one today.** A launcher takes its endpoint from its first login server when that is https, else from that server's https upgrade when it is an http DNS name (the same name on 443, `login_server_https_upgrade`, LI-06), else from the built-in default, which is not set yet. An IP, local or single-label http login server sends nothing. Nothing here has run against a deployed server or a real SigNoz. What follows is what the server code does when a summary arrives.
+**No launcher sends one today.** A launcher takes its endpoint from its first login server when that is https, else from that server's https upgrade when it is an http DNS name (the same name on 443, `login_server_https_upgrade`, LI-06), else from the built-in default, which is not set yet. An IP, localhost or single-label http login server sends nothing. Nothing here has run against a deployed server or a real SigNoz. What follows is what the server code does when a summary arrives.
 
 - **Https only, and not sent yet.** Summaries and the default upload URL are https only; a plain `http://` address is never used for a summary, except loopback for local fixtures; an http login server on a DNS name is upgraded to https. With no https endpoint, Share setup diagnostics is saved and the box says "saved but not sent yet". That state ends when the built-in https default is set (D-LT17).
 - The `summary_endpoint_resolved` line on `launcher.pipeline` carries `outcome` = `login_server`, `login_server_https_upgrade`, `default` or `no_https_endpoint`.

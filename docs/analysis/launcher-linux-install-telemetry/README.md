@@ -146,7 +146,7 @@ Integrated / UATPending / Done / Superseded.
 Status docs change once (row 43): `docs/project-status.md` notes that Linux
 installs work from the archive without Wine, and that summaries and game
 telemetry send only over https.
-Before close-out, run the campaign review loop.
+The campaign review loop ran three passes and closed with campaign-ruling-1 (2026-10-24): the pass-3 copy fixes and the project-status entry ship in the final PR.
 Remove the worktrees first, since `git branch -D` refuses a branch that is checked
 out: `git worktree remove --force .claude/worktrees/li-01` (and li-02, li-03,
 li-integration; li-09 after its PR merges).

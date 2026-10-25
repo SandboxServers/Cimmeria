@@ -316,7 +316,7 @@ dispatch, merge or ship any of them.
   row (around line 81) and line 31:
   - The destination is the login server's https origin. For an http login
     server on a DNS name, it is the same name over https on 443. Plain http is
-    never used, and IPs and local names get no endpoint.
+    never used, and IPs, localhost and single-word names get no endpoint.
 - `docs/architecture/launcher-summary-telemetry.md`, line 12 and lines 338-344:
   - The resolve order and the new source `login_server_https_upgrade`.
 - `crates/launcher/desktop/docs/launcher-summaries.md`, line 9 and lines 451-453: the same.
