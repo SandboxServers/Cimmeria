@@ -243,7 +243,7 @@ pub(super) async fn finish(root: &Path, plain: &[LoginServer], login: ClientLogi
             ..
         } => {
             if let Err(error) = sign_in.end_ticket(&launch_id).await {
-                tracing::info!(target: "launcher.relay", event = "end_failed", reason = ?error);
+                tracing::info!(target: "launcher.relay", event = "end_failed", reason = error.reason());
             }
             relay.shutdown().await;
             "ticket"
