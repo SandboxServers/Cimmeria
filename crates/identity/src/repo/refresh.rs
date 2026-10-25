@@ -193,30 +193,53 @@ pub async fn rotate(
 
 /// Revokes every live token of one family. Rows already revoked keep their
 /// time.
+///
+/// The live rows are locked first, in their own statement. That statement
+/// waits for an in-flight [`rotate`], so the revoke below runs on a fresh
+/// snapshot and also sees the token the rotation inserted.
 pub async fn revoke_family(
     pool: &PgPool,
     family_id: &str,
     now: DateTime<Utc>,
 ) -> Result<(), RepoError> {
-    let mut conn = pool.acquire().await?;
-    revoke_family_on(&mut conn, family_id, &micros(now)).await
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "SELECT 1 FROM auth_refresh_token \
+         WHERE family_id = $1 AND revoked_at IS NULL FOR UPDATE",
+    )
+    .bind(family_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    revoke_family_on(&mut tx, family_id, &micros(now)).await?;
+    tx.commit().await?;
+    Ok(())
 }
 
 /// Revokes every live token of an account, in every family. Used when the
-/// account is disabled (C6).
+/// account is disabled (C6). Locks the live rows first, as [`revoke_family`]
+/// does, so a rotation in flight cannot leave a live token behind.
 pub async fn revoke_account(
     pool: &PgPool,
     account_id: u32,
     now: DateTime<Utc>,
 ) -> Result<(), RepoError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "SELECT 1 FROM auth_refresh_token \
+         WHERE account_id = $1 AND revoked_at IS NULL FOR UPDATE",
+    )
+    .bind(account_id as i32)
+    .fetch_all(&mut *tx)
+    .await?;
     sqlx::query(
         "UPDATE auth_refresh_token SET revoked_at = $2::timestamptz \
          WHERE account_id = $1 AND revoked_at IS NULL",
     )
     .bind(account_id as i32)
     .bind(micros(now))
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
     Ok(())
 }
 
@@ -227,15 +250,14 @@ pub async fn revoke_token(
     presented: &str,
     now: DateTime<Utc>,
 ) -> Result<(), RepoError> {
-    sqlx::query(
-        "UPDATE auth_refresh_token SET revoked_at = $2::timestamptz \
-         WHERE revoked_at IS NULL AND family_id = \
-           (SELECT family_id FROM auth_refresh_token WHERE token_hash = $1)",
-    )
-    .bind(&hash_of(presented)[..])
-    .bind(micros(now))
-    .execute(pool)
-    .await?;
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT family_id FROM auth_refresh_token WHERE token_hash = $1")
+            .bind(&hash_of(presented)[..])
+            .fetch_optional(pool)
+            .await?;
+    if let Some((family_id,)) = row {
+        revoke_family(pool, &family_id, now).await?;
+    }
     Ok(())
 }
 
@@ -271,6 +293,7 @@ mod tests {
     const ID_HASH: u32 = 2_000_304;
     const ID_ACCOUNT: u32 = 2_000_305;
     const ID_LOGOUT: u32 = 2_000_306;
+    const ID_CONCURRENT: u32 = 2_000_307;
 
     /// The fixed clock every test starts from.
     fn base() -> DateTime<Utc> {
@@ -484,6 +507,67 @@ mod tests {
         assert!(
             matches!(after, Ok(Rotation::Reused { .. })),
             "the logged-out token and its family are revoked"
+        );
+    }
+
+    #[tokio::test]
+    async fn live_db_revoke_waits_for_an_in_flight_rotation() {
+        let pool = require_db_or_skip!();
+        insert_account(&pool, ID_CONCURRENT).await;
+        let (token, family) = issue(&pool, ID_CONCURRENT, None, at(0))
+            .await
+            .expect("issue");
+        let old_hash = hash_of(&token);
+        let (_, new_hash) = new_token();
+        // A rotation mid-flight: it holds the old row's lock and has inserted
+        // the new row, but has not committed.
+        let mut tx = pool.begin().await.expect("begin the rotation");
+        sqlx::query("SELECT 1 FROM auth_refresh_token WHERE token_hash = $1 FOR UPDATE")
+            .bind(&old_hash[..])
+            .fetch_all(&mut *tx)
+            .await
+            .expect("lock the old row");
+        sqlx::query(
+            "UPDATE auth_refresh_token SET replaced_by = $1, revoked_at = $2::timestamptz \
+             WHERE token_hash = $3",
+        )
+        .bind(&new_hash[..])
+        .bind(micros(at(1)))
+        .bind(&old_hash[..])
+        .execute(&mut *tx)
+        .await
+        .expect("spend the old row");
+        sqlx::query(
+            "INSERT INTO auth_refresh_token \
+             (token_hash, family_id, account_id, issued_at, last_used_at, family_expires_at) \
+             SELECT $1, family_id, account_id, issued_at, last_used_at, family_expires_at \
+             FROM auth_refresh_token WHERE token_hash = $2",
+        )
+        .bind(&new_hash[..])
+        .bind(&old_hash[..])
+        .execute(&mut *tx)
+        .await
+        .expect("insert the new row");
+        // The revoke starts while the rotation is still open.
+        let revoke = tokio::spawn({
+            let pool = pool.clone();
+            async move { revoke_family(&pool, &family, at(1)).await }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        tx.commit().await.expect("commit the rotation");
+        let revoked = revoke.await.expect("join the revoke");
+        let (live,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM auth_refresh_token WHERE account_id = $1 AND revoked_at IS NULL",
+        )
+        .bind(ID_CONCURRENT as i32)
+        .fetch_one(&pool)
+        .await
+        .expect("count the live rows");
+        cleanup(&pool, ID_CONCURRENT).await;
+        revoked.expect("revoke the family");
+        assert_eq!(
+            live, 0,
+            "the token a rotation inserted mid-revoke is revoked"
         );
     }
 }
