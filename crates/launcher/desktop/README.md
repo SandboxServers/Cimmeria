@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Launcher contributors
-> **Last updated:** 2026-10-23
+> **Last updated:** 2026-10-25
 > **Companions:** [Implementation plan](../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md), [build rules](../../../docs/architecture/build-system.md#standalone-desktop-launcher-validation), [test policy](../../../TESTING.md)
 
 This standalone workspace contains native Rust state, Effect workflows and a
@@ -159,7 +159,7 @@ offer, and a default display is stored as no key. Its optional `monitor` is
 remembered per display setup ([launch.md § The monitor per display
 setup](docs/launch.md#the-monitor-per-display-setup)). Every snapshot carries
 `preferences.display` and `display_modes`, the modes this platform offers, plus
-`displays`, `display_sizes`, `display_monitor` and `frame_caps` (the frame caps this platform offers; empty off macOS). `save_client_options` replaces both client
+`displays`, `display_sizes`, `display_monitor` and `frame_caps` (the frame caps this platform offers: three on macOS, `fps30` and `fps60` on Linux, none on Windows). `save_client_options` replaces both client
 options at once, needs the current preference revision, and is refused while the
 launcher updater or any operation other than Play is running (Play reads them
 only at launch, so a save during Play applies to the next one); it leaves the

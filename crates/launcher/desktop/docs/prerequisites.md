@@ -2,7 +2,7 @@
 title: Prerequisite evidence and runtime probe
 type: reference
 audience: launcher contributors
-last_updated: 2026-10-23
+last_updated: 2026-10-25
 companion_docs:
   - ../../../../docs/client/launcher-guide.md
   - physx-probe.md

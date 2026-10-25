@@ -307,7 +307,7 @@ with a fixed dry-run tag and version and the development manifest key.
 - **`package`** writes `artifacts/StargateWorlds-Launcher-linux-x86_64.AppImage`
   and its `.sha256`.
 
-The Linux launcher installs the game in-process ([README](../README.md#linux)).
+The Linux launcher installs the game in-process ([README](../README.md#linux)) and plays it through a Proton the player already has ([Linux (Proton)](launch.md#linux-proton)).
 It embeds the four Windows pieces the macOS app carries, pinned by SHA-256, so
 they exist only inside the launcher binary and never beside it in the AppImage.
 A developer build with no pieces staged carries no payload; a tagged build without them fails. A download

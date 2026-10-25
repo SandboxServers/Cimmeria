@@ -2,7 +2,7 @@
 title: "Launcher Guide"
 type: how-to
 audience: players, operators
-last_updated: 2026-10-23
+last_updated: 2026-10-25
 companion_docs:
   - ../guides/macos.md
   - ../../crates/launcher/desktop/README.md
@@ -42,6 +42,7 @@ operator setup (content releases and the two signing keys) is
   - [Download the launcher](#download-the-launcher)
   - [First start on Windows](#first-start-on-windows)
   - [First start on Linux and Steam Deck](#first-start-on-linux-and-steam-deck)
+  - [Play on Linux and Steam Deck](#play-on-linux-and-steam-deck)
   - [Install the game](#install-the-game)
   - [Set up Windows game prerequisites](#set-up-windows-game-prerequisites)
   - [Play](#play)
@@ -194,9 +195,12 @@ archive.org, then applies Cimmeria's patches to it. You don't need the old
    one that exists. The launcher refuses a folder that already has files in
    it.
 2. Click **Install Cimmeria**. A progress bar shows the percent and
-   size, plus the speed and time left for large downloads, and a percent
-   while unpacking. The download is 4.1 GB, and the install drive needs about
-   14 GB free while it unpacks.
+   size, plus the speed and time left for large downloads. The line above it
+   names the phase: "Downloading verified game content…", "Checking the
+   download…" ("Reading the archive index…" while the launcher reads the
+   archive's file list), "Copying your archive…" (a game archive you picked),
+   "Unpacking the archive…" and "Expanding game files…". The download is
+   4.1 GB, and the install drive needs about 14 GB free while it unpacks.
 3. When it finishes, the game is in a `game` folder inside the folder you
    chose.
 
@@ -445,6 +449,11 @@ downloading it again. You don't unpack it first.
 1. Click **Use a downloaded game archive…**. It is in **Settings** and on the
    Play tab.
 2. Pick the archive file.
+
+The install page shows `Game folder: <path>` beside the archive button, so you
+can see where the game will go before you pick. **Change…** beside it opens
+the folder picker and the line updates at once; cancelling the picker leaves
+it as it was.
 
 The file must be the archive.org release
 `Stargate Worlds (0.8348.1.4046) (2009-06-30) (beta).rar`, which is

@@ -320,7 +320,7 @@ without creating a prefix.
 
 On Linux, Play runs the Windows game through a Proton build the player already
 has. The launcher downloads no Proton and no Wine. The pieces below run in this
-order on every Play; the first four are no-ops once they have succeeded.
+order on every Play. Steps 3 and 6 do nothing once they have succeeded; step 4 then only hashes the two DLLs.
 Source: `engine/src/storage/launch/proton.rs` and `engine/src/linux_proton/`.
 
 | Step | What happens | Failure |
@@ -439,7 +439,7 @@ from the launcher when set: `HOME`, `USER`, `LOGNAME`, `PATH`, `LANG`,
 `DBUS_SESSION_BUS_ADDRESS`, `PULSE_SERVER`, `PIPEWIRE_RUNTIME_DIR`, `SteamDeck`
 and `GAMESCOPE_WAYLAND_DISPLAY`. The launcher adds `STEAM_COMPAT_DATA_PATH`,
 `STEAM_COMPAT_CLIENT_INSTALL_PATH` and `WINEDLLOVERRIDES`. The game gets
-`DXVK_FRAME_RATE` (the frame cap), and, when the per-launch log folder exists,
+`DXVK_FRAME_RATE` (the frame cap: `30` for 30 fps, the default, or `60` for 60 fps; § The frame cap), and, when the per-launch log folder exists,
 `DXVK_LOG_LEVEL=info` and `DXVK_LOG_PATH`. With game telemetry on, the telemetry
 pass-through variables are added. `PROTON_LOG`, `SteamAppId` and `LD_PRELOAD`
 are never passed.
@@ -639,9 +639,16 @@ preferences file reads as), `fps60`, or `display`. `display` follows the
 refresh rate of the display the current setup remembers, else the main
 display. That rate is read from one display list at Play and clamped into
 30..=240; an unknown rate or an empty list gives 60. Every snapshot carries
-`frame_caps`, the caps this platform offers: all three on a Mac, and none on
-Windows, which has no limiter without a client patch and ignores the saved
-value.
+`frame_caps`, the caps this platform offers: all three on a Mac; `fps30` and
+`fps60` on Linux; and none on Windows, which has no limiter without a client
+patch and ignores the saved value.
+
+On Linux the limiter is the same `DXVK_FRAME_RATE` variable, set by the
+launcher in the game's environment for each Play (DXVK's own d3d9 reads it; Proton
+does not set it). Settings offers `fps30` (the default) and `fps60`, and Play
+honours the saved choice. The change applies the next time you press Play.
+`display` is not offered on Linux yet: it follows the refresh rate of a display
+list, and Linux does not read one yet.
 
 ### The monitor per display setup
 
