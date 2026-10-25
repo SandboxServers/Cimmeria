@@ -83,7 +83,11 @@ looks in the real Documents folder.
 Files: `E/storage/launch/display.rs` (232; the `native_profile` cfg pair at
 136-145 and a new `proton_profile` beside `wine_profile` 150-169),
 `E/storage/display_options.rs` (290; `allowed_modes` 73-79 and `effective`
-116-128 only), `E/storage/launch/proton.rs` (one call), their test files.
+116-128 only), `E/storage/launch/proton.rs` (one call),
+`E/storage/launch/events.rs` (line 251 only), new
+`E/storage/launch/display_proton_tests.rs` (wired from `display.rs` with
+`#[cfg(test)] #[path = "display_proton_tests.rs"] mod proton_tests;`), and
+`display_options`' test file.
 
 1. `display.rs`: Linux joins the `native_profile() -> None` arm (change the
    cfg at 136 to `all(not(target_os = "macos"), not(target_os = "linux"), not(test))`
@@ -94,18 +98,73 @@ Files: `E/storage/launch/display.rs` (232; the `native_profile` cfg pair at
    macOS: change the two `cfg!(target_os = "macos")` tests at 73-79 and
    116-128 to `cfg!(any(target_os = "macos", target_os = "linux"))`. The
    macOS result is unchanged. The frame cap list stays as it is.
-3. `proton.rs` `prepare`: after DirectX and PhysX, call
-   `display::apply(operation, Some(&proton_profile(&prefix)), display)`
-   exactly as `wine.rs:56-60` does, and pass `display::arguments(..)` as the
-   game's `args`. **First Play with no profile:** the PP-S2 ruling fills this
-   step (seed a minimal file, or another rule). Until then: when the
-   profile files are missing, log `proton_display_profile_missing` and go on.
+3. First Play (PP-S2 ruling, D-PP27). The game writes **no**
+   `SavedSystemOptions.xml` on its first run, so the window stays black
+   until a touch. A seeded file with only `windowedMode` true draws, and the
+   game leaves it byte-identical. In `display.rs`:
+   - `FileOutcome` gains `Seeded`, with code `"seeded"`.
+   - Add the exact seed (441 bytes, one CRLF after the declaration, no final
+     newline):
+     ```rust
+     /// The first Linux Play's saved options (PP-S2 B2): the game writes none itself.
+     const SEED_SAVED_OPTIONS: &str = concat!(
+         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n",
+         "<savedOptions xmlns:SOAP-ENV=\"http://schemas.xmlsoap.org/soap/envelope/\" ",
+         "xmlns:SOAP-ENC=\"http://schemas.xmlsoap.org/soap/encoding/\" ",
+         "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" ",
+         "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" ",
+         "xmlns:SGWSystemOptions=\"http://www.cheyenneme.com/sgw/options\">",
+         "<options valueBool=\"true\" version=\"1\" optionName=\"windowedMode\" groupName=\"video\"></options>",
+         "</savedOptions>",
+     );
+     ```
+   - Add `#[cfg(any(target_os = "linux", test))] pub(crate) fn apply_proton(operation: Uuid, pfx: &Path, profile: &Path, display: DisplayOptions)`.
+     It sets `display = display.effective()`; `fullscreen` and `size` as in
+     `apply`. Then:
+     - If `profile.join(SAVED_OPTIONS)` exists (`symlink_metadata` is `Ok`),
+       `saved = update(..)` exactly as `apply` does.
+     - If it does not exist (`NotFound`), seed it. Every existing ancestor of
+       `profile` up to and including `pfx` must not be a symlink
+       (`symlink_metadata().file_type().is_symlink()`); if one is, `saved = Failed`
+       and nothing is written. Then `create_dir_all(profile)`, and the text
+       is `saved_options(SEED_SAVED_OPTIONS, !fullscreen)`. Write it with
+       `tempfile::NamedTempFile::new_in(profile)`, `write_all`, `sync_all`,
+       then `persist_noclobber` to `SAVED_OPTIONS`, so a file the game made
+       meanwhile is never overwritten. Success is `Seeded`, and any I/O
+       error is `Failed`.
+     - Any other `symlink_metadata` error is `Unreadable`.
+     - `ini = update(&profile.join(ENGINE_INI), ..)` as `apply` does. Never
+       create `SGWEngine.ini`. The game regenerates it at 1024x768, so the
+       first Play runs at that size and the chosen size applies from the
+       second Play (FU-10).
+     - End with the same five lines as `apply` (188-192): the mode code,
+       then `events::display_settings`. Copy them; do not refactor `apply`.
+   - `events.rs` line 251: `matches!(code, "written" | "unchanged" | "seeded")`.
 
-Tests: on Linux `allowed_modes` is `[Windowed]` and `effective` forces
-windowed; `proton_profile` is under `pfx/drive_c/users/steamuser`;
-`prepare` with an existing profile in a TempDir prefix rewrites
-`windowedMode` to true (fails if step 3 is removed); the step-3 missing-file
-rule per the PP-S2 ruling.
+   In `proton.rs` `prepare`, after DirectX and PhysX, call
+   `display::apply_proton(operation, &prefix.pfx, &proton_profile(&prefix), display)`
+   and pass `display::arguments(display)` as the game's `args`. `wine.rs:56-60`
+   is the model. The display step never fails a launch.
+
+Tests (unit, TempDir; the new ones go in `display_proton_tests.rs`):
+- On Linux, `allowed_modes` is `[Windowed]` and `effective` forces windowed.
+- `proton_profile` is under `pfx/drive_c/users/steamuser`.
+- In a pfx with only `drive_c/users/steamuser/Documents`, `apply_proton`
+  creates `…/Firesky/SGWGame/SavedSystemOptions.xml`, exactly 441 bytes and
+  byte-equal to `SEED_SAVED_OPTIONS`. The event has
+  `saved_options="seeded"` and `engine_ini="missing"`. This fails if the
+  seed branch is removed.
+- An existing file with `windowedMode` false is rewritten to true and not
+  replaced by the seed. This fails if the seed overwrites.
+- `#[cfg(unix)]`: when `Documents` is a symlink to another TempDir, nothing
+  is written in either folder and `saved_options="failed"`. This fails if
+  the symlink check is removed.
+- `saved_options(SEED_SAVED_OPTIONS, true)` returns the seed unchanged, so
+  later Plays can edit it.
+- `prepare` with an existing profile in a TempDir prefix rewrites
+  `windowedMode` to true. This fails if the `prepare` call is removed.
+
+Name the reverting line for each.
 
 Lane (R1): engine fmt, clippy, `test --lib display`, `test --lib launch`.
 
@@ -152,7 +211,9 @@ the report.
    `proton runinprefix`, setup `proton run wineboot.exe`: PP-S1 ruling),
    the native `d3dx9_40`/`xinput1_3` from the game's cabs with their pins
    and overrides (D-PP20, D-PP21, C-8), PhysX (D-PP7), the windowed-only
-   prefix profile (D-PP13, D-PP22), the environment allow-list (C-4), the two
+   prefix profile and its first-Play seed (D-PP13, D-PP22, D-PP27; the first
+   Play runs at 1024x768, FU-10; `display_settings` gains
+   `saved_options="seeded"` in `D/docs/launch.md` § Display settings), the environment allow-list (C-4), the two
    failure codes (C-6), the tags (D-PP11); add Linux rows to the human
    checklist and to the Desktop Play control pins table.
    Also in `D/docs/launch.md` § Display settings (about 396-433): the Linux

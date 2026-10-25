@@ -6,35 +6,42 @@ PP-15, PP-16, PP-08W, C-8), work-packets-w3.md (waves 3-4). Host: linux.
 
 ## State (2026-10-25)
 
-- PP-S1 done, ruled (worknotes/PP-S1-ruling.md): GE-Proton 11 reaches login
-  with bare `runinprefix`, native d3dx9_40 + xinput1_3, windowed profile.
-- Base: origin/main 0a25ef5d4. Wave 1 status: ask ops.
+- PP-S1 done and ruled (worknotes/PP-S1-ruling.md). Base: origin/main 0a25ef5d4.
+- PP-S2 done and ruled (worknotes/PP-S2-ruling.md). The probe fails at
+  AddDllDirectory on the `\\?\` path (F-24). PP-08W is specced and Ready.
+  PP-17 step 3 seeds SavedSystemOptions.xml on the first Play (D-PP27).
+  Linux stays windowed only (D-PP13 final). C-8 is unchanged.
+- In flight: PP-01, PP-02, PP-20 (0e64f5b3a, PP-20-ruling-1), PP-24, PP-25.
 
 ## Owner rules
 
-- One final PR (D-PP17); packets merge-noff into
+- One final PR (D-PP17). Packets merge-noff into
   `launcher-linux-play-proton/integration` (worktree pp-integration).
 - No Wine for cabinet expansion. No client patch beyond what macOS does.
-
-## Owner decisions
-
-- OD-1, OD-2: decided 2026-10-25 (no GE download; Desktop Mode gates merge).
-- OD-3: decided 2026-10-25: drop the staged re-read. PP-20 re-specced
-  (step 9, C-7b, D-PP26, F-23); downloads and patches keep their hash.
+- OD-1..OD-4 decided 2026-10-25. OD-4: wait for U3 (the owner chose the
+  default). No early draft PR; the i686 worker is built by CI at the final
+  PR, and the PP-08W Deck check runs then. PhysX risk stays open until U3.
+- Pass-through from reviews: PP-02 telemetry-DLL wording ("stays optional" vs
+  all pins required) needs an architect confirm; tagged Linux builds need
+  PP-03's fourth pin (PP-03 in review).
+- Merged to integration (tip a51239334): PP-02, PP-25, PP-01, PP-03, PP-04,
+  PP-24. Wave 1 review pass 1: ship (all four). PP-08W reviewed ship
+  (b74d28aa5), merge after PP-08. PP-20 in review pass 2 (fix 1 09fe38073).
+- Packet worktrees from the integration tip need a hands-on agent
+  (mk-worktree.sh cuts from origin/main only).
 
 ## Next action
 
-1. ops: commit the ledger (README, RESUME, work-packets*.md, worknotes/) to
-   the integration branch; it is untracked in the main checkout only.
-2. Dispatch W1B beside W1: PP-24, PP-25, PP-20 Ready now; PP-22, PP-21,
-   PP-23 after PP-20. Dispatch PP-S2 (hands-on, owner present).
-3. W2 after W1 merges: PP-05, PP-06, PP-07, PP-15 (after PP-20, PP-25),
-   PP-16, PP-08, PP-09.
-4. After PP-S2: architect ruling worknotes/PP-S2-ruling.md (PP-08W, PP-17).
-5. PP-13 waits for the sibling campaign's final PR (its U1 row).
+1. Copy PP-S2-findings.md to worknotes/PP-S2.md (ops commits the ledger).
+2. Dispatch PP-08W (rust-gameserver-dev, worktree pp-08w). It can run now
+   and merges after PP-08. Then ops gets the CI artifact (OD-4), and a
+   hands-on Deck check writes worknotes/PP-08W-deck.md.
+3. W1B: PP-20a, then PP-20b; ops merges pp-20 after PP-25; then PP-22,
+   PP-21, PP-23, then the wave-1B Deck UAT.
+4. W2 after W1: PP-05, PP-06, PP-07, PP-15, PP-16, PP-08, PP-09, PP-08W.
 
 ## Waves (merge order)
 
-W1 PP-01, PP-04, PP-02, PP-03 | W1B PP-24, PP-25, PP-20, PP-22, PP-21,
+W1 PP-01, PP-04, PP-02, PP-03 | W1B PP-24, PP-25, PP-20 (a+b), PP-22, PP-21,
 PP-23 | W2 PP-05, PP-06, PP-07, PP-15, PP-16, PP-08, PP-09, PP-08W | W3
 PP-10, PP-11, PP-17, PP-12, PP-13 | W4 PP-U, PP-14.

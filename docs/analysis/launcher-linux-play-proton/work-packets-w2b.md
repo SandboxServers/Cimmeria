@@ -6,8 +6,9 @@ Ledger: [README.md](README.md). Rules R1-R9, the contract C-1..C-6 and
 **Host: linux** throughout. `D/`, `E/`, `S/`, `LC/` as defined there.
 
 Wave 2 merge order (whole wave): PP-05, PP-06, PP-07, PP-15, PP-16, PP-08,
-PP-09. PP-S2 runs beside it (no code). PP-08W is released by the PP-S2
-ruling and merges after PP-08.
+PP-09, PP-08W. PP-S2 is done and ruled
+([worknotes/PP-S2-ruling.md](worknotes/PP-S2-ruling.md)); PP-08W is Ready
+and merges after PP-08.
 
 ## C-8 Native DirectX (PP-15, PP-16)
 
@@ -28,6 +29,9 @@ pub const DLLS: [Pinned; 2] = [
 pub const OVERRIDES: &str = "d3dx9_40=n;xinput1_3=n";
 pub fn ensure(prefix: &Prefix, game_root: &Path) -> Result<(), ProtonError>;
 ```
+
+PP-S2 step D (ruling): `xinput1_3` stays native; without it SGW.exe fails
+to load (`c0000135`). C-8 is unchanged.
 
 ### PP-S2: Second Deck spike (hands-on, owner present)
 
@@ -133,7 +137,11 @@ asserts their sizes and SHA-256 pins; run it on the Deck with
 guard for the LZX path.
 
 Lane (R1, R10): core fmt, clippy, `test --lib cab_portable`, the ignored test,
-`test --lib unpack`. Docs: none (PP-13).
+`test --lib unpack`, all with R10's **root** manifest (`--manifest-path Cargo.toml`;
+`PP-20-ruling-1`). Step 1's desktop-manifest `check` only refreshes that
+lockfile. After PP-20, `UnpackSink::report` lives in `LC/unpack/progress.rs`
+and `LC/unpack/mod.rs` is about 478 lines, so the C-8 wrapper fits under 500;
+add no progress code to `mod.rs`. Docs: none (PP-13).
 
 ### PP-16: Native DirectX in the Proton prefix
 
@@ -176,11 +184,122 @@ Lane (R1): engine fmt, clippy, `test --lib linux_proton`, `test --lib launch`.
 
 ### PP-08W: Prerequisite worker probe under Proton
 
-**Status:** BlockedDependency (`worknotes/PP-S2-ruling.md`). The ruling writes
-this packet from PP-S2 step A. Expected shape: a change in
-`D/runtime-probe/src/windows.rs` (i686 Windows code: this host cannot compile
-it, so `ops` runs the `launcher runtime probe` workflow on the packet branch
-as its compile check), plus a closed detail code on `Failure::Probe` if the
-ruling wants one. **Agent:** rust-gameserver-dev. **Host:** linux, CI for the Windows build.
-</content>
-</invoke>
+**Status:** Ready (PP-S2 ruling, D-PP28). **Agent:** rust-gameserver-dev.
+**Host:** linux for the unit tests. The i686 build runs in CI (OD-4).
+**Depends:** none in code (only `D/runtime-probe/` changes, and no other
+packet touches it). Merges into the integration branch **after PP-08**.
+**Branch:** `launcher-linux-play-proton/pp-08w`, worktree `pp-08w`.
+**Commit:** `fix(launcher): the PhysX probe gives Wine a plain DLL search folder (PP-08W)`.
+
+Why (F-24, PP-S2 step A): `probe()` canonicalizes the game folder to
+`\\?\Z:\…\Working\binaries`. Wine's `LdrAddDllDirectory` refuses that
+verbatim form with `c000000d`, so `AddDllDirectory` (windows.rs 97-100)
+returns NULL. The worker then answers `failed/probe` and never loads
+PhysXLoader. Windows accepts both forms.
+
+Rules this packet carries (you skip CLAUDE.md):
+- Every compiling cargo call goes through the lane, with bash:
+  `bash tools/build-lane/lane.sh cargo <verb> --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-runtime-probe ...`.
+  Never run `cargo` directly. Order: `fmt -- --check`, then
+  `clippy --all-targets -- -D warnings`, then `test --lib search_path`.
+- `src/windows.rs` and `src/prerequisite/windows.rs` are x86-Windows-only
+  (`#[cfg(all(windows, target_arch = "x86"))]`). This host cannot compile
+  them. Change only the lines named below, add no imports there, and say in
+  the report that CI is their compile check.
+- Tests are unit tests in a sibling file (`#[cfg(test)] #[path = "search_path_tests.rs"] mod tests;`).
+  Each test must fail when the change it guards is reverted. Name that line.
+- Files: soft cap 500 lines, hard cap 700.
+- Edit only the files named here. No `git stash`, no push. Commit locally
+  with the subject above and the attribution lines from your brief.
+- Stdout JSON is unchanged. The new stderr line carries only the static code
+  (no path).
+- No docs are owed here (PP-13 covers them). Files under `docs/` are CRLF.
+
+Files (`D/` = `crates/launcher/desktop/`):
+- new `D/runtime-probe/src/search_path.rs`
+- new `D/runtime-probe/src/search_path_tests.rs`
+- `D/runtime-probe/src/lib.rs`: one line, `pub mod search_path;`, beside
+  `pub mod prerequisite;` with no cfg
+- `D/runtime-probe/src/windows.rs`: line 89 only
+- `D/runtime-probe/src/prerequisite/windows.rs`: line 116 only
+
+1. `search_path.rs`:
+   ```rust
+   //! Wine's LdrAddDllDirectory takes `X:\…` and rooted paths only and refuses
+   //! the `\\?\X:\…` form that `canonicalize` returns (PP-S2, F-24). Windows takes both.
+   use std::borrow::Cow;
+   /// The plain drive form of a verbatim drive path, for `AddDllDirectory`.
+   pub fn dll_search_directory(path: &str) -> Cow<'_, str>;
+   ```
+   Return `Cow::Borrowed(&path[4..])` only when all of these hold:
+   - `path` starts with `\\?\`.
+   - The rest starts with an ASCII letter, `:` and `\`.
+   - The rest has no `/`.
+   - Every component after `X:\` (split on `\`) is non-empty, is not `.`
+     or `..`, and does not end in `.` or ` `. A bare `X:\` has no
+     components, which is fine.
+   - The rest is under 260 UTF-16 units (`encode_utf16().count() < 260`).
+
+   Anything else returns `Cow::Borrowed(path)` unchanged. That covers
+   `\\?\UNC\…`, `\\?\Volume{…}`, paths that are already plain, and long
+   paths.
+2. `windows.rs` line 89. Replace `let path = wide(directory.as_os_str())?;` with:
+   ```rust
+   // AddDllDirectory only: Wine refuses the verbatim form (PP-08W, D-PP28).
+   let path = match directory.to_str() {
+       Some(text) => wide(OsStr::new(crate::search_path::dll_search_directory(text).as_ref()))?,
+       None => wide(directory.as_os_str())?,
+   };
+   ```
+   `path` is used only by `AddDllDirectory` (line 97). Every other use keeps
+   the verbatim `directory`: the activation context, `load_path`, and
+   `windows_physx::probe`.
+3. `prerequisite/windows.rs` line 116. Replace `.map_err(|_| Failure::Probe)` with
+   `.map_err(|code| { eprintln!("cimmeria-prerequisite-worker: probe failed: {code}"); Failure::Probe })`.
+   `code` is the probe's `&'static str` (`invalid_directory` or
+   `search_configuration_failed`). PP-08 keeps this stderr in `physx.log`.
+
+Tests (`search_path_tests.rs`, unit, these run on Linux):
+- `\\?\Z:\home\deck\Stargate Worlds\game\Working\binaries` → `Z:\home\deck\Stargate Worlds\game\Working\binaries`.
+  This one fails if the function returns its input.
+- `\\?\C:\` → `C:\`.
+- Returned unchanged: `C:\Games\SGW`, `\\?\UNC\server\share\SGW`,
+  `\\?\Volume{0b1e…}\SGW`, `\\?\C:\a\b.`, `\\?\C:\a\b `, `\\?\C:\a\..\b`,
+  `\\?\C:\a\\b`, and `\\?\C:/a`.
+- The 260-unit rule: a rest of 259 units is stripped and one of 260 is not.
+  This fails if the length check is dropped.
+
+The existing Windows test
+`probe_configures_search_and_reports_missing_manifest_without_claiming_crt`
+(windows.rs 140) runs the changed line on real Windows in CI. That test is
+the guard that Windows still accepts the plain path.
+
+Lane: `fmt -- --check`, `clippy --all-targets -- -D warnings`,
+`test --lib search_path`, all on `cimmeria-runtime-probe` with the desktop
+manifest. If clippy fails on Linux in a file you did not touch, report it
+and do not fix it.
+
+After the commit (not the coder's job):
+
+a. **CI compile (ops, OD-4).** Run `launcher runtime probe` on a ref that
+   holds the commit. Clippy `-D warnings`, the i686 tests and the build must
+   pass. Download the `windows-runtime-probe` artifact.
+b. **Deck check (hands-on, no owner needed; it opens no window).** Put the
+   artifact's `cimmeria-prerequisite-worker.exe` in `~/pp-spike/bin-08w/`.
+   Do this for GE-Proton11-11 and for Proton 11.0 (the roots in
+   PP-S1-findings § Setup and PP-S2-findings § C):
+   - Make a fresh compat dir `D`. Then run
+     `STEAM_COMPAT_CLIENT_INSTALL_PATH=$HOME/.local/share/Steam STEAM_COMPAT_DATA_PATH=$D timeout 120 "$P/proton" run wineboot.exe`.
+   - Pipe PP-S1's step-7 request (schema 1, `game_binaries` = the
+     launcher-installed `…\game\Working\binaries`, `package` =
+     `…\.cimmeria-prerequisites\PhysX\PhysX_7.11.13_SystemSoftware.exe`,
+     a new `scratch`) into
+     `timeout 600 "$P/proton" runinprefix 'Z:\home\deck\pp-spike\bin-08w\cimmeria-prerequisite-worker.exe'`.
+   - Run it a second time in the same prefix.
+
+   **Pass:** both runs print `"state":"probed"` with
+   `"physx_sdk":{"state":"initialized_and_released"}`. Record the stdout,
+   the exit code and the stderr tail in `worknotes/PP-08W-deck.md`. On
+   anything else, paste the full stdout and the `probe failed:` stderr line,
+   and return `blocked` to the architect. With OD-4 (a) or (b), this check
+   gates the wave-2 review. With (c), it runs as part of U3.
