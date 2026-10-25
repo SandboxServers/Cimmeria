@@ -25,7 +25,8 @@ const snapshot=(revision:number,display:DisplayOptions={mode:'windowed',width:10
 function mounted(respond:(request:any)=>Promise<unknown>=async()=>null,refresh:()=>Promise<unknown>=async()=>{},first:NativeSnapshot|null=snapshot(3)) {
  const {document,window}=parseHTML(html);const calls:{command:string;request:any}[]=[];
  const feed=makePanelContext(()=>refresh());if(first)feed.publish(first);
- const app=mountDisplay(document as unknown as Document,async(command,args)=>{const request=(args as {request:unknown}).request;calls.push({command,request});return respond(request);},feed.context);
+ // The Proton picker (PP-12) shares this invoke; it answers null here, so the picker stays hidden and records nothing.
+ const app=mountDisplay(document as unknown as Document,async(command,args)=>{if(command==='proton_command')return null;const request=(args as {request:unknown}).request;calls.push({command,request});return respond(request);},feed.context);
  const el=<T>(id:string)=>document.getElementById(id) as unknown as T;
  const mode=el<HTMLSelectElement>('display-mode');const size=el<HTMLSelectElement>('display-size');const save=el<HTMLButtonElement>('display-save');
  const choose=(select:HTMLSelectElement,value:string)=>{(select.querySelector(`option[value="${value}"]`) as HTMLOptionElement).selected=true;select.dispatchEvent(new window.Event('change'));};

@@ -31,10 +31,17 @@ function ownerLine(status:LaunchStatus):string {
  }
  return 'Another operation owns the game. Wait for it to finish.';
 }
+// Names of the missing pieces in Play's copy; Proton is named "Proton" (PP-12).
+const pieceName:Record<string,string>={directx:'DirectX',physx:'PhysX',proton:'Proton'};
+const pieceNames=(names:readonly string[])=>names.map(name=>pieceName[name]??name).join(' and ');
+/** Play's copy when no Proton is found: where to get one, then reopen the launcher (PP-12). */
+export const protonInstallText='Install Proton to play. In Steam, install Proton Experimental, or install GE-Proton with ProtonUp-Qt. Then reopen the launcher.';
 export function launchText(s:LaunchState):string {
  if(s.pending)return 'Starting game…';
  if(s.error==='launcher_too_old'||s.status?.launcher_update_required)return 'Update the launcher before playing this release. Your game files are preserved.';
- if(s.error==='prerequisites_missing')return 'Finish DirectX and PhysX setup before playing. Your game files are installed.';
+ if(s.error==='prerequisites_missing'){const missing=s.status?.prerequisites_missing??[];
+  if(!missing.length)return 'Finish DirectX and PhysX setup before playing. Your game files are installed.';
+  return missing.includes('proton')?protonInstallText:`Finish ${pieceNames(missing)} setup before playing. Your game files are installed.`;}
  if(s.error)return adoptLine(s)??(isFailureCode(s.error)?failureLines(s.error):'Resolve any folder-access prompt, then recheck status. Play was not retried.');
  const status=s.status;if(!status)return 'Checking Play availability…';
  const o=status.observation;
@@ -46,7 +53,8 @@ export function launchText(s:LaunchState):string {
  if(status.failure)return failureLines(status.failure);
  if(o?.phase==='process_exited'&&o.code!==0)return failureLines('game_exited_nonzero');
  if(o?.phase==='process_exited')return o.early?`Game exited shortly after starting (code ${o.code}).`:`Game exited (code ${o.code}).`;
- if(status.prerequisites_missing?.length)return `Complete ${status.prerequisites_missing.map(name=>name==='directx'?'DirectX':'PhysX').join(' and ')} setup before playing.`;
+ if(status.prerequisites_missing?.includes('proton'))return protonInstallText;
+ if(status.prerequisites_missing?.length)return `Complete ${pieceNames(status.prerequisites_missing)} setup before playing.`;
  if(o?.phase==='not_started')return 'Game could not start. Files are preserved; recheck before trying again. If you edited the login servers, check them under Login servers.';
  if(!status.resources_available)return 'Play unavailable: this build is missing verified game launch resources.';
  if(launchBlocked(status))return adoptLine(s)??ownerLine(status);
