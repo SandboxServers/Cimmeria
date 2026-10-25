@@ -2,6 +2,8 @@
 //! writes its display choice into the client profile, so a change made in the
 //! game's own options lasts one session. Best effort: it never fails a launch.
 use super::events;
+#[cfg(any(target_os = "linux", test))]
+use crate::linux_proton::prefix::Prefix;
 use crate::storage::display_options::{DisplayMode, DisplayOptions};
 use crate::storage::DesktopState;
 use std::io::Write;
@@ -13,18 +15,37 @@ use uuid::Uuid;
 #[path = "display_tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "display_proton_tests.rs"]
+mod proton_tests;
+
 /// The client's saved options, in the profile folder.
 const SAVED_OPTIONS: &str = "SavedSystemOptions.xml";
 /// The user engine ini, in the profile folder.
 const ENGINE_INI: &str = "Config/SGWEngine.ini";
 /// The only engine ini section the launcher touches.
 const WINDOWS_CLIENT: &str = "[WinDrv.WindowsClient]";
+/// The first Linux Play's saved options (PP-S2 B2): the game writes none itself.
+#[cfg(any(target_os = "linux", test))]
+const SEED_SAVED_OPTIONS: &str = concat!(
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n",
+    "<savedOptions xmlns:SOAP-ENV=\"http://schemas.xmlsoap.org/soap/envelope/\" ",
+    "xmlns:SOAP-ENC=\"http://schemas.xmlsoap.org/soap/encoding/\" ",
+    "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" ",
+    "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" ",
+    "xmlns:SGWSystemOptions=\"http://www.cheyenneme.com/sgw/options\">",
+    "<options valueBool=\"true\" version=\"1\" optionName=\"windowedMode\" groupName=\"video\"></options>",
+    "</savedOptions>",
+);
 
 /// What happened to one profile file, as its closed event code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FileOutcome {
     Written,
     Unchanged,
+    /// A saved options file the launcher created (PP-17, D-PP27).
+    #[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+    Seeded,
     Missing,
     KeyMissing,
     Unreadable,
@@ -36,6 +57,7 @@ impl FileOutcome {
         match self {
             Self::Written => "written",
             Self::Unchanged => "unchanged",
+            Self::Seeded => "seeded",
             Self::Missing => "missing",
             Self::KeyMissing => "key_missing",
             Self::Unreadable => "unreadable",
@@ -133,13 +155,13 @@ pub(crate) fn arguments(display: DisplayOptions) -> Vec<String> {
 
 /// The Windows client profile, `<Documents>/My Games/Firesky/SGWGame`. Tests
 /// get none, so a test run never edits the developer's own profile.
-#[cfg(all(not(target_os = "macos"), not(test)))]
+#[cfg(all(not(target_os = "macos"), not(target_os = "linux"), not(test)))]
 pub(crate) fn native_profile() -> Option<PathBuf> {
     cimmeria_launcher_core::client_paths::firesky_root().map(|root| root.join("SGWGame"))
 }
 
-/// Native Play is Windows-only; macOS and tests have no native profile.
-#[cfg(any(target_os = "macos", test))]
+/// Native Play is Windows-only; macOS, Linux and tests have no native profile.
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
 pub(crate) fn native_profile() -> Option<PathBuf> {
     None
 }
@@ -168,6 +190,15 @@ pub(crate) fn wine_profile(prefix: &Path) -> Option<PathBuf> {
     Some(profile)
 }
 
+/// The Proton prefix's client profile: `Documents/My Games/Firesky/SGWGame` in
+/// the prefix's `steamuser` folder (PP-17).
+#[cfg(any(target_os = "linux", test))]
+pub(super) fn proton_profile(prefix: &Prefix) -> PathBuf {
+    prefix
+        .profile_root()
+        .join("Documents/My Games/Firesky/SGWGame")
+}
+
 /// Writes the effective display choice into both profile files and logs one
 /// `display_settings` event. Never fails: Play continues whatever happens.
 pub(crate) fn apply(operation: Uuid, profile: Option<&Path>, display: DisplayOptions) {
@@ -190,6 +221,72 @@ pub(crate) fn apply(operation: Uuid, profile: Option<&Path>, display: DisplayOpt
         DisplayMode::Fullscreen => "fullscreen",
     };
     events::display_settings(operation, mode, saved.code(), ini.code());
+}
+
+/// The Proton Play display step (PP-17, D-PP22, D-PP27): always a window. The
+/// first Play seeds the saved options; later Plays edit them. Never fails Play.
+#[cfg(any(target_os = "linux", test))]
+pub(crate) fn apply_proton(operation: Uuid, pfx: &Path, profile: &Path, display: DisplayOptions) {
+    let display = display.effective();
+    let fullscreen = display.mode == DisplayMode::Fullscreen;
+    let size = (!fullscreen).then_some((display.width, display.height));
+    let saved = match profile.join(SAVED_OPTIONS).symlink_metadata() {
+        Ok(_) => update(&profile.join(SAVED_OPTIONS), |text| {
+            saved_options(text, !fullscreen)
+        }),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            seed(pfx, profile, !fullscreen)
+        }
+        Err(_) => FileOutcome::Unreadable,
+    };
+    let ini = update(&profile.join(ENGINE_INI), |text| {
+        engine_ini(text, fullscreen, size)
+    });
+    let mode = match display.mode {
+        DisplayMode::Windowed => "windowed",
+        DisplayMode::Fullscreen => "fullscreen",
+    };
+    events::display_settings(operation, mode, saved.code(), ini.code());
+}
+
+/// Creates the saved options from the seed. Refused, and nothing written, when
+/// a folder from the profile up to the prefix is a symlink (a link out of the
+/// prefix). Never overwrites a file that appeared meanwhile.
+#[cfg(any(target_os = "linux", test))]
+fn seed(pfx: &Path, profile: &Path, windowed: bool) -> FileOutcome {
+    for folder in profile.ancestors() {
+        if folder
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.file_type().is_symlink())
+        {
+            return FileOutcome::Failed;
+        }
+        if folder == pfx {
+            break;
+        }
+    }
+    let Some(text) = saved_options(SEED_SAVED_OPTIONS, windowed) else {
+        return FileOutcome::Failed;
+    };
+    if std::fs::create_dir_all(profile).is_err() {
+        return FileOutcome::Failed;
+    }
+    match create_new(&profile.join(SAVED_OPTIONS), &text) {
+        Ok(()) => FileOutcome::Seeded,
+        Err(_) => FileOutcome::Failed,
+    }
+}
+
+/// Writes a file that must not exist yet: a temp file in the same folder, then
+/// a rename that refuses to replace anything.
+#[cfg(any(target_os = "linux", test))]
+fn create_new(path: &Path, text: &str) -> std::io::Result<()> {
+    let folder = path.parent().ok_or(std::io::ErrorKind::NotFound)?;
+    let mut temp = tempfile::NamedTempFile::new_in(folder)?;
+    temp.write_all(text.as_bytes())?;
+    temp.as_file().sync_all()?;
+    temp.persist_noclobber(path).map_err(|error| error.error)?;
+    Ok(())
 }
 
 /// Reads, transforms and atomically replaces one existing UTF-8 file. Never
