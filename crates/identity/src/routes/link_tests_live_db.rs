@@ -77,14 +77,14 @@ trusted_email = false
 
 /// A router under test, with the stores it shares so a test can issue grants
 /// and link codes.
-struct Env {
+pub(super) struct Env {
     router: Router,
     stores: Arc<Stores>,
     codes: &'static LinkCodeStore,
 }
 
 /// Builds the routes with the default config.
-fn harness(pool: &PgPool) -> Env {
+pub(super) fn harness(pool: &PgPool) -> Env {
     harness_with(pool, TABLE)
 }
 
@@ -126,7 +126,7 @@ fn harness_with(pool: &PgPool, table: &str) -> Env {
 
 /// Deletes the sentinel accounts, the signed-up `CT26Player` accounts and every
 /// account with a `ct26-` identity; identities and events cascade.
-async fn clean(pool: &PgPool) {
+pub(super) async fn clean(pool: &PgPool) {
     let _ = sqlx::query(
         "DELETE FROM account WHERE account_id BETWEEN $1 AND $2 \
          OR account_name LIKE 'CT26Player%' \
@@ -164,7 +164,7 @@ async fn insert_row(
 }
 
 /// A verified identity under `provider`, with the given subject and email.
-fn verified(
+pub(super) fn verified(
     provider: &str,
     subject: &str,
     email: Option<&str>,
@@ -182,7 +182,7 @@ fn verified(
 }
 
 /// Stores `identity` under a fresh link grant and returns the grant.
-fn grant(env: &Env, identity: VerifiedIdentity) -> String {
+pub(super) fn grant(env: &Env, identity: VerifiedIdentity) -> String {
     env.stores.grants.issue(identity, Instant::now())
 }
 
@@ -207,7 +207,7 @@ async fn post_from(env: &Env, peer: &str, uri: &str, body: Value) -> (StatusCode
 }
 
 /// Sends a JSON `POST` to `uri` from the loopback peer.
-async fn post_json(env: &Env, uri: &str, body: Value) -> (StatusCode, Value) {
+pub(super) async fn post_json(env: &Env, uri: &str, body: Value) -> (StatusCode, Value) {
     post_from(env, PEER, uri, body).await
 }
 
@@ -379,10 +379,14 @@ async fn live_db_signup_refuses_young_provider_accounts() {
     let mut id = verified("dev", "ct26-9", None, false);
     id.provider_account_created_ms = Some(Utc::now().timestamp_millis() - ONE_DAY_MS);
     let g = grant(&young, id);
-    let (status, body) = post_json(&young, "/link/new", json!({"link_grant": g})).await;
+    let (status, body) = post_json(&young, "/link/new", json!({"link_grant": g.clone()})).await;
+    // The refused sign-up keeps the grant, so a second try is refused the same way.
+    let (again_status, again_body) = post_json(&young, "/link/new", json!({"link_grant": g})).await;
     clean(&pool).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert_eq!(body["error"], "signup_closed");
+    assert_eq!(again_status, StatusCode::FORBIDDEN, "{again_body}");
+    assert_eq!(again_body["error"], "signup_closed");
 }
 
 #[tokio::test]
