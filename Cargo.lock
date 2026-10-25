@@ -1387,6 +1387,7 @@ dependencies = [
  "cimmeria-common",
  "cimmeria-workspace-hack",
  "jsonwebtoken",
+ "rand 0.10.3",
  "rcgen",
  "reqwest 0.13.4",
  "serde",
