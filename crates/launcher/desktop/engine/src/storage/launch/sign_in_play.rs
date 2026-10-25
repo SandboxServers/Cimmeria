@@ -4,6 +4,7 @@
 //! worker hands `prepare` the list from `plan` and telemetry keeps the real one.
 use super::Plan;
 use crate::sign_in::discovery::{self, Discovery, DiscoveryCache};
+use crate::sign_in::lease::{RelayLease, ACTIVE_RELAYS};
 use crate::sign_in::session::SignIn;
 use crate::sign_in::SignInError;
 use cimmeria_launcher_core::client_setup::login_servers::{self, LoginServer};
@@ -28,10 +29,18 @@ pub(super) enum ClientLogin {
     /// No relay: the list is what the launcher already had.
     Plain,
     /// The relay stands in for the first server; the password is the player's.
-    RelayPassword { relay: RelayHandle },
+    RelayPassword {
+        relay: RelayHandle,
+        /// Counts the relay as running until the launch ends (see `sign_in::lease`).
+        #[allow(dead_code)]
+        lease: RelayLease,
+    },
     /// A one-time ticket for the first server, through the relay.
     Ticket {
         relay: RelayHandle,
+        /// Counts the relay as running until the launch ends (see `sign_in::lease`).
+        #[allow(dead_code)]
+        lease: RelayLease,
         login: Box<TicketLogin>,
         sign_in: Arc<SignIn>,
         launch_id: String,
@@ -107,6 +116,7 @@ pub(super) async fn plan(
             return without_relay(signed_in, "relay_start_failed").map(|()| plain());
         }
     };
+    let lease = RelayLease::on(&ACTIVE_RELAYS);
     let relay_url = relay.soap_url();
     let first_only = |url: String| {
         let mut list = servers.to_vec();
@@ -116,7 +126,7 @@ pub(super) async fn plan(
     let Some(sign_in) = sign_in else {
         let list = first_only(relay_url);
         tracing::info!(target: "launcher.relay", event = "started", mode = "relay_password");
-        return Ok((list, ClientLogin::RelayPassword { relay }));
+        return Ok((list, ClientLogin::RelayPassword { relay, lease }));
     };
     let launch_id = launch_id(plan.id);
     match sign_in.launch_ticket(&launch_id).await {
@@ -139,6 +149,7 @@ pub(super) async fn plan(
                 list,
                 ClientLogin::Ticket {
                     relay,
+                    lease,
                     login: Box::new(login),
                     sign_in,
                     launch_id,
@@ -221,7 +232,7 @@ pub(super) async fn finish(root: &Path, plain: &[LoginServer], login: ClientLogi
     }
     let mode = match login {
         ClientLogin::Plain => "plain",
-        ClientLogin::RelayPassword { relay } => {
+        ClientLogin::RelayPassword { relay, .. } => {
             relay.shutdown().await;
             "relay_password"
         }
