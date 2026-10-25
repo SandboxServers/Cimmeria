@@ -163,9 +163,9 @@ impl ConfigWarning {
 /// field or provider at fault; none echoes a secret or the file text.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    /// The file is not TOML, or misses a required field.
-    #[error("the providers file is not valid TOML or misses a required field")]
-    Parse,
+    /// The file is not TOML, or misses a required field; the text names the field.
+    #[error("the providers file is not valid TOML or misses a required field: {0}")]
+    Parse(String),
     /// The file could not be read (other than being absent).
     #[error("cannot read the providers file: {0}")]
     Read(#[source] std::io::Error),
@@ -237,11 +237,13 @@ pub fn load(
     env: &dyn Fn(&str) -> Option<String>,
     developer_mode: bool,
 ) -> Result<(IdentityConfig, Vec<ConfigWarning>), ConfigError> {
-    let table: toml::Table = toml::from_str(text).map_err(|_| ConfigError::Parse)?;
+    let table: toml::Table =
+        toml::from_str(text).map_err(|e| ConfigError::Parse(e.message().to_owned()))?;
     if names_key(&toml::Value::Table(table), "client_secret") {
         return Err(ConfigError::LiteralSecret);
     }
-    let raw: RawConfig = toml::from_str(text).map_err(|_| ConfigError::Parse)?;
+    let raw: RawConfig =
+        toml::from_str(text).map_err(|e| ConfigError::Parse(e.message().to_owned()))?;
     check_base_url(&raw.public_base_url)?;
 
     let kill = KillSwitches::from_env(env);
@@ -372,7 +374,7 @@ fn check_oidc_issuer(
         .ok()
         .filter(|u| u.scheme() == "https" && u.host_str().is_some())
         .ok_or_else(|| ConfigError::InsecureIssuer(id.to_owned()))?;
-    let host = parsed.host_str().unwrap_or_default();
+    let host = parsed.host_str().unwrap_or_default().trim_end_matches('.');
     if trusted_email && MICROSOFT_ISSUER_HOSTS.contains(&host) {
         return Err(ConfigError::MicrosoftEmailUntrusted(id.to_owned()));
     }
@@ -441,13 +443,24 @@ client_secret_env = "CIMMERIA_IDP_DISCORD_SECRET"
         let (cfg, warnings) = load(EXAMPLE, &both_secrets, false).expect("the example loads");
         assert_eq!(cfg.providers.len(), 2);
         assert!(cfg.signup_open);
-        assert_eq!(cfg.limits, Limits::default());
+        assert_eq!(
+            (
+                cfg.limits.signups_per_ip_per_day,
+                cfg.limits.signups_global_per_hour,
+                cfg.limits.min_provider_account_age_days
+            ),
+            (3, 30, 0)
+        );
         assert!(
             cfg.links.website.is_some()
                 && cfg.links.account.is_some()
                 && cfg.links.forums.is_some()
         );
         assert!(warnings.is_empty());
+
+        let changed = EXAMPLE.replace("signups_per_ip_per_day = 3", "signups_per_ip_per_day = 7");
+        let (cfg, _) = load(&changed, &both_secrets, false).expect("loads");
+        assert_eq!(cfg.limits.signups_per_ip_per_day, 7);
     }
 
     #[test]
@@ -492,6 +505,12 @@ client_secret_env = "CIMMERIA_IDP_DISCORD_SECRET"
         let bad_kind = MINIMAL.replace("kind = \"discord\"", "kind = \"saml\"");
         assert!(matches!(refusal(&bad_kind), ConfigError::UnknownKind(_)));
 
+        let no_client_id = MINIMAL.replace("client_id = \"000000000000000000\"\n", "");
+        assert!(matches!(
+            refusal(&no_client_id),
+            ConfigError::Parse(m) if m.contains("client_id")
+        ));
+
         let twice = format!(
             "{MINIMAL}\n[[provider]]\nid = \"discord\"\nkind = \"discord\"\ndisplay_name = \"Again\"\n\
              client_id = \"x\"\nclient_secret_env = \"CIMMERIA_IDP_DISCORD_SECRET\"\n"
@@ -523,6 +542,21 @@ trusted_email = true
             "",
         );
         assert!(matches!(refusal(&no_issuer), ConfigError::MissingIssuer(_)));
+
+        let http_issuer = text.replace(
+            "https://login.microsoftonline.com/x/v2.0",
+            "http://issuer.example.org",
+        );
+        assert!(matches!(
+            refusal(&http_issuer),
+            ConfigError::InsecureIssuer(_)
+        ));
+
+        let dotted = text.replace("login.microsoftonline.com/", "login.microsoftonline.com./");
+        assert!(matches!(
+            refusal(&dotted),
+            ConfigError::MicrosoftEmailUntrusted(_)
+        ));
     }
 
     #[test]
@@ -570,6 +604,22 @@ client_secret_env = "CIMMERIA_IDP_DEV_SECRET"
         let (cfg, _) = load(EXAMPLE, &signup_off, false).expect("loads");
         assert!(!cfg.signup_open);
         assert_eq!(cfg.providers.len(), 2);
+
+        let soap_off = |name: &str| match name {
+            "CIMMERIA_SOAP_RELAY_DISABLED" => Some("1".to_owned()),
+            other => all_secrets(other),
+        };
+        let (cfg, _) = load(EXAMPLE, &soap_off, false).expect("loads");
+        assert!(cfg.kill.soap_relay_disabled);
+        assert!(!cfg.kill.idp_disabled);
+        assert_eq!(cfg.providers.len(), 2);
+
+        let not_one = |name: &str| match name {
+            "CIMMERIA_IDP_DISABLED" => Some("true".to_owned()),
+            other => all_secrets(other),
+        };
+        let (cfg, _) = load(EXAMPLE, &not_one, false).expect("loads");
+        assert!(!cfg.kill.idp_disabled);
     }
 
     #[test]

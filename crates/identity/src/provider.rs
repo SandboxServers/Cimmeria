@@ -77,7 +77,13 @@ impl VerifiedIdentity {
             .chars()
             .filter(|c| c.is_ascii_graphic() || *c == ' ')
             .collect();
-        let cut: String = printable.trim().chars().take(64).collect();
+        let cut: String = printable
+            .trim()
+            .chars()
+            .take(64)
+            .collect::<String>()
+            .trim_end()
+            .to_owned();
         if cut.is_empty() {
             "Player".to_owned()
         } else {
@@ -182,6 +188,10 @@ mod tests {
         assert_eq!(
             VerifiedIdentity::sanitized_display_name(&"a".repeat(80)).len(),
             64
+        );
+        assert_eq!(
+            VerifiedIdentity::sanitized_display_name(&format!("{} b", "a".repeat(63))),
+            "a".repeat(63)
         );
     }
 
