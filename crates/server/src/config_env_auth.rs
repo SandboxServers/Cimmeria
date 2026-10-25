@@ -3,7 +3,7 @@
 //! Split out of `main.rs` to keep that file under its size cap. The variables
 //! are listed in the env table of the `main.rs` module doc.
 
-use cimmeria_common::ServerConfig;
+use cimmeria_common::{PeerNet, ServerConfig};
 
 /// Apply the `AUTH_*` and `LOGON_PORT` environment variables to `cfg`.
 ///
@@ -42,6 +42,24 @@ pub(crate) fn apply(cfg: &mut ServerConfig) {
                 Err(_) => tracing::warn!(
                     reason = "bad_auth_proxy_addr",
                     "AUTH_PROXY_ADDR is not a socket address; the proxy listener stays off"
+                ),
+            }
+        }
+    }
+    if let Ok(v) = std::env::var("AUTH_PROXY_TRUSTED_PEERS") {
+        // An empty value means the default list. Any entry that is not a
+        // CIDR network (or bare address) keeps the default for the whole list.
+        if !v.trim().is_empty() {
+            let parsed: Option<Vec<PeerNet>> = v
+                .split(',')
+                .filter(|entry| !entry.trim().is_empty())
+                .map(PeerNet::parse)
+                .collect();
+            match parsed {
+                Some(peers) if !peers.is_empty() => cfg.auth_proxy_trusted_peers = peers,
+                _ => tracing::warn!(
+                    reason = "bad_auth_proxy_trusted_peers",
+                    "AUTH_PROXY_TRUSTED_PEERS has an entry that is not a CIDR network; keeping the default list"
                 ),
             }
         }

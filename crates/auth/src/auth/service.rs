@@ -12,7 +12,7 @@ use sqlx::PgPool;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 
-use cimmeria_common::ServerConfig;
+use cimmeria_common::{PeerNet, ServerConfig};
 
 use crate::audit::{LoginEvent, LoginEventBuffer};
 use crate::credential_redaction::CredentialPrefix;
@@ -60,6 +60,8 @@ pub struct AuthService {
     pub(super) identity_routes: Option<IdentityRoutes>,
     /// Bind address of the reverse-proxy listener (`AUTH_PROXY_ADDR`).
     auth_proxy_addr: Option<SocketAddr>,
+    /// Socket peers whose `X-Forwarded-*` headers the proxy listener honours.
+    auth_proxy_trusted_peers: Arc<Vec<PeerNet>>,
     developer_mode: bool,
     /// A database is configured (`ServerConfig::database_configured`).
     db_configured: bool,
@@ -100,6 +102,7 @@ impl AuthService {
             launch_tickets: Arc::new(LaunchTicketStore::default()),
             identity_routes: None,
             auth_proxy_addr: config.auth_proxy_addr,
+            auth_proxy_trusted_peers: Arc::new(config.auth_proxy_trusted_peers.clone()),
             developer_mode: config.developer_mode,
             db_configured: config.database_configured(),
             db_pool: None,
@@ -231,7 +234,10 @@ impl AuthService {
                 e
             })?;
             tracing::info!(addr = %proxy_listener.local_addr().unwrap_or(proxy_addr), "Auth proxy listener bound");
-            let proxy_app = app.clone().layer(axum::middleware::from_fn(proxy_layer));
+            let proxy_app = app.clone().layer(axum::middleware::from_fn_with_state(
+                self.auth_proxy_trusted_peers.clone(),
+                proxy_layer,
+            ));
             tokio::spawn(async move {
                 if let Err(e) = axum::serve(
                     proxy_listener,

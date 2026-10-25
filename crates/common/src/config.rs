@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 
 /// Server configuration loaded from XML config files.
@@ -47,6 +47,13 @@ pub struct ServerConfig {
     /// never be published to the internet. `None` (the default) leaves it
     /// off.
     pub auth_proxy_addr: Option<SocketAddr>,
+
+    /// TCP peers allowed to speak for the proxy listener (env
+    /// `AUTH_PROXY_TRUSTED_PEERS`, a comma-separated list of CIDR networks).
+    /// On the proxy listener, `X-Forwarded-*` headers are honoured only when
+    /// the socket peer is in this list; any other peer is treated as plain
+    /// HTTP. The default is loopback and the docker bridge range.
+    pub auth_proxy_trusted_peers: Vec<PeerNet>,
 
     /// How often (in seconds) the background watcher polls the auth TLS
     /// cert/key file mtimes and hot-reloads the live `rustls::ServerConfig`
@@ -168,6 +175,7 @@ impl Default for ServerConfig {
             auth_tls_cert_path: None,
             auth_tls_key_path: None,
             auth_proxy_addr: None,
+            auth_proxy_trusted_peers: PeerNet::loopback_and_docker_bridge(),
             // Poll the cert/key mtimes every 30s by default. Cheap (two stats)
             // and picks up a rotated cert within half a minute. Operators who
             // never rotate certs at runtime can set this to 0 to disable polling.
@@ -193,6 +201,80 @@ impl Default for ServerConfig {
             // rotate regardless of this value.
             mercury_key_rotation_secs: 3600,
         }
+    }
+}
+
+/// An IPv4 or IPv6 network in CIDR form (`172.16.0.0/12`, `::1/128`). A bare
+/// address is a single host. Used for the auth proxy's trusted-peer list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PeerNet {
+    addr: IpAddr,
+    prefix: u8,
+}
+
+impl PeerNet {
+    /// Parse `addr/prefix` or a bare address. `None` for anything else, or a
+    /// prefix longer than the address family allows.
+    pub fn parse(text: &str) -> Option<Self> {
+        let text = text.trim();
+        let (addr, prefix) = match text.split_once('/') {
+            Some((addr, prefix)) => (
+                addr.trim().parse::<IpAddr>().ok()?,
+                prefix.trim().parse::<u8>().ok()?,
+            ),
+            None => {
+                let addr: IpAddr = text.parse().ok()?;
+                let prefix: u8 = if addr.is_ipv4() { 32 } else { 128 };
+                (addr, prefix)
+            }
+        };
+        let max = if addr.is_ipv4() { 32 } else { 128 };
+        (prefix <= max).then_some(Self { addr, prefix })
+    }
+
+    /// Loopback (`127.0.0.0/8`, `::1`) and the docker bridge range
+    /// (`172.16.0.0/12`): the default trusted peers of the proxy listener.
+    pub fn loopback_and_docker_bridge() -> Vec<Self> {
+        vec![
+            Self {
+                addr: Ipv4Addr::new(127, 0, 0, 0).into(),
+                prefix: 8,
+            },
+            Self {
+                addr: Ipv6Addr::LOCALHOST.into(),
+                prefix: 128,
+            },
+            Self {
+                addr: Ipv4Addr::new(172, 16, 0, 0).into(),
+                prefix: 12,
+            },
+        ]
+    }
+
+    /// Whether `ip` lies inside the network. An IPv4-mapped IPv6 address (how
+    /// a dual-stack listener shows an IPv4 peer) is matched as IPv4. Different
+    /// families never match.
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        let ip = match ip {
+            IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
+            v4 => v4,
+        };
+        let (net, peer, width) = match (self.addr, ip) {
+            (IpAddr::V4(net), IpAddr::V4(peer)) => (
+                u128::from(u32::from(net)),
+                u128::from(u32::from(peer)),
+                32_u32,
+            ),
+            (IpAddr::V6(net), IpAddr::V6(peer)) => (u128::from(net), u128::from(peer), 128),
+            _ => return false,
+        };
+        let host_bits = width - u32::from(self.prefix);
+        let mask = if host_bits >= 128 {
+            0
+        } else {
+            u128::MAX << host_bits
+        };
+        (net & mask) == (peer & mask)
     }
 }
 

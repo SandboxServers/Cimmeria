@@ -16,6 +16,7 @@
 //! | `AUTH_TLS_CERT_PATH` | unset | PEM certificate chain for the auth HTTPS listener. The TLS listener starts only when both cert and key paths are set. |
 //! | `AUTH_TLS_KEY_PATH` | unset | PEM private key for the auth HTTPS listener (paired with `AUTH_TLS_CERT_PATH`). |
 //! | `AUTH_PROXY_ADDR` | unset | Bind address of the auth reverse-proxy listener, e.g. `0.0.0.0:13480`. For a TLS-terminating reverse proxy only: the proxy must send `X-Forwarded-Proto: https` and `X-Forwarded-For`. It must never be published to the internet. Unparsable values log `reason=bad_auth_proxy_addr` and leave it off. |
+//! | `AUTH_PROXY_TRUSTED_PEERS` | `127.0.0.0/8,::1,172.16.0.0/12` | Comma-separated CIDR networks allowed to send the proxy's `X-Forwarded-*` headers. Any other socket peer is treated as plain HTTP. A list with a bad entry logs `reason=bad_auth_proxy_trusted_peers` and keeps the default. |
 //! | `AUTH_TLS_RELOAD_INTERVAL_SECS` | `30` | How often the background watcher polls the auth TLS cert/key file mtimes and hot-reloads the live config when either changes (e.g. a Let's Encrypt renewal), without restarting the server. `0` disables the watcher. Only active when the TLS listener is configured (cert + key paths set). |
 //! | `BASE_HOST` | `0.0.0.0` | BaseApp UDP bind address |
 //! | `BASE_EXTERNAL` | `127.0.0.1` | BaseApp address advertised to game clients |

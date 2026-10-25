@@ -6,19 +6,26 @@
 //! run it, so their `X-Forwarded-*` headers mean nothing.
 
 use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
 
-use axum::extract::{ConnectInfo, Request};
+use axum::extract::{ConnectInfo, Request, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use cimmeria_common::PeerNet;
 
 use super::TlsConn;
 
 const X_FORWARDED_PROTO: &str = "x-forwarded-proto";
 const X_FORWARDED_FOR: &str = "x-forwarded-for";
 
-/// Middleware for the proxy listener. A request must say it arrived over
-/// HTTPS (`X-Forwarded-Proto: https`) and carry a client address in
+/// Middleware for the proxy listener. Only a socket peer on the trusted list
+/// (`AUTH_PROXY_TRUSTED_PEERS`) may speak for the proxy. Any other peer has
+/// its `X-Forwarded-*` headers ignored and is passed on as plain HTTP, with
+/// no [`TlsConn`] marker, so `require_tls` refuses it.
+///
+/// For a trusted peer, a request must say it arrived over HTTPS
+/// (`X-Forwarded-Proto: https`) and carry a client address in
 /// `X-Forwarded-For`; otherwise it gets an empty `400`. A valid request has
 /// its `ConnectInfo` replaced by the rightmost forwarded address (port 0), so
 /// handlers see the same extensions as on the other listeners, and gets the
@@ -26,7 +33,22 @@ const X_FORWARDED_FOR: &str = "x-forwarded-for";
 ///
 /// The rightmost entry is the one the proxy itself appended. The leftmost is
 /// whatever the client sent, so it is never trusted.
-pub(super) async fn proxy_layer(mut req: Request, next: Next) -> Response {
+pub(super) async fn proxy_layer(
+    State(trusted): State<Arc<Vec<PeerNet>>>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let peer = req
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ConnectInfo(addr)| addr.ip());
+    if !peer.is_some_and(|ip| trusted.iter().any(|net| net.contains(ip))) {
+        tracing::warn!(
+            reason = "proxy_untrusted_peer",
+            "Auth proxy listener ignored X-Forwarded-* from a peer outside AUTH_PROXY_TRUSTED_PEERS"
+        );
+        return next.run(req).await;
+    }
     let https = req
         .headers()
         .get_all(X_FORWARDED_PROTO)
@@ -85,7 +107,7 @@ pub(super) async fn require_tls(req: Request, next: Next) -> Response {
 mod tests {
     use super::*;
     use axum::body::Body;
-    use axum::middleware::from_fn;
+    use axum::middleware::{from_fn, from_fn_with_state};
     use axum::routing::get;
     use axum::{Extension, Router};
     use tower::ServiceExt; // oneshot
@@ -99,20 +121,29 @@ mod tests {
     }
 
     fn app() -> Router {
+        let trusted = Arc::new(PeerNet::loopback_and_docker_bridge());
         Router::new()
             .route("/echo", get(echo))
-            .layer(from_fn(proxy_layer))
+            .layer(from_fn_with_state(trusted, proxy_layer))
     }
 
+    /// Sends `headers` from the loopback peer, which the default list trusts.
     async fn send(headers: &[(&str, &str)]) -> (StatusCode, String) {
+        send_from([127, 0, 0, 1].into(), headers).await
+    }
+
+    /// Sends `headers` with the socket peer `peer` (the connect info a real
+    /// listener sets before the proxy layer runs).
+    async fn send_from(peer: IpAddr, headers: &[(&str, &str)]) -> (StatusCode, String) {
         let mut builder = axum::http::Request::builder().uri("/echo");
         for (name, value) in headers {
             builder = builder.header(*name, *value);
         }
-        let response = app()
-            .oneshot(builder.body(Body::empty()).unwrap())
-            .await
+        let request = builder
+            .extension(ConnectInfo(SocketAddr::new(peer, 40000)))
+            .body(Body::empty())
             .unwrap();
+        let response = app().oneshot(request).await.unwrap();
         let status = response.status();
         let bytes = axum::body::to_bytes(response.into_body(), 1024)
             .await
@@ -184,6 +215,66 @@ mod tests {
 
         let (status, _) = send(&[proto, ("x-forwarded-for", "203.0.113.9, ")]).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    /// A socket peer outside the trusted list has its forwarded headers
+    /// ignored: the request stays plain HTTP, so `require_tls` answers 403
+    /// `https_required` even with `X-Forwarded-Proto: https`. Dropping the
+    /// peer check lets it through.
+    #[tokio::test]
+    async fn proxy_ignores_headers_from_an_untrusted_peer() {
+        let trusted = Arc::new(PeerNet::loopback_and_docker_bridge());
+        let app = Router::new()
+            .route("/auth/v1/ping", get(|| async { "pong" }))
+            .layer(from_fn(require_tls))
+            .layer(from_fn_with_state(trusted, proxy_layer));
+        let request = axum::http::Request::builder()
+            .uri("/auth/v1/ping")
+            .header("x-forwarded-proto", "https")
+            .header("x-forwarded-for", "198.51.100.7")
+            .extension(ConnectInfo(SocketAddr::from(([203, 0, 113, 50], 40000))))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let bytes = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        assert_eq!(&bytes[..], br#"{"error":"https_required"}"#);
+
+        // The forwarded address is not adopted either: the handler still sees
+        // the socket peer.
+        let (status, body) = send_from(
+            [0, 0, 0, 0].into(),
+            &[
+                ("x-forwarded-proto", "https"),
+                ("x-forwarded-for", "198.51.100.7"),
+            ],
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, "0.0.0.0|false");
+    }
+
+    /// The default list covers loopback and the docker bridge range, matches
+    /// an IPv4-mapped IPv6 peer as IPv4, and never matches another family.
+    #[test]
+    fn trusted_peers_match_cidr_networks() {
+        let list = PeerNet::loopback_and_docker_bridge();
+        let trusted = |ip: &str| list.iter().any(|net| net.contains(ip.parse().unwrap()));
+        assert!(trusted("127.0.0.1"));
+        assert!(trusted("172.20.5.9"));
+        assert!(trusted("::1"));
+        assert!(trusted("::ffff:172.17.0.2"));
+        assert!(!trusted("203.0.113.9"));
+        assert!(!trusted("172.32.0.1"));
+        assert!(!trusted("2001:db8::7"));
+
+        let host = PeerNet::parse("198.51.100.7").unwrap();
+        assert!(host.contains("198.51.100.7".parse().unwrap()));
+        assert!(!host.contains("198.51.100.8".parse().unwrap()));
+        assert!(PeerNet::parse("10.0.0.0/33").is_none());
+        assert!(PeerNet::parse("10.0.0.0/x").is_none());
     }
 
     /// `require_tls` answers a request without the `TlsConn` marker with 403
