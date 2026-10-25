@@ -25,6 +25,7 @@ use crate::provider::{IdentityProvider, ProviderError, VerifiedIdentity};
 use crate::routes::ctx::{client_ip, RouteState};
 use crate::routes::error::ApiError;
 use crate::stores::{pkce_challenge, random_b64url, HandoffOutcome, PendingAuth};
+use crate::telemetry;
 
 /// The query of `GET /authorize` (C6). Every field is optional here so that
 /// a missing one is our `400 invalid_request`, not the extractor's.
@@ -108,13 +109,7 @@ pub async fn authorize(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     query: Result<Query<AuthorizeQuery>, QueryRejection>,
 ) -> Response {
-    let span = tracing::info_span!(
-        "auth.idp.authorize",
-        provider = tracing::field::Empty,
-        outcome = tracing::field::Empty,
-        reason = tracing::field::Empty,
-        latency_ms = tracing::field::Empty,
-    );
+    let span = telemetry::idp_authorize();
     let started = Instant::now();
     let ip = client_ip(ConnectInfo(peer));
     let Ok(Query(query)) = query else {
@@ -218,13 +213,7 @@ pub async fn callback(
     Path(provider): Path<String>,
     query: Result<Query<CallbackQuery>, QueryRejection>,
 ) -> Response {
-    let span = tracing::info_span!(
-        "auth.idp.callback",
-        provider = tracing::field::Empty,
-        outcome = tracing::field::Empty,
-        reason = tracing::field::Empty,
-        latency_ms = tracing::field::Empty,
-    );
+    let span = telemetry::idp_callback();
     let started = Instant::now();
     let response = match query {
         Ok(Query(query)) => {

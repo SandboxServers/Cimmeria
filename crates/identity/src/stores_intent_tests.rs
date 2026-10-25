@@ -33,6 +33,15 @@ fn intent_expires_after_ten_minutes() {
 }
 
 #[test]
+fn reap_drops_expired_intents() {
+    let store = IntentStore::default();
+    let t0 = Instant::now();
+    let token = store.issue(intent(7), t0);
+    store.reap(t0 + INTENT_LIFE + Duration::from_secs(1));
+    assert!(store.take(&token, t0).is_none());
+}
+
+#[test]
 fn unknown_intent_is_refused() {
     let store = IntentStore::default();
     let t0 = Instant::now();

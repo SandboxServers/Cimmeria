@@ -28,6 +28,7 @@ use crate::routes::ctx::{client_ip, RouteState};
 use crate::routes::error::ApiError;
 use crate::routes::signin::{record_outcome, valid_challenge, valid_redirect_uri, valid_state};
 use crate::stores::{AccessGrant, LinkIntent};
+use crate::telemetry;
 
 /// How recent the token's code sign-in must be to unlink (C6). A refresh-minted
 /// token does not qualify, so a stolen refresh token cannot remove a method.
@@ -165,14 +166,7 @@ pub async fn unlink(
     Bearer(grant): Bearer,
     identity_id: Result<Path<i64>, PathRejection>,
 ) -> Response {
-    let span = tracing::info_span!(
-        "auth.idp.unlink",
-        account_id = grant.account_id,
-        provider = tracing::field::Empty,
-        outcome = tracing::field::Empty,
-        reason = tracing::field::Empty,
-        latency_ms = tracing::field::Empty,
-    );
+    let span = telemetry::idp_unlink(grant.account_id);
     let started = Instant::now();
     let result = match identity_id {
         // A path that is not a number names no row: the same answer as a miss.
