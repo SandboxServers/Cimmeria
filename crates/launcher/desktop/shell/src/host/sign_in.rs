@@ -34,10 +34,14 @@ impl Browser for SystemBrowser {
 /// Whether a sign-in URL may reach the OS opener: `https`, or plain `http` only to a loopback
 /// host. The opener runs whatever scheme it is given, so the check lives here as well as in the engine.
 fn openable(url: &str) -> bool {
-    url.starts_with("https://")
-        || ["http://127.0.0.1:", "http://localhost:", "http://[::1]:"]
-            .iter()
-            .any(|prefix| url.starts_with(prefix))
+    let https = url.starts_with("https://");
+    let loopback = ["http://127.0.0.1:", "http://localhost:", "http://[::1]:"]
+        .iter()
+        .any(|prefix| url.starts_with(prefix));
+    // A userinfo part (`http://127.0.0.1:80@host/`) names another host than the prefix shows.
+    let rest = url.split_once("://").map_or("", |(_, rest)| rest);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    (https || loopback) && !authority.contains('@')
 }
 
 /// Runs one sign-in request. Every command, `cancel` included, goes through here.
@@ -154,6 +158,9 @@ mod tests {
         assert!(!openable("file:///C:/Windows/System32/calc.exe"));
         assert!(!openable("ms-msdt:/id"));
         assert!(!openable(""));
+        assert!(!openable("http://127.0.0.1:80@evil.example/"));
+        assert!(!openable("http://localhost:1@evil.example/"));
+        assert!(!openable("https://user@auth.example.org/x"));
     }
 
     #[tokio::test]
