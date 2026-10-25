@@ -10,6 +10,7 @@
 pub mod api;
 pub mod commands;
 pub mod discovery;
+pub mod driver;
 pub mod lease;
 pub mod oauth;
 pub mod session;
