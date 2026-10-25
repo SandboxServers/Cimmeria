@@ -48,8 +48,11 @@ test('privacy distinguishes identities, raw logs, consent withdrawal and network
   assert.match(text('privacy-identity'), /SHA256\(computer name\)/);
   assert.match(text('privacy-identity'), /see connection addresses\/metadata/);
   assert.match(text('privacy-identity'), /not unconditionally HTTPS-only/);
-  assert.match(text('privacy-identity'), /first effective login server only when it is HTTPS; later entries are not searched/);
-  assert.match(text('privacy-identity'), /first server is HTTP, a later HTTPS entry does not enable sending/);
+  assert.match(text('privacy-identity'), /public DNS name is reached over https on port 443/);
+  assert.match(text('privacy-identity'), /HTTP only to loopback \(this machine\); there is no HTTP fallback/);
+  assert.doesNotMatch(text('privacy-identity'), /login-server host\/port/);
+  assert.match(text('privacy-identity'), /first effective login server only; later entries are not searched/);
+  assert.match(text('privacy-identity'), /cannot be upgraded \(an IP address, localhost or a single-word name\), a later HTTPS entry does not enable sending/);
   assert.match(text('privacy-identity'), /omit the receiving HTTP caller's connection address/);
   assert.match(text('privacy-storage'), /not a verified live retention guarantee/);
   assert.match(text('privacy-sign-in'), /operating system's credential store/);

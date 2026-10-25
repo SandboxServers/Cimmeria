@@ -30,10 +30,10 @@
 //!   failure up to 30 minutes. Only an upload the server takes (a flush
 //!   that sent events, a bundle) starts the doubling again; a renewal
 //!   alone does not.
-//! - **Addresses.** https anywhere; plain http only to this machine or the
-//!   host and port of a login server
-//!   ([`EndpointPolicy`](crate::telemetry_endpoint::EndpointPolicy)),
-//!   for the mint, every refresh and every upload endpoint handed back.
+//! - **Addresses.** https anywhere; plain http only to this machine
+//!   ([`EndpointPolicy`](crate::telemetry_endpoint::EndpointPolicy)), for the
+//!   mint, every refresh and every upload endpoint handed back. An http login
+//!   server on a DNS name is reached over https on 443.
 //! - **Consent.** Nothing here runs without [`Consent`], which exists only
 //!   while the player has opted in to game telemetry. Changing the choice
 //!   (`DesktopState::set_game_telemetry`) deletes the queue unsent, and at
@@ -126,7 +126,7 @@ pub enum TransportError {
     Choice,
     #[error("the server gave no usable telemetry session")]
     SessionUnavailable,
-    #[error("a telemetry address is plain http to a host that is not a login server")]
+    #[error("a telemetry address is plain http to another machine, so nothing was sent")]
     EndpointRefused,
     #[error("the telemetry queue could not be read or written")]
     Queue,
