@@ -39,8 +39,8 @@ use cimmeria_launcher_engine::{LauncherBuild, NativeCommand, NativeSnapshot, Sto
 use host::{
     AdoptionCommand, AdoptionError, AdoptionStatus, GameTelemetryCommand, GameTelemetryStatus,
     GameUpdateCommand, GameUpdateStatus, InstallCommand, InstallStatus, JobError, LaunchCommand,
-    LaunchStatus, MigrationCommand, MigrationStatus, NativeHost, SeedArchiveCommand,
-    SeedArchiveError, SeedArchiveStatus, UpdaterCommand,
+    LaunchStatus, MigrationCommand, MigrationStatus, NativeHost, ProtonCommand, ProtonView,
+    SeedArchiveCommand, SeedArchiveError, SeedArchiveStatus, UpdaterCommand,
 };
 use std::sync::Arc;
 use tauri::Manager;
@@ -232,6 +232,18 @@ where
         Some(release) => Ok(release),
         None => fetch().await.map_err(Into::into),
     }
+}
+
+/// The Linux Proton picker (PP-10). Blocking discovery runs off the IPC thread.
+#[tauri::command]
+async fn proton_command(
+    request: ProtonCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<ProtonView, String> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.proton_command(request))
+        .await
+        .map_err(|_| "proton_command_failed".to_owned())?
 }
 
 #[tauri::command]
@@ -624,6 +636,7 @@ fn main() {
             fetch_patch_notes,
             install_command,
             launch_command,
+            proton_command,
             game_telemetry_command,
             log_upload_command,
             client_maintenance_command,

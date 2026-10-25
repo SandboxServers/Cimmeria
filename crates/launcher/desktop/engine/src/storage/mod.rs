@@ -95,6 +95,10 @@ pub struct Preferences {
     /// stored as no key (R10).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub display_placements: Vec<display_options::Placement>,
+    /// The Proton Linux Play runs through, as a C-1 id (PP-10). `None` means the
+    /// best one found; unset is stored as no key, so older files keep their bytes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proton_preference: Option<String>,
 }
 
 impl Default for Preferences {
@@ -108,6 +112,7 @@ impl Default for Preferences {
             client_patches_enabled: true,
             display: Default::default(),
             display_placements: Vec::new(),
+            proton_preference: None,
         }
     }
 }
@@ -128,6 +133,8 @@ struct StoredPreferences {
     display: display_options::DisplayOptions,
     #[serde(default)]
     display_placements: Vec<display_options::Placement>,
+    #[serde(default)]
+    proton_preference: Option<String>,
 }
 
 impl TryFrom<StoredPreferences> for Preferences {
@@ -162,6 +169,7 @@ impl TryFrom<StoredPreferences> for Preferences {
             client_patches_enabled,
             display: stored.display,
             display_placements: stored.display_placements,
+            proton_preference: stored.proton_preference,
         })
     }
 }
@@ -192,6 +200,7 @@ impl Preferences {
             && self.client_patches_enabled
             && self.display.is_default()
             && self.display_placements.is_empty()
+            && self.proton_preference.is_none()
         {
             PreferencesDigest::V1 {
                 schema_version: 1,
@@ -403,6 +412,7 @@ impl DesktopState {
             client_patches_enabled: self.preferences.client_patches_enabled,
             display: self.preferences.display,
             display_placements: self.preferences.display_placements.clone(),
+            proton_preference: self.preferences.proton_preference.clone(),
         };
         validate_preferences(&next)?;
         // Withdrawal closes the summary gate before the write; granting consent
@@ -513,6 +523,28 @@ impl DesktopState {
             .checked_add(1)
             .filter(|n| *n <= MAX_REVISION)
             .ok_or(StorageError::Corrupt)
+    }
+
+    /// Saves the Proton Linux Play runs through (PP-10); `None` clears it. The
+    /// caller checks that the id is one discovery finds.
+    pub fn save_proton_preference(&mut self, id: Option<String>) -> Result<(), StorageError> {
+        if self.requires_reopen() {
+            return Err(StorageError::PersistenceUncertain);
+        }
+        let next = Preferences {
+            revision: self.next_preferences_revision()?,
+            proton_preference: id,
+            ..self.preferences.clone()
+        };
+        validate_preferences(&next)?;
+        match atomic::write(&self.directory.root, "preferences.json", &next) {
+            Ok(()) => self.preferences = next,
+            Err(error) => {
+                self.preferences_uncertain = error == StorageError::PersistenceUncertain;
+                return Err(error);
+            }
+        }
+        Ok(())
     }
 }
 

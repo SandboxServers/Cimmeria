@@ -26,6 +26,8 @@ pub use game_update::{GameUpdateCommand, GameUpdateStatus};
 mod updater;
 pub use updater::UpdaterCommand;
 mod launch;
+mod proton_command;
+pub use proton_command::{ProtonCommand, ProtonView};
 mod log_upload;
 mod migration;
 mod physx;

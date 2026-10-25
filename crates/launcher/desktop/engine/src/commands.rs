@@ -84,6 +84,7 @@ fn preferences_with_display<S: serde::Serializer>(
         client_patches_enabled,
         display,
         display_placements: _,
+        proton_preference: _,
     } = preferences;
     #[derive(Serialize)]
     struct Mirror<'a> {

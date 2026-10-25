@@ -1,7 +1,7 @@
 use cimmeria_launcher_engine::launch::{Artifact, Graphics, ProtonSelection, Resources};
 #[cfg(target_os = "linux")]
 use cimmeria_launcher_engine::linux_proton::discovery;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 /// Where the system-wide Proton builds live (C-1). The engine keeps its copy private.
 #[cfg(target_os = "linux")]
 const SYSTEM_TOOLS: &str = "/usr/share/steam/compatibilitytools.d";
@@ -18,31 +18,47 @@ pub(super) struct Digests<'a> {
 pub(crate) fn dll_bundled() -> bool {
     option_env!("CIMMERIA_CLIENT_TELEMETRY_SHA256").is_some()
 }
-/// The Proton under `home` that Play runs through (C-1). No saved preference yet
-/// (PP-10), so `choose` takes the best one found.
+/// Every Proton found now, ranked (C-1), with no cache: PP-10 relies on it. `roots`
+/// is (home, system tools); `None` reads HOME and SYSTEM_TOOLS.
 #[cfg(target_os = "linux")]
-pub(super) fn proton_under(home: &Path, system_tools: &Path) -> Option<ProtonSelection> {
-    let roots = discovery::steam_roots(home)?;
-    let found = discovery::discover(&roots, system_tools);
-    let install = discovery::choose(&found, None)?;
+pub(crate) fn found(roots: Option<(&Path, &Path)>) -> Vec<discovery::ProtonInstall> {
+    let env_home = std::env::var_os("HOME").map(PathBuf::from);
+    let (home, tools) = match roots {
+        Some((home, tools)) => (home.to_path_buf(), tools.to_path_buf()),
+        None => match env_home {
+            Some(home) => (home, PathBuf::from(SYSTEM_TOOLS)),
+            None => return Vec::new(),
+        },
+    };
+    discovery::steam_roots(&home)
+        .map(|steam| discovery::discover(&steam, &tools))
+        .unwrap_or_default()
+}
+/// The Proton Play runs through: the saved `preferred` id when it is still found,
+/// else the best one (C-1 `choose`). Off Linux there is none.
+#[cfg(target_os = "linux")]
+pub(super) fn proton(
+    roots: Option<(&Path, &Path)>,
+    preferred: Option<&str>,
+) -> Option<ProtonSelection> {
+    let installs = found(roots);
+    let install = discovery::choose(&installs, preferred)?;
     Some(ProtonSelection {
         id: install.id.clone(),
         root: install.root.clone(),
         version: install.version.clone(),
     })
 }
-/// The Proton Play runs through, found now (no cache: PP-10 relies on it). `roots` is
-/// (home, system tools); `None` reads HOME and SYSTEM_TOOLS. Off Linux there is none.
-#[cfg(target_os = "linux")]
-pub(super) fn proton(roots: Option<(&Path, &Path)>) -> Option<ProtonSelection> {
-    match roots {
-        Some((home, tools)) => proton_under(home, tools),
-        None => std::env::var_os("HOME")
-            .and_then(|home| proton_under(Path::new(&home), Path::new(SYSTEM_TOOLS))),
-    }
+/// `proton` under a fake HOME with no saved preference (the PP-09 status tests).
+#[cfg(all(target_os = "linux", test))]
+pub(super) fn proton_under(home: &Path, system_tools: &Path) -> Option<ProtonSelection> {
+    proton(Some((home, system_tools)), None)
 }
 #[cfg(not(target_os = "linux"))]
-pub(super) fn proton(_roots: Option<(&Path, &Path)>) -> Option<ProtonSelection> {
+pub(super) fn proton(
+    _roots: Option<(&Path, &Path)>,
+    _preferred: Option<&str>,
+) -> Option<ProtonSelection> {
     None
 }
 /// `"proton"` when this Linux host found no Proton; no other host needs one.
