@@ -20,7 +20,11 @@ pub enum ProtonCommand {
     /// A struct variant, not a unit one: serde ignores unknown keys on a unit variant.
     Inspect {},
     /// `id: None` clears the saved choice.
-    Select { id: Option<String> },
+    Select {
+        /// Off Linux the id is never read: no Proton is listed to choose.
+        #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+        id: Option<String>,
+    },
 }
 
 /// The picker's view: the Protons found, best first, and which one Play uses.

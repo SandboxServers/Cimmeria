@@ -1,7 +1,9 @@
 use cimmeria_launcher_engine::launch::{Artifact, Graphics, ProtonSelection, Resources};
 #[cfg(target_os = "linux")]
 use cimmeria_launcher_engine::linux_proton::discovery;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(target_os = "linux")]
+use std::path::PathBuf;
 /// Where the system-wide Proton builds live (C-1). The engine keeps its copy private.
 #[cfg(target_os = "linux")]
 const SYSTEM_TOOLS: &str = "/usr/share/steam/compatibilitytools.d";

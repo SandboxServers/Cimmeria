@@ -96,9 +96,14 @@ pub fn claim(state_root: &Path) -> Result<Prefix, ProtonError> {
 
 /// Creates `path` with mode 0700 when it is missing. An existing folder is kept.
 fn private_dir(path: &Path) -> std::io::Result<()> {
-    let mut builder = std::fs::DirBuilder::new();
     #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    let builder = {
+        let mut builder = std::fs::DirBuilder::new();
+        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+        builder
+    };
+    #[cfg(not(unix))]
+    let builder = std::fs::DirBuilder::new();
     match builder.create(path) {
         Ok(()) => Ok(()),
         Err(err) if err.kind() == ErrorKind::AlreadyExists => Ok(()),
