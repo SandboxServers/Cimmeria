@@ -64,8 +64,12 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
  const render = () => {
   if (disposed) return;
   const s = current;
-  panel.hidden = !s?.available;
-  if (!s || !s.available) return;
+  // Offline, only a play refusal shows (the reason Play stopped); every control stays hidden.
+  panel.hidden = !s || !(s.available || s.play_refusal);
+  if (!s || !s.available) {
+   for (const el of [heading, stateLine, signupNote, providers, cancel, linkBox, signOut, urlBox]) el.hidden = true;
+   return;
+  }
   const st = s.state;
   const out = st.state === 'signed_out';
   heading.textContent = out ? 'Sign in' : st.state === 'needs_link' ? 'Link your account' : 'Your account';
@@ -183,6 +187,9 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
    if (disposed || busy) return;
    current = next;
    if (next.play_refusal && !status.textContent) setStatus(playRefusalText(next.play_refusal));
+   // A refusal that no longer applies leaves the status line with the next reply.
+   const shown = status.textContent;
+   if (!next.play_refusal && (shown === playRefusalText('ticket_unavailable') || shown === playRefusalText('sign_in_ended'))) setStatus('');
    render();
   }, failure => {
    if (!disposed && !busy && current) setStatus(failureText(signInFailure(failure)));

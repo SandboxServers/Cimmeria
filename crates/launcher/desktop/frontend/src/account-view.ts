@@ -14,7 +14,7 @@ export const noPasswordLine = 'This account has no password: it plays only throu
 const reauthRemove = 'To remove a sign-in method, sign in again first. Removing is allowed for 10 minutes after a fresh sign-in.';
 const reauthAdd = 'To add a sign-in method, sign in again first. Adding is allowed for 10 minutes after a fresh sign-in.';
 const lastMethod = 'You cannot remove your last sign-in method. Add another method first. If you lose access to every method, ask the server staff for a link code.';
-const otherAccount = 'That sign-in is for a different account. Sign in again with the account you were using.';
+const otherAccount = 'That is a different account, so you are signed out. Sign in again with the same account.';
 const decodeReply = (value: unknown) => Effect.runPromise(decodeSignInStatus(value)).catch(() => { throw 'schema'; });
 const isServer = (f: SignInFailure | 'schema', code: string) => f !== 'schema' && f.error === 'server' && f.code === code;
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -176,7 +176,9 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
    const next = await exchange({command: 'begin', provider: providerId}, name);
    if (!next) return;
    if (next.state.state !== 'signed_in' || next.state.account_name !== who) {
+    // The engine already holds the other account: sign it out so Play cannot run as it.
     reauth = null;
+    if (next.state.state === 'signed_in') await exchange({command: 'sign_out'});
     setStatus(otherAccount);
     return;
    }
