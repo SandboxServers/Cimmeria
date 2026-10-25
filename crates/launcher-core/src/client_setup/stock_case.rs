@@ -56,6 +56,9 @@ pub const PATCH_TARGETS: &[&str] = &[
     "Common/xml/slash_commands/InternalSlashCommands.xml",
     // 013-ihpet-world-map: the stock file's own spelling, `_MapData` in the file name.
     "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light_MapData.upk",
+    // 017-launcher-sign-in: whole stock login files.
+    "Working/SGWGame/Content/UI/Startup/Login/Login.layout",
+    "Working/SGWGame/Content/UI/Startup/Login/Login.lua",
 ];
 
 /// One file [`restore`] renamed, as paths relative to the install.

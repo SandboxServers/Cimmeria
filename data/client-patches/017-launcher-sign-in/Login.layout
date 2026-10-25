@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<GUILayout >
+    <!-- Window [ main container ] -->
+    <Window Type="DefaultWindow" Name="LoginWin" >
+        <Property Name="DeafWhenHidden" Value="False" />
+        <Property Name="Visible" Value="False" />
+        <Property Name="MousePassThroughEnabled" Value="True" />
+        <Property Name="UnifiedAreaRect" Value="{{0,0},{0,0},{1,0},{1,0}}" />
+
+        <!-- Backdrop Overlay -->
+        <Window Type="StaticImage_2" >
+            <Property Name="Alpha" Value="0.70" />
+            <Property Name="FrameEnabled" Value="True" />
+            <Property Name="BackgroundEnabled" Value="True" />
+            <Property Name="ZOrderChangeEnabled" Value="False" />
+            <Property Name="UnifiedAreaRect" Value="{{0.5,-110},{0.5,-220},{0.5,110},{0.5,-10}}" />
+        </Window>
+
+        <!-- Login | Password Areas -->
+        <Window Type="DefaultWindow">
+            <Property Name="UnifiedAreaRect" Value="{{0.5,-100},{0.5,-240},{0.5,100},{0.5,-10}}" />
+
+            <!-- User Name Title & Text Area -->
+            <Window Type="StaticText_2" Name="Login_AccountLabel" >
+                <Property Name="Font" Value="Verdana_8pt" />
+                <Property Name="Text" Value="Account Name" />
+                <Property Name="HorzFormatting" Value="WordWrapCentred" />
+                <Property Name="VertFormatting" Value="TopAligned" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-190},{1,0},{1,-170}}" />
+            </Window>
+            <Window Type="Editbox_2" Name="Login_AccountEdit" >
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-170},{1,0},{1,-140}}" />
+            </Window>
+
+            <!-- Launcher Sign-In Status (shown instead of the account name box) -->
+            <Window Type="StaticText_2" Name="Login_StatusText" >
+                <Property Name="Visible" Value="False" />
+                <Property Name="Font" Value="Verdana_8pt" />
+                <Property Name="Text" Value="" />
+                <Property Name="HorzFormatting" Value="WordWrapCentred" />
+                <Property Name="VertFormatting" Value="VertCentred" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-190},{1,0},{1,-120}}" />
+            </Window>
+
+            <!-- Password Title & Text Area -->
+            <Window Type="StaticText_2" Name="Login_PasswordLabel" >
+                <Property Name="Font" Value="Verdana_8pt" />
+                <Property Name="Text" Value="Password" />
+                <Property Name="HorzFormatting" Value="WordWrapCentred" />
+                <Property Name="VertFormatting" Value="TopAligned" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-140},{1,0},{1,-120}}" />
+            </Window>
+            <Window Type="Editbox_2" Name="Login_PasswordEdit" >
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-120},{1,0},{1,-90}}" />
+                <Property Name="MaskText" Value="True" />
+            </Window>
+
+            <!-- Remember Login Information -->
+            <Window Type="Checkbox_2" Name="Login_RememberCheck" >
+                <Property Name="ClippedByParent" Value="False" />
+                <Property Name="Font" Value="Verdana_8pt" />
+                <Property Name="Text" >Remember Account Name</Property>
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-85},{1,0},{1,-65}}" />
+            </Window>
+
+            <!-- Login Button -->
+            <Window Type="TextButton_2" Name="Login_LoginButton" >
+                <Property Name="Text" Value="Login" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-65},{1,0},{1,-30}}" />
+            </Window>
+
+            <!-- Use Password Button (shown in launcher sign-in; types the password instead) -->
+            <Window Type="TextButton_2" Name="Login_PasswordModeButton" >
+                <Property Name="Visible" Value="False" />
+                <Property Name="Text" Value="Use password" />
+                <Property Name="UnifiedAreaRect" Value="{{0,0},{1,-30},{1,0},{1,-5}}" />
+            </Window>
+
+        </Window>
+
+        <!-- News Area -->
+        <Window Type="StaticText_2" Name="Login_NewsText" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="Text" Value="" />
+            <Property Name="FrameEnabled" Value="True" />
+            <Property Name="BackgroundEnabled" Value="True" />
+            <Property Name="VertFormatting" Value="TopAligned" />
+            <Property Name="UnifiedMaxSize" Value="{{1,0},{1,0}}" />
+            <Property Name="UnifiedAreaRect" Value="{{0,10},{0,110},{0,260},{1,-110}}" />
+        </Window>
+
+        <!-- SGW Website Button -->
+        <Window Type="TextButton_2" Name="Login_WebsiteButton" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="Text" Value="SGW Website" />
+            <Property Name="UnifiedMaxSize" Value="{{1,0},{1,0}}" />
+            <Property Name="UnifiedAreaRect" Value="{{1,-190},{0,10},{1,-10},{0,45}}" />
+        </Window>
+        <!-- Manage Account Button -->
+        <Window Type="TextButton_2" Name="Login_AccountButton" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="Text" Value="Manage Account" />
+            <Property Name="UnifiedMaxSize" Value="{{1,0},{1,0}}" />
+            <Property Name="UnifiedAreaRect" Value="{{1,-190},{0,40},{1,-10},{0,75}}" />
+        </Window>
+        <Window Type="TextButton_2" Name="Login_ForumsButton" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="Text" Value="Forums" />
+            <Property Name="UnifiedMaxSize" Value="{{1,0},{1,0}}" />
+            <Property Name="UnifiedAreaRect" Value="{{1,-190},{0,70},{1,-10},{0,105}}" />
+        </Window>   
+      
+      <!-- Options Button -->
+      <Window Type="TextButton_2" Name="Login_OptionsButton" >
+        <Property Name="Text" Value="Options" />
+        <Property Name="UnifiedMaxSize" Value="{{1,0},{1,0}}" />
+        <Property Name="UnifiedAreaRect" Value="{{1,-190},{0,100},{1,-10},{0,135}}" />
+      </Window>      
+      
+        <!-- Quit Button -->
+        <Window Type="TextButton_2" Name="Login_QuitButton" >
+            <Property Name="Text" Value="Quit" />
+            <Property Name="UnifiedMaxSize" Value="{{1,0},{1,0}}" />
+            <Property Name="UnifiedAreaRect" Value="{{1,-190},{1,-45},{1,-10},{1,-10}}" />
+        </Window>
+
+
+
+        <!-- Development Drop Down List -->
+        <Window Type="Combobox_2" Name="Login_ServerTypeCombo" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="ClippedByParent" Value="False" />
+            <Property Name="ReadOnly" Value="True" />
+            <Property Name="Text" Value="Development Branch" />
+            <Property Name="UnifiedMaxSize" Value="{{1,0},{1,0}}" />
+            <Property Name="UnifiedAreaRect" Value="{{0.5,-100},{0,10},{0.5,100},{0,200}}" />
+        </Window>
+
+        <!-- Version Number Text Area -->
+        <Window Type="StaticText_2" Name="Login_VersionText" >
+            <Property Name="Visible" Value="True" />
+            <Property Name="Font" Value="Verdana_8pt" />
+            <Property Name="VertFormatting" Value="VertCentred" />
+            <Property Name="UnifiedMaxSize" Value="{{1,0},{1,0}}" />
+            <Property Name="UnifiedAreaRect" Value="{{0,10},{1,-25},{0,190},{1,-10}}" />
+        </Window>
+    </Window>
+</GUILayout>
