@@ -119,6 +119,8 @@ services:
       CIMMERIA_IDP_DISABLED: "${CIMMERIA_IDP_DISABLED:-}"
       CIMMERIA_IDP_SIGNUP_DISABLED: "${CIMMERIA_IDP_SIGNUP_DISABLED:-}"
       CIMMERIA_SOAP_RELAY_DISABLED: "${CIMMERIA_SOAP_RELAY_DISABLED:-}"
+      AUTH_PROXY_ADDR: "${AUTH_PROXY_ADDR:-}"
+      AUTH_PROXY_TRUSTED_PEERS: "${AUTH_PROXY_TRUSTED_PEERS:-}"
       # Developer mode, off unless .env sets DEVELOPER_MODE=true. With the
       # bundled database it only skips the client protocol-digest check; it
       # never bypasses the password check while DB_URL is set. Images before
