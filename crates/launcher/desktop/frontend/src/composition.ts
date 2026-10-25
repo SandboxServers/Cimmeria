@@ -7,7 +7,7 @@ import { mountGameTelemetry } from './game-telemetry-view';
 import { mountTelemetryStatus } from './telemetry-status-view';
 import { mountInstall } from './install-view';
 import { mountDisplay } from './display-view';
-import { mountPreflight } from './preflight-view';
+import { mountPreflight, type PreflightGate } from './preflight-view';
 import { preflightWorkflow } from './preflight-workflow';
 import { mountLauncher, Invoke } from './view';
 
@@ -18,7 +18,10 @@ export function mountDesktop(document:Document,invoke:Invoke) {
 let refreshLauncher = () => {};
 // Play, Install and a repair run check their dependencies first (PD-12); one panel serves all three.
 const preflight = mountPreflight(document,preflightWorkflow(invoke));
-const installation = mountInstall(document,invoke,undefined,()=>refreshLauncher(),undefined,preflight.gate);
+// Install and Repair take the panel over from Play: drop Play's "see below" so it never points at another operation's panel.
+let clearPlayAttention = () => {};
+const gateOther: PreflightGate = (operation,next) => { clearPlayAttention(); return preflight.gate(operation,next); };
+const installation = mountInstall(document,invoke,undefined,()=>refreshLauncher(),undefined,gateOther);
 const app = mountLauncher(document,invoke,()=>{void installation.refresh();},()=>installation.installFromArchive());
 refreshLauncher = () => { void app.refresh(); };
 let updater: ReturnType<typeof mountUpdater> | undefined;
@@ -30,6 +33,7 @@ const telemetryStatus = mountTelemetryStatus(document,invoke);
 void gameTelemetry.ready.then(()=>telemetryStatus.refresh());
 // A finished Play changes what the last launch did about game diagnostics.
 const play = mountLaunch(document,invoke,()=>{void installation.refresh(); void app.refresh(); void updater?.refresh(); void gameTelemetry.refresh(); void telemetryStatus.refresh();},undefined,true,ready=>installation.setPlayable(ready),preflight.gate);
+clearPlayAttention = () => play.clearAttention();
 // Play's inline Abandon opens the same Settings confirmation as #abandon-repair.
 const abandonRepair = document.getElementById('launch-abandon-repair');
 const requestAbandon = () => installation.requestRepair('abandon');

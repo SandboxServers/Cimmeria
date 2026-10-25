@@ -95,5 +95,5 @@ export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()
  // Observation belongs to the mounted application, including Settings navigation.
  const poll=setInterval(()=>{if(!disposed&&!pending&&!current.uncertain&&!current.error)void run(false);},1000);
  const ready=run(false);
- return {ready,setUpdateBlocked:(blocked:boolean)=>{updateBlocked=blocked;render();},refresh:()=>run(false),settled:()=>mutation,dispose:async()=>{disposed=true;clearInterval(poll);button.removeEventListener('click',click);recheck.removeEventListener('click',check);settingsCheck.removeEventListener('click',inspectSettings);await Effect.runPromise(Fiber.interrupt(watcher));await mutation;await runtime.dispose();}};
+ return {ready,clearAttention:()=>{if(!attention)return;attention=false;render();},setUpdateBlocked:(blocked:boolean)=>{updateBlocked=blocked;render();},refresh:()=>run(false),settled:()=>mutation,dispose:async()=>{disposed=true;clearInterval(poll);button.removeEventListener('click',click);recheck.removeEventListener('click',check);settingsCheck.removeEventListener('click',inspectSettings);await Effect.runPromise(Fiber.interrupt(watcher));await mutation;await runtime.dispose();}};
 }

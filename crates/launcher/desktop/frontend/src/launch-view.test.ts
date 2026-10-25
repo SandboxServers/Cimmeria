@@ -381,3 +381,21 @@ test('Play pressed while a panel install is running is never silent: it says to 
   assert.equal(ui.get('launch-status').textContent,'Play needs attention: see below.');
  }finally{release?.(pfReport([pfCheck()]));await ui.dispose();}
 });
+
+test('a Repair that takes the panel over from a blocked Play clears Play\'s "see below"',async()=>{
+ const {document,window}=parseHTML(html);const sent:string[]=[];const ok=pfCheck({status:'ok',action:'none',failure:null,blocking:false});
+ const app=mountDesktop(document,async(command,args:any)=>{const request=args?.request;
+  if(command==='preflight_command'){sent.push(`${request.command}:${request.operation}`);return request.operation==='play'?pfReport([pfCheck()]):pfReport([ok],request.operation);}
+  if(command==='install_command'){if(request.command==='repair')sent.push('repair');return {...installStatus(initial().native,false),repair:{directory:'/fixture',target:{installation_id:'owner',directory:'/fixture'},recovery:false,cleanup:false}};}
+  if(command==='launch_command')return initial();
+  return initial().native;});
+ const get=(id:string)=>document.getElementById(id)! as HTMLButtonElement;const click=(id:string)=>get(id).dispatchEvent(new window.Event('click'));
+ const tick=()=>new Promise(resolve=>setTimeout(resolve,10));
+ try{await Promise.all([app.play.ready,app.installation.ready]);await tick();app.play.setUpdateBlocked(false);
+  click('launch');await app.preflight.settled();await tick();
+  assert.equal(get('launch-status').textContent,'Play needs attention: see below.');
+  get('gear').hidden=false;get('play').hidden=true;click('repair');click('confirm-repair');await app.preflight.settled();await tick();
+  assert.deepEqual(sent,['inspect:play','inspect:repair','repair']);assert.equal(get('preflight-panel').hidden,true);
+  assert.notEqual(get('launch-status').textContent,'Play needs attention: see below.','Play no longer points at a hidden panel');
+ }finally{await app.dispose();}
+});
