@@ -20,6 +20,7 @@ pub mod names;
 pub mod provider;
 pub mod providers;
 pub mod repo;
+pub mod revoke;
 pub mod routes;
 pub mod stores;
 pub mod telemetry;

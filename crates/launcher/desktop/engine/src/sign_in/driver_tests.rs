@@ -11,8 +11,9 @@ use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::commands::{SignInCommand, SignInFailure, SignInStateView, SignInStatus};
-use super::driver::{Browser, SignInDriver};
+use super::driver::{Browser, SignInDriver, Site};
 use super::lease::RelayLease;
+use super::session::SignIn;
 use super::store::{CredentialStore, MemoryStore, Stored};
 use super::tests::ENV_LOCK;
 use crate::storage::DesktopState;
@@ -578,6 +579,28 @@ async fn sign_out_clears_state_offline() {
     assert!(fx.store.get(HOST).is_none());
 }
 
+/// The `SignOut` arm's work with no login server (`Site.server` is `None`): it
+/// still signs out, clears the stored entry and drops the sign-in. The engine
+/// reaches that arm only with no default server, so this calls `sign_out`
+/// directly; `run` with a `SignOut` and no server is `Unavailable` otherwise.
+#[tokio::test]
+async fn sign_out_works_with_no_login_server() {
+    let fx = Fixture::new(false, false).await;
+    fx.store_entry("r0");
+    let base = url::Url::parse(&format!("{}/", fx.server.uri())).unwrap();
+    let session = Arc::new(SignIn::new(base, reqwest::Client::new(), fx.store.clone()));
+    fx.state.lock().unwrap().set_sign_in(Some(session.clone()));
+    let site = Site {
+        state: &fx.state,
+        server: None,
+        discovery: None,
+    };
+    let status = fx.driver.sign_out(&site, Some(session)).await.unwrap();
+    assert!(matches!(status.state, SignInStateView::SignedOut));
+    assert!(fx.store.get(HOST).is_none());
+    assert!(!fx.has_session());
+}
+
 static LOCAL: AtomicUsize = AtomicUsize::new(0);
 
 #[test]
@@ -589,3 +612,6 @@ fn relay_lease_counts() {
     drop(lease);
     assert_eq!(LOCAL.load(Ordering::SeqCst), 0);
 }
+
+#[path = "driver_handover_tests.rs"]
+mod handover;

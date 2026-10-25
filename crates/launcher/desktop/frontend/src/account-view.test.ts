@@ -83,6 +83,24 @@ test('reauth_required offers sign in again and retries the removal', async () =>
  assert.equal(p.panel.querySelectorAll('li').length, 0);
 });
 
+test('sign in again as another account signs that account out and retries nothing', async () => {
+ const otherAccount = 'That is a different account, so you are signed out. Sign in again with the same account.';
+ const other = signedIn({state: {state: 'signed_in', account_name: 'Other_9999', display_name: 'Other'}});
+ const p = await mounted(signedIn(), async request => {
+  if (request.command === 'account') return withAccount();
+  if (request.command === 'begin') return other;
+  if (request.command === 'unlink') throw {error: 'server', code: 'reauth_required'};
+  return status();
+ });
+ await p.press('Show linked sign-in methods');
+ await p.press('Remove');
+ await p.press('Confirm remove');
+ await p.press('Sign in again');
+ assert.deepEqual(p.calls.find(r => r.command === 'sign_out'), {schema_version: 1, command: 'sign_out'});
+ assert.equal(p.calls.filter(r => r.command === 'unlink').length, 1, 'the refused removal is not retried as another account');
+ assert.equal(p.statusText(), otherAccount);
+});
+
 test('reauth_required on add offers sign in again', async () => {
  const p = await mounted(signedIn(), async request => {
   if (request.command === 'add_method') throw {error: 'server', code: 'reauth_required'};

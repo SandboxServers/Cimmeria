@@ -195,6 +195,43 @@ async fn invalid_grant_signs_out() {
 }
 
 #[tokio::test]
+async fn invalid_grant_keeps_a_newer_sign_in() {
+    // The refused refresh is answered after a reauth stored a new family (T2)
+    // on the same host: the old instance must not delete that entry.
+    let server = MockServer::start().await;
+    let store = store_with("r1");
+    let racing = store.clone();
+    Mock::given(method("POST"))
+        .and(path("/auth/v1/token"))
+        .respond_with(move |_: &Request| {
+            racing.set(
+                HOST,
+                &Stored {
+                    refresh_token: "r2".to_owned(),
+                    account_name: "bob".to_owned(),
+                    display_name: "Bob".to_owned(),
+                },
+            );
+            ResponseTemplate::new(400).set_body_json(json!({ "error": "invalid_grant" }))
+        })
+        .mount(&server)
+        .await;
+
+    let session = SignIn::restore(base_of(&server), discovery::client(), store.clone())
+        .expect("a stored entry restores");
+    assert_eq!(
+        session.access_token().await,
+        Err(SignInError::Server("signed_out".to_owned()))
+    );
+    assert_eq!(
+        store.get(HOST).map(|s| s.refresh_token),
+        Some("r2".to_owned()),
+        "the newer entry is kept"
+    );
+    assert!(session.summary().await.is_none());
+}
+
+#[tokio::test]
 async fn sign_out_works_offline() {
     // A server that is shut down: the port refuses connections.
     let server = MockServer::start().await;

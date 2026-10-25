@@ -5,6 +5,7 @@ import {parseHTML} from 'linkedom';
 import type {NativeSnapshot} from './contract';
 import {makePanelContext} from './panel-context';
 import {mountSignIn} from './sign-in-view';
+import {playRefusalText} from './sign-in-workflow';
 
 const html = readFileSync('ui/index.html', 'utf8');
 type Request = Record<string, unknown>;
@@ -32,7 +33,7 @@ async function mounted(inspected: Record<string, unknown>, respond: (request: Re
  const field = (id: string) => document.querySelector(`#sign-in-panel ${id}`) as unknown as HTMLInputElement;
  const press = (el: HTMLElement) => el.dispatchEvent(new window.Event('click'));
  const statusText = () => document.querySelector('#sign-in-panel [role="status"]')!.textContent;
- return {calls, app, document, button, field, press, statusText};
+ return {calls, app, document, button, field, press, statusText, feed};
 }
 
 test('unavailable hides the panel', async () => {
@@ -40,6 +41,37 @@ test('unavailable hides the panel', async () => {
  try {
   assert.equal((p.document.getElementById('sign-in-panel') as unknown as HTMLElement).hidden, true);
   assert.deepEqual(p.calls.map(c => c.command), ['inspect']);
+ } finally { await p.app.dispose(); }
+});
+
+test('unavailable with a play_refusal shows the refusal and no controls', async () => {
+ const p = await mounted(status({available: false, play_refusal: 'ticket_unavailable'}));
+ try {
+  assert.equal((p.document.getElementById('sign-in-panel') as unknown as HTMLElement).hidden, false);
+  assert.equal(p.statusText(), playRefusalText('ticket_unavailable'));
+  assert.equal((p.document.getElementById('sign-in-title') as unknown as HTMLElement).hidden, true);
+  for (const label of ['Cancel', 'Sign out']) assert.equal((p.button(label) as unknown as HTMLElement).hidden, true, label);
+ } finally { await p.app.dispose(); }
+});
+
+test('the panel comes back after an offline snapshot', async () => {
+ const reply = status({available: false, play_refusal: 'ticket_unavailable'});
+ const p = await mounted(reply);
+ try {
+  Object.assign(reply, status({state: {state: 'signed_in', account_name: 'pilot', display_name: 'Pilot'}}));
+  p.feed.publish({} as NativeSnapshot);
+  await flush();
+  assert.equal((p.document.getElementById('sign-in-title') as unknown as HTMLElement).hidden, false);
+  const line = Array.from(p.document.querySelectorAll('#sign-in-panel p')).find(el => !el.getAttribute('role')) as unknown as HTMLElement;
+  assert.equal(line.hidden, false);
+  assert.notEqual(line.textContent, '');
+ } finally { await p.app.dispose(); }
+});
+
+test('a status with no login server name still decodes', async () => {
+ const p = await mounted(status({server_name: null, providers: [{id: 'discord', display_name: 'Discord'}]}));
+ try {
+  assert.equal((p.button('Sign in with Discord').parentNode as unknown as HTMLElement).hidden, false);
  } finally { await p.app.dispose(); }
 });
 

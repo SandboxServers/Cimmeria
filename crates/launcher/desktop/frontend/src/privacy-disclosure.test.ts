@@ -54,7 +54,8 @@ test('privacy distinguishes identities, raw logs, consent withdrawal and network
   assert.match(text('privacy-storage'), /not a verified live retention guarantee/);
   assert.match(text('privacy-sign-in'), /operating system's credential store/);
   assert.match(text('privacy-sign-in'), /only for providers the server operator marks as verifying email/);
-  assert.match(text('privacy-sign-in'), /none of this goes to diagnostics/);
+  assert.match(text('privacy-sign-in'), /no token, password or code goes to diagnostics, only event names and error codes/);
+  assert.match(text('privacy-sign-in'), /writes your account name and a one-time launch ticket into the game's LoginInternal\.lua/);
   assert.match(text('privacy-exclusions'), /No webcam or microphone recording/);
   assert.match(text('privacy-exclusions'), /No browser-history, clipboard, password-manager or personal-document crawler/);
   assert.match(text('privacy-exclusions'), /No lab remote-control bridge in the distributed player module/);

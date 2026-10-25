@@ -34,7 +34,7 @@ use crate::routes::router;
 use crate::stores::{pkce_challenge, Stores};
 
 const FIRST_ID: i32 = 2_000_601;
-const LAST_ID: i32 = 2_000_608;
+const LAST_ID: i32 = 2_000_609;
 const ACC_MAIN: u32 = 2_000_601;
 const ACC_OTHER: u32 = 2_000_602;
 const ACC_LAST: u32 = 2_000_603;
@@ -43,6 +43,7 @@ const ACC_CONCURRENT: u32 = 2_000_605;
 const ACC_TICKET: u32 = 2_000_606;
 const ACC_RATE: u32 = 2_000_607;
 const ACC_LINK: u32 = 2_000_608;
+const ACC_UNLINK: u32 = 2_000_609;
 const PEER: &str = "127.0.0.1:41000";
 const LAUNCH: &str = "CT30-LAUNCH-0000001";
 const OTHER_LAUNCH: &str = "CT30-LAUNCH-0000002";
@@ -63,10 +64,12 @@ client_secret_env = "CIMMERIA_IDP_TEST_SECRET"
 trusted_email = true
 "#;
 
-/// A router under test and the stores it shares, so a test can mint tokens.
+/// A router under test and the stores it shares, so a test can mint tokens and
+/// read the launch tickets.
 struct Env {
     router: Router,
     stores: Arc<Stores>,
+    tickets: Arc<LaunchTicketStore>,
 }
 
 /// Builds the routes with the fixture config in developer mode.
@@ -88,14 +91,16 @@ fn harness(pool: &PgPool) -> Env {
         stores: Arc::clone(&stores),
         link_codes: codes,
     };
+    let tickets = Arc::new(LaunchTicketStore::default());
     let deps = AuthRouteDeps {
         db: Some(Arc::new(pool.clone())),
-        launch_tickets: Arc::new(LaunchTicketStore::default()),
+        launch_tickets: Arc::clone(&tickets),
         developer_mode: true,
     };
     Env {
         router: router(deps, ctx),
         stores,
+        tickets,
     }
 }
 
@@ -326,117 +331,6 @@ async fn live_db_account_lists_identities_without_subjects() {
         assert!(row.get("email").is_none(), "no email in {row}");
     }
     assert!(!body.to_string().contains("ct30-"));
-}
-
-#[tokio::test]
-async fn live_db_unlink_needs_a_fresh_code_token() {
-    let pool = require_db_or_skip!();
-    clean(&pool).await;
-    insert_account(&pool, ACC_MAIN, true).await;
-    let first = insert_identity(&pool, ACC_MAIN, 3).await;
-    insert_identity(&pool, ACC_MAIN, 4).await;
-    let env = harness(&pool);
-    let refresh = token(&env, ACC_MAIN, false, Instant::now());
-    let (status, _, body) = send(
-        &env.router,
-        "DELETE",
-        &format!("/identities/{first}"),
-        Some(&refresh),
-        None,
-    )
-    .await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    assert_eq!(body["error"], "reauth_required");
-    assert!(identity_exists(&pool, first).await);
-    assert_eq!(unlink_events(&pool, ACC_MAIN).await, 0);
-    let code = code_token(&env, ACC_MAIN);
-    assert_eq!(unlink(&env, &code, first).await, StatusCode::NO_CONTENT);
-    assert!(!identity_exists(&pool, first).await);
-    assert_eq!(unlink_events(&pool, ACC_MAIN).await, 1);
-}
-
-#[tokio::test]
-async fn live_db_unlink_refuses_a_stale_code_token() {
-    let pool = require_db_or_skip!();
-    clean(&pool).await;
-    insert_account(&pool, ACC_MAIN, true).await;
-    let first = insert_identity(&pool, ACC_MAIN, 5).await;
-    insert_identity(&pool, ACC_MAIN, 6).await;
-    let env = harness(&pool);
-    // Issued 11 minutes ago: still a valid access token, past the 10 minute reauth window.
-    let old = Instant::now()
-        .checked_sub(Duration::from_secs(11 * 60))
-        .expect("an instant 11 minutes back");
-    let stale = token(&env, ACC_MAIN, true, old);
-    let (status, _, body) = send(
-        &env.router,
-        "DELETE",
-        &format!("/identities/{first}"),
-        Some(&stale),
-        None,
-    )
-    .await;
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    assert_eq!(body["error"], "reauth_required");
-    assert!(identity_exists(&pool, first).await);
-}
-
-#[tokio::test]
-async fn live_db_unlink_refuses_the_last_method() {
-    let pool = require_db_or_skip!();
-    clean(&pool).await;
-    insert_account(&pool, ACC_LAST, true).await;
-    let only = insert_identity(&pool, ACC_LAST, 7).await;
-    let env = harness(&pool);
-    let t = code_token(&env, ACC_LAST);
-    let (status, _, body) = send(
-        &env.router,
-        "DELETE",
-        &format!("/identities/{only}"),
-        Some(&t),
-        None,
-    )
-    .await;
-    assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(body["error"], "last_method");
-    assert_eq!(methods(&pool, ACC_LAST).await, 1);
-    let second = insert_identity(&pool, ACC_LAST, 8).await;
-    assert_eq!(unlink(&env, &t, only).await, StatusCode::NO_CONTENT);
-    assert_eq!(unlink(&env, &t, second).await, StatusCode::CONFLICT);
-    assert_eq!(methods(&pool, ACC_LAST).await, 1);
-}
-
-#[tokio::test]
-async fn live_db_unlink_of_another_accounts_identity_is_404() {
-    let pool = require_db_or_skip!();
-    clean(&pool).await;
-    insert_account(&pool, ACC_MAIN, true).await;
-    insert_account(&pool, ACC_OTHER, true).await;
-    insert_identity(&pool, ACC_MAIN, 9).await;
-    insert_identity(&pool, ACC_MAIN, 10).await;
-    let theirs = insert_identity(&pool, ACC_OTHER, 11).await;
-    insert_identity(&pool, ACC_OTHER, 12).await;
-    let env = harness(&pool);
-    let t = code_token(&env, ACC_MAIN);
-    assert_eq!(unlink(&env, &t, theirs).await, StatusCode::NOT_FOUND);
-    assert!(identity_exists(&pool, theirs).await);
-    assert_eq!(methods(&pool, ACC_OTHER).await, 2);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn live_db_unlink_concurrent_leaves_one_method() {
-    let pool = require_db_or_skip!();
-    clean(&pool).await;
-    insert_account(&pool, ACC_CONCURRENT, true).await;
-    let a = insert_identity(&pool, ACC_CONCURRENT, 13).await;
-    let b = insert_identity(&pool, ACC_CONCURRENT, 14).await;
-    let env = harness(&pool);
-    let t = code_token(&env, ACC_CONCURRENT);
-    let (first, second) = tokio::join!(unlink(&env, &t, a), unlink(&env, &t, b));
-    let mut statuses = [first, second];
-    statuses.sort_by_key(|status| status.as_u16());
-    assert_eq!(statuses, [StatusCode::NO_CONTENT, StatusCode::CONFLICT]);
-    assert_eq!(methods(&pool, ACC_CONCURRENT).await, 1);
 }
 
 #[tokio::test]
@@ -693,3 +587,6 @@ async fn live_db_link_start_refusals() {
 
 #[path = "account_gate_tests_live_db.rs"]
 mod gate;
+
+#[path = "account_unlink_tests_live_db.rs"]
+mod unlink;

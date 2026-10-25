@@ -22,7 +22,7 @@ export const PlayRefusal = Schema.Literals(['ticket_unavailable', 'sign_in_ended
 export const SignInStatus = Schema.Struct({
   schema_version: Schema.Literal(1),
   available: Schema.Boolean,
-  server_name: Schema.String,
+  server_name: Schema.NullOr(Schema.String),
   signup_open: Schema.Boolean,
   providers: Schema.Array(SignInProvider),
   waiting: Schema.Boolean,

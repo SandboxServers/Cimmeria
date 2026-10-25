@@ -7,6 +7,7 @@
 //! flow that may run. No `DesktopState` or driver lock is held across an `.await`.
 
 use std::future::Future;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -52,8 +53,11 @@ pub struct SignInDriver {
     http: reqwest::Client,
     discovery: Mutex<DiscoveryCache>,
     pending: Mutex<Option<PendingLink>>,
-    /// Cancels the browser flow in progress. `Some` only while a flow waits.
-    waiting: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    /// Cancels the browser flow in progress, with that flow's number. `Some` only
+    /// while a flow waits.
+    waiting: Mutex<Option<(u64, tokio::sync::oneshot::Sender<()>)>>,
+    /// The number the next browser flow takes, so a finished flow clears only its own handle.
+    generation: AtomicU64,
 }
 
 /// The store a launcher session uses: the OS credential store where there is one.
@@ -63,10 +67,10 @@ pub fn default_store() -> Arc<dyn CredentialStore> {
 
 /// What a reply names: the login server (none when the launcher has none) and
 /// its discovery (none while the server cannot be reached).
-struct Site<'a> {
-    state: &'a Mutex<DesktopState>,
-    server: Option<&'a str>,
-    discovery: Option<&'a Discovery>,
+pub(super) struct Site<'a> {
+    pub(super) state: &'a Mutex<DesktopState>,
+    pub(super) server: Option<&'a str>,
+    pub(super) discovery: Option<&'a Discovery>,
 }
 
 /// How a `needs_link` choice is completed.
@@ -85,6 +89,7 @@ impl SignInDriver {
             discovery: Mutex::new(DiscoveryCache::default()),
             pending: Mutex::new(None),
             waiting: Mutex::new(None),
+            generation: AtomicU64::new(0),
         }
     }
 
@@ -112,6 +117,15 @@ impl SignInDriver {
                     };
                     self.reply(&site, None, None).await
                 }
+                SignInCommand::SignOut { .. } => {
+                    let site = Site {
+                        state,
+                        server: None,
+                        discovery: None,
+                    };
+                    let session = guard(state)?.sign_in();
+                    self.sign_out(&site, session).await
+                }
                 _ => Err(SignInFailure::Unavailable),
             };
         };
@@ -119,6 +133,7 @@ impl SignInDriver {
             return self.offline(state, &server, request).await;
         };
         let session = self.session_for(state, &discovery.auth_base)?;
+        self.drop_pending_unless(&discovery.auth_base)?;
         let site = Site {
             state,
             server: Some(&server.name),
@@ -287,6 +302,11 @@ impl SignInDriver {
     /// Completes a `needs_link` choice. A retryable failure keeps the choice.
     async fn link(&self, site: &Site<'_>, link: Link<'_>) -> Result<SignInStatus, SignInFailure> {
         let pending = self.take_pending()?.ok_or(SignInFailure::NoPendingLink)?;
+        // The password or code goes to the server the choice came from, so a
+        // server switch since then ends the choice.
+        if site.discovery.map(|d| &d.auth_base) != Some(&pending.base) {
+            return Err(SignInFailure::NoPendingLink);
+        }
         let session = Arc::new(SignIn::new(
             pending.base.clone(),
             self.http.clone(),
@@ -325,13 +345,15 @@ impl SignInDriver {
         F: Future<Output = Result<BrowserFlow, SignInError>>,
     {
         let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel();
-        {
+        let mine = {
             let mut waiting = guard(&self.waiting)?;
             if waiting.is_some() {
                 return Err(SignInFailure::Busy);
             }
-            *waiting = Some(cancel_tx);
-        }
+            let mine = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+            *waiting = Some((mine, cancel_tx));
+            mine
+        };
         let result: Result<CodeGrant, SignInFailure> = async {
             let flow = start.await.map_err(SignInFailure::from)?;
             if cancel_rx.try_recv().is_ok() {
@@ -361,7 +383,10 @@ impl SignInDriver {
             tracing::info!(target: "launcher.sign_in", event = "failed", outcome = "failed", reason);
         }
         if let Ok(mut waiting) = self.waiting.lock() {
-            *waiting = None;
+            // A cancelled flow may have been replaced by a newer one: clear only our own handle.
+            if matches!(*waiting, Some((flow, _)) if flow == mine) {
+                *waiting = None;
+            }
         }
         result
     }
@@ -369,7 +394,7 @@ impl SignInDriver {
     /// Ends the browser flow in progress, if one waits.
     fn cancel_flow(&self) -> Result<(), SignInFailure> {
         let waiting = guard(&self.waiting)?.take();
-        if let Some(cancel) = waiting {
+        if let Some((_, cancel)) = waiting {
             let _ = cancel.send(());
         }
         Ok(())
@@ -425,7 +450,7 @@ impl SignInDriver {
     }
 
     /// Signs out (it works offline), then drops the sign-in and any pending choice.
-    async fn sign_out(
+    pub(super) async fn sign_out(
         &self,
         site: &Site<'_>,
         session: Option<Arc<SignIn>>,
@@ -445,7 +470,9 @@ impl SignInDriver {
         session: Option<&Arc<SignIn>>,
         account: Option<AccountPanelView>,
     ) -> Result<SignInStatus, SignInFailure> {
-        let view = self.panel_state(session).await?;
+        let view = self
+            .panel_state(session, site.discovery.map(|d| &d.auth_base))
+            .await?;
         let play_refusal = guard(site.state)?.play_refusal();
         let waiting = guard(&self.waiting)?.is_some();
         let discovery = site.discovery;
@@ -470,10 +497,12 @@ impl SignInDriver {
         })
     }
 
-    /// Where the player stands: signed in, a live `needs_link` choice, or signed out.
+    /// Where the player stands: signed in, a live `needs_link` choice for `base`
+    /// (the server on screen), or signed out.
     async fn panel_state(
         &self,
         session: Option<&Arc<SignIn>>,
+        base: Option<&Url>,
     ) -> Result<SignInStateView, SignInFailure> {
         if let Some(session) = session {
             if let Some(summary) = session.summary().await {
@@ -485,7 +514,7 @@ impl SignInDriver {
         }
         let pending = guard(&self.pending)?;
         let view = match pending.as_ref() {
-            Some(link) if link.since.elapsed() < PENDING_TTL => {
+            Some(link) if link.since.elapsed() < PENDING_TTL && base == Some(&link.base) => {
                 SignInStateView::needs_link(&link.view, link.provider_name.clone())
             }
             _ => SignInStateView::SignedOut,
@@ -508,6 +537,15 @@ impl SignInDriver {
     /// Drops the pending choice, if any.
     fn clear_pending(&self) -> Result<(), SignInFailure> {
         *guard(&self.pending)? = None;
+        Ok(())
+    }
+
+    /// Drops the pending choice unless it came from `base`, the server on screen.
+    fn drop_pending_unless(&self, base: &Url) -> Result<(), SignInFailure> {
+        let mut pending = guard(&self.pending)?;
+        if pending.as_ref().is_some_and(|link| link.base != *base) {
+            *pending = None;
+        }
         Ok(())
     }
 }

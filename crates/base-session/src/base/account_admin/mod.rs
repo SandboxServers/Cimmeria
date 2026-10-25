@@ -9,7 +9,8 @@
 //! Every outcome is one `gm_action` event on the `account_admin` target,
 //! with `action`, `result`, a stable `reason` on refusals, and the GM and
 //! target ids. A refusal the GM caused is INFO; a refusal the server caused
-//! (no pool, a failed query) is WARN.
+//! (no pool, a failed query) is WARN. `partial`: the identity was removed but
+//! its sign-ins could not be revoked.
 //!
 //! [`AccountCellToBase`]: cimmeria_wire::cell::messages::AccountCellToBase
 
@@ -26,6 +27,7 @@ use cimmeria_identity::repo::event::{self, EventKind};
 use cimmeria_identity::repo::identity;
 use cimmeria_identity::repo::refresh;
 use cimmeria_identity::repo::RepoError;
+use cimmeria_identity::revoke;
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
@@ -36,12 +38,16 @@ use super::ConnectedClientState;
 const MAX_NAME_CHARS: usize = 32;
 
 /// The GM who asked, from the cell's session state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdminCaller {
     /// The GM's entity id; the answer is addressed to it.
     pub entity_id: u32,
+    /// The GM's entity name, for the log.
+    pub entity_name: String,
     /// The GM's `account.account_id`, `None` if the cell has none.
     pub account_id: Option<u32>,
+    /// The GM's `account.account_name`, empty if the cell has none.
+    pub gm_account_name: String,
 }
 
 /// One `.account` command, with the identity row it names.
@@ -60,7 +66,7 @@ pub enum AdminAction {
 
 impl AdminAction {
     /// The `action` field the log line carries.
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::Identities => "account_identities",
             Self::Unlink { .. } => "account_unlink",
@@ -93,6 +99,7 @@ fn log_outcome(
     action: &'static str,
     ok: bool,
     reason: Option<&str>,
+    target: &str,
     target_account_id: Option<u32>,
     identity_id: Option<i64>,
 ) {
@@ -104,9 +111,12 @@ fn log_outcome(
         result,
         reason,
         gm_account_id = caller.account_id,
+        gm_account_name = caller.gm_account_name.as_str(),
         entity_id = caller.entity_id,
+        entity_name = caller.entity_name.as_str(),
         target_account_id,
-        identity_id,
+        target_account_name = target,
+        identity_id, // nt:id-only identity row id, no name exists
         "account command answered"
     );
 }
@@ -140,6 +150,10 @@ async fn remove_identity(
             .bind(account_id as i32)
             .fetch_one(&mut *tx)
             .await?;
+    // A password-only account has no identity row to remove: not a last method.
+    if methods == 0 {
+        return Ok(Removal::NotLinked);
+    }
     if methods <= 1 {
         return Ok(Removal::LastMethod);
     }
@@ -184,7 +198,10 @@ pub async fn run(
             result = "refused",
             reason = "db_unavailable",
             gm_account_id = caller.account_id,
+            gm_account_name = caller.gm_account_name.as_str(),
             entity_id = caller.entity_id,
+            entity_name = caller.entity_name.as_str(),
+            target_account_name = target,
             "account command could not reach the identity tables"
         );
         return vec!["account: the database is not available".to_owned()];
@@ -200,7 +217,10 @@ pub async fn run(
                 reason = "db_error",
                 error = %error,
                 gm_account_id = caller.account_id,
+                gm_account_name = caller.gm_account_name.as_str(),
                 entity_id = caller.entity_id,
+                entity_name = caller.entity_name.as_str(),
+                target_account_name = target,
                 "account command could not read the identity tables"
             );
             vec![
@@ -221,7 +241,15 @@ async fn answer(
 ) -> Result<Vec<String>, RepoError> {
     let name = action.label();
     let Some(facts) = account::facts_by_name(pool, target).await? else {
-        log_outcome(caller, name, false, Some("unknown_account"), None, None);
+        log_outcome(
+            caller,
+            name,
+            false,
+            Some("unknown_account"),
+            target,
+            None,
+            None,
+        );
         return Ok(vec![format!("account: no account named {target}")]);
     };
     let account_id = facts.account_id;
@@ -251,7 +279,7 @@ async fn answer(
                     date(row.last_used_at)
                 ));
             }
-            log_outcome(caller, name, true, None, ids, None);
+            log_outcome(caller, name, true, None, target, ids, None);
             Ok(lines)
         }
         AdminAction::Unlink { identity_id } => {
@@ -262,6 +290,7 @@ async fn answer(
                         name,
                         false,
                         Some("last_method"),
+                        target,
                         ids,
                         Some(identity_id),
                     );
@@ -275,6 +304,7 @@ async fn answer(
                         name,
                         false,
                         Some("not_linked"),
+                        target,
                         ids,
                         Some(identity_id),
                     );
@@ -283,37 +313,44 @@ async fn answer(
                     )])
                 }
                 Removal::Removed(provider) => {
-                    // A wrongly linked identity must lose the sign-ins it made.
-                    if refresh::revoke_account(pool, account_id, Utc::now())
+                    // A wrongly linked identity must lose the sign-ins it made:
+                    // its refresh rows here, then its access tokens and launch
+                    // tickets in memory. Both run, so a DB failure still ends
+                    // the live ones.
+                    let db_revoked = refresh::revoke_account(pool, account_id, Utc::now())
                         .await
-                        .is_err()
-                    {
+                        .is_ok();
+                    let live_ended = revoke::end_live_sessions(account_id);
+                    if !(db_revoked && live_ended) {
                         tracing::warn!(
                             target: "account_admin",
                             event = "gm_action",
                             action = name,
-                            result = "ok",
+                            result = "partial",
                             reason = "revoke_failed",
                             gm_account_id = caller.account_id,
+                            gm_account_name = caller.gm_account_name.as_str(),
                             entity_id = caller.entity_id,
+                            entity_name = caller.entity_name.as_str(),
                             target_account_id = account_id,
-                            identity_id,
+                            target_account_name = target,
+                            identity_id, // nt:id-only identity row id, no name exists
                             "identity removed but its sign-ins could not be revoked"
                         );
                         return Ok(vec![format!(
-                        "account: removed identity #{identity_id} ({provider}) from {target}; revoking its launcher sign-ins FAILED, see the server log"
-                    )]);
+                            "account: removed identity #{identity_id} ({provider}) from {target}; revoking its launcher sign-ins FAILED, see the server log"
+                        )]);
                     }
-                    log_outcome(caller, name, true, None, ids, Some(identity_id));
+                    log_outcome(caller, name, true, None, target, ids, Some(identity_id));
                     Ok(vec![format!(
-                    "account: removed identity #{identity_id} ({provider}) from {target}; its launcher sign-ins are revoked"
-                )])
+                        "account: removed identity #{identity_id} ({provider}) from {target}; its launcher sign-ins are revoked; a game session already running is not ended"
+                    )])
                 }
             }
         }
         AdminAction::LinkCode => {
             if !link::linkable(&facts) {
-                log_outcome(caller, name, false, Some("not_linkable"), ids, None);
+                log_outcome(caller, name, false, Some("not_linkable"), target, ids, None);
                 return Ok(vec![format!(
                     "account: {target} is a staff, test or disabled account and cannot be linked (not_linkable)"
                 )]);
@@ -329,7 +366,7 @@ async fn answer(
                     "account: {target} has a password; linking with this code removes it for good (D-CT11)."
                 ));
             }
-            log_outcome(caller, name, true, None, ids, None);
+            log_outcome(caller, name, true, None, target, ids, None);
             Ok(lines)
         }
     }

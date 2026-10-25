@@ -107,7 +107,7 @@ All JSON, TLS only (`403 https_required` otherwise), all `Cache-Control: no-stor
 | `POST /token` | Authorization-code or refresh grant; `signed_in` or `needs_link` |
 | `POST /link/new`, `POST /link/existing` | Finish a `needs_link` |
 | `POST /link/start` | Begin adding a method to a signed-in account |
-| `GET /account`, `DELETE /identities/{id}` | Account view; remove a method |
+| `GET /account`, `DELETE /identities/{id}` | Account view; remove a method; ends the account's other sessions (refresh families, access tokens, launch tickets) except the caller's own family |
 | `POST /launch-ticket`, `/launch-ticket/heartbeat`, `/launch-ticket/end` | Ticket life cycle |
 | `POST /logout` | Revoke a refresh token |
 
@@ -141,7 +141,7 @@ Both targets (`cimmeria_identity`, `account_admin`) have a row in the [observabi
 
 ## GM recovery: `.account`
 
-`.account identities <name>`, `.account unlink <name> <identity_id>`, `.account linkcode <name>`. GM-gated; the cell forwards to the base, which reads the identity tables (the `.bankdump` shape). Output never shows a subject or email. Full entry: [commands.md](../commands.md). A link code is 10 characters, valid 15 minutes, single use, replaces any older code for that account, and is held in process memory (a restart voids it).
+`.account identities <name>`, `.account unlink <name> <identity_id>`, `.account linkcode <name>`. GM-gated; the cell forwards to the base, which reads the identity tables (the `.bankdump` shape). Output never shows a subject or email. `unlink` revokes the account's refresh tokens, access tokens and launch tickets, so the removed identity's sign-ins stop working; a game session already running is not ended (the reply says so). Full entry: [commands.md](../commands.md). A link code is 10 characters, valid 15 minutes, single use, replaces any older code for that account, and is held in process memory (a restart voids it).
 
 ## Failure modes
 

@@ -14,6 +14,7 @@ use axum::extract::{ConnectInfo, Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use chrono::Utc;
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::PgPool;
@@ -22,7 +23,7 @@ use url::Url;
 
 use crate::limits::Bucket;
 use crate::repo::event::{self, EventKind};
-use crate::repo::{account, identity};
+use crate::repo::{account, identity, refresh};
 use crate::routes::bearer::Bearer;
 use crate::routes::ctx::{client_ip, RouteState};
 use crate::routes::error::ApiError;
@@ -224,6 +225,10 @@ pub async fn unlink(
 /// holds the account row lock, so two unlinks of one account run one after the
 /// other and the second sees the first. Without the lock both could read two
 /// methods and both delete, leaving none (C15 e).
+///
+/// After the delete it ends every other session of the account: the refresh
+/// families except the caller's, and the access tokens and launch tickets
+/// except the caller's own family (client-tls-oidc D1).
 async fn remove_identity(
     state: &RouteState,
     grant: &AccessGrant,
@@ -275,6 +280,15 @@ async fn remove_identity(
     .await
     .map_err(ApiError::from_repo)?;
     tx.commit().await.map_err(ApiError::from_repo)?;
+    state
+        .ctx
+        .stores
+        .access
+        .revoke_account_except(account_id, &grant.family_id);
+    state.deps.launch_tickets.revoke_account(account_id);
+    refresh::revoke_account_except(pool, account_id, &grant.family_id, Utc::now())
+        .await
+        .map_err(ApiError::from_repo)?;
     tracing::Span::current().record("provider", provider.as_str());
     Ok(())
 }

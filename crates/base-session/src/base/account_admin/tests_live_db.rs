@@ -1,15 +1,19 @@
 //! Live-DB checks for the GM `.account` handler (CT-45): the identity
 //! listing, the unlink and its revocation, the last-method and other-account
 //! refusals, the link code and its password warning, the staff refusal and
-//! the unknown-account line. Sentinel account ids `2_000_701..=2_000_712`;
-//! cleanup deletes by exact id, before and after each test.
+//! the unknown-account line, and the live-token revocation on unlink. Sentinel
+//! account ids `2_000_701..=2_000_714`; cleanup deletes by exact id, before and
+//! after each test.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use cimmeria_identity::link_code::LinkCodeStore;
 use cimmeria_identity::provider::{ProviderId, VerifiedIdentity};
 use cimmeria_identity::repo::{identity, refresh};
+use cimmeria_identity::revoke::{self, LaunchTicketStore};
+use cimmeria_identity::stores::Stores;
 use cimmeria_test_support::require_db_or_skip;
 use sqlx::PgPool;
 
@@ -27,11 +31,15 @@ const ID_TEST: u32 = 2_000_709;
 const ID_CODE: u32 = 2_000_710;
 const ID_UNKNOWN: u32 = 2_000_711;
 const ID_RACE: u32 = 2_000_712;
+const ID_LIVE: u32 = 2_000_713;
+const ID_NOLINK: u32 = 2_000_714;
 
 /// The GM who types the commands in these checks.
 const GM: AdminCaller = AdminCaller {
     entity_id: 9_001,
+    entity_name: String::new(),
     account_id: Some(1),
+    gm_account_name: String::new(),
 };
 
 /// The alphabet a link code is drawn from (C6).
@@ -201,6 +209,64 @@ async fn live_db_unlink_refuses_the_last_method() {
         vec!["account: refusing to remove the last sign-in method of ct45_last_703".to_owned()]
     );
     assert_eq!(methods, 1, "the last row is kept");
+}
+
+/// A password-only account has no identity row, so an unlink names nothing
+/// and is not the last method.
+#[tokio::test]
+async fn live_db_unlink_on_password_only_account_is_not_linked() {
+    let pool = require_db_or_skip!();
+    insert_account(&pool, ID_NOLINK, "ct45_nolink_714", Some("legacy")).await;
+    let lines = run(
+        &GM,
+        "ct45_nolink_714",
+        AdminAction::Unlink { identity_id: 1 },
+        Some(&pool),
+        &LinkCodeStore::default(),
+        Instant::now(),
+    )
+    .await;
+    cleanup(&pool, ID_NOLINK).await;
+
+    assert!(lines[0].contains("is not linked to"), "{lines:?}");
+    assert!(!lines[0].contains("last sign-in method"), "{lines:?}");
+}
+
+/// An unlink ends the removed account's live access token and launch ticket,
+/// which sit in the identity process, not in the refresh table (N1).
+#[tokio::test]
+async fn live_db_unlink_ends_live_access_tokens_and_tickets() {
+    let pool = require_db_or_skip!();
+    insert_account(&pool, ID_LIVE, "ct45_live_713", None).await;
+    let first = link(&pool, ID_LIVE, "ct45-subject-713a").await;
+    link(&pool, ID_LIVE, "ct45-subject-713b").await;
+    let stores = Arc::new(Stores::default());
+    let tickets = Arc::new(LaunchTicketStore::default());
+    revoke::register(Arc::clone(&stores), Arc::clone(&tickets));
+    let now = Instant::now();
+    let token = stores.access.mint(ID_LIVE, "ct45-family-713", false, now);
+    tickets.mint(ID_LIVE, "player", "ct45-launch-713", now);
+    let lines = run(
+        &GM,
+        "ct45_live_713",
+        AdminAction::Unlink { identity_id: first },
+        Some(&pool),
+        &LinkCodeStore::default(),
+        Instant::now(),
+    )
+    .await;
+    let token_live = stores.access.check(&token, now).is_some();
+    let tickets_live = tickets.live_count();
+    cleanup(&pool, ID_LIVE).await;
+
+    assert!(
+        lines[0].ends_with(
+            "its launcher sign-ins are revoked; a game session already running is not ended"
+        ),
+        "{lines:?}"
+    );
+    assert!(!token_live, "the access token is ended");
+    assert_eq!(tickets_live, 0, "the launch ticket is ended");
 }
 
 /// Two unlinks of one two-method account run on two worker threads at once.

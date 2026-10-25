@@ -88,7 +88,9 @@ pub(super) async fn run(
             result = "refused",
             reason = "base_channel_closed",
             account_id = id.account_id,
+            account_name = id.account_name,
             entity_id = caller_id,
+            entity_name = id.player_name,
             error = %e,
             "gm_action: account could not reach the base",
         );
@@ -150,7 +152,9 @@ pub(crate) fn log_non_gm_account(entity_id: u32, space_mgr: &SpaceManager) {
         result = "refused",
         reason = "not_gm",
         account_id = id.account_id,
+        account_name = id.account_name,
         entity_id,
+        entity_name = id.player_name,
         "gm_action: account refused",
     );
 }
