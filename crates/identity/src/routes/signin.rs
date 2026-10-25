@@ -84,7 +84,7 @@ pub async fn providers(State(state): State<RouteState>) -> Response {
     let mut body = json!({
         "api": 1,
         "soap_relay": !cfg.kill.soap_relay_disabled,
-        "signup_open": cfg.signup_open && !cfg.kill.signup_disabled,
+        "signup_open": cfg.signup_open,
         "providers": list,
     });
     let links: Map<String, Value> = [

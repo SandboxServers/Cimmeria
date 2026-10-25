@@ -176,7 +176,7 @@ async fn code_grant(
                 "expires_in": LINK_GRANT_LIFE.as_secs(),
                 "identity": {"provider": provider, "display_name": display_name},
                 "hint": hint,
-                "signup_open": cfg.signup_open && !cfg.kill.signup_disabled,
+                "signup_open": cfg.signup_open,
             }))
             .into_response())
         }
