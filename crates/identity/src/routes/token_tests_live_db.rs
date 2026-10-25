@@ -69,6 +69,7 @@ trusted_email = false
 struct Env {
     router: Router,
     stores: Arc<Stores>,
+    tickets: Arc<LaunchTicketStore>,
 }
 
 /// Builds the routes in developer mode with the two dev-mock providers, the
@@ -94,14 +95,16 @@ fn harness(pool: &PgPool) -> Env {
         stores: Arc::clone(&stores),
         link_codes: Box::leak(Box::new(LinkCodeStore::default())),
     };
+    let tickets = Arc::new(LaunchTicketStore::default());
     let deps = AuthRouteDeps {
         db: Some(Arc::new(pool.clone())),
-        launch_tickets: Arc::new(LaunchTicketStore::default()),
+        launch_tickets: Arc::clone(&tickets),
         developer_mode: true,
     };
     Env {
         router: router(deps, ctx),
         stores,
+        tickets,
     }
 }
 
@@ -369,7 +372,10 @@ async fn live_db_disabled_account_refresh_is_403() {
         .execute(&pool)
         .await
         .expect("disable");
+    env.tickets
+        .mint(ID_DISABLED, "ct25_disabled_507", "launch-1", Instant::now());
     let (status, body) = refresh(&env, &old).await;
+    let tickets_left = env.tickets.live_count();
     let (after_status, _) = refresh(&env, &old).await;
     let (live,): (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM auth_refresh_token WHERE account_id = $1 AND revoked_at IS NULL",
@@ -380,6 +386,10 @@ async fn live_db_disabled_account_refresh_is_403() {
     .expect("count live tokens");
     clean(&pool).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(
+        tickets_left, 0,
+        "a disabled account's launch ticket is revoked"
+    );
     assert_eq!(after_status, StatusCode::BAD_REQUEST);
     assert_eq!(live, 0);
 }
@@ -444,9 +454,18 @@ async fn live_db_logout_revokes() {
     let env = harness(&pool);
     let (_, first) = code_grant(&env, verified("dev", "ct25-8", None, false)).await;
     let token = refresh_of(&first);
+    env.tickets
+        .mint(ID_LOGOUT, "ct25_logout_508", "launch-1", Instant::now());
+    let tickets_before = env.tickets.live_count();
     let (logout_status, _) = post_json(&env, "/logout", json!({"refresh_token": token})).await;
+    let tickets_after = env.tickets.live_count();
     let (after_status, _) = refresh(&env, &token).await;
     clean(&pool).await;
+    assert_eq!(tickets_before, 1);
+    assert_eq!(
+        tickets_after, 0,
+        "logout revokes the account's launch ticket"
+    );
     assert_eq!(logout_status, StatusCode::NO_CONTENT);
     assert_eq!(after_status, StatusCode::BAD_REQUEST);
 }
