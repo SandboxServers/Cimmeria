@@ -33,7 +33,7 @@ Signed in, Play mints a launch ticket with a `launch_id` derived from the operat
 2. It then calls `POST /launch-ticket/end` and stops the relay.
 3. While the game runs, a heartbeat goes out every 10 minutes; three failures in a row stop it without ending the game.
 
-If the launcher is closed while a relayed game runs, the shell asks first ("Game still signed in": Keep running or Close anyway), because the game cannot change server or log in again without the relay. "Close anyway" is the only answer that closes it.
+If the launcher is closed while a relayed game runs, the shell asks first ("Game still connected": Keep running or Close anyway), because the game cannot change server or log in again without the relay. "Close anyway" is the only answer that closes it.
 
 ## Never a password fallback
 

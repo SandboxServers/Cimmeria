@@ -55,7 +55,7 @@ Step by step:
 3. **`needs_link`.** If the provider identity is not bound to an account and auto-link does not apply, `/token` answers `needs_link` with a 10-minute single-use `link_grant`. The player chooses: create a new account, link an existing one with its password, or link with a GM code.
 4. **Play.** The launcher mints a launch ticket for this launch, starts the loopback relay for the first login server, and writes a one-server `LoginInternal.lua` pointing at the relay. The game talks plain HTTP to `127.0.0.1`; the relay re-sends the request over HTTPS, so the ticket never crosses the network unencrypted.
 5. **Heartbeat.** While the game runs, the launcher heartbeats the ticket every 10 minutes. Three failures in a row stop the heartbeats quietly; the game may already be in the world.
-6. **Exit and scrub.** When the game exits, the launcher first writes the plain server list back over `LoginInternal.lua` (so no ticket stays in the install), then ends the ticket on the server, then stops the relay. If the launcher is closed while a relayed game runs, a "Game still signed in" prompt offers "Keep running" or "Close anyway".
+6. **Exit and scrub.** When the game exits, the launcher first writes the plain server list back over `LoginInternal.lua` (so no ticket stays in the install), then ends the ticket on the server, then stops the relay. If the launcher is closed while a relayed game runs, a "Game still connected" prompt offers "Keep running" or "Close anyway".
 
 ## Linking rules
 

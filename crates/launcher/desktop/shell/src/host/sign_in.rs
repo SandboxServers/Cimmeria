@@ -102,9 +102,9 @@ pub(crate) fn close_guard(window: &tauri::Window, event: &tauri::WindowEvent) {
     window
         .dialog()
         .message(
-            "The game is signed in through this launcher. If you close it now, the game cannot change server or log in again until you press Play.",
+            "The game is connected through this launcher. If you close it now, the game cannot change server or log in again until you press Play.",
         )
-        .title("Game still signed in")
+        .title("Game still connected")
         .kind(MessageDialogKind::Warning)
         .parent(window)
         .buttons(MessageDialogButtons::OkCancelCustom(
