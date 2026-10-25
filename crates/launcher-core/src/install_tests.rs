@@ -161,7 +161,7 @@ async fn hash_mismatch_deletes_the_download() {
         &ctx,
         &tmp,
         ctx.install_dir,
-        "00",
+        seed::ArchiveCheck::Sha256("00"),
         "seed",
         InstallOptions::STRICT,
         None,

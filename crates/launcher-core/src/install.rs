@@ -381,12 +381,14 @@ async fn apply_patch(
     )
     .await?;
     info!("Applying {} into {}", label, dest.display());
-    verify_and_unpack(ctx, &tmp, &dest, &patch.sha256, &label, opts, only_targets).await
+    let check = seed::ArchiveCheck::Sha256(&patch.sha256);
+    verify_and_unpack(ctx, &tmp, &dest, check, &label, opts, only_targets).await
 }
 
-/// Hash `tmp` against `sha256`, unpack it into `dest`, then delete
-/// it. Both steps are blocking file work over multi-gigabyte files, so they
-/// run on a blocking thread.
+/// Check `tmp` as `check` says, unpack it into `dest`, then delete it. A
+/// [`seed::ArchiveCheck::HashedWhileCopied`] archive skips the hash: its copy
+/// was hashed as it was written. Both steps are blocking file work over
+/// multi-gigabyte files, so they run on a blocking thread.
 ///
 /// A download that fails its hash is deleted. Keeping it would make the next
 /// attempt resume from the bad bytes (or get HTTP 416 for a full-length
@@ -395,14 +397,17 @@ async fn verify_and_unpack(
     ctx: &InstallContext<'_>,
     tmp: &Path,
     dest: &Path,
-    sha256: &str,
+    check: seed::ArchiveCheck<'_>,
     label: &str,
     opts: InstallOptions,
     only_targets: Option<BTreeSet<String>>,
 ) -> Result<Vec<SkippedOp>, InstallError> {
     let tmp = tmp.to_path_buf();
     let dest = dest.to_path_buf();
-    let expected = sha256.to_string();
+    let expected = match check {
+        seed::ArchiveCheck::Sha256(sha256) => Some(sha256.to_string()),
+        seed::ArchiveCheck::HashedWhileCopied => None,
+    };
     let sink = UnpackSink {
         progress: ctx.progress.clone(),
         label: label.to_string(),
@@ -414,11 +419,13 @@ async fn verify_and_unpack(
     };
     let label = label.to_string();
     tokio::task::spawn_blocking(move || {
-        if let Err(e) = verify_sha256(&tmp, &expected, &label) {
-            if matches!(e, InstallError::HashMismatch { .. }) {
-                let _ = std::fs::remove_file(&tmp);
+        if let Some(expected) = expected {
+            if let Err(e) = verify_sha256(&tmp, &expected, &label) {
+                if matches!(e, InstallError::HashMismatch { .. }) {
+                    let _ = std::fs::remove_file(&tmp);
+                }
+                return Err(e);
             }
-            return Err(e);
         }
         let skipped = unpack::unpack_with(&tmp, &dest, &sink, &apply)?;
         let _ = std::fs::remove_file(&tmp);
@@ -569,6 +576,9 @@ pub fn hash_file(path: &Path) -> std::io::Result<String> {
         .collect())
 }
 
+#[cfg(test)]
+#[path = "install_progress_tests.rs"]
+mod progress_tests;
 #[cfg(test)]
 #[path = "install_tests.rs"]
 mod tests;
