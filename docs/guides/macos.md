@@ -117,6 +117,8 @@ setting.
 1. Log in with your account and pick the server in the list.
 2. Create a character or pick one, and press **Play**.
 
+If your server offers a provider sign-in (Discord, for example), the launcher shows a **Sign in** panel and passes the sign-in to the game, so you do not type a password. See [signing in with the launcher](../client/launcher-sign-in-guide.md). Two Mac-specific unknowns: the launcher keeps your sign-in in the macOS Keychain, so macOS may ask for permission the first time (this prompt has not been seen on a packaged build), and the loopback relay that carries the sign-in has never been run under Wine, so a Mac sign-in may fail where Windows works. Please report what you see.
+
 **Checkpoint D.** You arrive in the world with the HUD, minimap and nearby
 characters visible. The first arrival can take a minute to finish drawing.
 Walk around for a few minutes; note frame rate and any stutter.

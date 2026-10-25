@@ -32,7 +32,7 @@ How the launcher is built and released is in the
 [desktop launcher README](../../crates/launcher/desktop/README.md) and its
 [release guide](../../crates/launcher/desktop/docs/release.md). The one-time
 operator setup (content releases and the two signing keys) is
-[launcher-distribution-setup.md](launcher-distribution-setup.md).
+[launcher-distribution-setup.md](launcher-distribution-setup.md). Signing in with a provider such as Discord, linking an account and what to do when Play says the sign-in could not be obtained: [launcher-sign-in-guide.md](launcher-sign-in-guide.md).
 
 ---
 
