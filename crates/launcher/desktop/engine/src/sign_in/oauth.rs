@@ -168,7 +168,6 @@ impl BrowserFlow {
                 redirect_uri,
             }),
             CallbackResult::Denied => Err(SignInError::Denied),
-            CallbackResult::StateMismatch => Err(SignInError::StateMismatch),
             CallbackResult::TimedOut => Err(SignInError::TimedOut),
         }
     }

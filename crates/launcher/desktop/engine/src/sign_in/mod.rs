@@ -31,8 +31,6 @@ pub enum SignInError {
     Denied,
     /// No redirect arrived within the sign-in timeout.
     TimedOut,
-    /// The redirect carried a state other than the one this launch sent.
-    StateMismatch,
     /// The server answered with this C6 error code.
     Server(String),
     /// The reply or the requested URL is not one the launcher will follow.
@@ -48,7 +46,6 @@ impl SignInError {
             SignInError::Cancelled => "Sign-in was cancelled.",
             SignInError::Denied => "The provider refused the sign-in.",
             SignInError::TimedOut => "Sign-in timed out. Try again.",
-            SignInError::StateMismatch => "The sign-in reply did not match this launch.",
             SignInError::Server(_) => "The sign-in server refused the request.",
             SignInError::Protocol => "The sign-in server sent a reply the launcher does not use.",
         }

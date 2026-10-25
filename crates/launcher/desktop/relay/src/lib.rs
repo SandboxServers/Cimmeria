@@ -20,7 +20,7 @@ use hyper::header::{HeaderName, CONTENT_TYPE, COOKIE, HOST, ORIGIN, SET_COOKIE};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{HeaderMap, Method, Request, Response, StatusCode};
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioIo, TokioTimer};
 use tokio::net::TcpListener;
 use tokio::sync::{oneshot, Semaphore};
 use tokio::task::{JoinHandle, JoinSet};
@@ -37,6 +37,9 @@ const MAX_CONNECTIONS: usize = 64;
 /// A connection that is still open after this long is closed, so idle or slow sockets cannot
 /// hold a connection slot for ever. Longer than [`UPSTREAM_TIMEOUT`].
 const CONNECTION_LIFETIME: Duration = Duration::from_secs(120);
+/// A request whose headers are still arriving after this long is cut off, so a
+/// slow-header client cannot hold a connection slot for the whole lifetime.
+const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const SOAP_PATHS: [&str; 2] = ["/SGWLogin/UserAuth", "/SGWLogin/ServerSelection"];
 
 /// Configuration for [`start`].
@@ -200,7 +203,10 @@ async fn run(listener: TcpListener, shared: Arc<Shared>, mut stop: oneshot::Rece
                             });
                             let _ = tokio::time::timeout(
                                 CONNECTION_LIFETIME,
-                                http1::Builder::new().serve_connection(TokioIo::new(stream), service),
+                                http1::Builder::new()
+                                    .timer(TokioTimer::new())
+                                    .header_read_timeout(HEADER_READ_TIMEOUT)
+                                    .serve_connection(TokioIo::new(stream), service),
                             )
                             .await;
                         });

@@ -11,7 +11,7 @@ use hyper::body::{Bytes, Incoming};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::{TokioIo, TokioTimer};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, OwnedSemaphorePermit, Semaphore};
 use url::form_urlencoded;
@@ -23,6 +23,9 @@ const MAX_CONNECTIONS: usize = 16;
 /// A connection that is still open after this long is closed. Browsers finish a redirect
 /// within this time, and an idle socket cannot pin a slot for the whole sign-in wait.
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
+/// A request whose headers are still arriving after this long is cut off, so a
+/// slow-header client cannot hold a slot for the whole connection lifetime.
+const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const CLOSE_TAB_PAGE: &str = "<!doctype html><meta charset=\"utf-8\"><title>Cimmeria</title>\
 <p>You can close this tab and return to the Cimmeria launcher.</p>";
 const CANCELLED_PAGE: &str = "<!doctype html><meta charset=\"utf-8\"><title>Cimmeria</title>\
@@ -41,8 +44,6 @@ pub enum CallbackResult {
     Code(String),
     /// The redirect carried an `error` parameter.
     Denied,
-    /// The redirect carried a state other than the expected one.
-    StateMismatch,
     /// No matching redirect arrived before the timeout.
     TimedOut,
 }
@@ -109,7 +110,10 @@ async fn serve_connection(
         let tx = tx.clone();
         async move { Ok::<_, Infallible>(answer(&req, &expected_state, &tx)) }
     });
-    let serve = http1::Builder::new().serve_connection(TokioIo::new(stream), service);
+    let serve = http1::Builder::new()
+        .timer(TokioTimer::new())
+        .header_read_timeout(HEADER_READ_TIMEOUT)
+        .serve_connection(TokioIo::new(stream), service);
     let _ = tokio::time::timeout(CONNECTION_TIMEOUT, serve).await;
 }
 
@@ -134,14 +138,14 @@ fn answer(
             _ => {}
         }
     }
+    // Only the redirect for the expected state may end the wait, `error` included. Any
+    // other request, from a local process or a web page, is refused and the wait goes on.
+    let state_ok = state.as_deref().is_some_and(|s| ct_eq(s, expected_state));
+    if !state_ok {
+        return page(StatusCode::BAD_REQUEST, CANCELLED_PAGE);
+    }
     let (result, status, body) = if error {
         (CallbackResult::Denied, StatusCode::OK, CANCELLED_PAGE)
-    } else if !state.as_deref().is_some_and(|s| ct_eq(s, expected_state)) {
-        (
-            CallbackResult::StateMismatch,
-            StatusCode::BAD_REQUEST,
-            CANCELLED_PAGE,
-        )
     } else {
         match code {
             Some(code) if !code.is_empty() => {

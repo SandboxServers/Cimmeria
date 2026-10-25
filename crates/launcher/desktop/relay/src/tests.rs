@@ -298,9 +298,8 @@ async fn callback_returns_the_code_for_the_right_state() {
 }
 
 #[tokio::test]
-async fn callback_state_mismatch_and_denied_and_timeout() {
+async fn callback_denied_and_timeout() {
     for (query, expected) in [
-        ("code=abc&state=wrong", CallbackResult::StateMismatch),
         ("error=access_denied&state=s", CallbackResult::Denied),
         ("code=&state=s", CallbackResult::Denied),
     ] {
@@ -312,20 +311,64 @@ async fn callback_state_mismatch_and_denied_and_timeout() {
             .send()
             .await
             .expect("callback answers");
-        assert_eq!(
-            resp.status(),
-            if matches!(expected, CallbackResult::StateMismatch) {
-                400
-            } else {
-                200
-            }
-        );
+        assert_eq!(resp.status(), 200);
         assert_eq!(wait.await.expect("wait task"), expected, "query {query}");
     }
 
     let cb = CallbackServer::bind().await.expect("bind");
     let result = cb.wait("s", Duration::from_millis(100)).await;
     assert_eq!(result, CallbackResult::TimedOut);
+}
+
+#[tokio::test]
+async fn requests_for_another_state_never_end_the_wait() {
+    let cb = CallbackServer::bind().await.expect("bind");
+    let uri = cb.redirect_uri();
+    let wait = tokio::spawn(cb.wait("state-1", Duration::from_secs(5)));
+    // A local process or a web page sends bad requests during the wait. Each is refused
+    // with 400 and the listener keeps waiting, error parameter included.
+    for query in [
+        "code=x&state=wrong",
+        "error=access_denied&state=wrong",
+        "error=access_denied",
+        "code=x",
+    ] {
+        let resp = client()
+            .get(format!("{uri}?{query}"))
+            .send()
+            .await
+            .expect("callback answers");
+        assert_eq!(resp.status(), 400, "query {query}");
+    }
+    assert!(!wait.is_finished());
+    client()
+        .get(format!("{uri}?code=abc&state=state-1"))
+        .send()
+        .await
+        .expect("callback answers");
+    assert_eq!(
+        wait.await.expect("wait task"),
+        CallbackResult::Code("abc".to_owned())
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn slow_headers_are_cut_off_early() {
+    let relay = start(config("http://127.0.0.1:9"))
+        .await
+        .expect("relay starts");
+    let mut stream = TcpStream::connect(("127.0.0.1", relay.soap_port()))
+        .await
+        .expect("connect to relay");
+    // Headers never end: no blank line. The header read timeout must close the socket
+    // well before the connection lifetime.
+    tokio::io::AsyncWriteExt::write_all(&mut stream, b"GET /soap HTTP/1.1\r\nHost: 127.0.0.1")
+        .await
+        .expect("partial request");
+    let mut buf = [0u8; 1];
+    let read = tokio::time::timeout(Duration::from_secs(6), stream.read(&mut buf)).await;
+    assert!(matches!(read, Ok(Ok(0))), "read: {read:?}");
+    relay.shutdown().await;
 }
 
 #[tokio::test(start_paused = true)]

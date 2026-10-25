@@ -217,6 +217,35 @@ async fn finish_scrubs_the_ticket_and_stops_the_relay() {
         .is_err());
 }
 
+#[tokio::test]
+async fn finish_scrubs_the_file_before_a_silent_end_ticket_returns() {
+    let server = MockServer::start().await;
+    mount_token(&server).await;
+    mount_ticket(&server, 200).await;
+    // The end call never answers within the test, so only the scrub order can
+    // have put the plain list back.
+    Mock::given(method("POST"))
+        .and(path("/auth/v1/launch-ticket/end"))
+        .respond_with(ResponseTemplate::new(204).set_delay(std::time::Duration::from_secs(30)))
+        .mount(&server)
+        .await;
+    let (dir, plan) = install();
+    let list = servers();
+    let sign_in = Some(signed_in(base_of(&server)));
+    let discovered = Some(discovery_at(base_of(&server)));
+    let (_client, login) = sign_in_play::plan(sign_in, &plan, &list, discovered)
+        .await
+        .unwrap_or_else(|e| panic!("refused: {e:?}"));
+    sign_in_play::write(dir.path(), &login).expect("ticket written");
+    let root = dir.path().to_path_buf();
+    let plain = list.clone();
+    let task = tokio::spawn(async move { sign_in_play::finish(&root, &plain, login).await });
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let text = std::fs::read_to_string(login_servers::path(dir.path())).expect("file");
+    assert_eq!(text, login_servers::render(&list));
+    task.abort();
+}
+
 #[test]
 fn telemetry_keeps_the_real_servers() {
     let list = servers();
