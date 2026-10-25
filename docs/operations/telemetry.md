@@ -107,7 +107,9 @@ admin API port (`8443`, private, no authentication) and the public SOAP
 login port (`LOGON_PORT`, `8081`), which every player's game client
 already reaches. On the colo a Caddy reverse proxy also serves exactly
 these routes, and the summary route, at `https://play.cimmeria.app`; see
-[the colo route](telemetry-upload-endpoint.md#the-colo-route).
+[the colo route](telemetry-upload-endpoint.md#the-colo-route). A launcher
+reaches the login port's routes only as `https://<name>` on 443. Plain http
+goes only to this machine.
 
 The code also merges a fifth route, `/api/telemetry/launcher-summary`, on
 both listeners (see [Launcher summaries](#launcher-summaries)). Unlike the
@@ -127,15 +129,19 @@ LT-41 will make `https://play.cimmeria.app/api/telemetry` the built-in
 default; until it lands there is none, so a server without the env value
 and without an https proxy mints nothing.
 
-**What the launcher accepts today.** The launcher still sends telemetry to
-any `https://` address, plain `http://` on the player's own machine
-(`localhost`, `127.x`, `::1`), and plain `http://` to the exact host and
-port of one of its `http://` login servers (the list written into
-`LoginInternal.lua`)
+**What the launcher accepts today.** The launcher sends telemetry to any
+`https://` address, and to plain `http://` only on the player's own machine
+(`localhost`, `127.x`, `::1`)
 ([`telemetry/endpoint.rs`](../../crates/launcher-core/src/telemetry/endpoint.rs)).
-That last rule is launcher-side and is being tightened in launcher-telemetry
-wave 2; the server no longer relies on it. The desktop launcher mints from
-the installation's first login server (`<login server>/api/auth/dev-session`).
+An `http://` login server on a dotted DNS name, including a LAN name such as
+`nas.lan`, is reached as `https://<name>` on 443 (`https_upgrade_origin`,
+LI-09). A failed connection simply sends nothing, so a self-hosted server needs
+https on 443 for the five telemetry routes. An IP or single-word login server
+gets no game telemetry. A launcher from before LI-09 also accepted plain
+`http://` to the exact host and port of a login server. The desktop launcher
+mints from the installation's first login server
+(`https://<name>/api/auth/dev-session` for an `http://` login server on a
+dotted name).
 A refused address leaves the telemetry DLL out before a byte is sent, and
 Settings shows the last Play's status as `endpoint_refused`. To point a
 launcher at a local server, put it first in **Settings → Login servers**
@@ -165,9 +171,9 @@ endpoint is missing or not https; see
 [the boot rows](telemetry-upload-endpoint.md#log-rows-the-resolution-writes)).
 
 1. **Generate the secret** on any machine: `openssl rand -hex 64`.
-2. **Check the https route.** Players do not need it (launchers reach the
-   telemetry routes on the public login port), but it is the address the
-   server hands out. The colo's Caddy (`board-proxy`) forwards only the five
+2. **Check the https route.** Launchers from LI-09 on need it: they mint,
+   refresh and upload through `https://<name>` on 443 and never over plain
+   http. It is also the address the server hands out. The colo's Caddy (`board-proxy`) forwards only the five
    telemetry routes from `https://play.cimmeria.app` to the server's login
    port on loopback `:8081` and answers 404 for everything else. No
    Cloudflare Tunnel is involved: one was planned and was never deployed.
@@ -858,7 +864,7 @@ of closed values per attempt, with no session, install or machine
 identifier. The design and the wire contract are in
 [launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md).
 
-**No launcher sends one today.** A launcher takes its endpoint from its first login server when that is https, else from that server's https upgrade when it is an http DNS name (the same name on 443, `login_server_https_upgrade`, LI-06), else from the built-in default, which is not set yet. An IP, local or single-label http login server sends nothing. Nothing here has run against a deployed server or a real SigNoz. What follows is what the server code does when a summary arrives.
+**No launcher sends one today.** A launcher takes its endpoint from its first login server when that is https, else from that server's https upgrade when it is an http DNS name (the same name on 443, `login_server_https_upgrade`, LI-06), else from the built-in default, which is not set yet. An IP, localhost or single-label http login server sends nothing. Nothing here has run against a deployed server or a real SigNoz. What follows is what the server code does when a summary arrives.
 
 - **Https only, and not sent yet.** Summaries and the default upload URL are https only; a plain `http://` address is never used for a summary, except loopback for local fixtures; an http login server on a DNS name is upgraded to https. With no https endpoint, Share setup diagnostics is saved and the box says "saved but not sent yet". That state ends when the built-in https default is set (D-LT17).
 - The `summary_endpoint_resolved` line on `launcher.pipeline` carries `outcome` = `login_server`, `login_server_https_upgrade`, `default` or `no_https_endpoint`.

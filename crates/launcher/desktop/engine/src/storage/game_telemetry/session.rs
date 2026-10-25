@@ -3,7 +3,7 @@
 //! file the injected DLL reads at boot (`current-session.json`).
 use super::*;
 use crate::client_setup::login_servers::LoginServer;
-use crate::telemetry_endpoint::EndpointPolicy;
+use crate::telemetry_endpoint::{https_upgrade_origin, EndpointPolicy};
 use crate::telemetry_session::{CurrentSession, TelemetryBlock, CURRENT_SESSION_SCHEMA};
 use std::time::{Duration, Instant};
 
@@ -68,13 +68,22 @@ impl Session {
     }
 }
 
+/// The origin game telemetry talks to for `login_server` (D-LI11, D-LI15): an http
+/// login server on a public DNS name becomes `https://<name>` on 443, the rule
+/// summaries use. Anything else is kept as written, and the policy refuses it
+/// unless it is https or loopback. There is no http fallback.
+fn telemetry_origin(login_server: &str) -> String {
+    https_upgrade_origin(login_server)
+        .unwrap_or_else(|| login_server.trim_end_matches('/').to_owned())
+}
+
 /// The session routes sit under `/api` on the login server's own host and
 /// port; core's refresh appends `/auth/dev-session/refresh` to this.
 pub(super) fn auth_base_url(login_server: &str) -> String {
-    format!("{}/api", login_server.trim_end_matches('/'))
+    format!("{}/api", telemetry_origin(login_server))
 }
 
-fn mint_url(login_server: &str) -> String {
+pub(super) fn mint_url(login_server: &str) -> String {
     format!("{}/auth/dev-session", auth_base_url(login_server))
 }
 
@@ -128,8 +137,9 @@ pub(super) fn upload_for(
     advertised: &str,
     kind: &'static str,
 ) -> Result<String, &'static str> {
-    let effective = endpoint_sanity::effective_upload_endpoint(login_server, advertised)
-        .ok_or("no_https_endpoint")?;
+    let effective =
+        endpoint_sanity::effective_upload_endpoint(&telemetry_origin(login_server), advertised)
+            .ok_or("no_https_endpoint")?;
     policy
         .check(&effective.url)
         .map_err(|_| "endpoint_refused")?;
@@ -160,9 +170,10 @@ pub(super) async fn start_kind(
     session_kind: Option<&str>,
     purpose: Option<&str>,
 ) -> Result<Session, MintFailure> {
-    // https anywhere, plain http only to this machine or a login server: the
-    // rule the Windows launcher applies, to the mint address and to whatever
-    // upload address the server hands back.
+    // https anywhere, plain http only to this machine; an http login server on a
+    // DNS name is asked over https (`telemetry_origin`). The rule the Windows
+    // launcher applies, to the mint address and to whatever upload address the
+    // server hands back.
     let attempt = Attempt {
         started: Instant::now(),
         game: session_kind.is_none(),
@@ -378,7 +389,7 @@ mod tests {
     }
 
     #[test]
-    fn a_loopback_upload_from_a_plain_http_login_has_no_usable_address() {
+    fn a_loopback_upload_from_a_plain_http_login_is_replaced_with_its_https_origin() {
         let policy = EndpointPolicy::from_login_servers(["http://play.example:8081"]);
         let (result, events) = capture(|| {
             upload_for(
@@ -388,10 +399,13 @@ mod tests {
                 "game",
             )
         });
-        assert_eq!(result, Err("no_https_endpoint"));
-        assert!(events
+        assert_eq!(result, Ok("https://play.example/api/telemetry".to_string()));
+        let overridden: Vec<_> = events
             .iter()
-            .all(|e| e.field("event") != Some("upload_endpoint_overridden")));
+            .filter(|e| e.field("event") == Some("upload_endpoint_overridden"))
+            .collect();
+        assert_eq!(overridden.len(), 1);
+        assert_eq!(overridden[0].field("kind"), Some("game"));
     }
 
     #[test]

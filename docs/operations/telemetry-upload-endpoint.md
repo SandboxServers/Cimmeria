@@ -68,7 +68,7 @@ bridge, so the server sees a non-loopback peer even for a launcher on the
 same machine, and row 3 does not apply. With no env value and no https proxy
 the mint answers 503 until you set `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` to an
 https URL you serve. A plain-http value still works as an explicit override,
-with a WARN (below).
+with a WARN (below); launchers from LI-09 on refuse it (`game_session_mint_failed`, `reason = endpoint_refused`), so only older launchers upload to it.
 
 ### Log rows the resolution writes
 
@@ -103,7 +103,10 @@ path:
 
 Plain `http://play.cimmeria.app:8081` still serves the same five routes, so
 a launcher that predates this change keeps working. Nothing else from the
-admin API is reachable on either address.
+admin API is reachable on either address. Launchers from LI-09 on never use
+it for telemetry. They mint, refresh and upload through the https route, so
+that route, and the Caddyfile it depends on (OPS-LT1), carries all game
+telemetry from those launchers.
 
 The Caddyfile is host config. It is not generated and, until OPS-LT1 is
 done, it is not in any repository. **If `board-proxy` is redeployed from the
@@ -329,7 +332,7 @@ this list and stop at the first row that explains it.
 3. **The mint INFO row.** `Minted dev-session telemetry token` with
    `upload_endpoint_source` and `upload_endpoint_https = true` proves the
    launcher was told where to upload. If `_https = false`, the env override
-   is plain http.
+   is plain http, and launchers from LI-09 on refuse it.
 4. **An upload refusal.** `event = 'upload_refused'` or `'upload_auth_refused'`
    on `launcher.ingest`, with its `reason` (`rate_limited`, `token_expired`,
    `body_too_large`, `kill_switch`, ...).
@@ -340,7 +343,7 @@ this list and stop at the first row that explains it.
 
 The launcher side has three checks that need no server log:
 
-6. **The setup-diagnostics line.** After a press in Settings, the box's line says whether summaries are sent. "Saved but not sent yet" means there is no https endpoint (the first login server is an IP, a local name or a single-label name, or has credentials); a launcher on the default list now has an endpoint through the https upgrade (LI-06).
+6. **The setup-diagnostics line.** After a press in Settings, the box's line says whether summaries are sent. "Saved but not sent yet" means there is no https endpoint (the first login server is an IP, localhost or a single-label name, or has credentials); a launcher on the default list now has an endpoint through the https upgrade (LI-06).
 7. **`pipeline_recovered` on `launcher.telemetry`.** One row when the upload pipeline comes back after failures. Its fields are `mint_failed`, `held` and `dropped` (counts of the failed sends), `outage_ms` and `last_reason`. It appears once per recovery, after sends resume, so its absence proves nothing; a launcher that never recovers shows no row at all.
 8. **`game_session_mint_failed` on `launcher.telemetry`.** A game session could not be minted, so Play went on with no game diagnostics. The row carries a `reason` (`timeout`, `transport`, `http_status`, `decode`, `endpoint_refused` or `no_https_endpoint`), `http_status` only when the login server replied, and `duration_ms`.
 

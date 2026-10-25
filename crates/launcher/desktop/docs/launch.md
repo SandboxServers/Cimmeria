@@ -585,11 +585,11 @@ DLL's.
    refuses it for a player who is not opted in, even from a host that skipped
    resolution.
 2. The worker asks the installation's first login server for a session:
-   `POST <login server>/api/auth/dev-session`, with the identity and the tags
+   `POST <login server>/api/auth/dev-session` (`https://<name>/api/...` when the login server is http on a DNS name, LI-09), with the identity and the tags
    `desktop-launcher`, the host OS and `wine` or `native`. The wait is bounded
    to 8 seconds. Addresses follow the Windows launcher's rule
    (`telemetry/endpoint.rs`, compiled into the engine): https anywhere, plain
-   http only to this machine or to a login server's own host and port. The rule
+   http only to this machine; an http login server on a dotted DNS name is asked over https on 443. The rule
    is applied to the upload address the server returns as well.
 3. The session marker is written to `Working/Binaries/sessions/current-session.json`,
    the file the DLL reads at boot. It is the same shape the Windows launcher
