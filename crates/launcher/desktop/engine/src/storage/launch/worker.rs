@@ -376,6 +376,10 @@ enum Ownership {
     Wine {
         _resources: crate::mac_wine::prerequisites::prefix::Resources,
     },
+    #[cfg(target_os = "linux")]
+    Proton {
+        _prefix: crate::linux_proton::prefix::Prefix,
+    },
 }
 fn prepare(
     plan: &Plan,
@@ -407,6 +411,16 @@ fn prepare(
         }
         #[cfg(not(target_os = "macos"))]
         return Err(StorageError::Corrupt.into());
+    }
+    // The Linux arm returns; the native tail stays referenced on every host, so
+    // its helpers are not dead code on Linux (PP-06).
+    if cfg!(target_os = "linux") {
+        #[cfg(target_os = "linux")]
+        {
+            let (spec, request, prefix) =
+                super::proton::prepare(plan, root, session, servers, display, placements)?;
+            return Ok((spec, request, Ownership::Proton { _prefix: prefix }));
+        }
     }
     let _ = (root, placements);
     if !cfg!(windows) {

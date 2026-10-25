@@ -73,6 +73,7 @@ mod tests {
     fn host(root: &std::path::Path, with_dll: bool) -> NativeHost {
         let mut host = NativeHost::new(root.join("state"));
         host.launch_resources = Some(Resources {
+            proton: None,
             helper: artifact(root, "helper.exe"),
             client_patches: None,
             client_telemetry: with_dll.then(|| artifact(root, "telemetry.dll")),
