@@ -7,9 +7,14 @@
 //! servers keep the relay password. The ledger of decisions is in
 //! `docs/analysis/client-tls-oidc/design.md`.
 
+pub mod api;
 pub mod discovery;
 pub mod oauth;
+pub mod session;
+pub mod store;
 
+#[cfg(test)]
+mod session_tests;
 #[cfg(test)]
 mod tests;
 
