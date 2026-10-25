@@ -31,6 +31,10 @@ quick-xml = { workspace = true }
 # client hash during opportunistic on-login migration.
 argon2 = { workspace = true }
 sha1 = { workspace = true }
+# Launch tickets (CT-20): SHA-256 of the client's SHA-1 hex, and a
+# constant-time compare of the stored hash.
+sha2 = { workspace = true }
+subtle = "2"
 sqlx = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }

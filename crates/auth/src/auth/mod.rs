@@ -13,6 +13,7 @@ mod cert_watcher;
 pub mod client_telemetry;
 mod credentials;
 mod handlers;
+pub mod launch_ticket;
 mod password_hash;
 mod service;
 mod session_kind;
@@ -33,8 +34,12 @@ mod login_smoke;
 mod handlers_tests;
 
 #[cfg(test)]
+mod identity_schema_live_db;
+
+#[cfg(test)]
 mod tls_smoke;
 
+pub use launch_ticket::{LaunchTicketStore, MintedTicket, TicketCheck};
 pub use service::AuthService;
 pub use session_kind::{session_kind, SESSION_KIND_LAB, SESSION_KIND_PLAYER};
 pub use tls::{TlsCertStore, TlsError, TlsListener};
