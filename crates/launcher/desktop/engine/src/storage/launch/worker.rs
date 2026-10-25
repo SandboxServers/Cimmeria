@@ -218,10 +218,8 @@ async fn execute(
             return Ok(Observation::NotStarted);
         }
     };
-    let (telemetry_servers, client_servers) = sign_in_play::lists_for(&servers, client_servers);
-    let telemetry_session = session
-        .clone()
-        .map(|session| (session, telemetry_servers.to_vec()));
+    // Telemetry always gets the real servers, so the relay is never its endpoint (C9).
+    let telemetry_session = session.clone().map(|session| (session, servers.clone()));
     let prepared = plan.clone();
     // The ticket file lives in the game install, where `prepare` writes the plain list.
     let ticket_root = plan.installation.content_root();
