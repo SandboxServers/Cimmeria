@@ -14,18 +14,24 @@
 #                    exports CIMMERIA_LAUNCHER_TAG, CIMMERIA_LAUNCHER_BUILD_EPOCH,
 #                    CIMMERIA_LAUNCHER_VERSION and LAUNCHER_MANIFEST_PUBKEY_HEX
 #   verify           check the result: an x86-64 ELF AppImage whose extracted
-#                    launcher is x86-64, carries no Windows Play pieces, and
+#                    launcher is x86-64, embeds the four pinned Windows pieces (when staged) and
+#                    runs --verify-embedded-payload, carries no loose Windows executable or DLL, and
 #                    embeds the release stamps
 #   package          copy it to
 #                    artifacts/StargateWorlds-Launcher-linux-x86_64.AppImage,
 #                    executable, and write a .sha256
+#   pieces <dir> <sha256>
+#                    check <dir>/mac-pieces.sha256 against <sha256> (the
+#                    Windows job's output, a channel separate from the
+#                    artifact), then stage the four Windows pieces it lists
+#                    through crates/launcher/desktop/tools/stage-helper.py
 #   paths            print the artifact paths
 #
-# The Linux launcher installs the game in-process (the seed's cabinet set is
-# expanded by cimmeria-launcher-core's portable decoder). It has no Play,
-# Repair, Update or prerequisite backend yet, so it carries none of the Windows
-# pieces the Windows zip and the macOS app embed (crates/launcher/desktop/README.md,
-# "Linux").
+# The Linux launcher embeds the four Windows pieces the Windows zip and the
+# macOS app carry (D-PP8), pinned by SHA-256 and staged from the Windows job's
+# artifact, so they exist only inside the launcher binary. A run with no
+# artifact (a developer build) builds without the payload and says so; a tagged
+# build without the pieces fails in shell/build_payload.rs.
 set -euo pipefail
 
 [ "$(uname -s)" = Linux ] || { echo "Run natively on Linux." >&2; exit 2; }
@@ -42,6 +48,17 @@ APPIMAGE_NAME="StargateWorlds-Launcher-linux-x86_64.AppImage"
 APPIMAGE="artifacts/$APPIMAGE_NAME"
 # The shell's Cargo package and binary.
 EXE_NAME=cimmeria-launcher-desktop
+STAGED="$DESKTOP/shell/resources/windows"
+
+# The four Windows pieces the launcher embeds: staged file name, stage-helper.py
+# kind, and the build variable that pins it. The archive worker and the mac
+# helpers are not Linux's; the macOS app's list is in build-desktop-macos.sh.
+PIECES=(
+  "cimmeria-launch-worker.exe launch CIMMERIA_LAUNCH_HELPER_SHA256"
+  "cimmeria-prerequisite-worker.exe prerequisite CIMMERIA_PREREQUISITE_HELPER_SHA256"
+  "cimmeria_client_patches.dll client-patches CIMMERIA_CLIENT_PATCHES_SHA256"
+  "cimmeria_client_telemetry.dll client-telemetry CIMMERIA_CLIENT_TELEMETRY_SHA256"
+)
 
 # The tools tauri-bundler 2.10.1 (tauri-cli 2.12.1) fetches to build an
 # AppImage: cache file name, URL, SHA-256. It skips a download when the file is
@@ -92,6 +109,36 @@ stage_tools() {
   done
 }
 
+staged_pieces() {
+  local name kind var
+  for entry in "${PIECES[@]}"; do
+    read -r name kind var <<<"$entry"
+    [ -s "$STAGED/$name" ] || return 1
+  done
+}
+
+stage_pieces() {
+  local dir="${1:?pieces needs the artifact directory}" expected="${2:-}"
+  [[ "$expected" =~ ^[0-9a-f]{64}$ ]] \
+    || die "pieces needs the SHA-256 of mac-pieces.sha256 from the Windows job, got '$expected'"
+  local manifest="$dir/mac-pieces.sha256"
+  need "$manifest"
+  [ "$(sha "$manifest")" = "$expected" ] \
+    || die "$manifest is not the one the Windows job wrote"
+  # The pieces were built from this commit: both jobs check out the same one.
+  local revision; revision="$(git rev-parse HEAD)"
+  local name kind var digest
+  for entry in "${PIECES[@]}"; do
+    read -r name kind var <<<"$entry"
+    digest="$(awk -v n="$name" '$2 == n { print $1 }' "$manifest")"
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || die "$manifest has no single digest for $name"
+    # stage-helper.py refuses a file whose digest is not this one, a wrong
+    # architecture or role, and a lab-bridge telemetry DLL.
+    python3 "$DESKTOP/tools/stage-helper.py" "$dir/$name" \
+      --kind "$kind" --sha256 "$digest" --revision "$revision"
+  done
+}
+
 stage_app() {
   # A workflow passes an unset input or secret as an empty string; the build
   # must see "not stamped", exactly as a local build does.
@@ -114,9 +161,32 @@ stage_app() {
   export CIMMERIA_BUILD_BRANCH="${CIMMERIA_BUILD_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
   # shell/build.rs puts the version in the binary; the CLI names and stamps the
   # AppImage from its own reading of the config, so it gets the version too.
-  local config=()
+  # Staged pieces are pinned and embedded (CIMMERIA_EMBED_PAYLOAD=1); none
+  # staged is a build without the payload, as a developer build has.
+  local name kind var embed=0
+  if staged_pieces; then
+    for entry in "${PIECES[@]}"; do
+      read -r name kind var <<<"$entry"
+      echo "pinning $var"
+      export "$var=$(sha "$STAGED/$name")"
+    done
+    export CIMMERIA_EMBED_PAYLOAD=1
+    embed=1
+  else
+    echo "no Windows pieces staged: building without the payload"
+  fi
+  local parts=()
   if [ -n "${CIMMERIA_LAUNCHER_VERSION:-}" ]; then
-    config=(--config "{\"version\":\"$CIMMERIA_LAUNCHER_VERSION\"}")
+    parts+=("\"version\":\"$CIMMERIA_LAUNCHER_VERSION\"")
+  fi
+  # The pieces live in the binary: the bundler must not copy them beside it,
+  # where the AppImage would carry them loose (D-PP8).
+  if [ "$embed" = 1 ]; then
+    parts+=('"bundle":{"resources":{"resources/windows/":null}}')
+  fi
+  local config=()
+  if [ ${#parts[@]} -gt 0 ]; then
+    config=(--config "{$(IFS=,; echo "${parts[*]}")}")
   fi
   rm -rf "$BUNDLE_DIR"
   # linuxdeploy is itself an AppImage; extract-and-run needs no FUSE, which
@@ -139,7 +209,20 @@ stage_verify() {
   need "$exe"
   file -b "$exe" | grep -q 'ELF 64-bit LSB .*x86-64' || die "$exe is not x86-64: $(file -b "$exe")"
   need "$root/AppRun"
-  # No Play backend yet, so no injected Windows code ships in the AppImage.
+  local name kind var
+  if staged_pieces; then
+    for entry in "${PIECES[@]}"; do
+      read -r name kind var <<<"$entry"
+      has_text "$exe" "$(sha "$STAGED/$name")" || die "the launcher is not pinned to this $name ($var)"
+    done
+    # The launcher checks its own payload: the pieces extract and match their pins.
+    "$exe" --verify-embedded-payload "$check/payloads" \
+      || die "the launcher does not verify its embedded Windows pieces"
+    echo "launcher embeds the four Windows pieces"
+  else
+    echo "no Windows pieces staged: the AppImage carries no payload"
+  fi
+  # Windows pieces are embedded in the launcher binary, never loose (D-PP8).
   if find "$root" \( -iname '*.exe' -o -iname '*.dll' \) -print -quit | grep -q .; then
     die "the AppImage carries Windows executables or DLLs: $(find "$root" \( -iname '*.exe' -o -iname '*.dll' \) | head -3)"
   fi
@@ -174,9 +257,10 @@ stage_paths() {
 
 case "${1:-}" in
   tools) stage_tools ;;
+  pieces) stage_pieces "${2:-}" "${3:-}" ;;
   app) stage_app ;;
   verify) stage_verify ;;
   package) stage_package ;;
   paths) stage_paths ;;
-  *) sed -n '2,28p' "$0" >&2; exit 2 ;;
+  *) sed -n '2,/^set -euo pipefail/{/^set -euo/d;p}' "$0" >&2; exit 2 ;;
 esac

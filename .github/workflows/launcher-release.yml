@@ -41,9 +41,9 @@ name: launcher-release
 #   - `publish-macos` attaches the macOS zip. A failed macOS build leaves the
 #     Windows release as it is.
 #   - `desktop-linux` builds the x86-64 AppImage through the reusable
-#     `launcher-desktop-linux.yml` the PR dry run also calls. It needs only
-#     desktop-windows' tag and version: the Linux launcher carries no Windows
-#     pieces yet.
+#     `launcher-desktop-linux.yml` the PR dry run also calls. It needs
+#     desktop-windows' tag and version and takes mac-pieces' artifact: the Linux
+#     launcher embeds four of the Windows pieces.
 #   - `publish-linux` attaches the AppImage after publish-macos has finished,
 #     so the two never rewrite the dated notes at once. A failed Linux build
 #     leaves the other platforms' release as it is.
@@ -657,7 +657,7 @@ jobs:
 
   desktop-linux:
     name: desktop launcher (Linux)
-    needs: desktop-windows
+    needs: [desktop-windows, mac-pieces]
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
@@ -668,6 +668,8 @@ jobs:
       version: ${{ needs.desktop-windows.outputs.version }}
       epoch: ${{ needs.desktop-windows.outputs.epoch }}
       build_branch: main
+      pieces_artifact: launcher-mac-pieces-${{ needs.desktop-windows.outputs.tag }}
+      pieces_sha256: ${{ needs.mac-pieces.outputs.sha256 }}
       cache_key: launcher-release-desktop-linux
     secrets:
       LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
