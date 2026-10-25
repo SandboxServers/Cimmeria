@@ -1384,6 +1384,7 @@ dependencies = [
  "cimmeria-auth",
  "cimmeria-common",
  "cimmeria-workspace-hack",
+ "rand 0.10.3",
  "reqwest 0.13.4",
  "serde",
  "thiserror 2.0.21",
