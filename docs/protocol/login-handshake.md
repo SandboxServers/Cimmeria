@@ -17,6 +17,8 @@ last_updated: 2026-05-27
 
 The login handshake has three distinct phases. Phase 1 and 2 use HTTP/SOAP over TCP. Phase 3 uses Mercury over UDP. This document covers the protocol details of each phase.
 
+The launcher may relay Phase 1 and 2 over HTTPS through a loopback proxy, and the password field of `UserAuth` may then hold a one-time launch ticket (as `SHA1HEX`) instead of a password. The wire shapes are unchanged; see [launcher sign-in](../technical/launcher-sign-in.md).
+
 ## Phase 1: Authentication (SOAP/HTTP)
 
 ### Request: Login

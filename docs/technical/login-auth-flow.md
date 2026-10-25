@@ -12,6 +12,10 @@ SGW uses a two-phase SOAP-based login:
 2. **Phase 2: Server Selection** — Client selects a shard via `/SGWLogin/ServerSelection`
 3. **Phase 3: BaseApp Connection** — Client connects directly to assigned BaseApp via Mercury
 
+### Ticket path (pointer)
+
+A launcher can relay phases 1 and 2 over HTTPS and put a one-time launch ticket in the password field. The server accepts a ticket only over TLS (`ticket_requires_tls` otherwise). This page is historical and is not extended; the current description is [launcher sign-in](launcher-sign-in.md) and [connection flow](../connection-flow.md).
+
 ## SOAP Endpoints
 
 ### Phase 1: User Authentication

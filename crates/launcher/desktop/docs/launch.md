@@ -3,7 +3,7 @@
 > **Type:** Reference
 > **Audience:** Launcher integrators and playtesters
 > **Last updated:** 2026-10-23
-> **Companions:** [Desktop workspace](../README.md), [prerequisites](prerequisites.md), [runtime evidence](../../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md)
+> **Companions:** [Desktop workspace](../README.md), [prerequisites](prerequisites.md), [sign-in relay, ticket file and scrub](sign-in.md), [runtime evidence](../../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md)
 
 ## Admission and integration
 

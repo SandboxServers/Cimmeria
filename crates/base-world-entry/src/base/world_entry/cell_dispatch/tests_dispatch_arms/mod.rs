@@ -54,6 +54,7 @@ use super::*;
 use crate::base::PendingClientReadyInfo;
 use crate::test_support::test_default_connected_client_state;
 
+mod account_arm;
 mod aoi_defer_gate;
 mod bank_arm;
 mod black_market_arms;

@@ -152,6 +152,10 @@ Pick overlays with `COMPOSE_FILE` in `.env`, so a bare `docker compose up -d` al
 COMPOSE_FILE=compose.yml:compose.discord-file.yml:compose.lab.yml
 ```
 
+### Account sign-in over HTTPS
+
+Launcher sign-in (Discord and other providers) is off until the server has a provider file and an HTTPS auth listener. The env names are `CIMMERIA_AUTH_PROVIDERS` (path of `config/auth-providers.toml`), one `CIMMERIA_IDP_<PROVIDER>_SECRET` per provider, `AUTH_TLS_CERT_PATH` / `AUTH_TLS_KEY_PATH` or `AUTH_PROXY_ADDR` / `AUTH_PROXY_TRUSTED_PEERS`, and the kill switches `CIMMERIA_IDP_DISABLED`, `CIMMERIA_IDP_SIGNUP_DISABLED` and `CIMMERIA_SOAP_RELAY_DISABLED`. What each does: [launcher sign-in](../technical/launcher-sign-in.md#kill-switches-and-environment). The TLS and reverse-proxy steps, with rollback, are in [auth-https.md (added in a later PR)](auth-https.md). Not yet deployed or exercised on the colo.
+
 ### Discord notifications
 
 The server can post lifecycle and error events to Discord webhooks ([discord-notifications.md](../architecture/discord-notifications.md)). There are two ways to give it the config. Use one.
