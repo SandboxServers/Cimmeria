@@ -75,11 +75,13 @@ pub fn preflight_checked(report: &Report) {
 }
 
 /// A dependency the launcher installs for the player (owner D1).
+///
+/// WebView2 is not logged here: its install (PD-41) runs before the window and
+/// before the tracing pipeline, so it emits no event (see the C-PD5 note).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dependency {
     Rosetta,
     WineRuntime,
-    Webview2,
 }
 
 impl Dependency {
@@ -88,7 +90,6 @@ impl Dependency {
         match self {
             Self::Rosetta => "rosetta",
             Self::WineRuntime => "wine_runtime",
-            Self::Webview2 => "webview2",
         }
     }
 
@@ -97,7 +98,6 @@ impl Dependency {
         match self {
             Self::Rosetta => "apple_software_update",
             Self::WineRuntime => "wowsilicon_release",
-            Self::Webview2 => "microsoft_evergreen_bootstrapper",
         }
     }
 }

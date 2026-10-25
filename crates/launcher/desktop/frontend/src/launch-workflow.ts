@@ -26,7 +26,7 @@ export const jobErrorFailure:Readonly<Record<string,FailureCode>>={unsupported_s
   busy:'operation_busy',unknown_operation:'status_stale',identity_conflict:'identity_conflict',recovery_required:'recovery_required',
   persistence_uncertain:'persistence_uncertain',manifest_unavailable:'manifest_unreachable',invalid_manifest:'manifest_invalid',signing_key_unavailable:'signing_key_unavailable',prerequisites_missing:'prerequisites_missing'};
 // A known native refusal keeps its failure code; anything else (a thrown value, an unknown string) is transport.
-const refusalCode=(error:unknown):string=>typeof error==='string'&&Object.hasOwn(jobErrorFailure,error)?jobErrorFailure[error]!:'transport';
+export const refusalCode=(error:unknown):FailureCode|'transport'=>typeof error==='string'&&Object.hasOwn(jobErrorFailure,error)?jobErrorFailure[error]!:'transport';
 export const launchBridgeLayer=(invoke:(request:Request)=>Promise<unknown>)=>Layer.succeed(LaunchBridge,{
   invoke:(request)=>Effect.tryPromise({try:()=>invoke(request),catch:error=>{
     if(error!=='launcher_too_old')reportUiEvent('launch','invoke_failed',uiCode(error));

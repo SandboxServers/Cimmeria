@@ -1,6 +1,6 @@
 import {Context,Data,Effect,Layer,Schema} from 'effect';
 import {FailureCode} from './failure-codes';
-import {jobErrorFailure} from './launch-workflow';
+import {refusalCode} from './launch-workflow';
 import {reportUiEvent,uiCode,type UiArea} from './ui-event';
 // The preflight report (C-PD4), mirroring the Rust `preflight::Report` field for field.
 export const PreflightOperation=Schema.Literals(['play','install','repair']);
@@ -21,7 +21,6 @@ export class PreflightFailure extends Data.TaggedError('PreflightFailure')<{read
 export class PreflightBridge extends Context.Service<PreflightBridge,{invoke:(request:Request)=>Effect.Effect<Report,PreflightFailure>}>()('launcher/PreflightBridge') {}
 // The guarded operation's screen names a decode failure (no `preflight` UI area exists).
 const area:Record<PreflightOperation,UiArea>={play:'launch',install:'install',repair:'repair'};
-const refusalCode=(error:unknown):FailureCode|'transport'=>typeof error==='string'&&Object.hasOwn(jobErrorFailure,error)?jobErrorFailure[error]!:'transport';
 export const preflightBridgeLayer=(invoke:(request:Request)=>Promise<unknown>)=>Layer.succeed(PreflightBridge,{
   invoke:(request)=>Effect.tryPromise({try:()=>invoke(request),catch:error=>{const code=refusalCode(error);if(code==='transport')reportUiEvent(area[request.operation],'preflight_invoke_failed',uiCode(error));return new PreflightFailure({code});}}).pipe(
     Effect.flatMap(value=>decodeReport(value).pipe(Effect.mapError(()=>{reportUiEvent(area[request.operation],'preflight_decode_failed','schema');return new PreflightFailure({code:'schema'});}))),
