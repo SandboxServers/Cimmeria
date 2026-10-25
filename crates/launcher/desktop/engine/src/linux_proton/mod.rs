@@ -8,6 +8,8 @@
 
 pub mod discovery;
 pub mod environment;
+pub mod invocation;
 pub mod paths;
 pub mod prefix;
+pub mod setup;
 mod vdf;
