@@ -70,7 +70,10 @@ pub fn steam_roots(home: &Path) -> Option<SteamRoots> {
     let folders = client.join("steamapps").join("libraryfolders.vdf");
     if let Ok(text) = std::fs::read_to_string(folders) {
         for path in vdf::values(&text, "path") {
-            if let Some(library) = existing_dir(Path::new(&*path)) {
+            if let Some(library) = Some(Path::new(&*path))
+                .filter(|p| p.is_absolute())
+                .and_then(existing_dir)
+            {
                 if !libraries.contains(&library) {
                     libraries.push(library);
                 }

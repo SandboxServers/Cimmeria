@@ -207,6 +207,21 @@ fn runtime_resolves_when_installed_and_is_none_otherwise() {
     assert_eq!(runtime("ge:GE-Proton11-11-x86_64"), Some(entry));
     assert_eq!(runtime("valve:Proton 9.0 (Beta)"), None);
     assert_eq!(runtime("ge:GE-Proton7-38"), None);
+    fs::remove_file(
+        roots
+            .client
+            .join("steamapps/common/SteamLinuxRuntime_4/_v2-entry-point"),
+    )
+    .unwrap();
+    let found = discover(&roots, &system);
+    assert_eq!(
+        found
+            .iter()
+            .find(|i| i.id == "ge:GE-Proton11-11-x86_64")
+            .unwrap()
+            .runtime,
+        None
+    );
 }
 
 #[test]
@@ -246,4 +261,41 @@ fn vdf_values_read_every_depth_and_skip_comments() {
     );
     assert_eq!(vdf::values(text, "4183110"), vec!["123"]);
     assert!(vdf::values(text, "missing").is_empty());
+}
+
+#[test]
+fn the_first_folder_wins_when_two_share_a_directory_name() {
+    let (_tmp, roots, system) = fixture();
+    proton(&system.join("GE-Proton7-38"), "1 GE-Proton7-38", "1628350");
+    let found = discover(&roots, &system);
+    assert_eq!(found.len(), 7);
+    let kept = found.iter().find(|i| i.id == "ge:GE-Proton7-38").unwrap();
+    assert_eq!(kept.version, "1680000000 GE-Proton7-38");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_folder_reached_through_a_symlink_is_listed_once() {
+    let (_tmp, roots, system) = fixture();
+    let real = roots.client.join("compatibilitytools.d/GE-Proton7-38");
+    std::os::unix::fs::symlink(&real, system.join("GE-Proton7-38-link")).unwrap();
+    assert_eq!(discover(&roots, &system).len(), 7);
+}
+
+#[test]
+fn other_builds_with_equal_numbers_rank_by_build_stamp_then_id() {
+    let (_tmp, roots, system) = fixture();
+    // No digits in either name, so only the stamp separates them; the older
+    // stamp has the smaller id, so an id-only order would put it first.
+    proton(&system.join("Alpha"), "10 Alpha", "1628350");
+    proton(&system.join("Zeta"), "20 Zeta", "1628350");
+    let found = discover(&roots, &system);
+    let others: Vec<&str> = ids(&found)
+        .into_iter()
+        .filter(|id| id.starts_with("other:"))
+        .collect();
+    assert_eq!(
+        others,
+        vec!["other:Proton 9.0 (Beta)", "other:Zeta", "other:Alpha"]
+    );
 }
