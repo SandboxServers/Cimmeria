@@ -18,11 +18,14 @@ use crate::audit::{emit_login_event, LoginOutcome};
 use crate::credential_redaction::CredentialPrefix;
 
 use super::credentials::{
-    classify_credential, validate_credentials, AuthCredError, CredentialGateError,
+    classify_credential, validate_credentials, AuthCredError, ClientCredential, CredentialGateError,
 };
 use super::soap_request::{parse_login_request, parse_server_selection};
 use super::soap_response::{login_error, login_success_xml, select_error, server_location_xml};
-use super::{HandlerState, PendingLogin, SessionRecord, TlsConn, PROTOCOL_DIGEST, SESSION_TTL};
+use super::ticket_login::ticket_account;
+use super::{
+    HandlerState, PendingLogin, SessionRecord, TicketCheck, TlsConn, PROTOCOL_DIGEST, SESSION_TTL,
+};
 
 // ── Axum handlers ────────────────────────────────────────────────────────────
 
@@ -113,13 +116,15 @@ pub(super) async fn handle_user_auth(
     }
     // Validate the account name before it reaches the span or any audit row:
     // it is client-controlled, and after XML decoding a control character or
-    // newline can arrive as `&#10;` as well as raw. Log only its length.
+    // newline can arrive as `&#10;` as well as raw. Log only its length. The
+    // client and `account_name` allow ASCII only; a Unicode letter reached the
+    // audit row before.
     let name_ok = req.account_name.len() >= 3
         && req.account_name.len() <= 20
         && req
             .account_name
             .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '-');
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
     if !name_ok {
         tracing::Span::current().record("result", "bad_request");
         tracing::info!(
@@ -160,13 +165,66 @@ pub(super) async fn handle_user_auth(
         );
     }
 
+    // A launch ticket (CT-21) arrives as the legacy SHA-1 credential. Over TLS a
+    // live match is the account. Over plain HTTP the ticket has already crossed
+    // the wire, so it is revoked and the login refused.
+    let ticket = match credential {
+        ClientCredential::LegacySha1Hex(hash) => {
+            state
+                .launch_tickets
+                .verify(&req.account_name, hash, Instant::now())
+        }
+        ClientCredential::Plaintext(_) => TicketCheck::NoMatch,
+    };
+    let ticket_id = match ticket {
+        TicketCheck::Valid { account_id } if !over_tls => {
+            state.launch_tickets.revoke_account(account_id);
+            tracing::warn!(
+                account_id,
+                reason = "ticket_requires_tls",
+                "launch ticket presented over plain HTTP; ticket revoked"
+            );
+            audit!(LoginOutcome::TicketRequiresTls, id = account_id);
+            return login_error(4, "The account name or password is incorrect.");
+        }
+        TicketCheck::Valid { account_id } => Some(account_id),
+        TicketCheck::NoMatch => None,
+    };
+
     // Credential check.
-    // If DB is available, validate against the account table.
+    // A matching ticket names the account. Otherwise, if DB is available,
+    // validate against the account table.
     // Only in developer mode with NO database configured are valid-format
     // credentials accepted without a check. A configured database whose pool
     // is missing refuses every login (fail closed).
-    let (account_id, access_level, test_account): (u32, u32, bool) = if let Some(ref db) = state.db
+    let (account_id, access_level, test_account): (u32, u32, bool) = if let Some(ticket_id) =
+        ticket_id
     {
+        match ticket_account(
+            state.db.as_deref(),
+            state.developer_mode,
+            state.db_configured,
+            ticket_id,
+        )
+        .await
+        {
+            Ok(acct) => acct,
+            Err(AuthCredError::InvalidCredentials) => {
+                audit!(LoginOutcome::InvalidCredentials);
+                return login_error(4, "The account name or password is incorrect.");
+            }
+            Err(AuthCredError::AccountDisabled) => {
+                state.launch_tickets.revoke_account(ticket_id);
+                audit!(LoginOutcome::AccountDisabled);
+                return login_error(5, "This account has been suspended.");
+            }
+            Err(AuthCredError::DbError(e)) => {
+                tracing::error!(account_id = ticket_id, error = %e, "ticket account lookup failed");
+                audit!(LoginOutcome::DbError);
+                return login_error(10, "A request to the database server failed.");
+            }
+        }
+    } else if let Some(ref db) = state.db {
         match validate_credentials(db, &req.account_name, credential).await {
             Ok(acct) => (acct.account_id, acct.access_level, acct.test_account),
             Err(AuthCredError::InvalidCredentials) => {
@@ -263,7 +321,15 @@ pub(super) async fn handle_user_auth(
         ip = %client_ip,
         "Phase 1 success"
     );
-    audit!(LoginOutcome::Success, id = account_id);
+    // One audit row per login: a ticket login is recorded as `launch_ticket`.
+    audit!(
+        if ticket_id.is_some() {
+            LoginOutcome::LaunchTicket
+        } else {
+            LoginOutcome::Success
+        },
+        id = account_id
+    );
 
     let xml = login_success_xml(account_id, &state.shards);
     (

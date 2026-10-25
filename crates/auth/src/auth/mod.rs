@@ -14,11 +14,13 @@ pub mod client_telemetry;
 mod credentials;
 mod handlers;
 pub mod launch_ticket;
+mod password_check;
 mod password_hash;
 mod service;
 mod session_kind;
 mod soap_request;
 mod soap_response;
+mod ticket_login;
 mod tls;
 
 #[cfg(test)]
@@ -37,9 +39,13 @@ mod handlers_tests;
 mod identity_schema_live_db;
 
 #[cfg(test)]
+mod handlers_ticket_tests;
+
+#[cfg(test)]
 mod tls_smoke;
 
 pub use launch_ticket::{LaunchTicketStore, MintedTicket, TicketCheck};
+pub use password_check::{verify_account_password, PasswordCheck};
 pub use service::AuthService;
 pub use session_kind::{session_kind, SESSION_KIND_LAB, SESSION_KIND_PLAYER};
 pub use tls::{TlsCertStore, TlsError, TlsListener};
@@ -215,6 +221,8 @@ struct HandlerState {
     /// fallback login is only for a server with no database configured.
     db_configured: bool,
     db: Option<Arc<PgPool>>,
+    /// Live launch tickets (CT-21), shared with `AuthService`.
+    launch_tickets: Arc<LaunchTicketStore>,
     login_tx: Option<broadcast::Sender<LoginEvent>>,
     login_buffer: Option<LoginEventBuffer>,
 }
