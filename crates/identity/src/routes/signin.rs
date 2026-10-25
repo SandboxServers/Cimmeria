@@ -160,11 +160,20 @@ async fn start_authorize(
     if query.code_challenge_method.as_deref() != Some("S256") {
         return Err(ApiError::InvalidRequest);
     }
-    // `intent` comes from `link/start` (CT-30); until then it is refused.
-    if query.intent.is_some() {
-        return Err(ApiError::InvalidRequest);
-    }
     state.ctx.limit(Bucket::Authorize, ip, now)?;
+    // `intent` comes from `link/start`: a known one is spent here, an unknown
+    // one is refused.
+    let intent = match query.intent.as_deref() {
+        Some(token) => Some(
+            state
+                .ctx
+                .stores
+                .intents
+                .take(token, now)
+                .ok_or(ApiError::InvalidRequest)?,
+        ),
+        None => None,
+    };
 
     let running = state
         .ctx
@@ -193,7 +202,7 @@ async fn start_authorize(
             launcher_challenge: launcher_challenge.to_owned(),
             pkce_verifier: verifier,
             nonce: nonce.clone(),
-            intent: None,
+            intent,
         },
         now,
     );
@@ -428,7 +437,7 @@ fn with_reason(mut response: Response, reason: &'static str) -> Response {
 }
 
 /// Records the span's outcome, reason and latency from the response.
-fn record_outcome(span: &tracing::Span, started: Instant, response: &Response) {
+pub(super) fn record_outcome(span: &tracing::Span, started: Instant, response: &Response) {
     let status = response.status();
     let reason = response.extensions().get::<Reason>().map(|r| r.0);
     let outcome = if reason.is_some() || status.is_client_error() || status.is_server_error() {
@@ -447,7 +456,7 @@ fn record_outcome(span: &tracing::Span, started: Instant, response: &Response) {
 /// A `redirect_uri` the launcher may use: `http://127.0.0.1:<port>/cb` or
 /// `http://[::1]:<port>/cb`, port 1024 to 65535, with no query, fragment or
 /// userinfo. Anything else is refused, so the route is no open redirect.
-fn valid_redirect_uri(raw: &str) -> bool {
+pub(super) fn valid_redirect_uri(raw: &str) -> bool {
     let Ok(url) = Url::parse(raw) else {
         return false;
     };
@@ -468,12 +477,12 @@ fn valid_redirect_uri(raw: &str) -> bool {
 }
 
 /// The launcher's `state`: 16 to 128 characters of `[A-Za-z0-9_-]`.
-fn valid_state(raw: &str) -> bool {
+pub(super) fn valid_state(raw: &str) -> bool {
     (16..=128).contains(&raw.len()) && raw.bytes().all(is_b64url)
 }
 
 /// A PKCE challenge: exactly 43 base64url characters (S256 of 32 bytes).
-fn valid_challenge(raw: &str) -> bool {
+pub(super) fn valid_challenge(raw: &str) -> bool {
     raw.len() == 43 && raw.bytes().all(is_b64url)
 }
 

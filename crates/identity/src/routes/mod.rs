@@ -5,10 +5,13 @@
 //! kill switch, and bodies are capped at 8 KiB. The dev-mock route exists only
 //! in developer mode.
 
+pub mod account;
+pub mod bearer;
 pub mod ctx;
 pub mod error;
 pub mod link;
 pub mod signin;
+pub mod ticket;
 pub mod token;
 
 use std::net::SocketAddr;
@@ -17,7 +20,7 @@ use std::time::Instant;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Request, State};
 use axum::middleware::{from_fn_with_state, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::Router;
 use cimmeria_auth::AuthRouteDeps;
 
@@ -42,7 +45,13 @@ pub fn router(deps: AuthRouteDeps, ctx: IdentityCtx) -> Router {
         .route("/token", post(token::token))
         .route("/logout", post(token::logout))
         .route("/link/new", post(link::new))
-        .route("/link/existing", post(link::existing));
+        .route("/link/existing", post(link::existing))
+        .route("/link/start", post(account::link_start))
+        .route("/account", get(account::get_account))
+        .route("/identities/{identity_id}", delete(account::unlink))
+        .route("/launch-ticket", post(ticket::mint))
+        .route("/launch-ticket/heartbeat", post(ticket::heartbeat))
+        .route("/launch-ticket/end", post(ticket::end));
     if developer_mode {
         app = app.route(
             "/dev-mock/authorize",

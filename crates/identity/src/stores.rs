@@ -40,6 +40,9 @@ pub const ACCESS_LIFE: Duration = Duration::from_secs(15 * 60);
 /// How long a link grant can be redeemed at `/link/*`.
 pub const LINK_GRANT_LIFE: Duration = Duration::from_secs(10 * 60);
 
+/// How long a `/link/start` intent can be spent at `/authorize` (C6).
+pub const INTENT_LIFE: Duration = Duration::from_secs(10 * 60);
+
 /// A `/link/start` intent: the signed-in account the new identity attaches to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LinkIntent {
@@ -325,6 +328,33 @@ impl LinkGrants {
     }
 }
 
+/// Link intents: the token `link/start` returns, which `/authorize` spends to
+/// attach the callback's identity to an account (C6). Single use.
+#[derive(Default)]
+pub struct IntentStore {
+    by_hash: Mutex<HashMap<[u8; 32], (LinkIntent, Instant)>>,
+}
+
+impl IntentStore {
+    /// Stores `intent` under a fresh token and returns the token. Only its hash
+    /// is kept.
+    pub fn issue(&self, intent: LinkIntent, now: Instant) -> String {
+        let token = random_b64url(32);
+        let mut by_hash = locked(&self.by_hash);
+        by_hash.retain(|_, (_, issued)| live(*issued, now, INTENT_LIFE));
+        make_room(&mut by_hash, STORE_CAP, |(_, issued)| *issued);
+        by_hash.insert(hash_of(&token), (intent, now));
+        token
+    }
+
+    /// Removes and returns the intent behind `token`, while it is inside
+    /// [`INTENT_LIFE`]. The token is single use.
+    pub fn take(&self, token: &str, now: Instant) -> Option<LinkIntent> {
+        let (intent, issued) = locked(&self.by_hash).remove(&hash_of(token))?;
+        live(issued, now, INTENT_LIFE).then_some(intent)
+    }
+}
+
 /// The sign-in state the routes share: every store, built once.
 #[derive(Default)]
 pub struct Stores {
@@ -336,6 +366,8 @@ pub struct Stores {
     pub access: AccessTokens,
     /// Link grants of a `needs_link` answer.
     pub grants: LinkGrants,
+    /// Link intents of `/link/start`, spent at `/authorize`.
+    pub intents: IntentStore,
 }
 
 impl Stores {
