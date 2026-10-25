@@ -347,7 +347,7 @@ mod tests {
                 machine_id: "m".into(),
                 launcher_version: "0.1.0".into(),
                 session_started_at_ms: 1_700_000_000_000,
-                endpoint_policy: EndpointPolicy::default(),
+                endpoint_policy: EndpointPolicy,
                 queue_dir: dir.path().to_path_buf(),
             },
         )

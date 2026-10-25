@@ -118,8 +118,8 @@ cimmeria-server (container `cimmeria`, or native)
 ```
 
 Player telemetry does not take a separate path into SigNoz. Opted-in
-launchers upload to the game server's login port
-(`:8081/api/telemetry/*`), and the server replays those rows into the
+launchers upload to the game server's telemetry routes
+(`https://<name>/api/telemetry/*` on 443 from LI-09 on, the login port `:8081` for older launchers), and the server replays those rows into the
 same collector over `signoz-net` as `service.name = cimmeria-client`.
 
 The OpenTelemetry layer is opt-in: if `OTEL_EXPORTER_OTLP_ENDPOINT` is

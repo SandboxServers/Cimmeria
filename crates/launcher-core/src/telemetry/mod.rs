@@ -456,7 +456,7 @@ mod tests {
             },
             dir.path(),
             "0.1.0",
-            endpoint::EndpointPolicy::default(),
+            endpoint::EndpointPolicy,
             dir.path(),
         )
         .await
@@ -497,7 +497,7 @@ mod tests {
             request(),
             dir.path(),
             "0.1.0",
-            endpoint::EndpointPolicy::default(),
+            endpoint::EndpointPolicy,
             dir.path(),
         )
         .await
@@ -540,7 +540,7 @@ mod tests {
             request(),
             dir.path(),
             "0.1.0",
-            endpoint::EndpointPolicy::default(),
+            endpoint::EndpointPolicy,
             dir.path(),
         )
         .await
@@ -569,7 +569,7 @@ mod tests {
             machine_id: "m".into(),
             launcher_version: "0.1.0".into(),
             session_started_at_ms: 1_700_000_000_000,
-            endpoint_policy: endpoint::EndpointPolicy::default(),
+            endpoint_policy: endpoint::EndpointPolicy,
             queue_dir: dir.to_path_buf(),
         }
     }
