@@ -49,6 +49,7 @@ CREATE TRIGGER account_password_guard BEFORE INSERT OR UPDATE OF password, passw
 -- Enforces "no password on an account with a linked identity".
 CREATE TRIGGER account_identity_password_guard BEFORE INSERT ON account_identity
     FOR EACH ROW EXECUTE FUNCTION account_identity_password_guard();
+
 --
 -- Name: sgw_player_before_delete_auctions; Type: TRIGGER; Schema: public; Owner: -
 --
