@@ -68,7 +68,7 @@ bridge, so the server sees a non-loopback peer even for a launcher on the
 same machine, and row 3 does not apply. With no env value and no https proxy
 the mint answers 503 until you set `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` to an
 https URL you serve. A plain-http value still works as an explicit override,
-with a WARN (below).
+with a WARN (below); launchers from LI-09 on refuse it (`game_session_mint_failed`, `reason = endpoint_refused`), so only older launchers upload to it.
 
 ### Log rows the resolution writes
 
@@ -332,7 +332,7 @@ this list and stop at the first row that explains it.
 3. **The mint INFO row.** `Minted dev-session telemetry token` with
    `upload_endpoint_source` and `upload_endpoint_https = true` proves the
    launcher was told where to upload. If `_https = false`, the env override
-   is plain http.
+   is plain http, and launchers from LI-09 on refuse it.
 4. **An upload refusal.** `event = 'upload_refused'` or `'upload_auth_refused'`
    on `launcher.ingest`, with its `reason` (`rate_limited`, `token_expired`,
    `body_too_large`, `kill_switch`, ...).

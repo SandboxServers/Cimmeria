@@ -34,10 +34,10 @@ fn other_login_servers_keep_their_address() {
     );
 }
 
-/// An IP or LAN login server cannot be upgraded, so its mint is refused rather than
+/// An IP or single-word login server cannot be upgraded, so its mint is refused rather than
 /// sent in plaintext (D-LI16).
 #[test]
-fn an_ip_or_lan_login_server_is_refused_not_sent_in_plaintext() {
+fn an_ip_or_single_word_login_server_is_refused_not_sent_in_plaintext() {
     for server in ["http://192.168.1.10:8081", "http://sgwserver:8081"] {
         let policy = EndpointPolicy::from_login_servers([server]);
         assert!(

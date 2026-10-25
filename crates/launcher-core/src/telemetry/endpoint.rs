@@ -14,8 +14,9 @@
 //! The owner withdrew the 2026-09-29 exception on 2026-10-24
 //! (launcher-linux-install-telemetry D-LI11). Game telemetry reaches an
 //! http login server on a DNS name over https on 443, under the same
-//! name ([`https_upgrade_origin`]). An IP or LAN login server gets no
-//! game telemetry.
+//! name ([`https_upgrade_origin`]). An IP or single-word login server gets no
+//! game telemetry. A dotted name, a LAN name such as `nas.lan` included, is
+//! tried over https, and a failed connection simply sends nothing.
 
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -164,7 +165,7 @@ mod tests {
     }
 
     /// Revert test for the policy (D-LI11): an http login server no longer vouches
-    /// for plain http to its host and port, on any path or port, nor a LAN name.
+    /// for plain http to its host and port, on any path or port, nor a single-word name.
     #[test]
     fn a_login_server_never_vouches_for_plain_http() {
         let policy = with_login_servers(&["http://play.cimmeria.app:8081", "http://lan-server"]);

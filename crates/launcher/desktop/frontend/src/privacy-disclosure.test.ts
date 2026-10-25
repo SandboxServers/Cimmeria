@@ -51,7 +51,7 @@ test('privacy distinguishes identities, raw logs, consent withdrawal and network
   assert.match(text('privacy-identity'), /HTTP only to loopback \(this machine\); there is no HTTP fallback/);
   assert.doesNotMatch(text('privacy-identity'), /login-server host\/port/);
   assert.match(text('privacy-identity'), /first effective login server only; later entries are not searched/);
-  assert.match(text('privacy-identity'), /cannot be upgraded \(an IP address, localhost or a LAN name\), a later HTTPS entry does not enable sending/);
+  assert.match(text('privacy-identity'), /cannot be upgraded \(an IP address, localhost or a single-word name\), a later HTTPS entry does not enable sending/);
   assert.match(text('privacy-identity'), /omit the receiving HTTP caller's connection address/);
   assert.match(text('privacy-storage'), /not a verified live retention guarantee/);
   assert.match(text('privacy-exclusions'), /No webcam or microphone recording/);
