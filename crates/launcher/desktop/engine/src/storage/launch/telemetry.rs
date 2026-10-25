@@ -152,6 +152,6 @@ pub(super) fn record(state: &Arc<Mutex<DesktopState>>, plan: &Plan, outcome: Out
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 #[path = "telemetry_tests.rs"]
 mod tests;

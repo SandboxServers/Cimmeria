@@ -35,7 +35,6 @@ fn proton_plan() -> (tempfile::TempDir, Plan) {
 }
 
 #[test]
-#[cfg(target_os = "linux")]
 fn a_proton_play_tags_its_session_proton() {
     let (_root, plan) = proton_plan();
     assert_eq!(session_tags(&plan), ["desktop-launcher", "linux", "proton"]);
