@@ -166,6 +166,57 @@ fn a_payload_file_still_used_after_launcher_exit_defers_cleanup_until_a_later_st
     let _retry = prepare(&cache, &entries(b"new")).unwrap();
     assert!(!old_root.exists());
 }
+#[cfg(target_os = "linux")]
+fn with_worker(bytes: &'static [u8]) -> Vec<Entry> {
+    let mut entries = entries(bytes);
+    entries.push(Entry {
+        name: LINUX_WORKER,
+        sha256: Box::leak(hex(Sha256::digest(bytes)).into_boxed_str()),
+        bytes,
+    });
+    entries
+}
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_worker_with_a_wrong_digest_is_refused_and_nothing_is_extracted() {
+    let root = tempfile::tempdir().unwrap();
+    let cache = cache(&root);
+    let mut entries = with_worker(b"x");
+    entries.last_mut().unwrap().sha256 = "0".repeat(64).leak();
+    assert!(prepare(&cache, &entries).is_err());
+    assert!(!cache.exists());
+}
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_worker_is_extracted_and_swept_with_its_old_version() {
+    let root = tempfile::tempdir().unwrap();
+    let cache = cache(&root);
+    let old = prepare(&cache, &with_worker(b"old")).unwrap();
+    assert_eq!(
+        fs::read(old.root().join("windows").join(LINUX_WORKER)).unwrap(),
+        b"old"
+    );
+    let old_root = old.root().to_owned();
+    drop(old);
+    let _new = prepare(&cache, &with_worker(b"new")).unwrap();
+    assert!(!old_root.exists());
+}
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_payload_directories_are_0700_and_files_0644() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    let cache = cache(&root);
+    let lease = prepare(&cache, &with_worker(b"x")).unwrap();
+    let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(lease.root()), 0o700);
+    let windows = lease.root().join("windows");
+    assert_eq!(mode(&windows), 0o700);
+    for name in NAMES.iter().chain([&LINUX_WORKER]) {
+        assert_eq!(mode(&windows.join(name)), 0o644);
+    }
+    assert_eq!(mode(&lease.root().join(".owner")), 0o644);
+}
 #[test]
 fn failure_logging_uses_closed_codes_without_paths_or_error_strings() {
     let root = tempfile::tempdir().unwrap();

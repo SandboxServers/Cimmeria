@@ -8,7 +8,7 @@ mod adoption_picker;
 mod build_payload;
 mod host;
 mod panic_hook;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 mod payload_startup;
 #[cfg(test)]
 mod release_version;
@@ -547,7 +547,7 @@ async fn choose_seed_archive(
 const DEVELOPMENT_TITLE: &str = "Cimmeria Launcher \u{2014} development";
 
 fn main() {
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     payload_startup::headless_probe();
     #[cfg(windows)]
     webview2::ensure_runtime_or_exit();
@@ -605,8 +605,10 @@ fn main() {
             let host = host.with_bundled_helper(app.path().resource_dir()?);
             let app_handle = app.handle().clone();
             let resource_root = app.path().resource_dir()?;
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "linux"))]
             let resource_root = payload_startup::resources(app, resource_root)?;
+            #[cfg(target_os = "linux")]
+            let host = host.with_prerequisite_worker(&resource_root);
             let host = host
                 .with_launch_resources(resource_root)
                 .with_compiled_updater_config()
