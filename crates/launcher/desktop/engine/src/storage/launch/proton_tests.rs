@@ -8,7 +8,20 @@ use std::ffi::{OsStr, OsString};
 use std::os::unix::fs::PermissionsExt;
 
 const VERSION: &str = "1792432585 GE-Proton11-11";
-const SETUP_OK: &str = "#!/bin/sh\nmkdir -p \"$STEAM_COMPAT_DATA_PATH/pfx\"\n: > \"$STEAM_COMPAT_DATA_PATH/pfx/system.reg\"\n";
+/// Creates the prefix for `run wineboot.exe`, and answers the PhysX worker's
+/// `runinprefix` with a probe whose SDK initialized (PP-08), echoing its ids.
+const SETUP_OK: &str = concat!(
+    "#!/bin/sh\n",
+    "if [ \"$1\" = runinprefix ]; then\n",
+    "req=$(cat)\n",
+    "op=$(printf '%s' \"$req\" | sed 's/.*\"operation_id\":\"\\([^\"]*\\)\".*/\\1/')\n",
+    "gen=$(printf '%s' \"$req\" | sed 's/.*\"prefix_generation\":\"\\([^\"]*\\)\".*/\\1/')\n",
+    "printf '%s' '{\"schema_version\":1,\"operation_id\":\"'\"$op\"'\",\"prefix_generation\":\"'\"$gen\"'\",\"result\":{\"state\":\"probed\",\"report\":{\"schema_version\":2,\"architecture\":\"x86\",\"activation_context\":{\"state\":\"loaded\"},\"modules\":[{\"component\":\"vc80_crt\",\"result\":{\"state\":\"loaded\"}},{\"component\":\"vc80_cpp\",\"result\":{\"state\":\"loaded\"}},{\"component\":\"d3dx9_40\",\"result\":{\"state\":\"loaded\"}},{\"component\":\"xinput_1_3\",\"result\":{\"state\":\"loaded\"}},{\"component\":\"physx_loader\",\"result\":{\"state\":\"loaded\"}}],\"physx_sdk\":{\"state\":\"initialized_and_released\"},\"game_started\":false}}}'\n",
+    "exit 0\n",
+    "fi\n",
+    "mkdir -p \"$STEAM_COMPAT_DATA_PATH/pfx\"\n",
+    ": > \"$STEAM_COMPAT_DATA_PATH/pfx/system.reg\"\n",
+);
 
 /// The fixture's DirectX step. It passes only once setup has run (`system.reg`
 /// exists), so a call moved in front of `setup::ensure` fails every success test.
@@ -41,6 +54,8 @@ fn fixture(script: &str) -> Fixture {
     let (root, _state, intent) =
         fixture_with_extraction(ExtractionBackend::Native, &"a".repeat(64), 1);
     let base = root.path().canonicalize().unwrap();
+    // The PhysX worker sits beside the launch helper (PP-08); the fake proton answers for it.
+    std::fs::write(base.join("cimmeria-prerequisite-worker.exe"), b"").unwrap();
     let home = base.join("home");
     let proton_root = home.join(".local/share/Steam/compatibilitytools.d/GE-Proton11-11");
     std::fs::create_dir_all(&proton_root).unwrap();
@@ -206,6 +221,36 @@ fn a_failed_setup_is_proton_setup_failed() {
 fn a_directx_failure_is_proton_setup_failed() {
     let mut f = fixture(SETUP_OK);
     f.search.directx = directx_refuses;
+    assert_eq!(
+        run(&f, &f.plan).map(|_| ()),
+        Err(PrepareError(FailureCode::ProtonSetupFailed))
+    );
+}
+
+/// Setup succeeds, but the PhysX worker exits without a result.
+const PHYSX_REFUSES: &str = concat!(
+    "#!/bin/sh\n",
+    "if [ \"$1\" = runinprefix ]; then\n",
+    "cat > /dev/null\n",
+    "exit 1\n",
+    "fi\n",
+    "mkdir -p \"$STEAM_COMPAT_DATA_PATH/pfx\"\n",
+    ": > \"$STEAM_COMPAT_DATA_PATH/pfx/system.reg\"\n",
+);
+
+#[test]
+fn a_physx_failure_is_proton_setup_failed() {
+    let f = fixture(PHYSX_REFUSES);
+    assert_eq!(
+        run(&f, &f.plan).map(|_| ()),
+        Err(PrepareError(FailureCode::ProtonSetupFailed))
+    );
+}
+
+#[test]
+fn a_missing_prerequisite_worker_is_proton_setup_failed() {
+    let f = fixture(SETUP_OK);
+    std::fs::remove_file(f.base.join("cimmeria-prerequisite-worker.exe")).unwrap();
     assert_eq!(
         run(&f, &f.plan).map(|_| ()),
         Err(PrepareError(FailureCode::ProtonSetupFailed))
