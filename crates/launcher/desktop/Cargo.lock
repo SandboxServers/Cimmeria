@@ -592,6 +592,7 @@ dependencies = [
  "ed25519-dalek",
  "flate2",
  "futures-util",
+ "lzxd",
  "miniz_oxide 0.8.9",
  "reqwest 0.12.28",
  "serde",
@@ -2797,6 +2798,12 @@ dependencies = [
  "byteorder",
  "thiserror 1.0.69",
 ]
+
+[[package]]
+name = "lzxd"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c17f346186eccb574ba5581acefc514f0c70a642db4f96e245034a0a158a7168"
 
 [[package]]
 name = "markup5ever"

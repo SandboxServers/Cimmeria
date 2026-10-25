@@ -22,6 +22,7 @@ mod format;
 mod mszip;
 mod positional;
 mod schedule;
+pub(super) mod single;
 
 #[cfg(test)]
 pub(super) mod fixture;

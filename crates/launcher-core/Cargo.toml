@@ -64,6 +64,9 @@ flate2 = "1"
 # MSZIP blocks of the installer cabinet set off Windows
 # (src/unpack/cab_portable/mszip.rs). Already flate2's default backend.
 miniz_oxide = "0.8"
+# LZX folders of the installer cabinet set, read one member at a time for
+# the native DirectX prerequisites (src/unpack/cab_portable/single.rs).
+lzxd = "0.2"
 # RAR seeds: the archived 2009 client is a RAR holding the original
 # installer's cabinet set (see src/unpack/). The crate is MIT/Apache and
 # builds RARLAB's UnRAR C++ source, whose licence allows extraction.

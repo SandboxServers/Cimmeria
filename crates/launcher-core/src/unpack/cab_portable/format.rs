@@ -50,6 +50,8 @@ pub(super) struct Folder {
     pub data_offset: u32,
     pub blocks: u16,
     pub compression: Compression,
+    /// `typeCompress` as written; the LZX window size lives in its high bits.
+    pub raw_type: u16,
 }
 
 #[derive(Debug, Clone)]
@@ -157,10 +159,12 @@ pub(super) fn parse<R: Read + Seek>(source: R) -> Result<Cabinet, UnpackError> {
         let mut f = [0u8; 8];
         read_exact(&mut r, &mut f, "folder table")?;
         r.seek_relative(i64::from(folder_reserve))?;
+        let raw_type = u16_at(&f, 6);
         folders.push(Folder {
             data_offset: u32_at(&f, 0),
             blocks: u16_at(&f, 4),
-            compression: Compression::from_type(u16_at(&f, 6)),
+            compression: Compression::from_type(raw_type),
+            raw_type,
         });
     }
 
