@@ -42,7 +42,7 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
  const confirmRemove = button('Remove password and link');
  const keepPassword = button('Keep password');
  const urlBox = make('label', 'Copy this address into your browser:');
- const urlField = make('input'); urlField.readOnly = true; urlBox.append(urlField);
+ const urlField = make('input'); urlField.setAttribute('readonly', ''); urlBox.append(urlField);
  linkBox.append(warning, createNew, account.wrap, password.wrap, linkPassword, code.wrap, codeHint, linkCode, confirmRemove, keepPassword);
  panel.textContent = '';
  panel.append(heading, status, stateLine, signupNote, providers, cancel, linkBox, signOut, urlBox);
@@ -98,7 +98,7 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
   current = next;
   setStatus(next.play_refusal ? playRefusalText(next.play_refusal) : '');
   render();
-  document.dispatchEvent(new CustomEvent('cimmeria-sign-in', {detail: next}));
+  document.dispatchEvent(new (document.defaultView?.CustomEvent ?? CustomEvent)('cimmeria-sign-in', {detail: next}));
  };
  // A failed command: the text, and the address to copy for a browser that did not open. Returns the ui code.
  const fail = (failure: unknown, provider?: string): string => {
