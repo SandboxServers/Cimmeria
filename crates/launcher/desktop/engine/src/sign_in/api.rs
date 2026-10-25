@@ -56,6 +56,10 @@ pub struct IdentityView {
     pub identity_id: i64,
     pub provider: String,
     pub display_name: String,
+    /// Epoch milliseconds (UTC), as `GET /account` sends them.
+    pub created_at: i64,
+    /// Epoch milliseconds (UTC), as `GET /account` sends them.
+    pub last_used_at: i64,
 }
 
 /// `POST /link/start` (C6): the provider page to open for adding a method.

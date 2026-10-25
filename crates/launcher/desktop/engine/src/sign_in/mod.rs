@@ -8,11 +8,16 @@
 //! `docs/analysis/client-tls-oidc/design.md`.
 
 pub mod api;
+pub mod commands;
 pub mod discovery;
+pub mod driver;
+pub mod lease;
 pub mod oauth;
 pub mod session;
 pub mod store;
 
+#[cfg(test)]
+mod driver_tests;
 #[cfg(test)]
 mod session_tests;
 #[cfg(test)]
@@ -48,6 +53,26 @@ impl SignInError {
             SignInError::TimedOut => "Sign-in timed out. Try again.",
             SignInError::Server(_) => "The sign-in server refused the request.",
             SignInError::Protocol => "The sign-in server sent a reply the launcher does not use.",
+        }
+    }
+
+    /// The C6 error code of a `Server` failure, or `""` for any other error.
+    /// The text is `code` or `code retry_after=N` (see `session::server_error`).
+    pub fn code(&self) -> &str {
+        match self {
+            SignInError::Server(text) => text.split_whitespace().next().unwrap_or(""),
+            _ => "",
+        }
+    }
+
+    /// The `retry_after` seconds a `rate_limited` failure carries, when it has one.
+    pub fn retry_after(&self) -> Option<u64> {
+        match self {
+            SignInError::Server(text) => text
+                .split_whitespace()
+                .find_map(|part| part.strip_prefix("retry_after="))
+                .and_then(|seconds| seconds.parse().ok()),
+            _ => None,
         }
     }
 }

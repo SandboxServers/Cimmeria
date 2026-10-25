@@ -15,7 +15,7 @@ use super::SignInError;
 use cimmeria_launcher_core::client_setup::login_session::Links;
 
 /// Serialises the tests that read or change `CIMMERIA_LAUNCHER_AUTH_BASE`.
-static ENV_LOCK: Mutex<()> = Mutex::new(());
+pub(super) static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn base_of(server: &MockServer) -> Url {
     Url::parse(&format!("{}/", server.uri())).expect("wiremock URI parses")
