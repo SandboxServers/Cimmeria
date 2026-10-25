@@ -1666,6 +1666,7 @@ dependencies = [
  "cimmeria-common",
  "cimmeria-discord",
  "cimmeria-entity",
+ "cimmeria-identity",
  "cimmeria-lab-mcp",
  "cimmeria-observability",
  "cimmeria-services",

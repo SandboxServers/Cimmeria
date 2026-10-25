@@ -18,6 +18,12 @@
 //! | `AUTH_PROXY_ADDR` | unset | Bind address of the auth reverse-proxy listener, e.g. `0.0.0.0:13480`. For a TLS-terminating reverse proxy only: the proxy must send `X-Forwarded-Proto: https` and `X-Forwarded-For`. It must never be published to the internet. Unparsable values log `reason=bad_auth_proxy_addr` and leave it off. |
 //! | `AUTH_PROXY_TRUSTED_PEERS` | `127.0.0.0/8,::1,172.16.0.0/12` | Comma-separated CIDR networks allowed to send the proxy's `X-Forwarded-*` headers. Any other socket peer is treated as plain HTTP. A list with a bad entry logs `reason=bad_auth_proxy_trusted_peers` and keeps the default. |
 //! | `AUTH_TLS_RELOAD_INTERVAL_SECS` | `30` | How often the background watcher polls the auth TLS cert/key file mtimes and hot-reloads the live config when either changes (e.g. a Let's Encrypt renewal), without restarting the server. `0` disables the watcher. Only active when the TLS listener is configured (cert + key paths set). |
+//! | `CIMMERIA_AUTH_PROVIDERS` | `config/auth-providers.toml` | Path to the sign-in providers file. A missing file means no providers; a file the server refuses (bad TOML, a literal secret, an insecure base URL) stops the server at startup. |
+//! | `CIMMERIA_IDP_DISCORD_SECRET` | unset | Client secret of the `discord` provider. Example of the `CIMMERIA_IDP_<ID>_SECRET` pattern: secrets go only in env, never in the providers file. |
+//! | `CIMMERIA_IDP_GOOGLE_SECRET` | unset | Client secret of the `google` provider. Example of the `CIMMERIA_IDP_<ID>_SECRET` pattern, as above. |
+//! | `CIMMERIA_IDP_DISABLED` | off | Set to `1` to run with no sign-in providers: `/auth/v1/*` answers `503 {"error":"disabled"}`, except `providers` and the launch-ticket routes. |
+//! | `CIMMERIA_IDP_SIGNUP_DISABLED` | off | Set to `1` to close new account creation through sign-in (`signup_open=false`); existing accounts still sign in. |
+//! | `CIMMERIA_SOAP_RELAY_DISABLED` | off | Set to `1` to report `soap_relay=false` on `GET /auth/v1/providers`, so launchers do not use the SOAP relay. |
 //! | `BASE_HOST` | `0.0.0.0` | BaseApp UDP bind address |
 //! | `BASE_EXTERNAL` | `127.0.0.1` | BaseApp address advertised to game clients |
 //! | `BASE_PORT` | `32832` | BaseApp UDP port |
@@ -76,6 +82,7 @@ use cimmeria_services::orchestrator::Orchestrator;
 mod config_env_auth;
 mod db_check;
 mod logging;
+mod login_routes;
 mod otel;
 mod startup_embed;
 
@@ -211,6 +218,7 @@ async fn main() {
     let startup_bind_lines = startup_embed::bind_lines(&config);
 
     tracing::trace!("Creating orchestrator");
+    let developer_mode = config.developer_mode;
     let mut orch = Orchestrator::new(config);
     orch.set_login_event_channel(login_tx.clone(), login_buffer.clone());
     // Launcher telemetry (dev-session mint/refresh + chunk/bundle upload)
@@ -221,11 +229,7 @@ async fn main() {
     // and the anonymous launcher-summary ingest merged beside them (owner
     // decision, 2026-10-04; see `cimmeria_admin_api::login_port`), go
     // on 8081; the rest of the admin API stays on its private listener.
-    orch.state()
-        .write()
-        .await
-        .auth
-        .set_public_routes(cimmeria_admin_api::login_port_telemetry_router());
+    login_routes::install(&orch, developer_mode).await;
     let orch = Arc::new(orch);
 
     tracing::trace!("Calling start_all");
