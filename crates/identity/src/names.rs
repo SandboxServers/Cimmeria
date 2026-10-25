@@ -118,6 +118,16 @@ mod tests {
                 "no player_dddd candidate for {display:?}"
             );
         }
+        assert_eq!(RESERVED_PREFIXES.len(), 10);
+        for p in RESERVED_PREFIXES {
+            assert_eq!(base_from_display(&format!("{p}Fan")), "player", "{p}");
+            assert_eq!(
+                base_from_display(&format!("{}Fan", p.to_ascii_uppercase())),
+                "player",
+                "{p} upper"
+            );
+        }
+        assert_eq!(base_from_display("Hero_gm"), "Hero_gm");
         assert_eq!(base_from_display("Hero_Ann"), "Hero_Ann");
     }
 
