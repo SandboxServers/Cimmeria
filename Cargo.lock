@@ -899,10 +899,12 @@ dependencies = [
 name = "cimmeria-base-session"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "cimmeria-cell-catalog",
  "cimmeria-common",
  "cimmeria-discord",
  "cimmeria-entity",
+ "cimmeria-identity",
  "cimmeria-mercury",
  "cimmeria-names",
  "cimmeria-observability",
