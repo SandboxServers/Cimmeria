@@ -16,6 +16,9 @@ pub use resource::{Artifact, Graphics, Resources};
 mod worker;
 pub use worker::{dispatch, Worker};
 pub mod events;
+mod sign_in_play;
+#[cfg(test)]
+mod sign_in_play_tests;
 mod supervisor;
 mod telemetry;
 #[cfg(target_os = "macos")]

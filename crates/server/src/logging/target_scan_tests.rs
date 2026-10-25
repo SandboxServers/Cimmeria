@@ -54,6 +54,7 @@ pub(super) const IN_PROCESS_CRATES: &[&str] = &[
     "discord",
     "entity",
     "game",
+    "identity",
     "lab-mcp",
     "mercury",
     "minigame",
