@@ -401,8 +401,83 @@ fn the_status_reports_the_admitted_copys_incomplete_patch_counts() {
         Some(game.path()),
         None,
         None,
+        None,
     );
     let value = serde_json::to_value(status).unwrap();
     assert_eq!(value["patches_incomplete"], 2);
     assert_eq!(value["ops_skipped"], 3);
+}
+
+#[test]
+fn launch_status_serializes_content_sync() {
+    use cimmeria_launcher_engine::cooked_presync::report::{Failure, Outcome, Step};
+    use cimmeria_launcher_engine::launch::cooked_presync::{ContentSync, ContentSyncPhase};
+    let root = tempfile::tempdir().unwrap();
+    let host = NativeHost::new(root.path().join("state"));
+    let inspect = || {
+        host.launch_command(LaunchCommand::Inspect { schema_version: 1 })
+            .unwrap()
+            .native
+    };
+    // No presync has started: the key is present and null.
+    let absent = LaunchStatus::assemble(
+        inspect(),
+        None,
+        false,
+        (true, false),
+        None,
+        None,
+        None,
+        None,
+    );
+    let value = serde_json::to_value(absent).unwrap();
+    assert!(value.get("content_sync").is_some_and(|v| v.is_null()));
+
+    let mut failure = Failure::new(Step::Download, "http_error");
+    failure.category_id = Some(4);
+    failure.pak = Some("CookedDataItems.pak".into());
+    failure.http_status = Some(500);
+    let sync = ContentSync {
+        phase: ContentSyncPhase::Done,
+        categories_done: 1,
+        categories_total: 3,
+        bytes_done: 1_048_576,
+        bytes_total: 4_194_304,
+        outcome: Some(Outcome::Failed),
+        reason: Some("http_error"),
+        server: Some("play.example:8081".into()),
+        failure: Some(failure),
+    };
+    let failed = LaunchStatus::assemble(
+        inspect(),
+        None,
+        false,
+        (true, false),
+        None,
+        None,
+        None,
+        Some(sync),
+    );
+    let value = serde_json::to_value(failed).unwrap();
+    let content = &value["content_sync"];
+    assert_eq!(content["phase"], "done");
+    assert_eq!(content["outcome"], "failed");
+    assert_eq!(content["reason"], "http_error");
+    assert_eq!(content["server"], "play.example:8081");
+    assert_eq!(
+        content["failure"],
+        serde_json::json!({
+            "step": "download",
+            "reason": "http_error",
+            "category_id": 4,
+            "pak": "CookedDataItems.pak",
+            "http_status": 500,
+            "io_kind": null,
+            "os_code": null,
+            "retry_after_s": null,
+            "source_version": null,
+            "served_version": null,
+            "deadline_s": null
+        })
+    );
 }

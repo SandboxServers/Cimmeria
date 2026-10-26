@@ -52,6 +52,8 @@ pub struct LaunchStatus {
     observation: Option<launch::Observation>,
     /// Why the current launch did not start (C-PD3); `null` when none is known.
     failure: Option<FailureCode>,
+    /// The cooked-data presync's progress; `null` until the presync starts (D-LP26).
+    content_sync: Option<launch::cooked_presync::ContentSync>,
 }
 impl NativeHost {
     /// Packaging probe uses the production resolver, including canonical paths
@@ -172,6 +174,14 @@ impl NativeHost {
                 }
             }
         }
+        // Read before the store lock, so the worker's lock and the store's are
+        // never held together. The Play branch above has released its guard.
+        let content_sync = self
+            .launch_worker
+            .lock()
+            .map_err(|_| JobError::Io)?
+            .as_ref()
+            .and_then(|worker| worker.content_sync.borrow().clone());
         let mut state = store.lock().map_err(|_| JobError::Io)?;
         let native = state.dispatch(NativeCommand::Inspect { schema_version: 1 })?;
         let observation = state.launch_observation()?;
@@ -267,6 +277,7 @@ impl NativeHost {
             game.as_deref(),
             observation,
             failure,
+            content_sync,
         );
         status.prerequisites_missing = missing;
         status.prerequisites_installing = state.prerequisite_setup_active();
@@ -284,6 +295,7 @@ impl LaunchStatus {
         game: Option<&std::path::Path>,
         observation: Option<launch::Observation>,
         failure: Option<FailureCode>,
+        content_sync: Option<launch::cooked_presync::ContentSync>,
     ) -> Self {
         let (patches_incomplete, ops_skipped) = ledger::incomplete_counts(game);
         Self {
@@ -299,6 +311,7 @@ impl LaunchStatus {
             prerequisites_installing: false,
             observation,
             failure,
+            content_sync,
         }
     }
 }
