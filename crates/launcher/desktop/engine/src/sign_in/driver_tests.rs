@@ -453,9 +453,9 @@ async fn browser_failure_returns_the_url() {
         }
         other => panic!("expected browser_failed, got {other:?}"),
     }
-    // The failed flow must not leave the driver busy.
+    // The parked flow keeps the driver busy until it is resumed or cancelled (CT-89).
     let again = fx.run(begin(), &FailingBrowser).await;
-    assert!(matches!(again, Err(SignInFailure::BrowserFailed { .. })));
+    assert_eq!(again, Err(SignInFailure::Busy));
 }
 
 #[tokio::test]
@@ -636,3 +636,6 @@ mod host;
 
 #[path = "driver_epoch_tests.rs"]
 mod epoch;
+
+#[path = "driver_resume_tests.rs"]
+mod resume;

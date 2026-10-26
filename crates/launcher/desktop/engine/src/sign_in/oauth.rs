@@ -160,8 +160,14 @@ pub async fn begin(base: &Url, provider: &str) -> Result<BrowserFlow, SignInErro
 impl BrowserFlow {
     /// Waits for the redirect (up to [`SIGN_IN_TIMEOUT`]) and returns the code grant.
     pub async fn finish(self) -> Result<CodeGrant, SignInError> {
+        self.finish_within(SIGN_IN_TIMEOUT).await
+    }
+
+    /// Waits for the redirect up to `limit` and returns the code grant. A parked
+    /// flow passes what is left of its five minutes (CT-89).
+    pub async fn finish_within(self, limit: Duration) -> Result<CodeGrant, SignInError> {
         let redirect_uri = self.server.redirect_uri();
-        match self.server.wait(&self.state, SIGN_IN_TIMEOUT).await {
+        match self.server.wait(&self.state, limit).await {
             CallbackResult::Code(code) => Ok(CodeGrant {
                 code,
                 verifier: self.verifier,
