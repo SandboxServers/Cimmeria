@@ -11,10 +11,16 @@ use std::time::{Duration, Instant};
 
 use crate::config::Limits;
 
-/// The most keys the limiter holds. A new key past this drops the window that
-/// expires soonest first (never the global sign-up window), so a flood of
-/// distinct keys cannot grow memory without end.
+/// The most keys the limiter holds. A new key past this first drops the stale
+/// windows, then a batch of the IP-keyed windows that expire soonest. Account
+/// and server-wide windows are never dropped while live: when no room can be
+/// made, the new key is refused with a 60 s retry. So a flood of distinct keys
+/// cannot grow memory without end, nor evict a live account window.
 pub const MAX_KEYS: usize = 100_000;
+
+/// How many IP-keyed windows one eviction drops at once when the map is full of
+/// live windows, so the scan for victims does not run on every new key.
+const EVICT_BATCH: usize = 1024;
 
 const MINUTE: Duration = Duration::from_secs(60);
 const TEN_MINUTES: Duration = Duration::from_secs(600);
@@ -94,8 +100,11 @@ impl RateLimiter {
         let (limit, window_len) = self.policy(bucket);
         let mut windows = self.lock();
         let map_key = (bucket, key.to_string());
-        if !windows.contains_key(&map_key) && windows.len() >= MAX_KEYS {
-            evict_oldest(&mut windows);
+        if !windows.contains_key(&map_key)
+            && windows.len() >= MAX_KEYS
+            && !make_room(&mut windows, now)
+        {
+            return Err(RetryAfter { secs: 60 });
         }
         let entry = windows.entry(map_key).or_insert(Window {
             start: now,
@@ -168,18 +177,36 @@ fn is_stale(bucket: Bucket, window: &Window, now: Instant) -> bool {
     now.saturating_duration_since(window.start) >= window_len(bucket)
 }
 
-/// Drops the window that expires soonest. The two server-wide windows (sign-up
-/// and link-code) are never dropped, so a flood of other keys cannot reopen
-/// their caps.
-fn evict_oldest(windows: &mut HashMap<(Bucket, String), Window>) {
-    let victim = windows
-        .iter()
-        .filter(|((b, _), _)| !matches!(b, Bucket::SignupGlobal | Bucket::LinkCodeGlobal))
-        .min_by_key(|((b, _), w)| w.start + window_len(*b))
-        .map(|(k, _)| k.clone());
-    if let Some(key) = victim {
-        windows.remove(&key);
+/// Makes room for one new key at the cap. It drops every stale window first. If
+/// the map is still full, it drops the [`EVICT_BATCH`] IP-keyed windows that
+/// expire soonest. Account and server-wide windows are never dropped here, so a
+/// flood of IP keys cannot reopen their caps. Returns whether a key fits now.
+fn make_room(windows: &mut HashMap<(Bucket, String), Window>, now: Instant) -> bool {
+    windows.retain(|(bucket, _), window| !is_stale(*bucket, window, now));
+    if windows.len() >= MAX_KEYS {
+        let mut ip_keys: Vec<((Bucket, String), Instant)> = windows
+            .iter()
+            .filter(|((b, _), _)| {
+                matches!(
+                    b,
+                    Bucket::AnyRoute
+                        | Bucket::Authorize
+                        | Bucket::Token
+                        | Bucket::LinkExistingIp
+                        | Bucket::SignupIp
+                )
+            })
+            .map(|(k, w)| (k.clone(), w.start + window_len(k.0)))
+            .collect();
+        let take = EVICT_BATCH.min(ip_keys.len());
+        if take > 0 {
+            ip_keys.select_nth_unstable_by_key(take - 1, |(_, expires)| *expires);
+            for (key, _) in ip_keys.into_iter().take(take) {
+                windows.remove(&key);
+            }
+        }
     }
+    windows.len() < MAX_KEYS
 }
 
 /// The creation time of a Discord account, in Unix milliseconds, read from
@@ -262,7 +289,8 @@ mod tests {
         }
         let newest = t0 + Duration::from_secs(2);
         assert!(rl.check(Bucket::AnyRoute, "new", newest).is_ok());
-        assert_eq!(rl.lock().len(), MAX_KEYS);
+        // One batch of the soonest-expiring windows is dropped, then "new" joins.
+        assert_eq!(rl.lock().len(), MAX_KEYS - EVICT_BATCH + 1);
         assert!(!rl
             .lock()
             .contains_key(&(Bucket::AnyRoute, "old".to_string())));
@@ -379,3 +407,7 @@ mod tests {
         assert!(old_enough(Some(now - 2 * MS_PER_DAY), now, 2));
     }
 }
+
+#[cfg(test)]
+#[path = "limits_eviction_tests.rs"]
+mod eviction_tests;
