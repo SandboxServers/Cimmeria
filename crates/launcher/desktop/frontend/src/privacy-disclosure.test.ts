@@ -65,6 +65,7 @@ test('content sync privacy line names the endpoint, the cache folder and the not
   assert.match(text, /\/api\/cooked\/v1/);
   assert.match(text, /Cache\.en-US/);
   assert.match(text, /not started/);
+  assert.doesNotMatch(text, /plain HTTP/);
 });
 
 test('complete disclosure is offline and collapsed without moving or enabling consent controls', () => {
