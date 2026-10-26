@@ -234,7 +234,9 @@ impl Run<'_> {
         }
         self.categories_done = 0;
         self.categories_total = u32::try_from(writes.len()).unwrap_or(u32::MAX);
-        self.bytes_total = writes.iter().map(|entry| entry.body_bytes).sum();
+        self.bytes_total = writes
+            .iter()
+            .fold(0u64, |sum, entry| sum.saturating_add(entry.body_bytes));
         Ok(writes)
     }
 

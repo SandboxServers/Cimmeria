@@ -390,6 +390,45 @@ async fn a_duplicate_pak_name_is_bad_index() {
 }
 
 #[tokio::test]
+async fn an_index_over_the_count_or_size_caps_is_bad_index() {
+    let entry_of = |id: u32, body_bytes: u64| IndexEntry {
+        category_id: id,
+        pak: format!("Cat{id}.pak"),
+        body_bytes,
+        ..sample_index().categories[0].clone()
+    };
+    let too_many = (0..=MAX_CATEGORIES as u32)
+        .map(|id| entry_of(id, 1))
+        .collect::<Vec<_>>();
+    let too_big_one = vec![entry_of(1, BODY_CAP as u64 + 1)];
+    // Each entry is within BODY_CAP, but together they pass MAX_TOTAL_BYTES.
+    let too_big_sum = (0..=(MAX_TOTAL_BYTES / BODY_CAP as u64) as u32)
+        .map(|id| entry_of(id, BODY_CAP as u64))
+        .collect::<Vec<_>>();
+    for (name, categories) in [
+        ("too many categories", too_many),
+        ("one body over the cap", too_big_one),
+        ("total over the cap", too_big_sum),
+    ] {
+        let server = MockServer::start().await;
+        let index = Index {
+            schema: 1,
+            categories,
+        };
+        Mock::given(method("GET"))
+            .and(path(INDEX_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(index))
+            .mount(&server)
+            .await;
+        assert_eq!(
+            fetcher(&server).index().await.err(),
+            Some(FetchError::BadIndex),
+            "{name}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn a_bad_schema_duplicate_id_or_digest_is_bad_index() {
     let mut wrong_schema = sample_index();
     wrong_schema.schema = 2;

@@ -22,6 +22,10 @@ pub const INDEX_CAP: usize = 256 * 1024;
 pub const BODY_CAP: usize = 32 * 1024 * 1024;
 /// The most bytes read from an error response, enough for its `error` code.
 const ERROR_BODY_CAP: usize = 4 * 1024;
+/// The most categories one index may name; the stock catalog is far fewer.
+pub const MAX_CATEGORIES: usize = 512;
+/// The most bytes all the categories of one index may total.
+pub const MAX_TOTAL_BYTES: u64 = 1024 * 1024 * 1024;
 /// How long the TCP and TLS connect may take.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long the whole index request may take.
@@ -331,20 +335,26 @@ fn error_code(bytes: &[u8]) -> Option<String> {
     value.get("error")?.as_str().map(str::to_owned)
 }
 
-/// Checks the index: schema 1, unique category ids, a `.pak` name made of
-/// letters and digits (1 to 64 of them), no two categories sharing a pak name
-/// (compared case-insensitively, as Windows does) and a digest that parses.
+/// Checks the index: schema 1, at most `MAX_CATEGORIES` categories, unique
+/// category ids, a `.pak` name made of letters and digits (1 to 64 of them), no
+/// two categories sharing a pak name (compared case-insensitively, as Windows
+/// does), a digest that parses, and sizes within `BODY_CAP` each and
+/// `MAX_TOTAL_BYTES` in all.
 fn check_index(index: &Index) -> Result<(), FetchError> {
-    if index.schema != 1 {
+    if index.schema != 1 || index.categories.len() > MAX_CATEGORIES {
         return Err(FetchError::BadIndex);
     }
     let mut seen = HashSet::new();
     let mut seen_paks = HashSet::new();
+    let mut total: u64 = 0;
     for entry in &index.categories {
+        total = total.saturating_add(entry.body_bytes);
         let well_formed = seen.insert(entry.category_id)
             && is_pak_name(&entry.pak)
             && seen_paks.insert(entry.pak.to_ascii_lowercase())
-            && parse_digest_hex(&entry.digest).is_some();
+            && parse_digest_hex(&entry.digest).is_some()
+            && entry.body_bytes <= BODY_CAP as u64
+            && total <= MAX_TOTAL_BYTES;
         if !well_formed {
             return Err(FetchError::BadIndex);
         }
