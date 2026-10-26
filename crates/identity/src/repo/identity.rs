@@ -79,20 +79,26 @@ pub async fn find_bound_on(
     }))
 }
 
-/// The distinct accounts with a verified identity whose email is `email_lower`.
-/// An identity whose email was never verified is not a candidate, so the
-/// sign-in can never auto-link on an unproven address.
+/// The distinct accounts with a verified identity whose email is `email_lower`
+/// and whose provider is in `trusted_providers`, the providers trusted for
+/// their email claim in the current config. An identity whose email was never
+/// verified, or whose provider is no longer trusted, is not a candidate, so the
+/// sign-in can never auto-link on an unproven or untrusted address. An empty
+/// list yields no candidates.
 pub async fn email_candidates(
     pool: &PgPool,
     email_lower: &str,
+    trusted_providers: &[&str],
 ) -> Result<Vec<AccountFacts>, RepoError> {
     let rows: Vec<FactsRow> = sqlx::query_as(
         "SELECT DISTINCT a.account_id, a.enabled, a.accesslevel, a.test_account \
          FROM account_identity i JOIN account a ON a.account_id = i.account_id \
          WHERE lower(i.email) = $1 AND i.email_verified_at IS NOT NULL \
+         AND i.provider = ANY($2) \
          ORDER BY a.account_id",
     )
     .bind(email_lower)
+    .bind(trusted_providers.to_vec())
     .fetch_all(pool)
     .await?;
     Ok(rows
@@ -202,14 +208,30 @@ pub async fn insert_on(
     })
 }
 
-/// Records that an identity signed in now, by its id.
-pub async fn touch(pool: &PgPool, identity_id: i64, now_ms: i64) -> Result<(), RepoError> {
+/// Records that an identity signed in now, by its id, and refreshes its stored
+/// email in the same statement (C01). The email and its verification time are
+/// kept only when `trusted` is set and the sign-in proved the address; otherwise
+/// both are cleared, so a stale address never keeps its auto-link authority.
+pub async fn touch(
+    pool: &PgPool,
+    identity_id: i64,
+    now_ms: i64,
+    identity: &VerifiedIdentity,
+    trusted: bool,
+) -> Result<(), RepoError> {
+    let email = identity
+        .email
+        .as_deref()
+        .filter(|_| trusted && identity.email_verified);
     sqlx::query(
-        "UPDATE account_identity SET last_used_at = TO_TIMESTAMP($2::BIGINT / 1000.0) \
+        "UPDATE account_identity SET last_used_at = TO_TIMESTAMP($2::BIGINT / 1000.0), \
+         email = $3, email_verified_at = CASE WHEN $4 THEN now() END \
          WHERE identity_id = $1",
     )
     .bind(identity_id)
     .bind(now_ms)
+    .bind(email)
+    .bind(email.is_some())
     .execute(pool)
     .await?;
     Ok(())
@@ -260,3 +282,7 @@ pub async fn count_methods(pool: &PgPool, account_id: u32) -> Result<i64, RepoEr
             .await?;
     Ok(count)
 }
+
+#[cfg(test)]
+#[path = "identity_email_tests_live_db.rs"]
+mod email_tests_live_db;

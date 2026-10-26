@@ -131,7 +131,8 @@ async fn code_grant(
     let bound_id = bound.as_ref().map(|(id, _)| *id);
     let email_candidates = match identity.email.as_deref() {
         Some(email) if trusted && identity.email_verified => {
-            identity::email_candidates(pool, &email.to_lowercase())
+            let trusted_providers = state.trusted_email_providers();
+            identity::email_candidates(pool, &email.to_lowercase(), &trusted_providers)
                 .await
                 .map_err(ApiError::from_repo)?
         }
@@ -147,7 +148,7 @@ async fn code_grant(
     match link::resolve(&facts) {
         Resolution::Existing(account_id) => {
             let id = bound_id.ok_or(ApiError::InvalidGrant)?;
-            identity::touch(pool, id, Utc::now().timestamp_millis())
+            identity::touch(pool, id, Utc::now().timestamp_millis(), &identity, trusted)
                 .await
                 .map_err(ApiError::from_repo)?;
             note("signed_in");

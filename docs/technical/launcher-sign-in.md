@@ -67,7 +67,7 @@ Source: `crates/identity/src/link.rs` (pure functions, C7 in the contract).
 | The provider is `trusted_email`, the email is verified, exactly one account holds a trusted verified identity with the same email, and that account is linkable | Auto-link |
 | Anything else | `needs_link`, with `hint = email_match` only when a trusted, verified email matches at least one account |
 
-A linkable account is enabled, has `accesslevel < 1` and is not a test account. Staff and test accounts cannot be linked, by any path.
+A linkable account is enabled, has `accesslevel < 1` and is not a test account. Staff and test accounts cannot be linked, by any path. The stored email is refreshed on every sign-in (cleared when the sign-in carries no verified email or the provider is no longer `trusted_email`), so only a provider trusted now can auto-link.
 
 **Residual risks.** The provider's email is only as trustworthy as the provider: that is why `trusted_email` is a per-provider setting and why config loading refuses `trusted_email = true` for Microsoft's consumer endpoints (the `email` claim there is mutable). A player who loses every provider has no self-service recovery; a GM issues a link code. Rate limits are in memory and reset on restart.
 

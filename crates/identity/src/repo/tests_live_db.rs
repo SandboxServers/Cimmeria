@@ -87,10 +87,10 @@ async fn live_db_email_candidates_only_verified() {
     let email = "ct15-202@example.org";
     let unverified = verified("ct15-subject-202a", Some(email), false);
     let linked = identity::insert(&pool, ID_EMAIL, &unverified, true).await;
-    let before = identity::email_candidates(&pool, email).await;
+    let before = identity::email_candidates(&pool, email, &["ct15-dev"]).await;
     let proven = verified("ct15-subject-202b", Some(email), true);
     let verified_link = identity::insert(&pool, ID_EMAIL, &proven, true).await;
-    let after = identity::email_candidates(&pool, email).await;
+    let after = identity::email_candidates(&pool, email, &["ct15-dev"]).await;
     cleanup(&pool, ID_EMAIL).await;
     linked.expect("unverified link");
     verified_link.expect("verified link");
@@ -352,7 +352,7 @@ async fn live_db_email_not_stored_when_store_email_is_false() {
     .bind(ID_EMAIL_OFF as i32)
     .fetch_one(&pool)
     .await;
-    let candidates = identity::email_candidates(&pool, email).await;
+    let candidates = identity::email_candidates(&pool, email, &["ct15-dev"]).await;
     cleanup(&pool, ID_EMAIL_OFF).await;
     linked.expect("link");
     assert_eq!(stored.expect("read the identity"), (true, true));
@@ -410,7 +410,14 @@ async fn live_db_touch_delete_facts_and_has_password() {
     )
     .await;
     let identity_id = linked.as_ref().map_or(0, |l| l.identity_id);
-    let touched = identity::touch(&pool, identity_id, 1_700_000_000_000).await;
+    let touched = identity::touch(
+        &pool,
+        identity_id,
+        1_700_000_000_000,
+        &verified("ct15-subject-212", None, false),
+        false,
+    )
+    .await;
     let stamp: Result<(i64,), sqlx::Error> = sqlx::query_as(
         "SELECT (EXTRACT(EPOCH FROM last_used_at) * 1000)::BIGINT \
          FROM account_identity WHERE identity_id = $1",
