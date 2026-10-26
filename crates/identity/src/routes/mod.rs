@@ -15,6 +15,10 @@ pub mod signin;
 pub mod ticket;
 pub mod token;
 
+#[cfg(test)]
+#[path = "cleanup_ownership_tests_live_db.rs"]
+mod cleanup_ownership_tests_live_db;
+
 use std::net::SocketAddr;
 use std::time::Instant;
 

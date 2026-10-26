@@ -313,7 +313,7 @@ pub(super) async fn account_name(
 
 #[cfg(test)]
 #[path = "account_tests_live_db.rs"]
-mod tests_live_db;
+pub(crate) mod tests_live_db;
 
 #[cfg(test)]
 #[path = "account_disabled_tests_live_db.rs"]

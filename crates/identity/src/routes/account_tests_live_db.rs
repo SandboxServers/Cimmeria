@@ -4,9 +4,9 @@
 //! unlink and its audit event, the concurrent unlink (C15 e), the bearer and
 //! `link/start` refusals, the add-method flow through `/authorize`, the
 //! disabled and bad-id refusals, the no-store header and the rate limit.
-//! Sentinel account ids `2_000_601..=2_000_608`; subjects `ct30-<n>`; account
-//! names `CT30-<id>`. Cleanup deletes the sentinel range and every `CT30-`
-//! account before and after each test.
+//! Sentinel account ids `0x7000_E801..=0x7000_E809`; subjects `ct30-<n>`; account
+//! names `CT30-<id>`. Cleanup deletes exactly the ids in `OWNED` and the
+//! accounts of the `SIGNUP_SUBJECTS` identities, before and after each test.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -33,17 +33,30 @@ use crate::routes::ctx::IdentityCtx;
 use crate::routes::router;
 use crate::stores::{pkce_challenge, Stores};
 
-const FIRST_ID: i32 = 2_000_601;
-const LAST_ID: i32 = 2_000_609;
-const ACC_MAIN: u32 = 2_000_601;
-const ACC_OTHER: u32 = 2_000_602;
-const ACC_LAST: u32 = 2_000_603;
-const ACC_DISABLED: u32 = 2_000_604;
-const ACC_CONCURRENT: u32 = 2_000_605;
-const ACC_TICKET: u32 = 2_000_606;
-const ACC_RATE: u32 = 2_000_607;
-const ACC_LINK: u32 = 2_000_608;
-const ACC_UNLINK: u32 = 2_000_609;
+const ACC_MAIN: u32 = 0x7000_E801;
+const ACC_OTHER: u32 = 0x7000_E802;
+const ACC_LAST: u32 = 0x7000_E803;
+const ACC_DISABLED: u32 = 0x7000_E804;
+const ACC_CONCURRENT: u32 = 0x7000_E805;
+const ACC_TICKET: u32 = 0x7000_E806;
+const ACC_RATE: u32 = 0x7000_E807;
+const ACC_LINK: u32 = 0x7000_E808;
+const ACC_UNLINK: u32 = 0x7000_E809;
+/// Every sentinel account this file inserts; `clean` deletes exactly these.
+const OWNED: &[u32] = &[
+    ACC_MAIN,
+    ACC_OTHER,
+    ACC_LAST,
+    ACC_DISABLED,
+    ACC_CONCURRENT,
+    ACC_TICKET,
+    ACC_RATE,
+    ACC_LINK,
+    ACC_UNLINK,
+];
+/// The subjects this file signs up with (`dev`); an account holding one of these
+/// identities is deleted, and no other account matches.
+const SIGNUP_SUBJECTS: &[&str] = &["ct30-21"];
 const PEER: &str = "127.0.0.1:41000";
 const LAUNCH: &str = "CT30-LAUNCH-0000001";
 const OTHER_LAUNCH: &str = "CT30-LAUNCH-0000002";
@@ -104,14 +117,21 @@ fn harness(pool: &PgPool) -> Env {
     }
 }
 
-/// Deletes the sentinel accounts and every `CT30-` account; identities and
-/// events cascade.
-async fn clean(pool: &PgPool) {
+/// Deletes the sentinel accounts in `OWNED` and the accounts that hold a
+/// `SIGNUP_SUBJECTS` identity; identities and events cascade.
+pub(crate) async fn clean(pool: &PgPool) {
+    let ids: Vec<i32> = OWNED.iter().map(|&id| id as i32).collect();
+    let _ = sqlx::query("DELETE FROM account WHERE account_id = ANY($1)")
+        .bind(ids)
+        .execute(pool)
+        .await;
+    let subjects: Vec<String> = SIGNUP_SUBJECTS.iter().map(|s| s.to_string()).collect();
     let _ = sqlx::query(
-        "DELETE FROM account WHERE account_id BETWEEN $1 AND $2 OR account_name LIKE 'CT30-%'",
+        "DELETE FROM account WHERE account_id IN \
+         (SELECT account_id FROM account_identity WHERE provider = $1 AND subject = ANY($2))",
     )
-    .bind(FIRST_ID)
-    .bind(LAST_ID)
+    .bind("dev")
+    .bind(subjects)
     .execute(pool)
     .await;
 }
@@ -322,7 +342,7 @@ async fn live_db_account_lists_identities_without_subjects() {
     let t = code_token(&env, ACC_MAIN);
     let (status, _, body) = send(&env.router, "GET", "/account", Some(&t), None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["account_name"], "CT30-2000601");
+    assert_eq!(body["account_name"], json!(format!("CT30-{ACC_MAIN}")));
     let rows = body["identities"].as_array().expect("identities array");
     assert_eq!(rows.len(), 2);
     assert!(rows.iter().any(|row| row["identity_id"] == first));
@@ -441,7 +461,7 @@ async fn live_db_launch_ticket_is_no_store_and_names_the_account() {
     let (status, headers, body) = mint(&env, &t, LAUNCH).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers.get(header::CACHE_CONTROL).unwrap(), "no-store");
-    assert_eq!(body["account_name"], "CT30-2000606");
+    assert_eq!(body["account_name"], json!(format!("CT30-{ACC_TICKET}")));
     assert!(body["ticket"]
         .as_str()
         .is_some_and(|ticket| !ticket.is_empty()));
