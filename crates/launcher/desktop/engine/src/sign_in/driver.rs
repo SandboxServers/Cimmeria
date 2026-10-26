@@ -447,12 +447,20 @@ impl SignInDriver {
         session: Option<Arc<SignIn>>,
     ) -> Result<SignInStatus, SignInFailure> {
         self.supersede(site.state)?;
+        let session_base = session.as_ref().map(|s| s.base().clone());
         if let Some(session) = session {
             session.sign_out().await;
         }
         guard(site.state)?.set_sign_in(None);
         self.pending.clear()?;
-        self.reply(site, None, None).await
+        // The session is gone, so its base carries the warning when `site` has none.
+        let site = Site {
+            state: site.state,
+            server: site.server,
+            discovery: site.discovery,
+            base: site.base.or(session_base.as_ref()),
+        };
+        self.reply(&site, None, None).await
     }
 }
 

@@ -146,3 +146,45 @@ async fn an_unreadable_store_is_reported_and_sign_in_still_works() {
 fn deleting_nothing_is_ok() {
     assert_eq!(MemoryStore::default().delete(HOST), Ok(()));
 }
+
+#[tokio::test]
+async fn a_store_that_recovers_clears_its_unreadable_warning() {
+    let faulty = Arc::new(FaultyStore::default());
+    faulty.fail_get.store(true, Ordering::SeqCst);
+    let fx = Fixture::with_store(true, true, faulty.clone()).await;
+    let status = fx.inspect().await.unwrap();
+    assert_eq!(status.storage_warning, Some("store_unreadable"));
+
+    faulty.fail_get.store(false, Ordering::SeqCst);
+    fx.store_entry("r0");
+    let status = fx.inspect().await.unwrap();
+    assert!(matches!(status.state, SignInStateView::SignedIn { .. }));
+    assert_eq!(status.storage_warning, None);
+}
+
+#[tokio::test]
+async fn a_refused_sign_out_with_no_login_server_still_warns() {
+    let faulty = Arc::new(FaultyStore::default());
+    let fx = Fixture::with_store(false, false, faulty.clone()).await;
+    fx.store_entry("r0");
+    faulty.fail_delete.store(true, Ordering::SeqCst);
+    let base = url::Url::parse(&format!("{}/", fx.server.uri())).unwrap();
+    // The driver's slot for the host, as a session restored by `run` would share.
+    let slot = fx.driver.slot(&base);
+    let session = Arc::new(SignIn::new_in(
+        base,
+        reqwest::Client::new(),
+        fx.store.clone(),
+        slot,
+    ));
+    fx.state.lock().unwrap().set_sign_in(Some(session.clone()));
+    let site = Site {
+        state: &fx.state,
+        server: None,
+        discovery: None,
+        base: None,
+    };
+    let status = fx.driver.sign_out(&site, Some(session)).await.unwrap();
+    assert!(matches!(status.state, SignInStateView::SignedOut));
+    assert_eq!(status.storage_warning, Some("sign_out_incomplete"));
+}

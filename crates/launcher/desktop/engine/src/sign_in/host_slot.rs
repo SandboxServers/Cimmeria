@@ -124,7 +124,12 @@ pub(super) fn read(
         return Some(stored.clone());
     }
     match store.get(host) {
-        Ok(stored) => stored,
+        Ok(stored) => {
+            if state.warning == Some("store_unreadable") {
+                state.warning = None;
+            }
+            stored
+        }
         Err(_) => {
             state.warning = Some("store_unreadable");
             None
