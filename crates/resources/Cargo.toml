@@ -18,6 +18,10 @@ cimmeria-wire = { workspace = true }
 # Override log lines name their item, dialog, mission and sequence (Rule 6).
 cimmeria-names = { workspace = true }
 quick-xml = { workspace = true }
+# `served_catalog` encodes the `CPS1` bodies and the index (LP-02 codec, LP-01 digest).
+cimmeria-cooked-pak = { workspace = true }
+# `served_catalog::ServedCatalog::index_json` serializes the index.
+serde_json = { workspace = true }
 # `start_profiles::load_all` reads resources.char_creation (Class Start v6 CS-02).
 sqlx = { workspace = true }
 tracing = { workspace = true }
@@ -40,3 +44,5 @@ cimmeria-entity = { workspace = true }
 cimmeria-test-support = { workspace = true }
 # `#[tokio::test]` for the start-profile live-DB tests.
 tokio = { workspace = true }
+# `served_catalog` tests write their raw PAKs into a temp data dir.
+tempfile = "3"
