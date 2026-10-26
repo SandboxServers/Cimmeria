@@ -19,6 +19,10 @@ use crate::config::Limits;
 /// episode logs `limiter_full` at most once a minute.
 pub const MAX_KEYS: usize = 100_000;
 
+/// The most account-name windows (`LinkExistingAccount`) held at once. Past this,
+/// a new name shares one overflow window, so the account class cannot fill the map.
+const MAX_ACCOUNT_KEYS: usize = 20_000;
+
 /// How many IP-keyed windows one eviction drops at once when the map is full of
 /// live windows, so the scan for victims does not run on every new key.
 const EVICT_BATCH: usize = 1024;
@@ -103,6 +107,19 @@ impl RateLimiter {
     pub fn check(&self, bucket: Bucket, key: &str, now: Instant) -> Result<(), RetryAfter> {
         let (limit, window_len) = self.policy(bucket);
         let mut windows = self.lock();
+        let key = if bucket == Bucket::LinkExistingAccount
+            && !windows.contains_key(&(bucket, key.to_string()))
+            && windows.len() >= MAX_ACCOUNT_KEYS
+            && windows
+                .keys()
+                .filter(|(b, _)| *b == Bucket::LinkExistingAccount)
+                .count()
+                >= MAX_ACCOUNT_KEYS
+        {
+            "\u{0}overflow" // one shared bucket: past the cap, all new names share 5 tries per 15 min
+        } else {
+            key
+        };
         let map_key = (bucket, key.to_string());
         if !windows.contains_key(&map_key)
             && windows.len() >= MAX_KEYS
@@ -327,6 +344,23 @@ mod tests {
         assert!(rl
             .lock()
             .contains_key(&(Bucket::AnyRoute, "new".to_string())));
+    }
+
+    #[test]
+    fn limiter_folds_account_names_past_its_cap() {
+        let rl = limiter();
+        let now = Instant::now();
+        for i in 0..MAX_ACCOUNT_KEYS + 10 {
+            let name = format!("account-{i}");
+            // Past the cap, every new name shares one window of five tries.
+            let _ = rl.check(Bucket::LinkExistingAccount, &name, now);
+        }
+        assert!(rl.lock().len() <= MAX_ACCOUNT_KEYS + 1);
+        assert!(rl
+            .check(Bucket::LinkExistingAccount, "account-fresh", now)
+            .is_err());
+        // A fresh IP key still passes the per-IP route limit.
+        assert!(rl.check(Bucket::AnyRoute, "203.0.113.9", now).is_ok());
     }
 
     #[test]

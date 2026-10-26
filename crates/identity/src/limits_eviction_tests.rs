@@ -37,19 +37,20 @@ fn limiter_never_evicts_a_live_link_account_window_while_ip_windows_remain() {
 }
 
 #[test]
-fn limiter_full_of_live_account_windows_refuses_a_new_key() {
+fn limiter_account_names_past_the_cap_share_one_window() {
     let rl = limiter();
     let t0 = Instant::now();
-    for i in 0..MAX_KEYS {
+    for i in 0..MAX_ACCOUNT_KEYS + 10 {
         let key = format!("Player_{i}");
-        assert!(rl.check(Bucket::LinkExistingAccount, &key, t0).is_ok());
+        // Past the account cap the names share one overflow window; most are refused.
+        let _ = rl.check(Bucket::LinkExistingAccount, &key, t0);
     }
     let t1 = t0 + Duration::from_secs(1);
     let refused = rl
         .check(Bucket::LinkExistingAccount, "Player_new", t1)
-        .expect_err("a full map of live account windows refuses a new key");
-    assert_eq!(refused, RetryAfter { secs: 60 });
-    assert_eq!(rl.window_count(), MAX_KEYS);
+        .expect_err("a new name past the account cap shares the refused overflow window");
+    assert!(refused.secs > 60);
+    assert_eq!(rl.window_count(), MAX_ACCOUNT_KEYS + 1);
 }
 
 #[test]
