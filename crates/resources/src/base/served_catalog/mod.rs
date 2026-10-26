@@ -9,6 +9,8 @@
 //! A category the cache can't serve fails the whole build, so a hole in the
 //! catalog is loud: Play is blocked on failure (D-LP18).
 
+pub mod check;
+
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
