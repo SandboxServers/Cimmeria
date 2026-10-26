@@ -205,6 +205,7 @@ and `compose.lab.yml` to `COMPOSE_FILE`. Compose refuses to start the overlay if
 The board's Caddy forwards `/auth/v1/*` and `/SGWLogin/*` from `https://play.cimmeria.app` to it.
 Never publish or edge-forward 13480: the listener trusts `X-Forwarded-*` from its trusted peers.
 Create `config/auth-providers.toml` before `docker compose up -d`, or Docker makes a directory in its place.
+Set `AUTH_PROXY_TRUSTED_PEERS` to the proxy gateway before the first deploy (D-CT26 = b). The code default is loopback only, so an unlisted gateway is untrusted and the listener answers `403 https_required`. Two argon2 gates bound the password checks (D-CT30): at most 6 verifies at once once both are in; see [auth-https.md](auth-https.md#warning-forged-x-forwarded--headers).
 Steps, checks and rollback: [auth-https.md](auth-https.md). Not yet applied on the colo.
 
 ### Client telemetry from players

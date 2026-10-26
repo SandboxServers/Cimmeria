@@ -106,7 +106,7 @@ A linked account is the exception: it has no password, so an unmodified client c
 
 ## Revocation model
 
-One server call, `revoke_account`, cuts an account off. What it reaches, and what it does not:
+One server call, `revoke_account`, cuts an account off. What it reaches, and what it does not (the exact rules are [contract C16](../analysis/client-tls-oidc/contract.md)):
 
 | Reached | How |
 |---|---|
