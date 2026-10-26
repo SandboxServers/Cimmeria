@@ -217,6 +217,7 @@ mod tests {
             family_id: "family".to_owned(),
             via_code: true,
             issued_at: Instant::now(),
+            minted_seq: 0,
         };
         let body = Ok(Json(LaunchRequest {
             launch_id: Some("abcdefghijklmnop".to_owned()),
