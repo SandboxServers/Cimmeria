@@ -198,25 +198,11 @@ fn parse_baseapp_login_rejects_wrong_msg_id() {
 // `login_phases_emit_ordered_byte_sequence` test below is the exception:
 // it inspects the recorded fan-out to pin the phase 1→4 wire sequence.
 
-use crate::auth::PendingLogin;
 use crate::test_support::TestTransport;
 use cimmeria_entity::manager::EntityManager;
 
-fn make_pending_login(account_id: u32, key_byte: u8) -> PendingLogin {
-    PendingLogin {
-        account_id,
-        account_name: format!("acct{account_id}"),
-        access_level: 0,
-        test_account: false,
-        ticket: "TICKET00000000000001".to_string(),
-        // 32-byte key encoded as 64 hex chars, all the same byte.
-        session_key: format!("{:02X}", key_byte).repeat(32),
-        // Default to loopback so existing tests that don't exercise the
-        // IP-binding seam still pass their addr == IP check.
-        client_ip: "127.0.0.1".parse().unwrap(),
-        created: Instant::now(),
-    }
-}
+mod fixtures;
+use fixtures::make_pending_login;
 
 /// Helper: a recording transport so the `transport.send_to` calls inside
 /// handle_login are captured rather than hitting a real socket. Tests that

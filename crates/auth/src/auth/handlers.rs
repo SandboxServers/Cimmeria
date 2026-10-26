@@ -191,7 +191,7 @@ pub(super) async fn handle_user_auth(
             audit!(LoginOutcome::TicketRequiresTls, id = account_id);
             return login_error(4, "The account name or password is incorrect.");
         }
-        TicketCheck::Valid { account_id, .. } => Some(account_id),
+        TicketCheck::Valid { account_id, guard } => Some((account_id, guard)),
         TicketCheck::NoMatch => None,
     };
 
@@ -202,7 +202,7 @@ pub(super) async fn handle_user_auth(
     // credentials accepted without a check. A configured database whose pool
     // is missing refuses every login (fail closed).
     let (account_id, access_level, test_account): (u32, u32, bool) = if let Some(ticket_id) =
-        ticket_id
+        ticket_id.as_ref().map(|(id, _)| *id)
     {
         let consume = consume_span(ticket_id);
         let started = Instant::now();
@@ -214,6 +214,8 @@ pub(super) async fn handle_user_auth(
         )
         .instrument(consume.clone())
         .await;
+        // Test seam: a test revokes the ticket here, while the login is in flight.
+        crate::auth::test_hooks::after_ticket_lookup();
         match &looked_up {
             Ok(_) => record_consume(&consume, started, "ok", "ok"),
             Err(AuthCredError::InvalidCredentials) => {
@@ -335,6 +337,23 @@ pub(super) async fn handle_user_auth(
     // 40-char alphanumeric SID matching the C++ session cookie format.
     let sid = random_alphanumeric(40);
     tracing::debug!(sid_prefix = %CredentialPrefix(&sid), "Phase 1 generated SID");
+
+    // Every await above has run. A launch ticket revoked since its lookup
+    // issues no SID (CT-78).
+    if ticket_id
+        .as_ref()
+        .is_some_and(|(_, guard)| !guard.is_current())
+    {
+        tracing::info!(
+            account_id,
+            account_name = %req.account_name,
+            reason = "ticket_revoked",
+            "Launch ticket was revoked during login; refused"
+        );
+        audit!(LoginOutcome::InvalidCredentials);
+        return login_error(4, "The account name or password is incorrect.");
+    }
+
     {
         state.sessions.lock().unwrap().insert(
             sid.clone(),
@@ -345,6 +364,7 @@ pub(super) async fn handle_user_auth(
                 account_name: req.account_name.clone(),
                 client_ip: addr.ip(),
                 created: Instant::now(),
+                ticket_guard: ticket_id.as_ref().map(|(_, g)| g.clone()),
             },
         );
     }
@@ -440,6 +460,22 @@ pub(super) async fn handle_server_selection(
         }
     };
 
+    // A SID issued for a launch ticket that was revoked after Phase 1 (CT-78).
+    // The SID is already consumed above, so it cannot be retried.
+    if session
+        .ticket_guard
+        .as_ref()
+        .is_some_and(|g| !g.is_current())
+    {
+        tracing::info!(
+            reason = "ticket_revoked",
+            account_id = session.account_id,
+            peer_ip = %client_ip,
+            "Phase 2 refused: the launch ticket behind this SID was revoked"
+        );
+        return select_error(15, "Your logon session has expired. Please log in again.");
+    }
+
     // Cross-IP detection (issue #442, warn-only first): the SID was issued
     // to a specific client IP at Phase 1. Consuming it from a different IP
     // is the replay signature of a harvested session token. WARN (not
@@ -515,6 +551,7 @@ pub(super) async fn handle_server_selection(
                 session_key: session_key.clone(),
                 client_ip: addr.ip(),
                 created: Instant::now(),
+                ticket_guard: session.ticket_guard.clone(),
             },
         );
     }
@@ -607,3 +644,7 @@ pub(super) fn random_alphanumeric(char_count: usize) -> String {
         })
         .collect()
 }
+
+#[cfg(test)]
+#[path = "handlers_guard_tests.rs"]
+mod guard_tests;

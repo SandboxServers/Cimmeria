@@ -22,6 +22,7 @@ mod service;
 mod session_kind;
 mod soap_request;
 mod soap_response;
+pub(crate) mod test_hooks;
 mod ticket_login;
 mod tls;
 
@@ -160,6 +161,9 @@ pub struct PendingLogin {
     pub client_ip: IpAddr,
     /// When this ticket was created (for expiration).
     pub created: Instant,
+    /// Guard of the launch ticket behind this login; `None` for a password
+    /// login. Checked at BaseApp admission (CT-79).
+    pub ticket_guard: Option<TicketGuard>,
 }
 
 // ── Internal types ───────────────────────────────────────────────────────────
@@ -183,6 +187,9 @@ struct SessionRecord {
     /// stolen-session replay (issue #442).
     client_ip: IpAddr,
     created: Instant,
+    /// Guard of the launch ticket behind this SID; `None` for a password
+    /// login. Checked at Phase 2 (CT-78).
+    ticket_guard: Option<TicketGuard>,
 }
 
 /// Compare two client IPs for cross-phase session binding, normalising the

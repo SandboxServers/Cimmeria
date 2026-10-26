@@ -63,7 +63,7 @@ fn random_alphanumeric_length_and_charset() {
 /// no database is configured, so the credential check short-circuits —
 /// but the plaintext-over-HTTP gate runs *before* that, which is exactly
 /// what the test below pins.
-fn test_handler_state() -> Arc<HandlerState> {
+pub(super) fn test_handler_state() -> Arc<HandlerState> {
     test_handler_state_with(true, false)
 }
 
@@ -160,7 +160,7 @@ async fn post_user_auth(state: Arc<HandlerState>) -> (Option<String>, String) {
 
 /// POST `body` to a Router over `state`, from 127.0.0.1, with or without
 /// the TLS marker extension. Returns the `Set-Cookie` header and body.
-async fn post_user_auth_with(
+pub(super) async fn post_user_auth_with(
     state: Arc<HandlerState>,
     body: &str,
     over_tls: bool,
@@ -295,6 +295,7 @@ async fn phase2_sid_consumed_from_different_ip_logs_mismatch() {
             account_name: "ipcheck".to_string(),
             client_ip: "198.51.100.10".parse().unwrap(),
             created: std::time::Instant::now(),
+            ticket_guard: None,
         },
     );
 
@@ -328,10 +329,11 @@ async fn phase2_sid_consumed_from_different_ip_logs_mismatch() {
     );
 }
 
-/// Phase 1 body for `sku` and `password` with the stock protocol digest.
-fn phase1_body(sku: &str, password: &str) -> String {
+/// Phase 1 body for account `name`, `sku` and `password` with the stock
+/// protocol digest.
+pub(super) fn phase1_body(name: &str, sku: &str, password: &str) -> String {
     format!(
-        r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="{sku}" AccountName="anyone" Password="{password}" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#
+        r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="{sku}" AccountName="{name}" Password="{password}" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#
     )
 }
 
@@ -346,6 +348,7 @@ fn seed_session(state: &HandlerState, sid: &str, account_id: u32, created: Insta
             account_name: "refusal-check".to_string(),
             client_ip: "127.0.0.1".parse().unwrap(),
             created,
+            ticket_guard: None,
         },
     );
 }
@@ -353,7 +356,11 @@ fn seed_session(state: &HandlerState, sid: &str, account_id: u32, created: Insta
 /// Drive `handle_server_selection` from 127.0.0.1 with an optional SID
 /// cookie, selecting `shard`. The response is not inspected: the tests
 /// assert on the refusal row.
-async fn post_server_selection(state: Arc<HandlerState>, sid: Option<&str>, shard: &str) {
+pub(super) async fn post_server_selection(
+    state: Arc<HandlerState>,
+    sid: Option<&str>,
+    shard: &str,
+) -> String {
     use axum::http::{header, HeaderMap};
     let mut headers = HeaderMap::new();
     if let Some(sid) = sid {
@@ -363,7 +370,11 @@ async fn post_server_selection(state: Arc<HandlerState>, sid: Option<&str>, shar
     let body = format!(
         "<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin=\"http://www.stargateworlds.com/xml/sgwlogin\" ServerSelection=\"{shard}\" />"
     );
-    handle_server_selection(State(state), ConnectInfo(addr), headers, body).await;
+    let response = handle_server_selection(State(state), ConnectInfo(addr), headers, body).await;
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    String::from_utf8(bytes.to_vec()).unwrap()
 }
 
 /// **Refusal-reason guard.** An unknown SKU is refused with a login error
@@ -372,7 +383,11 @@ async fn post_server_selection(state: Arc<HandlerState>, sid: Option<&str>, shar
 #[tokio::test]
 async fn refusal_unknown_sku_logs_reason() {
     let capture = crate::test_support::LogCapture::install();
-    let body = phase1_body("SGW_OTHER", "A94A8FE5CCB19BA61C4C0873D391E987982FBBD3");
+    let body = phase1_body(
+        "anyone",
+        "SGW_OTHER",
+        "A94A8FE5CCB19BA61C4C0873D391E987982FBBD3",
+    );
     let (cookie, xml) = post_user_auth_with(test_handler_state(), &body, false).await;
     assert!(
         xml.contains("SGWLoginError") && cookie.is_none(),
@@ -394,7 +409,7 @@ async fn refusal_unknown_sku_logs_reason() {
 async fn refusal_plaintext_length_logs_reason_without_password() {
     let capture = crate::test_support::LogCapture::install();
     let password = "x".repeat(129); // MAX_PLAINTEXT_LEN is 128
-    let body = phase1_body("SGW_BETA", &password);
+    let body = phase1_body("anyone", "SGW_BETA", &password);
     let (cookie, xml) = post_user_auth_with(test_handler_state(), &body, true).await;
     assert!(
         xml.contains("SGWLoginError") && cookie.is_none(),
