@@ -286,13 +286,20 @@ BEGIN
 END;
 $$;
 
--- Enforces "no password on an account with a linked identity".
+-- Enforces "no password on an account with a linked identity", on insert and
+-- when an identity is moved to another account. The account row is locked
+-- FOR UPDATE whatever its password, so a concurrent password write (which takes
+-- the same row lock) waits for this transaction; the check then reads the
+-- committed state.
 CREATE FUNCTION account_identity_password_guard() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
+DECLARE
+    has_pw boolean;
 BEGIN
-    IF EXISTS (SELECT 1 FROM account WHERE account_id = NEW.account_id
-               AND (password IS NOT NULL OR password_hash_v2 IS NOT NULL) FOR SHARE) THEN
+    SELECT (password IS NOT NULL OR password_hash_v2 IS NOT NULL) INTO has_pw
+      FROM account WHERE account_id = NEW.account_id FOR UPDATE;
+    IF has_pw THEN
         RAISE EXCEPTION 'account_has_password' USING ERRCODE = 'check_violation';
     END IF;
     RETURN NEW;

@@ -46,8 +46,9 @@ CREATE TRIGGER account_before_delete_lock_orgs BEFORE DELETE ON account FOR EACH
 CREATE TRIGGER account_password_guard BEFORE INSERT OR UPDATE OF password, password_hash_v2 ON account
     FOR EACH ROW EXECUTE FUNCTION account_password_guard();
 
--- Enforces "no password on an account with a linked identity".
-CREATE TRIGGER account_identity_password_guard BEFORE INSERT ON account_identity
+-- Enforces "no password on an account with a linked identity", on insert and on
+-- moving an identity to another account.
+CREATE TRIGGER account_identity_password_guard BEFORE INSERT OR UPDATE OF account_id ON account_identity
     FOR EACH ROW EXECUTE FUNCTION account_identity_password_guard();
 
 --

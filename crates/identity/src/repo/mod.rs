@@ -14,6 +14,10 @@ pub mod refresh;
 #[path = "tests_live_db.rs"]
 mod tests_live_db;
 
+#[cfg(test)]
+#[path = "guard_tests_live_db.rs"]
+mod guard_tests_live_db;
+
 /// A repository failure, with no database text in it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum RepoError {

@@ -74,7 +74,7 @@ A linkable account is enabled, has `accesslevel < 1` and is not a test account. 
 ### No passwords on linked accounts (D-CT11)
 
 - A linked account has no password. Linking an existing account with its password (or with a GM link code) clears the password in the same transaction as the link, and **cannot be undone**. The launcher asks the player to confirm, and the server refuses a link without `password_removal_ack: true`.
-- Two database triggers (`account_password_guard`, `account_identity_password_guard`) refuse any write that would give an account both a password and an identity, whatever the path (SQLSTATE `23514`).
+- Two database triggers (`account_password_guard`, `account_identity_password_guard`) refuse any write that would give an account both a password and an identity, whatever the path (SQLSTATE `23514`). The identity guard locks the account row, so concurrent writers serialize: a password set waits for an identity insert that is still open, and the other way round. It also covers moving an identity to another account (`UPDATE account_identity SET account_id`), not only inserts.
 - Play never falls back to a password. A signed-in Play that cannot get a ticket ends as `NotStarted` with a reason shown in the panel (see Failure modes).
 - The last sign-in method cannot be removed (`409 last_method`). Recovery is `.account linkcode <name>`, then "Link with a code" with a new provider.
 - Removing a method needs a sign-in made by an authorization-code grant in the last 10 minutes (`reauth_required` otherwise); so does adding one.
