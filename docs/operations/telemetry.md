@@ -566,6 +566,8 @@ are not part of the launcher kind.
 | one chunk row | 4 KiB | the chunk rules above (`bad_rows`) |
 | rows per chunk | 200 | the chunk rules above (truncated) |
 
+The launcher paces itself under the 10 chunks a minute session quota (D-LTL1): it sends at most one chunk about every 7 s, and it flushes when a launch finishes and on exit (at most 3 s). A normal run stays inside the quota, and a retry has room.
+
 A row the launcher kind may keep has one of twelve event names and a
 `ClientNative` shape: `client.launcher.` followed by `adoption`, `startup`,
 `crash`, `update`, `game_update`, `install`, `repair`, `launch`, `settings`,

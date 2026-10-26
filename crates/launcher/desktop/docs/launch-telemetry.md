@@ -148,7 +148,9 @@ copy cannot be read for those tags, the launcher logs a WARN `launch_tags_unavai
 Two events on `launcher.telemetry` are named here: `pipeline_recovered`, one row when the
 upload pipeline comes back after failures, and `game_session_mint_failed`, when
 a game session could not be minted and Play went on with no game diagnostics.
-Their fields are not listed in this file.
+Their fields are not listed in this file, apart from `events_lost` below.
+
+**Forwarding pace, hold and flush.** The forwarder sends a batch once 2 s have passed or 64 events are queued, and at least 7 s after the previous send. A 429 or 503 keeps the unsent events and holds sends for the wait the server sets. A transport or 5xx failure keeps them too and holds sends for at least 60 s. A 4xx rejection, or a JSON, IO or split error, drops the events, because the server would refuse them on every retry; a dropped batch with no retry point (`retry_from: None`) is final. While a hold runs, up to 500 events wait in memory, oldest dropped first, and go out when the hold ends. Nothing is written to disk, and turning diagnostics off empties the queue. `pipeline_recovered` carries `events_lost`, the events dropped since the last successful send. The queue is flushed on `launch_finished` and on exit; the exit flush waits at most 3 s for the forwarder to acknowledge it, so an exit is never delayed longer than that.
 
 **Not covered:**
 
