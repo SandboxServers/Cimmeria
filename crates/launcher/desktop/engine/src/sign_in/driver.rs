@@ -116,14 +116,23 @@ impl SignInDriver {
                     reason = "installation_unreadable",
                     "sign-in server list unreadable"
                 );
-                // Sign out and Cancel must end a sign-in even while the installed copy is busy.
-                if matches!(
-                    request,
-                    SignInCommand::Cancel { .. } | SignInCommand::SignOut { .. }
-                ) {
-                    None
-                } else {
-                    return Err(SignInFailure::Unavailable);
+                match &request {
+                    // No server can be named while the installed copy is busy or unreadable:
+                    // Inspect and Cancel show the sign-in the launcher holds, offline-shaped
+                    // (`available: false`, no server name), so a signed-in panel keeps Sign out.
+                    SignInCommand::Inspect { .. } | SignInCommand::Cancel { .. } => {
+                        let site = Site {
+                            state,
+                            server: None,
+                            discovery: None,
+                            base: None,
+                        };
+                        let session = guard(state)?.sign_in();
+                        return self.reply(&site, session.as_ref(), None).await;
+                    }
+                    // Sign out must end a sign-in even while the installed copy is busy.
+                    SignInCommand::SignOut { .. } => None,
+                    _ => return Err(SignInFailure::Unavailable),
                 }
             }
         };

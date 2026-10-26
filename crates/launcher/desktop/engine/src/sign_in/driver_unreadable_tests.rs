@@ -1,7 +1,8 @@
-//! Driver tests of Sign out and Cancel while the installed copy's record cannot be
-//! read (CT-90). Such a request has no login server to talk to, so it must still
-//! end the sign-in instead of failing with `unavailable`. The record is replaced
-//! with bytes that are not JSON, which is what a half-written file looks like.
+//! Driver tests of Sign out, Cancel and Inspect while the installed copy's record
+//! cannot be read (CT-90). Such a request has no login server to talk to. Sign out
+//! must still end the sign-in, and Inspect and Cancel answer the sign-in the launcher
+//! holds, offline-shaped, instead of failing with `unavailable`. The record is
+//! replaced with bytes that are not JSON, which is what a half-written file looks like.
 
 use super::*;
 
@@ -41,4 +42,43 @@ async fn cancel_is_not_refused_while_the_installed_copy_is_unreadable() {
         )
         .await;
     assert!(status.is_ok(), "{status:?}");
+    let status = status.unwrap();
+    assert!(!status.available);
+    assert!(matches!(status.state, SignInStateView::SignedIn { .. }));
+    assert!(fx.has_session());
+}
+
+#[tokio::test]
+async fn inspect_keeps_the_signed_in_panel_while_the_installed_copy_is_unreadable() {
+    let fx = Fixture::new(true, true).await;
+    signed_in_with_unreadable_record(&fx).await;
+    let status = fx
+        .run(
+            json!({"command": "inspect", "schema_version": 1}),
+            &SilentBrowser::default(),
+        )
+        .await
+        .unwrap();
+    assert!(!status.available);
+    assert!(status.server_name.is_none());
+    assert!(status.providers.is_empty());
+    assert!(matches!(status.state, SignInStateView::SignedIn { .. }));
+    assert!(fx.has_session());
+}
+
+#[tokio::test]
+async fn inspect_while_signed_out_and_unreadable_answers_signed_out_not_unavailable() {
+    let fx = Fixture::new(true, true).await;
+    let record = fx._dir.path().join("state").join("installed-content.json");
+    std::fs::create_dir_all(record.parent().unwrap()).unwrap();
+    std::fs::write(record, b"{").unwrap();
+    let status = fx
+        .run(
+            json!({"command": "inspect", "schema_version": 1}),
+            &SilentBrowser::default(),
+        )
+        .await
+        .unwrap();
+    assert!(!status.available);
+    assert!(matches!(status.state, SignInStateView::SignedOut));
 }
