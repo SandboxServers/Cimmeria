@@ -171,7 +171,7 @@ test('no password line and no password field with the account view', async () =>
  const p = await mounted(signedIn());
  await p.press('Show linked sign-in methods');
  assert.ok(p.text().includes('This account has no password: it plays only through this launcher.'));
- assert.equal(p.panel.querySelectorAll('input').length, 0);
+ assert.equal(p.panel.querySelectorAll('input[type="password"]').length, 0);
 });
 
 test('panel hidden when signed out', async () => {
@@ -179,4 +179,93 @@ test('panel hidden when signed out', async () => {
  assert.equal(p.panel.hidden, false);
  p.document.dispatchEvent(new p.window.CustomEvent('cimmeria-sign-in', {detail: status()}));
  assert.equal(p.panel.hidden, true);
+});
+
+test('add method browser_failed shows the address and resumes', async () => {
+ let addressWhileWaiting = '';
+ let cancelWhileWaiting = false;
+ const urlBox = () => (p.panel.querySelector('[readonly]')!.parentNode) as unknown as HTMLElement;
+ const p = await mounted(signedIn(), async request => {
+  if (request.command === 'add_method') throw {error: 'browser_failed', url: 'https://example.org/auth'};
+  if (request.command === 'resume') {
+   addressWhileWaiting = (p.panel.querySelector('[readonly]') as unknown as HTMLInputElement).value;
+   cancelWhileWaiting = p.button('Cancel').hidden === false;
+   return withAccount();
+  }
+  return withAccount();
+ });
+ await p.press('Add Google');
+ assert.deepEqual(p.calls.slice(-2).map(c => c.command), ['add_method', 'resume']);
+ assert.equal(addressWhileWaiting, 'https://example.org/auth');
+ assert.equal(cancelWhileWaiting, true, 'Cancel shows while the resume waits');
+ assert.equal(urlBox().hidden, true, 'the address box clears once it settles');
+});
+
+test('sign in again browser_failed resumes, then retries', async () => {
+ let refused = true;
+ let addressWhileWaiting = '';
+ let cancelWhileWaiting = false;
+ const p = await mounted(signedIn(), async request => {
+  if (request.command === 'account') return withAccount();
+  if (request.command === 'unlink' && refused) { refused = false; throw {error: 'server', code: 'reauth_required'}; }
+  if (request.command === 'begin') throw {error: 'browser_failed', url: 'https://example.org/auth'};
+  if (request.command === 'resume') {
+   addressWhileWaiting = (p.panel.querySelector('[readonly]') as unknown as HTMLInputElement).value;
+   cancelWhileWaiting = p.button('Cancel').hidden === false;
+   return withAccount();
+  }
+  return withAccount([]);
+ });
+ await p.press('Show linked sign-in methods');
+ await p.press('Remove');
+ await p.press('Confirm remove');
+ await p.press('Sign in again');
+ assert.deepEqual(p.calls.slice(-3).map(c => c.command), ['begin', 'resume', 'unlink']);
+ assert.equal(addressWhileWaiting, 'https://example.org/auth');
+ assert.equal(cancelWhileWaiting, true, 'Cancel shows while the resume waits');
+ assert.equal((p.panel.querySelector('[readonly]')!.parentNode as unknown as HTMLElement).hidden, true, 'the address box clears once it settles');
+});
+
+test('sign in again resume failure keeps Sign in again', async () => {
+ const p = await mounted(signedIn(), async request => {
+  if (request.command === 'account') return withAccount();
+  if (request.command === 'unlink') throw {error: 'server', code: 'reauth_required'};
+  if (request.command === 'begin') throw {error: 'browser_failed', url: 'https://example.org/auth'};
+  if (request.command === 'resume') throw {error: 'server', code: 'no_pending_flow'};
+  return withAccount();
+ });
+ await p.press('Show linked sign-in methods');
+ await p.press('Remove');
+ await p.press('Confirm remove');
+ await p.press('Sign in again');
+ assert.deepEqual(p.calls.slice(-2).map(c => c.command), ['begin', 'resume'], 'a failed resume sends no further unlink');
+ assert.equal(p.button('Sign in again').hidden, false, 'a failed resume keeps the retry on offer');
+ assert.equal((p.button('Sign in again').parentNode as unknown as HTMLElement).hidden, false, 'the reauth box stays open with the retry');
+});
+
+test('sign in again with no last-used provider says what to do', async () => {
+ const p = await mounted(signedIn(), async request => {
+  if (request.command === 'add_method') throw {error: 'server', code: 'reauth_required'};
+  return withAccount([]);
+ });
+ await p.press('Add Google');
+ await p.press('Sign in again');
+ assert.equal(p.statusText(), 'Sign in again from the sign-in panel, then retry.');
+ assert.equal(p.calls.some(r => r.command === 'begin'), false, 'nothing is started without a provider');
+});
+
+test('sign in again whose begin is cancelled does not retry', async () => {
+ const p = await mounted(signedIn(), async request => {
+  if (request.command === 'account') return withAccount();
+  if (request.command === 'begin') throw {error: 'cancelled'};
+  if (request.command === 'unlink') throw {error: 'server', code: 'reauth_required'};
+  return withAccount();
+ });
+ await p.press('Show linked sign-in methods');
+ await p.press('Remove');
+ await p.press('Confirm remove');
+ await p.press('Sign in again');
+ assert.equal(p.calls.filter(r => r.command === 'unlink').length, 1, 'the refused removal is not retried');
+ assert.equal(p.calls.some(r => r.command === 'add_method'), false);
+ assert.equal(p.statusText(), 'Sign-in cancelled.');
 });
