@@ -401,7 +401,7 @@ async fn live_db_touch_delete_facts_and_has_password() {
     let has_password_other = account::has_password(&pool, ID_MISC_OTHER).await;
     let facts = account::facts(&pool, ID_MISC).await;
     let missing = account::facts(&pool, 2_000_219).await;
-    let by_name = account::facts_by_name(&pool, "ct15_other_213").await;
+    let by_name = account::match_name(&pool, "ct15_other_213").await;
     let linked = identity::insert(
         &pool,
         ID_MISC,
@@ -433,8 +433,10 @@ async fn live_db_touch_delete_facts_and_has_password() {
     assert_eq!(facts.account_id, ID_MISC);
     assert!(facts.enabled && facts.accesslevel == 0 && !facts.test_account);
     assert!(missing.expect("facts of a missing id").is_none());
-    let by_name = by_name.expect("facts by name").expect("the name is found");
-    assert_eq!(by_name.account_id, ID_MISC_OTHER);
+    assert!(
+        matches!(by_name, Ok(account::NameMatch::One(ref f)) if f.account_id == ID_MISC_OTHER),
+        "the single folded name is found, got {by_name:?}"
+    );
     let linked = linked.expect("link");
     touched.expect("touch");
     assert_eq!(stamp.expect("read last_used_at").0, 1_700_000_000_000);

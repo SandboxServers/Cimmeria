@@ -259,17 +259,34 @@ async fn answer(
     now: Instant,
 ) -> Result<Vec<String>, RepoError> {
     let name = action.label();
-    let Some(facts) = account::facts_by_name(pool, target).await? else {
-        log_outcome(
-            caller,
-            name,
-            false,
-            Some("unknown_account"),
-            target,
-            None,
-            None,
-        );
-        return Ok(vec![format!("account: no account named {target}")]);
+    let facts = match account::match_name(pool, target).await? {
+        account::NameMatch::One(facts) => facts,
+        account::NameMatch::None => {
+            log_outcome(
+                caller,
+                name,
+                false,
+                Some("unknown_account"),
+                target,
+                None,
+                None,
+            );
+            return Ok(vec![format!("account: no account named {target}")]);
+        }
+        account::NameMatch::Ambiguous => {
+            log_outcome(
+                caller,
+                name,
+                false,
+                Some("ambiguous_account"),
+                target,
+                None,
+                None,
+            );
+            return Ok(vec![format!(
+                "account: more than one account is named {target} when case is ignored; type the name exactly as it is stored"
+            )]);
+        }
     };
     let account_id = facts.account_id;
     let ids = Some(account_id);
@@ -423,6 +440,10 @@ pub async fn handle(
 #[cfg(test)]
 #[path = "tests_live_db.rs"]
 mod tests_live_db;
+
+#[cfg(test)]
+#[path = "linkcode_name_tests_live_db.rs"]
+mod linkcode_name_tests_live_db;
 
 #[cfg(test)]
 #[path = "unlink_tx_tests_live_db.rs"]
