@@ -118,16 +118,36 @@ pub async fn verify_account_password(
     gated_check(row, plaintext.to_owned()).await
 }
 
+/// How long a link check waits for an argon2id permit before it fails closed.
+const GATE_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Takes one permit of `gate`, waiting at most `wait`. `None` when the wait runs
+/// out, so a burst of link attempts cannot park callers without end.
+async fn acquire_within(
+    gate: std::sync::Arc<tokio::sync::Semaphore>,
+    wait: std::time::Duration,
+) -> Option<Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError>> {
+    tokio::time::timeout(wait, gate.acquire_owned()).await.ok()
+}
+
 /// Runs [`check_row`] on a blocking thread, behind [`ARGON2_GATE`]. The permit
-/// is held until the blocking task ends.
+/// is held until the blocking task ends. A wait past [`GATE_WAIT`] answers
+/// `DbError`, which the caller maps to 503.
 async fn gated_check(row: Option<AccountRow>, plaintext: String) -> PasswordCheck {
-    let permit = match std::sync::Arc::clone(&ARGON2_GATE).acquire_owned().await {
-        Ok(permit) => permit,
-        Err(e) => {
+    let permit = match acquire_within(std::sync::Arc::clone(&ARGON2_GATE), GATE_WAIT).await {
+        Some(Ok(permit)) => permit,
+        Some(Err(e)) => {
             tracing::error!(
                 error = %e,
                 reason = "argon2_gate_closed",
                 "password check: argon2 gate is closed"
+            );
+            return PasswordCheck::DbError;
+        }
+        None => {
+            tracing::warn!(
+                reason = "argon2_gate_timeout",
+                "password check: no argon2 permit within the wait bound; refusing the link attempt"
             );
             return PasswordCheck::DbError;
         }

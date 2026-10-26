@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use tokio::task::JoinSet;
 
-use super::{gated_check, PasswordCheck, ARGON2_GATE, IN_FLIGHT, PEAK};
+use super::{acquire_within, gated_check, PasswordCheck, ARGON2_GATE, IN_FLIGHT, PEAK};
 
 /// Four checks at once on a multi-thread runtime never run more than two
 /// verifies together. Without the gate, `PEAK` reaches three or four.
@@ -45,6 +45,25 @@ async fn gated_check_leaves_the_async_runtime_free() {
     ticker.await.expect("ticker");
     assert_eq!(answer, PasswordCheck::Invalid);
     assert!(ticks.load(Ordering::SeqCst) > 0, "runtime was blocked");
+}
+
+/// A permit wait that runs out gives up, so a link check cannot park behind a
+/// busy gate forever. The gate here has no free permit, so only the bound ends
+/// the wait; a permit that is free is taken at once.
+#[tokio::test(flavor = "current_thread")]
+async fn acquire_within_gives_up_when_no_permit_frees() {
+    let busy = Arc::new(tokio::sync::Semaphore::new(0));
+    let wait = std::time::Duration::from_millis(10);
+    let got = tokio::time::timeout(
+        std::time::Duration::from_secs(20),
+        acquire_within(busy, wait),
+    )
+    .await
+    .expect("the wait returns before the outer bound");
+    assert!(got.is_none());
+    let free = Arc::new(tokio::sync::Semaphore::new(1));
+    let got = acquire_within(free, wait).await;
+    assert!(matches!(got, Some(Ok(_))));
 }
 
 /// Dropping the caller while a verify runs does not free its permit: the permit
