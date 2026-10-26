@@ -21,13 +21,13 @@ use tracing::Instrument;
 
 use crate::limits::Bucket;
 use crate::link::{self, LinkFacts, LinkHint, Refusal, Resolution};
-use crate::provider::VerifiedIdentity;
 use crate::repo::event::{self, EventKind};
 use crate::repo::refresh::{self, Issued, Rotation};
 use crate::repo::{account, identity};
+use crate::routes::attach::attach;
 use crate::routes::ctx::{client_ip, note, RouteState};
 use crate::routes::error::ApiError;
-use crate::stores::{HandoffOutcome, LinkIntent, ACCESS_LIFE, LINK_GRANT_LIFE};
+use crate::stores::{HandoffOutcome, ACCESS_LIFE, LINK_GRANT_LIFE};
 use crate::telemetry;
 
 /// The `POST /token` body (C6). Every field is optional here so that a missing
@@ -119,8 +119,8 @@ async fn code_grant(
         .handoff
         .redeem(code, verifier, redirect, now)
         .ok_or(ApiError::InvalidGrant)?;
-    if let Some(LinkIntent { account_id }) = intent {
-        return attach(state, pool, identity, account_id, fence, now).await;
+    if let Some(intent) = intent {
+        return attach(state, pool, identity, intent, fence, now).await;
     }
 
     let provider = identity.provider.as_str().to_owned();
@@ -190,44 +190,6 @@ async fn code_grant(
         }
         Resolution::Refused(Refusal::AccountDisabled) => Err(ApiError::AccountDisabled),
     }
-}
-
-/// A `/link/start` intent: the verified identity attaches to `account_id`.
-/// Bound to another account it is refused (`invalid_grant`); bound to this
-/// one it just signs in.
-async fn attach(
-    state: &RouteState,
-    pool: &PgPool,
-    verified: VerifiedIdentity,
-    account_id: u32,
-    fence: u64,
-    now: Instant,
-) -> Result<Response, ApiError> {
-    match account::facts(pool, account_id)
-        .await
-        .map_err(ApiError::from_repo)?
-    {
-        Some(facts) if facts.enabled => {}
-        Some(_) => return Err(ApiError::AccountDisabled),
-        None => return Err(ApiError::InvalidGrant),
-    }
-    let provider = verified.provider.as_str();
-    let found = identity::find_bound(pool, provider, &verified.issuer, &verified.subject)
-        .await
-        .map_err(ApiError::from_repo)?;
-    let identity_id = match found {
-        Some((id, bound)) if bound.account_id == account_id => id,
-        Some(_) => return Err(ApiError::InvalidGrant),
-        None => {
-            let trusted = state.trusts_email(&verified) && verified.email_verified;
-            identity::insert(pool, account_id, &verified, trusted)
-                .await
-                .map_err(ApiError::from_repo)?
-                .identity_id
-        }
-    };
-    note("signed_in");
-    signed_in(state, account_id, identity_id, fence, true, now).await
 }
 
 /// The `refresh_token` grant: rotates the presented token (C6).
@@ -331,7 +293,7 @@ pub(super) async fn signed_in(
 /// `signed_in`. The account name is the display name too: the account row
 /// holds no other name. A token minted after its family was revoked is refused
 /// (`fence`, C16.3): the family is then revoked again, best effort.
-async fn session(
+pub(super) async fn session(
     state: &RouteState,
     pool: &PgPool,
     account_id: u32,

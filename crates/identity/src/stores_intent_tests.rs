@@ -5,7 +5,10 @@ use super::*;
 
 /// A link intent that attaches the identity to `account_id`.
 fn intent(account_id: u32) -> LinkIntent {
-    LinkIntent { account_id }
+    LinkIntent {
+        account_id,
+        family_id: "family".to_owned(),
+    }
 }
 
 #[test]

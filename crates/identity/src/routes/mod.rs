@@ -6,6 +6,7 @@
 //! in developer mode.
 
 pub mod account;
+mod attach;
 pub mod bearer;
 pub mod ctx;
 pub mod error;

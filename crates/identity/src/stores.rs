@@ -46,10 +46,13 @@ pub const LINK_GRANT_LIFE: Duration = Duration::from_secs(10 * 60);
 pub const INTENT_LIFE: Duration = Duration::from_secs(10 * 60);
 
 /// A `/link/start` intent: the signed-in account the new identity attaches to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinkIntent {
     /// The account the callback links the identity to.
     pub account_id: u32,
+    /// The refresh family of the session that started the intent. The callback
+    /// attaches only while this family is still live (C16.5).
+    pub family_id: String,
 }
 
 /// A `/authorize` request waiting for the provider's callback. It holds the
