@@ -11,6 +11,8 @@ pub struct Worker {
     state: Arc<Mutex<DesktopState>>,
     cancel: CancellationToken,
     pub observation: watch::Receiver<Observation>,
+    /// The cooked-data presync's latest update; it stays readable after the run.
+    pub content_sync: watch::Receiver<Option<cooked_presync::ContentSync>>,
 }
 impl Worker {
     pub fn operation_id(&self) -> Uuid {
@@ -74,16 +76,26 @@ pub fn dispatch(state: Arc<Mutex<DesktopState>>, id: Uuid) -> Result<Worker, Int
     };
     let cancel = CancellationToken::new();
     let (updates, observation) = watch::channel(Observation::Preparing);
+    let (content, content_sync) = watch::channel(None);
     let worker = Worker {
         id,
         state: state.clone(),
         cancel: cancel.clone(),
         observation,
+        content_sync,
     };
     handle.spawn(async move {
-        let result = AssertUnwindSafe(execute(state.clone(), &plan, root, cancel, &updates))
-            .catch_unwind()
-            .await;
+        let result = AssertUnwindSafe(execute(
+            state.clone(),
+            &plan,
+            root,
+            cancel,
+            &updates,
+            cooked_presync::profile(),
+            &content,
+        ))
+        .catch_unwind()
+        .await;
         let result = match result {
             Ok(Ok(result)) => result,
             Ok(Err(error)) => {
@@ -152,6 +164,8 @@ async fn execute(
     root: PathBuf,
     cancel: CancellationToken,
     updates: &watch::Sender<Observation>,
+    profile: cooked_presync::Profile,
+    content: &watch::Sender<Option<cooked_presync::ContentSync>>,
 ) -> Result<Observation, IntentError> {
     if cancel.is_cancelled() {
         return Ok(Observation::Cancelled);
@@ -194,6 +208,30 @@ async fn execute(
         .unwrap_or_default();
     let place_on = window_target(&placements, display.effective().mode);
     let telemetry_session = session.clone().map(|session| (session, servers.clone()));
+    // D-LP18: a failed presync stops the launch before any client file is touched.
+    let presync_timer = context.start(crate::phase_timing::Phase::PlayCookedPresync);
+    let report = cooked_presync::presync(
+        plan.id,
+        profile,
+        &plan.installation.content_root(),
+        &servers,
+        &cancel,
+        content,
+    )
+    .await;
+    presync_timer.finish(cooked_presync::timer_outcome(&report));
+    match cooked_presync::gate(&report) {
+        cooked_presync::Gate::Continue => {}
+        cooked_presync::Gate::Blocked => {
+            events::launch_not_started(
+                plan.id,
+                "cooked_presync_failed",
+                FailureCode::LaunchPrepareFailed,
+            );
+            return Ok(Observation::NotStarted);
+        }
+        cooked_presync::Gate::Cancelled => return Ok(Observation::Cancelled),
+    }
     let prepared = plan.clone();
     let setup_timer = context.start(crate::phase_timing::Phase::PlayClientSetup);
     let setup = tokio::task::spawn_blocking(move || {

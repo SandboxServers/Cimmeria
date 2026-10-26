@@ -12,6 +12,7 @@ fn login_server_refusal_finishes_mint_as_failed_rather_than_interrupted() {
     let state = Arc::new(Mutex::new(state));
     let kept = state.clone();
     let (updates, _) = watch::channel(Observation::Unknown);
+    let (content, _) = watch::channel(None);
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -23,6 +24,8 @@ fn login_server_refusal_finishes_mint_as_failed_rather_than_interrupted() {
             root.path().into(),
             CancellationToken::new(),
             &updates,
+            cooked_presync::Profile::NotThisPlatform,
+            &content,
         ))
     });
     assert!(matches!(result, Ok(Observation::NotStarted)));
@@ -55,6 +58,7 @@ fn a_failed_client_setup_is_noted_launch_prepare_failed() {
     let state = Arc::new(Mutex::new(state));
     let kept = state.clone();
     let (updates, _) = watch::channel(Observation::Unknown);
+    let (content, _) = watch::channel(None);
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -66,6 +70,8 @@ fn a_failed_client_setup_is_noted_launch_prepare_failed() {
             root.path().into(),
             CancellationToken::new(),
             &updates,
+            cooked_presync::Profile::NotThisPlatform,
+            &content,
         ))
     });
     // On Linux the fixture's Native plan reaches the Proton arm, whose refusal
@@ -83,6 +89,158 @@ fn a_failed_client_setup_is_noted_launch_prepare_failed() {
         .collect();
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0].field("failure_code"), Some(wire));
+}
+
+fn presync_runtime() -> tokio::runtime::Runtime {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+}
+
+/// D-LP18, the revert proof: a failed presync ends the launch before client
+/// setup. Removing the gate lets setup run, and the assertion below fails.
+#[test]
+fn a_failed_presync_never_reaches_client_setup() {
+    use wiremock::matchers::path;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let rt = presync_runtime();
+    let server = rt.block_on(MockServer::start());
+    rt.block_on(
+        Mock::given(path("/api/cooked/v1/index"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server),
+    );
+    let (root, mut state, plan) = super::super::tests::fixture();
+    state.preferences.login_servers = vec![LoginServer {
+        name: "Home".into(),
+        url: server.uri(),
+    }];
+    state.record_launch(&plan, Observation::Preparing).unwrap();
+    let state = Arc::new(Mutex::new(state));
+    let (updates, _) = watch::channel(Observation::Unknown);
+    let (content, content_rx) = watch::channel(None);
+    let firesky = root.path().to_path_buf();
+    let (result, events) = crate::test_capture::capture(|| {
+        rt.block_on(execute(
+            state,
+            &plan,
+            root.path().into(),
+            CancellationToken::new(),
+            &updates,
+            cooked_presync::Profile::Firesky(firesky),
+            &content,
+        ))
+    });
+    assert!(matches!(result, Ok(Observation::NotStarted)));
+    let refused = events
+        .iter()
+        .find(|e| e.field("reason") == Some("cooked_presync_failed"))
+        .unwrap();
+    assert_eq!(refused.field("event"), Some("launch_not_started"));
+    let finish = events
+        .iter()
+        .find(|e| {
+            e.field("phase") == Some("play_cooked_presync")
+                && e.field("event") == Some("phase_finished")
+        })
+        .unwrap();
+    assert_eq!(finish.field("outcome"), Some("failed"));
+    assert!(!events
+        .iter()
+        .any(|e| e.field("phase") == Some("play_client_setup")));
+    let last = content_rx
+        .borrow()
+        .clone()
+        .expect("the presync sent updates");
+    let failure = last.failure.expect("the failure is recorded");
+    assert_eq!(failure.http_status, Some(500));
+    assert_eq!(
+        last.server.as_deref(),
+        Some(server.address().to_string().as_str())
+    );
+}
+
+/// A presync that is skipped on this platform still lets client setup run, after
+/// its own phase has finished.
+#[test]
+fn a_skipped_presync_continues_to_client_setup() {
+    let rt = presync_runtime();
+    let (root, mut state, plan) = super::super::tests::fixture();
+    state.record_launch(&plan, Observation::Preparing).unwrap();
+    let state = Arc::new(Mutex::new(state));
+    let (updates, _) = watch::channel(Observation::Unknown);
+    let (content, _) = watch::channel(None);
+    let (_result, events) = crate::test_capture::capture(|| {
+        rt.block_on(execute(
+            state,
+            &plan,
+            root.path().into(),
+            CancellationToken::new(),
+            &updates,
+            cooked_presync::Profile::NotThisPlatform,
+            &content,
+        ))
+    });
+    let finish = events
+        .iter()
+        .position(|e| {
+            e.field("phase") == Some("play_cooked_presync")
+                && e.field("event") == Some("phase_finished")
+        })
+        .expect("the presync phase finished");
+    assert_eq!(events[finish].field("outcome"), Some("unavailable"));
+    let setup = events
+        .iter()
+        .position(|e| e.field("phase") == Some("play_client_setup"))
+        .expect("client setup ran");
+    assert!(finish < setup);
+}
+
+/// The player's cancel during a presync ends the launch as `Cancelled`, not as
+/// a failure: the run stops at its next step and nothing is started.
+#[test]
+fn a_cancelled_presync_returns_cancelled() {
+    use wiremock::matchers::path;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let rt = presync_runtime();
+    let server = rt.block_on(MockServer::start());
+    rt.block_on(
+        Mock::given(path("/api/cooked/v1/index"))
+            .respond_with(ResponseTemplate::new(200).set_delay(std::time::Duration::from_secs(30)))
+            .mount(&server),
+    );
+    let (root, mut state, plan) = super::super::tests::fixture();
+    state.preferences.login_servers = vec![LoginServer {
+        name: "Home".into(),
+        url: server.uri(),
+    }];
+    state.record_launch(&plan, Observation::Preparing).unwrap();
+    let state = Arc::new(Mutex::new(state));
+    let (updates, _) = watch::channel(Observation::Unknown);
+    let (content, _) = watch::channel(None);
+    let cancel = CancellationToken::new();
+    let firesky = root.path().to_path_buf();
+    let (result, _events) = crate::test_capture::capture(|| {
+        rt.block_on(async {
+            let stop = cancel.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                stop.cancel();
+            });
+            execute(
+                state,
+                &plan,
+                root.path().into(),
+                cancel.clone(),
+                &updates,
+                cooked_presync::Profile::Firesky(firesky),
+                &content,
+            )
+            .await
+        })
+    });
+    assert!(matches!(result, Ok(Observation::Cancelled)));
 }
 
 // Inert PE32 header, sufficient for real client preparation, never spawned.

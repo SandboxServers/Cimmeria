@@ -64,20 +64,23 @@ pub enum ContentSyncPhase {
 
 /// Where the presync reads and writes: the Firesky folder, or why there is none.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)] // wired by LP-27
+#[cfg_attr(not(windows), allow(dead_code))] // Firesky and Unavailable come from profile() on Windows only
 pub(crate) enum Profile {
     /// The `My Games\Firesky` folder under the user's Documents.
     Firesky(PathBuf),
     /// Windows, but no Documents folder could be found.
     Unavailable,
     /// Not a Windows launch (or a test build): the presync is skipped.
+    #[cfg_attr(
+        all(windows, not(any(test, feature = "test-support"))),
+        allow(dead_code) // a Windows launch always gets Firesky or Unavailable
+    )]
     NotThisPlatform,
 }
 
 /// The Firesky profile of this launch. Tests never reach the real Documents
 /// folder (R6): test builds always get `NotThisPlatform`.
 #[cfg(all(windows, not(any(test, feature = "test-support"))))]
-#[allow(dead_code)] // wired by LP-27
 pub(crate) fn profile() -> Profile {
     match cimmeria_launcher_core::client_paths::firesky_root() {
         Some(root) => Profile::Firesky(root),
@@ -87,14 +90,12 @@ pub(crate) fn profile() -> Profile {
 
 /// The Firesky profile of this launch; off Windows and in tests, `NotThisPlatform`.
 #[cfg(not(all(windows, not(any(test, feature = "test-support")))))]
-#[allow(dead_code)] // wired by LP-27
 pub(crate) fn profile() -> Profile {
     Profile::NotThisPlatform
 }
 
 /// Runs the presync with the shipped limits and records its events for launch
-/// `id`. The worker calls it; LP-27 passes `plan.id`.
-#[allow(dead_code)] // wired by LP-27
+/// `id`. The worker calls it with `plan.id`.
 pub(crate) async fn presync(
     id: Uuid,
     profile: Profile,
@@ -166,9 +167,8 @@ pub(crate) async fn presync_at(
     report
 }
 
-/// The shell's gate on a presync report (LP-27 applies it).
+/// The worker's gate on a presync report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // wired by LP-27
 pub(crate) enum Gate {
     /// Client setup may run.
     Continue,
@@ -180,7 +180,6 @@ pub(crate) enum Gate {
 
 /// The gate for a report: `up_to_date`, `synced` and `skipped` continue,
 /// `failed` blocks, `cancelled` cancels.
-#[allow(dead_code)] // wired by LP-27
 pub(crate) fn gate(report: &Report) -> Gate {
     match report.outcome {
         Outcome::UpToDate | Outcome::Synced | Outcome::Skipped => Gate::Continue,
@@ -190,7 +189,6 @@ pub(crate) fn gate(report: &Report) -> Gate {
 }
 
 /// The phase-timer outcome for a report.
-#[allow(dead_code)] // wired by LP-27
 pub(crate) fn timer_outcome(report: &Report) -> phase_timing::Outcome {
     match report.outcome {
         Outcome::UpToDate | Outcome::Synced => phase_timing::Outcome::Succeeded,
