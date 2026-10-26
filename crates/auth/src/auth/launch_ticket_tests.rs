@@ -207,10 +207,20 @@ fn end_and_expiry_leave_the_guard_current() {
     assert!(store.end(1, LAUNCH));
     assert!(guard.is_current());
 
-    store.mint(2, "Player_0002", LAUNCH, t0);
+    let second = store.mint(2, "Player_0002", LAUNCH, t0);
+    let TicketCheck::Valid {
+        guard: expiring, ..
+    } = store.verify("Player_0002", &sha1_of(&second.ticket), t0)
+    else {
+        panic!("a fresh ticket should verify");
+    };
     let later = t0 + TICKET_ABSOLUTE;
-    assert_eq!(store.reap(later), 1);
-    assert!(guard.is_current());
+    assert!(matches!(
+        store.verify("Player_0002", &sha1_of(&second.ticket), later),
+        TicketCheck::NoMatch
+    ));
+    assert_eq!(store.live_count(), 0);
+    assert!(expiring.is_current());
 }
 
 #[test]
