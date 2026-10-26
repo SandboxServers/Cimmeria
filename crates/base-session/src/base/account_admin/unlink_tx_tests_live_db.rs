@@ -101,9 +101,12 @@ async fn install_revoke_failure(pool: &PgPool) {
         .expect("create the revoke trigger");
 }
 
-/// Drops the revoke trigger, so no other check sees it.
+/// Drops the revoke trigger and its function, so no other check sees them.
 async fn drop_revoke_failure(pool: &PgPool) {
     let _ = sqlx::query("DROP TRIGGER IF EXISTS ct76_fail_revoke ON auth_refresh_token")
+        .execute(pool)
+        .await;
+    let _ = sqlx::query("DROP FUNCTION IF EXISTS ct76_fail_revoke()")
         .execute(pool)
         .await;
 }

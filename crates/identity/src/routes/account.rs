@@ -227,9 +227,10 @@ pub async fn unlink(
 /// other and the second sees the first. Without the lock both could read two
 /// methods and both delete, leaving none (C15 e).
 ///
-/// After the delete it ends every other session of the account: the refresh
-/// families except the caller's, and the access tokens and launch tickets
-/// except the caller's own family (client-tls-oidc D1).
+/// In the same transaction it revokes the account's refresh families except the
+/// caller's (C16.6), so a failed revoke leaves the identity in place. After the
+/// commit it ends the access tokens and launch tickets except the caller's own
+/// family (client-tls-oidc D1).
 async fn remove_identity(
     state: &RouteState,
     grant: &AccessGrant,

@@ -16,6 +16,14 @@ use crate::stores::{pkce_challenge, HandoffOutcome, LinkIntent};
 const ACC_OTHER_FAMILY: u32 = 0x7000_E400;
 /// The account an unlink and an attach race for.
 const ACC_RACE: u32 = 0x7000_E401;
+/// The account whose unlink the trigger makes fail.
+const ACC_ROLLBACK: u32 = 0x7000_E402;
+/// The trigger on `ACC_ROLLBACK` only (the id is written out, sqlx wants a
+/// literal statement).
+const ROLLBACK_TRIGGER: &str =
+    "CREATE TRIGGER ct76_fail_player_revoke BEFORE UPDATE ON auth_refresh_token \
+     FOR EACH ROW WHEN (OLD.account_id = 1879106562) EXECUTE FUNCTION ct76_fail_player_revoke()";
+const _: () = assert!(ACC_ROLLBACK == 1_879_106_562);
 
 /// Deletes the sentinel account `account_id` by exact id: its refresh families
 /// first, then the account (its identities and events cascade). A failed delete
@@ -76,7 +84,10 @@ async fn a_backend_waits_on(pool: &PgPool, holder_pid: i32) -> bool {
 
 /// The player unlink ends the account's other refresh family in the commit that
 /// deletes the identity: once the route answers, a second connection sees the
-/// family revoked, and the caller's own family stays live.
+/// family revoked, and the caller's own family stays live. It guards the move of
+/// the revoke into the transaction, and still passes on revert (a revoke after
+/// the commit also finishes before the answer); the rollback check below is the
+/// one that fails on revert.
 #[tokio::test]
 async fn live_db_player_unlink_revokes_other_families_in_its_transaction() {
     let pool = require_db_or_skip!();
@@ -103,6 +114,61 @@ async fn live_db_player_unlink_revokes_other_families_in_its_transaction() {
     assert_eq!(status, StatusCode::NO_CONTENT);
     assert_eq!(other_live, 0, "the other family is revoked by the commit");
     assert!(own_live > 0, "the caller's own family stays live");
+}
+
+/// A player unlink whose revoke fails rolls the delete back: the route does not
+/// answer 204, both identities remain, and the other family stays live. The
+/// trigger fails the revoke's update of that family only.
+#[tokio::test]
+async fn live_db_player_unlink_rolls_back_when_the_revoke_fails() {
+    let pool = require_db_or_skip!();
+    clean_exact(&pool, ACC_ROLLBACK).await;
+    insert_account(&pool, ACC_ROLLBACK, true).await;
+    let first = insert_identity(&pool, ACC_ROLLBACK, 405).await;
+    insert_identity(&pool, ACC_ROLLBACK, 406).await;
+    let now = Utc::now();
+    let (_, own) = refresh::issue(&pool, ACC_ROLLBACK, None, now)
+        .await
+        .expect("own family");
+    let (_, other) = refresh::issue(&pool, ACC_ROLLBACK, None, now)
+        .await
+        .expect("other family");
+    let env = harness(&pool);
+    let caller = env
+        .stores
+        .access
+        .mint(ACC_ROLLBACK, &own, true, Instant::now());
+    let _ = sqlx::query("DROP TRIGGER IF EXISTS ct76_fail_player_revoke ON auth_refresh_token")
+        .execute(&pool)
+        .await;
+    sqlx::query(
+        "CREATE OR REPLACE FUNCTION ct76_fail_player_revoke() RETURNS trigger LANGUAGE plpgsql AS \
+         $$ BEGIN RAISE EXCEPTION 'ct76'; END $$",
+    )
+    .execute(&pool)
+    .await
+    .expect("create the revoke trigger function");
+    sqlx::query(ROLLBACK_TRIGGER)
+        .execute(&pool)
+        .await
+        .expect("create the revoke trigger");
+    let status = unlink(&env, &caller, first).await;
+    let methods_after = methods(&pool, ACC_ROLLBACK).await;
+    let other_live = live_rows_of_family(&pool, &other).await;
+    let _ = sqlx::query("DROP TRIGGER IF EXISTS ct76_fail_player_revoke ON auth_refresh_token")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DROP FUNCTION IF EXISTS ct76_fail_player_revoke()")
+        .execute(&pool)
+        .await;
+    clean_exact(&pool, ACC_ROLLBACK).await;
+    assert_ne!(
+        status,
+        StatusCode::NO_CONTENT,
+        "a failed revoke must not answer 204"
+    );
+    assert_eq!(methods_after, 2, "the delete rolled back");
+    assert_eq!(other_live, 1, "the other family was not revoked");
 }
 
 /// An unlink holds the account row lock, deletes the identity and revokes every

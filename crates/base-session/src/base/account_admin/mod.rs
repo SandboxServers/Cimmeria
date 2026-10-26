@@ -184,7 +184,7 @@ async fn remove_identity(
     if let Err(err) = refresh::revoke_account_on(&mut tx, account_id, None, Utc::now()).await {
         tracing::warn!(
             target: "account_admin",
-            event = "gm_action",
+            event = "unlink_revoke_failed",
             action = "account_unlink",
             result = "refused",
             reason = "revoke_failed",
@@ -349,7 +349,15 @@ async fn answer(
                     // The refresh rows were revoked in the delete's transaction
                     // (C16.6); the access tokens and launch tickets in memory end
                     // after the commit.
-                    revoke::end_live_sessions(account_id);
+                    if !revoke::end_live_sessions(account_id) {
+                        tracing::warn!(
+                            target: "account_admin",
+                            event = "unlink_live_sessions_not_ended",
+                            target_account_id = account_id,
+                            identity_id,
+                            "unlink committed but the live access tokens and launch tickets could not be ended (no identity routes registered)"
+                        );
+                    }
                     log_outcome(caller, name, true, None, target, ids, Some(identity_id));
                     Ok(vec![format!(
                         "account: removed identity #{identity_id} ({provider}) from {target}; its launcher sign-ins are revoked; a game session already running is not ended"
