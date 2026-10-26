@@ -63,8 +63,8 @@ impl Forwarder {
         }
     }
 
-    /// Queues the events of `records`. The epoch is read first, before anything else
-    /// : a toggle during `events` must not let events built while opted in carry
+    /// Queues the events of `records`. The epoch is read first, before anything else:
+    /// a toggle during `events` must not let events built while opted in carry
     /// the newer epoch. A flush sentinel only sets the pending flush and is not built.
     /// A flush trigger urges a send only when the queue holds events.
     pub fn on_records<S: ForwardSource>(
