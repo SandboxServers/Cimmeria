@@ -151,3 +151,23 @@ fn without_a_flush_trigger_the_send_waits_for_the_coalesce_window() {
     drop(tx);
     handle.join().unwrap();
 }
+
+#[test]
+fn launch_finished_sends_without_waiting_for_the_window() {
+    let (server, target) = server_and_target();
+    let (tx, rx) = sync_channel(16);
+    let (handle, seen) = start(target, rx);
+    tx.send(record("client.launcher.adoption", None)).unwrap();
+    tx.send(record("client.launcher.launch", Some("launch_finished")))
+        .unwrap();
+    // The sender stays alive, so no flush sentinel can send the rows: only the trigger can.
+    let start_at = Instant::now();
+    while chunk_posts(&server) == 0 && start_at.elapsed() < Duration::from_millis(1_000) {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(chunk_posts(&server), 1, "launch_finished posts at once");
+    let sent: u64 = seen.lock().unwrap().iter().map(|p| p.sent_events).sum();
+    assert_eq!(sent, 2, "the post holds both rows");
+    drop(tx);
+    handle.join().unwrap();
+}
