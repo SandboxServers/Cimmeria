@@ -51,3 +51,12 @@ fn limiter_full_of_live_account_windows_refuses_a_new_key() {
     assert_eq!(refused, RetryAfter { secs: 60 });
     assert_eq!(rl.window_count(), MAX_KEYS);
 }
+
+#[test]
+fn limiter_full_warning_fires_at_most_once_a_minute() {
+    let l = limiter();
+    let t0 = Instant::now();
+    assert!(l.full_warning_due(t0));
+    assert!(!l.full_warning_due(t0 + Duration::from_secs(30)));
+    assert!(l.full_warning_due(t0 + Duration::from_secs(61)));
+}

@@ -15,7 +15,8 @@ use crate::config::Limits;
 /// windows, then a batch of the IP-keyed windows that expire soonest. Account
 /// and server-wide windows are never dropped while live: when no room can be
 /// made, the new key is refused with a 60 s retry. So a flood of distinct keys
-/// cannot grow memory without end, nor evict a live account window.
+/// cannot grow memory without end, nor evict a live account window. Each refusal
+/// episode logs `limiter_full` at most once a minute.
 pub const MAX_KEYS: usize = 100_000;
 
 /// How many IP-keyed windows one eviction drops at once when the map is full of
@@ -74,6 +75,8 @@ pub struct RateLimiter {
     windows: Mutex<HashMap<(Bucket, String), Window>>,
     signups_per_ip_per_day: u32,
     signups_global_per_hour: u32,
+    /// When the `limiter_full` WARN last fired, so a refusal episode logs once a minute.
+    full_warned_at: Mutex<Option<Instant>>,
 }
 
 /// Prints no keys, so a log line never carries client IPs or account names.
@@ -91,6 +94,7 @@ impl RateLimiter {
             windows: Mutex::new(HashMap::new()),
             signups_per_ip_per_day: limits.signups_per_ip_per_day,
             signups_global_per_hour: limits.signups_global_per_hour,
+            full_warned_at: Mutex::new(None),
         }
     }
 
@@ -104,6 +108,13 @@ impl RateLimiter {
             && windows.len() >= MAX_KEYS
             && !make_room(&mut windows, now)
         {
+            if self.full_warning_due(now) {
+                tracing::warn!(
+                    reason = "limiter_full",
+                    windows = windows.len(),
+                    "rate limiter is full of live account and server-wide windows; refusing new keys for 60 s"
+                );
+            }
             return Err(RetryAfter { secs: 60 });
         }
         let entry = windows.entry(map_key).or_insert(Window {
@@ -156,6 +167,20 @@ impl RateLimiter {
     fn lock(&self) -> MutexGuard<'_, HashMap<(Bucket, String), Window>> {
         self.windows.lock().unwrap_or_else(PoisonError::into_inner)
     }
+
+    /// Whether the `limiter_full` WARN may fire at `now`: at most once a minute,
+    /// so a flood of refused keys writes one line a minute, not one per request.
+    fn full_warning_due(&self, now: Instant) -> bool {
+        let mut last = self
+            .full_warned_at
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let due = last.is_none_or(|t| now.saturating_duration_since(t) >= MINUTE);
+        if due {
+            *last = Some(now);
+        }
+        due
+    }
 }
 
 /// The length of the fixed window of one bucket.
@@ -204,6 +229,11 @@ fn make_room(windows: &mut HashMap<(Bucket, String), Window>, now: Instant) -> b
             for (key, _) in ip_keys.into_iter().take(take) {
                 windows.remove(&key);
             }
+            tracing::info!(
+                reason = "limiter_evicted",
+                evicted = take,
+                "rate limiter at its cap evicted the soonest-expiring IP windows"
+            );
         }
     }
     windows.len() < MAX_KEYS
