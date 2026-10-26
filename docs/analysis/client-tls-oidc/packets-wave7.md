@@ -86,7 +86,7 @@ Tests:
 
   Build the route state the way `routes/token.rs`'s `span_tests::test_state` does, with `deps.db = Some(pool)`; if that helper cannot take a pool, copy the `harness` setup of `token_tests_live_db.rs` (setup only; CT-82 owns its cleanup).
 
-**Checks, in order:** S1 `cimmeria-auth`; S1 `cimmeria-identity`; S1 `cimmeria-base` (it matches on `TicketCheck` nowhere today, but compiles `cimmeria-auth`); S2 `cimmeria-auth`; S2 `cimmeria-identity`; S3 `ticket_guard_tests_live_db`; S2 `cimmeria-test-support`. **Docs rows:** none (CT-92).
+**Checks, in order:** S1 `cimmeria-auth`; S1 `cimmeria-identity`; S1 `cimmeria-base` (it matches on `TicketCheck` nowhere today, but compiles `cimmeria-auth`); S2 `cimmeria-auth`; S2 `cimmeria-identity`; S3 `guard_tests_live_db` (the module name in `ticket.rs`; the file keeps its `ticket_` prefix); S2 `cimmeria-test-support`. **Docs rows:** none (CT-92).
 
 ## CT-80 One account per name, or none (F13a)
 

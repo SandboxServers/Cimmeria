@@ -3,7 +3,7 @@
 > **Type:** Reference (campaign ledger)
 > **Audience:** The owner, the orchestrator and every agent working this campaign
 > **Last updated:** 2026-10-26
-> **Companions:** [Design](design.md), [contract](contract.md), [work packets](work-packets.md), waves [1](packets-wave1.md) [2](packets-wave2.md) [3](packets-wave3.md) [4](packets-wave4.md) [5](packets-wave5.md) [6](packets-wave6.md) [7](packets-wave7.md) [8](packets-wave8.md) [9](packets-wave9.md) [10](packets-wave10.md), [PR #2031 review ruling](worknotes/pr2031-ruling.md), [resume card](RESUME.md), sibling [mercury-replacement](../mercury-replacement/design.md)
+> **Companions:** [Design](design.md), [contract](contract.md), [work packets](work-packets.md), waves [1](packets-wave1.md) [2](packets-wave2.md) [3](packets-wave3.md) [4](packets-wave4.md) [5](packets-wave5.md) [6](packets-wave6.md) [7](packets-wave7.md) [8](packets-wave8.md) [9](packets-wave9.md) [10](packets-wave10.md), [PR #2031 review ruling](worknotes/pr2031-ruling.md), [release note draft](release-note.md), [resume card](RESUME.md), sibling [mercury-replacement](../mercury-replacement/design.md)
 
 ## Purpose
 
@@ -110,7 +110,7 @@ Status values: Ready, BlockedDependency, BlockedDecision, Writing, Review, Integ
 | CT-97 | Password check without oracles (C08) | 10 | Ready |
 | CT-98 | Limiter keeps account windows (C06) | 10 | Ready |
 | CT-99 | Argon2 off the async workers, two at a time (C15, D-CT28) | 10 | BlockedDependency (CT-97 merged) |
-| CT-92 | Campaign record in the PR (F16); amended with the accepted-finding documentation | tail | BlockedDependency (waves 6-10 and CT-94, 101, 102 merged) |
+| CT-92 | Campaign record in the PR (F16); amended with the accepted-finding documentation | tail | Docs written ([worknote](worknotes/CT-92.md)); review pending |
 | CT-93 | Reauth provider chooser | tail | Deferred |
 | CT-94 | Stored email authority (D-CT23 = a; sentinels `0x7000_EBC0..0x7000_EBFF`) | tail | Ready |
 | CT-100 | `main.rs` env-table row after CT-95 and CT-101 | tail | Deferred (launcher-cache-presync owns `main.rs`) |
