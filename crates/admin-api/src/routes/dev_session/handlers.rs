@@ -359,7 +359,10 @@ pub(super) fn mint_with_headers(
         purpose,
     };
     let token = encode_token(&claims, &secret)?;
-    launcher_kind::record_unless_launcher(launcher, &claims, peer_ip);
+    launcher_kind::record_unless_launcher(launcher, &claims, rate_ip);
+    // Booleans only: the forwarded address itself is never logged (R5).
+    let caller_forwarded = rate_ip != peer_ip;
+    let peer_loopback = peer_ip.to_canonical().is_loopback();
     // install_id / machine_id stay at debug to avoid leaking
     // persistent fingerprints into info-level pipelines. The token itself
     // is never logged.
@@ -373,6 +376,8 @@ pub(super) fn mint_with_headers(
         exp,
         upload_endpoint_source = endpoint.source.as_str(),
         upload_endpoint_https = endpoint.is_https(),
+        caller_forwarded,
+        peer_loopback,
         "Minted dev-session telemetry token"
     );
     tracing::debug!(
@@ -478,13 +483,18 @@ pub(super) fn refresh_with_headers(
         purpose: claims.purpose,
     };
     let token = encode_token(&new_claims, &secret)?;
-    record_stream(&new_claims, peer_ip);
+    record_stream(&new_claims, rate_ip);
+    // Booleans only: the forwarded address itself is never logged (R5).
+    let caller_forwarded = rate_ip != peer_ip;
+    let peer_loopback = peer_ip.to_canonical().is_loopback();
     tracing::info!(
         session_id = %new_claims.sid, // nt:id-only generated UUID, nothing to name
         account_name = new_claims.acct.as_deref(),
         old_exp = claims.exp,
         new_exp,
         session_age_secs = elapsed,
+        caller_forwarded,
+        peer_loopback,
         "Refreshed dev-session telemetry token"
     );
     Ok(DevSessionResponse {
@@ -502,14 +512,14 @@ pub(super) fn refresh_with_headers(
 /// refresh records the address it came from, the launcher's latest. Called
 /// after the token is signed, so a refused mint or refresh leaves no stream
 /// behind.
-pub(super) fn record_stream(claims: &TokenClaims, peer_ip: IpAddr) {
+pub(super) fn record_stream(claims: &TokenClaims, caller_ip: IpAddr) {
     use cimmeria_services::auth::client_telemetry::{record_client_telemetry_stream, StreamRecord};
     record_client_telemetry_stream(StreamRecord {
         session_id: &claims.sid,
         expires_at_unix: claims.exp,
         machine_id: claims.mid.as_deref(),
         account_name: claims.acct.as_deref(),
-        peer_ip: Some(peer_ip),
+        peer_ip: Some(caller_ip),
     });
 }
 

@@ -3,8 +3,8 @@
 //!
 //! The launcher mints its telemetry token before the game logs in, so it
 //! does not know the account. What it does send is its `machine_id` (a
-//! truncated SHA-256 of the Windows `MachineGuid`; the raw GUID never leaves
-//! the machine). The mint signs that into the token as `mid` and records the
+//! truncated SHA-256 of the Windows `MachineGuid`, or of the host name in the
+//! desktop launcher; the raw GUID never leaves the machine). The mint signs that into the token as `mid` and records the
 //! stream here with the address the request came from. World entry asks
 //! [`client_telemetry_for`] with the game session's address and logs what it
 //! finds:

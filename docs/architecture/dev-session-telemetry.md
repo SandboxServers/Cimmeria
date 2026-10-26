@@ -411,8 +411,10 @@ refresh keeps both.
 
 The mint and every refresh record the stream in
 `cimmeria_auth::auth::client_telemetry` (TG-NET-18, owner decision D-TG14)
-under its `mid`, its `acct` (ASCII case ignored) and the address the
-request came from. The `World entry complete` row joins on the game
+under its `mid`, its `acct` (ASCII case ignored) and the quota-key address the
+request came from: behind a loopback proxy, the forwarded caller (D-LTL4).
+The registry keeps that address in memory only and never logs or writes it.
+The `World entry complete` row joins on the game
 session's address:
 
 | `client_telemetry` | When | Extra fields |
