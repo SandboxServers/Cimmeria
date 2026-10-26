@@ -90,6 +90,69 @@ fn an_oversize_record_is_too_large() {
 }
 
 #[test]
+fn the_running_total_is_checked() {
+    let mut body = sample();
+    body.changed = BTreeMap::from([(1, b"aaa".to_vec()), (2, b"bbb".to_vec())]);
+    let limits = Limits {
+        max_total_bytes: 5,
+        ..Limits::DEFAULT
+    };
+    assert_eq!(
+        decode_body(&encode_body(&body), &limits),
+        Err(BodyError::TooLarge)
+    );
+}
+
+#[test]
+fn more_changed_records_than_keys_is_too_large() {
+    // One key, then a changed_count of 2 with no records after it.
+    let mut bytes = Vec::from(&b"CPS1"[..]);
+    bytes.extend_from_slice(&4u32.to_le_bytes());
+    bytes.extend_from_slice(&9u32.to_le_bytes());
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(&2u32.to_le_bytes());
+    assert_eq!(
+        decode_body(&bytes, &Limits::DEFAULT),
+        Err(BodyError::TooLarge)
+    );
+}
+
+#[test]
+fn unsorted_changed_records_are_not_ascending() {
+    // Keys 1 and 2; the changed records come as 2 then 1.
+    let mut bytes = Vec::from(&b"CPS1"[..]);
+    bytes.extend_from_slice(&4u32.to_le_bytes());
+    bytes.extend_from_slice(&9u32.to_le_bytes());
+    bytes.extend_from_slice(&2u32.to_le_bytes());
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(&2u32.to_le_bytes());
+    bytes.extend_from_slice(&2u32.to_le_bytes());
+    bytes.extend_from_slice(&2u32.to_le_bytes());
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(b"a");
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(b"b");
+    bytes.extend_from_slice(&[0; 32]);
+    assert_eq!(
+        decode_body(&bytes, &Limits::DEFAULT),
+        Err(BodyError::NotAscending)
+    );
+}
+
+#[test]
+fn a_repeated_key_is_not_ascending() {
+    let mut body = sample();
+    body.keys = vec![1, 1, 2];
+    body.changed = BTreeMap::new();
+    assert_eq!(
+        decode_body(&encode_body(&body), &Limits::DEFAULT),
+        Err(BodyError::NotAscending)
+    );
+}
+
+#[test]
 fn bytes_after_the_digest_are_trailing() {
     let mut bytes = encode_body(&sample());
     bytes.push(b'!');

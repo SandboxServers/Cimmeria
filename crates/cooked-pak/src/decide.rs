@@ -55,6 +55,9 @@ mod tests {
             (Some(6), Some(4), 5, Action::Write),
             (Some(!5), Some(4), 5, Action::Write),
             (Some(u32::MAX), None, 1, Action::Write),
+            (Some(1), Some(0x8000_0000), 5, Action::SourceNewer),
+            (Some(0x8000_0000), Some(1), 0x8000_0000, Action::UpToDate),
+            (Some(5), Some(0x8000_0000), 0x8000_0000, Action::UpToDate),
         ];
         for &(cache, source, served, expected) in cases {
             assert_eq!(
@@ -72,5 +75,9 @@ mod tests {
         assert_eq!(effective_version(Some(4), Some(5)), Some(5));
         assert_eq!(effective_version(Some(6), Some(5)), Some(6));
         assert_eq!(effective_version(Some(6), None), Some(6));
+        assert_eq!(
+            effective_version(Some(1), Some(0x8000_0000)),
+            Some(0x8000_0000)
+        );
     }
 }
