@@ -19,6 +19,7 @@ const CHUNK: &str = "/api/telemetry/upload-chunk";
 /// A source that always has a target and builds events the way the host does.
 struct Fake {
     target: Option<LauncherTarget>,
+    epoch: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl ForwardSource for Fake {
@@ -29,7 +30,7 @@ impl ForwardSource for Fake {
         self.target.clone()
     }
     fn epoch(&self) -> u64 {
-        0
+        self.epoch.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 
@@ -97,21 +98,27 @@ fn start(
     target: LauncherTarget,
     records: Receiver<LauncherRecord>,
 ) -> (std::thread::JoinHandle<()>, Seen) {
-    start_with(Some(target), records, Arc::new(FlushSignal::new()))
+    start_with(
+        Some(target),
+        records,
+        Arc::new(FlushSignal::new()),
+        Arc::default(),
+    )
 }
 
-/// As `start`, with the target the source reports (None = opted out) and the signal
-/// `on_flushed` notifies.
+/// As `start`, with the target the source reports (None = opted out), the signal
+/// `on_flushed` notifies and the epoch the source reports.
 fn start_with(
     target: Option<LauncherTarget>,
     records: Receiver<LauncherRecord>,
     flushed: Arc<FlushSignal>,
+    epoch: Arc<std::sync::atomic::AtomicU64>,
 ) -> (std::thread::JoinHandle<()>, Seen) {
     let seen: Seen = Arc::default();
     let sink = Arc::clone(&seen);
     let handle = std::thread::spawn(move || {
         let mut forwarder = Forwarder::new(LauncherSender::new());
-        let source = Fake { target };
+        let source = Fake { target, epoch };
         forward_loop(
             &records,
             &mut forwarder,
@@ -128,7 +135,7 @@ fn a_flush_request_sends_the_queue_and_returns_within_the_bound() {
     let (server, target) = server_and_target();
     let (tx, rx) = sync_channel(16);
     let signal = Arc::new(FlushSignal::new());
-    let (handle, _seen) = start_with(Some(target), rx, Arc::clone(&signal));
+    let (handle, _seen) = start_with(Some(target), rx, Arc::clone(&signal), Arc::default());
     tx.send(record("client.launcher.adoption", None)).unwrap();
     std::thread::sleep(Duration::from_millis(100));
     let began = Instant::now();
@@ -158,7 +165,7 @@ fn a_flush_request_under_a_hold_returns_at_once_without_a_post() {
     );
     let (tx, rx) = sync_channel(16);
     let signal = Arc::new(FlushSignal::new());
-    let (handle, _seen) = start_with(Some(target), rx, Arc::clone(&signal));
+    let (handle, _seen) = start_with(Some(target), rx, Arc::clone(&signal), Arc::default());
     tx.send(record("client.launcher.launch", Some("launch_finished")))
         .unwrap();
     let start_at = Instant::now();
@@ -179,19 +186,21 @@ fn a_flush_request_under_a_hold_returns_at_once_without_a_post() {
 }
 
 #[test]
-fn a_flush_request_does_not_send_when_the_player_is_opted_out() {
-    let (server, _target) = server_and_target();
+fn a_flush_request_after_a_consent_change_sends_nothing() {
+    let (server, target) = server_and_target();
     let (tx, rx) = sync_channel(16);
     let signal = Arc::new(FlushSignal::new());
-    // No target: consent is withdrawn. The flush must end, and must post nothing.
-    let (handle, _seen) = start_with(None, rx, Arc::clone(&signal));
+    let epoch: Arc<std::sync::atomic::AtomicU64> = Arc::default();
+    let (handle, _seen) = start_with(Some(target), rx, Arc::clone(&signal), Arc::clone(&epoch));
+    // Queued under epoch 0 and not yet due; then consent changes before the flush.
     tx.send(record("client.launcher.adoption", None)).unwrap();
     std::thread::sleep(Duration::from_millis(100));
+    epoch.store(1, std::sync::atomic::Ordering::SeqCst);
     assert!(request_flush(&tx, &signal, Duration::from_secs(3)));
     assert_eq!(
         chunk_posts(&server),
         0,
-        "the exit flush is not a consent bypass"
+        "a withdrawn queue is not sent by the exit flush"
     );
     drop(tx);
     handle.join().unwrap();
@@ -288,4 +297,29 @@ fn launch_finished_sends_without_waiting_for_the_window() {
 #[test]
 fn the_exit_flush_is_bounded_at_three_seconds() {
     assert_eq!(EXIT_FLUSH_WAIT, Duration::from_secs(3));
+}
+
+#[test]
+fn notify_flushed_moves_the_exit_flush_signal() {
+    let before = *super::FLUSH_DONE.done.lock().unwrap();
+    super::notify_flushed();
+    assert!(*super::FLUSH_DONE.done.lock().unwrap() > before);
+}
+
+#[test]
+fn an_exit_flush_with_no_telemetry_logs_one_pipeline_row() {
+    // No test calls `init`, so the exit flush has no channel and cannot finish.
+    let (flushed, events) = crate::test_capture::capture(super::flush_on_exit);
+    assert!(!flushed);
+    let logged: Vec<_> = events
+        .iter()
+        .filter(|e| {
+            e.target == "launcher.pipeline" && e.field("event") == Some("exit_flush_incomplete")
+        })
+        .collect();
+    assert_eq!(
+        logged.len(),
+        1,
+        "one row when the exit flush does not finish"
+    );
 }

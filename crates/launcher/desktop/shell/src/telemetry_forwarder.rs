@@ -127,9 +127,17 @@ pub(crate) fn remember_sender(tx: SyncSender<LauncherRecord>) {
 /// Asks the forward thread to send what is queued and waits at most `EXIT_FLUSH_WAIT`.
 /// False when the telemetry was never initialised, the channel is full, or time ran out.
 pub(crate) fn flush_on_exit() -> bool {
-    FLUSH_TX
+    let flushed = FLUSH_TX
         .get()
-        .is_some_and(|tx| request_flush(tx, &FLUSH_DONE, EXIT_FLUSH_WAIT))
+        .is_some_and(|tx| request_flush(tx, &FLUSH_DONE, EXIT_FLUSH_WAIT));
+    if !flushed {
+        tracing::info!(
+            target: "launcher.pipeline",
+            event = "exit_flush_incomplete",
+            "launcher telemetry: the exit flush did not finish within its bound"
+        );
+    }
+    flushed
 }
 
 /// Called by the forward thread's `on_flushed`.
