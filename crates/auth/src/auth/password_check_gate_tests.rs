@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use tokio::task::JoinSet;
 
-use super::{gated_check, PasswordCheck, PEAK};
+use super::{gated_check, PasswordCheck, ARGON2_GATE, IN_FLIGHT, PEAK};
 
 /// Four checks at once on a multi-thread runtime never run more than two
 /// verifies together. Without the gate, `PEAK` reaches three or four.
@@ -45,4 +45,21 @@ async fn gated_check_leaves_the_async_runtime_free() {
     ticker.await.expect("ticker");
     assert_eq!(answer, PasswordCheck::Invalid);
     assert!(ticks.load(Ordering::SeqCst) > 0, "runtime was blocked");
+}
+
+/// Dropping the caller while a verify runs does not free its permit: the permit
+/// moves into the blocking task, so free plus running stays within the cap. With
+/// the permit held by the async future, the abort frees it and free plus running
+/// reaches three.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gated_check_dropped_caller_keeps_the_permit_until_the_verify_ends() {
+    let handle = tokio::spawn(gated_check(None, "pw".to_owned()));
+    while IN_FLIGHT.load(Ordering::SeqCst) == 0 {
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    handle.abort();
+    let _ = handle.await;
+    let free = ARGON2_GATE.available_permits();
+    let running = IN_FLIGHT.load(Ordering::SeqCst);
+    assert!(free + running <= 2, "free {free} running {running}");
 }

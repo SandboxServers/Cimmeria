@@ -27,8 +27,8 @@ const ARGON2_PERMITS: usize = 2;
 
 /// Caps the argon2id verifies in flight. A caller waiting here is parked on the
 /// semaphore, so it does not hold an async worker.
-static ARGON2_GATE: LazyLock<tokio::sync::Semaphore> =
-    LazyLock::new(|| tokio::sync::Semaphore::new(ARGON2_PERMITS));
+static ARGON2_GATE: LazyLock<std::sync::Arc<tokio::sync::Semaphore>> =
+    LazyLock::new(|| std::sync::Arc::new(tokio::sync::Semaphore::new(ARGON2_PERMITS)));
 
 /// Counts the argon2id verifies this module runs, so tests can assert the cost
 /// of a path. nextest runs each test in its own process, so the count is not
@@ -116,7 +116,7 @@ pub async fn verify_account_password(
 /// Runs [`check_row`] on a blocking thread, behind [`ARGON2_GATE`]. The permit
 /// is held until the blocking task ends.
 async fn gated_check(row: Option<AccountRow>, plaintext: String) -> PasswordCheck {
-    let _permit = match ARGON2_GATE.acquire().await {
+    let permit = match std::sync::Arc::clone(&ARGON2_GATE).acquire_owned().await {
         Ok(permit) => permit,
         Err(e) => {
             tracing::error!(
@@ -127,7 +127,13 @@ async fn gated_check(row: Option<AccountRow>, plaintext: String) -> PasswordChec
             return PasswordCheck::DbError;
         }
     };
-    match tokio::task::spawn_blocking(move || check_row(row.as_ref(), &plaintext)).await {
+    // The permit moves into the closure, so it is released when the verify ends
+    // even if this future was dropped while the task was pending.
+    let blocking = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        check_row(row.as_ref(), &plaintext)
+    });
+    match blocking.await {
         Ok(answer) => answer,
         Err(e) => {
             tracing::error!(
