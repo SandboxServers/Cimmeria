@@ -304,11 +304,20 @@ device UAT against the live release.
 - **`app`** builds the UI and runs `cargo tauri build --bundles appimage`
   (release profile), with the release's version, tag and manifest key. The
   AppImage carries WebKitGTK and GTK from the build host. Ubuntu 22.04 keeps its
-  glibc old enough for SteamOS and other current distributions.
+  glibc old enough for SteamOS and other current distributions. The Linux
+  target links with lld (`CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS`), not
+  mold: the 22.04 mold is 1.0.3, and a launcher it linked shipped a bundled
+  UnRAR that rejected every RAR header, so the Linux player could not unpack the
+  seed (PP-U-FIX). `.cargo/config.toml` still names mold for local builds, which
+  work with mold 2.x.
 - **`verify`** checks that it is an x86-64 ELF that extracts, that the extracted
   launcher is x86-64 and embeds the release tag and version, and that it
   carries no Windows executable or DLL. With the four pieces staged, it also
-  embeds each pinned piece and runs `--verify-embedded-payload` on them.
+  embeds each pinned piece and runs `--verify-embedded-payload` on them. It also
+  runs `--self-test-rar`, which must exit 0: that hidden flag unpacks a small
+  RAR 4 archive, built in code, through the bundled UnRAR and checks the one
+  file it holds. A build whose UnRAR cannot read a RAR fails here, before
+  packaging.
 - **`package`** writes `artifacts/StargateWorlds-Launcher-linux-x86_64.AppImage`
   and its `.sha256`.
 

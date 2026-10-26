@@ -86,18 +86,21 @@ jobs:
     env:
       CARGO_PROFILE_DEV_DEBUG: 0
       CARGO_PROFILE_TEST_DEBUG: 0
+      # Links the Linux target with lld, as the release AppImage does (PP-U-FIX);
+      # the Windows and macOS targets never read this variable.
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v7
       # Tauri's WebKitGTK prerequisites, plus clang and mold, which
-      # .cargo/config.toml names as the Linux linker.
+      # .cargo/config.toml names as the Linux linker, and lld, which links.
       - name: Install Linux build packages
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang mold libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y clang mold lld libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - uses: ./.github/actions/rust-toolchain
         with:
           components: rustfmt, clippy

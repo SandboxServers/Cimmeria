@@ -16,6 +16,13 @@ def workflow(name):
     return yaml.safe_load((ROOT / ".github/workflows" / name).read_text())
 
 
+def apt_packages(job):
+    """The package names on the job's `apt-get install` lines."""
+    lines = [line for step in job["steps"] for line in step.get("run", "").splitlines()
+             if "apt-get install" in line]
+    return {word for line in lines for word in line.split()}
+
+
 class WorkflowPolicy(unittest.TestCase):
     def package_fixture(self, root, output):
         script = (ROOT / "tools/launcher-release/build-desktop.sh").read_text()
@@ -133,6 +140,26 @@ class WorkflowPolicy(unittest.TestCase):
             self.assertRegex(digest, r"^[0-9a-f]{64}$", name)
         app = script.split("stage_app() {", 1)[1].split("\n}\n", 1)[0]
         self.assertLess(app.index("stage_tools"), app.index("cargo tauri build"))
+
+    def test_linux_builds_link_with_lld_not_mold(self):
+        # PP-U-FIX: mold 1.0.3 links a UnRAR that rejects every RAR header, so the
+        # Linux launcher builds set the Linux target's rustflags to lld.
+        key = "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS"
+        lld = "-C link-arg=-fuse-ld=lld"
+        linux = workflow("launcher-desktop-linux.yml")["jobs"]["build"]
+        app = next(s for s in linux["steps"] if "build-desktop-linux.sh app" in s.get("run", ""))
+        self.assertEqual(app["env"][key], lld)
+        self.assertIn("lld", apt_packages(linux))
+        native = workflow("launcher-desktop.yml")["jobs"]["native-engine"]
+        self.assertEqual(native["env"][key], lld)
+        self.assertIn("lld", apt_packages(native))
+
+    def test_release_verify_runs_the_bundled_unrar_self_test(self):
+        script = (ROOT / "tools/launcher-release/build-desktop-linux.sh").read_text()
+        verify = script.split("stage_verify() {", 1)[1].split("stage_package() {", 1)[0]
+        self.assertIn('"$exe" --self-test-rar', verify)
+        main = (ROOT / "crates/launcher/desktop/shell/src/main.rs").read_text()
+        self.assertIn("self_test_rar::requested(", main)
 
     def test_every_pr_dry_runs_the_linux_release_build(self):
         dry = workflow("launcher-desktop.yml")["jobs"]["release-dry-run-linux"]

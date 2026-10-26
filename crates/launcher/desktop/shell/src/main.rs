@@ -12,6 +12,7 @@ mod panic_hook;
 mod payload_startup;
 #[cfg(test)]
 mod release_version;
+mod self_test_rar;
 mod startup_event;
 mod telemetry;
 // The C9 capture helper; LT-06 onward drive it from the event helpers.
@@ -559,6 +560,18 @@ async fn choose_seed_archive(
 const DEVELOPMENT_TITLE: &str = "Cimmeria Launcher \u{2014} development";
 
 fn main() {
+    // Hidden (PP-U-FIX): before any Tauri, Windows or single-instance setup, so
+    // the release check runs the bundled UnRAR and nothing else.
+    if self_test_rar::requested(std::env::args_os()) {
+        match self_test_rar::run() {
+            Ok(()) => println!("self-test-rar: ok"),
+            Err(error) => {
+                eprintln!("self-test-rar: {error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
     #[cfg(any(windows, target_os = "linux"))]
     payload_startup::headless_probe();
     #[cfg(windows)]

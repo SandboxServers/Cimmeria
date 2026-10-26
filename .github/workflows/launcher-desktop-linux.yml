@@ -94,11 +94,13 @@ jobs:
           persist-credentials: false
 
       # Tauri's WebKitGTK prerequisites, plus clang and mold, which
-      # .cargo/config.toml names as the Linux linker, and file for verify.
+      # .cargo/config.toml names as the Linux linker, and file for verify. lld
+      # links the build instead (see the build step): mold 1.0.3, this runner's
+      # apt mold, links a UnRAR that rejects every RAR header (PP-U-FIX).
       - name: install the Linux build packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang mold file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y clang mold lld file libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
       - uses: ./.github/actions/rust-toolchain
 
@@ -137,6 +139,8 @@ jobs:
           CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ inputs.epoch }}
           CIMMERIA_BUILD_BRANCH: ${{ inputs.build_branch }}
           CIMMERIA_BUILD_GIT_SHA: ${{ github.sha }}
+          # Overrides .cargo/config.toml's mold flag for this target only (PP-U-FIX).
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
         run: tools/launcher-release/build-desktop-linux.sh app
 
       - name: verify the AppImage
