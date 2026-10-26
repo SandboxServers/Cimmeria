@@ -85,6 +85,18 @@ impl RouteState {
             .get(verified.provider.as_str())
             .is_some_and(|provider| provider.trusted_email())
     }
+
+    /// The config ids of the running providers trusted for their email claim,
+    /// read from the current config. The candidate query takes only these (C01).
+    pub(super) fn trusted_email_providers(&self) -> Vec<&str> {
+        self.ctx
+            .providers
+            .list()
+            .iter()
+            .filter(|provider| provider.trusted_email())
+            .map(|provider| provider.id().as_str())
+            .collect()
+    }
 }
 
 #[cfg(test)]
