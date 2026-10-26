@@ -160,7 +160,7 @@ impl Run<'_> {
         apply::sweep_temps(&cache);
         loop {
             let index = self.index().await?;
-            let writes = self.plan(&index, &cache, source_dir)?;
+            let writes = self.plan(&index, &cache, source_dir).await?;
             if writes.is_empty() {
                 return Ok(Outcome::UpToDate);
             }
@@ -195,8 +195,9 @@ impl Run<'_> {
 
     /// Compares every entry with the cache and the source. Any source newer
     /// than the served version fails here, before a download. Returns the
-    /// categories to write, ascending by id.
-    fn plan(
+    /// categories to write, ascending by id. The reads of both PAKs run on a
+    /// blocking thread under the deadline and the cancel, not on the worker.
+    async fn plan(
         &mut self,
         index: &Index,
         cache: &Path,
@@ -208,9 +209,22 @@ impl Run<'_> {
         self.pending.clear();
         let mut entries = index.categories.clone();
         entries.sort_by_key(|entry| entry.category_id);
+        let (cache, source) = (cache.to_path_buf(), source_dir.to_path_buf());
+        let task = tokio::task::spawn_blocking(move || {
+            entries
+                .into_iter()
+                .map(|entry| {
+                    let plan = apply::plan(&entry, &cache, &source);
+                    (entry, plan)
+                })
+                .collect::<Vec<_>>()
+        });
+        let planned = match self.guard(task).await? {
+            Ok(planned) => planned,
+            Err(_) => return Err(Halt::Failed(Box::new(self.failure("write_failed")))),
+        };
         let mut writes = Vec::new();
-        for entry in entries {
-            let plan = apply::plan(&entry, cache, source_dir);
+        for (entry, plan) in planned {
             match plan.action {
                 Action::SourceNewer => {
                     self.place = Some((entry.category_id, entry.pak.clone()));

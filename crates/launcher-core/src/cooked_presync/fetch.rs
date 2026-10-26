@@ -362,11 +362,14 @@ fn check_index(index: &Index) -> Result<(), FetchError> {
     Ok(())
 }
 
-/// Whether a name is `^[A-Za-z0-9]{1,64}\.pak$`, checked by hand.
+/// Whether a name is `^[A-Za-z0-9]{1,64}\.pak$` and not a Windows device name
+/// (`CON.pak`, `nul.pak`, `COM1.pak`), checked by hand.
 fn is_pak_name(name: &str) -> bool {
     match name.strip_suffix(".pak") {
         Some(stem) => {
-            (1..=64).contains(&stem.len()) && stem.bytes().all(|b| b.is_ascii_alphanumeric())
+            (1..=64).contains(&stem.len())
+                && stem.bytes().all(|b| b.is_ascii_alphanumeric())
+                && !super::apply::is_device_name(name)
         }
         None => false,
     }

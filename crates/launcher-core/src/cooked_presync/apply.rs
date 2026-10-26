@@ -262,7 +262,26 @@ impl ApplyError {
 
 /// A PAK file name that stays inside its folder.
 fn is_plain_name(pak: &str) -> bool {
-    !pak.is_empty() && !pak.contains(['/', '\\', ':']) && !pak.contains("..")
+    !pak.is_empty()
+        && !pak.contains(['/', '\\', ':'])
+        && !pak.contains("..")
+        && !is_device_name(pak)
+}
+
+/// Whether a file name's stem is a Windows reserved device name (`CON`, `PRN`,
+/// `AUX`, `NUL`, `COM0`-`COM9`, `LPT0`-`LPT9`), in any case and with any
+/// extension. Windows opens these as devices, so they are never a PAK name.
+pub fn is_device_name(name: &str) -> bool {
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or(name)
+        .trim_end_matches(' ')
+        .to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.as_bytes()[3].is_ascii_digit())
 }
 
 /// Maps a source read failure: a missing file is `SourceMissing`, anything

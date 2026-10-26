@@ -14,6 +14,32 @@ use super::*;
 
 const PAK: &str = "cat4.pak";
 
+#[test]
+fn a_windows_device_name_is_never_a_plain_name() {
+    for name in [
+        "CON.pak",
+        "con",
+        "Nul.tar.gz",
+        "COM0.pak",
+        "lpt9",
+        "AUX ",
+        "PRN.x",
+    ] {
+        assert!(is_device_name(name), "{name}");
+        assert!(!is_plain_name(name), "{name}");
+    }
+    for name in [
+        "CONSOLE.pak",
+        "COM10.pak",
+        "LPT.pak",
+        "cat4.pak",
+        "NULL.pak",
+    ] {
+        assert!(!is_device_name(name), "{name}");
+        assert!(is_plain_name(name), "{name}");
+    }
+}
+
 /// The old records of a made-up category, as the source and the old cache hold them.
 fn base() -> BTreeMap<u32, Vec<u8>> {
     BTreeMap::from([

@@ -360,6 +360,27 @@ async fn a_bad_pak_name_is_bad_index() {
 }
 
 #[tokio::test]
+async fn a_windows_device_pak_name_is_bad_index() {
+    for name in [
+        "CON.pak", "nul.pak", "Com1.pak", "lpt9.PAK", "aux.pak", "PRN.pak",
+    ] {
+        let server = MockServer::start().await;
+        let mut index = sample_index();
+        index.categories[0].pak = name.to_owned();
+        Mock::given(method("GET"))
+            .and(path(INDEX_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(index))
+            .mount(&server)
+            .await;
+        assert_eq!(
+            fetcher(&server).index().await.err(),
+            Some(FetchError::BadIndex),
+            "{name}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn a_duplicate_pak_name_is_bad_index() {
     // Two categories must never share one temp file, so a repeated pak name
     // (in any letter case) is refused at the index.
