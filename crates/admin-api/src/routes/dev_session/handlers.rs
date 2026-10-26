@@ -361,7 +361,7 @@ pub(super) fn mint_with_headers(
     let token = encode_token(&claims, &secret)?;
     launcher_kind::record_unless_launcher(launcher, &claims, rate_ip);
     // Booleans only: the forwarded address itself is never logged (R5).
-    let caller_forwarded = rate_ip != peer_ip;
+    let caller_forwarded = rate_ip.to_canonical() != peer_ip.to_canonical();
     let peer_loopback = peer_ip.to_canonical().is_loopback();
     // install_id / machine_id stay at debug to avoid leaking
     // persistent fingerprints into info-level pipelines. The token itself
@@ -485,7 +485,7 @@ pub(super) fn refresh_with_headers(
     let token = encode_token(&new_claims, &secret)?;
     record_stream(&new_claims, rate_ip);
     // Booleans only: the forwarded address itself is never logged (R5).
-    let caller_forwarded = rate_ip != peer_ip;
+    let caller_forwarded = rate_ip.to_canonical() != peer_ip.to_canonical();
     let peer_loopback = peer_ip.to_canonical().is_loopback();
     tracing::info!(
         session_id = %new_claims.sid, // nt:id-only generated UUID, nothing to name

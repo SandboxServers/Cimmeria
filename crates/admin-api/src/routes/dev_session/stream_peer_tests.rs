@@ -195,4 +195,24 @@ fn a_mint_logs_booleans_for_the_proxy_hop_and_no_forwarded_address() {
         .expect("the mint INFO row");
     assert_eq!(minted.1["caller_forwarded"], "false");
     assert_eq!(minted.1["peer_loopback"], "false");
+
+    // A mapped loopback peer with the same loopback caller is no proxy hop.
+    let (_, rows) = capture(|| {
+        mint_with_headers(
+            &Tables::new(),
+            &policy(10, 10, 10),
+            ip("::ffff:127.0.0.1"),
+            &forwarded("127.0.0.1"),
+            request_for("stream-peer-log-3"),
+            Instant::now(),
+            NOW_UNIX,
+        )
+        .unwrap()
+    });
+    let minted = rows
+        .iter()
+        .find(|(_, f)| f.contains_key("caller_forwarded"))
+        .expect("the mint INFO row");
+    assert_eq!(minted.1["caller_forwarded"], "false");
+    assert_eq!(minted.1["peer_loopback"], "true");
 }

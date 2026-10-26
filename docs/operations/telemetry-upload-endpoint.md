@@ -80,7 +80,7 @@ with a WARN (below); launchers from LI-09 on refuse it (`game_session_mint_faile
 | Server start | WARN | `reason = upload_endpoint_not_https` | The env value is not an `https://` URL (a mistyped scheme); used as given |
 | Server start | INFO | `upload_endpoint_source`, `upload_endpoint` | An https value or the built-in default is in effect |
 | A mint | WARN, at most one per 10 minutes | `reason = upload_endpoint_unreachable_for_peer`, `upload_endpoint_source`, `suppressed` | A loopback endpoint was advertised to a non-loopback peer. No URL, no peer |
-| A mint that succeeds | INFO | `upload_endpoint_source`, `upload_endpoint_https` | Which row of the table answered, and whether the URL is https. Never the URL |
+| A mint that succeeds | INFO | `upload_endpoint_source`, `upload_endpoint_https`, `caller_forwarded`, `peer_loopback` | Which row of the table answered, and whether the URL is https. Never the URL. `caller_forwarded` is true when the quota-key address differs from the socket peer (the proxy hop); `peer_loopback` is true when the socket peer is loopback. Booleans only, never an address. The refresh INFO row carries the same two |
 | A mint or refresh with no endpoint | WARN, throttled | `reason = dev_session_no_upload_endpoint`, `route`, `suppressed` | The 503 above |
 
 The boot lines print the env URL only when its host is a DNS name, and then
@@ -145,10 +145,12 @@ server computes a **quota key address** (`forwarded_for::rate_limit_ip`,
 - In every other case the key is the socket peer. A non-loopback peer's
   header is ignored entirely, so a caller who reaches the port directly
   cannot pick its own key.
-- The key is used for exactly two things: the per-address quota counters
-  (mint, refresh, summary, chunk and bundle) and the per-address upload slot
-  (one chunk and one bundle in flight). It is never logged, stored, returned,
-  or put in a field, span or the session record.
+- The key is used for two quota things (below) and, in memory only, as the
+  address the client-telemetry registry records a stream under (D-LTL4): the
+  per-address quota counters (mint, refresh, summary, chunk and bundle) and
+  the per-address upload slot (one chunk and one bundle in flight). It is
+  never logged, persisted, returned, or put in a field, span or the session
+  record.
 
 Which callers still share a bucket: a NAT or office egress (many launchers,
 one address), any proxy that is not on loopback, and, if the container sees

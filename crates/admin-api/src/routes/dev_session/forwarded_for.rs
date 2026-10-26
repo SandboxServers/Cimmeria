@@ -3,8 +3,8 @@
 //! The colo's board proxy forwards the https routes from loopback, so every
 //! such caller shares the proxy's address. A loopback peer's
 //! `X-Forwarded-For` names the caller instead, and that is what the quotas
-//! key on. The result is a quota key and nothing else: it is never logged,
-//! stored or put in a field.
+//! key on. The result is a quota key and the in-memory client-telemetry
+//! stream address (D-LTL4); it is never logged, persisted or put in a field.
 
 use std::net::IpAddr;
 
