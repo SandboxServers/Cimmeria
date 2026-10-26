@@ -56,6 +56,7 @@ completion code; dropping an unfinished asynchronous timer reports `interrupted`
 | `play_admission` | Launch admission while holding the state lock |
 | `play_resources` | Native launch-resource verification |
 | `play_telemetry_mint` | Optional game-telemetry session preparation |
+| `play_cooked_presync` | Cooked-data presync before client setup (Windows); outcomes `succeeded`, `failed`, `cancelled`, or `unavailable` when skipped |
 | `play_client_setup` | Client setup before starting the game |
 | `play_previous_session` | Settlement of previous game-session telemetry |
 | `play_helper_start` | Helper spawn and process-start handshake |
