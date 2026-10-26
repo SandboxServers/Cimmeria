@@ -45,10 +45,9 @@ pub struct Identity {
 }
 impl Identity {
     fn mint() -> Self {
-        let digest = Sha256::digest(host_name().as_bytes());
         Self {
             install_id: Uuid::new_v4(),
-            machine_id: digest[..8].iter().map(|b| format!("{b:02x}")).collect(),
+            machine_id: machine_id_for(&host_name()),
         }
     }
     fn valid(&self) -> bool {
@@ -100,7 +99,7 @@ pub struct Status {
 
 impl DesktopState {
     pub fn game_telemetry(&self) -> Result<GameTelemetry, StorageError> {
-        let value: GameTelemetry = read(&self.directory.root.join(NAME))?.unwrap_or_default();
+        let mut value: GameTelemetry = read(&self.directory.root.join(NAME))?.unwrap_or_default();
         if value.schema_version != 1 {
             return Err(StorageError::UnsupportedSchema);
         }
@@ -109,6 +108,11 @@ impl DesktopState {
             || (value.opted_in && value.identity.is_none())
         {
             return Err(StorageError::Corrupt);
+        }
+        // Returned only: the file keeps what was written, and a later save
+        // writes back whatever id this read gives.
+        if let Some(identity) = value.identity.as_mut() {
+            repaired(identity, &host_name());
         }
         Ok(value)
     }
@@ -169,8 +173,26 @@ impl DesktopState {
     }
 }
 
+/// sha256(name)[..8] as lowercase hex: the machine id for a host name.
+fn machine_id_for(name: &str) -> String {
+    let digest = Sha256::digest(name.as_bytes());
+    digest[..8].iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// sha256("")[..8]. Every Linux launcher minted its id from an empty host
+/// name before LTL-B2b, because host_name() ignored gethostname.
+pub(crate) const EMPTY_NAME_MACHINE_ID: &str = "e3b0c44298fc1c14";
+
+/// Replaces the empty-name id with the id of the real host name, when there
+/// is one. Any other id, or an empty name, is left alone.
+fn repaired(identity: &mut Identity, name: &str) {
+    if identity.machine_id == EMPTY_NAME_MACHINE_ID && !name.is_empty() {
+        identity.machine_id = machine_id_for(name);
+    }
+}
+
 fn host_name() -> String {
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     {
         let mut name = [0u8; 256];
         // SAFETY: the buffer is valid for its whole length and outlives the call.
