@@ -9,7 +9,7 @@ Every packet here carries rules R1-R9, the checks table and the contract excerpt
 
 **The one behaviour to protect:** from LP-27 on, a presync that ends `failed` must never start the game, and the player must see which step failed, on what, and why, with a **Retry** button (D-LP4 as reversed, D-LP18, D-LP29). Only `up_to_date`, `synced` and `skipped` continue.
 
-## Wave 3 (into `lcp-w3`; gated on the wave 1 merge and LP-06 pass)
+## Wave 3 (into `lcp-w3`; gated on the wave 1 merge and LP-06 pass, which ruling LP-06-1 granted on 2026-10-26)
 
 ### LP-20 `launcher-core`: fetcher with failure detail
 
@@ -65,7 +65,7 @@ Each fails if its check is removed. Checks: M1, M2, M3 `cimmeria-launcher-core c
 
 - **Host:** windows · **Agent:** packet-coder · **Branch:** `launcher-cache-presync/LP-21-apply`, at LP-20's reviewed head · **Worktree:** `lcp-21`
 - **Commit:** `feat(launcher-core): stage and commit composed cooked-data PAKs whole (LP-21)`
-- **Rules:** R1-R9. Contract: § Launcher `apply.rs`, and `decide` and `compose` in § Crate `cimmeria-cooked-pak`.
+- **Rules:** R1-R9. Contract: § Launcher `apply.rs`, and `read_version`, `decide` and `compose` in § Crate `cimmeria-cooked-pak`.
 
 The rule (D-LP22): no PAK is ever partly written, and no failure before commit changes the cache.
 
@@ -85,6 +85,7 @@ Files and changes:
    - `sweep_temps`: remove files directly in `cache_dir` whose name ends with `TEMP_SUFFIX`; nothing else, no recursion. Return the count.
    - `ensure_not_linked`: refuse when `firesky`, `SGWGame` or `Cache.en-US` is a symlink or junction (`symlink_metadata().file_type().is_symlink()`; on Windows also `MetadataExt::file_attributes() & 0x400`). A missing folder is fine. Don't edit `client_maintenance`.
 2. Keep `apply.rs` under 500 lines; tests in `cooked_presync/tests/apply.rs` through `#[path]` if needed.
+3. `crates/cooked-pak/src/pak.rs` tests module only (ruling LP-06-1, F21): add `read_version_reads_a_deflated_metadata`. Build a zip with `zip::ZipWriter` holding one `_1` entry and a `MetaData` entry written with `CompressionMethod::Deflated` (the client's rewrite after `up_to_date`), then assert `read_version` gives `Some(v)` and `read_pak(..).version == Some(v)`. No change to `pak.rs` code or to `write_pak` (it keeps `MetaData` stored, the stock layout the client accepted in LP-06).
 
 Tests (temp dirs; PAKs built in memory with `write_pak`; no network):
 
@@ -95,8 +96,11 @@ Tests (temp dirs; PAKs built in memory with `write_pak`; no network):
 - `sweep_removes_only_presync_temps`: a `.tmp` with another suffix and a `.pak` survive.
 - `a_linked_cache_is_unsafe_path` (`#[cfg(windows)]`, skipped if creating the link is not permitted).
 - `a_missing_source_pak_is_source_missing`.
+- `a_client_rewritten_cache_pak_is_up_to_date` (ruling LP-06-1): a cache PAK whose `MetaData` is deflated at the served version, a source PAK at an older version; `plan` gives `UpToDate` and stages nothing. It fails if an unreadable or re-encoded cache `MetaData` counts as None (the launcher would then rewrite the PAK on every Play).
 
-Checks: M1, M2, M3 `cimmeria-launcher-core cooked_presync`; D2e. Docs rows: none (LP-25).
+The client rewrites `MetaData` after every run (F21), so never compare a cache PAK with a composed PAK by file bytes or size; compare versions, or entries with `read_pak`.
+
+Checks: M1, M2, M3 `cimmeria-launcher-core cooked_presync`; M1, M2, M3 `cimmeria-cooked-pak pak`; D2e. Docs rows: none (LP-25).
 
 ### LP-26 `launcher-core`: run, retries, deadline and the failure report
 
@@ -208,7 +212,7 @@ Files and changes:
 
 Checks: D1, D2e, D3e `worker`, D3e `cooked_presync`, D3e `launch`. Docs rows: 57 is owed by LP-25.
 
-## Wave 4 (into the same `lcp-w3`, after the wave 3 loop; one PR for waves 3 and 4)
+## Wave 4 (into the same `lcp-w3`, after the wave 3 loop; one PR for waves 3 and 4, merged only after LP-06b passes or the ledger records that the user declined the lab)
 
 ### LP-23 Shell: `LaunchStatus.content_sync`
 

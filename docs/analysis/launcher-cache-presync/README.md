@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** The orchestrator, ops, packet-coders, packet-reviewers and the owner
-> **Last updated:** 2026-10-26 (owner answers D-LP1, D-LP2, D-LP4 folded in)
+> **Last updated:** 2026-10-26 (owner answers D-LP1, D-LP2, D-LP4 folded in; LP-06 ruling 1: pass, LP-06b added)
 > **Companions:** [Work packets](work-packets.md) (rules, contract, wave 1), [wave 2](packets-wave2.md), [waves 3-5](packets-wave3.md), [resume card](RESUME.md), [cooked-data pipeline](../../engine/cooked-data-pipeline.md), [cooked PAK format](../../engine/cooked-data-pak-format.md), [launch.md](../../../crates/launcher/desktop/docs/launch.md)
 
 When the client's cooked-data cache doesn't match the server, character select hangs for about a minute while the server pushes every entry of every mismatched category (the full resync, #840). This campaign makes the desktop launcher bring the cache up to date before the game starts, with visible progress, so that resync never fires for a player who presses Play. Prefix `LP`. Designed 2026-10-26 against `main` `2019922fe`; re-specced the same day for the owner's answers. Line numbers below are from that commit; every packet re-greps its anchors.
@@ -37,6 +37,7 @@ On startup the server builds a **served catalog** from its `ResourceCache`. For 
 | F18 | `Observation` is `Copy` and persisted in the launch journal with `deny_unknown_fields`. A new variant or field changes the on-disk format. | `engine/src/storage/launch/mod.rs` l.37-64 | D-LP26 |
 | F19 | Launcher `launcher.launch` events reach SigNoz only with the game-diagnostics opt-in (off by default), or through a manual Upload debug logs. Rows carry at most 16 scalar keys. The local launcher log always has them. | `crates/launcher/desktop/docs/launcher-telemetry.md` l.14-19, l.107-114; `privacy-inventory.md` l.16-17 | D-LP27, LP-22 |
 | F20 | With Play blocked on failure, the per-IP quota (60 a minute) is shared by every player behind one address (CGNAT, a LAN). One Play costs 1 index request plus one per stale category. | D-LP1 | D-LP20 |
+| F21 | With a composed cache the client reports the served version for all 21 categories, the server answers `up_to_date` for each, and no resync starts (3.0 s auth to last reply against 34.9 s). The client still rewrites `MetaData` with the same version in 13 PAKs, as a deflated entry (+2 bytes, new mtime; entries unchanged), so `cooked_cache.write` events with `version == previous` are normal and a cache PAK never byte-matches a composed one. One Dialogs `versions_held` reading (20823 against 31461 on disk and on the wire) is unexplained. | [worknotes/LP-06.md](worknotes/LP-06.md), ruling LP-06-1 | LP-21, LP-06b, LP-U1 |
 
 ## Decisions
 
@@ -56,7 +57,7 @@ On startup the server builds a **served catalog** from its `ResourceCache`. For 
 | D-LP12 | The shared format code lives in a new path crate, `cimmeria-cooked-pak` (`crates/cooked-pak`), which both the server and `launcher-core` use. | Decided | F13. One reader, writer, digest and body codec. |
 | D-LP13 | The catalog is built off the boot path (`spawn_blocking`) and published once (a `OnceLock`). Until then the routes answer 503 `catalog_unavailable` with `Retry-After: 5`. If the build fails, the server publishes the failure and the routes answer 503 `catalog_failed` with no `Retry-After`. | Decided, amended | Boot time doesn't change. With Play blocked on failure, a launcher must not wait out its deadline on a catalog that will never come. |
 | D-LP14 | Category 7 is served like the others. LP-12 fixes the stale doc note. | Decided | F12. |
-| D-LP15 | A version of 2^31 or more compares as unsigned in both the client and here. If LP-06 shows the client compares signed, a ruling follows. | Decided | Not verified; LP-06 checks it. |
+| D-LP15 | A version of 2^31 or more compares as unsigned in both the client and here. If the client is found to compare signed, a ruling follows. | Decided, unverified (deferred by ruling LP-06-1) | LP-06 couldn't test it: the largest served version is 782034074. The server only tests equality (F1), so signedness matters only in the client's startup copy (F5); a wrong guess there costs the old resync, never a blocked Play. Cheapest proof is a `re-lookup` of the compare in `UpdateFromSourceArchives` `0x00479fa0`, no lab; nothing waits on it. |
 | D-LP16 | Status docs change once, in LP-30. The over-cap implementation ledger is skipped and listed as skipped in the PR body. LP-F3 splits it. | Decided | F15. |
 | D-LP17 | Ship the reply counter (LP-07) in wave 1, so the colo has a baseline of resyncs before the launcher changes. | Decided | It shows the effect in SigNoz. |
 | D-LP18 | **The gate.** Play continues only on `up_to_date`, `synced` or `skipped`. `failed` ends the launch `Observation::NotStarted` before client setup, with `launch_not_started` reason `cooked_presync_failed`; nothing is spawned. `cancelled` ends it `Observation::Cancelled`. There is no `partial` outcome: the first failure stops the run (fail fast; every failure blocks anyway). `source_newer` is a failure, found before any download. | Decided | Owner's D-LP4. Fail-fast spends no requests or disk on a launch that won't start. |
@@ -79,10 +80,10 @@ On startup the server builds a **served catalog** from its `ResourceCache`. For 
 | Wave | Ships as | Merge order |
 |---|---|---|
 | 1 | One PR from integration worktree `lcp-w1` (branch `launcher-cache-presync/wave1`) | LP-01, LP-02, LP-03, LP-04, LP-07, then LP-05's worknote |
-| Lab | LP-06 runs on `main` after wave 1 merges; its worknote ships in the wave 3/4 PR | - |
+| Lab | LP-06 passed (ruling LP-06-1); its worknote ships with the wave 1 PR, or the wave 3/4 PR if wave 1 has merged. LP-06b runs when the user approves the lab and gates the wave 3/4 PR merge | - |
 | 2 | One PR from `lcp-w2` (branch `launcher-cache-presync/wave2`) | LP-10, LP-11, LP-12 |
 | 3 | Into `lcp-w3` (branch `launcher-cache-presync/wave3`); its own wave loop; no PR yet | LP-06 worknote, LP-20, LP-21, LP-26, LP-22, LP-27 |
-| 4 | Into the same `lcp-w3`; its own wave loop; then **one PR** for waves 3 and 4 | LP-23, LP-24, LP-28, LP-25 |
+| 4 | Into the same `lcp-w3`; its own wave loop; then **one PR** for waves 3 and 4, merged only after LP-06b passes (or the ledger records that the user declined the lab, and LP-06b's checks move into LP-U1) | LP-23, LP-24, LP-28, LP-25 |
 | 5 | Close-out PR from `lcp-30` | LP-30 |
 
 Waves 3 and 4 share one PR because the engine blocks Play from wave 3 on, and the player needs wave 4's message and Retry with it. Waves 2 and 3 can run in parallel; wave 3 needs wave 2's server only for the live UAT.
@@ -95,7 +96,8 @@ Waves 3 and 4 share one PR because the engine blocks Play from wave 3 on, and th
 | LP-04 | `cooked-pak-tool` binary | packet-coder | LP-03 review `ship` | Merged into lcp-w1 (671fa53c9) |
 | LP-05 | Offline check against the player's client copy | rust-gameserver-dev | LP-04 merged into `lcp-w1` | Done: compose works (48e9712d8) |
 | LP-07 | Server counter `cooked_data_version_replies_total` | packet-coder | - | Merged into lcp-w1 (f6befa7c1) |
-| LP-06 | Lab proof: a composed cache gives `up_to_date` at character select | rust-gameserver-dev (lab-uat skill) | wave 1 merged; the user approves lab use | UATPending |
+| LP-06 | Lab proof: a composed cache gives `up_to_date` at character select | rust-gameserver-dev (lab-uat skill) | wave 1 code; the user approves lab use | Pass (ruling LP-06-1; worknote a938dea61, to move to `worknotes/LP-06.md`) |
+| LP-06b | Lab follow-up: content in game, the Dialogs reading, a second launch | rust-gameserver-dev (lab-uat skill) | the user approves lab use | UATPending; gates the wave 3/4 PR merge |
 | LP-10 | Login-port routes `/api/cooked/v1/*` (adds `catalog_failed`) | packet-coder | wave 1 merged, LP-05 "compose works" | BlockedDependency |
 | LP-11 | Publish the catalog (or its failure) at base-service start | packet-coder | wave 1 merged | BlockedDependency |
 | LP-12 | Server docs | documentation-writer | LP-10, LP-11 merged into `lcp-w2` | BlockedDependency |
@@ -118,7 +120,7 @@ Waves 3 and 4 share one PR because the engine blocks Play from wave 3 on, and th
 
 | ID | Action | Expected |
 |---|---|---|
-| LP-U1 | On Windows, with a local server built from `main` after waves 2-4: in the launcher press **Reset client cache**, then **Play**, then log in and reach character select. | The status shows "Checking game data with the server…", then "Updating game data: …", then "Game data updated (N categories).", then the game starts. Character select opens with no minute-long hang. SigNoz (game diagnostics on) shows `cooked_presync_finished` outcome `synced` and `cooked_data.version_reply` `up_to_date` for every category, and no `cooked_data.sync_start`. A second Play shows "Game data is up to date.". |
+| LP-U1 | On Windows, with a local server built from `main` after waves 2-4: in the launcher press **Reset client cache**, then **Play**, then log in and reach character select. | The status shows "Checking game data with the server…", then "Updating game data: …", then "Game data updated (N categories).", then the game starts. Character select opens with no minute-long hang. SigNoz (game diagnostics on) shows `cooked_presync_finished` outcome `synced` and `cooked_data.version_reply` `up_to_date` for every category, and no `cooked_data.sync_start`. Client `cooked_cache.write` events with `version` equal to `previous` are normal (F21); one with a different version is a fail. A second Play shows "Game data is up to date.". |
 | LP-U2 | After the next colo deploy, the same from a player install pointed at the colo. | The same, and `cooked_data_version_replies_total{outcome="full_resync"}` stops growing for launcher players (compare with the LP-07 baseline). |
 | LP-U3 | Stop the local server, press **Reset client cache**, then **Play**. Then start the server and press **Retry**. | First press: "Starting…" at once, then a failure naming the step (checking with the server), the server's `host:port` and the connection error, and why; the game does not start; the button reads **Retry**. Retry: "Starting…" at once, the sync runs and the game starts. The launcher log (or SigNoz) shows `cooked_presync_finished` outcome `failed` reason `connect_failed` with `launch_not_started` reason `cooked_presync_failed`, then outcome `synced`. |
 | LP-U4 | Start the local server with `CIMMERIA_COOKED_PRESYNC_DISABLED=1`, press **Reset client cache**, then **Play**. | The note says the server turned off the game data check, the game starts, and character select shows the old resync. The server logs `cooked_presync.refused` reason `disabled`. |

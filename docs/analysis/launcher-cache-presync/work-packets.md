@@ -12,10 +12,11 @@ Nineteen packets in five waves, plus the LP-06 lab proof. Wave 1 and the lab pro
 - **Before any wave:** check that nobody else is running this campaign (campaign-packet § 0). Before waves 2 and 3, ask `ops` whether the client-tls-oidc campaign PR (branch `client-tls-oidc/campaign`) has merged. It edits `worker.rs`, `login_port.rs` and `crates/server/src/main.rs` (F16). If it has merged, branch from the new `main`. If it hasn't, branch from `main` anyway and keep the hunks in those three files small; whichever PR lands second resolves the conflict.
 - **Worktrees:** `pwsh tools/build-lane/mk-worktree.ps1 launcher-cache-presync/LP-NN-<slug> lcp-NN`, at `<repo>\.claude\worktrees\lcp-NN`. Integration worktrees: `launcher-cache-presync/wave<W>` as `lcp-w<W>`, at `main`.
 - **Wave 1** (one PR from `lcp-w1`). Dispatch LP-01 and LP-07 at once. LP-02, LP-03 and LP-04 form a chain: each starts when the previous one's packet review returns `ship`, and `ops` creates its worktree with the branch at that reviewed head SHA. Once LP-04 is merged into `lcp-w1`, `ops` creates `lcp-05` at the `lcp-w1` head, and LP-05 runs. Merge order into `lcp-w1` (`merge-noff.ps1`): **LP-01, LP-02, LP-03, LP-04, LP-07, LP-05**. Because LP-02..04 stack, each merge after LP-01 is a fast-forward of new commits. LP-07 touches no file the others touch. Then the wave loop, then one PR.
-- **LP-06** (lab) runs after the wave 1 PR merges. The orchestrator asks the user before any lab use (the lab-uat skill) and waits until the lab is free. Its worktree `lcp-06` is at `main`. Its worknote `worknotes/LP-06.md` is committed in `lcp-06` and merged into `lcp-w3`.
+- **LP-06** (lab) ran on the `lcp-w1` head and **passed** (ruling 1, 2026-10-26). Its worknote was committed in `lcp-w1` as `LP-06-worknote.md` (a938dea61); a packet-coder `git mv`s it to `worknotes/LP-06.md` and adds the ruling line. It ships with the wave 1 PR if that PR has not merged yet, otherwise in the wave 3/4 PR.
+- **LP-06b** (lab follow-up, ruling 1) runs whenever the user approves lab use, in parallel with waves 2 to 4. The orchestrator asks the user first (the lab-uat skill). It gates the **merge** of the wave 3/4 PR, not the start of wave 3. If the user declines the lab, the orchestrator records that in the ledger and LP-06b's checks move into LP-U1.
 - **Wave 2** (one PR from `lcp-w2`) opens when wave 1 has merged and LP-05's worknote says **compose works** (every `base_missing` and `base_differs` is 0, and no category is `source_newer`). Otherwise an architect ruling comes first (D-LP3). D-LP1 and D-LP2 are Decided. Dispatch LP-10 and LP-11 at once; LP-12 runs after both are merged into `lcp-w2`. Merge order: **LP-10, LP-11, LP-12**.
-- **Wave 3** (into `lcp-w3`, no PR yet) opens when wave 1 has merged and LP-06 passed. Merge the LP-06 worknote branch into `lcp-w3` first. Dispatch LP-20, and at the same time wave 4's LP-24 (it works against the contract, at `main`). LP-21, LP-26, LP-22 and LP-27 chain as in wave 1, each at the previous one's reviewed head. Merge order into `lcp-w3`: **LP-06 worknote, LP-20, LP-21, LP-26, LP-22, LP-27**. Then the wave 3 loop on `lcp-w3`.
-- **Wave 4** (into the same `lcp-w3`, then one PR for waves 3 and 4). LP-23 starts at the `lcp-w3` head once the wave 3 loop returns `ship`. LP-28 starts at LP-24's reviewed head. LP-25 runs after LP-27 and LP-24 are merged into `lcp-w3`. Merge order: **LP-23, LP-24, LP-28, LP-25**. Then the wave 4 loop, then one PR. Never ship wave 3 alone: from LP-27 on, a failed presync blocks Play, and only wave 4 tells the player why (D-LP18, D-LP29). Waves 2 and 3 can run at the same time, because they share no file.
+- **Wave 3** (into `lcp-w3`, no PR yet) opens when wave 1 has merged and LP-06 passed. If the LP-06 worknote did not ship with wave 1, merge it into `lcp-w3` first. Dispatch LP-20, and at the same time wave 4's LP-24 (it works against the contract, at `main`). LP-21, LP-26, LP-22 and LP-27 chain as in wave 1, each at the previous one's reviewed head. Merge order into `lcp-w3`: **LP-06 worknote, LP-20, LP-21, LP-26, LP-22, LP-27**. Then the wave 3 loop on `lcp-w3`.
+- **Wave 4** (into the same `lcp-w3`, then one PR for waves 3 and 4). LP-23 starts at the `lcp-w3` head once the wave 3 loop returns `ship`. LP-28 starts at LP-24's reviewed head. LP-25 runs after LP-27 and LP-24 are merged into `lcp-w3`. Merge order: **LP-23, LP-24, LP-28, LP-25**. Then the wave 4 loop, then one PR, which merges only after LP-06b passes (or the user declined the lab and the ledger says so). Never ship wave 3 alone: from LP-27 on, a failed presync blocks Play, and only wave 4 tells the player why (D-LP18, D-LP29). Waves 2 and 3 can run at the same time, because they share no file.
 - **Agents:** LP-05 goes to `rust-gameserver-dev`, LP-06 to `rust-gameserver-dev` with the lab-uat skill, and LP-12, LP-25 and LP-30 go to `documentation-writer`. Everything else goes to `packet-coder`. Each packet gets a packet review loop, and each wave a wave loop on its integration worktree. Wave 2 and the wave 3/4 PR also get one read-only `network-security-auth` pass on the integration head (new anonymous routes, a new download path, a new write into Documents).
 - **Report path:** `<worktree>\.claude\reports\launcher-cache-presync\<packet>-<role>.md`. **Return line:** `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`.
 - **Commit attribution lines,** at the end of every commit message:
@@ -462,10 +463,30 @@ Steps:
    - every `cooked_data.version_reply` is `up_to_date`;
    - no `cooked_data.sync_start`;
    - `client.cooked.versions_held` shows `resync_pending = 0`;
-   - no `client.cooked_cache.write` events;
+   - no `client.cooked_cache.write` event whose `version` differs from `previous`. Metadata-only same-version rewrites are expected: on `up_to_date` the client rewrites each PAK's `MetaData` as a deflated entry with the same version (F21);
    - `cooked_data_misses_total` / `miss_served` unchanged;
-   - at least one overridden item or mission shows its server value in game.
+   - at least one overridden item or mission shows its server value in game (moved to LP-06b by ruling 1: the run had no character).
 4. Record the D-LP15 check if any served version is 2^31 or more.
+
+**Result (ruling 1, 2026-10-26): pass.** 21 of 21 `up_to_date`, 0 `sync_start`, 3.0 s against 34.9 s. The in-game check, the Dialogs `versions_held` reading and the compare of ids 11, 12 and 13 move to LP-06b.
+
+### LP-06b Lab follow-up: content in game, the Dialogs reading, a second launch
+
+- **Host:** windows · **Agent:** rust-gameserver-dev, with the lab-uat skill · **Branch:** `launcher-cache-presync/LP-06b-lab`, at the `lcp-w1` head (or `main` once wave 1 has merged) · **Worktree:** `lcp-06b` · **Status:** UATPending (the orchestrator asks the user first)
+- **Commit:** `docs(analysis): launcher-cache-presync LP-06b lab follow-up (LP-06b)`
+- **Rules:** R1-R9, plus the lab-uat skill's rules: the lease, one lab-driver, verify the driver's claims against the server log. Before composing, check that no client is running (the watchdog can start one while a lease is held).
+
+Steps:
+
+1. Local server from `lcp-06b` with its own test database (`sgw_lcp-06b`). Get a character: `lab_ensure_in_world` creates one if needed.
+2. **Before the client starts:** list every `CookedDataDialogs*` file the lab client could open (the per-instance profile, the default Documents profile, the install's `Working\SGWGame` folders) and record each one's `MetaData` version and entry count: `cooked-pak-tool check --data-dir data/cache --source <folder>` gives the version in its `source_version` column (copy an oddly named file such as `*.bak-*` into a scratchpad folder as `CookedDataDialogs.pak` first), and `cooked-pak-tool layout --pak <file>` gives the entries. Record which location each is (profile, default profile, install), never the path.
+3. Wipe the profile cache (back it up), compose as in LP-06 step 3, log in and enter the world. Expect what LP-06 expected (as amended), and:
+   - at least one overridden dialog (category 5) and one overridden item or mission shows its server value in game; the server log confirms which key it is;
+   - `client.cooked.versions_held` for Dialogs: if it still shows 20823, name the file it came from (step 2) and say whether the client used that file's content or the composed file's;
+   - after the client quits, every entry of all 8 composed PAKs (ids 1-5, 11, 12, 13) equals a fresh compose from the same inputs (compare entries, not file bytes; F21).
+4. **Second launch** without touching the cache (the client has rewritten its `MetaData`): log in again. Expect 21 `up_to_date` and 0 `sync_start`. After the client quits, `cooked-pak-tool check --data-dir data/cache --source <the profile's Cache.en-US>` shows each client-rewritten PAK's `source_version` equal to its served version (the launcher's `read_version` reads the deflated `MetaData`).
+5. Restore the profile cache. Re-enable the screensaver if you disabled it, and say so in the report if that fails.
+6. Write `docs/analysis/launcher-cache-presync/worknotes/LP-06b.md` (CRLF): pass or fail per expectation, the step 2 table, and a verdict line: `pass`, or `ruling needed` when the client shows a stale dialog or reads Dialogs from a file other than the one the launcher writes. No paths, IPs or account names.
 5. Restore the profile's cache afterwards.
 6. Write `docs/analysis/launcher-cache-presync/worknotes/LP-06.md` (CRLF) with:
    - the two timings;

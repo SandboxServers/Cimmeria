@@ -12,10 +12,10 @@
 1. Campaign-packet § 0: check no peer runs it. Have `ops` create the board subcategory.
 2. Wave 1 (one PR from `lcp-w1`): LP-01 and LP-07 at once (both Ready). Chain LP-02, LP-03, LP-04, each at the previous reviewed head; then LP-05 (`rust-gameserver-dev`, `<client-copy>` in the brief, never committed). Merge order LP-01, 02, 03, 04, 07, 05.
 3. LP-05 verdict "ruling needed" (base mismatch, `source_newer`, or a body over 16 MB) → dispatch `architect` for D-LP3 first.
-4. After wave 1 merges: ask the user about the lab, then LP-06 (UATPending).
+4. LP-06 **passed** (ruling LP-06-1, `.claude/reports/launcher-cache-presync/LP-06-ruling-1.md` in `lcp-w1`). A packet-coder moves `LP-06-worknote.md` to `worknotes/LP-06.md` in `lcp-w1` before the wave 1 PR. LP-06b (lab follow-up) runs when the user approves the lab; it gates only the wave 3/4 PR merge.
 5. Wave 2 (one PR from `lcp-w2`): LP-10 and LP-11 at once, then LP-12. Opens on wave 1 merged + LP-05 "compose works".
-6. Wave 3 into `lcp-w3`: LP-06 worknote, LP-20 (and LP-24 from `main` in parallel), then the chain LP-21, LP-26, LP-22, LP-27. Opens on wave 1 merged + LP-06 pass. Wave 3 loop.
-7. Wave 4 into the same `lcp-w3`: LP-23, LP-24, LP-28 (at LP-24's head), LP-25. Wave 4 loop, `network-security-auth` pass, then ONE PR for waves 3+4. Never ship wave 3 alone (it blocks Play without telling the player why).
+6. Wave 3 into `lcp-w3`: LP-20 (and LP-24 from `main` in parallel), then the chain LP-21, LP-26, LP-22, LP-27. Opens on wave 1 merged (LP-06 pass is granted). Wave 3 loop.
+7. Wave 4 into the same `lcp-w3`: LP-23, LP-24, LP-28 (at LP-24's head), LP-25. Wave 4 loop, `network-security-auth` pass, then ONE PR for waves 3+4; it merges only after LP-06b passes (or the ledger records the user declined the lab). Never ship wave 3 alone (it blocks Play without telling the player why).
 8. Campaign review, then LP-30 (wave 5), then owner UATs LP-U1..U4.
 
 **Hazards:**
@@ -25,6 +25,6 @@
 - No CME bytes in the repo or tests (R9). No paths, IPs or account names in worknotes (R7).
 - LP-27's revert-proof test (a failed presync never reaches client setup) is the campaign's key guard; reviewers check it fails with the gate removed.
 
-**Open decisions:** D-LP28 (owner, non-blocking: failure code in the anonymous launcher summary → LP-F4). D-LP3 is resolved: LP-05 found compose works.
+**Open decisions:** D-LP28 (owner, non-blocking: failure code in the anonymous launcher summary → LP-F4). D-LP3 is resolved: LP-05 found compose works. D-LP15 stays unverified and non-blocking (an optional `re-lookup`, no lab).
 
 **Next ledger update:** when the wave 2 PR opens.
