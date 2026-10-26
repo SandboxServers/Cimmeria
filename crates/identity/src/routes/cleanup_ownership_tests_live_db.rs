@@ -1,7 +1,8 @@
 //! Live-DB check that each route test file's `clean` deletes only the rows it
 //! inserted (F19). Three near-match rows look like test rows but are not theirs:
 //! an account named `CT26PlayerKeep`, an account named `CT30-keep`, and an
-//! account whose identity has provider `other` and subject `ct26-keep`. Every
+//! account whose identities have provider `other` and subjects `ct26-keep`, `ct26-1`
+//! and `ct30-21` (a subject of a `clean` list under a foreign provider). Every
 //! `clean` must leave all three in place; they are deleted by exact id at the end.
 
 use cimmeria_test_support::require_db_or_skip;
@@ -44,13 +45,14 @@ async fn insert_account(pool: &PgPool, account_id: u32, name: &str) {
     .expect("insert near-match account");
 }
 
-/// Inserts the `other` / `ct26-keep` identity for `account_id`.
-async fn insert_identity(pool: &PgPool, account_id: u32) {
+/// Inserts the `other` identity with `subject` for `account_id`.
+async fn insert_identity(pool: &PgPool, account_id: u32, subject: &str) {
     sqlx::query(
         "INSERT INTO account_identity (account_id, provider, issuer, subject, display_name) \
-         VALUES ($1, 'other', 'https://issuer.example.org', 'ct26-keep', 'Keep')",
+         VALUES ($1, 'other', 'https://issuer.example.org', $2, 'Keep')",
     )
     .bind(account_id as i32)
+    .bind(subject)
     .execute(pool)
     .await
     .expect("insert near-match identity");
@@ -75,7 +77,9 @@ async fn live_db_cleanup_keeps_near_match_rows() {
     insert_account(&pool, KEEP_CT26, "CT26PlayerKeep").await;
     insert_account(&pool, KEEP_CT30, "CT30-keep").await;
     insert_account(&pool, KEEP_OTHER, "Keep_Other").await;
-    insert_identity(&pool, KEEP_OTHER).await;
+    for subject in ["ct26-keep", "ct26-1", "ct30-21"] {
+        insert_identity(&pool, KEEP_OTHER, subject).await;
+    }
     token_clean(&pool).await;
     account_clean(&pool).await;
     link_clean(&pool).await;

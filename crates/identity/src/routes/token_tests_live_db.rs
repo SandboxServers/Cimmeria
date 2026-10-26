@@ -119,7 +119,7 @@ fn harness(pool: &PgPool) -> Env {
 }
 
 /// Deletes the sentinel accounts in `OWNED`; their identities and events cascade.
-pub(crate) async fn clean(pool: &PgPool) {
+pub(in crate::routes) async fn clean(pool: &PgPool) {
     let ids: Vec<i32> = OWNED.iter().map(|&id| id as i32).collect();
     let _ = sqlx::query("DELETE FROM account WHERE account_id = ANY($1)")
         .bind(ids)

@@ -3,7 +3,7 @@
 //! per-account limit, the refusals of staff and test accounts, and the password
 //! clearing of a link (C15). Sentinel account ids `0x7000_E900..=0x7000_E909`;
 //! subjects `ct26-<n>`. Cleanup deletes exactly the ids in `OWNED` and the
-//! accounts holding a `SIGNUP_IDENTITIES` identity (exact provider and subject),
+//! accounts holding a `signup_identities()` identity (exact provider and subject),
 //! before and after each test, so the accounts that `link/new` creates go too.
 
 use std::net::SocketAddr;
@@ -55,40 +55,18 @@ const OWNED: &[u32] = &[
     ID_REFUSED,
     ID_LINK_DISABLED,
 ];
-/// The `(provider, subject)` identities the link-route tests sign up with. An
-/// account holding one of these identities is deleted; no other account matches.
-pub(super) fn signup_identities() -> Vec<(String, String)> {
-    let mut list: Vec<(String, String)> = [
-        ("dev", "ct26-1"),
-        ("dev", "ct26-2"),
-        ("untrusted", "ct26-3"),
-        ("dev", "ct26-4"),
-        ("dev", "ct26-5"),
-        ("dev", "ct26-6"),
-        ("dev", "ct26-7"),
-        ("dev", "ct26-8"),
-        ("dev", "ct26-9"),
-        ("dev", "ct26-10"),
-        ("dev", "ct26-11"),
-        ("dev", "ct26-12"),
-        ("dev", "ct26-13"),
-        ("dev", "ct26-14"),
-        ("dev", "ct26-15"),
-        ("dev", "ct26-16"),
-        ("dev", "ct26-17"),
-        ("dev", "ct26-18"),
-        ("dev", "ct26-19"),
-        ("dev", "ct26-20"),
-        ("dev", "ct26-21"),
-        ("dev", "ct26-30"),
-        ("dev", "ct26-disabled"),
-        ("dev", "ct26-cap-51"),
-    ]
-    .iter()
-    .map(|(p, s)| (p.to_string(), s.to_string()))
-    .collect();
-    // `link_tests_guards_live_db.rs` signs up `ct26-cap-0..50`.
-    list.extend((0..50).map(|i| ("dev".to_owned(), format!("ct26-cap-{i}"))));
+/// The `(provider, subject)` identities the link-route tests sign up with, including
+/// `link_tests_guards_live_db.rs` (`ct26-cap-0..=49` and `ct26-cap-51`). An account
+/// holding one of these is deleted; no other account matches.
+fn signup_identities() -> Vec<(String, String)> {
+    let dev = |s: String| ("dev".to_owned(), s);
+    let mut list: Vec<(String, String)> = (1..=21)
+        .filter(|n| *n != 3)
+        .map(|n| dev(format!("ct26-{n}")))
+        .collect();
+    list.push(("untrusted".to_owned(), "ct26-3".to_owned()));
+    list.extend(["ct26-30", "ct26-disabled", "ct26-cap-51"].map(|s| dev(s.to_owned())));
+    list.extend((0..50).map(|i| dev(format!("ct26-cap-{i}"))));
     list
 }
 
@@ -171,7 +149,7 @@ fn harness_with(pool: &PgPool, table: &str) -> Env {
 
 /// Deletes the sentinel accounts in `OWNED` and the accounts holding a
 /// `signup_identities()` identity; identities and events cascade.
-pub(crate) async fn clean(pool: &PgPool) {
+pub(in crate::routes) async fn clean(pool: &PgPool) {
     let ids: Vec<i32> = OWNED.iter().map(|&id| id as i32).collect();
     let _ = sqlx::query("DELETE FROM account WHERE account_id = ANY($1)")
         .bind(ids)
@@ -441,10 +419,10 @@ async fn live_db_signup_conflict_leaves_no_orphan_account() {
     let pool = require_db_or_skip!();
     clean(&pool).await;
     let env = harness(&pool);
-    let (before,): (i32,) = sqlx::query_as("SELECT COALESCE(MAX(account_id), 0) FROM account")
+    let (before,): (i64,) = sqlx::query_as("SELECT last_value FROM accounts_account_id_seq")
         .fetch_one(&pool)
         .await
-        .expect("highest account id");
+        .expect("sequence position");
     let first = grant(&env, verified("dev", "ct26-20", None, false));
     let (first_status, first_body) =
         post_json(&env, "/link/new", json!({"link_grant": first})).await;
@@ -453,10 +431,11 @@ async fn live_db_signup_conflict_leaves_no_orphan_account() {
     let (second_status, second_body) =
         post_json(&env, "/link/new", json!({"link_grant": second})).await;
     // An orphan has no identity, so the exact-identity cleanup cannot reach it: the
-    // test lists the accounts created after `before` (its own signups) and deletes
-    // those ids itself.
+    // test lists the accounts created after the sequence position with the sign-up
+    // name shape (its own signups) and deletes those ids itself.
     let orphan_rows: Vec<(i32,)> = sqlx::query_as(
-        "SELECT a.account_id FROM account a WHERE a.account_id > $1 \
+        "SELECT a.account_id FROM account a WHERE a.account_id > $1::bigint \
+         AND a.account_name LIKE 'CT26Player%' \
          AND NOT EXISTS (SELECT 1 FROM account_identity i WHERE i.account_id = a.account_id)",
     )
     .bind(before)
