@@ -225,6 +225,17 @@ CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP=60
 
 The commands for both are in [telemetry.md → Kill switch](telemetry.md#kill-switch) and [telemetry.md → Changing a quota](telemetry.md#changing-a-quota).
 
+Two more concern the launcher cooked-data presync, which the server serves on the login port (these routes are not behind the https proxy). Both are optional:
+
+```bash
+# Turn the presync routes off: launchers skip it and launch. The bypass for a broken catalog.
+CIMMERIA_COOKED_PRESYNC_DISABLED=1
+# Presync requests per address per minute. Default 60; 0 turns the limit off.
+CIMMERIA_COOKED_PRESYNC_QUOTA_PER_IP=60
+```
+
+If the catalog fails to build, every launcher on the server is blocked with `catalog_failed` until you set the first one or fix the cause. What to alert on: [cooked-data pipeline](../engine/cooked-data-pipeline.md#alert-recipe).
+
 Then `docker compose up -d` and check `docker logs cimmeria 2>&1 | grep 'dev-session telemetry'` says `mint and ingest enabled`. A missing or short secret doesn't stop the server; it logs `dev_session_secret_unusable`. Details, secret rotation and checks: [telemetry.md](telemetry.md#enable-client-telemetry-on-the-colo).
 
 ### Claude Code telemetry

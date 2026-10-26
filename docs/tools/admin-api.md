@@ -74,6 +74,8 @@ anonymous (it takes no token). The owner approved serving it on the login port o
 endpoint yet
 ([launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md#decisions-and-what-is-still-open)).
 
+The cooked-data presync adds two more anonymous routes to the login port, `GET /api/cooked/v1/index` and `GET /api/cooked/v1/category/{id}`, so it holds seven in all (nested under `/api/cooked`). They are not telemetry routes and the colo's https proxy does not forward them. See [Cooked-data presync routes](#cooked-data-presync-routes-login-port).
+
 Containers are different: a Docker published port forwards to the container's bridge
 address and cannot reach an in-container loopback bind, so the image sets
 `ADMIN_BIND=0.0.0.0` and the **publish** is the exposure control — `-p 127.0.0.1:8443:8443`
@@ -349,6 +351,24 @@ Current session info. **Not implemented.**
 
 ---
 
+### Cooked-data presync routes (login port)
+
+Two more anonymous routes are served on the login port, and only there (`crates/admin-api/src/routes/cooked/`, nested at `/api/cooked` by `login_port_telemetry_router`). The admin listener does not serve them. They carry the catalog the desktop launcher uses to bring a player's cooked-data cache up to date before Play. They take no token. The behaviour, the byte formats and the operator notes are in [cooked-data-pipeline.md § Launcher presync](../engine/cooked-data-pipeline.md#launcher-presync) and [cooked-data-pak-format.md § Presync catalog formats](../engine/cooked-data-pak-format.md#presync-catalog-formats).
+
+| Route | Success | Refusals (JSON `{"error":"<code>"}`) |
+|---|---|---|
+| `GET /api/cooked/v1/index` | 200, `application/json`, `Cache-Control: no-cache`: the index | 429 `rate_limited` + `Retry-After: 60`; 503 `disabled`; 503 `catalog_unavailable` + `Retry-After: 5` (build still running); 503 `catalog_failed`, no `Retry-After` (build failed) |
+| `GET /api/cooked/v1/category/{id}?version=<v>` | 200, `application/octet-stream`: the `CPS1` body | the same four, plus 404 `unknown_category`; 409 `version_changed` with `"version":<served>`; 400 `bad_request` (a missing, repeated or non-numeric `version`, or a bad `id`) |
+
+Checks run in this order: quota, kill switch, catalog state, then the route's own checks. The kill switch therefore wins over a failed catalog.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `CIMMERIA_COOKED_PRESYNC_DISABLED` | (unset) | `1` or `true` makes both routes answer 503 `disabled`. Read on every request. Launchers treat it as "this server does not presync" and launch. |
+| `CIMMERIA_COOKED_PRESYNC_QUOTA_PER_IP` | `60` | Requests per address per minute across both routes, a fixed 60 s window of its own; `0` disables. Keyed like the launcher-summary route: the forwarded caller behind a loopback proxy, the socket peer otherwise. Everyone behind one address shares it. |
+
+Each refusal writes an INFO `cooked_presync.refused` row and bumps `cooked_presync_requests_total`. The colo's https proxy does not forward these routes: a launcher reaches them on the login port directly, over plain HTTP, with SHA-256 integrity only (the trust level of the SOAP channel to that server). Telemetry: [observability-target-catalog.md § cooked_presync](../architecture/observability-target-catalog.md#cooked_presync).
+
 ## WebSocket Endpoints
 
 All WebSocket endpoints accept upgrade at the listed path. Two of the three are fully implemented.
@@ -521,6 +541,7 @@ complete surface:
 | `POST /api/telemetry/upload-chunk` | `routes/telemetry/chunk.rs` — bearer token checked before the body is read; rate-limited per session and per address (429), concurrency-limited server-wide and per address (503), 30 s body deadline (400), compressed size cap (413), 400 only for a body that is not gzip; the expansion and row budgets truncate (200 with `truncated: true`) and rows that do not parse are skipped (`bad_rows`); 503 under the telemetry kill switch. Limits: [telemetry.md](../operations/telemetry.md#upload-size-and-rate-limits) |
 | `POST /api/telemetry/upload-bundle` | `routes/telemetry/bundle.rs` (unzip in `bundle_unzip.rs`) — the same gate as the chunk route, 413 on parts, metadata size and the hard entry cap; files, expanded bytes and lines truncate, newest files first (a file over the remaining bytes is skipped) |
 | `POST /api/telemetry/launcher-summary` | `routes/telemetry/launcher_summary/mod.rs` — desktop-launcher attempt summaries. Anonymous: no token, and an `Authorization` header is never read. Accepts only the exact schema-1 JSON payload: `Content-Type` other than `application/json` (a `charset` parameter is allowed) is a 415, a query string is a 400, over 64 KiB is a 413, a body that is not the envelope (a key written twice included) is a 400; one invalid summary in a valid body is `rejected` alone. Limited to 12 requests per quota-key address per minute by default (`CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`, a fixed 60 s window of its own; 429 + `Retry-After`), charged before the body is read or anything is parsed, so an oversized request counts; 503 under the telemetry kill switch only (it has no mint, so never `no_upload_endpoint`). Each whole-request refusal writes one throttled `launcher_summary_refused` row (SigNoz-only). Rows are self-reported and must not drive server state or alerts. Merged by name in `routes/mod.rs` (this listener) and `login_port.rs` (the login port), not part of `telemetry::routes()`. Contract: [launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md) |
+| `GET /api/cooked/v1/index`, `GET /api/cooked/v1/category/{id}` | `routes/cooked/` (`handlers.rs`): login port only, anonymous, read-only; the launcher presync catalog the base builds at start. Quota (default 60 a minute per quota-key address, `CIMMERIA_COOKED_PRESYNC_QUOTA_PER_IP`), then the kill switch (`CIMMERIA_COOKED_PRESYNC_DISABLED`), then the catalog state; refusals are JSON `{"error":"<code>"}` (429, 503 `disabled` / `catalog_unavailable` / `catalog_failed`, and on the category route 404, 409, 400). Not on the admin listener. [Route table](#cooked-data-presync-routes-login-port) |
 | `GET /swagger-ui`, `GET /api-docs/openapi.json` | `crates/admin-api/src/lib.rs:117` |
 
 Note that `/api/editor/*` is an **HTTP** chain-editor persistence surface —
@@ -551,7 +572,8 @@ the Tauri IPC commands below are a second, parallel path to the same job.
 | `crates/admin-api/src/routes/dev_session/` | Launcher dev-session token mint + refresh (`token.rs` claims/HMAC, `quota.rs` mint+refresh limits) |
 | `crates/admin-api/src/routes/telemetry/` | Launcher telemetry chunk + bundle ingest (`upload_gate.rs` token, rate limits and body deadline; `upload_slots.rs` concurrency slots; `field_caps.rs` string caps; `refusal_log.rs` throttled refusal rows) |
 | `crates/admin-api/src/routes/telemetry/launcher_summary/` | Anonymous launcher-summary ingest: the strict payload rule, the per-address rate limit, dedup and the `launcher.summary` / `launcher.ingest` rows |
-| `crates/admin-api/src/login_port.rs` | The five-route telemetry router mounted on the public login port |
+| `crates/admin-api/src/routes/cooked/` | Anonymous cooked-data presync routes (`handlers.rs`: the checks and answers; nested at `/api/cooked` on the login port only) |
+| `crates/admin-api/src/login_port.rs` | The telemetry router mounted on the public login port: the telemetry routes plus the two cooked presync routes |
 | `frontend/src/lib/admin-api.ts` | TypeScript API client + dashboard builders |
 | `frontend/src/lib/view-models.ts` | UI utility functions |
 | `frontend/src/lib/ws.ts` | WebSocket connection helper |

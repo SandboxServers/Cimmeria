@@ -41,6 +41,8 @@
 //! | `CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_SESSION` | `6` | `/api/telemetry/upload-bundle` requests per session per hour. `0` disables. |
 //! | `CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP` | `30` | `/api/telemetry/upload-bundle` requests per peer address per hour. `0` disables. |
 //! | `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | `86400` | Longest a single minted session may be extended by chained refreshes, measured from the original mint. Past it, refresh returns 401 and the launcher mints a fresh session. |
+//! | `CIMMERIA_COOKED_PRESYNC_DISABLED` | unset | `1` or `true` turns off the two anonymous launcher cooked-data presync routes served on `LOGON_PORT` (`/api/cooked/v1/index` and `/api/cooked/v1/category/{id}`): both answer 503 `disabled`, and launchers skip the presync and launch. Read per request. The operator bypass for a failed catalog build. See `docs/engine/cooked-data-pipeline.md`. |
+//! | `CIMMERIA_COOKED_PRESYNC_QUOTA_PER_IP` | `60` | Requests allowed per peer address per minute across the two presync routes; over quota returns 429 + `Retry-After: 60`. `0` disables. Shared by everyone behind one address. |
 //! | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | OTLP collector endpoint (e.g. `http://otel-collector:4317`). Unset ⇒ OTLP exporter disabled; logs and Mercury packet events never leave the process via OTLP. See [docs/operations/signoz-deployment.md](../../../docs/operations/signoz-deployment.md). |
 //! | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | `grpc` (default) or `http/protobuf`. |
 //! | `OTEL_SERVICE_NAME` | `cimmeria-server` | Shown as `service.name` in SigNoz's service map. |
