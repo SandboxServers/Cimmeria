@@ -11,8 +11,11 @@ pub mod api;
 pub mod commands;
 pub mod discovery;
 pub mod driver;
+mod flow;
+mod host_slot;
 pub mod lease;
 pub mod oauth;
+mod pending;
 pub mod session;
 pub mod store;
 

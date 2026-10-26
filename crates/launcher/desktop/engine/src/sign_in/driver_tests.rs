@@ -615,3 +615,6 @@ fn relay_lease_counts() {
 
 #[path = "driver_handover_tests.rs"]
 mod handover;
+
+#[path = "driver_host_tests.rs"]
+mod host;

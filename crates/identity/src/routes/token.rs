@@ -58,7 +58,10 @@ pub async fn token(
 ) -> Response {
     let span = telemetry::idp_token();
     let started = Instant::now();
-    let result = answer(&state, peer, body).instrument(span.clone()).await;
+    let fence = state.ctx.stores.access.fence();
+    let result = answer(&state, peer, body, fence)
+        .instrument(span.clone())
+        .await;
     match result {
         Ok(response) => {
             span.record("latency_ms", started.elapsed().as_millis() as u64);
@@ -73,11 +76,13 @@ pub async fn token(
     }
 }
 
-/// The body of [`token`]: the limit, the request shape, then the grant.
+/// The body of [`token`]: the limit, the request shape, then the grant. `fence`
+/// is the access-token fence captured when the request arrived (C16.3).
 async fn answer(
     state: &RouteState,
     peer: SocketAddr,
     body: Result<Json<TokenRequest>, JsonRejection>,
+    fence: u64,
 ) -> Result<Response, ApiError> {
     let now = Instant::now();
     state
@@ -86,8 +91,8 @@ async fn answer(
     let Json(request) = body.map_err(|_| ApiError::InvalidRequest)?;
     let pool = state.deps.db.as_deref().ok_or(ApiError::Unavailable)?;
     match request.grant_type.as_deref() {
-        Some("authorization_code") => code_grant(state, pool, &request, now).await,
-        Some("refresh_token") => refresh_grant(state, pool, &request, now).await,
+        Some("authorization_code") => code_grant(state, pool, &request, fence, now).await,
+        Some("refresh_token") => refresh_grant(state, pool, &request, fence, now).await,
         _ => Err(ApiError::InvalidRequest),
     }
 }
@@ -98,6 +103,7 @@ async fn code_grant(
     state: &RouteState,
     pool: &PgPool,
     request: &TokenRequest,
+    fence: u64,
     now: Instant,
 ) -> Result<Response, ApiError> {
     let (Some(code), Some(verifier), Some(redirect)) = (
@@ -114,7 +120,7 @@ async fn code_grant(
         .redeem(code, verifier, redirect, now)
         .ok_or(ApiError::InvalidGrant)?;
     if let Some(LinkIntent { account_id }) = intent {
-        return attach(state, pool, identity, account_id, now).await;
+        return attach(state, pool, identity, account_id, fence, now).await;
     }
 
     let provider = identity.provider.as_str().to_owned();
@@ -146,7 +152,7 @@ async fn code_grant(
                     .map_err(ApiError::from_repo)?;
             }
             note("signed_in");
-            signed_in(state, account_id, None, true, now).await
+            signed_in(state, account_id, None, fence, true, now).await
         }
         Resolution::AutoLink(account_id) => {
             let linked = identity::insert(pool, account_id, &identity, trusted)
@@ -162,7 +168,7 @@ async fn code_grant(
             .await
             .map_err(ApiError::from_repo)?;
             note("auto_link");
-            signed_in(state, account_id, None, true, now).await
+            signed_in(state, account_id, None, fence, true, now).await
         }
         Resolution::NeedsLink { hint } => {
             note("needs_link");
@@ -195,6 +201,7 @@ async fn attach(
     pool: &PgPool,
     verified: VerifiedIdentity,
     account_id: u32,
+    fence: u64,
     now: Instant,
 ) -> Result<Response, ApiError> {
     match account::facts(pool, account_id)
@@ -220,7 +227,7 @@ async fn attach(
         }
     }
     note("signed_in");
-    signed_in(state, account_id, None, true, now).await
+    signed_in(state, account_id, None, fence, true, now).await
 }
 
 /// The `refresh_token` grant: rotates the presented token (C6).
@@ -228,6 +235,7 @@ async fn refresh_grant(
     state: &RouteState,
     pool: &PgPool,
     request: &TokenRequest,
+    fence: u64,
     now: Instant,
 ) -> Result<Response, ApiError> {
     let presented = request
@@ -258,7 +266,16 @@ async fn refresh_grant(
                 return Ok(ApiError::AccountDisabled.into_response());
             }
             note("signed_in");
-            session(state, pool, account_id, (token, family_id), false, now).await
+            session(
+                state,
+                pool,
+                account_id,
+                (token, family_id),
+                false,
+                fence,
+                now,
+            )
+            .await
         }
         Rotation::Reused {
             account_id,
@@ -289,10 +306,12 @@ async fn refresh_grant(
 /// Ends a sign-in for `account_id`: a new refresh family (`family` `None`,
 /// for code grants and links) or the same family (a rotation), then the
 /// access token and the `signed_in` body (C6). CT-26 and CT-30 reuse it.
+/// `fence` is the access-token fence the request captured on arrival.
 pub(super) async fn signed_in(
     state: &RouteState,
     account_id: u32,
     family: Option<&str>,
+    fence: u64,
     via_code: bool,
     now: Instant,
 ) -> Result<Response, ApiError> {
@@ -300,18 +319,20 @@ pub(super) async fn signed_in(
     let pair = refresh::issue(pool, account_id, family, Utc::now())
         .await
         .map_err(ApiError::from_repo)?;
-    session(state, pool, account_id, pair, via_code, now).await
+    session(state, pool, account_id, pair, via_code, fence, now).await
 }
 
 /// Mints the access token for a refresh token already issued and answers
 /// `signed_in`. The account name is the display name too: the account row
-/// holds no other name.
+/// holds no other name. A token minted after its family was revoked is refused
+/// (`fence`, C16.3): the family is then revoked again, best effort.
 async fn session(
     state: &RouteState,
     pool: &PgPool,
     account_id: u32,
     (refresh_token, family_id): (String, String),
     via_code: bool,
+    fence: u64,
     now: Instant,
 ) -> Result<Response, ApiError> {
     let (account_name,): (String,) =
@@ -322,11 +343,29 @@ async fn session(
             .map_err(ApiError::from_repo)?
             .ok_or(ApiError::InvalidGrant)?;
     tracing::Span::current().record("account_id", account_id);
-    let access_token = state
+    let Some(access_token) = state
         .ctx
         .stores
         .access
-        .mint(account_id, &family_id, via_code, now);
+        .mint_fenced(account_id, &family_id, via_code, now, fence)
+    else {
+        tracing::info!(
+            target: "cimmeria_identity",
+            reason = "fence_refused",
+            "an access token was not minted: its family was revoked while the request ran"
+        );
+        if refresh::revoke_family(pool, &family_id, Utc::now())
+            .await
+            .is_err()
+        {
+            tracing::warn!(
+                target: "cimmeria_identity",
+                reason = "fence_cleanup_failed",
+                "the revoked family could not be cleaned up"
+            );
+        }
+        return Err(ApiError::InvalidGrant);
+    };
     Ok(Json(json!({
         "result": "signed_in",
         "access_token": access_token,
@@ -388,6 +427,10 @@ mod tests_live_db;
 #[cfg(test)]
 #[path = "token_reuse_tests_live_db.rs"]
 mod token_reuse_tests_live_db;
+
+#[cfg(test)]
+#[path = "token_fence_tests_live_db.rs"]
+mod token_fence_tests_live_db;
 
 /// Span tests of the token and ticket routes (C11), on a state with no
 /// database. Shared with the launch-ticket tests.
