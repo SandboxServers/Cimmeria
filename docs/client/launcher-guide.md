@@ -271,6 +271,17 @@ and starts `SGW.exe`. The line under the button then says "Game process
 started. Login and world entry are not verified": the launcher sees the game
 start and exit, not whether you logged in.
 
+Before the game starts, the launcher checks its game data against the login
+server. The line under **Play** shows the check: "Checking game data with
+*server*…", then "Updating game data: 3 of 12 categories (4.2 of 180.0 MB)…"
+when files change, then "Saving updated game data…". While the game starts it
+says "Game data is up to date." or "Game data updated (12 categories)." A
+skipped check says why character select may be slow. After an update, character
+select can take about a minute.
+
+If the check fails, Play does not start the game. See
+[Play says "Couldn't…"](#play-says-couldnt-and-the-game-did-not-start).
+
 On the login screen, pick the server in the list and log in with your account.
 Accounts are created by the server owner; ask for one.
 
@@ -631,6 +642,11 @@ So after unpacking, the installer renames that folder to `SourceCache.en-us`.
 It is also why a PAK placed by hand in `SourceCache.en-us` stays put, while
 one placed in the Documents `Cache.en-US` is rewritten the next time the client
 connects. **Reset client cache** wipes only the Documents tier.
+
+The game data check that runs before Play also writes the updated PAK files into
+this Documents `Cache.en-US` folder, one file at a time, and never into the
+bundled `SourceCache.en-us`. A failed or interrupted write leaves the older file
+in place.
 
 ---
 
@@ -1119,6 +1135,38 @@ Click **Settings → Reset client cache**, then log in again; the server sends
 its data again. If the game will not start at all or its settings are broken,
 **Reset all client state…** starts the client fresh. See also
 [A cooked-data category went empty](../troubleshooting.md#a-cooked-data-category-went-empty-after-logging-in-to-another-server).
+
+### Play says "Couldn't…" and the game did not start
+
+The game data check failed, so Play did not start Stargate Worlds. The line
+under **Play** has three parts:
+
+- The first part names the step the check was on: getting the game data list,
+  comparing your game data, downloading a PAK, building it, or saving it.
+- The second part gives the reason and what to do about it.
+- Details follow on their own lines, each only when known: the HTTP status, the
+  Windows error code, the category and any wait time the server asked for.
+
+The button then reads **Retry**. Press it to run the check again. Play never
+starts the game after a failed check, and it does not fall back to the older
+update path.
+
+Common remedies:
+
+- `pak_in_use`: close Stargate Worlds and any tool that has the PAK open, then
+  press **Retry**.
+- `source_missing`, `base_missing`, `digest_mismatch`: use **Repair**, then
+  press **Retry**.
+- `source_unreadable`: close Stargate Worlds, then press **Retry**, or use
+  **Repair**.
+- `source_newer`: tell the server's operator, or use **Repair** if you changed
+  the game files yourself.
+- `catalog_failed`: tell the server's operator. **Retry** won't help until they
+  fix it.
+- `connect_failed`, `timeout`, `http_error`, `rate_limited`, `deadline`: check
+  your network, wait if the line asks you to, then press **Retry**.
+- Anything else: press **Retry**. If it keeps happening, use **Upload debug
+  logs** in Settings and share the result.
 
 ### Log upload problems
 
