@@ -1,6 +1,6 @@
 # CT-76 coder report
 
-Status: in progress (part 2 committed as 7e04c130b). Live-DB and revert-proof results follow in this report.
+Status: done for CT-76 packet work. Part 1 0762f8fc5, part 2 7e04c130b, worknote and report 9951f7d67.
 
 ## Committed
 
@@ -20,7 +20,16 @@ Status: in progress (part 2 committed as 7e04c130b). Live-DB and revert-proof re
 - cargo fmt -p cimmeria-identity -p cimmeria-base-session: status=ok exit=0
 - S2 cimmeria-base-session (clippy): status=ok exit=0
 - S2 cimmeria-identity (clippy, `--all-targets -- -D warnings`): status=ok exit=0 (after the part 2 fix)
-- Not run yet: S3 `unlink_tx_tests_live_db`, S3 `account_unlink`, S2 cimmeria-test-support, revert-proof.
+- S3 unlink_tx_tests_live_db (base-session filter, 2 tests): status=ok exit=0 (2 passed)
+- S3 unlink_tx:: (identity, 2 tests): status=ok exit=0 (2 passed)
+- S3 account_unlink: status=ok exit=0 (1 passed)
+- S2 cimmeria-test-support (clippy): status=ok exit=0
+
+## Revert-proof
+
+- Identity: removed the in-tx revoke in routes/account.rs; live_db_player_unlink_revokes_other_families_in_its_transaction FAILED. Restored from HEAD; tests pass again (2/2).
+- Base-session: replaced the in-tx revoke with a no-op in account_admin/mod.rs; live_db_gm_unlink_rolls_back_when_the_revoke_fails and live_db_gm_unlink_revokes_every_family both FAILED. Restored from HEAD; tests pass again (2/2).
+- Worktree restored; no uncommitted changes.
 
 ## Deviations
 
