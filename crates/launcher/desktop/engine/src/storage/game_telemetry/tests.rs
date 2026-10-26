@@ -234,3 +234,27 @@ fn only_the_empty_name_id_is_repaired_and_only_from_a_real_name() {
 fn windows_always_names_the_host() {
     assert!(!host_name().is_empty());
 }
+
+#[test]
+fn reading_the_choice_repairs_the_empty_name_id_without_rewriting_the_file() {
+    if host_name().is_empty() {
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let state = DesktopState::open(root.path()).unwrap();
+    let written = format!(
+        r#"{{"schema_version":1,"opted_in":true,"identity":{{"install_id":"{}","machine_id":"{}"}}}}"#,
+        Uuid::from_u128(7),
+        EMPTY_NAME_MACHINE_ID
+    );
+    std::fs::write(state.state_root().join(NAME), &written).unwrap();
+    let read = state.game_telemetry().unwrap();
+    assert_eq!(
+        read.identity.unwrap().machine_id,
+        machine_id_for(&host_name())
+    );
+    assert_eq!(
+        std::fs::read_to_string(state.state_root().join(NAME)).unwrap(),
+        written
+    );
+}
