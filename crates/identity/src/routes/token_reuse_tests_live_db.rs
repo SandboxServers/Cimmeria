@@ -234,7 +234,6 @@ fn sha1_hex(ticket: &str) -> String {
 async fn live_db_reuse_revokes_a_minted_launch_ticket() {
     let pool = require_db_or_skip!();
     clean(&pool).await;
-    drop_trigger(&pool).await;
     insert_account(&pool, ID_TICKET).await;
     identity::insert(&pool, ID_TICKET, &verified("ct74-1"), false)
         .await
