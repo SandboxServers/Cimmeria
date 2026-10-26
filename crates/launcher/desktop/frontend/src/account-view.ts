@@ -132,16 +132,16 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
   const f = signInFailure(failure);
   const command = String(request.command);
   reportUiEvent('sign_in', command, f === 'schema' ? 'schema' : f.error);
-  if (isServer(f, 'reauth_required') && command !== 'begin') {
+  if (isServer(f, 'reauth_required') && command !== 'begin' && command !== 'resume') {
    reauth = {retry: request, add: command === 'add_method'};
    setStatus('');
-  } else if (command !== 'begin') {
+  } else if (command !== 'begin' && command !== 'resume') {
    reauth = null;
    setStatus(isServer(f, 'last_method') ? lastMethod : failureText(f, provider));
   } else {
    setStatus(failureText(f, provider));
   }
-  if (command === 'add_method' && f !== 'schema' && f.error === 'browser_failed') {
+  if ((command === 'add_method' || command === 'begin') && f !== 'schema' && f.error === 'browser_failed') {
    resumeNext = true;
    urlField.value = f.url;
    urlBox.hidden = false;
@@ -189,7 +189,14 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
    const providerId = lastUsedProvider();
    if (!providerId) { setStatus('Sign in again from the sign-in panel, then retry.'); return; }
    const name = current?.providers.find(p => p.id === providerId)?.display_name ?? providerId;
-   const next = await exchange({command: 'begin', provider: providerId}, name);
+   let next = await exchange({command: 'begin', provider: providerId}, name);
+   if (!next && resumeNext) {
+    resumeNext = false;
+    next = await exchange({command: 'resume'});
+    urlField.value = '';
+    urlBox.hidden = true;
+    if (next) notify(next);
+   }
    if (!next) return;
    if (next.state.state !== 'signed_in' || next.state.account_name !== who) {
     // The engine already holds the other account: sign it out so Play cannot run as it.

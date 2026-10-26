@@ -19,13 +19,14 @@ const flush = () => new Promise<void>(resolve => setImmediate(resolve));
 async function mounted(inspected: Record<string, unknown>, respond: (request: Request) => Promise<unknown> = async () => status()) {
  const {document, window} = parseHTML(html);
  const calls: Request[] = [];
+ const inspectReply = {value: inspected}; // a test may swap what `inspect` answers
  const feed = makePanelContext();
  feed.publish({} as NativeSnapshot);
  const app = mountSignIn(document as unknown as Document, async (command, args) => {
   assert.equal(command, 'sign_in_command');
   const request = (args as {request: Request}).request;
   calls.push(request);
-  return request.command === 'inspect' ? inspected : respond(request);
+  return request.command === 'inspect' ? inspectReply.value : respond(request);
  }, feed.context);
  await app.ready;
  await flush();
@@ -33,7 +34,7 @@ async function mounted(inspected: Record<string, unknown>, respond: (request: Re
  const field = (id: string) => document.querySelector(`#sign-in-panel ${id}`) as unknown as HTMLInputElement;
  const press = (el: HTMLElement) => el.dispatchEvent(new window.Event('click'));
  const statusText = () => document.querySelector('#sign-in-panel [role="status"]')!.textContent;
- return {calls, app, document, button, field, press, statusText, feed};
+ return {calls, app, document, button, field, press, statusText, feed, inspectReply};
 }
 
 test('unavailable hides the panel', async () => {
@@ -227,6 +228,20 @@ test('offline with a restored sign-in shows the account and Sign out', async () 
  } finally { await p.app.dispose(); }
 });
 
+test('offline Sign out with sign_out_incomplete keeps the warning visible', async () => {
+ const restored = status({available: false, providers: [], state: signedInState});
+ const p = await mounted(restored, async request => request.command === 'sign_out'
+  ? status({available: false, providers: [], state: {state: 'signed_out'}, storage_warning: 'sign_out_incomplete'}) : restored);
+ try {
+  p.press(p.button('Sign out'));
+  await p.app.settled();
+  assert.equal((p.document.getElementById('sign-in-panel') as unknown as HTMLElement).hidden, false);
+  assert.equal(p.statusText(), storageWarningText('sign_out_incomplete'));
+  assert.equal(p.button('Sign out').hidden, true);
+  assert.equal(p.button('Sign in with Discord'), undefined);
+ } finally { await p.app.dispose(); }
+});
+
 test('ticket_unavailable while signed in offline offers Sign out', async () => {
  const p = await mounted(status({available: false, play_refusal: 'ticket_unavailable', state: signedInState}));
  try {
@@ -297,6 +312,16 @@ test('resume no_pending_flow says the sign-in expired', async () => {
   p.press(p.button('Sign in with Discord'));
   await p.app.settled();
   assert.equal(p.statusText(), 'That sign-in expired. Sign in again.');
+ } finally { await p.app.dispose(); }
+});
+
+test('a store warning leaves the status line when a later inspect has none', async () => {
+ const p = await mounted(status({storage_warning: 'session_only'}));
+ try {
+  assert.equal(p.statusText(), storageWarningText('session_only'));
+  p.inspectReply.value = status();
+  await p.app.refresh();
+  assert.equal(p.statusText(), '');
  } finally { await p.app.dispose(); }
 });
 

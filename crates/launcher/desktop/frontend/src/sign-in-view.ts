@@ -66,8 +66,8 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
  const render = () => {
   if (disposed) return;
   const s = current;
-  // Offline, a play refusal shows (the reason Play stopped), and so does a restored sign-in, which keeps Sign out.
-  panel.hidden = !s || (!s.available && !s.play_refusal && s.state.state !== 'signed_in');
+  // Offline, a play refusal or a store warning shows (in the status line), and so does a restored sign-in, which keeps Sign out.
+  panel.hidden = !s || (!s.available && !s.play_refusal && !s.storage_warning && s.state.state !== 'signed_in');
   if (!s || !s.available) {
    const restored = s && s.state.state === 'signed_in' ? s.state : null;
    for (const el of [providers, signupNote, cancel, linkBox, urlBox]) el.hidden = true;
@@ -220,6 +220,7 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
    // A refusal that no longer applies leaves the status line with the next reply.
    const shown = status.textContent;
    if (!next.play_refusal && (shown === playRefusalText('ticket_unavailable') || shown === playRefusalText('sign_in_ended'))) setStatus('');
+   if (!next.storage_warning && (['session_only', 'sign_out_incomplete', 'store_unreadable'] as const).some(w => shown === storageWarningText(w))) setStatus('');
    render();
   }, failure => {
    if (!disposed && !busy && current) setStatus(failureText(signInFailure(failure)));

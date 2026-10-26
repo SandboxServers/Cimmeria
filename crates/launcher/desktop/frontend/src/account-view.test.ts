@@ -201,6 +201,31 @@ test('add method browser_failed shows the address and resumes', async () => {
  assert.equal(urlBox().hidden, true, 'the address box clears once it settles');
 });
 
+test('sign in again browser_failed resumes, then retries', async () => {
+ let refused = true;
+ let addressWhileWaiting = '';
+ let cancelWhileWaiting = false;
+ const p = await mounted(signedIn(), async request => {
+  if (request.command === 'account') return withAccount();
+  if (request.command === 'unlink' && refused) { refused = false; throw {error: 'server', code: 'reauth_required'}; }
+  if (request.command === 'begin') throw {error: 'browser_failed', url: 'https://example.org/auth'};
+  if (request.command === 'resume') {
+   addressWhileWaiting = (p.panel.querySelector('[readonly]') as unknown as HTMLInputElement).value;
+   cancelWhileWaiting = p.button('Cancel').hidden === false;
+   return withAccount();
+  }
+  return withAccount([]);
+ });
+ await p.press('Show linked sign-in methods');
+ await p.press('Remove');
+ await p.press('Confirm remove');
+ await p.press('Sign in again');
+ assert.deepEqual(p.calls.slice(-3).map(c => c.command), ['begin', 'resume', 'unlink']);
+ assert.equal(addressWhileWaiting, 'https://example.org/auth');
+ assert.equal(cancelWhileWaiting, true, 'Cancel shows while the resume waits');
+ assert.equal((p.panel.querySelector('[readonly]')!.parentNode as unknown as HTMLElement).hidden, true, 'the address box clears once it settles');
+});
+
 test('sign in again with no last-used provider says what to do', async () => {
  const p = await mounted(signedIn(), async request => {
   if (request.command === 'add_method') throw {error: 'server', code: 'reauth_required'};
