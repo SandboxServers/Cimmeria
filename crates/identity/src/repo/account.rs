@@ -37,17 +37,42 @@ pub async fn facts(pool: &PgPool, account_id: u32) -> Result<Option<AccountFacts
     Ok(row.map(|(id, enabled, level, test)| facts_of(id, enabled, level, test)))
 }
 
-/// The linking facts of the account named `name`, compared without case, or
-/// `None`. The oldest match wins when more than one account has the name.
-pub async fn facts_by_name(pool: &PgPool, name: &str) -> Result<Option<AccountFacts>, RepoError> {
-    let row: Option<FactsRow> = sqlx::query_as(
-        "SELECT account_id, enabled, accesslevel, test_account FROM account \
-         WHERE lower(account_name) = lower($1) ORDER BY account_id LIMIT 1",
+/// The columns of [`match_name`]'s query: the facts columns, then `exact`.
+type MatchRow = (i32, bool, i32, bool, bool);
+
+/// What a name lookup found (F13a). `One` carries the account's linking facts.
+#[derive(Debug)]
+pub enum NameMatch {
+    /// No account has the name, with or without case.
+    None,
+    /// Exactly one account answers to the name.
+    One(AccountFacts),
+    /// Several accounts answer to the name, with no single exact match.
+    Ambiguous,
+}
+
+/// The account named `name` (F13a). An exact match wins: one exact row is
+/// `One`, several are `Ambiguous`. With no exact row, the folded match
+/// (`lower(account_name) = lower($1)`) gives none `None`, one `One`, several
+/// `Ambiguous`. Reads at most three rows, exact rows first, so the limit never
+/// hides an exact match.
+pub async fn match_name(pool: &PgPool, name: &str) -> Result<NameMatch, RepoError> {
+    let rows: Vec<MatchRow> = sqlx::query_as(
+        "SELECT account_id, enabled, accesslevel, test_account, account_name = $1 AS exact \
+         FROM account WHERE lower(account_name) = lower($1) \
+         ORDER BY exact DESC, account_id LIMIT 3",
     )
     .bind(name)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await?;
-    Ok(row.map(|(id, enabled, level, test)| facts_of(id, enabled, level, test)))
+    let exact = rows.iter().filter(|row| row.4).count();
+    if exact > 1 || (exact == 0 && rows.len() > 1) {
+        return Ok(NameMatch::Ambiguous);
+    }
+    Ok(match rows.first() {
+        Some(&(id, enabled, level, test, _)) => NameMatch::One(facts_of(id, enabled, level, test)),
+        None => NameMatch::None,
+    })
 }
 
 /// Creates a player account under the first candidate name nobody holds, with
@@ -109,3 +134,7 @@ pub async fn has_password(pool: &PgPool, account_id: u32) -> Result<bool, RepoEr
     .await?;
     Ok(row.is_some_and(|(has,)| has))
 }
+
+#[cfg(test)]
+#[path = "account_name_tests_live_db.rs"]
+mod account_name_tests_live_db;
