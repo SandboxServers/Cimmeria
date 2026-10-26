@@ -15,7 +15,7 @@
 4. Retire the worktrees: `rm-worktree.ps1 --merged-into <PR>` for every `ltl-*` worktree once the PR merges (never `git worktree prune`).
 5. The owner closes PR #2038 himself (ops cannot).
 
-**Spares to retire:** the branch `launcher-telemetry-linux/LTL-04b` (spare, empty) and the empty worktree `ltl-04`. Remove them with the rest.
+**Spares to retire:** the leftover branch `launcher-telemetry-linux/LTL-04b` (it points at an `ltl-int` merge commit; delete it with the other `ltl-*` branches). `ltl-04` is the LTL-04 packet worktree, already merged; retire it with the rest.
 
 **After deploy, the owner runs the Deck re-run** ([LTL-U1 to LTL-U6](../../guides/unified-uat.md#launcher-telemetry-on-linux-ltl-u)) with the Windows launcher closed. Nothing has been run on a real Deck or in the lab. Ask the owner before any lab use. Record the F8 300-row budget observation (LTL-U6) and the `caller_forwarded`/`peer_loopback` fields on the Deck's mint row (LTL-U2; they also answer ops item OPS-LT2).
 

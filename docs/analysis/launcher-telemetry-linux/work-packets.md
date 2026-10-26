@@ -7,7 +7,7 @@ Paths:
 - `E` = `crates/launcher/desktop/engine/src/storage/game_telemetry/`
 - `S` = `crates/launcher/desktop/shell/src/`
 - `D` = `crates/admin-api/src/routes/dev_session/`
-- `W` = `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\`
+- `W` = `<repo>\.claude\worktrees\`
 
 ## Dispatch
 
