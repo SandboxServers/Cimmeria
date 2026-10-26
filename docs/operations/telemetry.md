@@ -116,7 +116,9 @@ both listeners (see [Launcher summaries](#launcher-summaries)). Unlike the
 other four it is anonymous: it takes no token. The owner approved serving
 it on the public port on 2026-10-04. No launcher build has a summary
 endpoint, so nothing calls it yet. Nothing else from the admin API is
-served on `8081` or through the proxy.
+served on `8081` or through the proxy, except the two anonymous cooked-data
+presync routes, which are on `8081` only
+([Cooked-data presync](#cooked-data-presync)).
 
 **Upload endpoints are https.** The mint hands the launcher an
 `upload_endpoint` URL. The server never falls back to localhost or to plain

@@ -67,14 +67,14 @@ serves the five telemetry routes over https and answers 404 for the rest; it mus
 `Host`, `X-Forwarded-Proto: https` and `X-Forwarded-For`
 ([the route](../operations/telemetry-upload-endpoint.md#the-colo-route)).
 
-The login port's router holds five routes and nothing else from this API: those four, and
+The login port's router holds five telemetry routes, and since the cooked-data presync two more (below), and nothing else from this API: those four, and
 `POST /api/telemetry/launcher-summary`, which is also served on this listener. The fifth is
 anonymous (it takes no token). The owner approved serving it on the login port on
 2026-10-04, which extends the four-route decision to it; no launcher build has a summary
 endpoint yet
 ([launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md#decisions-and-what-is-still-open)).
 
-The cooked-data presync adds two more anonymous routes to the login port, `GET /api/cooked/v1/index` and `GET /api/cooked/v1/category/{id}`, so it holds seven in all (nested under `/api/cooked`). They are not telemetry routes and the colo's https proxy does not forward them. See [Cooked-data presync routes](#cooked-data-presync-routes-login-port).
+The cooked-data presync adds two more anonymous routes to the login port, `GET /api/cooked/v1/index` and `GET /api/cooked/v1/category/{id}`, (nested under `/api/cooked`). They are not telemetry routes and the colo's https proxy does not forward them. See [Cooked-data presync routes](#cooked-data-presync-routes-login-port).
 
 Containers are different: a Docker published port forwards to the container's bridge
 address and cannot reach an in-container loopback bind, so the image sets

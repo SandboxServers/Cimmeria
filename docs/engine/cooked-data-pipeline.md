@@ -360,9 +360,9 @@ Two things follow for an operator:
 
 ### Operator note: the kill switch
 
-`CIMMERIA_COOKED_PRESYNC_DISABLED=1` (or `true`) is the bypass. It is read on every request, so setting it needs no restart beyond the environment change itself. With it set both routes answer 503 `disabled`, and launchers skip the presync with a visible note that character select may take about a minute, then launch (D-LP19, D-LP24). Players then resync through `cooked_sync` as before.
+`CIMMERIA_COOKED_PRESYNC_DISABLED=1` (or `true`) is the bypass. The server reads it on every request, but a running process never sees a changed environment, so setting or unsetting it means restarting the server (recreating the container on the colo). With it set both routes answer 503 `disabled`, and launchers skip the presync with a visible note that character select may take about a minute, then launch (D-LP19, D-LP24). Players then resync through `cooked_sync` as before.
 
-Use it when the catalog is `Failed` and you cannot fix it right away. Unset it (and restart if the catalog build failed) to resume.
+Use it when the catalog is `Failed` and you cannot fix it right away. Unset it and restart the server to resume. The restart also rebuilds the catalog: if the cause is fixed, launchers presync again; if not, they get `catalog_failed` again.
 
 ### Operator note: shared-IP quota
 

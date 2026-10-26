@@ -104,6 +104,12 @@ services:
       # off:
       #   CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP=3000
       #   CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP=150
+      # The launcher cooked-data presync routes on the login port: the
+      # kill switch (1 or true; the bypass when the catalog fails to
+      # build) and the per-address limit (default 60 a minute; 0 turns
+      # it off):
+      #   CIMMERIA_COOKED_PRESYNC_DISABLED=1
+      #   CIMMERIA_COOKED_PRESYNC_QUOTA_PER_IP=60
       # Any change needs the container recreated, which restarts the
       # game server (the database is kept; see the volumes below). Recipes:
       # docs/operations/telemetry.md, "Kill switch" and "Changing a quota".
@@ -111,6 +117,8 @@ services:
       CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP:-}"
       CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP:-}"
       CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP:-}"
+      CIMMERIA_COOKED_PRESYNC_DISABLED: "${CIMMERIA_COOKED_PRESYNC_DISABLED:-}"
+      CIMMERIA_COOKED_PRESYNC_QUOTA_PER_IP: "${CIMMERIA_COOKED_PRESYNC_QUOTA_PER_IP:-}"
       # Developer mode, off unless .env sets DEVELOPER_MODE=true. With the
       # bundled database it only skips the client protocol-digest check; it
       # never bypasses the password check while DB_URL is set. Images before
