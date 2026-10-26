@@ -146,3 +146,76 @@ Evidence (gitignored, on the Deck): `.claude/reports/launcher-linux-play-proton/
   - The AppImage (root B), 1b and 1c all load the host's `/usr/lib/libc.so.6`, `libstdc++.so.6.0.35` and `libgcc_s.so.1`. None of these is bundled.
 - **libunrar**: none on the host, in the container or in the AppDir, and none in any process map. UnRAR (`unrar_sys` 0.5.8, vendored) is linked statically into the launcher binary. The system `unrar` 7.23 CLI is a separate program.
 - Caveat: 1a and 1b differ in the C++ compiler **and** in the userland they ran on (the Ubuntu 24.04 container with conda `libstdc++`, against the SteamOS host). This run does not separate the two.
+
+# PP-U: Deck UAT (attempt 4, 2026-10-26 04:15-04:37 local, real-key AppImage with PP-U-FIX)
+
+**Result: every row the agent could run passes, and several need the owner.** The lld-linked AppImage (PP-U-FIX, #2036) unpacks the genuine release seed and installs it. Play under Proton then works end to end.
+
+- Automatic picks GE-Proton11-11.
+- The prefix is created.
+- The DirectX pins are installed and hash-match `directx.rs`.
+- **PhysX installs and probes, and the game loads AGEIA `PhysXCore.dll` with no "Failed to initialize physics" dialog.**
+- The game opens windowed.
+- The frame cap reaches DXVK at 30 and 60.
+- The 441-byte `SavedSystemOptions.xml` is seeded on first Play.
+
+Login, world entry, and PhysX in the world were not exercised: the game was quit at the EULA. Two copy findings are below (F-U5, F-U6).
+
+Evidence (gitignored, on the Deck): the worktree's `.claude/reports/launcher-linux-play-proton/pp-u5/`. It holds `PP-U3-*.png`, `launcher.log`, `game-logs/<op>/`, `client-telemetry.log`, `game-telemetry-status.json` and `fresh-root/`. The report is `.claude/reports/launcher-linux-play-proton/pp-u-report-3.md`.
+
+## Build under test
+
+- **Run:** workflow_dispatch run 40293483675, head `3d9f5d12f`.
+  - The job "desktop release build dry run (Linux, release manifest key) / Linux AppImage" (121479650565) succeeded.
+  - The run as a whole shows `cancelled`, because the job `native-engine (ubuntu-latest)` (121473812141) was cancelled. Every release dry-run job succeeded.
+- **Artifact:** `desktop-launcher-linux-real-key-dry-run`, downloaded into a new empty folder outside the repo.
+  - `StargateWorlds-Launcher-linux-x86_64.AppImage`, 89430520 B, SHA-256 `96138fb7925bd07ca20eb10a5dd9661067debf48528b50b3b3b5edb212cb9835`.
+  - `sha256sum -c` against the `.sha256` is OK.
+- **Inner binary:** SHA-256 `2137fe82…556a`.
+  - `.comment` has `Linker: Ubuntu LLD 14.0.0` and GCC 11.4 and 12.3, with **no mold**.
+  - Embedded payload SHA-256 `4829d793…5f03`.
+- **Launcher:** `version="1970.1.101"`, `release_build=true`, `dll_bundled=true`; the title is "Cimmeria Launcher — development".
+
+## Setup
+
+- **Desktop:** Desktop Mode (KDE Plasma, Wayland, Xwayland `:0`).
+  - `xdotool mousemove` has no effect under this session; the pointer stays put.
+  - Clicks were therefore aimed by moving the target window under the pointer with a KWin script (`qdbus org.kde.KWin /Scripting`). KWin coordinates are X coordinates divided by 1.35.
+  - Wine needs a held press (mousedown, 0.25-0.4 s, mouseup); a plain `xdotool click` only highlights.
+- **Disk:** 112 GB free on `/home`.
+- **Root:** fresh XDG data, config and cache under `~/pp-u5-20261026/root/`.
+  - The real install was not touched.
+  - The seed `~/Downloads/sgw-seed/client.rar` was only read.
+- **No-Proton runs:** HOME was an empty `~/pp-u5-20261026/fakehome`.
+  - The first run used the same root.
+  - The second used a new fresh root, `root-fresh/`.
+
+## Rows
+
+| Row | Result | Evidence |
+|---|---|---|
+| U1 | **PASS** | `--appimage-extract` exit 0. 0 `.exe`/`.dll` files in the AppDir. `--verify-embedded-payload` prints `embedded payload verified: 4 files` (exit 0). `--self-test-rar` prints `self-test-rar: ok`. |
+| U8 / U3 install: unpack (attempt-3 FAIL) | **PASS** | "Use a downloaded game archive…" → `client.rar`, then `seed_archive_picked bytes=4135724034`.<br>`09:20:58.110Z seed_unpack_started check="hashed_while_copied"`; copy 67069 ms.<br>Extraction listed 170 files in 79910 ms, then `RAR holds an installer cabinet set; expanding it cabinets=4 files=5983`; expansion 116460 ms, under the 3m46s bound.<br>Patches applied; `install_finished outcome="ok" duration_ms=266432`. UI "Ready to Play." (`PP-U3-15`). |
+| U8, phase copy | **NEEDS-OWNER** | The phase line sits below the fold in the default window. The screenshots show "Installing…" and the cabinet stage (`PP-U3-05-*`, `PP-U3-06`), but not every phase string. |
+| U2, Proton picker | **PASS** | It lists Automatic, GE-Proton11-11, GE-Proton7-38, experimental-11.0-20261014, proton-11.0-2e, proton-10.0-4b, proton-9.0-4f and more below (`PP-U3-12`). Escape keeps Automatic, and `preferences.json` is unchanged. |
+| U2, which Proton Automatic picks | **PASS** | **GE-Proton11-11.** The prefix's `compatdata/version` is `GE-Proton11-11`, and the stamp has `"proton_version":"1792432585 GE-Proton11-11"`. |
+| U2, no-Proton copy | **PASS** (fresh root); see F-U6 | The fresh root with an empty HOME shows "Install Proton to play. In Steam, install Proton Experimental, or install GE-Proton with ProtonUp-Qt. Then reopen the launcher." (`PP-U3-64`). Picker hidden: not observed (F-U7). |
+| U3, Play feedback | **PASS**; wording NEEDS-OWNER | The first press shows "Preparing the game and waiting for its process…" at once (`PP-U3-20`). The README says "Preparing Proton". |
+| U3, prefix creation | **PASS** | `state/proton/compatdata/pfx` created, with `version`, `config_info` and `tracked_files`. Stamp `cimmeria-setup.json` = `{"schema_version":1,"proton_version":"1792432585 GE-Proton11-11","physx":"installed"}`. |
+| U3, DirectX | **PASS** | `proton_directx d3dx9_40.dll state="installed"`, and the same for `xinput1_3.dll`. syswow64 `d3dx9_40.dll` `16fd909a…216b` (4379984 B) and `xinput1_3.dll` `8d540d48…70a7` match the pins in `linux_proton/directx.rs`. `WINEDLLOVERRIDES` starts `d3dx9_40=n;xinput1_3=n`. On the second Play: `state="present"`. |
+| U3, PhysX | **PASS** (loads); in-world NEEDS-OWNER | `prerequisite_finished outcome="observed" duration_ms=5037`, then `proton_physx result="probed" reason="none"`. The prefix has `AGEIA Technologies` v2.3.1-v2.7.4, plus `syswow64/PhysXLoader.dll` and `PhysX.cpl`. `SGW.exe` maps `AGEIA Technologies/v2.6.3/PhysXCore.dll` and the game's own `PhysXLoader.dll` and `NxCooking.dll`. No physics dialog. `physx.log` holds only ProtonFixes warnings. The client telemetry log has the `physx_report_error` hook installed and no PhysX errors. |
+| U3, windowed window | **PASS** | `SGW.exe -windowed ResX=1024 ResY=768`. A "Stargate Worlds" window (1024x688 client) drew the EULA over the login scene with no focus change (`PP-U3-22`). |
+| U3, seeding (441 B) | **PASS**; see F-U5 | `…/pfx/drive_c/users/steamuser/Documents/My Games/Firesky/SGWGame/SavedSystemOptions.xml`, 441 B, CRLF, no final newline. The game left it unchanged. |
+| U3, second Play refused | **PASS** | While the game runs, Play is greyed. A press logs nothing and starts no second game (`PP-U3-23`, `PP-U3-24`). |
+| U3, exit | **PASS** | EULA Decline: `game_exited exit_code=0 early=false`, `launch_finished outcome="exited"`. UI "Game exited (code 0)." and Play is enabled again (`PP-U3-28`). |
+| Frame cap 30 | **PASS** | The game's environment: `DXVK_FRAME_RATE=30`, `DXVK_CONFIG=dxgi.maxFrameRate=30;d3d9.maxFrameRate=30`. `SGW_d3d9.log` (DXVK v3.1.1, AMD VANGOGH radv): `d3d9.maxFrameRate = 30`. |
+| Frame cap 60 | **PASS** (env); smoothness NEEDS-OWNER | Settings → 60 fps → Save: "Saved. Applies the next time you press Play.", `display_options_saved frame_cap="fps60"` (`PP-U3-34`). The second Play's environment has `DXVK_FRAME_RATE=60` and `DXVK_CONFIG=…60`. `game_started startup_ms=2752` (first Play: 13083). |
+| Telemetry tag `desktop-launcher/linux/proton` | **NEEDS-OWNER** (local side PASS) | With Game diagnostics on: `launch_started telemetry_dll=true`, `cimmeria_client_telemetry.dll` mapped, status `outcome="attached"`. The client log: session loaded, uploading to `https://play.cimmeria.app/api/telemetry`. At exit: `game_session_finished count=6 bundle_sent=true exit_code=0`. The server-side tags were not read: this host has no SigNoz MCP and no colo alias. |
+| U4 (login, world, Black Market), U5-U7 | Not run | The game was quit at the EULA; login needs the owner's account. |
+
+## Findings
+
+- F-U5 (minor, log level): the first Play logs `WARN … display_settings mode="windowed" saved_options="seeded" engine_ini="missing" failure_code="display_settings_not_applied"`. Seeding worked, and a first Play has no `SGWEngine.ini` yet: the game creates it on exit. So the expected first-run case is logged as a WARN with a failure code. The second Play logs INFO `saved_options="unchanged" engine_ini="unchanged"`.
+- F-U6 (copy, stale status hides the Proton message): the launcher was restarted on the same root with no Proton found (empty HOME). Play was greyed, but the line under it still read "Game exited (code 0)." from the earlier session (`PP-U3-60`-`63`). "Recheck Play status" and a Play press changed nothing and logged nothing. In `launch-view.ts` `launchText`, the `process_exited` branch (line 55) comes before the `prerequisites_missing` `proton` branch (line 56). A player who removes Proton after playing sees a disabled Play with no reason. It breaks "visible feedback on the first press". A fresh root shows the right copy (`PP-U3-64`).
+- F-U7 (not observed): whether the Proton picker is hidden with no Proton. Aiming at the settings gear in the fresh root put the fixed pointer over "Install Cimmeria", so the click started a download (`install_started … action="install"`, `phase="download"`). The launcher was stopped within a minute; 358 MB of partial download stays in `root-fresh/`, a test root. No settings screenshot was taken.
+- The launcher's own display write: after the first run the game created `Config/SGWEngine.ini` and the other ini files. On the second Play the launcher reports both files `unchanged`.
