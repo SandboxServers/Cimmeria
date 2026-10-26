@@ -44,7 +44,7 @@ pub struct MintedTicket {
     pub account_name: String,
     /// The plain ticket, handed to the launcher once.
     pub ticket: String,
-    /// Seconds until the ticket expires without a use or heartbeat.
+    /// Seconds the new ticket lives until its first SOAP redemption.
     pub expires_in_secs: u64,
 }
 
@@ -148,7 +148,7 @@ impl LaunchTicketStore {
         MintedTicket {
             account_name: account_name.to_string(),
             ticket,
-            expires_in_secs: TICKET_IDLE.as_secs(),
+            expires_in_secs: TICKET_UNREDEEMED.as_secs(),
         }
     }
 
@@ -177,7 +177,7 @@ impl LaunchTicketStore {
         Some(MintedTicket {
             account_name: account_name.to_string(),
             ticket,
-            expires_in_secs: TICKET_IDLE.as_secs(),
+            expires_in_secs: TICKET_UNREDEEMED.as_secs(),
         })
     }
 

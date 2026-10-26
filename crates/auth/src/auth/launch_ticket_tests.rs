@@ -20,6 +20,13 @@ fn minted_ticket_shape() {
 }
 
 #[test]
+fn mint_reports_the_unredeemed_life() {
+    let store = LaunchTicketStore::default();
+    let minted = store.mint(1, "Player_1234", LAUNCH, Instant::now());
+    assert_eq!(minted.expires_in_secs, TICKET_UNREDEEMED.as_secs());
+}
+
+#[test]
 fn verify_accepts_the_sha1_of_the_ticket_any_case() {
     let store = LaunchTicketStore::default();
     let now = Instant::now();
@@ -77,6 +84,10 @@ fn idle_and_absolute_expiry() {
     let idle = LaunchTicketStore::default();
     let minted = idle.mint(1, "Player_1234", LAUNCH, t0);
     let sha1 = sha1_of(&minted.ticket);
+    assert!(matches!(
+        idle.verify("Player_1234", &sha1, t0),
+        TicketCheck::Valid { account_id: 1, .. }
+    ));
     assert!(matches!(
         idle.verify("Player_1234", &sha1, t0 + Duration::from_secs(31 * 60)),
         TicketCheck::NoMatch
