@@ -200,6 +200,14 @@ fn a_linked_cache_is_unsafe_path() {
         return;
     }
     assert_eq!(ensure_not_linked(&firesky), Err(ApplyError::UnsafePath));
+    // The `SGWGame` link is refused too, not only the cache folder.
+    let firesky2 = root.path().join("firesky2");
+    fs::create_dir_all(&firesky2).unwrap();
+    let elsewhere2 = root.path().join("elsewhere2");
+    fs::create_dir_all(&elsewhere2).unwrap();
+    if make_link(&firesky2.join("SGWGame"), &elsewhere2) {
+        assert_eq!(ensure_not_linked(&firesky2), Err(ApplyError::UnsafePath));
+    }
 }
 
 /// Makes `link` point at `target`: a directory symlink if the OS allows it,
@@ -249,4 +257,37 @@ fn an_unreadable_cache_pak_counts_as_none() {
     let planned = plan(&index_entry(6), &cache, &source);
     assert_eq!(planned.cache_version, None);
     assert_eq!(planned.action, Action::Write);
+}
+
+#[test]
+fn a_first_install_creates_the_cache_folder_and_the_pak() {
+    let root = tempfile::tempdir().unwrap();
+    let (source, cache) = (root.path().join("source"), root.path().join("cache"));
+    write_source(&source, PAK, 5, &base());
+    assert!(!cache.exists());
+    let staged = stage(4, &body_of(4, 6), PAK, &cache, &source).unwrap();
+    assert_eq!(commit(vec![staged], &cache), Ok(1));
+    assert_eq!(read_version(&cache.join(PAK)).unwrap(), Some(6));
+    assert_eq!(read_pak(&cache.join(PAK)).unwrap().entries, composed());
+    assert!(temps(&cache).is_empty());
+}
+
+#[test]
+fn a_pak_name_that_leaves_the_folder_is_unsafe_path() {
+    let root = tempfile::tempdir().unwrap();
+    let (source, cache) = (root.path().join("source"), root.path().join("cache"));
+    write_source(&source, PAK, 5, &base());
+    for name in [
+        "",
+        "..",
+        "..\\x.pak",
+        "../x.pak",
+        "sub/x.pak",
+        "sub\\x.pak",
+        "C:x.pak",
+    ] {
+        let error = stage(4, &body_of(4, 6), name, &cache, &source).unwrap_err();
+        assert_eq!(error, ApplyError::UnsafePath, "{name}");
+    }
+    assert!(!cache.exists());
 }
