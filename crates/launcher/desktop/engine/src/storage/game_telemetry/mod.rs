@@ -13,6 +13,9 @@ pub mod ip_scrub;
 pub mod launcher_event;
 #[cfg(test)]
 mod launcher_event_tests;
+pub mod launcher_queue;
+#[cfg(test)]
+mod launcher_queue_tests;
 pub mod launcher_session;
 #[cfg(test)]
 mod launcher_session_tests;
