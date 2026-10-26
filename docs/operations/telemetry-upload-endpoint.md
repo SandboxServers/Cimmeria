@@ -145,12 +145,11 @@ server computes a **quota key address** (`forwarded_for::rate_limit_ip`,
 - In every other case the key is the socket peer. A non-loopback peer's
   header is ignored entirely, so a caller who reaches the port directly
   cannot pick its own key.
-- The key is used for two quota things (below) and, in memory only, as the
-  address the client-telemetry registry records a stream under (D-LTL4): the
-  per-address quota counters (mint, refresh, summary, chunk and bundle) and
-  the per-address upload slot (one chunk and one bundle in flight). It is
-  never logged, persisted, returned, or put in a field, span or the session
-  record.
+- The key is used for three things: the per-address quota counters (mint,
+  refresh, summary, chunk and bundle); the per-address upload slot (one chunk
+  and one bundle in flight); and, in process memory only, the address the
+  client-telemetry registry records a stream under (D-LTL4). It is never
+  logged, persisted, returned, or put in a field, span or the session record.
 
 Which callers still share a bucket: a NAT or office egress (many launchers,
 one address), any proxy that is not on loopback, and, if the container sees
