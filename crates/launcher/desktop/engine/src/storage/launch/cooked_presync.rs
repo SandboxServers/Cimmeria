@@ -119,7 +119,6 @@ pub(crate) async fn presync(
 
 /// Runs the presync under the given limits. Every path ends by sending the
 /// `done` update, so the shell always sees the outcome.
-#[allow(dead_code)] // wired by LP-27
 pub(crate) async fn presync_at(
     profile: Profile,
     content_root: &Path,
