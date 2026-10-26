@@ -158,6 +158,21 @@ async fn prepare_refuses_a_method_the_issuer_does_not_list() {
 }
 
 #[tokio::test]
+async fn exchange_refuses_a_method_the_issuer_does_not_list() {
+    let server = issuer_listing(Some(json!(["client_secret_post"]))).await;
+    let provider = oidc_provider(&server.uri());
+
+    let refused = provider
+        .exchange("code-value", "verifier-value", NONCE, REDIRECT)
+        .await
+        .expect_err("a basic-only config is refused by a post-only issuer");
+    assert_eq!(
+        refused,
+        ProviderError::BadResponse("auth_method_unsupported")
+    );
+}
+
+#[tokio::test]
 async fn absent_metadata_is_not_refused() {
     let key = TestKey::new("k1");
     let server = start_issuer(None).await;
