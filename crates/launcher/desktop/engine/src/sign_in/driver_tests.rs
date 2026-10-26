@@ -618,3 +618,6 @@ mod handover;
 
 #[path = "driver_host_tests.rs"]
 mod host;
+
+#[path = "driver_epoch_tests.rs"]
+mod epoch;

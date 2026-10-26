@@ -21,7 +21,7 @@ use super::api::{
 };
 use super::discovery::{self, MAX_BODY};
 pub use super::host_slot::HostSlot;
-use super::host_slot::{self, host_of, HostState};
+use super::host_slot::{self, host_of, Epoch, HostState};
 use super::oauth::{self, BrowserFlow, CodeGrant};
 use super::store::CredentialStore;
 use super::SignInError;
@@ -164,8 +164,13 @@ impl SignIn {
         self.slot.state.lock().await.account.clone()
     }
 
-    /// Exchanges the browser grant for a session (C6 `authorization_code`).
-    pub async fn complete(&self, grant: CodeGrant) -> Result<Outcome, SignInError> {
+    /// Exchanges the browser grant for a session (C6 `authorization_code`). A
+    /// stale `fence` gives `Superseded` and stores nothing.
+    pub async fn complete(
+        &self,
+        grant: CodeGrant,
+        fence: &Epoch<'_>,
+    ) -> Result<Outcome, SignInError> {
         let body = json!({
             "grant_type": "authorization_code",
             "code": grant.code,
@@ -173,7 +178,7 @@ impl SignIn {
             "redirect_uri": grant.redirect_uri,
         });
         let result = match self.json(Method::POST, "token", None, Some(body)).await {
-            Ok(TokenReply::SignedIn(signed)) => self.adopt_signed_in(signed).await,
+            Ok(TokenReply::SignedIn(signed)) => self.adopt_signed_in(signed, fence).await,
             Ok(TokenReply::NeedsLink(link)) => Ok(Outcome::NeedsLink(link.into())),
             Err(e) => Err(e),
         };
@@ -181,9 +186,13 @@ impl SignIn {
     }
 
     /// Creates a new account for a `needs_link` grant (C6 `POST /link/new`).
-    pub async fn link_new(&self, link_grant: &str) -> Result<Outcome, SignInError> {
+    pub async fn link_new(
+        &self,
+        link_grant: &str,
+        fence: &Epoch<'_>,
+    ) -> Result<Outcome, SignInError> {
         let body = json!({ "link_grant": link_grant });
-        let result = self.link_call("link/new", body).await;
+        let result = self.link_call("link/new", body, fence).await;
         record(result)
     }
 
@@ -193,6 +202,7 @@ impl SignIn {
         link_grant: &str,
         account_name: &str,
         password: &str,
+        fence: &Epoch<'_>,
     ) -> Result<Outcome, SignInError> {
         let body = json!({
             "link_grant": link_grant,
@@ -200,7 +210,7 @@ impl SignIn {
             "password": password,
             "password_removal_ack": true,
         });
-        let result = self.link_call("link/existing", body).await;
+        let result = self.link_call("link/existing", body, fence).await;
         record(result)
     }
 
@@ -209,13 +219,14 @@ impl SignIn {
         &self,
         link_grant: &str,
         code: &str,
+        fence: &Epoch<'_>,
     ) -> Result<Outcome, SignInError> {
         let body = json!({
             "link_grant": link_grant,
             "link_code": code,
             "password_removal_ack": true,
         });
-        let result = self.link_call("link/existing", body).await;
+        let result = self.link_call("link/existing", body, fence).await;
         record(result)
     }
 
@@ -339,14 +350,37 @@ impl SignIn {
     }
 
     /// The link calls share one reply shape: a `signed_in` body (C6).
-    async fn link_call(&self, path: &str, body: Value) -> Result<Outcome, SignInError> {
+    async fn link_call(
+        &self,
+        path: &str,
+        body: Value,
+        fence: &Epoch<'_>,
+    ) -> Result<Outcome, SignInError> {
         let signed: SignedIn = self.json(Method::POST, path, None, Some(body)).await?;
-        self.adopt_signed_in(signed).await
+        self.adopt_signed_in(signed, fence).await
     }
 
-    /// Stores a new session from a `signed_in` reply and returns its account.
-    async fn adopt_signed_in(&self, signed: SignedIn) -> Result<Outcome, SignInError> {
+    /// Stores a new session from a `signed_in` reply and returns its account. When
+    /// a sign-out or Cancel ran meanwhile, nothing is stored: the server is told to
+    /// end the session just received (best effort) and the step is `Superseded`.
+    async fn adopt_signed_in(
+        &self,
+        signed: SignedIn,
+        fence: &Epoch<'_>,
+    ) -> Result<Outcome, SignInError> {
         let mut state = self.slot.state.lock().await;
+        if !fence.is_current() {
+            drop(state);
+            let body = json!({ "refresh_token": signed.refresh_token });
+            if self
+                .send(Method::POST, "logout", None, Some(body))
+                .await
+                .is_err()
+            {
+                tracing::debug!("sign-in: the server could not be told of the sign-out");
+            }
+            return Err(SignInError::Superseded);
+        }
         let summary = self.adopt(&mut state, signed);
         Ok(Outcome::SignedIn(summary))
     }

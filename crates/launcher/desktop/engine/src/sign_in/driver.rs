@@ -7,6 +7,7 @@
 //! flow that may run. No `DesktopState` or driver lock is held across an `.await`.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
 
@@ -17,7 +18,7 @@ use super::commands::{
 };
 use super::discovery::{self, Discovery, DiscoveryCache};
 use super::flow::FlowSlot;
-use super::host_slot::host_of;
+use super::host_slot::{host_of, Epoch};
 use super::oauth;
 use super::pending::{is_retryable, PendingLink, PendingSlot};
 use super::session::{HostSlot, Outcome, SignIn};
@@ -43,6 +44,9 @@ pub struct SignInDriver {
     flow: FlowSlot,
     /// The shared session state of each auth host, keyed by [`host_of`]. Kept once made.
     hosts: Mutex<HashMap<String, Arc<HostSlot>>>,
+    /// The operation epoch (CT-87): a sign-out or a Cancel bumps it, which voids
+    /// every sign-in step still in flight.
+    epoch: AtomicU64,
 }
 
 /// The store a launcher session uses: the OS credential store where there is one.
@@ -75,6 +79,7 @@ impl SignInDriver {
             pending: PendingSlot::new(),
             flow: FlowSlot::new(),
             hosts: Mutex::new(HashMap::new()),
+            epoch: AtomicU64::new(0),
         }
     }
 
@@ -97,8 +102,10 @@ impl SignInDriver {
         if request.schema_version() != 1 {
             return Err(SignInFailure::UnsupportedSchema);
         }
+        // The epoch this request runs under: a sign-out or Cancel that comes later voids it.
+        let epoch = self.epoch.load(Ordering::SeqCst);
         if matches!(request, SignInCommand::Cancel { .. }) {
-            self.flow.cancel()?;
+            self.supersede(state)?;
         }
         let server = guard(state)?.sign_in_login_server().map_err(|_| {
             tracing::debug!(
@@ -145,9 +152,10 @@ impl SignInDriver {
                 self.reply(&site, session.as_ref(), None).await
             }
             SignInCommand::Begin { provider, .. } => {
-                self.begin(&site, &discovery, browser, &provider).await
+                self.begin(&site, &discovery, browser, &provider, epoch)
+                    .await
             }
-            SignInCommand::LinkNew { .. } => self.link(&site, Link::New).await,
+            SignInCommand::LinkNew { .. } => self.link(&site, Link::New, epoch).await,
             SignInCommand::LinkExistingPassword {
                 account_name,
                 password,
@@ -161,7 +169,7 @@ impl SignInDriver {
                     account: &account_name,
                     password: &password,
                 };
-                self.link(&site, link).await
+                self.link(&site, link, epoch).await
             }
             SignInCommand::LinkExistingCode {
                 link_code,
@@ -171,14 +179,14 @@ impl SignInDriver {
                 if !acknowledge_password_removal {
                     return Err(SignInFailure::PasswordRemovalNotAcknowledged);
                 }
-                self.link(&site, Link::Code(&link_code)).await
+                self.link(&site, Link::Code(&link_code), epoch).await
             }
             SignInCommand::Account { .. } => {
                 let session = session.ok_or_else(signed_out)?;
                 self.account_reply(&site, &session).await
             }
             SignInCommand::AddMethod { provider, .. } => {
-                self.add_method(&site, &discovery, browser, session, &provider)
+                self.add_method(&site, &discovery, browser, session, &provider, epoch)
                     .await
             }
             SignInCommand::Unlink { identity_id, .. } => {
@@ -272,6 +280,7 @@ impl SignInDriver {
         discovery: &Discovery,
         browser: &dyn Browser,
         provider: &str,
+        epoch: u64,
     ) -> Result<SignInStatus, SignInFailure> {
         if !discovery.providers.iter().any(|p| p.id == provider) {
             return Err(SignInError::Server("unknown_provider".to_owned()).into());
@@ -288,8 +297,12 @@ impl SignInDriver {
             self.store.clone(),
             slot,
         ));
-        let outcome = session.complete(grant).await.map_err(SignInFailure::from)?;
-        self.finish(site, discovery, session, outcome, provider)
+        let fence = Epoch::new(&self.epoch, epoch);
+        let outcome = session
+            .complete(grant, &fence)
+            .await
+            .map_err(SignInFailure::from)?;
+        self.finish(site, discovery, session, outcome, provider, epoch)
             .await
     }
 
@@ -301,12 +314,24 @@ impl SignInDriver {
         browser: &dyn Browser,
         session: Option<Arc<SignIn>>,
         provider: &str,
+        epoch: u64,
     ) -> Result<SignInStatus, SignInFailure> {
         let session = session.ok_or_else(signed_out)?;
         let grant = self.flow.run(browser, session.add_method(provider)).await?;
-        let outcome = session.complete(grant).await.map_err(SignInFailure::from)?;
+        let fence = Epoch::new(&self.epoch, epoch);
+        let outcome = session
+            .complete(grant, &fence)
+            .await
+            .map_err(SignInFailure::from)?;
         let status = self
-            .finish(site, discovery, Arc::clone(&session), outcome, provider)
+            .finish(
+                site,
+                discovery,
+                Arc::clone(&session),
+                outcome,
+                provider,
+                epoch,
+            )
             .await?;
         let view = session.account().await.map_err(SignInFailure::from)?;
         Ok(SignInStatus {
@@ -316,7 +341,12 @@ impl SignInDriver {
     }
 
     /// Completes a `needs_link` choice. A retryable failure keeps the choice.
-    async fn link(&self, site: &Site<'_>, link: Link<'_>) -> Result<SignInStatus, SignInFailure> {
+    async fn link(
+        &self,
+        site: &Site<'_>,
+        link: Link<'_>,
+        epoch: u64,
+    ) -> Result<SignInStatus, SignInFailure> {
         let pending = self.pending.take()?.ok_or(SignInFailure::NoPendingLink)?;
         // The password or code goes to the server the choice came from, so a
         // server switch since then ends the choice.
@@ -330,17 +360,18 @@ impl SignInDriver {
             self.slot(&pending.base),
         ));
         let grant = pending.view.link_grant.as_str();
+        let fence = Epoch::new(&self.epoch, epoch);
         let result = match link {
-            Link::New => session.link_new(grant).await,
+            Link::New => session.link_new(grant, &fence).await,
             Link::Password { account, password } => {
                 session
-                    .link_existing_password(grant, account, password)
+                    .link_existing_password(grant, account, password, &fence)
                     .await
             }
-            Link::Code(code) => session.link_existing_code(grant, code).await,
+            Link::Code(code) => session.link_existing_code(grant, code, &fence).await,
         };
         match result {
-            Ok(Outcome::SignedIn(_)) => self.signed_in(site, &session).await,
+            Ok(Outcome::SignedIn(_)) => self.signed_in(site, &session, epoch).await,
             Ok(Outcome::NeedsLink(_)) => Err(SignInFailure::Protocol),
             Err(error) => {
                 if is_retryable(&error) {
@@ -359,35 +390,110 @@ impl SignInDriver {
         session: Arc<SignIn>,
         outcome: Outcome,
         provider: &str,
+        epoch: u64,
     ) -> Result<SignInStatus, SignInFailure> {
         match outcome {
-            Outcome::SignedIn(_) => self.signed_in(site, &session).await,
+            Outcome::SignedIn(_) => self.signed_in(site, &session, epoch).await,
             Outcome::NeedsLink(link) => {
                 let provider_name = discovery
                     .providers
                     .iter()
                     .find(|p| p.id == provider)
                     .map_or_else(|| provider.to_owned(), |p| p.display_name.clone());
-                self.pending.keep(PendingLink {
+                let choice = PendingLink {
                     view: link,
                     provider_name,
                     base: session.base().clone(),
                     since: Instant::now(),
-                })?;
-                self.reply(site, None, None).await
+                };
+                let shown = self.keep_choice(site.state, &session, epoch, choice)?;
+                self.reply(site, shown.as_ref(), None).await
             }
         }
     }
 
-    /// Makes `session` the player's sign-in and drops any pending choice.
+    /// Makes `session` the player's sign-in and drops any pending choice, unless a
+    /// sign-out or Cancel ran since `epoch`, or the target moved on.
     async fn signed_in(
         &self,
         site: &Site<'_>,
         session: &Arc<SignIn>,
+        epoch: u64,
     ) -> Result<SignInStatus, SignInFailure> {
-        guard(site.state)?.set_sign_in(Some(Arc::clone(session)));
+        let shown = self.install(site.state, session, epoch)?;
+        self.reply(site, shown.as_ref(), None).await
+    }
+
+    /// Installs a completion of `session` that started at `epoch`, under the state
+    /// lock. Returns the sign-in the reply shows: `session` once installed, else the
+    /// state's own sign-in.
+    fn install(
+        &self,
+        state: &Mutex<DesktopState>,
+        session: &Arc<SignIn>,
+        epoch: u64,
+    ) -> Result<Option<Arc<SignIn>>, SignInFailure> {
+        let mut st = guard(state)?;
+        if !self.installable(&st, session, epoch)? {
+            return Ok(st.sign_in());
+        }
+        st.set_sign_in(Some(Arc::clone(session)));
         self.pending.clear()?;
-        self.reply(site, Some(session), None).await
+        Ok(Some(Arc::clone(session)))
+    }
+
+    /// Keeps the `needs_link` `choice` for `session` under the state lock, unless the
+    /// completion is no longer installable. Returns the sign-in the reply shows: none
+    /// once the choice is kept, else the state's own sign-in.
+    fn keep_choice(
+        &self,
+        state: &Mutex<DesktopState>,
+        session: &SignIn,
+        epoch: u64,
+        choice: PendingLink,
+    ) -> Result<Option<Arc<SignIn>>, SignInFailure> {
+        let st = guard(state)?;
+        if !self.installable(&st, session, epoch)? {
+            return Ok(st.sign_in());
+        }
+        self.pending.keep(choice)?;
+        Ok(None)
+    }
+
+    /// Whether a completion of `session` that started at `epoch` may be installed
+    /// now, read under the state lock. `Err(Cancelled)` once a sign-out or Cancel
+    /// ran; `Ok(false)` when the target moved to another auth base since.
+    fn installable(
+        &self,
+        st: &DesktopState,
+        session: &SignIn,
+        epoch: u64,
+    ) -> Result<bool, SignInFailure> {
+        if self.epoch.load(Ordering::SeqCst) != epoch {
+            return Err(SignInFailure::Cancelled);
+        }
+        Ok(self.same_target(st, session.base()))
+    }
+
+    /// Whether `base` is the auth base of the target on screen (the current login server).
+    fn same_target(&self, st: &DesktopState, base: &Url) -> bool {
+        st.sign_in_login_server()
+            .ok()
+            .flatten()
+            .and_then(|server| discovery::auth_base(&server.url))
+            .as_ref()
+            == Some(base)
+    }
+
+    /// Voids every sign-in step in flight (CT-87). The epoch moves while the state is
+    /// locked, so a step that reads it under the same lock sees the change; then the
+    /// browser flow that waits, if any, is cancelled.
+    fn supersede(&self, state: &Mutex<DesktopState>) -> Result<(), SignInFailure> {
+        {
+            let _st = guard(state)?;
+            self.epoch.fetch_add(1, Ordering::SeqCst);
+        }
+        self.flow.cancel()
     }
 
     /// The status with the account's linked methods, read from the server.
@@ -401,11 +507,13 @@ impl SignInDriver {
     }
 
     /// Signs out (it works offline), then drops the sign-in and any pending choice.
+    /// The epoch moves first, so a sign-in step still in flight is voided.
     pub(super) async fn sign_out(
         &self,
         site: &Site<'_>,
         session: Option<Arc<SignIn>>,
     ) -> Result<SignInStatus, SignInFailure> {
+        self.supersede(site.state)?;
         if let Some(session) = session {
             session.sign_out().await;
         }
