@@ -11,6 +11,7 @@ pub mod api;
 pub mod commands;
 pub mod discovery;
 pub mod driver;
+mod driver_continue;
 mod driver_epoch;
 mod driver_reply;
 mod flow;

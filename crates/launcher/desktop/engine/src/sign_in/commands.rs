@@ -53,6 +53,11 @@ pub enum SignInCommand {
     SignOut {
         schema_version: u32,
     },
+    /// Finishes the browser flow parked by a `begin` or `add_method` whose browser
+    /// would not open (CT-89).
+    Resume {
+        schema_version: u32,
+    },
 }
 
 impl SignInCommand {
@@ -68,7 +73,8 @@ impl SignInCommand {
             | Self::Account { schema_version }
             | Self::AddMethod { schema_version, .. }
             | Self::Unlink { schema_version, .. }
-            | Self::SignOut { schema_version } => *schema_version,
+            | Self::SignOut { schema_version }
+            | Self::Resume { schema_version } => *schema_version,
         }
     }
 }
@@ -193,6 +199,7 @@ pub enum SignInFailure {
     Denied,
     TimedOut,
     NoPendingLink,
+    NoPendingFlow,
     PasswordRemovalNotAcknowledged,
     Server {
         code: String,
