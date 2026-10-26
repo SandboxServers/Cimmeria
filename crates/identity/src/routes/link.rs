@@ -143,7 +143,7 @@ async fn create(
     .await
     .map_err(ApiError::from_repo)?;
     note("signup");
-    signed_in(state, account_id, None, fence, true, now).await
+    signed_in(state, account_id, linked.identity_id, fence, true, now).await
 }
 
 /// The body of [`existing`]: the ack, the limits, the credential check, then the
@@ -232,7 +232,7 @@ async fn link_existing(
     tracing::Span::current().record("account_id", account_id);
     tracing::Span::current().record("password_cleared", linked.password_cleared);
     note("link");
-    signed_in(state, account_id, None, fence, true, now).await
+    signed_in(state, account_id, linked.identity_id, fence, true, now).await
 }
 
 /// Checks the password of `name` and returns the account id. The length bound
