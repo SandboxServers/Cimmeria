@@ -137,12 +137,14 @@ trusted_email = true
     OidcProvider::new(&cfg, provider_client())
 }
 
-/// The claims of a good token from `issuer`, expiring in five minutes.
+/// The claims of a good token from `issuer`, issued now and expiring in five
+/// minutes.
 pub(super) fn good_claims(issuer: &str) -> Value {
     json!({
         "iss": issuer,
         "aud": CLIENT_ID,
         "sub": "user-1",
+        "iat": get_current_timestamp(),
         "exp": get_current_timestamp() + 300,
         "nonce": NONCE,
         "email": "Player@Example.ORG",
