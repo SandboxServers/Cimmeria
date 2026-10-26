@@ -58,3 +58,51 @@ No local build was made.
 
 - F-U1: no defect found in the PR code. The block is a test-environment gap: the PR's Linux AppImage cannot be UAT'd for Play against the real release. The ledger's plan ("PP-U on the PR's AppImage, artifact desktop-launcher-linux-dry-run", RESUME) does not work as written.
 - F-U2: the archive-refused feedback is below the fold on the 620x688 window (`PP-U-11` shows no change; `PP-U-12`, after scrolling, shows the message). Whether that meets "visible feedback on the first press" is **NEEDS-OWNER**.
+
+# PP-U: Deck UAT (attempt 3, 2026-10-25 22:45-23:20 local, real-key AppImage)
+
+**Result: FAIL at the install step (U3, U8).** U1 passes and the release manifest now verifies, which clears the attempt-2 blocker. But the real-key AppImage cannot unpack the genuine release seed `client.rar`: both install paths (a local archive and the live download) stop at the start of the unpack with `RAR error: File header damaged`. The archive itself is good. Without an install no Play row can run, so the PhysX-under-Proton risk is **still unproven**.
+
+Evidence (gitignored, on the Deck): the worktree's `.claude/reports/launcher-linux-play-proton/pp-u2/` (`PP-U2-*.png`, `root1-launcher.log`, `rootb-launcher.log`, `unrar-l.txt`). The report is `.claude/reports/launcher-linux-play-proton/pp-u-report-2.md`.
+
+## Build under test
+
+- workflow_dispatch run 40244390639, head `b7262377b`, job "desktop release build dry run (Linux, release manifest key) / Linux AppImage" (121325410198), **success**, `dev_manifest_key: false`. The CI log shows `embedded payload verified: 4 files`.
+- Artifact `desktop-launcher-linux-real-key-dry-run`, downloaded into a new empty folder outside the repo. `StargateWorlds-Launcher-linux-x86_64.AppImage`, 88197624 B, SHA-256 `be084fa60542d9b85c4053c0ecf3278d387e628116bfe82f8303d2adc681133a`; `sha256sum -c` against the artifact's `.sha256` is OK.
+- Launcher `version="1970.1.101"`, `release_build=true`, `dll_bundled=true`; the window title is "Cimmeria Launcher — development".
+- Embedded pieces (from `--verify-embedded-payload <cache>`), SHA-256 prefixes: prerequisite worker `926ffc65…a855`, client patches `724668ac…5460`, client telemetry `c2720c5d…cf73`, launch worker `351dea3a…5460`. They differ from attempt 2, as expected after PP-08 and PP-08W.
+
+## Setup
+
+- Desktop Mode (KDE Plasma, Wayland, Xwayland `:0`), launcher run with `GDK_BACKEND=x11`, driven with `xdotool` as in attempt 2.
+- Disk: 135 GB free on `/home`, enough for the 3.85 GB seed and its expansion.
+- **Root 1 (fresh):** XDG data, config and cache under `~/pp-u2-20261025/root/`. Install from a local archive ("Use a downloaded game archive…" → `client.rar`, 4135724034 B, SHA-256 `7ba97ed2…4f07`, the release seed).
+- **Root B (fresh):** the same layout under `~/pp-u2-20261025/rootb/`. "Install Cimmeria" downloads the seed from the live release.
+- The real install (`~/.local/share/app.cimmeria.launcher.desktop`) was not touched.
+
+## Rows
+
+| Row | Result | Evidence |
+|---|---|---|
+| U1 | **PASS** | `--appimage-extract` exit 0; the binary is an x86-64 ELF; 0 `.exe`/`.dll` files in the AppDir; `--verify-embedded-payload <cache>` prints `embedded payload verified: 4 files`, exit 0. Startup logs `payload_cache_ready … files=4`. |
+| Release manifest (attempt-2 blocker) | **PASS** | Both roots log `release_fetched` ("fetched and verified"). Root 1 logs `seed_archive_picked bytes=4135724034`. |
+| U8, copy phase | **PASS** | "Switching to your archive…" shows at once, then "Copying your archive… 1.85 GB of 3.85 GB · 47.7 MB/s · about 43 s left" (`PP-U2-20`, `PP-U2-23`). `install_phase_finished phase="copy" … elapsed_ms=72673`. |
+| U8, extraction | **FAIL** | `03:55:54.171Z seed_unpack_started check="hashed_while_copied" bytes=4135724034`, then 11 ms later `03:55:54.182Z install_stage_failed reason="unpack" unpack_kind="rar"` and `install_stage_detail … detail=Unpack error: RAR error: File header damaged`, then `install_failed duration_ms=72763`. The UI shows "Installation stopped. Partial files are preserved…" (`PP-U2-24`). |
+| U3, install (download path) | **FAIL** | Root B: "Downloading verified game content…" (`PP-U2-32`); `04:13:08.852Z seed_unpack_started check="sha256"` after a 749 s download; `04:13:12.005Z install_stage_failed reason="unpack" unpack_kind="rar"`, the same `File header damaged` detail; `install_failed duration_ms=753923` (`PP-U2-33`). |
+| U2, Proton list | **PASS** (attempt 2) | Not re-run; the list needs no install. |
+| U2, which Proton Automatic picks | **NEEDS-OWNER** | By the D-PP4 ranking it should be GE-Proton11-11. Not confirmed: that needs a Play log. |
+| U2, no-Proton copy | **BLOCKED** | It only shows with an installed game. |
+| U3 Play: prefix, DirectX pin, PhysX, window, seeding (441 B), second Play refused | **BLOCKED** | No install. PhysX under Proton is still unproven. |
+| U3, frame cap 30/60 (`DXVK_FRAME_RATE`) | **BLOCKED** | The options were checked in attempt 2; the environment needs a Play. |
+| Telemetry tag `desktop-launcher/linux/proton` | **BLOCKED** | No Play, so no game session. The code (`session_tags`) gives `["desktop-launcher", "linux", "proton"]` for a Proton plan. |
+| U4, U5 | **BLOCKED** | They need an install or a Play. |
+| U6, U7 | Not run | As in attempt 2. |
+
+## Findings
+
+- F-U3 (**FAIL**, install): the real-key CI AppImage fails to unpack the genuine release `client.rar` on both install paths, so the launcher cannot install the game on Linux.
+  - The archive is good. The staged copy (`.tmp-seed-7ba97ed2cb94.download`) is byte-identical to the original (`cmp` 0) in root 1. In root B its SHA-256 is the release's `7ba97ed2…4f07`. System `unrar` 7.23 lists 180 entries (3939121104 B) and `unrar t` reports `All OK`. The archive is RAR 1.5 format (RAR 4 family), stored (`-m0`), with an archive comment, a recovery record and the lock flag.
+  - The error is `UnrarError` `(BadData, Read)` from the `unrar` crate 0.5.8 (a `read_header` failure). It comes within 11 ms of the unpack start, so it is at the first headers, in the listing pass or the first processing header, not partway through the data.
+  - The same seed installed on this Deck on 2026-10-25 13:24-13:33 (PP-S1 test root) with a local **debug** build (`version="0.1.0"`, `release_build=false`): download, hash, `RAR holds an installer cabinet set; expanding it cabinets=4 files=5983`, `install_finished outcome="ok"`.
+  - Suspects (not diagnosed, no code changed): (a) the CI release build of the bundled UnRAR (`unrar_sys` 0.5.8, unchanged in `Cargo.lock` since #986): release optimisation or the CI toolchain or container; (b) a launcher change between that debug build and `b7262377b`. In `unpack/rar.rs` the only change is PP-20a's `sink.report_index(listed)` in the listing loop (`8f928efac`). Other unpack-path changes are PP-25 `def6862b9`, PP-15 `da11b72a2` and the wave-1B fixes `279969d1e`. A test that extracts a stored RAR with an archive comment, a recovery record and the lock flag in a release build would separate (a) from (b). The fixtures in `test_fixtures::write_stored_rar4` may not cover these.
+- F-U4: after "Remove partial files" the button reads "Retry installation" (`PP-U2-26`). The archive choice ("Using client.rar (verified)") persists across a launcher restart (`PP-U2-28`).
