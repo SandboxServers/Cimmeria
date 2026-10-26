@@ -226,6 +226,23 @@ test('sign in again browser_failed resumes, then retries', async () => {
  assert.equal((p.panel.querySelector('[readonly]')!.parentNode as unknown as HTMLElement).hidden, true, 'the address box clears once it settles');
 });
 
+test('sign in again resume failure keeps Sign in again', async () => {
+ const p = await mounted(signedIn(), async request => {
+  if (request.command === 'account') return withAccount();
+  if (request.command === 'unlink') throw {error: 'server', code: 'reauth_required'};
+  if (request.command === 'begin') throw {error: 'browser_failed', url: 'https://example.org/auth'};
+  if (request.command === 'resume') throw {error: 'server', code: 'no_pending_flow'};
+  return withAccount();
+ });
+ await p.press('Show linked sign-in methods');
+ await p.press('Remove');
+ await p.press('Confirm remove');
+ await p.press('Sign in again');
+ assert.deepEqual(p.calls.slice(-2).map(c => c.command), ['begin', 'resume'], 'a failed resume sends no further unlink');
+ assert.equal(p.button('Sign in again').hidden, false, 'a failed resume keeps the retry on offer');
+ assert.equal((p.button('Sign in again').parentNode as unknown as HTMLElement).hidden, false, 'the reauth box stays open with the retry');
+});
+
 test('sign in again with no last-used provider says what to do', async () => {
  const p = await mounted(signedIn(), async request => {
   if (request.command === 'add_method') throw {error: 'server', code: 'reauth_required'};
