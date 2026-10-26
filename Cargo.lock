@@ -1323,6 +1323,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-cooked-pak"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-workspace-hack",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
+ "thiserror 2.0.21",
+ "zip 9.0.5",
+]
+
+[[package]]
 name = "cimmeria-defs"
 version = "0.1.0"
 dependencies = [
@@ -1592,13 +1605,16 @@ dependencies = [
 name = "cimmeria-resources"
 version = "0.1.0"
 dependencies = [
+ "cimmeria-cooked-pak",
  "cimmeria-entity",
  "cimmeria-names",
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-workspace-hack",
  "quick-xml 0.42.0",
+ "serde_json",
  "sqlx",
+ "tempfile",
  "tokio",
  "tracing",
  "zip 9.0.5",
