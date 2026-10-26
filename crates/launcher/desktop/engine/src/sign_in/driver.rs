@@ -107,14 +107,26 @@ impl SignInDriver {
         if matches!(request, SignInCommand::Cancel { .. }) {
             self.supersede(state)?;
         }
-        let server = guard(state)?.sign_in_login_server().map_err(|_| {
-            tracing::debug!(
-                target: "launcher.sign_in",
-                reason = "installation_unreadable",
-                "sign-in server list unreadable"
-            );
-            SignInFailure::Unavailable
-        })?;
+        let listed = guard(state)?.sign_in_login_server();
+        let server = match listed {
+            Ok(server) => server,
+            Err(_) => {
+                tracing::debug!(
+                    target: "launcher.sign_in",
+                    reason = "installation_unreadable",
+                    "sign-in server list unreadable"
+                );
+                // Sign out and Cancel must end a sign-in even while the installed copy is busy.
+                if matches!(
+                    request,
+                    SignInCommand::Cancel { .. } | SignInCommand::SignOut { .. }
+                ) {
+                    None
+                } else {
+                    return Err(SignInFailure::Unavailable);
+                }
+            }
+        };
         let Some(server) = server else {
             return match request {
                 SignInCommand::Inspect { .. } | SignInCommand::Cancel { .. } => {
@@ -365,7 +377,7 @@ impl SignInDriver {
             Ok(Outcome::SignedIn(_)) => self.signed_in(site, &session, epoch).await,
             Ok(Outcome::NeedsLink(_)) => Err(SignInFailure::Protocol),
             Err(error) => {
-                if is_retryable(&error) {
+                if is_retryable(&error) && self.epoch.load(Ordering::SeqCst) == epoch {
                     self.pending.keep(pending)?;
                 }
                 Err(error.into())

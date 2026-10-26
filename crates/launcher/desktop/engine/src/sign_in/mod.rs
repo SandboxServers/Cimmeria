@@ -3,8 +3,9 @@
 //! The launcher asks its login server where sign-in lives (`discovery`), then
 //! runs the browser flow (`oauth`): it opens the provider's page in the
 //! system browser and receives the redirect on a loopback listener. Only the
-//! first login server in the list is offered sign-in (D-CT21); the other
-//! servers keep the relay password. The ledger of decisions is in
+//! first server of the effective list, the one Play launches against, is offered
+//! sign-in (D-CT21, amended by CT-90); the other servers keep the relay
+//! password. The ledger of decisions is in
 //! `docs/analysis/client-tls-oidc/design.md`.
 
 pub mod api;

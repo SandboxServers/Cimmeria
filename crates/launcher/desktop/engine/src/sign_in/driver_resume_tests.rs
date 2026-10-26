@@ -112,6 +112,41 @@ async fn a_failed_browser_parks_add_method_and_resume_finishes_it() {
 }
 
 #[tokio::test]
+async fn resume_after_a_server_switch_does_not_carry_the_first_account() {
+    let fx = Fixture::new(true, true).await;
+    mount_token(&fx.server, signed_in_body("r4")).await;
+    Mock::given(method("POST"))
+        .and(path("/auth/v1/link/start"))
+        .respond_with(LinkStartEcho {
+            base: format!("{}/", fx.server.uri()),
+        })
+        .mount(&fx.server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/auth/v1/account"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "account_name": "alice", "display_name": "Alice", "identities": [],
+        })))
+        .mount(&fx.server)
+        .await;
+    fx.run(begin(), &CallbackBrowser::default()).await.unwrap();
+    let url = match fx.run(add_method(), &FailingBrowser).await {
+        Err(SignInFailure::BrowserFailed { url }) => url,
+        other => panic!("expected browser_failed, got {other:?}"),
+    };
+    // The player switches to another login server before the redirect arrives.
+    let _other = super::epoch::switch_to_second_server(&fx).await;
+    let silent = SilentBrowser::default();
+    let (resumed, callback) = tokio::join!(
+        fx.run(resume(), &silent),
+        reqwest::Client::new().get(callback_of(&url)).send(),
+    );
+    assert!(callback.is_ok(), "the parked listener takes the redirect");
+    let status = resumed.unwrap();
+    assert!(status.account.is_none(), "{status:?}");
+}
+
+#[tokio::test]
 async fn resume_with_nothing_parked_is_no_pending_flow() {
     let fx = Fixture::new(true, true).await;
     let resumed = fx.run(resume(), &SilentBrowser::default()).await;

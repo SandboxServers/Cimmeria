@@ -81,7 +81,7 @@ async fn mount_slow_token(server: &MockServer, body: Value, delay_ms: u64) {
 
 /// Points the login server at a second mock auth server, as if the player had
 /// switched servers on the login screen. The returned server must stay alive.
-async fn switch_to_second_server(fx: &Fixture) -> MockServer {
+pub(super) async fn switch_to_second_server(fx: &Fixture) -> MockServer {
     let other = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/auth/v1/providers"))
@@ -266,4 +266,29 @@ async fn a_needs_link_after_a_server_switch_is_not_kept() {
         fx.driver.pending.view_for(Some(&base)),
         Ok(SignInStateView::SignedOut)
     ));
+}
+
+#[tokio::test]
+async fn a_wrong_password_answered_after_sign_out_keeps_no_choice() {
+    let fx = Fixture::new(true, true).await;
+    mount_token(&fx.server, needs_link_body()).await;
+    fx.run(begin(), &CallbackBrowser::default()).await.unwrap();
+    Mock::given(method("POST"))
+        .and(path("/auth/v1/link/existing"))
+        .and(body_partial_json(json!({"password": "bad"})))
+        .respond_with(
+            ResponseTemplate::new(401)
+                .set_body_json(json!({"error": "invalid_credentials"}))
+                .set_delay(Duration::from_millis(400)),
+        )
+        .mount(&fx.server)
+        .await;
+    let browser = SilentBrowser::default();
+    let (reply, _) = tokio::join!(fx.run(password_link(true, "bad"), &browser), async {
+        until_requested(&fx.server, "/auth/v1/link/existing").await;
+        fx.run(sign_out(), &browser).await.unwrap();
+    });
+    assert!(reply.is_err(), "{reply:?}");
+    let status = fx.inspect().await.unwrap();
+    assert!(matches!(status.state, SignInStateView::SignedOut));
 }

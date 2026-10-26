@@ -639,3 +639,6 @@ mod epoch;
 
 #[path = "driver_resume_tests.rs"]
 mod resume;
+
+#[path = "driver_unreadable_tests.rs"]
+mod unreadable;

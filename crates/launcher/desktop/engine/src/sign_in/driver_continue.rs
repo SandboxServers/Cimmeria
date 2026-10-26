@@ -54,6 +54,10 @@ impl SignInDriver {
                         epoch,
                     )
                     .await?;
+                // A reply for another server carries that server's status, not this account.
+                if site.base != Some(session.base()) {
+                    return Ok(status);
+                }
                 let view = session.account().await.map_err(SignInFailure::from)?;
                 Ok(SignInStatus {
                     account: Some(view.into()),
