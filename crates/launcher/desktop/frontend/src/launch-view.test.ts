@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {parseHTML} from 'linkedom';
 import {launchText,mountLaunch,protonInstallText} from './launch-view';
-import {jobErrorFailure,LaunchBridge,launchBridgeLayer} from './launch-workflow';
+import {jobErrorFailure,LaunchBridge,launchBridgeLayer,LaunchState,LaunchStatus} from './launch-workflow';
+import {contentSyncText} from './content-sync-text';
 import {FailureCode} from './failure-codes';
 import {failureText} from './failure-copy';
 import {mountDesktop} from './composition';
@@ -60,6 +61,62 @@ test('Play first click gives feedback, lost reply is observed without replay, un
  status={...status,observation:{phase:'unknown'},native:{...status.native,operation:{...status.native.operation,revision:2,operation:{...(status.native.operation.operation as object),state:'reconciliation_required'}}}};
  await app.refresh();await new Promise(resolve=>setImmediate(resolve));assert.match(document.getElementById('launch-status')!.textContent!,/unknown/);click();assert.equal(plays,1);assert.equal(status.native.preferences.launcher_summary_consent,false);
  }finally{await app.dispose();}
+});
+// A launch state whose status carries the given game data check and observation.
+const syncState=(content_sync:unknown,observation:unknown=null):LaunchState=>({status:{...initial(),observation,content_sync} as unknown as LaunchStatus,pending:false,uncertain:false,error:null});
+const done=(over:Record<string,unknown>)=>({phase:'done',categories_done:1,categories_total:3,bytes_done:1048576,bytes_total:4194304,outcome:null,reason:null,server:'play.example:8081',failure:null,...over});
+const failedDownload={step:'download',reason:'http_error',category_id:4,pak:'CookedDataItems.pak',http_status:500,io_kind:null,os_code:null,retry_after_s:null,source_version:null,served_version:null,deadline_s:null};
+test('the game data check reads its progress, its success and its skip in plain words',()=>{
+ assert.equal(contentSyncText(syncState({phase:'checking',categories_done:0,categories_total:0,bytes_done:0,bytes_total:0,outcome:null,reason:null,server:'play.example:8081',failure:null})),'Checking game data with play.example:8081…');
+ assert.equal(contentSyncText(syncState(done({phase:'downloading'}))),'Updating game data: 1 of 3 categories (1.0 of 4.2 MB)…');
+ assert.equal(contentSyncText(syncState(done({phase:'writing'}))),'Updating game data: 1 of 3 categories (1.0 of 4.2 MB)…');
+ assert.equal(contentSyncText(syncState(done({phase:'committing'}))),'Saving updated game data…');
+ assert.equal(contentSyncText(syncState(done({outcome:'up_to_date'}),{phase:'preparing'})),'Game data is up to date.');
+ assert.equal(contentSyncText(syncState(done({outcome:'synced'}),{phase:'host_started',host_pid:7})),'Game data updated (3 categories).');
+ assert.equal(contentSyncText(syncState(done({outcome:'up_to_date'}),{phase:'process_exited',host_pid:7,guest_pid:8,code:0,early:false})),null,'the success line is hidden once the game has run');
+ assert.equal(contentSyncText(syncState(done({outcome:'skipped',reason:'disabled'}))),'The server turned off the game data check. Character select may take about a minute.');
+ assert.equal(contentSyncText(syncState(done({outcome:'skipped',reason:'server_unsupported'}))),"This server doesn't offer game data updates. Character select may take about a minute.");
+ assert.equal(contentSyncText(syncState(done({outcome:'skipped',reason:'platform_unsupported'}))),null);
+ assert.equal(contentSyncText(syncState(done({outcome:'cancelled',reason:'cancelled'}))),null);
+ assert.equal(contentSyncText(syncState(undefined)),null,'an absent key says nothing');
+ assert.equal(contentSyncText(syncState(null)),null);
+});
+test('a failed game data check says what failed and why, then the details line',()=>{
+ const failed=(failure:Record<string,unknown>,over:Record<string,unknown>={})=>done({outcome:'failed',reason:failure.reason,failure,...over});
+ assert.equal(contentSyncText(syncState(failed(failedDownload))),"Couldn't download CookedDataItems.pak from play.example:8081: The server answered with an error (HTTP 500). Press Retry. If it keeps happening, tell the server's operator.\nDetails: download / http_error, category 4, HTTP 500");
+ assert.equal(contentSyncText(syncState(failed({step:'stage',reason:'write_failed',category_id:null,http_status:null,os_code:null,io_kind:'storage_full',pak:'CookedDataItems.pak'}))),
+  "Couldn't build the updated CookedDataItems.pak: Windows refused to save CookedDataItems.pak: the disk is full. Free disk space or check the folder's permissions, then press Retry.\nDetails: stage / write_failed");
+ assert.equal(contentSyncText(syncState(failed({step:'commit',reason:'pak_in_use',category_id:2,http_status:null,os_code:32,io_kind:'sharing_violation',pak:'CookedDataItems.pak'}))),
+  "Couldn't save the updated CookedDataItems.pak: CookedDataItems.pak is open in another program: the file is in use. Close Stargate Worlds and any tool that has the file open, then press Retry.\nDetails: commit / pak_in_use, category 2, Windows error 32");
+ assert.equal(contentSyncText(syncState(failed({...failedDownload,reason:'catalog_unavailable',retry_after_s:30,http_status:null,category_id:null,pak:null}))),
+  "Couldn't download a game data file from play.example:8081: The server is still preparing its game data. It asked to wait 30 s. Press Retry in a minute.\nDetails: download / catalog_unavailable");
+ assert.equal(contentSyncText(syncState(failed({...failedDownload,step:'index',reason:'something_new',http_status:null,category_id:null,pak:null}))),
+  "Couldn't get the game data list from play.example:8081: An unexpected error (something_new). Press Retry. If it keeps happening, use Upload debug logs.\nDetails: index / something_new");
+});
+test('every failure reason in the table has its own remedy',()=>{
+ const table:[string,string][]=[['profile_unavailable','Documents'],['no_login_server','Login servers'],['endpoint_refused','may download from'],['unsafe_path','Reset client cache'],
+  ['connect_failed','accept the connection (an error)'],['timeout','stopped answering'],['catalog_failed','operator'],['rate_limited','limiting requests'],
+  ['too_large','damaged'],['bad_index','damaged'],['bad_body','damaged'],['unknown_category','changed during the update'],['version_changed','changed during the update'],
+  ['source_newer','newer CookedDataItems.pak data (version 9) than the server (version 7)'],['source_missing','is missing CookedDataItems.pak'],['source_unreadable','read CookedDataItems.pak from your game install: an error'],
+  ['base_missing','so nothing was saved'],['digest_mismatch','so nothing was saved'],['deadline','longer than 12 seconds']];
+ for(const [reason,fragment] of table){
+  const text=contentSyncText(syncState(done({outcome:'failed',reason,failure:{...failedDownload,reason,source_version:9,served_version:7,deadline_s:12}})));
+  assert.ok(text?.includes(fragment),`${reason}: ${text}`);
+ }
+});
+test('Play reads Retry after a failed game data check and Play after a plain not-started launch',async()=>{
+ const failed=syncState(done({outcome:'failed',reason:'http_error',failure:failedDownload}),{phase:'not_started'});
+ const plain=syncState(done({outcome:'skipped',reason:'platform_unsupported'}),{phase:'not_started'});
+ for(const [state,label,hidden] of [[failed,'Retry',false],[plain,'Play',true]] as const){
+  const {document}=parseHTML(html);
+  const app=mountLaunch(document,async()=>state.status!,undefined,undefined,false,()=>{});
+  try{
+   await app.ready;
+   assert.equal(document.getElementById('launch')!.textContent,label);
+   assert.equal(document.getElementById('launch-content-sync')!.hidden,hidden);
+  }finally{await app.dispose();}
+ }
+ assert.equal(launchText(failed),'The game was not started because the game data check failed. Press Retry.');
 });
 test('unavailable verified resources never advertise Play',async()=>{
  const {document}=parseHTML(html);const status={...initial(),setup_complete:false,resources_available:false,installation_id:null};const app=mountLaunch(document,async()=>status);

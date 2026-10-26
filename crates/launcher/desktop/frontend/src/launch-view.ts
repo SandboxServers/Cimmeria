@@ -1,8 +1,9 @@
 import {Context,Effect,Fiber,Layer,ManagedRuntime,Schema,Stream} from 'effect';
-import {gameSetupComplete,launchBlocked,launchBridgeLayer,LaunchState,LaunchStatus,makeLaunchWorkflow} from './launch-workflow';
+import {gameSetupComplete,launchBlocked,launchBridgeLayer,LaunchState,LaunchStatus,makeLaunchWorkflow,presyncFailed} from './launch-workflow';
 import {operationOpen} from './contract';
 import {FailureCode} from './failure-codes';
 import {failureText} from './failure-copy';
+import {contentSyncText} from './content-sync-text';
 import type {Invoke} from './view';
 class Launch extends Context.Service<Launch,Effect.Success<typeof makeLaunchWorkflow>>()('launcher/Play') {}
 // An adopt operation that is not terminal is owned by the adoption panel; Play says one line about it.
@@ -56,6 +57,7 @@ export function launchText(s:LaunchState):string {
  if(o?.phase==='process_exited'&&o.code!==0)return failureLines('game_exited_nonzero');
  if(o?.phase==='process_exited')return o.early?`Game exited shortly after starting (code ${o.code}).`:`Game exited (code ${o.code}).`;
  if(status.prerequisites_missing?.length)return `Complete ${pieceNames(status.prerequisites_missing)} setup before playing.`;
+ if(presyncFailed(status))return 'The game was not started because the game data check failed. Press Retry.';
  if(o?.phase==='not_started')return 'Game could not start. Files are preserved; recheck before trying again. If you edited the login servers, check them under Login servers.';
  if(!status.resources_available)return 'Play unavailable: this build is missing verified game launch resources.';
  if(launchBlocked(status))return adoptLine(s)??ownerLine(status);
@@ -70,15 +72,17 @@ export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()
  const settingsCheck=document.getElementById('inspect-launch-settings') as HTMLButtonElement;
  const settingsStatus=document.getElementById('launch-settings-status')!;
  const statusLine=document.getElementById('launch-status')!;
+ const contentSyncLine=document.getElementById('launch-content-sync')!;
  const abandonRepair=document.getElementById('launch-abandon-repair') as HTMLButtonElement|null;
  // A failure renders as two lines: the message, then the fix.
- statusLine.style.whiteSpace='pre-line';settingsStatus.style.whiteSpace='pre-line';
+ statusLine.style.whiteSpace='pre-line';settingsStatus.style.whiteSpace='pre-line';contentSyncLine.style.whiteSpace='pre-line';
  let current:LaunchState={status:null,pending:false,uncertain:true,error:null};let disposed=false;let pending=false;let playing=false;
  let mutation:Promise<void>=Promise.resolve();let revision=-1;
  let inspecting=false;
  const render=()=>{if(disposed)return;button.hidden=!!current.status&&!current.status.installation_id&&!current.status.observation&&!current.status.launcher_update_required;button.disabled=updateBlocked||playing||current.pending||current.uncertain||!current.status?.installation_id||launchBlocked(current.status);
- button.textContent=playing||current.pending?'Starting…':'Play';button.setAttribute('aria-busy',String(playing||current.pending));
+ button.textContent=playing||current.pending?'Starting…':presyncFailed(current.status)?'Retry':'Play';button.setAttribute('aria-busy',String(playing||current.pending));
  statusLine.textContent=playing?'Starting game…':inspecting?'Checking Play status…':updateBlocked?'Resolve the launcher update above before playing.':launchText(current);
+ const contentSync=contentSyncText(current);contentSyncLine.hidden=contentSync===null;contentSyncLine.textContent=contentSync??'';
  const ready=!!current.status&&!current.uncertain&&!current.error&&gameSetupComplete(current.status);
  recheck.disabled=playing||current.pending||inspecting;recheck.setAttribute('aria-busy',String(inspecting));recheck.hidden=ready||adoptLine(current)!==null;
  settingsCheck.disabled=playing||current.pending||inspecting;
