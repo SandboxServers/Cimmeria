@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use url::Url;
 
@@ -19,17 +19,12 @@ use super::discovery::{self, Discovery, DiscoveryCache};
 use super::flow::FlowSlot;
 use super::host_slot::host_of;
 use super::oauth;
-use super::session::{HostSlot, NeedsLinkView, Outcome, SignIn};
+use super::pending::{is_retryable, PendingLink, PendingSlot};
+use super::session::{HostSlot, Outcome, SignIn};
 use super::store::{self, CredentialStore};
 use super::SignInError;
 use crate::client_setup::login_servers::LoginServer;
 use crate::storage::DesktopState;
-
-/// How long a `needs_link` choice waits for the player's password or code.
-const PENDING_TTL: Duration = Duration::from_secs(10 * 60);
-
-/// The link errors that keep the pending choice, so the player can retry it.
-const RETRYABLE: [&str; 3] = ["invalid_credentials", "rate_limited", "not_linkable"];
 
 /// Opens a page in the system browser. `Err(())` when the browser could not be started.
 pub trait Browser: Send + Sync {
@@ -38,22 +33,12 @@ pub trait Browser: Send + Sync {
     fn open(&self, url: &str) -> Result<(), ()>;
 }
 
-/// A `needs_link` choice the player has not finished.
-struct PendingLink {
-    view: NeedsLinkView,
-    /// The provider's display name, for the panel.
-    provider_name: String,
-    /// The auth server the choice came from. Link calls go there.
-    base: Url,
-    since: Instant,
-}
-
 /// The sign-in driver the shell holds for the whole launcher run.
 pub struct SignInDriver {
     store: Arc<dyn CredentialStore>,
     http: reqwest::Client,
     discovery: Mutex<DiscoveryCache>,
-    pending: Mutex<Option<PendingLink>>,
+    pending: PendingSlot,
     /// The browser flow that may run, and its cancel handle.
     flow: FlowSlot,
     /// The shared session state of each auth host, keyed by [`host_of`]. Kept once made.
@@ -87,7 +72,7 @@ impl SignInDriver {
             store,
             http: discovery::client(),
             discovery: Mutex::new(DiscoveryCache::default()),
-            pending: Mutex::new(None),
+            pending: PendingSlot::new(),
             flow: FlowSlot::new(),
             hosts: Mutex::new(HashMap::new()),
         }
@@ -149,7 +134,7 @@ impl SignInDriver {
             return self.offline(state, &server, request).await;
         };
         let session = self.session_for(state, &discovery.auth_base).await?;
-        self.drop_pending_unless(&discovery.auth_base)?;
+        self.pending.drop_unless(&discovery.auth_base)?;
         let site = Site {
             state,
             server: Some(&server.name),
@@ -332,7 +317,7 @@ impl SignInDriver {
 
     /// Completes a `needs_link` choice. A retryable failure keeps the choice.
     async fn link(&self, site: &Site<'_>, link: Link<'_>) -> Result<SignInStatus, SignInFailure> {
-        let pending = self.take_pending()?.ok_or(SignInFailure::NoPendingLink)?;
+        let pending = self.pending.take()?.ok_or(SignInFailure::NoPendingLink)?;
         // The password or code goes to the server the choice came from, so a
         // server switch since then ends the choice.
         if site.discovery.map(|d| &d.auth_base) != Some(&pending.base) {
@@ -359,7 +344,7 @@ impl SignInDriver {
             Ok(Outcome::NeedsLink(_)) => Err(SignInFailure::Protocol),
             Err(error) => {
                 if is_retryable(&error) {
-                    self.keep_pending(pending)?;
+                    self.pending.keep(pending)?;
                 }
                 Err(error.into())
             }
@@ -383,7 +368,7 @@ impl SignInDriver {
                     .iter()
                     .find(|p| p.id == provider)
                     .map_or_else(|| provider.to_owned(), |p| p.display_name.clone());
-                self.keep_pending(PendingLink {
+                self.pending.keep(PendingLink {
                     view: link,
                     provider_name,
                     base: session.base().clone(),
@@ -401,7 +386,7 @@ impl SignInDriver {
         session: &Arc<SignIn>,
     ) -> Result<SignInStatus, SignInFailure> {
         guard(site.state)?.set_sign_in(Some(Arc::clone(session)));
-        self.clear_pending()?;
+        self.pending.clear()?;
         self.reply(site, Some(session), None).await
     }
 
@@ -425,7 +410,7 @@ impl SignInDriver {
             session.sign_out().await;
         }
         guard(site.state)?.set_sign_in(None);
-        self.clear_pending()?;
+        self.pending.clear()?;
         self.reply(site, None, None).await
     }
 
@@ -478,41 +463,7 @@ impl SignInDriver {
                 });
             }
         }
-        let pending = guard(&self.pending)?;
-        let view = match pending.as_ref() {
-            Some(link) if link.since.elapsed() < PENDING_TTL && base == Some(&link.base) => {
-                SignInStateView::needs_link(&link.view, link.provider_name.clone())
-            }
-            _ => SignInStateView::SignedOut,
-        };
-        Ok(view)
-    }
-
-    /// Takes the pending choice. A choice older than [`PENDING_TTL`] is dropped.
-    fn take_pending(&self) -> Result<Option<PendingLink>, SignInFailure> {
-        let taken = guard(&self.pending)?.take();
-        Ok(taken.filter(|link| link.since.elapsed() < PENDING_TTL))
-    }
-
-    /// Keeps `link` as the pending choice.
-    fn keep_pending(&self, link: PendingLink) -> Result<(), SignInFailure> {
-        *guard(&self.pending)? = Some(link);
-        Ok(())
-    }
-
-    /// Drops the pending choice, if any.
-    fn clear_pending(&self) -> Result<(), SignInFailure> {
-        *guard(&self.pending)? = None;
-        Ok(())
-    }
-
-    /// Drops the pending choice unless it came from `base`, the server on screen.
-    fn drop_pending_unless(&self, base: &Url) -> Result<(), SignInFailure> {
-        let mut pending = guard(&self.pending)?;
-        if pending.as_ref().is_some_and(|link| link.base != *base) {
-            *pending = None;
-        }
-        Ok(())
+        self.pending.view_for(base)
     }
 }
 
@@ -524,9 +475,4 @@ pub(super) fn guard<T>(lock: &Mutex<T>) -> Result<MutexGuard<'_, T>, SignInFailu
 /// The failure for a command that needs a signed-in player.
 fn signed_out() -> SignInFailure {
     SignInError::Server("signed_out".to_owned()).into()
-}
-
-/// Whether a link failure keeps the pending choice (C13: the player may retry).
-fn is_retryable(error: &SignInError) -> bool {
-    matches!(error, SignInError::Server(_)) && RETRYABLE.contains(&error.code())
 }

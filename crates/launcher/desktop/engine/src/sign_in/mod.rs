@@ -15,6 +15,7 @@ mod flow;
 mod host_slot;
 pub mod lease;
 pub mod oauth;
+mod pending;
 pub mod session;
 pub mod store;
 
