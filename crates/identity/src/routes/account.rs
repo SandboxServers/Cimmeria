@@ -280,6 +280,11 @@ async fn remove_identity(
     )
     .await
     .map_err(ApiError::from_repo)?;
+    // The refresh families are revoked in the same transaction, so a failed
+    // revoke leaves the identity in place (C16.6).
+    refresh::revoke_account_on(&mut tx, account_id, Some(&grant.family_id), Utc::now())
+        .await
+        .map_err(ApiError::from_repo)?;
     tx.commit().await.map_err(ApiError::from_repo)?;
     state
         .ctx
@@ -287,9 +292,6 @@ async fn remove_identity(
         .access
         .revoke_account_except(account_id, &grant.family_id);
     state.deps.launch_tickets.revoke_account(account_id);
-    refresh::revoke_account_except(pool, account_id, &grant.family_id, Utc::now())
-        .await
-        .map_err(ApiError::from_repo)?;
     tracing::Span::current().record("provider", provider.as_str());
     Ok(())
 }
