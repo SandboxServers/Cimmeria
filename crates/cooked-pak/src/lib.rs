@@ -6,6 +6,7 @@
 //! reads its own `data/cache/*.pak` copies this way, and the server reads the
 //! same layout through `cimmeria-resources`. This crate is the one shared
 //! reader, writer and digest for the launcher and the admin tooling.
+//! `catalog` is the index and the `CPS1` body codec, `compose` layers a body's changed records over a stock PAK, and `decide` picks what to do with one category.
 //!
 //! No CME bytes live in this crate. Its tests build their PAKs in memory
 //! from made-up entries.

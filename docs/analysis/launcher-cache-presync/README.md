@@ -44,7 +44,7 @@ On startup the server builds a **served catalog** from its `ResourceCache`. For 
 |---|---|---|---|
 | D-LP1 | Add two anonymous `GET` routes, `/api/cooked/v1/index` and `/api/cooked/v1/category/{id}`, to the public login port (8081). They have a per-IP quota (`CIMMERIA_COOKED_PRESYNC_QUOTA_PER_IP`, default 60 a minute) and a kill switch (`CIMMERIA_COOKED_PRESYNC_DISABLED`). | **Decided (owner, 2026-10-26)** | As proposed. The data is what every client receives anyway at the first resync. |
 | D-LP2 | Serve over anonymous HTTP only the entries the server changed, in full: overrides, additions, and attribute-patched CME records in categories 2 and 11. Never serve whole PAKs; the launcher composes the rest from the player's own `SourceCache`. | **Decided (owner, 2026-10-26)** | As proposed. Whole PAKs would break the no-CME-bytes rule (F7). |
-| D-LP3 | If LP-05 finds that a player's stock `SourceCache` differs from the server's `data/cache` base, or that any category is `source_newer`, serving whole categories is **not** decided here. LP-05's result goes to an architect ruling: re-spec, or BlockedDecision. | Conditional on LP-05 | Whole categories would serve CME bytes (D-LP2); `source_newer` would block every launcher player (D-LP18). |
+| D-LP3 | If LP-05 finds that a player's stock `SourceCache` differs from the server's `data/cache` base, or that any category is `source_newer`, serving whole categories is **not** decided here. LP-05's result goes to an architect ruling: re-spec, or BlockedDecision. | Resolved 2026-10-26: LP-05 found compose works (worknotes/LP-05.md) | Whole categories would serve CME bytes (D-LP2); `source_newer` would block every launcher player (D-LP18). |
 | D-LP4 | ~~The presync never blocks Play.~~ **Reversed by the owner 2026-10-26:** "Block play with retry and a message of what exactly failed and why." A presync that fails, is refused, times out or hits its deadline does not start the game. The launcher never falls back to `cooked_sync`; the server keeps it for clients that skip the launcher. | **Decided (owner)** | Owner's call. D-LP18..D-LP26 work out the edges. |
 | D-LP5 | Use only the first effective login server, the same one the telemetry mint uses. | Decided | Matches the summary route's rule; no endpoint search. |
 | D-LP6 | Write only the Documents `Cache.en-US`. Never write `SourceCache.en-us` or the install. A category whose source version is newer than the served one can't be fixed by the launcher (the client would overwrite the write at startup), so it is a failure, `source_newer` (D-LP18). | Decided, amended | F5. The install is the launcher's adopted copy and other tools verify it. |
@@ -89,12 +89,12 @@ Waves 3 and 4 share one PR because the engine blocks Play from wave 3 on, and th
 
 | ID | Title | Agent | Depends | Status |
 |---|---|---|---|---|
-| LP-01 | `cimmeria-cooked-pak`: PAK read/write, digest, workspace wiring | packet-coder | - | Review `ship` pass 2 (`84bcbf8da`, `lcp-01`) |
-| LP-02 | `cimmeria-cooked-pak`: index, body codec, compose, decide | packet-coder | LP-01 review `ship` | Review `ship` pass 3 (`9ddd41b76`, `lcp-02`) |
-| LP-03 | `cimmeria-resources`: served catalog (whole-catalog failure, `Published`) | packet-coder | LP-02 review `ship` | Writing (`lcp-03`) |
-| LP-04 | `cooked-pak-tool` binary | packet-coder | LP-03 review `ship` | BlockedDependency |
-| LP-05 | Offline check against the player's client copy | rust-gameserver-dev | LP-04 merged into `lcp-w1` | BlockedDependency |
-| LP-07 | Server counter `cooked_data_version_replies_total` | packet-coder | - | Review `ship` (`7947d63ae`, `lcp-07`); merges into `lcp-w1` after LP-04 |
+| LP-01 | `cimmeria-cooked-pak`: PAK read/write, digest, workspace wiring | packet-coder | - | Merged into lcp-w1 (1e0e1f0a7) |
+| LP-02 | `cimmeria-cooked-pak`: index, body codec, compose, decide | packet-coder | LP-01 review `ship` | Merged into lcp-w1 (e6385c57f) |
+| LP-03 | `cimmeria-resources`: served catalog (whole-catalog failure, `Published`) | packet-coder | LP-02 review `ship` | Merged into lcp-w1 (208c223d5) |
+| LP-04 | `cooked-pak-tool` binary | packet-coder | LP-03 review `ship` | Merged into lcp-w1 (671fa53c9) |
+| LP-05 | Offline check against the player's client copy | rust-gameserver-dev | LP-04 merged into `lcp-w1` | Done: compose works (48e9712d8) |
+| LP-07 | Server counter `cooked_data_version_replies_total` | packet-coder | - | Merged into lcp-w1 (f6befa7c1) |
 | LP-06 | Lab proof: a composed cache gives `up_to_date` at character select | rust-gameserver-dev (lab-uat skill) | wave 1 merged; the user approves lab use | UATPending |
 | LP-10 | Login-port routes `/api/cooked/v1/*` (adds `catalog_failed`) | packet-coder | wave 1 merged, LP-05 "compose works" | BlockedDependency |
 | LP-11 | Publish the catalog (or its failure) at base-service start | packet-coder | wave 1 merged | BlockedDependency |

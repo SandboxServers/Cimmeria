@@ -3,7 +3,7 @@
 > **Type:** Reference · **Audience:** The orchestrator resuming this campaign · **Updated:** 2026-10-26
 > **Companions:** [Ledger](README.md), [work packets](work-packets.md), [wave 2](packets-wave2.md), [waves 3-5](packets-wave3.md)
 
-**State (2026-10-26):** wave 1 in flight. Base `main` `70a33202`. `ship`: LP-01 `84bcbf8da` (`lcp-01`), LP-02 `9ddd41b76` (`lcp-02`), LP-07 `7947d63ae` (`lcp-07`). LP-03 `99ebb74d8` (`lcp-03`, ship on pass 2). LP-04 coder stopped before writing anything; re-dispatch it in `lcp-04`, which is clean (branch `LP-04-tool`, base `a885309b6` = main + LP-03 merged `--no-ff`; mk-worktree has no base option). Integration `lcp-w1` not yet merged into. Board: c/cimmeria/launcher-cache-presync/43. Campaign docs are still uncommitted in the main checkout; commit them into `lcp-w1`. Orphaned targets (~163 GB: cto-40/41/45/46/w3a/w3b) reported to the user, not deleted.
+**State (2026-10-26):** wave 1 code-complete in `lcp-w1`, head `48e9712d8`: LP-01, 02, 03, 04, 07 merged, LP-05 worknote says **compose works** (D-LP3 resolved, no ruling). The wave loop is done; the wave 1 PR is next. Then ask the user about the lab for LP-06, and open wave 2 (LP-10, LP-11). Board: c/cimmeria/launcher-cache-presync/43. Orphaned targets (~163 GB: cto-40/41/45/46/w3a/w3b) reported to the user, not deleted.
 
 **Goal:** at Play, the launcher brings the Documents `Cache.en-US` up to the server's cooked-data versions, so the ~1 min resync at character select never fires. **Owner 2026-10-26:** D-LP1 yes (anonymous routes on 8081, quota 60/min, kill switch), D-LP2 yes (changed entries only), D-LP4 reversed: a failed presync **blocks Play** with the exact failure and a **Retry** button; no fallback to `cooked_sync` from the launcher. Edge cases: D-LP18..D-LP29.
 
@@ -27,4 +27,4 @@
 
 **Open decisions:** D-LP28 (owner, non-blocking: failure code in the anonymous launcher summary → LP-F4). D-LP3 is conditional on LP-05.
 
-**Next ledger update:** when the wave 1 PR opens.
+**Next ledger update:** when the wave 2 PR opens.
