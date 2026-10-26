@@ -121,6 +121,23 @@ pub(crate) async fn handle_login_with_issuer(
         );
         return Ok(());
     }
+    // A launch ticket revoked after the SOAP handoff is refused here too. Only
+    // new admissions are refused: an established connection is not touched.
+    if peeked
+        .ticket_guard
+        .as_ref()
+        .is_some_and(|g| !g.is_current())
+    {
+        burn_ticket(pending_logins, ticket)?;
+        tracing::warn!(
+            %addr,
+            account_id = peeked.account_id,
+            account_name = %peeked.account_name,
+            reason = "ticket_revoked",
+            "Phase 3 ticket comes from a revoked launch ticket; refusing the login"
+        );
+        return Ok(());
+    }
     let claim = relaunch::address_claim(connected, addr, &peeked);
     if claim == relaunch::AddressClaim::Refused {
         // Burned so a replayed datagram cannot log the refusal again.
