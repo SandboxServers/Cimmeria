@@ -47,7 +47,7 @@ mod handlers_ticket_tests;
 mod tls_smoke;
 
 pub use identity_hook::{AuthRouteDeps, IdentityRoutes};
-pub use launch_ticket::{LaunchTicketStore, MintedTicket, TicketCheck};
+pub use launch_ticket::{LaunchTicketStore, MintedTicket, TicketCheck, TicketGuard};
 pub use password_check::{verify_account_password, PasswordCheck};
 pub use service::AuthService;
 pub use session_kind::{session_kind, SESSION_KIND_LAB, SESSION_KIND_PLAYER};

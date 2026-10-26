@@ -6,10 +6,15 @@
 //! ticket or the SHA-1. One ticket lives per account. It is reusable inside
 //! its life (Change Server re-sends it) and expires after 30 minutes idle or
 //! 12 hours after minting, whichever comes first.
+//!
+//! Every ticket carries a [`TicketGuard`]. Revoking an account flips the
+//! guards it was issued, so a handoff already in flight dies with the
+//! account's sessions (C16.4).
 
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::{Duration, Instant};
 
 use rand::distr::{Alphanumeric, SampleString};
@@ -37,13 +42,25 @@ pub struct MintedTicket {
     pub expires_in_secs: u64,
 }
 
+/// Liveness flag of an account's tickets. The store flips it to `false` when
+/// the account is revoked; every clone sees the flip.
+#[derive(Clone, Debug)]
+pub struct TicketGuard(Arc<AtomicBool>);
+
+impl TicketGuard {
+    /// `true` until the account is revoked.
+    pub fn is_current(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
 /// Result of [`LaunchTicketStore::verify`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub enum TicketCheck {
-    /// No live ticket matches the name and hash.
+    /// No live ticket matches the name and hash, or the match was revoked.
     NoMatch,
-    /// A live ticket matches; the account it belongs to.
-    Valid { account_id: u32 },
+    /// A live ticket matches: its account and the guard it was minted under.
+    Valid { account_id: u32, guard: TicketGuard },
 }
 
 /// One stored ticket. Holds the hash of the client's SHA-1, never the ticket.
@@ -58,6 +75,8 @@ struct Entry {
     minted: Instant,
     /// Last use or heartbeat (idle life starts here).
     last_used: Instant,
+    /// The account's guard at mint time.
+    guard: TicketGuard,
 }
 
 impl Entry {
@@ -67,10 +86,20 @@ impl Entry {
     }
 }
 
+/// Both maps behind one lock, so a guard can never be issued between a
+/// revoke's flip and its removal.
+#[derive(Default)]
+struct Inner {
+    /// Live tickets, keyed by account id.
+    entries: HashMap<u32, Entry>,
+    /// Weak handles to every guard issued per account, for `revoke_account`.
+    guards: HashMap<u32, Vec<Weak<AtomicBool>>>,
+}
+
 /// In-memory store of live launch tickets, keyed by account id.
 #[derive(Default)]
 pub struct LaunchTicketStore {
-    entries: Mutex<HashMap<u32, Entry>>,
+    inner: Mutex<Inner>,
 }
 
 impl fmt::Debug for LaunchTicketStore {
@@ -82,11 +111,18 @@ impl fmt::Debug for LaunchTicketStore {
 }
 
 impl LaunchTicketStore {
-    fn lock(&self) -> MutexGuard<'_, HashMap<u32, Entry>> {
-        self.entries.lock().unwrap_or_else(PoisonError::into_inner)
+    fn lock(&self) -> MutexGuard<'_, Inner> {
+        self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Mint a ticket for `account_id`, replacing any previous one.
+    /// A fresh guard registered under `account_id`. The ticket route takes it
+    /// before its DB reads and passes it to [`Self::mint_guarded`].
+    pub fn guard(&self, account_id: u32) -> TicketGuard {
+        register(&mut self.lock(), account_id)
+    }
+
+    /// Mint a ticket for `account_id`, replacing any previous one. Takes its
+    /// own guard.
     pub fn mint(
         &self,
         account_id: u32,
@@ -94,15 +130,9 @@ impl LaunchTicketStore {
         launch_id: &str,
         now: Instant,
     ) -> MintedTicket {
-        let ticket = Alphanumeric.sample_string(&mut rand::rng(), TICKET_LEN);
-        let entry = Entry {
-            name_lower: account_name.to_ascii_lowercase(),
-            hash: sha256(sha1_upper_hex(&ticket).as_bytes()),
-            launch_id: launch_id.to_string(),
-            minted: now,
-            last_used: now,
-        };
-        self.lock().insert(account_id, entry);
+        let mut inner = self.lock();
+        let guard = register(&mut inner, account_id);
+        let ticket = store_ticket(&mut inner, account_id, account_name, launch_id, now, guard);
         MintedTicket {
             account_name: account_name.to_string(),
             ticket,
@@ -110,39 +140,93 @@ impl LaunchTicketStore {
         }
     }
 
+    /// Mint like [`Self::mint`], but under the caller's `guard`. Returns `None`
+    /// when the guard was revoked, so nothing is minted for a revoked account.
+    pub fn mint_guarded(
+        &self,
+        account_id: u32,
+        account_name: &str,
+        launch_id: &str,
+        now: Instant,
+        guard: &TicketGuard,
+    ) -> Option<MintedTicket> {
+        let mut inner = self.lock();
+        if !guard.is_current() {
+            return None;
+        }
+        let ticket = store_ticket(
+            &mut inner,
+            account_id,
+            account_name,
+            launch_id,
+            now,
+            guard.clone(),
+        );
+        Some(MintedTicket {
+            account_name: account_name.to_string(),
+            ticket,
+            expires_in_secs: TICKET_IDLE.as_secs(),
+        })
+    }
+
     /// Check the client's `sha1_hex` password for `account_name`. The hex is
     /// uppercased before hashing; the name compare is ASCII case-insensitive.
-    /// A `Valid` result refreshes the idle clock. An expired entry is removed.
+    /// Every ticket of that name is checked, so two accounts that share a name
+    /// each verify with their own ticket. A `Valid` result refreshes the idle
+    /// clock. An expired entry is removed; a matching entry whose guard was
+    /// flipped is removed and answers `NoMatch`.
     pub fn verify(&self, account_name: &str, sha1_hex: &str, now: Instant) -> TicketCheck {
         let name_lower = account_name.to_ascii_lowercase();
         let digest = sha256(sha1_hex.to_ascii_uppercase().as_bytes());
-        let mut entries = self.lock();
-        let Some((&account_id, entry)) = entries
-            .iter_mut()
-            .find(|(_, entry)| entry.name_lower == name_lower)
-        else {
+        let mut inner = self.lock();
+        let candidates: Vec<u32> = inner
+            .entries
+            .iter()
+            .filter(|(_, entry)| entry.name_lower == name_lower)
+            .map(|(&account_id, _)| account_id)
+            .collect();
+        let mut found = None;
+        for account_id in candidates {
+            let Some(entry) = inner.entries.get(&account_id) else {
+                continue;
+            };
+            if entry.expired(now) {
+                inner.entries.remove(&account_id);
+                continue;
+            }
+            // Compare every candidate; no early exit on a match.
+            let matched = bool::from(entry.hash.as_slice().ct_eq(digest.as_slice()));
+            if matched && found.is_none() {
+                found = Some(account_id);
+            }
+        }
+        let Some(account_id) = found else {
             return TicketCheck::NoMatch;
         };
-        if entry.expired(now) {
-            entries.remove(&account_id);
+        let Some(entry) = inner.entries.get_mut(&account_id) else {
             return TicketCheck::NoMatch;
-        }
-        if !bool::from(entry.hash.as_slice().ct_eq(digest.as_slice())) {
+        };
+        let live = entry.guard.is_current();
+        if !live {
+            inner.entries.remove(&account_id);
             return TicketCheck::NoMatch;
         }
         entry.last_used = now;
-        TicketCheck::Valid { account_id }
+        TicketCheck::Valid {
+            account_id,
+            guard: entry.guard.clone(),
+        }
     }
 
     /// Refresh the idle clock of the account's ticket. Needs the launch id it
     /// was minted for; returns `false` on a mismatch, a miss or an expiry.
     pub fn heartbeat(&self, account_id: u32, launch_id: &str, now: Instant) -> bool {
-        let mut entries = self.lock();
-        let Some(entry) = entries.get_mut(&account_id) else {
+        let mut inner = self.lock();
+        let Some(entry) = inner.entries.get_mut(&account_id) else {
             return false;
         };
         if entry.expired(now) {
-            entries.remove(&account_id);
+            inner.entries.remove(&account_id);
             return false;
         }
         if !same_launch(&entry.launch_id, launch_id) {
@@ -153,35 +237,86 @@ impl LaunchTicketStore {
     }
 
     /// End the account's ticket. Needs the matching launch id; returns `false`
-    /// when there is no such ticket.
+    /// when there is no such ticket. Does not flip guards.
     pub fn end(&self, account_id: u32, launch_id: &str) -> bool {
-        let mut entries = self.lock();
-        let matches = entries
+        let mut inner = self.lock();
+        let matches = inner
+            .entries
             .get(&account_id)
             .is_some_and(|entry| same_launch(&entry.launch_id, launch_id));
         if matches {
-            entries.remove(&account_id);
+            inner.entries.remove(&account_id);
         }
         matches
     }
 
-    /// Drop the account's ticket at once, whatever its launch.
+    /// Drop the account's ticket at once, whatever its launch, and flip every
+    /// guard issued to the account. This is the only path that flips guards.
+    /// A handoff already issued must die with the account's sessions, while an
+    /// `end` from the launcher must not kill a running Change Server.
     pub fn revoke_account(&self, account_id: u32) {
-        self.lock().remove(&account_id);
+        let mut inner = self.lock();
+        inner.entries.remove(&account_id);
+        if let Some(list) = inner.guards.remove(&account_id) {
+            for weak in list {
+                if let Some(flag) = weak.upgrade() {
+                    flag.store(false, Ordering::SeqCst);
+                }
+            }
+        }
     }
 
-    /// Remove every expired ticket and return how many were removed.
+    /// Remove every expired ticket and drop the guard handles nothing holds
+    /// any more. Returns how many tickets were removed.
     pub fn reap(&self, now: Instant) -> usize {
-        let mut entries = self.lock();
-        let before = entries.len();
-        entries.retain(|_, entry| !entry.expired(now));
-        before - entries.len()
+        let mut inner = self.lock();
+        let before = inner.entries.len();
+        inner.entries.retain(|_, entry| !entry.expired(now));
+        inner.guards.retain(|_, list| {
+            list.retain(|weak| weak.strong_count() > 0);
+            !list.is_empty()
+        });
+        before - inner.entries.len()
     }
 
     /// Number of tickets held, expired or not until [`Self::reap`] runs.
     pub fn live_count(&self) -> usize {
-        self.lock().len()
+        self.lock().entries.len()
     }
+}
+
+/// Create a guard for `account_id` and record a weak handle to it.
+fn register(inner: &mut Inner, account_id: u32) -> TicketGuard {
+    let flag = Arc::new(AtomicBool::new(true));
+    inner
+        .guards
+        .entry(account_id)
+        .or_default()
+        .push(Arc::downgrade(&flag));
+    TicketGuard(flag)
+}
+
+/// Generate a ticket, store its entry under `account_id` (replacing any
+/// previous one) and return the plain ticket.
+fn store_ticket(
+    inner: &mut Inner,
+    account_id: u32,
+    account_name: &str,
+    launch_id: &str,
+    now: Instant,
+    guard: TicketGuard,
+) -> String {
+    let ticket = Alphanumeric.sample_string(&mut rand::rng(), TICKET_LEN);
+    let entry = Entry {
+        name_lower: account_name.to_ascii_lowercase(),
+        hash: sha256(sha1_upper_hex(&ticket).as_bytes()),
+        launch_id: launch_id.to_string(),
+        minted: now,
+        last_used: now,
+        guard,
+    };
+    inner.entries.insert(account_id, entry);
+    ticket
 }
 
 /// Constant-time compare of a stored launch id with the presented one.
@@ -208,154 +343,5 @@ fn sha1_upper_hex(input: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const LAUNCH: &str = "launch-0001";
-
-    fn sha1_of(ticket: &str) -> String {
-        sha1_upper_hex(ticket)
-    }
-
-    #[test]
-    fn minted_ticket_shape() {
-        let store = LaunchTicketStore::default();
-        let now = Instant::now();
-        let first = store.mint(1, "Player_1234", LAUNCH, now);
-        let second = store.mint(1, "Player_1234", LAUNCH, now);
-        assert_eq!(first.ticket.len(), TICKET_LEN);
-        assert!(first.ticket.chars().all(|c| c.is_ascii_alphanumeric()));
-        assert_ne!(first.ticket, second.ticket);
-    }
-
-    #[test]
-    fn verify_accepts_the_sha1_of_the_ticket_any_case() {
-        let store = LaunchTicketStore::default();
-        let now = Instant::now();
-        let minted = store.mint(1, "PLAYER_1234", LAUNCH, now);
-        let upper = sha1_of(&minted.ticket);
-        assert_eq!(
-            store.verify("Player_1234", &upper, now),
-            TicketCheck::Valid { account_id: 1 }
-        );
-        let lower = upper.to_ascii_lowercase();
-        assert_eq!(
-            store.verify("Player_1234", &lower, now),
-            TicketCheck::Valid { account_id: 1 }
-        );
-    }
-
-    #[test]
-    fn verify_refuses_wrong_name_wrong_hash_and_plain_ticket() {
-        let store = LaunchTicketStore::default();
-        let now = Instant::now();
-        let minted = store.mint(1, "Player_1234", LAUNCH, now);
-        assert_eq!(
-            store.verify("Player_9999", &sha1_of(&minted.ticket), now),
-            TicketCheck::NoMatch
-        );
-        assert_eq!(
-            store.verify("Player_1234", &sha1_of("not-the-ticket"), now),
-            TicketCheck::NoMatch
-        );
-        assert_eq!(
-            store.verify("Player_1234", &minted.ticket, now),
-            TicketCheck::NoMatch
-        );
-    }
-
-    #[test]
-    fn ticket_is_reusable_within_its_life() {
-        let store = LaunchTicketStore::default();
-        let t0 = Instant::now();
-        let minted = store.mint(1, "Player_1234", LAUNCH, t0);
-        let sha1 = sha1_of(&minted.ticket);
-        for minutes in [0, 20, 40] {
-            let now = t0 + Duration::from_secs(minutes * 60);
-            assert_eq!(
-                store.verify("Player_1234", &sha1, now),
-                TicketCheck::Valid { account_id: 1 }
-            );
-        }
-    }
-
-    #[test]
-    fn idle_and_absolute_expiry() {
-        let t0 = Instant::now();
-
-        let idle = LaunchTicketStore::default();
-        let minted = idle.mint(1, "Player_1234", LAUNCH, t0);
-        let sha1 = sha1_of(&minted.ticket);
-        assert_eq!(
-            idle.verify("Player_1234", &sha1, t0 + Duration::from_secs(31 * 60)),
-            TicketCheck::NoMatch
-        );
-
-        let store = LaunchTicketStore::default();
-        let minted = store.mint(1, "Player_1234", LAUNCH, t0);
-        let sha1 = sha1_of(&minted.ticket);
-        for step in 1..=35u64 {
-            let now = t0 + Duration::from_secs(step * 20 * 60);
-            assert!(store.heartbeat(1, LAUNCH, now), "heartbeat at step {step}");
-        }
-        let at_absolute = t0 + TICKET_ABSOLUTE;
-        assert_eq!(
-            store.verify("Player_1234", &sha1, at_absolute),
-            TicketCheck::NoMatch
-        );
-    }
-
-    #[test]
-    fn mint_replaces_the_previous_ticket() {
-        let store = LaunchTicketStore::default();
-        let now = Instant::now();
-        let first = store.mint(1, "Player_1234", LAUNCH, now);
-        let second = store.mint(1, "Player_1234", LAUNCH, now);
-        assert_eq!(
-            store.verify("Player_1234", &sha1_of(&first.ticket), now),
-            TicketCheck::NoMatch
-        );
-        assert_eq!(
-            store.verify("Player_1234", &sha1_of(&second.ticket), now),
-            TicketCheck::Valid { account_id: 1 }
-        );
-    }
-
-    #[test]
-    fn heartbeat_and_end_need_the_launch_id() {
-        let store = LaunchTicketStore::default();
-        let now = Instant::now();
-        let minted = store.mint(1, "Player_1234", LAUNCH, now);
-        assert!(!store.heartbeat(1, "launch-9999", now));
-        assert!(!store.end(1, "launch-9999"));
-        assert_eq!(store.live_count(), 1);
-        assert_eq!(
-            store.verify("Player_1234", &sha1_of(&minted.ticket), now),
-            TicketCheck::Valid { account_id: 1 }
-        );
-        assert!(store.end(1, LAUNCH));
-        assert_eq!(store.live_count(), 0);
-    }
-
-    #[test]
-    fn store_never_holds_the_ticket() {
-        let store = LaunchTicketStore::default();
-        let minted = store.mint(1, "Player_1234", LAUNCH, Instant::now());
-        let shown = format!("{store:?}");
-        assert!(!shown.contains(&minted.ticket));
-        assert!(!shown.contains(&sha1_of(&minted.ticket)));
-        assert!(shown.contains("live_count"));
-    }
-
-    #[test]
-    fn reap_counts_expired() {
-        let store = LaunchTicketStore::default();
-        let t0 = Instant::now();
-        store.mint(1, "Player_0001", LAUNCH, t0);
-        store.mint(2, "Player_0002", LAUNCH, t0);
-        let later = t0 + TICKET_ABSOLUTE;
-        store.mint(3, "Player_0003", LAUNCH, later);
-        assert_eq!(store.reap(later), 2);
-        assert_eq!(store.live_count(), 1);
-    }
-}
+#[path = "launch_ticket_tests.rs"]
+mod tests;

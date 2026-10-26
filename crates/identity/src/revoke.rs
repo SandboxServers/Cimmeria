@@ -40,6 +40,9 @@ pub fn end_live_sessions(account_id: u32) -> bool {
 /// Ends the access tokens and launch tickets of `account_id` in the given
 /// stores. [`end_live_sessions`] calls it with the registered stores.
 fn end_in(stores: &Stores, launch_tickets: &LaunchTicketStore, account_id: u32) {
+    // The order is load-bearing (C16.4): access tokens first, then launch
+    // tickets. The ticket route checks the grant after taking its guard, so a
+    // grant revoked here is refused there. Do not swap the two lines.
     stores.access.revoke_account(account_id);
     launch_tickets.revoke_account(account_id);
 }
