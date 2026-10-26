@@ -139,6 +139,8 @@ The proxy listener (`proxy_layer`) vets every request in this order:
 
 The peer is the bridge gateway because Docker forwards a loopback-published port through `docker-proxy`. This is the same cause as OPS-LT2 on the telemetry route. The proxy listener trusts the gateway's range by default; the telemetry quota key does not.
 
+Provider secrets are lines in `.env` that `docker/compose.yml` forwards: `CIMMERIA_IDP_DISCORD_SECRET`, `CIMMERIA_IDP_GOOGLE_SECRET` and `CIMMERIA_IDP_OIDC_SECRET`. A provider whose `client_secret_env` is another name needs that name forwarded in `docker/compose.yml` or an override file, or the provider is skipped as `secret_missing`.
+
 ## Kill switches
 
 Each is a line in `.env` that the overlay passes to the container; only the value `1` turns it on. Run `docker compose up -d` after you set it.

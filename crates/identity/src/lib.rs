@@ -12,6 +12,8 @@
 //! [campaign ledger](../../../docs/analysis/client-tls-oidc/README.md).
 
 pub mod config;
+#[cfg(test)]
+mod deploy_env_tests;
 pub mod http;
 pub mod limits;
 pub mod link;
