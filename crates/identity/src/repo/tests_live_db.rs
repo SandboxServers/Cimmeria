@@ -25,6 +25,7 @@ const ID_EMAIL_OFF: u32 = 2_000_210;
 const ID_LOCK: u32 = 2_000_211;
 const ID_MISC: u32 = 2_000_212;
 const ID_MISC_OTHER: u32 = 2_000_213;
+const ID_PROMOTED: u32 = 0x7000_EC00;
 
 /// Delete the sentinel account `account_id`. Its identity and event rows
 /// cascade with it. A failed delete is ignored so it never hides an assertion.
@@ -455,4 +456,38 @@ async fn live_db_touch_delete_facts_and_has_password() {
     assert_eq!(deleted, Ok(true));
     assert_eq!(repeat, Ok(false));
     assert_eq!(methods_after, Ok(0));
+}
+
+#[tokio::test]
+async fn live_db_link_refuses_an_account_promoted_after_the_read() {
+    let pool = require_db_or_skip!();
+    insert_account(
+        &pool,
+        ID_PROMOTED,
+        "ct_promoted_ec00",
+        Some("legacy-hash-ec00"),
+    )
+    .await;
+    // The link handler read the account as linkable; a GM then promotes it
+    // before the insert takes the account row lock.
+    let promoted = sqlx::query("UPDATE account SET accesslevel = 1 WHERE account_id = $1")
+        .bind(ID_PROMOTED as i32)
+        .execute(&pool)
+        .await;
+    let id = verified("ct-promoted-subject", None, false);
+    let refused = identity::insert(&pool, ID_PROMOTED, &id, false).await;
+    let state: Result<(bool, i64), sqlx::Error> = sqlx::query_as(
+        "SELECT password IS NOT NULL, \
+         (SELECT COUNT(*) FROM account_identity WHERE account_id = $1) \
+         FROM account WHERE account_id = $1",
+    )
+    .bind(ID_PROMOTED as i32)
+    .fetch_one(&pool)
+    .await;
+    cleanup(&pool, ID_PROMOTED).await;
+    promoted.expect("promote the account");
+    assert_eq!(refused, Err(super::RepoError::Conflict));
+    let (has_password, identities) = state.expect("read the account");
+    assert!(has_password, "a refused link cleared the password");
+    assert_eq!(identities, 0, "a refused link left an identity row");
 }

@@ -170,8 +170,15 @@ async fn live_db_issue_bound_waits_for_an_unlink_in_flight() {
 #[tokio::test]
 async fn live_db_issue_bound_refuses_a_disabled_account() {
     let pool = require_db_or_skip!();
-    insert_account(&pool, ACCOUNT_DISABLED, false).await;
+    // Link while the account is enabled, then disable it: the link itself now
+    // refuses a disabled account.
+    insert_account(&pool, ACCOUNT_DISABLED, true).await;
     let identity_id = link_identity(&pool, ACCOUNT_DISABLED, "ct73-disabled").await;
+    sqlx::query("UPDATE account SET enabled = false WHERE account_id = $1")
+        .bind(ACCOUNT_DISABLED as i32)
+        .execute(&pool)
+        .await
+        .expect("disable the account");
 
     let outcome = issue_bound(&pool, ACCOUNT_DISABLED, identity_id, base())
         .await

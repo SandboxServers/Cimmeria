@@ -318,7 +318,7 @@ async fn live_db_untrusted_provider_never_auto_links() {
 async fn live_db_staff_account_is_never_auto_linked() {
     let pool = require_db_or_skip!();
     clean(&pool).await;
-    insert_account(&pool, ID_STAFF, "ct25_staff_505", 1).await;
+    insert_account(&pool, ID_STAFF, "ct25_staff_505", 0).await;
     let email = "ct25-5@example.org";
     identity::insert(
         &pool,
@@ -328,6 +328,12 @@ async fn live_db_staff_account_is_never_auto_linked() {
     )
     .await
     .expect("first link");
+    // The account becomes staff after the link; the link itself refuses staff now.
+    sqlx::query("UPDATE account SET accesslevel = 1 WHERE account_id = $1")
+        .bind(ID_STAFF as i32)
+        .execute(&pool)
+        .await
+        .expect("promote the account");
     let env = harness(&pool);
     let (status, body) = code_grant(&env, verified("dev", "ct25-5b", Some(email), true)).await;
     clean(&pool).await;

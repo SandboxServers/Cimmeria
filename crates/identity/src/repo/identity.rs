@@ -9,7 +9,7 @@ use sqlx::{PgConnection, PgPool};
 use super::account::{facts_of, FactsRow};
 use super::event::{self, EventKind};
 use super::RepoError;
-use crate::link::AccountFacts;
+use crate::link::{linkable, AccountFacts};
 use crate::provider::VerifiedIdentity;
 
 /// The columns [`list_for_account`] selects. Holds neither the subject nor the
@@ -144,16 +144,24 @@ pub async fn insert_on(
     let account = account_id as i32;
     let provider = identity.provider.as_str();
 
-    let locked: Option<(bool,)> = sqlx::query_as(
-        "SELECT (password IS NOT NULL OR password_hash_v2 IS NOT NULL) \
+    let locked: Option<(bool, bool, i32, bool)> = sqlx::query_as(
+        "SELECT (password IS NOT NULL OR password_hash_v2 IS NOT NULL), \
+                enabled, accesslevel, test_account \
          FROM account WHERE account_id = $1 FOR UPDATE",
     )
     .bind(account)
     .fetch_optional(&mut *conn)
     .await?;
+    // The linkable test runs under the row lock, so a GM who promotes or disables
+    // the account after the caller read its facts is caught here.
+    if let Some((_, enabled, level, test)) = locked {
+        if !linkable(&facts_of(account, enabled, level, test)) {
+            return Err(RepoError::Conflict);
+        }
+    }
     // A missing account has no password; the identity insert then fails its
     // foreign key, which maps to `Db`.
-    let password_cleared = locked.is_some_and(|(has,)| has);
+    let password_cleared = locked.is_some_and(|(has, ..)| has);
     if password_cleared {
         sqlx::query(
             "UPDATE account SET password = NULL, password_hash_v2 = NULL, password_algo = 1 \
