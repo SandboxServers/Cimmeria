@@ -12,7 +12,9 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
 
-use cimmeria_cooked_pak::catalog::{encode_body, CategoryBody, Index, IndexEntry, Limits};
+use cimmeria_cooked_pak::catalog::{
+    decode_body, encode_body, CategoryBody, Index, IndexEntry, Limits,
+};
 use cimmeria_cooked_pak::digest::{category_digest, digest_hex};
 
 use crate::base::resources::{CategoryData, ResourceCache, CATEGORY_PAKS};
@@ -64,13 +66,14 @@ impl ServedCatalog {
     }
 
     /// Encode each `(pak, body)` pair and index the result. Fails naming the
-    /// category if one body is over `limits.max_total_bytes`.
+    /// category if one body is over `limits.max_total_bytes`, or if the
+    /// launcher's decoder would refuse it under `limits`.
     fn assemble(parts: Vec<(String, CategoryBody)>, limits: &Limits) -> Result<Self, String> {
         let mut categories = BTreeMap::new();
         for (pak, body) in parts {
             let bytes = encode_body(&body);
             let size = bytes.len() as u64;
-            if size > limits.max_total_bytes {
+            if size > limits.max_total_bytes || decode_body(&bytes, limits).is_err() {
                 return Err(format!(
                     "category {}: category_too_large ({size} bytes)",
                     body.category_id

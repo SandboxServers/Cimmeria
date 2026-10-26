@@ -121,6 +121,29 @@ fn an_unchanged_category_has_no_changed_entries_and_lists_every_key() {
 }
 
 #[test]
+fn a_served_key_the_raw_pak_lacks_is_changed_and_listed() {
+    let dir = tempfile::tempdir().unwrap();
+    // No `with_addition_ids`: the raw PAK lacks the items Cimmeria adds.
+    let raw = BTreeMap::from([(PLAIN_ITEM, item_xml(PLAIN_ITEM, "set:Plain", 1))]);
+    let cache = cache_over(dir.path(), &raw);
+    assert!(!ITEM_ADDITIONS.is_empty());
+    let id = ITEM_ADDITIONS[0].item_id;
+    let served = cache.category(ITEMS).unwrap();
+    assert!(served.elements.contains_key(&id));
+
+    let catalog = ServedCatalog::build(&cache, dir.path().to_str().unwrap()).unwrap();
+    let decoded = decode_body(&catalog.category(ITEMS).unwrap().body, &Limits::DEFAULT).unwrap();
+    assert!(decoded.changed.contains_key(&id));
+    assert_eq!(decoded.changed[&id], served.elements[&id]);
+    assert!(decoded.keys.contains(&id));
+    assert!(decoded.keys.windows(2).all(|w| w[0] < w[1]));
+    assert!(!decoded.changed.contains_key(&PLAIN_ITEM));
+
+    let index: Index = serde_json::from_slice(&catalog.index_json()).unwrap();
+    assert_eq!(index.categories[0].entries as usize, served.elements.len());
+}
+
+#[test]
 fn an_oversize_body_fails_the_build_naming_the_category() {
     let dir = tempfile::tempdir().unwrap();
     let raw = with_addition_ids(BTreeMap::from([(
@@ -137,6 +160,32 @@ fn an_oversize_body_fails_the_build_naming_the_category() {
     let err = ServedCatalog::build_with_limits(&cache, dir.path().to_str().unwrap(), &tiny)
         .err()
         .expect("a 16-byte cap refuses any category body");
+    assert!(
+        err.starts_with("category 4: category_too_large ("),
+        "the error must name the category and the code, got: {err}"
+    );
+    assert_eq!(failure_code(&err), "category_too_large");
+}
+
+#[test]
+fn a_changed_record_over_the_entry_cap_fails_the_build() {
+    let dir = tempfile::tempdir().unwrap();
+    let raw = with_addition_ids(BTreeMap::from([(
+        OVERRIDDEN_ITEM,
+        item_xml(OVERRIDDEN_ITEM, "set:CoreWidgets image:IconMissing", 1),
+    )]));
+    let cache = cache_over(dir.path(), &raw);
+    // The total cap is roomy; the per-record cap refuses the changed item,
+    // which the launcher's decoder would otherwise reject as `bad_body`.
+    let strict = Limits {
+        max_keys: 1_000_000,
+        max_entry_bytes: 1,
+        max_total_bytes: 32 << 20,
+    };
+
+    let err = ServedCatalog::build_with_limits(&cache, dir.path().to_str().unwrap(), &strict)
+        .err()
+        .expect("a changed record over the entry cap fails the build");
     assert!(
         err.starts_with("category 4: category_too_large ("),
         "the error must name the category and the code, got: {err}"
