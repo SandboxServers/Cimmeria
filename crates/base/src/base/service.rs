@@ -315,30 +315,15 @@ impl BaseService {
             cimmeria_resources::base::start_profiles::load_at_boot(pool).await;
         }
 
-        let resource_cache = match ResourceCache::load_all(&self.data_dir) {
-            Ok(cache) => {
-                // The presync catalog builds in the background (LP-11); boot
-                // doesn't wait on it.
-                let cache = Arc::new(cache);
-                super::presync_catalog::spawn_presync_catalog(
-                    Arc::clone(&cache),
-                    self.data_dir.clone(),
-                );
-                Some(cache)
-            }
-            Err(e) => {
-                // Same row the cell's `startup_report::cache_failed` writes;
-                // base does not depend on the cell crate.
-                tracing::warn!(
-                    event = "cache_load_failed",
-                    cache = "resource_cache",
-                    error = %e,
-                    consequence = "the base runs without the resource cache",
-                    "startup cache failed to load"
-                );
-                None
-            }
-        };
+        // The presync catalog builds in the background (LP-11); boot doesn't
+        // wait on it. A cache that fails to load publishes `catalog_failed`
+        // (D-LP13).
+        let resource_cache = super::presync_catalog::presync_after_cache_load(
+            ResourceCache::load_all(&self.data_dir),
+            &self.data_dir,
+            super::presync_catalog::spawn_presync_catalog,
+            cimmeria_resources::base::served_catalog::publish,
+        );
 
         let cell_tx = self.cell_tx.clone();
         let cell_rx = self.cell_rx.take();
