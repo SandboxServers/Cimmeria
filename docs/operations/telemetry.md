@@ -401,8 +401,10 @@ address the quota rule picks. When the socket peer is loopback, which is
 what Caddy looks like to the server, the key is the rightmost entry of the
 last `X-Forwarded-For` header; from any other peer the header is ignored,
 so a caller who reaches the port directly cannot choose its own key. The
-key is used only to count and is never logged. Whether the colo's container
-sees Caddy as loopback has not been checked (OPS-LT2).
+key counts the quotas and, in process memory only, is the address the
+client-telemetry registry records a stream under (D-LTL4); it is never
+logged. Whether the colo's container sees Caddy as loopback has not been
+checked (OPS-LT2).
 
 **Raise the per-IP quotas where the key is still shared:** a NAT or office
 egress, any proxy that is not on loopback, and a container that sees the
@@ -565,6 +567,8 @@ are not part of the launcher kind.
 | decompressed chunk | 256 KiB | the chunk rules above (truncated) |
 | one chunk row | 4 KiB | the chunk rules above (`bad_rows`) |
 | rows per chunk | 200 | the chunk rules above (truncated) |
+
+The launcher paces itself under the 10 chunks a minute session quota (D-LTL1): it sends at most one chunk about every 7 s, and it flushes when a launch finishes and on exit (at most 3 s). A normal run stays inside the quota, and a retry has room.
 
 A row the launcher kind may keep has one of twelve event names and a
 `ClientNative` shape: `client.launcher.` followed by `adoption`, `startup`,
@@ -1002,19 +1006,23 @@ caller's network address on the launcher and telemetry routes:
   The request span drops `peer` on those paths. The rule does not reach the
   admin-router `admin.request` `unmatched` rows, which keep `peer`, or the
   game-login rows in `crates/auth`.
-- **The forwarded address is a quota key and nothing else.** From a loopback
+- **The forwarded address is a quota key and the in-memory stream address, nothing else.** From a loopback
   peer the server counts quotas against the rightmost `X-Forwarded-For`
-  entry; it never logs, stores, returns or hashes it. See
+  entry; it never logs, persists, returns or hashes it. The in-memory
+  client-telemetry registry also keys its stream on that caller (D-LTL4); it
+  holds the address in process memory only and never logs or writes it. See
   [telemetry-upload-endpoint.md](telemetry-upload-endpoint.md#the-forwarded-for-quota-key).
 - **The launcher scrubs its own rows.** Every string of a launcher row, and every line of a launcher log in a debug-log upload, has IPv4 and IPv6 literals replaced with `[ip]` before it is queued or sent (`ip_scrub.rs`); nothing is hashed. Absolute paths in a launcher row's strings become `<path removed>` and the home folder becomes `~` (`launcher_event.rs`).
 - **Endpoints are https.** The server hands out only an https upload URL
   (or an explicit env override with a WARN), and the public routes are
   reached over `https://play.cimmeria.app`.
 
-Known and not fixed: the world-entry correlation that matches a telemetry
-stream to a game session by socket address (`StreamRecord.peer_ip`, TG-NET-18)
-fails behind Caddy, because the socket peer is loopback. Repairing it needs a
-forwarded-address match (D-LT21, default no).
+The world-entry correlation matches a telemetry stream to a game session by the
+quota-key address (`StreamRecord.peer_ip`, TG-NET-18, D-LTL4). Behind Caddy that
+is the forwarded caller, so it finds the stream only when the launcher's mint
+and the game login reach the server from the same public address. A launcher
+and a game client on different addresses (a dual-stack split, a VPN on one of
+them) give `absent`; two machines behind one NAT give `ambiguous`.
 
 - `install_id` and `machine_id` are stable per-install identifiers.
   The mint endpoint logs them at **debug** level only (info gets an

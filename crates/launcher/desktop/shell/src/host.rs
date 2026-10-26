@@ -18,6 +18,7 @@ mod game_update;
 mod held_download;
 mod install;
 mod launcher_telemetry;
+pub(crate) use launcher_telemetry::HostSource;
 #[cfg(test)]
 mod launcher_telemetry_uat;
 pub use adoption::{AdoptionCommand, AdoptionError, AdoptionStatus};

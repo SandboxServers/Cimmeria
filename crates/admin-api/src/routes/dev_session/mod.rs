@@ -69,6 +69,8 @@ mod launcher_kind_tests;
 #[cfg(test)]
 mod session_kind_tests;
 #[cfg(test)]
+mod stream_peer_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod upload_endpoint_tests;

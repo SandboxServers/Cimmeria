@@ -3,8 +3,8 @@
 //! The colo's board proxy forwards the https routes from loopback, so every
 //! such caller shares the proxy's address. A loopback peer's
 //! `X-Forwarded-For` names the caller instead, and that is what the quotas
-//! key on. The result is a quota key and nothing else: it is never logged,
-//! stored or put in a field.
+//! key on. The result is a quota key and the in-memory client-telemetry
+//! stream address (D-LTL4); it is never logged, persisted or put in a field.
 
 use std::net::IpAddr;
 
@@ -21,8 +21,9 @@ const FORWARDED_FOR: &str = "x-forwarded-for";
 /// non-loopback peer's header is ignored entirely.
 ///
 /// The result goes only into `quota::ip_key(..)`; it is never logged, stored,
-/// returned, or put in a field, span, `Uploader`, `RefusalLog` subject or
-/// `StreamRecord` (D-LT18).
+/// returned, or put in a field, span, `Uploader` or `RefusalLog` subject. It is
+/// also the `StreamRecord.peer_ip` of the in-memory client-telemetry registry
+/// (D-LTL4), which is never logged or written.
 pub(crate) fn rate_limit_ip(peer: IpAddr, headers: &HeaderMap) -> IpAddr {
     if !peer.to_canonical().is_loopback() {
         return peer;

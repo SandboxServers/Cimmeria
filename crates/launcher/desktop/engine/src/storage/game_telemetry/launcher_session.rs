@@ -1,6 +1,7 @@
 //! The launcher's own adoption events, sent at once under a `launcher` session
 //! (C11). Nothing is queued on disk and the upload queue is never touched: a
-//! send that cannot post drops its events (README D-AU21).
+//! send reports which events it posted; the forwarder decides what to retry (in
+//! memory only).
 use super::session::{self, MintFailure, Session};
 use super::*;
 use crate::client_setup::login_servers::{self, LoginServer};
@@ -9,6 +10,10 @@ use cimmeria_launcher_core::telemetry::chunk::{self, ChunkError};
 use cimmeria_launcher_core::telemetry::events::TelemetryEvent;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
+
+#[path = "launcher_send.rs"]
+mod send;
+pub use send::SendReport;
 
 /// The `session_kind` a launcher session is minted with (server C12).
 pub const LAUNCHER_SESSION_KIND: &str = "launcher";
@@ -160,77 +165,7 @@ impl LauncherSender {
     /// Send `events` now, in chunks. Never panics, never writes to disk, never
     /// logs a field value, never logs at target `adoption`.
     pub async fn send(&self, target: &LauncherTarget, events: &[TelemetryEvent]) -> SendOutcome {
-        if events.is_empty() {
-            return SendOutcome::Empty;
-        }
-        if self.held() {
-            tracing::debug!(
-                target: "launcher.pipeline",
-                reason = "held",
-                "launcher telemetry batch not sent"
-            );
-            return SendOutcome::Held;
-        }
-        let mut live = match self.usable_session(target).await {
-            Ok(live) => live,
-            Err(reason) => {
-                tracing::debug!(
-                    target: "launcher.pipeline",
-                    reason,
-                    "launcher telemetry batch not sent"
-                );
-                return SendOutcome::MintFailed { reason };
-            }
-        };
-        let max_bytes = live.session.marker().telemetry.chunk_max_bytes;
-        let Ok(batches) = chunk::split_batches(events, max_bytes, LAUNCHER_MAX_ROWS) else {
-            tracing::debug!(
-                target: "launcher.pipeline",
-                reason = "dropped",
-                "launcher telemetry batch not sent"
-            );
-            return SendOutcome::Dropped;
-        };
-        for range in batches {
-            let batch = &events[range];
-            let mut posted = self.post(&live, batch).await;
-            if matches!(posted, Err(ChunkError::TokenRejected)) {
-                // A 401 is the only error that mints again, and only once.
-                *locked(&self.session) = None;
-                let Ok(fresh) = self.mint(target).await else {
-                    tracing::debug!(
-                        target: "launcher.pipeline",
-                        reason = "dropped",
-                        "launcher telemetry batch not sent"
-                    );
-                    return SendOutcome::Dropped;
-                };
-                live = fresh;
-                posted = self.post(&live, batch).await;
-            }
-            match posted {
-                Ok(()) => {}
-                Err(err @ (ChunkError::KillSwitch { .. } | ChunkError::RateLimited { .. })) => {
-                    let asked = err.retry_after_secs().unwrap_or(60);
-                    self.hold(Duration::from_secs(asked).clamp(MIN_RETRY_HOLD, MAX_HOLD));
-                    tracing::debug!(
-                        target: "launcher.pipeline",
-                        reason = "dropped",
-                        "launcher telemetry batch not sent"
-                    );
-                    return SendOutcome::Dropped;
-                }
-                Err(_) => {
-                    tracing::debug!(
-                        target: "launcher.pipeline",
-                        reason = "dropped",
-                        "launcher telemetry batch not sent"
-                    );
-                    return SendOutcome::Dropped;
-                }
-            }
-        }
-        SendOutcome::Sent
+        self.send_report(target, events).await.outcome
     }
 
     /// Post one already-split log chunk (LF-14). A 401 mints again, once.
@@ -361,7 +296,6 @@ impl LauncherSender {
     }
 
     /// The time left on the hold, if any.
-    #[cfg(test)]
     pub fn hold_remaining(&self) -> Option<Duration> {
         locked(&self.hold_until).and_then(|until| until.checked_duration_since(Instant::now()))
     }

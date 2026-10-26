@@ -85,9 +85,10 @@ fn mint_keys_the_per_ip_quota_on_the_forwarded_caller_behind_a_loopback_proxy() 
     assert!(matches!(err, AuthError::QuotaExceeded(_)));
 }
 
-// Directive 6 (D-LT19): the forwarded address is a quota key and nothing
-// else. A mint that passes and a mint refused on quota, both behind a
-// loopback proxy that forwarded `198.51.100.7`, leave no row that names it.
+// Directive 6 (D-LT19): the forwarded address is a quota key and the
+// in-memory stream address, and nothing else. A mint that passes and a mint
+// refused on quota, both behind a loopback proxy that forwarded
+// `198.51.100.7`, leave no row that names it.
 #[test]
 fn forwarded_address_never_reaches_a_mint_log_row() {
     let _g = EnvGuard::install();
