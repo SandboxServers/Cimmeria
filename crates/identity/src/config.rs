@@ -71,6 +71,27 @@ pub struct Links {
     pub forums: Option<String>,
 }
 
+/// How an `oidc` provider authenticates itself at the token endpoint. The
+/// default is `client_secret_basic` (RFC 6749 2.3.1).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TokenAuthMethod {
+    /// The client id and secret go in an `Authorization: Basic` header.
+    #[default]
+    ClientSecretBasic,
+    /// The client id and secret go in the form body.
+    ClientSecretPost,
+}
+
+impl TokenAuthMethod {
+    /// The method's name as the config file and the discovery document spell it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TokenAuthMethod::ClientSecretBasic => "client_secret_basic",
+            TokenAuthMethod::ClientSecretPost => "client_secret_post",
+        }
+    }
+}
+
 /// One `[[provider]]` table after validation.
 #[derive(Debug)]
 pub struct ProviderConfig {
@@ -90,6 +111,9 @@ pub struct ProviderConfig {
     pub scopes: Vec<String>,
     /// Whether the provider's email claim may be trusted as verified.
     pub trusted_email: bool,
+    /// How an `oidc` provider sends its secret at the token endpoint; the
+    /// default for the other kinds, which ignore it.
+    pub token_auth: TokenAuthMethod,
 }
 
 /// A provider client secret. `Debug` never shows the value (R7).
@@ -178,6 +202,9 @@ pub enum ConfigError {
     /// `public_base_url` ends with a slash.
     #[error("public_base_url must not end with a slash")]
     TrailingSlash,
+    /// An `oidc` provider's `token_endpoint_auth_method` is not one of the two.
+    #[error("provider {0}: token_endpoint_auth_method must be client_secret_basic or client_secret_post")]
+    UnknownAuthMethod(String),
     /// A provider's `kind` is not discord, oidc or dev_mock.
     #[error("provider {0}: kind must be discord, oidc or dev_mock")]
     UnknownKind(String),
@@ -224,6 +251,7 @@ struct RawProvider {
     scopes: Option<Vec<String>>,
     #[serde(default)]
     trusted_email: bool,
+    token_endpoint_auth_method: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -260,6 +288,7 @@ pub fn load(
             issuer,
             scopes,
             trusted_email,
+            token_endpoint_auth_method,
         } = raw_provider;
         let id = ProviderId::new(&raw_id).ok_or_else(|| ConfigError::BadId(raw_id.clone()))?;
         if !seen.insert(id.clone()) {
@@ -274,13 +303,15 @@ pub fn load(
             );
             continue;
         }
-        let scopes = match kind {
+        let (scopes, token_auth) = match kind {
             ProviderKind::Oidc => {
                 check_oidc_issuer(&raw_id, issuer.as_deref(), trusted_email)?;
-                scopes
-                    .unwrap_or_else(|| OIDC_DEFAULT_SCOPES.iter().map(|s| s.to_string()).collect())
+                let auth = parse_auth_method(&raw_id, token_endpoint_auth_method.as_deref())?;
+                let scopes = scopes
+                    .unwrap_or_else(|| OIDC_DEFAULT_SCOPES.iter().map(|s| s.to_string()).collect());
+                (scopes, auth)
             }
-            _ => Vec::new(),
+            _ => (Vec::new(), TokenAuthMethod::default()),
         };
         let Some(secret) = env(&client_secret_env).filter(|value| !value.is_empty()) else {
             skipped(
@@ -298,6 +329,7 @@ pub fn load(
             issuer,
             scopes,
             trusted_email,
+            token_auth,
         });
     }
     if kill.idp_disabled {
@@ -381,6 +413,17 @@ fn check_oidc_issuer(
     Ok(())
 }
 
+/// Reads an `oidc` provider's `token_endpoint_auth_method`: absent or
+/// `client_secret_basic` is Basic, `client_secret_post` is Post, anything else
+/// is refused.
+fn parse_auth_method(id: &str, raw: Option<&str>) -> Result<TokenAuthMethod, ConfigError> {
+    match raw {
+        None | Some("client_secret_basic") => Ok(TokenAuthMethod::ClientSecretBasic),
+        Some("client_secret_post") => Ok(TokenAuthMethod::ClientSecretPost),
+        Some(_) => Err(ConfigError::UnknownAuthMethod(id.to_owned())),
+    }
+}
+
 /// True when any table in `value`, at any depth, has a key named `key`.
 fn names_key(value: &toml::Value, key: &str) -> bool {
     match value {
@@ -391,256 +434,5 @@ fn names_key(value: &toml::Value, key: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The test secret. Distinct from every real value; the redaction test
-    /// checks that it never reaches a `Debug` string.
-    const SECRET: &str = "s3cr3t-test-value";
-
-    const EXAMPLE: &str = include_str!("../../../config/auth-providers.toml.example");
-
-    /// Both example secrets are set.
-    fn both_secrets(name: &str) -> Option<String> {
-        match name {
-            "CIMMERIA_IDP_DISCORD_SECRET" | "CIMMERIA_IDP_GOOGLE_SECRET" => Some(SECRET.to_owned()),
-            _ => None,
-        }
-    }
-
-    fn no_secrets(_: &str) -> Option<String> {
-        None
-    }
-
-    /// Every secret the inline fixtures below name is set.
-    fn all_secrets(name: &str) -> Option<String> {
-        match name {
-            "CIMMERIA_IDP_DEV_SECRET"
-            | "CIMMERIA_IDP_DISCORD_SECRET"
-            | "CIMMERIA_IDP_GOOGLE_SECRET" => Some(SECRET.to_owned()),
-            _ => None,
-        }
-    }
-
-    /// One Discord provider, the minimum valid file.
-    const MINIMAL: &str = r#"
-public_base_url = "https://play.example.org"
-
-[[provider]]
-id = "discord"
-kind = "discord"
-display_name = "Discord"
-client_id = "000000000000000000"
-client_secret_env = "CIMMERIA_IDP_DISCORD_SECRET"
-"#;
-
-    fn refusal(text: &str) -> ConfigError {
-        load(text, &all_secrets, false).expect_err("the config must be refused")
-    }
-
-    #[test]
-    fn example_file_loads() {
-        let (cfg, warnings) = load(EXAMPLE, &both_secrets, false).expect("the example loads");
-        assert_eq!(cfg.providers.len(), 2);
-        assert!(cfg.signup_open);
-        assert_eq!(
-            (
-                cfg.limits.signups_per_ip_per_day,
-                cfg.limits.signups_global_per_hour,
-                cfg.limits.min_provider_account_age_days
-            ),
-            (3, 30, 0)
-        );
-        assert!(
-            cfg.links.website.is_some()
-                && cfg.links.account.is_some()
-                && cfg.links.forums.is_some()
-        );
-        assert!(warnings.is_empty());
-
-        let changed = EXAMPLE.replace("signups_per_ip_per_day = 3", "signups_per_ip_per_day = 7");
-        let (cfg, _) = load(&changed, &both_secrets, false).expect("loads");
-        assert_eq!(cfg.limits.signups_per_ip_per_day, 7);
-    }
-
-    #[test]
-    fn missing_secret_skips_the_provider() {
-        let only_discord = |name: &str| {
-            if name.contains("DISCORD") {
-                both_secrets(name)
-            } else {
-                None
-            }
-        };
-        let (cfg, warnings) = load(EXAMPLE, &only_discord, false)
-            .expect("a missing secret is a warning, not an error");
-        assert_eq!(cfg.providers.len(), 1);
-        assert_eq!(cfg.providers[0].id.as_str(), "discord");
-        assert_eq!(
-            warnings,
-            vec![ConfigWarning::SecretMissing {
-                provider: "google".to_owned()
-            }]
-        );
-        assert_eq!(warnings[0].reason(), "secret_missing");
-    }
-
-    #[test]
-    fn refuses_literal_secret_http_base_and_bad_ids() {
-        let literal = MINIMAL.replace(
-            "client_secret_env = \"CIMMERIA_IDP_DISCORD_SECRET\"",
-            "client_secret = \"literal\"",
-        );
-        assert!(matches!(refusal(&literal), ConfigError::LiteralSecret));
-
-        let http = MINIMAL.replace("https://", "http://");
-        assert!(matches!(refusal(&http), ConfigError::InsecureBaseUrl));
-
-        let slash = MINIMAL.replace("play.example.org\"", "play.example.org/\"");
-        assert!(matches!(refusal(&slash), ConfigError::TrailingSlash));
-
-        let bad_id = MINIMAL.replace("id = \"discord\"", "id = \"Discord\"");
-        assert!(matches!(refusal(&bad_id), ConfigError::BadId(_)));
-
-        let bad_kind = MINIMAL.replace("kind = \"discord\"", "kind = \"saml\"");
-        assert!(matches!(refusal(&bad_kind), ConfigError::UnknownKind(_)));
-
-        let no_client_id = MINIMAL.replace("client_id = \"000000000000000000\"\n", "");
-        assert!(matches!(
-            refusal(&no_client_id),
-            ConfigError::Parse(m) if m.contains("client_id")
-        ));
-
-        let twice = format!(
-            "{MINIMAL}\n[[provider]]\nid = \"discord\"\nkind = \"discord\"\ndisplay_name = \"Again\"\n\
-             client_id = \"x\"\nclient_secret_env = \"CIMMERIA_IDP_DISCORD_SECRET\"\n"
-        );
-        assert!(matches!(refusal(&twice), ConfigError::DuplicateId(_)));
-    }
-
-    #[test]
-    fn refuses_trusted_microsoft_email() {
-        let text = r#"
-public_base_url = "https://play.example.org"
-
-[[provider]]
-id = "work"
-kind = "oidc"
-display_name = "Work"
-issuer = "https://login.microsoftonline.com/x/v2.0"
-client_id = "example"
-client_secret_env = "CIMMERIA_IDP_DEV_SECRET"
-trusted_email = true
-"#;
-        assert!(matches!(
-            refusal(text),
-            ConfigError::MicrosoftEmailUntrusted(_)
-        ));
-
-        let no_issuer = text.replace(
-            "issuer = \"https://login.microsoftonline.com/x/v2.0\"\n",
-            "",
-        );
-        assert!(matches!(refusal(&no_issuer), ConfigError::MissingIssuer(_)));
-
-        let http_issuer = text.replace(
-            "https://login.microsoftonline.com/x/v2.0",
-            "http://issuer.example.org",
-        );
-        assert!(matches!(
-            refusal(&http_issuer),
-            ConfigError::InsecureIssuer(_)
-        ));
-
-        let dotted = text.replace("login.microsoftonline.com/", "login.microsoftonline.com./");
-        assert!(matches!(
-            refusal(&dotted),
-            ConfigError::MicrosoftEmailUntrusted(_)
-        ));
-    }
-
-    #[test]
-    fn dev_mock_needs_developer_mode() {
-        let text = r#"
-public_base_url = "https://play.example.org"
-
-[[provider]]
-id = "dev"
-kind = "dev_mock"
-display_name = "Dev"
-client_id = "dev"
-client_secret_env = "CIMMERIA_IDP_DEV_SECRET"
-"#;
-        let (off, warnings) = load(text, &all_secrets, false).expect("loads");
-        assert!(off.providers.is_empty());
-        assert_eq!(
-            warnings,
-            vec![ConfigWarning::DevMockRefused {
-                provider: "dev".to_owned()
-            }]
-        );
-        assert_eq!(warnings[0].reason(), "dev_mock_refused");
-
-        let (on, warnings) = load(text, &all_secrets, true).expect("loads");
-        assert_eq!(on.providers.len(), 1);
-        assert_eq!(on.providers[0].kind, ProviderKind::DevMock);
-        assert!(warnings.is_empty());
-    }
-
-    #[test]
-    fn kill_switches_apply() {
-        let idp_off = |name: &str| match name {
-            "CIMMERIA_IDP_DISABLED" => Some("1".to_owned()),
-            other => all_secrets(other),
-        };
-        let (cfg, _) = load(EXAMPLE, &idp_off, false).expect("loads");
-        assert!(cfg.providers.is_empty());
-        assert!(cfg.kill.idp_disabled);
-
-        let signup_off = |name: &str| match name {
-            "CIMMERIA_IDP_SIGNUP_DISABLED" => Some("1".to_owned()),
-            other => all_secrets(other),
-        };
-        let (cfg, _) = load(EXAMPLE, &signup_off, false).expect("loads");
-        assert!(!cfg.signup_open);
-        assert_eq!(cfg.providers.len(), 2);
-
-        let soap_off = |name: &str| match name {
-            "CIMMERIA_SOAP_RELAY_DISABLED" => Some("1".to_owned()),
-            other => all_secrets(other),
-        };
-        let (cfg, _) = load(EXAMPLE, &soap_off, false).expect("loads");
-        assert!(cfg.kill.soap_relay_disabled);
-        assert!(!cfg.kill.idp_disabled);
-        assert_eq!(cfg.providers.len(), 2);
-
-        let not_one = |name: &str| match name {
-            "CIMMERIA_IDP_DISABLED" => Some("true".to_owned()),
-            other => all_secrets(other),
-        };
-        let (cfg, _) = load(EXAMPLE, &not_one, false).expect("loads");
-        assert!(!cfg.kill.idp_disabled);
-    }
-
-    #[test]
-    fn secret_debug_is_redacted() {
-        let (cfg, _) = load(EXAMPLE, &both_secrets, false).expect("loads");
-        let debug = format!("{cfg:?}");
-        assert!(!debug.contains(SECRET));
-        assert!(debug.contains("Secret(***)"));
-        assert_eq!(cfg.providers[0].client_secret.expose(), SECRET);
-    }
-
-    #[test]
-    fn missing_file_means_no_providers() {
-        let (cfg, warnings) = load_file(Path::new("config/__absent__/auth-providers.toml"), false)
-            .expect("an absent file is not an error");
-        assert!(cfg.providers.is_empty());
-        assert!(warnings.is_empty());
-        assert!(load(MINIMAL, &no_secrets, false)
-            .expect("loads")
-            .0
-            .providers
-            .is_empty());
-    }
-}
+#[path = "config_tests.rs"]
+mod tests;

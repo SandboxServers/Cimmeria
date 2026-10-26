@@ -8,12 +8,13 @@ use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
+use base64::Engine;
 use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
 
 use super::oidc_keys::{Discovery, KeyCache, CACHE_LIFETIME};
-use crate::config::{ProviderConfig, Secret};
+use crate::config::{ProviderConfig, Secret, TokenAuthMethod};
 use crate::http::{read_capped, transport_error, PROVIDER_BODY_CAP};
 use crate::provider::{IdentityProvider, ProviderError, ProviderId, VerifiedIdentity};
 
@@ -33,8 +34,11 @@ pub struct OidcProvider {
     issuer: String,
     /// The OAuth client id registered at the issuer.
     client_id: String,
-    /// The client secret, sent with `client_secret_post`.
+    /// The client secret, sent in the `Authorization` header or the form body,
+    /// as `token_auth` says.
     client_secret: Secret,
+    /// How the secret reaches the token endpoint.
+    token_auth: TokenAuthMethod,
     /// The scopes asked for, joined with spaces on the authorize URL.
     scopes: Vec<String>,
     /// Whether the config says the issuer's `email` claim is trusted.
@@ -82,6 +86,7 @@ impl OidcProvider {
             issuer: cfg.issuer.clone().unwrap_or_default(),
             client_id: cfg.client_id.clone(),
             client_secret: cfg.client_secret.clone(),
+            token_auth: cfg.token_auth,
             scopes: cfg.scopes.clone(),
             trusted_email: cfg.trusted_email,
             http,
@@ -115,6 +120,23 @@ impl OidcProvider {
             .unwrap_or_else(PoisonError::into_inner)
             .as_ref()
             .map(|(_, doc)| Arc::clone(doc))
+    }
+
+    /// Refuses a configured token endpoint auth method the issuer does not
+    /// list. Absent metadata is not refused.
+    fn check_auth_method(&self, doc: &Discovery) -> Result<(), ProviderError> {
+        match &doc.auth_methods {
+            Some(list) if !list.iter().any(|m| m == self.token_auth.as_str()) => {
+                tracing::warn!(
+                    provider = %self.id.as_str(),
+                    method = self.token_auth.as_str(),
+                    reason = "auth_method_unsupported",
+                    "oidc issuer does not list the configured token endpoint auth method"
+                );
+                Err(ProviderError::BadResponse("auth_method_unsupported"))
+            }
+            _ => Ok(()),
+        }
     }
 
     /// Verifies the `id_token` and maps its claims to a verified identity.
@@ -173,6 +195,15 @@ impl OidcProvider {
     }
 }
 
+/// RFC 6749 2.3.1: each part form-urlencoded, then `id:secret` in standard base64.
+fn basic_credentials(id: &str, secret: &str) -> String {
+    let enc = |s: &str| url::form_urlencoded::byte_serialize(s.as_bytes()).collect::<String>();
+    format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", enc(id), enc(secret)))
+    )
+}
+
 /// Reads the `email_verified` claim: a bool, or the strings `"true"` and
 /// `"false"`. Anything else is not verified.
 fn email_verified_claim(value: Option<&serde_json::Value>) -> bool {
@@ -221,7 +252,8 @@ impl IdentityProvider for OidcProvider {
     }
 
     async fn prepare(&self) -> Result<(), ProviderError> {
-        self.discovery(Instant::now()).await.map(|_| ())
+        let doc = self.discovery(Instant::now()).await?;
+        self.check_auth_method(&doc)
     }
 
     /// Built from the cached discovery document, so [`IdentityProvider::prepare`]
@@ -262,25 +294,31 @@ impl IdentityProvider for OidcProvider {
     ) -> Result<VerifiedIdentity, ProviderError> {
         let now = Instant::now();
         let doc = self.discovery(now).await?;
-        let body = url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("grant_type", "authorization_code")
-            .append_pair("code", code)
-            .append_pair("redirect_uri", redirect_uri)
-            .append_pair("code_verifier", pkce_verifier)
-            .append_pair("client_id", &self.client_id)
-            .append_pair("client_secret", self.client_secret.expose())
-            .finish();
-        let resp = self
-            .http
-            .post(&doc.token_endpoint)
-            .header(
-                reqwest::header::CONTENT_TYPE,
-                "application/x-www-form-urlencoded",
-            )
-            .body(body)
-            .send()
-            .await
-            .map_err(transport_error)?;
+        self.check_auth_method(&doc)?;
+        // The form is finished before the first await: its serializer is not `Send`.
+        let body = {
+            let mut form = url::form_urlencoded::Serializer::new(String::new());
+            form.append_pair("grant_type", "authorization_code")
+                .append_pair("code", code)
+                .append_pair("redirect_uri", redirect_uri)
+                .append_pair("code_verifier", pkce_verifier)
+                .append_pair("client_id", &self.client_id);
+            if self.token_auth == TokenAuthMethod::ClientSecretPost {
+                form.append_pair("client_secret", self.client_secret.expose());
+            }
+            form.finish()
+        };
+        let mut request = self.http.post(&doc.token_endpoint).header(
+            reqwest::header::CONTENT_TYPE,
+            "application/x-www-form-urlencoded",
+        );
+        if self.token_auth == TokenAuthMethod::ClientSecretBasic {
+            request = request.header(
+                reqwest::header::AUTHORIZATION,
+                basic_credentials(&self.client_id, self.client_secret.expose()),
+            );
+        }
+        let resp = request.body(body).send().await.map_err(transport_error)?;
         let status = resp.status();
         if status == reqwest::StatusCode::BAD_REQUEST || status == reqwest::StatusCode::UNAUTHORIZED
         {
@@ -299,3 +337,7 @@ impl IdentityProvider for OidcProvider {
 #[cfg(test)]
 #[path = "oidc_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "oidc_auth_tests.rs"]
+mod auth_tests;
