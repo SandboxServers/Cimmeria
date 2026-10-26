@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use cimmeria_cooked_pak::catalog::{CategoryBody, Index, IndexEntry};
 use cimmeria_cooked_pak::decide::Action;
+use cimmeria_cooked_pak::digest::parse_digest_hex;
 use tokio_util::sync::CancellationToken;
 
 use super::apply::{self, ApplyError, Plan, Staged};
@@ -261,7 +262,8 @@ impl Run<'_> {
     }
 
     /// Fetches one category body. A version change restarts the run once;
-    /// a second one fails.
+    /// a second one fails. The body must agree with its index entry: the same
+    /// digest and the same size, else it is `bad_body`.
     async fn body(&mut self, entry: &IndexEntry) -> Result<(CategoryBody, u64), Halt> {
         let fetcher = self.fetcher;
         loop {
@@ -269,7 +271,17 @@ impl Run<'_> {
                 .guard(fetcher.body(entry.category_id, entry.version))
                 .await?
             {
-                Ok(found) => return Ok(found),
+                Ok((body, bytes))
+                    if parse_digest_hex(&entry.digest) == Some(body.digest)
+                        && bytes == entry.body_bytes =>
+                {
+                    return Ok((body, bytes))
+                }
+                Ok(_) => {
+                    return Err(Halt::Failed(Box::new(
+                        self.fetch_failure(&FetchError::BadBody),
+                    )))
+                }
                 Err(error) if is_transient(&error) => self.backoff(&error).await?,
                 Err(FetchError::VersionChanged) if self.restarts == 0 => {
                     return Err(Halt::Restart);

@@ -133,6 +133,35 @@ async fn a_500_on_a_body_fails_at_download_naming_the_category() {
 }
 
 #[tokio::test]
+async fn a_body_that_disagrees_with_its_index_entry_is_bad_body() {
+    // The index names the digest and the size; a body that differs from either
+    // fails at download, before anything is staged.
+    let good4 = served(4, 6);
+    let mut wrong_digest = entry(4, PAK_4, &good4);
+    wrong_digest.digest = cimmeria_cooked_pak::digest::digest_hex(&[0x11; 32]);
+    let mut wrong_size = entry(4, PAK_4, &good4);
+    wrong_size.body_bytes += 1;
+    for (name, bad_entry) in [("digest", wrong_digest), ("size", wrong_size)] {
+        let server = MockServer::start().await;
+        let root = tempfile::tempdir().unwrap();
+        let (source, cache) = (root.path().join("source"), cache_of(root.path()));
+        serve_index(&server, index(vec![bad_entry])).await;
+        serve_body(&server, 4, 6, good4.1.clone()).await;
+        write_pak_at(&source, PAK_4, 5, &base());
+        write_pak_at(&cache, PAK_4, 4, &base());
+
+        let report = run_quiet(&server, root.path(), &source, Duration::from_secs(60)).await;
+
+        assert_eq!(report.outcome, Outcome::Failed, "{name}");
+        let failure = report.failure.expect("a failure");
+        assert_eq!(failure.step, Step::Download, "{name}");
+        assert_eq!(failure.reason, "bad_body", "{name}");
+        assert_eq!(read_pak(&cache.join(PAK_4)).unwrap().entries, base());
+        assert!(temps(&cache).is_empty(), "{name}");
+    }
+}
+
+#[tokio::test]
 async fn a_digest_mismatch_fails_at_stage_and_changes_nothing() {
     let server = MockServer::start().await;
     let root = tempfile::tempdir().unwrap();
@@ -143,11 +172,12 @@ async fn a_digest_mismatch_fails_at_stage_and_changes_nothing() {
     let mut bad5 = served(5, 6);
     bad5.0.digest = [0xEE; 32];
     let bad5_bytes = encode_body(&bad5.0);
-    serve_index(
-        &server,
-        index(vec![entry(4, PAK_4, &good4), entry(5, PAK_5, &good5)]),
-    )
-    .await;
+    // The index describes the served body, so it names the bad digest and size
+    // too; the mismatch is then caught by the composed-records check at stage.
+    let mut bad5_entry = entry(5, PAK_5, &good5);
+    bad5_entry.digest = cimmeria_cooked_pak::digest::digest_hex(&[0xEE; 32]);
+    bad5_entry.body_bytes = bad5_bytes.len() as u64;
+    serve_index(&server, index(vec![entry(4, PAK_4, &good4), bad5_entry])).await;
     serve_body(&server, 4, 6, good4.1.clone()).await;
     serve_body(&server, 5, 6, bad5_bytes).await;
     for (dir, pak) in [(&source, PAK_4), (&source, PAK_5)] {
