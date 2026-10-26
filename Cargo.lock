@@ -1474,6 +1474,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "cimmeria-client-launch",
+ "cimmeria-cooked-pak",
  "cimmeria-patchset",
  "crc32fast",
  "ed25519-dalek",
