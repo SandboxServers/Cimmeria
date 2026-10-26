@@ -9,8 +9,8 @@
 //! Every outcome is one `gm_action` event on the `account_admin` target,
 //! with `action`, `result`, a stable `reason` on refusals, and the GM and
 //! target ids. A refusal the GM caused is INFO; a refusal the server caused
-//! (no pool, a failed query) is WARN. `partial`: the identity was removed but
-//! its sign-ins could not be revoked.
+//! (no pool, a failed query) is WARN. `revoke_failed`: the sign-ins could not
+//! be revoked, so the unlink rolled back and the identity is still linked.
 //!
 //! [`AccountCellToBase`]: cimmeria_wire::cell::messages::AccountCellToBase
 
@@ -129,12 +129,15 @@ enum Removal {
     NotLinked,
     /// The row was removed; carries its provider.
     Removed(String),
+    /// The sign-ins could not be revoked, so nothing was removed (C16.6).
+    RevokeFailed,
 }
 
 /// Removes one identity in a single transaction that locks the account row
 /// first, so two unlinks cannot both pass the last-method check (C15 e);
-/// the unlink event commits with the delete. Mirrors `remove_identity` in
-/// `cimmeria_identity::routes::account`.
+/// the unlink event commits with the delete, and so do the revoke of the
+/// account's refresh families and the unlink event (C16.6). Mirrors
+/// `remove_identity` in `cimmeria_identity::routes::account`.
 async fn remove_identity(
     pool: &PgPool,
     account_id: u32,
@@ -176,6 +179,22 @@ async fn remove_identity(
         Some(&provider),
     )
     .await?;
+    // A failed revoke returns before the commit: dropping `tx` rolls the
+    // delete back, so the identity is still there and the GM is told so.
+    if let Err(err) = refresh::revoke_account_on(&mut tx, account_id, None, Utc::now()).await {
+        tracing::warn!(
+            target: "account_admin",
+            event = "unlink_revoke_failed",
+            action = "account_unlink",
+            result = "refused",
+            reason = "revoke_failed",
+            target_account_id = account_id,
+            identity_id,
+            error = %err,
+            "unlink rolled back: the account's refresh families could not be revoked"
+        );
+        return Ok(Removal::RevokeFailed);
+    }
     tx.commit().await?;
     Ok(Removal::Removed(provider))
 }
@@ -312,34 +331,32 @@ async fn answer(
                         "account: identity #{identity_id} is not linked to {target}"
                     )])
                 }
+                Removal::RevokeFailed => {
+                    log_outcome(
+                        caller,
+                        name,
+                        false,
+                        Some("revoke_failed"),
+                        target,
+                        ids,
+                        Some(identity_id),
+                    );
+                    Ok(vec![format!(
+                        "account: could not remove identity #{identity_id} from {target}; nothing changed, see the server log"
+                    )])
+                }
                 Removal::Removed(provider) => {
-                    // A wrongly linked identity must lose the sign-ins it made:
-                    // its refresh rows here, then its access tokens and launch
-                    // tickets in memory. Both run, so a DB failure still ends
-                    // the live ones.
-                    let db_revoked = refresh::revoke_account(pool, account_id, Utc::now())
-                        .await
-                        .is_ok();
-                    let live_ended = revoke::end_live_sessions(account_id);
-                    if !(db_revoked && live_ended) {
+                    // The refresh rows were revoked in the delete's transaction
+                    // (C16.6); the access tokens and launch tickets in memory end
+                    // after the commit.
+                    if !revoke::end_live_sessions(account_id) {
                         tracing::warn!(
                             target: "account_admin",
-                            event = "gm_action",
-                            action = name,
-                            result = "partial",
-                            reason = "revoke_failed",
-                            gm_account_id = caller.account_id,
-                            gm_account_name = caller.gm_account_name.as_str(),
-                            entity_id = caller.entity_id,
-                            entity_name = caller.entity_name.as_str(),
+                            event = "unlink_live_sessions_not_ended",
                             target_account_id = account_id,
-                            target_account_name = target,
-                            identity_id, // nt:id-only identity row id, no name exists
-                            "identity removed but its sign-ins could not be revoked"
+                            identity_id,
+                            "unlink committed but the live access tokens and launch tickets could not be ended (no identity routes registered)"
                         );
-                        return Ok(vec![format!(
-                            "account: removed identity #{identity_id} ({provider}) from {target}; revoking its launcher sign-ins FAILED, see the server log"
-                        )]);
                     }
                     log_outcome(caller, name, true, None, target, ids, Some(identity_id));
                     Ok(vec![format!(
@@ -406,3 +423,7 @@ pub async fn handle(
 #[cfg(test)]
 #[path = "tests_live_db.rs"]
 mod tests_live_db;
+
+#[cfg(test)]
+#[path = "unlink_tx_tests_live_db.rs"]
+mod unlink_tx_tests_live_db;

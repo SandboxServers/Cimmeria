@@ -227,9 +227,10 @@ pub async fn unlink(
 /// other and the second sees the first. Without the lock both could read two
 /// methods and both delete, leaving none (C15 e).
 ///
-/// After the delete it ends every other session of the account: the refresh
-/// families except the caller's, and the access tokens and launch tickets
-/// except the caller's own family (client-tls-oidc D1).
+/// In the same transaction it revokes the account's refresh families except the
+/// caller's (C16.6), so a failed revoke leaves the identity in place. After the
+/// commit it ends the access tokens and launch tickets except the caller's own
+/// family (client-tls-oidc D1).
 async fn remove_identity(
     state: &RouteState,
     grant: &AccessGrant,
@@ -280,6 +281,11 @@ async fn remove_identity(
     )
     .await
     .map_err(ApiError::from_repo)?;
+    // The refresh families are revoked in the same transaction, so a failed
+    // revoke leaves the identity in place (C16.6).
+    refresh::revoke_account_on(&mut tx, account_id, Some(&grant.family_id), Utc::now())
+        .await
+        .map_err(ApiError::from_repo)?;
     tx.commit().await.map_err(ApiError::from_repo)?;
     state
         .ctx
@@ -287,9 +293,6 @@ async fn remove_identity(
         .access
         .revoke_account_except(account_id, &grant.family_id);
     state.deps.launch_tickets.revoke_account(account_id);
-    refresh::revoke_account_except(pool, account_id, &grant.family_id, Utc::now())
-        .await
-        .map_err(ApiError::from_repo)?;
     tracing::Span::current().record("provider", provider.as_str());
     Ok(())
 }

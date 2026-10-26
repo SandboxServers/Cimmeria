@@ -598,3 +598,6 @@ mod gate;
 
 #[path = "account_unlink_tests_live_db.rs"]
 mod unlink;
+
+#[path = "account_unlink_tx_tests_live_db.rs"]
+mod unlink_tx;
