@@ -122,8 +122,8 @@ rolling `logs/launcher.<date>.log`, 7 kept, with the home folder written as
 folder** to a bounded channel that drops when full, and
 `launcher_session::LauncherSender` sends it as a `client.launcher.adoption`
 event in a `launcher` session. That session is minted on the first step, lasts
-15 minutes and is re-minted when it runs out; events are posted at once and
-dropped silently when offline. The six steps are C10 of
+15 minutes and is re-minted when it runs out; events are grouped and sent as described under "Forwarding pace, hold and flush" below, and
+are kept in memory, never on disk, while the network or the server is unavailable. The six steps are C10 of
 `docs/analysis/launcher-adopt-ux/work-packets-wave2.md`.
 Nothing leaves without the game-diagnostics opt-in, in a build with the module.
 `client.launcher.install_result` is unchanged and still waits for Play.

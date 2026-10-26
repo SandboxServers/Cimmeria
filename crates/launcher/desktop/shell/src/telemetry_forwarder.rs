@@ -14,6 +14,16 @@ use std::time::{Duration, Instant};
 /// Records taken from the channel per round, so one burst is one `on_records` call.
 const RECORD_BATCH: usize = 64;
 
+/// The record that makes the forwarder send whatever is queued.
+fn flush_sentinel() -> LauncherRecord {
+    LauncherRecord {
+        ts_ms: 0,
+        level: "info".into(),
+        target: FLUSH_TARGET,
+        fields: serde_json::Map::new(),
+    }
+}
+
 /// Receives, coalesces and pumps until `records` disconnects, then pumps once more as a
 /// flush. `on_flushed` runs whenever the forwarder says a flush finished.
 pub(crate) fn forward_loop<S: ForwardSource>(
@@ -45,13 +55,7 @@ pub(crate) fn forward_loop<S: ForwardSource>(
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => {
                 // Last round: the sentinel makes the forwarder send whatever is queued now.
-                let sentinel = LauncherRecord {
-                    ts_ms: 0,
-                    level: "info".into(),
-                    target: FLUSH_TARGET,
-                    fields: serde_json::Map::new(),
-                };
-                forwarder.on_records(source, vec![sentinel], Instant::now());
+                forwarder.on_records(source, vec![flush_sentinel()], Instant::now());
                 pump_once(forwarder, source, on_pumped, on_flushed);
                 return;
             }
@@ -99,13 +103,7 @@ pub(crate) fn request_flush(
 ) -> bool {
     // Read before sending, so a flush that finishes at once is not missed.
     let before = *done.done.lock().unwrap_or_else(PoisonError::into_inner);
-    let sentinel = LauncherRecord {
-        ts_ms: 0,
-        level: "info".into(),
-        target: FLUSH_TARGET,
-        fields: serde_json::Map::new(),
-    };
-    if tx.try_send(sentinel).is_err() {
+    if tx.try_send(flush_sentinel()).is_err() {
         return false;
     }
     let guard = done.done.lock().unwrap_or_else(PoisonError::into_inner);
