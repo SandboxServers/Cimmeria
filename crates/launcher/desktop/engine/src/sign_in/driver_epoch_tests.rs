@@ -5,6 +5,8 @@
 
 use super::*;
 use crate::client_setup::login_servers::LoginServer;
+use crate::sign_in::pending::PendingLink;
+use crate::sign_in::session::NeedsLinkView;
 use crate::NativeCommand;
 
 fn sign_out() -> Value {
@@ -186,10 +188,82 @@ async fn a_server_switch_mid_flow_stores_but_does_not_install() {
     let fx = Fixture::new(true, true).await;
     mount_token(&fx.server, signed_in_body("r7")).await;
     let browser = SilentBrowser::default();
-    let (_, _) = tokio::join!(fx.run(begin(), &browser), async {
+    let (reply, _) = tokio::join!(fx.run(begin(), &browser), async {
         until_opened(&browser).await;
         let _other = switch_to_second_server(&fx).await;
         approve(&browser).await;
     });
+    assert!(reply.is_ok(), "{reply:?}");
     assert!(!fx.has_session());
+    assert!(
+        fx.store.get(HOST).is_some(),
+        "the old server's completion is stored under its own host"
+    );
+}
+
+/// The sign-in of the fixture's auth base, as the flow would hold it.
+fn session_of(fx: &Fixture) -> SignIn {
+    let base = url::Url::parse(&format!("{}/", fx.server.uri())).unwrap();
+    SignIn::new(base, reqwest::Client::new(), fx.store.clone())
+}
+
+/// A pending `needs_link` choice for the auth base `base`.
+fn needs_link_choice(base: &url::Url) -> PendingLink {
+    PendingLink {
+        view: NeedsLinkView {
+            link_grant: "grant".to_owned(),
+            provider: "dev".to_owned(),
+            display_name: "Dev sign-in".to_owned(),
+            hint: "none".to_owned(),
+            signup_open: true,
+        },
+        provider_name: "Dev sign-in".to_owned(),
+        base: base.clone(),
+        since: std::time::Instant::now(),
+    }
+}
+
+#[tokio::test]
+async fn a_stale_epoch_is_not_installed_under_the_state_lock() {
+    let fx = Fixture::new(true, true).await;
+    let session = Arc::new(session_of(&fx));
+    fx.driver.supersede(&fx.state).unwrap();
+    let stale = fx.driver.install(&fx.state, &session, 0);
+    assert!(matches!(stale, Err(SignInFailure::Cancelled)));
+    assert!(!fx.has_session());
+    let current = fx.driver.install(&fx.state, &session, 1);
+    assert!(matches!(current, Ok(Some(_))));
+    assert!(fx.has_session());
+}
+
+#[tokio::test]
+async fn a_stale_needs_link_choice_is_not_kept() {
+    let fx = Fixture::new(true, true).await;
+    let session = session_of(&fx);
+    let base = session.base().clone();
+    fx.driver.supersede(&fx.state).unwrap();
+    let kept = fx
+        .driver
+        .keep_choice(&fx.state, &session, 0, needs_link_choice(&base));
+    assert!(matches!(kept, Err(SignInFailure::Cancelled)));
+    assert!(matches!(
+        fx.driver.pending.view_for(Some(&base)),
+        Ok(SignInStateView::SignedOut)
+    ));
+}
+
+#[tokio::test]
+async fn a_needs_link_after_a_server_switch_is_not_kept() {
+    let fx = Fixture::new(true, true).await;
+    let session = session_of(&fx);
+    let base = session.base().clone();
+    let _other = switch_to_second_server(&fx).await;
+    let kept = fx
+        .driver
+        .keep_choice(&fx.state, &session, 0, needs_link_choice(&base));
+    assert!(matches!(kept, Ok(None)));
+    assert!(matches!(
+        fx.driver.pending.view_for(Some(&base)),
+        Ok(SignInStateView::SignedOut)
+    ));
 }

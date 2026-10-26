@@ -13,9 +13,7 @@ use std::time::Instant;
 
 use url::Url;
 
-use super::commands::{
-    AccountPanelView, ProviderEntry, SignInCommand, SignInFailure, SignInStateView, SignInStatus,
-};
+use super::commands::{SignInCommand, SignInFailure, SignInStatus};
 use super::discovery::{self, Discovery, DiscoveryCache};
 use super::flow::FlowSlot;
 use super::host_slot::{host_of, Epoch};
@@ -39,14 +37,14 @@ pub struct SignInDriver {
     store: Arc<dyn CredentialStore>,
     http: reqwest::Client,
     discovery: Mutex<DiscoveryCache>,
-    pending: PendingSlot,
+    pub(super) pending: PendingSlot,
     /// The browser flow that may run, and its cancel handle.
-    flow: FlowSlot,
+    pub(super) flow: FlowSlot,
     /// The shared session state of each auth host, keyed by [`host_of`]. Kept once made.
     hosts: Mutex<HashMap<String, Arc<HostSlot>>>,
     /// The operation epoch (CT-87): a sign-out or a Cancel bumps it, which voids
     /// every sign-in step still in flight.
-    epoch: AtomicU64,
+    pub(super) epoch: AtomicU64,
 }
 
 /// The store a launcher session uses: the OS credential store where there is one.
@@ -424,78 +422,6 @@ impl SignInDriver {
         self.reply(site, shown.as_ref(), None).await
     }
 
-    /// Installs a completion of `session` that started at `epoch`, under the state
-    /// lock. Returns the sign-in the reply shows: `session` once installed, else the
-    /// state's own sign-in.
-    fn install(
-        &self,
-        state: &Mutex<DesktopState>,
-        session: &Arc<SignIn>,
-        epoch: u64,
-    ) -> Result<Option<Arc<SignIn>>, SignInFailure> {
-        let mut st = guard(state)?;
-        if !self.installable(&st, session, epoch)? {
-            return Ok(st.sign_in());
-        }
-        st.set_sign_in(Some(Arc::clone(session)));
-        self.pending.clear()?;
-        Ok(Some(Arc::clone(session)))
-    }
-
-    /// Keeps the `needs_link` `choice` for `session` under the state lock, unless the
-    /// completion is no longer installable. Returns the sign-in the reply shows: none
-    /// once the choice is kept, else the state's own sign-in.
-    fn keep_choice(
-        &self,
-        state: &Mutex<DesktopState>,
-        session: &SignIn,
-        epoch: u64,
-        choice: PendingLink,
-    ) -> Result<Option<Arc<SignIn>>, SignInFailure> {
-        let st = guard(state)?;
-        if !self.installable(&st, session, epoch)? {
-            return Ok(st.sign_in());
-        }
-        self.pending.keep(choice)?;
-        Ok(None)
-    }
-
-    /// Whether a completion of `session` that started at `epoch` may be installed
-    /// now, read under the state lock. `Err(Cancelled)` once a sign-out or Cancel
-    /// ran; `Ok(false)` when the target moved to another auth base since.
-    fn installable(
-        &self,
-        st: &DesktopState,
-        session: &SignIn,
-        epoch: u64,
-    ) -> Result<bool, SignInFailure> {
-        if self.epoch.load(Ordering::SeqCst) != epoch {
-            return Err(SignInFailure::Cancelled);
-        }
-        Ok(self.same_target(st, session.base()))
-    }
-
-    /// Whether `base` is the auth base of the target on screen (the current login server).
-    fn same_target(&self, st: &DesktopState, base: &Url) -> bool {
-        st.sign_in_login_server()
-            .ok()
-            .flatten()
-            .and_then(|server| discovery::auth_base(&server.url))
-            .as_ref()
-            == Some(base)
-    }
-
-    /// Voids every sign-in step in flight (CT-87). The epoch moves while the state is
-    /// locked, so a step that reads it under the same lock sees the change; then the
-    /// browser flow that waits, if any, is cancelled.
-    fn supersede(&self, state: &Mutex<DesktopState>) -> Result<(), SignInFailure> {
-        {
-            let _st = guard(state)?;
-            self.epoch.fetch_add(1, Ordering::SeqCst);
-        }
-        self.flow.cancel()
-    }
-
     /// The status with the account's linked methods, read from the server.
     async fn account_reply(
         &self,
@@ -520,58 +446,6 @@ impl SignInDriver {
         guard(site.state)?.set_sign_in(None);
         self.pending.clear()?;
         self.reply(site, None, None).await
-    }
-
-    /// The status for `site`, with the panel state the session and pending choice give.
-    async fn reply(
-        &self,
-        site: &Site<'_>,
-        session: Option<&Arc<SignIn>>,
-        account: Option<AccountPanelView>,
-    ) -> Result<SignInStatus, SignInFailure> {
-        let view = self
-            .panel_state(session, site.discovery.map(|d| &d.auth_base))
-            .await?;
-        let play_refusal = guard(site.state)?.play_refusal();
-        let waiting = self.flow.is_waiting();
-        let discovery = site.discovery;
-        Ok(SignInStatus {
-            schema_version: 1,
-            available: discovery.is_some(),
-            server_name: site.server.map(str::to_owned),
-            signup_open: discovery.is_some_and(|d| d.signup_open),
-            providers: discovery
-                .map(|d| {
-                    d.providers
-                        .iter()
-                        .cloned()
-                        .map(ProviderEntry::from)
-                        .collect()
-                })
-                .unwrap_or_default(),
-            waiting,
-            state: view,
-            account,
-            play_refusal,
-        })
-    }
-
-    /// Where the player stands: signed in, a live `needs_link` choice for `base`
-    /// (the server on screen), or signed out.
-    async fn panel_state(
-        &self,
-        session: Option<&Arc<SignIn>>,
-        base: Option<&Url>,
-    ) -> Result<SignInStateView, SignInFailure> {
-        if let Some(session) = session {
-            if let Some(summary) = session.summary().await {
-                return Ok(SignInStateView::SignedIn {
-                    account_name: summary.account_name,
-                    display_name: summary.display_name,
-                });
-            }
-        }
-        self.pending.view_for(base)
     }
 }
 

@@ -11,12 +11,16 @@ pub mod api;
 pub mod commands;
 pub mod discovery;
 pub mod driver;
+mod driver_epoch;
+mod driver_reply;
 mod flow;
 mod host_slot;
 pub mod lease;
 pub mod oauth;
 mod pending;
 pub mod session;
+mod session_reply;
+mod session_view;
 pub mod store;
 
 #[cfg(test)]
