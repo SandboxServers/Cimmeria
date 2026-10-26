@@ -6,7 +6,6 @@
 //! the one HTTP client that [`discovery::client`] builds, so redirects stay off
 //! and every reply is read through [`discovery::read_capped`].
 
-use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -16,13 +15,14 @@ use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 use url::Url;
 
-use super::api::{
-    AccountView, ApiErrorBody, LinkStart, NeedsLink, SignedIn, TicketView, TokenReply,
-};
+use super::api::{AccountView, LinkStart, SignedIn, TicketView, TokenReply};
 use super::discovery::{self, MAX_BODY};
 pub use super::host_slot::HostSlot;
-use super::host_slot::{self, host_of, HostState};
+use super::host_slot::{self, host_of, Epoch, HostState};
 use super::oauth::{self, BrowserFlow, CodeGrant};
+pub(super) use super::session_reply::scheme_allowed;
+use super::session_reply::{record, server_error, signed_out};
+pub use super::session_view::NeedsLinkView;
 use super::store::CredentialStore;
 use super::SignInError;
 
@@ -34,41 +34,6 @@ const REFRESH_MARGIN: Duration = Duration::from_secs(60);
 pub struct AccountSummary {
     pub account_name: String,
     pub display_name: String,
-}
-
-/// A provider identity with no account yet (C6 `needs_link`). Its `Debug` hides the grant.
-#[derive(Clone, PartialEq, Eq)]
-pub struct NeedsLinkView {
-    /// The single-use grant the link calls take. It is never shown or logged.
-    pub link_grant: String,
-    pub provider: String,
-    pub display_name: String,
-    /// `none` or `email_match`: whether the server saw a likely existing account.
-    pub hint: String,
-    pub signup_open: bool,
-}
-
-impl fmt::Debug for NeedsLinkView {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("NeedsLinkView")
-            .field("link_grant", &"<hidden>")
-            .field("provider", &self.provider)
-            .field("hint", &self.hint)
-            .field("signup_open", &self.signup_open)
-            .finish()
-    }
-}
-
-impl From<NeedsLink> for NeedsLinkView {
-    fn from(link: NeedsLink) -> Self {
-        Self {
-            link_grant: link.link_grant,
-            provider: link.identity.provider,
-            display_name: link.identity.display_name,
-            hint: link.hint,
-            signup_open: link.signup_open,
-        }
-    }
 }
 
 /// How a sign-in step ended: a session, or a link the player must choose.
@@ -164,8 +129,13 @@ impl SignIn {
         self.slot.state.lock().await.account.clone()
     }
 
-    /// Exchanges the browser grant for a session (C6 `authorization_code`).
-    pub async fn complete(&self, grant: CodeGrant) -> Result<Outcome, SignInError> {
+    /// Exchanges the browser grant for a session (C6 `authorization_code`). A
+    /// stale `fence` gives `Superseded` and stores nothing.
+    pub async fn complete(
+        &self,
+        grant: CodeGrant,
+        fence: &Epoch<'_>,
+    ) -> Result<Outcome, SignInError> {
         let body = json!({
             "grant_type": "authorization_code",
             "code": grant.code,
@@ -173,7 +143,7 @@ impl SignIn {
             "redirect_uri": grant.redirect_uri,
         });
         let result = match self.json(Method::POST, "token", None, Some(body)).await {
-            Ok(TokenReply::SignedIn(signed)) => self.adopt_signed_in(signed).await,
+            Ok(TokenReply::SignedIn(signed)) => self.adopt_signed_in(signed, fence).await,
             Ok(TokenReply::NeedsLink(link)) => Ok(Outcome::NeedsLink(link.into())),
             Err(e) => Err(e),
         };
@@ -181,9 +151,13 @@ impl SignIn {
     }
 
     /// Creates a new account for a `needs_link` grant (C6 `POST /link/new`).
-    pub async fn link_new(&self, link_grant: &str) -> Result<Outcome, SignInError> {
+    pub async fn link_new(
+        &self,
+        link_grant: &str,
+        fence: &Epoch<'_>,
+    ) -> Result<Outcome, SignInError> {
         let body = json!({ "link_grant": link_grant });
-        let result = self.link_call("link/new", body).await;
+        let result = self.link_call("link/new", body, fence).await;
         record(result)
     }
 
@@ -193,6 +167,7 @@ impl SignIn {
         link_grant: &str,
         account_name: &str,
         password: &str,
+        fence: &Epoch<'_>,
     ) -> Result<Outcome, SignInError> {
         let body = json!({
             "link_grant": link_grant,
@@ -200,7 +175,7 @@ impl SignIn {
             "password": password,
             "password_removal_ack": true,
         });
-        let result = self.link_call("link/existing", body).await;
+        let result = self.link_call("link/existing", body, fence).await;
         record(result)
     }
 
@@ -209,13 +184,14 @@ impl SignIn {
         &self,
         link_grant: &str,
         code: &str,
+        fence: &Epoch<'_>,
     ) -> Result<Outcome, SignInError> {
         let body = json!({
             "link_grant": link_grant,
             "link_code": code,
             "password_removal_ack": true,
         });
-        let result = self.link_call("link/existing", body).await;
+        let result = self.link_call("link/existing", body, fence).await;
         record(result)
     }
 
@@ -339,14 +315,37 @@ impl SignIn {
     }
 
     /// The link calls share one reply shape: a `signed_in` body (C6).
-    async fn link_call(&self, path: &str, body: Value) -> Result<Outcome, SignInError> {
+    async fn link_call(
+        &self,
+        path: &str,
+        body: Value,
+        fence: &Epoch<'_>,
+    ) -> Result<Outcome, SignInError> {
         let signed: SignedIn = self.json(Method::POST, path, None, Some(body)).await?;
-        self.adopt_signed_in(signed).await
+        self.adopt_signed_in(signed, fence).await
     }
 
-    /// Stores a new session from a `signed_in` reply and returns its account.
-    async fn adopt_signed_in(&self, signed: SignedIn) -> Result<Outcome, SignInError> {
+    /// Stores a new session from a `signed_in` reply and returns its account. When
+    /// a sign-out or Cancel ran meanwhile, nothing is stored: the server is told to
+    /// end the session just received (best effort) and the step is `Superseded`.
+    async fn adopt_signed_in(
+        &self,
+        signed: SignedIn,
+        fence: &Epoch<'_>,
+    ) -> Result<Outcome, SignInError> {
         let mut state = self.slot.state.lock().await;
+        if !fence.is_current() {
+            drop(state);
+            let body = json!({ "refresh_token": signed.refresh_token });
+            if self
+                .send(Method::POST, "logout", None, Some(body))
+                .await
+                .is_err()
+            {
+                tracing::debug!("sign-in: the server could not be told of the sign-out");
+            }
+            return Err(SignInError::Superseded);
+        }
         let summary = self.adopt(&mut state, signed);
         Ok(Outcome::SignedIn(summary))
     }
@@ -449,48 +448,4 @@ impl SignIn {
         }
         Err(server_error(response).await)
     }
-}
-
-/// Tokens and passwords go over TLS only. Debug builds and tests may use a plain
-/// local server (`CIMMERIA_LAUNCHER_AUTH_BASE`, `wiremock`).
-pub(super) fn scheme_allowed(base: &Url, relaxed: bool) -> bool {
-    base.scheme() == "https" || relaxed
-}
-
-fn signed_out() -> SignInError {
-    SignInError::Server("signed_out".to_owned())
-}
-
-/// The C6 error of a non-success reply. A `429` keeps `retry_after` in the text,
-/// for the sign-in panel. A reply with no readable error body gives its status.
-async fn server_error(response: reqwest::Response) -> SignInError {
-    let status = response.status();
-    let body = discovery::read_capped(response, MAX_BODY)
-        .await
-        .and_then(|bytes| serde_json::from_slice::<ApiErrorBody>(&bytes).ok());
-    match body {
-        Some(body) if body.error == "rate_limited" => SignInError::Server(format!(
-            "rate_limited retry_after={}",
-            body.retry_after.unwrap_or(0)
-        )),
-        Some(body) => SignInError::Server(body.error),
-        None => SignInError::Server(status.as_u16().to_string()),
-    }
-}
-
-/// Logs how a sign-in step ended: the outcome, or the error's fixed reason text.
-/// No code, token, grant or account value goes into the log.
-fn record(result: Result<Outcome, SignInError>) -> Result<Outcome, SignInError> {
-    match &result {
-        Ok(Outcome::SignedIn(_)) => {
-            tracing::info!(target: "launcher.sign_in", event = "completed", outcome = "signed_in")
-        }
-        Ok(Outcome::NeedsLink(_)) => {
-            tracing::info!(target: "launcher.sign_in", event = "completed", outcome = "needs_link")
-        }
-        Err(e) => {
-            tracing::info!(target: "launcher.sign_in", event = "failed", outcome = "failed", reason = e.reason())
-        }
-    }
-    result
 }

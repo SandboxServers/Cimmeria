@@ -2,6 +2,7 @@
 //! stands in for `/auth/v1`. They use the shipped HTTP client and a memory store:
 //! no real network and no OS keyring.
 
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use serde_json::{json, Value};
@@ -11,6 +12,7 @@ use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
 use super::api::AccountView;
 use super::discovery;
+use super::host_slot::Epoch;
 use super::oauth::{challenge_for, CodeGrant};
 use super::session::{scheme_allowed, Outcome, SignIn};
 use super::store::{CredentialStore, MemoryStore, Stored};
@@ -21,6 +23,11 @@ const HOST: &str = "127.0.0.1";
 
 fn base_of(server: &MockServer) -> Url {
     Url::parse(&format!("{}/", server.uri())).expect("wiremock URI parses")
+}
+
+/// An operation epoch nobody bumps: the fence of a step that is never superseded.
+fn fresh() -> AtomicU64 {
+    AtomicU64::new(0)
 }
 
 fn signed_in_body(access: &str, refresh: &str, expires_in: u64) -> Value {
@@ -94,7 +101,8 @@ async fn complete_signed_in_saves_the_refresh_token() {
 
     let store = Arc::new(MemoryStore::default());
     let session = SignIn::new(base_of(&server), discovery::client(), store.clone());
-    match session.complete(grant()).await {
+    let counter = fresh();
+    match session.complete(grant(), &Epoch::new(&counter, 0)).await {
         Ok(Outcome::SignedIn(summary)) => assert_eq!(summary.account_name, "alice"),
         other => panic!("expected SignedIn, got {other:?}"),
     }
@@ -129,7 +137,8 @@ async fn needs_link_then_link_new() {
 
     let store = Arc::new(MemoryStore::default());
     let session = SignIn::new(base_of(&server), discovery::client(), store.clone());
-    let link = match session.complete(grant()).await {
+    let counter = fresh();
+    let link = match session.complete(grant(), &Epoch::new(&counter, 0)).await {
         Ok(Outcome::NeedsLink(view)) => view,
         other => panic!("expected NeedsLink, got {other:?}"),
     };
@@ -138,7 +147,7 @@ async fn needs_link_then_link_new() {
         "nothing is stored before the link"
     );
     let outcome = session
-        .link_new(&link.link_grant)
+        .link_new(&link.link_grant, &Epoch::new(&counter, 0))
         .await
         .expect("link/new signs in");
     assert!(matches!(outcome, Outcome::SignedIn(_)));
@@ -169,7 +178,11 @@ async fn access_token_refreshes_near_expiry_and_rotates() {
 
     let store = Arc::new(MemoryStore::default());
     let session = SignIn::new(base_of(&server), discovery::client(), store.clone());
-    session.complete(grant()).await.expect("signed in");
+    let counter = fresh();
+    session
+        .complete(grant(), &Epoch::new(&counter, 0))
+        .await
+        .expect("signed in");
     // 30 s left is inside the 60 s margin, so the next call refreshes.
     assert_eq!(session.access_token().await.expect("refreshed"), "a2");
     assert_eq!(store.get(HOST).expect("stored").refresh_token, "r2");
@@ -534,8 +547,13 @@ async fn link_existing_sends_the_removal_ack() {
         discovery::client(),
         Arc::new(MemoryStore::default()),
     );
-    let by_password = session.link_existing_password("lg1", "alice", "pw").await;
-    let by_code = session.link_existing_code("lg2", "ABCDE23456").await;
+    let counter = fresh();
+    let by_password = session
+        .link_existing_password("lg1", "alice", "pw", &Epoch::new(&counter, 0))
+        .await;
+    let by_code = session
+        .link_existing_code("lg2", "ABCDE23456", &Epoch::new(&counter, 0))
+        .await;
     assert!(
         matches!(by_password, Ok(Outcome::SignedIn(_))),
         "{by_password:?}"

@@ -5,6 +5,7 @@
 //! lock and one refresh token is spent once. The store helpers take what they
 //! use, so the rules for the stored sign-in change in one place.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -34,6 +35,25 @@ impl HostSlot {
         Arc::new(Self {
             state: tokio::sync::Mutex::new(HostState::default()),
         })
+    }
+}
+
+/// The operation epoch a sign-in step started under (CT-87). A sign-out or a Cancel
+/// bumps the counter, which voids every step still in flight.
+pub struct Epoch<'a> {
+    counter: &'a AtomicU64,
+    expected: u64,
+}
+
+impl<'a> Epoch<'a> {
+    /// The fence of a step that started while the counter read `expected`.
+    pub fn new(counter: &'a AtomicU64, expected: u64) -> Self {
+        Self { counter, expected }
+    }
+
+    /// Whether no sign-out or Cancel ran since the step started.
+    pub fn is_current(&self) -> bool {
+        self.counter.load(Ordering::SeqCst) == self.expected
     }
 }
 

@@ -204,7 +204,7 @@ impl From<SignInError> for SignInFailure {
         match error {
             SignInError::Offline => Self::Offline,
             SignInError::Unsupported => Self::Unavailable,
-            SignInError::Cancelled => Self::Cancelled,
+            SignInError::Cancelled | SignInError::Superseded => Self::Cancelled,
             SignInError::Denied => Self::Denied,
             SignInError::TimedOut => Self::TimedOut,
             SignInError::Protocol => Self::Protocol,
