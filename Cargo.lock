@@ -835,6 +835,7 @@ dependencies = [
  "cimmeria-base-session",
  "cimmeria-base-world-entry",
  "cimmeria-common",
+ "cimmeria-cooked-pak",
  "cimmeria-discord",
  "cimmeria-entity",
  "cimmeria-game",
@@ -848,7 +849,9 @@ dependencies = [
  "cimmeria-wire-log",
  "cimmeria-workspace-hack",
  "getrandom 0.4.3",
+ "serde_json",
  "sqlx",
+ "tempfile",
  "tokio",
  "tracing",
 ]

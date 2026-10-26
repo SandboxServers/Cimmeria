@@ -47,6 +47,8 @@ cimmeria-observability = { workspace = true }
 tokio = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
+# Reads the served catalog index back for the presync catalog's log counts (LP-11).
+serde_json = { workspace = true }
 # The lab chaos shim and the proof observer both implement the transport.
 async-trait = { workspace = true }
 # Each BaseService start mints a fresh 128-bit boot id from the OS CSPRNG.
@@ -100,3 +102,6 @@ cimmeria-observability = { workspace = true, features = ["testing"] }
 async-trait = { workspace = true }
 # `test-util` pauses the clock for the lab chaos net shim's delay-line tests.
 tokio = { workspace = true, features = ["test-util"] }
+# The synthetic items PAK and temp dir for the presync catalog tests (LP-11).
+cimmeria-cooked-pak = { workspace = true }
+tempfile = "3"
