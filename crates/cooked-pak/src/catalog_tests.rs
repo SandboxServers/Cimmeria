@@ -142,6 +142,29 @@ fn unsorted_changed_records_are_not_ascending() {
 }
 
 #[test]
+fn a_repeated_changed_key_is_not_ascending() {
+    // Keys 1 and 2; the changed records repeat key 1.
+    let mut bytes = Vec::from(&b"CPS1"[..]);
+    bytes.extend_from_slice(&4u32.to_le_bytes());
+    bytes.extend_from_slice(&9u32.to_le_bytes());
+    bytes.extend_from_slice(&2u32.to_le_bytes());
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(&2u32.to_le_bytes());
+    bytes.extend_from_slice(&2u32.to_le_bytes());
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(b"a");
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(b"b");
+    bytes.extend_from_slice(&[0; 32]);
+    assert_eq!(
+        decode_body(&bytes, &Limits::DEFAULT),
+        Err(BodyError::NotAscending)
+    );
+}
+
+#[test]
 fn a_repeated_key_is_not_ascending() {
     let mut body = sample();
     body.keys = vec![1, 1, 2];
