@@ -216,6 +216,8 @@ impl Run<'_> {
                     let mut failure = self.failure("source_newer");
                     failure.source_version = plan.source_version;
                     failure.served_version = Some(entry.version);
+                    self.categories
+                        .push(category_report(&entry, &plan, CategoryAction::Failed));
                     return Err(Halt::Failed(Box::new(failure)));
                 }
                 Action::UpToDate => {
@@ -426,7 +428,7 @@ impl Run<'_> {
             stage,
             categories_done: self.categories_done,
             categories_total: self.categories_total,
-            bytes_done: self.bytes,
+            bytes_done: self.bytes.min(self.bytes_total),
             bytes_total: self.bytes_total,
         });
     }

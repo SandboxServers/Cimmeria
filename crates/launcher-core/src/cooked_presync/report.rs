@@ -96,7 +96,7 @@ pub struct Failure {
 
 impl Failure {
     /// A failure with a step and a reason, and no other fields.
-    pub(super) fn new(step: Step, reason: &'static str) -> Self {
+    pub fn new(step: Step, reason: &'static str) -> Self {
         Self {
             step,
             reason,
