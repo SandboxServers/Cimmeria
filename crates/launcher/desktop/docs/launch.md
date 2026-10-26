@@ -277,9 +277,10 @@ for example security software), `game_files_invalid` (193, a damaged SGW.exe) or
 A Play refused before any operation exists logs `launch_refused` (warn) with no
 operation number and `reason` `resources_unavailable` (no bundled Play resources) or
 `resources_unresolved` (the resources could not be resolved for this copy).
-A failed cooked-data presync gives `launch_not_started` reason
-`cooked_presync_failed`; see [Play doesn't start the game when the presync
-fails](#play-doesnt-start-the-game-when-the-presync-fails).
+A failed cooked-data presync is the exception: its `launch_not_started` event has
+reason `cooked_presync_failed` and `failure_code` `launch_prepare_failed`, but the
+launch status leaves `failure` null and shows the reason in `content_sync` instead;
+see [Play doesn't start the game when the presync fails](#play-doesnt-start-the-game-when-the-presync-fails).
 
 ## Validation and human launch checklist
 

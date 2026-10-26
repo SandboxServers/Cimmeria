@@ -137,9 +137,9 @@ target per subsystem: `launcher.startup`, `launcher.crash`, `launcher.update`,
 (`launch_refused`) and `launch_not_started` are warn too. Wire rows use the same name with
 a `client.` prefix (`client.launcher.install`). The full subsystem table is in
 [observability.md](../../../../docs/architecture/observability.md). `launcher.launch` carries `launch_refused`, `launch_started`, `launch_not_started`,
-`launch_failed`, `game_started`, `game_exited`, `launch_finished`,
+`launch_failed`, `game_started`, `game_exited`, `launch_finished`, `cooked_presync_category` and `cooked_presync_finished` ([Cooked-data presync events](launcher-telemetry.md#cooked-data-presync-events)),
 `display_settings` ([Display settings before each Play](launch-display.md#display-settings-before-each-play)) and `display_placement` ([Opening the game on the remembered monitor](launch-display.md#opening-the-game-on-the-remembered-monitor)), each with the
-operation number (except a `launch_refused` before any operation, see above); refusals, failures and not-started launches add a closed `reason`.
+operation number (except a `launch_refused` before any operation, see above); refusals, failures and not-started launches add a closed `reason`. `cooked_presync_finished` is warn when its `outcome` is `failed`.
 `launch_started` also carries `adoption_check` (`light`, `full`, or `none` for an
 install not adopted from a folder) and `patches_incomplete` (how many patches the
 copy's `launcher-installed.json` lists in `incomplete_patches`). When the installed
