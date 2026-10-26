@@ -7,11 +7,13 @@
 //! The answer carries no oracle. Every path spends exactly one argon2id verify,
 //! whether the name is unknown, the row is legacy, or the password is wrong, so
 //! the timing does not show which case it is. The decision is sync and free of
-//! DB access, so CT-99 can run it off the async workers.
+//! DB access. [`gated_check`] runs it on a blocking thread, at most
+//! [`ARGON2_PERMITS`] at a time, so a burst of link attempts neither stalls the
+//! async workers nor takes every core.
 
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::OnceLock;
+use std::sync::{LazyLock, OnceLock};
 
 use sqlx::PgPool;
 use subtle::ConstantTimeEq;
@@ -19,11 +21,27 @@ use subtle::ConstantTimeEq;
 use super::credentials::{sha1_upper_hex, ALGO_ARGON2ID, ALGO_SHA1_LEGACY};
 use super::password_hash::{hash_argon2id, verify_argon2id};
 
+/// How many argon2id verifies may run at once. Each one is a full-cost hash, so
+/// the gate keeps a flood of link attempts from using every blocking thread.
+const ARGON2_PERMITS: usize = 2;
+
+/// Caps the argon2id verifies in flight. A caller waiting here is parked on the
+/// semaphore, so it does not hold an async worker.
+static ARGON2_GATE: LazyLock<std::sync::Arc<tokio::sync::Semaphore>> =
+    LazyLock::new(|| std::sync::Arc::new(tokio::sync::Semaphore::new(ARGON2_PERMITS)));
+
 /// Counts the argon2id verifies this module runs, so tests can assert the cost
 /// of a path. nextest runs each test in its own process, so the count is not
 /// shared between tests.
 #[cfg(test)]
 pub(super) static ARGON2_VERIFIES: AtomicUsize = AtomicUsize::new(0);
+
+/// The verifies running right now, and the most that ever ran at once. The gate
+/// tests read `PEAK` to show the cap holds.
+#[cfg(test)]
+pub(super) static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+#[cfg(test)]
+pub(super) static PEAK: AtomicUsize = AtomicUsize::new(0);
 
 /// The argon2id hash an unknown account name is checked against. It is built
 /// once, with the same cost as a real row, so a miss takes as long as a wrong
@@ -36,8 +54,15 @@ fn dummy_argon2id_hash() -> &'static str {
 /// The one argon2id verify that every path of [`check_row`] spends.
 fn argon2_verify(plaintext: &str, phc: &str) -> bool {
     #[cfg(test)]
-    ARGON2_VERIFIES.fetch_add(1, Ordering::SeqCst);
-    verify_argon2id(plaintext, phc)
+    {
+        ARGON2_VERIFIES.fetch_add(1, Ordering::SeqCst);
+        let now = IN_FLIGHT.fetch_add(1, Ordering::SeqCst) + 1;
+        PEAK.fetch_max(now, Ordering::SeqCst);
+    }
+    let right = verify_argon2id(plaintext, phc);
+    #[cfg(test)]
+    IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
+    right
 }
 
 /// Outcome of [`verify_account_password`].
@@ -85,7 +110,40 @@ pub async fn verify_account_password(
             return PasswordCheck::DbError;
         }
     };
-    check_row(row.as_ref(), plaintext)
+    gated_check(row, plaintext.to_owned()).await
+}
+
+/// Runs [`check_row`] on a blocking thread, behind [`ARGON2_GATE`]. The permit
+/// is held until the blocking task ends.
+async fn gated_check(row: Option<AccountRow>, plaintext: String) -> PasswordCheck {
+    let permit = match std::sync::Arc::clone(&ARGON2_GATE).acquire_owned().await {
+        Ok(permit) => permit,
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                reason = "argon2_gate_closed",
+                "password check: argon2 gate is closed"
+            );
+            return PasswordCheck::DbError;
+        }
+    };
+    // The permit moves into the closure, so it is released when the verify ends
+    // even if this future was dropped while the task was pending.
+    let blocking = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        check_row(row.as_ref(), &plaintext)
+    });
+    match blocking.await {
+        Ok(answer) => answer,
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                reason = "password_check_join",
+                "password check: blocking task failed"
+            );
+            PasswordCheck::DbError
+        }
+    }
 }
 
 /// Decides the answer for one row, or for no row, without DB access.
@@ -148,3 +206,7 @@ fn check_row(row: Option<&AccountRow>, plaintext: &str) -> PasswordCheck {
 #[cfg(test)]
 #[path = "password_check_tests_live_db.rs"]
 mod tests_live_db;
+
+#[cfg(test)]
+#[path = "password_check_gate_tests.rs"]
+mod gate_tests;
