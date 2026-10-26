@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** The orchestrator, ops, packet-coders, packet-reviewers and the owner
-> **Last updated:** 2026-10-26 (owner answers D-LP1, D-LP2, D-LP4 folded in; LP-06 ruling 1: pass, LP-06b added)
+> **Last updated:** 2026-10-26 (owner answers D-LP1, D-LP2, D-LP4 folded in; LP-06 ruling 1: pass, LP-06b passed)
 > **Companions:** [Work packets](work-packets.md) (rules, contract, wave 1), [wave 2](packets-wave2.md), [waves 3-5](packets-wave3.md), [resume card](RESUME.md), [cooked-data pipeline](../../engine/cooked-data-pipeline.md), [cooked PAK format](../../engine/cooked-data-pak-format.md), [launch.md](../../../crates/launcher/desktop/docs/launch.md)
 
 When the client's cooked-data cache doesn't match the server, character select hangs for about a minute while the server pushes every entry of every mismatched category (the full resync, #840). This campaign makes the desktop launcher bring the cache up to date before the game starts, with visible progress, so that resync never fires for a player who presses Play. Prefix `LP`. Designed 2026-10-26 against `main` `2019922fe`; re-specced the same day for the owner's answers. Line numbers below are from that commit; every packet re-greps its anchors.
@@ -97,7 +97,7 @@ Waves 3 and 4 share one PR because the engine blocks Play from wave 3 on, and th
 | LP-05 | Offline check against the player's client copy | rust-gameserver-dev | LP-04 merged into `lcp-w1` | Done: compose works (48e9712d8) |
 | LP-07 | Server counter `cooked_data_version_replies_total` | packet-coder | - | Merged into lcp-w1 (f6befa7c1) |
 | LP-06 | Lab proof: a composed cache gives `up_to_date` at character select | rust-gameserver-dev (lab-uat skill) | wave 1 code; the user approves lab use | Pass (ruling LP-06-1; worknote a938dea61, to move to `worknotes/LP-06.md`) |
-| LP-06b | Lab follow-up: content in game, the Dialogs reading, a second launch | rust-gameserver-dev (lab-uat skill) | the user approves lab use | UATPending; gates the wave 3/4 PR merge |
+| LP-06b | Lab follow-up: content in game, the Dialogs reading, a second launch | rust-gameserver-dev (lab-uat skill) | the user approves lab use | Pass (`2c0eaf0c1`, worknote `worknotes/LP-06b.md`; the wave 3/4 PR merge is no longer gated on it) |
 | LP-10 | Login-port routes `/api/cooked/v1/*` (adds `catalog_failed`) | packet-coder | wave 1 merged, LP-05 "compose works" | BlockedDependency |
 | LP-11 | Publish the catalog (or its failure) at base-service start | packet-coder | wave 1 merged | BlockedDependency |
 | LP-12 | Server docs | documentation-writer | LP-10, LP-11 merged into `lcp-w2` | BlockedDependency |
@@ -115,6 +115,8 @@ Waves 3 and 4 share one PR because the engine blocks Play from wave 3 on, and th
 | LP-F2 | Follow-up: serve `/api/cooked` over HTTPS through the board Caddy | later packet, with client-tls-oidc CT-51/52 | CT-52 | BlockedDependency |
 | LP-F3 | Follow-up: split the over-cap launcher implementation ledger | later docs packet | - | BlockedDependency |
 | LP-F4 | Follow-up: presync failure code in the launcher summary | later packet | D-LP28 yes | BlockedDecision |
+
+**LP-06b note.** Server-side `cooked_data` events were not in the local log during LP-06b (they are OTLP only), so LP-U1 must confirm `up_to_date` per category and no `sync_start` in SigNoz. Side finding: served dialog 60110 shows a markup parse error after "I can add" (seed text issue, not cache; candidate issue for the owner).
 
 ### Owner UAT
 
