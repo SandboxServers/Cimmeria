@@ -194,6 +194,9 @@ pub async fn issue_bound(
 ///
 /// The family lock is taken before the row is read, so the read sees any
 /// successor another operation on the family inserted and committed (C16.1).
+/// The account row is locked `FOR KEY SHARE` before the family lock, the order
+/// every account-wide operation uses (the unlink holds the account `FOR UPDATE`
+/// before it takes family locks).
 pub async fn rotate(
     pool: &PgPool,
     presented: &str,
@@ -202,14 +205,23 @@ pub async fn rotate(
     let old_hash = hash_of(presented);
     let now_ts = micros(now);
     let mut tx = pool.begin().await?;
-    let family: Option<(String,)> =
-        sqlx::query_as("SELECT family_id FROM auth_refresh_token WHERE token_hash = $1")
-            .bind(&old_hash[..])
-            .fetch_optional(&mut *tx)
-            .await?;
-    let Some((family,)) = family else {
+    let family: Option<(String, i32)> = sqlx::query_as(
+        "SELECT family_id, account_id FROM auth_refresh_token WHERE token_hash = $1",
+    )
+    .bind(&old_hash[..])
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((family, account_for_lock)) = family else {
         return Ok(Rotation::Unknown);
     };
+    let present: Option<(i32,)> =
+        sqlx::query_as("SELECT account_id FROM account WHERE account_id = $1 FOR KEY SHARE")
+            .bind(account_for_lock)
+            .fetch_optional(&mut *tx)
+            .await?;
+    if present.is_none() {
+        return Ok(Rotation::Unknown);
+    }
     family_lock(&mut tx, &family).await?;
     let row: Option<StateRow> = sqlx::query_as(
         "SELECT account_id, family_id, \

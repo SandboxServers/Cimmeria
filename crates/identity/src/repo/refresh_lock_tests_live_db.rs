@@ -16,6 +16,8 @@ const ACCOUNT_REVOKE: i32 = 0x7000_E001;
 const ACCOUNT_KEEP: i32 = 0x7000_E002;
 /// The sentinel account of the rotate-waits test.
 const ACCOUNT_ROTATE: i32 = 0x7000_E003;
+/// The sentinel account of the account-lock-order test.
+const ACCOUNT_LOCK_ORDER: i32 = 0x7000_E004;
 
 /// The fixed clock every test starts from.
 fn base() -> DateTime<Utc> {
@@ -250,4 +252,67 @@ async fn live_db_rotate_waits_for_the_family_lock() {
     );
     assert!(matches!(outcome.expect("rotate"), Rotation::Rotated { .. }));
     assert_eq!(live, 1, "the rotation leaves one live token");
+}
+
+/// A rotation and an account revoke that start together must not deadlock. The
+/// revoke holds the account row `FOR UPDATE` and then takes the family lock; the
+/// rotation waits on the account row before it takes the family lock, so the
+/// revoke finishes and the rotation then reads the spent row (contract C16.1).
+#[tokio::test(flavor = "multi_thread")]
+async fn live_db_rotate_and_account_revoke_do_not_deadlock() {
+    let pool = require_db_or_skip!();
+    insert_account(&pool, ACCOUNT_LOCK_ORDER).await;
+    let (a, family) = issue(&pool, ACCOUNT_LOCK_ORDER as u32, None, at(0))
+        .await
+        .expect("issue");
+    let url = database_url().expect("the live-DB gate passed");
+    let mut conn = sqlx::PgConnection::connect(&url)
+        .await
+        .expect("connect the second connection");
+    let mut tx = conn.begin().await.expect("begin");
+    sqlx::query("SELECT account_id FROM account WHERE account_id = $1 FOR UPDATE")
+        .bind(ACCOUNT_LOCK_ORDER)
+        .fetch_all(&mut *tx)
+        .await
+        .expect("lock the account row");
+    let holder_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *tx)
+        .await
+        .expect("read the holder pid");
+    let task = tokio::spawn({
+        let pool = pool.clone();
+        async move { rotate(&pool, &a, at(1)).await }
+    });
+    let waiting = wait_for_a_blocked_backend(&pool, holder_pid).await;
+    let revoked = revoke_account_on(&mut tx, ACCOUNT_LOCK_ORDER as u32, None, at(3)).await;
+    tx.commit().await.expect("commit the revoke");
+    let outcome = task.await.expect("join the rotation");
+    let live = live_rows(&pool, &family).await;
+    cleanup(&pool, ACCOUNT_LOCK_ORDER).await;
+    assert!(waiting, "the rotation waits on the account row");
+    revoked.expect("revoke the account without a deadlock");
+    let Rotation::Reused { family_id, .. } = outcome.expect("rotate without a deadlock") else {
+        panic!("the rotation sees the revoked row as reuse");
+    };
+    assert_eq!(family_id, family);
+    assert_eq!(live, 0, "no live row is left for the account");
+}
+
+/// Polls `pg_stat_activity` for up to 10 s until a backend waits on
+/// `holder_pid`. Returns whether one did.
+async fn wait_for_a_blocked_backend(pool: &PgPool, holder_pid: i32) -> bool {
+    for _ in 0..100 {
+        let waiting: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))",
+        )
+        .bind(holder_pid)
+        .fetch_one(pool)
+        .await
+        .expect("read pg_stat_activity");
+        if waiting {
+            return true;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    false
 }
