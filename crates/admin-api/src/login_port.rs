@@ -55,12 +55,14 @@ use crate::routes::{cooked, dev_session, telemetry};
 /// and enforces its own 64 KiB cap while it reads the body, after the kill
 /// switch and the quota (see [`telemetry::launcher_summary_routes`]).
 ///
-/// The first four need a dev-session token; the summary route is anonymous.
-/// The mint, refresh and summary quotas read the peer
+/// The first four need a dev-session token; the summary route and the two
+/// cooked presync routes are anonymous.
+/// The mint, refresh and summary and cooked presync quotas read the peer
 /// address, so the listener must serve with
 /// `into_make_service_with_connect_info::<SocketAddr>()`, which both auth
 /// listeners already do. When the peer is a loopback proxy, the mint, refresh,
-/// summary and upload quotas key on the forwarded caller address instead (C18).
+/// summary, upload and cooked presync quotas key on the forwarded caller
+/// address instead (C18).
 pub fn login_port_telemetry_router() -> Router {
     Router::new()
         .nest(

@@ -2,6 +2,7 @@
 //! the contract's routes table, the check order, and the quota.
 
 use std::collections::BTreeMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -13,7 +14,9 @@ use cimmeria_cooked_pak::catalog::{decode_body, CategoryBody, Limits};
 use cimmeria_cooked_pak::digest::category_digest;
 use cimmeria_resources::base::served_catalog::{Published, ServedCatalog};
 
-use super::handlers::{admit, category_inner, index_inner};
+use super::handlers::{
+    admit, admit_peer_with, category_inner, index_inner, switch_is_on, DEFAULT_QUOTA_PER_IP,
+};
 use crate::routes::dev_session::quota::WindowTable;
 
 /// A made-up category: `keys` with a four-byte body each, the first one
@@ -221,12 +224,34 @@ async fn a_missing_or_bad_version_or_id_is_400() {
 async fn quota_refuses_the_61st_request_in_a_minute() {
     let quota = WindowTable::new();
     let now = Instant::now();
+    let headers = HeaderMap::new();
+    let peer: SocketAddr = "127.0.0.1:1".parse().unwrap();
+    assert_eq!(DEFAULT_QUOTA_PER_IP, 60);
     for _ in 0..60 {
-        assert!(admit(&quota, 1, 60, now));
+        assert!(admit_peer_with(
+            &quota,
+            peer,
+            &headers,
+            DEFAULT_QUOTA_PER_IP,
+            now
+        ));
     }
-    assert!(!admit(&quota, 1, 60, now));
+    assert!(!admit_peer_with(
+        &quota,
+        peer,
+        &headers,
+        DEFAULT_QUOTA_PER_IP,
+        now
+    ));
     // Another address has its own allowance.
-    assert!(admit(&quota, 2, 60, now));
+    let other: SocketAddr = "127.0.0.2:1".parse().unwrap();
+    assert!(admit_peer_with(
+        &quota,
+        other,
+        &headers,
+        DEFAULT_QUOTA_PER_IP,
+        now
+    ));
     // A limit of 0 admits everything.
     assert!(admit(&quota, 3, 0, now));
 
@@ -234,4 +259,50 @@ async fn quota_refuses_the_61st_request_in_a_minute() {
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(header_text(&headers, header::RETRY_AFTER), Some("60"));
     assert_eq!(text(&body), r#"{"error":"rate_limited"}"#);
+}
+
+/// Only `1` and `true` switch the presync off: the operator's bypass
+/// (D-LP19) must not trip on any other value, nor on an unset variable.
+#[test]
+fn the_kill_switch_reads_one_and_true_only() {
+    assert!(switch_is_on(Some("1")));
+    assert!(switch_is_on(Some("true")));
+    assert!(!switch_is_on(None));
+    assert!(!switch_is_on(Some("")));
+    assert!(!switch_is_on(Some("0")));
+    assert!(!switch_is_on(Some("false")));
+    assert!(!switch_is_on(Some("yes")));
+}
+
+/// Every answer bumps `cooked_presync_requests_total` once, under its route
+/// and outcome: the alert on `outcome="catalog_failed"` reads these labels.
+#[tokio::test]
+async fn answers_are_counted_by_route_and_outcome() {
+    use cimmeria_observability::testing::{counter_total, install};
+    install();
+    const SEEN: [(&str, &str); 5] = [
+        ("index", "served"),
+        ("category", "served"),
+        ("category", "version_changed"),
+        ("index", "catalog_failed"),
+        ("index", "rate_limited"),
+    ];
+    let count = |route: &str, outcome: &str| {
+        counter_total(
+            "cooked_presync_requests_total",
+            &[("route", route), ("outcome", outcome)],
+        )
+    };
+    let before = SEEN.map(|(route, outcome)| count(route, outcome));
+
+    let _ = answer(index_inner(ready(), false, true)).await;
+    let _ = answer(category_inner(ready(), false, true, "7", Some("version=3"))).await;
+    let _ = answer(category_inner(ready(), false, true, "7", Some("version=2"))).await;
+    let _ = answer(index_inner(failed(), false, true)).await;
+    let _ = answer(index_inner(ready(), false, false)).await;
+
+    let after = SEEN.map(|(route, outcome)| count(route, outcome));
+    for (i, (route, outcome)) in SEEN.iter().enumerate() {
+        assert_eq!(after[i] - before[i], 1, "{route}/{outcome}");
+    }
 }

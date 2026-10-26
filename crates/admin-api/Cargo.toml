@@ -44,3 +44,5 @@ cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 [dev-dependencies]
 # The cooked presync route tests build a served catalog from made-up bodies.
 cimmeria-resources = { workspace = true, features = ["test-support"] }
+# The counter test reads `cooked_presync_requests_total` through the testing hooks.
+cimmeria-observability = { workspace = true, features = ["testing"] }

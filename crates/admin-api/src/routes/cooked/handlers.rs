@@ -29,7 +29,7 @@ const QUOTA_WINDOW: Duration = Duration::from_secs(60);
 /// Requests per peer address per [`QUOTA_WINDOW`]. A full presync costs one
 /// index request and one per changed category, and a launcher runs one per
 /// Play; the allowance is for the address, so players behind one NAT share it.
-const DEFAULT_QUOTA_PER_IP: u32 = 60;
+pub(super) const DEFAULT_QUOTA_PER_IP: u32 = 60;
 
 /// `Retry-After` on a 429: the whole window.
 const RATE_LIMIT_RETRY_AFTER: u64 = 60;
@@ -53,10 +53,17 @@ fn quota_limit() -> u32 {
 /// `CIMMERIA_COOKED_PRESYNC_DISABLED`, read per request: `1` or `true` turns
 /// the presync routes off.
 fn kill_switch_on() -> bool {
-    matches!(
-        std::env::var("CIMMERIA_COOKED_PRESYNC_DISABLED"),
-        Ok(v) if v == "1" || v == "true"
+    switch_is_on(
+        std::env::var("CIMMERIA_COOKED_PRESYNC_DISABLED")
+            .ok()
+            .as_deref(),
     )
+}
+
+/// Whether a kill-switch value turns the routes off: `1` or `true`, nothing
+/// else, unset included.
+pub(super) fn switch_is_on(value: Option<&str>) -> bool {
+    matches!(value, Some("1" | "true"))
 }
 
 /// The routes, for the metric's `route` label and the log rows.
@@ -115,8 +122,19 @@ pub(super) async fn category(
 /// The quota decision for one request: the peer's address, or the forwarded
 /// caller behind a loopback proxy (C18), as the launcher-summary route keys it.
 fn admit_peer(peer: SocketAddr, headers: &HeaderMap) -> bool {
+    admit_peer_with(quota(), peer, headers, quota_limit(), Instant::now())
+}
+
+/// [`admit_peer`] against the given table, limit and clock.
+pub(super) fn admit_peer_with(
+    quota: &WindowTable,
+    peer: SocketAddr,
+    headers: &HeaderMap,
+    limit: u32,
+    now: Instant,
+) -> bool {
     let key = ip_key(forwarded_for::rate_limit_ip(peer.ip(), headers));
-    admit(quota(), key, quota_limit(), Instant::now())
+    admit(quota, key, limit, now)
 }
 
 /// The index, for the given catalog state, kill switch and quota decision.
@@ -201,7 +219,7 @@ pub(super) fn category_inner(
     tracing::info!(
         event = "cooked_presync.served",
         category_id,
-        category_name = %served_category.entry.pak,
+        category_name = cimmeria_resources::base::resources::category_name(category_id),
         version,
         bytes = served_category.entry.body_bytes,
         changed = served_category.entry.changed,
