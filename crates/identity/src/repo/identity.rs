@@ -237,10 +237,6 @@ pub async fn touch(
     Ok(())
 }
 
-#[cfg(test)]
-#[path = "identity_email_tests_live_db.rs"]
-mod email_tests_live_db;
-
 /// The account's linked identities, oldest first. Never the subject or email.
 pub async fn list_for_account(
     pool: &PgPool,
@@ -286,3 +282,7 @@ pub async fn count_methods(pool: &PgPool, account_id: u32) -> Result<i64, RepoEr
             .await?;
     Ok(count)
 }
+
+#[cfg(test)]
+#[path = "identity_email_tests_live_db.rs"]
+mod email_tests_live_db;

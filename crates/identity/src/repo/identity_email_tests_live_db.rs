@@ -1,7 +1,7 @@
 //! Live-DB checks for the stored email authority (C01, D-CT23 = a): a sign-in
 //! refreshes the stored email, and only an identity whose provider is trusted
 //! in the current config is an auto-link candidate. Sentinel account ids
-//! `0x7000_EBC0..=0x7000_EBC3`; cleanup deletes by exact id, before and after
+//! `0x7000_EBC0..=0x7000_EBC4`; cleanup deletes by exact id, before and after
 //! each test.
 
 use cimmeria_test_support::require_db_or_skip;
@@ -14,6 +14,7 @@ const ID_STALE: u32 = 0x7000_EBC0;
 const ID_CLEARED: u32 = 0x7000_EBC1;
 const ID_UNTRUSTED: u32 = 0x7000_EBC2;
 const ID_TRUSTED: u32 = 0x7000_EBC3;
+const ID_DEMOTED: u32 = 0x7000_EBC4;
 
 /// Delete the sentinel account `account_id`. Its identity and event rows
 /// cascade with it. A failed delete is ignored so it never hides an assertion.
@@ -181,4 +182,37 @@ async fn live_db_trusted_provider_identity_is_still_a_candidate() {
         .map(|f| f.account_id)
         .collect();
     assert_eq!(ids, vec![ID_TRUSTED]);
+}
+
+#[tokio::test]
+async fn live_db_signin_of_an_untrusted_provider_clears_the_stored_email() {
+    let pool = require_db_or_skip!();
+    insert_account(&pool, ID_DEMOTED, "ct94_demoted_4").await;
+    let email = "ct94-demoted@example.org";
+    let linked = insert(
+        &pool,
+        ID_DEMOTED,
+        &verified("ct94-dev", "ct94-subject-demoted", Some(email), true),
+        true,
+    )
+    .await;
+    let identity_id = linked.as_ref().map_or(0, |l| l.identity_id);
+    let touched = touch(
+        &pool,
+        identity_id,
+        1_700_000_000_000,
+        &verified("ct94-dev", "ct94-subject-demoted", Some(email), true),
+        false,
+    )
+    .await;
+    let stored: Result<(bool, bool), sqlx::Error> = sqlx::query_as(
+        "SELECT email IS NULL, email_verified_at IS NULL FROM account_identity WHERE identity_id = $1",
+    )
+    .bind(identity_id)
+    .fetch_one(&pool)
+    .await;
+    cleanup(&pool, ID_DEMOTED).await;
+    linked.expect("link");
+    touched.expect("touch");
+    assert_eq!(stored.expect("read the identity"), (true, true));
 }
