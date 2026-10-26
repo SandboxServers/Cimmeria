@@ -91,6 +91,14 @@ async fn mint_ticket(
     state.ctx.limit(Bucket::Token, ip, now)?;
     let pool = state.deps.db.as_deref().ok_or(ApiError::Unavailable)?;
     let account_id = grant.account_id;
+    // Take the guard before the reads. A revoke after this point flips it, so
+    // `mint_guarded` refuses. Order matters (C16.4): the grant check comes
+    // after the guard and before the DB reads, so a grant revoked before the
+    // mint is refused and one revoked after the guard is caught by the flip.
+    let guard = state.deps.launch_tickets.guard(account_id);
+    if !state.ctx.stores.access.grant_live(grant) {
+        return Err(ApiError::InvalidToken);
+    }
     let facts = account::facts(pool, account_id)
         .await
         .map_err(ApiError::from_repo)?
@@ -105,7 +113,8 @@ async fn mint_ticket(
     let minted = state
         .deps
         .launch_tickets
-        .mint(account_id, &name, &launch_id, now);
+        .mint_guarded(account_id, &name, &launch_id, now, &guard)
+        .ok_or(ApiError::InvalidToken)?;
     Ok(Json(json!({
         "account_name": minted.account_name,
         "ticket": minted.ticket,
@@ -182,6 +191,10 @@ async fn end_ticket(
     state.deps.launch_tickets.end(grant.account_id, &launch_id);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
+
+#[cfg(test)]
+#[path = "ticket_guard_tests_live_db.rs"]
+mod guard_tests_live_db;
 
 #[cfg(test)]
 mod tests {

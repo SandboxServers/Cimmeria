@@ -178,7 +178,7 @@ pub(super) async fn handle_user_auth(
         ClientCredential::Plaintext(_) => TicketCheck::NoMatch,
     };
     let ticket_id = match ticket {
-        TicketCheck::Valid { account_id } if !over_tls => {
+        TicketCheck::Valid { account_id, .. } if !over_tls => {
             let consume = consume_span(account_id);
             record_consume(&consume, Instant::now(), "refused", "ticket_requires_tls");
             state.launch_tickets.revoke_account(account_id);
@@ -191,7 +191,7 @@ pub(super) async fn handle_user_auth(
             audit!(LoginOutcome::TicketRequiresTls, id = account_id);
             return login_error(4, "The account name or password is incorrect.");
         }
-        TicketCheck::Valid { account_id } => Some(account_id),
+        TicketCheck::Valid { account_id, .. } => Some(account_id),
         TicketCheck::NoMatch => None,
     };
 
