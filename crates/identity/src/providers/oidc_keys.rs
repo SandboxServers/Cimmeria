@@ -31,6 +31,8 @@ pub struct Discovery {
     pub jwks_uri: String,
     /// The issuer, equal to the configured one.
     pub issuer: String,
+    /// The token endpoint auth methods the issuer lists, when it lists any.
+    pub auth_methods: Option<Vec<String>>,
 }
 
 /// The discovery document as the issuer sends it.
@@ -40,6 +42,8 @@ struct RawDiscovery {
     authorization_endpoint: String,
     token_endpoint: String,
     jwks_uri: String,
+    #[serde(default)]
+    token_endpoint_auth_methods_supported: Option<Vec<String>>,
 }
 
 /// Whether an endpoint may be contacted: `https://`, or a loopback `http://`
@@ -75,6 +79,7 @@ impl Discovery {
             token_endpoint: raw.token_endpoint,
             jwks_uri: raw.jwks_uri,
             issuer: raw.issuer,
+            auth_methods: raw.token_endpoint_auth_methods_supported,
         })
     }
 }

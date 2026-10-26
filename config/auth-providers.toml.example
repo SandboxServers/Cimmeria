@@ -49,4 +49,5 @@ issuer = "https://accounts.google.com"
 client_id = "example.apps.googleusercontent.com"
 client_secret_env = "CIMMERIA_IDP_GOOGLE_SECRET"
 scopes = ["openid", "email", "profile"]
+# token_endpoint_auth_method = "client_secret_basic"   # or "client_secret_post"; oidc only
 trusted_email = true
