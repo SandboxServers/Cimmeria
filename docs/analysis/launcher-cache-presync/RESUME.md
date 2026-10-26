@@ -3,7 +3,7 @@
 > **Type:** Reference · **Audience:** The orchestrator resuming this campaign · **Updated:** 2026-10-26
 > **Companions:** [Ledger](README.md), [work packets](work-packets.md), [wave 2](packets-wave2.md), [waves 3-5](packets-wave3.md)
 
-**State (2026-10-26):** wave 1 code-complete in `lcp-w1`, head `48e9712d8`: LP-01, 02, 03, 04, 07 merged, LP-05 worknote says **compose works** (D-LP3 resolved, no ruling). The wave loop is done; the wave 1 PR is next. Then ask the user about the lab for LP-06, and open wave 2 (LP-10, LP-11). Board: c/cimmeria/launcher-cache-presync/43. Orphaned targets (~163 GB: cto-40/41/45/46/w3a/w3b) reported to the user, not deleted.
+**State (2026-10-26):** wave 1 code-complete in `lcp-w1`, head `48e9712d8`: LP-01, 02, 03, 04, 07 merged, LP-05 worknote says **compose works** (D-LP3 resolved, no ruling). Wave review fixes landed (head `887f339e6`) and the wave review passed `ship` at pass 3. The wave 1 PR is next. Then ask the user about the lab for LP-06, and open wave 2 (LP-10, LP-11). Board: c/cimmeria/launcher-cache-presync/43. Orphaned targets (~163 GB: cto-40/41/45/46/w3a/w3b) reported to the user, not deleted.
 
 **Goal:** at Play, the launcher brings the Documents `Cache.en-US` up to the server's cooked-data versions, so the ~1 min resync at character select never fires. **Owner 2026-10-26:** D-LP1 yes (anonymous routes on 8081, quota 60/min, kill switch), D-LP2 yes (changed entries only), D-LP4 reversed: a failed presync **blocks Play** with the exact failure and a **Retry** button; no fallback to `cooked_sync` from the launcher. Edge cases: D-LP18..D-LP29.
 
