@@ -415,8 +415,10 @@ refresh keeps both.
 
 The mint and every refresh record the stream in
 `cimmeria_auth::auth::client_telemetry` (TG-NET-18, owner decision D-TG14)
-under its `mid`, its `acct` (ASCII case ignored) and the address the
-request came from. The `World entry complete` row joins on the game
+under its `mid`, its `acct` (ASCII case ignored) and the quota-key address the
+request came from: behind a loopback proxy, the forwarded caller (D-LTL4).
+The registry keeps that address in memory only and never logs or writes it.
+The `World entry complete` row joins on the game
 session's address:
 
 | `client_telemetry` | When | Extra fields |
@@ -519,8 +521,9 @@ it parses as a bare IP; otherwise it is the peer. Headers from a non-loopback
 peer are ignored, so a caller who reaches the port directly cannot choose its
 quota key, and the rightmost entry is the one the proxy appended, not one the
 caller wrote. The result is only an `ip_key` for the quota counters and the
-per-address upload slot. It is never logged, stored, returned or put in a
-span, and it is not hashed into anything either. This is the C18 rule and
+per-address upload slot. It is never logged, persisted, returned or put in a
+span (the in-memory client-telemetry registry holds it for the stream join,
+D-LTL4), and it is not hashed into anything either. This is the C18 rule and
 owner decisions D-LT19 and D-LT18; the statement of the no-address rule is
 [telemetry.md § No address in any log](../operations/telemetry.md#no-address-in-any-log).
 

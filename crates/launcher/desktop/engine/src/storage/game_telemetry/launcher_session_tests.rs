@@ -1,5 +1,5 @@
 use super::launcher_session::{
-    BatchOutcome, LauncherSender, LauncherTarget, SendOutcome, LAUNCHER_SESSION_KIND,
+    BatchOutcome, LauncherSender, LauncherTarget, SendOutcome, SendReport, LAUNCHER_SESSION_KIND,
 };
 use super::session::mint_body_for_test;
 use super::*;
@@ -239,4 +239,101 @@ async fn a_log_post_remembers_the_scheme_and_host_it_used() {
         sender.last_endpoint(),
         Some(("http".to_owned(), "127.0.0.1".to_owned()))
     );
+}
+
+/// Mounts a chunk route that answers the first upload 200 and every later one
+/// 429 with `Retry-After: 120`; the throttle mock is unlimited and expects one hit.
+async fn mount_ok_then_throttled(server: &MockServer) {
+    Mock::given(method("POST"))
+        .and(path(CHUNK))
+        .respond_with(ResponseTemplate::new(200))
+        .up_to_n_times(1)
+        .expect(1)
+        .mount(server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(CHUNK))
+        .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "120"))
+        .expect(1)
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn a_429_on_the_second_chunk_reports_the_posted_count() {
+    let server = MockServer::start().await;
+    mount_mint(&server, 1).await;
+    mount_ok_then_throttled(&server).await;
+    let sender = LauncherSender::new();
+    // 300 events are two chunks of 200 and 100 rows.
+    let events: Vec<TelemetryEvent> = (0..300).map(|_| event()).collect();
+    let report = sender.send_report(&target(&server.uri()), &events).await;
+    assert_eq!(
+        report,
+        SendReport {
+            outcome: SendOutcome::Dropped,
+            posted: 200,
+            retry_from: Some(200),
+        }
+    );
+    let held = sender.hold_remaining().expect("a 429 holds");
+    assert!(held >= Duration::from_secs(110));
+}
+
+#[tokio::test]
+async fn a_held_sender_posts_nothing_and_reports_retry_from_zero() {
+    let server = MockServer::start().await;
+    mount_mint(&server, 1).await;
+    mount_ok_then_throttled(&server).await;
+    let sender = LauncherSender::new();
+    let target = target(&server.uri());
+    let events: Vec<TelemetryEvent> = (0..300).map(|_| event()).collect();
+    sender.send_report(&target, &events).await;
+    // The two chunk mocks above expect one hit each, so a held send that posts fails them.
+    let report = sender.send_report(&target, &events).await;
+    assert_eq!(
+        report,
+        SendReport {
+            outcome: SendOutcome::Held,
+            posted: 0,
+            retry_from: Some(0),
+        }
+    );
+}
+
+#[tokio::test]
+async fn a_rejected_chunk_is_dropped_without_a_retry_point() {
+    let server = MockServer::start().await;
+    mount_mint(&server, 1).await;
+    mount_chunk(&server, 403, None).await;
+    let sender = LauncherSender::new();
+    let report = sender.send_report(&target(&server.uri()), &[event()]).await;
+    assert_eq!(
+        report,
+        SendReport {
+            outcome: SendOutcome::Dropped,
+            posted: 0,
+            retry_from: None,
+        }
+    );
+    assert_eq!(sender.hold_remaining(), None);
+}
+
+#[tokio::test]
+async fn a_server_error_keeps_the_events_and_holds_for_a_minute() {
+    let server = MockServer::start().await;
+    mount_mint(&server, 1).await;
+    mount_chunk(&server, 500, None).await;
+    let sender = LauncherSender::new();
+    let report = sender.send_report(&target(&server.uri()), &[event()]).await;
+    assert_eq!(
+        report,
+        SendReport {
+            outcome: SendOutcome::Dropped,
+            posted: 0,
+            retry_from: Some(0),
+        }
+    );
+    let held = sender.hold_remaining().expect("a 500 holds");
+    assert!(held >= Duration::from_secs(55));
 }

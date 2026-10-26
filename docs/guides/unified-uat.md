@@ -62,6 +62,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Launcher UAT fixes](#launcher-uat-fixes) | [launcher-uat-fixes ledger](../analysis/launcher-uat-fixes/README.md#close-out-2026-10-22) and the [laptop UAT worknote](../analysis/launcher-telemetry/worknotes/laptop-uat-2026-10-22.md) |
 | [Launcher on Windows on Arm](#launcher-on-windows-on-arm) | [launcher-win-arm64 ledger](../analysis/launcher-win-arm64/README.md#owner-uat-no-lab-use) |
 | [Launcher Play on Linux (Proton)](#launcher-play-on-linux-proton) | [launcher-linux-play-proton ledger](../analysis/launcher-linux-play-proton/README.md#uat-pp-u-doc-update-map-row-57) |
+| [Launcher telemetry on Linux (LTL-U)](#launcher-telemetry-on-linux-ltl-u) | [launcher-telemetry-linux ledger](../analysis/launcher-telemetry-linux/README.md#packets) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
@@ -1699,6 +1700,29 @@ The launcher-linux-play-proton campaign ([ledger](../analysis/launcher-linux-pla
 | PP-U8 | Install from `client.rar` and watch the phase lines. | "Copying…", "Reading the archive index…", "Unpacking…", "Expanding game files…", each with rate and ETA; no "Checking the download…". | Install PASS (copy 67 s, cabinets 116 s, under the 3m46s bound). Phase copy sits below the fold in the default window and was not read: owner. |
 
 Known issues: the first Play logs a benign `display_settings_not_applied` WARN (F-U5); the first Play runs at 1024x768 (FU-10); fullscreen does not draw under Proton (FU-11).
+
+## Launcher telemetry on Linux (LTL-U)
+
+The launcher-telemetry-linux campaign ([ledger](../analysis/launcher-telemetry-linux/README.md)) changes how the launcher sends its own events and how the server pairs a game session with the launcher's telemetry stream. This is the owner's re-run on the Steam Deck.
+
+**Status:** UATPending. **Not tested:** no live Deck run of this build and no lab run. The code is unit-tested and reviewed only. Owner only; no lab use.
+
+**Prerequisites:**
+
+- The campaign PR is merged and the colo is deployed. The server half (stream recording and the two new mint log fields) needs the deploy; the launcher half needs an AppImage built from the same release.
+- Close the **Windows launcher** before the run, and any other launcher on the same home network address. Two live streams behind one address give `client_telemetry="ambiguous"`, not `present`, and that result tells you nothing about the fix ([B1](../analysis/launcher-telemetry-linux/worknotes/LTL-B1.md)).
+- Opt in to game diagnostics in the launcher.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| LTL-U1 | On the Deck, adopt or install, then press Play, then quit the launcher normally. In SigNoz, look at the launcher session's `client.launcher.*` rows and the `pipeline_recovered` row. | Every launcher event of the run is there, including those from adoption, install and Play. Any `pipeline_recovered` row has `events_lost=0`; a run with no throttling has no such row. | The old build lost events once the server throttled them. A `held` count in `pipeline_recovered` is fine: one send of up to 200 events can be two or three chunks, and at 7 s spacing that can briefly pass the 10-per-minute quota. That means a 429, a 120 s hold and a retry, not a loss. |
+| LTL-U2 | Press Play, log in, enter a world. Read the server's `World entry complete` row for your session. | `client_telemetry="present"`, and the `client_machine_id` is not `e3b0c44298fc1c14`. The Deck's mint row has `caller_forwarded=true peer_loopback=true`. | Before this fix the same run logged `absent`. If you get `ambiguous`, another launcher is live on the same address (see prerequisites). If the mint row shows `peer_loopback=false`, the container does not see the proxy as loopback (ops item OPS-LT2): record it, the server fix cannot help there. `client_machine_id` is a field of the `World entry complete` row; the mint rows do not carry it. |
+| LTL-U3 | Turn Game diagnostics off in Settings while a send is waiting (do some actions, then switch it off within about 7 s). | No launcher rows with a later time. | Turning diagnostics off empties the in-memory queue without sending it. |
+| LTL-U4 | Walk and run around in a world on the Deck. | Movement feels normal. | Parked from the 2026-10-26 run; not a telemetry check. |
+| LTL-U5 | Press Play, quit the game, then immediately close the launcher window. In SigNoz, look at the last launcher rows of the session and for an `exit_flush_incomplete` row. | The last rows before the close (for example `launch_finished`) arrive, and there is no `exit_flush_incomplete` row. The close takes no more than about 3 s. | The exit flush waits at most 3 s. While the server asks the launcher to wait, the flush does not send, so events from the last seconds of a held session can still be missing. An `exit_flush_incomplete` row means the 3 s bound was hit. Record which. |
+| LTL-U6 | After a long session, count the launcher session's rows in SigNoz. | A number to write down. The expected ceiling is 300 rows per launcher session. | Observation only (finding F8). The new queue holds up to 500 events, so a long session can run out of the server's 300 rows. This campaign does not change that budget. |
+
+Rows U1, U2, U3, U5 and U6 are the telemetry checks; U4 is the parked walk test.
 
 ## Lab CLI (`lab.exe`)
 

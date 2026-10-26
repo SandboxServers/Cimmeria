@@ -122,8 +122,8 @@ rolling `logs/launcher.<date>.log`, 7 kept, with the home folder written as
 folder** to a bounded channel that drops when full, and
 `launcher_session::LauncherSender` sends it as a `client.launcher.adoption`
 event in a `launcher` session. That session is minted on the first step, lasts
-15 minutes and is re-minted when it runs out; events are posted at once and
-dropped silently when offline. The six steps are C10 of
+15 minutes and is re-minted when it runs out; events are grouped and sent as described under "Forwarding pace, hold and flush" below, and
+are kept in memory, never on disk, while the network or the server is unavailable. The six steps are C10 of
 `docs/analysis/launcher-adopt-ux/work-packets-wave2.md`.
 Nothing leaves without the game-diagnostics opt-in, in a build with the module.
 `client.launcher.install_result` is unchanged and still waits for Play.
@@ -148,7 +148,9 @@ copy cannot be read for those tags, the launcher logs a WARN `launch_tags_unavai
 Two events on `launcher.telemetry` are named here: `pipeline_recovered`, one row when the
 upload pipeline comes back after failures, and `game_session_mint_failed`, when
 a game session could not be minted and Play went on with no game diagnostics.
-Their fields are not listed in this file.
+Their fields are not listed in this file, apart from `events_lost` below.
+
+**Forwarding pace, hold and flush.** The forwarder sends a batch once the oldest queued event has waited 2 s, or 64 events are queued, and at least 7 s after the previous send. A 429 or 503 keeps the unsent events and holds sends for the wait the server sets, at least 60 s and at most an hour (60 s when it sets none). A failed mint keeps them too. A transport or 5xx failure, or a 408, keeps them and holds sends for 60 s. A 401 mints a new token once and tries again; a second 401, a 4xx other than 401, 408 and 429, or a JSON, IO or split error drops the events, because the server would refuse them on every retry. A dropped batch with no retry point (`retry_from: None`) is final. While a hold runs, up to 500 events wait in memory, oldest dropped first, and go out when the hold ends. Nothing is written to disk, and turning diagnostics off empties the queue. `pipeline_recovered` carries `events_lost`, the events dropped since the last successful send. The queue is flushed on `launch_finished` and on exit; a flush skips the 2 s and 7 s waits but sends nothing while a hold runs. The exit flush waits at most 3 s for the forwarder to acknowledge it, so an exit is never delayed longer than that.
 
 **Not covered:**
 
