@@ -401,8 +401,10 @@ address the quota rule picks. When the socket peer is loopback, which is
 what Caddy looks like to the server, the key is the rightmost entry of the
 last `X-Forwarded-For` header; from any other peer the header is ignored,
 so a caller who reaches the port directly cannot choose its own key. The
-key is used only to count and is never logged. Whether the colo's container
-sees Caddy as loopback has not been checked (OPS-LT2).
+key counts the quotas and, in process memory only, is the address the
+client-telemetry registry records a stream under (D-LTL4); it is never
+logged. Whether the colo's container sees Caddy as loopback has not been
+checked (OPS-LT2).
 
 **Raise the per-IP quotas where the key is still shared:** a NAT or office
 egress, any proxy that is not on loopback, and a container that sees the
