@@ -59,6 +59,15 @@ test('privacy distinguishes identities, raw logs, consent withdrawal and network
   assert.match(text('privacy-exclusions'), /No lab remote-control bridge in the distributed player module/);
 });
 
+test('content sync privacy line names the endpoint, the cache folder and the not-started outcome', () => {
+  const {document} = parseHTML(html);
+  const text = document.getElementById('privacy-identity')!.textContent!;
+  assert.match(text, /\/api\/cooked\/v1/);
+  assert.match(text, /Cache\.en-US/);
+  assert.match(text, /not started/);
+  assert.doesNotMatch(text, /plain HTTP/);
+});
+
 test('complete disclosure is offline and collapsed without moving or enabling consent controls', () => {
   const {document} = parseHTML(html);
   const privacy = document.getElementById('diagnostics-privacy')!;

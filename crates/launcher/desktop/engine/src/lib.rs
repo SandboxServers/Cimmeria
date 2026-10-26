@@ -23,6 +23,7 @@ pub use cimmeria_launcher_core::manifest;
 // One implementation of the legacy installation algorithms on both shells,
 // in `cimmeria-launcher-core` (LX-01).
 pub use cimmeria_launcher_core::client_setup;
+pub use cimmeria_launcher_core::cooked_presync;
 pub use cimmeria_launcher_core::install;
 pub use cimmeria_launcher_core::install_layout;
 pub use cimmeria_launcher_core::install_report;

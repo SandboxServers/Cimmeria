@@ -98,6 +98,8 @@ the game windowed. The details, the failure codes and the checklist are in
 **Not on Linux yet:** Repair, Update and the launcher self-update. Those paths
 still answer `platform_unavailable`.
 
+**Windows Play checks cooked game data first.** A failed presync blocks Play with **Retry**; see [launch.md](docs/launch.md#play-doesnt-start-the-game-when-the-presync-fails).
+
 ## Native operation and storage contracts
 
 `engine/src/operations.rs` owns a versioned snapshot with a revision and one

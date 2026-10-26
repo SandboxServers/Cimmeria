@@ -42,7 +42,95 @@ support. Mac additionally requires successful current prerequisite evidence and
 an explicit graphics resource. Dispatch retains installation, prefix and runtime
 cache locks, repeats resource checks, then reuses existing `client_setup::prepare`
 (stock filename restoration, login server Lua and ASLR). The native task runs
-that preparation off the UI thread. The engine makes no downloads during Play.
+that preparation off the UI thread. The engine makes no downloads during Play
+except the cooked-data presync described below.
+
+## Cooked-data presync before the game starts
+
+On Windows, Play runs the phase `play_cooked_presync` between the telemetry mint
+(`play_telemetry_mint`) and client setup (`play_client_setup`) (D-LP7). It
+compares the Documents `Cache.en-US` with the first login server's cooked-data
+routes under `/api/cooked/v1`, and writes only the stale categories there. It
+never writes `SourceCache.en-us` or the install (D-LP6). The gate (D-LP18) reads
+the outcome:
+
+- `up_to_date` and `synced`: Play continues.
+- `skipped`: Play continues. `disabled` (the server's kill switch) and
+  `server_unsupported` (a server without the routes) come from the server
+  (D-LP19); `platform_unsupported` is set on hosts other than Windows, such as a
+  macOS Wine prefix (D-LP9). The launcher shows a note that character select may
+  take about a minute when the server says skip.
+- `failed`: Play stops. See the next section.
+- `cancelled`: the launch ends `cancelled` and nothing is launched (D-LP23). No
+  UI caller reaches the engine's cancel token, so the Play button has no cancel.
+
+The gate and the phase are in `engine/src/storage/launch/worker.rs` and
+`engine/src/storage/launch/cooked_presync.rs`.
+
+## Play doesn't start the game when the presync fails
+
+A presync that fails, is refused, times out or hits its deadline does not start
+the game (D-LP4, D-LP18). The launch ends `not_started` before client setup,
+with `launch_not_started` reason `cooked_presync_failed` and failure code
+`launch_prepare_failed`. Nothing is spawned, and the launcher never falls back to
+`cooked_sync`.
+
+The failure contract (D-LP26) is the failure table in
+[the launcher section of the work packets](../../../../docs/analysis/launcher-cache-presync/work-packets.md)
+(§ Launcher, "Failure table"). A failure names one `step` (`prepare`, `index`,
+`plan`, `download`, `stage` or `commit`) and one `reason`. It also carries the
+category, PAK, HTTP status, Windows I/O kind and OS error, retry-after, versions
+and deadline when they are known. The message names the login server's
+`host:port` and the OS error (D-LP21). The frontend owns the English; its
+remedies are:
+
+- `pak_in_use` (commit): close Stargate Worlds and any tool that has the PAK
+  open, then press **Retry**.
+- `source_missing`, `base_missing`, `digest_mismatch`: use **Repair**, then
+  **Retry**.
+- `source_unreadable`: close Stargate Worlds, then **Retry**, or use **Repair**.
+- `source_newer`: tell the server's operator, or use **Repair** if you changed
+  the game files yourself.
+- `catalog_failed`: tell the server's operator. **Retry** won't help until they
+  fix it.
+- `write_failed`: free disk space or check the folder's permissions, then
+  **Retry**.
+- `no_login_server`, `endpoint_refused`: fix the login server list. `unsafe_path`,
+  `profile_unavailable`: fix the game data folder or the Documents folder, then
+  **Retry**.
+- `catalog_unavailable`, `rate_limited`, `connect_failed`, `timeout`, `deadline`,
+  `http_error`: check the network if needed, then **Retry**. `deadline` and the
+  transient refusals name the step in progress.
+
+**Retry.** After a failure the Play button reads **Retry**. Its press starts a
+fresh Play with a new operation id, and its first press shows "Starting…", as
+Play does (D-LP29). Categories committed by an earlier run are `up_to_date`, so
+a retry fetches only the rest.
+
+**Waits and limits.** Connect 5 s; the index request 15 s in total; a body fails
+after 15 s with no bytes (idle timeout), with no total limit per body (D-LP25).
+The whole run has a 120 s deadline. A transient refusal (503
+`catalog_unavailable`, 429 `rate_limited`) waits for `Retry-After` (5 s when a
+503 or 429 has none) when that is at most 30 s and fits the deadline, at most
+three waits a run (D-LP20). A 409 `version_changed` restarts once from the
+index. A 503 `catalog_failed` fails at once.
+
+**Writes.** The presync stages every stale category first, as
+`<pak>.cimmeria-presync.tmp` files in `Cache.en-US`, and only then commits (D-LP22).
+Commit opens each existing destination exclusively before it renames anything, so
+a PAK in use fails the commit with nothing renamed. It then renames in ascending
+category order. A failure before commit leaves the cache untouched. A rename
+failure leaves every PAK either its old whole file or its new whole file; the
+categories already renamed are correct, and **Retry** finishes the rest. Each run
+first deletes stray temp files in `Cache.en-US` only. A commit that has begun runs
+to the end. Closing the launcher before commit changes nothing in the cache;
+closing it during commit leaves every PAK either whole and old or whole and new,
+and the next Play removes any leftover temp files.
+
+**Where the detail lives.** The failure detail is held in memory only (D-LP26).
+It stays readable until the next Play. After a launcher restart a failed presync
+shows the generic "Game could not start" text, because the journal does not keep
+the presync failure.
 
 ## Embedded Windows Play resources
 
@@ -189,6 +277,10 @@ for example security software), `game_files_invalid` (193, a damaged SGW.exe) or
 A Play refused before any operation exists logs `launch_refused` (warn) with no
 operation number and `reason` `resources_unavailable` (no bundled Play resources) or
 `resources_unresolved` (the resources could not be resolved for this copy).
+A failed cooked-data presync is the exception: its `launch_not_started` event has
+reason `cooked_presync_failed` and `failure_code` `launch_prepare_failed`, but the
+launch status leaves `failure` null and shows the reason in `content_sync` instead;
+see [Play doesn't start the game when the presync fails](#play-doesnt-start-the-game-when-the-presync-fails).
 
 ## Validation and human launch checklist
 
