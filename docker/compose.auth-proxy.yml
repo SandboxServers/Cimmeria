@@ -12,8 +12,8 @@
 #
 # Through a loopback publish the server does not see 127.0.0.1 as the peer:
 # it sees the bridge gateway of the container's network. The default trusted
-# list (127.0.0.0/8,::1,172.16.0.0/12) already covers that gateway. To narrow
-# the list to the gateway alone, set AUTH_PROXY_TRUSTED_PEERS in .env to
+# list is loopback only (127.0.0.0/8,::1), so the gateway must be listed. Set
+# AUTH_PROXY_TRUSTED_PEERS in .env to
 #
 #   <gateway>/32
 #
@@ -45,7 +45,7 @@ services:
     environment:
       # The auth proxy listener (contract C2), bound inside the container.
       AUTH_PROXY_ADDR: "0.0.0.0:13480"
-      # Empty keeps the server default 127.0.0.0/8,::1,172.16.0.0/12.
+      # Empty keeps the server default 127.0.0.0/8,::1 (loopback only).
       AUTH_PROXY_TRUSTED_PEERS: "${AUTH_PROXY_TRUSTED_PEERS:-}"
       CIMMERIA_AUTH_PROVIDERS: "/opt/cimmeria/config/auth-providers.toml"
       # Kill switches (docs/operations/auth-https.md). Only the literal 1 turns one on.
