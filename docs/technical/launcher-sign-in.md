@@ -92,7 +92,7 @@ A linked account is the exception: it has no password, so an unmodified client c
 ## Launch tickets
 
 - 32 random alphanumeric characters. The client sends `SHA1HEX(ticket)` as the password field, which the existing credential classifier already treats as a legacy hash. The server stores only `SHA-256` of that hex and compares in constant time.
-- One live ticket per account; minting replaces the old one. Life: 12 hours absolute, 30 minutes idle (use or heartbeat refreshes the idle clock). A reconnect or Change Server inside the life re-sends the same ticket.
+- One live ticket per account; minting replaces the old one. Life: 5 minutes until the first SOAP redemption (an unredeemed ticket is not extended by heartbeat); after that 12 hours absolute, 30 minutes idle (use or heartbeat refreshes the idle clock). A reconnect or Change Server inside the life re-sends the same ticket.
 - **TLS only.** A matching ticket that arrives over plain HTTP is refused with audit outcome `ticket_requires_tls` and the ticket is revoked. Successful use is audited as `launch_ticket`.
 - Tickets live in server memory. A server restart clears them; the launcher has to mint a new one on the next Play.
 
