@@ -14,6 +14,8 @@ use super::*;
 const ACCOUNT_REUSE: i32 = 0x7000_E000;
 const ACCOUNT_REVOKE: i32 = 0x7000_E001;
 const ACCOUNT_KEEP: i32 = 0x7000_E002;
+/// The sentinel account of the rotate-waits test.
+const ACCOUNT_ROTATE: i32 = 0x7000_E003;
 
 /// The fixed clock every test starts from.
 fn base() -> DateTime<Utc> {
@@ -215,4 +217,37 @@ async fn live_db_revoke_account_on_keeps_the_named_family() {
     );
     assert_eq!(keep_live, 1, "the kept family stays live");
     assert_eq!(other_live, 0, "the other family is revoked");
+}
+
+#[tokio::test]
+async fn live_db_rotate_waits_for_the_family_lock() {
+    let pool = require_db_or_skip!();
+    insert_account(&pool, ACCOUNT_ROTATE).await;
+    let (a, family) = issue(&pool, ACCOUNT_ROTATE as u32, None, at(0))
+        .await
+        .expect("issue");
+    let url = database_url().expect("the live-DB gate passed");
+    let mut conn = sqlx::PgConnection::connect(&url)
+        .await
+        .expect("connect the second connection");
+    let mut tx = conn.begin().await.expect("begin");
+    family_lock(&mut tx, &family)
+        .await
+        .expect("take the family lock");
+    let task = tokio::spawn({
+        let pool = pool.clone();
+        async move { rotate(&pool, &a, at(1)).await }
+    });
+    wait_for_a_waiting_lock(&pool).await;
+    let finished_early = task.is_finished();
+    tx.commit().await.expect("release the family lock");
+    let outcome = task.await.expect("join the rotation");
+    let live = live_rows(&pool, &family).await;
+    cleanup(&pool, ACCOUNT_ROTATE).await;
+    assert!(
+        !finished_early,
+        "rotate waits while another holds the family lock"
+    );
+    assert!(matches!(outcome.expect("rotate"), Rotation::Rotated { .. }));
+    assert_eq!(live, 1, "the rotation leaves one live token");
 }
