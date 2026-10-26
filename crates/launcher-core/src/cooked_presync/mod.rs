@@ -5,5 +5,6 @@
 //! here carries its step, reason and OS detail up to the engine, which blocks
 //! Play and tells the player why.
 
+pub mod apply;
 pub mod fetch;
 pub mod io_detail;
