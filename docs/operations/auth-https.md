@@ -79,7 +79,7 @@ Use `sudo` for `docker compose` too if `.env` is root-only ([colo-deploy.md](col
 | `curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-Proto: https' -H 'X-Forwarded-For: 192.0.2.10' http://127.0.0.1:13480/auth/v1/providers` | `200` |
 | The same without `X-Forwarded-Proto` | `400` |
 
-A `403` plus a `proxy_untrusted_peer` WARN in the server log means the narrowed list missed the peer. Remove the `AUTH_PROXY_TRUSTED_PEERS` line and run `docker compose up -d` again.
+A `403` plus a `proxy_untrusted_peer` WARN in the server log means the trusted list is missing the peer. Re-run the `gw=` step above, make sure `.env` has one `AUTH_PROXY_TRUSTED_PEERS=<gateway>/32` line, and run `docker compose up -d` again.
 
 ## Step 2: the Caddy route
 

@@ -246,9 +246,10 @@ impl PeerNet {
             },
         ]
     }
+
     /// Loopback (`127.0.0.0/8`, `::1`) and the docker bridge range
     /// (`172.16.0.0/12`). No longer the default: the proxy listener defaults
-    /// to loopback only (see loopback).
+    /// to loopback only (see [`Self::loopback`]).
     pub fn loopback_and_docker_bridge() -> Vec<Self> {
         vec![
             Self {
@@ -390,6 +391,7 @@ mod tests {
         assert!(trusted("::1"));
         assert!(!trusted("172.17.0.1"));
     }
+
     /// The security-relevant default: the unauthenticated admin API
     /// must stay on loopback. Reverting this to `0.0.0.0` reopens issue
     /// #439 (unauthenticated admin reachable from any networked host).
