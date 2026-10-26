@@ -31,7 +31,7 @@ function reasonText(f:ContentSyncFailure,server:string,pak:string):string {
   case 'catalog_unavailable':return `The server is still preparing its game data.${f.retry_after_s===null?'':` It asked to wait ${f.retry_after_s} s.`} Press Retry in a minute.`;
   case 'catalog_failed':return "The server couldn't prepare its game data. Tell the server's operator; Retry won't help until they fix it.";
   case 'rate_limited':return 'The server is limiting requests from your network. Press Retry in a minute.';
-  case 'http_error':return `The server answered with an error (HTTP ${f.http_status}). Press Retry. If it keeps happening, tell the server's operator.`;
+  case 'http_error':return `The server answered with an error${f.http_status===null?'':` (HTTP ${f.http_status})`}. Press Retry. If it keeps happening, tell the server's operator.`;
   case 'too_large':case 'bad_index':case 'bad_body':return "The server's answer was damaged or not understood. Press Retry. If it keeps happening, tell the server's operator.";
   case 'unknown_category':case 'version_changed':return "The server's game data changed during the update. Press Retry.";
   case 'source_newer':return `Your game install has newer ${pak} data (version ${f.source_version??'unknown'}) than the server (version ${f.served_version??'unknown'}). Tell the server's operator, or use Repair if you changed the game files yourself.`;

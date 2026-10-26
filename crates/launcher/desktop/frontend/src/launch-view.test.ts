@@ -92,6 +92,7 @@ test('a failed game data check says what failed and why, then the details line',
   "Couldn't download a game data file from play.example:8081: The server is still preparing its game data. It asked to wait 30 s. Press Retry in a minute.\nDetails: download / catalog_unavailable");
  assert.equal(contentSyncText(syncState(failed({...failedDownload,step:'index',reason:'something_new',http_status:null,category_id:null,pak:null}))),
   "Couldn't get the game data list from play.example:8081: An unexpected error (something_new). Press Retry. If it keeps happening, use Upload debug logs.\nDetails: index / something_new");
+ assert.ok(!contentSyncText(syncState(done({outcome:'failed',reason:'http_error',failure:{...failedDownload,http_status:null}})))!.includes('null'),'a null http_status is not printed');
 });
 test('every failure reason in the table has its own remedy',()=>{
  const table:[string,string][]=[['profile_unavailable','Documents'],['no_login_server','Login servers'],['endpoint_refused','may download from'],['unsafe_path','Reset client cache'],
@@ -102,6 +103,22 @@ test('every failure reason in the table has its own remedy',()=>{
  for(const [reason,fragment] of table){
   const text=contentSyncText(syncState(done({outcome:'failed',reason,failure:{...failedDownload,reason,source_version:9,served_version:7,deadline_s:12}})));
   assert.ok(text?.includes(fragment),`${reason}: ${text}`);
+ }
+});
+test('every step and io_kind has its own words, and an unknown step gets the generic line',()=>{
+ const steps:[string,string][]=[['prepare',"Couldn't get ready to check game data:"],['index',"Couldn't get the game data list from play.example:8081:"],
+  ['plan',"Couldn't compare your game data with play.example:8081:"],['download',"Couldn't download CookedDataItems.pak from play.example:8081:"],
+  ['stage',"Couldn't build the updated CookedDataItems.pak:"],['commit',"Couldn't save the updated CookedDataItems.pak:"],['brand_new',"Couldn't update game data:"]];
+ for(const [step,prefix] of steps){
+  const text=contentSyncText(syncState(done({outcome:'failed',reason:'timeout',failure:{...failedDownload,step,reason:'timeout',pak:'CookedDataItems.pak'}})));
+  assert.ok(text?.startsWith(prefix),`${step}: ${text}`);
+ }
+ const kinds:[string,string][]=[['sharing_violation','the file is in use'],['lock_violation','the file is locked'],['storage_full','the disk is full'],
+  ['permission_denied','access was denied'],['not_found','it was not found'],['connection_refused','the connection was refused'],['connection_reset','the connection was reset'],
+  ['timed_out','it timed out'],['host_unreachable',"the server can't be reached from this network"],['network_unreachable',"the server can't be reached from this network"],['weird','an error']];
+ for(const [io_kind,words] of kinds){
+  const text=contentSyncText(syncState(done({outcome:'failed',reason:'connect_failed',failure:{...failedDownload,reason:'connect_failed',io_kind}})));
+  assert.ok(text?.includes(`(${words})`),`${io_kind}: ${text}`);
  }
 });
 test('Play reads Retry after a failed game data check and Play after a plain not-started launch',async()=>{
@@ -117,6 +134,16 @@ test('Play reads Retry after a failed game data check and Play after a plain not
   }finally{await app.dispose();}
  }
  assert.equal(launchText(failed),'The game was not started because the game data check failed. Press Retry.');
+ // A first press on Retry shows Starting… at once, before the native reply.
+ const {document,window}=parseHTML(html);let release!:()=>void;const hold=new Promise<void>(resolve=>{release=resolve;});
+ const retry=mountLaunch(document,async(_,{request}:any)=>request.command==='play'?hold:failed.status!,()=>{},()=>'attempt');
+ try{
+  await retry.ready;await new Promise(resolve=>setImmediate(resolve));
+  document.getElementById('launch')!.dispatchEvent(new window.Event('click'));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(document.getElementById('launch')!.textContent,'Starting…');
+  assert.equal(document.getElementById('launch-status')!.textContent,'Starting game…');
+ }finally{release();await retry.dispose();}
 });
 test('unavailable verified resources never advertise Play',async()=>{
  const {document}=parseHTML(html);const status={...initial(),setup_complete:false,resources_available:false,installation_id:null};const app=mountLaunch(document,async()=>status);
