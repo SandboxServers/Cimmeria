@@ -332,15 +332,18 @@ fn error_code(bytes: &[u8]) -> Option<String> {
 }
 
 /// Checks the index: schema 1, unique category ids, a `.pak` name made of
-/// letters and digits (1 to 64 of them) and a digest that parses.
+/// letters and digits (1 to 64 of them), no two categories sharing a pak name
+/// (compared case-insensitively, as Windows does) and a digest that parses.
 fn check_index(index: &Index) -> Result<(), FetchError> {
     if index.schema != 1 {
         return Err(FetchError::BadIndex);
     }
     let mut seen = HashSet::new();
+    let mut seen_paks = HashSet::new();
     for entry in &index.categories {
         let well_formed = seen.insert(entry.category_id)
             && is_pak_name(&entry.pak)
+            && seen_paks.insert(entry.pak.to_ascii_lowercase())
             && parse_digest_hex(&entry.digest).is_some();
         if !well_formed {
             return Err(FetchError::BadIndex);

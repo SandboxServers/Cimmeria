@@ -360,6 +360,36 @@ async fn a_bad_pak_name_is_bad_index() {
 }
 
 #[tokio::test]
+async fn a_duplicate_pak_name_is_bad_index() {
+    // Two categories must never share one temp file, so a repeated pak name
+    // (in any letter case) is refused at the index.
+    let mut same = sample_index();
+    same.categories.push(IndexEntry {
+        category_id: 8,
+        ..same.categories[0].clone()
+    });
+    let mut other_case = sample_index();
+    other_case.categories.push(IndexEntry {
+        category_id: 8,
+        pak: "cookeddataitems.pak".to_owned(),
+        ..other_case.categories[0].clone()
+    });
+    for (name, index) in [("same pak", same), ("pak in other case", other_case)] {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(INDEX_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(index))
+            .mount(&server)
+            .await;
+        assert_eq!(
+            fetcher(&server).index().await.err(),
+            Some(FetchError::BadIndex),
+            "{name}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn a_bad_schema_duplicate_id_or_digest_is_bad_index() {
     let mut wrong_schema = sample_index();
     wrong_schema.schema = 2;
