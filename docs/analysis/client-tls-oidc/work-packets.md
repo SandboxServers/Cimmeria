@@ -80,7 +80,7 @@ Dispatch CT-01, CT-03 and CT-05 at once. CT-02 waits for CT-01 and CT-03 reviews
 
 - **Host:** windows · **Agent:** packet-coder · **Branch:** `client-tls-oidc/CT-01-login-overlay` · **Worktree:** `cto-01`
 - **Commits:** two, so the diff is reviewable like the Black Market overlay: `chore(client-patches): stock Login.lua and Login.layout for 017 (CT-01)`, then `feat(client-patches): 017 launcher sign-in login screen (CT-01)`.
-- **Rules:** R1-R9. Contract: [C8](contract.md#c8-client-overlay-and-logininternallua-data-client-patches017-launcher-sign-in).
+- **Rules:** R1-R9. Contract: [C8](contract.md#c8-client-overlay-and-logininternallua-dataclient-patches017-launcher-sign-in).
 
 Files and changes:
 

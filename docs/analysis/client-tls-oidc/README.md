@@ -3,7 +3,7 @@
 > **Type:** Reference (campaign ledger)
 > **Audience:** The owner, the orchestrator and every agent working this campaign
 > **Last updated:** 2026-10-26
-> **Companions:** [Design](design.md), [contract](contract.md), [work packets](work-packets.md), waves [1](packets-wave1.md) [2](packets-wave2.md) [3](packets-wave3.md) [4](packets-wave4.md) [5](packets-wave5.md) [6](packets-wave6.md) [7](packets-wave7.md) [8](packets-wave8.md) [9](packets-wave9.md) [10](packets-wave10.md), [PR #2031 review ruling](worknotes/pr2031-ruling.md), [release note draft](release-note.md), [resume card](RESUME.md), sibling [mercury-replacement](../mercury-replacement/design.md)
+> **Companions:** [Design](design.md), [contract](contract.md), [work packets](work-packets.md), waves [1](packets-wave1.md) [2](packets-wave2.md) [3](packets-wave3.md) [4](packets-wave4.md) [5](packets-wave5.md) [6](packets-wave6.md) [7](packets-wave7.md) [8](packets-wave8.md) [9](packets-wave9.md) [10](packets-wave10.md), [PR #2031 review ruling](worknotes/pr2031-ruling.md), [release note draft](release-note.md), [resume card](RESUME.md), sibling campaign `mercury-replacement` (its ledger is not in this PR)
 
 ## Purpose
 
@@ -15,7 +15,7 @@ Players sign in through the desktop launcher with an external provider (Discord 
 - The colo serves `/auth/v1` and `/SGWLogin` over HTTPS through the board's existing Caddy (`board-proxy`, already on 443 for `play.cimmeria.app`), which forwards them to the server's proxy listener on host loopback (D-CT4, amended 2026-10-25).
 - Unmodified clients and direct logins keep working on plain 8081 for accounts without a linked identity (D-CT7). An account with any linked identity never has or uses a password (D-CT11, contract C15). Legacy SHA-1 hashes of non-OIDC accounts move to argon2id(SHA1HEX) at rest with no client change (D-CT10, CT-54).
 
-The relay is the same in-process component the [mercury-replacement](../mercury-replacement/design.md) relay extends. D-MR6 is decided (owner, 2026-10-24): the launch ticket (C1) is the session identity on its tunnel, because the OIDC access token never leaves the launcher and the ticket already binds one account to one launch. `RelayConfig.session` stays reserved (`Option<Infallible>`) until that campaign fills it.
+The relay is the same in-process component the `mercury-replacement` campaign's relay extends. D-MR6 is decided (owner, 2026-10-24): the launch ticket (C1) is the session identity on its tunnel, because the OIDC access token never leaves the launcher and the ticket already binds one account to one launch. `RelayConfig.session` stays reserved (`Option<Infallible>`) until that campaign fills it.
 
 ## Findings
 
@@ -37,7 +37,7 @@ The design's facts F1-F25 stand ([design § 1](design.md#1-facts)). The architec
 | A12 | Only seed users exist (all staff or test accounts, never linkable), so nothing migrates and no player claims an account. Accounts carry no email; link/existing (password or GM link code) serves accounts made later without the launcher. | `account` table has no email column; `db/resources/` seed accounts | CT-26, CT-45 |
 | A13 | Change Server re-sends the stored credential (F14), so the ticket allows several uses within its life; the relay must outlive the login screens, hence the close guard. | design F14, F24 | CT-20, CT-41 |
 
-The PR #2031 review (2026-10-26) found 19 defects, F01-F19, and six owner items. The [ruling](worknotes/pr2031-ruling.md) maps each to a packet in waves 6-9 or the tail (CT-70..CT-94); its F-numbers are the review's, not the design's. Two external reviews (A and B) then added findings C01-C19; the consolidated architect ruling (`.claude\reports\pr2031\architect-ruling-consolidated.md`) is the **authority** for waves 6-10 and the tail, and [wave 10](packets-wave10.md) holds its packets (CT-95..CT-102). Still one PR, #2031.
+The PR #2031 review (2026-10-26) found 19 defects, F01-F19, and six owner items. The [ruling](worknotes/pr2031-ruling.md) maps each to a packet in waves 6-9 or the tail (CT-70..CT-94); its F-numbers are the review's, not the design's. Two external reviews (A and B) then added findings C01-C19; the consolidated architect ruling, written out in [wave 10](packets-wave10.md), is the **authority** for waves 6-10 and the tail, and [wave 10](packets-wave10.md) holds its packets (CT-95..CT-102). Still one PR, #2031.
 
 ## Decisions
 
@@ -81,41 +81,41 @@ Status values: Ready, BlockedDependency, BlockedDecision, Writing, Review, Integ
 
 | Packet | Title | Wave | Status |
 |---|---|---|---|
-| CT-01 | Overlay patch 017: `Login.lua`, `Login.layout` | 0 | Ready |
-| CT-02 | Lua logic UAT for 017, and CI | 0 | BlockedDependency (CT-01, CT-03) |
-| CT-03 | `LoginInternal.lua` ticket rendering | 0 | Ready |
+| CT-01 | Overlay patch 017: `Login.lua`, `Login.layout` | 0 | Merged (PR #2031) |
+| CT-02 | Lua logic UAT for 017, and CI | 0 | Merged (PR #2031); live run waits on CT-04 |
+| CT-03 | `LoginInternal.lua` ticket rendering | 0 | Merged (PR #2031) |
 | CT-04 | Lab spike V1-V3 | 0 | Ready (lab approved in principle; confirm the lab is free and the MCP is up) |
-| CT-05 | Doc fixes: F13, encryption ADR amendment | 0 | Ready |
-| CT-10..CT-16 | Schema, identity crate, providers, linking, repositories | 1 | Ready (CT-10, CT-11, CT-14 first; the rest BlockedDependency inside the wave) |
-| CT-20..CT-26 | Ticket store, UserAuth tickets, proxy listener, stores, routes | 2 | BlockedDependency (wave 1) |
-| CT-30..CT-35 | Account routes, wiring, relay crate, engine sign-in, Play | 3 | Merged (wave 3 fix pass 1 merged; campaign head 53ec9287d) |
-| CT-40..CT-46 | Sign-in driver, shell, frontend, GM `.account`, docs | 4 | Merged (wave 4 fix passes 1-2 plus architect ruling merged on the campaign; head 0ea4a42df; owner added: self-unlink revokes other sessions, base GM check) |
+| CT-05 | Doc fixes: F13, encryption ADR amendment | 0 | Merged (PR #2031) |
+| CT-10..CT-16 | Schema, identity crate, providers, linking, repositories | 1 | Merged (PR #2031) |
+| CT-20..CT-26 | Ticket store, UserAuth tickets, proxy listener, stores, routes | 2 | Merged (PR #2031) |
+| CT-30..CT-35 | Account routes, wiring, relay crate, engine sign-in, Play | 3 | Merged (PR #2031) |
+| CT-40..CT-46 | Sign-in driver, shell, frontend, GM `.account`, docs | 4 | Merged (PR #2031) |
 | CT-50 | Colo read-only check | 5 | Done (2026-10-25, [worknote](worknotes/colo-https-check.md)) |
-| CT-51 | Auth proxy overlay and runbook (board Caddy route; re-sliced 2026-10-25) | 5 | In merge queue (PR #2030, green CI, reviewed `ship`) |
+| CT-51 | Auth proxy overlay and runbook (board Caddy route; re-sliced 2026-10-25) | 5 | Merged (PR #2030; docs/operations/auth-https.md is on main) |
 | CT-52 | Apply on the colo: overlay, then the board Caddy route (`hands-on` agent) | 5 | BlockedDependency (CT-51 merged; the campaign released in the colo image); no owner gate |
 | CT-53 | Register providers | 5 | BlockedDecision (owner) |
-| CT-54 | Password algo 3 | 5 | BlockedDependency (wave 2) |
+| CT-54 | Password algo 3 | 5 | BlockedDependency (not in PR #2031; the SOAP gate of D-CT30 arrives with it) |
 | CT-55 | Server game-password routes | 5 | Cancelled (D-CT11) |
 | CT-56 | Full account deletion | 5 | BlockedDecision (D-CT16) |
 | CT-57 | Auto-submit on | 5 | BlockedDependency (CT-04 V2) |
 | CT-58 | Build, lab-load, publish 017 | 5 | BlockedDependency (wave 0, CT-04; owner signing) |
 | CT-59 | Launcher game-password UI | 5 | Cancelled (D-CT11) |
 | CT-U1..U6 | Live UAT | 5 | BlockedDependency (CT-52, CT-53, CT-58; lab approved in principle) |
-| CT-70..CT-76 | Revocation model, server half (F01-F04, contract C16) | 6 | Ready (CT-70, 71, 72, 74 at once; then CT-73, 75, 76) |
-| CT-77..CT-82 | Ticket guards, handoffs, name lookup, triggers, test cleanup (F05, F13, F14, F19) | 7 | BlockedDependency (wave 6 merged) |
-| CT-83..CT-85 | OIDC token-endpoint method, claim policy, relay CI and secret forwarding (F15, F18, D-CT24) | 8 | Ready |
-| CT-86..CT-91 | Launcher host slots, epoch, store failures, browser fallback, panel controls (F06-F12, F17, D-CT25) | 9 | Ready (CT-90 and CT-91 at once; then the chain CT-86, 87, 88, 89) |
-| CT-95 | Proxy trusted-peers parse fails closed (C04) | 10 | Ready |
-| CT-96 | Peek the link code, redeem it last (C02) | 10 | BlockedDependency (CT-73, CT-82 merged) |
-| CT-97 | Password check without oracles (C08) | 10 | Ready |
-| CT-98 | Limiter keeps account windows (C06) | 10 | Ready |
-| CT-99 | Argon2 off the async workers, two at a time (C15, D-CT28) | 10 | BlockedDependency (CT-97 merged) |
-| CT-92 | Campaign record in the PR (F16); amended with the accepted-finding documentation | tail | Docs written ([worknote](worknotes/CT-92.md)); review pending |
+| CT-70..CT-76 | Revocation model, server half (F01-F04, contract C16) | 6 | Merged (PR #2031) |
+| CT-77..CT-82 | Ticket guards, handoffs, name lookup, triggers, test cleanup (F05, F13, F14, F19) | 7 | Merged (PR #2031) |
+| CT-83..CT-85 | OIDC token-endpoint method, claim policy, relay CI and secret forwarding (F15, F18, D-CT24) | 8 | Merged (PR #2031) |
+| CT-86..CT-91 | Launcher host slots, epoch, store failures, browser fallback, panel controls (F06-F12, F17, D-CT25) | 9 | Merged (PR #2031) |
+| CT-95 | Proxy trusted-peers parse fails closed (C04) | 10 | Merged (PR #2031) |
+| CT-96 | Peek the link code, redeem it last (C02) | 10 | Merged (PR #2031) |
+| CT-97 | Password check without oracles (C08) | 10 | Merged (PR #2031) |
+| CT-98 | Limiter keeps account windows (C06) | 10 | Merged (PR #2031) |
+| CT-99 | Argon2 off the async workers, two at a time (C15, D-CT28) | 10 | Merged (PR #2031) |
+| CT-92 | Campaign record in the PR (F16); amended with the accepted-finding documentation | tail | Docs written (worknote); campaign review loop |
 | CT-93 | Reauth provider chooser | tail | Deferred |
-| CT-94 | Stored email authority (D-CT23 = a; sentinels `0x7000_EBC0..0x7000_EBFF`) | tail | Ready |
+| CT-94 | Stored email authority (D-CT23 = a; sentinels `0x7000_EBC0..0x7000_EBFF`) | tail | Merged (PR #2031) |
 | CT-100 | `main.rs` env-table row after CT-95 and CT-101 | tail | Deferred (launcher-cache-presync owns `main.rs`) |
-| CT-101 | Loopback-only default proxy peers (D-CT26 = b) | tail | BlockedDependency (CT-95 merged) |
-| CT-102 | Short unredeemed ticket life (D-CT27 = b) | tail | BlockedDependency (CT-77 merged) |
+| CT-101 | Loopback-only default proxy peers (D-CT26 = b) | tail | Merged (PR #2031) |
+| CT-102 | Short unredeemed ticket life (D-CT27 = b) | tail | Merged (PR #2031) |
 | CT-60 | Close-out | 5 | BlockedDependency |
 
 ## Still open for the owner

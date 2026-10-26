@@ -4,7 +4,7 @@
 > **Audience:** The orchestrator, ops, packet-coders and packet-reviewers
 > **Last updated:** 2026-10-26
 > **Companions:** [Dispatch rules, rules R1-R10 and checks](work-packets.md), [ledger](README.md), [resume card](RESUME.md), [wave 6](packets-wave6.md), [wave 7](packets-wave7.md), [wave 8 and tail](packets-wave8.md), [wave 9](packets-wave9.md), [earlier review ruling](worknotes/pr2031-ruling.md)
-> **Authority:** the consolidated architect ruling, `.claude\reports\pr2031\architect-ruling-consolidated.md` (inputs: the PR review F01-F19 and two external reviews, A and B). Where this file and an older wave file disagree, the consolidated ruling wins.
+> **Authority:** the consolidated architect ruling recorded in this file (inputs: the PR review F01-F19 and two external reviews, A and B). Where this file and an older wave file disagree, this file wins.
 
 Wave 10 fixes five defects the external reviews found outside F01-F19 (C02, C04's fail-open, C06, C08, C15), adds the three packets the owner's calls on 2026-10-26 released (CT-94, CT-101, CT-102), and records CT-100 as Deferred. Line numbers are from `cto-camp` head `8225135ef`; re-grep every anchor before editing.
 

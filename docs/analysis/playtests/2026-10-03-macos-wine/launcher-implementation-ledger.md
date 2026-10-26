@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Launcher contributors and reviewers
-> **Last updated:** 2026-10-23
+> **Last updated:** 2026-10-26
 > **Companions:** [Requirements and delivery plan](launcher-implementation-plan.md), [campaign handoff](README.md), [runtime evidence](runtime-provisioning.md), [desktop contracts](../../../../crates/launcher/desktop/README.md)
 
 These dated entries preserve what each packet established at its exact revision.
@@ -988,3 +988,12 @@ No actual collectors/uploads, live retention or native persistence were tested
 by this privacy UAT. No packaged window, MSI/game/Wine/lab execution, production
 telemetry or player acceptance is claimed. Full evidence is in the
 [combined validation worknote](../../launcher-uat-fixes/worknotes/legacy-physx-validation.md#exhaustive-privacy-disclosure-extension).
+
+### 2026-10-26: launcher sign-in, loopback relay and launch tickets (client-tls-oidc, PR #2031)
+
+Launcher sign-in lands in the desktop engine as `engine/src/sign_in/`, with the
+Play path in `storage/launch/sign_in_play.rs` and the loopback `relay/` crate under
+`crates/launcher/desktop/` carrying the launch ticket. Unit and REPL-style logic
+tests only; no packaged window, no live game, no Windows or macOS keyring run.
+Details are in [launcher sign-in](../../../technical/launcher-sign-in.md) and
+[sign-in](../../../../crates/launcher/desktop/docs/sign-in.md).
