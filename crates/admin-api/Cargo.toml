@@ -7,6 +7,12 @@ description = "REST/WebSocket admin API for the Cimmeria server emulator"
 
 [dependencies]
 cimmeria-services = { workspace = true }
+# Cooked-data presync routes on the login port (LP-10): the served catalog
+# and the CPS1 codec that decodes its index and bodies.
+cimmeria-resources = { workspace = true }
+cimmeria-cooked-pak = { workspace = true }
+# The `cooked_presync_requests_total` counter, emitted from the presync routes.
+cimmeria-observability = { workspace = true }
 # Telemetry ingest names client rows (NT-40): the NameBook for item and
 # ability IDs, the NT-30 wire tables for message ids and method indexes.
 cimmeria-names = { workspace = true }
@@ -34,3 +40,7 @@ flate2 = { workspace = true }
 zip = { workspace = true }
 bytes = { workspace = true }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+# The cooked presync route tests build a served catalog from made-up bodies.
+cimmeria-resources = { workspace = true, features = ["test-support"] }

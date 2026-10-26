@@ -27,6 +27,11 @@
 //! and it accepts only `https://` (or `http://` to loopback), so this
 //! plain-HTTP port cannot be its endpoint.
 //!
+//! The cooked-data presync routes, `/api/cooked/v1/index` and
+//! `/api/cooked/v1/category/{id}`, are the sixth and seventh. Like the
+//! summary they are anonymous, and their per-address quota (60 a minute
+//! by default) and kill switch are the operator's levers (decision D-LP1).
+//!
 //! Only these routes are exposed. Everything else under `/api`
 //! (players, config, entities, the admin `/api/auth/login`) and the `/ws`
 //! and Swagger surfaces stay on the admin listener only.
@@ -36,12 +41,13 @@ use tower_http::trace::{DefaultOnFailure, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 
 use crate::request_span::request_span;
-use crate::routes::{dev_session, telemetry};
+use crate::routes::{cooked, dev_session, telemetry};
 
 /// Router with exactly `/api/auth/dev-session`,
 /// `/api/auth/dev-session/refresh`, `/api/telemetry/upload-chunk`,
-/// `/api/telemetry/upload-bundle` and `/api/telemetry/launcher-summary`,
-/// for the auth service to merge into its login router.
+/// `/api/telemetry/upload-bundle`, `/api/telemetry/launcher-summary`,
+/// `/api/cooked/v1/index` and `/api/cooked/v1/category/{id}`, for the auth
+/// service to merge into its login router.
 ///
 /// The body limits of the first four routes come with
 /// [`dev_session::routes`] and [`telemetry::routes`], as layers. The
@@ -59,10 +65,13 @@ pub fn login_port_telemetry_router() -> Router {
     Router::new()
         .nest(
             "/api",
-            Router::new().nest("/auth", dev_session::routes()).nest(
-                "/telemetry",
-                telemetry::routes().merge(telemetry::launcher_summary_routes()),
-            ),
+            Router::new()
+                .nest("/auth", dev_session::routes())
+                .nest(
+                    "/telemetry",
+                    telemetry::routes().merge(telemetry::launcher_summary_routes()),
+                )
+                .nest("/cooked", cooked::routes()),
         )
         // The same per-request span as the admin router: the path
         // without the query string. See `request_span`.
@@ -274,6 +283,31 @@ mod tests {
         }
     }
 
+    /// The cooked presync routes are anonymous GETs on this port. Nothing is
+    /// published in this process, so both answer 503 `catalog_unavailable`
+    /// with `Retry-After: 5`. Dropping the nest makes them 404.
+    #[tokio::test]
+    async fn login_port_router_answers_the_cooked_presync_routes() {
+        let addr = serve().await;
+
+        let index = exchange(addr, "GET", "/api/cooked/v1/index").await;
+        assert!(index.starts_with("HTTP/1.1 503"), "{index:?}");
+        assert!(
+            index.to_ascii_lowercase().contains("retry-after: 5\r\n"),
+            "{index:?}"
+        );
+        assert!(
+            index.ends_with(r#"{"error":"catalog_unavailable"}"#),
+            "{index:?}"
+        );
+        assert_eq!(
+            status(addr, "GET", "/api/cooked/v1/category/7?version=3").await,
+            503
+        );
+        // The routes take GET only.
+        assert_eq!(status(addr, "POST", "/api/cooked/v1/index").await, 405);
+    }
+
     #[tokio::test]
     async fn login_port_router_does_not_expose_admin_routes() {
         let addr = serve().await;
@@ -287,6 +321,8 @@ mod tests {
             ("GET", "/api/entities"),
             ("GET", "/api/spaces"),
             ("GET", "/api/audit/logins"),
+            ("GET", "/api/cooked/v1/admin"),
+            ("GET", "/api/cooked/v2/index"),
             ("GET", "/ws/logs"),
             ("GET", "/swagger-ui/"),
             ("GET", "/api-docs/openapi.json"),
