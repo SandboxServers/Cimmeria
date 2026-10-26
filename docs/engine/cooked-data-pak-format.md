@@ -2,7 +2,7 @@
 title: "Cooked Data PAK File Format"
 type: reference
 audience: engineers
-last_updated: 2026-10-14
+last_updated: 2026-10-26
 ---
 
 # Cooked Data PAK File Format
@@ -843,3 +843,9 @@ The **Discord Build** is a strict subset of the Server Build with no unique game
 > stub. See [What Is Actually Committed to `data/cache/`](#what-is-actually-committed-to-datacache)
 > near the top of this document for the verified inventory. Do not re-run the merge or
 > replace the archives without reading that section first.
+
+---
+
+## Presync catalog formats
+
+Moved to [cooked-data-presync-formats.md](cooked-data-presync-formats.md): the PAK `write_pak` produces, the index JSON, the `CPS1` body, the `CPD1` digest (integrity, not authenticity) and which version the client sees.

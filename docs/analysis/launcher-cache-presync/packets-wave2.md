@@ -93,3 +93,15 @@ Files:
 6. `docs/tools/` or the tools catalog: `cooked-pak-tool` usage (row 20; only outside gen blocks).
 
 Checks: each edited doc passes the R5 check; `python tools/docs-gen/regen.py --check` if it exists (re-grep its usage), without committing its output.
+
+**Ruling LP-12-1 (2026-10-26), file list amended.** The fix pass also edits:
+
+- `docker/compose.yml`: forward `CIMMERIA_COOKED_PRESYNC_DISABLED` and `..._QUOTA_PER_IP`, blank by default;
+- `docs/architecture/dev-session-telemetry.md`: the login port now holds the presync routes.
+
+New presync content moves into sibling pages so that no over-cap file grows:
+
+- `docs/architecture/cooked-presync-telemetry.md`, from the catalog's `### cooked_presync`;
+- `docs/engine/cooked-data-presync-formats.md`, from pak-format's `## Presync catalog formats`.
+
+Both old headings stay as one-line stubs, so their anchors still resolve, and `docs/README.md` gets the two index rows. The whole-file splits of `telemetry.md` and `cooked-data-pak-format.md` are LP-F5. Exact steps: `.claude/reports/launcher-cache-presync/LP-12-ruling-1.md` in `lcp-w2`.

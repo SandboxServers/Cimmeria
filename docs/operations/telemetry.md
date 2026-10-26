@@ -116,7 +116,9 @@ both listeners (see [Launcher summaries](#launcher-summaries)). Unlike the
 other four it is anonymous: it takes no token. The owner approved serving
 it on the public port on 2026-10-04. No launcher build has a summary
 endpoint, so nothing calls it yet. Nothing else from the admin API is
-served on `8081` or through the proxy.
+served on `8081` or through the proxy, except the two anonymous cooked-data
+presync routes, which are on `8081` only
+([Cooked-data presync](#cooked-data-presync)).
 
 **Upload endpoints are https.** The mint hands the launcher an
 `upload_endpoint` URL. The server never falls back to localhost or to plain
@@ -1042,6 +1044,27 @@ them) give `absent`; two machines behind one NAT give `ambiguous`.
   install and machine ids, the interface (CEGUI) log text and the names
   of the game messages the client handles. The opt-in prompt says what is sent; whether that
   wording is enough for public players is an open owner question.
+
+## Cooked-data presync
+
+The server side of the desktop launcher's cooked-data presync: two anonymous routes on the login port (`/api/cooked/v1/index` and `/api/cooked/v1/category/{id}`) and a catalog built once at start. Behaviour and operator notes: [cooked-data-pipeline.md § Launcher presync](../engine/cooked-data-pipeline.md#launcher-presync). Row and counter definitions: [observability-target-catalog.md § cooked_presync](../architecture/observability-target-catalog.md#cooked_presync).
+
+| Variable | Default | Counts |
+|---|---|---|
+| `CIMMERIA_COOKED_PRESYNC_DISABLED` | (unset) | `1` or `true` turns both routes off (503 `disabled`); launchers then skip the presync and launch. Read per request. The kill switch for a broken catalog. |
+| `CIMMERIA_COOKED_PRESYNC_QUOTA_PER_IP` | `60` | Requests per peer address per minute across both routes; `0` disables. A fixed 60 s window of its own. Shared by everyone behind one address: a full sync costs about 1 + the stale category count requests. |
+
+Neither variable is part of the telemetry kill switch: `CIMMERIA_TELEMETRY_KILL_SWITCH` does not pause these routes. Set and unset them the way [Changing a quota](#changing-a-quota) shows for the other variables.
+
+### Resyncs avoided versus fired
+
+`cooked_data_version_replies_total` counts every `versionInfoRequest` the server answers. Group by `outcome`:
+
+- `up_to_date`: the client's cache already matched. With the presync working this is nearly every request.
+- `full_resync`: the server started the paced resync, which is what the presync is meant to avoid.
+- `no_server_data`: the category is not served (category 7 is the usual one).
+
+In SigNoz, query metric `cooked_data_version_replies_total`, aggregation rate or increase, group by `outcome` (add `category` to see which category still resyncs). A launcher population that is syncing correctly shows `full_resync` close to zero; a steady `full_resync` for one category means the launcher is not writing that category, or its source is newer than the served version (`source_newer`). Presync health itself is the other counter: `cooked_presync_requests_total` by `outcome`, where `served` is traffic and every other value is a refusal. `catalog_failed` above 0 is a page.
 
 ## Endpoints
 

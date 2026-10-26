@@ -165,8 +165,9 @@ Cloudflare Tunnel was ever deployed.
 
 Wiring: `cimmeria_admin_api::login_port_telemetry_router()` builds a
 stateless router holding those four routes and, since 2026-10-04, a fifth:
-the launcher-summary ingest. Launcher summaries do not use dev-session
-tokens: that route is anonymous, and the mint refuses `launcher_summary`
+the launcher-summary ingest. Since 2026-10-26 it also holds the two
+anonymous cooked-data presync routes. Launcher summaries do not use
+dev-session tokens: that route is anonymous, and the mint refuses `launcher_summary`
 as a session kind like any other unknown one (see
 [launcher-summary-telemetry.md](launcher-summary-telemetry.md)). The owner
 approved serving the fifth route on the login port on 2026-10-04, which
@@ -179,7 +180,10 @@ merges it next to `/SGWLogin/*`. The auth crate sits below the admin API
 in the crate graph, so it takes the router rather than building it. Both
 auth listeners serve with connect info, which the mint and refresh quotas
 need. Nothing else under `/api`, `/ws` or Swagger is served on the login
-port; `login_port_router_does_not_expose_admin_routes` pins that.
+port, apart from the two anonymous cooked-data presync routes
+(`/api/cooked/v1/index` and `/api/cooked/v1/category/{id}`, see
+[cooked-data-pipeline.md](../engine/cooked-data-pipeline.md#launcher-presync));
+`login_port_router_does_not_expose_admin_routes` pins that.
 
 A public server sets `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` to an https URL
 it serves (the colo: `https://play.cimmeria.app/api/telemetry`), or sits
