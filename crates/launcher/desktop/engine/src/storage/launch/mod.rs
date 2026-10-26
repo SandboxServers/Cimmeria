@@ -17,6 +17,9 @@ mod resource;
 pub use resource::{Artifact, Graphics, ProtonSelection, Resources};
 mod worker;
 pub use worker::{dispatch, Worker};
+pub mod cooked_presync;
+#[cfg(test)]
+mod cooked_presync_tests;
 pub mod events;
 #[cfg(target_os = "linux")]
 mod proton;

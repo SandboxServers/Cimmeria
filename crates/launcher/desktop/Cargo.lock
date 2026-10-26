@@ -582,11 +582,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-cooked-pak"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-workspace-hack",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.21",
+ "zip",
+]
+
+[[package]]
 name = "cimmeria-launcher-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "cimmeria-client-launch",
+ "cimmeria-cooked-pak",
  "cimmeria-patchset",
  "crc32fast",
  "ed25519-dalek",

@@ -91,3 +91,13 @@ fn repeated_phases_have_distinct_pairs_under_the_same_operation() {
         events[2].field("phase_sequence")
     );
 }
+
+#[test]
+fn the_cooked_presync_phase_has_its_code_and_launch_target() {
+    let (_, events) =
+        capture(|| Context::preview().measure(Phase::PlayCookedPresync, || Ok::<_, ()>(())));
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[1].field("phase"), Some("play_cooked_presync"));
+    assert_eq!(events[1].field("outcome"), Some("succeeded"));
+    assert!(events.iter().all(|e| e.target == "launcher.launch"));
+}
