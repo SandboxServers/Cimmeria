@@ -264,10 +264,20 @@ async fn refresh_grant(
             account_id,
             family_id,
         } => {
-            event::record(pool, account_id, None, EventKind::RefreshReuse, None)
-                .await
-                .map_err(ApiError::from_repo)?;
+            // The revokes run before the audit event (C16.6): a failed insert
+            // must not leave the presented family or the launch ticket live.
             state.ctx.stores.access.revoke_family(&family_id);
+            state.deps.launch_tickets.revoke_account(account_id);
+            if let Err(e) =
+                event::record(pool, account_id, None, EventKind::RefreshReuse, None).await
+            {
+                tracing::warn!(
+                    account_id,
+                    reason = "reuse_audit_failed",
+                    error = %e,
+                    "refresh reuse audit event not recorded"
+                );
+            }
             tracing::Span::current().record("account_id", account_id);
             note("reuse");
             Ok(ApiError::InvalidGrant.into_response())
@@ -374,6 +384,10 @@ async fn end_session(state: &RouteState, pool: &PgPool, presented: &str) -> Resu
 #[cfg(test)]
 #[path = "token_tests_live_db.rs"]
 mod tests_live_db;
+
+#[cfg(test)]
+#[path = "token_reuse_tests_live_db.rs"]
+mod token_reuse_tests_live_db;
 
 /// Span tests of the token and ticket routes (C11), on a state with no
 /// database. Shared with the launch-ticket tests.
