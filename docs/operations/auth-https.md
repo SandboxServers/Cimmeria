@@ -2,7 +2,7 @@
 
 > **Type:** How-to (runbook)
 > **Audience:** Ops on the colo, and self-hosters running a TLS proxy next to the server
-> **Last updated:** 2026-10-25
+> **Last updated:** 2026-10-26
 > **Companions:** [colo-deploy.md](colo-deploy.md), [telemetry-upload-endpoint.md § The colo route](telemetry-upload-endpoint.md#the-colo-route), [docker/compose.auth-proxy.yml](../../docker/compose.auth-proxy.yml), `config/auth-providers.toml.example` (on the campaign branch)
 
 This runbook puts the launcher's sign-in on `https://play.cimmeria.app`. The board's Caddy terminates TLS and forwards two path families to the server's auth proxy listener on host loopback `127.0.0.1:13480`. Plain `8081` keeps working for unmodified clients.
@@ -141,13 +141,27 @@ The peer is the bridge gateway because Docker forwards a loopback-published port
 
 Provider secrets are lines in `.env` that `docker/compose.yml` forwards: `CIMMERIA_IDP_DISCORD_SECRET`, `CIMMERIA_IDP_GOOGLE_SECRET` and `CIMMERIA_IDP_OIDC_SECRET`. A provider whose `client_secret_env` is another name needs that name forwarded in `docker/compose.yml` or an override file, or the provider is skipped as `secret_missing`.
 
+## Warning: forged `X-Forwarded-*` headers
+
+A peer in `AUTH_PROXY_TRUSTED_PEERS` decides, per request, whether a request counts as TLS and which client address the rate limits see. A trusted peer that forwards a client's own `X-Forwarded-Proto` or `X-Forwarded-For` lets that client pick both. So:
+
+- Trust only the proxy gateway, as a single `/32`. Never a Docker bridge range such as `172.16.0.0/12`: any container on any bridge of the host could then send `X-Forwarded-Proto: https` and choose its own rate-limit key.
+- The colo must list the gateway before the first deploy (D-CT26 = b, step 1). The code default is loopback only, so an unlisted gateway is untrusted and the listener answers `403 https_required`; the startup WARN `auth_proxy_default_peers` fires when `AUTH_PROXY_ADDR` is set and the list is not.
+- Caddy appends the caller to `X-Forwarded-For`, which is why only the rightmost entry is read. Keep it that way if you swap the proxy: a proxy that passes the client's header through unchanged defeats the rate limits.
+
+## Behaviors you may mistake for faults
+
+- **SOAP error 5 for a disabled account is legacy parity.** The stock client shows it, so `/SGWLogin/UserAuth` keeps answering error 5 to a disabled account whatever password it sends. The launcher's `/link/existing` does not: it reports a disabled account only after the password is right.
+- **The proxy listener logs a `proxy_untrusted_peer` WARN once per request** from an untrusted peer. A scan of port 13480 from another container fills the log. This is log volume only; fix the cause by narrowing who can reach the port.
+- **Password checks on the link path are bounded.** At most 2 argon2id verifies run at once on `/link/existing`, and a request waits up to 5 seconds for a slot before it fails closed. The SOAP login path has its own gate (4, with CT-54); the two do not share permits (D-CT30), so at most 6 verifies run together once both are in. A busy burst shows as slower link attempts, not as a stalled game server.
+
 ## Kill switches
 
 Each is a line in `.env` that the overlay passes to the container; only the value `1` turns it on. Run `docker compose up -d` after you set it.
 
 | Variable | Effect |
 |---|---|
-| `CIMMERIA_IDP_DISABLED=1` | Providers off: `/auth/v1` answers `503 {"error":"disabled"}` except providers and the launch-ticket routes |
+| `CIMMERIA_IDP_DISABLED=1` | Providers off: `/auth/v1` answers `503 {"error":"disabled"}` except providers and the launch-ticket routes. Access tokens already issued still mint tickets for up to 15 minutes; use `.account unlink` to cut an account |
 | `CIMMERIA_IDP_SIGNUP_DISABLED=1` | Sign-up closed |
 | `CIMMERIA_SOAP_RELAY_DISABLED=1` | `GET /auth/v1/providers` reports `soap_relay=false`, so launchers skip the SOAP relay |
 | `CIMMERIA_PASSWORD_REHASH_DISABLED=1` | Planned with CT-54; not in the code yet |

@@ -2,8 +2,8 @@
 
 > **Type:** Explanation plus reference
 > **Audience:** Engineers and operators who touch the login path
-> **Last updated:** 2026-10-25
-> **Companions:** [Login handshake](../protocol/login-handshake.md), [Connection flow](../connection-flow.md), [GM commands: `.account`](../commands.md), [Player guide](../client/launcher-sign-in-guide.md), [Launcher relay and ticket](../../crates/launcher/desktop/docs/sign-in.md), [Auth over HTTPS (added in a later PR)](../operations/auth-https.md)
+> **Last updated:** 2026-10-26
+> **Companions:** [Login handshake](../protocol/login-handshake.md), [Connection flow](../connection-flow.md), [GM commands: `.account`](../commands.md), [Player guide](../client/launcher-sign-in-guide.md), [Launcher relay and ticket](../../crates/launcher/desktop/docs/sign-in.md), [Auth over HTTPS](../operations/auth-https.md)
 > **Campaign record:** [client-tls-oidc ledger](../analysis/client-tls-oidc/README.md) and its [shared contract](../analysis/client-tls-oidc/contract.md). The contract holds the exact wire shapes; this page explains the flow and what you can rely on.
 
 ## Status: what runs, what has never run live
@@ -71,6 +71,14 @@ A linkable account is enabled, has `accesslevel < 1` and is not a test account. 
 
 **Residual risks.** The provider's email is only as trustworthy as the provider: that is why `trusted_email` is a per-provider setting and why config loading refuses `trusted_email = true` for Microsoft's consumer endpoints (the `email` claim there is mutable). A player who loses every provider has no self-service recovery; a GM issues a link code. Rate limits are in memory and reset on restart.
 
+**Guessing defences and what they cost.** The per-account `/link/existing` limit is 5 attempts per 15 minutes, which is about 480 guesses a day, and the link-code route has a server-wide cap of 50 per 15 minutes (a code is 50 bits, so the cap bounds guessing even behind spoofed IPs). Both are availability trade-offs you should know about:
+
+- Anyone holding a link grant can lock a given account name out of password linking for 15 minutes. The owner retries after the window, or a GM issues a link code.
+- Anyone can use up the server-wide link-code cap for 15 minutes. Link codes then fail for everyone until the window ends.
+- There is no per-grant cap. Grants are free to mint, so a cap on them would bound nothing the account limit does not already bound. The limiter never evicts a live account window to make room (a full map refuses the new key instead).
+
+**Provider age gate.** `[limits] min_provider_account_age_days` (default 0, off) applies to Discord only. The OIDC provider path reports no account age, and the gate treats an unknown age as old enough, so an OIDC sign-up skips it. Whether a configured gate should refuse providers that report no age is an open owner decision (D-CT29); until it is made, do not rely on the gate for OIDC providers.
+
 ### No passwords on linked accounts (D-CT11)
 
 - A linked account has no password. Linking an existing account with its password (or with a GM link code) clears the password in the same transaction as the link, and **cannot be undone**. The launcher asks the player to confirm, and the server refuses a link without `password_removal_ack: true`.
@@ -95,6 +103,25 @@ A linked account is the exception: it has no password, so an unmodified client c
 - One live ticket per account; minting replaces the old one. Life: 5 minutes until the first SOAP redemption (an unredeemed ticket is not extended by heartbeat); after that 12 hours absolute, 30 minutes idle (use or heartbeat refreshes the idle clock). A reconnect or Change Server inside the life re-sends the same ticket.
 - **TLS only.** A matching ticket that arrives over plain HTTP is refused with audit outcome `ticket_requires_tls` and the ticket is revoked. Successful use is audited as `launch_ticket`.
 - Tickets live in server memory. A server restart clears them; the launcher has to mint a new one on the next Play.
+
+## Revocation model
+
+One server call, `revoke_account`, cuts an account off. What it reaches, and what it does not:
+
+| Reached | How |
+|---|---|
+| Refresh tokens | Every refresh family of the account is revoked in the database. Self-service method removal keeps the caller's own family. |
+| Access tokens | The in-memory access store drops the account's tokens. |
+| Launch tickets | The account's ticket is revoked. |
+| Handoffs the ticket issued | Each login a ticket lets through carries the ticket's guard. Revoking flips the guard, so a SOAP login that re-checks it after the revoke is refused. |
+| **Not reached** | A game connection that is already established. The ticket gates login only, so a player who is already in the world stays there until they leave or a GM acts. The `.account unlink` reply says so. |
+
+Which events use it:
+
+- **GM `.account unlink` and self-service method removal** revoke the whole set above.
+- **Refresh-token reuse** revokes the reused token's family, that family's access tokens and the account's launch ticket. The account's other refresh families stay signed in: only one device is proven stolen, so a player's second device keeps working and the stolen one is cut.
+- **`POST /logout`** revokes that token's refresh family.
+- **A disabled account** is not swept. It is refused at each use (every Bearer route, ticket mint, heartbeat and ticket login), so a live access token cannot reach the game. Only unlink sweeps the account's sessions.
 
 ## `/auth/v1` routes in short
 
@@ -125,7 +152,29 @@ Provider list: `config/auth-providers.toml` (path from `CIMMERIA_AUTH_PROVIDERS`
 | `AUTH_TLS_CERT_PATH`, `AUTH_TLS_KEY_PATH` | In-process TLS listener |
 | `AUTH_PROXY_ADDR` | Extra listener for a TLS-terminating reverse proxy; trusts `X-Forwarded-*` only from `AUTH_PROXY_TRUSTED_PEERS` (default `127.0.0.0/8,::1`, loopback only) |
 
-How to terminate TLS and deploy: [Auth over HTTPS (added in a later PR)](../operations/auth-https.md), [colo deploy](../operations/colo-deploy.md), [container](../operations/container.md).
+**The kill switch stops new sign-ins, not tokens already issued.** `/providers` and `/launch-ticket*` are exempt from `CIMMERIA_IDP_DISABLED`, so an access token that is still live (15 minutes at most) can mint a launch ticket after you set it. That is deliberate: the switch is for the sign-in surface. To cut a compromised account, use `.account unlink` (see the revocation model above). Whether the switch should also clear the access store is an open owner choice.
+
+**Deploying the proxy listener.** On the colo, name the proxy gateway in `AUTH_PROXY_TRUSTED_PEERS` before the first deploy (D-CT26 = b: the code default is loopback only, so an unlisted gateway's `X-Forwarded-*` headers are ignored and every request reads as plain HTTP). Steps: [Auth over HTTPS](../operations/auth-https.md).
+
+How to terminate TLS and deploy: [Auth over HTTPS](../operations/auth-https.md), [colo deploy](../operations/colo-deploy.md), [container](../operations/container.md).
+
+## What the launcher reports
+
+The panel reads one status object. Three parts of it matter when you debug a sign-in.
+
+**`storage_warning`.** `null` or one of three values, set when the OS credential store misbehaves. The panel shows these texts:
+
+| Value | Text |
+|---|---|
+| `session_only` | "Signed in for this session only: this computer's credential store would not save the sign-in." |
+| `sign_out_incomplete` | "Signed out here, but the saved sign-in could not be removed from this computer's credential store. It will not be used again in this session." |
+| `store_unreadable` | "This computer's credential store could not be read, so no saved sign-in was restored." |
+
+**`resume`.** When the system browser will not open, the flow parks instead of failing: the panel shows the authorize address to copy into a browser, and the launcher sends `resume`, which completes the parked flow as the original sign-in or Add method would have. Nothing parked answers `no_pending_flow` ("That sign-in expired. Sign in again."). Cancel and the flow's 5-minute limit clear a parked flow.
+
+**Which server sign-in uses (CT-90).** The first server of the effective list, the same list Play writes: the adopted list of a legacy-adopted installation, else saved preferences, else the defaults. While an install, update or repair runs, or when the installation cannot be read, the launcher falls back to nothing: Inspect and Cancel answer the held sign-in in the offline shape, Sign out works with no server, and every other command answers `unavailable`.
+
+A signed-in player whose server cannot be reached keeps the account summary and **Sign out** on screen; the panel hides only network actions. In the `needs_link` step, **Back to sign in** sends `sign_out`.
 
 ## Telemetry
 
@@ -154,3 +203,20 @@ Both targets (`cimmeria_identity`, `account_admin`) have a row in the [observabi
 | Rate limited | `429 rate_limited` with `retry_after`; shown as a wait message |
 | `soap_relay` off, relay will not start, or discovery fails while signed in | Play stops (`ticket_unavailable`); it never offers a password |
 | Credential store unavailable | Not exercised: the real Windows and macOS stores have not been run from a packaged build, so this failure's behavior is unverified |
+
+## Known limits
+
+Accepted by the security passes; none lets one player reach another's account. Listed so you do not rediscover them.
+
+| Limit | Effect | Where |
+|---|---|---|
+| Kill switch leaves ticket minting open | A live access token can still mint a ticket for up to 15 minutes after `CIMMERIA_IDP_DISABLED=1` | `routes/mod.rs` `always_open` |
+| Password-link lockout is keyed by account name | Five failed attempts at one name lock that name for 15 minutes, whoever sent them | `routes/link.rs`, `limits.rs` |
+| A failed dummy hash would be a timing oracle | Unknown names and legacy rows spend a dummy argon2id verify; if hashing the dummy ever failed, the verify would return at once. Not reachable today | `password_check.rs` |
+| Two argon2 gates (D-CT30) | The link check holds 2 permits. The SOAP credential gate of 4 arrives with CT-54 and is not on this branch yet; with both in place at most 6 argon2 verifies run at once, and a request past its gate waits without holding memory. A link check that waits 5 seconds fails closed | `password_check.rs` |
+| The proxy listener warns once per request from an untrusted peer | Log volume only | `proxy.rs` |
+| The launch-ticket re-check after the login-map removal has no hook test | A race with no `.await`; the peek-stage check is tested, the second check is not | `login/mod.rs` |
+| The pending sign-in store evicts oldest-first at 10,000 entries | An attacker past the Authorize limit (20 per 10 minutes per IP) can push out other players' pending sign-ins, who then start again. Availability only. Reaping expired entries before evicting is deferred | `stores.rs` |
+| Limiter state is in memory | A restart resets every window and drops pending links and link codes | `limits.rs` |
+| A stale proxy-peers comment | The comment at the top of the server `main.rs` still describes the old trust list; CT-100 fixes it | `crates/server/src/main.rs` |
+| Cancel racing a completed sign-in | A Cancel that lands after the slot and keyring are written but before the state installs replies Cancelled, and the next Inspect shows signed in. The state is consistent and the session is the player's own | launcher `session.rs` |
