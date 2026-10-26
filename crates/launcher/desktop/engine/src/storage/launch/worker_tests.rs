@@ -118,6 +118,7 @@ fn a_failed_presync_never_reaches_client_setup() {
     }];
     state.record_launch(&plan, Observation::Preparing).unwrap();
     let state = Arc::new(Mutex::new(state));
+    let kept = state.clone();
     let (updates, _) = watch::channel(Observation::Unknown);
     let (content, content_rx) = watch::channel(None);
     let firesky = root.path().to_path_buf();
@@ -133,6 +134,16 @@ fn a_failed_presync_never_reaches_client_setup() {
         ))
     });
     assert!(matches!(result, Ok(Observation::NotStarted)));
+    // The exact cause is in content_sync; a noted code would outrank it in launch-view.ts (launchText reads status.failure first).
+    assert_eq!(
+        kept.lock()
+            .unwrap()
+            .launch_record(&plan)
+            .unwrap()
+            .unwrap()
+            .failure,
+        None
+    );
     let refused = events
         .iter()
         .find(|e| e.field("reason") == Some("cooked_presync_failed"))

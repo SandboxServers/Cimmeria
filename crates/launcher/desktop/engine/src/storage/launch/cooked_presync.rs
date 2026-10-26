@@ -64,7 +64,7 @@ pub enum ContentSyncPhase {
 
 /// Where the presync reads and writes: the Firesky folder, or why there is none.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(not(windows), allow(dead_code))] // Firesky and Unavailable come from profile() on Windows only
+#[cfg_attr(any(not(windows), feature = "test-support"), allow(dead_code))] // Firesky and Unavailable come from profile() in Windows release builds only
 pub(crate) enum Profile {
     /// The `My Games\Firesky` folder under the user's Documents.
     Firesky(PathBuf),
