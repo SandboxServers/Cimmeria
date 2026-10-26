@@ -10,5 +10,8 @@
 //! No CME bytes live in this crate. Its tests build their PAKs in memory
 //! from made-up entries.
 
+pub mod catalog;
+pub mod compose;
+pub mod decide;
 pub mod digest;
 pub mod pak;
