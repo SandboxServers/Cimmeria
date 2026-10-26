@@ -63,7 +63,7 @@ zip = { workspace = true }
 flate2 = "1"
 # MSZIP blocks of the installer cabinet set off Windows
 # (src/unpack/cab_portable/mszip.rs). Already flate2's default backend.
-miniz_oxide = "0.8"
+miniz_oxide = "0.9"
 # LZX folders of the installer cabinet set, read one member at a time for
 # the native DirectX prerequisites (src/unpack/cab_portable/single.rs).
 lzxd = "0.2"

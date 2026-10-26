@@ -1461,7 +1461,7 @@ dependencies = [
  "flate2",
  "futures-util",
  "lzxd",
- "miniz_oxide 0.8.9",
+ "miniz_oxide 0.9.1",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
