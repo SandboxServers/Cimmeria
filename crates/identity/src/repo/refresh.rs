@@ -123,6 +123,9 @@ pub async fn issue(
 /// replaced by [`Rotation::Rotated`]: the old row gets `replaced_by` and
 /// `revoked_at`, and the new row joins the same family with the same expiry.
 /// A token no row holds is [`Rotation::Unknown`].
+///
+/// The family lock is taken before the row is read, so the read sees any
+/// successor another operation on the family inserted and committed (C16.1).
 pub async fn rotate(
     pool: &PgPool,
     presented: &str,
@@ -131,6 +134,15 @@ pub async fn rotate(
     let old_hash = hash_of(presented);
     let now_ts = micros(now);
     let mut tx = pool.begin().await?;
+    let family: Option<(String,)> =
+        sqlx::query_as("SELECT family_id FROM auth_refresh_token WHERE token_hash = $1")
+            .bind(&old_hash[..])
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some((family,)) = family else {
+        return Ok(Rotation::Unknown);
+    };
+    family_lock(&mut tx, &family).await?;
     let row: Option<StateRow> = sqlx::query_as(
         "SELECT account_id, family_id, \
            revoked_at IS NOT NULL OR replaced_by IS NOT NULL, \
@@ -194,29 +206,22 @@ pub async fn rotate(
 /// Revokes every live token of one family. Rows already revoked keep their
 /// time.
 ///
-/// The live rows are locked first, in their own statement. That statement
-/// waits for an in-flight [`rotate`], so the revoke below runs on a fresh
-/// snapshot and also sees the token the rotation inserted.
+/// The family lock is taken first (see [`family_lock`]): a rotation or a
+/// successor insert in flight finishes before the revoke reads the rows, so the
+/// revoke also sees the token it inserted.
 pub async fn revoke_family(
     pool: &PgPool,
     family_id: &str,
     now: DateTime<Utc>,
 ) -> Result<(), RepoError> {
     let mut tx = pool.begin().await?;
-    sqlx::query(
-        "SELECT 1 FROM auth_refresh_token \
-         WHERE family_id = $1 AND revoked_at IS NULL FOR UPDATE",
-    )
-    .bind(family_id)
-    .fetch_all(&mut *tx)
-    .await?;
     revoke_family_on(&mut tx, family_id, &micros(now)).await?;
     tx.commit().await?;
     Ok(())
 }
 
 /// Revokes every live token of an account, in every family. Used when the
-/// account is disabled (C6). Locks the live rows first, as [`revoke_family`]
+/// account is disabled (C6). Each family is locked first, as [`revoke_family`]
 /// does, so a rotation in flight cannot leave a live token behind.
 pub async fn revoke_account(
     pool: &PgPool,
@@ -224,27 +229,13 @@ pub async fn revoke_account(
     now: DateTime<Utc>,
 ) -> Result<(), RepoError> {
     let mut tx = pool.begin().await?;
-    sqlx::query(
-        "SELECT 1 FROM auth_refresh_token \
-         WHERE account_id = $1 AND revoked_at IS NULL FOR UPDATE",
-    )
-    .bind(account_id as i32)
-    .fetch_all(&mut *tx)
-    .await?;
-    sqlx::query(
-        "UPDATE auth_refresh_token SET revoked_at = $2::timestamptz \
-         WHERE account_id = $1 AND revoked_at IS NULL",
-    )
-    .bind(account_id as i32)
-    .bind(micros(now))
-    .execute(&mut *tx)
-    .await?;
+    revoke_account_on(&mut tx, account_id, None, now).await?;
     tx.commit().await?;
     Ok(())
 }
 
 /// Revokes every live token of an account except those of `keep_family`, the
-/// caller's own family (client-tls-oidc D1). Locks the live rows first, as
+/// caller's own family (client-tls-oidc D1). Each family is locked first, as
 /// [`revoke_account`] does.
 pub async fn revoke_account_except(
     pool: &PgPool,
@@ -253,25 +244,51 @@ pub async fn revoke_account_except(
     now: DateTime<Utc>,
 ) -> Result<(), RepoError> {
     let mut tx = pool.begin().await?;
-    sqlx::query(
-        "SELECT 1 FROM auth_refresh_token \
-         WHERE account_id = $1 AND family_id <> $2 AND revoked_at IS NULL FOR UPDATE",
+    revoke_account_on(&mut tx, account_id, Some(keep_family), now).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Revokes every live token of an account on the given connection, in every
+/// family, or in every family but `keep_family` when one is given. Returns the
+/// families it revoked, sorted and without repeats.
+///
+/// The families are listed, then each is locked in family-id order, then the
+/// update runs. The lock is per family, not per account, so families do not
+/// queue behind each other, and a successor inserted into a listed family waits
+/// on that family's lock before the update runs.
+pub async fn revoke_account_on(
+    conn: &mut PgConnection,
+    account_id: u32,
+    keep_family: Option<&str>,
+    now: DateTime<Utc>,
+) -> Result<Vec<String>, RepoError> {
+    let families: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT family_id FROM auth_refresh_token \
+         WHERE account_id = $1 AND ($2::text IS NULL OR family_id <> $2) \
+         AND revoked_at IS NULL ORDER BY family_id",
     )
     .bind(account_id as i32)
     .bind(keep_family)
-    .fetch_all(&mut *tx)
+    .fetch_all(&mut *conn)
     .await?;
-    sqlx::query(
+    for (family_id,) in &families {
+        family_lock(conn, family_id).await?;
+    }
+    let revoked: Vec<(String,)> = sqlx::query_as(
         "UPDATE auth_refresh_token SET revoked_at = $3::timestamptz \
-         WHERE account_id = $1 AND family_id <> $2 AND revoked_at IS NULL",
+         WHERE account_id = $1 AND ($2::text IS NULL OR family_id <> $2) \
+         AND revoked_at IS NULL RETURNING family_id",
     )
     .bind(account_id as i32)
     .bind(keep_family)
     .bind(micros(now))
-    .execute(&mut *tx)
+    .fetch_all(conn)
     .await?;
-    tx.commit().await?;
-    Ok(())
+    let mut ids: Vec<String> = revoked.into_iter().map(|(family_id,)| family_id).collect();
+    ids.sort();
+    ids.dedup();
+    Ok(ids)
 }
 
 /// Logout (C6): revokes the family of a presented token. A token no row holds
@@ -311,13 +328,31 @@ pub async fn purge_expired(pool: &PgPool, now: DateTime<Utc>) -> Result<u64, Rep
     Ok(done.rows_affected())
 }
 
+/// Takes the transaction-scoped advisory lock of one refresh family, released
+/// at commit or rollback. Every operation that reads or writes a family's rows
+/// takes it first. The lock is per family, not per account, because the
+/// hazard is local to a family: a successor inserted between two statements of
+/// another operation on that family (C16.1). Each family's lock is keyed by its
+/// id, so unrelated families never wait on each other.
+async fn family_lock(conn: &mut PgConnection, family_id: &str) -> Result<(), RepoError> {
+    sqlx::query(
+        "SELECT pg_advisory_xact_lock(hashtextextended('cimmeria.refresh_family:' || $1, 0))",
+    )
+    .bind(family_id)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 /// Revokes the live rows of one family on the given connection, so it commits
-/// with the caller's transaction.
+/// with the caller's transaction. Takes the family lock first (see
+/// [`family_lock`]).
 async fn revoke_family_on(
     conn: &mut PgConnection,
     family_id: &str,
     now_ts: &str,
 ) -> Result<(), RepoError> {
+    family_lock(conn, family_id).await?;
     sqlx::query(
         "UPDATE auth_refresh_token SET revoked_at = $2::timestamptz \
          WHERE family_id = $1 AND revoked_at IS NULL",
@@ -332,3 +367,7 @@ async fn revoke_family_on(
 #[cfg(test)]
 #[path = "refresh_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "refresh_lock_tests_live_db.rs"]
+mod lock_tests_live_db;
