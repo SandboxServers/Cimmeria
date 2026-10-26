@@ -262,7 +262,12 @@ async fn refresh_grant(
             note("reuse");
             Ok(ApiError::InvalidGrant.into_response())
         }
-        Rotation::Expired | Rotation::Unknown => Err(ApiError::InvalidGrant),
+        Rotation::Expired { family_id } => {
+            // The family is revoked in the database; its live access tokens go too.
+            state.ctx.stores.access.revoke_family(&family_id);
+            Err(ApiError::InvalidGrant)
+        }
+        Rotation::Unknown => Err(ApiError::InvalidGrant),
     }
 }
 

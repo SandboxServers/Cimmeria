@@ -34,6 +34,8 @@ use crate::stores::{pkce_challenge, HandoffOutcome, Stores};
 const ID_TICKET: u32 = 0x7000_E200;
 /// The account whose audit insert the trigger fails.
 const ID_AUDIT: u32 = 0x7000_E201;
+/// The account whose refresh family expires before its next rotation.
+const ID_EXPIRED: u32 = 0x7000_EC01;
 /// The audit trigger: `ID_AUDIT` is `0x7000_E201`, written in decimal because
 /// DDL takes no bind parameter.
 const AUDIT_TRIGGER: &str =
@@ -99,10 +101,10 @@ fn harness(pool: &PgPool) -> Env {
     }
 }
 
-/// Deletes the two sentinel accounts by exact id; their identities and
+/// Deletes the sentinel accounts by exact id; their identities and
 /// events cascade.
 async fn clean(pool: &PgPool) {
-    for id in [ID_TICKET, ID_AUDIT] {
+    for id in [ID_TICKET, ID_AUDIT, ID_EXPIRED] {
         let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
             .bind(id as i32)
             .execute(pool)
@@ -291,4 +293,41 @@ async fn live_db_reuse_revokes_when_the_audit_insert_fails() {
     assert_eq!(reuse["error"], "invalid_grant");
     assert!(matches!(ticket, TicketCheck::NoMatch));
     assert!(!access_live, "the family's access token no longer resolves");
+}
+
+#[tokio::test]
+async fn live_db_expired_family_revokes_its_access_token() {
+    let pool = require_db_or_skip!();
+    clean(&pool).await;
+    insert_account(&pool, ID_EXPIRED).await;
+    identity::insert(&pool, ID_EXPIRED, &verified("ct-expired"), false)
+        .await
+        .expect("link");
+    let env = harness(&pool);
+    let (_, first) = code_grant(&env, verified("ct-expired")).await;
+    let old = field(&first, "refresh_token");
+    let access = field(&first, "access_token");
+    let access_before = env.stores.access.check(&access, Instant::now()).is_some();
+    // The family is past its limit, so presenting its token expires the family.
+    sqlx::query(
+        "UPDATE auth_refresh_token SET family_expires_at = now() - interval '1 day' \
+         WHERE account_id = $1",
+    )
+    .bind(ID_EXPIRED as i32)
+    .execute(&pool)
+    .await
+    .expect("age the family");
+    let (status, body) = refresh(&env, &old).await;
+    let access_live = env.stores.access.check(&access, Instant::now()).is_some();
+    clean(&pool).await;
+    assert!(
+        access_before,
+        "the access token was not live before the expiry"
+    );
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["error"], "invalid_grant");
+    assert!(
+        !access_live,
+        "the expired family's access token still resolves"
+    );
 }

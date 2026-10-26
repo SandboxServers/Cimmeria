@@ -44,7 +44,10 @@ pub enum Rotation {
     },
     /// The token was idle too long or its family is past its limit. The family
     /// is revoked.
-    Expired,
+    Expired {
+        /// The family that was revoked.
+        family_id: String,
+    },
     /// No row holds this token.
     Unknown,
 }
@@ -251,7 +254,7 @@ pub async fn rotate(
     if !idle_ok || !family_ok {
         revoke_family_on(&mut tx, &family_id, &now_ts).await?;
         tx.commit().await?;
-        return Ok(Rotation::Expired);
+        return Ok(Rotation::Expired { family_id });
     }
 
     let (token, new_hash) = new_token();

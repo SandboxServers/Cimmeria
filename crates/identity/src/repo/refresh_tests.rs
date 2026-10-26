@@ -141,11 +141,11 @@ async fn live_db_idle_and_family_expiry() {
     let after = rotate(&pool, &token, at(182)).await;
     cleanup(&pool, ID_EXPIRE).await;
     assert!(
-        matches!(idle_outcome, Ok(Rotation::Expired)),
+        matches!(idle_outcome, Ok(Rotation::Expired { .. })),
         "idle expires"
     );
     assert!(
-        matches!(family_outcome, Ok(Rotation::Expired)),
+        matches!(family_outcome, Ok(Rotation::Expired { .. })),
         "the family limit expires"
     );
     assert!(
