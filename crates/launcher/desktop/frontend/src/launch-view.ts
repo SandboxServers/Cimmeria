@@ -51,9 +51,10 @@ export function launchText(s:LaunchState):string {
  if(o?.phase==='host_started'||o?.phase==='preparing')return 'Preparing the game and waiting for its process…';
  // A not-started or failed Play names its cause when the native side knows it.
  if(status.failure)return failureLines(status.failure);
+ // Missing Proton outranks an earlier game exit: Play cannot run until Proton is installed (F-U6).
+ if(status.prerequisites_missing?.includes('proton'))return protonInstallText;
  if(o?.phase==='process_exited'&&o.code!==0)return failureLines('game_exited_nonzero');
  if(o?.phase==='process_exited')return o.early?`Game exited shortly after starting (code ${o.code}).`:`Game exited (code ${o.code}).`;
- if(status.prerequisites_missing?.includes('proton'))return protonInstallText;
  if(status.prerequisites_missing?.length)return `Complete ${pieceNames(status.prerequisites_missing)} setup before playing.`;
  if(o?.phase==='not_started')return 'Game could not start. Files are preserved; recheck before trying again. If you edited the login servers, check them under Login servers.';
  if(!status.resources_available)return 'Play unavailable: this build is missing verified game launch resources.';
@@ -77,9 +78,9 @@ export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()
  let inspecting=false;
  const render=()=>{if(disposed)return;button.hidden=!!current.status&&!current.status.installation_id&&!current.status.observation&&!current.status.launcher_update_required;button.disabled=updateBlocked||playing||current.pending||current.uncertain||!current.status?.installation_id||launchBlocked(current.status);
  button.textContent=playing||current.pending?'Starting…':'Play';button.setAttribute('aria-busy',String(playing||current.pending));
- statusLine.textContent=playing?'Starting game…':updateBlocked?'Resolve the launcher update above before playing.':launchText(current);
+ statusLine.textContent=playing?'Starting game…':inspecting?'Checking Play status…':updateBlocked?'Resolve the launcher update above before playing.':launchText(current);
  const ready=!!current.status&&!current.uncertain&&!current.error&&gameSetupComplete(current.status);
- recheck.disabled=playing||current.pending;recheck.hidden=ready||adoptLine(current)!==null;
+ recheck.disabled=playing||current.pending||inspecting;recheck.setAttribute('aria-busy',String(inspecting));recheck.hidden=ready||adoptLine(current)!==null;
  settingsCheck.disabled=playing||current.pending||inspecting;
  settingsCheck.setAttribute('aria-busy',String(inspecting));
  settingsStatus.textContent=inspecting?'Checking Play status…':updateBlocked?'Resolve the launcher update before playing.':launchText(current);
@@ -91,8 +92,10 @@ export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()
  if(disposed||(play?playing:pending||playing))return mutation;
  if(play)playing=true;else pending=true;render();
  mutation=runtime.runPromise(Effect.flatMap(Launch,s=>Effect.result(play?s.play(uuid()):s.inspect))).then(()=>{}).finally(()=>{if(play)playing=false;else pending=false;render();});return mutation;};
- const click=()=>{if(!button.disabled)void run(true);};const check=()=>{if(!recheck.disabled)void run(false);};
- const inspectSettings=()=>{if(settingsCheck.disabled)return;inspecting=true;render();void run(false).finally(()=>{inspecting=false;render();});};
+ const click=()=>{if(!button.disabled)void run(true);};
+ // Recheck and the Settings check share one first-press busy state, shown at once rather than after the read.
+ const inspect=(target:HTMLButtonElement)=>{if(target.disabled)return;inspecting=true;render();void run(false).finally(()=>{inspecting=false;render();});};
+ const check=()=>inspect(recheck);const inspectSettings=()=>inspect(settingsCheck);
  button.addEventListener('click',click);recheck.addEventListener('click',check);
  settingsCheck.addEventListener('click',inspectSettings);
  // Observation belongs to the mounted application, including Settings navigation.

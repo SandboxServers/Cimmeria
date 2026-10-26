@@ -189,6 +189,26 @@ test('a Play that did not start points at an edited login server list',()=>{
  const status={...initial(),observation:{phase:'not_started'}} as any;
  assert.match(launchText({status,pending:false,uncertain:false,error:null}),/If you edited the login servers, check them under Login servers\./);
 });
+test('missing Proton outranks an earlier game exit, and Recheck shows it on the first press',async()=>{
+ const exited={...initial(),setup_complete:false,installation_id:null as unknown,prerequisites_missing:['proton'],observation:{phase:'process_exited',host_pid:1,guest_pid:2,code:0,early:false}} as any;
+ const {document,window}=parseHTML(html);let reads=0;let finish!:()=>void;
+ const gate=new Promise<void>(resolve=>{finish=resolve;});
+ const app=mountLaunch(document,async()=>{reads++;if(reads>1)await gate;return exited;});
+ const status=()=>document.getElementById('launch-status')!.textContent;
+ const recheck=document.getElementById('inspect-launch') as HTMLButtonElement;
+ try{
+  await app.ready;await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(status(),protonInstallText);
+  assert.equal((document.getElementById('launch') as HTMLButtonElement).disabled,true);
+  assert.equal(recheck.hidden,false);
+  recheck.dispatchEvent(new window.Event('click'));
+  assert.equal(recheck.disabled,true,'the first Recheck press is visibly busy');
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(reads,2);
+  assert.equal(status(),'Checking Play status…');
+  finish();await app.settled();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(status(),protonInstallText);assert.equal(recheck.disabled,false);
+ }finally{finish?.();await app.dispose();}
+});
 test('a Play refused for missing pieces names them, and Proton gets the install copy',()=>{
  const refused=(missing:string[]|undefined)=>launchText({status:{...initial(),prerequisites_missing:missing} as any,pending:false,uncertain:false,error:'prerequisites_missing'});
  assert.equal(refused(['proton']),protonInstallText);
