@@ -74,6 +74,15 @@ struct Claims {
     name: Option<String>,
     /// The fallback display name.
     preferred_username: Option<String>,
+    /// The time the token was issued, in seconds since the epoch. Required:
+    /// OIDC Core 3.1.3.7 step 6 says the `iat` must be checked for freshness.
+    iat: Option<u64>,
+    /// The party the token was issued to. Required when `aud` lists several
+    /// audiences (OIDC Core 3.1.3.7 step 3 and 5).
+    azp: Option<String>,
+    /// The audience: a string, or an array of strings. `jsonwebtoken` has
+    /// already checked that the client id is in it.
+    aud: serde_json::Value,
 }
 
 impl OidcProvider {
@@ -159,12 +168,33 @@ impl OidcProvider {
 
         let mut validation = Validation::new(header.alg);
         validation.leeway = LEEWAY_SECS;
+        // `nbf` is checked too; the 60 s leeway applies to it as to `exp`.
+        validation.validate_nbf = true;
         validation.set_audience(&[self.client_id.as_str()]);
         validation.set_issuer(&[self.issuer.as_str()]);
         validation.set_required_spec_claims(&["exp", "iss", "aud", "sub"]);
         let claims = decode::<Claims>(id_token, &key, &validation)
             .map_err(|err| ProviderError::Token(claim_failure(err.kind())))?
             .claims;
+
+        // `set_required_spec_claims` names only the claims `jsonwebtoken` knows
+        // and this list leaves out `iat`, so the `Option` plus the explicit
+        // check below is what makes it required (OIDC Core 3.1.3.7 step 6).
+        let iat = claims.iat.ok_or(ProviderError::Token("missing_claim"))?;
+        if iat > jsonwebtoken::get_current_timestamp() + LEEWAY_SECS {
+            return Err(ProviderError::Token("iat_future"));
+        }
+        // With several audiences the `azp` must name this client, and when it
+        // is present it must equal the client id (OIDC Core 3.1.3.7 steps 3-5).
+        let audiences = match &claims.aud {
+            serde_json::Value::Array(list) => list.len(),
+            _ => 1,
+        };
+        match claims.azp.as_deref() {
+            None if audiences > 1 => return Err(ProviderError::Token("azp_missing")),
+            Some(azp) if azp != self.client_id => return Err(ProviderError::Token("azp_mismatch")),
+            _ => {}
+        }
 
         if claims.nonce.as_deref() != Some(nonce) {
             return Err(ProviderError::Token("bad_nonce"));
@@ -341,3 +371,7 @@ mod tests;
 #[cfg(test)]
 #[path = "oidc_auth_tests.rs"]
 mod auth_tests;
+
+#[cfg(test)]
+#[path = "oidc_claims_tests.rs"]
+mod claims_tests;
