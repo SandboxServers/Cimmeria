@@ -67,6 +67,7 @@ members = [
     "crates/patch-wire",
     "crates/client-patches",
     "crates/client-hookgate",
+    "crates/cooked-pak",
     "crates/sgw-testhost",
 ]
 default-members = [
@@ -114,6 +115,7 @@ default-members = [
     "crates/cell",
     "crates/patch-wire",
     "crates/client-hookgate",
+    "crates/cooked-pak",
 ]
 
 # Optimize dependencies and strip their debug info in dev builds.
@@ -265,6 +267,7 @@ cimmeria-observability = { path = "crates/observability" }
 cimmeria-lab-mcp = { path = "crates/lab-mcp" }
 cimmeria-test-support = { path = "crates/test-support" }
 cimmeria-resources = { path = "crates/resources" }
+cimmeria-cooked-pak = { path = "crates/cooked-pak" }
 cimmeria-auth = { path = "crates/auth" }
 cimmeria-wire = { path = "crates/wire" }
 cimmeria-wire-log = { path = "crates/wire-log" }
