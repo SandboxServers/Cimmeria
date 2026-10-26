@@ -57,7 +57,7 @@ use crate::routes::{cooked, dev_session, telemetry};
 ///
 /// The first four need a dev-session token; the summary route and the two
 /// cooked presync routes are anonymous.
-/// The mint, refresh and summary and cooked presync quotas read the peer
+/// The mint, refresh, summary and cooked presync quotas read the peer
 /// address, so the listener must serve with
 /// `into_make_service_with_connect_info::<SocketAddr>()`, which both auth
 /// listeners already do. When the peer is a loopback proxy, the mint, refresh,

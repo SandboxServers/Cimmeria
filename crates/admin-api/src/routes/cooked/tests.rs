@@ -244,14 +244,7 @@ async fn quota_refuses_the_61st_request_in_a_minute() {
         now
     ));
     // Another address has its own allowance.
-    let other: SocketAddr = "127.0.0.2:1".parse().unwrap();
-    assert!(admit_peer_with(
-        &quota,
-        other,
-        &headers,
-        DEFAULT_QUOTA_PER_IP,
-        now
-    ));
+    assert!(admit(&quota, 2, DEFAULT_QUOTA_PER_IP, now));
     // A limit of 0 admits everything.
     assert!(admit(&quota, 3, 0, now));
 
