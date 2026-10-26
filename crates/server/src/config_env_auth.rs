@@ -55,7 +55,7 @@ pub(crate) fn apply(cfg: &mut ServerConfig) {
     if cfg.auth_proxy_addr.is_some() && !trusted_given {
         tracing::warn!(
             reason = "auth_proxy_default_peers",
-            "AUTH_PROXY_ADDR is set but AUTH_PROXY_TRUSTED_PEERS is not; trusting the built-in default list"
+            "AUTH_PROXY_ADDR is set but AUTH_PROXY_TRUSTED_PEERS is not; trusting only loopback (127.0.0.0/8, ::1), so a proxy on another network gets 403 https_required"
         );
     }
     if let Ok(v) = std::env::var("AUTH_TLS_RELOAD_INTERVAL_SECS") {
@@ -73,7 +73,7 @@ pub(crate) fn apply(cfg: &mut ServerConfig) {
 /// Apply the `AUTH_PROXY_TRUSTED_PEERS` value `raw` to `cfg`. Returns whether
 /// a non-blank value was given.
 ///
-/// An unset or blank value keeps the built-in default list. A value whose
+/// An unset or blank value keeps the default, loopback only. A value whose
 /// entries all parse (blank entries skipped) sets the list. Any other value
 /// empties the list, so the proxy listener trusts no peer; only the reason is
 /// logged, never the value.
