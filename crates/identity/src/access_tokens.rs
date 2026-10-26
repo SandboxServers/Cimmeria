@@ -110,6 +110,12 @@ impl AccessTokens {
             && inner.by_hash.values().any(|held| held == grant)
     }
 
+    /// The number of grants held, for tests.
+    #[cfg(test)]
+    pub(crate) fn held(&self) -> usize {
+        locked(&self.inner).by_hash.len()
+    }
+
     /// Ends every token of `family_id` and refuses the family's later fenced
     /// mints.
     pub fn revoke_family(&self, family_id: &str) {

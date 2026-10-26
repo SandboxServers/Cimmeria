@@ -339,6 +339,11 @@ async fn session(
         .access
         .mint_fenced(account_id, &family_id, via_code, now, fence)
     else {
+        tracing::info!(
+            target: "cimmeria_identity",
+            reason = "fence_refused",
+            "an access token was not minted: its family was revoked while the request ran"
+        );
         if refresh::revoke_family(pool, &family_id, Utc::now())
             .await
             .is_err()
