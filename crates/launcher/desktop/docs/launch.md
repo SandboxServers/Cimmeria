@@ -109,11 +109,11 @@ a retry fetches only the rest.
 
 **Waits and limits.** Connect 5 s; the index request 15 s in total; a body fails
 after 15 s with no bytes (idle timeout), with no total limit per body (D-LP25).
-The whole run has a 120 s deadline. A transient refusal (503 `catalog_unavailable`,
-429 `rate_limited`) waits for `Retry-After` (5 s when a 503 or 429 has none) when that is at most
-30 s and fits the deadline, at most three waits a run (D-LP20). A 409
-`version_changed` restarts once from the index. A 503 `catalog_failed` fails at
-once.
+The whole run has a 120 s deadline. A transient refusal (503
+`catalog_unavailable`, 429 `rate_limited`) waits for `Retry-After` (5 s when a
+503 or 429 has none) when that is at most 30 s and fits the deadline, at most
+three waits a run (D-LP20). A 409 `version_changed` restarts once from the
+index. A 503 `catalog_failed` fails at once.
 
 **Writes.** The presync stages every stale category first, as
 `<pak>.cimmeria-presync.tmp` files in `Cache.en-US`, and only then commits (D-LP22).
