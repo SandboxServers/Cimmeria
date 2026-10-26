@@ -132,9 +132,10 @@ impl FlowSlot {
     /// five minutes, and the grant comes back with the continuation. Nothing parked
     /// is `NoPendingFlow`; a flow past its limit is `TimedOut`.
     pub(super) async fn resume(&self) -> Result<(CodeGrant, Continue, u64), SignInFailure> {
-        let parked = guard(&self.parked)?
-            .take()
-            .ok_or(SignInFailure::NoPendingFlow)?;
+        let parked = guard(&self.parked)?.take().ok_or_else(|| {
+            tracing::info!(target: "launcher.sign_in", event = "failed", outcome = "failed", reason = "no_pending_flow");
+            SignInFailure::NoPendingFlow
+        })?;
         let Parked {
             mine,
             flow,
@@ -143,11 +144,13 @@ impl FlowSlot {
             cont,
             since,
         } = parked;
-        let result = if since.elapsed() >= SIGN_IN_TIMEOUT {
+        // One clock read: the limit left is never negative.
+        let left = SIGN_IN_TIMEOUT.saturating_sub(since.elapsed());
+        let result = if left.is_zero() {
             Err(SignInFailure::TimedOut)
         } else {
             tokio::select! {
-                grant = flow.finish_within(SIGN_IN_TIMEOUT - since.elapsed()) => grant
+                grant = flow.finish_within(left) => grant
                     .map(|grant| (grant, cont, epoch))
                     .map_err(SignInFailure::from),
                 _ = &mut cancel_rx => Err(SignInFailure::Cancelled),
@@ -198,6 +201,7 @@ impl FlowSlot {
             _ => None,
         };
         if let Some(parked) = expired {
+            tracing::info!(target: "launcher.sign_in", event = "failed", outcome = "failed", reason = "timed_out");
             self.clear_waiting(parked.mine);
         }
     }
