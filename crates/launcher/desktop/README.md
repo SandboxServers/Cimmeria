@@ -64,7 +64,9 @@ Mac Wine runtime remain separate prerequisites or downloads.
 
 The shell builds and its tests run on Linux (`native-engine (ubuntu-latest)` in
 `launcher-desktop.yml`). Building needs WebKitGTK 4.1 and GTK 3 development
-packages, plus clang and mold for `.cargo/config.toml`'s Linux linker.
+packages, plus clang and mold for `.cargo/config.toml`'s Linux linker (CI links with lld
+instead, because the 22.04 apt mold 1.0.3 breaks the bundled UnRAR:
+[release.md](docs/release.md#what-the-linux-job-builds)).
 
 **Install runs in-process, as on Windows.** The seed is the original installer's
 RAR, whose `Data/DATA*.CAB` set Windows expands with `cabinet.dll`. Linux
