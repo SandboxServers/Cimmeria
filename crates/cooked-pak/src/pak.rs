@@ -13,6 +13,8 @@ use std::path::Path;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, DateTime, ZipArchive, ZipWriter};
 
+use crate::catalog::Limits;
+
 /// The entry that holds the category version.
 pub const METADATA_ENTRY: &str = "MetaData";
 
@@ -62,10 +64,20 @@ pub fn read_version(path: &Path) -> Result<Option<u32>, PakError> {
     Ok(read_metadata(&mut entry))
 }
 
+/// The most bytes reserved up front for one entry, whatever its header says.
+const PREALLOCATE_CAP: usize = 64 << 20;
+
 /// Reads a whole PAK. Entries whose names are not `_<u32>` or `MetaData`
-/// are ignored.
+/// are ignored. A PAK with more entries than `Limits::DEFAULT.max_keys`, or
+/// with a record over `Limits::DEFAULT.max_entry_bytes`, is an I/O error
+/// (`InvalidData`), so a tampered header cannot exhaust memory.
 pub fn read_pak(path: &Path) -> Result<Pak, PakError> {
+    let limits = Limits::DEFAULT;
+    let limit = u64::from(limits.max_entry_bytes);
     let mut archive = ZipArchive::new(File::open(path)?)?;
+    if archive.len() as u64 > u64::from(limits.max_keys) {
+        return Err(over_limit("pak has too many entries"));
+    }
     let mut version = None;
     let mut entries = BTreeMap::new();
     for index in 0..archive.len() {
@@ -74,12 +86,26 @@ pub fn read_pak(path: &Path) -> Result<Pak, PakError> {
         if name == METADATA_ENTRY {
             version = read_metadata(&mut entry);
         } else if let Some(key) = parse_entry_name(&name) {
-            let mut bytes = Vec::with_capacity(usize::try_from(entry.size()).unwrap_or(0));
-            entry.read_to_end(&mut bytes)?;
+            if entry.size() > limit {
+                return Err(over_limit("pak entry is over the size limit"));
+            }
+            let reserve = usize::try_from(entry.size()).unwrap_or(0);
+            let mut bytes = Vec::with_capacity(reserve.min(PREALLOCATE_CAP));
+            // Reads one byte past the limit, so a header that lies about the
+            // size still stops at the limit.
+            entry.by_ref().take(limit + 1).read_to_end(&mut bytes)?;
+            if bytes.len() as u64 > limit {
+                return Err(over_limit("pak entry is over the size limit"));
+            }
             entries.insert(key, bytes);
         }
     }
     Ok(Pak { version, entries })
+}
+
+/// The I/O error for a PAK over the read limits.
+fn over_limit(reason: &'static str) -> PakError {
+    PakError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, reason))
 }
 
 /// Writes a PAK: the `_<key>` entries in ascending key order, deflated, then
@@ -190,6 +216,23 @@ mod tests {
         std::fs::write(&path, zip.finish().unwrap().into_inner()).unwrap();
         let pak = read_pak(&path).unwrap();
         assert_eq!(pak.entries.keys().copied().collect::<Vec<_>>(), vec![2]);
+    }
+
+    #[test]
+    fn a_record_over_the_size_limit_is_an_error_and_one_at_it_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sized.pak");
+        let limit = Limits::DEFAULT.max_entry_bytes as usize;
+        let over = BTreeMap::from([(1, vec![0u8; limit + 1])]);
+        write_pak(File::create(&path).unwrap(), 1, &over).unwrap();
+        let error = read_pak(&path).unwrap_err();
+        assert!(
+            matches!(&error, PakError::Io(io) if io.kind() == std::io::ErrorKind::InvalidData),
+            "{error}"
+        );
+        let at = BTreeMap::from([(1, vec![0u8; limit])]);
+        write_pak(File::create(&path).unwrap(), 1, &at).unwrap();
+        assert_eq!(read_pak(&path).unwrap().entries[&1].len(), limit);
     }
 
     #[test]
