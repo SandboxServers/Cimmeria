@@ -172,15 +172,17 @@ async fn link_existing(
         .peek(&grant, now)
         .ok_or(ApiError::InvalidGrant)?;
 
-    let account_id = match request.link_code {
+    let (account_id, code) = match request.link_code {
         Some(code) => {
             // Every redeem counts, right or wrong, against one server-wide cap.
             state.ctx.limit(Bucket::LinkCodeGlobal, "", now)?;
-            state
+            // Peeked here, spent only once the link is allowed (see below).
+            let account_id = state
                 .ctx
                 .link_codes
-                .redeem(&code, now)
-                .ok_or(ApiError::InvalidCredentials)?
+                .peek(&code, now)
+                .ok_or(ApiError::InvalidCredentials)?;
+            (account_id, Some(code))
         }
         None => {
             let (Some(name), Some(password)) = (request.account_name, request.password) else {
@@ -194,7 +196,7 @@ async fn link_existing(
             state
                 .ctx
                 .limit(Bucket::LinkExistingAccount, &name.to_ascii_lowercase(), now)?;
-            check_password(pool, &name, &password).await?
+            (check_password(pool, &name, &password).await?, None)
         }
     };
 
@@ -217,6 +219,12 @@ async fn link_existing(
         .await
         .map_err(ApiError::from_repo)?;
         return Err(ApiError::NotLinkable);
+    }
+    // The code is spent last: any refusal above leaves it usable for a retry.
+    if let Some(code) = code {
+        if state.ctx.link_codes.redeem(&code, now) != Some(account_id) {
+            return Err(ApiError::InvalidCredentials);
+        }
     }
 
     let verified = state
@@ -279,6 +287,9 @@ fn db_pool(state: &RouteState) -> Result<&PgPool, ApiError> {
     state.deps.db.as_deref().ok_or(ApiError::Unavailable)
 }
 
+#[cfg(test)]
+#[path = "link_code_tests_live_db.rs"]
+mod link_code_tests_live_db;
 #[cfg(test)]
 #[path = "link_tests_guards_live_db.rs"]
 mod tests_guards_live_db;

@@ -46,18 +46,20 @@ impl LinkCodeStore {
     /// Every stored code is compared, in constant time per entry, so the time
     /// taken does not show which account matched.
     pub fn redeem(&self, code: &str, now: Instant) -> Option<u32> {
-        let presented = code.to_ascii_uppercase();
         let mut codes = locked(&self.codes);
-        let mut hit = None;
-        for (account_id, (stored, _)) in codes.iter() {
-            let same: bool = stored.as_bytes().ct_eq(presented.as_bytes()).into();
-            if same {
-                hit = Some(*account_id);
-            }
-        }
-        let account_id = hit?;
+        let account_id = matching(&codes, code)?;
         let (_, issued) = codes.remove(&account_id)?;
         live(issued, now).then_some(account_id)
+    }
+
+    /// Returns the account `code` was issued for, if the code is live, without
+    /// spending it: [`redeem`](Self::redeem) with the same answer, leaving the
+    /// code in place. The scan is the same as `redeem`'s.
+    pub fn peek(&self, code: &str, now: Instant) -> Option<u32> {
+        let codes = locked(&self.codes);
+        let account_id = matching(&codes, code)?;
+        let (_, issued) = codes.get(&account_id)?;
+        live(*issued, now).then_some(account_id)
     }
 
     /// Drops the codes past their life.
@@ -72,6 +74,22 @@ static SHARED: LazyLock<LinkCodeStore> = LazyLock::new(LinkCodeStore::default);
 /// The process-wide [`LinkCodeStore`].
 pub fn shared() -> &'static LinkCodeStore {
     &SHARED
+}
+
+/// The account whose stored code equals `code` (case-insensitive). Every stored
+/// code is compared, in constant time per entry, so the time taken does not
+/// show which account matched. Shared by [`LinkCodeStore::peek`] and
+/// [`LinkCodeStore::redeem`].
+fn matching(codes: &HashMap<u32, (String, Instant)>, code: &str) -> Option<u32> {
+    let presented = code.to_ascii_uppercase();
+    let mut hit = None;
+    for (account_id, (stored, _)) in codes.iter() {
+        let same: bool = stored.as_bytes().ct_eq(presented.as_bytes()).into();
+        if same {
+            hit = Some(*account_id);
+        }
+    }
+    hit
 }
 
 /// Whether a code issued at `issued` is still inside [`LINK_CODE_LIFE`].
@@ -121,5 +139,25 @@ mod tests {
         let t0 = Instant::now();
         store.issue(9, t0);
         assert_eq!(store.redeem("ZZZZZZZZZZ", t0), None);
+    }
+
+    #[test]
+    fn peek_does_not_spend_the_code() {
+        let store = LinkCodeStore::default();
+        let t0 = Instant::now();
+        let code = store.issue(42, t0);
+        assert_eq!(store.peek(&code, t0), Some(42), "peek sees a live code");
+        assert_eq!(store.peek(&code.to_ascii_lowercase(), t0), Some(42));
+        assert_eq!(store.redeem(&code, t0), Some(42), "peek left it redeemable");
+        assert_eq!(store.peek(&code, t0), None, "a redeemed code is gone");
+    }
+
+    #[test]
+    fn peek_of_an_expired_code_is_none() {
+        let store = LinkCodeStore::default();
+        let t0 = Instant::now();
+        let code = store.issue(9, t0);
+        let late = t0 + LINK_CODE_LIFE;
+        assert_eq!(store.peek(&code, late), None);
     }
 }
