@@ -75,6 +75,12 @@ pub(super) async fn attach(
     .await
     .map_err(ApiError::from_repo)?;
     if !live {
+        tracing::Span::current().record("account_id", account_id);
+        tracing::info!(
+            target: "cimmeria_identity",
+            reason = "intent_family_not_live",
+            "a link intent was refused: the session that started it is no longer live"
+        );
         return Err(ApiError::InvalidGrant);
     }
 
@@ -103,4 +109,4 @@ pub(super) async fn attach(
 
 #[cfg(test)]
 #[path = "attach_tests_live_db.rs"]
-mod tests_live_db;
+mod attach_tests_live_db;
