@@ -64,6 +64,7 @@ pub enum ContentSyncPhase {
 
 /// Where the presync reads and writes: the Firesky folder, or why there is none.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)] // wired by LP-27
 pub(crate) enum Profile {
     /// The `My Games\Firesky` folder under the user's Documents.
     Firesky(PathBuf),
@@ -168,6 +169,7 @@ pub(crate) async fn presync_at(
 
 /// The shell's gate on a presync report (LP-27 applies it).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // wired by LP-27
 pub(crate) enum Gate {
     /// Client setup may run.
     Continue,
@@ -179,6 +181,7 @@ pub(crate) enum Gate {
 
 /// The gate for a report: `up_to_date`, `synced` and `skipped` continue,
 /// `failed` blocks, `cancelled` cancels.
+#[allow(dead_code)] // wired by LP-27
 pub(crate) fn gate(report: &Report) -> Gate {
     match report.outcome {
         Outcome::UpToDate | Outcome::Synced | Outcome::Skipped => Gate::Continue,
@@ -188,6 +191,7 @@ pub(crate) fn gate(report: &Report) -> Gate {
 }
 
 /// The phase-timer outcome for a report.
+#[allow(dead_code)] // wired by LP-27
 pub(crate) fn timer_outcome(report: &Report) -> phase_timing::Outcome {
     match report.outcome {
         Outcome::UpToDate | Outcome::Synced => phase_timing::Outcome::Succeeded,
