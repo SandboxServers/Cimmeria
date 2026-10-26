@@ -258,5 +258,5 @@ fn stores_reap_drops_expired_records_and_keeps_live_ones() {
     let p = stores.pending.inner.lock().expect("lock");
     assert!(p.by_state.is_empty() && p.by_age.is_empty());
     drop(p);
-    assert!(stores.access.by_hash.lock().expect("lock").is_empty());
+    assert!(stores.access.check(&token, late).is_none());
 }

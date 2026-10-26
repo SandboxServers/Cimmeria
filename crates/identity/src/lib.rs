@@ -11,6 +11,7 @@
 //! independent of the providers. The design and its decisions are in the
 //! [campaign ledger](../../../docs/analysis/client-tls-oidc/README.md).
 
+pub mod access_tokens;
 pub mod config;
 pub mod http;
 pub mod limits;

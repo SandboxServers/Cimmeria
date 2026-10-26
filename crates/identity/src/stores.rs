@@ -21,6 +21,8 @@ use subtle::ConstantTimeEq;
 
 use crate::provider::VerifiedIdentity;
 
+pub use crate::access_tokens::{AccessGrant, AccessTokens};
+
 /// How long a pending authorization waits for the provider's callback.
 pub const PENDING_LIFE: Duration = Duration::from_secs(10 * 60);
 
@@ -76,20 +78,6 @@ pub struct HandoffOutcome {
     pub identity: VerifiedIdentity,
     /// The link intent carried over from the pending record.
     pub intent: Option<LinkIntent>,
-}
-
-/// The record behind one access token. The store keys it by SHA-256 of the
-/// token, so the token text is never kept.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccessGrant {
-    /// The account the token speaks for.
-    pub account_id: u32,
-    /// The refresh family the token belongs to.
-    pub family_id: String,
-    /// True when the token came from an `authorization_code` grant or a link.
-    pub via_code: bool,
-    /// When the token was minted.
-    pub issued_at: Instant,
 }
 
 /// One pending authorization, with the bookkeeping the store needs.
@@ -229,63 +217,6 @@ impl HandoffStore {
     }
 }
 
-/// Access tokens, keyed by the SHA-256 of their text (C6).
-#[derive(Default)]
-pub struct AccessTokens {
-    by_hash: Mutex<HashMap<[u8; 32], AccessGrant>>,
-}
-
-impl AccessTokens {
-    /// Mints a token for `account_id` in `family_id` and returns its text. The
-    /// token is 32 random bytes in base64url; only its hash is kept.
-    pub fn mint(&self, account_id: u32, family_id: &str, via_code: bool, now: Instant) -> String {
-        let token = random_b64url(32);
-        let mut by_hash = locked(&self.by_hash);
-        by_hash.retain(|_, grant| live(grant.issued_at, now, ACCESS_LIFE));
-        make_room(&mut by_hash, STORE_CAP, |grant| grant.issued_at);
-        by_hash.insert(
-            hash_of(&token),
-            AccessGrant {
-                account_id,
-                family_id: family_id.to_owned(),
-                via_code,
-                issued_at: now,
-            },
-        );
-        token
-    }
-
-    /// The grant behind `token`, while it is inside [`ACCESS_LIFE`].
-    pub fn check(&self, token: &str, now: Instant) -> Option<AccessGrant> {
-        let by_hash = locked(&self.by_hash);
-        let grant = by_hash.get(&hash_of(token))?;
-        live(grant.issued_at, now, ACCESS_LIFE).then(|| grant.clone())
-    }
-
-    /// Ends every token of `family_id`.
-    pub fn revoke_family(&self, family_id: &str) {
-        locked(&self.by_hash).retain(|_, grant| grant.family_id != family_id);
-    }
-
-    /// Ends every token of `account_id`.
-    pub fn revoke_account(&self, account_id: u32) {
-        locked(&self.by_hash).retain(|_, grant| grant.account_id != account_id);
-    }
-
-    /// Ends every token of `account_id` except those of `keep_family`, the
-    /// caller's own family. A family keeps all its access tokens, so an older
-    /// token of the caller's sign-in still works.
-    pub fn revoke_account_except(&self, account_id: u32, keep_family: &str) {
-        locked(&self.by_hash)
-            .retain(|_, grant| grant.account_id != account_id || grant.family_id == keep_family);
-    }
-
-    /// Drops the tokens past their life.
-    pub fn reap(&self, now: Instant) {
-        locked(&self.by_hash).retain(|_, grant| live(grant.issued_at, now, ACCESS_LIFE));
-    }
-}
-
 /// Link grants: the verified identity a `needs_link` answer holds until the
 /// launcher chooses `/link/new` or `/link/existing` (C6).
 #[derive(Default)]
@@ -408,12 +339,12 @@ pub fn random_b64url(bytes: usize) -> String {
 }
 
 /// The SHA-256 of a text: the only form a token or a verifier is kept in.
-fn hash_of(text: &str) -> [u8; 32] {
+pub(crate) fn hash_of(text: &str) -> [u8; 32] {
     Sha256::digest(text.as_bytes()).into()
 }
 
 /// Whether an entry issued at `issued` is still inside `life` at `now`.
-fn live(issued: Instant, now: Instant, life: Duration) -> bool {
+pub(crate) fn live(issued: Instant, now: Instant, life: Duration) -> bool {
     now.saturating_duration_since(issued) < life
 }
 
@@ -437,7 +368,7 @@ where
 
 /// Locks a store's map, ignoring poisoning: a panicked holder leaves the map
 /// in a state every method can still read.
-fn locked<T>(map: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn locked<T>(map: &Mutex<T>) -> MutexGuard<'_, T> {
     map.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
