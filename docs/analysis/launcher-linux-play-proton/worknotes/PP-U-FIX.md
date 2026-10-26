@@ -1,9 +1,9 @@
 # PP-U-FIX worknote (coder session 1)
 
-Status: blocked, reason context. Nothing committed. Last check status: none run.
+Status: Done. Superseded: PP-U-FIX merged as PR #2036 (`c7651001b`). This file is the first coder session's notes; its "Left to do" list and the fixture findings are out of date (the shipped self-test builds its RAR 4 archive in code, see crates/launcher/desktop/docs/release.md § What the Linux job builds).
 
 ## Done (uncommitted)
-- `crates/launcher/desktop/shell/src/self_test_rar/fixture.rar` (96 bytes), a stored RAR 4 archive with one file `SELF-TEST.TXT` and the lock flag. Generator: `/tmp/claude-1000/-home-deck-Projects-Cimmeria/8579b1db-de0b-4c77-866a-aae70f7932ef/scratchpad/mkfinal.py` (no comment block).
+- A hand-built `fixture.rar` (96 bytes, stored RAR 4, one file `SELF-TEST.TXT`, lock flag) was tried; the generator script was local and is not kept.
 
 ## Findings
 - An old-style main-header comment (MHD_COMMENT plus a 0x75 comment block) was rejected by UnRAR: "The archive comment is corrupt". I tried comment CRC variants (CRC-32 low and high half, inverted, zeroed) and the block layouts. None passed, so the comment is dropped. This deviates from the spec.

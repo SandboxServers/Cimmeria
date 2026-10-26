@@ -1,10 +1,10 @@
 # RESUME: launcher-linux-play-proton
 
-Ledger: README.md. Packets: work-packets.md, -w1b.md, -w2b.md, -w3.md.
+Ledger: README.md. Packets: work-packets.md, -w1b.md (PP-20a in -w1b-pp20a.md), -w2b.md, -w3.md.
 
 ## State (2026-10-26, PP-14 close-out written)
 
-- Every packet is Done on the integration branch. PP-U attempt 4 passed up to
+- Every code packet is Done on the integration branch; PP-U is UATPending. PP-U attempt 4 passed up to
   the EULA screen on the Deck: install, Proton pick, prefix, DirectX, PhysX
   load, windowed window. Login, world entry and in-world PhysX are unverified.
 - Draft PR #2032 (integration -> main). Not merged, not pushed by PP-14.

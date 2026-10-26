@@ -2,15 +2,16 @@
 
 Campaign ledger. Packets: [work-packets.md](work-packets.md) (rules, contract,
 waves 0-2), [work-packets-w1b.md](work-packets-w1b.md) (wave 1B, install
-quality), [work-packets-w2b.md](work-packets-w2b.md) (wave 2 additions after
-PP-S1) and [work-packets-w3.md](work-packets-w3.md) (waves 3-4). PP-S1 ruling:
-[worknotes/PP-S1-ruling.md](worknotes/PP-S1-ruling.md). Resume
-card: [RESUME.md](RESUME.md). Host: **linux** (Steam Deck), every packet.
+quality), [work-packets-w1b-pp20a.md](work-packets-w1b-pp20a.md) (PP-20a, the
+wave 1B split), [work-packets-w2b.md](work-packets-w2b.md) (wave 2 additions
+after PP-S1) and [work-packets-w3.md](work-packets-w3.md) (waves 3-4). PP-S1
+ruling: [worknotes/PP-S1-ruling.md](worknotes/PP-S1-ruling.md). Resume card:
+[RESUME.md](RESUME.md). Host: **linux** (Steam Deck), every packet.
 Spike brief this replaces: [launcher-linux-steamdeck/assessment.md](../launcher-linux-steamdeck/assessment.md).
 
 ## Purpose
 
-**Status (2026-10-26):** all packets are Done on the integration branch; PP-U attempt 4 passed up to the EULA screen (§ UAT result). The final PR #2032 waits for the campaign review and `full-ci`. What follows is the starting point.
+**Status (2026-10-26):** every code packet is Done on the integration branch; PP-U is UATPending: attempt 4 passed up to the EULA screen, and login, world entry, PhysX in the world and the SigNoz rows tagged `proton` are not verified (§ UAT result). The final PR #2032 waits for the campaign review and `full-ci`. What follows is the starting point.
 
 The Linux AppImage installs the game (#2020, launcher-linux-install-telemetry)
 but cannot play it: Play, prerequisites, Repair and Update answer
@@ -93,7 +94,7 @@ Paths: `D/` = `crates/launcher/desktop/`, `E/` = `D/engine/src/`, `S/` = `D/shel
 | OD-3 | The install reads the archive three times (pick-time verify, the hashed copy, and the re-read before unpack, about 2 min on the Deck). Drop the third read? | **Decided by the owner 2026-10-25: drop it** (D-PP26) | The archive is hash-checked before and during the copy. PP-20 removes the read instead of labelling it. |
 | OD-1 | When no Proton is installed, should the launcher download a pinned GE-Proton build (about 500 MB, GitHub release, SHA-256 pin), or tell the player to install one through Steam or ProtonUp-Qt? | **Decided by the owner 2026-10-25: no download**; Play says how to install one | Third-party runtime redistribution and download size. This campaign ships the "tell the player" path (PP-12 copy); a download is a follow-up packet. It blocks no packet. |
 | OD-2 | Is Desktop Mode enough for the first Linux Play release, or must Steam Game Mode (the launcher as a non-Steam game under gamescope) pass U6 before the final PR merges? | **Decided by the owner 2026-10-25: Desktop Mode gates the merge**; Game Mode (U6) is a follow-up | It decides the player-guide wording (PP-13) and whether U6 gates the merge. It blocks no code packet. |
-| OD-4 | PP-08W's i686 worker cannot be built on the Deck. `launcher runtime probe` runs only on `pull_request` and pushes to `main`, and `launcher-release` refuses refs other than `main`. How do we get a branch build before the final PR? (a) Open the one final PR now as a **draft** from the integration branch (recommended). (b) Open a CI-only draft PR for `pp-08w` and close it unmerged. (c) Wait, and run the PP-08W Deck check in U3. | **BlockedDecision** (owner). Default (c) | PP-08W codes and merges either way. With (c), a probe failure surfaces only at wave 4 (PP-S2 ruling § Schedule risk). |
+| OD-4 | PP-08W's i686 worker cannot be built on the Deck. `launcher runtime probe` runs only on `pull_request` and pushes to `main`, and `launcher-release` refuses refs other than `main`. How do we get a branch build before the final PR? (a) Open the one final PR now as a **draft** from the integration branch (recommended). (b) Open a CI-only draft PR for `pp-08w` and close it unmerged. (c) Wait, and run the PP-08W Deck check in U3. | **Resolved by events, 2026-10-26**: the draft PR #2032 exists and a manual `workflow_dispatch` of `launcher-desktop.yml` builds the i686 pieces and a real-key AppImage (release.md § What the Linux job builds); PP-U attempt 4 ran PP-08W's check on the Deck and the probe passed | PP-08W codes and merges either way. With (c), a probe failure surfaces only at wave 4 (PP-S2 ruling § Schedule risk). |
 
 ## Packets
 
@@ -124,12 +125,12 @@ Paths: `D/` = `crates/launcher/desktop/`, `E/` = `D/engine/src/`, `S/` = `D/shel
 | PP-17 | 3 | Linux display profile in the prefix | packet-coder | Done (merge `233edee85`) |
 | PP-12 | 3 | Frontend copy, picker and REPL UAT | packet-coder | Done (merge `517b84e6e`) |
 | PP-13 | 3 | Docs | documentation-writer | Done (merge `2aede7591`) |
-| PP-U | 4 | Deck UAT | owner + hands-on | Done, attempt 4 (`e74b21909`; [worknote](worknotes/PP-U.md)) |
+| PP-U | 4 | Deck UAT | owner + hands-on | UATPending, attempt 4 (`e74b21909`; [worknote](worknotes/PP-U.md)) |
 | PP-14 | 4 | Close-out | documentation-writer | Done (this close-out commit) |
 | PP-U-R1 | 4 | Opt-in real-seed RAR test, debug and release | packet-coder | Done, **never merged**: test-only, `7342ad271` on `launcher-linux-play-proton/pp-u-r1`. It found no defect itself; it showed the seed unpacks in a Deck build, which led to the linker |
 | PP-U-FIX | 4 | Link Linux launchers with lld; `--self-test-rar` | packet-coder | Done: PR #2036, merged to `main` as `c7651001b`, then merged into this branch. mold 1.0.3 (Ubuntu 22.04 apt) mislinked the bundled UnRAR, so every Linux launcher built that way, including the released `launcher-20261024-c22f36c`, cannot unpack the release seed |
 | PP-U-F6 | 4 | Missing Proton outranks "Game exited" in the Play status | packet-coder | Done: `b1822e229`, review fixes `a5fcd4220` (F-U6) |
-| PP-F1 | follow-up | Shell test reopen barrier (test-only) | packet-coder | Open: own PR from `main` after #2032 merges ([ruling](../../../.claude/reports/launcher-linux-play-proton/pr2032-ruling-1.md)) |
+| PP-F1 | follow-up | Shell test reopen barrier (test-only) | packet-coder | Open: own PR from `main` after #2032 merges (ruling: `../../../.claude/reports/launcher-linux-play-proton/pr2032-ruling-1.md`, local) |
 
 Merge order into the integration branch: W1 PP-01, PP-04, PP-02, PP-03; W1B
 (beside W1 and W2) PP-24, PP-25, PP-20, PP-22, PP-21, PP-23; W2 PP-05, PP-06,
@@ -154,7 +155,7 @@ BlockedDecision / Writing / Review / Integrated / UATPending / Done.
 
 ## UAT result
 
-PP-U ran four attempts on a Steam Deck (Desktop Mode). Attempt 2 stopped on the development manifest key. Attempt 3, with the real key, failed at unpack: the mold-linked UnRAR could not read the release seed ([ruling 1](../../../.claude/reports/launcher-linux-play-proton/pp-u-ruling-1.md), [ruling 2](../../../.claude/reports/launcher-linux-play-proton/pp-u-ruling-2.md), [matrix](../../../.claude/reports/launcher-linux-play-proton/pp-u-matrix.md)); PP-U-FIX linked with lld. **Attempt 4 passed every row an agent could run** ([worknote](worknotes/PP-U.md), [report](../../../.claude/reports/launcher-linux-play-proton/pp-u-report-3.md)): install, Proton pick (GE-Proton11-11), prefix, DirectX pins, PhysX install and probe, the game loading its PhysX core, a windowed window with no focus change, the 441-byte profile seed, the frame cap reaching DXVK at 30 and 60, and a clean exit. **Not verified:** login, world entry, PhysX inside the world (the game was quit at the EULA), the SigNoz rows tagged `proton`, Game Mode, and the owner-only wording rows. Results by row: [unified UAT § Launcher Play on Linux (Proton)](../../guides/unified-uat.md#launcher-play-on-linux-proton).
+PP-U ran four attempts on a Steam Deck (Desktop Mode). Attempt 2 stopped on the development manifest key. Attempt 3, with the real key, failed at unpack: the mold-linked UnRAR could not read the release seed (ruling 1 (`../../../.claude/reports/launcher-linux-play-proton/pp-u-ruling-1.md`, local), ruling 2 (`../../../.claude/reports/launcher-linux-play-proton/pp-u-ruling-2.md`, local), matrix (`../../../.claude/reports/launcher-linux-play-proton/pp-u-matrix.md`, local)); PP-U-FIX linked with lld. **Attempt 4 passed every row an agent could run** ([worknote](worknotes/PP-U.md), report (`../../../.claude/reports/launcher-linux-play-proton/pp-u-report-3.md`, local)): install, Proton pick (GE-Proton11-11), prefix, DirectX pins, PhysX install and probe, the game loading its PhysX core, a windowed window with no focus change, the 441-byte profile seed, the frame cap reaching DXVK at 30 and 60, and a clean exit. **Not verified:** login, world entry, PhysX inside the world (the game was quit at the EULA), the SigNoz rows tagged `proton`, Game Mode, and the owner-only wording rows. Results by row: [unified UAT § Launcher Play on Linux (Proton)](../../guides/unified-uat.md#launcher-play-on-linux-proton).
 
 ## Follow-ups (not in this campaign)
 

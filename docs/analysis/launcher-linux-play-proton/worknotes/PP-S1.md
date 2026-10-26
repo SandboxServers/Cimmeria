@@ -14,7 +14,7 @@
 - Proton 9 and Proton 11 were not run past step 2.
 - World entry took about 2-3 minutes.
 
-See [Step 3b](#step-3b-packaged-directx-tested-on-ge11-pass), [Steps 4-6](#step-4-patches-dll-tested-on-ge11dx-pass) and the rulings.
+See [Step 3b](#step-3b-packaged-directx--tested-on-ge11-pass), [Steps 4-6](#step-4-patches-dll--tested-on-ge11-dx-pass) and the rulings.
 
 **First-pass result (08:08-08:52, before the two changes): blocked.** Stdio works in bare mode on every Proton, but no Proton reaches the login screen (step 3), so step 4 cannot pass. Per the packet: "Stop and report if … no Proton passes step 4". With PhysX in the prefix, the game crashes the same way on GE-Proton11-11 and Proton Experimental: `ACCESS_VIOLATION` at `SGW.exe!0x00EC6F9D` after the assertion `ShaderRef != NULL && *ShaderRef != NULL` (`ShaderManager.h(759)`). Container mode (D-PP3) fails step 2 on every Proton.
 
