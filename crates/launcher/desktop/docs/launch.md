@@ -42,8 +42,8 @@ support. Mac additionally requires successful current prerequisite evidence and
 an explicit graphics resource. Dispatch retains installation, prefix and runtime
 cache locks, repeats resource checks, then reuses existing `client_setup::prepare`
 (stock filename restoration, login server Lua and ASLR). The native task runs
-that preparation off the UI thread. The engine makes no downloads during Play except the cooked-data presync
-described below.
+that preparation off the UI thread. The engine makes no downloads during Play
+except the cooked-data presync described below.
 
 ## Cooked-data presync before the game starts
 
@@ -93,6 +93,11 @@ remedies are:
   the game files yourself.
 - `catalog_failed`: tell the server's operator. **Retry** won't help until they
   fix it.
+- `write_failed`: free disk space or check the folder's permissions, then
+  **Retry**.
+- `no_login_server`, `endpoint_refused`: fix the login server list. `unsafe_path`,
+  `profile_unavailable`: fix the game data folder or the Documents folder, then
+  **Retry**.
 - `catalog_unavailable`, `rate_limited`, `connect_failed`, `timeout`, `deadline`,
   `http_error`: check the network if needed, then **Retry**. `deadline` and the
   transient refusals name the step in progress.
@@ -105,8 +110,8 @@ a retry fetches only the rest.
 **Waits and limits.** Connect 5 s; the index request 15 s in total; a body fails
 after 15 s with no bytes (idle timeout), with no total limit per body (D-LP25).
 The whole run has a 120 s deadline. A transient refusal (503 `catalog_unavailable`,
-429 `rate_limited`) waits for `Retry-After` (503 without one: 5 s) when that is at
-most 30 s and fits the deadline, at most three waits a run (D-LP20). A 409
+429 `rate_limited`) waits for `Retry-After` (5 s when a 503 or 429 has none) when that is at most
+30 s and fits the deadline, at most three waits a run (D-LP20). A 409
 `version_changed` restarts once from the index. A 503 `catalog_failed` fails at
 once.
 
@@ -118,7 +123,9 @@ category order. A failure before commit leaves the cache untouched. A rename
 failure leaves every PAK either its old whole file or its new whole file; the
 categories already renamed are correct, and **Retry** finishes the rest. Each run
 first deletes stray temp files in `Cache.en-US` only. A commit that has begun runs
-to the end, and a closed launcher counts as a failure before or during commit.
+to the end. Closing the launcher before commit changes nothing in the cache;
+closing it during commit leaves every PAK either whole and old or whole and new,
+and the next Play removes any leftover temp files.
 
 **Where the detail lives.** The failure detail is held in memory only (D-LP26).
 It stays readable until the next Play. After a launcher restart a failed presync

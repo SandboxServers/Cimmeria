@@ -276,8 +276,8 @@ server. The line under **Play** shows the check: "Checking game data with
 *server*…", then "Updating game data: 3 of 12 categories (4.2 of 180.0 MB)…"
 when files change, then "Saving updated game data…". While the game starts it
 says "Game data is up to date." or "Game data updated (12 categories)." A
-skipped check says why character select may be slow. After an update, character
-select can take about a minute.
+skipped check, when the server turns the check off or doesn't offer it, says
+that character select may take about a minute.
 
 If the check fails, Play does not start the game. See
 [Play says "Couldn't…"](#play-says-couldnt-and-the-game-did-not-start).
@@ -1139,13 +1139,12 @@ its data again. If the game will not start at all or its settings are broken,
 ### Play says "Couldn't…" and the game did not start
 
 The game data check failed, so Play did not start Stargate Worlds. The line
-under **Play** has three parts:
-
-- The first part names the step the check was on: getting the game data list,
-  comparing your game data, downloading a PAK, building it, or saving it.
-- The second part gives the reason and what to do about it.
-- Details follow on their own lines, each only when known: the HTTP status, the
-  Windows error code, the category and any wait time the server asked for.
+under **Play** has two lines. The first reads "Couldn't <what it was doing>:
+<why, and what to do about it>". The what names the step: getting the game data
+list, comparing your game data, downloading a PAK, building it, or saving it. A
+wait the server asked for is part of the why. The second line starts "Details:"
+and gives the step and reason codes, then the category, the HTTP status and the
+Windows error code, each only when known.
 
 The button then reads **Retry**. Press it to run the check again. Play never
 starts the game after a failed check, and it does not fall back to the older
@@ -1163,10 +1162,21 @@ Common remedies:
   the game files yourself.
 - `catalog_failed`: tell the server's operator. **Retry** won't help until they
   fix it.
-- `connect_failed`, `timeout`, `http_error`, `rate_limited`, `deadline`: check
-  your network, wait if the line asks you to, then press **Retry**.
-- Anything else: press **Retry**. If it keeps happening, use **Upload debug
-  logs** in Settings and share the result.
+- `write_failed`: free disk space or check the folder's permissions, then press
+  **Retry**.
+- `no_login_server`, `endpoint_refused`: check **Login servers**; **Retry**
+  won't help until it is fixed.
+- `unsafe_path`: the game data folder is a link to another place; replace it
+  with a normal folder or use **Reset client cache**, then press **Retry**.
+- `profile_unavailable`: check that your Documents folder exists, then press
+  **Retry**.
+- `catalog_unavailable`, `rate_limited`: the server is busy; wait a minute, then
+  press **Retry**.
+- `connect_failed`, `timeout`, `http_error`, `deadline`: check your network,
+  wait if the line asks you to, then press **Retry**.
+- Any other code (the server's answer was damaged, or its data changed during
+  the update): press **Retry**. If it keeps happening, use **Upload debug logs**
+  in Settings and share the result.
 
 ### Log upload problems
 

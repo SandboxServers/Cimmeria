@@ -110,14 +110,14 @@ operation UUID or arbitrary error text. The `launcher.install.detail` and
 
 Before Play starts the game on Windows, the cooked-data presync runs in the
 `play_cooked_presync` phase. It writes two events on target `launcher.launch`.
-Their closed codes and numbers only; no path, account, address or error text.
+Fields are closed codes, numbers and the PAK file name; no path, account, address or error text.
 Both carry the process-local `operation` number, the same one as the phase rows.
 
 - `cooked_presync_category` (info), one per category checked: `category_id`,
   `pak`, `action` (`up_to_date`, `written` or `failed`), `cache_version`,
   `source_version`, `served_version`, `changed` and `bytes`.
 - `cooked_presync_finished`, once per presync: `outcome` (`up_to_date`,
-  `synced`, `skipped`, `failed` or `cancelled`), `reason`, and on failure `step`
+  `synced`, `skipped`, `failed` or `cancelled`), `reason`, and on failure or cancel `step`
   (`prepare`, `index`, `plan`, `download`, `stage` or `commit`), `category_id`,
   `http_status`, `io_kind` and `os_code`. It also has `attempts`,
   `categories_checked`, `categories_written`, `bytes_downloaded` and
