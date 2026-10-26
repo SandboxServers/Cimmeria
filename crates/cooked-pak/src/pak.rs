@@ -233,4 +233,22 @@ mod tests {
         assert_eq!(pak.version, None);
         assert_eq!(pak.entries, BTreeMap::from([(5, b"five".to_vec())]));
     }
+
+    #[test]
+    fn read_version_reads_a_deflated_metadata() {
+        // The client rewrites MetaData as a deflated entry after each run (F21).
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rewritten.pak");
+        let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
+        zip.start_file("_1", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"one").unwrap();
+        let deflated = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        zip.start_file(METADATA_ENTRY, deflated).unwrap();
+        zip.write_all(&42u32.to_le_bytes()).unwrap();
+        std::fs::write(&path, zip.finish().unwrap().into_inner()).unwrap();
+        assert_eq!(read_version(&path).unwrap(), Some(42));
+        let pak = read_pak(&path).unwrap();
+        assert_eq!(pak.version, Some(42));
+        assert_eq!(pak.entries, BTreeMap::from([(1, b"one".to_vec())]));
+    }
 }
