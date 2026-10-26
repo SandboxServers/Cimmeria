@@ -125,6 +125,7 @@ async fn start_link(
     let intent = state.ctx.stores.intents.issue(
         LinkIntent {
             account_id: grant.account_id,
+            family_id: grant.family_id.clone(),
         },
         now,
     );

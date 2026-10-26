@@ -2,6 +2,7 @@
 //! stands in for `/auth/v1`. They use the shipped HTTP client and a memory store:
 //! no real network and no OS keyring.
 
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use serde_json::{json, Value};
@@ -11,6 +12,7 @@ use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
 use super::api::AccountView;
 use super::discovery;
+use super::host_slot::Epoch;
 use super::oauth::{challenge_for, CodeGrant};
 use super::session::{scheme_allowed, Outcome, SignIn};
 use super::store::{CredentialStore, MemoryStore, Stored};
@@ -21,6 +23,11 @@ const HOST: &str = "127.0.0.1";
 
 fn base_of(server: &MockServer) -> Url {
     Url::parse(&format!("{}/", server.uri())).expect("wiremock URI parses")
+}
+
+/// An operation epoch nobody bumps: the fence of a step that is never superseded.
+fn fresh() -> AtomicU64 {
+    AtomicU64::new(0)
 }
 
 fn signed_in_body(access: &str, refresh: &str, expires_in: u64) -> Value {
@@ -39,14 +46,16 @@ fn signed_in_body(access: &str, refresh: &str, expires_in: u64) -> Value {
 
 fn store_with(refresh: &str) -> Arc<MemoryStore> {
     let store = Arc::new(MemoryStore::default());
-    store.set(
-        HOST,
-        &Stored {
-            refresh_token: refresh.to_owned(),
-            account_name: "alice".to_owned(),
-            display_name: "Alice".to_owned(),
-        },
-    );
+    store
+        .set(
+            HOST,
+            &Stored {
+                refresh_token: refresh.to_owned(),
+                account_name: "alice".to_owned(),
+                display_name: "Alice".to_owned(),
+            },
+        )
+        .unwrap();
     store
 }
 
@@ -94,11 +103,15 @@ async fn complete_signed_in_saves_the_refresh_token() {
 
     let store = Arc::new(MemoryStore::default());
     let session = SignIn::new(base_of(&server), discovery::client(), store.clone());
-    match session.complete(grant()).await {
+    let counter = fresh();
+    match session.complete(grant(), &Epoch::new(&counter, 0)).await {
         Ok(Outcome::SignedIn(summary)) => assert_eq!(summary.account_name, "alice"),
         other => panic!("expected SignedIn, got {other:?}"),
     }
-    assert_eq!(store.get(HOST).expect("stored").refresh_token, "r1");
+    assert_eq!(
+        store.get(HOST).unwrap().expect("stored").refresh_token,
+        "r1"
+    );
     let account: AccountView = session
         .account()
         .await
@@ -129,20 +142,24 @@ async fn needs_link_then_link_new() {
 
     let store = Arc::new(MemoryStore::default());
     let session = SignIn::new(base_of(&server), discovery::client(), store.clone());
-    let link = match session.complete(grant()).await {
+    let counter = fresh();
+    let link = match session.complete(grant(), &Epoch::new(&counter, 0)).await {
         Ok(Outcome::NeedsLink(view)) => view,
         other => panic!("expected NeedsLink, got {other:?}"),
     };
     assert!(
-        store.get(HOST).is_none(),
+        store.get(HOST).unwrap().is_none(),
         "nothing is stored before the link"
     );
     let outcome = session
-        .link_new(&link.link_grant)
+        .link_new(&link.link_grant, &Epoch::new(&counter, 0))
         .await
         .expect("link/new signs in");
     assert!(matches!(outcome, Outcome::SignedIn(_)));
-    assert_eq!(store.get(HOST).expect("stored").refresh_token, "r2");
+    assert_eq!(
+        store.get(HOST).unwrap().expect("stored").refresh_token,
+        "r2"
+    );
 }
 
 #[tokio::test]
@@ -169,10 +186,17 @@ async fn access_token_refreshes_near_expiry_and_rotates() {
 
     let store = Arc::new(MemoryStore::default());
     let session = SignIn::new(base_of(&server), discovery::client(), store.clone());
-    session.complete(grant()).await.expect("signed in");
+    let counter = fresh();
+    session
+        .complete(grant(), &Epoch::new(&counter, 0))
+        .await
+        .expect("signed in");
     // 30 s left is inside the 60 s margin, so the next call refreshes.
     assert_eq!(session.access_token().await.expect("refreshed"), "a2");
-    assert_eq!(store.get(HOST).expect("stored").refresh_token, "r2");
+    assert_eq!(
+        store.get(HOST).unwrap().expect("stored").refresh_token,
+        "r2"
+    );
 }
 
 #[tokio::test]
@@ -191,7 +215,10 @@ async fn invalid_grant_signs_out() {
         session.access_token().await,
         Err(SignInError::Server("signed_out".to_owned()))
     );
-    assert!(store.get(HOST).is_none(), "the revoked entry is deleted");
+    assert!(
+        store.get(HOST).unwrap().is_none(),
+        "the revoked entry is deleted"
+    );
 }
 
 #[tokio::test]
@@ -204,14 +231,16 @@ async fn invalid_grant_keeps_a_newer_sign_in() {
     Mock::given(method("POST"))
         .and(path("/auth/v1/token"))
         .respond_with(move |_: &Request| {
-            racing.set(
-                HOST,
-                &Stored {
-                    refresh_token: "r2".to_owned(),
-                    account_name: "bob".to_owned(),
-                    display_name: "Bob".to_owned(),
-                },
-            );
+            racing
+                .set(
+                    HOST,
+                    &Stored {
+                        refresh_token: "r2".to_owned(),
+                        account_name: "bob".to_owned(),
+                        display_name: "Bob".to_owned(),
+                    },
+                )
+                .unwrap();
             ResponseTemplate::new(400).set_body_json(json!({ "error": "invalid_grant" }))
         })
         .mount(&server)
@@ -224,7 +253,7 @@ async fn invalid_grant_keeps_a_newer_sign_in() {
         Err(SignInError::Server("signed_out".to_owned()))
     );
     assert_eq!(
-        store.get(HOST).map(|s| s.refresh_token),
+        store.get(HOST).unwrap().map(|s| s.refresh_token),
         Some("r2".to_owned()),
         "the newer entry is kept"
     );
@@ -243,7 +272,7 @@ async fn sign_out_works_offline() {
         SignIn::restore(base, discovery::client(), store.clone()).expect("a stored entry restores");
     session.sign_out().await;
     assert!(
-        store.get(HOST).is_none(),
+        store.get(HOST).unwrap().is_none(),
         "the stored entry is deleted offline"
     );
     assert!(session.summary().await.is_none());
@@ -471,7 +500,7 @@ async fn a_rejected_access_token_is_refreshed_once() {
         session.account().await.is_ok(),
         "the refreshed token is used"
     );
-    assert_eq!(store.get(HOST).unwrap().refresh_token, "r2");
+    assert_eq!(store.get(HOST).unwrap().unwrap().refresh_token, "r2");
 }
 
 #[tokio::test]
@@ -534,8 +563,13 @@ async fn link_existing_sends_the_removal_ack() {
         discovery::client(),
         Arc::new(MemoryStore::default()),
     );
-    let by_password = session.link_existing_password("lg1", "alice", "pw").await;
-    let by_code = session.link_existing_code("lg2", "ABCDE23456").await;
+    let counter = fresh();
+    let by_password = session
+        .link_existing_password("lg1", "alice", "pw", &Epoch::new(&counter, 0))
+        .await;
+    let by_code = session
+        .link_existing_code("lg2", "ABCDE23456", &Epoch::new(&counter, 0))
+        .await;
     assert!(
         matches!(by_password, Ok(Outcome::SignedIn(_))),
         "{by_password:?}"

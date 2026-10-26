@@ -323,9 +323,12 @@ async fn live_db_revoke_waits_for_an_in_flight_rotation() {
         .expect("issue");
     let old_hash = hash_of(&token);
     let (_, new_hash) = new_token();
-    // A rotation mid-flight: it holds the old row's lock and has inserted
+    // A rotation mid-flight: it holds the family lock (C16.1), the old row's lock and has inserted
     // the new row, but has not committed.
     let mut tx = pool.begin().await.expect("begin the rotation");
+    family_lock(&mut tx, &family)
+        .await
+        .expect("take the family lock");
     sqlx::query("SELECT 1 FROM auth_refresh_token WHERE token_hash = $1 FOR UPDATE")
         .bind(&old_hash[..])
         .fetch_all(&mut *tx)

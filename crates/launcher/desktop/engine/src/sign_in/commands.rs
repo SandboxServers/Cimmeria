@@ -53,6 +53,11 @@ pub enum SignInCommand {
     SignOut {
         schema_version: u32,
     },
+    /// Finishes the browser flow parked by a `begin` or `add_method` whose browser
+    /// would not open (CT-89).
+    Resume {
+        schema_version: u32,
+    },
 }
 
 impl SignInCommand {
@@ -68,7 +73,8 @@ impl SignInCommand {
             | Self::Account { schema_version }
             | Self::AddMethod { schema_version, .. }
             | Self::Unlink { schema_version, .. }
-            | Self::SignOut { schema_version } => *schema_version,
+            | Self::SignOut { schema_version }
+            | Self::Resume { schema_version } => *schema_version,
         }
     }
 }
@@ -87,6 +93,9 @@ pub struct SignInStatus {
     pub account: Option<AccountPanelView>,
     /// Why the last signed-in Play ended before the game started (`ticket_unavailable`, `sign_in_ended`).
     pub play_refusal: Option<&'static str>,
+    /// The credential store's state (C18.1): `session_only`, `sign_out_incomplete`,
+    /// `store_unreadable`, or `None` when the store is in order.
+    pub storage_warning: Option<&'static str>,
 }
 
 /// One provider the server offers, as the sign-in page lists it.
@@ -190,6 +199,7 @@ pub enum SignInFailure {
     Denied,
     TimedOut,
     NoPendingLink,
+    NoPendingFlow,
     PasswordRemovalNotAcknowledged,
     Server {
         code: String,
@@ -204,7 +214,7 @@ impl From<SignInError> for SignInFailure {
         match error {
             SignInError::Offline => Self::Offline,
             SignInError::Unsupported => Self::Unavailable,
-            SignInError::Cancelled => Self::Cancelled,
+            SignInError::Cancelled | SignInError::Superseded => Self::Cancelled,
             SignInError::Denied => Self::Denied,
             SignInError::TimedOut => Self::TimedOut,
             SignInError::Protocol => Self::Protocol,

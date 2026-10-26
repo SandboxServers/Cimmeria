@@ -87,6 +87,7 @@ async fn create(
     body: Result<Json<NewRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let now = Instant::now();
+    let fence = state.ctx.stores.access.fence();
     let Json(request) = body.map_err(|_| ApiError::InvalidRequest)?;
     let grant = request.link_grant.ok_or(ApiError::InvalidRequest)?;
     // Peek, then take only once the sign-up checks pass, so a refused sign-up
@@ -142,7 +143,7 @@ async fn create(
     .await
     .map_err(ApiError::from_repo)?;
     note("signup");
-    signed_in(state, account_id, None, true, now).await
+    signed_in(state, account_id, linked.identity_id, fence, true, now).await
 }
 
 /// The body of [`existing`]: the ack, the limits, the credential check, then the
@@ -153,6 +154,7 @@ async fn link_existing(
     body: Result<Json<ExistingRequest>, JsonRejection>,
 ) -> Result<Response, ApiError> {
     let now = Instant::now();
+    let fence = state.ctx.stores.access.fence();
     let Json(request) = body.map_err(|_| ApiError::InvalidRequest)?;
     // The warning cannot be skipped: no limit is consumed and the grant stays.
     if request.password_removal_ack != Some(true) {
@@ -230,7 +232,7 @@ async fn link_existing(
     tracing::Span::current().record("account_id", account_id);
     tracing::Span::current().record("password_cleared", linked.password_cleared);
     note("link");
-    signed_in(state, account_id, None, true, now).await
+    signed_in(state, account_id, linked.identity_id, fence, true, now).await
 }
 
 /// Checks the password of `name` and returns the account id. The length bound

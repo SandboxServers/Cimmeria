@@ -175,9 +175,17 @@ echo "[db-rebuild] step 8 count check"
 while IFS= read -r qt; do
     sch=${qt%%.*}
     tbl=${qt#*.}
-    # ONLY: sgw_inventory inherits sgw_inventory_base and each is counted alone.
-    cs=$($PSQL -d "$SRC" -At -c "SELECT count(*) FROM ONLY \"$sch\".\"$tbl\"" 2>"$WORK/err") \
-        || fail "count of $qt in $SRC failed: $(lasterr "$WORK/err")"
+    # A carried table the old database lacks (added by this release) counts as 0.
+    have=$($PSQL -d "$SRC" -At -c "SELECT to_regclass('\"$sch\".\"$tbl\"') IS NOT NULL" 2>"$WORK/err") \
+        || fail "existence check of $qt in $SRC failed: $(lasterr "$WORK/err")"
+    if [ "$have" = t ]; then
+        # ONLY: sgw_inventory inherits sgw_inventory_base and each is counted alone.
+        cs=$($PSQL -d "$SRC" -At -c "SELECT count(*) FROM ONLY \"$sch\".\"$tbl\"" 2>"$WORK/err") \
+            || fail "count of $qt in $SRC failed: $(lasterr "$WORK/err")"
+    else
+        echo "[db-rebuild] step 8 $qt absent in $SRC (new table), counted as 0"
+        cs=0
+    fi
     cn=$($PSQL -d "$NEXT" -At -c "SELECT count(*) FROM ONLY \"$sch\".\"$tbl\"" 2>"$WORK/err") \
         || fail "count of $qt in $NEXT failed: $(lasterr "$WORK/err")"
     del=$($PSQL -d "$NEXT" -At -c "SELECT count(*) FROM cimmeria_meta.reconcile_log WHERE image_id = '$ID' AND action = 'delete_dangling_item' AND table_name = '$tbl'" 2>"$WORK/err") \

@@ -115,7 +115,7 @@ Access tokens last 15 minutes; refresh tokens rotate on every use and a reused o
 
 ## Kill switches and environment
 
-Provider list: `config/auth-providers.toml` (path from `CIMMERIA_AUTH_PROVIDERS`); only `config/auth-providers.toml.example` is in git. Provider secrets come from the environment variable each provider names in `client_secret_env` (for example `CIMMERIA_IDP_DISCORD_SECRET`); a literal secret in the file is a fatal config error.
+Provider list: `config/auth-providers.toml` (path from `CIMMERIA_AUTH_PROVIDERS`); only `config/auth-providers.toml.example` is in git. Provider secrets come from the environment variable each provider names in `client_secret_env` (for example `CIMMERIA_IDP_DISCORD_SECRET`); a literal secret in the file is a fatal config error. For an `oidc` provider, `token_endpoint_auth_method` sets how the secret reaches the token endpoint: `client_secret_basic` (the default, an `Authorization: Basic` header) or `client_secret_post` (the form body); any other value is a fatal config error, and an issuer whose discovery document lists token endpoint auth methods without the configured one fails the sign-in before the browser opens (`auth_method_unsupported`). The `id_token` must carry `iat`, which may be at most 60 s ahead of the clock; `nbf` is checked with the same 60 s leeway; `azp` is required when `aud` lists several audiences and must equal the client id when present.
 
 | Variable | Effect |
 |---|---|

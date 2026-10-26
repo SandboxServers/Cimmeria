@@ -61,6 +61,7 @@ fn grant() -> Bearer {
         family_id: "family-w36".to_owned(),
         via_code: true,
         issued_at: Instant::now(),
+        minted_seq: 0,
     })
 }
 

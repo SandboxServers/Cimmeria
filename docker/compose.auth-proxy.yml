@@ -26,8 +26,9 @@
 # config/auth-providers.toml must exist before `docker compose up -d`.
 # Otherwise Docker creates an empty directory in its place, as it does for
 # config/discord.toml. The file is owned by uid 1001 and mode 0440. The
-# secret variable names below must match the client_secret_env names in
-# that file.
+# provider secrets are forwarded by docker/compose.yml (the base file), not
+# by this overlay; their variable names there must match the
+# client_secret_env names in that file.
 #
 # Enable it: append `:compose.auth-proxy.yml` to COMPOSE_FILE in .env, then
 #
@@ -47,8 +48,6 @@ services:
       # Empty keeps the server default 127.0.0.0/8,::1,172.16.0.0/12.
       AUTH_PROXY_TRUSTED_PEERS: "${AUTH_PROXY_TRUSTED_PEERS:-}"
       CIMMERIA_AUTH_PROVIDERS: "/opt/cimmeria/config/auth-providers.toml"
-      CIMMERIA_IDP_DISCORD_SECRET: "${CIMMERIA_IDP_DISCORD_SECRET:-}"
-      CIMMERIA_IDP_OIDC_SECRET: "${CIMMERIA_IDP_OIDC_SECRET:-}"
       # Kill switches (docs/operations/auth-https.md). Only the literal 1 turns one on.
       CIMMERIA_IDP_DISABLED: "${CIMMERIA_IDP_DISABLED:-}"
       CIMMERIA_IDP_SIGNUP_DISABLED: "${CIMMERIA_IDP_SIGNUP_DISABLED:-}"

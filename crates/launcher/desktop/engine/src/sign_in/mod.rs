@@ -11,9 +11,17 @@ pub mod api;
 pub mod commands;
 pub mod discovery;
 pub mod driver;
+mod driver_continue;
+mod driver_epoch;
+mod driver_reply;
+mod flow;
+mod host_slot;
 pub mod lease;
 pub mod oauth;
+mod pending;
 pub mod session;
+mod session_reply;
+mod session_view;
 pub mod store;
 
 #[cfg(test)]
@@ -40,6 +48,8 @@ pub enum SignInError {
     Server(String),
     /// The reply or the requested URL is not one the launcher will follow.
     Protocol,
+    /// Sign out or Cancel ran while this step was in flight.
+    Superseded,
 }
 
 impl SignInError {
@@ -48,7 +58,7 @@ impl SignInError {
         match self {
             SignInError::Offline => "Could not reach the sign-in server.",
             SignInError::Unsupported => "This server does not offer sign-in.",
-            SignInError::Cancelled => "Sign-in was cancelled.",
+            SignInError::Cancelled | SignInError::Superseded => "Sign-in was cancelled.",
             SignInError::Denied => "The provider refused the sign-in.",
             SignInError::TimedOut => "Sign-in timed out. Try again.",
             SignInError::Server(_) => "The sign-in server refused the request.",

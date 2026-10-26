@@ -18,13 +18,13 @@ use crate::config;
 use crate::http::provider_client;
 use crate::provider::{IdentityProvider, ProviderError};
 
-const CLIENT_ID: &str = "example-client";
-const NONCE: &str = "nonce-under-test";
-const REDIRECT: &str = "https://play.example.org/auth/v1/callback/oidc";
-const CLIENT_SECRET: &str = "test-secret";
+pub(super) const CLIENT_ID: &str = "example-client";
+pub(super) const NONCE: &str = "nonce-under-test";
+pub(super) const REDIRECT: &str = "https://play.example.org/auth/v1/callback/oidc";
+pub(super) const CLIENT_SECRET: &str = "test-secret";
 
 /// An ES256 signing key and the kid it publishes under.
-struct TestKey {
+pub(super) struct TestKey {
     /// The key id the JWKS and the token header carry.
     kid: String,
     /// The private key as PKCS#8 DER, for signing.
@@ -35,7 +35,7 @@ struct TestKey {
 
 impl TestKey {
     /// Generates a fresh P-256 key under `kid`.
-    fn new(kid: &str) -> TestKey {
+    pub(super) fn new(kid: &str) -> TestKey {
         let pair = KeyPair::generate().expect("a P-256 key generates");
         TestKey {
             kid: kid.to_owned(),
@@ -59,7 +59,7 @@ impl TestKey {
     }
 
     /// Signs `claims` as an ES256 `id_token` naming this key.
-    fn sign(&self, claims: &Value) -> String {
+    pub(super) fn sign(&self, claims: &Value) -> String {
         let mut header = Header::new(Algorithm::ES256);
         header.kid = Some(self.kid.clone());
         encode(&header, claims, &EncodingKey::from_ec_der(&self.pkcs8)).expect("the token signs")
@@ -68,7 +68,7 @@ impl TestKey {
 
 /// Starts a `wiremock` issuer. Its discovery names `claimed`, or the server's
 /// own URI when `claimed` is `None`.
-async fn start_issuer(claimed: Option<&str>) -> MockServer {
+pub(super) async fn start_issuer(claimed: Option<&str>) -> MockServer {
     let server = MockServer::start().await;
     let uri = server.uri();
     let issuer = claimed.unwrap_or(uri.as_str());
@@ -87,7 +87,7 @@ async fn start_issuer(claimed: Option<&str>) -> MockServer {
 }
 
 /// Serves `keys` as the JWKS, for every request.
-async fn serve_jwks(server: &MockServer, keys: &[&TestKey]) {
+pub(super) async fn serve_jwks(server: &MockServer, keys: &[&TestKey]) {
     let set = json!({ "keys": keys.iter().map(|key| key.jwk()).collect::<Vec<_>>() });
     Mock::given(method("GET"))
         .and(path("/jwks"))
@@ -109,8 +109,14 @@ async fn jwks_fetches(server: &MockServer) -> usize {
 
 /// Builds the provider from a config table, with its issuer pointed at the
 /// local `wiremock` server.
-fn oidc_provider(issuer: &str) -> OidcProvider {
-    let text = r#"
+pub(super) fn oidc_provider(issuer: &str) -> OidcProvider {
+    oidc_provider_with(issuer, "")
+}
+
+/// As [`oidc_provider`], with `extra_toml` lines appended to the provider table.
+pub(super) fn oidc_provider_with(issuer: &str, extra_toml: &str) -> OidcProvider {
+    let text = format!(
+        r#"
 public_base_url = "https://play.example.org"
 
 [[provider]]
@@ -121,20 +127,24 @@ issuer = "https://issuer.example.org"
 client_id = "example-client"
 client_secret_env = "CIMMERIA_IDP_TEST_SECRET"
 trusted_email = true
-"#;
+{extra_toml}
+"#
+    );
     let env = |name: &str| (name == "CIMMERIA_IDP_TEST_SECRET").then(|| CLIENT_SECRET.to_owned());
-    let (mut loaded, _) = config::load(text, &env, false).expect("the test config loads");
+    let (mut loaded, _) = config::load(&text, &env, false).expect("the test config loads");
     let mut cfg = loaded.providers.remove(0);
     cfg.issuer = Some(issuer.to_owned());
     OidcProvider::new(&cfg, provider_client())
 }
 
-/// The claims of a good token from `issuer`, expiring in five minutes.
-fn good_claims(issuer: &str) -> Value {
+/// The claims of a good token from `issuer`, issued now and expiring in five
+/// minutes.
+pub(super) fn good_claims(issuer: &str) -> Value {
     json!({
         "iss": issuer,
         "aud": CLIENT_ID,
         "sub": "user-1",
+        "iat": get_current_timestamp(),
         "exp": get_current_timestamp() + 300,
         "nonce": NONCE,
         "email": "Player@Example.ORG",
@@ -144,7 +154,7 @@ fn good_claims(issuer: &str) -> Value {
 }
 
 /// Serves `id_token` from the token endpoint, for one exchange.
-async fn serve_token(server: &MockServer, id_token: &str) {
+pub(super) async fn serve_token(server: &MockServer, id_token: &str) {
     Mock::given(method("POST"))
         .and(path("/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "id_token": id_token })))

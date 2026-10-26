@@ -4,7 +4,7 @@
 //! It clears the account's password in the same transaction (C15 a), so an
 //! account with an identity never holds one.
 
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 use super::account::{facts_of, FactsRow};
 use super::event::{self, EventKind};
@@ -52,6 +52,18 @@ pub async fn find_bound(
     issuer: &str,
     subject: &str,
 ) -> Result<Option<(i64, AccountFacts)>, RepoError> {
+    let mut conn = pool.acquire().await?;
+    find_bound_on(&mut conn, provider, issuer, subject).await
+}
+
+/// [`find_bound`] on the given connection, so it reads inside the caller's
+/// transaction.
+pub async fn find_bound_on(
+    conn: &mut PgConnection,
+    provider: &str,
+    issuer: &str,
+    subject: &str,
+) -> Result<Option<(i64, AccountFacts)>, RepoError> {
     let row: Option<(i64, i32, bool, i32, bool)> = sqlx::query_as(
         "SELECT i.identity_id, a.account_id, a.enabled, a.accesslevel, a.test_account \
          FROM account_identity i JOIN account a ON a.account_id = i.account_id \
@@ -60,7 +72,7 @@ pub async fn find_bound(
     .bind(provider)
     .bind(issuer)
     .bind(subject)
-    .fetch_optional(pool)
+    .fetch_optional(conn)
     .await?;
     Ok(row.map(|(identity_id, id, enabled, level, test)| {
         (identity_id, facts_of(id, enabled, level, test))
@@ -109,16 +121,29 @@ pub async fn insert(
     identity: &VerifiedIdentity,
     store_email: bool,
 ) -> Result<Linked, RepoError> {
+    let mut tx = pool.begin().await?;
+    let linked = insert_on(&mut tx, account_id, identity, store_email).await?;
+    tx.commit().await?;
+    Ok(linked)
+}
+
+/// [`insert`] on the given connection, so the link commits with the caller's
+/// transaction. The caller owns the transaction and its commit.
+pub async fn insert_on(
+    conn: &mut PgConnection,
+    account_id: u32,
+    identity: &VerifiedIdentity,
+    store_email: bool,
+) -> Result<Linked, RepoError> {
     let account = account_id as i32;
     let provider = identity.provider.as_str();
-    let mut tx = pool.begin().await?;
 
     let locked: Option<(bool,)> = sqlx::query_as(
         "SELECT (password IS NOT NULL OR password_hash_v2 IS NOT NULL) \
          FROM account WHERE account_id = $1 FOR UPDATE",
     )
     .bind(account)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut *conn)
     .await?;
     // A missing account has no password; the identity insert then fails its
     // foreign key, which maps to `Db`.
@@ -129,10 +154,10 @@ pub async fn insert(
              WHERE account_id = $1",
         )
         .bind(account)
-        .execute(&mut *tx)
+        .execute(&mut *conn)
         .await?;
         event::record_tx(
-            &mut tx,
+            &mut *conn,
             account_id,
             None,
             EventKind::PasswordCleared,
@@ -160,10 +185,10 @@ pub async fn insert(
     .bind(display_name)
     .bind(stored_email)
     .bind(verified_now)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut *conn)
     .await?;
     event::record_tx(
-        &mut tx,
+        &mut *conn,
         account_id,
         Some(identity_id),
         EventKind::Link,
@@ -171,7 +196,6 @@ pub async fn insert(
     )
     .await?;
 
-    tx.commit().await?;
     Ok(Linked {
         identity_id,
         password_cleared,
