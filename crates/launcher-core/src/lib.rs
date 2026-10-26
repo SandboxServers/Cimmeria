@@ -12,6 +12,7 @@
 pub mod client_changes;
 pub mod client_paths;
 pub mod client_setup;
+pub mod cooked_presync;
 pub mod file_index;
 pub mod install;
 mod install_codes;

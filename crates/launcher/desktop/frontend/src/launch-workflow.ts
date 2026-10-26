@@ -4,6 +4,15 @@ import { reportUiEvent, uiCode } from './ui-event';
 import { FailureCode } from './failure-codes';
 const Pid=Schema.Int.check(Schema.isBetween({minimum:1,maximum:4294967295}));
 const Count=Schema.Int.check(Schema.isBetween({minimum:0,maximum:4294967295}));
+const Bytes=Schema.Int.check(Schema.isBetween({minimum:0,maximum:Number.MAX_SAFE_INTEGER}));
+// The shell's record of why the game data check failed (D-LP26). step and reason are open strings, so a newer engine still decodes.
+const Failure=Schema.Struct({step:Schema.String,reason:Schema.String,category_id:Schema.NullOr(Count),http_status:Schema.NullOr(Count),os_code:Schema.NullOr(Schema.Int),
+  retry_after_s:Schema.NullOr(Count),source_version:Schema.NullOr(Count),served_version:Schema.NullOr(Count),deadline_s:Schema.NullOr(Count),pak:Schema.NullOr(Schema.String),io_kind:Schema.NullOr(Schema.String)});
+export type ContentSyncFailure=typeof Failure.Type;
+// The game data check before Play (ContentSync in the Contract); the key is absent before the first launch of this run.
+const ContentSync=Schema.Struct({phase:Schema.Literals(['checking','downloading','writing','committing','done']),categories_done:Count,categories_total:Count,bytes_done:Bytes,bytes_total:Bytes,
+  outcome:Schema.NullOr(Schema.Literals(['up_to_date','synced','skipped','failed','cancelled'])),reason:Schema.NullOr(Schema.String),server:Schema.NullOr(Schema.String),failure:Schema.NullOr(Failure)});
+export type ContentSync=typeof ContentSync.Type;
 export const LaunchStatus=Schema.Struct({schema_version:Schema.Literal(1),native:NativeSnapshot,
   installation_id:Schema.NullOr(Schema.String),setup_complete:Schema.Boolean,resources_available:Schema.Boolean,launcher_update_required:Schema.Boolean,patches_incomplete:Count,ops_skipped:Count,
   prerequisites_missing:Schema.optionalKey(Schema.Array(Schema.Literals(['directx','physx','proton']))),
@@ -15,7 +24,9 @@ export const LaunchStatus=Schema.Struct({schema_version:Schema.Literal(1),native
     Schema.Struct({phase:Schema.Literal('process_exited'),host_pid:Pid,guest_pid:Pid,code:Schema.Int,early:Schema.Boolean}),
   ])),
   // Why the current launch did not start (C-PD3); null when none is known.
-  failure:Schema.NullOr(FailureCode)});
+  failure:Schema.NullOr(FailureCode),
+  // The game data check of the latest Play (LP-22/LP-23); absent on older shells, null until a presync starts.
+  content_sync:Schema.optionalKey(Schema.NullOr(ContentSync))});
 export type LaunchStatus=typeof LaunchStatus.Type;
 export type Request={command:'inspect';schema_version:1}|{command:'play';schema_version:1;operation_id:string;operation_revision:number;installation_id:string};
 export class LaunchFailure extends Data.TaggedError('LaunchFailure')<{readonly code:string}> {}
@@ -38,6 +49,8 @@ export const launchBridgeLayer=(invoke:(request:Request)=>Promise<unknown>)=>Lay
 export type LaunchState={status:LaunchStatus|null;pending:boolean;uncertain:boolean;error:string|null};
 /** Content readiness is independent of the launcher-update gate. */
 export const gameSetupComplete=(status:LaunchStatus)=>status.setup_complete&&!status.native.requires_reopen&&status.observation?.phase!=='unknown'&&(!operationOpen(status.native.operation.operation)||(status.native.operation.operation?.kind==='launch'&&status.native.operation.operation.state!=='reconciliation_required'));
+/** True when Play stopped because the game data check failed; Play then reads Retry (D-LP29). */
+export const presyncFailed=(s:LaunchStatus|null):boolean=>s?.observation?.phase==='not_started'&&s.content_sync?.outcome==='failed';
 export const launchBlocked=(status:LaunchStatus)=>!!status.prerequisites_installing || !!status.prerequisites_missing?.length || status.launcher_update_required || status.native.requires_reopen || operationOpen(status.native.operation.operation);
 export const makeLaunchWorkflow=Effect.gen(function*(){
  const bridge=yield* LaunchBridge;const gate=yield* Semaphore.make(1);
