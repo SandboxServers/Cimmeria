@@ -4,8 +4,10 @@ use super::NativeHost;
 use cimmeria_launcher_engine::game_telemetry::launcher_event::{
     launcher_events, LauncherRecord, Redaction,
 };
+use cimmeria_launcher_engine::game_telemetry::launcher_forwarder::{consent_epoch, ForwardSource};
 use cimmeria_launcher_engine::game_telemetry::launcher_session::LauncherTarget;
 use cimmeria_launcher_engine::game_telemetry::transport::TelemetryEvent;
+use std::sync::Arc;
 
 impl NativeHost {
     /// The target and events for `records`, or None. Returns None unless this build
@@ -17,16 +19,48 @@ impl NativeHost {
         records: &[LauncherRecord],
         redaction: &Redaction,
     ) -> Option<(LauncherTarget, Vec<TelemetryEvent>)> {
-        let available = self
-            .launch_resources
-            .as_ref()
-            .is_some_and(|resources| resources.client_telemetry.is_some());
-        if !available {
+        let target = self.launcher_flush_target()?;
+        Some((target, launcher_events(records, redaction)))
+    }
+
+    /// The target alone, under the same module check as `launcher_batch`. The forwarder
+    /// reads it again before every send, so an opt-out is seen at once.
+    pub(crate) fn launcher_flush_target(&self) -> Option<LauncherTarget> {
+        if !self.module_available() {
             return None;
         }
         let store = self.store().ok()?;
-        let target = store.lock().ok()?.launcher_target()?;
-        Some((target, launcher_events(records, redaction)))
+        let state = store.lock().ok()?;
+        state.launcher_target()
+    }
+
+    fn module_available(&self) -> bool {
+        self.launch_resources
+            .as_ref()
+            .is_some_and(|resources| resources.client_telemetry.is_some())
+    }
+}
+
+/// The forwarder's view of the host. It caches nothing: the target and the consent
+/// epoch are read fresh on every call (C4).
+pub(crate) struct HostSource {
+    pub host: Arc<NativeHost>,
+    pub redaction: Redaction,
+}
+
+impl ForwardSource for HostSource {
+    fn events(&self, records: &[LauncherRecord]) -> Option<Vec<TelemetryEvent>> {
+        self.host
+            .launcher_batch(records, &self.redaction)
+            .map(|(_, events)| events)
+    }
+
+    fn target(&self) -> Option<LauncherTarget> {
+        self.host.launcher_flush_target()
+    }
+
+    fn epoch(&self) -> u64 {
+        consent_epoch()
     }
 }
 
@@ -92,5 +126,28 @@ mod tests {
             &events[0],
             TelemetryEvent::ClientNative(event) if event.target == "client.launcher.adoption"
         ));
+    }
+
+    #[test]
+    fn the_flush_target_needs_the_module_and_the_opt_in() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let no_module = host(&root, false, "c");
+        no_module
+            .store()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .set_game_telemetry(true)
+            .unwrap();
+        assert!(no_module.launcher_flush_target().is_none());
+        let host = host(&root, true, "d");
+        assert!(host.launcher_flush_target().is_none());
+        host.game_telemetry_command(GameTelemetryCommand::Set {
+            schema_version: 1,
+            opted_in: true,
+        })
+        .unwrap();
+        assert!(host.launcher_flush_target().is_some());
     }
 }

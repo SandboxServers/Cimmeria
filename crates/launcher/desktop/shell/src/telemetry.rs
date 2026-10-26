@@ -2,9 +2,10 @@
 //! line at INFO and above; a forward layer sends `adoption` records to the
 //! forwarder thread. Nothing here blocks: the file writer is non-blocking and the
 //! forward layer only `try_send`s.
-use crate::host::NativeHost;
+use crate::host::{HostSource, NativeHost};
 use cimmeria_launcher_engine::game_telemetry::health::{Recovery, SharedHealth, TelemetryHealth};
 use cimmeria_launcher_engine::game_telemetry::launcher_event::wire_target;
+use cimmeria_launcher_engine::game_telemetry::launcher_forwarder::Forwarder;
 use cimmeria_launcher_engine::game_telemetry::launcher_session::{LauncherSender, SendOutcome};
 use std::fmt;
 use std::io;
@@ -28,7 +29,9 @@ pub(crate) use cimmeria_launcher_engine::game_telemetry::launcher_event::{
 pub(crate) const LOG_FILE_PREFIX: &str = "launcher"; // launcher.<yyyy-mm-dd>.log
 pub(crate) const LOG_FILES_KEPT: usize = 7;
 pub(crate) const FORWARD_CAPACITY: usize = 512; // sync_channel bound
-pub(crate) const FORWARD_BATCH: usize = 64;
+#[path = "telemetry_forwarder.rs"]
+pub(crate) mod forwarder;
+
 /// This crate's name as a tracing target (`-` written as `_`).
 const SHELL_TARGET: &str = "cimmeria_launcher_desktop";
 
@@ -207,8 +210,6 @@ pub(crate) fn record_outcome(
 
 /// Records the events one pumped send carried, then its outcome, and logs the
 /// recovery when it ends a run of failures or loses events (launcher-telemetry C7).
-// LTL-05 calls this
-#[allow(dead_code)]
 pub(crate) fn record_pumped(
     health: &SharedHealth,
     outcome: &SendOutcome,
@@ -216,10 +217,12 @@ pub(crate) fn record_pumped(
     lost: u64,
     now_ms: u64,
 ) -> Option<Recovery> {
-    record_locked(health, |state| {
-        state.record_events(sent, lost);
-        state.record(outcome, now_ms)
-    })
+    // The events go in first so the recovery `record_outcome` may return carries them.
+    health
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .record_events(sent, lost);
+    record_outcome(health, outcome, now_ms)
 }
 
 /// Runs `update` under the health lock, and logs the recovery it returns.
@@ -250,8 +253,9 @@ fn pipeline_recovered(recovery: &Recovery, last_reason: Option<&'static str>) {
     );
 }
 
-/// Start the forwarder thread. It batches records, builds the events on the
-/// host, and sends them with `LauncherSender`. A spawn error is ignored.
+/// Start the forwarder thread. It coalesces records (2 s or 64 events, sends 7 s
+/// apart, at once on `launch_finished`), builds the events on the host, and sends
+/// them with `LauncherSender`. A spawn error is ignored.
 pub(crate) fn spawn_forwarder(
     host: Arc<NativeHost>,
     records: Receiver<LauncherRecord>,
@@ -260,20 +264,24 @@ pub(crate) fn spawn_forwarder(
     let _ = std::thread::Builder::new()
         .name("launcher-telemetry".into())
         .spawn(move || {
-            let sender = LauncherSender::new();
-            while let Ok(first) = records.recv() {
-                let mut batch = vec![first];
-                while batch.len() < FORWARD_BATCH {
-                    match records.try_recv() {
-                        Ok(r) => batch.push(r),
-                        Err(_) => break,
-                    }
-                }
-                if let Some((target, events)) = host.launcher_batch(&batch, &redaction) {
-                    let outcome = tauri::async_runtime::block_on(sender.send(&target, &events));
-                    record_outcome(&health(), &outcome, u64::try_from(now_ms()).unwrap_or(0));
-                }
-            }
+            let mut forwarder = Forwarder::new(LauncherSender::new());
+            let source = HostSource { host, redaction };
+            forwarder::forward_loop(
+                &records,
+                &mut forwarder,
+                &source,
+                &mut |p| {
+                    record_pumped(
+                        &health(),
+                        &p.outcome,
+                        p.sent_events,
+                        p.lost_events,
+                        u64::try_from(now_ms()).unwrap_or(0),
+                    );
+                },
+                // LTL-06 signals the exit flush from here.
+                &mut || {},
+            );
         });
 }
 
