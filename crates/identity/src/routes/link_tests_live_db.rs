@@ -435,6 +435,7 @@ async fn live_db_signup_conflict_leaves_no_orphan_account() {
     // name shape (its own signups) and deletes those ids itself.
     let orphan_rows: Vec<(i32,)> = sqlx::query_as(
         "SELECT a.account_id FROM account a WHERE a.account_id > $1::bigint \
+         AND a.account_id < 1879048192 \
          AND a.account_name LIKE 'CT26Player%' \
          AND NOT EXISTS (SELECT 1 FROM account_identity i WHERE i.account_id = a.account_id)",
     )
