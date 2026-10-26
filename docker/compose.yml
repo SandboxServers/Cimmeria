@@ -115,8 +115,11 @@ services:
       # Sign-in providers (identity). Blank means the default: no file path
       # override, no secret, all switches off. See .env.example.
       CIMMERIA_AUTH_PROVIDERS: "${CIMMERIA_AUTH_PROVIDERS:-}"
+      # A provider with another client_secret_env name needs that name added
+      # here or in a compose.override.yml.
       CIMMERIA_IDP_DISCORD_SECRET: "${CIMMERIA_IDP_DISCORD_SECRET:-}"
       CIMMERIA_IDP_GOOGLE_SECRET: "${CIMMERIA_IDP_GOOGLE_SECRET:-}"
+      CIMMERIA_IDP_OIDC_SECRET: "${CIMMERIA_IDP_OIDC_SECRET:-}"
       CIMMERIA_IDP_DISABLED: "${CIMMERIA_IDP_DISABLED:-}"
       CIMMERIA_IDP_SIGNUP_DISABLED: "${CIMMERIA_IDP_SIGNUP_DISABLED:-}"
       CIMMERIA_SOAP_RELAY_DISABLED: "${CIMMERIA_SOAP_RELAY_DISABLED:-}"

@@ -111,6 +111,10 @@ jobs:
         run: bash tools/build-lane/lane.sh cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop --all-targets -- -D warnings
       - name: Test native storage and operation contracts
         run: bash tools/build-lane/lane.sh cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop
+      - name: Check launcher relay
+        run: bash tools/build-lane/lane.sh cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-relay --target-dir target/desktop --all-targets -- -D warnings
+      - name: Test launcher relay
+        run: bash tools/build-lane/lane.sh cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-relay --target-dir target/desktop
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
