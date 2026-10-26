@@ -667,6 +667,12 @@ fn main() {
             host::ui_event::ui_event,
             host::telemetry_status::telemetry_status
         ])
-        .run(tauri::generate_context!())
-        .expect("desktop launcher could not initialize");
+        .build(tauri::generate_context!())
+        .expect("desktop launcher could not initialize")
+        .run(|_, event| {
+            // Send what is queued before the process ends; bounded at 3 s.
+            if let tauri::RunEvent::Exit = event {
+                telemetry::forwarder::flush_on_exit();
+            }
+        });
 }

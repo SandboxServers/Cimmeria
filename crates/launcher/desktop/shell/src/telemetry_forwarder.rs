@@ -7,8 +7,9 @@ use cimmeria_launcher_engine::game_telemetry::launcher_forwarder::{
     ForwardSource, Forwarder, Pumped,
 };
 use cimmeria_launcher_engine::game_telemetry::launcher_queue::FLUSH_TARGET;
-use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
-use std::time::Instant;
+use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TryRecvError};
+use std::sync::{Condvar, Mutex, OnceLock, PoisonError};
+use std::time::{Duration, Instant};
 
 /// Records taken from the channel per round, so one burst is one `on_records` call.
 const RECORD_BATCH: usize = 64;
@@ -60,6 +61,80 @@ pub(crate) fn forward_loop<S: ForwardSource>(
         }
         pump_once(forwarder, source, on_pumped, on_flushed);
     }
+}
+
+/// How long the exit flush may hold up closing the launcher (D-LTL6).
+pub(crate) const EXIT_FLUSH_WAIT: Duration = Duration::from_secs(3);
+
+/// A counter of finished flushes, so a waiter sees a flush that finished between its
+/// read of the counter and its wait.
+pub(crate) struct FlushSignal {
+    done: Mutex<u64>,
+    moved: Condvar,
+}
+
+impl FlushSignal {
+    pub(crate) const fn new() -> Self {
+        Self {
+            done: Mutex::new(0),
+            moved: Condvar::new(),
+        }
+    }
+
+    /// Records one finished flush and wakes the waiters.
+    pub(crate) fn notify(&self) {
+        let mut done = self.done.lock().unwrap_or_else(PoisonError::into_inner);
+        *done += 1;
+        self.moved.notify_all();
+    }
+}
+
+/// Sends the flush sentinel on `tx` and waits up to `wait` for `done` to move on. False
+/// on a full or closed channel or a timeout. The sentinel never bypasses consent: the
+/// forwarder still checks target and epoch before it sends anything.
+pub(crate) fn request_flush(
+    tx: &SyncSender<LauncherRecord>,
+    done: &FlushSignal,
+    wait: Duration,
+) -> bool {
+    // Read before sending, so a flush that finishes at once is not missed.
+    let before = *done.done.lock().unwrap_or_else(PoisonError::into_inner);
+    let sentinel = LauncherRecord {
+        ts_ms: 0,
+        level: "info".into(),
+        target: FLUSH_TARGET,
+        fields: serde_json::Map::new(),
+    };
+    if tx.try_send(sentinel).is_err() {
+        return false;
+    }
+    let guard = done.done.lock().unwrap_or_else(PoisonError::into_inner);
+    let (_guard, result) = done
+        .moved
+        .wait_timeout_while(guard, wait, |now| *now == before)
+        .unwrap_or_else(PoisonError::into_inner);
+    !result.timed_out()
+}
+
+static FLUSH_TX: OnceLock<SyncSender<LauncherRecord>> = OnceLock::new();
+static FLUSH_DONE: FlushSignal = FlushSignal::new();
+
+/// Keeps a sender for the exit flush; a second call is ignored.
+pub(crate) fn remember_sender(tx: SyncSender<LauncherRecord>) {
+    let _ = FLUSH_TX.set(tx);
+}
+
+/// Asks the forward thread to send what is queued and waits at most `EXIT_FLUSH_WAIT`.
+/// False when the telemetry was never initialised, the channel is full, or time ran out.
+pub(crate) fn flush_on_exit() -> bool {
+    FLUSH_TX
+        .get()
+        .is_some_and(|tx| request_flush(tx, &FLUSH_DONE, EXIT_FLUSH_WAIT))
+}
+
+/// Called by the forward thread's `on_flushed`.
+pub(crate) fn notify_flushed() {
+    FLUSH_DONE.notify();
 }
 
 fn pump_once<S: ForwardSource>(

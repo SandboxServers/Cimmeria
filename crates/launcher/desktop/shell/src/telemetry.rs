@@ -46,6 +46,7 @@ pub(crate) struct Telemetry {
 /// and the forward layer always. Never panics; a second install is ignored.
 pub(crate) fn init(log_dir: &Path, redaction: Redaction) -> Telemetry {
     let (tx, records) = std::sync::mpsc::sync_channel(FORWARD_CAPACITY);
+    forwarder::remember_sender(tx.clone());
     let (layer, guard) = match file_layer::<Registry>(log_dir, redaction) {
         Some((layer, guard)) => (Some(layer), Some(guard)),
         None => (None, None),
@@ -279,8 +280,7 @@ pub(crate) fn spawn_forwarder(
                         u64::try_from(now_ms()).unwrap_or(0),
                     );
                 },
-                // LTL-06 signals the exit flush from here.
-                &mut || {},
+                &mut forwarder::notify_flushed,
             );
         });
 }

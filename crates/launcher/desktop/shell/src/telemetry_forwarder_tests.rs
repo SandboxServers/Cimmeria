@@ -1,4 +1,4 @@
-use super::forward_loop;
+use super::{forward_loop, request_flush, FlushSignal, EXIT_FLUSH_WAIT};
 use cimmeria_launcher_engine::game_telemetry::launcher_event::{
     launcher_events, LauncherRecord, Redaction,
 };
@@ -18,7 +18,7 @@ const CHUNK: &str = "/api/telemetry/upload-chunk";
 
 /// A source that always has a target and builds events the way the host does.
 struct Fake {
-    target: LauncherTarget,
+    target: Option<LauncherTarget>,
 }
 
 impl ForwardSource for Fake {
@@ -26,7 +26,7 @@ impl ForwardSource for Fake {
         Some(launcher_events(records, &Redaction::default()))
     }
     fn target(&self) -> Option<LauncherTarget> {
-        Some(self.target.clone())
+        self.target.clone()
     }
     fn epoch(&self) -> u64 {
         0
@@ -97,6 +97,16 @@ fn start(
     target: LauncherTarget,
     records: Receiver<LauncherRecord>,
 ) -> (std::thread::JoinHandle<()>, Seen) {
+    start_with(Some(target), records, Arc::new(FlushSignal::new()))
+}
+
+/// As `start`, with the target the source reports (None = opted out) and the signal
+/// `on_flushed` notifies.
+fn start_with(
+    target: Option<LauncherTarget>,
+    records: Receiver<LauncherRecord>,
+    flushed: Arc<FlushSignal>,
+) -> (std::thread::JoinHandle<()>, Seen) {
     let seen: Seen = Arc::default();
     let sink = Arc::clone(&seen);
     let handle = std::thread::spawn(move || {
@@ -107,10 +117,113 @@ fn start(
             &mut forwarder,
             &source,
             &mut |p| sink.lock().unwrap().push(*p),
-            &mut || {},
+            &mut || flushed.notify(),
         );
     });
     (handle, seen)
+}
+
+#[test]
+fn a_flush_request_sends_the_queue_and_returns_within_the_bound() {
+    let (server, target) = server_and_target();
+    let (tx, rx) = sync_channel(16);
+    let signal = Arc::new(FlushSignal::new());
+    let (handle, _seen) = start_with(Some(target), rx, Arc::clone(&signal));
+    tx.send(record("client.launcher.adoption", None)).unwrap();
+    std::thread::sleep(Duration::from_millis(100));
+    let began = Instant::now();
+    assert!(request_flush(&tx, &signal, Duration::from_secs(3)));
+    assert!(
+        began.elapsed() < Duration::from_millis(1_500),
+        "not the 3 s timeout"
+    );
+    assert_eq!(
+        chunk_posts(&server),
+        1,
+        "the queued row was posted before it returned"
+    );
+    drop(tx);
+    handle.join().unwrap();
+}
+
+#[test]
+fn a_flush_request_under_a_hold_returns_at_once_without_a_post() {
+    let (server, target) = server_and_target();
+    tauri::async_runtime::block_on(
+        Mock::given(method("POST"))
+            .and(path(CHUNK))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "600"))
+            .with_priority(1)
+            .mount(&server),
+    );
+    let (tx, rx) = sync_channel(16);
+    let signal = Arc::new(FlushSignal::new());
+    let (handle, _seen) = start_with(Some(target), rx, Arc::clone(&signal));
+    tx.send(record("client.launcher.launch", Some("launch_finished")))
+        .unwrap();
+    let start_at = Instant::now();
+    while chunk_posts(&server) == 0 && start_at.elapsed() < Duration::from_secs(2) {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(chunk_posts(&server), 1, "the 429 that starts the hold");
+    std::thread::sleep(Duration::from_millis(100));
+    let began = Instant::now();
+    assert!(request_flush(&tx, &signal, Duration::from_secs(3)));
+    assert!(
+        began.elapsed() < Duration::from_millis(500),
+        "a hold ends the flush"
+    );
+    assert_eq!(chunk_posts(&server), 1, "no post during the hold");
+    drop(tx);
+    handle.join().unwrap();
+}
+
+#[test]
+fn a_flush_request_does_not_send_when_the_player_is_opted_out() {
+    let (server, _target) = server_and_target();
+    let (tx, rx) = sync_channel(16);
+    let signal = Arc::new(FlushSignal::new());
+    // No target: consent is withdrawn. The flush must end, and must post nothing.
+    let (handle, _seen) = start_with(None, rx, Arc::clone(&signal));
+    tx.send(record("client.launcher.adoption", None)).unwrap();
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(request_flush(&tx, &signal, Duration::from_secs(3)));
+    assert_eq!(
+        chunk_posts(&server),
+        0,
+        "the exit flush is not a consent bypass"
+    );
+    drop(tx);
+    handle.join().unwrap();
+}
+
+#[test]
+fn a_flush_request_on_a_closed_channel_fails_at_once() {
+    let (tx, rx) = sync_channel(16);
+    drop(rx);
+    let began = Instant::now();
+    assert!(!request_flush(
+        &tx,
+        &FlushSignal::new(),
+        Duration::from_secs(3)
+    ));
+    assert!(began.elapsed() < Duration::from_millis(500));
+}
+
+#[test]
+fn a_flush_request_times_out_when_nothing_answers() {
+    // The receiver is alive but nobody pumps it, so the signal never moves.
+    let (tx, _rx) = sync_channel(16);
+    let began = Instant::now();
+    assert!(!request_flush(
+        &tx,
+        &FlushSignal::new(),
+        Duration::from_millis(100)
+    ));
+    assert!(
+        began.elapsed() < Duration::from_millis(1_000),
+        "bounded by `wait`"
+    );
 }
 
 #[test]
@@ -170,4 +283,9 @@ fn launch_finished_sends_without_waiting_for_the_window() {
     handle.join().unwrap();
     let sent: u64 = seen.lock().unwrap().iter().map(|p| p.sent_events).sum();
     assert_eq!(sent, 2, "the post holds both rows");
+}
+
+#[test]
+fn the_exit_flush_is_bounded_at_three_seconds() {
+    assert_eq!(EXIT_FLUSH_WAIT, Duration::from_secs(3));
 }
