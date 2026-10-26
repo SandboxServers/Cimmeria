@@ -1,9 +1,10 @@
 //! The sign-in that Play uses, and why the last Play did not start (C9).
 //! Kept in memory only: the sign-in itself is stored by `sign_in::store`.
 
-use crate::client_setup::login_servers::{self, LoginServer};
+use crate::client_setup::login_servers::LoginServer;
 use crate::sign_in::session::SignIn;
 use crate::storage::DesktopState;
+use crate::StorageError;
 use std::sync::Arc;
 
 impl DesktopState {
@@ -13,15 +14,10 @@ impl DesktopState {
     }
 
     /// The login server sign-in is offered for: the first one in the list Play
-    /// uses without an adopted installation (saved preferences, else the
-    /// defaults). `None` when that list is empty (D-CT21).
-    pub fn sign_in_login_server(&self) -> Option<LoginServer> {
-        let servers = if self.preferences.login_servers.is_empty() {
-            login_servers::default_servers()
-        } else {
-            self.preferences.login_servers.clone()
-        };
-        servers.into_iter().next()
+    /// uses (the effective list, C18.2). `None` when that list is empty. An
+    /// error reading the installation is returned, never answered from another list.
+    pub fn sign_in_login_server(&self) -> Result<Option<LoginServer>, StorageError> {
+        Ok(self.effective_login_servers()?.into_iter().next())
     }
 
     /// Set after a sign-in starts or ends. `None` means no signed-in session.

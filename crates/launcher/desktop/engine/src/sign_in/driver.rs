@@ -106,7 +106,14 @@ impl SignInDriver {
         if matches!(request, SignInCommand::Cancel { .. }) {
             self.cancel_flow()?;
         }
-        let server = guard(state)?.sign_in_login_server();
+        let server = guard(state)?.sign_in_login_server().map_err(|_| {
+            tracing::debug!(
+                target: "launcher.sign_in",
+                reason = "installation_unreadable",
+                "sign-in server list unreadable"
+            );
+            SignInFailure::Unavailable
+        })?;
         let Some(server) = server else {
             return match request {
                 SignInCommand::Inspect { .. } | SignInCommand::Cancel { .. } => {
