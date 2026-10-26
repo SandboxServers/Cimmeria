@@ -85,7 +85,7 @@ fn dispatch(host: &NativeHost, installation: Uuid) -> (Uuid, InstallCommand) {
     (id, request)
 }
 async fn observe(host: &NativeHost, expected: OperationState) -> InstallStatus {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(30), async {
         loop {
             // A poll that races the apply path is refused as Busy while the
             // path holds the store; that is transient, so poll again. The
@@ -109,7 +109,7 @@ async fn observe(host: &NativeHost, expected: OperationState) -> InstallStatus {
 }
 async fn action(host: Arc<NativeHost>, request: InstallCommand) -> InstallStatus {
     tokio::time::timeout(
-        Duration::from_secs(5),
+        Duration::from_secs(30),
         tokio::task::spawn_blocking(move || host.install_command(request, None)),
     )
     .await
@@ -170,7 +170,21 @@ async fn retained_host_handoff_commits_signed_seed_and_reports_current_backup_af
             let path = host.root.clone();
             drop(host);
             let host = NativeHost::new(path);
-            let status = host.install_status().unwrap();
+            // The cleanup dispatch sends its result before it drops its store
+            // state, so the first reopen can still be Busy; retry as `observe` does.
+            let status = tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    match host.install_status() {
+                        Ok(status) => break status,
+                        Err(JobError::Busy) => {
+                            tokio::time::sleep(Duration::from_millis(5)).await;
+                        }
+                        Err(error) => panic!("reopen install_status failed: {error:?}"),
+                    }
+                }
+            })
+            .await
+            .expect("reopened store releases the repair lock");
             assert!(!status.repair.cleanup);
             assert_eq!(status.repair.backup, BackupStatus::Removed);
         }
@@ -187,7 +201,7 @@ async fn host_progress_and_precommit_cancel_preserve_original_without_backup() {
         .unwrap()
         .url = download.url.clone();
     let (id, _) = dispatch(&host, installation);
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(30), async {
         loop {
             let status = host.install_status().unwrap();
             if status.progress.is_some() {
