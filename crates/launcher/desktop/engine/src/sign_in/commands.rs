@@ -87,6 +87,9 @@ pub struct SignInStatus {
     pub account: Option<AccountPanelView>,
     /// Why the last signed-in Play ended before the game started (`ticket_unavailable`, `sign_in_ended`).
     pub play_refusal: Option<&'static str>,
+    /// The credential store's state (C18.1): `session_only`, `sign_out_incomplete`,
+    /// `store_unreadable`, or `None` when the store is in order.
+    pub storage_warning: Option<&'static str>,
 }
 
 /// One provider the server offers, as the sign-in page lists it.

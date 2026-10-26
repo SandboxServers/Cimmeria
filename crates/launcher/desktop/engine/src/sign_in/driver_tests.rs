@@ -18,6 +18,9 @@ use super::store::{CredentialStore, MemoryStore, Stored};
 use super::tests::ENV_LOCK;
 use crate::storage::DesktopState;
 
+#[path = "driver_store_tests.rs"]
+mod store_faults;
+
 /// The host the stored entries are keyed by (the mock listens on loopback).
 const HOST: &str = "127.0.0.1";
 const AUTH_BASE_ENV: &str = "CIMMERIA_LAUNCHER_AUTH_BASE";
@@ -79,7 +82,7 @@ struct Fixture {
     server: MockServer,
     _dir: tempfile::TempDir,
     state: Mutex<DesktopState>,
-    store: Arc<MemoryStore>,
+    store: Arc<dyn CredentialStore>,
     driver: SignInDriver,
 }
 
@@ -94,6 +97,13 @@ impl Fixture {
     /// `reachable: false` points the auth base at a closed port instead.
     #[allow(clippy::await_holding_lock)] // tests only: serialises the process env
     async fn new(providers: bool, reachable: bool) -> Self {
+        Self::with_store(providers, reachable, Arc::new(MemoryStore::default())).await
+    }
+
+    /// As [`Fixture::new`], with the driver on `store` (a fault-injecting one in
+    /// `store_faults`).
+    #[allow(clippy::await_holding_lock)] // tests only: serialises the process env
+    async fn with_store(providers: bool, reachable: bool, store: Arc<dyn CredentialStore>) -> Self {
         let env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let server = MockServer::start().await;
         let base = if reachable {
@@ -117,7 +127,6 @@ impl Fixture {
         }
         let dir = tempfile::tempdir().unwrap();
         let state = DesktopState::open(&dir.path().join("state")).unwrap();
-        let store = Arc::new(MemoryStore::default());
         let driver = SignInDriver::new(store.clone());
         Self {
             _env: env,
@@ -130,14 +139,16 @@ impl Fixture {
     }
 
     fn store_entry(&self, refresh: &str) {
-        self.store.set(
-            HOST,
-            &Stored {
-                refresh_token: refresh.to_owned(),
-                account_name: "alice".to_owned(),
-                display_name: "Alice".to_owned(),
-            },
-        );
+        self.store
+            .set(
+                HOST,
+                &Stored {
+                    refresh_token: refresh.to_owned(),
+                    account_name: "alice".to_owned(),
+                    display_name: "Alice".to_owned(),
+                },
+            )
+            .unwrap();
     }
 
     async fn run(&self, request: Value, browser: &dyn Browser) -> Reply {
@@ -281,7 +292,10 @@ async fn begin_signs_in_and_stores_the_session() {
     assert!(matches!(status.state, SignInStateView::SignedIn { .. }));
     assert!(status.available);
     assert!(fx.has_session());
-    assert_eq!(fx.store.get(HOST).expect("stored").refresh_token, "r1");
+    assert_eq!(
+        fx.store.get(HOST).unwrap().expect("stored").refresh_token,
+        "r1"
+    );
 }
 
 #[tokio::test]
@@ -309,7 +323,7 @@ async fn begin_needs_link_then_link_new() {
         .unwrap();
     assert!(matches!(done.state, SignInStateView::SignedIn { .. }));
     assert!(fx.has_session());
-    assert_eq!(fx.store.get(HOST).unwrap().refresh_token, "r2");
+    assert_eq!(fx.store.get(HOST).unwrap().unwrap().refresh_token, "r2");
 }
 
 #[tokio::test]
@@ -576,7 +590,7 @@ async fn sign_out_clears_state_offline() {
         .unwrap();
     assert!(matches!(status.state, SignInStateView::SignedOut));
     assert!(!fx.has_session());
-    assert!(fx.store.get(HOST).is_none());
+    assert!(fx.store.get(HOST).unwrap().is_none());
 }
 
 /// The `SignOut` arm's work with no login server (`Site.server` is `None`): it
@@ -594,10 +608,11 @@ async fn sign_out_works_with_no_login_server() {
         state: &fx.state,
         server: None,
         discovery: None,
+        base: None,
     };
     let status = fx.driver.sign_out(&site, Some(session)).await.unwrap();
     assert!(matches!(status.state, SignInStateView::SignedOut));
-    assert!(fx.store.get(HOST).is_none());
+    assert!(fx.store.get(HOST).unwrap().is_none());
     assert!(!fx.has_session());
 }
 

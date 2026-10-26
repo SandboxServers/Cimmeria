@@ -122,7 +122,7 @@ async fn sign_out_during_the_browser_wait_voids_the_callback() {
     });
     assert_eq!(reply, Err(SignInFailure::Cancelled));
     assert!(!fx.has_session());
-    assert!(fx.store.get(HOST).is_none());
+    assert!(fx.store.get(HOST).unwrap().is_none());
     assert!(fx.requests_to("/auth/v1/token").await.is_empty());
 }
 
@@ -137,7 +137,7 @@ async fn sign_out_during_the_token_exchange_discards_the_reply() {
     });
     assert_eq!(reply, Err(SignInFailure::Cancelled));
     assert!(!fx.has_session());
-    assert!(fx.store.get(HOST).is_none());
+    assert!(fx.store.get(HOST).unwrap().is_none());
     let logouts = fx.requests_to("/auth/v1/logout").await;
     assert_eq!(logouts, vec![json!({"refresh_token": "r9"})]);
 }
@@ -162,7 +162,7 @@ async fn sign_out_during_a_link_call_discards_the_reply() {
         fx.run(sign_out(), &browser).await.unwrap();
     });
     assert_eq!(reply, Err(SignInFailure::Cancelled));
-    assert!(fx.store.get(HOST).is_none());
+    assert!(fx.store.get(HOST).unwrap().is_none());
     assert!(!fx.has_session());
     let status = fx.inspect().await.unwrap();
     assert!(matches!(status.state, SignInStateView::SignedOut));
@@ -179,7 +179,7 @@ async fn cancel_after_the_callback_discards_the_reply() {
         fx.run(cancel(), &SilentBrowser::default()).await.unwrap();
     });
     assert_eq!(reply, Err(SignInFailure::Cancelled));
-    assert!(fx.store.get(HOST).is_none());
+    assert!(fx.store.get(HOST).unwrap().is_none());
     assert!(!fx.has_session());
 }
 
@@ -196,7 +196,7 @@ async fn a_server_switch_mid_flow_stores_but_does_not_install() {
     assert!(reply.is_ok(), "{reply:?}");
     assert!(!fx.has_session());
     assert!(
-        fx.store.get(HOST).is_some(),
+        fx.store.get(HOST).unwrap().is_some(),
         "the old server's completion is stored under its own host"
     );
 }

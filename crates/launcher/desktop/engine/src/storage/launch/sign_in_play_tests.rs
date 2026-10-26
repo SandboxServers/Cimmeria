@@ -53,14 +53,16 @@ fn discovery_at(base: Url) -> Discovery {
 /// A session restored from a stored entry for `base`'s host.
 pub(super) fn signed_in(base: Url) -> Arc<SignIn> {
     let store = Arc::new(MemoryStore::default());
-    store.set(
-        base.host_str().expect("host"),
-        &Stored {
-            refresh_token: "r0".to_owned(),
-            account_name: "alice".to_owned(),
-            display_name: "Alice".to_owned(),
-        },
-    );
+    store
+        .set(
+            base.host_str().expect("host"),
+            &Stored {
+                refresh_token: "r0".to_owned(),
+                account_name: "alice".to_owned(),
+                display_name: "Alice".to_owned(),
+            },
+        )
+        .unwrap();
     Arc::new(SignIn::restore(base, discovery::client(), store).expect("stored"))
 }
 

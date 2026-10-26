@@ -24,6 +24,11 @@ impl SignInDriver {
             .await?;
         let play_refusal = guard(site.state)?.play_refusal();
         let waiting = self.flow.is_waiting();
+        let storage_warning = match (session, site.base) {
+            (Some(session), _) => session.storage_warning().await,
+            (None, Some(base)) => self.slot(base).warning().await,
+            (None, None) => None,
+        };
         let discovery = site.discovery;
         Ok(SignInStatus {
             schema_version: 1,
@@ -43,6 +48,7 @@ impl SignInDriver {
             state: view,
             account,
             play_refusal,
+            storage_warning,
         })
     }
 

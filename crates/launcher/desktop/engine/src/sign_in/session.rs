@@ -83,16 +83,14 @@ impl SignIn {
         http: reqwest::Client,
         store: Arc<dyn CredentialStore>,
     ) -> Option<Self> {
-        let stored = store.get(host_of(&base))?;
-        let account = AccountSummary {
+        let mut state = HostState::default();
+        let stored = host_slot::read(&*store, host_of(&base), &mut state)?;
+        state.account = Some(AccountSummary {
             account_name: stored.account_name,
             display_name: stored.display_name,
-        };
+        });
         let slot = Arc::new(HostSlot {
-            state: tokio::sync::Mutex::new(HostState {
-                access: None,
-                account: Some(account),
-            }),
+            state: tokio::sync::Mutex::new(state),
         });
         Some(Self::new_in(base, http, store, slot))
     }
@@ -108,7 +106,7 @@ impl SignIn {
     ) -> Option<Self> {
         {
             let mut state = slot.state.lock().await;
-            let stored = store.get(host_of(&base))?;
+            let stored = host_slot::read(&*store, host_of(&base), &mut state)?;
             if state.account.is_none() {
                 state.account = Some(AccountSummary {
                     account_name: stored.account_name,
@@ -127,6 +125,12 @@ impl SignIn {
     /// The names of the signed-in account, as last stored or refreshed. `None` when signed out.
     pub async fn summary(&self) -> Option<AccountSummary> {
         self.slot.state.lock().await.account.clone()
+    }
+
+    /// The C18.1 `storage_warning` of this host: `session_only`, `sign_out_incomplete`
+    /// or `store_unreadable`, or `None` when the store is in order.
+    pub async fn storage_warning(&self) -> Option<&'static str> {
+        self.slot.warning().await
     }
 
     /// Exchanges the browser grant for a session (C6 `authorization_code`). A
@@ -205,7 +209,8 @@ impl SignIn {
                 return Ok(token.clone());
             }
         }
-        let stored = self.store.get(host_of(&self.base)).ok_or_else(signed_out)?;
+        let stored = host_slot::read(&*self.store, host_of(&self.base), &mut state)
+            .ok_or_else(signed_out)?;
         let body = json!({
             "grant_type": "refresh_token",
             "refresh_token": stored.refresh_token,
@@ -250,7 +255,7 @@ impl SignIn {
     pub async fn sign_out(&self) {
         let stored = {
             let mut state = self.slot.state.lock().await;
-            let stored = self.store.get(host_of(&self.base));
+            let stored = host_slot::read(&*self.store, host_of(&self.base), &mut state);
             host_slot::forget(&*self.store, host_of(&self.base), &mut state);
             stored
         };

@@ -13,14 +13,22 @@ use url::Url;
 
 use super::api::SignedIn;
 use super::session::AccountSummary;
-use super::store::{CredentialStore, Stored};
+use super::store::{CredentialStore, StoreError, Stored};
 
-/// What one auth host's sessions share: the access token and the account.
+/// What one auth host's sessions share: the access token, the account and the
+/// store state (CT-88): a sign-in the store refused, a sign-out it refused, and
+/// the warning the status shows.
 #[derive(Default)]
 pub(super) struct HostState {
     /// The access token and the instant it stops being valid.
     pub(super) access: Option<(String, Instant)>,
     pub(super) account: Option<AccountSummary>,
+    /// A sign-in the store refused to keep: it works until the launcher exits.
+    pub(super) session_only: Option<Stored>,
+    /// A sign-out the store refused to delete: the host reads as signed out.
+    pub(super) tombstone: bool,
+    /// The C18.1 `storage_warning` value, when one applies.
+    pub(super) warning: Option<&'static str>,
 }
 
 /// The shared session state of one auth host. Held across a refresh and a sign-out,
@@ -35,6 +43,11 @@ impl HostSlot {
         Arc::new(Self {
             state: tokio::sync::Mutex::new(HostState::default()),
         })
+    }
+
+    /// The `storage_warning` of this host, or `None`.
+    pub(super) async fn warning(&self) -> Option<&'static str> {
+        self.state.lock().await.warning
     }
 }
 
@@ -73,23 +86,76 @@ pub(super) fn adopt(
         account_name: signed.account.account_name,
         display_name: signed.account.display_name,
     };
-    store.set(
-        host,
-        &Stored {
-            refresh_token: signed.refresh_token,
-            account_name: summary.account_name.clone(),
-            display_name: summary.display_name.clone(),
-        },
-    );
+    let stored = Stored {
+        refresh_token: signed.refresh_token,
+        account_name: summary.account_name.clone(),
+        display_name: summary.display_name.clone(),
+    };
+    match store.set(host, &stored) {
+        Ok(()) => {
+            state.session_only = None;
+            state.tombstone = false;
+            state.warning = None;
+        }
+        Err(_) => {
+            state.session_only = Some(stored);
+            state.tombstone = false;
+            state.warning = Some("session_only");
+        }
+    }
     let until = Instant::now() + Duration::from_secs(signed.expires_in);
     state.access = Some((signed.access_token, until));
     state.account = Some(summary.clone());
     summary
 }
 
+/// The stored sign-in for `host` as this slot sees it: a tombstone is `None`, a
+/// sign-in the store refused comes before the store, and a store that cannot be
+/// read is `None` with the `store_unreadable` warning.
+pub(super) fn read(
+    store: &dyn CredentialStore,
+    host: &str,
+    state: &mut HostState,
+) -> Option<Stored> {
+    if state.tombstone {
+        return None;
+    }
+    if let Some(stored) = &state.session_only {
+        return Some(stored.clone());
+    }
+    match store.get(host) {
+        Ok(stored) => {
+            if state.warning == Some("store_unreadable") {
+                state.warning = None;
+            }
+            stored
+        }
+        Err(_) => {
+            state.warning = Some("store_unreadable");
+            None
+        }
+    }
+}
+
+/// Records the outcome of a delete: a refused delete leaves a tombstone, so the
+/// next launch does not restore the account the player signed out of.
+fn settle_delete(result: Result<(), StoreError>, state: &mut HostState) {
+    state.session_only = None;
+    match result {
+        Ok(()) => {
+            state.tombstone = false;
+            state.warning = None;
+        }
+        Err(_) => {
+            state.tombstone = true;
+            state.warning = Some("sign_out_incomplete");
+        }
+    }
+}
+
 /// Clears the stored sign-in and the memory.
 pub(super) fn forget(store: &dyn CredentialStore, host: &str, state: &mut HostState) {
-    store.delete(host);
+    settle_delete(store.delete(host), state);
     state.access = None;
     state.account = None;
 }
@@ -103,8 +169,8 @@ pub(super) fn forget_if_stored(
     state: &mut HostState,
     used: &str,
 ) {
-    if store.get(host).is_none_or(|now| now.refresh_token == used) {
-        store.delete(host);
+    if read(store, host, state).is_none_or(|now| now.refresh_token == used) {
+        settle_delete(store.delete(host), state);
     }
     state.access = None;
     state.account = None;
