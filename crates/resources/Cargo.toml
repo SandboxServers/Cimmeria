@@ -6,6 +6,14 @@ license.workspace = true
 publish = false
 description = "Cooked-data resource cache (the client's data/cache PAKs) and Cimmeria's in-memory overrides, plus the CharDef table, for the Cimmeria server emulator"
 
+# `cooked-pak-tool` builds, composes and checks the launcher presync data
+# offline (LP-04). It is a developer tool: no tests of its own (`check.rs` and
+# `served_catalog` hold them).
+[[bin]]
+name = "cooked-pak-tool"
+path = "src/bin/cooked-pak-tool.rs"
+test = false
+
 # Split out of cimmeria-services (wave W1b of
 # docs/architecture/services-crate-split.md). A leaf: it uses no other
 # workspace crate in production, so it compiles in parallel with everything
