@@ -13,6 +13,9 @@ pub mod ip_scrub;
 pub mod launcher_event;
 #[cfg(test)]
 mod launcher_event_tests;
+pub mod launcher_forwarder;
+#[cfg(test)]
+mod launcher_forwarder_tests;
 pub mod launcher_queue;
 #[cfg(test)]
 mod launcher_queue_tests;
@@ -136,6 +139,7 @@ impl DesktopState {
         self.write_game_telemetry(NAME, &value)?;
         crate::storage::settings_events::game_diagnostics_changed(opted_in);
         transport::discard_queue(&self.directory.root);
+        launcher_forwarder::consent_changed();
         Ok(value)
     }
 
