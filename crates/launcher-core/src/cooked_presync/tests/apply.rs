@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs::{self, File};
-use std::io::{Cursor, Write};
+use std::io::{Cursor, ErrorKind, Write};
 use std::path::Path;
 
 use cimmeria_cooked_pak::catalog::{CategoryBody, IndexEntry};
@@ -235,11 +235,24 @@ fn sweep_removes_a_planted_link_named_as_a_temp_and_not_its_target() {
     let stray = format!("cat4.pak{TEMP_SUFFIX}");
     if !file_link(&dir.join(&stray), &target) {
         // The OS refused a file link here, so there is nothing to test.
+        if cfg!(unix) {
+            panic!("a unix symlink must be creatable");
+        }
         return;
     }
     assert_eq!(sweep_temps(dir), 1);
     assert!(!dir.join(&stray).exists());
     assert_eq!(fs::read(&target).unwrap(), b"keep");
+}
+
+#[test]
+fn write_temp_never_opens_an_existing_file() {
+    let root = tempfile::tempdir().unwrap();
+    let existing = root.path().join(format!("cat4.pak{TEMP_SUFFIX}"));
+    fs::write(&existing, b"keep").unwrap();
+    let error = write_temp(root.path(), &existing, 1, &base()).unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::AlreadyExists);
+    assert_eq!(fs::read(&existing).unwrap(), b"keep");
 }
 
 /// Makes `link` a file symlink to `target`. False when the OS refuses.
