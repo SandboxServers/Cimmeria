@@ -323,7 +323,13 @@ impl SignInDriver {
         };
         let (grant, cont, epoch) = self
             .flow
-            .run(browser, oauth::begin(&base, provider), cont, epoch)
+            .run(
+                browser,
+                oauth::begin(&base, provider),
+                cont,
+                epoch,
+                &Epoch::new(&self.epoch, epoch),
+            )
             .await?;
         self.continue_flow(site, discovery, grant, cont, epoch)
             .await
@@ -346,7 +352,13 @@ impl SignInDriver {
         };
         let (grant, cont, epoch) = self
             .flow
-            .run(browser, session.add_method(provider), cont, epoch)
+            .run(
+                browser,
+                session.add_method(provider),
+                cont,
+                epoch,
+                &Epoch::new(&self.epoch, epoch),
+            )
             .await?;
         self.continue_flow(site, discovery, grant, cont, epoch)
             .await

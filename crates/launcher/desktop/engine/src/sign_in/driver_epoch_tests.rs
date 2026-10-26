@@ -3,8 +3,15 @@
 //! without installing it. Each test interleaves the slow step with the interrupting
 //! command through `tokio::join!`; no delay is longer than 500 ms.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use url::Url;
+
 use super::*;
 use crate::client_setup::login_servers::LoginServer;
+use crate::sign_in::flow::{Continue, FlowSlot};
+use crate::sign_in::host_slot::Epoch;
+use crate::sign_in::oauth;
 use crate::sign_in::pending::PendingLink;
 use crate::sign_in::session::NeedsLinkView;
 use crate::NativeCommand;
@@ -291,4 +298,31 @@ async fn a_wrong_password_answered_after_sign_out_keeps_no_choice() {
     assert!(reply.is_err(), "{reply:?}");
     let status = fx.inspect().await.unwrap();
     assert!(matches!(status.state, SignInStateView::SignedOut));
+}
+
+/// A Cancel that lands while discovery runs, after the flow took its slot but before
+/// the browser opens, keeps the browser closed: the step's fence is no longer current.
+#[tokio::test]
+async fn a_cancel_during_discovery_keeps_the_browser_closed() {
+    let counter = AtomicU64::new(0);
+    let fence = Epoch::new(&counter, 0);
+    let flow = FlowSlot::new();
+    let browser = SilentBrowser::default();
+    let base = Url::parse("https://login.example.test/").unwrap();
+    let cont = Continue::Begin {
+        base: base.clone(),
+        provider: "discord".to_owned(),
+    };
+    let start = async {
+        // The Cancel bumps the epoch when it finds no flow to cancel yet.
+        counter.fetch_add(1, Ordering::SeqCst);
+        oauth::begin(&base, "discord").await
+    };
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        flow.run(&browser, start, cont, 0, &fence),
+    )
+    .await;
+    assert!(matches!(result, Ok(Err(SignInFailure::Cancelled))));
+    assert!(browser.urls.lock().unwrap().is_empty());
 }

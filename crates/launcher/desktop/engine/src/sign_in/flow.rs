@@ -17,6 +17,7 @@ use url::Url;
 
 use super::commands::SignInFailure;
 use super::driver::{guard, Browser};
+use super::host_slot::Epoch;
 use super::oauth::{BrowserFlow, CodeGrant, SIGN_IN_TIMEOUT};
 use super::session::SignIn;
 use super::SignInError;
@@ -70,12 +71,15 @@ impl FlowSlot {
     /// runs at a time, so a second call is `Busy`. `cancel` ends the wait. Returns
     /// the grant with `cont` and `epoch`, which the caller completes. If the
     /// browser does not open, the flow parks and the call fails `BrowserFailed`.
+    /// `fence` is the epoch the step runs under: a sign-out or Cancel that ran
+    /// while `start` was in flight keeps the browser closed.
     pub(super) async fn run<F>(
         &self,
         browser: &dyn Browser,
         start: F,
         cont: Continue,
         epoch: u64,
+        fence: &Epoch<'_>,
     ) -> Result<(CodeGrant, Continue, u64), SignInFailure>
     where
         F: Future<Output = Result<BrowserFlow, SignInError>>,
@@ -94,7 +98,7 @@ impl FlowSlot {
         let result: Result<(CodeGrant, Continue, u64), SignInFailure> = match start.await {
             Err(e) => Err(SignInFailure::from(e)),
             Ok(flow) => {
-                if cancel_rx.try_recv().is_ok() {
+                if cancel_rx.try_recv().is_ok() || !fence.is_current() {
                     Err(SignInFailure::Cancelled)
                 } else if browser.open(&flow.authorize_url).is_err() {
                     // The flow keeps its listener and its `waiting` handle: `resume` finishes it.
