@@ -28,6 +28,7 @@ fn reap_expired_logs_unconsumed_ticket_with_account() {
             account_name: "reaper-sid".to_string(),
             client_ip: Ipv4Addr::LOCALHOST.into(),
             created: base,
+            ticket_guard: None,
         },
     );
 
@@ -48,6 +49,7 @@ fn reap_expired_logs_unconsumed_ticket_with_account() {
                 session_key: String::new(),
                 client_ip: Ipv4Addr::LOCALHOST.into(),
                 created,
+                ticket_guard: None,
             },
         );
     }

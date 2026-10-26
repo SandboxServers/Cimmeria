@@ -76,6 +76,7 @@ fn pending(ticket: &str, account_id: u32, key: [u8; 32]) -> PendingLogin {
         session_key: hex_key(key),
         client_ip: "127.0.0.1".parse().unwrap(),
         created: Instant::now(),
+        ticket_guard: None,
     }
 }
 

@@ -19,6 +19,7 @@ fn issue_login(pending: &Arc<Mutex<HashMap<String, PendingLogin>>>, account: u32
             session_key: "42".repeat(32),
             client_ip: "127.0.0.1".parse().unwrap(),
             created: Instant::now(),
+            ticket_guard: None,
         },
     );
     ticket
