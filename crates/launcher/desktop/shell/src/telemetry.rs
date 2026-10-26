@@ -246,7 +246,7 @@ fn pipeline_recovered(recovery: &Recovery, last_reason: Option<&'static str>) {
         outage_ms = recovery.outage_ms,
         events_lost = recovery.events_lost,
         last_reason = last_reason.unwrap_or("none"),
-        "launcher telemetry: sends resumed; expected every batch delivered, some were lost while the server was unreachable"
+        "launcher telemetry: sends resumed; the failure counts and events_lost say what was missed"
     );
 }
 

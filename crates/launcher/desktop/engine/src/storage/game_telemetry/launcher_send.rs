@@ -11,6 +11,7 @@ use std::time::Duration;
 /// What one send did, per event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SendReport {
+    /// How the send ended.
     pub outcome: SendOutcome,
     /// Events accepted by the server (the sum of the posted chunk ranges).
     pub posted: usize,

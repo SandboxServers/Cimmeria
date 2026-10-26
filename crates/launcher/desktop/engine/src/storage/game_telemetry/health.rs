@@ -19,7 +19,7 @@ pub struct TelemetryHealth {
     pub sent: u64,
     pub totals: FailureCounts,
     pub since_success: FailureCounts,
-    /// Events accepted by a successful send, across all sends.
+    /// Events the server accepted, across all sends (including the first chunks of a send that later failed).
     pub events_sent: u64,
     /// Events dropped from the queue, across all sends.
     pub events_lost: u64,
