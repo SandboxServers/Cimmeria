@@ -19,6 +19,8 @@ const NeedsLink = Schema.Struct({
 const SignedIn = Schema.Struct({state: Schema.Literal('signed_in'), account_name: Schema.String, display_name: Schema.String});
 export const SignInState = Schema.Union([SignedOut, NeedsLink, SignedIn]);
 export const PlayRefusal = Schema.Literals(['ticket_unavailable', 'sign_in_ended']);
+/** A credential-store problem the engine reports (C18.1); absent on older engines. */
+export const StorageWarning = Schema.Literals(['session_only', 'sign_out_incomplete', 'store_unreadable']);
 export const SignInStatus = Schema.Struct({
   schema_version: Schema.Literal(1),
   available: Schema.Boolean,
@@ -29,6 +31,7 @@ export const SignInStatus = Schema.Struct({
   state: SignInState,
   account: Schema.NullOr(SignInAccount),
   play_refusal: Schema.NullOr(PlayRefusal),
+  storage_warning: Schema.optionalKey(Schema.NullOr(StorageWarning)),
 });
 export type SignInProvider = typeof SignInProvider.Type;
 export type SignInAccount = typeof SignInAccount.Type;
@@ -36,6 +39,7 @@ export type SignInState = typeof SignInState.Type;
 export type NeedsLinkState = typeof NeedsLink.Type;
 export type SignedInState = typeof SignedIn.Type;
 export type PlayRefusal = typeof PlayRefusal.Type;
+export type StorageWarning = typeof StorageWarning.Type;
 export type SignInStatus = typeof SignInStatus.Type;
 
 /** A `SignInFailure` (C13): one member per `error`, so each branch narrows its own fields. */
@@ -44,7 +48,7 @@ export const SignInFailure = Schema.Union([
   failureKind('unsupported_schema'), failureKind('unavailable'), failureKind('busy'),
   Schema.Struct({error: Schema.Literal('browser_failed'), url: Schema.String}),
   failureKind('offline'), failureKind('cancelled'), failureKind('denied'), failureKind('timed_out'),
-  failureKind('no_pending_link'), failureKind('password_removal_not_acknowledged'),
+  failureKind('no_pending_link'), failureKind('no_pending_flow'), failureKind('password_removal_not_acknowledged'),
   Schema.Struct({error: Schema.Literal('server'), code: Schema.String, retry_after: Schema.optionalKey(Schema.NullOr(Schema.Number))}),
   failureKind('protocol'), failureKind('io'),
 ]);

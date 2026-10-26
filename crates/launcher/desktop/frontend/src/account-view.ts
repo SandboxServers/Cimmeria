@@ -38,9 +38,11 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
  const addHeading = make('h4', 'Add a sign-in method');
  const addButtons = make('div');
  const cancel = button('Cancel');
+ const urlBox = make('label', 'Copy this address into your browser:');
+ const urlField = make('input'); urlField.setAttribute('readonly', ''); urlBox.append(urlField); urlBox.hidden = true;
  reauthBox.append(reauthText, signAgain);
  panel.textContent = '';
- panel.append(heading, status, noPassword, show, list, reauthBox, addHeading, addButtons, cancel);
+ panel.append(heading, status, noPassword, show, list, reauthBox, addHeading, addButtons, cancel, urlBox);
  panel.hidden = true;
 
  let current: SignInStatus | null = null;
@@ -50,6 +52,7 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
  let waiting = false; // an add or a sign-in again waits for the browser
  let confirming: number | null = null; // the identity whose row asks for a removal
  let reauth: Reauth | null = null;
+ let resumeNext = false; // an add parked its browser flow (browser_failed): send `resume` once the address shows
  let providerKey = '';
  let providerButtons: HTMLButtonElement[] = [];
  let disposed = false;
@@ -138,6 +141,11 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
   } else {
    setStatus(failureText(f, provider));
   }
+  if (command === 'add_method' && f !== 'schema' && f.error === 'browser_failed') {
+   resumeNext = true;
+   urlField.value = f.url;
+   urlBox.hidden = false;
+  }
   render();
  };
  // One command and its reply. Returns the new state, or null when the command failed (already shown).
@@ -158,7 +166,15 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
   busy = true; waiting = wait; setStatus(pending); render();
   mutation = task().finally(() => { busy = false; waiting = false; render(); }).then(() => undefined);
  };
- const addPress = (p: SignInProvider) => guard(opening, () => exchange({command: 'add_method', provider: p.id}, p.display_name), true);
+ // An add whose browser did not open waits on the parked flow: `resume` completes it, and the address box clears after.
+ const addPress = (p: SignInProvider) => guard(opening, async () => {
+  await exchange({command: 'add_method', provider: p.id}, p.display_name);
+  if (!resumeNext) return;
+  resumeNext = false;
+  await exchange({command: 'resume'});
+  urlField.value = '';
+  urlBox.hidden = true;
+ }, true);
  const unlinkPress = (id: number, provider: string) => {
   confirming = null;
   guard('Removing…', () => exchange({command: 'unlink', identity_id: id}, provider));
@@ -171,7 +187,7 @@ export function mountAccount(document: Document, invoke: Invoke, context: PanelC
   guard(opening, async () => {
    if (!account && !(await exchange({command: 'account'}))) return;
    const providerId = lastUsedProvider();
-   if (!providerId) return;
+   if (!providerId) { setStatus('Sign in again from the sign-in panel, then retry.'); return; }
    const name = current?.providers.find(p => p.id === providerId)?.display_name ?? providerId;
    const next = await exchange({command: 'begin', provider: providerId}, name);
    if (!next) return;

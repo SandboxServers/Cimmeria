@@ -2,7 +2,7 @@ import {Effect} from 'effect';
 import type {Invoke} from './view';
 import type {PanelContext} from './panel-context';
 import {decodeSignInStatus, signInFailure, type SignInFailure, type SignInProvider, type SignInStatus} from './sign-in-contract';
-import {failureText, needsLinkText, playRefusalText, signedInText} from './sign-in-workflow';
+import {failureText, needsLinkText, playRefusalText, signedInText, storageWarningText} from './sign-in-workflow';
 import {reportUiEvent} from './ui-event';
 /**
  * Main-page panel (CT-42, C13): sign in with a provider before Play. It stays hidden on servers
@@ -41,9 +41,10 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
  const linkCode = button('Link with a code');
  const confirmRemove = button('Remove password and link');
  const keepPassword = button('Keep password');
+ const back = button('Back to sign in');
  const urlBox = make('label', 'Copy this address into your browser:');
  const urlField = make('input'); urlField.setAttribute('readonly', ''); urlBox.append(urlField);
- linkBox.append(warning, createNew, account.wrap, password.wrap, linkPassword, code.wrap, codeHint, linkCode, confirmRemove, keepPassword);
+ linkBox.append(warning, createNew, account.wrap, password.wrap, linkPassword, code.wrap, codeHint, linkCode, confirmRemove, keepPassword, back);
  panel.textContent = '';
  panel.append(heading, status, stateLine, signupNote, providers, cancel, linkBox, signOut, urlBox);
  panel.hidden = true;
@@ -56,6 +57,7 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
  let providerButtons: HTMLButtonElement[] = [];
  let disposed = false;
  let reinspect = false; // a link failure the engine treats as final: the state may have moved on
+ let resumeNext = false; // a begin parked its browser flow (browser_failed): send `resume` once the address shows
  let mutation: Promise<void> = Promise.resolve();
  const setStatus = (text: string) => { status.textContent = text; };
  // Never throws synchronously into the caller, whatever the bridge does.
@@ -64,10 +66,14 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
  const render = () => {
   if (disposed) return;
   const s = current;
-  // Offline, only a play refusal shows (the reason Play stopped); every control stays hidden.
-  panel.hidden = !s || !(s.available || s.play_refusal);
+  // Offline, a play refusal shows (the reason Play stopped), and so does a restored sign-in, which keeps Sign out.
+  panel.hidden = !s || (!s.available && !s.play_refusal && s.state.state !== 'signed_in');
   if (!s || !s.available) {
-   for (const el of [heading, stateLine, signupNote, providers, cancel, linkBox, signOut, urlBox]) el.hidden = true;
+   const restored = s && s.state.state === 'signed_in' ? s.state : null;
+   for (const el of [providers, signupNote, cancel, linkBox, urlBox]) el.hidden = true;
+   heading.hidden = stateLine.hidden = signOut.hidden = !restored;
+   if (restored) { heading.textContent = 'Your account'; stateLine.textContent = signedInText(restored); }
+   signOut.disabled = busy;
    return;
   }
   // Back online: the offline branch hid these, so show them again before the state renders.
@@ -96,14 +102,14 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
   const confirming = linkKind !== null;
   linkPassword.hidden = linkCode.hidden = confirming;
   confirmRemove.hidden = keepPassword.hidden = !confirming;
-  for (const b of [createNew, linkPassword, linkCode, confirmRemove, keepPassword, signOut]) b.disabled = busy;
+  for (const b of [createNew, linkPassword, linkCode, confirmRemove, keepPassword, back, signOut]) b.disabled = busy;
   signOut.hidden = st.state !== 'signed_in';
  };
 
  // Applies a reply that carries the whole sign-in state.
  const settle = (next: SignInStatus) => {
   current = next;
-  setStatus(next.play_refusal ? playRefusalText(next.play_refusal) : '');
+  setStatus(next.play_refusal ? playRefusalText(next.play_refusal) : next.storage_warning ? storageWarningText(next.storage_warning) : '');
   render();
   document.dispatchEvent(new (document.defaultView?.CustomEvent ?? CustomEvent)('cimmeria-sign-in', {detail: next}));
  };
@@ -118,7 +124,12 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
  };
  // One command and its reply. Reports the outcome by name only; no request field is ever reported.
  const exchange = (request: Record<string, unknown>, provider?: string) => call(request).then(decodeReply).then(
-  next => { if (!disposed) { reportUiEvent('sign_in', String(request.command), 'ok', 'info'); settle(next); } },
+  next => {
+   if (disposed) return;
+   reportUiEvent('sign_in', String(request.command), 'ok', 'info');
+   if (request.command === 'resume') urlField.value = ''; // the flow finished: the address is no longer needed
+   settle(next);
+  },
   failure => {
    if (disposed) return;
    reportUiEvent('sign_in', String(request.command), fail(failure, provider));
@@ -126,6 +137,7 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
    const f = signInFailure(failure);
    const keeps = f !== 'schema' && f.error === 'server' && ['invalid_credentials', 'rate_limited', 'not_linkable'].includes(f.code);
    if (String(request.command).startsWith('link_') && !keeps) reinspect = true;
+   if (request.command === 'begin' && f !== 'schema' && f.error === 'browser_failed') resumeNext = true;
   },
  );
  // A press that starts a command: the status text goes first, then the command.
@@ -133,10 +145,17 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
   if (disposed || busy) return;
   busy = true; setStatus(pending); render();
   mutation = exchange(request, provider).finally(() => { busy = false; beginning = false; render(); }).then(() => {
+   if (resumeNext) return resume();
    if (!reinspect) return;
    reinspect = false;
    return inspect();
   });
+ };
+ // The browser did not open: the engine parked the flow, so `resume` completes it while the address shows.
+ const resume = () => {
+  resumeNext = false;
+  beginning = true; busy = true; render();
+  return exchange({command: 'resume'}).finally(() => { busy = false; beginning = false; render(); });
  };
  const beginPress = (p: SignInProvider) => {
   if (disposed || busy) return;
@@ -173,6 +192,13 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
   setStatus('');
   render();
  };
+ // Back to the provider list: sign_out ends the sign-in that still needs a link.
+ const backPress = () => {
+  linkKind = null;
+  password.input.value = '';
+  code.input.value = '';
+  send({command: 'sign_out'}, 'Going back…');
+ };
 
  cancel.addEventListener('click', cancelPress);
  signOut.addEventListener('click', () => send({command: 'sign_out'}, 'Signing out…'));
@@ -181,6 +207,7 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
  linkCode.addEventListener('click', () => linkPress('code'));
  confirmRemove.addEventListener('click', confirmPress);
  keepPassword.addEventListener('click', keepPress);
+ back.addEventListener('click', backPress);
 
  // Each snapshot re-inspects, so a sign-in finished elsewhere (or a server switch) shows up.
  const inspect = () => {
@@ -188,7 +215,8 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
   mutation = call({command: 'inspect'}).then(decodeReply).then(next => {
    if (disposed || busy) return;
    current = next;
-   if (next.play_refusal && !status.textContent) setStatus(playRefusalText(next.play_refusal));
+   if (!status.textContent && next.play_refusal) setStatus(playRefusalText(next.play_refusal));
+   else if (!status.textContent && next.storage_warning) setStatus(storageWarningText(next.storage_warning));
    // A refusal that no longer applies leaves the status line with the next reply.
    const shown = status.textContent;
    if (!next.play_refusal && (shown === playRefusalText('ticket_unavailable') || shown === playRefusalText('sign_in_ended'))) setStatus('');

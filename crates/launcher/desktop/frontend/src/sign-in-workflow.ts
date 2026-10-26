@@ -1,4 +1,4 @@
-import type {NeedsLinkState, PlayRefusal, SignedInState, SignInFailure} from './sign-in-contract';
+import type {NeedsLinkState, PlayRefusal, SignedInState, SignInFailure, StorageWarning} from './sign-in-contract';
 /**
  * Pure sign-in texts (CT-42). The panel in `sign-in-view.ts` shows these; nothing here
  * touches the document or the bridge.
@@ -17,6 +17,7 @@ export function failureText(f: SignInFailure | 'schema', provider?: string): str
     case 'busy': return 'A sign-in is already waiting in your browser. Finish it there, or press Cancel.';
     case 'browser_failed': return 'Your browser could not be opened. Copy this address into your browser:';
     case 'no_pending_link': return 'That sign-in expired. Sign in again.';
+    case 'no_pending_flow': return 'That sign-in expired. Sign in again.';
     case 'password_removal_not_acknowledged': return "Confirm that linking removes this account's password, then press Link again.";
     case 'protocol': return 'The server answered in an unexpected way. Try again later.';
     case 'io':
@@ -43,6 +44,15 @@ export function playRefusalText(r: PlayRefusal): string {
   return r === 'ticket_unavailable'
     ? 'Play stopped: could not get a sign-in for this launch. Check your connection and press Play again. If it keeps failing, sign out and sign in again.'
     : 'Play stopped: your sign-in has ended. Sign in again, then press Play.';
+}
+
+/** The status line for a store warning on a sign-in status (C18.1 `storage_warning`). */
+export function storageWarningText(w: StorageWarning): string {
+  switch (w) {
+    case 'session_only': return "Signed in for this session only: this computer's credential store would not save the sign-in.";
+    case 'sign_out_incomplete': return "Signed out here, but the saved sign-in could not be removed from this computer's credential store. It will not be used again in this session.";
+    case 'store_unreadable': return "This computer's credential store could not be read, so no saved sign-in was restored.";
+  }
 }
 
 export function signedInText(s: SignedInState): string {

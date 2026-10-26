@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Effect} from 'effect';
 import {decodeSignInStatus, signInFailure} from './sign-in-contract';
-import {failureText, needsLinkText, playRefusalText, signedInText} from './sign-in-workflow';
+import {failureText, needsLinkText, playRefusalText, signedInText, storageWarningText} from './sign-in-workflow';
 
 const status = {schema_version: 1, available: true, server_name: 'Cimmeria', signup_open: true, providers: [],
  waiting: false, state: {state: 'signed_out'}, account: null, play_refusal: null};
@@ -44,6 +44,18 @@ test('decoders reject a status missing state', async () => {
  await assert.rejects(Effect.runPromise(decodeSignInStatus(missing)));
  assert.equal(signInFailure({error: 'browser_failed'}), 'schema');
  await Effect.runPromise(decodeSignInStatus({...status, extra_field: true}));
+});
+
+test('workflow decodes storage_warning and no_pending_flow', async () => {
+ const warned = await Effect.runPromise(decodeSignInStatus({...status, storage_warning: 'store_unreadable'}));
+ assert.equal(warned.storage_warning, 'store_unreadable');
+ await assert.rejects(Effect.runPromise(decodeSignInStatus({...status, storage_warning: 'nonsense'})));
+ const expired = signInFailure({error: 'no_pending_flow'});
+ assert.deepEqual(expired, {error: 'no_pending_flow'});
+ assert.equal(failureText(expired), 'That sign-in expired. Sign in again.');
+ assert.equal(storageWarningText('session_only'), "Signed in for this session only: this computer's credential store would not save the sign-in.");
+ assert.equal(storageWarningText('sign_out_incomplete'), "Signed out here, but the saved sign-in could not be removed from this computer's credential store. It will not be used again in this session.");
+ assert.equal(storageWarningText('store_unreadable'), "This computer's credential store could not be read, so no saved sign-in was restored.");
 });
 
 test('play refusal, signed-in and needs-link texts', () => {

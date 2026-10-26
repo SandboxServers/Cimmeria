@@ -5,7 +5,7 @@ import {parseHTML} from 'linkedom';
 import type {NativeSnapshot} from './contract';
 import {makePanelContext} from './panel-context';
 import {mountSignIn} from './sign-in-view';
-import {playRefusalText} from './sign-in-workflow';
+import {playRefusalText, storageWarningText} from './sign-in-workflow';
 
 const html = readFileSync('ui/index.html', 'utf8');
 type Request = Record<string, unknown>;
@@ -163,17 +163,23 @@ test('play refusal is shown', async () => {
  } finally { await p.app.dispose(); }
 });
 
-test('browser_failed shows the address', async () => {
+test('browser_failed shows the address while resume waits, then clears it', async () => {
+ let address = '';
+ let statusWhileWaiting = '';
  const p = await mounted(status(), async request => {
   if (request.command === 'begin') throw {error: 'browser_failed', url: 'https://example.org/auth'};
+  if (request.command === 'resume') {
+   address = p.field('[readonly]').value;
+   statusWhileWaiting = p.statusText() ?? '';
+  }
   return status();
  });
  try {
   p.press(p.button('Sign in with Discord'));
   await p.app.settled();
-  const field = p.field('[readonly]');
-  assert.equal(field.value, 'https://example.org/auth');
-  assert.equal(p.statusText(), 'Your browser could not be opened. Copy this address into your browser:');
+  assert.equal(address, 'https://example.org/auth');
+  assert.equal(statusWhileWaiting, 'Your browser could not be opened. Copy this address into your browser:');
+  assert.equal(p.field('[readonly]').value, '');
  } finally { await p.app.dispose(); }
 });
 
@@ -192,5 +198,111 @@ test('a final link failure re-inspects and offers sign-in again', async () => {
   assert.equal(p.calls.filter(c => c.command === 'inspect').length, 2);
   assert.equal(p.button('Sign in with Discord').parentElement!.hidden, false);
   assert.equal(p.statusText(), 'This server is not accepting new accounts right now. Link an existing account instead.');
+ } finally { await p.app.dispose(); }
+});
+
+const signedInState = {state: 'signed_in', account_name: 'Player_1234', display_name: 'Player'};
+
+test('offline with a restored sign-in shows the account and Sign out', async () => {
+ const restored = status({available: false, providers: [], state: signedInState});
+ let statusAtSignOut = '';
+ let release!: (value: unknown) => void;
+ const p = await mounted(restored, request => {
+  if (request.command !== 'sign_out') return Promise.resolve(restored);
+  statusAtSignOut = p.statusText() ?? '';
+  return new Promise(resolve => { release = resolve; });
+ });
+ try {
+  const panel = p.document.getElementById('sign-in-panel') as unknown as HTMLElement;
+  assert.equal(panel.hidden, false);
+  assert.equal(p.button('Sign out').hidden, false);
+  assert.equal(p.button('Sign in with Discord'), undefined, 'no provider button offline');
+  p.press(p.button('Sign out'));
+  await flush();
+  assert.equal(statusAtSignOut, 'Signing out…');
+  assert.equal(p.calls[p.calls.length - 1].command, 'sign_out');
+  release(status({available: false, state: {state: 'signed_out'}}));
+  await p.app.settled();
+  assert.equal(p.button('Sign out').hidden, true);
+ } finally { await p.app.dispose(); }
+});
+
+test('ticket_unavailable while signed in offline offers Sign out', async () => {
+ const p = await mounted(status({available: false, play_refusal: 'ticket_unavailable', state: signedInState}));
+ try {
+  assert.equal(p.statusText(), playRefusalText('ticket_unavailable'));
+  assert.equal(p.button('Sign out').hidden, false);
+  p.press(p.button('Sign out'));
+  await p.app.settled();
+  assert.equal(p.calls[p.calls.length - 1].command, 'sign_out');
+ } finally { await p.app.dispose(); }
+});
+
+test('needs_link offers Back to sign in', async () => {
+ const two = [{id: 'discord', display_name: 'Discord'}, {id: 'google', display_name: 'Google'}];
+ const p = await mounted(status({providers: two}), async request => {
+  if (request.command === 'begin' && request.provider === 'discord') return needsLink({providers: two});
+  return status({providers: two});
+ });
+ try {
+  p.press(p.button('Sign in with Discord'));
+  await p.app.settled();
+  p.field('input[type="password"]').value = 'hunter2';
+  p.press(p.button('Link'));
+  assert.equal(p.button('Remove password and link').hidden, false);
+  p.press(p.button('Back to sign in'));
+  await p.app.settled();
+  assert.equal(p.calls[p.calls.length - 1].command, 'sign_out');
+  assert.equal(p.field('input[type="password"]').value, '');
+  assert.equal(p.field('input[maxlength="10"]').value, '');
+  assert.equal(p.button('Remove password and link').hidden, true);
+  assert.equal((p.button('Sign in with Discord').parentElement as unknown as HTMLElement).hidden, false);
+  p.press(p.button('Sign in with Google'));
+  await p.app.settled();
+  assert.equal(p.calls.some(r => String(r.command).startsWith('link_')), false, 'no link command is sent');
+ } finally { await p.app.dispose(); }
+});
+
+test('browser_failed sends resume and shows the address while it waits', async () => {
+ let addressWhileWaiting = '';
+ let cancelWhileWaiting = false;
+ let release!: (value: unknown) => void;
+ const p = await mounted(status(), request => {
+  if (request.command === 'begin') return Promise.reject({error: 'browser_failed', url: 'https://example.org/auth'});
+  if (request.command !== 'resume') return Promise.resolve(status());
+  addressWhileWaiting = p.field('[readonly]').value;
+  cancelWhileWaiting = p.button('Cancel').hidden === false;
+  return new Promise(resolve => { release = resolve; });
+ });
+ try {
+  p.press(p.button('Sign in with Discord'));
+  await flush();
+  assert.deepEqual(p.calls.slice(-2).map(c => c.command), ['begin', 'resume']);
+  assert.equal(addressWhileWaiting, 'https://example.org/auth');
+  assert.equal(cancelWhileWaiting, true);
+  release(status({state: signedInState}));
+  await p.app.settled();
+  assert.equal((p.field('[readonly]').parentNode as unknown as HTMLElement).hidden, true, 'the address box clears once it settles');
+  assert.equal(p.button('Sign out').hidden, false);
+ } finally { await p.app.dispose(); }
+});
+
+test('resume no_pending_flow says the sign-in expired', async () => {
+ const p = await mounted(status(), async request => {
+  if (request.command === 'begin') throw {error: 'browser_failed', url: 'https://example.org/auth'};
+  if (request.command === 'resume') throw {error: 'no_pending_flow'};
+  return status();
+ });
+ try {
+  p.press(p.button('Sign in with Discord'));
+  await p.app.settled();
+  assert.equal(p.statusText(), 'That sign-in expired. Sign in again.');
+ } finally { await p.app.dispose(); }
+});
+
+test('a store warning is shown', async () => {
+ const p = await mounted(status({storage_warning: 'sign_out_incomplete'}));
+ try {
+  assert.equal(p.statusText(), storageWarningText('sign_out_incomplete'));
  } finally { await p.app.dispose(); }
 });
