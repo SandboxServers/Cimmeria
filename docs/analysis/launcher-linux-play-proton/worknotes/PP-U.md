@@ -106,3 +106,43 @@ Evidence (gitignored, on the Deck): the worktree's `.claude/reports/launcher-lin
   - The same seed installed on this Deck on 2026-10-25 13:24-13:33 (PP-S1 test root) with a local **debug** build (`version="0.1.0"`, `release_build=false`): download, hash, `RAR holds an installer cabinet set; expanding it cabinets=4 files=5983`, `install_finished outcome="ok"`.
   - Suspects (not diagnosed, no code changed): (a) the CI release build of the bundled UnRAR (`unrar_sys` 0.5.8, unchanged in `Cargo.lock` since #986): release optimisation or the CI toolchain or container; (b) a launcher change between that debug build and `b7262377b`. In `unpack/rar.rs` the only change is PP-20a's `sink.report_index(listed)` in the listing loop (`8f928efac`). Other unpack-path changes are PP-25 `def6862b9`, PP-15 `da11b72a2` and the wave-1B fixes `279969d1e`. A test that extracts a stored RAR with an archive comment, a recovery record and the lock flag in a release build would separate (a) from (b). The fixtures in `test_fixtures::write_stored_rar4` may not cover these.
 - F-U4: after "Remove partial files" the button reads "Retry installation" (`PP-U2-26`). The archive choice ("Using client.rar (verified)") persists across a launcher restart (`PP-U2-28`).
+
+# PP-U: discrimination runs (ruling 1, step 1; 2026-10-25 23:25-23:46 local)
+
+**Result: 1a passes, 1b fails, 1c fails.** The same seed (`~/Downloads/sgw-seed/client.rar`, 4135724034 B, SHA-256 `7ba97ed2…4f07`) was installed through "Use a downloaded game archive…" by three launchers, each in its own fresh root under `~/pp-u3-20261025/`. Yesterday's local debug build unpacks it. The CI-built binary run outside the AppImage fails with `RAR error: File header damaged`, the same as the AppImage did in attempt 3. Main's released AppImage fails at the unpack stage too. This is the pattern of ruling row O2. The ruling on it is the architect's.
+
+Evidence (gitignored, on the Deck): `.claude/reports/launcher-linux-play-proton/pp-u3/` (`rootC-`, `rootE-`, `rootD-launcher.log`, the `*-environ.txt` and `*-maps-so.txt` files, `shots/`). The report is `.claude/reports/launcher-linux-play-proton/pp-u-discriminate.md`.
+
+## Setup
+
+- Desktop Mode, Xwayland `:0`, `GDK_BACKEND=x11`, driven with `xdotool` after a KWin script raised the launcher and moved it under the pointer, as in attempts 2-3.
+- Every root has its own `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and `XDG_CACHE_HOME`. The real install and the attempt-3 roots were not touched.
+- Run 1.0: the idle root B launcher's `environ` (secret-like lines removed) and `.so` map lines were saved to `pp-u3/rootb-*.txt`, then the launcher was stopped (SIGTERM). It had to stop: the single-instance guard would have handed every new launch to it.
+- In all three builds, picking the archive starts the install by itself; Install was not pressed.
+
+## Runs
+
+| Run | Binary | Root | Result | Log lines |
+|---|---|---|---|---|
+| 1a | `target/desktop/debug/cimmeria-launcher-desktop`, built 08:20 on 10-25 (`version="0.1.0"`, `release_build=false`) | `rootC` | **PASS** | `04:33:04.70Z install_started`, `04:36:26.28Z Unpacking seed into …`, `04:39:01.10Z install_phase phase="extraction"`. `.tmp-unpack/Data/` held 9 files: `DATA1.CAB` (1073741824 B, complete), `DATA2.CAB` part-written, plus `DATA.DDF`, `DATA.INF` and `DATA.RPT`. UI: "Extracting game content… 3%". No `install_stage_failed`. Stopped (SIGTERM) at 04:40 |
+| 1b | the attempt-3 AppImage's inner `usr/bin/cimmeria-launcher-desktop` (SHA-256 `64398a24…508f`), from a new `--appimage-extract` of the verified AppImage (`be084fa6…133a`), started without AppRun | `rootE` | **FAIL** | `04:43:16.532340Z seed_unpack_started check="hashed_while_copied" bytes=4135724034`, then `04:43:16.538685Z install_stage_failed reason="unpack" unpack_kind="rar"`, `install_stage_detail … detail=Unpack error: RAR error: File header damaged`, `install_failed duration_ms=68101`. That is 6 ms after the unpack start, and `.tmp-unpack` was never created |
+| 1c | main's release AppImage, tag `launcher-20261024-c22f36c` (`version="2026.10.2401"`, `release_build=true`) | `rootD` | **FAIL** | `04:45:10.651Z Unpacking seed into …`, then `04:45:14.701Z install_stage_failed reason="unpack"`, `install_failed duration_ms=68965`. `state/install-result.json` has `"outcome":"install_failed"`. UI: "Installation stopped. Partial files are preserved…". This version logs no `install_stage_detail` and no `unpack_kind`, so the error text cannot be read. As in 1b, `.tmp-unpack` was never created |
+
+- 1b without AppRun:
+  - Started from the root, it aborts: WebKit's patched helper path `././/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess` is relative to the working directory.
+  - With the working directory set to `squashfs-root/usr`, `WebKitWebProcess` cannot find `libwebkit2gtk-4.1.so.0`.
+  - It ran with the working directory `squashfs-root/usr` and `LD_LIBRARY_PATH=squashfs-root/usr/lib` only. None of AppRun's GTK hook variables were set (`APPDIR`, `APPIMAGE`, `GDK_PIXBUF_MODULE_FILE`, `GIO_MODULE_DIR`, `GSETTINGS_SCHEMA_DIR`, `GTK_*`, `GST_*`, `PYTHON*`, `PERLLIB` are all absent from `1b-environ.txt`), and the squashfs was not mounted.
+- **The extracted CI binary fails the same way as the AppImage.** The failure is in the binary, not in the AppImage runtime (AppRun's environment).
+- Main's release: commit `c22f36c6197a20bd658b5bd73e541ded3463ea78` (the #2020 merge itself, so not older than the native Linux install), run 40136981222. `StargateWorlds-Launcher-linux-x86_64.AppImage`, 86436344 B, SHA-256 `cc97bc9b2908415f15a98e512eb3c630b58759a714bbea180a3de052714511ff`. `sha256sum -c` against the release's `.sha256` asset is OK, and the hash matches GitHub's asset digest. It was downloaded with `gh release download` into the new empty folder `~/pp-u3-20261025/release/`.
+
+## Compiler, glibc and libunrar facts
+
+- **Lane compiler on the Deck** (built 1a): the host has no `c++` on the system PATH. `~/.bashrc` puts `~/.local/opt/cimmeria-cc-bin` first. Its `c++` is a shim that drops `-stdlib=libc++` and runs conda-forge **g++ 16.2.0** (`~/.local/opt/cimmeria-cc`), with mold 2.40.4 as the linker. The 1a binary's `.comment` has `GCC: (conda-forge gcc 16.2.0-7)`, `GCC: (Ubuntu 13.3.0-6ubuntu2~24.04.1)`, `GCC: (GNU) 14.3.1 (Red Hat)`, `clang 22.1.0-rc2`, `rustc 1.98.1` and `mold 2.40.4`. Its RUNPATH is `~/.local/opt/cimmeria-cc/lib`, so it loads conda's `libstdc++`.
+- **CI compiler** (1b, the attempt-3 build): `.comment` has `GCC: (Ubuntu 11.4.0-1ubuntu1~22.04.3)`, `GCC: (Ubuntu 12.3.0-1ubuntu1~22.04.3)`, `clang 22.1.0-rc2`, `rustc 1.98.1` and `mold 1.0.3`. Its RUNPATH is `$ORIGIN/../lib`.
+- **glibc**:
+  - Deck host: SteamOS glibc 2.43.
+  - The `cimmeria-dev` container (Ubuntu 24.04, where 1a runs): glibc 2.39. The 1a binary needs `GLIBC_2.39` and `libwebkit2gtk-4.1`, which the host lacks, so 1a ran inside that container (`podman exec`), as the PP-S1 debug launcher did.
+  - The CI binary needs at most `GLIBC_2.34` and `GLIBCXX_3.4.29`.
+  - The AppImage (root B), 1b and 1c all load the host's `/usr/lib/libc.so.6`, `libstdc++.so.6.0.35` and `libgcc_s.so.1`. None of these is bundled.
+- **libunrar**: none on the host, in the container or in the AppDir, and none in any process map. UnRAR (`unrar_sys` 0.5.8, vendored) is linked statically into the launcher binary. The system `unrar` 7.23 CLI is a separate program.
+- Caveat: 1a and 1b differ in the C++ compiler **and** in the userland they ran on (the Ubuntu 24.04 container with conda `libstdc++`, against the SteamOS host). This run does not separate the two.
