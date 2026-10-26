@@ -20,8 +20,10 @@ use super::api::{
     AccountView, ApiErrorBody, LinkStart, NeedsLink, SignedIn, TicketView, TokenReply,
 };
 use super::discovery::{self, MAX_BODY};
+pub use super::host_slot::HostSlot;
+use super::host_slot::{self, host_of, HostState};
 use super::oauth::{self, BrowserFlow, CodeGrant};
-use super::store::{CredentialStore, Stored};
+use super::store::CredentialStore;
 use super::SignInError;
 
 /// An access token is reused while more than this remains.
@@ -76,36 +78,41 @@ pub enum Outcome {
     NeedsLink(NeedsLinkView),
 }
 
-/// What the session keeps in memory.
-#[derive(Default)]
-struct Inner {
-    /// The access token and the instant it stops being valid.
-    access: Option<(String, Instant)>,
-    account: Option<AccountSummary>,
-}
-
-/// One launcher's sign-in against one auth host.
+/// One launcher's sign-in against one auth host. Its state is the host's
+/// [`HostSlot`], shared with every other sign-in for that host: a refresh and a
+/// sign-out serialize on the slot's lock.
 pub struct SignIn {
     base: Url,
     http: reqwest::Client,
     store: Arc<dyn CredentialStore>,
-    /// Held across a refresh, so two calls never spend the same refresh token.
-    state: tokio::sync::Mutex<Inner>,
+    slot: Arc<HostSlot>,
 }
 
 impl SignIn {
     /// A session for the auth server at `base` (`https://<host>/`), with no stored sign-in yet.
+    /// It has a slot of its own.
     pub fn new(base: Url, http: reqwest::Client, store: Arc<dyn CredentialStore>) -> Self {
+        Self::new_in(base, http, store, HostSlot::new())
+    }
+
+    /// A session for `base` on `slot`, the host's shared state.
+    pub fn new_in(
+        base: Url,
+        http: reqwest::Client,
+        store: Arc<dyn CredentialStore>,
+        slot: Arc<HostSlot>,
+    ) -> Self {
         Self {
             base,
             http,
             store,
-            state: tokio::sync::Mutex::new(Inner::default()),
+            slot,
         }
     }
 
     /// The session a stored entry for `base` gives, with no network call. `None`
-    /// when nothing is stored. The access token is fetched on first use.
+    /// when nothing is stored. The access token is fetched on first use. It has a
+    /// slot of its own.
     pub fn restore(
         base: Url,
         http: reqwest::Client,
@@ -116,15 +123,35 @@ impl SignIn {
             account_name: stored.account_name,
             display_name: stored.display_name,
         };
-        Some(Self {
-            base,
-            http,
-            store,
-            state: tokio::sync::Mutex::new(Inner {
+        let slot = Arc::new(HostSlot {
+            state: tokio::sync::Mutex::new(HostState {
                 access: None,
                 account: Some(account),
             }),
-        })
+        });
+        Some(Self::new_in(base, http, store, slot))
+    }
+
+    /// The session a stored entry for `base` gives on `slot`, under the slot's
+    /// lock. A stored entry sets the slot's account when it is empty; an access
+    /// token already in the slot is kept. `None` when nothing is stored.
+    pub async fn restore_in(
+        base: Url,
+        http: reqwest::Client,
+        store: Arc<dyn CredentialStore>,
+        slot: Arc<HostSlot>,
+    ) -> Option<Self> {
+        {
+            let mut state = slot.state.lock().await;
+            let stored = store.get(host_of(&base))?;
+            if state.account.is_none() {
+                state.account = Some(AccountSummary {
+                    account_name: stored.account_name,
+                    display_name: stored.display_name,
+                });
+            }
+        }
+        Some(Self::new_in(base, http, store, slot))
     }
 
     /// The auth server this session signs in to (`https://<host>/`).
@@ -134,7 +161,7 @@ impl SignIn {
 
     /// The names of the signed-in account, as last stored or refreshed. `None` when signed out.
     pub async fn summary(&self) -> Option<AccountSummary> {
-        self.state.lock().await.account.clone()
+        self.slot.state.lock().await.account.clone()
     }
 
     /// Exchanges the browser grant for a session (C6 `authorization_code`).
@@ -196,7 +223,7 @@ impl SignIn {
     /// A refused refresh (`invalid_grant`) clears the stored sign-in and gives
     /// `Server("signed_out")`.
     pub async fn access_token(&self) -> Result<String, SignInError> {
-        let mut state = self.state.lock().await;
+        let mut state = self.slot.state.lock().await;
         if let Some((token, until)) = &state.access {
             if until.saturating_duration_since(Instant::now()) > REFRESH_MARGIN {
                 return Ok(token.clone());
@@ -216,7 +243,12 @@ impl SignIn {
             Ok(TokenReply::NeedsLink(_)) => Err(SignInError::Protocol),
             Err(SignInError::Server(code)) if code == "invalid_grant" => {
                 tracing::info!(target: "launcher.sign_in", event = "failed", outcome = "failed", reason = "signed_out");
-                self.forget_if_stored(&mut state, &stored.refresh_token);
+                host_slot::forget_if_stored(
+                    &*self.store,
+                    host_of(&self.base),
+                    &mut state,
+                    &stored.refresh_token,
+                );
                 Err(signed_out())
             }
             Err(e) => Err(e),
@@ -236,10 +268,17 @@ impl SignIn {
             .map(drop)
     }
 
-    /// Signs out. The server is told when it can be reached (C6 `POST /logout`).
-    /// The stored sign-in and the memory are cleared either way.
+    /// Signs out. The stored sign-in and the memory are cleared first, under the
+    /// slot's lock, so no refresh can spend the token after the server hears of
+    /// it. Then the server is told when it can be reached (C6 `POST /logout`).
     pub async fn sign_out(&self) {
-        if let Some(stored) = self.store.get(host_of(&self.base)) {
+        let stored = {
+            let mut state = self.slot.state.lock().await;
+            let stored = self.store.get(host_of(&self.base));
+            host_slot::forget(&*self.store, host_of(&self.base), &mut state);
+            stored
+        };
+        if let Some(stored) = stored {
             let body = json!({ "refresh_token": stored.refresh_token });
             if self
                 .send(Method::POST, "logout", None, Some(body))
@@ -249,8 +288,6 @@ impl SignIn {
                 tracing::debug!("sign-in: the server could not be told of the sign-out");
             }
         }
-        let mut state = self.state.lock().await;
-        self.forget(&mut state);
     }
 
     /// Adds a sign-in method to the signed-in account (C6 `POST /link/start`).
@@ -309,52 +346,14 @@ impl SignIn {
 
     /// Stores a new session from a `signed_in` reply and returns its account.
     async fn adopt_signed_in(&self, signed: SignedIn) -> Result<Outcome, SignInError> {
-        let mut state = self.state.lock().await;
+        let mut state = self.slot.state.lock().await;
         let summary = self.adopt(&mut state, signed);
         Ok(Outcome::SignedIn(summary))
     }
 
     /// Writes the rotated refresh token to the store and keeps the access token in memory.
-    fn adopt(&self, state: &mut Inner, signed: SignedIn) -> AccountSummary {
-        let summary = AccountSummary {
-            account_name: signed.account.account_name,
-            display_name: signed.account.display_name,
-        };
-        self.store.set(
-            host_of(&self.base),
-            &Stored {
-                refresh_token: signed.refresh_token,
-                account_name: summary.account_name.clone(),
-                display_name: summary.display_name.clone(),
-            },
-        );
-        let until = Instant::now() + Duration::from_secs(signed.expires_in);
-        state.access = Some((signed.access_token, until));
-        state.account = Some(summary.clone());
-        summary
-    }
-
-    /// Clears the stored sign-in and the memory.
-    fn forget(&self, state: &mut Inner) {
-        self.store.delete(host_of(&self.base));
-        state.access = None;
-        state.account = None;
-    }
-
-    /// Clears the memory and the stored sign-in only if the store still holds
-    /// `used`, the refresh token this instance used. A newer sign-in stored since
-    /// (a reauth on the same host) is left alone.
-    fn forget_if_stored(&self, state: &mut Inner, used: &str) {
-        let host = host_of(&self.base);
-        if self
-            .store
-            .get(host)
-            .is_none_or(|now| now.refresh_token == used)
-        {
-            self.store.delete(host);
-        }
-        state.access = None;
-        state.account = None;
+    fn adopt(&self, state: &mut HostState, signed: SignedIn) -> AccountSummary {
+        host_slot::adopt(&*self.store, host_of(&self.base), state, signed)
     }
 
     /// A Bearer request. The server keeps access tokens in memory only, so a restart
@@ -372,7 +371,7 @@ impl SignIn {
             .await
         {
             Err(SignInError::Server(code)) if code == "invalid_token" => {
-                let mut state = self.state.lock().await;
+                let mut state = self.slot.state.lock().await;
                 if state
                     .access
                     .as_ref()
@@ -450,11 +449,6 @@ impl SignIn {
         }
         Err(server_error(response).await)
     }
-}
-
-/// The auth host, which keys the store. An auth base always has one.
-fn host_of(base: &Url) -> &str {
-    base.host_str().unwrap_or_default()
 }
 
 /// Tokens and passwords go over TLS only. Debug builds and tests may use a plain
