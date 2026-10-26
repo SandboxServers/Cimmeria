@@ -398,10 +398,13 @@ async fn authorize_is_rate_limited() {
 async fn unknown_provider_does_not_spend_the_link_intent() {
     let server = MockServer::start().await;
     let h = harness(&server.uri(), false, false);
-    let token = h
-        .stores
-        .intents
-        .issue(crate::stores::LinkIntent { account_id: 7 }, Instant::now());
+    let token = h.stores.intents.issue(
+        crate::stores::LinkIntent {
+            account_id: 7,
+            family_id: "family".to_owned(),
+        },
+        Instant::now(),
+    );
     let resp = get(
         &h.router,
         &authorize_uri(&[("provider", "nope"), ("intent", token.as_str())]),

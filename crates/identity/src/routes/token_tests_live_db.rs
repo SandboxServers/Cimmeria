@@ -404,11 +404,16 @@ async fn live_db_attach_stores_no_unverified_email() {
     insert_account(&pool, ID_ATTACH, "ct25_attach_509", 0).await;
     let env = harness(&pool);
     let identity = verified("dev", "ct25-10", Some("ct25-10@example.org"), false);
+    // The attach needs a live family (C16.5): the intent carries one.
+    let (_, family_id) = crate::repo::refresh::issue(&pool, ID_ATTACH, None, chrono::Utc::now())
+        .await
+        .expect("issue a live family");
     let code = env.stores.handoff.issue(
         HandoffOutcome {
             identity,
             intent: Some(LinkIntent {
                 account_id: ID_ATTACH,
+                family_id,
             }),
         },
         &pkce_challenge(VERIFIER),

@@ -375,7 +375,15 @@ async fn live_db_link_start_attaches_a_second_identity() {
     insert_account(&pool, ACC_LINK, true).await;
     insert_identity(&pool, ACC_LINK, 20).await;
     let env = harness(&pool);
-    let t = code_token(&env, ACC_LINK);
+    // The attach needs the family of the session that started it to be live
+    // (C16.5), so the bearer token carries a real family row.
+    let (_, family) = crate::repo::refresh::issue(&pool, ACC_LINK, None, chrono::Utc::now())
+        .await
+        .expect("a live family");
+    let t = env
+        .stores
+        .access
+        .mint(ACC_LINK, &family, true, Instant::now());
     let (status, body) = link_start(&env, &t, link_body("dev", "S256")).await;
     assert_eq!(status, StatusCode::OK);
     let authorize_url = body["authorize_url"].as_str().expect("authorize_url");
