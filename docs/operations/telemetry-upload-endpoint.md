@@ -107,8 +107,11 @@ listener on loopback `:13480`.
 
 Plain `http://play.cimmeria.app:8081` still serves the same five routes, so
 a launcher that predates this change keeps working. Nothing else from the
-admin API is reachable on either address. Launchers from LI-09 on never use
-it for telemetry. They mint, refresh and upload through the https route, so
+admin API is reachable on either address, except that `:8081` also serves
+the two anonymous cooked-data presync routes, which the proxy does not
+forward ([admin-api.md](../tools/admin-api.md#cooked-data-presync-routes-login-port)).
+Launchers from LI-09 on never use it for telemetry. They mint, refresh and
+upload through the https route, so
 that route, and the Caddyfile it depends on (OPS-LT1), carries all game
 telemetry from those launchers.
 

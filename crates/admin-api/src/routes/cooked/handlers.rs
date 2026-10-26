@@ -316,7 +316,7 @@ fn note(route: Route, category_id: u32, code: &'static str, status: StatusCode) 
         route = route.name(),
         reason = code,
         status = status.as_u16(),
-        category_id,
+        category_id, // nt:id-only the contract fixes this row's fields; route and reason name the refusal
         "cooked presync request refused"
     );
     count(route, code);

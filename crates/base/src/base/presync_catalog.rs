@@ -118,7 +118,7 @@ fn build_and_publish(
                 tracing::warn!(
                     event = "cooked_presync.catalog_unavailable",
                     reason,
-                    category_id,
+                    category_id, // nt:id-only the one category that failed the build; reason names the failure
                     "the presync catalog build failed; launchers get catalog_failed"
                 );
             }

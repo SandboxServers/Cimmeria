@@ -74,7 +74,7 @@ anonymous (it takes no token). The owner approved serving it on the login port o
 endpoint yet
 ([launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md#decisions-and-what-is-still-open)).
 
-The cooked-data presync adds two more anonymous routes to the login port, `GET /api/cooked/v1/index` and `GET /api/cooked/v1/category/{id}`, (nested under `/api/cooked`). They are not telemetry routes and the colo's https proxy does not forward them. See [Cooked-data presync routes](#cooked-data-presync-routes-login-port).
+The cooked-data presync adds two more anonymous routes to the login port, `GET /api/cooked/v1/index` and `GET /api/cooked/v1/category/{id}` (nested under `/api/cooked`). They are not telemetry routes and the colo's https proxy does not forward them. See [Cooked-data presync routes](#cooked-data-presync-routes-login-port).
 
 Containers are different: a Docker published port forwards to the container's bridge
 address and cannot reach an in-container loopback bind, so the image sets
