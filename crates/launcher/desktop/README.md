@@ -16,7 +16,7 @@ Play readiness. Confirmed uninstall and interrupted-removal recovery are wired
 through Settings. Settings also connects confirmed [Repair](docs/repair.md),
 precommit cancellation, recovery/abandonment and current-backup cleanup. [Play](docs/launch.md)
 now observes native game lifecycle and, for a player who opts in, injects the
-[game-telemetry DLL](docs/launch.md#opt-in-game-telemetry) with a server session.
+[game-telemetry DLL](docs/launch-telemetry.md#opt-in-game-telemetry) with a server session.
 Bounded native [adoption and Play phase timing](docs/launcher-telemetry.md) uses the existing opt-in launcher event pipeline.
 The [privacy inventory](docs/privacy-inventory.md) lists every collector family,
 fixed-schema field category, raw-log boundary, consent effect and storage limit
@@ -93,7 +93,7 @@ has (Proton Experimental or a numbered Proton from Steam, or GE-Proton from
 ProtonUp-Qt); the launcher downloads none. It keeps a private prefix, extracts
 the game's own DirectX DLLs from its cabinets, installs PhysX once and starts
 the game windowed. The details, the failure codes and the checklist are in
-[Linux (Proton)](docs/launch.md#linux-proton).
+[Linux (Proton)](docs/launch-linux.md#linux-proton).
 
 **Not on Linux yet:** Repair, Update and the launcher self-update. Those paths
 still answer `platform_unavailable`.
@@ -158,8 +158,8 @@ stores the game's display mode and window size (default windowed 1024x768) with
 the same admission as `save_client_options`; it fails with
 `invalid_display_options` on an out-of-range size or a mode the platform does not
 offer, and a default display is stored as no key. Its optional `monitor` is
-remembered per display setup ([launch.md § The monitor per display
-setup](docs/launch.md#the-monitor-per-display-setup)). Every snapshot carries
+remembered per display setup ([launch-display.md § The monitor per display
+setup](docs/launch-display.md#the-monitor-per-display-setup)). Every snapshot carries
 `preferences.display` and `display_modes`, the modes this platform offers, plus
 `displays`, `display_sizes`, `display_monitor` and `frame_caps` (the frame caps this platform offers: three on macOS, `fps30` and `fps60` on Linux, none on Windows). `save_client_options` replaces both client
 options at once, needs the current preference revision, and is refused while the

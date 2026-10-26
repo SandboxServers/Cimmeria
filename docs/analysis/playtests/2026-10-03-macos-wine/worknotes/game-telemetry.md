@@ -4,7 +4,7 @@
 > **Audience:** Launcher contributors and reviewers
 > **Last updated:** 2026-10-04
 > **Status:** Implemented on `launcher/desktop-client-telemetry` (PR #1241); proven once on macOS under Wine
-> **Companions:** [launch contract](../../../../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry), [telemetry operations](../../../../operations/telemetry.md#player-opt-in), [MacBook checkpoint](macbook-testing-checkpoint.md)
+> **Companions:** [launch contract](../../../../../crates/launcher/desktop/docs/launch-telemetry.md#opt-in-game-telemetry), [telemetry operations](../../../../operations/telemetry.md#player-opt-in), [MacBook checkpoint](macbook-testing-checkpoint.md)
 
 ## Why
 
@@ -18,7 +18,7 @@ stops drawing for about ten minutes while it writes the entries.
 
 ## What was built
 
-The contract is in the [launch reference](../../../../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry).
+The contract is in the [launch reference](../../../../../crates/launcher/desktop/docs/launch-telemetry.md#opt-in-game-telemetry).
 In short: a separate default-off choice (`game-telemetry.json`), the DLL as an
 optional pinned bundle resource, one server session per Play, the session
 marker beside the game, and the DLL added to the launch request after the

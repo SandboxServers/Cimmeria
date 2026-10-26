@@ -24,7 +24,7 @@ The launcher here is the desktop launcher. The pipeline's pieces live in
 there from the egui launcher that LX-18 retired, and the desktop engine
 drives them from `crates/launcher/desktop/engine/src/storage/game_telemetry/`.
 Its player-facing contract is in the desktop
-[launch contract](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry).
+[launch contract](../../crates/launcher/desktop/docs/launch-telemetry.md#opt-in-game-telemetry).
 
 ## Goal
 
@@ -245,7 +245,7 @@ carry `cimmeria.session_kind = player`. That session also records the
 this sequence. Without the opt-in, Play starts no session and injects the
 client patches only. The desktop details (tail baselines, one session at a
 time, the `game_exited` event) are in the
-[launch contract](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry).
+[launch contract](../../crates/launcher/desktop/docs/launch-telemetry.md#opt-in-game-telemetry).
 
 The retired egui launcher ran the sequence below from its **Launch +
 Telemetry** button (the Atera debug path). It is kept because the core

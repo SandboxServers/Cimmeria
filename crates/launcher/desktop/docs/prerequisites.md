@@ -412,7 +412,7 @@ resources fail before state initialization; a selected Settings directory alone
 cannot authorize setup. Windows currently returns `platform_unavailable` for
 this Mac compatibility operation; it does not run Wine or a Mac recipe. Linux
 does not use it either: Play installs PhysX in its private Proton prefix
-([Linux (Proton)](launch.md#linux-proton)).
+([Linux (Proton)](launch-linux.md#linux-proton)).
 
 Admission uses the durable installed identity and its native-selected runtime
 hash. The retained coordinator receives the independently pinned prerequisite

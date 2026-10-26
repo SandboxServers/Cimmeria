@@ -10,6 +10,8 @@ Spike brief this replaces: [launcher-linux-steamdeck/assessment.md](../launcher-
 
 ## Purpose
 
+**Status (2026-10-26):** all packets are Done on the integration branch; PP-U attempt 4 passed up to the EULA screen (§ UAT result). The final PR #2032 waits for the campaign review and `full-ci`. What follows is the starting point.
+
 The Linux AppImage installs the game (#2020, launcher-linux-install-telemetry)
 but cannot play it: Play, prerequisites, Repair and Update answer
 `platform_unavailable`. The owner's goal was always a launcher that **plays**
@@ -98,32 +100,36 @@ Paths: `D/` = `crates/launcher/desktop/`, `E/` = `D/engine/src/`, `S/` = `D/shel
 | Packet | Wave | Title | Agent | Status |
 |---|---|---|---|---|
 | PP-S1 | 0 | Proton Play spike on the Deck | hands-on (owner present) | Done ([ruling](worknotes/PP-S1-ruling.md)) |
-| PP-01 | 1 | Proton discovery and ranking | packet-coder | Ready |
-| PP-02 | 1 | Embed the Windows pieces in the Linux shell | rust-gameserver-dev | Ready |
-| PP-03 | 1 | Linux release job carries the pinned pieces | packet-coder | BlockedDependency (PP-02) |
-| PP-04 | 1 | Proton prefix, stamp and environment | packet-coder | BlockedDependency (PP-01) |
-| PP-20 | 1B | Install progress names the real phase; no re-read of a copied archive | packet-coder | Ready |
-| PP-21 | 1B | Install view copy, phase lines, rate and ETA | packet-coder | BlockedDependency (PP-20) |
-| PP-22 | 1B | Install log lines: phase bytes, archive pick | packet-coder | BlockedDependency (PP-20) |
-| PP-23 | 1B | Archive flow shows and changes the game folder | packet-coder | BlockedDependency (PP-21) |
-| PP-24 | 1B | Upload log lines name scheme and host | packet-coder | Ready |
-| PP-25 | 1B | Parallel expansion of cabinet folders | rust-gameserver-dev | Ready |
+| PP-01 | 1 | Proton discovery and ranking | packet-coder | Done (merge `6e02f2a58`) |
+| PP-02 | 1 | Embed the Windows pieces in the Linux shell | rust-gameserver-dev | Done (merge `774a7f4b3`) |
+| PP-03 | 1 | Linux release job carries the pinned pieces | packet-coder | Done (merge `ffaab5a36`) |
+| PP-04 | 1 | Proton prefix, stamp and environment | packet-coder | Done (merge `d4559dd71`) |
+| PP-20 | 1B | Install progress names the real phase; no re-read of a copied archive | packet-coder | Done (merge `fd5398675`) |
+| PP-21 | 1B | Install view copy, phase lines, rate and ETA | packet-coder | Done (merge `15870eb0f`) |
+| PP-22 | 1B | Install log lines: phase bytes, archive pick | packet-coder | Done (merge `3a31ac334`) |
+| PP-23 | 1B | Archive flow shows and changes the game folder | packet-coder | Done (merge `57280a80b`) |
+| PP-24 | 1B | Upload log lines name scheme and host | packet-coder | Done (merge `a51239334`) |
+| PP-25 | 1B | Parallel expansion of cabinet folders | rust-gameserver-dev | Done (merge `a179efe31`) |
 | PP-S2 | 2 | Second Deck spike (probe, first profile, other Protons) | hands-on (owner present) | Done ([ruling](worknotes/PP-S2-ruling.md)) |
-| PP-05 | 2 | Proton invocation and prefix setup (bare) | packet-coder | BlockedDependency (PP-04) |
-| PP-06 | 2 | Linux launch admission and failure codes | rust-gameserver-dev | BlockedDependency (PP-05) |
-| PP-07 | 2 | Proton launch preparation | rust-gameserver-dev | BlockedDependency (PP-06) |
-| PP-15 | 2 | Single-member cab extract with LZX | rust-gameserver-dev | BlockedDependency (PP-20, PP-25) |
-| PP-16 | 2 | Native DirectX in the Proton prefix | packet-coder | BlockedDependency (PP-07, PP-15) |
-| PP-08 | 2 | PhysX in the Proton prefix | packet-coder | BlockedDependency (PP-05, PP-07) |
-| PP-08W | 2 | Prerequisite worker probe under Proton | rust-gameserver-dev | Ready (merges after PP-08; Deck check timing per OD-4) |
-| PP-09 | 2 | Shell: Linux Play status and resources | packet-coder | BlockedDependency (PP-02, PP-06) |
-| PP-10 | 3 | Proton picker: preference and IPC | packet-coder | BlockedDependency (wave 2) |
-| PP-11 | 3 | Linux telemetry tags and case | packet-coder | BlockedDependency (wave 2) |
-| PP-17 | 3 | Linux display profile in the prefix | packet-coder | BlockedDependency (PP-07) |
-| PP-12 | 3 | Frontend copy, picker and REPL UAT | packet-coder | BlockedDependency (PP-10) |
-| PP-13 | 3 | Docs | documentation-writer | BlockedDependency (PP-10..PP-12) |
-| PP-U | 4 | Deck UAT | owner + hands-on | BlockedDependency (wave 3) |
-| PP-14 | 4 | Close-out | documentation-writer | BlockedDependency (PP-U) |
+| PP-05 | 2 | Proton invocation and prefix setup (bare) | packet-coder | Done (merge `4fdb2dc36`) |
+| PP-06 | 2 | Linux launch admission and failure codes | rust-gameserver-dev | Done (merge `e64a46cd7`) |
+| PP-07 | 2 | Proton launch preparation | rust-gameserver-dev | Done (merge `2418856e0`) |
+| PP-15 | 2 | Single-member cab extract with LZX | rust-gameserver-dev | Done (merge `2bc212a44`) |
+| PP-16 | 2 | Native DirectX in the Proton prefix | packet-coder | Done (merge `1581f3cee`) |
+| PP-08 | 2 | PhysX in the Proton prefix | packet-coder | Done (merge `438a73705`) |
+| PP-08W | 2 | Prerequisite worker probe under Proton | rust-gameserver-dev | Done (merge `d9f915ce2`) |
+| PP-09 | 2 | Shell: Linux Play status and resources | packet-coder | Done (merge `9a1e22659`) |
+| PP-10 | 3 | Proton picker: preference and IPC | packet-coder | Done (merge `9d4f5fc56`) |
+| PP-11 | 3 | Linux telemetry tags and case | packet-coder | Done (merge `e5f2179c0`) |
+| PP-17 | 3 | Linux display profile in the prefix | packet-coder | Done (merge `233edee85`) |
+| PP-12 | 3 | Frontend copy, picker and REPL UAT | packet-coder | Done (merge `517b84e6e`) |
+| PP-13 | 3 | Docs | documentation-writer | Done (merge `2aede7591`) |
+| PP-U | 4 | Deck UAT | owner + hands-on | Done, attempt 4 (`e74b21909`; [worknote](worknotes/PP-U.md)) |
+| PP-14 | 4 | Close-out | documentation-writer | Done (this close-out commit) |
+| PP-U-R1 | 4 | Opt-in real-seed RAR test, debug and release | packet-coder | Done, **never merged**: test-only, `7342ad271` on `launcher-linux-play-proton/pp-u-r1`. It found no defect itself; it showed the seed unpacks in a Deck build, which led to the linker |
+| PP-U-FIX | 4 | Link Linux launchers with lld; `--self-test-rar` | packet-coder | Done: PR #2036, merged to `main` as `c7651001b`, then merged into this branch. mold 1.0.3 (Ubuntu 22.04 apt) mislinked the bundled UnRAR, so every Linux launcher built that way, including the released `launcher-20261024-c22f36c`, cannot unpack the release seed |
+| PP-U-F6 | 4 | Missing Proton outranks "Game exited" in the Play status | packet-coder | Done: `b1822e229`, review fixes `a5fcd4220` (F-U6) |
+| PP-F1 | follow-up | Shell test reopen barrier (test-only) | packet-coder | Open: own PR from `main` after #2032 merges ([ruling](../../../.claude/reports/launcher-linux-play-proton/pr2032-ruling-1.md)) |
 
 Merge order into the integration branch: W1 PP-01, PP-04, PP-02, PP-03; W1B
 (beside W1 and W2) PP-24, PP-25, PP-20, PP-22, PP-21, PP-23; W2 PP-05, PP-06,
@@ -146,6 +152,10 @@ BlockedDecision / Writing / Review / Integrated / UATPending / Done.
 | U6 | Game Mode: add the AppImage as a non-Steam game, Play reaches the login screen, the controller drives the launcher. Gates the merge only if OD-2 says so. | owner |
 | U7 | `npm run uat:launch` and `npm run uat:proton` pass (REPL logic UAT, PP-12). | packet-coder |
 
+## UAT result
+
+PP-U ran four attempts on a Steam Deck (Desktop Mode). Attempt 2 stopped on the development manifest key. Attempt 3, with the real key, failed at unpack: the mold-linked UnRAR could not read the release seed ([ruling 1](../../../.claude/reports/launcher-linux-play-proton/pp-u-ruling-1.md), [ruling 2](../../../.claude/reports/launcher-linux-play-proton/pp-u-ruling-2.md), [matrix](../../../.claude/reports/launcher-linux-play-proton/pp-u-matrix.md)); PP-U-FIX linked with lld. **Attempt 4 passed every row an agent could run** ([worknote](worknotes/PP-U.md), [report](../../../.claude/reports/launcher-linux-play-proton/pp-u-report-3.md)): install, Proton pick (GE-Proton11-11), prefix, DirectX pins, PhysX install and probe, the game loading its PhysX core, a windowed window with no focus change, the 441-byte profile seed, the frame cap reaching DXVK at 30 and 60, and a clean exit. **Not verified:** login, world entry, PhysX inside the world (the game was quit at the EULA), the SigNoz rows tagged `proton`, Game Mode, and the owner-only wording rows. Results by row: [unified UAT § Launcher Play on Linux (Proton)](../../guides/unified-uat.md#launcher-play-on-linux-proton).
+
 ## Follow-ups (not in this campaign)
 
 - FU-1 Repair and game Update on Linux (`S/host/repair/mod.rs:30-46`, `S/host/game_update/dispatch.rs:65,167-183`).
@@ -165,10 +175,13 @@ BlockedDecision / Writing / Review / Integrated / UATPending / Done.
 - FU-15 Scratch folders under `<state>/proton/scratch/<operation>` (the PhysX worker's) are never cleaned.
 - FU-16 `SYSTEM_TOOLS` (`/usr/share/steam/compatibilitytools.d`) is defined twice, in the shell (`host/launch/resources.rs`) and in the engine (`storage/launch/proton.rs`). Keep one.
 - FU-17 `directx::ensure` logs `proton_directx_failed` with no DLL name; add the closed `dll` field so a failure says which cabinet member failed.
+- PP-F1 A store-reopen flake in the shell tests (`InUse`/`Busy` on the first call after `NativeHost::new` on a reused root; seen once in CI on this branch). The product is fine: a real restart is a new process and `store()` retries `InUse` for 30 s. The tests reopen before in-process holders let go. Fix: a test-only helper that waits until the test's `Arc` is the last one and drops it first. Own PR from `main` after #2032 merges; if the same failure recurs before merge, take it onto the integration branch.
+- F-U5 The first Play logs a benign `display_settings_not_applied` WARN with `saved_options="seeded"` and `engine_ini="missing"`: the game writes `SGWEngine.ini` on exit, so the first-run case is expected. Log it at INFO.
+- CI-1 Windows arm64 zip failed on `main` at `0a25ef5d4` and passed on a later run; unexplained, watch it.
+- CI-2 Other workflows still link with mold 1.0.3: `test.yml`, `wireclient.yml`, `spec-lint.yml` and `client-launch.yml`. None ships a launcher, so PP-U-FIX left them; switch them if a mold-linked test ever misbehaves.
+- UAT-owed The owner-only rows in § UAT result: the U8 phase copy, the "Preparing Proton" wording, the picker hidden with no Proton (F-U7), login and world entry with PhysX in the world (U4), the SigNoz rows tagged `proton` (U5) and Game Mode (U6, follow-up per OD-2).
+- Release A launcher release built after PR #2036 is owed; the published `launcher-20261024-c22f36c` cannot install on Linux.
 
 ## Close-out
 
-PP-14: the campaign review loop, `docs/project-status.md` once,
-`docs/guides/unified-uat.md` rows U2-U6, the sibling's U1 row reconciled
-(PP-13), empty `.claude/state/active-campaign`, retire the packet worktrees
-with `rm-worktree.sh --merged-into <PR>`.
+PP-14 (docs, 2026-10-26): `docs/launch.md` split by topic into five pages, `docs/project-status.md` updated once, the unified-UAT section filled from attempt 4, the sibling's U1 row reconciled (PP-13), the architect and launcher notes saved to project memory, the final PR body updated. Still for the owner and `ops`: the campaign review, `full-ci` on the branch, empty `.claude/state/active-campaign`, retire the packet worktrees with `rm-worktree.sh --merged-into <PR>`.

@@ -731,6 +731,11 @@ carries a path, URL or host: the only free text is a sample of at most 10 index 
 | `seed_unpack_started` | `launcher.install` | info | `check` (`sha256` or `hashed_while_copied`), `bytes` |
 | `seed_archive_picked` | `launcher.install` | info | `bytes` (the player's archive size) |
 | `log_upload_post` | `launcher.telemetry` | info | `scheme`, `host` (`-` when unknown), `status`; never the URL |
+| `proton_physx` | `launcher.proton` | info or warn | `result` (closed), `reason` (closed); never a path. **Local log only**: `launcher.proton` is not in `launcher_targets.txt`, so SigNoz never receives it |
+| `proton_directx` | `launcher.proton` | info | `dll` (`d3dx9_40.dll` or `xinput1_3.dll`), `state` (`present` or `installed`). Local log only |
+| `proton_directx_failed` | `launcher.proton` | warn | no DLL name yet (FU-17). Local log only |
+| `proton_refused` | `launcher.proton` | warn | `reason` (`unknown_proton` or a save failure), when the Settings picker refuses a choice. Local log only |
+| `display_settings` (Linux) | `launcher.launch` | info or warn | `saved_options="seeded"` on a first Play, with a benign `display_settings_not_applied` WARN until the game writes `SGWEngine.ini` (F-U5) |
 
 - `changed_sample` and `missing_sample` hold at most 10 paths, comma-joined, at most
   600 characters, taken only from index entries the release names (`changed`,
@@ -968,7 +973,7 @@ unwritable session file, the DLL is left out and the game starts without
 it; play is never blocked, and Settings shows why. An adopted install
 plays without the DLL for now. The capture switches stay off unless a
 developer sets `CIMMERIA_CLIENT_CAPTURE` in the launcher's own environment.
-Contract: [launch.md § Opt-in game telemetry](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry);
+Contract: [launch-telemetry.md § Opt-in game telemetry](../../crates/launcher/desktop/docs/launch-telemetry.md#opt-in-game-telemetry);
 background: [client-telemetry.md](../architecture/client-telemetry.md#who-gets-the-dll).
 
 The retired egui launcher kept the choice as `telemetry.opted_in` in its
