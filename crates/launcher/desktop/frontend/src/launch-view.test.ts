@@ -190,7 +190,7 @@ test('a Play that did not start points at an edited login server list',()=>{
  assert.match(launchText({status,pending:false,uncertain:false,error:null}),/If you edited the login servers, check them under Login servers\./);
 });
 test('missing Proton outranks an earlier game exit, and Recheck shows it on the first press',async()=>{
- const exited={...initial(),setup_complete:false,installation_id:null as unknown,prerequisites_missing:['proton'],observation:{phase:'process_exited',host_pid:1,guest_pid:2,code:0,early:false}} as any;
+ const exited={...initial(),setup_complete:false,prerequisites_missing:['proton'],observation:{phase:'process_exited',host_pid:1,guest_pid:2,code:0,early:false}} as any;
  const {document,window}=parseHTML(html);let reads=0;let finish!:()=>void;
  const gate=new Promise<void>(resolve=>{finish=resolve;});
  const app=mountLaunch(document,async()=>{reads++;if(reads>1)await gate;return exited;});
