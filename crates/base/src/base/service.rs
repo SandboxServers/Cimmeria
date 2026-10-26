@@ -316,7 +316,16 @@ impl BaseService {
         }
 
         let resource_cache = match ResourceCache::load_all(&self.data_dir) {
-            Ok(cache) => Some(Arc::new(cache)),
+            Ok(cache) => {
+                // The presync catalog builds in the background (LP-11); boot
+                // doesn't wait on it.
+                let cache = Arc::new(cache);
+                super::presync_catalog::spawn_presync_catalog(
+                    Arc::clone(&cache),
+                    self.data_dir.clone(),
+                );
+                Some(cache)
+            }
             Err(e) => {
                 // Same row the cell's `startup_report::cache_failed` writes;
                 // base does not depend on the cell crate.

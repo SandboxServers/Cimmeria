@@ -20,6 +20,7 @@ mod dispatch_timing;
 #[cfg(feature = "lab-chaos")]
 mod lab_chaos_transport;
 pub(crate) mod login;
+mod presync_catalog;
 mod service;
 
 #[cfg(test)]
