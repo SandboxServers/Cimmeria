@@ -309,3 +309,22 @@ async fn a_flush_trigger_on_an_empty_queue_is_not_urgent() {
     assert_eq!(forwarder.next_wake(t0), Some(Duration::from_secs(2)));
     assert!(forwarder.pump(&src, t0).await.is_none());
 }
+
+#[tokio::test]
+async fn a_sentinel_on_an_empty_queue_finishes_the_flush_without_latching_urgency() {
+    let server = MockServer::start().await;
+    mount_no_post(&server).await;
+    let mut forwarder = Forwarder::new(LauncherSender::new());
+    let src = source(&server.uri());
+    let t0 = Instant::now();
+    forwarder.on_records(&src, vec![sentinel()], t0);
+    assert_eq!(forwarder.next_wake(t0), None);
+    assert!(forwarder.pump(&src, t0).await.is_none());
+    assert!(forwarder.take_flush_done());
+    forwarder.on_records(
+        &src,
+        vec![record("client.launcher.adoption", Some("step"))],
+        t0,
+    );
+    assert_eq!(forwarder.next_wake(t0), Some(Duration::from_secs(2)));
+}
