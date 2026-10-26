@@ -127,7 +127,7 @@ export function mountSignIn(document: Document, invoke: Invoke, context: PanelCo
   next => {
    if (disposed) return;
    reportUiEvent('sign_in', String(request.command), 'ok', 'info');
-   if (request.command === 'resume') urlField.value = ''; // the flow finished: the address is no longer needed
+   if (request.command === 'resume' || request.command === 'cancel') { urlField.value = ''; urlBox.hidden = true; } // the flow finished or was cancelled: the address is no longer needed
    settle(next);
   },
   failure => {

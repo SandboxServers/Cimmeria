@@ -184,6 +184,24 @@ test('browser_failed shows the address while resume waits, then clears it', asyn
  } finally { await p.app.dispose(); }
 });
 
+test('cancel clears the address and hides its box', async () => {
+ const p = await mounted(status(), request => {
+  if (request.command === 'begin') return Promise.reject({error: 'browser_failed', url: 'https://example.org/auth'});
+  if (request.command === 'resume') return new Promise(() => {}); // the flow waits until it is cancelled
+  return Promise.resolve(status());
+ });
+ try {
+  p.press(p.button('Sign in with Discord'));
+  await flush();
+  assert.equal(p.field('[readonly]').value, 'https://example.org/auth');
+  p.press(p.button('Cancel'));
+  await p.app.settled();
+  assert.deepEqual(p.calls.slice(-1).map(c => c.command), ['cancel']);
+  assert.equal(p.field('[readonly]').value, '');
+  assert.equal((p.field('[readonly]').parentNode as unknown as HTMLElement).hidden, true, 'the address box is hidden after Cancel');
+ } finally { await p.app.dispose(); }
+});
+
 test('a final link failure re-inspects and offers sign-in again', async () => {
  const seen = needsLink();
  const p = await mounted(seen, async request => {
