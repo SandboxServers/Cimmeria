@@ -243,6 +243,65 @@ async fn a_silent_body_times_out_on_the_idle_timer() {
     assert_eq!(fetcher.body(7, 3).await.err(), Some(FetchError::Timeout));
 }
 
+/// Serves one response from a raw socket on 127.0.0.1: the headers declare
+/// `declared` bytes, then each slice is written with `pause` after it.
+fn serve_slowly(slices: Vec<Vec<u8>>, declared: usize, pause: Duration) -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a local port");
+    let port = listener.local_addr().expect("local address").port();
+    std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().expect("accept");
+        let mut request = [0u8; 2048];
+        let _ = socket.read(&mut request);
+        let head = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {declared}\r\n\r\n"
+        );
+        let _ = socket.write_all(head.as_bytes());
+        for slice in slices {
+            let _ = socket.write_all(&slice);
+            let _ = socket.flush();
+            std::thread::sleep(pause);
+        }
+    });
+    format!("http://127.0.0.1:{port}")
+}
+
+#[tokio::test]
+async fn a_stalled_body_times_out_on_the_chunk_timer() {
+    let body = sample_body(3);
+    // Ten bytes arrive, then the socket goes quiet for a second.
+    let url = serve_slowly(
+        vec![body[..10].to_vec()],
+        body.len(),
+        Duration::from_secs(1),
+    );
+    let timeouts = Timeouts {
+        idle: Duration::from_millis(150),
+        ..Timeouts::DEFAULT
+    };
+    let fetcher =
+        Fetcher::with_timeouts(&url, std::slice::from_ref(&url), timeouts).expect("login server");
+    assert_eq!(fetcher.body(7, 3).await.err(), Some(FetchError::Timeout));
+}
+
+#[tokio::test]
+async fn a_slow_but_moving_body_is_not_cut_off() {
+    let body = sample_body(3);
+    // Five slices 100 ms apart: 500 ms in all, over the 250 ms idle limit,
+    // but no gap is longer than the limit (D-LP25: no total body limit).
+    let slices: Vec<Vec<u8>> = body.chunks(20).map(<[u8]>::to_vec).collect();
+    let url = serve_slowly(slices, body.len(), Duration::from_millis(100));
+    let timeouts = Timeouts {
+        idle: Duration::from_millis(250),
+        ..Timeouts::DEFAULT
+    };
+    let fetcher =
+        Fetcher::with_timeouts(&url, std::slice::from_ref(&url), timeouts).expect("login server");
+    let (decoded, bytes) = fetcher.body(7, 3).await.expect("a moving body completes");
+    assert_eq!(decoded.version, 3);
+    assert_eq!(bytes, body.len() as u64);
+}
+
 #[tokio::test]
 async fn an_oversize_index_stops_at_the_cap() {
     let server = MockServer::start().await;
@@ -260,11 +319,60 @@ async fn an_oversize_index_stops_at_the_cap() {
 }
 
 #[tokio::test]
+async fn the_index_has_a_total_time_limit() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(INDEX_PATH))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(sample_index())
+                .set_delay(Duration::from_millis(500)),
+        )
+        .mount(&server)
+        .await;
+    let url = server.uri();
+    let timeouts = Timeouts {
+        index: Duration::from_millis(100),
+        ..Timeouts::DEFAULT
+    };
+    let fetcher =
+        Fetcher::with_timeouts(&url, std::slice::from_ref(&url), timeouts).expect("login server");
+    assert_eq!(fetcher.index().await.err(), Some(FetchError::Timeout));
+}
+
+#[tokio::test]
 async fn a_bad_pak_name_is_bad_index() {
     for name in ["../x.pak", "a/b.pak", "x.exe"] {
         let server = MockServer::start().await;
         let mut index = sample_index();
         index.categories[0].pak = name.to_owned();
+        Mock::given(method("GET"))
+            .and(path(INDEX_PATH))
+            .respond_with(ResponseTemplate::new(200).set_body_json(index))
+            .mount(&server)
+            .await;
+        assert_eq!(
+            fetcher(&server).index().await.err(),
+            Some(FetchError::BadIndex),
+            "{name}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_bad_schema_duplicate_id_or_digest_is_bad_index() {
+    let mut wrong_schema = sample_index();
+    wrong_schema.schema = 2;
+    let mut duplicate = sample_index();
+    duplicate.categories.push(duplicate.categories[0].clone());
+    let mut bad_digest = sample_index();
+    bad_digest.categories[0].digest = "zz".to_owned();
+    for (name, index) in [
+        ("schema 2", wrong_schema),
+        ("duplicate id", duplicate),
+        ("bad digest", bad_digest),
+    ] {
+        let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path(INDEX_PATH))
             .respond_with(ResponseTemplate::new(200).set_body_json(index))
