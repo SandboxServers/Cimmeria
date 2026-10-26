@@ -176,12 +176,12 @@ impl NativeHost {
         }
         // Read before the store lock, so the worker's lock and the store's are
         // never held together. The Play branch above has released its guard.
-        let content_sync = self
-            .launch_worker
-            .lock()
-            .map_err(|_| JobError::Io)?
-            .as_ref()
-            .and_then(|worker| worker.content_sync.borrow().clone());
+        // A poisoned lock reads as no content sync, so Inspect keeps working.
+        let content_sync = self.launch_worker.lock().ok().and_then(|guard| {
+            guard
+                .as_ref()
+                .and_then(|worker| worker.content_sync.borrow().clone())
+        });
         let mut state = store.lock().map_err(|_| JobError::Io)?;
         let native = state.dispatch(NativeCommand::Inspect { schema_version: 1 })?;
         let observation = state.launch_observation()?;
