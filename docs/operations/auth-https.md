@@ -132,7 +132,7 @@ Run these with `curl.exe` on Windows. All are expected results, not observed one
 
 The proxy listener (`proxy_layer`) vets every request in this order:
 
-1. The TCP peer must be in `AUTH_PROXY_TRUSTED_PEERS` (comma-separated CIDRs or bare addresses). Unset or empty means the default `127.0.0.0/8,::1,172.16.0.0/12`; one bad entry also keeps the default. An untrusted peer has its `X-Forwarded-*` ignored and logs the `proxy_untrusted_peer` WARN, so `/auth/v1` answers `403 https_required`.
+1. The TCP peer must be in `AUTH_PROXY_TRUSTED_PEERS` (comma-separated CIDRs or bare addresses). Unset or empty means the default `127.0.0.0/8,::1,172.16.0.0/12`; a list with a bad entry trusts no peer and logs the `bad_auth_proxy_trusted_peers` ERROR, so `/auth/v1` on the proxy listener answers `403 https_required` until it is fixed. An untrusted peer has its `X-Forwarded-*` ignored and logs the `proxy_untrusted_peer` WARN, so `/auth/v1` answers `403 https_required`.
 2. A trusted peer must send `X-Forwarded-Proto: https`, else `400` and `proxy_missing_https_proto`.
 3. The rightmost `X-Forwarded-For` entry must parse as an IP, else `400` and `proxy_bad_forwarded_for`. It replaces the peer address for the handlers. The rightmost entry is the one Caddy appended; the leftmost is whatever the client sent.
 4. The request is marked as TLS, which `/auth/v1` requires.
