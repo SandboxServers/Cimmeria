@@ -49,7 +49,7 @@ async fn a_retained_session_and_a_restored_one_refresh_once() {
         .await;
     let (a, b) = tokio::join!(old.access_token(), new.access_token());
     assert_eq!(a.unwrap(), b.unwrap());
-    assert_eq!(fx.store.get(HOST).unwrap().refresh_token, "r2");
+    assert_eq!(fx.store.get(HOST).unwrap().unwrap().refresh_token, "r2");
 }
 
 #[tokio::test]
@@ -58,14 +58,16 @@ async fn offline_switch_shows_and_signs_out_only_the_new_host() {
     fx.store_entry("ra");
     let online = fx.inspect().await.unwrap();
     assert!(matches!(online.state, SignInStateView::SignedIn { .. }));
-    fx.store.set(
-        "localhost",
-        &Stored {
-            refresh_token: "rb".to_owned(),
-            account_name: "Player_5678".to_owned(),
-            display_name: "Player 5678".to_owned(),
-        },
-    );
+    fx.store
+        .set(
+            "localhost",
+            &Stored {
+                refresh_token: "rb".to_owned(),
+                account_name: "Player_5678".to_owned(),
+                display_name: "Player 5678".to_owned(),
+            },
+        )
+        .unwrap();
     // A closed port: the new server is offline, and its auth base is `localhost`.
     std::env::set_var(AUTH_BASE_ENV, "http://localhost:1/");
     save_login_server(&fx, "Other", "https://other.example/login");
@@ -81,8 +83,8 @@ async fn offline_switch_shows_and_signs_out_only_the_new_host() {
     )
     .await
     .unwrap();
-    assert!(fx.store.get(HOST).is_some());
-    assert!(fx.store.get("localhost").is_none());
+    assert!(fx.store.get(HOST).unwrap().is_some());
+    assert!(fx.store.get("localhost").unwrap().is_none());
 }
 
 #[tokio::test]
@@ -97,7 +99,7 @@ async fn a_target_without_an_auth_base_drops_the_previous_session() {
     let status = fx.inspect().await.unwrap();
     assert!(matches!(status.state, SignInStateView::SignedOut));
     assert!(!fx.has_session());
-    assert!(fx.store.get(HOST).is_some());
+    assert!(fx.store.get(HOST).unwrap().is_some());
 }
 
 #[tokio::test]
@@ -111,7 +113,7 @@ async fn sign_out_forgets_before_it_tells_the_server() {
     Mock::given(method("POST"))
         .and(path("/auth/v1/logout"))
         .respond_with(move |_: &wiremock::Request| {
-            flag.store(store.get(HOST).is_none(), Ordering::SeqCst);
+            flag.store(store.get(HOST).unwrap().is_none(), Ordering::SeqCst);
             ResponseTemplate::new(204)
         })
         .expect(1)

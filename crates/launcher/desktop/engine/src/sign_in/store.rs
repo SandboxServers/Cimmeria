@@ -2,8 +2,8 @@
 //!
 //! One entry per auth host, under the service `cimmeria-launcher`; its value is
 //! the JSON of [`Stored`]. It is never written to `launcher-config.json`,
-//! `preferences.json` or a log. A store error gives `None` or is dropped, and the
-//! log names only the operation, never the value.
+//! `preferences.json` or a log. A store error is returned to the caller, never
+//! dropped; the log names only the operation and the [`StoreError`] kind.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -32,14 +32,43 @@ impl fmt::Debug for Stored {
     }
 }
 
+/// Why the credential store failed. Its `Display` names no secret and no host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreError {
+    /// The OS store is not there or refuses access.
+    Unavailable,
+    /// The store answered, but the read or write did not complete.
+    Io,
+}
+
+impl StoreError {
+    /// The short kind a log line carries.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unavailable => "unavailable",
+            Self::Io => "io",
+        }
+    }
+}
+
+impl fmt::Display for StoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unavailable => f.write_str("credential store unavailable"),
+            Self::Io => f.write_str("credential store i/o error"),
+        }
+    }
+}
+
 /// The store the sign-in session reads and writes, keyed by the auth host.
 pub trait CredentialStore: Send + Sync {
-    /// The entry for `host`, or `None` when there is none or it cannot be read.
-    fn get(&self, host: &str) -> Option<Stored>;
-    /// Replaces the entry for `host`.
-    fn set(&self, host: &str, stored: &Stored);
-    /// Removes the entry for `host`. A missing entry is not an error.
-    fn delete(&self, host: &str);
+    /// The entry for `host`: `Ok(None)` when there is none, `Err` when the store
+    /// could not be read.
+    fn get(&self, host: &str) -> Result<Option<Stored>, StoreError>;
+    /// Replaces the entry for `host`. `Err` when the write did not land.
+    fn set(&self, host: &str, stored: &Stored) -> Result<(), StoreError>;
+    /// Removes the entry for `host`. Deleting a missing entry is `Ok`.
+    fn delete(&self, host: &str) -> Result<(), StoreError>;
 }
 
 /// A store that lives in this process only. Tests use it, and targets without an
@@ -50,20 +79,21 @@ pub struct MemoryStore {
 }
 
 impl CredentialStore for MemoryStore {
-    fn get(&self, host: &str) -> Option<Stored> {
-        self.entries.lock().ok()?.get(host).cloned()
+    fn get(&self, host: &str) -> Result<Option<Stored>, StoreError> {
+        let entries = self.entries.lock().map_err(|_| StoreError::Io)?;
+        Ok(entries.get(host).cloned())
     }
 
-    fn set(&self, host: &str, stored: &Stored) {
-        if let Ok(mut entries) = self.entries.lock() {
-            entries.insert(host.to_owned(), stored.clone());
-        }
+    fn set(&self, host: &str, stored: &Stored) -> Result<(), StoreError> {
+        let mut entries = self.entries.lock().map_err(|_| StoreError::Io)?;
+        entries.insert(host.to_owned(), stored.clone());
+        Ok(())
     }
 
-    fn delete(&self, host: &str) {
-        if let Ok(mut entries) = self.entries.lock() {
-            entries.remove(host);
-        }
+    fn delete(&self, host: &str) -> Result<(), StoreError> {
+        let mut entries = self.entries.lock().map_err(|_| StoreError::Io)?;
+        entries.remove(host);
+        Ok(())
     }
 }
 
@@ -71,50 +101,59 @@ impl CredentialStore for MemoryStore {
 #[cfg(any(windows, target_os = "macos"))]
 pub struct KeyringStore;
 
+/// The contract's two kinds: no store to reach is `Unavailable`, anything else `Io`.
 #[cfg(any(windows, target_os = "macos"))]
-impl KeyringStore {
-    fn entry(host: &str) -> Option<keyring::Entry> {
-        match keyring::Entry::new(SERVICE, host) {
-            Ok(entry) => Some(entry),
-            Err(_) => {
-                tracing::debug!("sign-in store: the credential entry could not be opened");
-                None
-            }
+fn classify(e: &keyring::Error) -> StoreError {
+    match e {
+        keyring::Error::PlatformFailure(_) | keyring::Error::NoStorageAccess(_) => {
+            StoreError::Unavailable
         }
+        _ => StoreError::Io,
     }
 }
 
+/// Logs a failed operation with its name and kind only, never the host or the value.
+#[cfg(any(windows, target_os = "macos"))]
+fn logged(op: &'static str, kind: StoreError) -> StoreError {
+    tracing::warn!(
+        op,
+        error = kind.as_str(),
+        "sign-in store: an operation failed"
+    );
+    kind
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+impl KeyringStore {
+    fn entry(op: &'static str, host: &str) -> Result<keyring::Entry, StoreError> {
+        keyring::Entry::new(SERVICE, host).map_err(|e| logged(op, classify(&e)))
+    }
+}
+
+// CT-U6 covers this impl on a real host: CI has no OS credential store.
 #[cfg(any(windows, target_os = "macos"))]
 impl CredentialStore for KeyringStore {
-    fn get(&self, host: &str) -> Option<Stored> {
-        let secret = match Self::entry(host)?.get_password() {
-            Ok(secret) => secret,
-            Err(_) => {
-                tracing::debug!("sign-in store: the entry could not be read");
-                return None;
-            }
-        };
-        serde_json::from_str(&secret).ok()
-    }
-
-    fn set(&self, host: &str, stored: &Stored) {
-        let Ok(secret) = serde_json::to_string(stored) else {
-            return;
-        };
-        let Some(entry) = Self::entry(host) else {
-            return;
-        };
-        if entry.set_password(&secret).is_err() {
-            tracing::debug!("sign-in store: the entry could not be written");
+    fn get(&self, host: &str) -> Result<Option<Stored>, StoreError> {
+        match Self::entry("get", host)?.get_password() {
+            Ok(secret) => serde_json::from_str(&secret)
+                .map(Some)
+                .map_err(|_| logged("get", StoreError::Io)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(logged("get", classify(&e))),
         }
     }
 
-    fn delete(&self, host: &str) {
-        let Some(entry) = Self::entry(host) else {
-            return;
-        };
-        if entry.delete_credential().is_err() {
-            tracing::debug!("sign-in store: the entry could not be removed");
+    fn set(&self, host: &str, stored: &Stored) -> Result<(), StoreError> {
+        let secret = serde_json::to_string(stored).map_err(|_| logged("set", StoreError::Io))?;
+        Self::entry("set", host)?
+            .set_password(&secret)
+            .map_err(|e| logged("set", classify(&e)))
+    }
+
+    fn delete(&self, host: &str) -> Result<(), StoreError> {
+        match Self::entry("delete", host)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(logged("delete", classify(&e))),
         }
     }
 }

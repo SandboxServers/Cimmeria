@@ -58,6 +58,8 @@ pub(super) struct Site<'a> {
     pub(super) state: &'a Mutex<DesktopState>,
     pub(super) server: Option<&'a str>,
     pub(super) discovery: Option<&'a Discovery>,
+    /// The auth base the target resolves to (CT-88), whose store state the reply shows.
+    pub(super) base: Option<&'a Url>,
 }
 
 /// How a `needs_link` choice is completed.
@@ -82,7 +84,7 @@ impl SignInDriver {
     }
 
     /// The slot every session for `base`'s host shares. Made on first use, kept after.
-    fn slot(&self, base: &Url) -> Arc<HostSlot> {
+    pub(super) fn slot(&self, base: &Url) -> Arc<HostSlot> {
         let mut hosts = self.hosts.lock().unwrap_or_else(|e| e.into_inner());
         hosts
             .entry(host_of(base).to_owned())
@@ -120,6 +122,7 @@ impl SignInDriver {
                         state,
                         server: None,
                         discovery: None,
+                        base: None,
                     };
                     self.reply(&site, None, None).await
                 }
@@ -128,6 +131,7 @@ impl SignInDriver {
                         state,
                         server: None,
                         discovery: None,
+                        base: None,
                     };
                     let session = guard(state)?.sign_in();
                     self.sign_out(&site, session).await
@@ -144,6 +148,7 @@ impl SignInDriver {
             state,
             server: Some(&server.name),
             discovery: Some(&discovery),
+            base: Some(&discovery.auth_base),
         };
         match request {
             SignInCommand::Inspect { .. } | SignInCommand::Cancel { .. } => {
@@ -224,9 +229,10 @@ impl SignInDriver {
     ) -> Result<SignInStatus, SignInFailure> {
         // A target with no auth base gives no session, so the previous host's
         // session is dropped (F11): it must not show under the new server's name.
-        match discovery::auth_base(&server.url) {
+        let base = discovery::auth_base(&server.url);
+        match &base {
             Some(base) => {
-                self.session_for(state, &base).await?;
+                self.session_for(state, base).await?;
             }
             None => guard(state)?.set_sign_in(None),
         }
@@ -235,6 +241,7 @@ impl SignInDriver {
             state,
             server: Some(&server.name),
             discovery: None,
+            base: base.as_ref(),
         };
         match request {
             SignInCommand::SignOut { .. } => self.sign_out(&site, session).await,
