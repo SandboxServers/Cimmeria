@@ -115,6 +115,7 @@ Waves 3 and 4 share one PR because the engine blocks Play from wave 3 on, and th
 | LP-F2 | Follow-up: serve `/api/cooked` over HTTPS through the board Caddy | later packet, with client-tls-oidc CT-51/52 | CT-52 | BlockedDependency |
 | LP-F3 | Follow-up: split the over-cap launcher implementation ledger | later docs packet | - | BlockedDependency |
 | LP-F4 | Follow-up: presync failure code in the launcher summary | later packet | D-LP28 yes | BlockedDecision |
+| LP-F5 | Follow-up: split the over-cap `docs/operations/telemetry.md` (about 1095 lines) and `docs/engine/cooked-data-pak-format.md` (about 851) along their `##` seams, keeping inbound anchors working; move `cooked-data-pipeline.md` § Launcher presync out if that file passes 700 (ruling LP-12-1) | later docs packet | - | BlockedDependency |
 
 **LP-06b note.** Server-side `cooked_data` events were not in the local log during LP-06b (they are OTLP only), so LP-U1 must confirm `up_to_date` per category and no `sync_start` in SigNoz. Side finding: served dialog 60110 shows a markup parse error after "I can add" (seed text issue, not cache; candidate issue for the owner).
 
