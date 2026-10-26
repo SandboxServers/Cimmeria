@@ -202,8 +202,33 @@ pub(crate) fn record_outcome(
     outcome: &SendOutcome,
     now_ms: u64,
 ) -> Option<Recovery> {
+    record_locked(health, |state| state.record(outcome, now_ms))
+}
+
+/// Records the events one pumped send carried, then its outcome, and logs the
+/// recovery when it ends a run of failures or loses events (launcher-telemetry C7).
+// LTL-05 calls this
+#[allow(dead_code)]
+pub(crate) fn record_pumped(
+    health: &SharedHealth,
+    outcome: &SendOutcome,
+    sent: u64,
+    lost: u64,
+    now_ms: u64,
+) -> Option<Recovery> {
+    record_locked(health, |state| {
+        state.record_events(sent, lost);
+        state.record(outcome, now_ms)
+    })
+}
+
+/// Runs `update` under the health lock, and logs the recovery it returns.
+fn record_locked(
+    health: &SharedHealth,
+    update: impl FnOnce(&mut TelemetryHealth) -> Option<Recovery>,
+) -> Option<Recovery> {
     let mut state = health.lock().unwrap_or_else(PoisonError::into_inner);
-    let recovery = state.record(outcome, now_ms)?;
+    let recovery = update(&mut state)?;
     let last_reason = state.last_reason;
     drop(state);
     pipeline_recovered(&recovery, last_reason);
@@ -219,6 +244,7 @@ fn pipeline_recovered(recovery: &Recovery, last_reason: Option<&'static str>) {
         held = recovery.failures.held,
         dropped = recovery.failures.dropped,
         outage_ms = recovery.outage_ms,
+        events_lost = recovery.events_lost,
         last_reason = last_reason.unwrap_or("none"),
         "launcher telemetry: sends resumed; expected every batch delivered, some were lost while the server was unreachable"
     );
@@ -313,5 +339,20 @@ mod tests {
         assert_eq!(recovered[0].field("mint_failed"), Some("1"));
         assert_eq!(recovered[0].field("dropped"), Some("1"));
         assert_eq!(recovered[0].field("last_reason"), Some("transport"));
+    }
+
+    #[test]
+    fn pumped_lost_events_are_reported_on_the_recovery() {
+        let health: SharedHealth = Arc::new(Mutex::new(TelemetryHealth::default()));
+        let ((), captured) = crate::test_capture::capture(|| {
+            record_pumped(&health, &SendOutcome::Dropped, 0, 3, 100);
+            record_pumped(&health, &SendOutcome::Sent, 2, 0, 200);
+        });
+        let recovered: Vec<_> = captured
+            .iter()
+            .filter(|c| c.field("event") == Some("pipeline_recovered"))
+            .collect();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0].field("events_lost"), Some("3"));
     }
 }
