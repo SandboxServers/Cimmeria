@@ -284,7 +284,7 @@ fn db_pool(state: &RouteState) -> Result<&PgPool, ApiError> {
 mod tests_guards_live_db;
 #[cfg(test)]
 #[path = "link_tests_live_db.rs"]
-mod tests_live_db;
+pub(super) mod tests_live_db;
 
 #[cfg(test)]
 mod answered_tests {

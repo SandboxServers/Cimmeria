@@ -390,7 +390,7 @@ async fn end_session(state: &RouteState, pool: &PgPool, presented: &str) -> Resu
 
 #[cfg(test)]
 #[path = "token_tests_live_db.rs"]
-mod tests_live_db;
+pub(super) mod tests_live_db;
 
 #[cfg(test)]
 #[path = "token_reuse_tests_live_db.rs"]

@@ -1,8 +1,8 @@
 //! Live-DB checks for `POST /token` and `POST /logout` (CT-25): the code grant
 //! for bound, new, auto-linked, untrusted and staff identities, and the refresh
 //! grant for reuse, a disabled account and logout. Sentinel account ids
-//! `2_000_501..=2_000_515`; cleanup deletes by that range, before and after
-//! each test.
+//! `0x7000_E701..=0x7000_E709`; cleanup deletes exactly the ids in `OWNED`,
+//! before and after each test.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -29,16 +29,26 @@ use crate::routes::ctx::IdentityCtx;
 use crate::routes::router;
 use crate::stores::{pkce_challenge, HandoffOutcome, LinkIntent, Stores};
 
-const FIRST_ID: u32 = 2_000_501;
-const LAST_ID: u32 = 2_000_515;
-const ID_BOUND: u32 = 2_000_501;
-const ID_AUTO: u32 = 2_000_503;
-const ID_UNTRUSTED: u32 = 2_000_504;
-const ID_STAFF: u32 = 2_000_505;
-const ID_REUSE: u32 = 2_000_506;
-const ID_DISABLED: u32 = 2_000_507;
-const ID_LOGOUT: u32 = 2_000_508;
-const ID_ATTACH: u32 = 2_000_509;
+const ID_BOUND: u32 = 0x7000_E701;
+const ID_AUTO: u32 = 0x7000_E703;
+const ID_UNTRUSTED: u32 = 0x7000_E704;
+const ID_STAFF: u32 = 0x7000_E705;
+const ID_REUSE: u32 = 0x7000_E706;
+const ID_DISABLED: u32 = 0x7000_E707;
+const ID_LOGOUT: u32 = 0x7000_E708;
+const ID_ATTACH: u32 = 0x7000_E709;
+
+/// Every sentinel id this file inserts; `clean` deletes exactly these.
+const OWNED: &[u32] = &[
+    ID_BOUND,
+    ID_AUTO,
+    ID_UNTRUSTED,
+    ID_STAFF,
+    ID_REUSE,
+    ID_DISABLED,
+    ID_LOGOUT,
+    ID_ATTACH,
+];
 
 /// The launcher's PKCE verifier and redirect for every code grant here.
 const VERIFIER: &str = "launcher-verifier-0123456789abcdefghijklmnopqrstuvw";
@@ -108,11 +118,11 @@ fn harness(pool: &PgPool) -> Env {
     }
 }
 
-/// Deletes every sentinel account; their identities and events cascade.
-async fn clean(pool: &PgPool) {
-    let _ = sqlx::query("DELETE FROM account WHERE account_id BETWEEN $1 AND $2")
-        .bind(FIRST_ID as i32)
-        .bind(LAST_ID as i32)
+/// Deletes the sentinel accounts in `OWNED`; their identities and events cascade.
+pub(in crate::routes) async fn clean(pool: &PgPool) {
+    let ids: Vec<i32> = OWNED.iter().map(|&id| id as i32).collect();
+    let _ = sqlx::query("DELETE FROM account WHERE account_id = ANY($1)")
+        .bind(ids)
         .execute(pool)
         .await;
 }
