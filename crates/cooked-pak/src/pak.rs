@@ -201,4 +201,36 @@ mod tests {
         assert_eq!(parse_entry_name("_4294967296"), None);
         assert_eq!(entry_name(12), "_12");
     }
+
+    #[test]
+    fn records_are_deflated_and_the_bytes_are_deterministic() {
+        let mut first = Cursor::new(Vec::new());
+        write_pak(&mut first, 3, &sample_entries()).unwrap();
+        let mut second = Cursor::new(Vec::new());
+        write_pak(&mut second, 3, &sample_entries()).unwrap();
+        assert_eq!(first.get_ref(), second.get_ref());
+        let mut archive = ZipArchive::new(Cursor::new(first.into_inner())).unwrap();
+        for index in 0..archive.len() - 1 {
+            let entry = archive.by_index(index).unwrap();
+            assert_eq!(entry.compression(), CompressionMethod::Deflated);
+            assert_eq!(entry.last_modified(), Some(zip::DateTime::default()));
+        }
+    }
+
+    #[test]
+    fn a_short_metadata_entry_reads_version_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("short.pak");
+        let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
+        zip.start_file("_5", SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"five").unwrap();
+        zip.start_file(METADATA_ENTRY, SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(&[7, 0]).unwrap();
+        std::fs::write(&path, zip.finish().unwrap().into_inner()).unwrap();
+        assert_eq!(read_version(&path).unwrap(), None);
+        let pak = read_pak(&path).unwrap();
+        assert_eq!(pak.version, None);
+        assert_eq!(pak.entries, BTreeMap::from([(5, b"five".to_vec())]));
+    }
 }
