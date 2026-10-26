@@ -82,6 +82,17 @@ fn micros(now: DateTime<Utc>) -> String {
     now.to_rfc3339_opts(SecondsFormat::Micros, true)
 }
 
+/// The outcome of [`issue_bound`]. It has no `Debug` impl, for the same reason
+/// as [`Rotation`].
+pub enum Issued {
+    /// A new token and its family id, `(refresh_token, family_id)`.
+    Pair(String, String),
+    /// The account is disabled, so nothing was issued.
+    Disabled,
+    /// The account is gone, or the identity is no longer linked to it.
+    Unbound,
+}
+
 /// Issues a refresh token for `account_id` and returns it with its family id.
 ///
 /// With `family` `None` the token starts a new family, which ends
@@ -90,6 +101,18 @@ fn micros(now: DateTime<Utc>) -> String {
 /// `Some`, starts at `now` as a new family would.
 pub async fn issue(
     pool: &PgPool,
+    account_id: u32,
+    family: Option<&str>,
+    now: DateTime<Utc>,
+) -> Result<(String, String), RepoError> {
+    let mut conn = pool.acquire().await?;
+    issue_on(&mut conn, account_id, family, now).await
+}
+
+/// [`issue`] on the given connection, so it commits with the caller's
+/// transaction.
+pub async fn issue_on(
+    conn: &mut PgConnection,
     account_id: u32,
     family: Option<&str>,
     now: DateTime<Utc>,
@@ -110,9 +133,54 @@ pub async fn issue(
     .bind(account_id as i32)
     .bind(&now_ts)
     .bind(&family_ends)
-    .execute(pool)
+    .execute(conn)
     .await?;
     Ok((token, family_id))
+}
+
+/// Issues a new family for `account_id`, but only while the account is enabled
+/// and `identity_id` is still linked to it (C16.2).
+///
+/// The account row is locked `FOR SHARE` for the whole transaction. An unlink
+/// holds it `FOR UPDATE` across its delete, so an unlink in flight is waited for
+/// and the link check then sees its result. A disabled account or an unlinked
+/// identity issues nothing and returns [`Issued::Disabled`] or
+/// [`Issued::Unbound`].
+pub async fn issue_bound(
+    pool: &PgPool,
+    account_id: u32,
+    identity_id: i64,
+    now: DateTime<Utc>,
+) -> Result<Issued, RepoError> {
+    let account = account_id as i32;
+    let mut tx = pool.begin().await?;
+    let enabled: Option<(bool,)> =
+        sqlx::query_as("SELECT enabled FROM account WHERE account_id = $1 FOR SHARE")
+            .bind(account)
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some((enabled,)) = enabled else {
+        tx.rollback().await?;
+        return Ok(Issued::Unbound);
+    };
+    if !enabled {
+        tx.rollback().await?;
+        return Ok(Issued::Disabled);
+    }
+    let linked: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM account_identity WHERE identity_id = $2 AND account_id = $1)",
+    )
+    .bind(account)
+    .bind(identity_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !linked {
+        tx.rollback().await?;
+        return Ok(Issued::Unbound);
+    }
+    let (token, family_id) = issue_on(&mut tx, account_id, None, now).await?;
+    tx.commit().await?;
+    Ok(Issued::Pair(token, family_id))
 }
 
 /// Presents a refresh token and rotates it in one transaction.
@@ -371,3 +439,7 @@ mod tests;
 #[cfg(test)]
 #[path = "refresh_lock_tests_live_db.rs"]
 mod lock_tests_live_db;
+
+#[cfg(test)]
+#[path = "refresh_bound_tests_live_db.rs"]
+mod bound_tests_live_db;

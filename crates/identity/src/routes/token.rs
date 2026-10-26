@@ -23,7 +23,7 @@ use crate::limits::Bucket;
 use crate::link::{self, LinkFacts, LinkHint, Refusal, Resolution};
 use crate::provider::VerifiedIdentity;
 use crate::repo::event::{self, EventKind};
-use crate::repo::refresh::{self, Rotation};
+use crate::repo::refresh::{self, Issued, Rotation};
 use crate::repo::{account, identity};
 use crate::routes::ctx::{client_ip, note, RouteState};
 use crate::routes::error::ApiError;
@@ -146,13 +146,12 @@ async fn code_grant(
 
     match link::resolve(&facts) {
         Resolution::Existing(account_id) => {
-            if let Some(id) = bound_id {
-                identity::touch(pool, id, Utc::now().timestamp_millis())
-                    .await
-                    .map_err(ApiError::from_repo)?;
-            }
+            let id = bound_id.ok_or(ApiError::InvalidGrant)?;
+            identity::touch(pool, id, Utc::now().timestamp_millis())
+                .await
+                .map_err(ApiError::from_repo)?;
             note("signed_in");
-            signed_in(state, account_id, None, fence, true, now).await
+            signed_in(state, account_id, id, fence, true, now).await
         }
         Resolution::AutoLink(account_id) => {
             let linked = identity::insert(pool, account_id, &identity, trusted)
@@ -168,7 +167,7 @@ async fn code_grant(
             .await
             .map_err(ApiError::from_repo)?;
             note("auto_link");
-            signed_in(state, account_id, None, fence, true, now).await
+            signed_in(state, account_id, linked.identity_id, fence, true, now).await
         }
         Resolution::NeedsLink { hint } => {
             note("needs_link");
@@ -213,21 +212,22 @@ async fn attach(
         None => return Err(ApiError::InvalidGrant),
     }
     let provider = verified.provider.as_str();
-    match identity::find_bound(pool, provider, &verified.issuer, &verified.subject)
+    let found = identity::find_bound(pool, provider, &verified.issuer, &verified.subject)
         .await
-        .map_err(ApiError::from_repo)?
-    {
-        Some((_, bound)) if bound.account_id == account_id => {}
+        .map_err(ApiError::from_repo)?;
+    let identity_id = match found {
+        Some((id, bound)) if bound.account_id == account_id => id,
         Some(_) => return Err(ApiError::InvalidGrant),
         None => {
             let trusted = state.trusts_email(&verified) && verified.email_verified;
             identity::insert(pool, account_id, &verified, trusted)
                 .await
-                .map_err(ApiError::from_repo)?;
+                .map_err(ApiError::from_repo)?
+                .identity_id
         }
-    }
+    };
     note("signed_in");
-    signed_in(state, account_id, None, fence, true, now).await
+    signed_in(state, account_id, identity_id, fence, true, now).await
 }
 
 /// The `refresh_token` grant: rotates the presented token (C6).
@@ -303,22 +303,27 @@ async fn refresh_grant(
     }
 }
 
-/// Ends a sign-in for `account_id`: a new refresh family (`family` `None`,
-/// for code grants and links) or the same family (a rotation), then the
-/// access token and the `signed_in` body (C6). CT-26 and CT-30 reuse it.
-/// `fence` is the access-token fence the request captured on arrival.
+/// Ends a sign-in for `account_id` through `identity_id`: a new refresh family,
+/// issued only while the account is enabled and the identity linked (C16.2),
+/// then the access token and the `signed_in` body (C6). CT-26 and CT-30 reuse
+/// it. `fence` is the access-token fence the request captured on arrival.
 pub(super) async fn signed_in(
     state: &RouteState,
     account_id: u32,
-    family: Option<&str>,
+    identity_id: i64,
     fence: u64,
     via_code: bool,
     now: Instant,
 ) -> Result<Response, ApiError> {
     let pool = state.deps.db.as_deref().ok_or(ApiError::Unavailable)?;
-    let pair = refresh::issue(pool, account_id, family, Utc::now())
+    let pair = match refresh::issue_bound(pool, account_id, identity_id, Utc::now())
         .await
-        .map_err(ApiError::from_repo)?;
+        .map_err(ApiError::from_repo)?
+    {
+        Issued::Pair(token, family_id) => (token, family_id),
+        Issued::Disabled => return Err(ApiError::AccountDisabled),
+        Issued::Unbound => return Err(ApiError::InvalidGrant),
+    };
     session(state, pool, account_id, pair, via_code, fence, now).await
 }
 
