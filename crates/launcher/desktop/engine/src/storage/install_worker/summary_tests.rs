@@ -288,6 +288,42 @@ fn a_result_that_cannot_be_recorded_is_one_unknown_row() {
 }
 
 #[tokio::test]
+async fn copy_and_check_count_as_download_and_expansion_as_extraction() {
+    let release = verified(&archive(true));
+    let (_root, state, _clock, id) = admitted(&release, "state", "install");
+    state
+        .lock()
+        .unwrap()
+        .operations_mut()
+        .unwrap()
+        .observe(id, OperationState::Running)
+        .unwrap();
+    let (sink, observed) = ProgressSink::latest();
+    let watcher = tokio::spawn(watch_phases(Arc::downgrade(&state), id, observed));
+    let phase = || open_phase(&state.lock().unwrap());
+    use crate::install_progress::ProgressReporter;
+    sink.report(install::Progress::Copying {
+        copied: 1,
+        total: 2,
+    });
+    eventually("copy", || phase() == Some(TimedPhase::Download)).await;
+    sink.report(install::Progress::Expanding {
+        label: "seed".into(),
+        current: 1,
+        total: 2,
+        filename: "a".into(),
+    });
+    eventually("expansion", || phase() == Some(TimedPhase::Extraction)).await;
+    sink.report(install::Progress::Checking { read: 1, total: 2 });
+    eventually("check", || phase() == Some(TimedPhase::Download)).await;
+    drop(sink);
+    tokio::time::timeout(Duration::from_secs(5), watcher)
+        .await
+        .expect("watcher ends with the worker")
+        .unwrap();
+}
+
+#[tokio::test]
 async fn the_watcher_enters_a_phase_at_every_change_of_progress_kind_and_ends_with_the_worker() {
     let release = verified(&archive(true));
     let (_root, state, clock, id) = admitted(&release, "state", "install");

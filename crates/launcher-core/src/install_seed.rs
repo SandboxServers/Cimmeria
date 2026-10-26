@@ -30,6 +30,28 @@ pub trait SeedExtractor: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = Result<(), InstallError>> + Send + 'a>>;
 }
 
+/// How the staged archive is checked before it is unpacked (OD-3). A
+/// download, a cached seed and a patch are hashed here. A local copy was
+/// hashed while it was written, so it is not read a second time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ArchiveCheck<'a> {
+    /// Hash the staged file before unpacking: downloads, the seed cache, patches.
+    Sha256(&'a str),
+    /// `VerifiedLocalSeed::copy_into` hashed the bytes it wrote, fsynced the
+    /// copy and renamed it into place only on a match: no second full read.
+    HashedWhileCopied,
+}
+
+impl ArchiveCheck<'_> {
+    /// The closed code the `seed_unpack_started` log line carries.
+    pub(super) fn code(self) -> &'static str {
+        match self {
+            Self::Sha256(_) => "sha256",
+            Self::HashedWhileCopied => "hashed_while_copied",
+        }
+    }
+}
+
 pub(super) async fn apply(
     ctx: &InstallContext<'_>,
     seed: &SeedEntry,
@@ -45,17 +67,18 @@ pub(super) async fn apply(
     // The player's own verified archive, when they chose one for this seed,
     // replaces the cache check and the download. Another seed's archive is
     // ignored.
-    match ctx.seed_source.current_for(&seed.sha256) {
+    let check = match ctx.seed_source.current_for(&seed.sha256) {
         Some(local) => copy_local(ctx, &local, &archive).await?,
         None => fetch_seed(ctx, &url, seed, &archive).await?,
-    }
+    };
     info!("Unpacking seed into {}", ctx.install_dir.display());
     let Some(backend) = backend else {
+        info!(target: "launcher.install", event = "seed_unpack_started", check = check.code(), bytes = seed.size, "unpacking the seed archive");
         return verify_and_unpack(
             ctx,
             &archive,
             ctx.install_dir,
-            &seed.sha256,
+            check,
             "seed",
             InstallOptions::STRICT,
             None,
@@ -97,18 +120,19 @@ pub(super) async fn apply(
 /// Leaves the seed in `archive`: the complete cache when there is one, else a
 /// download. If the player switches to a local archive mid-download, the
 /// partial file is removed and the local copy is used instead.
-async fn fetch_seed(
+async fn fetch_seed<'s>(
     ctx: &InstallContext<'_>,
     url: &str,
-    seed: &SeedEntry,
+    seed: &'s SeedEntry,
     archive: &Path,
-) -> Result<(), InstallError> {
+) -> Result<ArchiveCheck<'s>, InstallError> {
     // A complete, authenticated cache can survive an interrupted attempt.
     // Reuse it even when the archive host is unavailable; extraction rechecks it.
     let cached = archive.to_path_buf();
     let expected = seed.sha256.clone();
     let size = seed.size;
     let cancel = ctx.cancel.clone();
+    let progress = ctx.progress.clone();
     let complete = tokio::task::spawn_blocking(move || -> Result<bool, InstallError> {
         if cancel.is_cancelled() {
             return Err(InstallError::Cancelled);
@@ -124,7 +148,7 @@ async fn fetch_seed(
         if meta.len() != size {
             return Ok(false);
         }
-        match verify_sha256(&cached, &expected, "seed") {
+        match verify_sha256_reporting(&cached, &expected, "seed", Some(&progress)) {
             Ok(()) => Ok(true),
             Err(InstallError::HashMismatch { .. }) => {
                 if cancel.is_cancelled() {
@@ -144,7 +168,7 @@ async fn fetch_seed(
         return Err(InstallError::Cancelled);
     }
     if complete {
-        return Ok(());
+        return Ok(ArchiveCheck::Sha256(&seed.sha256));
     }
     loop {
         let switch = ctx.seed_source.switched();
@@ -168,7 +192,7 @@ async fn fetch_seed(
                     None => continue,
                 }
             }
-            other => return other,
+            other => return other.map(|()| ArchiveCheck::Sha256(&seed.sha256)),
         }
     }
 }
@@ -180,7 +204,7 @@ async fn copy_local(
     ctx: &InstallContext<'_>,
     local: &VerifiedLocalSeed,
     archive: &Path,
-) -> Result<(), InstallError> {
+) -> Result<ArchiveCheck<'static>, InstallError> {
     let local = local.clone();
     let dest = archive.to_path_buf();
     let cancel = ctx.cancel.clone();
@@ -188,7 +212,9 @@ async fn copy_local(
     let copied = tokio::task::spawn_blocking(move || local.copy_into(&dest, &cancel, &progress))
         .await
         .map_err(|_| InstallError::Io(std::io::Error::other("local seed copy task failed")))?;
-    copied.map_err(|error| {
+    copied
+        .map(|()| ArchiveCheck::HashedWhileCopied)
+        .map_err(|error| {
         if !matches!(error, LocalSeedError::Cancelled) {
             // The player moved, changed or deleted the file after choosing it.
             warn!(target: "launcher.install", event = "seed_copy_failed", reason = error.code(), "the chosen seed archive could not be copied; the next attempt downloads it");

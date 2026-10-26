@@ -257,10 +257,21 @@ async fn watch_phases(
 ) {
     let mut entered = None;
     let mut phases = events::PhaseLog::new(id);
+    let mut tally = events::PhaseTally::new(id);
     while progress.changed().await.is_ok() {
         let phase = match &*progress.borrow_and_update() {
-            Some(install::Progress::Downloading { .. }) => TimedPhase::Download,
-            Some(install::Progress::Extracting { .. }) => TimedPhase::Extraction,
+            Some(value) => {
+                // The C-7 phase is logged beside the timed one, which merges copy, check and download.
+                tally.observe(value);
+                match value {
+                    install::Progress::Downloading { .. }
+                    | install::Progress::Copying { .. }
+                    | install::Progress::Checking { .. } => TimedPhase::Download,
+                    install::Progress::Extracting { .. } | install::Progress::Expanding { .. } => {
+                        TimedPhase::Extraction
+                    }
+                }
+            }
             None => continue,
         };
         // Only a change of kind is a phase change; a patch reopens `download`.
@@ -269,12 +280,13 @@ async fn watch_phases(
         }
         phases.enter(phase);
         let Some(state) = state.upgrade() else {
-            return;
+            break;
         };
         if let Ok(mut owner) = state.lock() {
             owner.summary_phase(id, phase);
         };
     }
+    tally.finish();
 }
 
 fn publish(state: &Mutex<DesktopState>, id: Uuid, outcome: Outcome) -> Outcome {

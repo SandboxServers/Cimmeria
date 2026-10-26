@@ -727,6 +727,15 @@ carries a path, URL or host: the only free text is a sample of at most 10 index 
 | `update_incremental_failed` | `launcher.game_update` | warn | `reason`: `fetch_failed`, `hash_mismatch`, `write_set_unreadable`, `seed_stage_failed` or `rename_failed` |
 | `launch_started` (gained fields) | `launcher.launch` | info | `adoption_check` (`light`, `full` or `none`), `patches_incomplete` |
 | `launch_tags_unavailable` | `launcher.launch` | warn | none beyond `event`; the launch goes on tagged `none`, 0 |
+| `install_phase_finished` | `launcher.install` | info | `operation`, `phase` (`download`, `copy`, `check`, `extraction` or `expansion`), `bytes`, `files`, `elapsed_ms` |
+| `seed_unpack_started` | `launcher.install` | info | `check` (`sha256` or `hashed_while_copied`), `bytes` |
+| `seed_archive_picked` | `launcher.install` | info | `bytes` (the player's archive size) |
+| `log_upload_post` | `launcher.telemetry` | info | `scheme`, `host` (`-` when unknown), `status`; never the URL |
+| `proton_physx` | `launcher.proton` | info or warn | `result` (closed), `reason` (closed); never a path. **Local log only**: `launcher.proton` is not in `launcher_targets.txt`, so SigNoz never receives it |
+| `proton_directx` | `launcher.proton` | info | `dll` (`d3dx9_40.dll` or `xinput1_3.dll`), `state` (`present` or `installed`). Local log only |
+| `proton_directx_failed` | `launcher.proton` | warn | no DLL name yet (FU-17). Local log only |
+| `proton_refused` | `launcher.proton` | warn | `reason` (`unknown_proton` or a save failure), when the Settings picker refuses a choice. Local log only |
+| `display_settings` (Linux) | `launcher.launch` | info or warn | `saved_options="seeded"` on a first Play, with a benign `display_settings_not_applied` WARN until the game writes `SGWEngine.ini` (F-U5) |
 
 - `changed_sample` and `missing_sample` hold at most 10 paths, comma-joined, at most
   600 characters, taken only from index entries the release names (`changed`,
@@ -955,7 +964,7 @@ While it is on, Play mints a player session on the installation's first
 login server before the game starts, writes `current-session.json` beside
 the game and injects the telemetry DLL after the client patches (owner
 decision 2026-09-29; the same opt-in covers the camera read at an interact or item use, owner 2026-10-18, [details](../architecture/client-camera-telemetry.md)). Its sessions carry the tags `desktop-launcher`, the
-host OS and `wine` or `native`. The launcher also tails the game's logs,
+host OS and `wine`, `proton` or `native`. The launcher also tails the game's logs,
 uploads them in chunks, refreshes its own token, and at game exit sends a
 `game_exited` event and the end-of-session bundle. Release launchers carry
 the player build of the DLL, never `lab-bridge`, so no player's machine
@@ -964,7 +973,7 @@ unwritable session file, the DLL is left out and the game starts without
 it; play is never blocked, and Settings shows why. An adopted install
 plays without the DLL for now. The capture switches stay off unless a
 developer sets `CIMMERIA_CLIENT_CAPTURE` in the launcher's own environment.
-Contract: [launch.md § Opt-in game telemetry](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry);
+Contract: [launch-telemetry.md § Opt-in game telemetry](../../crates/launcher/desktop/docs/launch-telemetry.md#opt-in-game-telemetry);
 background: [client-telemetry.md](../architecture/client-telemetry.md#who-gets-the-dll).
 
 The retired egui launcher kept the choice as `telemetry.opted_in` in its

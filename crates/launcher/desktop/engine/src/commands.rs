@@ -62,7 +62,7 @@ pub struct NativeSnapshot {
     /// The `index` in `displays` the current display setup remembers
     /// (`display_options::placement_for`); `null` means the main display.
     pub display_monitor: Option<u32>,
-    /// The frame caps this platform offers (`display_options::frame_caps`); empty off macOS.
+    /// The frame caps this platform offers (`display_options::frame_caps`): three on macOS, 30 and 60 on Linux, none on Windows.
     pub frame_caps: Vec<FrameCap>,
 }
 
@@ -84,6 +84,7 @@ fn preferences_with_display<S: serde::Serializer>(
         client_patches_enabled,
         display,
         display_placements: _,
+        proton_preference: _,
     } = preferences;
     #[derive(Serialize)]
     struct Mirror<'a> {

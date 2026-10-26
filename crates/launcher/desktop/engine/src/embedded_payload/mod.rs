@@ -15,6 +15,12 @@ pub const NAMES: [&str; 3] = [
     "cimmeria_client_patches.dll",
     "cimmeria_client_telemetry.dll",
 ];
+/// The prerequisite worker Linux Play runs under Proton; only Linux builds embed it.
+pub const LINUX_WORKER: &str = "cimmeria-prerequisite-worker.exe";
+/// Whether `name` is a file this payload may hold on this platform.
+pub fn is_payload_name(name: &str) -> bool {
+    NAMES.contains(&name) || (cfg!(target_os = "linux") && name == LINUX_WORKER)
+}
 /// Bytes and identity generated from the trusted staging inputs at build time.
 pub struct Entry {
     pub name: &'static str,
@@ -49,7 +55,7 @@ fn identity(entries: &[Entry]) -> io::Result<String> {
     let mut digest = Sha256::new();
     let mut seen = std::collections::BTreeSet::new();
     for entry in entries {
-        if !NAMES.contains(&entry.name)
+        if !is_payload_name(entry.name)
             || !seen.insert(entry.name)
             || entry.bytes.len() > 128 * 1024 * 1024
             || hex(Sha256::digest(entry.bytes)) != entry.sha256

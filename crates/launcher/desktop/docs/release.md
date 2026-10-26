@@ -59,9 +59,9 @@ read the Play pieces, which are kept seven days.
 
 A failed Linux build works the same way: `publish-linux` runs whenever `publish`
 succeeded, attaches what was built, and fails if `desktop-linux` did not
-succeed. The Linux build reads no Windows pieces, so a rerun only has to come
-within GitHub's 30-day re-run window, which is also how long the AppImage
-artifact is kept.
+succeed. The Linux build also reads the one-day `mac-pieces` artifact the macOS app
+reads (see above), so rerun the Linux build within a day. The AppImage
+artifact itself is kept 30 days, GitHub's re-run window.
 
 **"Re-run all jobs"** is the other way, and the one to use when a job that
 succeeded must run again. The stamp step recognises the run and keeps its tag
@@ -96,7 +96,7 @@ them. `sign` and `publish` do wait for the arm64 build (below).
 | `sign` | Every release. In the `launcher-release` environment: downloads the two zip artifacts only and checks each against its build job's digest output, builds the `release_feed` tool with cargo (no node, no cache action) in a step with no secret, then signs both zips in one `release_feed sign` call, writes the one `latest.json`, checks the feed as an x64 and an arm64 launcher would, and uploads the two `.zip.sig` files and `latest.json` as the `launcher-feed-<tag>` artifact | `contents: read`; the Minisign key and password, on the sign step only; the public-key variable. Its actions are GitHub's own and this repository's toolchain action (SHA-pinned inside) |
 | `publish` | Unless the run was cancelled, when `sign` succeeded: checks both zips' digests again, creates or updates the dated release with both Windows sets, then refreshes `launcher-current` with both sets and `latest.json` last | `contents: write` (the `GITHUB_TOKEN`); the artifacts. No secret |
 | `publish-macos` | Unless the run was cancelled, when `publish` succeeded: checks the macOS zip against `desktop-macos`' digest output, attaches it to the dated release and rewrites its notes, replaces the macOS zip on `launcher-current` when `publish` refreshed it, and fails if the macOS build did not succeed | `contents: write`; the artifacts. No secret, no third-party action, no build |
-| `desktop-linux` | The reusable [`launcher-desktop-linux.yml`](../../../../.github/workflows/launcher-desktop-linux.yml), which the PR dry run also calls. On `ubuntu-22.04`, from the same commit, with `desktop-windows`' tag, version and epoch: installs the WebKitGTK build packages, builds the AppImage, checks it, and uploads it and its `.sha256` as an artifact. Its output carries the AppImage's SHA-256 | `contents: read`; `LAUNCHER_MANIFEST_PUBKEY_HEX` on the build step only. No updater key of either kind |
+| `desktop-linux` | The reusable [`launcher-desktop-linux.yml`](../../../../.github/workflows/launcher-desktop-linux.yml), which the PR dry run also calls. On `ubuntu-22.04`, from the same commit, with `desktop-windows`' tag, version and epoch and the `mac-pieces` artifact: installs the WebKitGTK build packages, checks the pieces against `mac-pieces`' digest output and stages four of them, builds the AppImage with them embedded, checks it, and uploads it and its `.sha256` as an artifact. Its output carries the AppImage's SHA-256 | `contents: read`; `LAUNCHER_MANIFEST_PUBKEY_HEX` on the build step only. No updater key of either kind |
 | `publish-linux` | After `publish-macos` finished, unless the run was cancelled, when `publish` succeeded: checks the AppImage against `desktop-linux`' digest output, attaches it to the dated release and rewrites its notes, replaces the AppImage on `launcher-current` unless a newer release is current, and fails if the Linux build did not succeed | `contents: write`; the artifacts. No secret, no third-party action, no build |
 
 The arm64 build is on the release's critical path (D-WA5): `sign` and `publish` need
@@ -279,10 +279,15 @@ follow-up packet).
 ## What the Linux job builds
 
 [`tools/launcher-release/build-desktop-linux.sh`](../../../../tools/launcher-release/build-desktop-linux.sh)
-builds an x86-64 AppImage in stages (`app`, `verify`, `package`), run by the
+builds an x86-64 AppImage in stages (`pieces`, `app`, `verify`, `package`), run by the
 reusable `launcher-desktop-linux.yml`; `launcher-desktop.yml` calls the same
 workflow on every desktop-launcher PR as `desktop release build dry run (Linux)`,
 with a fixed dry-run tag and version and the development manifest key.
+A manual `workflow_dispatch` of `launcher-desktop.yml` on any branch also runs
+`desktop release build dry run (Linux, release manifest key)`: the same build
+with the release manifest public key, uploaded as the
+`desktop-launcher-linux-real-key-dry-run` artifact and never published, for a
+device UAT against the live release.
 
 - **`tools`** (run by `app`) puts the three files the Tauri bundler would
   download into its cache, each checked against a SHA-256 pinned in the script:
@@ -290,6 +295,12 @@ with a fixed dry-run tag and version and the development manifest key.
   runtime every AppImage starts with. The bundler uses a cached file instead of
   downloading it. The plugin comes from upstream's moving `continuous` tag, so
   when upstream moves it, the build fails until the pin is updated on purpose.
+- **`pieces <dir> <sha256>`** (run before `app` with the `mac-pieces` artifact
+  and its digest from the Windows job) checks `mac-pieces.sha256` against that
+  digest, then stages the four Windows pieces the macOS app carries (the launch
+  and prerequisite workers and the two game DLLs) through `stage-helper.py`,
+  which refuses a wrong digest, architecture or role, and a lab-bridge telemetry
+  DLL. The PR dry run takes the same artifact from its Windows dry-run jobs, so it stages and embeds all four.
 - **`app`** builds the UI and runs `cargo tauri build --bundles appimage`
   (release profile), with the release's version, tag and manifest key. The
   AppImage carries WebKitGTK and GTK from the build host. Ubuntu 22.04 keeps its
@@ -300,18 +311,22 @@ with a fixed dry-run tag and version and the development manifest key.
   seed (PP-U-FIX). `.cargo/config.toml` still names mold for local builds, which
   work with mold 2.x.
 - **`verify`** checks that it is an x86-64 ELF that extracts, that the extracted
-  launcher is x86-64 and embeds the release tag and version, that it carries no
-  Windows executable or DLL, and that `--self-test-rar` exits 0. That hidden
-  flag unpacks a small RAR 4 archive, built in code, through the bundled UnRAR
-  and checks the one file it holds. A build whose UnRAR cannot read a RAR fails
-  here, before packaging.
+  launcher is x86-64 and embeds the release tag and version, and that it
+  carries no Windows executable or DLL. With the four pieces staged, it also
+  embeds each pinned piece and runs `--verify-embedded-payload` on them. It also
+  runs `--self-test-rar`, which must exit 0: that hidden flag unpacks a small
+  RAR 4 archive, built in code, through the bundled UnRAR and checks the one
+  file it holds. A build whose UnRAR cannot read a RAR fails here, before
+  packaging.
 - **`package`** writes `artifacts/StargateWorlds-Launcher-linux-x86_64.AppImage`
   and its `.sha256`.
 
-The Linux launcher installs the game in-process ([README](../README.md#linux)).
-It has no Play, Repair, Update or prerequisite backend yet, so it carries none
-of the Windows pieces. A download from GitHub loses the executable bit: the
-player sets it once (the release notes say how).
+The Linux launcher installs the game in-process ([README](../README.md#linux)) and plays it through a Proton the player already has ([Linux (Proton)](launch-linux.md#linux-proton)).
+It embeds the four Windows pieces the macOS app carries, pinned by SHA-256, so
+they exist only inside the launcher binary and never beside it in the AppImage.
+A developer build with no pieces staged carries no payload; a tagged build without them fails. A download
+from GitHub loses the executable bit: the player sets it once (the release
+notes say how).
 
 ### Linux updates are manual
 
@@ -437,5 +452,6 @@ key strands every launcher built with the old one in the same way, so keep it.
   telemetry events.
 - **macOS self-update.** Manual, above.
 - **An Intel Mac build.** The macOS zip is arm64 only.
-- **Linux self-update, Play and an Arm build.** Linux updates are manual (above);
-  Play has no Wine or Proton backend; the AppImage is x86-64 only.
+- **Linux self-update and an Arm build.** Linux updates are manual (above);
+  Play runs the embedded Windows pieces through a Proton the player already has
+  ([Linux (Proton)](launch-linux.md#linux-proton)); the AppImage is x86-64 only.

@@ -332,3 +332,91 @@ async fn switching_a_running_download_to_a_local_seed_completes_the_install() {
     assert_eq!(std::fs::read(&player).unwrap(), bytes);
     assert_installed_pe(&install_dir.join("SGW.exe"), &exe);
 }
+
+/// The install-time copy reports `Copying`, not the pick-time check's event (C-7).
+#[test]
+fn copy_into_reports_only_copying_and_ends_complete() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("player.rar");
+    let bytes = vec![3u8; 3 * 1024 * 1024];
+    std::fs::write(&path, &bytes).unwrap();
+    let (check_sink, _checks) = recording_sink();
+    let verified = verify_local_seed(
+        &path,
+        &seed_for(&bytes),
+        &CancellationToken::new(),
+        &check_sink,
+    )
+    .unwrap();
+    let (sink, recorder) = recording_sink();
+    let dest = dir.path().join(".tmp-seed-test.download");
+    verified
+        .copy_into(&dest, &CancellationToken::new(), &sink)
+        .unwrap();
+    let events = recorder.events.lock().unwrap();
+    let size = bytes.len() as u64;
+    assert!(!events.is_empty());
+    assert!(
+        events.iter().all(|e| matches!(e, Progress::Copying { .. })),
+        "{events:?}"
+    );
+    assert!(
+        matches!(events.last(), Some(Progress::Copying { copied, total }) if *copied == size && *total == size),
+        "{events:?}"
+    );
+}
+
+/// An install with a verified local archive and a server that fails every
+/// seed request: the archive is used and the player's file stays in place.
+/// The copy is hashed once, so the install reports no `Checking` of the staged file.
+#[tokio::test]
+async fn a_local_seed_install_reads_the_copy_once() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(url_path("/seed/x.rar"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let root = tempfile::tempdir().unwrap();
+    let player = root.path().join("player.rar");
+    let exe = minimal_pe();
+    write_stored_rar4(&player, &[("SGW.exe", exe.as_slice())]);
+    let bytes = std::fs::read(&player).unwrap();
+    let manifest = manifest_for(seed_for(&bytes));
+    let (sink, _recorder) = recording_sink();
+    let verified = verify_local_seed(&player, &manifest.seed, &CancellationToken::new(), &sink)
+        .expect("the fixture matches its own seed");
+    let install_dir = root.path().join("game");
+    let http = reqwest::Client::new();
+    let servers = crate::client_setup::login_servers::default_servers();
+    let seed_source = SeedSourceHandle::local(verified);
+    let (progress, recorder) = recording_sink();
+    let (result, _report) = install_all(InstallContext {
+        manifest_url: &format!("{}/manifest.json", server.uri()),
+        install_dir: &install_dir,
+        manifest: &manifest,
+        login_servers: &servers,
+        cancel: CancellationToken::new(),
+        progress,
+        http: &http,
+        seed_source: &seed_source,
+    })
+    .await;
+    result.expect("the local archive installs");
+    assert!(server.received_requests().await.unwrap().is_empty());
+    assert_eq!(std::fs::read(&player).unwrap(), bytes);
+    assert_installed_pe(&install_dir.join("SGW.exe"), &exe);
+    let events = recorder.events.lock().unwrap();
+    assert!(
+        events.iter().any(|e| matches!(e, Progress::Copying { .. })),
+        "{events:?}"
+    );
+    // Read 3 is gone (OD-3): the only `Checking` allowed is the RAR index pass.
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, Progress::Checking { total, .. } if *total > 0)),
+        "the staged copy was hashed again: {events:?}"
+    );
+}

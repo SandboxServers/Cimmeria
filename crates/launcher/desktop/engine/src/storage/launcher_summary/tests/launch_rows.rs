@@ -30,6 +30,7 @@ fn admitted() -> (tempfile::TempDir, DesktopState, Clock, Plan) {
         installation,
         runtime: None,
         resources: Resources {
+            proton: None,
             helper: Artifact::open(helper, &hash).unwrap(),
             client_patches: None,
             client_telemetry: None,

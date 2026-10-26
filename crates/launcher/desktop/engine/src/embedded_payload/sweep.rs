@@ -49,7 +49,7 @@ fn remove(root: &Path) -> io::Result<()> {
     let mut files = Vec::new();
     for entry in fs::read_dir(&windows)? {
         let entry = entry?;
-        if !NAMES.iter().any(|name| entry.file_name() == *name) {
+        if !entry.file_name().to_str().is_some_and(is_payload_name) {
             return Err(invalid());
         }
         paths::plain_file(&entry.path())?;

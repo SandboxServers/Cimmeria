@@ -5,7 +5,7 @@ metadata:
   type: reference
 ---
 
-Learned 2026-10-04 while adding opt-in game telemetry to `crates/launcher/desktop/` (PR #1241). Contract: `crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry`.
+Learned 2026-10-04 while adding opt-in game telemetry to `crates/launcher/desktop/` (PR #1241). Contract: `crates/launcher/desktop/docs/launch-telemetry.md#opt-in-game-telemetry`.
 
 - **The launch helper already takes two DLLs** (`Request.dlls`, max 2), so adding the telemetry DLL after the patch DLL needed no Windows helper rebuild.
 - **The player DLL is built by the `launcher runtime probe` workflow** (no `lab-bridge` feature), which logs its SHA-256. `cimmeria-client-patches`, `client-telemetry`, `client-hookgate`, `patch-wire`, `client-launch` and `start32` were unchanged between `d73eea0e` and the PR, so the older staged patch DLL and the new telemetry DLL are from identical sources.

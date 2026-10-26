@@ -24,6 +24,7 @@ fn reopened(legacy: &Legacy) -> NativeHost {
     };
     let mut host = NativeHost::new(legacy.state_root());
     host.launch_resources = Some(launch::Resources {
+        proton: None,
         helper: artifact("launch-worker.exe"),
         client_patches: None,
         client_telemetry: None,

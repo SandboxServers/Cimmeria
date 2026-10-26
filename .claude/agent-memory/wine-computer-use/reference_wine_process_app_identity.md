@@ -43,6 +43,6 @@ clone and throwaway prefix. Nothing here was observed with the game.
   been observed.
 
 Implementation and remaining gates:
-`crates/launcher/desktop/docs/launch.md` ("Optional Mac application identity for
+`crates/launcher/desktop/docs/launch-mac.md` ("Optional Mac application identity for
 the game window") and
 `docs/analysis/playtests/2026-10-03-macos-wine/worknotes/wine-computer-use.md`.

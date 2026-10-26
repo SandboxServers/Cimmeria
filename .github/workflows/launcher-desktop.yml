@@ -54,6 +54,9 @@ on:
       - '.github/actions/rust-toolchain/**'
       - 'rust-toolchain.toml'
       - 'tools/build-lane/**'
+  # A manual run on any branch adds release-dry-run-linux-real-key below: the
+  # Linux AppImage with the release manifest public key, as an artifact only.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -291,7 +294,7 @@ jobs:
 
   # launcher-release.yml's mac-pieces job: the Play pieces checked against the
   # Windows dry run's digest, the archive and prerequisite workers built, and
-  # all five handed to the macOS dry run with their list's digest. It also
+  # all five handed to the macOS and Linux dry runs with their list's digest. It also
   # stamps the macOS dry run as a same-day release of this commit.
   release-dry-run-mac-pieces:
     name: desktop release build dry run (Windows pieces for macOS)
@@ -385,6 +388,7 @@ jobs:
   # version; no manifest secret (the development key), nothing published.
   release-dry-run-linux:
     name: desktop release build dry run (Linux)
+    needs: release-dry-run-mac-pieces
     permissions:
       contents: read
     uses: ./.github/workflows/launcher-desktop-linux.yml
@@ -395,8 +399,36 @@ jobs:
       version: 1970.1.101
       epoch: '0'
       dev_manifest_key: true
+      pieces_artifact: desktop-mac-pieces-dry-run
+      pieces_sha256: ${{ needs.release-dry-run-mac-pieces.outputs.mac_pieces_sha256 }}
       cache_key: launcher-release-desktop-linux-dry-run
       save_cache: ${{ github.ref == 'refs/heads/main' }}
+
+  # The same Linux dry run with the release manifest public key compiled in,
+  # on a manual dispatch only (never on a PR or a push), so a branch build can
+  # verify the live release in a device UAT. The key is public; it is a
+  # repository secret only so the release jobs read it from one place. Same
+  # dry-run identity, its own artifact name; nothing is published.
+  release-dry-run-linux-real-key:
+    name: desktop release build dry run (Linux, release manifest key)
+    needs: release-dry-run-mac-pieces
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/launcher-desktop-linux.yml
+    with:
+      artifact_name: desktop-launcher-linux-real-key-dry-run
+      retention_days: 7
+      tag: launcher-19700101-0000000
+      version: 1970.1.101
+      epoch: '0'
+      dev_manifest_key: false
+      pieces_artifact: desktop-mac-pieces-dry-run
+      pieces_sha256: ${{ needs.release-dry-run-mac-pieces.outputs.mac_pieces_sha256 }}
+      cache_key: launcher-release-desktop-linux-dry-run
+      save_cache: false
+    secrets:
+      LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
 
   # The release's shell scripts, which the jobs above do not all run:
   # shellcheck on every one, then stamp.sh and publish.sh against a stub `gh`

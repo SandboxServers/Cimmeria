@@ -24,6 +24,7 @@ mod entry_inventory;
 #[cfg(windows)]
 mod fdi;
 mod prerequisites;
+mod progress;
 mod rar;
 mod zip;
 
@@ -35,8 +36,7 @@ use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
-use crate::install::Progress;
-use crate::install_progress::{ProgressReporter, ProgressSink};
+use crate::install_progress::ProgressSink;
 
 /// Name of the staging directory a RAR is extracted into, under the
 /// destination. Removed when unpacking finishes, and cleared before a retry.
@@ -93,15 +93,6 @@ impl UnpackSink {
         } else {
             Ok(())
         }
-    }
-
-    fn report(&self, step: &str, current: usize, total: usize, path: &Path) {
-        self.progress.report(Progress::Extracting {
-            label: format!("{} ({step})", self.label),
-            current,
-            total,
-            filename: path.display().to_string(),
-        });
     }
 }
 
@@ -211,6 +202,17 @@ fn move_tree(root: &Path, dir: &Path, dest: &Path) -> Result<(), UnpackError> {
 // `test-fixtures` feature.
 #[cfg(any(test, feature = "test-fixtures"))]
 pub mod test_fixtures;
+
+/// One named member of one single-cabinet file, MSZIP, stored or LZX. Never
+/// used by the install path, which stays MSZIP/stored-only (D-PP21).
+#[cfg(any(not(windows), test))]
+pub fn extract_cab_member(
+    cab: &Path,
+    member: &str,
+    max_bytes: u64,
+) -> Result<Vec<u8>, UnpackError> {
+    cab_portable::single::extract_member(cab, member, max_bytes)
+}
 
 #[cfg(test)]
 mod tests {

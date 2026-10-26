@@ -22,5 +22,5 @@ rechecks the compiled digest. Missing or changed bytes leave Play unavailable.
 The first development Play UAT uses stock Rosetta without the optional x87
 accelerator. This resource and notice do not establish licensing clearance for
 the entire assembled distribution, graphics success, signing or clean-machine
-startup. See [launch](../../../docs/launch.md) and
+startup. See [launch](../../../docs/launch-mac.md) and
 [runtime provenance](../../../../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md).

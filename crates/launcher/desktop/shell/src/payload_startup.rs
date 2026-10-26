@@ -1,8 +1,10 @@
-//! Resolve embedded Windows resources, with an explicit headless packaging probe.
+//! Resolve embedded Windows and Linux resources, with an explicit headless packaging probe.
 use cimmeria_launcher_engine::embedded_payload::{prepare, Lease};
 use std::{io, path::PathBuf};
 use tauri::Manager;
 include!(concat!(env!("OUT_DIR"), "/embedded_payload.rs"));
+/// Entries a complete build embeds: three on Windows, plus the prerequisite worker on Linux.
+const COMPLETE: usize = if cfg!(target_os = "linux") { 4 } else { 3 };
 
 pub fn resources(
     app: &tauri::App,
@@ -28,7 +30,7 @@ pub fn headless_probe() {
         let path = args
             .next()
             .ok_or_else(|| io::Error::other("payload cache path required"))?;
-        if args.next().is_some() || ENTRIES.len() != 3 {
+        if args.next().is_some() || ENTRIES.len() != COMPLETE {
             return Err(io::Error::other(
                 "probe requires a complete embedded payload and one cache path",
             ));
@@ -53,6 +55,7 @@ pub fn headless_probe() {
         }
     }
 }
+#[cfg(windows)]
 fn show_failure() {
     use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
     let text: Vec<u16> = "Cimmeria Launcher could not prepare its bundled files. Close other launcher instances and try again. If this continues, share the launcher debug logs with support.".encode_utf16().chain(Some(0)).collect();
@@ -67,3 +70,6 @@ fn show_failure() {
         );
     }
 }
+/// Linux has no native dialog here; `prepare` already logged the refusal.
+#[cfg(not(windows))]
+fn show_failure() {}

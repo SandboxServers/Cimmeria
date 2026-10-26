@@ -14,6 +14,7 @@ pub(super) fn artifact(root: &Path, name: &str) -> Artifact {
 pub(super) fn fixture() -> (tempfile::TempDir, DesktopState, Plan) {
     let (root, mut state, installation) = runtime_setup::tests::fixture_with_runtime([7; 32]);
     let resources = Resources {
+        proton: None,
         helper: artifact(&root.path().canonicalize().unwrap(), "helper.exe"),
         client_patches: None,
         client_telemetry: None,
@@ -170,6 +171,7 @@ fn admission_requires_prepared_runtime_and_graphics_and_preserves_consent() {
     let (root, mut state, installed) = runtime_setup::tests::fixture_with_runtime([7; 32]);
     let directory = root.path().canonicalize().unwrap();
     let resources = Resources {
+        proton: None,
         helper: artifact(&directory, "helper.exe"),
         client_patches: None,
         client_telemetry: None,
@@ -323,6 +325,7 @@ fn the_telemetry_dll_is_resolved_only_for_a_player_who_opted_in() {
     let (root, mut state, installed) = runtime_setup::tests::fixture_with_runtime([7; 32]);
     let directory = root.path().canonicalize().unwrap();
     let bundled = Resources {
+        proton: None,
         helper: artifact(&directory, "helper.exe"),
         client_patches: Some(artifact(&directory, "patches.dll")),
         client_telemetry: Some(artifact(&directory, "telemetry.dll")),
@@ -387,6 +390,7 @@ fn a_lab_build_of_the_telemetry_dll_is_refused_even_with_consent() {
             revision,
             installed.operation_id,
             Resources {
+                proton: None,
                 helper: artifact(&directory, "helper.exe"),
                 client_patches: None,
                 client_telemetry: Some(lab),
@@ -405,6 +409,7 @@ fn a_retry_after_turning_client_patches_off_mid_play_returns_the_admitted_plan()
         installation,
         runtime: None,
         resources: Resources {
+            proton: None,
             helper: artifact(&directory, "helper.exe"),
             client_patches: Some(artifact(&directory, "patches.dll")),
             client_telemetry: None,

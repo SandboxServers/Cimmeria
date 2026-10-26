@@ -225,3 +225,18 @@ async fn an_empty_batch_sends_nothing() {
         SendOutcome::Empty
     );
 }
+
+#[tokio::test]
+async fn a_log_post_remembers_the_scheme_and_host_it_used() {
+    let server = MockServer::start().await;
+    mount_mint(&server, 1).await;
+    mount_chunk(&server, 200, None).await;
+    let sender = LauncherSender::new();
+    assert_eq!(sender.last_endpoint(), None);
+    let posted = sender.post_batch(&target(&server.uri()), &[event()]).await;
+    assert_eq!(posted, BatchOutcome::Posted);
+    assert_eq!(
+        sender.last_endpoint(),
+        Some(("http".to_owned(), "127.0.0.1".to_owned()))
+    );
+}

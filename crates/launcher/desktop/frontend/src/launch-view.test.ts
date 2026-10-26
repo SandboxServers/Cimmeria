@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {parseHTML} from 'linkedom';
-import {launchText,mountLaunch} from './launch-view';
+import {launchText,mountLaunch,protonInstallText} from './launch-view';
 import {jobErrorFailure,LaunchBridge,launchBridgeLayer} from './launch-workflow';
 import {FailureCode} from './failure-codes';
 import {failureText} from './failure-copy';
@@ -188,6 +188,33 @@ test('one skipped patch change reads in the singular, several in the plural',()=
 test('a Play that did not start points at an edited login server list',()=>{
  const status={...initial(),observation:{phase:'not_started'}} as any;
  assert.match(launchText({status,pending:false,uncertain:false,error:null}),/If you edited the login servers, check them under Login servers\./);
+});
+test('missing Proton outranks an earlier game exit, and Recheck shows it on the first press',async()=>{
+ const exited={...initial(),setup_complete:false,prerequisites_missing:['proton'],observation:{phase:'process_exited',host_pid:1,guest_pid:2,code:0,early:false}} as any;
+ const {document,window}=parseHTML(html);let reads=0;let finish!:()=>void;
+ const gate=new Promise<void>(resolve=>{finish=resolve;});
+ const app=mountLaunch(document,async()=>{reads++;if(reads>1)await gate;return exited;});
+ const status=()=>document.getElementById('launch-status')!.textContent;
+ const recheck=document.getElementById('inspect-launch') as HTMLButtonElement;
+ try{
+  await app.ready;await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(status(),protonInstallText);
+  assert.equal((document.getElementById('launch') as HTMLButtonElement).disabled,true);
+  assert.equal(recheck.hidden,false);
+  recheck.dispatchEvent(new window.Event('click'));
+  assert.equal(recheck.disabled,true,'the first Recheck press is visibly busy');
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(reads,2);
+  assert.equal(status(),'Checking Play status…');
+  finish();await app.settled();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(status(),protonInstallText);assert.equal(recheck.disabled,false);
+ }finally{finish?.();await app.dispose();}
+});
+test('a Play refused for missing pieces names them, and Proton gets the install copy',()=>{
+ const refused=(missing:string[]|undefined)=>launchText({status:{...initial(),prerequisites_missing:missing} as any,pending:false,uncertain:false,error:'prerequisites_missing'});
+ assert.equal(refused(['proton']),protonInstallText);
+ assert.equal(refused(['physx']),'Finish PhysX setup before playing. Your game files are installed.');
+ assert.equal(refused(['directx','physx']),'Finish DirectX and PhysX setup before playing. Your game files are installed.');
+ assert.equal(refused(undefined),'Finish DirectX and PhysX setup before playing. Your game files are installed.');
 });
 const withOperation=(kind:string,state:string)=>({...initial(),native:{...initial().native,operation:{schema_version:1,revision:1,operation:{id:'op',kind,state,intent_digest:Array(32).fill(0)}}}}) as any;
 test('an interrupted adoption gives Play one adoption line in place of the owner and error lines',()=>{

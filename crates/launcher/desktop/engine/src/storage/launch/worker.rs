@@ -208,14 +208,12 @@ async fn execute(
     })
     .await
     .map_err(|_| StorageError::Io)?;
-    let Ok((spec, mut request, _ownership)) = setup_timer.result(setup) else {
-        failure::not_started(
-            &state,
-            plan,
-            "prepare_failed",
-            FailureCode::LaunchPrepareFailed,
-        );
-        return Ok(Observation::NotStarted);
+    let (spec, mut request, _ownership) = match setup_timer.result(setup) {
+        Ok(prepared) => prepared,
+        Err(PrepareError(code)) => {
+            failure::not_started(&state, plan, "prepare_failed", code);
+            return Ok(Observation::NotStarted);
+        }
     };
     request.place_on = place_on;
     if minted {
@@ -376,6 +374,10 @@ enum Ownership {
     Wine {
         _resources: crate::mac_wine::prerequisites::prefix::Resources,
     },
+    #[cfg(target_os = "linux")]
+    Proton {
+        _prefix: crate::linux_proton::prefix::Prefix,
+    },
 }
 fn prepare(
     plan: &Plan,
@@ -390,7 +392,7 @@ fn prepare(
         cimmeria_runtime_probe::game_launch::Request,
         Ownership,
     ),
-    IntentError,
+    PrepareError,
 > {
     if plan.runtime.is_some() {
         #[cfg(target_os = "macos")]
@@ -408,11 +410,21 @@ fn prepare(
         #[cfg(not(target_os = "macos"))]
         return Err(StorageError::Corrupt.into());
     }
+    // The Linux arm returns; the native tail stays referenced on every host, so
+    // its helpers are not dead code on Linux (PP-06).
+    if cfg!(target_os = "linux") {
+        #[cfg(target_os = "linux")]
+        {
+            let (spec, request, prefix) =
+                super::proton::prepare(plan, root, session, servers, display, placements)?;
+            return Ok((spec, request, Ownership::Proton { _prefix: prefix }));
+        }
+    }
     let _ = (root, placements);
     if !cfg!(windows) {
         return Err(StorageError::Corrupt.into());
     }
-    prepare_native(plan, session, servers, display)
+    prepare_native(plan, session, servers, display).map_err(PrepareError::from)
 }
 fn prepare_native(
     plan: &Plan,

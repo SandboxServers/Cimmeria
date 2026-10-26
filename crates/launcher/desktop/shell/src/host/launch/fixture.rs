@@ -15,6 +15,7 @@ pub(super) fn fixture() -> (tempfile::TempDir, NativeHost) {
     )
     .unwrap();
     host.launch_resources = Some(launch::Resources {
+        proton: None,
         helper: artifact.clone(),
         client_patches: Some(artifact.clone()),
         client_telemetry: None,

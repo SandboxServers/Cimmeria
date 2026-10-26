@@ -229,7 +229,7 @@ export const SeedArchiveStatus = Schema.Struct({
   offer: Schema.NullOr(Schema.Struct({file_name: Schema.String, size: Schema.Int})),
   // Present while a check runs and has reported progress.
   verifying: Schema.NullOr(Schema.Struct({
-    phase: Schema.Union([Schema.Literal("download"), Schema.Literal("extraction")]),
+    phase: Schema.Literals(["download", "copy", "check", "extraction", "expansion"]),
     current: Schema.Int, total: Schema.Int,
   })),
   last_error: Schema.NullOr(SeedArchiveErrorCode),

@@ -59,6 +59,7 @@ fn v1_preferences_read_as_v2_with_client_defaults_and_save_back_as_v2() {
             client_patches_enabled: true,
             display: Default::default(),
             display_placements: Vec::new(),
+            proton_preference: None,
         }
     );
     // Opening alone rewrites nothing; the next save writes v2.
@@ -378,4 +379,21 @@ fn uncertain_preference_save_blocks_operations_until_disk_is_reopened() {
     assert!(!reopened.requires_reopen());
     assert!(reopened.preferences().launcher_summary_consent);
     assert_eq!(reopened.preferences().revision, 1);
+}
+
+#[test]
+fn a_proton_preference_save_is_refused_while_an_install_is_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut state = DesktopState::open(dir.path()).unwrap();
+    state
+        .operations_mut()
+        .unwrap()
+        .begin(Uuid::new_v4(), OperationKind::Install, [1; 32], 0)
+        .unwrap();
+    assert_eq!(
+        state.save_proton_preference(Some("valve:Proton 9.0".into())),
+        Err(StorageError::Busy)
+    );
+    assert!(state.preferences().proton_preference.is_none());
+    assert!(!dir.path().join("preferences.json").exists());
 }

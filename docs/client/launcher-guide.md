@@ -2,7 +2,7 @@
 title: "Launcher Guide"
 type: how-to
 audience: players, operators
-last_updated: 2026-10-23
+last_updated: 2026-10-25
 companion_docs:
   - ../guides/macos.md
   - ../../crates/launcher/desktop/README.md
@@ -42,6 +42,7 @@ operator setup (content releases and the two signing keys) is
   - [Download the launcher](#download-the-launcher)
   - [First start on Windows](#first-start-on-windows)
   - [First start on Linux and Steam Deck](#first-start-on-linux-and-steam-deck)
+  - [Play on Linux and Steam Deck](#play-on-linux-and-steam-deck)
   - [Install the game](#install-the-game)
   - [Set up Windows game prerequisites](#set-up-windows-game-prerequisites)
   - [Play](#play)
@@ -81,7 +82,7 @@ always holds the newest release:
 - **macOS (Apple silicon):** [`StargateWorlds-Launcher-macos-arm64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip),
   set up as [Playing on a Mac](../guides/macos.md) describes.
 - **Linux and Steam Deck (x86-64):** [`StargateWorlds-Launcher-linux-x86_64.AppImage`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-linux-x86_64.AppImage).
-  It installs the game; Play is not available on Linux yet. See
+  It installs the game and plays it through Proton. See
   [First start on Linux and Steam Deck](#first-start-on-linux-and-steam-deck).
 
 Each download has a `.sha256` file beside it on the same release if you want to
@@ -147,10 +148,39 @@ What works on Linux today:
   **Continue** resumes an interrupted install. The default game folder is
   `~/.local/share/app.cimmeria.launcher.desktop/Stargate Worlds`.
 - **Use a game archive you already downloaded** works as on Windows.
-- **Play, Repair, Update and Install PhysX are not available on Linux yet.**
-  Running the game needs Proton, which a later launcher release will set up.
+- **Play** runs the game through a Proton you already have installed. The
+  launcher sets up its own Proton prefix the first time, so the first Play
+  takes a few minutes. See [Play on Linux and Steam Deck](#play-on-linux-and-steam-deck).
+- **Repair, Update and Install PhysX are not available on Linux yet.** Play
+  installs PhysX for you.
 - The launcher does not update itself on Linux. Download each new release from
   the same link.
+
+### Play on Linux and Steam Deck
+
+The launcher does not download Proton. Install one first:
+
+1. In Steam (Desktop Mode), install **Proton Experimental** from your library
+   (it is listed under **Tools** in your library), or install **GE-Proton** with
+   ProtonUp-Qt and restart Steam.
+2. Open the launcher. If Play says to install Proton, do that and reopen the
+   launcher.
+3. Optional: in **Settings**, under **Proton**, pick a build. **Automatic**
+   (the default) uses GE-Proton if you have it, then Proton Experimental, then
+   the newest numbered Proton.
+4. Press **Play**. The first Play creates a private Proton prefix for the game
+   and installs PhysX, so it waits a few minutes before the window opens. Later
+   Plays skip both.
+5. The game opens in a window (fullscreen does not work under Proton yet). The
+   first Play is 1024x768 whatever size you chose.
+
+If Play fails, the message says why. "Proton isn't installed" means no Proton
+was found (or the one you chose was removed): install one and press Play again.
+"Proton couldn't set up the game" means the prefix, DirectX or PhysX step
+failed: press Play to try again, and if it fails again, upload your logs from
+Settings. Each Play keeps its logs, including `proton.log`, under the
+launcher's `logs/game` folder. Steam's Game Mode is not supported yet; use
+Desktop Mode.
 
 ### Install the game
 
@@ -165,9 +195,12 @@ archive.org, then applies Cimmeria's patches to it. You don't need the old
    one that exists. The launcher refuses a folder that already has files in
    it.
 2. Click **Install Cimmeria**. A progress bar shows the percent and
-   size, plus the speed and time left for large downloads, and a percent
-   while unpacking. The download is 4.1 GB, and the install drive needs about
-   14 GB free while it unpacks.
+   size, plus the speed and time left for large downloads. The line above it
+   names the phase: "Downloading verified game content…", "Checking the
+   download…" ("Reading the archive index…" while the launcher reads the
+   archive's file list), "Copying your archive…" (a game archive you picked),
+   "Unpacking the archive…" and "Expanding game files…". The download is
+   4.1 GB, and the install drive needs about 14 GB free while it unpacks.
 3. When it finishes, the game is in a `game` folder inside the folder you
    chose.
 
@@ -416,6 +449,11 @@ downloading it again. You don't unpack it first.
 1. Click **Use a downloaded game archive…**. It is in **Settings** and on the
    Play tab.
 2. Pick the archive file.
+
+The install page shows `Game folder: <path>` beside the archive button, so you
+can see where the game will go before you pick. **Change…** beside it opens
+the folder picker and the line updates at once; cancelling the picker leaves
+it as it was.
 
 The file must be the archive.org release
 `Stargate Worlds (0.8348.1.4046) (2009-06-30) (beta).rar`, which is

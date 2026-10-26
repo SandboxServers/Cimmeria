@@ -2,7 +2,7 @@
 title: Unified In-Game UAT Guide
 type: how-to
 audience: in-game testers (the owner and playtesters) working through the restored systems on the colo; no programming needed
-last_updated: 2026-10-24
+last_updated: 2026-10-26
 companion_docs:
   - organizations-uat.md
   - ../content/debug-hub.md
@@ -61,6 +61,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Telemetry gaps](#telemetry-gaps) | [telemetry-gaps ledger](../analysis/telemetry-gaps/README.md#packet-status) and its [close-out handoff](../analysis/telemetry-gaps/handoffs/2026-10-11-closeout.md) |
 | [Launcher UAT fixes](#launcher-uat-fixes) | [launcher-uat-fixes ledger](../analysis/launcher-uat-fixes/README.md#close-out-2026-10-22) and the [laptop UAT worknote](../analysis/launcher-telemetry/worknotes/laptop-uat-2026-10-22.md) |
 | [Launcher on Windows on Arm](#launcher-on-windows-on-arm) | [launcher-win-arm64 ledger](../analysis/launcher-win-arm64/README.md#owner-uat-no-lab-use) |
+| [Launcher Play on Linux (Proton)](#launcher-play-on-linux-proton) | [launcher-linux-play-proton ledger](../analysis/launcher-linux-play-proton/README.md#uat-pp-u-doc-update-map-row-57) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
@@ -122,6 +123,7 @@ Read these before you start. None of them needs a new report.
 | K36 | **Pet-bar stance buttons 1-3 give Defensive, Aggressive, Aggressive (2026-10-13, from the stance code and one wire read; the bar itself never opens, K34).** Passive is unreachable from the small bar. | Use `.pet stance 0` for Passive. | Issue #1682 |
 | K37 | **`/emote` shows twice to the speaker (lab-confirmed 2026-10-13).** The client echoes the line and the server echoes it again. `/say` and `/yell` show once. | Record it; not a new bug. | Issue #1678 |
 | K38 | **`/gmgiveitem` of a mission-only item now lands in the Mission bag (#1675, 2026-10-21).** Before, it landed in the Main bag. A mission-only row an earlier grant left in the Main bag stays there; there is no data migration. The server refuses to mail it (as `item_not_in_main_bag`), trade it or move it back into Main. | For mail row 3a, expect the item in the Mission bag. To clear an old Main-bag leftover, drag it to the Mission bag. A vendor purchase of a mission-only item still lands in Main (#1964) | Issue #1675, [trade system](../gameplay/trade-system.md) |
+| K39 | **Linux/Proton first Play (2026-10-26).** The first Play logs a benign `display_settings_not_applied` WARN (F-U5); it runs at 1024x768 (FU-10); fullscreen does not draw under Proton (FU-11). | Linux/Proton testers: note the window size and whether fullscreen draws, then carry on. Not a new bug. | [Launcher Play on Linux (Proton)](#launcher-play-on-linux-proton) |
 
 ## Common setup
 
@@ -1677,6 +1679,26 @@ The launcher-win-arm64 campaign ([ledger](../analysis/launcher-win-arm64/README.
 | WA-U1 | From the wave PR's CI run, download `desktop-launcher-windows-arm64-dry-run`, unzip it on the Arm laptop, run `cimmeria-launcher-desktop.exe`. | The window opens on the first run. Task Manager's Architecture column (Details tab) says ARM64. The main page renders. | A development build, so it isn't expected to install from the release manifest. |
 | WA-U2 | After the first release with this change, download `StargateWorlds-Launcher-windows-arm64.zip` from `launcher-current`, then Install or adopt, and press Play once. | The launcher shows ARM64 in Task Manager. Install or adoption completes. Play starts the game, which runs x86-emulated. The dated release notes show the **Windows on Arm:** paragraph. | First real test of the release wiring (finding F13). |
 | WA-U3 | After a second release, open the arm64 launcher from WA-U2, and separately an x64 launcher on the same laptop. | Each offers the new version and restarts into it. The arm64 build is still ARM64 and the x64 build is still x64. | D-WA3: no automatic cross-grade. |
+
+## Launcher Play on Linux (Proton)
+
+The launcher-linux-play-proton campaign ([ledger](../analysis/launcher-linux-play-proton/README.md), final PR #2032) lets the Linux AppImage press Play through an installed Proton. The full Deck run is in [worknotes/PP-U.md](../analysis/launcher-linux-play-proton/worknotes/PP-U.md) (attempt 4).
+
+**Status:** UATPending. Attempt 4 (Steam Deck, Desktop Mode, GE-Proton11-11, the real release seed, an AppImage linked with lld) passed every row an agent could run. The game was quit at the EULA, so login, world entry and PhysX inside the world are **not** verified. Owner only for the rows marked so; no lab use.
+
+**Prerequisites:** a Steam Deck with at least one Proton installed; an AppImage built after PR #2036 (earlier Linux launchers cannot unpack `client.rar`); `client.rar`.
+
+| # | Do | Expect | Result (attempt 4) |
+|---|---|---|---|
+| PP-U1 | Extract the AppImage; run `--verify-embedded-payload` and `--self-test-rar`. | No `.exe` or `.dll` in the AppDir; `embedded payload verified: 4 files`; `self-test-rar: ok`. | PASS |
+| PP-U2 | Desktop Mode, open Settings. With no Proton installed, look at the Play area. | The Play area names Proton and how to install it. With Proton installed, the picker lists Automatic and every installed Proton, and Automatic picks GE-Proton first. | PASS (picker, Automatic = GE-Proton11-11, no-Proton copy in a fresh state root). Picker hidden with no Proton: not observed. |
+| PP-U3 | Fresh state root: install from `client.rar`, press Play once, then again, then choose 60 fps and press Play. | "Preparing" copy at once; one worker and one `SGW.exe`; prefix, DirectX pins and PhysX probe succeed; the window draws windowed with no focus change; a second press while running is refused; `DXVK_FRAME_RATE` is 30, then 60. First Play logs `saved_options="seeded"`. | PASS up to the EULA. The first-press copy reads "Preparing the game and waiting for its process…", not "Preparing Proton": the owner decides. |
+| PP-U4 | Log in, enter a world, open the Black Market, quit normally. | The patched feature works; `process_exited`; Play is enabled again. | Not run: login needs the owner's account. Quit at the EULA gave `game_exited exit_code=0` and Play enabled again. |
+| PP-U5 | Opt in to game diagnostics and play two minutes. | `game-telemetry-status.json` says `attached`; rows tagged `proton` reach SigNoz over https. | Local side PASS (`attached`, https upload, `bundle_sent=true`). Server-side tags not read. |
+| PP-U6 | Game Mode: add the AppImage as a non-Steam game and press Play. | Reaches the login screen; the controller drives the launcher. | Not run. Follow-up, not a merge gate (OD-2). |
+| PP-U8 | Install from `client.rar` and watch the phase lines. | "Copying…", "Reading the archive index…", "Unpacking…", "Expanding game files…", each with rate and ETA; no "Checking the download…". | Install PASS (copy 67 s, cabinets 116 s, under the 3m46s bound). Phase copy sits below the fold in the default window and was not read: owner. |
+
+Known issues: the first Play logs a benign `display_settings_not_applied` WARN (F-U5); the first Play runs at 1024x768 (FU-10); fullscreen does not draw under Proton (FU-11).
 
 ## Lab CLI (`lab.exe`)
 

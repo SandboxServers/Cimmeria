@@ -18,9 +18,9 @@ pub enum DisplayMode {
     Fullscreen,
 }
 
-/// How fast the game may draw on macOS, through DXVK's limiter (C-PD8,
-/// D-PD20). Windows has no limiter without a client patch, so it offers none
-/// and ignores the saved value.
+/// How fast the game may draw, through DXVK's limiter: on macOS (C-PD8,
+/// D-PD20) and in the Linux Proton prefix (D-PP13). Windows has no limiter
+/// without a client patch, so it offers none and ignores the saved value.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FrameCap {
@@ -69,19 +69,23 @@ pub const WIDTH: std::ops::RangeInclusive<u32> = 640..=7680;
 /// The heights a save accepts.
 pub const HEIGHT: std::ops::RangeInclusive<u32> = 480..=4320;
 
-/// The modes this platform offers (D-PD15, D-PD21).
+/// The modes this platform offers (D-PD15, D-PD21). macOS and Linux are windowed
+/// only (D-PP13: Linux fullscreen under Proton never draws).
 pub fn allowed_modes() -> &'static [DisplayMode] {
-    if cfg!(target_os = "macos") {
+    if cfg!(any(target_os = "macos", target_os = "linux")) {
         &[DisplayMode::Windowed]
     } else {
         &[DisplayMode::Windowed, DisplayMode::Fullscreen]
     }
 }
 
-/// The frame caps this platform offers: all three on macOS, none elsewhere (D-PD20).
+/// The frame caps this platform offers (D-PD20, D-PP13): all three on macOS;
+/// 30 and 60 on Linux, where `Display` waits for a display list (FU-4); none on Windows.
 pub fn frame_caps() -> &'static [FrameCap] {
     if cfg!(target_os = "macos") {
         &[FrameCap::Fps30, FrameCap::Fps60, FrameCap::Display]
+    } else if cfg!(target_os = "linux") {
+        &[FrameCap::Fps30, FrameCap::Fps60]
     } else {
         &[]
     }
@@ -89,7 +93,7 @@ pub fn frame_caps() -> &'static [FrameCap] {
 
 /// The `DXVK_FRAME_RATE` a cap gives. `Display` follows `refresh_hz`, clamped
 /// into 30..=240; an unknown rate (0) gives 60.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "macos", target_os = "linux")), allow(dead_code))]
 pub(crate) fn frame_rate(cap: FrameCap, refresh_hz: u32) -> u32 {
     match cap {
         FrameCap::Fps30 => 30,
@@ -112,9 +116,9 @@ impl DisplayOptions {
             && HEIGHT.contains(&self.height)
     }
 
-    /// What Play applies: on macOS always a window, and the size clamped into range.
+    /// What Play applies: on macOS and Linux always a window, and the size clamped into range.
     pub fn effective(self) -> DisplayOptions {
-        let mode = if cfg!(target_os = "macos") {
+        let mode = if cfg!(any(target_os = "macos", target_os = "linux")) {
             DisplayMode::Windowed
         } else {
             self.mode
@@ -197,7 +201,7 @@ pub(crate) fn placement_for(
 /// The refresh rate `FrameCap::Display` follows at Play: the display the
 /// current setup remembers (`placement_for`), else the main display. An empty
 /// list (PD-31 ruling 1) or an unknown rate gives 0, which `frame_rate` maps to 60.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "macos", target_os = "linux")), allow(dead_code))]
 pub(crate) fn launch_refresh_hz(placements: &[Placement], displays: &[DisplayInfo]) -> u32 {
     placement_for(placements, displays)
         .or_else(|| displays.iter().find(|d| d.main).copied())
