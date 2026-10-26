@@ -1,0 +1,42 @@
+# LP-06 lab proof: a composed cache at character select
+
+**Verdict: ruling needed.** The point of the campaign holds: with a composed `Cache.en-US`, the client reports the served version of all 21 categories, the server answers `up_to_date` for every one, and no resync starts. One literal expectation fails (the client still emits `cooked_cache.write` events) and one reading is unexplained (the held Dialogs version). Both need a ruling, below.
+
+## Setup
+
+- Local server at the `lcp-w1` head (1ed01ab0f), fresh reloaded test database, release build; lab client on the per-instance profile; one lab account, no character (the reload deleted it), so the run stops at character select.
+- Baseline: the profile cache wiped, so the client's own startup copy brings in the stock source cache. Proof: the profile cache wiped, then `cooked-pak-tool compose` from `data/cache` over the client's shipped source cache into the profile `Cache.en-US`; the client was down during the compose. Compose wrote 8 PAKs (ids 1-5, 11, 12, 13) and reported 13 `up_to_date`, as in LP-05. The other 13 PAKs were not written by compose; the client's startup copy brought them from the source cache.
+- The profile cache was restored from a backup afterwards (24 files).
+
+## Timings (auth start to last cooked-data reply)
+
+| Run | Seconds | Cooked-data events |
+|---|---|---|
+| Baseline (stock cache) | 34.9 (resync alone 31.1) | 13 `up_to_date`, 8 `sync_start`, 8 `sync_finish` (complete), 0 `miss_served` |
+| Composed cache | 3.0 | 21 `up_to_date` (`versions_match`), 0 `sync_start`, 0 `sync_finish`, 0 `miss_served` |
+
+Character select was on screen with no freeze in the composed run.
+
+## Expectations
+
+| Expectation | Result |
+|---|---|
+| Every `version_reply` is `up_to_date` | PASS: 21 of 21, client version equals server version in each |
+| No `sync_start` | PASS |
+| `client.cooked.versions_held` shows `resync_pending = 0` | PASS: `resync_pending 0`, `real 21`, `zero 1` (the extra local cover-node PAK, version 0) |
+| No `client.cooked_cache.write` events | FAIL: 13 events, all `entry_kind metadata`, tier `cache`, `previous` equal to `version` (a same-version rewrite). Ids 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14. Ids 5 and 15-21 emitted none. Every category PAK was also opened for writing once at startup. |
+| `miss_served` and `cooked_data_misses_total` unchanged | PASS: 0 `miss_served` in the run |
+| An overridden item or mission shows its server value in game | NOT EXERCISED: no character, so no world. Instead: after the run, every entry of the 5 composed PAKs that were compared (Abilities, Dialogs, Items, KismetSeqEvent, Missions) is identical to a fresh compose from the same inputs. |
+| D-LP15 (versions at or above 2^31) | NOT EXERCISED: the largest served version is 782034074, below 2^31. The client sent 221523122 and 782034074 exactly for ids 2 and 11. |
+| Startup copy leaves composed PAKs alone | PASS for content: entry bytes unchanged after the client ran and after it quit. The client rewrote each PAK's `MetaData` entry as a deflated entry (source and compose store it), which changed file size by +2 bytes per composed PAK and the modified time. Version unchanged. |
+| Restore the profile cache | Done |
+
+## Open items for a ruling
+
+1. **`cooked_cache.write` events.** The client rewrites `MetaData` with the same version on `up_to_date`. This changes no served byte and does not cause a resync, so the literal "no write events" expectation in the packet looks wrong. Ruling needed: accept metadata-only same-version rewrites and reword the LP-06 and LP-27 expectation (count only writes where `version` differs from `previous`), or treat any write as a failure. The deflated `MetaData` re-encoding also means a later launcher byte-compare of a cache PAK against a composed PAK must compare entries, not file bytes.
+2. **Dialogs held version.** In the composed run the client's first read of the cache Dialogs `MetaData` reported entry index 5420 and version 20823, and `versions_held` still lists 20823 for it. The file on disk (5425 entries, `MetaData` last) holds 31461, and the client sent 31461 to the server. No other category shows this. Cause not found; the client may have read a different Dialogs file at that moment. It did not change the outcome here. Worth a repeat before LP-20 relies on this.
+
+## Notes
+
+- No client-copy path, client bytes, addresses or account names are recorded here.
+- Comparison covered 5 of the 8 composed PAKs (the compare script stopped early); the other 3 (ids 11, 12, 13) were not compared.
