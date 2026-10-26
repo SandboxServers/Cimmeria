@@ -25,6 +25,6 @@
 - No CME bytes in the repo or tests (R9). No paths, IPs or account names in worknotes (R7).
 - LP-27's revert-proof test (a failed presync never reaches client setup) is the campaign's key guard; reviewers check it fails with the gate removed.
 
-**Open decisions:** D-LP28 (owner, non-blocking: failure code in the anonymous launcher summary → LP-F4). D-LP3 is conditional on LP-05.
+**Open decisions:** D-LP28 (owner, non-blocking: failure code in the anonymous launcher summary → LP-F4). D-LP3 is resolved: LP-05 found compose works.
 
 **Next ledger update:** when the wave 2 PR opens.
