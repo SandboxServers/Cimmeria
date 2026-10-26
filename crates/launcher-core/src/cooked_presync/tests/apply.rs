@@ -133,6 +133,20 @@ fn a_dropped_stage_deletes_its_temp() {
     assert!(temps(&cache).is_empty());
 }
 
+#[test]
+fn two_stages_of_one_pak_never_share_a_temp() {
+    let root = tempfile::tempdir().unwrap();
+    let (source, cache) = (root.path().join("source"), root.path().join("cache"));
+    write_source(&source, PAK, 5, &base());
+    write_source(&cache, PAK, 4, &base());
+    let first = stage(4, &body_of(4, 6), PAK, &cache, &source).unwrap();
+    let second = stage(4, &body_of(4, 6), PAK, &cache, &source).unwrap();
+    // Both temps are alive at once, so neither stage truncated the other.
+    assert_eq!(temps(&cache).len(), 2);
+    drop((first, second));
+    assert!(temps(&cache).is_empty());
+}
+
 #[cfg(windows)]
 #[test]
 fn a_locked_second_destination_renames_nothing() {
@@ -184,6 +198,34 @@ fn sweep_removes_only_presync_temps() {
     assert!(dir.join("cat4.pak.tmp").exists());
     assert!(dir.join("sub").join(&stray).exists());
     assert!(!dir.join(&stray).exists());
+}
+
+#[test]
+fn sweep_removes_a_planted_link_named_as_a_temp_and_not_its_target() {
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path();
+    let target = dir.join("target.bin");
+    fs::write(&target, b"keep").unwrap();
+    let stray = format!("cat4.pak{TEMP_SUFFIX}");
+    if !file_link(&dir.join(&stray), &target) {
+        // The OS refused a file link here, so there is nothing to test.
+        return;
+    }
+    assert_eq!(sweep_temps(dir), 1);
+    assert!(!dir.join(&stray).exists());
+    assert_eq!(fs::read(&target).unwrap(), b"keep");
+}
+
+/// Makes `link` a file symlink to `target`. False when the OS refuses.
+#[cfg(unix)]
+fn file_link(link: &Path, target: &Path) -> bool {
+    std::os::unix::fs::symlink(target, link).is_ok()
+}
+
+/// Makes `link` a file symlink to `target`. False when the OS refuses.
+#[cfg(windows)]
+fn file_link(link: &Path, target: &Path) -> bool {
+    std::os::windows::fs::symlink_file(target, link).is_ok()
 }
 
 #[cfg(windows)]

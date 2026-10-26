@@ -4,7 +4,7 @@
 //! written, and no failure before commit changes the cache.
 
 use std::collections::BTreeMap;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::{BufWriter, ErrorKind};
 use std::path::{Path, PathBuf};
 
@@ -122,7 +122,7 @@ pub fn stage(
         ComposeError::BaseMissing { missing, first } => ApplyError::BaseMissing { missing, first },
         ComposeError::DigestMismatch => ApplyError::DigestMismatch,
     })?;
-    let temp = cache_dir.join(format!("{pak}{TEMP_SUFFIX}"));
+    let temp = cache_dir.join(temp_name(pak));
     match write_temp(cache_dir, &temp, body.version, &entries) {
         Ok(bytes) => Ok(Staged {
             category_id,
@@ -186,7 +186,10 @@ pub fn sweep_temps(cache_dir: &Path) -> u32 {
     let mut removed = 0;
     for entry in entries.flatten() {
         let is_temp = entry.file_name().to_string_lossy().ends_with(TEMP_SUFFIX);
-        let is_file = entry.file_type().is_ok_and(|kind| kind.is_file());
+        // A link named like a temp is removed as a link, never followed.
+        let is_file = entry
+            .file_type()
+            .is_ok_and(|kind| kind.is_file() || kind.is_symlink());
         if is_temp && is_file && fs::remove_file(entry.path()).is_ok() {
             removed += 1;
         }
@@ -283,6 +286,21 @@ fn pak_detail(error: &PakError) -> IoDetail {
     }
 }
 
+/// A temp name that no other stage shares: the PAK name, the process id, the
+/// time and a sequence number, then `TEMP_SUFFIX`. Two stages of one PAK never
+/// truncate each other's temp, and a stale file at an old name is never reused.
+fn temp_name(pak: &str) -> String {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_nanos());
+    format!(
+        "{pak}.{:x}{nanos:x}{seq:x}{TEMP_SUFFIX}",
+        std::process::id()
+    )
+}
+
 /// Writes the composed entries to `temp` at `version`, then syncs the file.
 /// Returns the file's size.
 fn write_temp(
@@ -292,7 +310,9 @@ fn write_temp(
     entries: &BTreeMap<u32, Vec<u8>>,
 ) -> std::io::Result<u64> {
     fs::create_dir_all(cache_dir)?;
-    let mut out = BufWriter::new(File::create(temp)?);
+    // `create_new` never opens an existing file or a link at this name.
+    let file = OpenOptions::new().write(true).create_new(true).open(temp)?;
+    let mut out = BufWriter::new(file);
     write_pak(&mut out, version, entries).map_err(|error| match error {
         PakError::Io(io) => io,
         PakError::Zip(zip) => std::io::Error::other(zip),
