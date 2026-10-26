@@ -147,9 +147,9 @@ fn without_a_flush_trigger_the_send_waits_for_the_coalesce_window() {
         std::thread::sleep(Duration::from_millis(50));
     }
     assert_eq!(chunk_posts(&server), 1, "one post once the window closes");
-    assert_eq!(seen.lock().unwrap().len(), 1);
     drop(tx);
     handle.join().unwrap();
+    assert_eq!(seen.lock().unwrap().len(), 1);
 }
 
 #[test]
@@ -166,8 +166,8 @@ fn launch_finished_sends_without_waiting_for_the_window() {
         std::thread::sleep(Duration::from_millis(50));
     }
     assert_eq!(chunk_posts(&server), 1, "launch_finished posts at once");
-    let sent: u64 = seen.lock().unwrap().iter().map(|p| p.sent_events).sum();
-    assert_eq!(sent, 2, "the post holds both rows");
     drop(tx);
     handle.join().unwrap();
+    let sent: u64 = seen.lock().unwrap().iter().map(|p| p.sent_events).sum();
+    assert_eq!(sent, 2, "the post holds both rows");
 }
