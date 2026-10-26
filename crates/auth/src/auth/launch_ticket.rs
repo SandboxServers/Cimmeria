@@ -4,8 +4,11 @@
 //! alphanumeric characters from a CSPRNG. The client sends `SHA1HEX(ticket)`
 //! as its password, so the store keeps only `SHA-256(SHA1HEX)`, never the
 //! ticket or the SHA-1. One ticket lives per account. It is reusable inside
-//! its life (Change Server re-sends it) and expires after 30 minutes idle or
-//! 12 hours after minting, whichever comes first.
+//! its life (Change Server re-sends it). Until its first SOAP redemption a
+//! ticket expires five minutes after minting; after that it expires after 30
+//! minutes idle or 12 hours after minting, whichever comes first. The launcher
+//! hands the ticket to the client within seconds, so an honest flow never
+//! reaches the short limit.
 //!
 //! Every ticket carries a [`TicketGuard`]. Revoking an account flips the
 //! guards it was issued, so a handoff already in flight dies with the
@@ -27,6 +30,9 @@ pub const TICKET_ABSOLUTE: Duration = Duration::from_secs(12 * 3600);
 
 /// Longest a ticket lives without a use or a heartbeat.
 pub const TICKET_IDLE: Duration = Duration::from_secs(30 * 60);
+
+/// Longest a ticket lives after minting until its first SOAP redemption.
+pub const TICKET_UNREDEEMED: Duration = Duration::from_secs(5 * 60);
 
 /// Length of a minted ticket in characters.
 pub const TICKET_LEN: usize = 32;
@@ -77,10 +83,16 @@ struct Entry {
     last_used: Instant,
     /// The account's guard at mint time.
     guard: TicketGuard,
+    /// `true` once a SOAP `verify` has accepted the ticket. An unredeemed
+    /// ticket lives only [`TICKET_UNREDEEMED`] after minting.
+    redeemed: bool,
 }
 
 impl Entry {
     fn expired(&self, now: Instant) -> bool {
+        if !self.redeemed {
+            return now.duration_since(self.minted) >= TICKET_UNREDEEMED;
+        }
         now.duration_since(self.minted) >= TICKET_ABSOLUTE
             || now.duration_since(self.last_used) >= TICKET_IDLE
     }
@@ -172,9 +184,9 @@ impl LaunchTicketStore {
     /// Check the client's `sha1_hex` password for `account_name`. The hex is
     /// uppercased before hashing; the name compare is ASCII case-insensitive.
     /// Every ticket of that name is checked, so two accounts that share a name
-    /// each verify with their own ticket. A `Valid` result refreshes the idle
-    /// clock. An expired entry is removed; a matching entry whose guard was
-    /// flipped is removed and answers `NoMatch`.
+    /// each verify with their own ticket. A `Valid` result redeems the ticket
+    /// and refreshes the idle clock. An expired entry is removed; a matching
+    /// entry whose guard was flipped is removed and answers `NoMatch`.
     pub fn verify(&self, account_name: &str, sha1_hex: &str, now: Instant) -> TicketCheck {
         let name_lower = account_name.to_ascii_lowercase();
         let digest = sha256(sha1_hex.to_ascii_uppercase().as_bytes());
@@ -212,6 +224,7 @@ impl LaunchTicketStore {
             return TicketCheck::NoMatch;
         }
         entry.last_used = now;
+        entry.redeemed = true;
         TicketCheck::Valid {
             account_id,
             guard: entry.guard.clone(),
@@ -219,7 +232,8 @@ impl LaunchTicketStore {
     }
 
     /// Refresh the idle clock of the account's ticket. Needs the launch id it
-    /// was minted for; returns `false` on a mismatch, a miss or an expiry.
+    /// was minted for; returns `false` on a mismatch, a miss or an expiry. An
+    /// unredeemed ticket is not extended: it keeps its five-minute mint clock.
     pub fn heartbeat(&self, account_id: u32, launch_id: &str, now: Instant) -> bool {
         let mut inner = self.lock();
         let Some(entry) = inner.entries.get_mut(&account_id) else {
@@ -232,7 +246,9 @@ impl LaunchTicketStore {
         if !same_launch(&entry.launch_id, launch_id) {
             return false;
         }
-        entry.last_used = now;
+        if entry.redeemed {
+            entry.last_used = now;
+        }
         true
     }
 
@@ -314,6 +330,7 @@ fn store_ticket(
         minted: now,
         last_used: now,
         guard,
+        redeemed: false,
     };
     inner.entries.insert(account_id, entry);
     ticket

@@ -85,6 +85,10 @@ fn idle_and_absolute_expiry() {
     let store = LaunchTicketStore::default();
     let minted = store.mint(1, "Player_1234", LAUNCH, t0);
     let sha1 = sha1_of(&minted.ticket);
+    assert!(matches!(
+        store.verify("Player_1234", &sha1, t0),
+        TicketCheck::Valid { account_id: 1, .. }
+    ));
     for step in 1..=35u64 {
         let now = t0 + Duration::from_secs(step * 20 * 60);
         assert!(store.heartbeat(1, LAUNCH, now), "heartbeat at step {step}");
@@ -257,6 +261,7 @@ fn verify_refuses_and_removes_a_ticket_whose_guard_was_flipped() {
                 minted: now,
                 last_used: now,
                 guard: TicketGuard(Arc::new(AtomicBool::new(false))),
+                redeemed: false,
             },
         );
     }
@@ -281,4 +286,57 @@ fn reap_drops_dead_guards() {
     let inner = store.lock();
     assert_eq!(inner.guards.get(&1).map(Vec::len), Some(1));
     assert!(!inner.guards.contains_key(&2));
+}
+
+#[test]
+fn an_unredeemed_ticket_expires_after_five_minutes() {
+    let store = LaunchTicketStore::default();
+    let t0 = Instant::now();
+    let minted = store.mint(1, "Player_1234", LAUNCH, t0);
+    let sha1 = sha1_of(&minted.ticket);
+    let just_after = t0 + TICKET_UNREDEEMED + Duration::from_secs(1);
+    assert!(matches!(
+        store.verify("Player_1234", &sha1, just_after),
+        TicketCheck::NoMatch
+    ));
+    assert_eq!(store.live_count(), 0);
+}
+
+#[test]
+fn a_redeemed_ticket_keeps_the_idle_and_absolute_limits() {
+    let store = LaunchTicketStore::default();
+    let t0 = Instant::now();
+    let minted = store.mint(1, "Player_1234", LAUNCH, t0);
+    let sha1 = sha1_of(&minted.ticket);
+    let redeemed_at = t0 + Duration::from_secs(60);
+    assert!(matches!(
+        store.verify("Player_1234", &sha1, redeemed_at),
+        TicketCheck::Valid { account_id: 1, .. }
+    ));
+    let still_live = t0 + Duration::from_secs(20 * 60);
+    assert!(matches!(
+        store.verify("Player_1234", &sha1, still_live),
+        TicketCheck::Valid { account_id: 1, .. }
+    ));
+    let idle_out = still_live + TICKET_IDLE + Duration::from_secs(1);
+    assert!(matches!(
+        store.verify("Player_1234", &sha1, idle_out),
+        TicketCheck::NoMatch
+    ));
+}
+
+#[test]
+fn heartbeat_does_not_extend_an_unredeemed_ticket() {
+    let store = LaunchTicketStore::default();
+    let t0 = Instant::now();
+    let minted = store.mint(1, "Player_1234", LAUNCH, t0);
+    let sha1 = sha1_of(&minted.ticket);
+    let four_minutes = t0 + Duration::from_secs(4 * 60);
+    assert!(store.heartbeat(1, LAUNCH, four_minutes));
+    let past_mint_limit = t0 + TICKET_UNREDEEMED + Duration::from_secs(1);
+    assert!(!store.heartbeat(1, LAUNCH, past_mint_limit));
+    assert!(matches!(
+        store.verify("Player_1234", &sha1, past_mint_limit),
+        TicketCheck::NoMatch
+    ));
 }
