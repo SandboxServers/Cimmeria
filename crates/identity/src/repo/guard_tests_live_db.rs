@@ -75,23 +75,60 @@ async fn set_password<'c, E: PgExecutor<'c>>(
         .map(|result| result.rows_affected())
 }
 
-/// Polls `pg_locks` for up to 10 s until a lock request in the test database
-/// is waiting. Gives up after that, so a contender that never blocks still
-/// lets the test finish.
-async fn wait_for_a_waiting_lock(pool: &PgPool) {
+/// Polls `pg_stat_activity` for up to 10 s until a backend of this database is
+/// blocked on a lock; returns whether one was seen.
+async fn wait_for_a_waiting_lock(pool: &PgPool) -> bool {
     for _ in 0..100 {
         let waiting: bool = sqlx::query_scalar(
-            "SELECT EXISTS (SELECT 1 FROM pg_locks l \
-             JOIN pg_database d ON d.oid = l.database \
-             WHERE NOT l.granted AND d.datname = current_database())",
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity \
+             WHERE datname = current_database() AND wait_event_type = 'Lock')",
         )
         .fetch_one(pool)
         .await
-        .expect("read pg_locks");
+        .expect("read pg_stat_activity");
         if waiting {
-            return;
+            return true;
         }
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    false
+}
+
+/// Deletes the sentinel accounts `ids` by exact id on drop, including while
+/// unwinding from a failed assertion or `expect`.
+///
+/// The delete runs on its own thread and runtime over a fresh connection, never
+/// the test's pool: `#[tokio::test]` is a current-thread runtime, and `drop`
+/// blocks that thread on `join()`.
+struct SentinelCleanup(Vec<i32>);
+
+impl Drop for SentinelCleanup {
+    fn drop(&mut self) {
+        let Some(url) = database_url() else {
+            return;
+        };
+        let ids = std::mem::take(&mut self.0);
+        let _ = std::thread::spawn(move || {
+            let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            else {
+                return;
+            };
+            rt.block_on(async {
+                let Ok(mut conn) = PgConnection::connect(&url).await else {
+                    return;
+                };
+                for account_id in ids {
+                    let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+                        .bind(account_id)
+                        .execute(&mut conn)
+                        .await;
+                }
+                let _ = conn.close().await;
+            });
+        })
+        .join();
     }
 }
 
@@ -107,6 +144,7 @@ fn assert_refused<T: std::fmt::Debug>(outcome: Result<T, sqlx::Error>, message: 
 async fn live_db_password_set_waits_for_an_uncommitted_identity_insert() {
     let pool = require_db_or_skip!();
     insert_account(&pool, ACCOUNT_SET_WAITS, None).await;
+    let _guard = SentinelCleanup(vec![ACCOUNT_SET_WAITS]);
     let url = database_url().expect("the live-DB gate passed");
     let mut holder = PgConnection::connect(&url)
         .await
@@ -119,10 +157,14 @@ async fn live_db_password_set_waits_for_an_uncommitted_identity_insert() {
         let pool = pool.clone();
         async move { set_password(&pool, ACCOUNT_SET_WAITS).await }
     });
-    wait_for_a_waiting_lock(&pool).await;
+    let waited = wait_for_a_waiting_lock(&pool).await;
     tx.commit().await.expect("commit the identity");
     let outcome = contender.await.expect("join the password write");
     cleanup(&pool, &[ACCOUNT_SET_WAITS]).await;
+    assert!(
+        waited,
+        "the password write waits for the open identity insert"
+    );
     assert_refused(outcome, "account_has_identity");
 }
 
@@ -130,6 +172,7 @@ async fn live_db_password_set_waits_for_an_uncommitted_identity_insert() {
 async fn live_db_identity_insert_waits_for_an_uncommitted_password_set() {
     let pool = require_db_or_skip!();
     insert_account(&pool, ACCOUNT_INSERT_WAITS, None).await;
+    let _guard = SentinelCleanup(vec![ACCOUNT_INSERT_WAITS]);
     let url = database_url().expect("the live-DB gate passed");
     let mut holder = PgConnection::connect(&url)
         .await
@@ -142,10 +185,14 @@ async fn live_db_identity_insert_waits_for_an_uncommitted_password_set() {
         let pool = pool.clone();
         async move { insert_identity(&pool, ACCOUNT_INSERT_WAITS, "ct81-insert-waits").await }
     });
-    wait_for_a_waiting_lock(&pool).await;
+    let waited = wait_for_a_waiting_lock(&pool).await;
     tx.commit().await.expect("commit the password");
     let outcome = contender.await.expect("join the identity insert");
     cleanup(&pool, &[ACCOUNT_INSERT_WAITS]).await;
+    assert!(
+        waited,
+        "the identity insert waits for the open password write"
+    );
     assert_refused(outcome, "account_has_password");
 }
 
@@ -154,6 +201,7 @@ async fn live_db_moving_an_identity_to_a_passworded_account_is_refused() {
     let pool = require_db_or_skip!();
     insert_account(&pool, ACCOUNT_MOVE_FROM, None).await;
     insert_account(&pool, ACCOUNT_MOVE_PASSWORDED, None).await;
+    let _guard = SentinelCleanup(vec![ACCOUNT_MOVE_FROM, ACCOUNT_MOVE_PASSWORDED]);
     insert_identity(&pool, ACCOUNT_MOVE_FROM, "ct81-move-refused")
         .await
         .expect("insert the identity");
@@ -175,6 +223,7 @@ async fn live_db_moving_an_identity_to_a_passwordless_account_succeeds() {
     let pool = require_db_or_skip!();
     insert_account(&pool, ACCOUNT_MOVE_SOURCE, None).await;
     insert_account(&pool, ACCOUNT_MOVE_TARGET, None).await;
+    let _guard = SentinelCleanup(vec![ACCOUNT_MOVE_SOURCE, ACCOUNT_MOVE_TARGET]);
     insert_identity(&pool, ACCOUNT_MOVE_SOURCE, "ct81-move-allowed")
         .await
         .expect("insert the identity");
