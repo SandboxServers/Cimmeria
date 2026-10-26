@@ -1,7 +1,8 @@
 //! Live-DB checks for [`verify_account_password`]: a disabled account answers
-//! `Disabled` only to the right password, and the legacy and unknown-name paths
-//! spend exactly one argon2id verify. Sentinel ids `0x7000_EB80..=0x7000_EBBF`
-//! and names `ct97_player_N`; cleanup deletes by exact id, before and after.
+//! `Disabled` only to the right password, the legacy and unknown-name paths
+//! spend exactly one argon2id verify, and an algo-3 row is checked on the SHA-1
+//! hex of the password. Sentinel ids `0x7000_EB80..=0x7000_EBBF` and names
+//! `ct97_player_N`; cleanup deletes by exact id, before and after.
 
 use std::sync::atomic::Ordering;
 
@@ -15,6 +16,7 @@ use crate::test_support::require_db_or_skip;
 const ID_DISABLED_WRONG: i32 = 0x7000_EB80;
 const ID_DISABLED_RIGHT: i32 = 0x7000_EB81;
 const ID_LEGACY_SPEND: i32 = 0x7000_EB82;
+const ID_ALGO3: i32 = 0x7000_EB83;
 
 /// Delete the sentinel account `account_id` by exact id.
 async fn cleanup(pool: &PgPool, account_id: i32) {
@@ -100,6 +102,30 @@ async fn live_db_disabled_account_with_the_right_password_is_disabled() {
         verify_account_password(&pool, name, "right-pw").await,
         PasswordCheck::Disabled
     );
+    cleanup(&pool, id).await;
+}
+
+#[tokio::test]
+async fn live_db_algo3_row_checks_the_sha1_of_the_password() {
+    let pool = require_db_or_skip!();
+    let id = ID_ALGO3;
+    let name = "ct97_player_4";
+    let phc = hash_argon2id(&sha1_upper_hex("right-pw")).expect("hash must succeed");
+    insert_account(&pool, id, name, None, Some(&phc), 3, true).await;
+
+    let before = ARGON2_VERIFIES.load(Ordering::SeqCst);
+    let right = verify_account_password(&pool, name, "right-pw").await;
+    let wrong = verify_account_password(&pool, name, "wrong-pw").await;
+    let spent = ARGON2_VERIFIES.load(Ordering::SeqCst) - before;
+
+    assert_eq!(
+        right,
+        PasswordCheck::Ok {
+            account_id: ID_ALGO3 as u32
+        }
+    );
+    assert_eq!(wrong, PasswordCheck::Invalid);
+    assert_eq!(spent, 2, "each algo-3 check must spend one argon2 verify");
     cleanup(&pool, id).await;
 }
 

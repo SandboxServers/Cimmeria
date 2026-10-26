@@ -10,6 +10,9 @@
 //! DB access. [`gated_check`] runs it on a blocking thread, at most
 //! [`ARGON2_PERMITS`] at a time, so a burst of link attempts neither stalls the
 //! async workers nor takes every core.
+//!
+//! Algo 3 (argon2id over `SHA1HEX`, contract C14) is checked on the SHA-1 hex of
+//! the password.
 
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -18,11 +21,13 @@ use std::sync::{LazyLock, OnceLock};
 use sqlx::PgPool;
 use subtle::ConstantTimeEq;
 
-use super::credentials::{sha1_upper_hex, ALGO_ARGON2ID, ALGO_SHA1_LEGACY};
+use super::credentials::{sha1_upper_hex, ALGO_ARGON2ID, ALGO_SHA1_ARGON2ID, ALGO_SHA1_LEGACY};
 use super::password_hash::{hash_argon2id, verify_argon2id};
 
-/// How many argon2id verifies may run at once. Each one is a full-cost hash, so
-/// the gate keeps a flood of link attempts from using every blocking thread.
+/// How many argon2id verifies the link-form check may run at once. This gate
+/// is the link path's own (D-CT28, D-CT30): the SOAP login path has a
+/// separate gate in `password_hash.rs` (contract C14), so a flood of link
+/// attempts never queues a game login. Do not merge the two.
 const ARGON2_PERMITS: usize = 2;
 
 /// Caps the argon2id verifies in flight. A caller waiting here is parked on the
@@ -152,6 +157,8 @@ async fn gated_check(row: Option<AccountRow>, plaintext: String) -> PasswordChec
 /// account answers `Disabled` only to the right password. Every path spends one
 /// [`argon2_verify`]: a row with no usable argon2id hash, a legacy row and an
 /// unknown scheme verify against the dummy hash and are never right by it.
+/// An algo-3 row is verified on the uppercase SHA-1 hex of `plaintext`, the form
+/// CT-54 stores.
 fn check_row(row: Option<&AccountRow>, plaintext: &str) -> PasswordCheck {
     let Some(row) = row else {
         let _ = argon2_verify(plaintext, dummy_argon2id_hash());
@@ -165,6 +172,18 @@ fn check_row(row: Option<&AccountRow>, plaintext: &str) -> PasswordCheck {
                     account_id = row.account_id,
                     reason = "argon2_hash_missing",
                     "account marked argon2id but password_hash_v2 is NULL"
+                );
+                let _ = argon2_verify(plaintext, dummy_argon2id_hash());
+                false
+            }
+        },
+        ALGO_SHA1_ARGON2ID => match row.password_hash_v2.as_deref() {
+            Some(phc) => argon2_verify(&sha1_upper_hex(plaintext), phc),
+            None => {
+                tracing::error!(
+                    account_id = row.account_id,
+                    reason = "argon2_hash_missing",
+                    "account marked sha1_argon2id but password_hash_v2 is NULL"
                 );
                 let _ = argon2_verify(plaintext, dummy_argon2id_hash());
                 false
