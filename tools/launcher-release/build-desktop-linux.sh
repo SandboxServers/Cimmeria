@@ -14,8 +14,8 @@
 #                    exports CIMMERIA_LAUNCHER_TAG, CIMMERIA_LAUNCHER_BUILD_EPOCH,
 #                    CIMMERIA_LAUNCHER_VERSION and LAUNCHER_MANIFEST_PUBKEY_HEX
 #   verify           check the result: an x86-64 ELF AppImage whose extracted
-#                    launcher is x86-64, carries no Windows Play pieces, and
-#                    embeds the release stamps
+#                    launcher is x86-64, carries no Windows Play pieces, embeds
+#                    the release stamps, and unpacks a RAR (--self-test-rar)
 #   package          copy it to
 #                    artifacts/StargateWorlds-Launcher-linux-x86_64.AppImage,
 #                    executable, and write a .sha256
@@ -153,6 +153,9 @@ stage_verify() {
       || die "the launcher does not embed its version $CIMMERIA_LAUNCHER_VERSION"
     echo "launcher embeds version $CIMMERIA_LAUNCHER_VERSION"
   fi
+  # The bundled UnRAR must unpack a RAR archive (PP-U-FIX). The hidden self-test
+  # exits non-zero, with the UnRAR error, when it cannot.
+  "$exe" --self-test-rar || die "$exe cannot unpack a RAR archive"
   echo "verified: x86-64 AppImage, launcher $(sha "$exe")"
   rm -rf "$check"
 }

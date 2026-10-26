@@ -28,6 +28,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["registry", "fmt", "std"] }
 tracing-appender = "0.2"
 serde_json = "1"
+# The self-test (`--self-test-rar`) hands the unpack pipeline a cancel token.
+tokio-util = "0.7"
 
 [target.'cfg(windows)'.dependencies]
 # The engine's HTTP client (same version and TLS), used before Tauri starts to
@@ -44,6 +46,5 @@ ed25519-dalek = { version = "3", default-features = false, features = ["alloc"] 
 serde_json = "1"
 semver = "=1.0.28"
 tempfile = "3"
-tokio-util = "0.7"
 sha2 = "0.10"
 cimmeria-runtime-probe = { path = "../runtime-probe" }
