@@ -43,6 +43,8 @@ cimmeria-client-launch = { path = "../client-launch" }
 # Patch zips that rebuild client files from the player's own stock files
 # by delta (src/unpack/zip.rs), and the stock file-name spelling.
 cimmeria-patchset = { path = "../patchset" }
+# The cooked-data presync's index and `CPS1` body types (src/cooked_presync/).
+cimmeria-cooked-pak = { path = "../cooked-pak" }
 
 # Declared directly, not `workspace = true`: the workspace's reqwest is a
 # newer major with native-tls on, and the desktop engine pins 0.12 with
