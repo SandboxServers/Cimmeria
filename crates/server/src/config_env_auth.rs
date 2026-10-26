@@ -130,18 +130,21 @@ mod tests {
         assert!(!contains("172.17.0.1"));
     }
 
-    /// An unset or blank value keeps the default list and reports no value.
+    /// An unset or blank value keeps the default list (loopback only) and
+    /// reports no value.
     #[test]
     fn trusted_peers_env_blank_keeps_the_default() {
         for raw in [None, Some("  ")] {
             let mut cfg = ServerConfig::default();
             let given = apply_trusted_peers(&mut cfg, raw);
             assert!(!given);
-            let contains_bridge = cfg
-                .auth_proxy_trusted_peers
-                .iter()
-                .any(|p| p.contains("172.17.0.1".parse().unwrap()));
-            assert!(contains_bridge);
+            let contains = |ip: &str| {
+                cfg.auth_proxy_trusted_peers
+                    .iter()
+                    .any(|p| p.contains(ip.parse().unwrap()))
+            };
+            assert!(contains("127.0.0.1"));
+            assert!(!contains("172.17.0.1"));
         }
     }
 

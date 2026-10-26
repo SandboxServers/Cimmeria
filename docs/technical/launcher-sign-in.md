@@ -123,7 +123,7 @@ Provider list: `config/auth-providers.toml` (path from `CIMMERIA_AUTH_PROVIDERS`
 | `CIMMERIA_IDP_SIGNUP_DISABLED=1` | `signup_open = false`: no new accounts, linking still works |
 | `CIMMERIA_SOAP_RELAY_DISABLED=1` | `soap_relay = false`: the launcher starts no relay |
 | `AUTH_TLS_CERT_PATH`, `AUTH_TLS_KEY_PATH` | In-process TLS listener |
-| `AUTH_PROXY_ADDR` | Extra listener for a TLS-terminating reverse proxy; trusts `X-Forwarded-*` only from `AUTH_PROXY_TRUSTED_PEERS` (default `127.0.0.0/8,::1,172.16.0.0/12`) |
+| `AUTH_PROXY_ADDR` | Extra listener for a TLS-terminating reverse proxy; trusts `X-Forwarded-*` only from `AUTH_PROXY_TRUSTED_PEERS` (default `127.0.0.0/8,::1`, loopback only) |
 
 How to terminate TLS and deploy: [Auth over HTTPS (added in a later PR)](../operations/auth-https.md), [colo deploy](../operations/colo-deploy.md), [container](../operations/container.md).
 

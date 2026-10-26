@@ -52,7 +52,7 @@ pub struct ServerConfig {
     /// `AUTH_PROXY_TRUSTED_PEERS`, a comma-separated list of CIDR networks).
     /// On the proxy listener, `X-Forwarded-*` headers are honoured only when
     /// the socket peer is in this list; any other peer is treated as plain
-    /// HTTP. The default is loopback and the docker bridge range.
+    /// HTTP. The default is loopback only; a docker bridge gateway must be listed here.
     pub auth_proxy_trusted_peers: Vec<PeerNet>,
 
     /// How often (in seconds) the background watcher polls the auth TLS
@@ -175,7 +175,7 @@ impl Default for ServerConfig {
             auth_tls_cert_path: None,
             auth_tls_key_path: None,
             auth_proxy_addr: None,
-            auth_proxy_trusted_peers: PeerNet::loopback_and_docker_bridge(),
+            auth_proxy_trusted_peers: PeerNet::loopback(),
             // Poll the cert/key mtimes every 30s by default. Cheap (two stats)
             // and picks up a rotated cert within half a minute. Operators who
             // never rotate certs at runtime can set this to 0 to disable polling.
@@ -232,8 +232,23 @@ impl PeerNet {
         (prefix <= max).then_some(Self { addr, prefix })
     }
 
+    /// Loopback only (`127.0.0.0/8`, `::1`): the default trusted peers of the
+    /// proxy listener. A docker bridge peer must be listed explicitly.
+    pub fn loopback() -> Vec<Self> {
+        vec![
+            Self {
+                addr: Ipv4Addr::new(127, 0, 0, 0).into(),
+                prefix: 8,
+            },
+            Self {
+                addr: Ipv6Addr::LOCALHOST.into(),
+                prefix: 128,
+            },
+        ]
+    }
     /// Loopback (`127.0.0.0/8`, `::1`) and the docker bridge range
-    /// (`172.16.0.0/12`): the default trusted peers of the proxy listener.
+    /// (`172.16.0.0/12`). No longer the default: the proxy listener defaults
+    /// to loopback only (see loopback).
     pub fn loopback_and_docker_bridge() -> Vec<Self> {
         vec![
             Self {
@@ -364,6 +379,17 @@ mod tests {
         assert_eq!(config.admin_port, 8443);
     }
 
+    /// The proxy listener's default trusts loopback only, so a fresh host
+    /// fails closed and the docker bridge (`172.16.0.0/12`) is not trusted.
+    /// Reverting the default to `loopback_and_docker_bridge` fails it.
+    #[test]
+    fn default_trusted_peers_exclude_the_docker_bridge() {
+        let peers = ServerConfig::default().auth_proxy_trusted_peers;
+        let trusted = |ip: &str| peers.iter().any(|p| p.contains(ip.parse().unwrap()));
+        assert!(trusted("127.0.0.1"));
+        assert!(trusted("::1"));
+        assert!(!trusted("172.17.0.1"));
+    }
     /// The security-relevant default: the unauthenticated admin API
     /// must stay on loopback. Reverting this to `0.0.0.0` reopens issue
     /// #439 (unauthenticated admin reachable from any networked host).
