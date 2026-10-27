@@ -1,7 +1,15 @@
 [workspace]
-members = ["engine", "shell", "runtime-probe"]
+members = ["engine", "shell", "runtime-probe", "relay"]
 default-members = ["engine"]
 resolver = "2"
+
+# Shared by the loopback relay crate (CT-32).
+[workspace.dependencies]
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+url = "2"
+keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native"] }
 
 # Short-lived release-side CLIs do not need LLVM optimization. Keep release
 # semantics for them; player and helper binaries still use the release profile.

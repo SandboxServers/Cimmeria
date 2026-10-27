@@ -19,7 +19,7 @@ use tokio::sync::broadcast;
 use tower::ServiceExt; // oneshot
 
 use super::handlers::handle_user_auth;
-use super::{HandlerState, ShardInfo};
+use super::{HandlerState, LaunchTicketStore, ShardInfo};
 use crate::audit::{LoginEvent, LoginEventBuffer};
 use crate::test_support::LogCapture;
 
@@ -46,6 +46,7 @@ fn state_with_audit() -> (
         // No database configured, as in the developer setup this guard models.
         db_configured: false,
         db: None,
+        launch_tickets: Arc::new(LaunchTicketStore::default()),
         login_tx: Some(tx),
         login_buffer: Some(buffer.clone()),
     });

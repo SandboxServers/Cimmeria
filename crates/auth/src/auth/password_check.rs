@@ -1,0 +1,255 @@
+//! Password check for the account-link flow (CT-26 `link/existing`).
+//!
+//! This is a pure check: it never rewrites the stored password. A legacy
+//! (algo 1) row keeps its SHA-1 hash, so an account whose link is refused still
+//! logs in with the unmodified client, which only sends `SHA1HEX` (D-CT7).
+//!
+//! The answer carries no oracle. Every path spends exactly one argon2id verify,
+//! whether the name is unknown, the row is legacy, or the password is wrong, so
+//! the timing does not show which case it is. The decision is sync and free of
+//! DB access. [`gated_check`] runs it on a blocking thread, at most
+//! [`ARGON2_PERMITS`] at a time, so a burst of link attempts neither stalls the
+//! async workers nor takes every core.
+//!
+//! Algo 3 (argon2id over `SHA1HEX`, contract C14) is checked on the SHA-1 hex of
+//! the password.
+
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{LazyLock, OnceLock};
+
+use sqlx::PgPool;
+use subtle::ConstantTimeEq;
+
+use super::credentials::{sha1_upper_hex, ALGO_ARGON2ID, ALGO_SHA1_ARGON2ID, ALGO_SHA1_LEGACY};
+use super::password_hash::{hash_argon2id, verify_argon2id};
+
+/// How many argon2id verifies the link-form check may run at once. This gate
+/// is the link path's own (D-CT28, D-CT30): the SOAP login path has a
+/// separate gate in `password_hash.rs` (contract C14), so a flood of link
+/// attempts never queues a game login. Do not merge the two.
+const ARGON2_PERMITS: usize = 2;
+
+/// Caps the argon2id verifies in flight. A caller waiting here is parked on the
+/// semaphore, so it does not hold an async worker.
+static ARGON2_GATE: LazyLock<std::sync::Arc<tokio::sync::Semaphore>> =
+    LazyLock::new(|| std::sync::Arc::new(tokio::sync::Semaphore::new(ARGON2_PERMITS)));
+
+/// Counts the argon2id verifies this module runs, so tests can assert the cost
+/// of a path. nextest runs each test in its own process, so the count is not
+/// shared between tests.
+#[cfg(test)]
+pub(super) static ARGON2_VERIFIES: AtomicUsize = AtomicUsize::new(0);
+
+/// The verifies running right now, and the most that ever ran at once. The gate
+/// tests read `PEAK` to show the cap holds.
+#[cfg(test)]
+pub(super) static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+#[cfg(test)]
+pub(super) static PEAK: AtomicUsize = AtomicUsize::new(0);
+
+/// The argon2id hash an unknown account name is checked against. It is built
+/// once, with the same cost as a real row, so a miss takes as long as a wrong
+/// password on an argon2id account.
+fn dummy_argon2id_hash() -> &'static str {
+    static DUMMY: OnceLock<String> = OnceLock::new();
+    DUMMY.get_or_init(|| hash_argon2id("cimmeria-unknown-account").unwrap_or_default())
+}
+
+/// The one argon2id verify that every path of [`check_row`] spends.
+fn argon2_verify(plaintext: &str, phc: &str) -> bool {
+    #[cfg(test)]
+    {
+        ARGON2_VERIFIES.fetch_add(1, Ordering::SeqCst);
+        let now = IN_FLIGHT.fetch_add(1, Ordering::SeqCst) + 1;
+        PEAK.fetch_max(now, Ordering::SeqCst);
+    }
+    let right = verify_argon2id(plaintext, phc);
+    #[cfg(test)]
+    IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
+    right
+}
+
+/// Outcome of [`verify_account_password`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PasswordCheck {
+    /// The password is right for the account.
+    Ok { account_id: u32 },
+    /// The password is wrong, or there is no such account.
+    Invalid,
+    /// The account is disabled.
+    Disabled,
+    /// The database query failed.
+    DbError,
+}
+
+/// The `account` columns the password check reads.
+#[derive(sqlx::FromRow)]
+struct AccountRow {
+    account_id: i32,
+    account_name: String,
+    password: Option<String>,
+    password_hash_v2: Option<String>,
+    password_algo: i16,
+    enabled: bool,
+}
+
+/// Checks `plaintext` against `account_name` without migrating the stored
+/// hash. A legacy row is compared with the uppercase SHA-1 hex of `plaintext`
+/// (the form the client stores); an argon2id row with `plaintext` itself.
+pub async fn verify_account_password(
+    db: &PgPool,
+    account_name: &str,
+    plaintext: &str,
+) -> PasswordCheck {
+    let row: Option<AccountRow> = match sqlx::query_as(
+        "SELECT account_id, account_name, password, password_hash_v2, password_algo, enabled \
+         FROM account WHERE account_name = $1",
+    )
+    .bind(account_name)
+    .fetch_optional(db)
+    .await
+    {
+        Ok(row) => row,
+        Err(e) => {
+            tracing::error!(error = %e, "password check: DB query failed");
+            return PasswordCheck::DbError;
+        }
+    };
+    gated_check(row, plaintext.to_owned()).await
+}
+
+/// How long a link check waits for an argon2id permit before it fails closed.
+const GATE_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Takes one permit of `gate`, waiting at most `wait`. `None` when the wait runs
+/// out, so a burst of link attempts cannot park callers without end.
+async fn acquire_within(
+    gate: std::sync::Arc<tokio::sync::Semaphore>,
+    wait: std::time::Duration,
+) -> Option<Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::AcquireError>> {
+    tokio::time::timeout(wait, gate.acquire_owned()).await.ok()
+}
+
+/// Runs [`check_row`] on a blocking thread, behind [`ARGON2_GATE`]. The permit
+/// is held until the blocking task ends. A wait past [`GATE_WAIT`] answers
+/// `DbError`, which the caller maps to 503.
+async fn gated_check(row: Option<AccountRow>, plaintext: String) -> PasswordCheck {
+    let permit = match acquire_within(std::sync::Arc::clone(&ARGON2_GATE), GATE_WAIT).await {
+        Some(Ok(permit)) => permit,
+        Some(Err(e)) => {
+            tracing::error!(
+                error = %e,
+                reason = "argon2_gate_closed",
+                "password check: argon2 gate is closed"
+            );
+            return PasswordCheck::DbError;
+        }
+        None => {
+            tracing::warn!(
+                reason = "argon2_gate_timeout",
+                "password check: no argon2 permit within the wait bound; refusing the link attempt"
+            );
+            return PasswordCheck::DbError;
+        }
+    };
+    // The permit moves into the closure, so it is released when the verify ends
+    // even if this future was dropped while the task was pending.
+    let blocking = tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        check_row(row.as_ref(), &plaintext)
+    });
+    match blocking.await {
+        Ok(answer) => answer,
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                reason = "password_check_join",
+                "password check: blocking task failed"
+            );
+            PasswordCheck::DbError
+        }
+    }
+}
+
+/// Decides the answer for one row, or for no row, without DB access.
+///
+/// The password is judged first and the disabled flag second, so a disabled
+/// account answers `Disabled` only to the right password. Every path spends one
+/// [`argon2_verify`]: a row with no usable argon2id hash, a legacy row and an
+/// unknown scheme verify against the dummy hash and are never right by it.
+/// An algo-3 row is verified on the uppercase SHA-1 hex of `plaintext`, the form
+/// CT-54 stores.
+fn check_row(row: Option<&AccountRow>, plaintext: &str) -> PasswordCheck {
+    let Some(row) = row else {
+        let _ = argon2_verify(plaintext, dummy_argon2id_hash());
+        return PasswordCheck::Invalid;
+    };
+    let right = match row.password_algo {
+        ALGO_ARGON2ID => match row.password_hash_v2.as_deref() {
+            Some(phc) => argon2_verify(plaintext, phc),
+            None => {
+                tracing::error!(
+                    account_id = row.account_id,
+                    account_name = row.account_name.as_str(),
+                    reason = "argon2_hash_missing",
+                    "account marked argon2id but password_hash_v2 is NULL"
+                );
+                let _ = argon2_verify(plaintext, dummy_argon2id_hash());
+                false
+            }
+        },
+        ALGO_SHA1_ARGON2ID => match row.password_hash_v2.as_deref() {
+            Some(phc) => argon2_verify(&sha1_upper_hex(plaintext), phc),
+            None => {
+                tracing::error!(
+                    account_id = row.account_id,
+                    account_name = row.account_name.as_str(),
+                    reason = "argon2_hash_missing",
+                    "account marked sha1_argon2id but password_hash_v2 is NULL"
+                );
+                let _ = argon2_verify(plaintext, dummy_argon2id_hash());
+                false
+            }
+        },
+        ALGO_SHA1_LEGACY => {
+            let _ = argon2_verify(plaintext, dummy_argon2id_hash());
+            let stored = row.password.as_deref().unwrap_or_default();
+            !stored.is_empty()
+                && bool::from(
+                    stored
+                        .to_ascii_uppercase()
+                        .as_bytes()
+                        .ct_eq(sha1_upper_hex(plaintext).as_bytes()),
+                )
+        }
+        algo => {
+            tracing::error!(
+                account_id = row.account_id,
+                account_name = row.account_name.as_str(),
+                password_algo = algo,
+                reason = "unknown_password_algo",
+                "account has an unrecognised password_algo"
+            );
+            let _ = argon2_verify(plaintext, dummy_argon2id_hash());
+            false
+        }
+    };
+    if !right {
+        PasswordCheck::Invalid
+    } else if !row.enabled {
+        PasswordCheck::Disabled
+    } else {
+        PasswordCheck::Ok {
+            account_id: row.account_id as u32,
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "password_check_tests_live_db.rs"]
+mod tests_live_db;
+
+#[cfg(test)]
+#[path = "password_check_gate_tests.rs"]
+mod gate_tests;

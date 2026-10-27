@@ -20,6 +20,8 @@ pub mod audit;
 pub mod auth;
 pub mod credential_redaction;
 
+pub use auth::{AuthRouteDeps, IdentityRoutes};
+
 // Generic helpers from `cimmeria-test-support` (a dev-dependency), imported by
 // tests as `crate::test_support::…`, as they were in cimmeria-services.
 #[cfg(test)]

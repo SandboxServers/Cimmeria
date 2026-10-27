@@ -1,0 +1,9 @@
+{
+  "id": "017-launcher-sign-in",
+  "title": "Login screen: sign in through the launcher",
+  "description": "Lets the launcher sign you in: when you pressed Play after signing in, the login screen shows who you are signed in as and an Enter button instead of the name and password boxes, with a Use password button to type them instead. Without a launcher sign-in it behaves like the stock screen. Replaces Login.lua and Login.layout with whole files.",
+  "files": [
+    {"path": "Working/SGWGame/Content/UI/Startup/Login/Login.layout", "from": "Login.layout"},
+    {"path": "Working/SGWGame/Content/UI/Startup/Login/Login.lua", "from": "Login.lua"}
+  ]
+}

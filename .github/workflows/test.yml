@@ -427,6 +427,10 @@ jobs:
       # scenarios again with 016's block appended (016 must not break them).
       - name: run the hotbar learn and feedback logic UAT
         run: lua5.1 data/client-patches/016-hotbar-learn-and-feedback/test/run.lua
+      # 017-launcher-sign-in's Login.lua against the launcher's ticket
+      # LoginInternal.lua (the golden file); the old-screen case needs a client.
+      - name: 017 launcher sign-in login screen
+        run: lua5.1 data/client-patches/017-launcher-sign-in/test/run.lua
       - name: run the weapon shot bar logic UAT with 016 appended
         run: lua5.1 data/client-patches/015-weapon-shot-bar/test/run.lua
         env:

@@ -135,6 +135,7 @@ Desktop.ini
 # The checked-in config/ files are templates with defaults.
 # Use *.local for machine-specific overrides containing real credentials.
 config/*.local
+config/auth-providers.toml
 *.local.config
 .env
 .env.*

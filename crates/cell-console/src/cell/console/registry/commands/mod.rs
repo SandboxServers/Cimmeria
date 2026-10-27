@@ -21,6 +21,7 @@
 use super::{spec, Spec, Target};
 
 pub(super) mod abilities;
+mod account;
 pub(super) mod ammo;
 mod bank;
 mod black_market;
@@ -58,6 +59,7 @@ const GROUPS: &[&[Spec]] = &[
     social::SPECS,
     pet::SPECS,
     bank::SPECS,
+    account::SPECS,
     black_market::SPECS,
     squad::SPECS,
     org::SPECS,

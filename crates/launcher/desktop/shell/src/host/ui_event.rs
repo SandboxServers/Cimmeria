@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 /// The screens and subsystems the frontend may name (C13).
-pub(crate) const UI_AREAS: [&str; 16] = [
+pub(crate) const UI_AREAS: [&str; 17] = [
     "install",
     "adoption",
     "update",
@@ -19,6 +19,7 @@ pub(crate) const UI_AREAS: [&str; 16] = [
     "server_list",
     "log_upload",
     "physx",
+    "sign_in",
     "migration",
     "patch_notes",
     "client_patches",
@@ -166,6 +167,26 @@ mod tests {
         let events = forwarded(&captured);
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].level, Level::INFO);
+    }
+
+    #[test]
+    fn sign_in_areas_are_accepted() {
+        // The sign-in and account panels both report under `sign_in` (frontend UiArea);
+        // without it in UI_AREAS the native side refuses their telemetry.
+        assert!(UI_AREAS.contains(&"sign_in"));
+        let throttle = Throttle::new();
+        let (result, captured) = capture(|| {
+            report(
+                &throttle,
+                0,
+                "sign_in",
+                "sign_in_failed",
+                "rate_limited",
+                "warn",
+            )
+        });
+        assert_eq!(result, Ok(()));
+        assert_eq!(forwarded(&captured).len(), 1);
     }
 
     #[test]

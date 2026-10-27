@@ -3,7 +3,7 @@
 > **Type:** Reference
 > **Audience:** Launcher integrators and playtesters
 > **Last updated:** 2026-10-26
-> **Companions:** [Desktop workspace](../README.md), [prerequisites](prerequisites.md), [runtime evidence](../../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md)
+> **Companions:** [Desktop workspace](../README.md), [prerequisites](prerequisites.md), [sign-in relay, ticket file and scrub](sign-in.md), [runtime evidence](../../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md)
 
 ## Where the rest of the contract lives
 
@@ -263,7 +263,7 @@ already recorded an observation, or launch state that cannot be read
 (`corrupt_state`) goes to reconciliation-required instead.
 Every not-started launch the launcher detects itself records its failure code too: `verify_failed` is
 `game_files_invalid`, `prepare_failed` is `launch_prepare_failed`,
-`login_servers_refused` is `login_servers_invalid`, and a game process that could not
+`login_servers_refused` is `login_servers_invalid`, a refused launch ticket is `ticket_unavailable` (also used when the ticket file cannot be written) or `sign_in_ended` (the stored sign-in was refused), and a game process that could not
 be created is `spawn_not_found`, `spawn_permission_denied`, `spawn_failed`, or on
 macOS `rosetta_missing` when the OS reports a bad CPU type (EBADARCH). The launch
 status returns it as `failure` (`null` when none is known), and the `launch_not_started`

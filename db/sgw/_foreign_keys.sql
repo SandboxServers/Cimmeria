@@ -62,6 +62,27 @@ ALTER TABLE ONLY sgw_player
     ADD CONSTRAINT sgw_player_account_id_fkey FOREIGN KEY (account_id) REFERENCES account(account_id) ON UPDATE RESTRICT ON DELETE CASCADE;
 
 --
+-- Name: account_identity_account_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY account_identity
+    ADD CONSTRAINT account_identity_account_id_fkey FOREIGN KEY (account_id) REFERENCES account(account_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
+-- Name: auth_refresh_token_account_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY auth_refresh_token
+    ADD CONSTRAINT auth_refresh_token_account_id_fkey FOREIGN KEY (account_id) REFERENCES account(account_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
+-- Name: account_identity_event_account_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY account_identity_event
+    ADD CONSTRAINT account_identity_event_account_id_fkey FOREIGN KEY (account_id) REFERENCES account(account_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
 -- TOC entry 2681 (class 2606 OID 63916)
 -- Name: sgw_player_world_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --

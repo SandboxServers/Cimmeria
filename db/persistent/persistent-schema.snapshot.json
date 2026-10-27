@@ -61,6 +61,215 @@
         "account_pkey"
       ]
     },
+    "account_identity": {
+      "columns": [
+        {
+          "name": "account_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "created_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "display_name",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": "''::character varying"
+        },
+        {
+          "name": "email",
+          "data_type": "text",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "email_verified_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "identity_id",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": "nextval('account_identity_identity_id_seq'::regclass)"
+        },
+        {
+          "name": "issuer",
+          "data_type": "text",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "last_used_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "provider",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "subject",
+          "data_type": "text",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "account_identity_account_id_fkey",
+          "type": "f"
+        },
+        {
+          "name": "account_identity_pkey",
+          "type": "p"
+        },
+        {
+          "name": "account_identity_subject_key",
+          "type": "u"
+        }
+      ],
+      "indexes": [
+        "account_identity_account_idx",
+        "account_identity_email_idx",
+        "account_identity_pkey",
+        "account_identity_subject_key"
+      ]
+    },
+    "account_identity_event": {
+      "columns": [
+        {
+          "name": "account_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "event_id",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": "nextval('account_identity_event_event_id_seq'::regclass)"
+        },
+        {
+          "name": "identity_id",
+          "data_type": "bigint",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "kind",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "provider",
+          "data_type": "character varying",
+          "is_nullable": "YES",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "account_identity_event_account_id_fkey",
+          "type": "f"
+        },
+        {
+          "name": "account_identity_event_kind_check",
+          "type": "c"
+        },
+        {
+          "name": "account_identity_event_pkey",
+          "type": "p"
+        }
+      ],
+      "indexes": [
+        "account_identity_event_account_idx",
+        "account_identity_event_pkey"
+      ]
+    },
+    "auth_refresh_token": {
+      "columns": [
+        {
+          "name": "account_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "family_expires_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "family_id",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "issued_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "last_used_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "replaced_by",
+          "data_type": "bytea",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "revoked_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "token_hash",
+          "data_type": "bytea",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "auth_refresh_token_account_id_fkey",
+          "type": "f"
+        },
+        {
+          "name": "auth_refresh_token_pkey",
+          "type": "p"
+        }
+      ],
+      "indexes": [
+        "auth_refresh_token_account_idx",
+        "auth_refresh_token_family_idx",
+        "auth_refresh_token_pkey"
+      ]
+    },
     "cell_event_outbox": {
       "columns": [
         {

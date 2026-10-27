@@ -5,7 +5,7 @@ patch is still pending, and **no phase has been exercised against a live 2009
 client**.
 **Confidence:** RE targets High (binary-validated); client-patch engineering Medium (per-hook runtime confirmation pending)
 **Issue:** [#434](https://github.com/SandboxServers/Cimmeria/issues/434) (encryption modernization, as rewritten)
-**Last updated:** 2026-07-25
+**Last updated:** 2026-10-24
 
 This ADR records the design that consumes the binary-validated targets in
 [../reverse-engineering/findings/auth-and-crypto-modernization-targets.md](../reverse-engineering/findings/auth-and-crypto-modernization-targets.md).
@@ -269,6 +269,15 @@ gap.
   the x64dbg confirmations in finding §6 are executed and the shim is exercised
   against a live client. The second `logOnBegin` variant (no separate SHA-1 path)
   is an explicit open verification item for Phase 2.
+
+## Amendment 2026-10-24 — launcher relay and ticket replace the Phase 1-2 client patches for launcher users
+
+Decisions D-CT1, D-CT7 and D-CT10 of the [client-tls-oidc campaign](../analysis/client-tls-oidc/README.md) change how Phases 1 and 2 reach players. The ledger holds the full decision list.
+
+- **Launcher users (D-CT1).** The launcher relay (TLS from the launcher to the server) and the per-launch ticket replace the client patches that Phase 1 (auth TLS) and Phase 2 (argon2id password hashing) describe. The launcher users get TLS and a ticket with no binary patch to `SGW.exe`.
+- **Direct clients (D-CT7).** Unmodified clients keep plain HTTP on 8081 and the legacy SHA-1 path. The server does not retire either.
+- **Hashes at rest (D-CT10).** Legacy SHA-1 hashes move to argon2id(SHA1HEX) at rest with no client change (CT-54). This delivers Phase 2's server-side goal without the Phase 2 client patch.
+- **Unchanged.** Phase 3 (Mercury v2 packet crypto) and the session-key rotation sections are untouched by this amendment.
 
 ## See also
 

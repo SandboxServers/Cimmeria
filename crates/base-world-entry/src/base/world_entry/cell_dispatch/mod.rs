@@ -23,6 +23,8 @@
 //! - [`org_dispatch`]          — organization (`CellToBaseMsg::Org`) arms
 //! - [`chat_dispatch`]         — chat (`CellToBaseMsg::Chat`) arms: the GM
 //!   broadcast fan-out
+//! - [`account_dispatch`]      — account (`CellToBaseMsg::Account`) arm: the GM
+//!   `.account` identity commands
 //! - [`bank_dispatch`]         — bank (`CellToBaseMsg::Bank`) arms: the GM
 //!   `.bankdump`
 //!
@@ -48,6 +50,7 @@ use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 
 use super::super::ConnectedClientState;
 
+mod account_dispatch;
 mod aoi;
 mod aoi_dispatch;
 mod bandolier;
@@ -313,6 +316,8 @@ pub async fn route_cell_message(
         }
 
         CellToBaseMsg::Bank(bank) => bank_dispatch::route(bank, &ctx).await,
+
+        CellToBaseMsg::Account(account) => account_dispatch::route(account, &ctx).await,
 
         // A migrated feature's message (#962, plugin ADR §3.4): the base
         // plugin that consumes its payload type handles it; one nobody

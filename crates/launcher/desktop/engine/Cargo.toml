@@ -29,6 +29,13 @@ cimmeria-patchset = { path = "../../../patchset" }
 # The manifest, install, unpack, client setup and telemetry marker code,
 # split out of the original egui launcher (LX-01).
 cimmeria-launcher-core = { path = "../../../launcher-core" }
+# The loopback callback listener that the browser sign-in redirects to (CT-32).
+cimmeria-launcher-relay = { path = "../relay" }
+url = { workspace = true }
+# Random verifier, state and link bytes for the sign-in PKCE pair (C9).
+getrandom = "0.3"
+# The OS credential store for the sign-in refresh token (C9); other targets use memory only.
+keyring = { workspace = true }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync", "fs", "io-util", "process"] }
 tokio-util = "0.7"
 futures-util = "0.3"
@@ -47,6 +54,7 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage
 [dev-dependencies]
 minisign = "=0.8.0"
 wiremock = "0.6"
+cimmeria-launcher-relay = { path = "../relay", features = ["test-support"] }
 crc32fast = "1"
 # The dev manifest signing key and the archive fixtures the storage tests use.
 cimmeria-launcher-core = { path = "../../../launcher-core", features = ["test-fixtures"] }

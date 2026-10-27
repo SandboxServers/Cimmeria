@@ -13,16 +13,20 @@ use axum::{
     Extension,
 };
 use rand::RngExt;
+use tracing::Instrument;
 
 use crate::audit::{emit_login_event, LoginOutcome};
 use crate::credential_redaction::CredentialPrefix;
 
 use super::credentials::{
-    classify_credential, validate_credentials, AuthCredError, CredentialGateError,
+    classify_credential, validate_credentials, AuthCredError, ClientCredential, CredentialGateError,
 };
 use super::soap_request::{parse_login_request, parse_server_selection};
 use super::soap_response::{login_error, login_success_xml, select_error, server_location_xml};
-use super::{HandlerState, PendingLogin, SessionRecord, TlsConn, PROTOCOL_DIGEST, SESSION_TTL};
+use super::ticket_login::ticket_account;
+use super::{
+    HandlerState, PendingLogin, SessionRecord, TicketCheck, TlsConn, PROTOCOL_DIGEST, SESSION_TTL,
+};
 
 // ── Axum handlers ────────────────────────────────────────────────────────────
 
@@ -113,13 +117,15 @@ pub(super) async fn handle_user_auth(
     }
     // Validate the account name before it reaches the span or any audit row:
     // it is client-controlled, and after XML decoding a control character or
-    // newline can arrive as `&#10;` as well as raw. Log only its length.
+    // newline can arrive as `&#10;` as well as raw. Log only its length. The
+    // client and `account_name` allow ASCII only; a Unicode letter reached the
+    // audit row before.
     let name_ok = req.account_name.len() >= 3
         && req.account_name.len() <= 20
         && req
             .account_name
             .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '-');
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
     if !name_ok {
         tracing::Span::current().record("result", "bad_request");
         tracing::info!(
@@ -160,13 +166,104 @@ pub(super) async fn handle_user_auth(
         );
     }
 
+    // A launch ticket (CT-21) arrives as the legacy SHA-1 credential. Over TLS a
+    // live match is the account. Over plain HTTP the ticket has already crossed
+    // the wire, so it is revoked and the login refused.
+    let ticket = match credential {
+        ClientCredential::LegacySha1Hex(hash) => {
+            state
+                .launch_tickets
+                .verify(&req.account_name, hash, Instant::now())
+        }
+        ClientCredential::Plaintext(_) => TicketCheck::NoMatch,
+    };
+    let ticket_id = match ticket {
+        TicketCheck::Valid { account_id, .. } if !over_tls => {
+            let consume = consume_span(account_id);
+            record_consume(&consume, Instant::now(), "refused", "ticket_requires_tls");
+            state.launch_tickets.revoke_account(account_id);
+            tracing::warn!(
+                account_id,
+                account_name = %req.account_name,
+                reason = "ticket_requires_tls",
+                "launch ticket presented over plain HTTP; ticket revoked"
+            );
+            audit!(LoginOutcome::TicketRequiresTls, id = account_id);
+            return login_error(4, "The account name or password is incorrect.");
+        }
+        TicketCheck::Valid { account_id, guard } => Some((account_id, guard)),
+        TicketCheck::NoMatch => None,
+    };
+
     // Credential check.
-    // If DB is available, validate against the account table.
+    // A matching ticket names the account. Otherwise, if DB is available,
+    // validate against the account table.
     // Only in developer mode with NO database configured are valid-format
     // credentials accepted without a check. A configured database whose pool
     // is missing refuses every login (fail closed).
-    let (account_id, access_level, test_account): (u32, u32, bool) = if let Some(ref db) = state.db
+    let (account_id, access_level, test_account): (u32, u32, bool) = if let Some(ticket_id) =
+        ticket_id.as_ref().map(|(id, _)| *id)
     {
+        let consume = consume_span(ticket_id);
+        let started = Instant::now();
+        let looked_up = ticket_account(
+            state.db.as_deref(),
+            state.developer_mode,
+            state.db_configured,
+            ticket_id,
+        )
+        .instrument(consume.clone())
+        .await;
+        // Test seam: a test revokes the ticket here, while the login is in flight.
+        crate::auth::test_hooks::after_ticket_lookup();
+        match &looked_up {
+            Ok(_) => record_consume(&consume, started, "ok", "ok"),
+            Err(AuthCredError::InvalidCredentials) => {
+                record_consume(&consume, started, "refused", "ticket_account_missing")
+            }
+            Err(AuthCredError::AccountDisabled) => {
+                record_consume(&consume, started, "refused", "ticket_account_disabled")
+            }
+            Err(AuthCredError::DbError(_)) => {
+                record_consume(&consume, started, "error", "db_error")
+            }
+        }
+        match looked_up {
+            Ok(acct) => acct,
+            Err(AuthCredError::InvalidCredentials) => {
+                state.launch_tickets.revoke_account(ticket_id);
+                tracing::info!(
+                    account_id = ticket_id,
+                    account_name = %req.account_name,
+                    reason = "ticket_account_missing",
+                    "Launch ticket names an account with no row; ticket revoked"
+                );
+                audit!(LoginOutcome::InvalidCredentials);
+                return login_error(4, "The account name or password is incorrect.");
+            }
+            Err(AuthCredError::AccountDisabled) => {
+                state.launch_tickets.revoke_account(ticket_id);
+                tracing::info!(
+                    account_id = ticket_id,
+                    account_name = %req.account_name,
+                    reason = "ticket_account_disabled",
+                    "Launch ticket account is disabled; ticket revoked"
+                );
+                audit!(LoginOutcome::AccountDisabled);
+                return login_error(5, "This account has been suspended.");
+            }
+            Err(AuthCredError::DbError(e)) => {
+                tracing::error!(
+                    account_id = ticket_id,
+                    account_name = %req.account_name,
+                    error = %e,
+                    "ticket account lookup failed"
+                );
+                audit!(LoginOutcome::DbError);
+                return login_error(10, "A request to the database server failed.");
+            }
+        }
+    } else if let Some(ref db) = state.db {
         match validate_credentials(db, &req.account_name, credential).await {
             Ok(acct) => (acct.account_id, acct.access_level, acct.test_account),
             Err(AuthCredError::InvalidCredentials) => {
@@ -240,6 +337,23 @@ pub(super) async fn handle_user_auth(
     // 40-char alphanumeric SID matching the C++ session cookie format.
     let sid = random_alphanumeric(40);
     tracing::debug!(sid_prefix = %CredentialPrefix(&sid), "Phase 1 generated SID");
+
+    // Every await above has run. A launch ticket revoked since its lookup
+    // issues no SID (CT-78).
+    if ticket_id
+        .as_ref()
+        .is_some_and(|(_, guard)| !guard.is_current())
+    {
+        tracing::info!(
+            account_id,
+            account_name = %req.account_name,
+            reason = "ticket_revoked",
+            "Launch ticket was revoked during login; refused"
+        );
+        audit!(LoginOutcome::InvalidCredentials);
+        return login_error(4, "The account name or password is incorrect.");
+    }
+
     {
         state.sessions.lock().unwrap().insert(
             sid.clone(),
@@ -250,6 +364,7 @@ pub(super) async fn handle_user_auth(
                 account_name: req.account_name.clone(),
                 client_ip: addr.ip(),
                 created: Instant::now(),
+                ticket_guard: ticket_id.as_ref().map(|(_, g)| g.clone()),
             },
         );
     }
@@ -263,7 +378,15 @@ pub(super) async fn handle_user_auth(
         ip = %client_ip,
         "Phase 1 success"
     );
-    audit!(LoginOutcome::Success, id = account_id);
+    // One audit row per login: a ticket login is recorded as `launch_ticket`.
+    audit!(
+        if ticket_id.is_some() {
+            LoginOutcome::LaunchTicket
+        } else {
+            LoginOutcome::Success
+        },
+        id = account_id
+    );
 
     let xml = login_success_xml(account_id, &state.shards);
     (
@@ -336,6 +459,23 @@ pub(super) async fn handle_server_selection(
             return select_error(15, "Your logon session has expired. Please log in again.");
         }
     };
+
+    // A SID issued for a launch ticket that was revoked after Phase 1 (CT-78).
+    // The SID is already consumed above, so it cannot be retried.
+    if session
+        .ticket_guard
+        .as_ref()
+        .is_some_and(|g| !g.is_current())
+    {
+        tracing::info!(
+            reason = "ticket_revoked",
+            account_id = session.account_id,
+            account_name = %session.account_name,
+            peer_ip = %client_ip,
+            "Phase 2 refused: the launch ticket behind this SID was revoked"
+        );
+        return select_error(15, "Your logon session has expired. Please log in again.");
+    }
 
     // Cross-IP detection (issue #442, warn-only first): the SID was issued
     // to a specific client IP at Phase 1. Consuming it from a different IP
@@ -412,6 +552,7 @@ pub(super) async fn handle_server_selection(
                 session_key: session_key.clone(),
                 client_ip: addr.ip(),
                 created: Instant::now(),
+                ticket_guard: session.ticket_guard.clone(),
             },
         );
     }
@@ -453,6 +594,27 @@ pub(super) async fn handle_server_selection(
 
 // ── XML helpers ──────────────────────────────────────────────────────────────
 
+/// `auth.launch_ticket.consume` (C11): the spend of a launch ticket. It carries
+/// the account id, the outcome and the reason only, never the ticket or the name.
+pub(super) fn consume_span(account_id: u32) -> tracing::Span {
+    tracing::info_span!(
+        target: "cimmeria_auth::auth::handlers",
+        "auth.launch_ticket.consume",
+        account_id,
+        outcome = tracing::field::Empty,
+        reason = tracing::field::Empty,
+        latency_ms = tracing::field::Empty,
+    )
+}
+
+/// Records how a ticket spend ended on `span`: `outcome`, `reason` and the
+/// whole-millisecond latency since `started`.
+fn record_consume(span: &tracing::Span, started: Instant, outcome: &str, reason: &str) {
+    span.record("outcome", outcome);
+    span.record("reason", reason);
+    span.record("latency_ms", started.elapsed().as_millis() as u64);
+}
+
 fn extract_sid(headers: &HeaderMap) -> Option<String> {
     let cookie = headers.get(header::COOKIE)?.to_str().ok()?;
     cookie
@@ -483,3 +645,7 @@ pub(super) fn random_alphanumeric(char_count: usize) -> String {
         })
         .collect()
 }
+
+#[cfg(test)]
+#[path = "handlers_guard_tests.rs"]
+mod guard_tests;

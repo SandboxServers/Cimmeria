@@ -1,6 +1,8 @@
 //! Validate the existing preparation destinations before reusing client setup.
 use super::*;
 use crate::client_setup::login_servers;
+use crate::storage::adoption::Provenance;
+use crate::storage::InstalledContent;
 impl DesktopState {
     /// The login servers Play writes into `LoginInternal.lua`. A legacy adoption
     /// keeps the list its adoption reviewed; any other install uses the saved
@@ -14,15 +16,30 @@ impl DesktopState {
         if installed.intent != *installation {
             return Err(StorageError::Corrupt.into());
         }
-        let servers = match adoption {
-            Some(provenance) if provenance.legacy_install_id.is_some() => {
-                installation.login_servers.clone()
+        let servers = self.pick_login_servers(Some((&installed, adoption.as_ref())));
+        login_servers::validate(&servers).map_err(|_| StorageError::InvalidServerList)?;
+        Ok(servers)
+    }
+
+    /// The list Play writes: a legacy adoption's reviewed list, else the saved
+    /// preference, else the defaults (C18.2).
+    fn pick_login_servers(
+        &self,
+        installed: Option<(&InstalledContent, Option<&Provenance>)>,
+    ) -> Vec<LoginServer> {
+        match installed {
+            Some((content, Some(p))) if p.legacy_install_id.is_some() => {
+                content.intent.login_servers.clone()
             }
             _ if self.preferences.login_servers.is_empty() => login_servers::default_servers(),
             _ => self.preferences.login_servers.clone(),
-        };
-        login_servers::validate(&servers).map_err(|_| StorageError::InvalidServerList)?;
-        Ok(servers)
+        }
+    }
+
+    /// The effective list without a launch intent: what sign-in offers (C18.2).
+    pub(crate) fn effective_login_servers(&self) -> Result<Vec<LoginServer>, StorageError> {
+        let installed = self.installed_for_launch()?;
+        Ok(self.pick_login_servers(installed.as_ref().map(|(c, p)| (c, p.as_ref()))))
     }
 }
 pub(super) fn prepare(plan: &Plan, servers: &[LoginServer]) -> Result<PathBuf, IntentError> {

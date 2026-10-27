@@ -20,6 +20,7 @@
 
 pub mod aslr;
 pub mod login_servers;
+pub mod login_session;
 pub mod stock_case;
 
 use std::path::Path;

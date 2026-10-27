@@ -57,7 +57,7 @@ mod tests {
 
     #[test]
     fn every_registered_dot_command_has_pending_workbench_metadata() {
-        assert_eq!(COMMANDS.len(), 129);
+        assert_eq!(COMMANDS.len(), 130);
         for spec in COMMANDS {
             let metadata = workbench_metadata(spec);
             if super::super::workbench_world_move::metadata(spec.name).is_none()

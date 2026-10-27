@@ -38,14 +38,30 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->1,751<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,751<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,793<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,763<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,226<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,647<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,751<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,751<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,793<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,763<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,226<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,647<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,790<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,790<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,200<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,836<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,790<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,790<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,200<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,836<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,790<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,790<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,200<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,836<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,790<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,790<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,200<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,836<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,790<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,790<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,200<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,836<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,790<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,790<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,200<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,836<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
@@ -148,6 +164,9 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [Desktop Play integration](analysis/playtests/2026-10-03-macos-wine/worknotes/play-integration.md) | Native-owned launch, Effect lifecycle controls and persistence UAT boundaries |
 | [Desktop updater parity research](analysis/playtests/2026-10-03-macos-wine/worknotes/updater-parity-research.md) | Legacy checksum trust, signed Tauri packages and remaining native recovery contracts |
 | [Desktop launcher release](../crates/launcher/desktop/docs/release.md) | What `/release-launcher` builds and publishes for the desktop launcher: the Windows zip and its signed updater feed, the ad-hoc signed macOS zip, the jobs and what each can see, and how to recover a failed run |
+| [Launcher sign-in and linked accounts](technical/launcher-sign-in.md) | Explanation and reference: browser sign-in with PKCE, `needs_link`, Play through the loopback relay with a launch ticket, linking rules (a linked account has no password), what stays compatible, kill switches and env names, telemetry, failure modes; what is still unverified in the live game |
+| [Launcher sign-in: relay, ticket file and scrub](../crates/launcher/desktop/docs/sign-in.md) | Reference: the loopback relay, the one-server `LoginInternal.lua` in ticket mode, the scrub on exit, heartbeats, the keep-running prompt and why Play never falls back to a password |
+| [Signing in with the launcher](client/launcher-sign-in-guide.md) | Player how-to: sign in with a provider, link an account (and that linking removes the password), add or remove a method, sign out, what to do when Play stops |
 | [Desktop launch contract](../crates/launcher/desktop/docs/launch.md) | Play admission, lifecycle, resources and checklist; per-platform pages [macOS](../crates/launcher/desktop/docs/launch-mac.md) and [Linux (Proton)](../crates/launcher/desktop/docs/launch-linux.md), plus [display settings](../crates/launcher/desktop/docs/launch-display.md) and [opt-in game telemetry](../crates/launcher/desktop/docs/launch-telemetry.md) |
 | [Desktop signed package updater](../crates/launcher/desktop/docs/updater.md) | Settings check/download, signed-version verification and remaining Apply/recovery gates |
 | [Existing-user adoption contract](analysis/playtests/2026-10-03-macos-wine/worknotes/adoption-contract-audit.md) | Verified separate-copy migration, effective settings and installed Update requirements |

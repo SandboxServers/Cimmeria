@@ -1,0 +1,26 @@
+# Cimmeria — sign-in providers from a host file (opt-in overlay).
+#
+# Mounts ./config/auth-providers.toml, which you write yourself, at the path
+# the server reads by default: config/auth-providers.toml, relative to the
+# server's working directory /opt/cimmeria. Leave CIMMERIA_AUTH_PROVIDERS blank
+# in .env when you use this overlay. Provider secrets go in .env as
+# CIMMERIA_IDP_<ID>_SECRET, never in the file. A missing file means no
+# providers. A file the server refuses stops it at startup, so check the log
+# after `docker compose up -d`.
+#
+#   mkdir -p config
+#   cp config/auth-providers.toml.example config/auth-providers.toml
+#   $EDITOR config/auth-providers.toml
+#   sudo chown 1001:1001 config/auth-providers.toml && sudo chmod 0440 config/auth-providers.toml
+#
+# The server runs as uid 1001 inside the container, so the file must be
+# readable by uid 1001 on the host, as with compose.discord-file.yml.
+#
+# A bind mount survives watchtower swaps. If config/auth-providers.toml is
+# missing when the container is created, Docker creates an empty directory in
+# its place; delete it, write the file, and run `docker compose up -d` again.
+
+services:
+  cimmeria:
+    volumes:
+      - ./config/auth-providers.toml:/opt/cimmeria/config/auth-providers.toml:ro

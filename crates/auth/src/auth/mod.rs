@@ -13,11 +13,17 @@ mod cert_watcher;
 pub mod client_telemetry;
 mod credentials;
 mod handlers;
+mod identity_hook;
+pub mod launch_ticket;
+mod password_check;
 mod password_hash;
+mod proxy;
 mod service;
 mod session_kind;
 mod soap_request;
 mod soap_response;
+pub(crate) mod test_hooks;
+mod ticket_login;
 mod tls;
 
 #[cfg(test)]
@@ -33,8 +39,17 @@ mod login_smoke;
 mod handlers_tests;
 
 #[cfg(test)]
+mod identity_schema_live_db;
+
+#[cfg(test)]
+mod handlers_ticket_tests;
+
+#[cfg(test)]
 mod tls_smoke;
 
+pub use identity_hook::{AuthRouteDeps, IdentityRoutes};
+pub use launch_ticket::{LaunchTicketStore, MintedTicket, TicketCheck, TicketGuard};
+pub use password_check::{verify_account_password, PasswordCheck};
 pub use service::AuthService;
 pub use session_kind::{session_kind, SESSION_KIND_LAB, SESSION_KIND_PLAYER};
 pub use tls::{TlsCertStore, TlsError, TlsListener};
@@ -146,6 +161,9 @@ pub struct PendingLogin {
     pub client_ip: IpAddr,
     /// When this ticket was created (for expiration).
     pub created: Instant,
+    /// Guard of the launch ticket behind this login; `None` for a password
+    /// login. Checked at BaseApp admission (CT-79).
+    pub ticket_guard: Option<TicketGuard>,
 }
 
 // ── Internal types ───────────────────────────────────────────────────────────
@@ -169,6 +187,9 @@ struct SessionRecord {
     /// stolen-session replay (issue #442).
     client_ip: IpAddr,
     created: Instant,
+    /// Guard of the launch ticket behind this SID; `None` for a password
+    /// login. Checked at Phase 2 (CT-78).
+    ticket_guard: Option<TicketGuard>,
 }
 
 /// Compare two client IPs for cross-phase session binding, normalising the
@@ -210,6 +231,8 @@ struct HandlerState {
     /// fallback login is only for a server with no database configured.
     db_configured: bool,
     db: Option<Arc<PgPool>>,
+    /// Live launch tickets (CT-21), shared with `AuthService`.
+    launch_tickets: Arc<LaunchTicketStore>,
     login_tx: Option<broadcast::Sender<LoginEvent>>,
     login_buffer: Option<LoginEventBuffer>,
 }

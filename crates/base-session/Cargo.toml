@@ -29,6 +29,10 @@ cimmeria-mercury = { workspace = true }
 cimmeria-discord = { workspace = true }
 # `mercury_rx_stalls_total` and the cooked-data counters.
 cimmeria-observability = { workspace = true }
+# The GM `.account` handler reads the identity tables and the link-code store.
+cimmeria-identity = { workspace = true }
+# The identity repositories take UTC timestamps; the handler formats dates.
+chrono = { workspace = true }
 tokio = { workspace = true }
 sqlx = { workspace = true }
 serde = { workspace = true }

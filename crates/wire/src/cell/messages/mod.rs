@@ -13,6 +13,8 @@
 //!   enums carried by `CellToBaseMsg::Org` and `BaseToCellMsg::Org`.
 //! - `bank_cell_to_base` / `bank_base_to_cell` — the nested bank enums
 //!   carried by `CellToBaseMsg::Bank` and `BaseToCellMsg::Bank`.
+//! - `account_cell_to_base` — `AccountCellToBase`, the GM `.account`
+//!   commands carried by `CellToBaseMsg::Account`.
 //! - `chat_cell_to_base` — the nested chat enum carried by
 //!   `CellToBaseMsg::Chat`.
 //! - `duel_base_to_cell` — the nested duel enum carried by
@@ -45,6 +47,7 @@
 
 mod ability_content;
 mod ability_gm;
+mod account_cell_to_base;
 mod ammo_gm_cell_to_base;
 mod ammo_reserve;
 mod bank_base_to_cell;
@@ -76,6 +79,7 @@ pub use crate::crafting::{
 };
 pub use ability_content::{ContentAbilitiesGranted, ContentGrantAbilities};
 pub use ability_gm::{GmAbilitiesChanged, GmAbilityBulk, GmAbilityChange, GmAbilitySource};
+pub use account_cell_to_base::AccountCellToBase;
 pub use ammo_gm_cell_to_base::GmGiveAmmo;
 pub use ammo_reserve::{AmmoReserveAnswer, AmmoReserveRequest, ReserveRefusal};
 pub use bank_base_to_cell::BankBaseToCell;

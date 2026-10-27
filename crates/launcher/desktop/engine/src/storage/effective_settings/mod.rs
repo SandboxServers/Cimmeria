@@ -146,6 +146,9 @@ pub(super) fn verify_launch_resources(
     resources.verify()
 }
 
+#[cfg(test)]
+#[path = "adopted_sign_in_tests.rs"]
+mod adopted_sign_in;
 #[cfg(all(test, target_os = "macos"))]
 mod adopted_tests;
 #[cfg(test)]

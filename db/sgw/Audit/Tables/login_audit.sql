@@ -12,7 +12,7 @@ CREATE TABLE login_audit (
         CONSTRAINT outcome_check CHECK (outcome IN (
             'success', 'invalid_credentials', 'account_disabled',
             'db_error', 'protocol_mismatch', 'no_shards',
-            'plaintext_requires_tls'
+            'plaintext_requires_tls', 'launch_ticket', 'ticket_requires_tls'
         )),
     shard         VARCHAR(64),
     detail        TEXT

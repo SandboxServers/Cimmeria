@@ -42,6 +42,10 @@ Failure: Returns one of 31 error codes (wrong password, account locked, etc.)
 
 If login succeeds, the client shows the server/shard selection screen.
 
+### Launch tickets and HTTPS only
+
+An account linked to an outside sign-in has no password. The launcher mints a one-time launch ticket and writes it into the login boxes; the client sends it as the usual password field (`SHA1HEX` of the ticket). The server accepts a ticket only over TLS: a matching ticket on plain HTTP is refused (audit outcome `ticket_requires_tls`, login error 4) and revoked. The launcher's loopback relay re-sends the request over HTTPS. Accounts without a linked identity keep password login over plain HTTP. Not yet run against the live game. See [launcher sign-in](technical/launcher-sign-in.md).
+
 ## Phase 2: Server Assignment
 
 The player picks a shard (server) from the list.

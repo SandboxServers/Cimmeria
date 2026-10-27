@@ -147,7 +147,7 @@ mod tests {
         let rows = catalog["commands"].as_array().unwrap();
         assert_eq!(
             expected.len(),
-            129,
+            130,
             "raw registry keeps both alias spellings"
         );
         assert_eq!(rows.len(), expected.len() - 2);

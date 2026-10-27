@@ -121,6 +121,23 @@ pub(crate) async fn handle_login_with_issuer(
         );
         return Ok(());
     }
+    // A launch ticket revoked after the SOAP handoff is refused here too. Only
+    // new admissions are refused: an established connection is not touched.
+    if peeked
+        .ticket_guard
+        .as_ref()
+        .is_some_and(|g| !g.is_current())
+    {
+        burn_ticket(pending_logins, ticket)?;
+        tracing::warn!(
+            %addr,
+            account_id = peeked.account_id,
+            account_name = %peeked.account_name,
+            reason = "ticket_revoked",
+            "Phase 3 ticket comes from a revoked launch ticket; refusing the login"
+        );
+        return Ok(());
+    }
     let claim = relaunch::address_claim(connected, addr, &peeked);
     if claim == relaunch::AddressClaim::Refused {
         // Burned so a replayed datagram cannot log the refusal again.
@@ -147,6 +164,19 @@ pub(crate) async fn handle_login_with_issuer(
             return Ok(());
         }
     };
+    // The peek above and the remove are separate steps: a launch ticket revoked
+    // in between still admits here, so the guard is checked again on the record
+    // that was removed.
+    if login.ticket_guard.as_ref().is_some_and(|g| !g.is_current()) {
+        tracing::warn!(
+            %addr,
+            account_id = login.account_id,
+            account_name = %login.account_name,
+            reason = "ticket_revoked",
+            "Phase 3 ticket comes from a revoked launch ticket; refusing the login"
+        );
+        return Ok(());
+    }
 
     // Cross-IP detection (issue #442, warn-only first): the ticket was
     // issued to a specific client IP at Phase 2. Consuming it from a

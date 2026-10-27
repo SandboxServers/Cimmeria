@@ -2,7 +2,7 @@ import type {Invoke} from './view';
 declare global { interface Window { __TAURI__: { core: { invoke: Invoke } } } }
 
 /** The screens and subsystems a `ui_event` may name; the native side checks the same list (C13). */
-export type UiArea='install'|'adoption'|'update'|'game_update'|'launch'|'repair'|'settings'|'seed_archive'|'server_list'|'log_upload'|'physx'|'migration'|'patch_notes'|'client_patches'|'client_maintenance'|'telemetry';
+export type UiArea='install'|'adoption'|'update'|'game_update'|'launch'|'repair'|'settings'|'seed_archive'|'server_list'|'log_upload'|'physx'|'sign_in'|'migration'|'patch_notes'|'client_patches'|'client_maintenance'|'telemetry';
 
 /** Sends a swallowed frontend error to the launcher's telemetry as `ui_event`. Fire and forget: the player is never told. */
 export function reportUiEvent(area:UiArea,event:string,code:string,level:'info'|'warn'='warn'):void {

@@ -532,6 +532,9 @@
 
 -- Tables
 \ir sgw/Accounts/Tables/account.sql
+\ir sgw/Accounts/Tables/account_identity.sql
+\ir sgw/Accounts/Tables/auth_refresh_token.sql
+\ir sgw/Accounts/Tables/account_identity_event.sql
 \ir sgw/Inventory/Tables/sgw_inventory_base.sql
 \ir sgw/Inventory/Tables/sgw_inventory.sql
 \ir sgw/Mail/Tables/sgw_gate_mail.sql

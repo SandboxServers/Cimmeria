@@ -53,6 +53,8 @@
 //! - [`aggro`] — the GM's own proximity-aggro switch (`.aggro on|off`).
 //! - [`bank`] — the GM's vault shortcut (`.bank`) and the read-only vault
 //!   listing (`.bankdump`).
+//! - [`account`] — the GM's sign-in methods tool (`.account identities |
+//!   unlink | linkcode`), forwarded to the base (client-tls-oidc C10).
 //! - [`crafting`] — discipline / blueprint grants (`allcraft`, …).
 //! - [`mission`] — mission gaps (`missionfail`, `missionrewards`).
 //! - [`server`] — server / maintenance (`save`, `loglevel`, …).
@@ -85,6 +87,7 @@
 //! in `docs/commands.md`.
 
 pub mod abilities;
+mod account;
 mod aggro;
 mod bank;
 mod black_market;

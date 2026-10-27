@@ -2,7 +2,7 @@
 # Container persistence smoke (campaign persistent-player-data, PP-08): boots
 # the server image against its own named volume and walks the db-sync state
 # table end to end: first-boot, skip, forced rebuild with seed-account top-up,
-# dangling-item reconcile, fail-closed rebuild, adopt, DR restore, full wipe.
+# first upgrade from a schema without the identity tables, dangling-item reconcile, fail-closed rebuild, adopt, DR restore, full wipe.
 # Run by .github/workflows/pr-container.yml; needs Docker. Never touches the
 # operator volume (cimmeria-server-pgdata).
 #
@@ -181,6 +181,32 @@ BACKUP_NAME="$(basename "$BACKUP")"
 assert_eq "scenario 3 sgw_prev exists" 1 \
   "$(DB=postgres psql_in "SELECT 1 FROM pg_database WHERE datname = 'sgw_prev'")"
 echo "PASS scenario 3"
+
+# ---- 3b. first upgrade from a schema without the identity tables ---------
+# Make the live database look like the base schema (before the identity
+# tables): drop the two guard triggers and their functions, then the tables.
+# No view or other function names these tables (db/sgw grep); the foreign keys
+# go with CASCADE. The forced rebuild must count the absent tables as 0.
+ACCOUNTS="$(psql_in "SELECT count(*) FROM public.account")"
+psql_in "DROP TRIGGER account_password_guard ON account;
+  DROP TRIGGER account_identity_password_guard ON account_identity;
+  DROP FUNCTION account_password_guard();
+  DROP FUNCTION account_identity_password_guard();
+  DROP TABLE account_identity_event, account_identity, auth_refresh_token CASCADE;" >/dev/null
+force
+assert_log "rebuild"
+# assert_log matches "[db-sync]" lines only; the step 8 notice is a db-rebuild line.
+boot_lines | grep -q "^\[db-rebuild\] step 8 .* absent in " || {
+  echo "boot lines:"; boot_lines
+  err "expected 'step 8 ... absent in' in this boot's lines"
+}
+for t in account_identity account_identity_event auth_refresh_token; do
+  assert_eq "scenario 3b $t restored" t "$(psql_in "SELECT to_regclass('public.$t') IS NOT NULL")"
+  assert_eq "scenario 3b $t empty" 0 "$(psql_in "SELECT count(*) FROM public.$t")"
+done
+assert_eq "scenario 3b account count kept" "$ACCOUNTS" "$(psql_in "SELECT count(*) FROM public.account")"
+assert_eq "scenario 3b sentinel kept" 1 "$(psql_in "SELECT count(*) FROM sgw_player WHERE player_id = $S1")"
+echo "PASS scenario 3b"
 
 # ---- 4. dangling item reconcile ------------------------------------------
 # A temp resources.items row and an inventory row of the sentinel that points

@@ -39,6 +39,7 @@ for how the launcher applies a patch zip.
 | `014-debug-area-lineup-ring` | A ninth Debug Area ring rig, the Lineup station beside the NPC lineup, added to 011's Ihpet_Crater_Light chunk (see below). Needs 011 applied first | 1 map delta from 011's output | 1.4 KB |
 | `015-weapon-shot-bar` | An action button holding a weapon's basic shot (or Pistol Shot) follows the weapon: when the player switches weapons it switches to the new weapon's shot (see below). Needs 009 applied first | 1 delta from 009's output (`ActionProfileDefault1.lua`) | 4.7 KB |
 | `016-hotbar-learn-and-feedback` | A starting ability reaches the bar the first time it is known, in any session; Staff Swing joins the starting abilities; a shot button pressed with a weapon that has no ranged attack says so (see below). Needs 015 applied first | 1 delta from 015's output (`ActionProfileDefault1.lua`) | 5.1 KB |
+| `017-launcher-sign-in` | The login screen shows a launcher sign-in and an Enter button; stock behaviour without one (see its [README](017-launcher-sign-in/README.md)) | 2 whole files | not built yet |
 
 `002-castle-ring-transport` was **removed from the signed content
 manifest on 2026-09-29**, and `007-castle-armory-ring` supersedes it.

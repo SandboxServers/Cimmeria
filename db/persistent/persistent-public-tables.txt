@@ -3,6 +3,9 @@
 # exactly one of this file and reseed-public-tables.txt.
 # Lint: crates/content-engine/tests/it/table_classification_linter.rs
 account
+account_identity
+account_identity_event
+auth_refresh_token
 cell_event_outbox
 login_audit
 sgw_auction

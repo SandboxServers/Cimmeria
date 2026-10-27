@@ -75,6 +75,7 @@ impl CellToBaseMsg {
             Self::Chat { .. } => "chat",
             Self::MailGm { .. } => "mail_gm",
             Self::Bank { .. } => "bank",
+            Self::Account { .. } => "account",
             Self::ContentSystemMail { .. } => "content_system_mail",
             Self::BlackMarket { .. } => "black_market",
             Self::ConsumeItemForUse { .. } => "consume_item_for_use",

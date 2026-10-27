@@ -2,7 +2,7 @@
 
 > **Type:** How-to (runbook)
 > **Audience:** Ops on the colo, and self-hosters running a TLS proxy next to the server
-> **Last updated:** 2026-10-25
+> **Last updated:** 2026-10-26
 > **Companions:** [colo-deploy.md](colo-deploy.md), [telemetry-upload-endpoint.md § The colo route](telemetry-upload-endpoint.md#the-colo-route), [docker/compose.auth-proxy.yml](../../docker/compose.auth-proxy.yml), `config/auth-providers.toml.example` (on the campaign branch)
 
 This runbook puts the launcher's sign-in on `https://play.cimmeria.app`. The board's Caddy terminates TLS and forwards two path families to the server's auth proxy listener on host loopback `127.0.0.1:13480`. Plain `8081` keeps working for unmodified clients.
@@ -56,7 +56,7 @@ sudo cp -p .env .env.bak-$(date +%Y%m%d-%H%M)
 $EDITOR .env      # append :compose.auth-proxy.yml to COMPOSE_FILE
 ```
 
-**Optional: narrow the trusted peers.** Do this before the `docker compose up -d` below, so the game server restarts once. Through a loopback publish the server sees the bridge gateway of the container's network, not `127.0.0.1`. The default list `127.0.0.0/8,::1,172.16.0.0/12` covers that gateway, but it also trusts the `signoz` and `otel-collector` containers, which can reach `cimmeria:13480` directly and could forge `X-Forwarded-For`. To trust the gateway alone, put it in a shell variable and append it to `.env` without printing it:
+**Set the trusted peers.** Do this before the `docker compose up -d` below, so the game server restarts once. Through a loopback publish the server sees the bridge gateway of the container's network, not `127.0.0.1`. The default list `127.0.0.0/8,::1` is loopback only and does not cover that gateway, so the listener answers `403 https_required` until it is set. The gateway alone also keeps the `signoz` and `otel-collector` containers, which can reach `cimmeria:13480` directly, out of the trusted list. To trust the gateway, put it in a shell variable and append it to `.env` without printing it:
 
 ```bash
 gw=$(docker network inspect signoz-net --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}')
@@ -79,7 +79,7 @@ Use `sudo` for `docker compose` too if `.env` is root-only ([colo-deploy.md](col
 | `curl -s -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-Proto: https' -H 'X-Forwarded-For: 192.0.2.10' http://127.0.0.1:13480/auth/v1/providers` | `200` |
 | The same without `X-Forwarded-Proto` | `400` |
 
-A `403` plus a `proxy_untrusted_peer` WARN in the server log means the narrowed list missed the peer. Remove the `AUTH_PROXY_TRUSTED_PEERS` line and run `docker compose up -d` again.
+A `403` plus a `proxy_untrusted_peer` WARN in the server log means the trusted list is missing the peer. Re-run the `gw=` step above, make sure `.env` has one `AUTH_PROXY_TRUSTED_PEERS=<gateway>/32` line, and run `docker compose up -d` again.
 
 ## Step 2: the Caddy route
 
@@ -132,12 +132,28 @@ Run these with `curl.exe` on Windows. All are expected results, not observed one
 
 The proxy listener (`proxy_layer`) vets every request in this order:
 
-1. The TCP peer must be in `AUTH_PROXY_TRUSTED_PEERS` (comma-separated CIDRs or bare addresses). Unset or empty means the default `127.0.0.0/8,::1,172.16.0.0/12`; one bad entry also keeps the default. An untrusted peer has its `X-Forwarded-*` ignored and logs the `proxy_untrusted_peer` WARN, so `/auth/v1` answers `403 https_required`.
+1. The TCP peer must be in `AUTH_PROXY_TRUSTED_PEERS` (comma-separated CIDRs or bare addresses). Unset or empty means the default `127.0.0.0/8,::1` (loopback only); a list with a bad entry trusts no peer and logs the `bad_auth_proxy_trusted_peers` ERROR, so `/auth/v1` on the proxy listener answers `403 https_required` until it is fixed. An untrusted peer has its `X-Forwarded-*` ignored and logs the `proxy_untrusted_peer` WARN, so `/auth/v1` answers `403 https_required`.
 2. A trusted peer must send `X-Forwarded-Proto: https`, else `400` and `proxy_missing_https_proto`.
 3. The rightmost `X-Forwarded-For` entry must parse as an IP, else `400` and `proxy_bad_forwarded_for`. It replaces the peer address for the handlers. The rightmost entry is the one Caddy appended; the leftmost is whatever the client sent.
 4. The request is marked as TLS, which `/auth/v1` requires.
 
-The peer is the bridge gateway because Docker forwards a loopback-published port through `docker-proxy`. This is the same cause as OPS-LT2 on the telemetry route. The proxy listener trusts the gateway's range by default; the telemetry quota key does not.
+The peer is the bridge gateway because Docker forwards a loopback-published port through `docker-proxy`. This is the same cause as OPS-LT2 on the telemetry route. The proxy listener trusts only loopback by default, so it needs the gateway listed in `AUTH_PROXY_TRUSTED_PEERS`; the telemetry quota key has no such list.
+
+Provider secrets are lines in `.env` that `docker/compose.yml` forwards: `CIMMERIA_IDP_DISCORD_SECRET`, `CIMMERIA_IDP_GOOGLE_SECRET` and `CIMMERIA_IDP_OIDC_SECRET`. A provider whose `client_secret_env` is another name needs that name forwarded in `docker/compose.yml` or an override file, or the provider is skipped as `secret_missing`.
+
+## Warning: forged `X-Forwarded-*` headers
+
+A peer in `AUTH_PROXY_TRUSTED_PEERS` decides, per request, whether a request counts as TLS and which client address the rate limits see. A trusted peer that forwards a client's own `X-Forwarded-Proto` or `X-Forwarded-For` lets that client pick both. So:
+
+- Trust only the proxy gateway, as a single `/32`. Never a Docker bridge range such as `172.16.0.0/12`: any container on any bridge of the host could then send `X-Forwarded-Proto: https` and choose its own rate-limit key.
+- The colo must list the gateway before the first deploy (D-CT26 = b, step 1). The code default is loopback only, so an unlisted gateway is untrusted and the listener answers `403 https_required`; the startup WARN `auth_proxy_default_peers` fires when `AUTH_PROXY_ADDR` is set and the list is not.
+- Caddy appends the caller to `X-Forwarded-For`, which is why only the rightmost entry is read. Keep it that way if you swap the proxy: a proxy that passes the client's header through unchanged defeats the rate limits.
+
+## Behaviors you may mistake for faults
+
+- **SOAP error 5 for a disabled account is legacy parity.** The stock client shows it, so `/SGWLogin/UserAuth` keeps answering error 5 to a disabled account whatever password it sends. The launcher's `/link/existing` does not: it reports a disabled account only after the password is right.
+- **The proxy listener logs a `proxy_untrusted_peer` WARN once per request** from an untrusted peer. A scan of port 13480 from another container fills the log. This is log volume only; fix the cause by narrowing who can reach the port.
+- **Password checks on the link path are bounded.** At most 2 argon2id verifies run at once on `/link/existing`, and a request waits up to 5 seconds for a slot before it fails closed. The SOAP login path has its own gate (4, with CT-54); the two do not share permits (D-CT30), so at most 6 verifies run together once both are in. A busy burst shows as slower link attempts, not as a stalled game server.
 
 ## Kill switches
 
@@ -145,7 +161,7 @@ Each is a line in `.env` that the overlay passes to the container; only the valu
 
 | Variable | Effect |
 |---|---|
-| `CIMMERIA_IDP_DISABLED=1` | Providers off: `/auth/v1` answers `503 {"error":"disabled"}` except providers and the launch-ticket routes |
+| `CIMMERIA_IDP_DISABLED=1` | Providers off: `/auth/v1` answers `503 {"error":"disabled"}` except providers and the launch-ticket routes. Access tokens already issued still mint tickets for up to 15 minutes; use `.account unlink` to cut an account |
 | `CIMMERIA_IDP_SIGNUP_DISABLED=1` | Sign-up closed |
 | `CIMMERIA_SOAP_RELAY_DISABLED=1` | `GET /auth/v1/providers` reports `soap_relay=false`, so launchers skip the SOAP relay |
 | `CIMMERIA_PASSWORD_REHASH_DISABLED=1` | Planned with CT-54; not in the code yet |

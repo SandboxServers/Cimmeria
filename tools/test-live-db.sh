@@ -32,6 +32,7 @@ set -euo pipefail
 LIVE_DB_CRATES=(
   cimmeria-resources
   cimmeria-auth
+  cimmeria-identity
   cimmeria-cell-cover
   cimmeria-services
   cimmeria-test-support
