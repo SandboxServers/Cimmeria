@@ -758,7 +758,10 @@ dependencies = [
  "base64 0.23.1",
  "bytes",
  "chrono",
+ "cimmeria-cooked-pak",
  "cimmeria-names",
+ "cimmeria-observability",
+ "cimmeria-resources",
  "cimmeria-services",
  "cimmeria-wire",
  "cimmeria-workspace-hack",
@@ -835,6 +838,7 @@ dependencies = [
  "cimmeria-base-session",
  "cimmeria-base-world-entry",
  "cimmeria-common",
+ "cimmeria-cooked-pak",
  "cimmeria-discord",
  "cimmeria-entity",
  "cimmeria-game",
@@ -848,7 +852,9 @@ dependencies = [
  "cimmeria-wire-log",
  "cimmeria-workspace-hack",
  "getrandom 0.4.3",
+ "serde_json",
  "sqlx",
+ "tempfile",
  "tokio",
  "tracing",
 ]
@@ -1328,6 +1334,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-cooked-pak"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-workspace-hack",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
+ "thiserror 2.0.21",
+ "zip 9.0.5",
+]
+
+[[package]]
 name = "cimmeria-defs"
 version = "0.1.0"
 dependencies = [
@@ -1491,11 +1510,13 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "cimmeria-client-launch",
+ "cimmeria-cooked-pak",
  "cimmeria-patchset",
  "crc32fast",
  "ed25519-dalek",
  "flate2",
  "futures-util",
+ "lzxd",
  "miniz_oxide 0.8.9",
  "reqwest 0.12.28",
  "serde",
@@ -1627,13 +1648,16 @@ dependencies = [
 name = "cimmeria-resources"
 version = "0.1.0"
 dependencies = [
+ "cimmeria-cooked-pak",
  "cimmeria-entity",
  "cimmeria-names",
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-workspace-hack",
  "quick-xml 0.42.0",
+ "serde_json",
  "sqlx",
+ "tempfile",
  "tokio",
  "tracing",
  "zip 9.0.5",
@@ -4098,6 +4122,12 @@ dependencies = [
  "byteorder",
  "thiserror 1.0.69",
 ]
+
+[[package]]
+name = "lzxd"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c17f346186eccb574ba5581acefc514f0c70a642db4f96e245034a0a158a7168"
 
 [[package]]
 name = "markup5ever"

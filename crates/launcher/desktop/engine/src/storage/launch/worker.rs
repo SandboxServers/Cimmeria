@@ -12,6 +12,8 @@ pub struct Worker {
     state: Arc<Mutex<DesktopState>>,
     cancel: CancellationToken,
     pub observation: watch::Receiver<Observation>,
+    /// The cooked-data presync's latest update; it stays readable after the run.
+    pub content_sync: watch::Receiver<Option<cooked_presync::ContentSync>>,
 }
 impl Worker {
     pub fn operation_id(&self) -> Uuid {
@@ -75,16 +77,26 @@ pub fn dispatch(state: Arc<Mutex<DesktopState>>, id: Uuid) -> Result<Worker, Int
     };
     let cancel = CancellationToken::new();
     let (updates, observation) = watch::channel(Observation::Preparing);
+    let (content, content_sync) = watch::channel(None);
     let worker = Worker {
         id,
         state: state.clone(),
         cancel: cancel.clone(),
         observation,
+        content_sync,
     };
     handle.spawn(async move {
-        let result = AssertUnwindSafe(execute(state.clone(), &plan, root, cancel, &updates))
-            .catch_unwind()
-            .await;
+        let result = AssertUnwindSafe(execute(
+            state.clone(),
+            &plan,
+            root,
+            cancel,
+            &updates,
+            cooked_presync::profile(),
+            &content,
+        ))
+        .catch_unwind()
+        .await;
         let result = match result {
             Ok(Ok(result)) => result,
             Ok(Err(error)) => {
@@ -153,6 +165,8 @@ async fn execute(
     root: PathBuf,
     cancel: CancellationToken,
     updates: &watch::Sender<Observation>,
+    profile: cooked_presync::Profile,
+    content: &watch::Sender<Option<cooked_presync::ContentSync>>,
 ) -> Result<Observation, IntentError> {
     // Every Play start clears the last refusal first (C9).
     state
@@ -220,6 +234,30 @@ async fn execute(
     };
     // Telemetry always gets the real servers, so the relay is never its endpoint (C9).
     let telemetry_session = session.clone().map(|session| (session, servers.clone()));
+    // D-LP18: a failed presync stops the launch before any client file is touched.
+    let presync_timer = context.start(crate::phase_timing::Phase::PlayCookedPresync);
+    let report = cooked_presync::presync(
+        plan.id,
+        profile,
+        &plan.installation.content_root(),
+        &servers,
+        &cancel,
+        content,
+    )
+    .await;
+    presync_timer.finish(cooked_presync::timer_outcome(&report));
+    match cooked_presync::gate(&report) {
+        cooked_presync::Gate::Continue => {}
+        cooked_presync::Gate::Blocked => {
+            events::launch_not_started(
+                plan.id,
+                "cooked_presync_failed",
+                FailureCode::LaunchPrepareFailed,
+            );
+            return Ok(Observation::NotStarted);
+        }
+        cooked_presync::Gate::Cancelled => return Ok(Observation::Cancelled),
+    }
     let prepared = plan.clone();
     // The ticket file lives in the game install, where `prepare` writes the plain list.
     let ticket_root = plan.installation.content_root();
@@ -243,15 +281,13 @@ async fn execute(
             return Err(StorageError::Io.into());
         }
     };
-    let Ok((spec, mut request, _ownership)) = setup_timer.result(setup) else {
-        sign_in_play::finish(&ticket_root, &servers, login).await;
-        failure::not_started(
-            &state,
-            plan,
-            "prepare_failed",
-            FailureCode::LaunchPrepareFailed,
-        );
-        return Ok(Observation::NotStarted);
+    let (spec, mut request, _ownership) = match setup_timer.result(setup) {
+        Ok(prepared) => prepared,
+        Err(PrepareError(code)) => {
+            sign_in_play::finish(&ticket_root, &servers, login).await;
+            failure::not_started(&state, plan, "prepare_failed", code);
+            return Ok(Observation::NotStarted);
+        }
     };
     if sign_in_play::write(&ticket_root, &login).is_err() {
         sign_in_play::finish(&ticket_root, &servers, login).await;
@@ -428,6 +464,10 @@ enum Ownership {
     Wine {
         _resources: crate::mac_wine::prerequisites::prefix::Resources,
     },
+    #[cfg(target_os = "linux")]
+    Proton {
+        _prefix: crate::linux_proton::prefix::Prefix,
+    },
 }
 fn prepare(
     plan: &Plan,
@@ -442,7 +482,7 @@ fn prepare(
         cimmeria_runtime_probe::game_launch::Request,
         Ownership,
     ),
-    IntentError,
+    PrepareError,
 > {
     if plan.runtime.is_some() {
         #[cfg(target_os = "macos")]
@@ -460,11 +500,21 @@ fn prepare(
         #[cfg(not(target_os = "macos"))]
         return Err(StorageError::Corrupt.into());
     }
+    // The Linux arm returns; the native tail stays referenced on every host, so
+    // its helpers are not dead code on Linux (PP-06).
+    if cfg!(target_os = "linux") {
+        #[cfg(target_os = "linux")]
+        {
+            let (spec, request, prefix) =
+                super::proton::prepare(plan, root, session, servers, display, placements)?;
+            return Ok((spec, request, Ownership::Proton { _prefix: prefix }));
+        }
+    }
     let _ = (root, placements);
     if !cfg!(windows) {
         return Err(StorageError::Corrupt.into());
     }
-    prepare_native(plan, session, servers, display)
+    prepare_native(plan, session, servers, display).map_err(PrepareError::from)
 }
 fn prepare_native(
     plan: &Plan,

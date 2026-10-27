@@ -56,6 +56,7 @@ completion code; dropping an unfinished asynchronous timer reports `interrupted`
 | `play_admission` | Launch admission while holding the state lock |
 | `play_resources` | Native launch-resource verification |
 | `play_telemetry_mint` | Optional game-telemetry session preparation |
+| `play_cooked_presync` | Cooked-data presync before client setup (Windows); outcomes `succeeded`, `failed`, `cancelled`, or `unavailable` when skipped |
 | `play_client_setup` | Client setup before starting the game |
 | `play_previous_session` | Settlement of previous game-session telemetry |
 | `play_helper_start` | Helper spawn and process-start handshake |
@@ -104,6 +105,34 @@ scan workloads, not downloaded bytes or proof of relocation. No per-file event
 is emitted. The timers add no path, account name, machine identity, token,
 operation UUID or arbitrary error text. The `launcher.install.detail` and
 `launcher.repair.detail` targets stay in the local log and are never forwarded.
+
+## Cooked-data presync events
+
+Before Play starts the game on Windows, the cooked-data presync runs in the
+`play_cooked_presync` phase. It writes two events on target `launcher.launch`.
+Fields are closed codes, numbers and the PAK file name; no path, account,
+address or error text.
+Both carry the process-local `operation` number, the same one as the phase rows.
+
+- `cooked_presync_category` (info), one per category checked: `category_id`,
+  `pak`, `action` (`up_to_date`, `written` or `failed`), `cache_version`,
+  `source_version`, `served_version`, `changed` and `bytes`.
+- `cooked_presync_finished`, once per presync: `outcome` (`up_to_date`,
+  `synced`, `skipped`, `failed` or `cancelled`), `reason`, and on failure or
+  cancel `step` (`prepare`, `index`, `plan`, `download`, `stage` or `commit`),
+  `category_id`, `http_status`, `io_kind` and `os_code`. It also has
+  `attempts`, `categories_checked`, `categories_written`, `bytes_downloaded`
+  and `duration_ms`. A `failed` outcome is logged at warn level.
+
+A failed presync also ends the launch with `launch_not_started`, carrying the
+same `operation`, so the two rows join on `operation`. The detail above lives
+only in memory and the local log: after a launcher restart, Play shows the
+generic `not_started` text instead. These rows reach SigNoz only with the
+game-diagnostics opt-in or Upload debug logs.
+
+SigNoz recipe: filter `event = cooked_presync_finished AND outcome = failed`,
+group by `step` and `reason`. To see the launch outcome for the same run, join
+`launch_not_started` on `operation`.
 
 ## Delivery limits
 

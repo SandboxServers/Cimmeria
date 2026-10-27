@@ -79,6 +79,16 @@ test('recovery binds current revision; path-bearing progress is rejected',async(
   assert.equal(calls,2);
 });
 
+test('copy, check and expansion progress are accepted on a running install',async()=>{
+  for(const progress of [{phase:'check',current:1,total:0},{phase:'expansion',current:1,total:2}] as const){
+    await Effect.runPromise(Effect.scoped(Effect.gen(function*(){
+      const workflow=yield* makeInstallWorkflow;
+      const status=yield* workflow.inspect;
+      assert.deepEqual(status.progress,progress);
+    }).pipe(Effect.provide(installBridgeLayer(async()=>({...running(),progress}))))));
+  }
+});
+
 test('uncertain native persistence stops observation without polling or cancellation',async()=>{
   let calls=0;
   await Effect.runPromise(Effect.scoped(Effect.gen(function*(){

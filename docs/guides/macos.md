@@ -94,6 +94,10 @@ after every new launcher version.
    macOS. There is an intro, then the gate courtyard, and after about 20
    seconds the login box.
 
+The launcher's game data check before Play (the cooked-data presync) is not on
+the Mac yet. Play skips it and starts the game as it did before, so there is no
+"Checking game data" line and no **Retry** for it on a Mac.
+
 **Checkpoint C.** The login box appears over the gate. Report instead: a crash
 or error box (copy its text), a black or garbled screen, or the courtyard with
 no login box after a minute.

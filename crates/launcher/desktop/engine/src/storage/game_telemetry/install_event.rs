@@ -13,7 +13,7 @@
 //! reconciliation after a restart, a crash between that commit and the
 //! queue append, and a preparation whose owner went away before the commit
 //! handoff send nothing. Nothing records which runs were reported, so a
-//! later report could not be exactly-once (see `docs/launch.md`).
+//! later report could not be exactly-once (see `docs/launch-telemetry.md`).
 use super::session_loop::events;
 use super::transport::{queue_now, Consent};
 use super::DesktopState;

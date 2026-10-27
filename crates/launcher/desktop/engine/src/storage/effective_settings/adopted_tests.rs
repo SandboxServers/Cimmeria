@@ -40,6 +40,7 @@ fn bundle(root: &Path, patches: bool) -> Resources {
         Artifact::open(path, &hex).unwrap()
     };
     Resources {
+        proton: None,
         helper: artifact("helper.exe"),
         client_patches: patches.then(|| artifact("patches.dll")),
         client_telemetry: None,

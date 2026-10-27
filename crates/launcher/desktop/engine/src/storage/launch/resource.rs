@@ -96,6 +96,15 @@ impl Artifact {
         .verify()
     }
 }
+/// The Proton a Linux Play runs through, as the launcher resolved it (C-5).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ProtonSelection {
+    pub id: String,
+    pub root: PathBuf,
+    pub version: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Resources {
@@ -107,6 +116,10 @@ pub struct Resources {
     /// it, so such a plan serializes, and digests, exactly as it did before.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_telemetry: Option<Artifact>,
+    /// The Proton a Linux Native Play runs through. Absent from every other plan,
+    /// so such a plan serializes, and digests, exactly as it did before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proton: Option<ProtonSelection>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -115,7 +128,43 @@ pub struct Graphics {
     /// Optional accelerator plus its companion library. None uses stock Rosetta.
     pub rosetta_x87: Option<(Artifact, Artifact)>,
 }
+/// Whether `root/version`, trimmed, reads `version`. A missing file never matches.
+#[cfg(any(target_os = "linux", test))]
+fn proton_version_matches(root: &Path, version: &str) -> bool {
+    std::fs::read_to_string(root.join("version")).is_ok_and(|found| found.trim() == version)
+}
+
 impl Resources {
+    /// Whether this host admits a Native installation. Windows does as before;
+    /// Linux needs a Proton selection (see `proton_admitted`).
+    #[cfg(windows)]
+    pub fn native_admitted(&self) -> bool {
+        true
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn native_admitted(&self) -> bool {
+        self.proton_admitted()
+    }
+
+    #[cfg(not(any(windows, target_os = "linux")))]
+    pub fn native_admitted(&self) -> bool {
+        false
+    }
+
+    /// Linux Native passes only with `proton` set, no graphics pass (that is the
+    /// Wine path's) and a Proton whose version file still matches the selection.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    #[cfg(any(target_os = "linux", test))]
+    pub(super) fn proton_admitted(&self) -> bool {
+        match &self.proton {
+            Some(proton) => {
+                self.graphics.is_none() && proton_version_matches(&proton.root, &proton.version)
+            }
+            None => false,
+        }
+    }
+
     /// Whether a retry of an admitted Launch names the same resources. The DLLs a
     /// player preference picks (client patches, telemetry opt-in) are left out: a
     /// retry returns the recorded plan and never dispatches, so a toggle made while
@@ -149,3 +198,7 @@ impl Resources {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "resource_tests.rs"]
+mod tests;

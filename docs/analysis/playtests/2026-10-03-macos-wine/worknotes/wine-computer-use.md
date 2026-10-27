@@ -12,7 +12,7 @@ selectable: the wrapper owns no window. It is replaced by an opt-in that runs
 the real Wine loader from inside an application bundle, so the process that
 owns the game window carries the bundle identifier itself. The contract,
 evidence table and rollback are in
-[launch.md](../../../../../crates/launcher/desktop/docs/launch.md#optional-mac-application-identity-for-the-game-window).
+[launch.md](../../../../../crates/launcher/desktop/docs/launch-mac.md#optional-mac-application-identity-for-the-game-window).
 
 Default Play is unchanged. Nothing has been verified against the game or
 against the computer-use tool; both are the coordinator's gates below.

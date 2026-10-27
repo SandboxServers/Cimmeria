@@ -1,6 +1,7 @@
 //! Launcher telemetry pipeline health (launcher-telemetry C7). Counts how each
-//! send ended and reports the recovery after a run of failures. It keeps counts
-//! and codes only: no message, path or field value is ever stored here.
+//! send ended, how many events were sent or lost, and reports the recovery after
+//! a run of failures. It keeps counts and codes only: no message, path or field
+//! value is ever stored here.
 use super::launcher_session::SendOutcome;
 use std::sync::{Arc, Mutex};
 
@@ -18,6 +19,12 @@ pub struct TelemetryHealth {
     pub sent: u64,
     pub totals: FailureCounts,
     pub since_success: FailureCounts,
+    /// Events the server accepted, across all sends (including the first chunks of a send that later failed).
+    pub events_sent: u64,
+    /// Events dropped from the queue, across all sends.
+    pub events_lost: u64,
+    /// Events dropped since the last success.
+    pub events_lost_since_success: u64,
     /// `"sent"`, `"held"`, `"mint_failed"` or `"dropped"`.
     pub last_outcome: Option<&'static str>,
     /// The `MintFailed` reason (C8). Kept across later outcomes.
@@ -31,6 +38,8 @@ pub struct TelemetryHealth {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Recovery {
     pub failures: FailureCounts,
+    /// Events lost since the last success.
+    pub events_lost: u64,
     pub outage_ms: u64,
 }
 
@@ -38,8 +47,16 @@ pub struct Recovery {
 pub type SharedHealth = Arc<Mutex<TelemetryHealth>>;
 
 impl TelemetryHealth {
-    /// `Empty` changes nothing. `Sent` after one or more failures returns
-    /// `Some(Recovery)` and resets `since_success` and `first_failure_ms`.
+    /// Adds `sent` to `events_sent` and `lost` to both lost counters.
+    pub fn record_events(&mut self, sent: u64, lost: u64) {
+        self.events_sent += sent;
+        self.events_lost += lost;
+        self.events_lost_since_success += lost;
+    }
+
+    /// `Empty` changes nothing. `Sent` after one or more failures, or after
+    /// lost events, returns `Some(Recovery)` and resets `since_success`,
+    /// `events_lost_since_success` and `first_failure_ms`.
     pub fn record(&mut self, outcome: &SendOutcome, now_ms: u64) -> Option<Recovery> {
         let label = match *outcome {
             SendOutcome::Empty => return None,
@@ -71,12 +88,14 @@ impl TelemetryHealth {
         self.last_outcome = Some("sent");
         self.last_success_ms = Some(now_ms);
         let failures = std::mem::take(&mut self.since_success);
+        let events_lost = std::mem::take(&mut self.events_lost_since_success);
         let first = self.first_failure_ms.take();
-        if failures == FailureCounts::default() {
+        if failures == FailureCounts::default() && events_lost == 0 {
             return None;
         }
         Some(Recovery {
             failures,
+            events_lost,
             outage_ms: first.map_or(0, |since| now_ms.saturating_sub(since)),
         })
     }
@@ -150,5 +169,28 @@ mod tests {
         health.record(&SendOutcome::Held, 2);
         assert_eq!(health.last_reason, Some("transport"));
         assert_eq!(health.last_outcome, Some("held"));
+    }
+
+    #[test]
+    fn lost_events_are_counted_and_reported_on_the_next_success() {
+        let mut health = TelemetryHealth::default();
+        health.record_events(5, 2);
+        health.record(&SendOutcome::Dropped, 10);
+        health.record_events(3, 0);
+        let recovery = health.record(&SendOutcome::Sent, 20).expect("a recovery");
+        assert_eq!(recovery.events_lost, 2);
+        assert_eq!(health.events_sent, 8);
+        assert_eq!(health.events_lost, 2);
+        assert_eq!(health.events_lost_since_success, 0);
+    }
+
+    #[test]
+    fn lost_events_alone_still_give_a_recovery() {
+        let mut health = TelemetryHealth::default();
+        health.record_events(0, 4);
+        let recovery = health.record(&SendOutcome::Sent, 7).expect("a recovery");
+        assert_eq!(recovery.events_lost, 4);
+        assert_eq!(recovery.failures, FailureCounts::default());
+        assert_eq!(recovery.outage_ms, 0);
     }
 }

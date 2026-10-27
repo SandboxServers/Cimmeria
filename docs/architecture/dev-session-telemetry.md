@@ -24,7 +24,7 @@ The launcher here is the desktop launcher. The pipeline's pieces live in
 there from the egui launcher that LX-18 retired, and the desktop engine
 drives them from `crates/launcher/desktop/engine/src/storage/game_telemetry/`.
 Its player-facing contract is in the desktop
-[launch contract](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry).
+[launch contract](../../crates/launcher/desktop/docs/launch-telemetry.md#opt-in-game-telemetry).
 
 ## Goal
 
@@ -165,8 +165,9 @@ Cloudflare Tunnel was ever deployed.
 
 Wiring: `cimmeria_admin_api::login_port_telemetry_router()` builds a
 stateless router holding those four routes and, since 2026-10-04, a fifth:
-the launcher-summary ingest. Launcher summaries do not use dev-session
-tokens: that route is anonymous, and the mint refuses `launcher_summary`
+the launcher-summary ingest. Since 2026-10-26 it also holds the two
+anonymous cooked-data presync routes. Launcher summaries do not use
+dev-session tokens: that route is anonymous, and the mint refuses `launcher_summary`
 as a session kind like any other unknown one (see
 [launcher-summary-telemetry.md](launcher-summary-telemetry.md)). The owner
 approved serving the fifth route on the login port on 2026-10-04, which
@@ -179,7 +180,10 @@ merges it next to `/SGWLogin/*`. The auth crate sits below the admin API
 in the crate graph, so it takes the router rather than building it. Both
 auth listeners serve with connect info, which the mint and refresh quotas
 need. Nothing else under `/api`, `/ws` or Swagger is served on the login
-port; `login_port_router_does_not_expose_admin_routes` pins that.
+port, apart from the two anonymous cooked-data presync routes
+(`/api/cooked/v1/index` and `/api/cooked/v1/category/{id}`, see
+[cooked-data-pipeline.md](../engine/cooked-data-pipeline.md#launcher-presync));
+`login_port_router_does_not_expose_admin_routes` pins that.
 
 A public server sets `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` to an https URL
 it serves (the colo: `https://play.cimmeria.app/api/telemetry`), or sits
@@ -245,7 +249,7 @@ carry `cimmeria.session_kind = player`. That session also records the
 this sequence. Without the opt-in, Play starts no session and injects the
 client patches only. The desktop details (tail baselines, one session at a
 time, the `game_exited` event) are in the
-[launch contract](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry).
+[launch contract](../../crates/launcher/desktop/docs/launch-telemetry.md#opt-in-game-telemetry).
 
 The retired egui launcher ran the sequence below from its **Launch +
 Telemetry** button (the Atera debug path). It is kept because the core
@@ -411,8 +415,10 @@ refresh keeps both.
 
 The mint and every refresh record the stream in
 `cimmeria_auth::auth::client_telemetry` (TG-NET-18, owner decision D-TG14)
-under its `mid`, its `acct` (ASCII case ignored) and the address the
-request came from. The `World entry complete` row joins on the game
+under its `mid`, its `acct` (ASCII case ignored) and the quota-key address the
+request came from: behind a loopback proxy, the forwarded caller (D-LTL4).
+The registry keeps that address in memory only and never logs or writes it.
+The `World entry complete` row joins on the game
 session's address:
 
 | `client_telemetry` | When | Extra fields |
@@ -515,8 +521,9 @@ it parses as a bare IP; otherwise it is the peer. Headers from a non-loopback
 peer are ignored, so a caller who reaches the port directly cannot choose its
 quota key, and the rightmost entry is the one the proxy appended, not one the
 caller wrote. The result is only an `ip_key` for the quota counters and the
-per-address upload slot. It is never logged, stored, returned or put in a
-span, and it is not hashed into anything either. This is the C18 rule and
+per-address upload slot. It is never logged, persisted, returned or put in a
+span (the in-memory client-telemetry registry holds it for the stream join,
+D-LTL4), and it is not hashed into anything either. This is the C18 rule and
 owner decisions D-LT19 and D-LT18; the statement of the no-address rule is
 [telemetry.md § No address in any log](../operations/telemetry.md#no-address-in-any-log).
 

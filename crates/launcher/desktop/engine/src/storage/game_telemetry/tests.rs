@@ -206,3 +206,55 @@ fn the_last_launch_outcome_round_trips() {
         })
     );
 }
+
+#[test]
+fn the_empty_name_machine_id_is_the_hash_of_the_empty_name() {
+    assert_eq!(machine_id_for(""), EMPTY_NAME_MACHINE_ID);
+}
+
+#[test]
+fn only_the_empty_name_id_is_repaired_and_only_from_a_real_name() {
+    let empty = Identity {
+        install_id: Uuid::from_u128(7),
+        machine_id: EMPTY_NAME_MACHINE_ID.into(),
+    };
+    let mut named = empty.clone();
+    repaired(&mut named, "deck");
+    assert_eq!(named.machine_id, machine_id_for("deck"));
+    let mut unnamed = empty.clone();
+    repaired(&mut unnamed, "");
+    assert_eq!(unnamed, empty);
+    let mut other = identity();
+    repaired(&mut other, "deck");
+    assert_eq!(other, identity());
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_always_names_the_host() {
+    assert!(!host_name().is_empty());
+}
+
+#[test]
+fn reading_the_choice_repairs_the_empty_name_id_without_rewriting_the_file() {
+    if host_name().is_empty() {
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let state = DesktopState::open(root.path()).unwrap();
+    let written = format!(
+        r#"{{"schema_version":1,"opted_in":true,"identity":{{"install_id":"{}","machine_id":"{}"}}}}"#,
+        Uuid::from_u128(7),
+        EMPTY_NAME_MACHINE_ID
+    );
+    std::fs::write(state.state_root().join(NAME), &written).unwrap();
+    let read = state.game_telemetry().unwrap();
+    assert_eq!(
+        read.identity.unwrap().machine_id,
+        machine_id_for(&host_name())
+    );
+    assert_eq!(
+        std::fs::read_to_string(state.state_root().join(NAME)).unwrap(),
+        written
+    );
+}

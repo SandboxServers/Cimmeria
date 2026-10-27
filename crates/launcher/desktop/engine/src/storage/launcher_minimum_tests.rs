@@ -124,6 +124,7 @@ fn installed(
         .map(|b| format!("{b:02x}"))
         .collect();
     let resources = launch::Resources {
+        proton: None,
         helper: launch::Artifact::open(helper, &hash).unwrap(),
         client_patches: None,
         client_telemetry: None,

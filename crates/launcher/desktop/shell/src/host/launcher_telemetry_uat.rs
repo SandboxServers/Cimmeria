@@ -28,6 +28,7 @@ fn artifact(root: &std::path::Path, name: &str) -> Artifact {
 fn host(root: &std::path::Path) -> NativeHost {
     let mut host = NativeHost::new(root.join("state"));
     host.launch_resources = Some(Resources {
+        proton: None,
         helper: artifact(root, "helper.exe"),
         client_patches: None,
         client_telemetry: Some(artifact(root, "telemetry.dll")),

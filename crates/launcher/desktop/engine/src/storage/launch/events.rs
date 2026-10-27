@@ -248,7 +248,7 @@ pub(crate) fn display_settings(
     engine_ini: &'static str,
 ) {
     let operation = operation_numbers::number(id);
-    let applied = |code: &str| matches!(code, "written" | "unchanged");
+    let applied = |code: &str| matches!(code, "written" | "unchanged" | "seeded");
     if applied(saved_options) && applied(engine_ini) {
         tracing::info!(target: "launcher.launch", event = "display_settings", operation, mode,
             saved_options, engine_ini, "launch: display settings applied");

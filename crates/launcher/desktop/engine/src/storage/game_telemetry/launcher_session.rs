@@ -1,6 +1,7 @@
 //! The launcher's own adoption events, sent at once under a `launcher` session
 //! (C11). Nothing is queued on disk and the upload queue is never touched: a
-//! send that cannot post drops its events (README D-AU21).
+//! send reports which events it posted; the forwarder decides what to retry (in
+//! memory only).
 use super::session::{self, MintFailure, Session};
 use super::*;
 use crate::client_setup::login_servers::{self, LoginServer};
@@ -9,6 +10,10 @@ use cimmeria_launcher_core::telemetry::chunk::{self, ChunkError};
 use cimmeria_launcher_core::telemetry::events::TelemetryEvent;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
+
+#[path = "launcher_send.rs"]
+mod send;
+pub use send::SendReport;
 
 /// The `session_kind` a launcher session is minted with (server C12).
 pub const LAUNCHER_SESSION_KIND: &str = "launcher";
@@ -118,6 +123,8 @@ pub struct LauncherSender {
     session: Mutex<Option<Live>>,
     hold_until: Mutex<Option<Instant>>,
     mint_failures: Mutex<u32>,
+    /// The scheme and host of the last URL a batch posted to (log uploads read it).
+    endpoint: Mutex<Option<(String, String)>>,
 }
 
 impl Default for LauncherSender {
@@ -151,83 +158,14 @@ impl LauncherSender {
             session: Mutex::new(None),
             hold_until: Mutex::new(None),
             mint_failures: Mutex::new(0),
+            endpoint: Mutex::new(None),
         }
     }
 
     /// Send `events` now, in chunks. Never panics, never writes to disk, never
     /// logs a field value, never logs at target `adoption`.
     pub async fn send(&self, target: &LauncherTarget, events: &[TelemetryEvent]) -> SendOutcome {
-        if events.is_empty() {
-            return SendOutcome::Empty;
-        }
-        if self.held() {
-            tracing::debug!(
-                target: "launcher.pipeline",
-                reason = "held",
-                "launcher telemetry batch not sent"
-            );
-            return SendOutcome::Held;
-        }
-        let mut live = match self.usable_session(target).await {
-            Ok(live) => live,
-            Err(reason) => {
-                tracing::debug!(
-                    target: "launcher.pipeline",
-                    reason,
-                    "launcher telemetry batch not sent"
-                );
-                return SendOutcome::MintFailed { reason };
-            }
-        };
-        let max_bytes = live.session.marker().telemetry.chunk_max_bytes;
-        let Ok(batches) = chunk::split_batches(events, max_bytes, LAUNCHER_MAX_ROWS) else {
-            tracing::debug!(
-                target: "launcher.pipeline",
-                reason = "dropped",
-                "launcher telemetry batch not sent"
-            );
-            return SendOutcome::Dropped;
-        };
-        for range in batches {
-            let batch = &events[range];
-            let mut posted = self.post(&live, batch).await;
-            if matches!(posted, Err(ChunkError::TokenRejected)) {
-                // A 401 is the only error that mints again, and only once.
-                *locked(&self.session) = None;
-                let Ok(fresh) = self.mint(target).await else {
-                    tracing::debug!(
-                        target: "launcher.pipeline",
-                        reason = "dropped",
-                        "launcher telemetry batch not sent"
-                    );
-                    return SendOutcome::Dropped;
-                };
-                live = fresh;
-                posted = self.post(&live, batch).await;
-            }
-            match posted {
-                Ok(()) => {}
-                Err(err @ (ChunkError::KillSwitch { .. } | ChunkError::RateLimited { .. })) => {
-                    let asked = err.retry_after_secs().unwrap_or(60);
-                    self.hold(Duration::from_secs(asked).clamp(MIN_RETRY_HOLD, MAX_HOLD));
-                    tracing::debug!(
-                        target: "launcher.pipeline",
-                        reason = "dropped",
-                        "launcher telemetry batch not sent"
-                    );
-                    return SendOutcome::Dropped;
-                }
-                Err(_) => {
-                    tracing::debug!(
-                        target: "launcher.pipeline",
-                        reason = "dropped",
-                        "launcher telemetry batch not sent"
-                    );
-                    return SendOutcome::Dropped;
-                }
-            }
-        }
-        SendOutcome::Sent
+        self.send_report(target, events).await.outcome
     }
 
     /// Post one already-split log chunk (LF-14). A 401 mints again, once.
@@ -247,14 +185,14 @@ impl LauncherSender {
             Ok(live) => live,
             Err(reason) => return BatchOutcome::MintFailed { reason },
         };
-        let mut posted = self.post(&live, batch).await;
+        let mut posted = self.post_logged(&live, batch).await;
         if matches!(posted, Err(ChunkError::TokenRejected)) {
             *locked(&self.session) = None;
             live = match self.mint(target).await {
                 Ok(fresh) => fresh,
                 Err(reason) => return BatchOutcome::MintFailed { reason },
             };
-            posted = self.post(&live, batch).await;
+            posted = self.post_logged(&live, batch).await;
         }
         match posted {
             Ok(()) => BatchOutcome::Posted,
@@ -329,6 +267,21 @@ impl LauncherSender {
         chunk::post_chunk(&self.http, &live.upload_url, &block.token, batch).await
     }
 
+    /// `post`, then the `log_upload_post` line for its response. Logs only the
+    /// scheme, the host and the status, never the URL.
+    async fn post_logged(&self, live: &Live, batch: &[TelemetryEvent]) -> Result<(), ChunkError> {
+        let posted = self.post(live, batch).await;
+        let parts = endpoint_parts(&live.upload_url);
+        log_post(parts.as_ref(), response_status(&posted));
+        *locked(&self.endpoint) = parts;
+        posted
+    }
+
+    /// The scheme and host of the last URL a batch posted to, if any.
+    pub fn last_endpoint(&self) -> Option<(String, String)> {
+        locked(&self.endpoint).clone()
+    }
+
     fn held(&self) -> bool {
         locked(&self.hold_until).is_some_and(|until| until > Instant::now())
     }
@@ -343,7 +296,6 @@ impl LauncherSender {
     }
 
     /// The time left on the hold, if any.
-    #[cfg(test)]
     pub fn hold_remaining(&self) -> Option<Duration> {
         locked(&self.hold_until).and_then(|until| until.checked_duration_since(Instant::now()))
     }
@@ -370,9 +322,98 @@ fn mint_reason(failure: MintFailure) -> &'static str {
     failure.reason
 }
 
+/// The scheme and host of an upload URL; `None` when it does not parse or has no host.
+fn endpoint_parts(upload_url: &str) -> Option<(String, String)> {
+    let url = reqwest::Url::parse(upload_url).ok()?;
+    Some((url.scheme().to_owned(), url.host_str()?.to_owned()))
+}
+
+/// The HTTP status a chunk post answered with, for the log line; 0 when no
+/// response came back. `post_chunk` does not return the code of a 2xx, so any
+/// success is logged as 200.
+fn response_status(posted: &Result<(), ChunkError>) -> u16 {
+    match posted {
+        Ok(()) => 200,
+        Err(ChunkError::Status { status, .. } | ChunkError::Rejected { status, .. }) => *status,
+        Err(ChunkError::TokenRejected) => 401,
+        Err(ChunkError::KillSwitch { .. }) => 503,
+        Err(ChunkError::RateLimited { .. }) => 429,
+        Err(ChunkError::Http(err)) => err.status().map_or(0, |status| status.as_u16()),
+        Err(ChunkError::Io(_) | ChunkError::Json(_)) => 0,
+    }
+}
+
+/// The `log_upload_post` line: scheme and host only (`-` when unknown), never the URL.
+fn log_post(endpoint: Option<&(String, String)>, status: u16) {
+    let (scheme, host) = match endpoint {
+        Some((scheme, host)) => (scheme.as_str(), host.as_str()),
+        None => ("-", "-"),
+    };
+    tracing::info!(
+        target: "launcher.telemetry",
+        event = "log_upload_post",
+        scheme,
+        host,
+        status,
+        "launcher log upload: chunk posted"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upload_urls_log_only_scheme_and_host() {
+        assert_eq!(
+            endpoint_parts("https://play.example:8443/api/telemetry/upload-chunk?k=1"),
+            Some(("https".into(), "play.example".into()))
+        );
+        assert_eq!(endpoint_parts("not a url"), None);
+    }
+
+    #[test]
+    fn responses_map_to_their_status_and_no_response_to_zero() {
+        assert_eq!(response_status(&Ok(())), 200);
+        assert_eq!(response_status(&Err(ChunkError::TokenRejected)), 401);
+        assert_eq!(
+            response_status(&Err(ChunkError::KillSwitch {
+                retry_after_secs: 60
+            })),
+            503
+        );
+        assert_eq!(
+            response_status(&Err(ChunkError::Rejected {
+                status: 413,
+                body: String::new(),
+            })),
+            413
+        );
+        let io = std::io::Error::other("no socket");
+        assert_eq!(response_status(&Err(ChunkError::Io(io))), 0);
+    }
+
+    #[test]
+    fn the_post_line_carries_scheme_host_and_status() {
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+        let endpoint = ("https".to_owned(), "play.example".to_owned());
+        let ((), logged) = crate::test_capture::capture(|| {
+            log_post(Some(&endpoint), 413);
+            log_post(None, 0);
+        });
+        let posts: Vec<_> = logged
+            .iter()
+            .filter(|e| e.field("event") == Some("log_upload_post"))
+            .collect();
+        assert_eq!(posts.len(), 2);
+        assert_eq!(posts[0].target, "launcher.telemetry");
+        assert_eq!(posts[0].field("scheme"), Some("https"));
+        assert_eq!(posts[0].field("host"), Some("play.example"));
+        assert_eq!(posts[0].field("status"), Some("413"));
+        assert_eq!(posts[1].field("scheme"), Some("-"));
+        assert_eq!(posts[1].field("host"), Some("-"));
+        assert_eq!(posts[1].field("status"), Some("0"));
+    }
 
     #[test]
     fn mint_failures_keep_the_c8_reason() {

@@ -2,7 +2,7 @@
 title: "Launcher Guide"
 type: how-to
 audience: players, operators
-last_updated: 2026-10-23
+last_updated: 2026-10-25
 companion_docs:
   - ../guides/macos.md
   - ../../crates/launcher/desktop/README.md
@@ -42,6 +42,7 @@ operator setup (content releases and the two signing keys) is
   - [Download the launcher](#download-the-launcher)
   - [First start on Windows](#first-start-on-windows)
   - [First start on Linux and Steam Deck](#first-start-on-linux-and-steam-deck)
+  - [Play on Linux and Steam Deck](#play-on-linux-and-steam-deck)
   - [Install the game](#install-the-game)
   - [Set up Windows game prerequisites](#set-up-windows-game-prerequisites)
   - [Play](#play)
@@ -81,7 +82,7 @@ always holds the newest release:
 - **macOS (Apple silicon):** [`StargateWorlds-Launcher-macos-arm64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip),
   set up as [Playing on a Mac](../guides/macos.md) describes.
 - **Linux and Steam Deck (x86-64):** [`StargateWorlds-Launcher-linux-x86_64.AppImage`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-linux-x86_64.AppImage).
-  It installs the game; Play is not available on Linux yet. See
+  It installs the game and plays it through Proton. See
   [First start on Linux and Steam Deck](#first-start-on-linux-and-steam-deck).
 
 Each download has a `.sha256` file beside it on the same release if you want to
@@ -147,10 +148,39 @@ What works on Linux today:
   **Continue** resumes an interrupted install. The default game folder is
   `~/.local/share/app.cimmeria.launcher.desktop/Stargate Worlds`.
 - **Use a game archive you already downloaded** works as on Windows.
-- **Play, Repair, Update and Install PhysX are not available on Linux yet.**
-  Running the game needs Proton, which a later launcher release will set up.
+- **Play** runs the game through a Proton you already have installed. The
+  launcher sets up its own Proton prefix the first time, so the first Play
+  takes a few minutes. See [Play on Linux and Steam Deck](#play-on-linux-and-steam-deck).
+- **Repair, Update and Install PhysX are not available on Linux yet.** Play
+  installs PhysX for you.
 - The launcher does not update itself on Linux. Download each new release from
   the same link.
+
+### Play on Linux and Steam Deck
+
+The launcher does not download Proton. Install one first:
+
+1. In Steam (Desktop Mode), install **Proton Experimental** from your library
+   (it is listed under **Tools** in your library), or install **GE-Proton** with
+   ProtonUp-Qt and restart Steam.
+2. Open the launcher. If Play says to install Proton, do that and reopen the
+   launcher.
+3. Optional: in **Settings**, under **Proton**, pick a build. **Automatic**
+   (the default) uses GE-Proton if you have it, then Proton Experimental, then
+   the newest numbered Proton.
+4. Press **Play**. The first Play creates a private Proton prefix for the game
+   and installs PhysX, so it waits a few minutes before the window opens. Later
+   Plays skip both.
+5. The game opens in a window (fullscreen does not work under Proton yet). The
+   first Play is 1024x768 whatever size you chose.
+
+If Play fails, the message says why. "Proton isn't installed" means no Proton
+was found (or the one you chose was removed): install one and press Play again.
+"Proton couldn't set up the game" means the prefix, DirectX or PhysX step
+failed: press Play to try again, and if it fails again, upload your logs from
+Settings. Each Play keeps its logs, including `proton.log`, under the
+launcher's `logs/game` folder. Steam's Game Mode is not supported yet; use
+Desktop Mode.
 
 ### Install the game
 
@@ -165,9 +195,12 @@ archive.org, then applies Cimmeria's patches to it. You don't need the old
    one that exists. The launcher refuses a folder that already has files in
    it.
 2. Click **Install Cimmeria**. A progress bar shows the percent and
-   size, plus the speed and time left for large downloads, and a percent
-   while unpacking. The download is 4.1 GB, and the install drive needs about
-   14 GB free while it unpacks.
+   size, plus the speed and time left for large downloads. The line above it
+   names the phase: "Downloading verified game content…", "Checking the
+   download…" ("Reading the archive index…" while the launcher reads the
+   archive's file list), "Copying your archive…" (a game archive you picked),
+   "Unpacking the archive…" and "Expanding game files…". The download is
+   4.1 GB, and the install drive needs about 14 GB free while it unpacks.
 3. When it finishes, the game is in a `game` folder inside the folder you
    chose.
 
@@ -237,6 +270,17 @@ loads the client patches (and, if you turned it on, the diagnostics module),
 and starts `SGW.exe`. The line under the button then says "Game process
 started. Login and world entry are not verified": the launcher sees the game
 start and exit, not whether you logged in.
+
+Before the game starts, the launcher checks its game data against the login
+server. The line under **Play** shows the check: "Checking game data with
+*server*…", then "Updating game data: 3 of 12 categories (4.2 of 180.0 MB)…"
+when files change, then "Saving updated game data…". While the game starts it
+says "Game data is up to date." or "Game data updated (12 categories)." A
+skipped check, when the server turns the check off or doesn't offer it, says
+that character select may take about a minute.
+
+If the check fails, Play does not start the game. See
+[Play says "Couldn't…"](#play-says-couldnt-and-the-game-did-not-start).
 
 On the login screen, pick the server in the list and log in with your account.
 Accounts are created by the server owner; ask for one.
@@ -417,6 +461,11 @@ downloading it again. You don't unpack it first.
    Play tab.
 2. Pick the archive file.
 
+The install page shows `Game folder: <path>` beside the archive button, so you
+can see where the game will go before you pick. **Change…** beside it opens
+the folder picker and the line updates at once; cancelling the picker leaves
+it as it was.
+
 The file must be the archive.org release
 `Stargate Worlds (0.8348.1.4046) (2009-06-30) (beta).rar`, which is
 4,135,724,034 bytes (about 4.1 GB). The launcher checks the size and the
@@ -593,6 +642,11 @@ So after unpacking, the installer renames that folder to `SourceCache.en-us`.
 It is also why a PAK placed by hand in `SourceCache.en-us` stays put, while
 one placed in the Documents `Cache.en-US` is rewritten the next time the client
 connects. **Reset client cache** wipes only the Documents tier.
+
+The game data check that runs before Play also writes the updated PAK files into
+this Documents `Cache.en-US` folder, one file at a time, and never into the
+bundled `SourceCache.en-us`. A failed or interrupted write leaves the older file
+in place.
 
 ---
 
@@ -1081,6 +1135,48 @@ Click **Settings → Reset client cache**, then log in again; the server sends
 its data again. If the game will not start at all or its settings are broken,
 **Reset all client state…** starts the client fresh. See also
 [A cooked-data category went empty](../troubleshooting.md#a-cooked-data-category-went-empty-after-logging-in-to-another-server).
+
+### Play says "Couldn't…" and the game did not start
+
+The game data check failed, so Play did not start Stargate Worlds. The line
+under **Play** has two lines. The first reads "Couldn't <what it was doing>:
+<why, and what to do about it>". The what names the step: getting the game data
+list, comparing your game data, downloading a PAK, building it, or saving it. A
+wait the server asked for is part of the why. The second line starts "Details:"
+and gives the step and reason codes, then the category, the HTTP status and the
+Windows error code, each only when known.
+
+The button then reads **Retry**. Press it to run the check again. Play never
+starts the game after a failed check, and it does not fall back to the older
+update path.
+
+Common remedies:
+
+- `pak_in_use`: close Stargate Worlds and any tool that has the PAK open, then
+  press **Retry**.
+- `source_missing`, `base_missing`, `digest_mismatch`: use **Repair**, then
+  press **Retry**.
+- `source_unreadable`: close Stargate Worlds, then press **Retry**, or use
+  **Repair**.
+- `source_newer`: tell the server's operator, or use **Repair** if you changed
+  the game files yourself.
+- `catalog_failed`: tell the server's operator. **Retry** won't help until they
+  fix it.
+- `write_failed`: free disk space or check the folder's permissions, then press
+  **Retry**.
+- `no_login_server`, `endpoint_refused`: check **Login servers**; **Retry**
+  won't help until it is fixed.
+- `unsafe_path`: the game data folder is a link to another place; replace it
+  with a normal folder or use **Reset client cache**, then press **Retry**.
+- `profile_unavailable`: check that your Documents folder exists, then press
+  **Retry**.
+- `catalog_unavailable`, `rate_limited`: the server is busy; wait a minute, then
+  press **Retry**.
+- `connect_failed`, `timeout`, `http_error`, `deadline`: check your network,
+  wait if the line asks you to, then press **Retry**.
+- Any other code (the server's answer was damaged, or its data changed during
+  the update): press **Retry**. If it keeps happening, use **Upload debug logs**
+  in Settings and share the result.
 
 ### Log upload problems
 

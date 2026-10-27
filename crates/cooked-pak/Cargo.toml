@@ -1,0 +1,21 @@
+[package]
+name = "cimmeria-cooked-pak"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cooked-data PAK reader, writer and category digest for the SGW launcher's cache presync: a PAK is the client's ZIP of `_<key>` entries plus a `MetaData` version, the digest is what the server publishes per category, and the index, body codec, compose and decide rules are shared by server and launcher."
+
+[lib]
+name = "cimmeria_cooked_pak"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+zip = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+tempfile = "3"

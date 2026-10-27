@@ -305,7 +305,7 @@ impl ResourceCache {
     }
 
     /// Load a single PAK file (ZIP archive) into a CategoryData.
-    fn load_pak(pak_path: &str) -> Result<CategoryData, String> {
+    pub(crate) fn load_pak(pak_path: &str) -> Result<CategoryData, String> {
         let file =
             std::fs::File::open(pak_path).map_err(|e| format!("Failed to open {pak_path}: {e}"))?;
         let mut archive = zip::ZipArchive::new(file)

@@ -6,6 +6,14 @@ license.workspace = true
 publish = false
 description = "Cooked-data resource cache (the client's data/cache PAKs) and Cimmeria's in-memory overrides, plus the CharDef table, for the Cimmeria server emulator"
 
+# `cooked-pak-tool` builds, composes and checks the launcher presync data
+# offline (LP-04). It is a developer tool: no tests of its own (`check.rs` and
+# `served_catalog` hold them).
+[[bin]]
+name = "cooked-pak-tool"
+path = "src/bin/cooked-pak-tool.rs"
+test = false
+
 # Split out of cimmeria-services (wave W1b of
 # docs/architecture/services-crate-split.md). A leaf: it uses no other
 # workspace crate in production, so it compiles in parallel with everything
@@ -18,6 +26,10 @@ cimmeria-wire = { workspace = true }
 # Override log lines name their item, dialog, mission and sequence (Rule 6).
 cimmeria-names = { workspace = true }
 quick-xml = { workspace = true }
+# `served_catalog` encodes the `CPS1` bodies and the index (LP-02 codec, LP-01 digest).
+cimmeria-cooked-pak = { workspace = true }
+# `served_catalog::ServedCatalog::index_json` serializes the index.
+serde_json = { workspace = true }
 # `start_profiles::load_all` reads resources.char_creation (Class Start v6 CS-02).
 sqlx = { workspace = true }
 tracing = { workspace = true }
@@ -40,3 +52,5 @@ cimmeria-entity = { workspace = true }
 cimmeria-test-support = { workspace = true }
 # `#[tokio::test]` for the start-profile live-DB tests.
 tokio = { workspace = true }
+# `served_catalog` tests write their raw PAKs into a temp data dir.
+tempfile = "3"

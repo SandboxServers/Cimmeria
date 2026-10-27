@@ -38,6 +38,7 @@ const NO_OWN_ROW: &[(&str, &str)] = &[
     ("admin-api", NEVER_EXPORTED_BELOW_INFO),
     ("commands", NEVER_EXPORTED_BELOW_INFO),
     ("common", NEVER_EXPORTED_BELOW_INFO),
+    ("cooked-pak", NEVER_EXPORTED_BELOW_INFO),
     ("defs", NEVER_EXPORTED_BELOW_INFO),
     ("entity", NEVER_EXPORTED_BELOW_INFO),
     ("game", NEVER_EXPORTED_BELOW_INFO),

@@ -1,5 +1,12 @@
-use cimmeria_launcher_engine::launch::{Artifact, Graphics, Resources};
+use cimmeria_launcher_engine::launch::{Artifact, Graphics, ProtonSelection, Resources};
+#[cfg(target_os = "linux")]
+use cimmeria_launcher_engine::linux_proton::discovery;
 use std::path::Path;
+#[cfg(target_os = "linux")]
+use std::path::PathBuf;
+/// Where the system-wide Proton builds live (C-1). The engine keeps its copy private.
+#[cfg(target_os = "linux")]
+const SYSTEM_TOOLS: &str = "/usr/share/steam/compatibilitytools.d";
 /// Expected identities come from the trusted build, never from the bundle.
 pub(super) struct Digests<'a> {
     pub helper: Option<&'a str>,
@@ -12,6 +19,57 @@ pub(super) struct Digests<'a> {
 /// Whether this build pins a client telemetry DLL: the digest `bundled` reads.
 pub(crate) fn dll_bundled() -> bool {
     option_env!("CIMMERIA_CLIENT_TELEMETRY_SHA256").is_some()
+}
+/// Every Proton found now, ranked (C-1), with no cache: PP-10 relies on it. `roots`
+/// is (home, system tools); `None` reads HOME and SYSTEM_TOOLS.
+#[cfg(target_os = "linux")]
+pub(crate) fn found(roots: Option<(&Path, &Path)>) -> Vec<discovery::ProtonInstall> {
+    let env_home = std::env::var_os("HOME").map(PathBuf::from);
+    let (home, tools) = match roots {
+        Some((home, tools)) => (home.to_path_buf(), tools.to_path_buf()),
+        None => match env_home {
+            Some(home) => (home, PathBuf::from(SYSTEM_TOOLS)),
+            None => return Vec::new(),
+        },
+    };
+    discovery::steam_roots(&home)
+        .map(|steam| discovery::discover(&steam, &tools))
+        .unwrap_or_default()
+}
+/// The Proton Play runs through: the saved `preferred` id when it is still found,
+/// else the best one (C-1 `choose`). Off Linux there is none.
+#[cfg(target_os = "linux")]
+pub(super) fn proton(
+    roots: Option<(&Path, &Path)>,
+    preferred: Option<&str>,
+) -> Option<ProtonSelection> {
+    let installs = found(roots);
+    let install = discovery::choose(&installs, preferred)?;
+    Some(ProtonSelection {
+        id: install.id.clone(),
+        root: install.root.clone(),
+        version: install.version.clone(),
+    })
+}
+/// `proton` under a fake HOME with no saved preference (the PP-09 status tests).
+#[cfg(all(target_os = "linux", test))]
+pub(super) fn proton_under(home: &Path, system_tools: &Path) -> Option<ProtonSelection> {
+    proton(Some((home, system_tools)), None)
+}
+#[cfg(not(target_os = "linux"))]
+pub(super) fn proton(
+    _roots: Option<(&Path, &Path)>,
+    _preferred: Option<&str>,
+) -> Option<ProtonSelection> {
+    None
+}
+/// `"proton"` when this Linux host found no Proton; no other host needs one.
+pub(super) fn missing_proton(found: Option<&ProtonSelection>) -> Vec<&'static str> {
+    if cfg!(target_os = "linux") && found.is_none() {
+        vec!["proton"]
+    } else {
+        Vec::new()
+    }
 }
 pub(super) fn bundled(root: &Path) -> Option<Resources> {
     bundled_with(
@@ -78,6 +136,7 @@ pub(super) fn bundled_with(root: &Path, digests: &Digests) -> Option<Resources> 
         None
     };
     Some(Resources {
+        proton: None,
         helper,
         client_patches,
         client_telemetry,

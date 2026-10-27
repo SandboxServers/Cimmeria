@@ -3,11 +3,12 @@
 //!
 //! The launcher mints its telemetry token before the game logs in, so it
 //! does not know the account. What it does send is its `machine_id` (a
-//! truncated SHA-256 of the Windows `MachineGuid`; the raw GUID never leaves
-//! the machine). The mint signs that into the token as `mid` and records the
-//! stream here with the address the request came from. World entry asks
-//! [`client_telemetry_for`] with the game session's address and logs what it
-//! finds:
+//! truncated SHA-256 of the Windows `MachineGuid`, or of the host name in the
+//! desktop launcher; the raw GUID never leaves the machine). The mint signs
+//! that into the token as `mid` and records the stream here with the
+//! quota-key address of the request (the forwarded caller behind a loopback
+//! proxy). World entry asks [`client_telemetry_for`] with the game session's
+//! address and logs what it finds:
 //!
 //! - `present`: exactly one machine on that address has a live stream (or a
 //!   stream names this account, which wins), with its `session_id`, the same

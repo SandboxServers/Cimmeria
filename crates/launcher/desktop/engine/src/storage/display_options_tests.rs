@@ -126,9 +126,9 @@ fn effective_clamps_the_size() {
     );
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[test]
-fn macos_offers_only_a_window_and_never_applies_fullscreen() {
+fn macos_and_linux_offer_only_a_window_and_never_apply_fullscreen() {
     assert_eq!(allowed_modes(), &[DisplayMode::Windowed]);
     let fullscreen = sized(DisplayMode::Fullscreen, 1920, 1080);
     assert!(!fullscreen.valid());
@@ -138,7 +138,7 @@ fn macos_offers_only_a_window_and_never_applies_fullscreen() {
     );
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 #[test]
 fn other_platforms_offer_and_apply_fullscreen() {
     assert_eq!(
@@ -416,12 +416,15 @@ fn a_saved_frame_cap_survives_a_reopen_in_snake_case() {
 }
 
 #[test]
-fn only_macos_offers_frame_caps() {
+fn frame_caps_per_platform() {
+    // Revert proof (wave 3 ruling 1): an empty Linux list fails the Linux arm.
     if cfg!(target_os = "macos") {
         assert_eq!(
             frame_caps(),
             [FrameCap::Fps30, FrameCap::Fps60, FrameCap::Display]
         );
+    } else if cfg!(target_os = "linux") {
+        assert_eq!(frame_caps(), [FrameCap::Fps30, FrameCap::Fps60]);
     } else {
         assert!(frame_caps().is_empty());
     }

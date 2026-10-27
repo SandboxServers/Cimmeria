@@ -16,6 +16,20 @@ pub(crate) fn fixture_with_backend(
     seed_sha: &str,
     seed_size: usize,
 ) -> (tempfile::TempDir, DesktopState, InstallIntent) {
+    fixture_with_extraction(
+        ExtractionBackend::Wine {
+            runtime_sha256: runtime,
+            helper_sha256: helper,
+        },
+        seed_sha,
+        seed_size,
+    )
+}
+pub(crate) fn fixture_with_extraction(
+    backend: ExtractionBackend,
+    seed_sha: &str,
+    seed_size: usize,
+) -> (tempfile::TempDir, DesktopState, InstallIntent) {
     let root = tempfile::tempdir().unwrap();
     let mut state = DesktopState::open(&root.path().join("state")).unwrap();
     state
@@ -33,10 +47,7 @@ pub(crate) fn fixture_with_backend(
             preferences_revision: 1,
             release: &release,
             login_servers: crate::client_setup::login_servers::default_servers(),
-            backend: ExtractionBackend::Wine {
-                runtime_sha256: runtime,
-                helper_sha256: helper,
-            },
+            backend,
         })
         .unwrap()
         .intent;

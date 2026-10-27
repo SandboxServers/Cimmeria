@@ -3,6 +3,7 @@
 pub mod game_launch;
 pub mod physx;
 pub mod prerequisite;
+pub mod search_path;
 use physx::SdkResult;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

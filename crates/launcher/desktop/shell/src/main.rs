@@ -8,10 +8,11 @@ mod adoption_picker;
 mod build_payload;
 mod host;
 mod panic_hook;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 mod payload_startup;
 #[cfg(test)]
 mod release_version;
+mod self_test_rar;
 mod startup_event;
 mod telemetry;
 // The C9 capture helper; LT-06 onward drive it from the event helpers.
@@ -39,8 +40,8 @@ use cimmeria_launcher_engine::{LauncherBuild, NativeCommand, NativeSnapshot, Sto
 use host::{
     AdoptionCommand, AdoptionError, AdoptionStatus, GameTelemetryCommand, GameTelemetryStatus,
     GameUpdateCommand, GameUpdateStatus, InstallCommand, InstallStatus, JobError, LaunchCommand,
-    LaunchStatus, MigrationCommand, MigrationStatus, NativeHost, SeedArchiveCommand,
-    SeedArchiveError, SeedArchiveStatus, UpdaterCommand,
+    LaunchStatus, MigrationCommand, MigrationStatus, NativeHost, ProtonCommand, ProtonView,
+    SeedArchiveCommand, SeedArchiveError, SeedArchiveStatus, UpdaterCommand,
 };
 use std::sync::Arc;
 use tauri::Manager;
@@ -232,6 +233,18 @@ where
         Some(release) => Ok(release),
         None => fetch().await.map_err(Into::into),
     }
+}
+
+/// The Linux Proton picker (PP-10). Blocking discovery runs off the IPC thread.
+#[tauri::command]
+async fn proton_command(
+    request: ProtonCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<ProtonView, String> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.proton_command(request))
+        .await
+        .map_err(|_| "proton_command_failed".to_owned())?
 }
 
 #[tauri::command]
@@ -547,7 +560,19 @@ async fn choose_seed_archive(
 const DEVELOPMENT_TITLE: &str = "Cimmeria Launcher \u{2014} development";
 
 fn main() {
-    #[cfg(windows)]
+    // Hidden (PP-U-FIX): before any Tauri, Windows or single-instance setup, so
+    // the release check runs the bundled UnRAR and nothing else.
+    if self_test_rar::requested(std::env::args_os()) {
+        match self_test_rar::run() {
+            Ok(()) => println!("self-test-rar: ok"),
+            Err(error) => {
+                eprintln!("self-test-rar: {error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+    #[cfg(any(windows, target_os = "linux"))]
     payload_startup::headless_probe();
     #[cfg(windows)]
     webview2::ensure_runtime_or_exit();
@@ -606,7 +631,7 @@ fn main() {
             let host = host.with_bundled_helper(app.path().resource_dir()?);
             let app_handle = app.handle().clone();
             let resource_root = app.path().resource_dir()?;
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "linux"))]
             let resource_root = payload_startup::resources(app, resource_root)?;
             let host = host
                 .with_launch_resources(resource_root)
@@ -625,6 +650,7 @@ fn main() {
             fetch_patch_notes,
             install_command,
             launch_command,
+            proton_command,
             game_telemetry_command,
             log_upload_command,
             client_maintenance_command,
@@ -643,6 +669,12 @@ fn main() {
             host::ui_event::ui_event,
             host::telemetry_status::telemetry_status
         ])
-        .run(tauri::generate_context!())
-        .expect("desktop launcher could not initialize");
+        .build(tauri::generate_context!())
+        .expect("desktop launcher could not initialize")
+        .run(|_, event| {
+            // Send what is queued before the process ends; bounded at 3 s.
+            if let tauri::RunEvent::Exit = event {
+                telemetry::forwarder::flush_on_exit();
+            }
+        });
 }

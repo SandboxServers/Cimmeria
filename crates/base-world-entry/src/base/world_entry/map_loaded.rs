@@ -241,7 +241,7 @@ pub async fn handle_map_loaded(
         archetype_name = cimmeria_names::archetype_name(player_data.archetype),
         client_telemetry = client_telemetry.as_str(),
         client_telemetry_session_id = client_telemetry.session_id(), // nt:id-only telemetry session UUID; it names nothing
-        client_machine_id = client_telemetry.machine_id(), // nt:id-only hashed MachineGuid; it names nothing
+        client_machine_id = client_telemetry.machine_id(), // nt:id-only a truncated SHA-256 of the Windows `MachineGuid`, or of the host name in the desktop launcher; it names nothing
         client_telemetry_candidates = client_telemetry.candidates(),
         packets = pkt_count,
         "World entry complete ({} bytes across {} packets)",

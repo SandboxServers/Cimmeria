@@ -39,6 +39,7 @@ fn bundle(host: &mut NativeHost, directory: &Path, patches: bool) {
         launch::Artifact::open(path, &hex(&Sha256::digest(name))).unwrap()
     };
     host.launch_resources = Some(launch::Resources {
+        proton: None,
         helper: artifact("launch-worker.exe"),
         client_patches: patches.then(|| artifact("client-patches.dll")),
         client_telemetry: None,

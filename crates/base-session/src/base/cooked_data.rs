@@ -81,6 +81,12 @@ pub async fn handle_version_info_request(
         invalidate_all = matches!(reply, VersionReply::FullResync { .. }),
         "Responding to versionInfoRequest"
     );
+    cimmeria_observability::counter!(
+        "cooked_data_version_replies_total",
+        "outcome" => reply.outcome(),
+        "reason" => reply.reason(),
+        "category" => category_name(category_id).unwrap_or("unknown"),
+    );
 
     let version = match reply {
         VersionReply::NoServerData { client_version } => client_version,

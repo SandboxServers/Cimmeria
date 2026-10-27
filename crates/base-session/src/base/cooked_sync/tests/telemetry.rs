@@ -3,6 +3,7 @@
 
 use tracing::Level;
 
+use super::super::super::resources::category_name;
 use super::{rig, server_entries, server_version};
 use crate::test_support::LogCapture;
 
@@ -98,4 +99,37 @@ async fn an_up_to_date_reply_names_its_branch() {
         .all()
         .iter()
         .all(|e| !e.has_field("event", "cooked_data.sync_start")));
+}
+
+#[tokio::test]
+async fn version_replies_are_counted_by_outcome() {
+    use cimmeria_observability::testing::{counter_total, install};
+    install();
+    let rig = rig(47_404);
+    let up_to_date = [
+        ("outcome", "up_to_date"),
+        ("reason", "versions_match"),
+        ("category", category_name(STARGATES).unwrap()),
+    ];
+    let resync = [
+        ("outcome", "full_resync"),
+        ("reason", "version_mismatch"),
+        ("category", category_name(WORLD_INFO).unwrap()),
+    ];
+    let before_up_to_date = counter_total("cooked_data_version_replies_total", &up_to_date);
+    let before_resync = counter_total("cooked_data_version_replies_total", &resync);
+
+    rig.request(STARGATES, server_version(STARGATES)).await;
+    rig.request(WORLD_INFO, 5959).await;
+
+    assert_eq!(
+        counter_total("cooked_data_version_replies_total", &up_to_date) - before_up_to_date,
+        1,
+        "one matching reply counts once under up_to_date"
+    );
+    assert_eq!(
+        counter_total("cooked_data_version_replies_total", &resync) - before_resync,
+        1,
+        "one mismatched reply counts once under full_resync"
+    );
 }

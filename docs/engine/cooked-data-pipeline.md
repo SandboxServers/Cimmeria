@@ -2,12 +2,12 @@
 title: "Cooked Data Pipeline"
 type: reference
 audience: engineers
-last_updated: 2026-10-14
+last_updated: 2026-10-26
 ---
 
 # Cooked Data Pipeline
 
-> **Last updated**: 2026-10-14
+> **Last updated**: 2026-10-26
 > **RE Status**: Delivery path verified against `crates/` and `data/cache/`; the DB→PAK
 > *cooking* half is historical (original CME server) and no longer runs
 > **Sources**: `data/cache/` (21 PAKs, inspected directly), `db/resources/`,
@@ -202,11 +202,15 @@ the cache. The legacy `pet_command` category (index 21 in `resource.cpp`) has no
 client-side counterpart — the client numbers `behavior_event` as 21.
 
 > [!NOTE]
-> **Category 7 (`char_creation`) is deliberately not server-pushed.** It is absent from the
-> version-negotiation category map, so the client falls back to its local
-> `CookedCharCreation.pak`. See `crates/base-session/src/base/cooked_data.rs:246`. Do not
-> "fix" this by adding category 7 to the map without understanding the character-creation
-> flow first.
+> **Category 7 (`char_creation`) is not pushed by the version-negotiation path
+> (`cooked_sync`), but it is served by the launcher presync.** It is absent from the
+> version-negotiation category map, so a client that starts without the launcher falls back
+> to its local `CookedCharCreation.pak`, and `cooked_data.version_reply` reports
+> `no_server_data` for it. The launcher presync is a different path: it writes the whole
+> Documents cache, so the served catalog includes category 7 like every other category
+> ([Launcher presync](#launcher-presync)). Do not add category 7 to the version-negotiation
+> map without understanding the character-creation flow first. See
+> `crates/base-session/src/base/cooked_data.rs`.
 
 Earlier revisions of this document listed 22 *database tables* here (ability_sets,
 entity_templates, behaviors, loot_tables, mob_templates, body_components, nacsi,
@@ -304,12 +308,104 @@ The cooked data system includes version tracking:
 - **Cache stamps**: Per-entity version numbers allow incremental updates
 - **Error reporting**: `onCookedDataError` notifies the client of validation failures
 
+## Launcher presync
+
+The desktop launcher can bring a player's cooked-data cache up to date **before** the game starts, so the client's first `versionInfoRequest` finds matching versions and `cooked_data.version_reply` answers `up_to_date` instead of starting the paced resync. This section is the server side: how the catalog is built, the routes that serve it, and what an operator does when it breaks. The launcher side is in [crates/launcher/desktop/docs/](../../crates/launcher/desktop/docs/). The campaign ledger, with every decision cited here (D-LP*), is [docs/analysis/launcher-cache-presync/](../analysis/launcher-cache-presync/README.md).
+
+The server never sends CME bytes it does not already hold. The launcher composes each stale category from the player's own `SourceCache.en-us` PAK plus the entries Cimmeria changed, and checks the result against a digest. The byte layout of the index, the body and the digest is in [cooked-data-pak-format.md § Presync catalog formats](cooked-data-pak-format.md#presync-catalog-formats).
+
+### Catalog build
+
+At base-service start, once `ResourceCache::load_all` succeeds, the base spawns the catalog build on a blocking thread (`crates/base/src/base/presync_catalog.rs`). Boot never waits on it. `ServedCatalog::build` (`crates/resources/src/base/served_catalog/mod.rs`) walks every category the cache holds, re-reads that category's raw PAK under `data_dir`, and keeps:
+
+- the full key list of the served category;
+- only the entries whose bytes differ from the raw PAK, or that the raw PAK lacks (overrides, additions, attribute patches);
+- the served version and a SHA-256 digest of the whole served category.
+
+It publishes the outcome exactly once, through a `OnceLock`:
+
+| State | Where it comes from | What a route answers |
+|---|---|---|
+| Not published yet | the build is still running | 503 `catalog_unavailable` with `Retry-After: 5` |
+| `Ready` | build succeeded; INFO `cooked_presync.catalog_ready` (`categories`, `body_bytes`, `duration_ms`) | the index and bodies |
+| `Failed(code)` | build failed; WARN `cooked_presync.catalog_unavailable` (`reason`, `category_id` when one category failed) | 503 `catalog_failed`, no `Retry-After` |
+
+The build fails **as a whole** if any category the cache holds cannot be served. The closed reason codes are `raw_pak_unreadable` (the category's raw PAK is missing or unreadable), `category_too_large` (its body passes 32 MiB, or the launcher's decoder would refuse it) and `build_failed` (the resource cache did not load, or the build task panicked). A category the cache does not hold at all is left out of the index. Publishing the failure is deliberate: a launcher that asks after a failed build gets `catalog_failed` at once instead of waiting out its deadline (D-LP13).
+
+Category 7 (`char_creation`) is served like the others (D-LP14). The version-negotiation path (`cooked_sync`) still does not push it, which is why the note under [Resource Categories](#resource-categories) exists. The presync is a different path: it writes the player's whole cache, so it needs every category.
+
+### Routes
+
+Both routes are anonymous GETs, nested at `/api/cooked` in the login-port router (`LOGON_PORT`, 8081), and are not on the admin listener. Route table and env vars: [admin-api.md](../tools/admin-api.md#cooked-data-presync-routes-login-port).
+
+| Route | Success | Refusals (JSON `{"error":"<code>"}`) |
+|---|---|---|
+| `GET /api/cooked/v1/index` | 200, `application/json`, `Cache-Control: no-cache` | 429 `rate_limited`; 503 `disabled`, `catalog_unavailable`, `catalog_failed` |
+| `GET /api/cooked/v1/category/{id}?version=<v>` | 200, `application/octet-stream`, the `CPS1` body | the same, plus 404 `unknown_category`, 409 `version_changed` (with the served `version`), 400 `bad_request` |
+
+Checks run in a fixed order: the per-address quota, then the kill switch, then the catalog state, then the route's own checks. So the kill switch wins over a failed catalog (the launcher skips and launches), and a 429 is answered before anything else.
+
+### The reply counter
+
+Every `versionInfoRequest` the server answers also bumps `cooked_data_version_replies_total` with `outcome` (`no_server_data`, `up_to_date`, `full_resync`), `reason` and `category`. That counter is how you tell whether the presync is working: a healthy launcher population shows `up_to_date` and almost no `full_resync`. The query is in [telemetry.md § Cooked-data presync](../operations/telemetry.md#cooked-data-presync).
+
+### What a player sees when it fails
+
+The launcher **blocks Play** when the presync fails (D-LP18). It shows the step, the category, the HTTP status or OS error and why, and the Play button reads Retry. It never falls back to `cooked_sync`. The server keeps `cooked_sync` for clients that start `SGW.exe` without the launcher, and those still resync the old way.
+
+Two things follow for an operator:
+
+- **A failed catalog build makes every launcher on that server fail with `catalog_failed` until it is fixed.** There is no per-player workaround (D-LP24); the operator's remedy is the kill switch below, then a fix and a restart (the catalog is built once per process).
+- **A server built before the routes existed answers 404** on the index. The launcher reads that as "this server does not presync" and launches (D-LP19).
+
+### Operator note: the kill switch
+
+`CIMMERIA_COOKED_PRESYNC_DISABLED=1` (or `true`) is the bypass. The server reads it on every request, but a running process never sees a changed environment, so setting or unsetting it means restarting the server (recreating the container on the colo). With it set both routes answer 503 `disabled`, and launchers skip the presync with a visible note that character select may take about a minute, then launch (D-LP19, D-LP24). Players then resync through `cooked_sync` as before.
+
+Use it when the catalog is `Failed` and you cannot fix it right away. Unset it and restart the server to resume. The restart also rebuilds the catalog: if the cause is fixed, launchers presync again; if not, they get `catalog_failed` again.
+
+### Operator note: shared-IP quota
+
+`CIMMERIA_COOKED_PRESYNC_QUOTA_PER_IP` defaults to **60 requests a minute** per address, `0` disables it. The key is the forwarded caller behind a loopback proxy, the socket peer otherwise, the same rule as the launcher-summary route. Players behind one NAT, a CGNAT or a LAN share that allowance (risk F20).
+
+A full sync costs about 1 + the number of stale categories requests (at most 1 + 21 = 22). Three players launching together after a content update can therefore reach the limit. The launcher handles a short refusal: on 429 it waits out `Retry-After` when that is at most 30 s and fits its 120 s deadline, up to three waits a run (D-LP20). The server's 429 carries `Retry-After: 60`, which is over that cap, so the launcher **fails** with `rate_limited` and the player presses Retry a minute later. If a shared address is common on your server, raise the quota; see [container.md](../operations/container.md) and [colo-deploy.md](../operations/colo-deploy.md) for where the variable is set.
+
+The colo's https proxy forwards only the telemetry routes. The cooked routes are served on the login port over plain HTTP, with the same trust level as the SOAP and Mercury channel to that server; the SHA-256 digest catches corruption, not tampering (D-LP10).
+
+### Alert recipe
+
+Page on either of these:
+
+- the counter `cooked_presync_requests_total{outcome="catalog_failed"}` rising above 0;
+- the WARN row with `event = cooked_presync.catalog_unavailable`.
+
+Either means every launcher on the server is blocked right now. The response is the kill switch, then the cause named in the row's `reason`. Row and counter definitions: [observability-target-catalog.md § cooked_presync](../architecture/observability-target-catalog.md#cooked_presync).
+
+### Offline tool
+
+`cooked-pak-tool` (`crates/resources/src/bin/cooked-pak-tool.rs`, in the generated [tools catalog](../../tools/README.md#tools-catalog)) builds and checks the presync data without a running server:
+
+```powershell
+pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-resources --bin cooked-pak-tool -- build --data-dir data/cache
+```
+
+| Subcommand | What it does |
+|---|---|
+| `build --data-dir <dir>` | Loads the server's cooked data and prints the served index JSON. |
+| `compose --data-dir <dir> --source <dir> --out <dir>` | Composes each category the presync would write from `<source>/<pak>` and the served body; writes `<out>/<pak>` and prints `<id> <pak> <action> <reason>` per category. |
+| `check --data-dir <dir> --source <dir>` | One row per category on how the source PAK lines up with the served records. |
+| `layout --pak <file>` | Lists a PAK's zip entries in order. |
+
+Exit codes: 0 success, 1 when a category fails (`compose`) or the source base does not line up (`check`), 2 for a usage or I/O error. Use `check` against a client's `SourceCache.en-us` to learn, before a release, whether the launcher can compose from it.
+
 ## Related Documents
 
 - [Game Data](../game-data.md) -- Complete data inventory
 - [CME Framework](cme-framework.md) -- Atrea Script Editor and other CME systems
 - [BigWorld Architecture](bigworld-architecture.md) -- Entity system context
 - [Service Architecture](../architecture/service-architecture.md) -- Server configuration
+- [PAK File Format](cooked-data-pak-format.md#presync-catalog-formats) -- Index, `CPS1` body and `CPD1` digest for the launcher presync
+- [Admin API](../tools/admin-api.md#cooked-data-presync-routes-login-port) -- The presync routes and env vars
 
 ## XSD Schemas
 

@@ -86,7 +86,13 @@ pub fn probe(request: Request) -> Result<Report, &'static str> {
     if !directory.is_dir() || !directory.join("SGW.exe").is_file() {
         return Err("invalid_directory");
     }
-    let path = wide(directory.as_os_str())?;
+    // AddDllDirectory only: Wine refuses the verbatim form (PP-08W, D-PP28).
+    let path = match directory.to_str() {
+        Some(text) => wide(OsStr::new(
+            crate::search_path::dll_search_directory(text).as_ref(),
+        ))?,
+        None => wide(directory.as_os_str())?,
+    };
     unsafe { SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX) };
     if unsafe {
         SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_USER_DIRS)

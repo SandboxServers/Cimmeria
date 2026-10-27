@@ -190,6 +190,7 @@ fn artifact(root: &Path, name: &str) -> Artifact {
 /// A bundle carrying both DLLs, so what Play drops is the policy's doing.
 fn full_bundle(root: &Path) -> Resources {
     Resources {
+        proton: None,
         helper: artifact(root, "helper.exe"),
         client_patches: Some(artifact(root, "patches.dll")),
         client_telemetry: Some(artifact(root, "telemetry.dll")),

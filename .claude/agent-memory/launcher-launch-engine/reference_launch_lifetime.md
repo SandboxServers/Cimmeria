@@ -12,6 +12,6 @@ resume errors do not prove guest termination. Desktop injection/resume failures
 therefore stay unknown rather than authorizing a fallback launch.
 
 Verified implementation contracts and remaining native/graphics validation gates
-are documented in `crates/launcher/desktop/docs/launch.md`. Managed Wine's archive
+are documented in `crates/launcher/desktop/docs/launch-mac.md`. Managed Wine's archive
 is separate from D3D9 overlays and optional x87 acceleration. Module-load
 prerequisites alone establish neither graphics nor gameplay readiness.

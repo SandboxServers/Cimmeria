@@ -16,6 +16,13 @@ def workflow(name):
     return yaml.safe_load((ROOT / ".github/workflows" / name).read_text())
 
 
+def apt_packages(job):
+    """The package names on the job's `apt-get install` lines."""
+    lines = [line for step in job["steps"] for line in step.get("run", "").splitlines()
+             if "apt-get install" in line]
+    return {word for line in lines for word in line.split()}
+
+
 class WorkflowPolicy(unittest.TestCase):
     def package_fixture(self, root, output):
         script = (ROOT / "tools/launcher-release/build-desktop.sh").read_text()
@@ -134,6 +141,26 @@ class WorkflowPolicy(unittest.TestCase):
         app = script.split("stage_app() {", 1)[1].split("\n}\n", 1)[0]
         self.assertLess(app.index("stage_tools"), app.index("cargo tauri build"))
 
+    def test_linux_builds_link_with_lld_not_mold(self):
+        # PP-U-FIX: mold 1.0.3 links a UnRAR that rejects every RAR header, so the
+        # Linux launcher builds set the Linux target's rustflags to lld.
+        key = "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS"
+        lld = "-C link-arg=-fuse-ld=lld"
+        linux = workflow("launcher-desktop-linux.yml")["jobs"]["build"]
+        app = next(s for s in linux["steps"] if "build-desktop-linux.sh app" in s.get("run", ""))
+        self.assertEqual(app["env"][key], lld)
+        self.assertIn("lld", apt_packages(linux))
+        native = workflow("launcher-desktop.yml")["jobs"]["native-engine"]
+        self.assertEqual(native["env"][key], lld)
+        self.assertIn("lld", apt_packages(native))
+
+    def test_release_verify_runs_the_bundled_unrar_self_test(self):
+        script = (ROOT / "tools/launcher-release/build-desktop-linux.sh").read_text()
+        verify = script.split("stage_verify() {", 1)[1].split("stage_package() {", 1)[0]
+        self.assertIn('"$exe" --self-test-rar', verify)
+        main = (ROOT / "crates/launcher/desktop/shell/src/main.rs").read_text()
+        self.assertIn("self_test_rar::requested(", main)
+
     def test_every_pr_dry_runs_the_linux_release_build(self):
         dry = workflow("launcher-desktop.yml")["jobs"]["release-dry-run-linux"]
         self.assertEqual(dry["uses"], "./.github/workflows/launcher-desktop-linux.yml")
@@ -141,6 +168,52 @@ class WorkflowPolicy(unittest.TestCase):
         self.assertTrue(dry["with"]["tag"])
         self.assertTrue(dry["with"]["version"])
         self.assertNotIn("secrets", dry)
+
+    def test_real_key_linux_dry_run_is_manual_and_artifact_only(self):
+        desktop = workflow("launcher-desktop.yml")
+        triggers = desktop[True]  # PyYAML reads the `on:` key as True
+        self.assertIn("workflow_dispatch", triggers)
+        real = desktop["jobs"]["release-dry-run-linux-real-key"]
+        self.assertEqual(real["if"], "github.event_name == 'workflow_dispatch'")
+        self.assertEqual(real["uses"], "./.github/workflows/launcher-desktop-linux.yml")
+        self.assertEqual(real["permissions"], {"contents": "read"})
+        self.assertIs(real["with"]["dev_manifest_key"], False)
+        self.assertIs(real["with"]["save_cache"], False)
+        self.assertNotEqual(real["with"]["artifact_name"],
+                            desktop["jobs"]["release-dry-run-linux"]["with"]["artifact_name"])
+        self.assertEqual(set(real["secrets"]), {"LAUNCHER_MANIFEST_PUBKEY_HEX"})
+        # Nothing in this workflow can write to a release.
+        self.assertEqual(desktop["permissions"], {"contents": "read"})
+        for job in desktop["jobs"].values():
+            self.assertNotIn("write", set((job.get("permissions") or {}).values()))
+
+    def test_linux_build_pins_embeds_and_verifies_the_four_windows_pieces(self):
+        script = (ROOT / "tools/launcher-release/build-desktop-linux.sh").read_text()
+        pieces = script.split("PIECES=(", 1)[1].split("\n)", 1)[0]
+        entries = [line.strip().strip('"').split() for line in pieces.strip().splitlines()]
+        self.assertEqual({e[0]: tuple(e[1:]) for e in entries}, {
+            "cimmeria-launch-worker.exe": ("launch", "CIMMERIA_LAUNCH_HELPER_SHA256"),
+            "cimmeria-prerequisite-worker.exe": ("prerequisite", "CIMMERIA_PREREQUISITE_HELPER_SHA256"),
+            "cimmeria_client_patches.dll": ("client-patches", "CIMMERIA_CLIENT_PATCHES_SHA256"),
+            "cimmeria_client_telemetry.dll": ("client-telemetry", "CIMMERIA_CLIENT_TELEMETRY_SHA256"),
+        })
+        app = script.split("stage_app() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("export CIMMERIA_EMBED_PAYLOAD=1", app)
+        self.assertIn('"resources/windows/":null', app)
+        verify = script.split("stage_verify() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("--verify-embedded-payload", verify)
+
+    def test_linux_release_and_dry_run_hand_the_windows_pieces_to_the_linux_build(self):
+        for name, job, producer in [("launcher-release.yml", "desktop-linux", "mac-pieces"),
+                                    ("launcher-desktop.yml", "release-dry-run-linux", "release-dry-run-mac-pieces")]:
+            linux = workflow(name)["jobs"][job]
+            self.assertIn(producer, linux["needs"], job)
+            self.assertTrue(linux["with"].get("pieces_artifact"), job)
+            self.assertIn(f"needs.{producer}.outputs.", linux["with"].get("pieces_sha256", ""), job)
+        runs = [s.get("run", "") for s in workflow("launcher-desktop-linux.yml")["jobs"]["build"]["steps"]]
+        staged = next(i for i, r in enumerate(runs) if "build-desktop-linux.sh pieces" in r)
+        built = next(i for i, r in enumerate(runs) if "build-desktop-linux.sh app" in r)
+        self.assertLess(staged, built)
 
     def test_tool_profile_retains_release_semantics_without_changing_player_profile(self):
         manifest = tomllib.loads((ROOT / "crates/launcher/desktop/Cargo.toml").read_text())

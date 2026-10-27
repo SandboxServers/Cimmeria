@@ -71,8 +71,9 @@ const DEFAULT_CHUNK_PER_SESSION: u32 = 120;
 /// machine or a household behind one address.
 const DEFAULT_CHUNK_PER_IP: u32 = 600;
 
-/// Launcher chunks per session per minute: a launcher posts about one every
-/// 2 s, so this is a minute of posts with room for a retry.
+/// Launcher chunks per session per minute: a launcher sends at most one chunk
+/// about every 7 s, plus flushes, so this is a minute of posts with room for a
+/// flush and a retry.
 const DEFAULT_LAUNCHER_CHUNK_PER_SESSION: u32 = 10;
 
 /// Launcher chunks per install per minute, across all its sessions.

@@ -136,7 +136,7 @@ Integrated / UATPending / Done / Superseded.
 
 | Row | Step | Who |
 |---|---|---|
-| U1 | On the Steam Deck, install from the local `client.rar` in the launcher. Install completes, Play is offered, and the game starts to the login screen. | Owner |
+| U1 | On the Steam Deck, install from the local `client.rar` in the launcher. Install completes. Play is offered once a Proton is installed (the [Linux Play campaign](../launcher-linux-play-proton/README.md) added it; its UAT row PP-U covers the game reaching the login screen). | Owner |
 | U2 | With summary consent on, run the launcher on the Deck. The local log shows `summary_endpoint_resolved outcome=login_server_https_upgrade`, and rows arrive at `launcher.summary` (the `telemetry-triage` skill). | Owner, then a triage agent |
 | U3 | Windows CI on `main` runs #2020's portable-against-FDI test, and `installer_rar_from_portable_cabinets_expands_on_every_host` runs FDI on the writer's output. `ops` confirms both are green. | `ops` (CI read) |
 | U4 | On the Deck, with game diagnostics on, a build with LI-09 and the login server `http://play.cimmeria.app:8081`, press Play. The session mints, with no `game_session_mint_failed`. Game-telemetry rows for that session arrive in SigNoz. The server logs the mint with `upload_endpoint_source=request_host`, so it came through the https route. | Owner, then a triage agent |

@@ -344,7 +344,7 @@ unsafe extern "system" fn fdi_notify(
                 ctx.done += 1;
                 if let Some(path) = path {
                     ctx.sink
-                        .report("expanding cabinets", ctx.done, ctx.total, &path);
+                        .report(super::progress::CABINET_STEP, ctx.done, ctx.total, &path);
                 }
                 1
             }

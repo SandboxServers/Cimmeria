@@ -3,7 +3,7 @@ import {NativeSnapshot} from './contract';
 const Offer=Schema.Struct({id:Schema.String,installation_id:Schema.String,directory:Schema.String,
  current_digest:Schema.String,target_digest:Schema.String,current_patches:Schema.Array(Schema.String),target_patches:Schema.Array(Schema.String),launcher_update_required:Schema.Boolean});
 export const GameUpdateStatus=Schema.Struct({schema_version:Schema.Literal(1),native:NativeSnapshot,
- can_check:Schema.Boolean,checked:Schema.Boolean,offer:Schema.NullOr(Offer),progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction']),current:Schema.Number,total:Schema.Number})),maintenance:Schema.NullOr(Schema.Struct({operation_id:Schema.String,directory:Schema.String,previous_digest:Schema.String,target_digest:Schema.String,recovery:Schema.Boolean,discard:Schema.Boolean,rollback:Schema.Boolean,backup:Schema.Literals(['unavailable','not_retained','retained','cleanup_pending','removed'])}))});
+ can_check:Schema.Boolean,checked:Schema.Boolean,offer:Schema.NullOr(Offer),progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','copy','check','extraction','expansion']),current:Schema.Number,total:Schema.Number})),maintenance:Schema.NullOr(Schema.Struct({operation_id:Schema.String,directory:Schema.String,previous_digest:Schema.String,target_digest:Schema.String,recovery:Schema.Boolean,discard:Schema.Boolean,rollback:Schema.Boolean,backup:Schema.Literals(['unavailable','not_retained','retained','cleanup_pending','removed'])}))});
 export type GameUpdateStatus=typeof GameUpdateStatus.Type;
 export type Action='apply'|'recover'|'abandon'|'discard'|'cleanup'|'rollback';
 export type Review={action:Action;revision:number;identity:string;directory:string;from:string;to:string};

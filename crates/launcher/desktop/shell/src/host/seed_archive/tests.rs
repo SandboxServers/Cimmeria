@@ -50,6 +50,31 @@ fn catalog_build_key_and_verification_failures_are_not_network_failures() {
     );
 }
 
+/// A dev-key pick refusal is logged once with its closed code and no path.
+#[test]
+fn a_dev_key_pick_refusal_logs_its_code_and_no_path() {
+    use cimmeria_launcher_engine::catalog::CatalogError;
+    let (error, records) = capture(|| {
+        tracing::callsite::rebuild_interest_cache();
+        SeedArchiveError::from(CatalogError::DevelopmentSigningKey)
+    });
+    assert_eq!(
+        serde_json::to_value(error).unwrap(),
+        "signing_key_unavailable"
+    );
+    let refused: Vec<_> = records
+        .iter()
+        .filter(|r| r.field("event") == Some("seed_archive_pick_refused"))
+        .collect();
+    assert_eq!(refused.len(), 1, "{records:?}");
+    assert_eq!(refused[0].level, tracing::Level::WARN);
+    assert_eq!(refused[0].field("reason"), Some("signing_key_unavailable"));
+    assert!(refused[0]
+        .fields
+        .values()
+        .all(|v| !v.contains('/') && !v.contains('\\')));
+}
+
 /// An offer whose file cannot be read is logged once and not offered.
 #[test]
 fn unreadable_offer_is_logged_and_not_offered() {

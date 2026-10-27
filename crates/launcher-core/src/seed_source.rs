@@ -211,10 +211,17 @@ pub fn verify_local_seed(
     }
     let identity = identity_of(&file)?;
     let mut hasher = Sha256::new();
-    stream_file(&mut file, seed.size, cancel, progress, |chunk| {
-        hasher.update(chunk);
-        Ok(())
-    })?;
+    stream_file(
+        &mut file,
+        seed.size,
+        cancel,
+        progress,
+        check_event,
+        |chunk| {
+            hasher.update(chunk);
+            Ok(())
+        },
+    )?;
     if !hex_digest(hasher).eq_ignore_ascii_case(&seed.sha256) {
         return Err(LocalSeedError::HashMismatch);
     }
@@ -271,11 +278,18 @@ impl VerifiedLocalSeed {
             .create_new(true)
             .open(copy)?;
         let mut hasher = Sha256::new();
-        let copied = stream_file(&mut source, self.size, cancel, progress, |chunk| {
-            hasher.update(chunk);
-            out.write_all(chunk)?;
-            Ok(())
-        })?;
+        let copied = stream_file(
+            &mut source,
+            self.size,
+            cancel,
+            progress,
+            copy_event,
+            |chunk| {
+                hasher.update(chunk);
+                out.write_all(chunk)?;
+                Ok(())
+            },
+        )?;
         if copied != self.size {
             return Err(LocalSeedError::Changed);
         }
@@ -392,14 +406,29 @@ fn identity_of(file: &File) -> Result<LocalFileIdentity, LocalSeedError> {
     })
 }
 
+/// The pick-time check's event. It is unchanged; the seed-archive view shows it.
+fn check_event(done: u64, total: u64) -> Progress {
+    Progress::Downloading {
+        label: CHECK_LABEL.to_string(),
+        downloaded: done,
+        total,
+    }
+}
+
+/// The install-time copy's event (C-7).
+fn copy_event(copied: u64, total: u64) -> Progress {
+    Progress::Copying { copied, total }
+}
+
 /// Reads `source` to the end in [`READ_CHUNK`] pieces, passing each piece to
-/// `sink`, reporting progress and honouring `cancel` between reads. Returns
-/// the number of bytes read.
+/// `sink`, reporting progress through `event` and honouring `cancel` between
+/// reads. Returns the number of bytes read.
 fn stream_file(
     source: &mut File,
     size: u64,
     cancel: &CancellationToken,
     progress: &ProgressSink,
+    event: fn(u64, u64) -> Progress,
     mut sink: impl FnMut(&[u8]) -> Result<(), LocalSeedError>,
 ) -> Result<u64, LocalSeedError> {
     let mut buf = vec![0u8; READ_CHUNK];
@@ -416,11 +445,7 @@ fn stream_file(
         };
         sink(&buf[..n])?;
         done += n as u64;
-        progress.report(Progress::Downloading {
-            label: CHECK_LABEL.to_string(),
-            downloaded: done,
-            total: size,
-        });
+        progress.report(event(done, size));
     }
 }
 

@@ -206,9 +206,9 @@ pub(super) fn machine_claim(launcher: bool, machine_id: &str) -> Option<String> 
 
 /// Records the stream of a player or lab mint. A launcher session records
 /// none: it has no game to join (R4).
-pub(super) fn record_unless_launcher(launcher: bool, claims: &TokenClaims, peer_ip: IpAddr) {
+pub(super) fn record_unless_launcher(launcher: bool, claims: &TokenClaims, caller_ip: IpAddr) {
     if !launcher {
-        super::handlers::record_stream(claims, peer_ip);
+        super::handlers::record_stream(claims, caller_ip);
     }
 }
 

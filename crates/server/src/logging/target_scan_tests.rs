@@ -50,6 +50,7 @@ pub(super) const IN_PROCESS_CRATES: &[&str] = &[
     "commands",
     "common",
     "content-engine",
+    "cooked-pak",
     "defs",
     "discord",
     "entity",

@@ -107,9 +107,9 @@ fn arguments_follow_the_effective_mode() {
         mode: DisplayMode::Fullscreen,
         ..windowed(1600, 900)
     };
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     assert!(arguments(fullscreen).is_empty());
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     assert_eq!(
         arguments(fullscreen),
         ["-windowed", "ResX=1600", "ResY=900"]

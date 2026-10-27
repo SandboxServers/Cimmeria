@@ -113,7 +113,10 @@ fn execute(request: &PrepareRequest) -> Result<ResultKind, Failure> {
             schema_version: 1,
             game_binaries: request.game_binaries.clone(),
         })
-        .map_err(|_| Failure::Probe)
+        .map_err(|code| {
+            eprintln!("cimmeria-prerequisite-worker: probe failed: {code}");
+            Failure::Probe
+        })
     }))
 }
 
