@@ -1,7 +1,7 @@
 //! Live-DB checks for the identity repositories (CT-15): the find-and-link
 //! path, the verified-email candidates, the account name pick, the method
 //! count, the password clear on link, the list shape and the event kinds.
-//! Sentinel account ids `2_000_201..=2_000_213`; cleanup deletes by exact id,
+//! Sentinel account ids `0x7000_E210..=0x7000_E21C`; cleanup deletes by exact id,
 //! before and after each test.
 
 use cimmeria_test_support::require_db_or_skip;
@@ -12,19 +12,19 @@ use super::event::{self, EventKind};
 use super::identity::{self, IdentityRow, LIST_SQL};
 use crate::provider::{ProviderId, VerifiedIdentity};
 
-const ID_BIND: u32 = 2_000_201;
-const ID_EMAIL: u32 = 2_000_202;
-const ID_NAMES: u32 = 2_000_203;
-const ID_COUNT: u32 = 2_000_204;
-const ID_CLEAR: u32 = 2_000_205;
-const ID_LIST: u32 = 2_000_206;
-const ID_EVENTS: u32 = 2_000_207;
-const ID_ROLLBACK: u32 = 2_000_208;
-const ID_ROLLBACK_OTHER: u32 = 2_000_209;
-const ID_EMAIL_OFF: u32 = 2_000_210;
-const ID_LOCK: u32 = 2_000_211;
-const ID_MISC: u32 = 2_000_212;
-const ID_MISC_OTHER: u32 = 2_000_213;
+const ID_BIND: u32 = 0x7000_E210;
+const ID_EMAIL: u32 = 0x7000_E211;
+const ID_NAMES: u32 = 0x7000_E212;
+const ID_COUNT: u32 = 0x7000_E213;
+const ID_CLEAR: u32 = 0x7000_E214;
+const ID_LIST: u32 = 0x7000_E215;
+const ID_EVENTS: u32 = 0x7000_E216;
+const ID_ROLLBACK: u32 = 0x7000_E217;
+const ID_ROLLBACK_OTHER: u32 = 0x7000_E218;
+const ID_EMAIL_OFF: u32 = 0x7000_E219;
+const ID_LOCK: u32 = 0x7000_E21A;
+const ID_MISC: u32 = 0x7000_E21B;
+const ID_MISC_OTHER: u32 = 0x7000_E21C;
 const ID_PROMOTED: u32 = 0x7000_EC00;
 
 /// Delete the sentinel account `account_id`. Its identity and event rows
@@ -401,7 +401,7 @@ async fn live_db_touch_delete_facts_and_has_password() {
     let has_password = account::has_password(&pool, ID_MISC).await;
     let has_password_other = account::has_password(&pool, ID_MISC_OTHER).await;
     let facts = account::facts(&pool, ID_MISC).await;
-    let missing = account::facts(&pool, 2_000_219).await;
+    let missing = account::facts(&pool, 0x7000_E21F).await;
     let by_name = account::match_name(&pool, "ct15_other_213").await;
     let linked = identity::insert(
         &pool,

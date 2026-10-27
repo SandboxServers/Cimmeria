@@ -1,20 +1,20 @@
 //! Live-DB checks for the identity tables and their guard triggers (CT-10):
 //! the unique subject, the cascade on account delete, the event-kind CHECK,
 //! the `login_audit` ticket outcomes, and the rule that an account with a
-//! linked identity holds no password. Sentinel ids `2_000_101..=2_000_107`;
+//! linked identity holds no password. Sentinel ids `0x7000_EE00..=0x7000_EE06`;
 //! cleanup deletes by exact id, before and after each test.
 
 use sqlx::PgPool;
 
 use crate::test_support::require_db_or_skip;
 
-const ID_SUBJECT: i32 = 2_000_101;
-const ID_CASCADE: i32 = 2_000_102;
-const ID_EVENT_KIND: i32 = 2_000_103;
-const ID_AUDIT: i32 = 2_000_104;
-const ID_GUARD_SET: i32 = 2_000_105;
-const ID_GUARD_LINK: i32 = 2_000_106;
-const ID_CLEAR_LINK: i32 = 2_000_107;
+const ID_SUBJECT: i32 = 0x7000_EE00;
+const ID_CASCADE: i32 = 0x7000_EE01;
+const ID_EVENT_KIND: i32 = 0x7000_EE02;
+const ID_AUDIT: i32 = 0x7000_EE03;
+const ID_GUARD_SET: i32 = 0x7000_EE04;
+const ID_GUARD_LINK: i32 = 0x7000_EE05;
+const ID_CLEAR_LINK: i32 = 0x7000_EE06;
 
 /// Delete the sentinel rows for `account_id`. The account delete cascades to
 /// its identity, refresh-token and event rows; `login_audit` has no foreign

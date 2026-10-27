@@ -6,16 +6,16 @@ use sqlx::PgPool;
 
 use super::*;
 
-const ID_ROTATE: u32 = 2_000_301;
-const ID_REUSE: u32 = 2_000_302;
-const ID_EXPIRE: u32 = 2_000_303;
-const ID_HASH: u32 = 2_000_304;
-const ID_ACCOUNT: u32 = 2_000_305;
-const ID_LOGOUT: u32 = 2_000_306;
-const ID_CONCURRENT: u32 = 2_000_307;
-const ID_PURGE: u32 = 2_000_308;
-const ID_PURGE_FAMILY: u32 = 2_000_309;
-const ID_PURGE_CLOCK: u32 = 2_000_310;
+const ID_ROTATE: u32 = 0x7000_E220;
+const ID_REUSE: u32 = 0x7000_E221;
+const ID_EXPIRE: u32 = 0x7000_E222;
+const ID_HASH: u32 = 0x7000_E223;
+const ID_ACCOUNT: u32 = 0x7000_E224;
+const ID_LOGOUT: u32 = 0x7000_E225;
+const ID_CONCURRENT: u32 = 0x7000_E226;
+const ID_PURGE: u32 = 0x7000_E227;
+const ID_PURGE_FAMILY: u32 = 0x7000_E228;
+const ID_PURGE_CLOCK: u32 = 0x7000_E229;
 
 /// The fixed clock every test starts from.
 fn base() -> DateTime<Utc> {

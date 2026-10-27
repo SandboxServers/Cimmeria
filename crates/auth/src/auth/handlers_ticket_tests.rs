@@ -1,7 +1,7 @@
 //! Tests for the launch-ticket login path in `handle_user_auth` (CT-21) and
 //! the password check behind the account-link flow.
 //!
-//! The live-DB tests use the sentinel window from `2_000_401` and delete only
+//! The live-DB tests use the sentinel window from `0x7000_E230` and delete only
 //! their own exact ids. Ticket tests share no store across tests, so they
 //! need no ordering.
 
@@ -27,7 +27,7 @@ use crate::audit::LoginEventBuffer;
 use crate::test_support::require_db_or_skip;
 
 /// Sentinel base for the ticket live-DB tests (fits in `i32`).
-const BASE: i32 = 2_000_401;
+const BASE: i32 = 0x7000_E230;
 
 const PHASE1_DIGEST: &str = "58AFA196AD3AC4F65CADD99BFF23B799";
 

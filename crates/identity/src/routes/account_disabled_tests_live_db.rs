@@ -22,7 +22,7 @@ use crate::routes::ticket::{end, heartbeat, LaunchRequest};
 use crate::routes::token::span_tests::test_state;
 use crate::stores::AccessGrant;
 
-const ACC_DISABLED: u32 = 2_000_690;
+const ACC_DISABLED: u32 = 0x7000_E240;
 
 /// Inserts a disabled sentinel account, replacing any row from an earlier run.
 async fn insert_disabled(pool: &PgPool) {

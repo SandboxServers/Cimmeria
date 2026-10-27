@@ -2,7 +2,7 @@
 //! listing, the unlink and its revocation, the last-method and other-account
 //! refusals, the link code and its password warning, the staff refusal and
 //! the unknown-account line, and the live-token revocation on unlink. Sentinel
-//! account ids `2_000_701..=2_000_714`; cleanup deletes by exact id, before and
+//! account ids `0x7000_E250..=0x7000_E25D`; cleanup deletes by exact id, before and
 //! after each test.
 
 use std::sync::Arc;
@@ -19,20 +19,20 @@ use sqlx::PgPool;
 
 use super::{date, run, sanitize, AdminAction, AdminCaller};
 
-const ID_LIST: u32 = 2_000_701;
-const ID_UNLINK: u32 = 2_000_702;
-const ID_LAST: u32 = 2_000_703;
-const ID_PW: u32 = 2_000_704;
-const ID_NO_PW: u32 = 2_000_705;
-const ID_OTHER_A: u32 = 2_000_706;
-const ID_OTHER_B: u32 = 2_000_707;
-const ID_STAFF: u32 = 2_000_708;
-const ID_TEST: u32 = 2_000_709;
-const ID_CODE: u32 = 2_000_710;
-const ID_UNKNOWN: u32 = 2_000_711;
-const ID_RACE: u32 = 2_000_712;
-const ID_LIVE: u32 = 2_000_713;
-const ID_NOLINK: u32 = 2_000_714;
+const ID_LIST: u32 = 0x7000_E250;
+const ID_UNLINK: u32 = 0x7000_E251;
+const ID_LAST: u32 = 0x7000_E252;
+const ID_PW: u32 = 0x7000_E253;
+const ID_NO_PW: u32 = 0x7000_E254;
+const ID_OTHER_A: u32 = 0x7000_E255;
+const ID_OTHER_B: u32 = 0x7000_E256;
+const ID_STAFF: u32 = 0x7000_E257;
+const ID_TEST: u32 = 0x7000_E258;
+const ID_CODE: u32 = 0x7000_E259;
+const ID_UNKNOWN: u32 = 0x7000_E25A;
+const ID_RACE: u32 = 0x7000_E25B;
+const ID_LIVE: u32 = 0x7000_E25C;
+const ID_NOLINK: u32 = 0x7000_E25D;
 
 /// The GM who types the commands in these checks.
 const GM: AdminCaller = AdminCaller {
