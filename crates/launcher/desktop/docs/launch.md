@@ -76,7 +76,8 @@ with `launch_not_started` reason `cooked_presync_failed` and failure code
 `cooked_sync`.
 
 The failure contract (D-LP26) is the
-[presync failure table](../../../../docs/engine/cooked-data-presync-formats.md#presync-failure-table). A failure names one `step` (`prepare`, `index`,
+[presync failure table](../../../../docs/engine/cooked-data-presync-formats.md#presync-failure-table).
+A failure names one `step` (`prepare`, `index`,
 `plan`, `download`, `stage` or `commit`) and one `reason`. It also carries the
 category, PAK, HTTP status, Windows I/O kind and OS error, retry-after, versions
 and deadline when they are known. The message names the login server's

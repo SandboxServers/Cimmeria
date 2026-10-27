@@ -91,7 +91,7 @@ The launcher's failure contract (D-LP26) and the launcher's `cooked_presync_fini
 | `index` | `connect_failed`, `timeout`, `catalog_unavailable`, `catalog_failed`, `rate_limited`, `http_error`, `too_large`, `bad_index` | `http_status`, `io_kind`, `os_code`, `retry_after_s` when known |
 | `plan` | `source_newer` | `category_id`, `pak`, `source_version`, `served_version` |
 | `download` | the index reasons, plus `unknown_category`, `version_changed`, `bad_body` | as `index`, plus `category_id`, `pak` |
-| `stage` | `source_missing`, `source_unreadable`, `base_missing`, `digest_mismatch`, `write_failed` | `category_id`, `pak`, `io_kind`, `os_code` |
+| `stage` | `source_missing`, `source_unreadable`, `base_missing`, `digest_mismatch`, `write_failed`, `unsafe_path` | `category_id`, `pak`, `io_kind`, `os_code` |
 | `commit` | `pak_in_use`, `write_failed` | `category_id`, `pak`, `io_kind`, `os_code` |
 | any | `deadline` (the step in progress), `cancelled` (outcome `cancelled`) | `deadline_s`, plus the category in progress |
 

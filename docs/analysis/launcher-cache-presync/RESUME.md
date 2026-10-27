@@ -1,9 +1,9 @@
 # launcher-cache-presync: resume card
 
-> **Type:** Reference · **Audience:** The orchestrator resuming this campaign · **Updated:** 2026-10-27
+> **Type:** Reference · **Audience:** The orchestrator resuming this campaign · **Updated:** 2026-10-26
 > **Companions:** [Ledger](README.md), [work packets](work-packets.md), [wave 2](packets-wave2.md), [waves 3-5](packets-wave3.md), [worknotes](worknotes/)
 
-**State (2026-10-27): campaign done, pending the owner UATs.** Waves 1 (#2039), 2 (#2043) and 3+4 (#2045) are merged. The campaign review ended `ship` at pass 2. The close-out (LP-30) updated the ledger, `docs/project-status.md` (once; `gap-analysis*` has no row for this), [unified UAT](../../guides/unified-uat.md#launcher-cooked-data-presync) and the doc-update map. **A live Play against a real server and client has never run.**
+**State (2026-10-26): campaign done, pending the owner UATs.** Waves 1 (#2039), 2 (#2043) and 3+4 (#2045) are merged. The campaign review ended `ship` at pass 2. The close-out (LP-30) updated the ledger, `docs/project-status.md` (once; `gap-analysis*` has no row for this), [unified UAT](../../guides/unified-uat.md#launcher-cooked-data-presync) and the doc-update map. **A live Play against a real server and client has never run.**
 
 **What is left (none of it is code):**
 
