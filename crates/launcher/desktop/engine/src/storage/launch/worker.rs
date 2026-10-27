@@ -213,27 +213,6 @@ async fn execute(
         .map(|owner| owner.preferences.display_placements.clone())
         .unwrap_or_default();
     let place_on = window_target(&placements, display.effective().mode);
-    // Sign-in (C9): the relay or ticket is started here and owned by `login` until `finish`.
-    let discovery = sign_in_play::discover(&servers).await;
-    let sign_in = state.lock().map_err(|_| StorageError::Io)?.sign_in();
-    let planned = sign_in_play::plan(sign_in, plan, &servers, discovery).await;
-    let (client_servers, login) = match planned {
-        Ok(planned) => planned,
-        Err(refusal) => {
-            state
-                .lock()
-                .map_err(|_| StorageError::Io)?
-                .set_play_refusal(Some(refusal.reason()));
-            let code = match refusal {
-                sign_in_play::TicketRefusal::Unavailable => FailureCode::TicketUnavailable,
-                sign_in_play::TicketRefusal::SignInEnded => FailureCode::SignInEnded,
-            };
-            failure::not_started(&state, plan, refusal.reason(), code);
-            return Ok(Observation::NotStarted);
-        }
-    };
-    // Telemetry always gets the real servers, so the relay is never its endpoint (C9).
-    let telemetry_session = session.clone().map(|session| (session, servers.clone()));
     // D-LP18: a failed presync stops the launch before any client file is touched.
     let presync_timer = context.start(crate::phase_timing::Phase::PlayCookedPresync);
     let report = cooked_presync::presync(
@@ -258,6 +237,27 @@ async fn execute(
         }
         cooked_presync::Gate::Cancelled => return Ok(Observation::Cancelled),
     }
+    // Sign-in (C9): the relay or ticket is started here and owned by `login` until `finish`.
+    let discovery = sign_in_play::discover(&servers).await;
+    let sign_in = state.lock().map_err(|_| StorageError::Io)?.sign_in();
+    let planned = sign_in_play::plan(sign_in, plan, &servers, discovery).await;
+    let (client_servers, login) = match planned {
+        Ok(planned) => planned,
+        Err(refusal) => {
+            state
+                .lock()
+                .map_err(|_| StorageError::Io)?
+                .set_play_refusal(Some(refusal.reason()));
+            let code = match refusal {
+                sign_in_play::TicketRefusal::Unavailable => FailureCode::TicketUnavailable,
+                sign_in_play::TicketRefusal::SignInEnded => FailureCode::SignInEnded,
+            };
+            failure::not_started(&state, plan, refusal.reason(), code);
+            return Ok(Observation::NotStarted);
+        }
+    };
+    // Telemetry always gets the real servers, so the relay is never its endpoint (C9).
+    let telemetry_session = session.clone().map(|session| (session, servers.clone()));
     let prepared = plan.clone();
     // The ticket file lives in the game install, where `prepare` writes the plain list.
     let ticket_root = plan.installation.content_root();
