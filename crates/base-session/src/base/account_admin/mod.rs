@@ -141,6 +141,7 @@ enum Removal {
 async fn remove_identity(
     pool: &PgPool,
     account_id: u32,
+    account_name: &str,
     identity_id: i64,
 ) -> Result<Removal, RepoError> {
     let mut tx = pool.begin().await?;
@@ -188,7 +189,8 @@ async fn remove_identity(
             action = "account_unlink",
             result = "refused",
             reason = "revoke_failed",
-            target_account_id = account_id, // nt:id-only remove_identity takes the id, the name is not loaded
+            target_account_id = account_id,
+            target_account_name = account_name,
             identity_id, // nt:id-only identity rows carry no name column
             error = %err,
             "unlink rolled back: the account's refresh families could not be revoked"
@@ -319,7 +321,7 @@ async fn answer(
             Ok(lines)
         }
         AdminAction::Unlink { identity_id } => {
-            match remove_identity(pool, account_id, identity_id).await? {
+            match remove_identity(pool, account_id, target, identity_id).await? {
                 Removal::LastMethod => {
                     log_outcome(
                         caller,

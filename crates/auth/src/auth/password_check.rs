@@ -87,6 +87,7 @@ pub enum PasswordCheck {
 #[derive(sqlx::FromRow)]
 struct AccountRow {
     account_id: i32,
+    account_name: String,
     password: Option<String>,
     password_hash_v2: Option<String>,
     password_algo: i16,
@@ -102,7 +103,7 @@ pub async fn verify_account_password(
     plaintext: &str,
 ) -> PasswordCheck {
     let row: Option<AccountRow> = match sqlx::query_as(
-        "SELECT account_id, password, password_hash_v2, password_algo, enabled \
+        "SELECT account_id, account_name, password, password_hash_v2, password_algo, enabled \
          FROM account WHERE account_name = $1",
     )
     .bind(account_name)
@@ -189,7 +190,8 @@ fn check_row(row: Option<&AccountRow>, plaintext: &str) -> PasswordCheck {
             Some(phc) => argon2_verify(plaintext, phc),
             None => {
                 tracing::error!(
-                    account_id = row.account_id, // nt:id-only check_row takes the row, not the account name
+                    account_id = row.account_id,
+                    account_name = row.account_name.as_str(),
                     reason = "argon2_hash_missing",
                     "account marked argon2id but password_hash_v2 is NULL"
                 );
@@ -201,7 +203,8 @@ fn check_row(row: Option<&AccountRow>, plaintext: &str) -> PasswordCheck {
             Some(phc) => argon2_verify(&sha1_upper_hex(plaintext), phc),
             None => {
                 tracing::error!(
-                    account_id = row.account_id, // nt:id-only check_row takes the row, not the account name
+                    account_id = row.account_id,
+                    account_name = row.account_name.as_str(),
                     reason = "argon2_hash_missing",
                     "account marked sha1_argon2id but password_hash_v2 is NULL"
                 );
@@ -222,7 +225,8 @@ fn check_row(row: Option<&AccountRow>, plaintext: &str) -> PasswordCheck {
         }
         algo => {
             tracing::error!(
-                account_id = row.account_id, // nt:id-only check_row takes the row, not the account name
+                account_id = row.account_id,
+                account_name = row.account_name.as_str(),
                 password_algo = algo,
                 reason = "unknown_password_algo",
                 "account has an unrecognised password_algo"
