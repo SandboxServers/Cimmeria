@@ -21,11 +21,11 @@ pub mod cooked_presync;
 #[cfg(test)]
 mod cooked_presync_tests;
 pub mod events;
+#[cfg(target_os = "linux")]
+mod proton;
 mod sign_in_play;
 #[cfg(test)]
 mod sign_in_play_tests;
-#[cfg(target_os = "linux")]
-mod proton;
 mod supervisor;
 mod telemetry;
 #[cfg(target_os = "macos")]
