@@ -188,8 +188,8 @@ async fn remove_identity(
             action = "account_unlink",
             result = "refused",
             reason = "revoke_failed",
-            target_account_id = account_id,
-            identity_id,
+            target_account_id = account_id, // nt:id-only remove_identity takes the id, the name is not loaded
+            identity_id, // nt:id-only identity rows carry no name column
             error = %err,
             "unlink rolled back: the account's refresh families could not be revoked"
         );
@@ -371,7 +371,8 @@ async fn answer(
                             target: "account_admin",
                             event = "unlink_live_sessions_not_ended",
                             target_account_id = account_id,
-                            identity_id,
+                            target_account_name = target,
+                            identity_id, // nt:id-only identity rows carry no name column
                             "unlink committed but the live access tokens and launch tickets could not be ended (no identity routes registered)"
                         );
                     }

@@ -171,6 +171,7 @@ pub(crate) async fn handle_login_with_issuer(
         tracing::warn!(
             %addr,
             account_id = login.account_id,
+            account_name = %login.account_name,
             reason = "ticket_revoked",
             "Phase 3 ticket comes from a revoked launch ticket; refusing the login"
         );

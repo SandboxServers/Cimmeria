@@ -470,6 +470,7 @@ pub(super) async fn handle_server_selection(
         tracing::info!(
             reason = "ticket_revoked",
             account_id = session.account_id,
+            account_name = %session.account_name,
             peer_ip = %client_ip,
             "Phase 2 refused: the launch ticket behind this SID was revoked"
         );

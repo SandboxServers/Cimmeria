@@ -252,7 +252,7 @@ async fn refresh_grant(
                 event::record(pool, account_id, None, EventKind::RefreshReuse, None).await
             {
                 tracing::warn!(
-                    account_id,
+                    account_id, // nt:id-only the rotation carries the id and family only, no name
                     reason = "reuse_audit_failed",
                     error = %e,
                     "refresh reuse audit event not recorded"

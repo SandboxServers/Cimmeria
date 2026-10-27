@@ -189,7 +189,7 @@ fn check_row(row: Option<&AccountRow>, plaintext: &str) -> PasswordCheck {
             Some(phc) => argon2_verify(plaintext, phc),
             None => {
                 tracing::error!(
-                    account_id = row.account_id,
+                    account_id = row.account_id, // nt:id-only check_row takes the row, not the account name
                     reason = "argon2_hash_missing",
                     "account marked argon2id but password_hash_v2 is NULL"
                 );
@@ -201,7 +201,7 @@ fn check_row(row: Option<&AccountRow>, plaintext: &str) -> PasswordCheck {
             Some(phc) => argon2_verify(&sha1_upper_hex(plaintext), phc),
             None => {
                 tracing::error!(
-                    account_id = row.account_id,
+                    account_id = row.account_id, // nt:id-only check_row takes the row, not the account name
                     reason = "argon2_hash_missing",
                     "account marked sha1_argon2id but password_hash_v2 is NULL"
                 );
@@ -222,7 +222,7 @@ fn check_row(row: Option<&AccountRow>, plaintext: &str) -> PasswordCheck {
         }
         algo => {
             tracing::error!(
-                account_id = row.account_id,
+                account_id = row.account_id, // nt:id-only check_row takes the row, not the account name
                 password_algo = algo,
                 reason = "unknown_password_algo",
                 "account has an unrecognised password_algo"
