@@ -2,9 +2,10 @@
 //! (`cimmeria-lab-mcp`).
 //!
 //! The endpoint is an rmcp `StreamableHttpService` in its default, stateful
-//! mode. It answers a `tools/call` that carries no `Mcp-Session-Id` with
-//! HTTP 422 "Unexpected message, expect initialize request", which is what
-//! every `lab_uat_run` server clause got in the DA-06 run (#1243). So the
+//! mode. It refuses a `tools/call` that carries no `Mcp-Session-Id` (HTTP 422
+//! "Unexpected message, expect initialize request" in rmcp 3.5, HTTP 400
+//! "Session ID is required" from rmcp 3.7), which is what every
+//! `lab_uat_run` server clause got in the DA-06 run (#1243). So the
 //! session does the handshake first: `initialize`, keep the
 //! `Mcp-Session-Id` it returns, `notifications/initialized`, then each
 //! `tools/call` carries the session id and the negotiated protocol version.
@@ -272,8 +273,9 @@ mod tests {
     }
 
     /// The bug shape (#1243): a stateful rmcp endpoint refuses a `tools/call`
-    /// that skipped the handshake with 422. Guards that the fixture is the
-    /// kind of server the session exists for.
+    /// that skipped the handshake. rmcp 3.7 answers 400 (no session id)
+    /// where rmcp 3.5 answered 422. Guards that the fixture is the kind of
+    /// server the session exists for.
     #[tokio::test]
     async fn bare_tools_call_is_refused_with_422() {
         let url = spawn_daemon(test_server()).await;
@@ -285,7 +287,7 @@ mod tests {
             .send()
             .await
             .unwrap();
-        assert_eq!(resp.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
