@@ -1,30 +1,24 @@
 # launcher-cache-presync: resume card
 
-> **Type:** Reference · **Audience:** The orchestrator resuming this campaign · **Updated:** 2026-10-26
-> **Companions:** [Ledger](README.md), [work packets](work-packets.md), [wave 2](packets-wave2.md), [waves 3-5](packets-wave3.md)
+> **Type:** Reference · **Audience:** The orchestrator resuming this campaign · **Updated:** 2026-10-27
+> **Companions:** [Ledger](README.md), [work packets](work-packets.md), [wave 2](packets-wave2.md), [waves 3-5](packets-wave3.md), [worknotes](worknotes/)
 
-**State (2026-10-26):** waves 1 (#2039) and 2 (#2043) merged. LP-06 and LP-06b passed. Wave 3 is complete in `lcp-w3` (branch `launcher-cache-presync/wave3`, head `b882a09ec`): LP-20 `5824306a6`, LP-24 `ce0d11a71`, LP-21 `30ac3fddf`, LP-26 `2c1f0c336`, LP-22 `45d9f83c9`, LP-27 `7e9bb3d96`, each `ship`; wave 3 review `ship` at pass 1. Nothing is pushed. Wave 4 is merged in `lcp-w3`: LP-23 `83fcdfb1f`, LP-28 `26e8b688d`, LP-25 `db8a24a67`, all `ship`; wave 4 review `ship` at pass 2 (`4cf63d9db`). The `network-security-auth` pass found 8 findings: F1, F3, F4, F5, F6, F7 fixed and reviewed `ship` at pass 2 (`fda98c857`); F2 (plain-HTTP login server, unsigned index) owner decided ship as-is with a follow-up (signed index or HTTPS-only); F8 (server body copies) is a follow-up. Next: ONE PR for waves 3+4 from `lcp-w3` (body file `wave34-pr-body.md`, ops opens it), then campaign review, LP-30 close-out, owner UATs LP-U1..U4. PR #2031 (client-tls-oidc) is still open and also edits `worker.rs`: expect a rebase conflict at ship time. Board: c/cimmeria/launcher-cache-presync/43. Orphaned targets (~163 GB: cto-40/41/45/46/w3a/w3b) reported to the user, not deleted.
+**State (2026-10-27): campaign done, pending the owner UATs.** Waves 1 (#2039), 2 (#2043) and 3+4 (#2045) are merged. The campaign review ended `ship` at pass 2. The close-out (LP-30) updated the ledger, `docs/project-status.md` (once; `gap-analysis*` has no row for this), [unified UAT](../../guides/unified-uat.md#launcher-cooked-data-presync) and the doc-update map. **A live Play against a real server and client has never run.**
 
-**Goal:** at Play, the launcher brings the Documents `Cache.en-US` up to the server's cooked-data versions, so the ~1 min resync at character select never fires. **Owner 2026-10-26:** D-LP1 yes (anonymous routes on 8081, quota 60/min, kill switch), D-LP2 yes (changed entries only), D-LP4 reversed: a failed presync **blocks Play** with the exact failure and a **Retry** button; no fallback to `cooked_sync` from the launcher. Edge cases: D-LP18..D-LP29.
+**What is left (none of it is code):**
 
-**Start here:**
-
-1. Campaign-packet § 0: check no peer runs it. Have `ops` create the board subcategory.
-2. Wave 1 (one PR from `lcp-w1`): LP-01 and LP-07 at once (both Ready). Chain LP-02, LP-03, LP-04, each at the previous reviewed head; then LP-05 (`rust-gameserver-dev`, `<client-copy>` in the brief, never committed). Merge order LP-01, 02, 03, 04, 07, 05.
-3. LP-05 verdict "ruling needed" (base mismatch, `source_newer`, or a body over 16 MB) → dispatch `architect` for D-LP3 first.
-4. LP-06 **passed** (ruling LP-06-1, `.claude/reports/launcher-cache-presync/LP-06-ruling-1.md` in `lcp-w1`). A packet-coder moves `LP-06-worknote.md` to `worknotes/LP-06.md` in `lcp-w1` before the wave 1 PR. LP-06b **passed** (`2c0eaf0c1`, `worknotes/LP-06b.md`); it no longer gates the wave 3/4 PR merge.
-5. Wave 2 (one PR from `lcp-w2`): LP-10 and LP-11 at once, then LP-12. Opens on wave 1 merged + LP-05 "compose works".
-6. Wave 3 into `lcp-w3`: LP-20 (and LP-24 from `main` in parallel), then the chain LP-21, LP-26, LP-22, LP-27. Opens on wave 1 merged (LP-06 pass is granted). Wave 3 loop.
-7. Wave 4 into the same `lcp-w3`: LP-23, LP-24, LP-28 (at LP-24's head), LP-25. Wave 4 loop, `network-security-auth` pass, then ONE PR for waves 3+4; LP-06b has passed, so the merge is no longer gated on it. Never ship wave 3 alone (it blocks Play without telling the player why).
-8. Campaign review, then LP-30 (wave 5), then owner UATs LP-U1..U4.
+1. Owner UATs LP-U1..U4 ([ledger](README.md#owner-uat)). **Ask the owner before any lab use.** LP-U1 must check SigNoz for `cooked_data.version_reply` `up_to_date` per category and no `cooked_data.sync_start`. LP-U2 needs the next colo deploy; LP-U3 and LP-U4 need a local server.
+2. D-LP28 (owner, non-blocking): failure code in the anonymous launcher summary. Yes adds LP-F4.
+3. Open issues for the follow-ups the close-out names but does not open: LP-F2 (signed index or HTTPS-only; state the threat, link D-LP10, coordinate with client-tls-oidc CT-51/52) and LP-F6 (server body copies, quota 60 per IP per minute is the bound). LP-F1, LP-F3, LP-F5 are listed in the ledger.
+4. Retire every `lcp-*` worktree and empty `.claude/state/active-campaign` (`ops`, `rm-worktree.ps1 --merged-into <PR> <names>`), once the close-out PR merges. Orphaned targets (~163 GB: cto-40/41/45/46/w3a/w3b) were reported to the user, not deleted.
+5. D-LP15 stays unverified and non-blocking (an optional `re-lookup` of `UpdateFromSourceArchives` `0x00479fa0`, no lab).
 
 **Hazards:**
 
-- client-tls-oidc (`cto-camp`, one PR) edits `worker.rs`, `login_port.rs`, `crates/server/src/main.rs`. Check whether it merged before waves 2 and 3; keep those hunks small.
+- PR #2031 (client-tls-oidc) is open and also edits `worker.rs`: expect a rebase conflict there.
 - The main checkout has uncommitted `frontend/ui/index.html` edits that aren't ours; never commit them from the root.
-- No CME bytes in the repo or tests (R9). No paths, IPs or account names in worknotes (R7).
-- LP-27's revert-proof test (a failed presync never reaches client setup) is the campaign's key guard; reviewers check it fails with the gate removed.
+- No CME bytes, paths, IPs or account names in the repo or worknotes.
+- `Profile::Firesky` (a real Documents folder) has no automated test; only LP-U1 covers it.
+- Side finding for the owner: served dialog 60110 shows a markup parse error after "I can add" (seed text; candidate issue).
 
-**Open decisions:** D-LP28 (owner, non-blocking: failure code in the anonymous launcher summary → LP-F4). D-LP3 is resolved: LP-05 found compose works. D-LP15 stays unverified and non-blocking (an optional `re-lookup`, no lab).
-
-**Next ledger update:** when the wave 2 PR opens.
+Board: c/cimmeria/launcher-cache-presync/43.
