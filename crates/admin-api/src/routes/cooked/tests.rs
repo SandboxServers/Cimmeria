@@ -295,7 +295,11 @@ async fn answers_are_counted_by_route_and_outcome() {
     let _ = answer(index_inner(ready(), false, false)).await;
 
     let after = SEEN.map(|(route, outcome)| count(route, outcome));
+    // Other tests in this module answer on the same labels in the same process, so assert "at least once"; a missing bump still fails (delta 0).
     for (i, (route, outcome)) in SEEN.iter().enumerate() {
-        assert_eq!(after[i] - before[i], 1, "{route}/{outcome}");
+        assert!(
+            after[i] - before[i] >= 1,
+            "{route}/{outcome}: the answer was not counted"
+        );
     }
 }

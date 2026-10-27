@@ -63,6 +63,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Launcher on Windows on Arm](#launcher-on-windows-on-arm) | [launcher-win-arm64 ledger](../analysis/launcher-win-arm64/README.md#owner-uat-no-lab-use) |
 | [Launcher Play on Linux (Proton)](#launcher-play-on-linux-proton) | [launcher-linux-play-proton ledger](../analysis/launcher-linux-play-proton/README.md#uat-pp-u-doc-update-map-row-57) |
 | [Launcher telemetry on Linux (LTL-U)](#launcher-telemetry-on-linux-ltl-u) | [launcher-telemetry-linux ledger](../analysis/launcher-telemetry-linux/README.md#packets) |
+| [Launcher cooked-data presync](#launcher-cooked-data-presync) | [launcher-cache-presync ledger](../analysis/launcher-cache-presync/README.md#owner-uat) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
@@ -1723,6 +1724,23 @@ The launcher-telemetry-linux campaign ([ledger](../analysis/launcher-telemetry-l
 | LTL-U6 | After a long session, count the launcher session's rows in SigNoz. | A number to write down. The expected ceiling is 300 rows per launcher session. | Observation only (finding F8). The new queue holds up to 500 events, so a long session can run out of the server's 300 rows. This campaign does not change that budget. |
 
 Rows U1, U2, U3, U5 and U6 are the telemetry checks; U4 is the parked walk test.
+
+## Launcher cooked-data presync
+
+The launcher-cache-presync campaign ([ledger](../analysis/launcher-cache-presync/README.md), PRs #2039, #2043, #2045) makes **Play** bring the Documents `Cache.en-US` up to the server's cooked-data versions before the game starts, so the roughly one-minute resync at character select no longer fires. A presync that fails blocks Play with the exact failure and a **Retry** button.
+
+**Status:** UATPending. All code is merged. **No live Play against a real server and client has run**; the lab proved only that a composed cache gives `up_to_date` for all 21 categories. Owner only. **Ask the owner before any lab use** and wait until the lab is free. The `Profile::Firesky` Documents path has no automated test, so LP-U1 is its only check.
+
+**Prerequisites:** Windows; a launcher built from `main` with PR #2045; a local server built from `main` after PR #2043 (LP-U1, LP-U3, LP-U4); the next colo deploy (LP-U2); game diagnostics opted in, for SigNoz.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| LP-U1 | On Windows, with a local server built from `main` after waves 2-4: in the launcher press **Reset client cache**, then **Play**, then log in and reach character select. | The status shows "Checking game data with the server…", then "Updating game data: …", then "Game data updated (N categories).", then the game starts. Character select opens with no minute-long hang. SigNoz (game diagnostics on) shows `cooked_presync_finished` outcome `synced` and `cooked_data.version_reply` `up_to_date` for every category, and **no** `cooked_data.sync_start` (server-side `cooked_data` events are OTLP only, so read SigNoz, not the local log). Client `cooked_cache.write` events with `version` equal to `previous` are normal (F21); one with a different version is a fail. A second Play shows "Game data is up to date.". | `cooked_cache.write` events with `version` equal to `previous` are normal (F21). |
+| LP-U2 | After the next colo deploy, the same from a player install pointed at the colo. | The same, and `cooked_data_version_replies_total{outcome="full_resync"}` stops growing for launcher players (compare with the LP-07 baseline). | Ledger row is canonical. |
+| LP-U3 | Stop the local server, press **Reset client cache**, then **Play**. Then start the server and press **Retry**. | First press: "Starting…" at once, then a failure naming the step (checking with the server), the server's `host:port` and the connection error, and why; the game does not start; the button reads **Retry**. Retry: "Starting…" at once, the sync runs and the game starts. The launcher log (or SigNoz) shows `cooked_presync_finished` outcome `failed` reason `connect_failed` with `launch_not_started` reason `cooked_presync_failed`, then outcome `synced`. | Ledger row is canonical. |
+| LP-U4 | Start the local server with `CIMMERIA_COOKED_PRESYNC_DISABLED=1`, press **Reset client cache**, then **Play**. | The note says the server turned off the game data check, the game starts, and character select shows the old resync. The server logs `cooked_presync.refused` reason `disabled`. | Ledger row is canonical. |
+
+Known issue: served dialog 60110 shows a markup parse error after "I can add" (seed text, not cache; candidate owner issue).
 
 ## Lab CLI (`lab.exe`)
 

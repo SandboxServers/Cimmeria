@@ -79,3 +79,20 @@ The client copies `SourceCache.en-us` over `Cache.en-US` at startup when the sou
 - otherwise the launcher writes the composed PAK.
 
 Versions compare as unsigned `u32` (D-LP15). The launcher writes only the Documents `Cache.en-US`, never `SourceCache.en-us` or the install.
+
+## Presync failure table
+
+The launcher's failure contract (D-LP26) and the launcher's `cooked_presync_finished` event use one closed vocabulary. `Report.reason` equals `failure.reason` when the outcome is `failed`. The `step` and `reason` pairs, and the fields each sets:
+
+| Step | Reasons | Extra fields |
+|---|---|---|
+| `prepare` (engine, LP-22) | `profile_unavailable`, `no_login_server`, `endpoint_refused` | - |
+| `prepare` (run) | `unsafe_path` | - |
+| `index` | `connect_failed`, `timeout`, `catalog_unavailable`, `catalog_failed`, `rate_limited`, `http_error`, `too_large`, `bad_index` | `http_status`, `io_kind`, `os_code`, `retry_after_s` when known |
+| `plan` | `source_newer` | `category_id`, `pak`, `source_version`, `served_version` |
+| `download` | the index reasons, plus `unknown_category`, `version_changed`, `bad_body` | as `index`, plus `category_id`, `pak` |
+| `stage` | `source_missing`, `source_unreadable`, `base_missing`, `digest_mismatch`, `write_failed`, `unsafe_path` | `category_id`, `pak`, `io_kind`, `os_code` |
+| `commit` | `pak_in_use`, `write_failed` | `category_id`, `pak`, `io_kind`, `os_code` |
+| any | `deadline` (the step in progress), `cancelled` (outcome `cancelled`) | `deadline_s`, plus the category in progress |
+
+Non-failure reasons: `versions_match` (`up_to_date`), `synced`, and the skip reasons `disabled`, `server_unsupported` (`run`, D-LP19) and `platform_unsupported` (engine, D-LP9).

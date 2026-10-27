@@ -173,6 +173,9 @@ The launcher does not download Proton. Install one first:
    Plays skip both.
 5. The game opens in a window (fullscreen does not work under Proton yet). The
    first Play is 1024x768 whatever size you chose.
+6. Play does not check your game data with the server on Linux, as on the Mac.
+   If your cooked-data cache is out of date, character select may take about a
+   minute while the server sends it.
 
 If Play fails, the message says why. "Proton isn't installed" means no Proton
 was found (or the one you chose was removed): install one and press Play again.
