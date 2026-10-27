@@ -2,12 +2,23 @@
 
 > **Type:** Reference
 > **Audience:** The orchestrator, ops, packet-coders, packet-reviewers and the owner
-> **Last updated:** 2026-10-26 (owner answers D-LP1, D-LP2, D-LP4 folded in; LP-06 ruling 1: pass, LP-06b passed)
-> **Companions:** [Work packets](work-packets.md) (rules, contract, wave 1), [wave 2](packets-wave2.md), [waves 3-5](packets-wave3.md), [resume card](RESUME.md), [cooked-data pipeline](../../engine/cooked-data-pipeline.md), [cooked PAK format](../../engine/cooked-data-pak-format.md), [launch.md](../../../crates/launcher/desktop/docs/launch.md)
+> **Last updated:** 2026-10-27 (close-out, LP-30: waves 1-4 merged, campaign review `ship`; owner UATs LP-U1..U4 owed)
+> **Companions:** [Work packets](work-packets.md) (rules, contract, wave 1), [wave 2](packets-wave2.md), [waves 3-5](packets-wave3.md), [resume card](RESUME.md), [worknotes](worknotes/), [cooked-data pipeline](../../engine/cooked-data-pipeline.md), [cooked PAK format](../../engine/cooked-data-pak-format.md), [launch.md](../../../crates/launcher/desktop/docs/launch.md)
 
 When the client's cooked-data cache doesn't match the server, character select hangs for about a minute while the server pushes every entry of every mismatched category (the full resync, #840). This campaign makes the desktop launcher bring the cache up to date before the game starts, with visible progress, so that resync never fires for a player who presses Play. Prefix `LP`. Designed 2026-10-26 against `main` `2019922fe`; re-specced the same day for the owner's answers. Line numbers below are from that commit; every packet re-greps its anchors.
 
 **Owner scope (final):** launcher and server only. No client patch, no new Mercury opcode, and no change to `cooked_sync`, which stays server-side for clients that skip the launcher. The launcher never falls back to it: **a presync that fails blocks Play** with a specific message and a Retry (D-LP4, reversed 2026-10-26). The owner rejected server-side pacing, delta sync and any in-game UI.
+
+## Status (2026-10-27)
+
+**Code complete and merged; the campaign is closed pending the owner UATs.** Waves 1, 2 and 3+4 shipped as PR #2039, #2043 and #2045 (squash). The campaign review (two passes) ended `ship` after one fix: a count assertion that failed under libtest threads. The close-out is LP-30.
+
+| Tested | Not tested |
+|---|---|
+| Unit, engine, shell and frontend tests for every packet. The key guard, that a failed presync never reaches client setup, has a revert proof. | **A live Play against a real server and client has never run end to end.** LP-U1..U4 are owed. |
+| LP-05: an offline compose against a real client copy (no CME bytes committed). LP-06 and LP-06b: the lab showed a composed cache gives `up_to_date` for all 21 categories with no resync, and content in game ([worknotes](worknotes/)). | The `Profile::Firesky` production path (a real Documents folder): `Profile` is `NotThisPlatform` under test builds, so only LP-U1 covers it. |
+| The server routes, quota, kill switch and catalog states; the launcher fetcher, stage, commit, retries, deadline and failure contract; the privacy line and the logic UAT in the frontend. | The colo (LP-U2), Retry after a stopped server (LP-U3), the kill switch seen from the launcher (LP-U4), and SigNoz showing `up_to_date` per category. |
+| Wave 4 security pass: F1, F3, F4, F5, F6, F7 fixed and reviewed `ship`. | F2 (unsigned index over plain HTTP) and F8 (server body copies) are deferred, with follow-ups. |
 
 ## Design in one paragraph
 
@@ -73,7 +84,32 @@ On startup the server builds a **served catalog** from its `ResourceCache`. For 
 | D-LP28 | Add the presync failure `step` and `reason` to the anonymous launcher summary (the separate launcher-diagnostics opt-in), so more failures reach SigNoz? It changes the summary's export schema. Default: no, and no packet waits on it; yes adds follow-up LP-F4. | **BlockedDecision (owner)**, non-blocking | F19. The summary is an anonymous export contract, which is an owner decision. |
 | D-LP29 | **Retry.** After a presync failure the Play button reads **Retry** and starts a fresh Play (new operation id); its first press shows "Starting…", as Play does. Categories committed by an earlier run are `up_to_date`, so a retry fetches only the rest. | Decided | Owner's "retry"; one action button, so no second button that does the same thing. |
 
-**Owner decisions:** D-LP1, D-LP2 and D-LP4 are decided. D-LP28 is open and blocks nothing.
+**Final state of the decisions (2026-10-27).** D-LP1 to D-LP14, D-LP16 to D-LP27 and D-LP29 are decided and shipped as written (D-LP3 resolved by LP-05; D-LP4 reversed by the owner). **D-LP15 is unverified and non-blocking:** nothing waits on it, and the cheapest proof is a `re-lookup` of the compare in `UpdateFromSourceArchives` `0x00479fa0`, no lab. **D-LP28 is still open for the owner** (failure code in the anonymous launcher summary; yes adds LP-F4) and blocks nothing.
+
+## Security pass findings (wave 4)
+
+The read-only `network-security-auth` pass on the wave 3+4 head found eight findings. They are numbered F1 to F8 *in that pass*; they are not the F-numbers of the finding table above.
+
+| # | Finding | Outcome |
+|---|---|---|
+| F1 | Two categories sharing one PAK name share one temp file, so the second stage truncates the first and the commit fails half way. | Fixed: the index check rejects a repeated PAK name, compared case-insensitively. Reviewed `ship` at pass 2. |
+| F2 | The login server is plain HTTP and the index is unsigned; the digests come from the same unauthenticated channel, so an on-path attacker can serve any PAK. | **Owner decided 2026-10-26: ship as-is**, with follow-up LP-F2 (signed index or HTTPS-only). D-LP10 already says the digest is integrity, not authenticity. |
+| F3 | The index digest and `body_bytes` were parsed but never compared with the downloaded body. | Fixed: a mismatch fails at download as `bad_body`. Reviewed `ship`. |
+| F4 | No bound on index categories or total download size. | Fixed: at most 512 categories, each body at most the body cap, 1 GiB together; the run's byte total saturates. Reviewed `ship`. |
+| F5 | Temp names were predictable and the sweep could follow a planted link. | Fixed: unique temp names created exclusively; the sweep removes a link without following it. Reviewed `ship`. |
+| F6 | Windows device names (CON, NUL, COM1, ...) were accepted as PAK names, and the plan step read PAKs on the async worker. | Fixed: reserved stems are refused in the index and in staging; the plan reads run on a blocking thread under the deadline and the cancel. Reviewed `ship`. |
+| F7 | A source PAK whose header overstates a record could force a large allocation. | Fixed: per-record reservation capped at 64 MiB, reads bounded by `take(limit + 1)`, entry count bounded by `max_keys`. Reviewed `ship`. |
+| F8 | `ServedCatalog` bodies are cloned per request. | **Deferred** as LP-F6; the quota (60 per IP per minute) is the current bound. |
+
+## Open items at close-out
+
+- **Owner decision:** D-LP28 (non-blocking).
+- **Follow-ups:** LP-F1 to LP-F6 in the table above. LP-F2 and LP-F6 each need an issue; the close-out PR does not open them.
+- **Owner UATs:** LP-U1 to LP-U4 below, mirrored in [unified-uat.md](../../guides/unified-uat.md#launcher-cooked-data-presync). Any lab use needs the owner's OK first.
+- **Merge hazard:** PR #2031 (client-tls-oidc) also edits `worker.rs`; expect a rebase conflict there. The root checkout has uncommitted `frontend/ui/index.html` edits that overlap this campaign's UI hunks; never commit them from the root.
+- **Side findings (LP-06b):** served dialog 60110 shows a markup parse error after "I can add" (seed text, not cache; candidate owner issue), and one Dialogs `versions_held` reading is unexplained (F21).
+- **Untested path:** `Profile::Firesky` (a real Documents folder).
+- **Skipped on purpose:** the over-cap launcher implementation ledger (D-LP16, LP-F3).
 
 ## Packets
 
@@ -90,40 +126,43 @@ Waves 3 and 4 share one PR because the engine blocks Play from wave 3 on, and th
 
 | ID | Title | Agent | Depends | Status |
 |---|---|---|---|---|
-| LP-01 | `cimmeria-cooked-pak`: PAK read/write, digest, workspace wiring | packet-coder | - | Merged into lcp-w1 (1e0e1f0a7) |
-| LP-02 | `cimmeria-cooked-pak`: index, body codec, compose, decide | packet-coder | LP-01 review `ship` | Merged into lcp-w1 (e6385c57f) |
-| LP-03 | `cimmeria-resources`: served catalog (whole-catalog failure, `Published`) | packet-coder | LP-02 review `ship` | Merged into lcp-w1 (208c223d5) |
-| LP-04 | `cooked-pak-tool` binary | packet-coder | LP-03 review `ship` | Merged into lcp-w1 (671fa53c9) |
-| LP-05 | Offline check against the player's client copy | rust-gameserver-dev | LP-04 merged into `lcp-w1` | Done: compose works (48e9712d8) |
-| LP-07 | Server counter `cooked_data_version_replies_total` | packet-coder | - | Merged into lcp-w1 (f6befa7c1) |
-| LP-06 | Lab proof: a composed cache gives `up_to_date` at character select | rust-gameserver-dev (lab-uat skill) | wave 1 code; the user approves lab use | Pass (ruling LP-06-1; worknote a938dea61, to move to `worknotes/LP-06.md`) |
-| LP-06b | Lab follow-up: content in game, the Dialogs reading, a second launch | rust-gameserver-dev (lab-uat skill) | the user approves lab use | Pass (`2c0eaf0c1`, worknote `worknotes/LP-06b.md`; the wave 3/4 PR merge is no longer gated on it) |
-| LP-10 | Login-port routes `/api/cooked/v1/*` (adds `catalog_failed`) | packet-coder | wave 1 merged, LP-05 "compose works" | BlockedDependency |
-| LP-11 | Publish the catalog (or its failure) at base-service start | packet-coder | wave 1 merged | BlockedDependency |
-| LP-12 | Server docs | documentation-writer | LP-10, LP-11 merged into `lcp-w2` | BlockedDependency |
-| LP-20 | `launcher-core`: fetcher with failure detail | packet-coder | wave 1 merged, LP-06 pass | BlockedDependency |
-| LP-21 | `launcher-core`: stage, commit, sweep | packet-coder | LP-20 review `ship` | BlockedDependency |
-| LP-26 | `launcher-core`: run, gate outcomes, retries, deadline | packet-coder | LP-21 review `ship` | BlockedDependency |
-| LP-22 | Engine: presync module, `ContentSync`, events | packet-coder | LP-26 review `ship` | BlockedDependency |
-| LP-27 | Engine: Play phase and the gate in the worker | packet-coder | LP-22 review `ship` | BlockedDependency |
-| LP-23 | Shell: `LaunchStatus.content_sync` | packet-coder | wave 3 loop `ship` | BlockedDependency |
-| LP-24 | Frontend: schema, progress and failure text, Retry label | packet-coder | wave 3 opens (works against the contract) | BlockedDependency |
-| LP-28 | Frontend: privacy line and the logic UAT | packet-coder | LP-24 review `ship` | BlockedDependency |
-| LP-25 | Launcher docs | documentation-writer | LP-27 and LP-24 merged into `lcp-w3` | BlockedDependency |
-| LP-30 | Close-out: status docs, unified UAT, retire | documentation-writer | waves 2-4 merged, campaign review `ship` | BlockedDependency |
-| LP-F1 | Follow-up: macOS (Wine prefix) presync | later campaign | LP-U1 | BlockedDependency |
-| LP-F2 | Follow-up: serve `/api/cooked` over HTTPS through the board Caddy | later packet, with client-tls-oidc CT-51/52 | CT-52 | BlockedDependency |
-| LP-F3 | Follow-up: split the over-cap launcher implementation ledger | later docs packet | - | BlockedDependency |
-| LP-F4 | Follow-up: presync failure code in the launcher summary | later packet | D-LP28 yes | BlockedDecision |
-| LP-F5 | Follow-up: split the over-cap `docs/operations/telemetry.md` (about 1095 lines) and `docs/engine/cooked-data-pak-format.md` (about 851) along their `##` seams, keeping inbound anchors working; move `cooked-data-pipeline.md` § Launcher presync out if that file passes 700 (ruling LP-12-1) | later docs packet | - | BlockedDependency |
+| LP-01 | `cimmeria-cooked-pak`: PAK read/write, digest, workspace wiring | packet-coder | - | Merged (#2039); packet head 1e0e1f0a7; review fix pass 1 |
+| LP-02 | `cimmeria-cooked-pak`: index, body codec, compose, decide | packet-coder | LP-01 review `ship` | Merged (#2039); packet head e6385c57f; review fix passes 2 |
+| LP-03 | `cimmeria-resources`: served catalog (whole-catalog failure, `Published`) | packet-coder | LP-02 review `ship` | Merged (#2039); packet head 208c223d5; review fix pass 1 |
+| LP-04 | `cooked-pak-tool` binary | packet-coder | LP-03 review `ship` | Merged (#2039); packet head 671fa53c9; `ship` |
+| LP-05 | Offline check against the player's client copy | rust-gameserver-dev | LP-04 merged into `lcp-w1` | Done, merged (#2039): compose works (48e9712d8) |
+| LP-07 | Server counter `cooked_data_version_replies_total` | packet-coder | - | Merged (#2039); packet head f6befa7c1; `ship` |
+| LP-06 | Lab proof: a composed cache gives `up_to_date` at character select | rust-gameserver-dev (lab-uat skill) | wave 1 code; the user approves lab use | Pass (ruling LP-06-1); worknote `worknotes/LP-06.md`, merged with #2043 |
+| LP-06b | Lab follow-up: content in game, the Dialogs reading, a second launch | rust-gameserver-dev (lab-uat skill) | the user approves lab use | Pass (`2c0eaf0c1`); worknote `worknotes/LP-06b.md`, merged with #2043 |
+| LP-10 | Login-port routes `/api/cooked/v1/*` (adds `catalog_failed`) | packet-coder | wave 1 merged, LP-05 "compose works" | Merged (#2043); review fix passes 2 |
+| LP-11 | Publish the catalog (or its failure) at base-service start | packet-coder | wave 1 merged | Merged (#2043); `ship` |
+| LP-12 | Server docs | documentation-writer | LP-10, LP-11 merged into `lcp-w2` | Merged (#2043); ruling 1 fixes, wave 2 review fix pass 1 |
+| LP-20 | `launcher-core`: fetcher with failure detail | packet-coder | wave 1 merged, LP-06 pass | Merged (#2045); packet head 5824306a6; review fix pass 1 |
+| LP-21 | `launcher-core`: stage, commit, sweep | packet-coder | LP-20 review `ship` | Merged (#2045); packet head 30ac3fddf; review fix pass 1 |
+| LP-26 | `launcher-core`: run, gate outcomes, retries, deadline | packet-coder | LP-21 review `ship` | Merged (#2045); packet head 2c1f0c336; review fix pass 1 |
+| LP-22 | Engine: presync module, `ContentSync`, events | packet-coder | LP-26 review `ship` | Merged (#2045); packet head 45d9f83c9; review fix pass 1 |
+| LP-27 | Engine: Play phase and the gate in the worker | packet-coder | LP-22 review `ship` | Merged (#2045); packet head 7e9bb3d96; `ship` |
+| LP-23 | Shell: `LaunchStatus.content_sync` | packet-coder | wave 3 loop `ship` | Merged (#2045); packet head 83fcdfb1f; review fix pass 1 |
+| LP-24 | Frontend: schema, progress and failure text, Retry label | packet-coder | wave 3 opens (works against the contract) | Merged (#2045); packet head ce0d11a71; review fix pass 1 |
+| LP-28 | Frontend: privacy line and the logic UAT | packet-coder | LP-24 review `ship` | Merged (#2045); packet head 26e8b688d; `ship` |
+| LP-25 | Launcher docs | documentation-writer | LP-27 and LP-24 merged into `lcp-w3` | Merged (#2045); packet head db8a24a67; review fix passes 2 |
+| LP-30 | Close-out: status docs, unified UAT, retire | documentation-writer | waves 2-4 merged, campaign review `ship` | Done (close-out PR) |
+| LP-F1 | Follow-up: presync on macOS (Wine prefix) and Linux/Proton (`Profile` returns `NotThisPlatform` off Windows, so both skip with `platform_unsupported`) | later campaign | LP-U1 | BlockedDependency |
+| LP-F2 | Follow-up (owner decided 2026-10-26 for security finding F2: ship as-is): a signed index, or HTTPS-only, for `/api/cooked`, through the board Caddy with client-tls-oidc CT-51/52. Until then the digest only catches corruption (D-LP10) and an on-path attacker on plain HTTP can serve any PAK. Issue to open: state the threat and link D-LP10 | later packet | CT-52 | Open |
+| LP-F3 | Follow-up: split the over-cap launcher implementation ledger | later docs packet | - | Open |
+| LP-F4 | Follow-up: presync failure code in the launcher summary | later packet | D-LP28 yes | BlockedDecision (owner) |
+| LP-F5 | Follow-up: split the over-cap `docs/operations/telemetry.md` (about 1104 lines), `docs/engine/cooked-data-pak-format.md` (about 851), `docs/client/launcher-guide.md` (about 1218) and `crates/launcher/desktop/README.md` (about 970) along their `##` seams, keeping inbound anchors working; move `cooked-data-pipeline.md` § Launcher presync out if that file passes 700 (it is at 695; ruling LP-12-1) | later docs packet | - | Open |
+| LP-F6 | Follow-up (security finding F8): `ServedCatalog` bodies are cloned per request. The per-IP quota (60 a minute) is the current bound. Issue to open | later packet | - | Open |
 
 **LP-06b note.** Server-side `cooked_data` events were not in the local log during LP-06b (they are OTLP only), so LP-U1 must confirm `up_to_date` per category and no `sync_start` in SigNoz. Side finding: served dialog 60110 shows a markup parse error after "I can add" (seed text issue, not cache; candidate issue for the owner).
 
 ### Owner UAT
 
+Owed; none has run. **Ask the owner before any lab use**, and wait until the lab is free.
+
 | ID | Action | Expected |
 |---|---|---|
-| LP-U1 | On Windows, with a local server built from `main` after waves 2-4: in the launcher press **Reset client cache**, then **Play**, then log in and reach character select. | The status shows "Checking game data with the server…", then "Updating game data: …", then "Game data updated (N categories).", then the game starts. Character select opens with no minute-long hang. SigNoz (game diagnostics on) shows `cooked_presync_finished` outcome `synced` and `cooked_data.version_reply` `up_to_date` for every category, and no `cooked_data.sync_start`. Client `cooked_cache.write` events with `version` equal to `previous` are normal (F21); one with a different version is a fail. A second Play shows "Game data is up to date.". |
+| LP-U1 | On Windows, with a local server built from `main` after waves 2-4: in the launcher press **Reset client cache**, then **Play**, then log in and reach character select. | The status shows "Checking game data with the server…", then "Updating game data: …", then "Game data updated (N categories).", then the game starts. Character select opens with no minute-long hang. SigNoz (game diagnostics on) shows `cooked_presync_finished` outcome `synced` and `cooked_data.version_reply` `up_to_date` for every category, and **no** `cooked_data.sync_start` (server-side `cooked_data` events are OTLP only, so read SigNoz, not the local log). Client `cooked_cache.write` events with `version` equal to `previous` are normal (F21); one with a different version is a fail. A second Play shows "Game data is up to date.". |
 | LP-U2 | After the next colo deploy, the same from a player install pointed at the colo. | The same, and `cooked_data_version_replies_total{outcome="full_resync"}` stops growing for launcher players (compare with the LP-07 baseline). |
 | LP-U3 | Stop the local server, press **Reset client cache**, then **Play**. Then start the server and press **Retry**. | First press: "Starting…" at once, then a failure naming the step (checking with the server), the server's `host:port` and the connection error, and why; the game does not start; the button reads **Retry**. Retry: "Starting…" at once, the sync runs and the game starts. The launcher log (or SigNoz) shows `cooked_presync_finished` outcome `failed` reason `connect_failed` with `launch_not_started` reason `cooked_presync_failed`, then outcome `synced`. |
 | LP-U4 | Start the local server with `CIMMERIA_COOKED_PRESYNC_DISABLED=1`, press **Reset client cache**, then **Play**. | The note says the server turned off the game data check, the game starts, and character select shows the old resync. The server logs `cooked_presync.refused` reason `disabled`. |
