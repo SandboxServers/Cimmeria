@@ -92,7 +92,7 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 | 3a | SS-21 | SGC_W1 vendor and trainer seed | database-persistence | no | BlockedDecision (D-SS1) |
 | 3a | SS-22 | Dakara_E1 vendor and trainer seed | database-persistence | no | BlockedDecision (D-SS1) |
 | 3a | SS-23 | Beta Site E1 vendor and trainer seed | database-persistence | no | BlockedDecision (D-SS1) |
-| 3b | SS-D4 | Lab check of the new vendors (one row block per world) | lab-driver + verifier | **ASK-FIRST** | BlockedDecision (D-SS1, D-SP2) |
+| 3b | SS-D4 | Lab check of what wave 3a seeded: per world, vendor rows `V-<world>-1/2` and trainer row `V-<world>-T1` under D-SS1 (b), the trainer row only under (c) | lab-driver + verifier | **ASK-FIRST** | BlockedDecision (D-SS1, D-SP2) |
 | 4 | SS-98 | Results summary, issue roll-up, sign-off sheet | documentation-writer | no | BlockedDependency (wave 2; wave 3b if run) |
 | 4 | SS-99 | Close-out: unified-uat hub and DA-U7 rows, debug-hub.md, status docs once | documentation-writer | no | BlockedDependency (SS-98) |
 

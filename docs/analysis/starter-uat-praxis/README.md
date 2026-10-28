@@ -28,8 +28,8 @@ For Praxis, "up to Tollana" means the four-zone chain. Every one of those zones 
 | Order | World (id) | Reached by | Tested in a client | Server-only, never seen in a client | Known broken or missing |
 |---|---|---|---|---|---|
 | 1 | Castle_CellBlock (12) | fresh Praxis Commando start (`char_creation` 13, `PRA_OPCORE_COMMANDO`) | 2026-09-18 colo playtest. 2026-10-21 colo run: T01-T22 and T25 confirmed **server-side only**, visuals pending ([unified-uat](../../guides/unified-uat.md)) | CB-U01 to CB-U12 ([cellblock-continuation](../cellblock-continuation/README.md), [owner-lab-checklist](../cellblock-continuation/owner-lab-checklist.md)). Mission 62060 confirmed server-side, but no portrait and dialog 60151 threw a client syntax error | Pistol #1667; LMG effect 644 inert; the exit has no ring animation (needs the [ring-transport](../ring-transport-cellblock-castle/README.md) client patch); K5, K7, K8, K9, K11; CB-N05b waits on Harset HA-1360 |
-| 2 | Castle (8) | cross-world ring, chain 1109 | 2026-09-18 colo playtest only. Quartermaster store-open seen server-side 2026-10-21 | everything in [end-uat.md](../castle-continuation/uat/end-uat.md) (A1-A5, D1-D7, S1-S8, S1-S5, HB1-HB2, RQ-R2 and more); population CP1-CP20 is seed-only; FZ-U1 (mission 567) owed | K20 (friendly NPCs give no kill credit); interior and exterior navmesh not connected; a fresh client logging straight into Castle hangs (#756); CS-02/1520, CS-03 held BlockedEvidence |
-| 3 | Harset (57; interiors 68, 69, 70) | Castle DHD; chain 1357 grants address 3 | **never played in a client** ("rebuilt, unplayed", [project-status](../../project-status.md)) | H20, H31, H40, H41, HA-1360a/b (Frost's Letter hand-in), the 1664 Kaerlia chain (FZ-18 to FZ-27); FZ-U2 owed ([harset-continuation](../harset-continuation/README.md)) | Vendors HA-15b and trainers HA-15c not built; Market has no navmesh; door pairs unplaced; 39 older-revision rows held; H21-H47 held |
+| 2 | Castle (8) | cross-world ring, chain 1109 | 2026-09-18 colo playtest only. Quartermaster store-open seen server-side 2026-10-21 | everything in [end-uat.md](../castle-continuation/uat/end-uat.md) (A1-A5, D1-D7, Mission 1521 S1-S8, hub quartermaster S1-S5, HB1-HB2, RQ-R2 and more); population CP1-CP20 is seed-only; FZ-U1 (mission 567) owed | K20 (friendly NPCs give no kill credit); interior and exterior navmesh not connected; a fresh client logging straight into Castle hangs (#756); CS-02/1520, CS-03 held BlockedEvidence |
+| 3 | Harset (57; interiors 68, 69, 70) | Castle DHD; chain 1357 grants address 3 | **never played in a client** ("rebuilt, unplayed", [project-status](../../project-status.md)) | H20, H31, H40, H41, HA-1360a/b (Frost's Letter hand-in), the 1664 Kaerlia chain (built by FZ-18 to FZ-27); its UAT row FZ-U2 owed, split here into FZ-U2a to FZ-U2h ([harset-continuation](../harset-continuation/README.md)) | Vendors HA-15b and trainers HA-15c not built; Market has no navmesh; door pairs unplaced; 39 older-revision rows held; H21-H47 held |
 | 4 | Tollana (19) | Harset hand-off | **never played in a client** | the mission 568 pilot (chains 9001-9018) and phasing PH-01a/b: nextest and live-DB only. Owner rows P1-P10, U1-U7, T18 ([tollana-continuation](../tollana-continuation/README.md)); no Tollana section in unified-uat | the seed has only a DHD and two rings plus the pilot; all 51 census missions held; the item-backed 568 waits on HA-1360a; the RESUME still says "local only, no PR" although #1948 merged |
 
 The Goa'uld branch through Castle mission 1520 is held BlockedEvidence (CS-02) and is out of scope.
@@ -42,6 +42,7 @@ The Goa'uld branch through Castle mission 1520 is held BlockedEvidence (CS-02) a
 | F2 | The rows exist but are scattered across four ledgers in four formats (checklist, end-uat table, ledger rows, owner P/U/T lists). Nobody can see the whole owed list. | SP-00 |
 | F3 | The hand-offs (Cellblock→Castle ring, Castle→Harset gate with Frost's Letter, Harset→Tollana) are each tested only from one side, if at all. | SP-DL1 to SP-DL3 |
 | F4 | The lab pipeline that worked (hub-pass: Haiku driver ×3, Sonnet takeover, independent verifier against ClickHouse and the DB) needs written briefs; none exist for these zones. | SP-01 to SP-05 |
+| F8 | FZ-U2 (the Harset 1664 row in unified-uat) is one row with about 20 clauses, two report orders, abandons at every step and a second race. A single packet cannot hold it under the 5-row, 25-call cap. | SP-00 split, SP-DHA3 to DHA5 |
 | F5 | Rows that pass by hand are lost again at the next regression. The TOML spec runner (`lab uat`) can replay them. | SP-91, SP-92 |
 | F6 | After every colo deploy, seeded characters start as Praxis Commandos in Castle_CellBlock (K24). Later worlds need a fixture (world, position, missions, items) or a GM teleport; lab fixtures have no level, cash or ability fields, so setup uses `.givexp`, `/gmgivecash` and `/gmgiveability`. | contract § C4 |
 | F7 | The lab-server MCP refused connections when this plan was written (2026-10-27). Verifiers need either it or ClickHouse over ssh (`reference_signoz_clickhouse_via_ssh`). | contract § C3 |
@@ -68,13 +69,14 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 | 1 | SP-01 | Cellblock driver and verify briefs (SP-DCB1 to DCB3) | documentation-writer | no | BlockedDependency (SP-00) |
 | 1 | SP-02a | Castle briefs part 1 (SP-DCA1 to DCA4) | documentation-writer | no | BlockedDependency (SP-00) |
 | 1 | SP-02b | Castle briefs part 2 (SP-DCA5 to DCA7) | documentation-writer | no | BlockedDependency (SP-00) |
-| 1 | SP-03 | Harset briefs (SP-DHA1 to DHA3) | documentation-writer | no | BlockedDependency (SP-00) |
+| 1 | SP-03a | Harset briefs part 1 (SP-DHA1, DHA2) | documentation-writer | no | BlockedDependency (SP-00) |
+| 1 | SP-03b | Harset briefs part 2: the FZ-U2 split (SP-DHA3 to DHA5) | documentation-writer | no | BlockedDependency (SP-00) |
 | 1 | SP-04 | Tollana briefs (SP-DTO1 to DTO4) | documentation-writer | no | BlockedDependency (SP-00) |
 | 1 | SP-05 | Hand-off leg briefs (SP-DL1 to DL3) | documentation-writer | no | BlockedDependency (SP-00) |
 | 2 | SP-DCB1, DCB2, DCB3, SP-DL1, SP-DCA1, SP-DCA2 | Cellblock, ring to Castle, Castle part 1 | lab-driver + verifier | **ASK-FIRST** | BlockedDecision (D-SP1, D-SP2) |
 | 3 | SP-DCA3 to DCA7, SP-DL2 | Castle part 2, Castle→Harset with Frost's Letter | lab-driver + verifier | **ASK-FIRST** | BlockedDecision (D-SP1, D-SP2) |
-| 4 | SP-DHA1, DHA2, DHA3, SP-DL3, SP-DTO1, SP-DTO2 | Harset, Harset→Tollana, Tollana part 1 | lab-driver + verifier | **ASK-FIRST** | BlockedDecision (D-SP1, D-SP2) |
-| 5 | SP-DTO3, SP-DTO4, retries | Tollana part 2 and any attempt-4 takeovers | lab-driver + verifier | **ASK-FIRST** | BlockedDecision (D-SP1, D-SP2) |
+| 4 | SP-DHA1 to DHA5, SP-DL3 | Harset (DHA3, DHA4, DHA5 one after another on `p3`), Harset→Tollana | lab-driver + verifier | **ASK-FIRST** | BlockedDecision (D-SP1, D-SP2) |
+| 5 | SP-DTO1 to DTO4, retries | Tollana, one packet at a time on `default`; the two-player packet last, alone; any attempt-4 takeovers | lab-driver + verifier | **ASK-FIRST** | BlockedDecision (D-SP1, D-SP2) |
 | 6 | SP-91 | TOML specs for passed Cellblock and Castle rows | packet-coder | no | BlockedDependency (waves 2-3) |
 | 6 | SP-92 | TOML specs for passed Harset, Tollana and leg rows | packet-coder | no | BlockedDependency (waves 4-5) |
 | 6 | SP-98 | Issue roll-up and sign-off sheet | documentation-writer | no | BlockedDependency (waves 2-5) |
@@ -82,7 +84,7 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 
 ## Shipping
 
-- **Wave 0 and wave 1** ship as **one docs PR** from the integration worktree `sp-integration` (branch `starter-uat-praxis/integration`). Merge order into it: SP-00, then SP-01, SP-02a, SP-02b, SP-03, SP-04, SP-05 (any order; each writes only its own brief files and its own `rows.md` lane column cells are already fixed by SP-00).
+- **Wave 0 and wave 1** ship as **one docs PR** from the integration worktree `sp-integration` (branch `starter-uat-praxis/integration`). Merge order into it: SP-00, then SP-01, SP-02a, SP-02b, SP-03a, SP-03b, SP-04, SP-05 (any order; each writes only its own brief files and its own `rows.md` lane column cells are already fixed by SP-00).
 - **Each lab wave** ends with one docs PR from `sp-integration` carrying the wave's results: `results/<packet>.md` files, the README status rows, and the `rows.md` grade column. Lab waves write no code.
 - **Wave 6** ships as one PR: SP-91 and SP-92 (spec files), then SP-98, then SP-99 last.
 

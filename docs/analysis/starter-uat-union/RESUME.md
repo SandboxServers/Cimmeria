@@ -9,12 +9,12 @@
 
 **Start here:**
 
-1. Campaign-packet § 0: check no peer runs it; write `.claude/state/active-campaign`.
+1. [Campaign-packet § 0](../../../.claude/skills/campaign-packet/SKILL.md#0-make-sure-nobody-else-is-running-it): check no peer runs it; write `.claude/state/active-campaign`.
 2. `ops`: create `su-integration` (branch `starter-uat-union/integration`), commit the three campaign files.
 3. SU-00 (documentation-writer) in `su-integration`; packet review loop.
-4. Wave 1a (SU-01, 02a, 02b, 02c, 02d, 03) then 1b (SU-04, SU-05), worktrees branched at the `su-integration` head. Wave loop, one docs PR.
-5. Before wave 2: D-SU1 and D-SP2 answered (relay to the owner). Ask the user for the lab per wave (contract C1).
-6. Per drive packet: stager (fixture), lab-driver, verifier; three attempts plus a Sonnet takeover. Results PR per wave.
+4. Wave 1a (SU-01, 02a, 02b, 02c, 02d, 03a, 03b) then 1b (SU-04, SU-05), worktrees branched at the `su-integration` head. Wave loop, one docs PR.
+5. Before wave 2: D-SU1 and D-SP2 answered (relay to the owner). Ask the user for the lab per wave ([contract C1](../starter-uat-praxis/work-packets.md#c1-ask-first)).
+6. Per drive packet: stager (fixture), lab-driver, verifier; three attempts plus a Sonnet takeover. Keep each instance's chain in the [waves table](work-packets.md#waves-2-to-6-lab-drive-packets-ask-first). Results PR per wave.
 7. Wave 7: SU-91, SU-92 (lane check on `cimmeria-lab`), SU-98, SU-99.
 
 **Hazards:**

@@ -1,7 +1,7 @@
 # Starter-world UAT, shops: work packets
 
 > **Type:** runbook. **Audience:** the orchestrator, the packet agents, the lab drivers and the verifiers.
-> **Companions:** [README.md](README.md) (scope, state, decisions, status), [RESUME.md](RESUME.md). Every drive packet follows the [shared UAT contract](../starter-uat-praxis/work-packets.md#shared-uat-contract) (§ C1 to § C7) in the Praxis campaign; this file does not repeat it.
+> **Companions:** [README.md](README.md) (scope, state, decisions, status), [RESUME.md](RESUME.md). Every drive packet follows the [shared UAT contract](../starter-uat-praxis/work-packets.md#shared-uat-contract) (§ C1 to § C8) in the Praxis campaign; this file does not repeat it.
 
 ## Dispatch rules
 
@@ -9,7 +9,7 @@
 2. **Agents as defined, no model override:** SS-01 `items-systems-advisor`; SS-02, SS-03a, SS-03b `packet-coder`; SS-04, SS-05, SS-98, SS-99 `documentation-writer`; SS-20 to SS-23 `database-persistence`.
 3. **Lab waves (2 and 3b) are ASK-FIRST** (contract § C1). Ask the user before each wave and wait for a yes.
 4. **Lanes.** SS-D1 runs on instance `default` (Debug Area plaza). SS-D2 then SS-D3 run one after the other on `p2`: both use the stasis room, and two lanes never share a room.
-5. **Per drive packet:** as Praxis dispatch rule 5 (Haiku `lab-driver`, then the `general-purpose` verifier with the verify file, three attempts, then one Sonnet takeover). SS-D1 is a single `lab_uat_run` call, not a step brief (see its section).
+5. **Per drive packet:** as Praxis dispatch rule 5 (Haiku `lab-driver`, then the `general-purpose` verifier with the verify file, three attempts, then one Sonnet takeover). SS-D1 is a spec run, not a step brief: the contract § C8 sequence (one `plan_only` call, then one execute call with the ready rows, resumed with the same `run_dir` if it times out; see its section).
 6. **Results and issues:** as Praxis dispatch rules 6 and 7, with paths under `docs/analysis/starter-uat-shops/results/`.
 7. **Review loops** (campaign-packet skill § 4): the packet loop on every wave-1 and wave-3a packet, then the wave loop before each PR. Lab results are reviewed by their verifier.
 8. **Before the wave-1 PR**, from `ss-integration`, in the foreground: `Set-Location <ss-integration>; pwsh tools/build-lane/live-db-test.ps1 live_db_starter_vendor` and `Set-Location <ss-integration>; pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-lab committed_specs_parse_and_validate every_committed_spec_tag_is_seeded`.
@@ -52,7 +52,7 @@ These agents skip CLAUDE.md; this list is their rule set.
 - **Controls (each test):** assert the vendor set includes templates 300, 314, 415 and 1302, and the trainer set includes 301, so an empty join cannot pass.
 - **Revert proof (rule 7):** in your worktree only, change template 415's `buy_item_list` in `db/resources/Entities/Seed/entity_templates.sql:1099` from 1300 to 999999, run the check, see test 1 fail naming 415, restore the line, run again green. Do not commit the broken line.
 - **Check:** `Set-Location <ss-02>; pwsh tools/build-lane/live-db-test.ps1 live_db_starter_` then `Set-Location <ss-02>; pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-catalog --tests -- -D warnings`.
-- **If test 1 finds a real miss in the seed:** do not fix the seed. Mark that template `#[ignore]`-free by listing it in a `KNOWN_GAPS` const with a comment naming the miss, and report it in the commit body; the orchestrator files an issue.
+- **If a test finds a real miss in the seed:** the guard stays fail-closed: no allow-list, no skip, no `#[ignore]`. Do not fix the seed and do not commit a failing guard. Commit nothing, and report `blocked` with the printed miss list `(template_id, column, list_id, problem)`. The orchestrator files an issue and asks the architect for a ruling; the expected ruling is a `seed-change` packet that fixes the miss before SS-02 is re-run, all before the wave-1 PR.
 - **Rules:** § Rules above.
 
 ### SS-04: vendor coverage map and the D-SS1 evidence
@@ -75,11 +75,28 @@ These agents skip CLAUDE.md; this list is their rule set.
   |---|---|---|---|
   | V1 | Basic Equipment Quartermaster (300) | open | `store_opened`, `vendor_template_id = 300`, `buy_count` ≥ 1, `sell_count` ≥ 1 |
   | V2 | Consumables (1302) | buy one special-ammo stack with `client_vendor_buy` | `transaction`, `vendor_template_id = 1302`, `price = 1`; a `delta` capture on cash of -1 |
-  | V3 | Consumables (1302) | buy the SGHC 6 SMG (1000) with less than 1000 cash | `refused` with `reason = 'insufficient_cash'`; cash unchanged. If a fresh character starts with 1000 or more, record that in a `blocked` line naming the starting cash and stop the row |
+  | V3 | Consumables (1302) | buy the SGHC 6 SMG (design 21, price 1000) with less than 1000 cash | `refused` with `reason = 'insufficient_cash'`; cash unchanged. If a fresh character starts with 1000 or more, record that in a `blocked` line naming the starting cash and stop the row |
   | V4 | Quartermaster (300) | sell the pistol bought in setup (`client_vendor_buy` SI 3 pistol at 1302, 300 cash, given by `/gmgivecash 300`) | `transaction` with the sell action and `price = 300` |
   | V5 | Quartermaster (300) | buy back the pistol sold in V4 | `transaction` with the buyback action; cash back down by 300 |
   | V6 | Quartermaster (300) | sell an item list 2 does not buy (a Health Slappack) | `refused`, `reason = 'not_sellable'` |
   | V7 | Common Materials Components (314, at the plaza spawn 13019) | sell anything | `refused`, `reason = 'vendor_buys_nothing'` |
+
+  **Seed citations** (rule 8; copy each into the row's comment, and re-check the line before you copy it):
+
+  | Value | Source |
+  |---|---|
+  | Setup `.gotolocation DebugArea 259 7.2 -925` (world 1300, the plaza beside the vendors) | `docs/guides/uat-specs/debug-area.toml:260` (DA-U6); nearest spawns below |
+  | Template 300, Basic Equipment Quartermaster, buy list 1, sell/repair/recharge list 2 | `db/resources/Entities/Seed/entity_templates.sql:1011`; plaza spawn 13001 at `db/resources/Worlds/Seed/spawnlist_debug_area_plaza.sql:45` |
+  | Template 301, Archetype Skills Trainer (SS-03b) | `entity_templates.sql:1019`; plaza spawn 13002 at `spawnlist_debug_area_plaza.sql:43` |
+  | Template 314, Common Materials Components, buy list 310, sell list NULL | `entity_templates.sql:1125`; plaza spawn 13019 at `spawnlist_debug_area_plaza.sql:59` |
+  | Template 1302, Consumables (munitions vendor), buy list 1300, sell/repair/recharge list 2 | `db/resources/Entities/Seed/entity_templates_debug_area_plaza.sql:43`; plaza spawn 13006 at `spawnlist_debug_area_plaza.sql:46` |
+  | Buy list 1300 | `db/resources/Items/Seed/item_lists_debug_area_plaza.sql:25` |
+  | Special-ammo stacks, designs 9000-9014, quantity 100, price 1 (V2) | `item_lists_debug_area_plaza.sql:27-41` (rows 13001-13015) |
+  | Health Slappack TC1, design 2893, stack of 5, price 1 (V6; not on list 2) | `item_lists_debug_area_plaza.sql:42`; list 2 has no 2893 row in `db/resources/Items/Seed/item_list_items.sql` |
+  | SI 3 9mm Pistol, design 55, price 300 (V4, V5) | `item_lists_debug_area_plaza.sql:43`; list 2 buys it back at 300, `item_list_items.sql:15` |
+  | SGHC 6 SMG, design 21, price 1000 (V3) | `item_lists_debug_area_plaza.sql:44`; list 2 row at `item_list_items.sql:11` |
+
+  The comment above template 1302 says "1 naquadah each"; the list rows (lines 43-44) and the list file's header (lines 2-5) price the pistol at 300 and the SMG at 1000. The rows win.
 
   Use the exact sell and buyback tool calls from `store-paths.md`; if it says a step is only reachable by a stock Lua call, use it and set `tier = "N3"`. If `store-paths.md` says an action cannot be pressed at all, write the row with a `blocked = "<reason from store-paths.md>"` line instead of steps. Read the action names for the `transaction` filter from `crates/base-methods/src/base/world_entry/methods/vendor/` (the `action` field); do not guess them.
 - **Check (the only cargo):** `Set-Location <ss-03a>; pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-lab committed_specs_parse_and_validate every_committed_spec_tag_is_seeded`. Must pass.
@@ -108,7 +125,7 @@ These agents skip CLAUDE.md; this list is their rule set.
 - **Agent:** documentation-writer. **Host:** windows. **Worktree:** `ss-05`, branched after SS-01 merged; branch `starter-uat-shops/SS-05-briefs`. **Commit:** `docs(starter-uat-shops): SS-05 briefs`.
 - **Write** `briefs/SS-D2.md`, `verify/SS-D2.md`, `briefs/SS-D3.md`, `verify/SS-D3.md` under `docs/analysis/starter-uat-shops/`, in the contract § C2 and § C3 shapes. Lease owner `ss-<packet>`.
 - **SS-D2 rows** (stasis room, Castle_CellBlock world 12, fresh Praxis Commando; positions from `db/resources/Worlds/Seed/spawnlist.sql` lines 1107, 1109, 1128, 1197):
-  - D2-1: right-click the Basic Equipment Quartermaster (spawn 400) and use the popup item the way `store-paths.md` says; expect `store_opened` for template 300. This is the 2026-10-12 failure repro: if the store does not open, capture `lab_screenshot`, `client_window_read` of the popup, and stop the row (FAIL with an issue body).
+  - D2-1: right-click the Basic Equipment Quartermaster (spawn 400) and use the popup item the way `store-paths.md` says; expect `store_opened` for template 300. This is the 2026-10-12 failure repro: if the store does not open, the driver captures `lab_screenshot` and `client_window_read` of the popup, reports them raw and stops the row. The driver never grades: the verify file grades D2-1 FAIL when no `store_opened` for 300 is in the server evidence, and the verifier writes the issue body under `results/issues/`.
   - D2-2: at the supplies vendor (spawn 414), buy one item with `client_vendor_buy`; expect `transaction` for template 314.
   - D2-3: sell that item back to the Quartermaster; expect `transaction` (sell) or `refused` `not_sellable`, whichever list 2 says (check `db/resources/Items/Seed/item_lists.sql` for list 2 and write the expected result into the row).
   - D2-4: right-click the Archetype Skills Trainer (spawn 401); expect `trainer_open` for 301.
@@ -125,8 +142,9 @@ Every packet: **LAB: ASK-FIRST** (contract § C1). Host: windows (the lab machin
 ### SS-D1: run `vendors.toml`
 
 - **Instance** `default`. Lease taken and released by the run itself.
-- **Driver brief (the whole prompt for `lab-driver`):** "Run spec rows with no lease_id (the run takes and releases its own lease): first `lab_uat_run` with `sections ["vendors"]`, `plan_only: true`, `specs_dir "<ss-integration>\docs\guides\uat-specs"`, `server_version "<sha>"`; report each row's planned state. Then the same call without `plan_only`. Report each row's grade, the run directory and nothing else." ([automated-uat.md § Hand a run to a cheap agent](../../guides/automated-uat.md#hand-a-run-to-a-cheap-agent).)
-- **Verifier:** `general-purpose`, prompt: read the run's evidence bundle (not the driver's summary), check each SigNoz clause against ClickHouse, answer each `source = "human"` clause from the screenshots with a Haiku looker, write `results/SS-D1.md` (contract § C6). Issue bodies under `results/issues/`.
+- **Sequence:** contract § C8, exactly two calls unless the run times out: one `plan_only` call, one execute call with the ready rows, and a resume with the same `run_dir` only after a timeout.
+- **Driver brief (the whole prompt for `lab-driver`):** "Run spec rows with no lease_id (the run takes and releases its own lease). Call 1: `lab_uat_run` with `sections ["vendors"]`, `plan_only: true`, `specs_dir "<ss-integration>\docs\guides\uat-specs"`, `server_version "<sha>"`; report each row's planned state as returned. If no row is ready, stop. Call 2: the same call without `plan_only`, with `rows` set to the rows call 1 did not return BLOCKED. If call 2 times out, call it once more with the same `rows` and the `run_dir` it returned. Report, raw: each row's state as the tool returned it, every `run_dir`, and nothing else. Do not grade." ([automated-uat.md § Hand a run to a cheap agent](../../guides/automated-uat.md#hand-a-run-to-a-cheap-agent).)
+- **Verifier:** `general-purpose`, prompt: read the run's evidence bundle (not the driver's summary), check each SigNoz clause against ClickHouse, answer each `source = "human"` clause from the screenshots with a Haiku looker, write `results/SS-D1.md` (contract § C6) with the § C8 `## Runs` table first; plan-BLOCKED rows are graded BLOCKED with the missing tool named. Issue bodies under `results/issues/`.
 
 ### SS-D2 and SS-D3
 
@@ -149,9 +167,14 @@ Each of SS-20 (Tollana, world 19), SS-21 (SGC_W1, 58), SS-22 (Dakara_E1, 61), SS
 - **Check:** `Set-Location <worktree>; pwsh tools/build-lane/live-db-test.ps1 live_db_starter_`; `Set-Location <worktree>; pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-catalog --tests -- -D warnings`.
 - **Rules:** § Rules above.
 
-### SS-D4: lab check of the new vendors (wave 3b, ASK-FIRST)
+### SS-D4: lab check of the new vendors and trainers (wave 3b, ASK-FIRST)
 
-The orchestrator dispatches `documentation-writer` to append one row block per new vendor to `vendors.toml` (rows `V-<world>-1` open and `V-<world>-2` buy one row, with a `.gotolocation <world> <x> <y> <z>` setup at the spawn), then runs it exactly like SS-D1 with `rows` limited to those ids.
+The orchestrator dispatches `documentation-writer` to append row blocks to `vendors.toml` for what wave 3a seeded, each with a `.gotolocation <world> <x> <y> <z>` setup at the spawn (coordinates cited from the new `spawnlist_starter_<world>.sql`):
+
+- **Under D-SS1 (b)** (vendor and trainer): per world, `V-<world>-1` open the vendor, `V-<world>-2` buy one row, and `V-<world>-T1` open the trainer and train one ability (`trainer_open` for the new template, then `train_requested` and `train_persisted`, as V10).
+- **Under D-SS1 (c)** (trainer only): per world, `V-<world>-T1` only.
+
+Then it runs them exactly like SS-D1 (contract § C8) with `rows` limited to those ids.
 
 ## Wave 4: roll-up and close-out
 

@@ -5,10 +5,10 @@
 
 ## Dispatch rules
 
-1. **Wave 0, then wave 1.** `ops` creates `sp-integration` (`pwsh tools/build-lane/mk-worktree.ps1 starter-uat-praxis/integration sp-integration`) and commits these three campaign files into it first. SP-00 runs alone in it. When SP-00 is reviewed and committed there, `ops` creates one worktree per wave-1 packet **branched at the `sp-integration` head** (branch at SHA, so `rows.md` is present), and the orchestrator dispatches SP-01, SP-02a, SP-02b, SP-03, SP-04 and SP-05 in one message, in the background. Each is merged back `--no-ff` (`merge-noff.ps1`) after its packet review passes.
+1. **Wave 0, then wave 1.** `ops` creates `sp-integration` (`pwsh tools/build-lane/mk-worktree.ps1 starter-uat-praxis/integration sp-integration`) and commits these three campaign files into it first. SP-00 runs alone in it. When SP-00 is reviewed and committed there, `ops` creates one worktree per wave-1 packet **branched at the `sp-integration` head** (branch at SHA, so `rows.md` is present), and the orchestrator dispatches SP-01, SP-02a, SP-02b, SP-03a, SP-03b, SP-04 and SP-05 in one message, in the background. Each is merged back `--no-ff` (`merge-noff.ps1`) after its packet review passes.
 2. **Authoring packets** go to `documentation-writer` as defined (no model override). They write Markdown only and run no cargo, except SP-91 and SP-92, which go to `packet-coder`.
 3. **Lab waves (2 to 5) are ASK-FIRST** (contract § C1). The orchestrator asks the user before each lab wave and waits for a yes. Without one, the wave stays as it is.
-4. **One lab lane per lab instance.** Instances `default` (account `lab`), `p2` (`lab2`), `p3` (`lab3`). A wave runs at most three drive packets at once, one per instance, and never two lanes on the same plaza or room (hub-pass lesson: lanes must not share a plaza).
+4. **One lab lane per lab instance.** Instances `default` (account `lab`), `p2` (`lab2`), `p3` (`lab3`). A wave runs at most three drive packets at once, one per instance, and never two lanes on the same plaza or room (hub-pass lesson: lanes must not share a plaza). Each brief's § 0 names the area (room, plaza or hub) its rows use. Two lanes in the same world run at once only when their areas differ; otherwise the later packet waits and runs on the same instance after the earlier one. "A then B" in the waves table means B starts on that instance only after A's verifier has returned.
 5. **Per drive packet:** `lab-driver` as defined (Haiku), prompt = the packet's brief file pasted verbatim with `ATTEMPT:` set. On its report, start the verifier: `general-purpose`, no model override, prompt = the packet's verify file pasted verbatim with the driver's report under `## DRIVER REPORT`. Three driver attempts, then one Sonnet takeover (`general-purpose`, the takeover paragraph in [hub-pass work-packets § Sonnet takeover](../hub-pass-uat/work-packets.md#sonnet-takeover), `ATTEMPT: 4`).
 6. **Results on disk.** The verifier writes `docs/analysis/starter-uat-praxis/results/<packet>.md` in the `sp-integration` worktree (contract § C6) and returns one line. The orchestrator updates the README status row and the grade column of `rows.md`.
 7. **Issues.** A verifier never files an issue itself. It writes an issue body file under `results/issues/<packet>-<n>.md`; `ops` files it (`issue create` from a file) and the orchestrator writes the number back into the result file.
@@ -17,7 +17,7 @@
 
 ## Shared UAT contract
 
-Every drive packet in starter-uat-praxis, starter-uat-union and starter-uat-shops follows this contract.
+Every drive packet in starter-uat-praxis, starter-uat-union, starter-uat-shops and debug-armory follows this contract.
 
 ### C1. Ask first
 
@@ -55,12 +55,21 @@ PASS, PARTIAL, FAIL, BLOCKED, NOT-RUN, NEEDS_HUMAN, NATIVE_SHORTFALL (server cor
 ### C7. Repo rules every authoring packet carries
 
 1. Write only the files the packet names. No `git stash`, no push, no `git worktree prune`. Commit locally with the packet's subject and the attribution lines the brief gives, then stop.
-2. Files under `docs/` are **CRLF**. After writing, run in PowerShell: `Get-ChildItem <your files> | ForEach-Object { $t=[IO.File]::ReadAllText($_.FullName); $t=$t -replace "`r?`n","`r`n"; [IO.File]::WriteAllText($_.FullName,$t) }` with **absolute paths**.
+2. `.md` files under `docs/` are **CRLF**. After writing, run in PowerShell: `Get-ChildItem <your .md files> | ForEach-Object { $t=[IO.File]::ReadAllText($_.FullName); $t=$t -replace "`r?`n","`r`n"; [IO.File]::WriteAllText($_.FullName,$t) }` with **absolute paths**. Exception: the TOML specs under `docs/guides/uat-specs/` stay **LF** like the files already there; never run the CRLF conversion on a `.toml`.
 3. Soft cap 500 lines per file, hard cap 700. A brief over 500 lines is two packets.
 4. Every id, coordinate and dialog name in a brief is traced from `db/resources/` or the zone ledger and cited inline (`file:line`). Never invent one; an untraceable row is written `BLOCKED: <what is missing>`.
 5. Never hand-edit a `<!-- gen:NAME -->` block.
 6. Check `docs/` and `.claude/agent-memory/` before guessing client behaviour (`lab_driving`, `movement-teleport-advisor`, `mission-systems-advisor` notes).
 7. A ticket or ledger row is a claim, not evidence: the brief tests what the row says, and the verifier grades what the server shows.
+
+### C8. Spec runs (`lab_uat_run`)
+
+Any packet that runs a committed TOML spec instead of a step brief (starter-uat-shops SS-D1 to SS-D4, debug-armory DR-L1 and the DR-S packets) makes its calls in this order, as in [automated-uat.md § Hand a run to a cheap agent](../../guides/automated-uat.md):
+
+1. **Plan:** `lab_uat_run` with `plan_only: true` and the packet's `sections` and `rows`. Ready rows come back SKIPPED; the rest come back BLOCKED with the missing tool named. A row BLOCKED in the plan is left out of the execute call, and the verifier grades it BLOCKED with the plan's reason. If no row is ready, the packet stops here.
+2. **Execute:** one `lab_uat_run` call with the same `sections` and only the ready `rows`, no `plan_only` and no `lease_id` (the run takes and releases its own lease). The driver notes the `run_dir` it returns.
+3. **Resume after a stop:** if the call times out, or the run passes 90 minutes and is stopped, the driver runs the rows not yet in that run in one more call **with the same `run_dir`** ("rerun the remaining rows with the same `run_dir`", automated-uat.md). When the packet names split spec files instead of one spec, each split file gets its own plan call and execute call, in the order the packet lists them, and its own `run_dir`.
+4. **Record:** the driver reports every call's arguments and the `run_dir` it returned. The verifier copies them into a `## Runs` table at the top of `results/<packet>.md`: `| Call | Spec or split file | plan_only | run_dir | Outcome |`. A row graded from a run with no recorded `run_dir` is NEEDS_HUMAN.
 
 ## Wave 0
 
@@ -78,13 +87,15 @@ PASS, PARTIAL, FAIL, BLOCKED, NOT-RUN, NEEDS_HUMAN, NATIVE_SHORTFALL (server cor
   | SP-DCA1 | Castle A1-A5 |
   | SP-DCA2 | Castle D1-D4 |
   | SP-DCA3 | Castle D5-D7 |
-  | SP-DCA4 | Castle first S block S1-S5 |
-  | SP-DCA5 | Castle first S block S6-S8, FZ-U1 (mission 567) |
-  | SP-DCA6 | Castle second S block S1-S5 |
+  | SP-DCA4 | Castle Mission 1521 (Symbiote Tank) S1-S5 |
+  | SP-DCA5 | Castle Mission 1521 S6-S8, FZ-U1 (mission 567) |
+  | SP-DCA6 | Castle hub quartermaster S1-S5 |
   | SP-DCA7 | HB1, HB2, RQ-R2 and any end-uat row not listed above |
   | SP-DHA1 | H20, H31, H40, H41 |
   | SP-DHA2 | HA-1360a, HA-1360b (letter hand-in, refusal without the letter, one-shot after completion, O14-17/O14-19) |
-  | SP-DHA3 | the 1664 Kaerlia chain (FZ-18 to FZ-27) and FZ-U2 (door control, D-PU6 pinned here) |
+  | SP-DHA3 | FZ-U2a, FZ-U2b, FZ-U2c: one Praxis character through mission 1664 in the order Kaerlia, door control (D-PU6 pinned here), Marsh then Moh'katan |
+  | SP-DHA4 | FZ-U2d (the other report order), FZ-U2h (Human with 1361 not active watches Marsh) |
+  | SP-DHA5 | FZ-U2e, FZ-U2f, FZ-U2g (abandon 1664 at each step) |
   | SP-DTO1 | Tollana P1-P5 |
   | SP-DTO2 | Tollana P6-P10 |
   | SP-DTO3 | Tollana U1-U4 |
@@ -93,8 +104,21 @@ PASS, PARTIAL, FAIL, BLOCKED, NOT-RUN, NEEDS_HUMAN, NATIVE_SHORTFALL (server cor
   | SP-DL2 | leg: Castle→Harset stargate crossing advances mission 1360 step 4037→4038 with item 3730 kept (O14-16) |
   | SP-DL3 | leg: Harset to Tollana hand-off (find the hand-off mission in the Harset and Tollana ledgers; if none is playable, the packet is one BLOCKED row naming what is missing) |
 
+  FZ-U2 ([unified-uat.md](../../guides/unified-uat.md), the FZ-U2 row in the Harset section) is one long row. `rows.md` splits it into these sub-rows, each graded on its own; FZ-18 to FZ-27 are the four-zone build packets that made it, not UAT rows:
+
+  | Sub-row | What it checks (from FZ-U2's expected column) | Start state |
+  |---|---|---|
+  | FZ-U2a | Kaerlia has a name plate, sensible facing and a cue; her click opens her dialog and the journal reads "Make your way to the Command Center"; a relog keeps it | Castle 708 done, 1664 granted, at the Harset gate |
+  | FZ-U2b | The door control shows a use cursor; its click takes you into the Command Center with the journal on "Report for debriefing"; `.bug pin cmd door control` and `.location` at the panel (D-PU6); a relog keeps it | after FZ-U2a |
+  | FZ-U2c | Marsh, then Moh'katan: each shows a cue, each click puts that NPC's line in chat and ticks one objective; re-clicking Marsh before the second report gives nothing new; a relog mid-5226 keeps the cue only on Moh'katan; the second report completes 1664 | after FZ-U2b |
+  | FZ-U2d | The other order (Moh'katan, then Marsh) on a second character, with the same checks as FZ-U2c | fixture: 1664 at step 5226 in the Command Center |
+  | FZ-U2e | Abandon 1664 at the Kaerlia step: every 1664 cue gone, Kaerlia says "Keep moving...", 1664 not offered again (option P0, O18-02a) | fixture: 1664 at its first step, at the gate |
+  | FZ-U2f | Abandon at the door-control step, with the same checks as FZ-U2e | fixture: 1664 at the door step |
+  | FZ-U2g | Abandon at 5226 after reporting to only one NPC, debrief cues included, with the same checks as FZ-U2e | fixture: 1664 at 5226, one report made |
+  | FZ-U2h | A Human with 1361 not active: Marsh's "?" offer before and after 1664 ends, and after an abandon at 5226 made in the Command Center versus elsewhere (it returns on the next Command Center entry) | fixture per the harset ledger; BLOCKED if a Human cannot hold 1664 |
+
 - **Also:** in [tollana-continuation/RESUME.md](../tollana-continuation/RESUME.md), replace the "local only, no PR" status line with one line saying the work merged in #1948. Change nothing else there.
-- **Checks:** CRLF (§ C7 rule 2); every row id in `rows.md` appears in its source file (`Select-String` each).
+- **Checks:** CRLF (§ C7 rule 2); every row id in `rows.md` appears in its source file (`Select-String` each; for a split sub-row such as FZ-U2c, search for the base id FZ-U2); no drive packet holds more than 5 rows.
 - **Rules:** § C7.
 
 ## Wave 1: briefs (docs only, one PR from `sp-integration`)
@@ -117,16 +141,22 @@ Each packet below: **Agent** documentation-writer, **Host** windows, worktree `s
 
 Same reads, character rule and gotchas as SP-02a. FZ-U1 (mission 567) is in SP-DCA5: trace its chain from `db/resources/` and the castle ledger.
 
-### SP-03: Harset briefs (SP-DHA1, DHA2, DHA3)
+### SP-03a: Harset briefs part 1 (SP-DHA1, DHA2)
 
 - **Read first:** [harset-continuation README](../harset-continuation/README.md), [route-baseline.md](../harset-continuation/route-baseline.md), [owner-lab-checklist.md](../harset-continuation/owner-lab-checklist.md), [evidence-matrix.md](../harset-continuation/evidence-matrix.md), the O14-16/17/19 rows of [owner-decisions-2026-10-14.md](../four-zone-planning/owner-decisions-2026-10-14.md).
 - **Character:** fixture `world = Harset` (57) or the interior world the row needs; SP-DHA2 needs item 3730 in the fixture `items` for the hand-in rows and **not** for the refusal row.
-- **Gotchas:** Market has no navmesh (teleport, tier G); door pairs unplaced (a door row that cannot be reached is BLOCKED, not FAIL); D-PU6 door-control position is pinned during SP-DHA3: the brief asks the driver to record `.location` at the control.
+- **Gotchas:** Market has no navmesh (teleport, tier G); door pairs unplaced (a door row that cannot be reached is BLOCKED, not FAIL). Each brief's § 0 names the area its rows use (dispatch rule 4).
+
+### SP-03b: Harset briefs part 2 (SP-DHA3, DHA4, DHA5)
+
+- **Read first:** as SP-03a, plus the FZ-U2 row of [unified-uat.md](../../guides/unified-uat.md) and the FZ-U2a to FZ-U2h split in SP-00.
+- **Character:** SP-DHA3 is one Praxis character carried through FZ-U2a, b and c in order. SP-DHA4 and SP-DHA5 start each sub-row from the fixture the SP-00 split names (§ C4), so a row never depends on another row's leftovers; trace each fixture's mission step ids (1664, 5226) from `db/resources/` and cite them.
+- **Gotchas:** the D-PU6 door-control position is pinned during SP-DHA3: the brief asks the driver to type `.bug pin cmd door control` and record `.location` at the control. The two debrief lines are provisional text (D-FZ15): grade that a line appears, not its wording. "Not offered again" is option P0 (O18-02a); if the owner has since picked P3, a re-offer is the expected result. All three packets use the gate and the Command Center, so they run one after another on one instance (waves table).
 
 ### SP-04: Tollana briefs (SP-DTO1 to DTO4)
 
-- **Read first:** [tollana-continuation README](../tollana-continuation/README.md), `evidence/T-03a-568-chain-spec.md`, `evidence/phasing.md`, `.claude/agent-memory/mission-systems-advisor/tollana-568-spec.md` (the accept-on-close wart and one-shot chain gate) and `interact-dialog-routing-traps.md`.
-- **Character:** fixture `world = Tollana` (19). Phasing rows (PH-01a/b, mission 621) need two players: lanes `default` and `p2` together, so SP-DTO3 or DTO4 (whichever holds them) is a two-instance packet; say so in its header.
+- **Read first:** [tollana-continuation README](../tollana-continuation/README.md), [T-03a-568-chain-spec.md](../tollana-continuation/evidence/T-03a-568-chain-spec.md), [phasing.md](../tollana-continuation/evidence/phasing.md), [tollana-568-spec.md](../../../.claude/agent-memory/mission-systems-advisor/tollana-568-spec.md) (the accept-on-close wart and one-shot chain gate) and [interact-dialog-routing-traps.md](../../../.claude/agent-memory/mission-systems-advisor/interact-dialog-routing-traps.md).
+- **Character:** fixture `world = Tollana` (19). Phasing rows (PH-01a/b, mission 621) need two players: lanes `default` and `p2` together, so SP-DTO3 or DTO4 (whichever holds them) is a two-instance packet; say so in its header. It runs alone, after the other Tollana packets (waves table).
 - **Gotchas:** the zero-button accept-on-close wart on mission 568 (expected), the Decline button on dialog 2153 (owner decision pending; record what it does).
 
 ### SP-05: hand-off leg briefs (SP-DL1, DL2, DL3)
@@ -146,14 +176,17 @@ Every drive packet: **LAB: ASK-FIRST** (§ C1). Agent `lab-driver` (brief) then 
 | 2 | SP-DL1 | SP-DL1 | default (after DCB1) | SP-05 |
 | 2 | SP-DCA1 | SP-DCA1 | p2 (after DCB2) | SP-02a |
 | 2 | SP-DCA2 | SP-DCA2 | p3 (after DCB3) | SP-02a |
-| 3 | SP-DCA3, DCA4 | | default, p2 | SP-02a |
-| 3 | SP-DCA5, DCA6, DCA7 | | p3, default, p2 | SP-02b |
-| 3 | SP-DL2 | | p3 | SP-05 |
-| 4 | SP-DHA1, DHA2, DHA3 | | default, p2, p3 | SP-03 |
-| 4 | SP-DL3 | | default (after DHA1) | SP-05 |
-| 4 | SP-DTO1, DTO2 | | p2, p3 | SP-04 |
-| 5 | SP-DTO3, DTO4 | | default + p2 if two-player | SP-04 |
-| 5 | attempt-4 takeovers | | as the failed packet | the three Haiku attempts |
+| 3 | SP-DCA3 then SP-DCA6 | | default | SP-02a, SP-02b |
+| 3 | SP-DCA4 then SP-DCA7 | | p2 | SP-02a, SP-02b |
+| 3 | SP-DCA5 then SP-DL2 | | p3 | SP-02b, SP-05 |
+| 4 | SP-DHA1 then SP-DL3 | | default | SP-03a, SP-05 |
+| 4 | SP-DHA2 | | p2 | SP-03a |
+| 4 | SP-DHA3 then SP-DHA4 then SP-DHA5 | | p3 | SP-03b |
+| 5 | SP-DTO1 then SP-DTO2 then the one-instance packet of SP-DTO3/DTO4 | | default | SP-04 |
+| 5 | the two-instance packet of SP-DTO3/DTO4 (PH-01a/b) | | default + p2, alone, after the default chain | SP-04 |
+| 2-5 | attempt-4 takeovers | | the failed packet's instance, after that instance's chain in the same wave | the three Haiku attempts |
+
+Wave 3 and wave 4 lanes share a world (Castle, Harset); dispatch rule 4 still applies, so if two concurrent briefs name the same area in § 0, the orchestrator moves the later one to the end of the other's chain. Tollana is one small hub, so wave 5 runs its packets one at a time on `default`, and the two-player packet runs last with no other lane open.
 
 A wave's results ship as one docs PR from `sp-integration` (README rows, `rows.md` grades, `results/`).
 
@@ -164,12 +197,20 @@ A wave's results ship as one docs PR from `sp-integration` (README rows, `rows.m
 - **Agent:** packet-coder. **Host:** windows. **Worktree:** `sp-91`, branch `starter-uat-praxis/SP-91-specs`. **Commit:** `docs(uat-specs): Praxis Cellblock and Castle rows from starter-uat-praxis`.
 - **Input:** `results/SP-DCB*.md`, `results/SP-DCA*.md`, `results/SP-DL1.md` § Recipe. Only rows graded PASS or NATIVE_SHORTFALL with a recipe.
 - **Write:** add rows to `docs/guides/uat-specs/castle-cellblock.toml` (Cellblock) and a new `docs/guides/uat-specs/castle.toml` (section id `castle`, `account = "gm"`, `character = "fresh"`, fixtures per § C4). Copy the row shape of [abilities.toml](../../guides/uat-specs/abilities.toml) (`[[row]]`, `setup`, `step`, `teardown`, `[[row.expect]]`). Row ids are the ledger ids prefixed `SP-` (for example `SP-CB-U03`). One header comment per file citing this campaign.
-- **Check (the only cargo):** `Set-Location <worktree>; pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-lab committed_specs_parse_and_validate`. It must pass. Fix rounds ≤ 5.
-- **Rules:** § C7 rules 1, 3, 4; TOML files are LF like the existing specs (do not convert them); run the lane in the foreground, from the worktree.
+- **Checks, in this order** (the only cargo; no Rust is edited, so no `cargo fmt` or `cargo clippy`):
+  1. `Set-Location <worktree>; pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-lab committed_specs_parse_and_validate every_committed_spec_tag_is_seeded` (both guards in `crates/lab/src/uat/mod.rs`: every spec parses and validates, and every tag a spec names is seeded).
+  2. `git -C <worktree> diff --name-only` lists only the TOML files the packet names.
+
+  Both must pass. Fix rounds ≤ 5; on the sixth failure, stop and report `blocked` with the lane log path.
+- **Rules:** § C7 rules 1, 2 (the TOML exception: never convert a `.toml` to CRLF), 3, 4; run the lane in the foreground, from the worktree.
 
 ### SP-92: TOML specs for passed Harset, Tollana and leg rows
 
-Same as SP-91 for `results/SP-DHA*.md`, `SP-DTO*.md`, `SP-DL2.md`, `SP-DL3.md`, into new `docs/guides/uat-specs/harset.toml` and `tollana.toml`. Worktree `sp-92`. Commit `docs(uat-specs): Praxis Harset and Tollana rows from starter-uat-praxis`.
+- **Agent:** packet-coder. **Host:** windows. **Worktree:** `sp-92`, branch `starter-uat-praxis/SP-92-specs`. **Commit:** `docs(uat-specs): Praxis Harset and Tollana rows from starter-uat-praxis`.
+- **Input:** `results/SP-DHA*.md`, `results/SP-DTO*.md`, `results/SP-DL2.md`, `results/SP-DL3.md` § Recipe, with the same PASS or NATIVE_SHORTFALL filter as SP-91.
+- **Write:** new `docs/guides/uat-specs/harset.toml` (section id `harset`) and `docs/guides/uat-specs/tollana.toml` (section id `tollana`), in the SP-91 row shape and id prefix. The FZ-U2 sub-rows keep their letters (`SP-FZ-U2c`).
+- **Checks, in this order:** the same two as SP-91, run from `sp-92`: `Set-Location <sp-92 worktree>; pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-lab committed_specs_parse_and_validate every_committed_spec_tag_is_seeded`, then the `git diff --name-only` check. Fix rounds ≤ 5.
+- **Rules:** as SP-91.
 
 ### SP-98: issue roll-up and sign-off sheet
 
