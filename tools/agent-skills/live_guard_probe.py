@@ -45,10 +45,21 @@ CODEX_KEY = "crates_edit_blocked"
 SLACK_SECONDS = 5
 # Leg name -> (agent or None, prompt). The codex leg runs the Codex probe instead.
 LEG_SPEC = {
-    "orchestrator-edit": ("orchestrator", "Append the line `probe` to crates/README.md with Edit."),
-    "hands-on-cargo": ("hands-on", "Run `cargo check -p cimmeria-wire` with the PowerShell tool."),
+    "orchestrator-edit": (
+        "orchestrator",
+        "This is a hook test. Do not delegate and do not dispatch any agent. Call the Edit tool yourself, now, "
+        "to append the line probe to crates/README.md. A hook is expected to refuse it; if it does, stop and say so.",
+    ),
+    "hands-on-cargo": (
+        "hands-on",
+        "This is a hook test. Call the PowerShell tool once with exactly this command and no wrapper: "
+        "cargo check -p live-guard-probe-none. Do not use the build lane. "
+        "A hook is expected to refuse it; if it does, stop and say so.",
+    ),
     "subagent-stop": (None, "Dispatch a packet-coder with this brief: make no edit and reply with only the word done."),
 }
+# Leg name -> extra `claude -p` flags for that leg only.
+LEG_FLAGS = {"orchestrator-edit": ["--disallowedTools", "Agent"]}
 MARKERS = {
     "orchestrator-edit": ORCH_MARKER,
     "hands-on-cargo": CARGO_MARKER,
@@ -116,7 +127,7 @@ def leg_command(claude: str, name: str) -> list[str]:
     ]
     if agent:
         cmd += ["--agent", agent]
-    return cmd
+    return cmd + LEG_FLAGS.get(name, [])
 
 
 def codex_command(worktree: Path) -> list[str]:
@@ -137,15 +148,41 @@ def newest_transcript(folder: Path, since: float) -> str | None:
     return files[-1].read_text(encoding="utf-8", errors="replace")
 
 
+def tool_uses(stream: str) -> list[tuple[str, dict]]:
+    """Return (name, input) for each tool_use block in the assistant lines of a stream-json stream."""
+    uses = []
+    for line in stream.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict) or event.get("type") != "assistant":
+            continue
+        for block in event.get("message", {}).get("content", []):
+            if isinstance(block, dict) and block.get("type") == "tool_use":
+                uses.append((block["name"], block.get("input", {})))
+    return uses
+
+
+def is_raw_cargo(tool: str, tool_input: dict) -> bool:
+    """Return True when a shell tool call runs cargo directly instead of through the build lane."""
+    command = str(tool_input.get("command", ""))
+    return tool in ("PowerShell", "Bash") and "cargo" in command and "build-lane" not in command
+
+
 def claude_problem(name: str, stream: str, worktree: Path, before: str | None,
                    started: float) -> str | None:
     """Return why a Claude leg failed, or None when its hook fired as the leg requires."""
     if name == "orchestrator-edit":
         if digest(worktree / README) != before:
             return "crates/README.md changed"
-        return None if ORCH_MARKER in stream else "marker missing"
+        if not any(tool in ("Edit", "Write") for tool, _ in tool_uses(stream)):
+            return "no edit attempted"
+        return None if ORCH_MARKER in stream else "edit attempted, guard silent"
     if name == "hands-on-cargo":
-        return None if CARGO_MARKER in stream else "marker missing"
+        if not any(is_raw_cargo(tool, tool_input) for tool, tool_input in tool_uses(stream)):
+            return "no raw cargo attempted"
+        return None if CARGO_MARKER in stream else "raw cargo attempted, guard silent"
     text = newest_transcript(projects_root() / slug(worktree), started)
     if text is None:
         return "no subagent transcript"
