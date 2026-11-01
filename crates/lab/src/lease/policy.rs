@@ -81,6 +81,7 @@ pub const OPEN: &[&str] = &[
     "client_entity_table",
     "client_ui_state",
     "client_window_read",
+    "client_ui_clickables",
     "client_player_state",
     "client_hotbar",
     "lab_characters",
