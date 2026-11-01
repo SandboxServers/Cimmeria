@@ -181,7 +181,7 @@ Each metric, one line:
 
 Harness metrics read the agent transcripts for the harness-tuning campaign. Three subcommands, `returns`, `coder-context` and `resume-cards`, run as `python tools/token-profile/metrics <name> [--projects-root DIR] [--repo DIR] [--since YYYY-MM-DD] [--until YYYY-MM-DD] --out DIR`. Each writes one JSON file with a `schema` name and a `window`, and each prints one `status=ok` line.
 
-- `returns` writes `returns.json`. It holds report-contract dispatches, return-line kinds and report writes per agent type. The `report_writers` group covers the non-Haiku agents with a `## Reporting` section. `coder_lines` covers every packet-coder dispatch, with or without a report path.
+- `returns` writes `returns.json`. It holds report-contract dispatches, return-line kinds and report writes per agent type. A label with no agent file and no built-in or retired name is counted under `other`, so no task or campaign name reaches the file. The `report_writers` group covers the non-Haiku agents with a `## Reporting` section. `coder_lines` covers every packet-coder dispatch, with or without a report path.
 - `coder-context` writes `coder-context.json`: packet-coder context stops, what fills the context, medians, and continuation tokens.
 - `resume-cards` writes `resume-cards.json`: compaction resume cards, matched, wrong or mixed, by tier.
 
