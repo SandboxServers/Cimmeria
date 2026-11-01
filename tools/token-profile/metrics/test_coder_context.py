@@ -71,7 +71,8 @@ class CoderContextTest(unittest.TestCase):
         self.assertEqual(doc["median_continuation_fresh"], 100)
         self.assertEqual(buf.getvalue().strip(),
                          f"status=ok coder-context coders=4 stops=2 stop_rate=0.5 read_share={round(4000 / total, 3)} "
-                         f"grep_share={round(1000 / total, 3)} continuations=1")
+                         f"grep_share={round(1000 / total, 3)} continuations=1 stopped_committed=0.0 "
+                         f"stopped_pass_uncommitted=0.0")
 
     def test_missing_projects_root_exits_2(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -97,6 +98,42 @@ class CoderContextTest(unittest.TestCase):
         self.assertEqual((med["first_context"], med["last_context"]), (15, 120))
         self.assertEqual((med["output_tokens"], med["requests"], med["result_tokens"]), (10, 2, 14))
         self.assertEqual((med["lane_calls"], med["reads"], med["greps"], med["edits"]), (1, 1, 1, 1))
+
+
+class CommitAndHabitsTest(unittest.TestCase):
+    def test_commits_checks_and_read_grep_habits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, out = Path(tmp) / "projects", Path(tmp) / "out"
+            write_subagent(root, "s1", "c1", "packet-coder", "Packet HT-99.", [
+                ("Edit", {"file_path": "C:\\x\\tools\\a.py"}, "ok", 1000),
+                ("PowerShell", {"command": "python -m unittest discover -s tools"}, "Ran 3 tests\n\nOK", 2000),
+                ("Read", {"file_path": "C:\\x\\tools\\b.py"}, DENY, 91000),
+            ], "HT-99 blocked - - reason=context")
+            write_subagent(root, "s2", "c2", "packet-coder", "Packet HT-99.", [
+                ("Edit", {"file_path": "C:\\x\\tools\\a.py"}, "ok", 1000),
+                ("PowerShell", {"command": LANE}, "status=ok errors=0", 2000),
+                ("PowerShell", {"command": 'git -C C:\\x commit -m "HT-99: x"'}, "1 file changed", 3000),
+            ], "HT-99 done abc1234 -")
+            write_subagent(root, "s3", "c3", "packet-coder", "Packet HT-99.", [
+                ("Read", {"file_path": "C:\\x\\tools\\a.py"}, "r" * 1000, 1000),
+                ("Read", {"file_path": "C:\\x\\tools\\a.py", "offset": 10}, "r" * 500, 1000),
+                ("Grep", {"pattern": "x", "output_mode": "content"}, "g" * 300, 1000),
+                ("Grep", {"pattern": "x", "output_mode": "files_with_matches"}, "g" * 100, 1000),
+                ("Edit", {"file_path": "C:\\x\\tools\\a.py"}, "ok", 1000),
+                ("PowerShell", {"command": "python -m unittest discover -s tools"}, "FAILED (failures=1)", 1000),
+            ], "HT-99 done abc1234 -")
+            args = Namespace(projects_root=root, prefix="C--fixture-repo", since=None, until=None, out=out)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(coder_context.run(args), 0)
+            doc = json.loads((out / "coder-context.json").read_text(encoding="utf-8"))
+        al, st = doc["groups"]["all"], doc["groups"]["stopped"]
+        self.assertEqual(al["committed_share"], round(1 / 3, 3))
+        self.assertEqual(al["pass_uncommitted_share"], round(1 / 3, 3))
+        self.assertEqual(al["read_whole_share"], round(1000 / 1500, 3))
+        self.assertEqual(al["read_repeat_share"], round(500 / 1500, 3))
+        self.assertEqual(al["grep_unbounded_share"], 0.75)
+        self.assertEqual((st["committed_share"], st["pass_uncommitted_share"]), (0.0, 1.0))
+        self.assertEqual((doc["continuation_stops"], doc["continuation_stop_rate"]), (0, 0.0))
 
 
 class CategoryTest(unittest.TestCase):
