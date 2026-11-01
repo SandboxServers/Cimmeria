@@ -45,8 +45,10 @@ pub mod lua_capture;
 pub mod lua_eval;
 pub mod mem_write;
 pub mod memory;
+pub mod meta;
 pub mod native_call;
 pub mod seh;
+pub mod tick;
 pub mod transport;
 
 pub use crate::session::LabConfig;
@@ -122,8 +124,9 @@ impl BridgeHandle {
             // left-set flag only survives an actual fault, which
             // terminates the process before the clear runs.
             journal::mark_in_flight();
-            let resp = dispatch::dispatch(&pending.request);
+            let mut resp = dispatch::dispatch(&pending.request);
             journal::clear_in_flight();
+            resp.meta = Some(meta::now(meta::live_game_t()));
             // Client may have disconnected mid-flight; that's fine.
             let _ = pending.respond.send(resp);
         }
@@ -147,6 +150,7 @@ pub fn start(cfg: LabConfig) -> io::Result<BridgeHandle> {
             "lab token must be 32 bytes (64 hex chars)",
         ));
     }
+    meta::mark_start();
     let epoch = crate::session::mint_bridge_epoch()?;
     let listener = TcpListener::bind((cfg.bind.as_str(), cfg.port))?;
     let local_addr = listener.local_addr()?;
@@ -197,6 +201,7 @@ pub fn drain_main_thread() {
     if let Some(handle) = BRIDGE.get() {
         handle.drain();
     }
+    tick::on_tick();
 }
 
 /// IO thread: accept connections, enforce single-client, hand each to
@@ -260,6 +265,8 @@ fn serve_client(mut stream: TcpStream, token: &str, req_tx: &Sender<PendingReque
             break;
         }
     }
+    // Authenticated sessions only: the bad-token paths return above.
+    tick::on_disconnect();
 }
 
 /// Parse a request body, enqueue it for the main thread, and wait for
@@ -284,6 +291,9 @@ fn handle_request_body(body: &[u8], req_tx: &Sender<PendingRequest>) -> RpcRespo
 /// Try to push a request onto the bounded queue. On success returns
 /// the response receiver; on overflow (or a dead consumer) returns
 /// the error response to send back — never blocks.
+// The error variant is the ready-to-send response; `meta` made it large and it
+// is built once per overflow, so boxing buys nothing.
+#[allow(clippy::result_large_err)]
 fn enqueue(
     req_tx: &Sender<PendingRequest>,
     request: RpcRequest,
