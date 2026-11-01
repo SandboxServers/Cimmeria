@@ -284,7 +284,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Play the current Livewire or placeholder minigame through native client mouse input. Reads the server board and ordered SmartFox tap, confirms rollover before every Livewire cut, and returns before/after movie images and the probe log. Requires the lab lease."
+        description = "Play the current Livewire or placeholder minigame through native client mouse input. Reads the server board and ordered SmartFox tap, confirms rollover before every Livewire cut, and returns before/after movie images and the probe log. Returns evidence: a real minigame is confirmed only when the server board says victory (no board read is inconclusive); a placeholder game is confirmed when the client window hides. Requires the lab lease."
     )]
     async fn client_minigame_play(
         &self,
