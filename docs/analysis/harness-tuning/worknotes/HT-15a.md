@@ -27,3 +27,6 @@ Applied notes 1-5 of HT-15a-ruling-1 with a scratchpad script: appended minigame
 Lint for the folder, before: unindexed 193. After: no line for rust-gameserver-dev. Summary: unindexed 203 -> 10, index_over unchanged at 1 (other folder).
 MEMORY.md before: 155 lines, 19,356 bytes. After: 157 lines, 22,236 bytes (gates: <=180 lines, <=23,500 bytes). Pure CRLF checked for MEMORY.md and the new file. Unit tests green.
 Packet-wide counts (sessions 1-3): (a) 46, (b) 6, (c) 0, (d) 4. Deleted files: none.
+## Review fixes, pass 1
+
+N1-N7 applied (code re-verified at HEAD: BeforeTravelSend hook, patch 012 present, range.rs/cast_range.rs, view.test.ts list). No rejections. Lint: memory_lint files=778 no_type=41 state_no_invalidated=92 index_over=1 index_missing=1 unindexed=10 orphan_folders=18 ip_like=4. unittest discover green.

@@ -1,6 +1,6 @@
 ---
 name: client-gm-slash-xml-and-dhd-address-resolution
-description: DA-F3/F8 (2026-10-05) client facts - /gm* commands live in InternalSlashCommands.xml (absent from launcher installs); AccessLevel property 7 is the command mask (2 passes 0x2FF); updateStargateAddress resolves async so an open DHD shows "Unknown"
+description: DA-F3/F8 (2026-10-05) client facts - /gm* commands live in InternalSlashCommands.xml (absent from stock installs; client patch 012 adds it); AccessLevel property 7 is the command mask (2 passes 0x2FF); updateStargateAddress resolves async so an open DHD shows "Unknown"
 metadata:
   type: project
 ---
@@ -12,8 +12,7 @@ Found fixing the Debug Area live-run failures (DA-06 report, PR from worker daf3
   `Common/xml/slash_commands/InternalSlashCommands.xml` then
   `FinalSlashCommands.xml` into `SGWTextCommandMgr` (singleton 0x01ef227c,
   map size at I+0x14). The launcher/retail install lacks Internal (167
-  `/gm*`), so the map holds 104 entries; the QA tree has it (266). Shipping it
-  is a client-content (owner) decision.
+  `/gm*`), so the map holds 104 entries; the QA tree has it (266). Client patch `012-gm-slash-commands` now adds it (`data/client-patches/012-gm-slash-commands/`); a client without patch 012 still answers `Invalid command.`
 - **`onEntityProperty(7 AccessLevel)` is the client's command role mask**
   (case 7 of `FUN_00e6e9f0` -> `FUN_00c73350` -> 0x01df2d44, bound player
   only). Check: `cmd+0xa8 != 0 && (mask & cmd+0xa8) == 0` refuses. `/gmdhd`
@@ -34,5 +33,5 @@ Found fixing the Debug Area live-run failures (DA-06 report, PR from worker daf3
 
 Related: [[debug-area-plaza-and-training-dummies]], [[client-handler-abi-and-static-disassembly]].
 
-INVALIDATED WHEN: the launcher install ships InternalSlashCommands.xml, or the client binary changes
+INVALIDATED WHEN: client patch 012-gm-slash-commands is removed or changes the file, or the client binary changes
 checked: 2026-11-01

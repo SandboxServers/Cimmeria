@@ -1,8 +1,8 @@
 ---
 name: launcher-self-update-handoff-traps
-description: RETIRED egui launcher (sgw-launcher, deleted 2026-10-11) self-update handoff — egui Close waits for a frame, lock lives in instance_lock, relaunch fallback kill; only the Windows lazy-unlock fact still applies
+description: Retired egui launcher handoff (deleted 2026-10-11, LX-18); only the Windows lazy-unlock rule survives, and the desktop launcher's handoff is the zip swap in storage/updater
 metadata:
-  type: project
+  type: reference
 ---
 
 The egui launcher's self-update handoff is gone (deleted 2026-10-11, LX-18); its viewport-close and `instance_lock` bullets were removed with it.

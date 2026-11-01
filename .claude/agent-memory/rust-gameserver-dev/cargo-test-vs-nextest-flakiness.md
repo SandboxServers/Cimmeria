@@ -13,7 +13,7 @@ caused.
 Observed failing test (there may be others): `cell::service::tests::npc_ai::
 state_machine::stationary_no_los_or_range_emits_structured_decision_log`.
 The failure count varies run to run (saw 1, 1, 2 across three consecutive
-clean-tree runs), which is the tell that it's scheduling-dependent.
+clean-tree runs), which is the tell that it's scheduling-dependent. (That test now lives in `crates/cell/src/cell/service/tests/npc_ai/state_machine.rs:149`, not in `cimmeria-services`; `-p cimmeria-services` no longer reaches it.)
 
 **Why:** `cargo test` runs all tests as threads in one process. Tests using
 `crate::test_support::LogCapture` install a *thread-local* subscriber via
@@ -40,4 +40,3 @@ runner can't prove what CI proves.
 checked: unverified 2026-11-01
 
 INVALIDATED WHEN: LogCapture installs a process-wide subscriber or CI stops gating on nextest
-checked: 2026-11-01

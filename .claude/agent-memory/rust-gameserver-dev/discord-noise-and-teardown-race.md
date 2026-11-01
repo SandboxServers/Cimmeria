@@ -34,4 +34,3 @@ source is a race or data gap that can be fixed where it is emitted.
 checked: unverified 2026-11-01
 
 INVALIDATED WHEN: the Discord layer filter table or departed_witnesses helper is renamed or removed
-checked: 2026-11-01
