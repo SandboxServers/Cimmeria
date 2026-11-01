@@ -1,6 +1,7 @@
 """Tests for the PostToolUse commit-before-cap note in .claude/hooks/coder_context_note.py."""
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -27,10 +28,10 @@ def _transcript(tmp, contexts):
     return Path(tmp) / "sess.jsonl"
 
 
-def _run(payload):
+def _run(payload, env=None):
     """Run the hook with the payload on stdin; return its completed process."""
     return subprocess.run([sys.executable, str(HOOK)], input=json.dumps(payload),
-                          capture_output=True, text=True, check=False)
+                          capture_output=True, text=True, check=False, env=env)
 
 
 class CoderContextNoteTest(unittest.TestCase):
@@ -96,6 +97,12 @@ class CoderContextNoteTest(unittest.TestCase):
         result = subprocess.run([sys.executable, str(HOOK)], input="not json",
                                 capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout.strip(), "")
+
+    def test_bad_cap_env_fails_open(self):
+        """Case 8b: a non-number HAIKU_CONTEXT_CAP exits 0 with no output instead of a traceback."""
+        result = _run({}, env={**os.environ, "HAIKU_CONTEXT_CAP": "abc"})
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "")
 
     def test_note_never_denies_and_never_asks_for_report(self):

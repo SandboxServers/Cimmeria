@@ -13,7 +13,17 @@ import sys
 from pathlib import Path
 
 NOTE_AT = 75_000
-CAP = int(os.environ.get("HAIKU_CONTEXT_CAP", "90000"))  # read only: the user-level cap owns this value (D-HT3)
+
+
+def _cap():
+    """The user-level cap from HAIKU_CONTEXT_CAP, read only (D-HT3); 90000 when unset or not a number."""
+    try:
+        return int(os.environ.get("HAIKU_CONTEXT_CAP", "90000"))
+    except ValueError:
+        return 90_000
+
+
+CAP = _cap()  # read only: the user-level cap owns this value (D-HT3)
 MARKER = "coder_context_note:"
 USAGE_KEYS = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
 
