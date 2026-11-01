@@ -16,3 +16,6 @@ Traps:
 
 **Why:** these broke tests or would silently dup/lose items when missed.
 **How to apply:** read before changing the grant path, vendor purchase placement, loot pickup, or loot seeds. See [[ability-launch-fire-split]] for another split-in-time server path.
+
+INVALIDATED WHEN: item_placement::grant_container, LootGrantRefused or the loot table 3 seed changes
+checked: 2026-11-01

@@ -71,3 +71,6 @@ different guards; reverting the whole commit at once hides which guard tracks
 which arm. See [[npc-ai-fight-test-fixtures]].
 
 Related: [[stat-with-no-consumer-trap]], [[entity-template-seed-authoring]]
+
+INVALIDATED WHEN: the resources.items range columns or NPC_ATTACK_RANGE / NPC_MELEE_RANGE change, or the use_ability handle gate gains an is_ranged branch
+checked: 2026-11-01

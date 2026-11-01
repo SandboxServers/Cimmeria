@@ -36,3 +36,5 @@ CI runs nextest, which is why this never shows up in the pipeline.
 
 Related: [[db-test-revert-verification]] for the other case where the local
 runner can't prove what CI proves.
+
+checked: unverified 2026-11-01

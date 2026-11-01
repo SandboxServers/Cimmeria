@@ -1,7 +1,8 @@
 ---
 name: local-postgres-port
 description: Verify the dev Postgres port and database name before every live-DB run — they move, and require_db_or_skip! turns a wrong one into a green self-skip.
-type: project
+metadata:
+  type: project
 ---
 
 **Probe, don't assume.** The port has been 5544 on this host in the past; as of 2026-09-17 the bundled cluster listens on the documented **5433**. Either way, check before trusting a run.
@@ -28,3 +29,6 @@ Get-NetTCPConnection -State Listen | Where-Object { $_.OwningProcess -in (Get-Pr
 ```
 
 See [[build-environment]] and [[db-test-revert-verification]].
+
+INVALIDATED WHEN: the documented dev Postgres port changes from 5433
+checked: 2026-11-01

@@ -33,3 +33,6 @@ Found fixing the Debug Area live-run failures (DA-06 report, PR from worker daf3
   string VA finds the code that loads a filename.
 
 Related: [[debug-area-plaza-and-training-dummies]], [[client-handler-abi-and-static-disassembly]].
+
+INVALIDATED WHEN: the launcher install ships InternalSlashCommands.xml, or the client binary changes
+checked: 2026-11-01
