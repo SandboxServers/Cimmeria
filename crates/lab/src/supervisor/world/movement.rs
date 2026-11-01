@@ -15,6 +15,7 @@ use super::find::{find_entities, FindRequest};
 use super::geometry::{horizontal_m, Pose, Vec3};
 use super::io::WorldIo;
 use super::move_probe::input_probe;
+use super::ledge::{self, Guard};
 use super::move_proof::{arrival_checks, server_end_json, stop_report, tried_list};
 use super::steer::{MoveConfig, MoveController, MoveOutcome, TurnKey, TurnRate};
 use super::turn_state::{apply_turn, TurnKeys};
@@ -73,6 +74,9 @@ pub struct MoveRequest {
     /// The final point or entity still uses `arrival_m`.
     #[serde(default)]
     pub waypoint_arrival_m: Option<f64>,
+    /// Walk off ledges too: without it a walk stops before a drop of 2 m (C14).
+    #[serde(default)]
+    pub allow_drops: Option<bool>,
     /// Arrival radius, metres (default 1.5 for a point, 4.0 for an entity).
     #[serde(default)]
     pub arrival_m: Option<f64>,
@@ -299,6 +303,8 @@ async fn walk<W: WorldIo>(
     let mut leg_reports = Vec::new();
     let mut prev = start;
     let mut forward = false;
+    let mut guard = if req.allow_drops == Some(true) { Guard::Off } else { Guard::On { last_ms: None } };
+    ledge::self_check(&mut guard, io, start).await;
     let mut leg_in_range: Vec<bool> = Vec::new();
     let mut probed = false;
     // The last leg's goal (client space) and radius, for the arrival proof.
@@ -420,6 +426,12 @@ async fn walk<W: WorldIo>(
             let turned = apply_turn(io, turn_keys, &mut held_turn, s.turn)
                 .await
                 .map_err(|e| steps.fail(io.now_ms(), "turn_key", e))?;
+            if forward && ledge::check(&mut guard, io, now, pose).await {
+                release(io, turn_keys).await;
+                let state = json!({ "at": pose.to_json(), "goal": goal.describe(), "ledge_guard": guard.label(), "path": path, "hint": FAIL_HINT });
+                let stop = stop_of(StopKind::Ledge, i, io.now_ms().saturating_sub(t_start), &unsticks, probed, start, pose);
+                return Err(steps.fail_with_stop(io.now_ms(), &format!("leg_{i}"), "ledge ahead: no floor within 2 m".to_string(), state, stop));
+            }
             if s.forward != forward {
                 io.key(FORWARD_KEY, s.forward)
                     .await
@@ -470,6 +482,7 @@ async fn walk<W: WorldIo>(
                 "unsticks": unsticks,
                 "turn_rate": rate.to_json(),
                 "path": path,
+                "ledge_guard": guard.label(),
                 "hint": FAIL_HINT,
             })
         };
@@ -534,6 +547,7 @@ async fn walk<W: WorldIo>(
     }
     let out = json!({
         "arrived": true,
+        "ledge_guard": guard.label(),
         "server_end": server_end_json(end_server),
         "already_in_range": leg_in_range.iter().all(|b| *b),
         "start": start.to_json(),
