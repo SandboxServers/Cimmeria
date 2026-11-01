@@ -282,6 +282,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         server: Option<&'a dyn ServerInvoker>,
         req: RunRequest,
     ) -> Result<Self, String> {
+        // Reject a bad resume request before any bundle is created.
+        resume::validate(&req)?;
         let t = now_ms();
         let (run, mut manifest) = match &req.run_dir {
             Some(dir) => {
@@ -374,7 +376,6 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
 
     /// Run every selected row of every section, in file order.
     pub async fn run_all(mut self) -> Result<RunOutcome, String> {
-        resume::validate(&self.req)?;
         let mut skip = resume::skip_count(&self.req, &self.manifest)?;
         let mut done = Vec::new();
         let sections = self.req.sections.clone();

@@ -67,6 +67,17 @@ contains = "{reply}"
     )
 }
 
+#[test]
+fn new_rejects_resume_without_run_dir_before_creating_a_bundle() {
+    let root = tempfile::tempdir().unwrap();
+    let fake = Fake::new(&[]);
+    let mut req = request(root.path(), &row("R1", ".one", "ONE"));
+    req.resume_from = Some("auto".into());
+    let err = Runner::new(&fake, None, req).err().unwrap();
+    assert_eq!(err, "resume_from needs run_dir");
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+}
+
 #[tokio::test]
 async fn a_resumed_run_skips_earlier_rows() {
     let rows = format!("{}{}", row("R1", ".one", "ONE"), row("R2", ".two", "TWO"));
