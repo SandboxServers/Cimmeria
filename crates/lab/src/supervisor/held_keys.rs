@@ -35,7 +35,15 @@ impl Supervisor {
     /// window messages the lab always posted.
     pub(crate) async fn hold_key(&self, key: &str, down: bool) -> Result<(), String> {
         let k = keys::named(key).ok_or_else(|| format!("unknown key {key:?}"))?;
-        let hwnd = self.game_hwnd().await?;
+        let hwnd = match self.game_hwnd().await {
+            Ok(h) => h,
+            Err(e) => {
+                if !down {
+                    self.holds.lock().await.released(k.vk);
+                }
+                return Err(e);
+            }
+        };
         self.hold_key_at(hwnd, key, k, down).await
     }
 
@@ -66,7 +74,12 @@ impl Supervisor {
                 self.holds.lock().await.set_fallback();
                 self.post_key(hwnd, k, down).await
             }
-            Err(e) => Err(e),
+            Err(e) => {
+                if !down {
+                    self.holds.lock().await.released(k.vk);
+                }
+                Err(e)
+            }
         }
     }
 

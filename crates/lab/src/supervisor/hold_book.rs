@@ -9,12 +9,16 @@ use std::collections::BTreeMap;
 /// half of it, so one lost renewal still leaves a full half-lease of slack.
 pub const LEASE_MS: u32 = 10_000;
 
+/// One key the daemon believes the DLL holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Held {
+    /// The key name the tool used (re-resolved with `keys::named` on renewal).
     pub name: String,
+    /// Monotonic ms at which the lease is half spent.
     pub renew_at_ms: u64,
 }
 
+/// What the daemon holds through the DLL, and when to renew it.
 #[derive(Debug)]
 pub struct HoldBook {
     held: BTreeMap<u8, Held>,
@@ -84,14 +88,17 @@ impl HoldBook {
             .collect()
     }
 
+    /// The name a held key was pressed under.
     pub fn name_of(&self, vk: u8) -> Option<String> {
         self.held.get(&vk).map(|h| h.name.clone())
     }
 
+    /// Whether no key is held.
     pub fn is_empty(&self) -> bool {
         self.held.is_empty()
     }
 
+    /// Forget every hold (the caller released them, or the DLL lease will).
     pub fn clear(&mut self) {
         self.held.clear();
     }
@@ -102,10 +109,12 @@ impl HoldBook {
         self.lease_ms = ms;
     }
 
+    /// Remember that the DLL has no `input_hold`.
     pub fn set_fallback(&mut self) {
         self.fallback = true;
     }
 
+    /// Whether holds are posted as window messages instead.
     pub fn is_fallback(&self) -> bool {
         self.fallback
     }

@@ -86,6 +86,23 @@ async fn renew_logs_reassert() {
 }
 
 #[tokio::test]
+async fn failed_release_forgets_the_hold() {
+    let r: Responder = Arc::new(|m: &str, p: &Value| {
+        if m == "input_hold" && p["down"] == false {
+            return Err("boom".into());
+        }
+        if m == "input_hold" {
+            return Ok(json!({ "posted": true, "held": [] }));
+        }
+        Ok(json!({}))
+    });
+    let sup = fake_bridge::supervisor(r).await;
+    sup.hold_key_at(7, "w", w(), true).await.unwrap();
+    assert!(sup.hold_key_at(7, "w", w(), false).await.is_err());
+    assert!(sup.holds.lock().await.is_empty());
+}
+
+#[tokio::test]
 async fn release_all_sends_ups() {
     let (r, calls) = recording(|| Ok(json!({ "posted": true, "held": [] })));
     let sup = fake_bridge::supervisor(r).await;
