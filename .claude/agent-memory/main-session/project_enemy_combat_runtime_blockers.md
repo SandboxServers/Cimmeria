@@ -24,3 +24,6 @@ There is also no rank/profile layer and no conditional boss selector.
 **Owner decisions still needed:** rank HP multipliers versus the v1.2 handoff pack's "no guessed retail stat scaling" policy, and how armor profiles stack with cover (decision D-NA15a in `docs/analysis/npc-ai-restoration/`).
 
 After the services split (#825), the fix sites are in `crates/cell-combat` (damage apply, abilities) and `crates/entity` (stat caps, EF constants). Label any reconstructed data as reconstruction: the seed is Project Giza's client-derived approximation, not 2009 data (`docs/agents/rules-and-gotchas.md`).
+
+INVALIDATED WHEN: any of the four listed runtime blockers is fixed or the NPC combat profile layer lands
+checked: unverified 2026-11-01

@@ -1,3 +1,10 @@
+---
+name: project_lab_uat_reliability_2026_10_13
+description: Lab UAT reliability progress 2026-10-13
+metadata:
+  type: project
+---
+
 # Lab UAT reliability progress, 2026-10-13
 
 The packet ledger is `docs/analysis/lab-uat-reliability/README.md`. LR-00,
@@ -15,3 +22,6 @@ showed no ammo and dealt no damage; see issue #1667. The tool-specific
 follow-ups are #1701, #1702, #1703, #1706 and #1708. The run did not reach
 Livewire or the ring map. No server runtime change from this campaign has
 been merged, so a colo release is not indicated by these packets.
+
+INVALIDATED WHEN: the lab-uat-reliability ledger closes its pending live proofs
+checked: unverified 2026-11-01

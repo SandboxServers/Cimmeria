@@ -61,3 +61,6 @@ is outside git at `../SGW/Stargate Worlds-QA/Working/SGWGame/Content/UI/Core/Aut
   (the press marks `auto_cycle_los_notified`). Every BSF_AUTO_CYCLING
   broadcast goes through `send_auto_cycle_state` (cell-combat
   abilities/auto_cycle_state.rs).
+
+INVALIDATED WHEN: the auto-cycle tick or the client AutoAttack Lua is changed
+checked: unverified 2026-11-01

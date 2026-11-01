@@ -1,3 +1,10 @@
+---
+name: reference_custom_debug_map
+description: Purpose-built Debug Map research
+metadata:
+  type: reference
+---
+
 # Purpose-built Debug Map research (2026-10-06)
 
 - The user's intended map is a **newly constructed level** assembled from existing SGW assets, with custom rooms, outdoor ground, Stargate and cover. A renamed/copied Harset map does not satisfy it.
@@ -16,3 +23,6 @@
 - CM-00c installed the three `Cimmeria_Lab1` packages in the adjacent QA client (hashes in `client-load-test.md`) and wired temporary world `CimmeriaLab` ID 1301, shared space, cooked-world override, and seed row. The local old `sgw` DB lacked `navmesh_mode`; a separate `sgw_cimmeria_lab` DB was loaded from current seeds, leaving `sgw` intact. Release server started with `DB_URL` targeting the lab DB and logged world 1301 plus successful startup. GM entry is `.gotolocation CimmeriaLab 0 2 0`; **client map rendering/collision remain untested**.
 - 2026-10-07: Worldforge v6 nine-section Ancient shell was client-photographed; user reports joined and walkable sections. V9 (66 placed-actor steps) adds an upper observation loop/ramp, outdoor boundary and ring visual, foliage, room fixtures, lights and emitters. Structural/name audit passed; v9 client collision and visuals are untested. `clone-objects --strip-lightmaps` now validates and strips the sampled FLightMap1D foliage vertex-bulk layout; emitter `OldPosition` moves with the actor.
 - A human-authored `Debug` package set was installed in the QA client as separate `MapperDebug` world 1302. It has four streamed terrain chunks, each with 25 Terrain/25 TerrainComponent exports; the persistent level references all four. Local lab DB row, world table, spaces and override are wired; the restarted server logged world 1302 and successful startup. No client load yet; no server navmesh/occluders/cover. See `docs/analysis/custom-debug-map/mapper-debug-import.md` and `functional-requirements.md`.
+
+INVALIDATED WHEN: the custom-debug-map campaign reaches or fails its CM-00 client load gate
+checked: unverified 2026-11-01

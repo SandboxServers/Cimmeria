@@ -1,3 +1,10 @@
+---
+name: project_cellblock_aftermath_dwell_2026_10_13
+description: Cellblock aftermath dialog dwell timing fix
+metadata:
+  type: project
+---
+
 # Cellblock aftermath dialog dwell (2026-10-13)
 
 Source: issue #1721 and the Cellblock completion UAT server log at 2026-10-14T01:35:34Z.
@@ -6,3 +13,6 @@ Source: issue #1721 and the Cellblock completion UAT server log at 2026-10-14T01
 - Dialog 2516 is about fifty words and both dialogs are button-less. Chain 1172 now waits 26100 ms from completion, giving 2516 about 16 seconds on screen before 5859. The live-DB chain-replay guard checks both seeded delays and at least a 15-second gap.
 - If 5859 replaces an unclosed 2516, the client sends `dialogButtonChoice(2516, -1)`. DU-08's offered-dialog set already accepts that late close; no chain keys it. A rejection warning would be a regression. This timing change addresses readability.
 - Live lab verification on the changed seed is required before the PR merges.
+
+INVALIDATED WHEN: chains 1161/1172 are reseeded with different delays
+checked: unverified 2026-11-01

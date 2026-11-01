@@ -1,3 +1,10 @@
+---
+name: launcher-release-slots
+description: Launcher release identity scheme, slots and overlay identity rules
+metadata:
+  type: reference
+---
+
 # Launcher release identity
 
 Owner-approved D-LX15 supersedes D-LX8: stable UTC YYYY.M.(D*100+N), slots
@@ -12,3 +19,6 @@ artifact. Never cut a release without separate owner authorization.
 Applied overlay identity must come from retained verified installed release
 and live ledger, not catalog offers. SgwGame patches use id@sgw_game keys;
 incomplete overlays must be reported separately from fully applied ones.
+
+INVALIDATED WHEN: the release identity scheme or signing policy changes
+checked: unverified 2026-11-01

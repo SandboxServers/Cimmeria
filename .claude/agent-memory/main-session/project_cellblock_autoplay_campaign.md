@@ -23,3 +23,6 @@ Concurrent runner IDs use time plus six random letters; `RunDir::create_exclusiv
 AP-02 live check (2026-10-14, local server): `lab_play_character` reported `dialog_open: false` when the world HUD first appeared, but the fresh character's intro dialog appeared before the next row. A resumed row then timed out trying to log out under that dialog. The runner now waits briefly for the dialog when `finish_intro = true` and finishes it before starting the row; `finish_intro = false` still leaves it open. Source: `crates/lab/src/uat/runner/session.rs` and `campaign_tests.rs`.
 
 AP-02 review refinement: only an intro marked pending before fresh character creation is auto-finished. That marker survives an interrupted create/play and is cleared before clicking the final intro control, since the click may take effect even if its acknowledgement fails. A later mission dialog on an adopted character remains open for its UAT row. A missing pending intro is a setup block, not a pass. Source: `crates/lab/src/uat/runner/{campaign,session,campaign_tests}.rs`.
+
+INVALIDATED WHEN: the cellblock-autoplay ledger marks the packets done or the runner campaign lifecycle changes
+checked: unverified 2026-11-01

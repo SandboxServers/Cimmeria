@@ -65,3 +65,6 @@ still open" in the design doc and do not add an endpoint, an env override or a
 frontend copy change without the rollout decision. Related:
 [[reference-desktop-engine-test-seams]],
 [[reference-loopback-exporter-test-seams]].
+
+INVALIDATED WHEN: the launcher summary endpoint is enabled in a build or the ingest route or quota changes
+checked: unverified 2026-11-01
