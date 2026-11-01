@@ -151,8 +151,11 @@ pub struct Sim {
     /// A right-click opens an entity's window only within this many metres, straight line, like the server.
     pub interact_range_m: Option<f64>,
     /// The position the server reports for the player (see `server_position`).
-    #[allow(dead_code)] // Callers land in AX-32.
     pub server_pos: Option<Vec3>,
+    /// What every read after the first reports instead, so a walk can see the
+    /// server at one place before it and another after.
+    pub server_pos_end: Option<Vec3>,
+    pub server_pos_reads: u32,
     /// The bridge frame counter; `None` models a client without frames.
     /// `sleep` advances it by `max(1, ms / 16)`.
     pub frames: Option<u64>,
@@ -178,6 +181,10 @@ impl WorldIo for Sim {
     }
 
     async fn server_position(&mut self, _entity_id: u32) -> Result<Option<Vec3>, String> {
+        self.server_pos_reads += 1;
+        if self.server_pos_reads > 1 {
+            return Ok(self.server_pos_end.or(self.server_pos));
+        }
         Ok(self.server_pos)
     }
 

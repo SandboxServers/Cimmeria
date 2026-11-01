@@ -5,8 +5,10 @@ use serde_json::json;
 
 use super::geometry::{horizontal_m, Pose};
 use super::io::WorldIo;
+use super::move_proof;
 use super::movement::{Goal, BACKWARD_KEY, FAIL_HINT, FORWARD_KEY};
 use super::{Steps, WorldError};
+use crate::proof::stop::StopKind;
 
 /// Forward-key liveness probe: hold the forward key this long ...
 const PROBE_HOLD_MS: u64 = 300;
@@ -25,6 +27,7 @@ pub(super) async fn input_probe<W: WorldIo>(
     actor: u32,
     goal: &Goal,
     before: Pose,
+    t_start: u64,
 ) -> Result<Pose, WorldError> {
     io.key(FORWARD_KEY, true)
         .await
@@ -58,8 +61,19 @@ pub(super) async fn input_probe<W: WorldIo>(
         .await
         .map_err(|e| steps.fail(io.now_ms(), "input_probe", e))?;
     let back_m = horizontal_m(after.pos, back.pos);
+    // AX-34 refines these two stops (wall vs dead input); both are ignored input for now.
+    let stop = |io: &W, step: &str| {
+        move_proof::stop_report(
+            StopKind::IgnoredInput,
+            step,
+            io.now_ms().saturating_sub(t_start) as f64 / 1000.0,
+            move_proof::tried_list(&[], true),
+            before.pos,
+            back.pos,
+        )
+    };
     if back_m >= PROBE_MIN_M {
-        return Err(steps.fail_with(
+        return Err(steps.fail_with_stop(
             io.now_ms(),
             &format!("leg_{leg}"),
             format!(
@@ -73,9 +87,10 @@ pub(super) async fn input_probe<W: WorldIo>(
                 "goal": goal.describe(),
                 "hint": FAIL_HINT,
             }),
+            stop(io, &format!("leg_{leg}")),
         ));
     }
-    Err(steps.fail_with(
+    Err(steps.fail_with_stop(
         io.now_ms(),
         "input_probe",
         format!(
@@ -89,5 +104,6 @@ pub(super) async fn input_probe<W: WorldIo>(
             "hold_ms": PROBE_HOLD_MS,
             "hint": "W and S both did nothing, so it is not a wall. Try a ui_sequence key step with hold_ms and compare server_entity_get; if the pawn still ignores W, teleport on the server and click the target without walking. Keys are posted window messages, so client_input_status keyboard counters say nothing about it.",
         }),
+        stop(io, "input_probe"),
     ))
 }

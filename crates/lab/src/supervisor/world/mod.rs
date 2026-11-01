@@ -39,6 +39,7 @@ pub mod io;
 pub mod lua;
 pub mod memory;
 mod move_probe;
+mod move_proof;
 pub mod movement;
 pub mod routes;
 pub mod steer;
@@ -264,6 +265,20 @@ impl Steps {
         stop: crate::proof::stop::StopReport,
     ) -> WorldError {
         let mut e = self.fail(now_ms, step, message);
+        e.0.stop = Some(stop);
+        e
+    }
+
+    /// `fail_with` plus a stop report: keeps the evidence JSON under `state`.
+    pub fn fail_with_stop(
+        &self,
+        now_ms: u64,
+        step: &str,
+        message: impl Into<String>,
+        state: Value,
+        stop: crate::proof::stop::StopReport,
+    ) -> WorldError {
+        let mut e = self.fail_with(now_ms, step, message, state);
         e.0.stop = Some(stop);
         e
     }

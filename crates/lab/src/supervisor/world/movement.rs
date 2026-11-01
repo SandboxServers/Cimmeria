@@ -14,10 +14,13 @@ use super::find::{find_entities, FindRequest};
 use super::geometry::{horizontal_m, Pose, Vec3};
 use super::io::WorldIo;
 use super::move_probe::input_probe;
+use super::move_proof::{arrival_checks, server_end_json, stop_report, tried_list};
 use super::steer::{MoveConfig, MoveController, MoveOutcome, TurnKey, TurnRate};
 use super::turn_state::{apply_turn, TurnKeys};
 use super::unstick::run_unstick;
 use super::{NativeLevel, PointArg, Steps, TargetArg, WorldError};
+use crate::proof::stop::{StopKind, StopReport};
+use crate::proof::Evidence;
 
 pub const FORWARD_KEY: &str = "W";
 /// Backward key, for the blocked-vs-dead probe retry.
@@ -106,7 +109,7 @@ impl Goal {
 }
 
 /// The player's actor, re-resolved when a read fails.
-async fn player_actor<W: WorldIo>(io: &mut W) -> Result<(u32, Pose), String> {
+async fn player_actor<W: WorldIo>(io: &mut W) -> Result<(u32, Pose, u32), String> {
     let snap = io.snapshot().await?;
     let p = snap
         .player()
@@ -114,7 +117,27 @@ async fn player_actor<W: WorldIo>(io: &mut W) -> Result<(u32, Pose), String> {
     let pose = p
         .pose
         .ok_or_else(|| format!("player entity {} has no actor", snap.player_id))?;
-    Ok((p.actor, pose))
+    Ok((p.actor, pose, snap.player_id))
+}
+
+/// The stop report of a failed leg (C8). `elapsed_ms` is since the walk began.
+fn stop_of(
+    kind: StopKind,
+    leg: usize,
+    elapsed_ms: u64,
+    unsticks: &[&str],
+    probed: bool,
+    at: Pose,
+    here: Pose,
+) -> StopReport {
+    stop_report(
+        kind,
+        &format!("leg_{leg}"),
+        elapsed_ms as f64 / 1000.0,
+        tried_list(unsticks, probed),
+        at.pos,
+        here.pos,
+    )
 }
 
 /// Release what the walk may be holding. Errors are ignored on purpose: a
@@ -260,9 +283,12 @@ async fn walk<W: WorldIo>(
         ));
     }
 
-    let (mut actor, start) = player_actor(io)
+    let (mut actor, start, player_id) = player_actor(io)
         .await
         .map_err(|e| steps.fail(io.now_ms(), "read_player", e))?;
+    // The server's own view of where the player is, before and after: the
+    // client can walk into a wall that the server never agreed to (D-AX11).
+    let start_server = io.server_position(player_id).await.ok().flatten();
     let timeout = req.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).min(600_000);
     let t_start = io.now_ms();
     let mut rate = TurnRate::default();
@@ -274,6 +300,8 @@ async fn walk<W: WorldIo>(
     let mut forward = false;
     let mut leg_in_range: Vec<bool> = Vec::new();
     let mut probed = false;
+    // The last leg's goal (client space) and radius, for the arrival proof.
+    let mut final_leg: Option<(Vec3, f64)> = None;
 
     for (i, (mut goal, arrival)) in legs.into_iter().enumerate() {
         let t_leg = io.now_ms();
@@ -290,7 +318,7 @@ async fn walk<W: WorldIo>(
             let now = io.now_ms();
             if now.saturating_sub(t_start) > timeout {
                 let goal_pos = goal.position(io).await;
-                return Err(steps.fail_with(
+                return Err(steps.fail_with_stop(
                     now,
                     &format!("leg_{i}"),
                     format!("timed out after {timeout} ms"),
@@ -304,12 +332,21 @@ async fn walk<W: WorldIo>(
                         "path": path,
                         "hint": FAIL_HINT,
                     }),
+                    stop_of(
+                        StopKind::Timeout,
+                        i,
+                        now - t_start,
+                        &unsticks,
+                        probed,
+                        start,
+                        prev,
+                    ),
                 ));
             }
             let pose = match io.actor_pose(actor).await {
                 Ok(p) => p,
                 Err(_) => {
-                    let (a, p) = player_actor(io)
+                    let (a, p, _) = player_actor(io)
                         .await
                         .map_err(|e| steps.fail(io.now_ms(), "read_player", e))?;
                     actor = a;
@@ -318,11 +355,20 @@ async fn walk<W: WorldIo>(
             };
             let jumped = horizontal_m(prev.pos, pose.pos);
             if jumped > TELEPORT_M {
-                return Err(steps.fail_with(
+                return Err(steps.fail_with_stop(
                     io.now_ms(),
                     &format!("leg_{i}"),
                     format!("the player moved {jumped:.1} m in one tick (teleport or zone change)"),
                     json!({ "from": prev.to_json(), "to": pose.to_json() }),
+                    stop_of(
+                        StopKind::Stalled,
+                        i,
+                        io.now_ms().saturating_sub(t_start),
+                        &unsticks,
+                        probed,
+                        start,
+                        pose,
+                    ),
                 ));
             }
             prev = pose;
@@ -344,7 +390,7 @@ async fn walk<W: WorldIo>(
             // per walk, not per leg.
             if !probed {
                 probed = true;
-                let after = input_probe(io, &mut steps, i, actor, &goal, pose).await?;
+                let after = input_probe(io, &mut steps, i, actor, &goal, pose, t_start).await?;
                 steps.used(NativeLevel::RealInput);
                 prev = after;
                 ctl.skip_next_learning();
@@ -387,6 +433,17 @@ async fn walk<W: WorldIo>(
         steps.record(&format!("leg_{i}"), t_leg, io.now_ms(), report.clone());
         leg_reports.push(report);
         leg_in_range.push(leg_start_m.is_some_and(|d| d <= arrival));
+        let stop = |kind| {
+            stop_of(
+                kind,
+                i,
+                io.now_ms().saturating_sub(t_start),
+                &unsticks,
+                probed,
+                start,
+                prev,
+            )
+        };
         let evidence = || {
             json!({
                 "at": prev.to_json(),
@@ -404,25 +461,27 @@ async fn walk<W: WorldIo>(
                 distance_m,
                 attempts,
             } => {
-                return Err(steps.fail_with(
+                return Err(steps.fail_with_stop(
                     io.now_ms(),
                     &format!("leg_{i}"),
                     format!("stuck {distance_m:.1} m short after {attempts} unstick attempts"),
                     evidence(),
+                    stop(StopKind::Stuck),
                 ));
             }
             MoveOutcome::Diverged { distance_m, best_m } => {
-                return Err(steps.fail_with(
+                return Err(steps.fail_with_stop(
                     io.now_ms(),
                     &format!("leg_{i}"),
                     format!(
                         "walking away from the goal: {distance_m:.1} m now, {best_m:.1} m at the closest; stopped instead of drifting further"
                     ),
                     evidence(),
+                    stop(StopKind::Stalled),
                 ));
             }
             MoveOutcome::NoTurn { ticks } => {
-                return Err(steps.fail_with(
+                return Err(steps.fail_with_stop(
                     io.now_ms(),
                     &format!("leg_{i}"),
                     format!(
@@ -430,9 +489,11 @@ async fn walk<W: WorldIo>(
                         turn_keys.left, turn_keys.right
                     ),
                     evidence(),
+                    stop(StopKind::IgnoredInput),
                 ));
             }
         }
+        final_leg = Some((goal.position(io).await, arrival));
     }
     if forward {
         io.key(FORWARD_KEY, false)
@@ -440,8 +501,21 @@ async fn walk<W: WorldIo>(
             .map_err(|e| steps.fail(io.now_ms(), "forward_key", e))?;
     }
     path.push(json!({ "t_ms": io.now_ms() - t_start, "at": prev.pos.to_json() }));
+    // Ask the server too (D-AX11): the pose above is the client's own belief.
+    let end_server = io.server_position(player_id).await.ok().flatten();
+    if let Some((goal_pos, arrival)) = final_leg {
+        steps.judged(Evidence::judge(arrival_checks(
+            goal_pos,
+            start.pos,
+            prev.pos,
+            arrival,
+            start_server,
+            end_server,
+        )));
+    }
     let out = json!({
         "arrived": true,
+        "server_end": server_end_json(end_server),
         "already_in_range": leg_in_range.iter().all(|b| *b),
         "start": start.to_json(),
         "end": prev.to_json(),

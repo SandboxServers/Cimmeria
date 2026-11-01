@@ -59,7 +59,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Walk with real movement keys to a point, an entity (entity_id, name or server template_id; optional alive, nearest and zero-based index), through optional waypoints. Template/life filters require the server lab MCP. The entity goal follows its actor. Turns with bound turn keys, handles snags and teleports, and releases keys on every exit."
+        description = "Walk with real movement keys to a point, an entity (entity_id, name or server template_id; optional alive, nearest and zero-based index), through optional waypoints. Template/life filters require the server lab MCP. The entity goal follows its actor. Turns with bound turn keys, handles snags and teleports, and releases keys on every exit. Returns evidence: confirmed only when the client and the server both put the player within the arrival radius (server +1 m); a server that cannot be asked makes it inconclusive. Failures carry stop: what happened, what was tried, and lab_recover recipes to try."
     )]
     async fn client_move_to(
         &self,
