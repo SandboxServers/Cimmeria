@@ -550,19 +550,13 @@ impl LabServer {
         if let Some(reason) = &p1_revoked {
             tracing::warn!(target: "lab.lease", event = "uat_run_revoked", %reason,
                 "UAT run stopped: lease lost");
-            let _ = self
-                .supervisor
-                .bridge_call("input_release", json!({}))
-                .await;
+            let _ = self.supervisor.release_all_input("uat_lease_lost").await;
         }
         // A row cut off mid-press may have left a key or button down;
         // letting go is allowed without the lease. p2's input goes once,
         // whichever lease was lost.
         if let (Some(server), true) = (&p2_server, p1_revoked.is_some() || p2_revoked.is_some()) {
-            let _ = server
-                .supervisor
-                .bridge_call("input_release", json!({}))
-                .await;
+            let _ = server.supervisor.release_all_input("uat_lease_lost").await;
         }
         let mut head = json!({ "run_dir": out.run_dir, "rows": out.rows });
         // The runner's own headers (seed resolved), which the CLI prints in

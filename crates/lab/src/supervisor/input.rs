@@ -274,26 +274,16 @@ impl Supervisor {
     }
 
     /// `client_input_key` — press, release, or tap (press, hold, release)
-    /// a key, as the window messages a real key produces.
+    /// a key. Held through the DLL with a lease, so a dead daemon cannot
+    /// leave it down (AX-26); an old DLL gets the window messages instead.
     pub async fn input_key(
         &self,
         key: &str,
         action: &str,
         hold_ms: Option<u64>,
     ) -> Result<Value, String> {
-        let k = keys::named(key).ok_or_else(|| format!("unknown key {key:?}"))?;
         let hwnd = self.game_hwnd().await?;
-        match action {
-            "down" => self.post_key(hwnd, k, true).await?,
-            "up" => self.post_key(hwnd, k, false).await?,
-            "tap" => {
-                self.post_key(hwnd, k, true).await?;
-                tokio::time::sleep(Duration::from_millis(hold_ms.unwrap_or(DEFAULT_HOLD_MS))).await;
-                self.post_key(hwnd, k, false).await?;
-            }
-            other => return Err(format!("action must be down, up or tap, not {other:?}")),
-        }
-        Ok(json!({ "key": key, "action": action }))
+        self.input_key_at(hwnd, key, action, hold_ms).await
     }
 
     /// `client_input_mouse` — relative motion / wheel (DirectInput, for

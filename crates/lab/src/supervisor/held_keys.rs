@@ -141,6 +141,13 @@ impl Supervisor {
         if self.holds.lock().await.is_empty() {
             return;
         }
+        // One release path: the DLL's `input_release` lets go of everything.
+        if !self.holds.lock().await.is_fallback() {
+            if let Err(e) = self.release_all_input("holds").await {
+                tracing::debug!(target: "lab.hold", error = %e, "hold release left to the lease");
+            }
+            return;
+        }
         match self.game_hwnd().await {
             Ok(hwnd) => self.release_all_holds_at(hwnd).await,
             Err(e) => {
