@@ -46,6 +46,44 @@ pub fn sgw_pids_in(entries: impl IntoIterator<Item = (u32, String)>) -> Vec<u32>
         .collect()
 }
 
+/// What a launch does about running screensavers (C18).
+#[derive(Debug, PartialEq, Eq)]
+pub enum SaverAction {
+    /// No screensaver process runs; launch continues.
+    None,
+    /// Non-secure screensavers (pids) to terminate before the probe.
+    Kill(Vec<u32>),
+    /// A secure screensaver locks the session; the launch fails with this text.
+    Refuse(String),
+}
+
+/// `.scr` image names (case-insensitive) among `(pid, exe file name)` entries.
+pub fn scr_entries(entries: impl IntoIterator<Item = (u32, String)>) -> Vec<(u32, String)> {
+    let is_scr = |exe: &String| exe.to_ascii_lowercase().ends_with(".scr");
+    entries.into_iter().filter(|(_, exe)| is_scr(exe)).collect()
+}
+
+/// Pure. `scr` is every running `.scr` process as (pid, name); `secure` is
+/// `SPI_GETSCREENSAVESECURE`.
+pub fn screensaver_action(scr: &[(u32, String)], secure: bool) -> SaverAction {
+    match scr.first() {
+        None => SaverAction::None,
+        Some((pid, name)) if secure => SaverAction::Refuse(format!(
+            "screensaver {name} (pid {pid}) is running and locks the session; unlock the lab machine"
+        )),
+        Some(_) => SaverAction::Kill(scr.iter().map(|(pid, _)| *pid).collect()),
+    }
+}
+
+/// Append the running `.scr` processes to a probe failure message.
+pub fn with_running_scr(msg: String, scr: &[(u32, String)]) -> String {
+    if scr.is_empty() {
+        return msg;
+    }
+    let list: Vec<String> = scr.iter().map(|(p, n)| format!("{n} pid {p}")).collect();
+    format!("{msg} (running: {})", list.join(", "))
+}
+
 #[cfg(windows)]
 mod win {
     use std::ffi::c_void;
@@ -119,16 +157,14 @@ mod win {
         }
     }
 
-    pub fn dismiss_screensaver() -> usize {
-        let pids = process::running_pids_where(|p| p.to_ascii_lowercase().ends_with(".scr"));
-        for &pid in &pids {
-            process::terminate(pid);
-        }
+    /// Kill the given screensaver pids.
+    pub fn dismiss_screensaver(pids: &[u32]) -> usize {
+        pids.iter().for_each(|&pid| process::terminate(pid));
         pids.len()
     }
 
-    /// Pids of every running `SGW.exe`, whether or not it has a window.
-    pub fn sgw_process_pids() -> Vec<u32> {
+    /// Every running process as `(pid, exe file name)`, from a Toolhelp snapshot.
+    pub fn process_entries() -> Vec<(u32, String)> {
         let mut entries = Vec::new();
         // SAFETY: a process snapshot walked with a correctly sized entry; the
         // snapshot handle is closed below.
@@ -154,7 +190,12 @@ mod win {
             }
             CloseHandle(snap);
         }
-        crate::supervisor::display::sgw_pids_in(entries)
+        entries
+    }
+
+    /// Pids of every running `SGW.exe`, whether or not it has a window.
+    pub fn sgw_process_pids() -> Vec<u32> {
+        crate::supervisor::display::sgw_pids_in(process_entries())
     }
 
     /// The keep-awake thread: holds the display and system awake while any
@@ -202,27 +243,49 @@ pub fn spawn_keep_awake() {
 pub fn ensure_display_for_launch() -> Result<(), String> {
     #[cfg(windows)]
     {
+        // Enumerated before the probe, whatever SPI says: a saver on its own
+        // desktop is invisible to the window walk.
+        let scr = scr_entries(win::process_entries());
+        let secure = win::screensaver_secure();
+        match screensaver_action(&scr, secure) {
+            SaverAction::Refuse(reason) => {
+                tracing::warn!(target: "lab.client", event = "screensaver_refused", reason = %reason, "lab launch: refused, a secure screensaver is running");
+                return Err(reason);
+            }
+            SaverAction::Kill(pids) => dismiss_and_settle(&scr, &pids),
+            SaverAction::None => {}
+        }
         if win::probe_d3d().is_ok() {
             tracing::info!(target: "lab.client", event = "display_probe", ok = true, "lab launch: Direct3D probe ok");
             return Ok(());
         }
-        let running = win::screensaver_running();
-        let secure = win::screensaver_secure();
-        if running && !secure {
-            let n = win::dismiss_screensaver();
-            tracing::warn!(
-                dismissed = n,
-                "lab launch: dismissed a non-secure screensaver"
-            );
-            std::thread::sleep(std::time::Duration::from_secs(2));
+        // Second check: SPI may still report a non-secure saver.
+        if win::screensaver_running() && !secure {
+            let fresh = scr_entries(win::process_entries());
+            if let SaverAction::Kill(pids) = screensaver_action(&fresh, false) {
+                dismiss_and_settle(&fresh, &pids);
+            }
         }
         return match win::probe_d3d() {
             Ok(()) => Ok(()),
-            Err(hr) => Err(describe_d3d_failure(hr, win::screensaver_running(), secure)),
+            Err(hr) => {
+                let msg = describe_d3d_failure(hr, win::screensaver_running(), secure);
+                Err(with_running_scr(msg, &scr_entries(win::process_entries())))
+            }
         };
     }
     #[allow(unreachable_code)]
     Ok(())
+}
+
+/// Kill the non-secure screensavers `pids` (all of `scr`), then give the
+/// desktop two seconds.
+#[cfg(windows)]
+fn dismiss_and_settle(scr: &[(u32, String)], pids: &[u32]) {
+    let names: Vec<&str> = scr.iter().map(|(_, name)| name.as_str()).collect();
+    let n = win::dismiss_screensaver(pids);
+    tracing::warn!(dismissed = n, names = %names.join(", "), "lab launch: dismissed a non-secure screensaver");
+    std::thread::sleep(std::time::Duration::from_secs(2));
 }
 
 #[cfg(test)]
@@ -262,5 +325,59 @@ mod tests {
             sgw_pids_in(Vec::new()).is_empty(),
             "no client, nothing held"
         );
+    }
+
+    /// Fails on revert: without the suffix match, `scrcons.exe` and `foo.scr.exe`
+    /// would count as screensavers.
+    #[test]
+    fn scr_entries_match_by_suffix() {
+        let entries = vec![
+            (1, "Ribbons.SCR".to_string()),
+            (2, "ribbons.scr".to_string()),
+            (3, "scrcons.exe".to_string()),
+            (4, "foo.scr.exe".to_string()),
+            (5, "SGW.exe".to_string()),
+        ];
+        let kept = vec![
+            (1, "Ribbons.SCR".to_string()),
+            (2, "ribbons.scr".to_string()),
+        ];
+        assert_eq!(scr_entries(entries), kept);
+    }
+
+    #[test]
+    fn no_scr_no_action() {
+        assert_eq!(screensaver_action(&[], false), SaverAction::None);
+    }
+
+    /// Fails on revert: a non-secure saver is killed (C18).
+    #[test]
+    fn non_secure_scr_is_killed() {
+        let scr = vec![(4242, "Ribbons.scr".to_string())];
+        assert_eq!(
+            screensaver_action(&scr, false),
+            SaverAction::Kill(vec![4242])
+        );
+    }
+
+    /// Fails on revert: a secure saver is refused by name and pid (C18).
+    #[test]
+    fn secure_scr_is_refused_by_name_and_pid() {
+        let scr = vec![(4242, "Ribbons.scr".to_string())];
+        match screensaver_action(&scr, true) {
+            SaverAction::Refuse(s) => {
+                assert!(s.contains("Ribbons.scr") && s.contains("4242"), "{s}")
+            }
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    }
+
+    /// Fails on revert: the probe failure must name the running saver.
+    #[test]
+    fn probe_failure_names_running_scr() {
+        let scr = [(7, "a.scr".to_string())];
+        let s = with_running_scr("x".into(), &scr);
+        assert!(s.contains("a.scr pid 7"), "{s}");
+        assert_eq!(with_running_scr("x".into(), &[]), "x");
     }
 }

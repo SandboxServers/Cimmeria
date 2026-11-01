@@ -44,7 +44,10 @@ Dispatch `architect` with the goal and the campaign folder
 - `README.md`: purpose, findings with a packet column, a **Decisions** table
   (`D-XX1`... with status and reason), and a packet status table using
   **Ready / BlockedDependency / BlockedDecision / Writing / Review /
-  Integrated / UATPending / Done**.
+  Integrated / UATPending / Done**. A decision prefix (`D-XX`) and a packet
+  prefix (`XX-`) belong to one campaign; `test_ledgers.py` enforces it. Don't
+  start a table row with another campaign's ID; cite it in a later column. A
+  Decisions table may add **Recommended** and **Evidence** columns.
 - `work-packets.md`: dispatch rules, then the **contract** parallel packets
   build against (exact type names, function signatures, schema, report and
   return formats), then one section per packet, grouped into waves.
@@ -128,7 +131,8 @@ shape.
    (Windows unless it says otherwise); a mismatch returns `blocked`. Always:
    the lane only, no direct `cargo`, no `git worktree prune`, no `git stash`,
    no push. They commit locally and stop.
-4. On a one-line return, update the ledger row; an implementer's `done` (a packet-coder or a domain agent) starts that packet's review loop (§ 4). Open a report file
+4. `report_contract.py`, a `SubagentStop` hook, blocks a stop that has no return line (or, for a report writer, no fresh report) once; the second stop goes through, and so does a stop after `Context cap reached`. Expect a missing line to cost one turn, not a failure.
+   On a one-line return, update the ledger row; an implementer's `done` (a packet-coder or a domain agent) starts that packet's review loop (§ 4). Open a report file
    only when a non-coder's return says `blocked`, `failed` or `verdict=decision`.
    Route a packet-coder's `blocked` or `failed` by its `reason=`:
    - `context`, or no usable line at all → a continuation, the coder loop in
@@ -153,7 +157,11 @@ Three review loops run. They have the same shape and the same limit:
 | Campaign | after the last wave merges, before close-out | everything the campaign merged, on `origin/main` | a fresh `packet-coder` in an `ops` worktree named `<campaign>-review` |
 
 One pass is one fresh, read-only [`packet-reviewer`](../../agents/packet-reviewer.md)
-session. It returns `verdict=ship`, `fix` or `decision`:
+session. It returns `verdict=ship`, `fix` or `decision`. Its report has four sections: `## Verdict`, `## Fix notes`,
+`## Not fixed` and `## Not checked`. The reviewer copies the coder's `not_run=`
+items it did not verify into `## Not checked`, and its return line ends
+`not_assessed=<n>`. On `ship` with `not_assessed` above zero, copy those items
+to the ledger so a skipped check stays visible. The verdicts:
 
 1. `ship`: the loop is done.
 2. `fix` on pass 1 or 2: dispatch a fresh `packet-coder` with "review fix,
@@ -257,8 +265,11 @@ campaign's state lives on disk, not in the transcript:
   packets in flight with their worktrees, the next action, open decisions.
   Rewrite it at every wave boundary.
 - `.claude/state/active-campaign`: one line, the campaign folder name
-  (gitignored). In Claude Code, after a compaction the `resume_card.py`
-  SessionStart hook injects the first 40 lines of RESUME.md; Codex has no
+  (gitignored). The card is per session: write the pointer once in each
+  session that works on a campaign, and the `resume_card.py` SessionStart hook
+  uses this session's last write of it (or, without one, the campaign most of
+  its recent dispatches name). Empty it at close-out. In Claude Code, after a
+  compaction the hook injects the first 40 lines of RESUME.md; Codex has no
   resume card, so read RESUME.md yourself. Either way, read it and the ledger
   README before acting.
 
