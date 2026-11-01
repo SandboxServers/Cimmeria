@@ -70,21 +70,25 @@ impl Check {
         }
     }
 
+    /// Set the reading taken before the action.
     pub fn with_before(mut self, v: Value) -> Self {
         self.before = Some(v);
         self
     }
 
+    /// Set the reading taken after the action.
     pub fn with_after(mut self, v: Value) -> Self {
         self.after = Some(v);
         self
     }
 
+    /// Set the frame number the reading came from.
     pub fn with_frame(mut self, frame: u64) -> Self {
         self.frame = Some(frame);
         self
     }
 
+    /// Set the C2 code this check implies when it decides the verdict.
     pub fn with_why(mut self, why: Why) -> Self {
         self.why = Some(why);
         self
