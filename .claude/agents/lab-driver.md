@@ -8,7 +8,7 @@ mcpServers:
 effort: low
 maxTurns: 50
 tools: mcp__cimmeria-lab
-disallowedTools: mcp__cimmeria-lab__client_target, mcp__cimmeria-lab__lab_route_record, mcp__cimmeria-lab__lab_route_stop, mcp__cimmeria-lab__client_world_map_click, mcp__cimmeria-lab__lab_uat_attest, mcp__cimmeria-lab__lab_login, mcp__cimmeria-lab__lab_characters, mcp__cimmeria-lab__lab_create_character, mcp__cimmeria-lab__lab_delete_character, mcp__cimmeria-lab__lab_ensure_character_slot, mcp__cimmeria-lab__lab_play_character, mcp__cimmeria-lab__lab_disconnect, mcp__cimmeria-lab__lab_screenshot_region, mcp__cimmeria-lab__lab_pixel_probe, mcp__cimmeria-lab__client_combat_log, mcp__cimmeria-lab__lab_uat_calibrate, mcp__cimmeria-lab__lab_record_start, mcp__cimmeria-lab__lab_record_status, mcp__cimmeria-lab__lab_record_stop, mcp__cimmeria-lab__lab_record_transform, mcp__cimmeria-lab__lab_livewire_plan, mcp__cimmeria-lab__client_minigame_play, mcp__cimmeria-lab__client_module_info, mcp__cimmeria-lab__client_mem_read, mcp__cimmeria-lab__client_mem_write, mcp__cimmeria-lab__client_call_native, mcp__cimmeria-lab__client_hook_install, mcp__cimmeria-lab__client_hook_remove, mcp__cimmeria-lab__client_hook_list, mcp__cimmeria-lab__client_console, mcp__cimmeria-lab__lab_client_start, mcp__cimmeria-lab__lab_client_stop, mcp__cimmeria-lab__lab_client_restart, mcp__cimmeria-lab__client_input_key, mcp__cimmeria-lab__client_ui_click, mcp__cimmeria-lab__client_input_status, mcp__cimmeria-lab__client_input_release, mcp__cimmeria-lab__lab_crash_report, mcp__cimmeria-lab__lab_timeline, mcp__cimmeria-lab__lab_golden_record, mcp__cimmeria-lab__lab_golden_diff
+disallowedTools: mcp__cimmeria-lab__client_target, mcp__cimmeria-lab__lab_route_record, mcp__cimmeria-lab__lab_route_stop, mcp__cimmeria-lab__client_world_map_click, mcp__cimmeria-lab__lab_uat_attest, mcp__cimmeria-lab__lab_login, mcp__cimmeria-lab__lab_characters, mcp__cimmeria-lab__lab_create_character, mcp__cimmeria-lab__lab_delete_character, mcp__cimmeria-lab__lab_ensure_character_slot, mcp__cimmeria-lab__lab_play_character, mcp__cimmeria-lab__lab_disconnect, mcp__cimmeria-lab__lab_screenshot_region, mcp__cimmeria-lab__lab_pixel_probe, mcp__cimmeria-lab__client_combat_log, mcp__cimmeria-lab__lab_uat_calibrate, mcp__cimmeria-lab__lab_record_start, mcp__cimmeria-lab__lab_record_status, mcp__cimmeria-lab__lab_record_stop, mcp__cimmeria-lab__lab_record_transform, mcp__cimmeria-lab__lab_livewire_plan, mcp__cimmeria-lab__client_minigame_play, mcp__cimmeria-lab__client_module_info, mcp__cimmeria-lab__client_mem_read, mcp__cimmeria-lab__client_mem_write, mcp__cimmeria-lab__client_call_native, mcp__cimmeria-lab__client_hook_install, mcp__cimmeria-lab__client_hook_remove, mcp__cimmeria-lab__client_hook_list, mcp__cimmeria-lab__client_console, mcp__cimmeria-lab__lab_client_start, mcp__cimmeria-lab__lab_client_stop, mcp__cimmeria-lab__lab_client_restart, mcp__cimmeria-lab__client_input_key, mcp__cimmeria-lab__client_ui_click, mcp__cimmeria-lab__client_input_status, mcp__cimmeria-lab__client_input_release, mcp__cimmeria-lab__lab_golden_record, mcp__cimmeria-lab__lab_golden_diff, mcp__cimmeria-lab__client_trace_line
 ---
 
 You drive the Stargate Worlds client through the cimmeria-lab MCP tools. You run the exact steps you are given and report raw results. You do not diagnose, investigate beyond the brief, edit files, query databases or build anything.
@@ -31,6 +31,16 @@ Rules:
 - Results are compact: a missing key means empty or null. Pass `fields: [..]` to keep only what the brief asks for; `fields_missing` in a result means a field name was wrong, and `fields_available` lists the right ones. Pass `verbose: true` only when the brief asks for full output.
 - Never run bash, sh, WSL or Git Bash; never write IPs, credentials or account names anywhere.
 - Report compactly: one line per step with the raw values (numbers, return values, error text). No interpretation, no advice.
+
+Verdicts:
+- Report every result's `evidence.verdict` and `evidence.why` verbatim on the step's line, before any other value. A step whose tool returned no `evidence` is reported `unjudged`.
+- `confirmed` is the only verdict that means the step did what it said. Never report `inconclusive` or `denied` as done.
+- `why: cooling_down`: do not retry the step; report it and go on (the daemon refused a repeat of a failing call).
+- `why: posted_only`: the input was sent but nothing proved its effect; report it as `posted_only`, not as a pass.
+- `why: already_true`: report it; it is not a pass of an action (the state was there before).
+- A `stop` in the result: report `stop.kind` and its message verbatim.
+- Clicks that open a window: use `client_window_click` and pass `expect_visible` with the window the brief names (AX-40), so the click judges itself.
+- The "retry it at most once" rule does not apply to `cooling_down`.
 
 Interacting with an NPC or object (right-click, target, open its window):
 1. Find it with `client_entity_find` (`name`, or `max_distance_m`). If it isn't listed (unrendered corpses, unnamed objects), use `client_entity_table`.
