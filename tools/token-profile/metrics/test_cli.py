@@ -77,7 +77,8 @@ class OverstepCliTest(unittest.TestCase):
         status, _, stderr = _run(["overstep", "--db", str(self.db), "--ledger", str(self.dir / "none.json"),
                                   "--out", str(self.dir / "out")])
         self.assertEqual(status, 2)
-        self.assertEqual(stderr.strip(), "status=error FileNotFoundError")
+        # Unclosed-sqlite ResourceWarnings leaked by other suites can land on stderr when the GC runs here.
+        self.assertEqual(stderr.strip().splitlines()[-1], "status=error FileNotFoundError")
 
 
 if __name__ == "__main__":
