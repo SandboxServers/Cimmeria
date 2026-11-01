@@ -38,6 +38,7 @@ Every brief carries: the worktree path, the packet section path (not its text; t
 - Dispatch every independent packet of a wave in one message, in the background.
 - On a one-line return, update the ledger row; an implementer's `done` starts that packet's review loop. A `packet-coder`'s `blocked` or `failed` has no report: route it by `reason=` (`context` → the coder loop; `checks` → the Sonnet implementer; `spec` → `architect`; `host`, `platform` or `tool` → the packet's host note). For any other agent, open its report only when the return says `blocked`, `failed` or `verdict=decision`.
 - A `packet-reviewer` return ends with `verdict=<ship|fix|decision>` (a wave review adds `verdicts=<packet>:<ship|fix|decision>,...`). Act on `ship` and `fix` from the return line, passing the report path to the next coder unread; open the report only for `decision` or `blocked`.
+- A reviewer line with `verdict=ship` and `not_assessed=<n>` above 0: open only the report's `## Not checked` section and copy its items into the packet's ledger row (or worknote) before shipping, so the close-out sees what nobody checked.
 
 ## No teammates
 
