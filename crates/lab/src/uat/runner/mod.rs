@@ -26,6 +26,7 @@ mod heal;
 mod lab_commands;
 mod packet;
 mod players;
+mod resume;
 mod revocation;
 mod row;
 mod server_wait;
@@ -100,6 +101,9 @@ pub struct RunRequest {
     /// Chaos specs (lab-chaos CH-08), already checked by the caller; the
     /// runner resolves them with the run's seed ([`chaos`]).
     pub chaos: Vec<String>,
+    /// Resume an appended run (`run_dir`) at `"<section>/<row>"`, or `"auto"`
+    /// for the first row with no manifest entry (AX-16, contract C10).
+    pub resume_from: Option<String>,
 }
 
 /// When a row's fixture is applied: `auto` (the row has one), `always`,
@@ -278,6 +282,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         server: Option<&'a dyn ServerInvoker>,
         req: RunRequest,
     ) -> Result<Self, String> {
+        // Reject a bad resume request before any bundle is created.
+        resume::validate(&req)?;
         let t = now_ms();
         let (run, mut manifest) = match &req.run_dir {
             Some(dir) => {
@@ -370,6 +376,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
 
     /// Run every selected row of every section, in file order.
     pub async fn run_all(mut self) -> Result<RunOutcome, String> {
+        let mut skip = resume::skip_count(&self.req, &self.manifest)?;
         let mut done = Vec::new();
         let sections = self.req.sections.clone();
         // Cleared when run_all returns, on every path (D-LW1).
@@ -382,6 +389,11 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                     if !only.iter().any(|r| r == &row.id) {
                         continue;
                     }
+                }
+                // Rows before the resume point keep their evidence (C10).
+                if skip > 0 {
+                    skip -= 1;
+                    continue;
                 }
                 self.progress_row_started(&loaded.spec.section.id, &row.id);
                 let prior_blocks = if self.req.plan_only {
