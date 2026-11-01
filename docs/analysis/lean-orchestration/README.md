@@ -163,6 +163,8 @@ The following items remain unverified. Do not treat them as working.
 | `rm-worktree.ps1 <name> --force` for stale no-PR worktrees | Owner action |
 | Architect ranks 3 (`disableBundledSkills`) and 7 | Not started; owner decisions |
 
+- 2026-11-01: guard UATs run by harness-tuning HT-18: subagent Stop guard proven; the orchestrator-edit and hands-on-cargo legs did not exercise their guards (probe prompt defects); Codex hooks do not fire. Results in ../harness-tuning/live-guard-2026-11-01.md.
+
 ### Codex UAT, 2026-10-16
 
 Run against `origin/main` after close-out, using Codex CLI `0.162.0-alpha.17.2`. The root main checkout was five commits behind and held another session's staged work, so C1, C3 and C4 ran from a clean host worktree at `origin/main`, and C2 used its own packet worktree. C0's first probe ran from the main checkout as specified. This was agent-workflow UAT; no game client or frontend behavior was involved.
