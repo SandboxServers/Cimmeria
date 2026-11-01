@@ -33,10 +33,11 @@ class CoderContractTest(unittest.TestCase):
             "not_run=",
             "--allow-empty",
             "(part N)",
-            "<commit-sha|-> -",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
+        reporting = text.split("## Reporting", 1)[1]
+        self.assertIn("<commit-sha|-> -", reporting)
 
     def test_packet_coder_has_no_worknote_or_report_rules(self):
         text = read_agent("packet-coder")
