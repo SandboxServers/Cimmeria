@@ -1,7 +1,8 @@
 """The `returns` harness subcommand: return-line kinds and report-contract counts, per agent type (C2).
 
 Reads the subagent dispatches in the window, counts what each one returned and whether a contract dispatch wrote its
-report, and writes returns.json. The file holds counts only: no text, paths or session ids.
+report, and writes returns.json. The file holds counts only: no text, paths, session ids or free-form labels: an agent
+type with no agent file and no built-in or retired name is counted under `other`.
 """
 
 import json
@@ -18,6 +19,9 @@ SCHEMA = "cimmeria-harness-returns/1"
 CONTINUATION = re.compile(r"(?i)continuation \d of 3")
 USABLE = ("strict", "line_first", "buried")
 NO_LINE = ("prose", "short", "empty")
+BUILTIN_TYPES = frozenset({"general-purpose", "Explore", "Plan", "claude", "fork", "claude-code-guide",
+                           "statusline-setup"})
+RETIRED_TYPES = frozenset({"packet-review-fixer"})
 GROUP_FIELDS = ("dispatches", "contract_dispatches", "strict", "line_first", "buried", "prose", "short", "empty",
                 "no_usable_line", "no_report_write", "context_stops", "cap_denials", "continuation_dispatches",
                 "redispatches", "reviewer_lines", "not_assessed_suffix", "tokens_total", "tokens_fresh",
@@ -91,11 +95,23 @@ def _count(g: dict, r: dict) -> None:
         g["not_assessed_suffix"] += int("not_assessed=" in r["extra"])
 
 
-def _groups(rows: list[dict], writers: set[str]) -> dict:
-    """The counts per agent type, plus `all`, `all_but_ops` and `report_writers`."""
+def known_types(repo) -> set[str]:
+    """The agent types the output may name: the agent files under <repo>/.claude/agents, the built-in types and the
+    retired names. Any other type is counted under `other`."""
+    return {p.stem for p in (Path(repo) / ".claude" / "agents").glob("*.md")} | BUILTIN_TYPES | RETIRED_TYPES
+
+
+def _group_key(t: str, known: set[str]) -> str:
+    """The group a dispatch's agent type is counted under: the type when it is known or `unknown`, else `other`."""
+    return t if t in known or t == "unknown" else "other"
+
+
+def _groups(rows: list[dict], writers: set[str], known: set[str]) -> dict:
+    """The counts per agent type, plus `all`, `all_but_ops` and `report_writers`. A type that is not known is counted
+    under `other`."""
     groups = {name: dict.fromkeys(GROUP_FIELDS, 0) for name in ("all", "all_but_ops", "report_writers")}
     for r in rows:
-        names = [r["type"], "all"]
+        names = [_group_key(r["type"], known), "all"]
         if r["type"] != "ops":
             names.append("all_but_ops")
         if r["type"] in writers:
@@ -135,7 +151,7 @@ def run(args) -> int:
     privacy gate refuses the file (nothing is written then)."""
     try:
         rows = _rows(args)
-        groups = _groups(rows, report_writer_types(args.repo))
+        groups = _groups(rows, report_writer_types(args.repo), known_types(args.repo))
         coder = _coder_lines(rows)
         record = {"schema": SCHEMA, "window": {"since": args.since, "until": args.until}, "groups": groups,
                   "coder_lines": coder}
