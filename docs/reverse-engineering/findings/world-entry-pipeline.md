@@ -446,15 +446,18 @@ or a proper "entity ready" gate is needed in the Rust implementation.
 
 3. ~~**`Event_World_Loaded` emitter**~~: **CLOSED** (W-misc-gaps, 2026-05-13).
    Emitter is `FUN_005541a0` (0x005541a0), called from `FUN_007100d0` (0x007100d0).
-   `FUN_007100d0` reads the global `WorldInfo*` from `DAT_01ee2684` and passes it to the
-   emitter. It has no static callers — it is invoked via a UE3 streaming completion callback
+   `FUN_007100d0` reads `GWorld` (a `UWorld*`, not a `WorldInfo*`; corrected 2026-11-01, see
+   [lab-autopilot-anchors.md](lab-autopilot-anchors.md#world-and-loading)) from `DAT_01ee2684`
+   and passes it to the emitter. It has no static callers — it is invoked via a UE3 streaming completion callback
    (likely `UEngine::NotifyLevelStreamingStateChanged` or equivalent callback table).
 
    **`FUN_005541a0` conditions for emit**:
-   - `DAT_01ee2b6c == 0` — "world-loaded already fired" guard (returns 0 if set).
-   - All sub-levels in `param_1+0x50` → `+0x3C` → `+0x264` (level count) have no bit-2
-     set (pending stream flag).
-   - All entities at `param_1+0x44` (entity list, `+0x48` entries) have `+0x164 == 0`.
+   - `DAT_01ee2b6c == 0` — returns 0 while it is set. Corrected 2026-11-01: the flag is
+     1 while a map load is in progress (`LoadMap` writes it), not an "already fired" guard.
+   - All streaming levels on WorldInfo (`[[param_1+0x50]+0x3C]` = `Actors[0]`, array
+     `+0x260`, count `+0x264`) have no bit-2 set (pending stream flag).
+   - All levels in `param_1+0x44` (the `GWorld` `Levels` array, `+0x48` entries; corrected
+     2026-11-01, it is not an entity list) have `+0x164 == 0`.
    - On success: allocates 12-byte `Event_World_Loaded` struct, emits via CME.
 
    This is distinct from `Event_Level_PostLoad` (fired per individual level by
@@ -532,8 +535,8 @@ or a proper "entity ready" gate is needed in the Rust implementation.
 
 # World Entry — data addresses
 DAT_01ef2500  ENABLE_ENTITIES message descriptor (CONSTANT_LENGTH = 8, SGW-custom uint64 dummy)
-DAT_01ee2b6c  "world loaded guard" flag — set after Event_World_Loaded first fires
-DAT_01ee2684  global WorldInfo* pointer — read by Event_World_Loaded trigger thunk
+DAT_01ee2b6c  map-load-in-progress flag — 1 during LoadMap (static); never seen set from the lab bridge drain (live 2026-10-31)
+DAT_01ee2684  GWorld (UWorld*, class World), not WorldInfo* — read by Event_World_Loaded trigger thunk
 DAT_018cad90  BW_TO_UE3_SCALE = 0x42C80000 = 100.0f
 DAT_01eb082c  editor/replay mode flag — if set, PostLoad skips transform copy
 0x017bade9    ENABLE_ENTITIES descriptor init site — `PUSH 0x8` (size arg to InterfaceElement ctor 0x015785c0)

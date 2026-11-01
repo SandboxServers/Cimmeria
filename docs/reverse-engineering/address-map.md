@@ -351,8 +351,8 @@ Recovered in session 4b-world-entry (2026-05-13). Full findings in
 |---------|--------|---------------|
 | `DAT_01ef2500` | ENABLE_ENTITIES message descriptor | size field = **1 byte** (stock BW keepBase u8; NOT 8 bytes as previously hypothesized) |
 | `DAT_018cad90` | `BW_TO_UE3_SCALE` | `0x42C80000` = 100.0f; loaded by setupWorldParameters |
-| `DAT_01ee2b6c` | world-loaded guard flag | set after Event_World_Loaded fires; prevents double-emit |
-| `DAT_01ee2684` | global `WorldInfo*` | read by Event_World_Loaded trigger thunk |
+| `DAT_01ee2b6c` | map-load-in-progress flag | 1 while `LoadMap` runs (written at `0x008f735b`), cleared in `0x005d6370`; the Event_World_Loaded emitter returns early while it is set (static). Never seen set from the lab bridge drain, which reads between ticks; detect loads by a `GWorld` pointer change ([lab-autopilot-anchors.md](findings/lab-autopilot-anchors.md#world-and-loading)) |
+| `DAT_01ee2684` | `GWorld` (`UWorld*`, Ghidra `g_pGLevel`) | object "TheWorld", class `World`, vtable `0x01838E7C` (live 2026-10-31); not a `WorldInfo*`. WorldInfo is `Actors[0]` of the persistent level `[GWorld+0x50]`. Read by Event_World_Loaded trigger thunk |
 | `DAT_01eb082c` | editor/replay mode flag | if set, PostLoad handler skips transform copy |
 | `0x017bae02` | ENABLE_ENTITIES descriptor init site | Payload is **8 bytes**, not 1. The initializer pushes `6A 08` (`PUSH 8`) as `CONSTANT_LENGTH`; the adjacent `C7 00 01 00 00 00` (`MOV DWORD PTR [EAX], 1`) writes the trailing `true` flag, not the payload width. Matches `deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp:83` — `{Message::CONSTANT_LENGTH, 8, "ENABLE_ENTITIES", true}` over a documented `uint64 Dummy` |
 | `0x019c2828` | `"onClientReady"` | CME signal name string |
@@ -371,7 +371,7 @@ Recovered in session 4b-world-entry (2026-05-13). Full findings in
 | `0x00de8430` | `FUN_00de8430` | PostLoad body: assigns UE3 PlayerController to mPlayerController, sets input mode, copies transform |
 | `0x00de9e60` | `LAB_00de9e60` | alternate PostLoad handler (account-disconnect code path only) |
 | `0x00df4270` | `FUN_00df4270` | main GameProxyPlayer callback registration fn (35 event subscriptions) |
-| `0x005541a0` | `FUN_005541a0` | Event_World_Loaded emitter; fires after all sub-levels ready and entities settled |
+| `0x005541a0` | `FUN_005541a0` | Event_World_Loaded emitter; fires after all streaming levels are ready and no level has +0x164 set, and only while DAT_01ee2b6c is 0 |
 | `0x007100d0` | `FUN_007100d0` | Event_World_Loaded trigger thunk; reads DAT_01ee2684; no static callers |
 | `0x00d43dc0` | `SGWNetworkManager_EventHandler_ClientReady_invoke` | ClientReady wire-send; calls RouteOutgoingEntityRpc |
 | `0x00d57030` | `FUN_00d57030` | SGWNetworkManager::EventHandler<ClientReady> ctor |
