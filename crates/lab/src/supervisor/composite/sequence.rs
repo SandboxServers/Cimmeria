@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
+use crate::supervisor::ui::click_expect::ClickExpect;
 use crate::supervisor::ui::drag_drop::DragEnd;
 use crate::supervisor::ui::slots::ContainerRef;
 use crate::supervisor::ui::{NativeLevel, NativeTrail};
@@ -161,7 +162,9 @@ impl Supervisor {
     async fn ui_action(&self, a: &Action) -> Result<(Value, Option<NativeLevel>), String> {
         match a {
             Action::Click { window, button } => {
-                let r = self.ui_click(window, *button).await?;
+                let r = self
+                    .ui_click(window, *button, &ClickExpect::default())
+                    .await?;
                 let l = level_of(&r, NativeLevel::RealInput);
                 Ok((json!(true), Some(l)))
             }
@@ -176,7 +179,7 @@ impl Supervisor {
             Action::Type { text, into } => {
                 let mut level = NativeLevel::RealInput;
                 if let Some(w) = into {
-                    let r = self.ui_click(w, 0).await?;
+                    let r = self.ui_click(w, 0, &ClickExpect::default()).await?;
                     level = level.max(level_of(&r, NativeLevel::RealInput));
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }

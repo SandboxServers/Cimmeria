@@ -84,6 +84,15 @@ pub struct WindowClickArgs {
     /// list's Lua and report that level (default true).
     #[serde(default)]
     pub allow_lua_fallback: Option<bool>,
+    /// Window that must be visible after the click; the result is judged on it.
+    #[serde(default)]
+    pub expect_visible: Option<String>,
+    /// Window that must be hidden after the click.
+    #[serde(default)]
+    pub expect_hidden: Option<String>,
+    /// How long to wait for the expected window, ms (default 2000, max 10000).
+    #[serde(default)]
+    pub expect_timeout_ms: Option<u64>,
 }
 
 /// Click a ring destination on the world map. The coordinates are client-area

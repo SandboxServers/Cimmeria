@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use super::click_checked::handler_chunk;
+use super::click_expect::ClickExpect;
 use super::window_click::{click_point, locate_chunk, ClickTarget};
 use super::{NativeLevel, NativeTrail, Supervisor};
 use crate::supervisor::flows::widgets::lua_quote;
@@ -101,7 +102,11 @@ impl Supervisor {
     ) -> Result<(Value, Value, bool), String> {
         // Buy attempts sent so far (a click that went out, or the handler).
         let mut sent = 0u32;
-        if self.ui_click(BUY_BUTTON, 0).await.is_ok() {
+        if self
+            .ui_click(BUY_BUTTON, 0, &ClickExpect::default())
+            .await
+            .is_ok()
+        {
             sent += 1;
             let (a, d) = self.await_inventory_change(before, wait).await?;
             if d["changed"] == json!(true) {

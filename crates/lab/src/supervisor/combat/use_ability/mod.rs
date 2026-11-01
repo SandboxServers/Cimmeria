@@ -36,6 +36,7 @@ use serde_json::{json, Value};
 use super::hotbar::{Hotbar, HotbarButton};
 use super::NativeLevel;
 use crate::supervisor::flows::{settle, FlowError, FlowRun};
+use crate::supervisor::ui::click_expect::ClickExpect;
 use crate::supervisor::{now_ms, Supervisor};
 use outcome::classify;
 use resolve::{known_chunk, parse_known, resolve, Query};
@@ -163,7 +164,7 @@ impl Supervisor {
                         )
                         .await);
                 }
-                self.ui_click(&b.window, 0)
+                self.ui_click(&b.window, 0, &ClickExpect::default())
                     .await
                     .map_err(|e| run.fail("press_click", e))?;
                 json!({ "how": "click", "window": b.window, "button": b.button })
