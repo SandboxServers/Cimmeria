@@ -16,6 +16,7 @@
   "dakara-e1-rebuild": {"prefixes": ["dakara/"]},
   "debug-area": {"prefixes": ["debugarea/"]},
   "dialog-ui-redesign": {"prefixes": ["dialog-ui/"]},
+  "harness-tuning": {"prefixes": ["ht/"]},
   "harset-rebuild": {"branches": ["content/harset-rebuild", "content/harset-wave2"], "prefixes": ["harset/"]},
   "lab-chaos": {"prefixes": ["lab-chaos/"]},
   "lab-cli-rust": {"prefixes": ["lab-cli-rust/"]},
