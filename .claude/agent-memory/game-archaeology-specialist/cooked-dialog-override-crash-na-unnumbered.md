@@ -64,3 +64,6 @@ matches the tool's own docstring warning: "Clients that cache the initial tools/
 honor `tools/list_changed` must re-list tools after this call" — this harness is such a client. See
 also [[reference-mcp-servers]] for the general Ghidra MCP wiring notes (that memory predates this
 specific tools/list_changed gotcha).
+
+INVALIDATED WHEN: the dialog 100100/100101 crash root cause is found or the cooked-data cache layout changes
+checked: 2026-11-01

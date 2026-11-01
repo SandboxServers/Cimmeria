@@ -26,3 +26,7 @@ deadlock (Postgres aborts one; no value loss). Escrow still cascades on recipien
 **Why:** SS-M4 expiry sweep reuses `return_tx`; it must skip archived mail but the archive path must first refuse unpaid COD.
 **How to apply:** on SS-M4 review, check the archive-COD gate landed and that the sweep takes the claim.rs lock order.
 See [[project-mail-handlers-unimplemented]].
+
+checked: unverified 2026-11-01
+
+INVALIDATED WHEN: mail claim or archive handling changes

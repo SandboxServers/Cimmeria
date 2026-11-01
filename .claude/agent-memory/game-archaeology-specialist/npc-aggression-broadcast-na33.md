@@ -14,3 +14,6 @@ NA33 (2026-09-25): confirmed SGWMob's own `ClientMethods` (`onAggressionOverride
 Also resolved a real 2009 shipped bug: python `SGWMob.setAggression` (the runtime-change path) broadcast `onEntityProperty(GENERICPROPERTY_MobAggression)`, for which NA13 had already found no client consumer — dead wire traffic. Only `createOnClient` (the one-time spawn/reconnect snapshot) used the real `onAggressionOverrideUpdate` ClientMethod, and only when an override was already set. Cimmeria uses the real ClientMethod on every runtime change now (finishing `createOnClient`'s intent, no client patch needed) — this is the same "which wire call did legacy *actually* use vs. which one worked" trap as the `GENERICPROPERTY_*` property-vs-ClientMethod split documented elsewhere in this campaign.
 
 `UIAggressionLevel` (RTTI `0x01de972c`) is a Lua-scriptable enum type registration (`0x00ab1a5e`, alongside `UIArchetype`/`TargetType`/`UIStatType`), not a CEGUI widget — no consuming Lua script was located (no client Lua source in this repo tree), so the exact on-screen effect (nameplate/reticle color, interaction verb) is inferred, not observed.
+
+INVALIDATED WHEN: the SGWMob client method indices change or the npc-aggression-broadcast finding is revised
+checked: 2026-11-01

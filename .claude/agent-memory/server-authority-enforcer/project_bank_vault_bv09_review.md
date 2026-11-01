@@ -22,3 +22,6 @@ BV-09 review (branch bank/bv09-team-expansion, commit a98833503 on acb43359c), 2
 6. The buyer's onBagInfo `bank_slots` can be stale against a concurrent personal `.bankexpand`: OPEN, cosmetic.
 
 **How to apply:** "leader only" does not bound GM power, because a GM can set leadership via `organization/handlers/gm.rs`. The audit trail (`expand` gm_override + cash_log row) is the control. See [[project-bank-vault-bv08-review]], [[project-bank-vault-bv05-review]], [[reference-org-lock-authority]].
+
+INVALIDATED WHEN: the org vault expand path or its OPEN gaps (other-member onBagInfo, stale bank_slots) are changed
+checked: 2026-11-01

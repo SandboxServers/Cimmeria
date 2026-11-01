@@ -76,3 +76,6 @@ updateEntity_Handler @ 0x00dd62c0          (Mercury msg_id 0x0A handler)
 **`FUN_0158f260` (the partial-copy function originally hypothesized as the runtime `+0x24`/`+0x40` write site):** is a partial-struct copier for the first 0x40 bytes of a `DataDescription` record (writes through `+0x3c` only). The copy at `+0x24` is SmartPointer semantics (refcount increment/decrement, vtable dispatch), not a string copy. `+0x40` is not touched. This rules `FUN_0158f260` out as the source of any non-empty string at `+0x24` or `+0x40`.
 
 **Full findings:** `docs/audits/entity-property-sync-section2-audit-2026-05-16.md` Appendix F.2 (initial PARTIALLY-RESOLVED state — superseded), F.2.1 (closes "is FUN_0158f260 the write site?" — no), and F.2.2 (closes OQ-2 + OQ-2-bis: the gate is tautological).
+
+INVALIDATED WHEN: the entity-property-sync chapter or SGW.exe updateEntity decoding is re-analysed
+checked: 2026-11-01

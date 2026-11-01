@@ -17,3 +17,6 @@ Colo SigNoz 2026-09-29 (session `dc4c716a`): same `onSequence` (ability 579 -> s
 - `mcp__ghidra__run_script_inline` is disabled (needs GHIDRA_MCP_ALLOW_SCRIPTS=1); read vtables with `read_memory` 16 bytes at a time (larger sizes are truncated to 16).
 - The player-side "animations break after respawn" report is UNEXPLAINED: server keeps sending sequences after reanchor, player emitters/sounds continued after respawns 1 and 3. Reanchor resync does not resend `onKismetEventSetUpdate(1025)` (world entry does) - unverified whether it matters.
 - The worktree needs an `external/` junction to build (`New-Item -ItemType Junction`); remove with `cmd /c rmdir`, never recursive.
+
+INVALIDATED WHEN: NPC combat stance sets BSF_InCombat differently or a client confirms the muzzle-flash cause
+checked: 2026-11-01
