@@ -500,7 +500,7 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
         (None, _) => req.zoom_notches.unwrap_or(0),
     };
     let wheel = notches * WHEEL_NOTCH;
-    let mut delivered = None;
+    let mut di_before: Option<Option<u64>> = None;
     if dx != 0 || dy != 0 || wheel != 0 {
         let t0 = io.now_ms();
         let counters_before = io.input_counters().await;
@@ -509,13 +509,9 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
             .await
             .map_err(|e| steps.fail(io.now_ms(), "mouse_look", e))?;
         steps.used(level);
-        // Only the DirectInput path moves the counters; an old DLL (both
-        // `None`) adds no check rather than an unmeasured required one.
+        // Only the DirectInput path hands records to the game.
         if level == NativeLevel::RealInput {
-            let counters_after = io.input_counters().await;
-            if counters_before.is_some() || counters_after.is_some() {
-                delivered = Some(look_delivered(counters_before, counters_after));
-            }
+            di_before = Some(counters_before);
         }
         io.sleep(LOOK_SETTLE_MS).await;
         steps.record(
@@ -573,6 +569,15 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
     let camera_after = io.camera_pose().await.ok();
     let readout = |r: Result<Value, String>| r.unwrap_or_else(|e| json!({ "error": e }));
     let view_after = readout(io.camera_readout().await);
+    // Read delivery at the same moment as the view: records the game takes
+    // later cannot have moved this readout. Old DLL (both `None`): no check.
+    let delivered = match di_before {
+        Some(before) => {
+            let after = io.input_counters().await;
+            (before.is_some() || after.is_some()).then(|| look_delivered(before, after))
+        }
+        None => None,
+    };
     let pinned = pinned_pitch_of(&view_after).is_some();
     let mut out = json!({
         "camera_before": camera_before.map(|p| p.to_json()),

@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 
 use super::find::ServerEntity;
 use super::geometry::{Pose, Screen, Vec3};
+use super::ignored_input;
 use super::lua::{self, UnitInfo, UnitSlots};
 use super::memory::{self, PlayerCamera, WorldSnapshot};
 use super::NativeLevel;
@@ -595,8 +596,7 @@ impl WorldIo for LiveWorld<'_> {
 
     async fn input_counters(&mut self) -> Option<u64> {
         let v = self.sup.bridge_call("input_status", json!({})).await.ok()?;
-        let hooks = v.get("hooks").filter(|h| !h.is_null())?;
-        Some(hooks["events_delivered"].as_u64()? + hooks["data_reads_mouse"].as_u64()?)
+        ignored_input::delivery_count(&v["hooks"])
     }
 
     async fn window_rects(&mut self) -> Result<Vec<(String, [f64; 4])>, String> {

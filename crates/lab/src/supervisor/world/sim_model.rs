@@ -49,6 +49,8 @@ impl Sim {
             target_unit_calls: 0,
             buttons: Vec::new(),
             clicks_do_nothing: false,
+            counters: None,
+            counters_follow_looks: true,
             readout_gain_scale: 1.0,
             window_rects: Vec::new(),
             avatar_radius_px: None,

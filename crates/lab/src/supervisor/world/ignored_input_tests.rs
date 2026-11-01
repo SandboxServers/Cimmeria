@@ -1,6 +1,7 @@
 //! AX-34: ignored input versus a blocking window.
 
-use super::ignored_input::{classify, look_delivered, HUD_WINDOWS};
+use super::camera::{self, CameraRequest};
+use super::ignored_input::{classify, delivery_count, look_delivered, HUD_WINDOWS};
 use super::movement::{self, MoveRequest};
 use super::sim::Sim;
 use super::tool_tests::client_point;
@@ -30,6 +31,64 @@ fn only_hud_is_ignored_input() {
         StopKind::IgnoredInput
     );
     assert_eq!(classify(&[], HUD_WINDOWS), StopKind::IgnoredInput);
+    assert_eq!(
+        classify(
+            &names(&[
+                "BackgroundWin",
+                "MissionTrackerWin",
+                "Inst1ChatWin",
+                "SelfStatusWin"
+            ]),
+            HUD_WINDOWS
+        ),
+        StopKind::IgnoredInput
+    );
+}
+
+#[test]
+fn delivery_counts_only_records_handed_over() {
+    assert_eq!(
+        delivery_count(&serde_json::json!({"events_delivered": 3, "data_reads_mouse": 900})),
+        Some(3)
+    );
+    assert_eq!(delivery_count(&serde_json::Value::Null), None);
+}
+
+async fn look_with(counters: Option<u64>, follow: bool) -> serde_json::Value {
+    let mut sim = Sim::new();
+    sim.counters = counters;
+    sim.counters_follow_looks = follow;
+    camera::run(
+        &mut sim,
+        CameraRequest {
+            yaw_counts: Some(200),
+            ..CameraRequest::default()
+        },
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_look_the_game_never_took_is_denied() {
+    let out = look_with(Some(5), false).await;
+    assert_eq!(out["evidence"]["verdict"], "denied");
+    assert_eq!(out["evidence"]["why"], "not_delivered");
+    assert_eq!(out["evidence"]["checks"][0]["name"], "look_delivered");
+}
+
+#[tokio::test]
+async fn a_delivered_look_is_confirmed() {
+    let out = look_with(Some(5), true).await;
+    assert_eq!(out["evidence"]["verdict"], "confirmed");
+}
+
+#[tokio::test]
+async fn an_old_dll_adds_no_delivery_check() {
+    let out = look_with(None, true).await;
+    assert_eq!(out["evidence"]["verdict"], "confirmed");
+    let checks = out["evidence"]["checks"].as_array().unwrap();
+    assert!(checks.iter().all(|c| c["name"] != "look_delivered"));
 }
 
 #[test]
