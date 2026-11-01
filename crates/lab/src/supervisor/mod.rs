@@ -58,6 +58,7 @@ pub mod livewire_atlas;
 pub mod livewire_solver;
 pub mod login_servers;
 pub mod main_thread;
+pub mod minigame;
 pub mod minigame_play;
 pub mod process;
 pub mod process_activity;
