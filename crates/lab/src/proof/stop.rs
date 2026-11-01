@@ -4,7 +4,7 @@
 use serde::Serialize;
 
 /// Why a world tool stopped.
-// The variants other than `Stuck` have no producer until AX-32, AX-34 and AX-56.
+// The variants other than `Stuck` and `Ledge` have no producer until AX-32 and AX-34.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

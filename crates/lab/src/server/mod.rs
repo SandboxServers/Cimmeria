@@ -43,6 +43,7 @@ mod instances;
 mod lease;
 mod record;
 mod recover_tools;
+mod trace;
 mod uat;
 mod ui;
 mod watch;
@@ -261,7 +262,8 @@ impl LabServer {
                 + Self::lease_router()
                 + Self::input_router()
                 + Self::watch_router()
-                + Self::recover_router(),
+                + Self::recover_router()
+                + Self::trace_router(),
         }
     }
 
