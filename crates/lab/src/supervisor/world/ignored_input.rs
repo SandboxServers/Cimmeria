@@ -32,7 +32,7 @@ pub(super) fn classify(visible_windows: &[String], hud: &[&str]) -> StopKind {
 /// Synthetic mouse records the DLL handed to a buffered read
 /// (`hooks.events_delivered`). Not `data_reads_mouse`: that counts every poll,
 /// delivered or not. `None` for an old DLL (null `hooks`).
-pub(super) fn delivery_count(hooks: &Value) -> Option<u64> {
+pub(in crate::supervisor) fn delivery_count(hooks: &Value) -> Option<u64> {
     hooks.get("events_delivered")?.as_u64()
 }
 

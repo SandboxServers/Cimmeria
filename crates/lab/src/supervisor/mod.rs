@@ -47,6 +47,7 @@ mod held_keys;
 mod hold_book;
 pub mod ini_overrides;
 pub mod input;
+pub(crate) mod input_proof;
 mod input_release;
 pub mod instance;
 pub mod instance_profile;
