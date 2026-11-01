@@ -85,6 +85,27 @@ async fn release_all_input_clears_the_book() {
     assert!(sup.holds.lock().await.is_empty());
 }
 
+#[test]
+fn lease_ended_cases() {
+    use super::lease_ended;
+    assert!(lease_ended(Some("a"), None));
+    assert!(lease_ended(Some("a"), Some("b")));
+    assert!(!lease_ended(Some("a"), Some("a")));
+    assert!(!lease_ended(None, Some("a")));
+    assert!(!lease_ended(None, None));
+}
+
+#[tokio::test]
+async fn release_lets_go_of_posted_buttons() {
+    // The fake bridge has no game window and its cursor read fails: the
+    // release must still forget the button and not error.
+    let (r, _calls) = recording(ok_hold, false);
+    let sup = fake_bridge::supervisor(r).await;
+    sup.holds.lock().await.button_down(1);
+    sup.release_all_input("t").await.unwrap();
+    assert!(sup.holds.lock().await.take_buttons().is_empty());
+}
+
 #[tokio::test]
 async fn release_all_input_clears_even_on_error() {
     let (r, _calls) = recording(ok_hold, true);

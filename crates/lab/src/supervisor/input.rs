@@ -336,8 +336,17 @@ impl Supervisor {
         let hwnd = self.game_hwnd().await?;
         let lp = lparam_xy(x, y);
         match action {
-            "down" => process::post_message(hwnd, down_msg, mk, lp),
-            "up" => process::post_message(hwnd, up_msg, 0, lp),
+            "down" => {
+                process::post_message(hwnd, down_msg, mk, lp)?;
+                // AX-27: a lease end must be able to let go of it.
+                self.holds.lock().await.button_down(button);
+                Ok(())
+            }
+            "up" => {
+                process::post_message(hwnd, up_msg, 0, lp)?;
+                self.holds.lock().await.button_up(button);
+                Ok(())
+            }
             "click" => {
                 process::post_message(hwnd, down_msg, mk, lp)?;
                 tokio::time::sleep(Duration::from_millis(hold_ms.unwrap_or(DEFAULT_HOLD_MS))).await;
