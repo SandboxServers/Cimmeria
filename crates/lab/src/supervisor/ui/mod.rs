@@ -19,6 +19,7 @@
 
 pub mod chat_log;
 pub mod click_checked;
+pub mod clickables;
 pub mod drag_drop;
 pub mod inventory;
 pub mod item_action;

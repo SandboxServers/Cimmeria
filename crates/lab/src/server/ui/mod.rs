@@ -137,6 +137,26 @@ impl LabServer {
     }
 
     #[tool(
+        description = "List the CEGUI windows under `root` (default `Root`) with the full names `client_window_read` and `client_window_click` accept, including the unnamed `__auto_` children (`auto` true). Each window has name, type (when the binding gives one), text, rect [x,y,w,h] in client pixels (when present), visible, enabled, auto and parent. Hidden windows are skipped unless include_hidden. Pages are walk positions: pass the returned `next` as `cursor` while `truncated` is true (limit 1..=500, default 200; each call inspects at most 2000 windows). Read-only (client_ui_lua)."
+    )]
+    async fn client_ui_clickables(
+        &self,
+        Parameters(a): Parameters<ClickablesArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let t0 = Instant::now();
+        let r = self
+            .supervisor
+            .ui_clickables(
+                a.root.as_deref(),
+                a.include_hidden.unwrap_or(false),
+                a.limit,
+                a.cursor,
+            )
+            .await;
+        ui_result("client_ui_clickables", t0, r)
+    }
+
+    #[tool(
         description = "Click a ring destination at UI pixel (x,y) on the open world map with a real left click. If the map stays open, allow_lua_fallback (default true) invokes the stock WorldMapMod.onClick at the same pixel and reports client_ui_lua (N3); false requires a native pass. map_closed/effect_ok report whether the click selected a destination; verify method 91 with a packet tap."
     )]
     async fn client_world_map_click(

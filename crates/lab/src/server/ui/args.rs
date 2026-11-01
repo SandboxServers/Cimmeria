@@ -32,6 +32,24 @@ pub struct WindowReadArgs {
     pub include_nodes: Option<bool>,
 }
 
+/// Args for `client_ui_clickables`.
+#[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
+pub struct ClickablesArgs {
+    /// The window to walk from (default `Root`).
+    #[serde(default)]
+    pub root: Option<String>,
+    /// Include hidden windows and their children (default false).
+    #[serde(default)]
+    pub include_hidden: Option<bool>,
+    /// Windows returned in this page, 1..=500 (default 200).
+    #[serde(default)]
+    pub limit: Option<u32>,
+    /// Walk position to start this page at, from the last page's `next`
+    /// (default 0).
+    #[serde(default)]
+    pub cursor: Option<u32>,
+}
+
 /// Args for `client_window_click`. Give exactly one target: `target`,
 /// `root` + `text`, or `list` + `row_index`/`row_text`.
 #[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
