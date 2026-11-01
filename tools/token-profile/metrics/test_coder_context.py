@@ -11,6 +11,7 @@ from pathlib import Path
 
 from metrics import coder_context
 from metrics.transcript_fixtures import write_subagent
+from metrics.transcripts import Dispatch, Request, ToolUse
 
 DENY = ("PreToolUse:Edit hook error: Context cap reached: 90,515 tokens > 90,000. STOP NOW. "
         "Do not call any more tools.")
@@ -71,6 +72,20 @@ class CoderContextTest(unittest.TestCase):
         self.assertEqual(buf.getvalue().strip(),
                          f"status=ok coder-context coders=4 stops=2 stop_rate=0.5 read_share={round(4000 / total, 3)} "
                          f"grep_share={round(1000 / total, 3)} continuations=1")
+
+    def test_medians_count_calls_and_contexts(self):
+        d = Dispatch(session_id="s", agent_id="a", agent_type="packet-coder", first_ts=None, brief="Packet HT-03.",
+                     final_text="HT-03 done abc1234 -",
+                     requests=[Request("m1", 10, 0, 5, 7), Request("m2", 20, 100, 0, 3)],
+                     tool_uses=[ToolUse("t1", "Read", {"file_path": DOC}, 0),
+                                ToolUse("t2", "Grep", {"pattern": "x"}, 0),
+                                ToolUse("t3", "PowerShell", {"command": LANE}, 0),
+                                ToolUse("t4", "Edit", {"file_path": "C:\\x\\crates\\a.rs"}, 1)],
+                     results={"t1": "r" * 40, "t2": "g" * 8, "t3": "l" * 4, "t4": "e" * 4})
+        med = coder_context.build([d])["groups"]["all"]["median"]
+        self.assertEqual((med["first_context"], med["last_context"]), (15, 120))
+        self.assertEqual((med["output_tokens"], med["requests"], med["result_tokens"]), (10, 2, 14))
+        self.assertEqual((med["lane_calls"], med["reads"], med["greps"], med["edits"]), (1, 1, 1, 1))
 
 
 class CategoryTest(unittest.TestCase):
