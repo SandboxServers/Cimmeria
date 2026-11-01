@@ -405,7 +405,7 @@ impl WorldIo for Sim {
         let gain = units / self.gain.abs() * self.readout_gain_scale;
         Ok(json!({
             "zoom": self.zoom,
-            "yaw_offset_deg": 0.0,
+            "yaw_offset_deg": self.cam_yaw.to_degrees(),
             "pitch_offset_deg": -self.cam_pitch.to_degrees(),
             "gain": gain,
             "pitch_gain": if self.pitch_inverted { -gain } else { gain },

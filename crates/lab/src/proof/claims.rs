@@ -17,7 +17,12 @@ pub enum Claim {
 }
 
 /// Tools whose results carry evidence. Grows packet by packet.
-pub const JUDGED: &[&str] = &["client_world_click", "client_target", "client_move_to"];
+pub const JUDGED: &[&str] = &[
+    "client_world_click",
+    "client_target",
+    "client_move_to",
+    "client_camera",
+];
 
 /// Tools that claim no effect: reads, lease, UAT and lifecycle tools.
 pub const NO_CLAIM: &[&str] = &[
