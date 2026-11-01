@@ -49,8 +49,11 @@ pub fn sgw_pids_in(entries: impl IntoIterator<Item = (u32, String)>) -> Vec<u32>
 /// What a launch does about running screensavers (C18).
 #[derive(Debug, PartialEq, Eq)]
 pub enum SaverAction {
+    /// No screensaver process runs; launch continues.
     None,
+    /// Non-secure screensavers (pids) to terminate before the probe.
     Kill(Vec<u32>),
+    /// A secure screensaver locks the session; the launch fails with this text.
     Refuse(String),
 }
 
@@ -245,7 +248,10 @@ pub fn ensure_display_for_launch() -> Result<(), String> {
         let scr = scr_entries(win::process_entries());
         let secure = win::screensaver_secure();
         match screensaver_action(&scr, secure) {
-            SaverAction::Refuse(reason) => return Err(reason),
+            SaverAction::Refuse(reason) => {
+                tracing::warn!(target: "lab.client", event = "screensaver_refused", reason = %reason, "lab launch: refused, a secure screensaver is running");
+                return Err(reason);
+            }
             SaverAction::Kill(pids) => dismiss_and_settle(&scr, &pids),
             SaverAction::None => {}
         }
