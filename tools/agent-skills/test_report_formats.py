@@ -72,7 +72,8 @@ class ReportFormatTest(unittest.TestCase):
         text = (AGENTS / "packet-reviewer.md").read_text(encoding="utf-8")
         positions = [text.index(h) for h in ("## Verdict", "## Fix notes", "## Not fixed", "## Not checked")]
         self.assertEqual(positions, sorted(positions))
-        for phrase in ("NOT ASSESSED —", "not_run=", "Rejected <note-id>:", "not_assessed=<n>"):
+        for phrase in ("NOT ASSESSED —", "not_run=", "Rejected <note-id>:", "not_assessed=<n>",
+                       "`verdicts=<packet>:<ship|fix|decision>,...` and `not_assessed=<n>`"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
 
