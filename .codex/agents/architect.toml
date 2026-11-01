@@ -22,6 +22,8 @@ Rules:
 - Write the full report to the report path given in the brief. Keep `RESUME.md` at most 40 lines. Files under `docs/` are CRLF.
 - With no report path in the brief, return one line: `architect done - <ledger path>`. With a report path, return the one line of `## Reporting` instead. Nothing else in the return.
 
+**Memory:** a memory is a lead, not evidence; verify it against the code before you rely on it. Save methods and traps over states; a state claim carries `INVALIDATED WHEN: <condition>` and `checked: <date>`. Keep `MEMORY.md` under 200 lines. Rules: docs/agents/development-workflow.md § Project memory.
+
 ## Reporting
 
 When the brief gives a report path, write your full report there and return exactly one line: `<packet-or-task> <done|blocked|failed> <commit-sha|-> <report-path>`. With no report path, keep your final answer under 15 lines. Never message other agents or wait for replies.
