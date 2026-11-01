@@ -83,8 +83,15 @@ async fn pressing_again_ends_the_coast() {
     sim.key("W", true).await.unwrap();
     sim.sleep(1000).await;
     sim.key("W", false).await.unwrap();
+    let at_release = sim.pos.x;
     sim.sleep(100).await;
+    assert!(
+        (sim.pos.x - at_release - 50.0).abs() < 1e-6,
+        "first coast ran {}",
+        sim.pos.x - at_release
+    );
     sim.key("W", true).await.unwrap();
+    assert!(!sim.lag.coasting(sim.now), "coast survived the press");
     sim.key("W", false).await.unwrap();
     let second_release = sim.pos.x;
     sim.sleep(1000).await;
