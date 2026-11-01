@@ -191,7 +191,8 @@ class UsageTest(unittest.TestCase):
 
 class CliWiringTest(unittest.TestCase):
     def test_harness_commands_reach_the_stubs(self):
-        for name in harness_cli.NAMES:
+        # `returns` is implemented by HT-02 and tested in test_returns.py, so only the remaining stubs are checked here.
+        for name in (n for n in harness_cli.NAMES if n != "returns"):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
                 err = io.StringIO()
                 with contextlib.redirect_stderr(err):
