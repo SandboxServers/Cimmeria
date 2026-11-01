@@ -193,7 +193,7 @@ What it does *not* cover. A DLL without the hold method runs in fallback mode an
 
 **Coast and arrival.** The pawn keeps moving after `W` goes up. `client_move_to` learns that coast (a 0.12 s prior, updated from each measured release, capped at 0.6 s), releases `W` early by `speed * coast_s`, waits out the coast, and calls the walk arrived only where the pawn **settled**. Each final leg reports a `coast` object (`coast_s`, `samples`, `lead_m`, `settled_m`). If a walk "arrives" short or long, read `coast` first.
 
-**The ledge guard.** While walking, at most every 500 ms, `client_move_to` traces straight down at a point 1.5 m ahead along the pawn's heading, over 2.78 m. No floor means a drop of more than 2 m: it lets go of the keys and fails with `stop.kind: "ledge"` and the message `ledge ahead: no floor within 2 m`. Pass `allow_drops: true` to walk off a ledge on purpose. The result always says what the guard did in `ledge_guard`:
+**The ledge guard.** While walking, at most every 500 ms, `client_move_to` traces straight down at a point 1.5 m ahead along the pawn's heading, from 1 m above the pawn's height down to 2.78 m below it. No floor means a drop of more than 2 m: it lets go of the keys and fails with `stop.kind: "ledge"` and the message `ledge ahead: no floor within 2 m`. Pass `allow_drops: true` to walk off a ledge on purpose. The result always says what the guard did in `ledge_guard`:
 
 | `ledge_guard` | Means |
 |---|---|

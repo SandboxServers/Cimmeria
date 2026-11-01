@@ -1,9 +1,9 @@
 # lab-autopilot: resume card
 
-> **Type:** Reference · **Audience:** The orchestrator resuming this campaign · **Updated:** 2026-10-31
+> **Type:** Reference · **Audience:** The orchestrator resuming this campaign · **Updated:** 2026-11-01
 > **Companions:** [Ledger](README.md), [work packets](work-packets.md), [contract](contract.md)
 
-**State (2026-10-31):** design revised against the live pass (L1-L8) and static pass 2; nothing dispatched. Base `main` `2019922fe`. 7 waves, 46 packets. Campaign docs are uncommitted in the main checkout; commit them in the first docs PR through `ops`. No worktrees, no board subcategory yet.
+**State (2026-11-01):** waves 0 to 6 are built: AX-01, AX-03 and AX-04 are on `main` (#2052, #2050, #2051); AX-10..AX-63 are integrated on the `lab-autopilot/wave6-int` stack; AX-64 ran once, thinly ([uat-ax64.md](uat-ax64.md)); AX-02 has not run; AX-65 is not started. Waves 1-6, AX-64 (partial) and the campaign review are done; the lax-w6 branch is `lab-autopilot/wave6-int`; close-out AX-65 and shipping remain. 7 waves, 46 packets.
 
 **Goal:** lab tools that cannot lie (evidence verdicts, gate, post-reads, server corroboration) plus puppet-grade control (holds, watch, batch, trace, coast-aware walker, detectors), back-ported from ramenvr/autopilot concepts to the UE3 client. Lab-only client code, never in the manifest or the launcher (C13).
 
