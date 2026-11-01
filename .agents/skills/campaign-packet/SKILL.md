@@ -158,11 +158,11 @@ Three review loops run. They have the same shape and the same limit:
 | Campaign | after the last wave merges, before close-out | everything the campaign merged, on `origin/main` | a fresh `packet-coder` in an `ops` worktree named `<campaign>-review` |
 
 One pass is one fresh, read-only [`packet-reviewer`](../../../.claude/agents/packet-reviewer.md)
-session. Its report has four sections: `## Verdict`, `## Fix notes`,
+session. It returns `verdict=ship`, `fix` or `decision`. Its report has four sections: `## Verdict`, `## Fix notes`,
 `## Not fixed` and `## Not checked`. The reviewer copies the coder's `not_run=`
 items it did not verify into `## Not checked`, and its return line ends
 `not_assessed=<n>`. On `ship` with `not_assessed` above zero, copy those items
-to the ledger so a skipped check stays visible. It returns `verdict=ship`, `fix` or `decision`:
+to the ledger so a skipped check stays visible. The verdicts:
 
 1. `ship`: the loop is done.
 2. `fix` on pass 1 or 2: dispatch a fresh `packet-coder` with "review fix,
