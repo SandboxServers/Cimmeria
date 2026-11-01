@@ -38,7 +38,7 @@ from reporting.self_apply import apply_self_cost
 from reporting.self_cost import load_self_cost
 from reporting.write import build_outputs, write_outputs
 
-from . import cost, ledger, overstep, packets, registry
+from . import cost, harness_cli, ledger, overstep, packets, registry
 from .github import GhError, collect, polite, replay, run_gh
 
 OWN_CAMPAIGN = "campaign-metrics"
@@ -313,7 +313,11 @@ def main(argv=None):
     rep.add_argument("--db", help="the profiler's SQLite database, opened read-only (needed by --self-session)")
     rep.add_argument("--self-session", action="append", metavar="ID", help="a coordinator session to price (repeatable)")
     rep.add_argument("--config", help="metrics config.json (default: the package's)")
+    harness_cli.add_parsers(sub)
     args = ap.parse_args(argv)
+    code = harness_cli.dispatch(args)
+    if code is not None:
+        return code
     if args.cmd == "ledger":
         return run_ledger(args)
     if args.cmd == "packets":
