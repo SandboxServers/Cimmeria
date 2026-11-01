@@ -72,6 +72,7 @@ The model column applies in Claude Code. Codex runs every agent on the session's
 | Implementing one prescriptive campaign packet (Haiku) | `packet-coder` |
 | Adversarial read-only review of one packet, one wave or a whole campaign, with numbered fix notes (Sonnet) | `packet-reviewer` |
 | Driving the live client through the lab MCP tools from a step list (Haiku) | `lab-driver` |
+| Describing lab screenshots blind, from image paths and neutral questions (Haiku) | `frame-describer` |
 
 Definitions and trigger descriptions are in [`.claude/agents/`](../../.claude/agents/). If your harness has no subagents, read the agent's definition file and its `MEMORY.md` as briefing material.
 
