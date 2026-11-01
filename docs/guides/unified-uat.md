@@ -1814,6 +1814,8 @@ The lab-autopilot campaign ([ledger](../analysis/lab-autopilot/README.md)) ran i
 
 U2 passed in part (bait run once of three) and is not listed; re-run its bait half three times.
 
+**AX-02 (live spike)** has never run and is owed too: coast and input latency, screenshot frame bracketing, hover id `PC+0x4C0`, `game_t` against wall time, and optionally the player's dead bit `+0x158`. Its steps are in the [campaign ledger](../analysis/lab-autopilot/README.md#packets); the walker's coast priors stay at their defaults until it runs. The F1 (camera) and F3 (ledge) code fixes landed after the run and were tested in-process only, so re-run U3, U4 and U5 first.
+
 ## Recording results
 
 Copy this block once per step you run, fill it in, and send it to the owner (or paste it on the campaign's tracking issue). Keep failures and passes both: a pass is evidence too.

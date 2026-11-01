@@ -15,7 +15,7 @@ This campaign lifts what is worth lifting from ramenvr/autopilot (an Unreal 5 ag
 2. **Puppet control.** Key holds with a lease, a per-frame watch, same-frame batch reads, a line trace, a coast-aware walker, a ledge guard, stop reports, recovery recipes and detectors.
 3. **Lab only.** New client code lives only in the `lab-bridge` feature, never in a release build, the signed manifest or the launcher path, and every DLL packet proves it (C13).
 
-Waves 0 to 6 are built: AX-01, AX-03 and AX-04 are on `main` (#2052, #2050, #2051); AX-10..AX-63 are integrated on the `lab-autopilot/wave6-int` stack; AX-64 ran once on 2026-11-01, thinly ([UAT ledger](uat-ax64.md)); AX-02 and AX-65 have not run. Two packets need the lab (AX-02, AX-64), and each waits for the user's OK; the lab binaries are rebuilt from `main` before wave work and before each of them (O1, [§ Ops chores](#ops-chores)).
+The campaign is closed (2026-11-01, [§ Close-out](#close-out)): AX-01, AX-03 and AX-04 are on `main` (#2052, #2050, #2051); AX-10..AX-63 and the AX-64 ledger ship as one stacked PR from `lab-autopilot/wave6-int`; AX-64 ran once, thinly ([UAT ledger](uat-ax64.md)); AX-02 has not run. Two packets need the lab (AX-02, AX-64), and each waits for the user's OK; the lab binaries are rebuilt from `main` before wave work and before each of them (O1, [§ Ops chores](#ops-chores)).
 
 ## Findings: autopilot concept to SGW
 
@@ -166,8 +166,8 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 | 6 | AX-61 | lab-driver and lab-uat read verdicts | packet-coder | Integrated (step 2 BlockedDecision D-AX10) |
 | 6 | AX-62 | Guide: evidence, stops, watch, detectors | documentation-writer | Integrated |
 | 6 | AX-63 | ADR addendum, client-telemetry docs | documentation-writer | Integrated |
-| 6 | AX-64 | Live UAT: try to make the tools lie | lab-uat coordinator | UATPending (ran 2026-11-01: 1 PASS, 2 FAIL, 10 NOT RUN; see uat-ax64.md) |
-| 6 | AX-65 | Close-out | documentation-writer | Ready (AX-64 ledger written; not started) |
+| 6 | AX-64 | Live UAT: try to make the tools lie | lab-uat coordinator | UATPending (ran 2026-11-01: 1 PASS, 2 FAIL, 10 NOT RUN; see uat-ax64.md; re-run owed) |
+| 6 | AX-65 | Close-out | documentation-writer | Done |
 
 Live lab needed: **AX-02** (spike) and **AX-64** (UAT), each after O1 and the user's OK. Static RE: **AX-01**, which gates only the watch's `actors` field and the `actor_growth` detector. Everything else is pure code or docs with stubbed tests. The live reads L1-L8 of 2026-10-31 answered the trace, view-point, loading, mouse-look, `GWorld` and window-registry questions; the full open list, live or static, is [work-packets.md § Live versus static](work-packets.md#live-versus-static-what-is-still-open). Still open after them:
 
@@ -195,4 +195,20 @@ The concepts in this campaign (evidence and verdicts, stop reports, held-input l
 
 ## Close-out
 
-Filled by AX-65.
+Closed 2026-11-01 by AX-65. Waves 0 to 6 shipped through their wave reviews, and the campaign review passed at pass 3 (fixes applied between passes). 46 packets: 44 Done or Integrated, AX-02 and AX-64 UATPending.
+
+**Pull requests.** AX-03 #2050, AX-04 #2051 and AX-01 #2052 are merged. AX-10..AX-64 (waves 1 to 6, the campaign-review fixes and the AX-64 ledger) ship as ONE stacked PR from `lab-autopilot/wave6-int`: PR to be opened; link added by the orchestrator. This close-out ships with it.
+
+**What the lab tools now prove.** Every action tool returns `evidence` with a verdict, and the gate downgrades claims the evidence does not support. Server-corroborated: `client_move_to` and non-placeholder `client_minigame_play`. Everything else rests on client reads at least two frames after the action (see [§ What "confirmed" does and does not mean](#what-confirmed-does-and-does-not-mean)). The puppet-control tools (holds with a lease, watch, batch, trace, coast-aware walker, detectors, `lab_recover`, `resume_from`) are built and tested in-process; none has had a full live run.
+
+**AX-64 result** ([ledger](uat-ax64.md)): 1 PASS (partial), 2 FAIL (U3, U5), 10 NOT RUN. **Lies found: none.** That is thin evidence: most bait halves ran once or never, and no `frame-describer` ran. One answer came back: terrain does answer trace flags `0x2086`, with the floor 2.5 m under the pawn centre. Findings F1 and F3 were fixed in code after the run; neither fix has been seen live.
+
+Follow-ups for the owner (none is a proven lie; the campaign review passed at pass 3):
+
+- **Live runs, ask first (D-AX4):** AX-02 (coast, latency, frame bracketing, hover, clock, player dead bit) has never run. An AX-64 re-run covers the 10 NOT RUN cases and the two FAIL rows (U3, U5). The code fixes for F1 (camera yaw falls back to the controller readout) and F3 (ledge probe lifted 100 uu) landed after the run and are tested in-process only. Cases and setup: [unified-uat.md](../../guides/unified-uat.md#lab-autopilot-ax-64-cases-still-owed). Run `tools/lab/install.ps1` first (O1).
+- **Open decisions:** D-AX2 (capture stays PrintWindow), D-AX3 (describer model, default haiku), D-AX10 (lab-driver tool list, AX-61 step 2), D-AX4 (per run), and D-AX6 (`out_of_world` at z -100000 is provisional; no world floor was measured and AX-64 did not reach it).
+- **O2 not run:** the leftover `sgw_*` databases are still there (about 690 at design time); show the dry-run list to the user before dropping any.
+- **UAT setup debts:** the lab account file names a character that does not exist on the account; the `SGWEditor.ini` DST modal blocked the first launch and still hits p2 to p5 and any fresh host; `client_ui_clickables` cut off at 200 windows in the run. The `lab-driver` has no raw key tool, so the U7 `stuck_input` bait and U11 need a coordinator-level session with `client_input_key`. U9 must send three identical failing calls back to back with no model turn between (C9 backs off 500 ms then 1 s; the run's calls were seconds apart). U5's bait needs a window that really blocks look.
+- **Open questions for the re-run:** why `client_move_to` stopped `stuck` on a clear start (needs the walk's step log; F3, second symptom); the intermittent `face_entity_id` projection failure (U1); `client_camera face_entity_id` answering `inconclusive` beside `centred: true` (needs `verbose: true`; F1); a `confirmed` carrying `why: ignored` (F2); `lab_recover close_dialogs` returns `confirmed` for a no-op (arguably `no_dialog`, a behavior change for the owner).
+- **Code and size debts the reviews left unfixed:** AX-24 a `watch_start` queued after a daemon disconnect; AX-27 the takeover versus new-acquire race, and `lease/mod.rs` (411 lines after the render split) staying small; AX-43 `client_cursor_move` cannot show `denied` (`place_cursor` errors first, so the evidence is tautological; optional hardening in campaign-review-1a note 6); AX-46 the typed-text `contains` check; AX-56 the `movement.rs` wiring budget (579 lines, over the soft cap, under the hard cap). 70 files in `crates/lab` and `crates/client-telemetry` are over 500 lines, `world/io.rs` is 28 lines under the hard cap, and `uat/runner/tests.rs` (921) is over it, pre-existing. Clean up when next in those files.
+- **Pre-existing clippy errors** under `--features lab-bridge` in untouched client-telemetry code (`crash.rs`, `native_call.rs`, `lua_eval.rs`, `bridge/mod.rs` `serve_client`); not from this campaign.
