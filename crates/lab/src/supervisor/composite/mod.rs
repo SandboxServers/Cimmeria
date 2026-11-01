@@ -16,6 +16,7 @@
 //! waits that make no call.
 
 pub mod batch;
+mod batch_frame;
 pub mod ensure;
 pub mod sequence;
 pub mod sequence_proof;
