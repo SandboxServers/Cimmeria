@@ -11,7 +11,7 @@ The repo already ships the pieces. Anyone who clones it with Claude Code gets th
 - [`CLAUDE.md`](../../CLAUDE.md): the short core every session loads (repo invariants, the top project rules, the build-lane rule, the per-PR test and doc duty), linking to the long forms: the `lane-build` and `ship-pr` skills, [`pre-pr-checks.md`](pre-pr-checks.md) and [`rules-and-gotchas.md`](rules-and-gotchas.md#file-organization).
 - [`doc-update-map.md`](doc-update-map.md): which docs a change has to update. [`pre-pr-checks.md`](pre-pr-checks.md): what each CI check gates, and how to fix a red one.
 - [`AGENTS.md`](../../AGENTS.md) and [`.github/copilot-instructions.md`](../../.github/copilot-instructions.md): the same policy for other harnesses and for review bots. Copilot code review also reads the path-specific rules in [`.github/instructions/`](../../.github/instructions/) and the review skill in [`.github/skills/code-review/`](../../.github/skills/code-review/SKILL.md), which routes each area of a diff to the matching advisor brief below. Copilot reads all of these from the PR's head branch, so a PR that changes them is reviewed under its own rules.
-- [`.claude/agents/`](../../.claude/agents/): 23 subagents, from the default `orchestrator` persona and the campaign roles to the domain advisors (roster below).
+- [`.claude/agents/`](../../.claude/agents/): 24 subagents, from the default `orchestrator` persona and the campaign roles to the domain advisors (roster below).
 - `.claude/agent-memory/<agent>/`: what those agents learned on earlier runs, and `.claude/agent-memory/main-session/`: what top-level sessions learned. Committed on purpose; see [Project memory](#project-memory).
 - [`TESTING.md`](../../TESTING.md): the test-type picker and the review gotchas.
 - [`rules-and-gotchas.md`](rules-and-gotchas.md): decisions already made and traps already hit.
@@ -72,6 +72,7 @@ The model column applies in Claude Code. Codex runs every agent on the session's
 | Implementing one prescriptive campaign packet (Haiku) | `packet-coder` |
 | Adversarial read-only review of one packet, one wave or a whole campaign, with numbered fix notes (Sonnet) | `packet-reviewer` |
 | Driving the live client through the lab MCP tools from a step list (Haiku) | `lab-driver` |
+| Describing lab screenshots blind, from image paths and neutral questions (Haiku) | `frame-describer` |
 
 Definitions and trigger descriptions are in [`.claude/agents/`](../../.claude/agents/). If your harness has no subagents, read the agent's definition file and its `MEMORY.md` as briefing material.
 
