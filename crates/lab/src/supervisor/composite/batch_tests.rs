@@ -222,7 +222,7 @@ async fn a_batch_stops_when_its_lease_is_taken_over() {
     let steps = parse_steps(&[
         json!({ "id": "one", "op": "mem_read", "addr": "0x1000" }),
         json!({ "id": "two", "op": "mem_read", "addr": "0x2000" }),
-        json!({ "id": "three", "op": "lua", "chunk": "return 1" }),
+        json!({ "id": "three", "op": "lua", "chunk": "return ${one}" }),
     ])
     .unwrap();
     let permit = Permit::Lease {

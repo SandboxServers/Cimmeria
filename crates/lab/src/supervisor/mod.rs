@@ -32,21 +32,28 @@
 //! - [`combat`] — hotbar, ability use, combat log, defeat and respawn.
 
 mod account;
+pub mod capture_frames;
 #[cfg(test)]
 mod cegui_fake;
 pub mod cegui_native;
 pub mod combat;
 pub mod composite;
 pub mod crash_report;
+pub mod detect;
 pub mod display;
 pub mod entity_table;
 pub mod events;
 pub mod flows;
 pub mod heartbeat;
+mod held_keys;
+mod hold_book;
 pub mod ini_overrides;
 pub mod input;
+pub(crate) mod input_proof;
+mod input_release;
 pub mod instance;
 pub mod instance_profile;
+pub use input_release::spawn_input_guards;
 pub mod keys;
 pub mod lane_idle;
 mod lifecycle;
@@ -54,10 +61,12 @@ pub mod livewire_atlas;
 pub mod livewire_solver;
 pub mod login_servers;
 pub mod main_thread;
+pub mod minigame;
 pub mod minigame_play;
 pub mod process;
 pub mod process_activity;
 pub mod record_slot;
+mod recover_recipes;
 pub mod recovery;
 pub mod screenshot;
 pub mod session_file;
@@ -66,6 +75,7 @@ pub mod stall_grace;
 mod status;
 pub mod telemetry_session;
 pub mod ui;
+pub mod watch_store;
 mod watchdog;
 pub mod world;
 
@@ -283,6 +293,15 @@ pub struct Supervisor {
     uat_progress: crate::uat::progress::ProgressCell,
     /// This instance's recording (lab-record): at most one at a time.
     record: Arc<record_slot::RecordSlot>,
+    /// Keys the world tools hold through the DLL (C5).
+    holds: Arc<Mutex<hold_book::HoldBook>>,
+    /// The daemon's copy of the DLL watch (`client_watch`, C15).
+    watch: Arc<Mutex<watch_store::WatchStore>>,
+    /// Set once the lab DLL answers `batch` with "method not found": an old
+    /// DLL, so `batch` runs the per-step path. Shared by clones (`Arc`).
+    dll_batch_unsupported: Arc<std::sync::atomic::AtomicBool>,
+    /// The walker's learned coast model, kept across `client_move_to` calls.
+    coast: Arc<std::sync::Mutex<world::coast::CoastModel>>,
 }
 
 impl Supervisor {
@@ -312,6 +331,10 @@ impl Supervisor {
             account: Arc::new(std::sync::Mutex::new(account::AccountCache::default())),
             uat_progress: Default::default(),
             record: Default::default(),
+            holds: Default::default(),
+            watch: Default::default(),
+            dll_batch_unsupported: Default::default(),
+            coast: Default::default(),
         }
     }
 
@@ -523,6 +546,9 @@ impl Supervisor {
         } else {
             "minted"
         };
+        // A fresh client starts with a clean hold book: no key from the last
+        // one, and no fallback learned from its DLL (C5).
+        self.holds.lock().await.reset();
         {
             let mut st = self.state.lock().await;
             lifecycle::record_pid(&mut st, pid, process::is_alive);
@@ -545,18 +571,6 @@ impl Supervisor {
     /// Record login progress for `lab_client_status`.
     pub(crate) async fn set_login_state(&self, login: LoginState) {
         self.state.lock().await.login = login;
-    }
-
-    /// `lab_screenshot` — capture the client window as PNG bytes +
-    /// base64, for the caller to wrap in an MCP image block.
-    pub async fn screenshot(&self) -> Result<(String, u32, u32), String> {
-        let captured = self.capture().await?;
-        let png = screenshot::encode_png(&captured)?;
-        Ok((
-            screenshot::png_to_base64(&png),
-            captured.width,
-            captured.height,
-        ))
     }
 
     /// Capture the client window as RGBA (for screenshots, crops and

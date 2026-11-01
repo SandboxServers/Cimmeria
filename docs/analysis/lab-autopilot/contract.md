@@ -248,7 +248,7 @@ pub struct StopPlayer { pub at: [f64; 3], pub now: [f64; 3], pub moved_m: f64 }
 
 `crates/lab/src/server/cooldown.rs`, MCP path only (the UAT runner never sees it):
 
-- Key: tool name plus a hash of the args with `lease_id`, `instance`, `verbose` and `fields` removed (canonical JSON, sorted keys).
+- Key: tool name plus the instance label plus a hash of the args with `lease_id`, `instance`, `verbose` and `fields` removed (canonical JSON, sorted keys). The state is process-wide, so the instance label keeps one client's failure from cooling another's call.
 - A call fails when the tool returns an MCP error, `is_error: true`, or a JSON body whose `evidence.verdict` is `denied`.
 - After the n-th consecutive failure of a key, the next identical call within `min(8000, 500 * 2^(n-1))` ms is refused without running: an `is_error` result with `{"error": "cooling down", "why": "cooling_down", "hint": <C2 hint>, "retry_after_ms": <left>, "failures": n}`.
 - A success clears the key. A key idle for 60 s is forgotten. At most 256 keys (oldest evicted).
@@ -325,8 +325,8 @@ Daemon half (AX-56):
 
 - `WorldIo::trace_line(&mut self, start: Vec3, end: Vec3, flags: u32) -> Result<Option<TraceHit>, String>`, default `Err("trace_line unsupported".into())`. `Ok(None)` means nothing was hit. `TraceHit { time: f64, location: Vec3, item: i32, actor: u32 }`, client space. `LiveWorld` calls the bridge method; an error containing `-32601` maps to the default error text.
 - Tool `client_trace_line { start: [f64;3], end: [f64;3], flags?: u32, instance? }`, client space, UE3 units. **LEASED**, in `NO_CLAIM` (a read). It returns the DLL result unchanged. A DLL without the method gives `{"error": "trace_line needs a lab DLL with trace_line (AX-55)"}`.
-- Ledge guard in `client_move_to`, new argument `allow_drops?: bool` (default `false`). While walking, at most every 500 ms, it traces straight down at a point `LEDGE_AHEAD_UU` = 150 ahead of the pawn along its heading, from the pawn's z to `pawn.z - LEDGE_HALF_HEIGHT_UU - LEDGE_DROP_UU` (78 + 200), flags `0x2086`. No hit means a drop of more than 2 m: release the keys and fail with `StopKind::Ledge`, message `ledge ahead: no floor within 2 m`. Any trace error turns the guard off for that walk and the result carries `"ledge_guard": "unavailable: <error>"`; otherwise `"ledge_guard": "on"` (or `"off"` with `allow_drops`).
-- Self-check at walk start (terrain is untested live): before the first step, one trace straight down under the pawn over the same span. No hit means the trace cannot see this map's floor, so the guard is off for that walk with `"ledge_guard": "unavailable: no floor under pawn"`, and an unseen floor can never stop a walk as a false ledge. AX-64 U4 runs the guard on an outdoor map to say whether terrain answers `0x2086`.
+- Ledge guard in `client_move_to`, new argument `allow_drops?: bool` (default `false`). While walking, at most every 500 ms, it traces straight down at a point `LEDGE_AHEAD_UU` = 150 ahead of the pawn along its heading, from the pawn's z + `LEDGE_LIFT_UU` (100, so the trace starts in open air) to `pawn.z - LEDGE_HALF_HEIGHT_UU - LEDGE_DROP_UU` (78 + 200), flags `0x2086`. No hit means a drop of more than 2 m: release the keys and fail with `StopKind::Ledge`, message `ledge ahead: no floor within 2 m`. Any trace error turns the guard off for that walk and the result carries `"ledge_guard": "unavailable: <error>"`; otherwise `"ledge_guard": "on"` (or `"off"` with `allow_drops`).
+- Self-check at walk start (terrain answers `0x2086`: AX-64 U4): before the first step, one trace straight down under the pawn over the same span. No hit means the trace cannot see this map's floor, so the guard is off for that walk with `"ledge_guard": "unavailable: no floor under pawn"`, and an unseen floor can never stop a walk as a false ledge. Both traces start `LEDGE_LIFT_UU` above the pawn's z.
 
 ## C15 client_watch
 

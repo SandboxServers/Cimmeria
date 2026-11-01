@@ -70,6 +70,8 @@ Steps: 1. ... 2. ...   Report: <exact fields>.
 
 The full interaction procedure (camera gains, click retries, windows) is in the live-research-lab guide's *Driving the client* and *Fewer calls* sections. Keys: Q/E rotate, B bag, Tab target.
 
+- Name `expect_visible` in the brief for each click that opens a window, and ask for the verdicts verbatim (`evidence.verdict`, `evidence.why`, and any `stop`).
+
 ## 5. Verify, don't trust
 
 A driver's summary is a claim. Before you grade a step, check it against server evidence:
@@ -82,10 +84,17 @@ A driver's summary is a claim. Before you grade a step, check it against server 
 
 If no window opened, read the server log before you retry the click.
 
+Verdicts from the driver:
+
+- A `confirmed` is still checked against the server log for the rows D-AX11 covers: `client_move_to`, and `client_minigame_play` when it is not a placeholder.
+- An `inconclusive` row is graded per D-AX1: `UNVERIFIED` unless a required clause passed.
+- A screenshot that decides a row goes to a `frame-describer` (AX-60) with neutral questions, never to your own reading of it. Neutral: "Is a window titled \"Vendor\" open?" Leading, to avoid: "Did the vendor open correctly?"
+
 ## 6. Grade and record
 
 - `lab_uat_run`: run `plan_only: true` first. Then run batches of about 5 rows on one `run_dir`, and pass `server_version`.
 - SigNoz clauses come back PENDING with their filter. Run each filter, `lab_uat_attest` the row, then `lab_uat_report { ledger: true }`.
+- `lab_uat_run` returns each action's verdict (AX-44's strict switch counts `unjudged` as `inconclusive`). An action is done only on `confirmed`; the row's grade follows D-AX1 above.
 - Manual rows: record the result and evidence in the campaign ledger and the unified UAT guide row.
 - A FAIL becomes a fix packet in the campaign's ledger.
 - Release the lease.
@@ -96,3 +105,5 @@ If no window opened, read the server log before you retry the click.
 - **`lab_login` types the password into the account box:** set both edits with Lua (`Login_AccountEdit:setText`, `Login_PasswordEdit:setText`) and click `Login_LoginButton`.
 - **`bad_token`:** a stale telemetry grant cache causes it; move `binaries/sessions/lab-telemetry-grant.json` aside.
 - **~1 min freeze at character select:** swapping a `Cache.en-US` `.pak` forces a full resync.
+- **`lab_detectors_read` after a run:** it names the hitches and stuck input that explain a failure; read it before you blame the driver.
+- **`client_move_to` stops at a ledge:** it returns `stop.kind: "ledge"` before a drop unless `allow_drops` is set.

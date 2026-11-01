@@ -7,19 +7,20 @@
 //! prove the tools cope with each without being told.
 
 use std::collections::HashMap;
-use std::f64::consts::FRAC_PI_2;
 
 use serde_json::{json, Value};
 
 use super::camera::WHEEL_NOTCH;
+use super::coast::CoastModel;
 use super::find::ServerEntity;
-use super::geometry::{distance_m, horizontal_m, wrap_pi, Pose, Screen, Vec3};
-use super::io::{Projected, WorldIo};
+use super::geometry::{distance_m, wrap_pi, Pose, Screen, Vec3};
+use super::io::{Projected, TraceHit, WorldIo};
 use super::lua::{UnitInfo, UnitSlots};
 use super::memory::{
     clamped_pitch_counts, WorldEntity, WorldSnapshot, CAMERA_DIST_MAX, CAMERA_DIST_MIN,
     CAMERA_ZOOM_STEP,
 };
+use super::sim_lag::Lag;
 use super::NativeLevel;
 
 pub const PLAYER_ID: u32 = 1;
@@ -79,6 +80,12 @@ pub struct Sim {
     /// Walls: forward motion stops at x >= wall until a jump clears it.
     pub wall_x: Option<f64>,
     pub jump_clears_wall: bool,
+    /// Input latency and coasting (both 0 by default: no lag).
+    pub lag: Lag,
+    /// The walker's coast model as the last walk left it (`None`: the prior).
+    pub coast_model: Option<CoastModel>,
+    /// Every key change the walker asked for, in order, with where the pawn was (before any input lag).
+    pub key_log: Vec<(String, bool, Vec3)>,
     pub screen: Screen,
     pub hfov: f64,
     pub entities: Vec<SimEntity>,
@@ -94,6 +101,10 @@ pub struct Sim {
     pub mouse_over_on_repeated_move: Option<u32>,
     repeated_move_override_active: bool,
     pub looks: Vec<(i32, i32, i32)>,
+    /// `input_status` delivery counter; `None` plays an old DLL.
+    pub counters: Option<u64>,
+    /// Whether a look raises `counters` (false: the game took nothing).
+    pub counters_follow_looks: bool,
     pub pins: u32,
     pub target_unit_calls: u32,
     pub buttons: Vec<(usize, bool)>,
@@ -151,210 +162,27 @@ pub struct Sim {
     pub body_dz: Vec<f64>,
     /// A right-click opens an entity's window only within this many metres, straight line, like the server.
     pub interact_range_m: Option<f64>,
+    /// The position the server reports for the player (see `server_position`).
+    pub server_pos: Option<Vec3>,
+    /// What every read after the first reports instead, so a walk can see the
+    /// server at one place before it and another after.
+    pub server_pos_end: Option<Vec3>,
+    pub server_pos_reads: u32,
+    /// The bridge frame counter; `None` models a client without frames.
+    /// `sleep` advances it by `max(1, ms / 16)`.
+    pub frames: Option<u64>,
+    /// The floor ends at this x: a trace starting past it finds nothing (C14).
+    pub floor_end_x: Option<f64>,
+    /// Makes `trace_line` fail with this error.
+    pub trace_error: Option<String>,
+    /// How many `trace_line` calls the walk made.
+    pub trace_calls: u32,
 }
 
-impl Sim {
-    pub fn new() -> Self {
-        let mut slots = HashMap::new();
-        slots.insert(UNITS.player, PLAYER_ID);
-        Self {
-            now: 0,
-            pos: Vec3::new(0.0, 0.0, 0.0),
-            pawn_yaw: 0.0,
-            cam_yaw: 0.0,
-            cam_pitch: 0.0,
-            gain: 400.0,
-            zoom: 250.0,
-            standing_turn: true,
-            live_pawn: false,
-            turn_rate_rad_s: 1.92,
-            right_raises_yaw: true,
-            turn_key_names: ("Q".into(), "E".into()),
-            hover_needs_mouse_move: false,
-            speed_uu_s: 500.0,
-            wall_x: None,
-            jump_clears_wall: true,
-            screen: Screen {
-                w: 1000.0,
-                h: 800.0,
-            },
-            hfov: FRAC_PI_2,
-            entities: Vec::new(),
-            dead_ids: Vec::new(),
-            unknown_alive_ids: Vec::new(),
-            server_templates: HashMap::new(),
-            server_unavailable: false,
-            slots,
-            windows: vec!["ChatWin".into(), "SelfStatusWin".into()],
-            keys: HashMap::new(),
-            cursor: (0, 0),
-            mouse_over_on_repeated_move: None,
-            repeated_move_override_active: false,
-            looks: Vec::new(),
-            pins: 0,
-            target_unit_calls: 0,
-            buttons: Vec::new(),
-            clicks_do_nothing: false,
-            readout_gain_scale: 1.0,
-            window_rects: Vec::new(),
-            avatar_radius_px: None,
-            fail_mouse_over_after: None,
-            slots_dispatch_timeout_after: None,
-            slots_dispatch_timeout_after_click: false,
-            slots_never_returns: false,
-            slots_never_after: None,
-            slots_reads: 0,
-            project_never_after: None,
-            project_reads: 0,
-            camera_readout_never_returns: false,
-            look_never_returns: false,
-            fail_cursor_restore: false,
-            unhoverable: Vec::new(),
-            live_pitch_clamp: false,
-            pitch_inverted: false,
-            avatar_hides: None,
-            avatar_cover_dz: f64::INFINITY,
-            body_dz: vec![-40.0, 0.0, 50.0, 90.0],
-            interact_range_m: None,
-        }
-    }
-
-    pub fn with_entity(mut self, id: u32, name: &str, pos: Vec3) -> Self {
-        self.entities.push(SimEntity {
-            id,
-            name: name.into(),
-            pos,
-            hostility: "Friendly".into(),
-            window: None,
-            rendered: true,
-        });
-        self
-    }
-
-    /// A sim whose pawn behaves like the live one (see `live_pawn`).
-    pub fn live() -> Self {
-        Self {
-            live_pawn: true,
-            standing_turn: false,
-            ..Self::new()
-        }
-    }
-
-    fn held(&self, k: &str) -> bool {
-        self.keys.get(k).copied().unwrap_or(false)
-    }
-
-    fn slot(&self, s: i32) -> u32 {
-        self.slots.get(&s).copied().unwrap_or(0)
-    }
-
-    /// Camera-space projection of a client point (camera at the pawn's
-    /// head, looking along the camera yaw and pitch).
-    pub fn project_point(&self, p: Vec3) -> Option<(f64, f64)> {
-        let eye = Vec3::new(self.pos.x, self.pos.y, self.pos.z + 150.0);
-        let d = p.sub(eye);
-        let (cy, sy) = (self.cam_yaw.cos(), self.cam_yaw.sin());
-        let fwd_h = d.x * cy + d.y * sy;
-        let right = -d.x * sy + d.y * cy;
-        let (cp, sp) = (self.cam_pitch.cos(), self.cam_pitch.sin());
-        let fwd = fwd_h * cp + d.z * sp;
-        let up = -fwd_h * sp + d.z * cp;
-        if fwd <= 1.0 {
-            return None;
-        }
-        let (cx, cyy) = self.screen.centre();
-        let focal = cx / (self.hfov / 2.0).tan();
-        Some((cx + right / fwd * focal, cyy - up / fwd * focal))
-    }
-
-    /// The nearest rendered entity within 25 px of the cursor; the player
-    /// first (nearest of all) when `avatar_radius_px` is set and covers it.
-    fn under_cursor(&self) -> u32 {
-        let (x, y) = (self.cursor.0 as f64, self.cursor.1 as f64);
-        if let Some(r) = self.avatar_radius_px {
-            let covered = [-40.0, 0.0, 50.0, 90.0].iter().any(|dz| {
-                self.project_point(Vec3::new(self.pos.x, self.pos.y, self.pos.z + dz))
-                    .is_some_and(|(px, py)| ((px - x).powi(2) + (py - y).powi(2)).sqrt() <= r)
-            });
-            if covered {
-                return PLAYER_ID;
-            }
-        }
-        let mut best: Option<(f64, u32, f64)> = None;
-        for e in self
-            .entities
-            .iter()
-            .filter(|e| e.rendered && !self.unhoverable.contains(&e.id))
-        {
-            // The body height whose projection is nearest the cursor, if any
-            // is within 25 px.
-            let mut near: Option<(f64, f64)> = None;
-            for dz in self.body_dz.iter().copied() {
-                let Some((px, py)) = self.project_point(Vec3::new(e.pos.x, e.pos.y, e.pos.z + dz))
-                else {
-                    continue;
-                };
-                let d_px = ((px - x).powi(2) + (py - y).powi(2)).sqrt();
-                if d_px <= 25.0 && near.is_none_or(|(d, _)| d_px < d) {
-                    near = Some((d_px, dz));
-                }
-            }
-            if let Some((_, dz)) = near {
-                let dist = horizontal_m(self.pos, e.pos);
-                if best.is_none_or(|(d, _, _)| dist < d) {
-                    best = Some((dist, e.id, dz));
-                }
-            }
-        }
-        let hit = best.map(|b| b.1).unwrap_or(0);
-        if let Some((id, half)) = self.avatar_hides {
-            let off =
-                self.entities.iter().find(|e| e.id == id).map(|e| {
-                    wrap_pi(super::geometry::bearing(self.pos, e.pos) - self.cam_yaw).abs()
-                });
-            let low = best.is_some_and(|b| b.2 < self.avatar_cover_dz);
-            if hit == id && low && off.is_some_and(|o| o < half) {
-                return PLAYER_ID;
-            }
-        }
-        hit
-    }
-
-    fn advance(&mut self, ms: u64) {
-        let mut left = ms;
-        while left > 0 {
-            let dt = left.min(10);
-            left -= dt;
-            self.now += dt;
-            if self.live_pawn {
-                let (l, r) = self.turn_key_names.clone();
-                let dir = f64::from(u8::from(self.held(&r))) - f64::from(u8::from(self.held(&l)));
-                let sign = if self.right_raises_yaw { 1.0 } else { -1.0 };
-                self.pawn_yaw =
-                    wrap_pi(self.pawn_yaw + sign * dir * self.turn_rate_rad_s * dt as f64 / 1000.0);
-            }
-            if self.held("S") {
-                // Backward is never blocked by `wall_x` (the wall is ahead).
-                let step = self.speed_uu_s * dt as f64 / 1000.0;
-                self.pos.x -= self.pawn_yaw.cos() * step;
-                self.pos.y -= self.pawn_yaw.sin() * step;
-            }
-            if self.held("W") {
-                if !self.live_pawn {
-                    self.pawn_yaw = self.cam_yaw;
-                }
-                let step = self.speed_uu_s * dt as f64 / 1000.0;
-                let nx = self.pos.x + self.pawn_yaw.cos() * step;
-                let ny = self.pos.y + self.pawn_yaw.sin() * step;
-                if self.wall_x.is_some_and(|w| nx >= w) {
-                    continue;
-                }
-                self.pos.x = nx;
-                self.pos.y = ny;
-            }
-        }
-    }
-}
+#[path = "sim_model.rs"]
+mod model;
+#[path = "sim_trace.rs"]
+mod trace;
 
 impl WorldIo for Sim {
     fn now_ms(&self) -> u64 {
@@ -363,6 +191,21 @@ impl WorldIo for Sim {
 
     async fn sleep(&mut self, ms: u64) {
         self.advance(ms);
+        if let Some(f) = self.frames.as_mut() {
+            *f += (ms / 16).max(1);
+        }
+    }
+
+    async fn frame(&mut self) -> Option<u64> {
+        self.frames
+    }
+
+    async fn server_position(&mut self, _entity_id: u32) -> Result<Option<Vec3>, String> {
+        self.server_pos_reads += 1;
+        if self.server_pos_reads > 1 {
+            return Ok(self.server_pos_end.or(self.server_pos));
+        }
+        Ok(self.server_pos)
     }
 
     async fn server_entities(
@@ -548,6 +391,11 @@ impl WorldIo for Sim {
             std::future::pending().await
         }
         self.looks.push((dx, dy, wheel));
+        if self.counters_follow_looks {
+            if let Some(c) = self.counters.as_mut() {
+                *c += 1;
+            }
+        }
         self.cam_yaw = wrap_pi(self.cam_yaw + dx as f64 / self.gain);
         let sign = if self.pitch_inverted { -1.0 } else { 1.0 };
         let mut counts = f64::from(dy);
@@ -582,7 +430,7 @@ impl WorldIo for Sim {
         let gain = units / self.gain.abs() * self.readout_gain_scale;
         Ok(json!({
             "zoom": self.zoom,
-            "yaw_offset_deg": 0.0,
+            "yaw_offset_deg": self.cam_yaw.to_degrees(),
             "pitch_offset_deg": -self.cam_pitch.to_degrees(),
             "gain": gain,
             "pitch_gain": if self.pitch_inverted { -gain } else { gain },
@@ -590,11 +438,28 @@ impl WorldIo for Sim {
         }))
     }
 
+    fn coast_model(&self) -> CoastModel {
+        self.coast_model.unwrap_or_default()
+    }
+
+    fn store_coast_model(&mut self, m: CoastModel) {
+        self.coast_model = Some(m);
+    }
+
+    async fn trace_line(
+        &mut self,
+        start: Vec3,
+        end: Vec3,
+        _flags: u32,
+    ) -> Result<Option<TraceHit>, String> {
+        self.trace(start, end)
+    }
+
     async fn key(&mut self, key: &str, down: bool) -> Result<(), String> {
-        if key == "Space" && down && self.jump_clears_wall {
-            self.wall_x = None;
+        self.key_log.push((key.to_string(), down, self.pos));
+        if let Some((key, down)) = self.lag.key(self.now, key, down) {
+            self.apply_key(&key, down);
         }
-        self.keys.insert(key.to_string(), down);
         Ok(())
     }
 
@@ -643,6 +508,10 @@ impl WorldIo for Sim {
 
     async fn visible_windows(&mut self) -> Result<Vec<String>, String> {
         Ok(self.windows.clone())
+    }
+
+    async fn input_counters(&mut self) -> Option<u64> {
+        self.counters
     }
 
     async fn window_rects(&mut self) -> Result<Vec<(String, [f64; 4])>, String> {

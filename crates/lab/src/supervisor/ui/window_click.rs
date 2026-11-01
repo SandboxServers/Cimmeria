@@ -13,6 +13,7 @@ use std::time::Instant;
 
 use serde_json::{json, Value};
 
+use super::click_expect::{click_evidence, ClickExpect};
 use super::window_read::WALK_FN;
 use super::{NativeLevel, NativeTrail, Supervisor};
 use crate::supervisor::flows::widgets::lua_quote;
@@ -318,13 +319,15 @@ impl Supervisor {
         }
     }
 
-    /// `client_window_click`.
+    /// `client_window_click`. `expect` names the window the click should
+    /// show or hide; the result is judged on it (AX-40).
     pub async fn window_click(
         &self,
         target: ClickTarget,
         button: usize,
         double: bool,
         allow_lua_fallback: bool,
+        expect: &ClickExpect,
     ) -> Result<Value, String> {
         let t0 = Instant::now();
         let mut trail = NativeTrail::default();
@@ -339,10 +342,13 @@ impl Supervisor {
         let target_name = hit_test_target(&target, &loc)
             .ok_or_else(|| "the located click target has no CEGUI window name".to_string())?;
         let received_by = self.verify_click_target(&target_name, x, y).await?;
+        let before = self.expect_before(expect).await;
         let placed = self.click_at(x, y, button, double).await?;
         placed.note_fallback(&mut trail);
         let at = placed.at;
         trail.push("click", NativeLevel::RealInput);
+        let checks = self.expect_after(expect, &before).await;
+        let mut row_selected = None;
         let mut out = json!({
             "target": loc["name"].clone(),
             "text": loc["text"].clone(),
@@ -367,6 +373,7 @@ impl Supervisor {
                     json!("the click did not select the row; selected through setItemSelectState");
             }
             out["selected"] = json!(selected);
+            row_selected = Some(selected);
             if !selected {
                 return Err(format!(
                     "row {row} of {list} is not selected after a click at ({}, {}) ({})",
@@ -374,6 +381,13 @@ impl Supervisor {
                 ));
             }
         }
+        out["evidence"] = click_evidence(
+            Some(received_by.as_str()),
+            &target_name,
+            row_selected,
+            checks,
+        )
+        .to_value();
         trail.stamp(&mut out);
         out["elapsed_ms"] = json!(t0.elapsed().as_millis() as u64);
         Ok(out)
@@ -423,6 +437,7 @@ mod tests {
                 0,
                 false,
                 false,
+                &ClickExpect::default(),
             )
             .await
             .unwrap_err();

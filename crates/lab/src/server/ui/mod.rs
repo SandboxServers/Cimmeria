@@ -15,6 +15,7 @@ use serde_json::{json, Value};
 
 use super::LabServer;
 use crate::supervisor::ui::chat_log::ChatFilter;
+use crate::supervisor::ui::click_expect::ClickExpect;
 use crate::supervisor::ui::drag_drop::DragEnd;
 use crate::supervisor::ui::item_action::{ItemSelector, ItemVerb};
 use crate::supervisor::ui::slots::ContainerRef;
@@ -113,7 +114,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Click in a UI window like a player: a named window (`target`, e.g. a button or a named row), the visible widget under `root` whose text matches `text`, or a row of a Listbox/MultiColumnList (`list` + `row_index` or `row_text`). Real button messages at the widget's screen point; refuses hidden or disabled widgets. A row click is verified by reading the selection back; if the click missed, the row is selected through the list's Lua and the result says so (native_level client_ui_lua)."
+        description = "Click in a UI window like a player: a named window (`target`, e.g. a button or a named row), the visible widget under `root` whose text matches `text`, or a row of a Listbox/MultiColumnList (`list` + `row_index` or `row_text`). Real button messages at the widget's screen point; refuses hidden or disabled widgets. A row click is verified by reading the selection back; if the click missed, the row is selected through the list's Lua and the result says so (native_level client_ui_lua). Pass expect_visible or expect_hidden to have the click judged on that window; without one the result is inconclusive (posted_only), because a click alone proves nothing."
     )]
     async fn client_window_click(
         &self,
@@ -123,17 +124,40 @@ impl LabServer {
         let r = async {
             let target = click_target(&a)?;
             let button = mouse_button(a.button.as_deref())?;
+            let expect =
+                ClickExpect::from_args(a.expect_visible, a.expect_hidden, a.expect_timeout_ms);
             self.supervisor
                 .window_click(
                     target,
                     button,
                     a.double.unwrap_or(false),
                     a.allow_lua_fallback.unwrap_or(true),
+                    &expect,
                 )
                 .await
         }
         .await;
         ui_result("client_window_click", t0, r)
+    }
+
+    #[tool(
+        description = "List the clickable CEGUI windows under root (default Root) with their full names, type, text, pixel rect, visible and enabled. Names containing __auto_ are the stock UI's unnamed children; pass the full name to client_ui_click or a client_ui_sequence click step. Large trees page: pass next back as cursor while truncated is true. Read-only."
+    )]
+    async fn client_ui_clickables(
+        &self,
+        Parameters(a): Parameters<ClickablesArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let t0 = Instant::now();
+        let r = self
+            .supervisor
+            .ui_clickables(
+                a.root.as_deref(),
+                a.include_hidden.unwrap_or(false),
+                a.limit,
+                a.cursor,
+            )
+            .await;
+        ui_result("client_ui_clickables", t0, r)
     }
 
     #[tool(

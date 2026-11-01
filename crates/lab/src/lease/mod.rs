@@ -29,8 +29,11 @@
 
 pub mod permit;
 pub mod policy;
+mod render;
 pub mod run;
 
+use render::{ended_json, holder_text, lease_json};
+pub use render::{grant_json, rfc3339};
 pub use run::RunLease;
 
 use std::collections::VecDeque;
@@ -130,64 +133,8 @@ pub fn spawn_sweeper(book: Arc<LeaseBook>) {
     );
 }
 
-pub fn rfc3339(ms: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(ms)
-        .map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
-        .unwrap_or_default()
-}
-
 fn new_lease_id() -> String {
     format!("lease-{}", uuid::Uuid::new_v4().simple())
-}
-
-fn holder_text(l: &Lease, now: i64) -> String {
-    format!(
-        "{} ({}) since {}, expires {} (in {} s)",
-        l.owner,
-        l.purpose,
-        rfc3339(l.acquired_ms),
-        rfc3339(l.expires_ms),
-        (l.expires_ms - now).max(0) / 1000
-    )
-}
-
-fn lease_json(l: &Lease, now: i64) -> Value {
-    json!({
-        "owner": l.owner,
-        "purpose": l.purpose,
-        "since": rfc3339(l.acquired_ms),
-        "renewed_at": rfc3339(l.renewed_ms),
-        "expires_at": rfc3339(l.expires_ms),
-        "remaining_s": (l.expires_ms - now).max(0) / 1000,
-        "ttl_s": l.ttl_s,
-        "took_over_from": l.took_over_from.as_ref().map(ended_json),
-    })
-}
-
-fn ended_json(e: &Ended) -> Value {
-    json!({
-        "owner": e.owner,
-        "purpose": e.purpose,
-        "since": rfc3339(e.acquired_ms),
-        "ended_at": rfc3339(e.ended_ms),
-        "how": e.how,
-        "by": e.by,
-        "reason": e.reason,
-    })
-}
-
-/// What [`LeaseBook::acquire`] returns to the caller: the id is the
-/// capability, so it is only ever handed to the acquirer.
-pub fn grant_json(l: &Lease) -> Value {
-    json!({
-        "lease_id": l.lease_id,
-        "owner": l.owner,
-        "purpose": l.purpose,
-        "ttl_s": l.ttl_s,
-        "expires_at": rfc3339(l.expires_ms),
-        "took_over_from": l.took_over_from.as_ref().map(ended_json),
-        "note": "Pass lease_id to every tool that drives the client; each such call renews the lease. lab_lease_release when you are done.",
-    })
 }
 
 fn validate_ttl(ttl_s: Option<u64>) -> Result<u64, String> {
@@ -272,6 +219,28 @@ impl LeaseBook {
         let mut st = self.lock();
         st.expire_if_due(now_ms());
         st.current.as_ref().is_some_and(|l| l.lease_id == id)
+    }
+
+    /// The id of the current, unexpired lease (AX-27: the input guard's view).
+    pub fn current_id(&self) -> Option<String> {
+        self.current_id_at(now_ms())
+    }
+
+    /// `current_id` at an injected clock (the test seam).
+    pub fn current_id_at(&self, now: i64) -> Option<String> {
+        let mut st = self.lock();
+        st.expire_if_due(now);
+        st.current.as_ref().map(|l| l.lease_id.clone())
+    }
+
+    /// How the lease `id` ended, while the history still remembers it.
+    pub fn ended_how(&self, id: &str) -> Option<&'static str> {
+        self.lock()
+            .history
+            .iter()
+            .rev()
+            .find(|e| e.lease_id == id)
+            .map(|e| e.how)
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {

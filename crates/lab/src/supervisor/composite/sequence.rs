@@ -15,6 +15,9 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
+use super::sequence_proof::{action_checks, sequence_evidence};
+use crate::proof::Check;
+use crate::supervisor::ui::click_expect::ClickExpect;
 use crate::supervisor::ui::drag_drop::DragEnd;
 use crate::supervisor::ui::slots::ContainerRef;
 use crate::supervisor::ui::{NativeLevel, NativeTrail};
@@ -156,12 +159,28 @@ fn level_of(result: &Value, default: NativeLevel) -> NativeLevel {
 }
 
 impl Supervisor {
+    /// Run one action and the checks it adds, judged from its result
+    /// ([`action_checks`]). `index` is the action's position from 0.
+    async fn ui_action(
+        &self,
+        index: usize,
+        a: &Action,
+    ) -> (Result<(Value, Option<NativeLevel>), String>, Vec<Check>) {
+        let r = self.ui_step(a).await;
+        let view = r.as_ref().map(|(v, _)| v.clone()).map_err(Clone::clone);
+        let moved = matches!(a, Action::Drag { .. }).then(|| r.is_ok());
+        let checks = action_checks(index, a, &view, moved);
+        (r, checks)
+    }
+
     /// Run one action: its short result and the native level it drove at
     /// (`None` for the waits, which drive nothing).
-    async fn ui_action(&self, a: &Action) -> Result<(Value, Option<NativeLevel>), String> {
+    async fn ui_step(&self, a: &Action) -> Result<(Value, Option<NativeLevel>), String> {
         match a {
             Action::Click { window, button } => {
-                let r = self.ui_click(window, *button).await?;
+                let r = self
+                    .ui_click(window, *button, &ClickExpect::default())
+                    .await?;
                 let l = level_of(&r, NativeLevel::RealInput);
                 Ok((json!(true), Some(l)))
             }
@@ -174,14 +193,9 @@ impl Supervisor {
                 Ok((json!(true), Some(NativeLevel::RealInput)))
             }
             Action::Type { text, into } => {
-                let mut level = NativeLevel::RealInput;
-                if let Some(w) = into {
-                    let r = self.ui_click(w, 0).await?;
-                    level = level.max(level_of(&r, NativeLevel::RealInput));
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                }
-                self.type_text(text).await?;
-                Ok((json!(true), Some(level)))
+                let r = self.type_into(into.as_deref(), text).await?;
+                let l = level_of(&r, NativeLevel::RealInput);
+                Ok((r, Some(l)))
             }
             Action::Drag { from, to, split } => {
                 let r = self
@@ -223,8 +237,11 @@ impl Supervisor {
         let mut results = Vec::with_capacity(actions.len());
         let mut stopped_at = None;
         let mut covered_click_failed = false;
+        let mut checks = Vec::new();
         for (i, a) in actions.iter().enumerate() {
-            match self.ui_action(a).await {
+            let (step, step_checks) = self.ui_action(i, a).await;
+            checks.extend(step_checks);
+            match step {
                 Ok((v, level)) => {
                     if let Some(l) = level {
                         trail.push(format!("{}: {a:?}", i + 1), l);
@@ -249,6 +266,7 @@ impl Supervisor {
         if covered_click_failed {
             out["native_pass"] = json!(false);
         }
+        out["evidence"] = sequence_evidence(checks).to_value();
         out
     }
 }

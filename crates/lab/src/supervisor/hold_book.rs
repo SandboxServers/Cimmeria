@@ -1,0 +1,229 @@
+//! The daemon's book of keys it holds down through the lab DLL (contract C5,
+//! daemon half). Pure: the caller passes the clock, so host tests need no
+//! bridge. The DLL ends a hold when its lease runs out, so the book's job is
+//! to ask for a renewal before that happens.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+/// Lease asked of the DLL for every hold (D-AX8: its maximum). Renewed at
+/// half of it, so one lost renewal still leaves a full half-lease of slack.
+pub const LEASE_MS: u32 = 10_000;
+
+/// One key the daemon believes the DLL holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Held {
+    /// The key name the tool used (re-resolved with `keys::named` on renewal).
+    pub name: String,
+    /// Monotonic ms at which the lease is half spent.
+    pub renew_at_ms: u64,
+    /// The clock (as `pressed` was given it) when the key first went down;
+    /// a renewal keeps it.
+    pub since_ms: u64,
+}
+
+/// What the daemon holds through the DLL, and when to renew it.
+#[derive(Debug)]
+pub struct HoldBook {
+    held: BTreeMap<u8, Held>,
+    lease_ms: u32,
+    /// An old DLL answered `input_hold` with "method not found": post
+    /// window messages directly from then on.
+    fallback: bool,
+    /// Posted mouse buttons not yet released (AX-27).
+    buttons: BTreeSet<usize>,
+}
+
+impl Default for HoldBook {
+    fn default() -> Self {
+        Self {
+            buttons: BTreeSet::new(),
+            held: BTreeMap::new(),
+            lease_ms: LEASE_MS,
+            fallback: false,
+        }
+    }
+}
+
+impl HoldBook {
+    fn renew_at(&self, now: u64) -> u64 {
+        now.saturating_add(u64::from(self.lease_ms / 2))
+    }
+
+    /// Note a hold (or its renewal) sent at `now`.
+    pub fn pressed(&mut self, vk: u8, name: &str, now: u64) {
+        let renew_at_ms = self.renew_at(now);
+        let since_ms = self.held.get(&vk).map_or(now, |h| h.since_ms);
+        self.held.insert(
+            vk,
+            Held {
+                name: name.to_string(),
+                renew_at_ms,
+                since_ms,
+            },
+        );
+    }
+
+    /// Every held key with its name and when it first went down.
+    pub fn holds(&self) -> Vec<(String, u64)> {
+        self.held
+            .values()
+            .map(|h| (h.name.clone(), h.since_ms))
+            .collect()
+    }
+
+    /// Forget a hold; whether it was in the book.
+    pub fn released(&mut self, vk: u8) -> bool {
+        self.held.remove(&vk).is_some()
+    }
+
+    /// Keys whose renewal is due at `now`.
+    pub fn due(&self, now: u64) -> Vec<u8> {
+        self.held
+            .iter()
+            .filter(|(_, h)| h.renew_at_ms <= now)
+            .map(|(vk, _)| *vk)
+            .collect()
+    }
+
+    /// A renewal of `vk` went out at `now`. `posted` is the DLL saying it had
+    /// to press the key again (the lease had already lapsed), which the
+    /// caller logs; returns it.
+    pub fn renewed(&mut self, vk: u8, now: u64, posted: bool) -> bool {
+        let next = self.renew_at(now);
+        if let Some(h) = self.held.get_mut(&vk) {
+            h.renew_at_ms = next;
+        }
+        posted
+    }
+
+    /// Every held key with its name.
+    pub fn all(&self) -> Vec<(u8, String)> {
+        self.held
+            .iter()
+            .map(|(vk, h)| (*vk, h.name.clone()))
+            .collect()
+    }
+
+    /// The name a held key was pressed under.
+    pub fn name_of(&self, vk: u8) -> Option<String> {
+        self.held.get(&vk).map(|h| h.name.clone())
+    }
+
+    /// Whether no key is held.
+    pub fn is_empty(&self) -> bool {
+        self.held.is_empty()
+    }
+
+    /// A mouse button this daemon posted down (AX-27).
+    pub fn button_down(&mut self, b: usize) {
+        self.buttons.insert(b);
+    }
+
+    /// A mouse button this daemon posted up (AX-27).
+    pub fn button_up(&mut self, b: usize) {
+        self.buttons.remove(&b);
+    }
+
+    /// Every button still down, forgotten as they are returned.
+    pub fn take_buttons(&mut self) -> Vec<usize> {
+        std::mem::take(&mut self.buttons).into_iter().collect()
+    }
+
+    /// Forget every hold (the caller released them, or the DLL lease will).
+    /// Buttons are left alone: they are not DLL holds, `take_buttons` owns them.
+    pub fn clear(&mut self) {
+        self.held.clear();
+    }
+
+    /// Forget everything: holds and the old-DLL fallback. A new or stopped
+    /// client starts with a clean book (C5: fallback is per connection).
+    pub fn reset(&mut self) {
+        self.held.clear();
+        self.buttons.clear();
+        self.fallback = false;
+    }
+
+    /// Tests: a zero lease makes every hold due at once.
+    #[cfg(test)]
+    pub fn set_lease_ms(&mut self, ms: u32) {
+        self.lease_ms = ms;
+    }
+
+    /// Remember that the DLL has no `input_hold`.
+    pub fn set_fallback(&mut self) {
+        self.fallback = true;
+    }
+
+    /// Whether holds are posted as window messages instead.
+    pub fn is_fallback(&self) -> bool {
+        self.fallback
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renew_is_due_at_half_lease() {
+        let mut b = HoldBook::default();
+        b.pressed(0x57, "w", 0);
+        assert!(b.due(4999).is_empty());
+        assert_eq!(b.due(5000), vec![0x57]);
+    }
+
+    #[test]
+    fn posted_renew_is_a_reassert() {
+        let mut b = HoldBook::default();
+        b.pressed(0x57, "w", 0);
+        assert!(b.renewed(0x57, 6000, true));
+        assert!(b.due(10_999).is_empty(), "renew_at must move to 11000");
+        assert_eq!(b.due(11_000), vec![0x57]);
+        assert!(!b.renewed(0x57, 11_000, false));
+    }
+
+    #[test]
+    fn release_and_clear_empty_the_book() {
+        let mut b = HoldBook::default();
+        b.pressed(1, "a", 0);
+        b.pressed(2, "b", 0);
+        assert!(b.released(1));
+        assert!(!b.released(1));
+        b.clear();
+        assert!(b.is_empty());
+    }
+
+    #[test]
+    fn buttons_are_tracked_until_up() {
+        let mut b = HoldBook::default();
+        b.button_down(0);
+        b.button_down(1);
+        b.button_up(0);
+        b.clear();
+        assert_eq!(b.take_buttons(), vec![1]);
+        assert!(b.take_buttons().is_empty());
+    }
+
+    #[test]
+    fn reset_forgets_holds_and_fallback() {
+        let mut b = HoldBook::default();
+        b.pressed(1, "a", 0);
+        b.button_down(2);
+        b.set_fallback();
+        b.reset();
+        assert!(b.is_empty());
+        assert!(!b.is_fallback());
+        assert!(b.take_buttons().is_empty());
+    }
+
+    #[test]
+    fn pressed_again_keeps_since() {
+        let mut b = HoldBook::default();
+        b.pressed(0x57, "w", 0);
+        b.pressed(0x57, "w", 5000);
+        assert_eq!(b.holds(), vec![("w".to_string(), 0)]);
+        b.released(0x57);
+        b.pressed(0x57, "w", 6000);
+        assert_eq!(b.holds(), vec![("w".to_string(), 6000)]);
+    }
+}

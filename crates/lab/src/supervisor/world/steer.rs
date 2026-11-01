@@ -325,6 +325,7 @@ pub struct MoveController {
     best_m: f64,
     best_at: u64,
     min_m: f64,
+    lead: super::coast::Lead,
 }
 
 impl MoveController {
@@ -339,7 +340,18 @@ impl MoveController {
             best_m: f64::INFINITY,
             best_at: 0,
             min_m: f64::INFINITY,
+            lead: super::coast::Lead::default(),
         }
+    }
+
+    /// Release `W` `lead_m` early, then hold off `hold_ms` for the pawn to coast in.
+    pub fn set_lead(&mut self, lead_m: f64, hold_ms: u64) {
+        self.lead.set(lead_m, hold_ms);
+    }
+
+    /// True while the hold-off after an early release runs.
+    pub fn coasting(&self) -> bool {
+        self.lead.coasting()
     }
 
     /// The time since this step was not spent holding its turn command (the
@@ -383,8 +395,16 @@ impl MoveController {
             None => false,
         };
 
+        if self.lead.holding(now_ms) {
+            self.last = None;
+            return out;
+        }
         if dist <= self.cfg.arrival_m {
             out.outcome = Some(MoveOutcome::Arrived { distance_m: dist });
+            self.last = None;
+            return out;
+        }
+        if self.lead.release(now_ms, dist, self.cfg.arrival_m) {
             self.last = None;
             return out;
         }

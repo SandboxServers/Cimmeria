@@ -15,6 +15,7 @@ use serde_json::{json, Value};
 use super::super::binding::{lab_key_for_vk, parse_binding, Binding};
 use super::super::NativeLevel;
 use crate::supervisor::flows::{settle, widgets, FlowError, FlowRun};
+use crate::supervisor::ui::click_expect::ClickExpect;
 use crate::supervisor::Supervisor;
 
 pub const ABILITY_WIN: &str = "AbilityWin";
@@ -190,7 +191,11 @@ impl Supervisor {
                     closed_by = json!("toggle key");
                 }
             } else if self
-                .ui_click(&format!("{ABILITY_WIN}/__auto_closebutton__"), 0)
+                .ui_click(
+                    &format!("{ABILITY_WIN}/__auto_closebutton__"),
+                    0,
+                    &ClickExpect::default(),
+                )
                 .await
                 .is_ok()
             {

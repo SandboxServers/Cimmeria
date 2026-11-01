@@ -19,7 +19,9 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
+use super::click_expect::ClickExpect;
 use super::inventory::{diff, find_items};
+use super::item_proof;
 use super::slots::ContainerRef;
 use super::window_click::{click_point, locate_chunk, ClickTarget};
 use super::{NativeLevel, NativeTrail, Supervisor};
@@ -190,7 +192,8 @@ impl Supervisor {
                 }
                 out["loot_count_before"] = st["count"].clone();
                 if verb == ItemVerb::LootAll {
-                    self.ui_click("Loot_LootAllButton", 0).await?;
+                    self.ui_click("Loot_LootAllButton", 0, &ClickExpect::default())
+                        .await?;
                     trail.push("click Loot_LootAllButton", NativeLevel::RealInput);
                 } else {
                     let index = loot_index.ok_or("loot_slot needs loot_index (1-based)")?;
@@ -207,7 +210,11 @@ impl Supervisor {
                         } else {
                             "Loot_PrevButton"
                         };
-                        if self.ui_click(btn, 0).await.is_err() {
+                        if self
+                            .ui_click(btn, 0, &ClickExpect::default())
+                            .await
+                            .is_err()
+                        {
                             paged = false;
                             break;
                         }
@@ -400,6 +407,9 @@ impl Supervisor {
                 out["native_pass"] = json!(false);
             }
         }
+        // Judged (AX-41): loot decides by its counters, the rest by the diff.
+        let is_loot = matches!(verb, ItemVerb::LootAll | ItemVerb::LootSlot);
+        out["evidence"] = item_proof::item_evidence(&out, expect_change, is_loot).to_value();
         out["elapsed_ms"] = json!(t0.elapsed().as_millis() as u64);
         Ok(out)
     }

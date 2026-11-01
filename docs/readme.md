@@ -60,6 +60,28 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
 | Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
 | Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
 | Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
 | Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
@@ -494,6 +516,7 @@ Practical guidance for contributors working on the RE effort or the emulator.
 | [reverse-engineering-with-claude.md](guides/reverse-engineering-with-claude.md) | Workflow doc: when to invoke `game-archaeology-specialist`, Six-Phase mapping to Claude Code sessions, evidence handoff to `documentation-writer`, what NOT to delegate | Complete |
 | [live-research-lab.md](guides/live-research-lab.md) | **How-to + rulebook.** The "ask the running game" path: the experiment loop, the seven research rules, the merged `lab_timeline` window, and the free SigNoz Lua-VM check. Operating manual for the ADR at [architecture/live-research-lab.md](architecture/live-research-lab.md) | Complete |
 | [lab-contributor-setup.md](guides/lab-contributor-setup.md) | **How-to. Start here for the lab on your own machine.** Fresh clone to a passing `lab_uat_run` row against a local server: prerequisites, the secrets table (what each token is for, who makes it, where it lives), `LoginInternal.lua` and `lab-account.json`, the daemon and `labd.env`, MCP registration for Claude Code and Codex, `lab doctor`, troubleshooting. No colo, VPN, SigNoz or Key Vault | Complete |
+| [lab-evidence.md](guides/lab-evidence.md) | **How-to + reference.** How to read a lab tool's result: `evidence.verdict`, `why` codes, server corroboration, stop reports and recovery, clicks, the watch and detectors, frames, movement safety and the blind `frame-describer` | Complete |
 | [reading-decompiled-code.md](guides/reading-decompiled-code.md) | Tips for reading Ghidra decompiler output, common patterns, pitfalls | Complete |
 | [sgw-live-debugging.md](guides/sgw-live-debugging.md) | Live debugging SGW.exe with x32dbg + log breakpoints â€” manual fallback when MCP-driven flows fail; pybag incompatibility documented | Complete |
 | [placing-npcs-and-objects.md](guides/placing-npcs-and-objects.md) | **How-to (content authors).** Spawn, move, turn and remove NPCs and objects in-game with the `.`-console (`.movehere`, `.lookat`, `.savespawn`), confirm with `.seedconfirm`, and hand the batch id to a developer; ends with how a developer merges a batch from SigNoz into `spawnlist.sql` | Complete |

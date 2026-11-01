@@ -247,6 +247,22 @@ pub(super) async fn read_mouse_over<W: WorldIo>(
     }
 }
 
+pub(super) fn hover_deadline_error<W: WorldIo>(
+    io: &W,
+    steps: &Steps,
+    phase: &str,
+    attempted_pixel: Option<(i32, i32)>,
+    tried: &[Value],
+    deadline: tokio::time::Instant,
+) -> WorldError {
+    steps.fail_with(
+        io.now_ms(),
+        "hover_timeout",
+        format!("target hover attempt exceeded its 10 s deadline during {phase}"),
+        json!({ "attempted_pixel": attempted_pixel, "remaining_deadline_ms": deadline.saturating_duration_since(tokio::time::Instant::now()).as_millis() as u64, "tried": tried }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;

@@ -24,7 +24,6 @@ use rmcp::{
 };
 use serde_json::{json, Value};
 
-use crate::supervisor::input::{cursor_target, MouseInput};
 use crate::supervisor::Supervisor;
 use crate::timeline::{Timeline, TimelineArgs};
 
@@ -33,14 +32,21 @@ mod client_state;
 mod combat;
 pub(crate) mod compact;
 mod composite;
+mod cooldown;
+mod evidence_gate;
+mod flow_proof;
 mod flows;
 mod golden;
 mod handler;
+mod input_tools;
 mod instances;
 mod lease;
 mod record;
+mod recover_tools;
+mod trace;
 mod uat;
 mod ui;
+mod watch;
 mod world;
 
 pub use instances::{parse_list, Hosted, Instances, INSTANCES_ENV};
@@ -178,47 +184,6 @@ pub struct TimelineToolArgs {
     pub since_ms: Option<i64>,
 }
 
-/// Args for `client_input_key`.
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct InputKeyArgs {
-    /// Key name (`"W"`, `"Enter"`, `"Escape"`, `"F1"`, `"Space"`, `"1"`, ...).
-    pub key: String,
-    /// `"tap"` (default: press, hold, release), `"down"` or `"up"`.
-    #[serde(default)]
-    pub action: Option<String>,
-    /// How long a tap holds the key, in ms (default 80).
-    #[serde(default)]
-    pub hold_ms: Option<u64>,
-}
-
-/// Args for `client_input_mouse`.
-#[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
-pub struct InputMouseArgs {
-    /// Relative motion (DirectInput counts).
-    #[serde(default)]
-    pub dx: i32,
-    #[serde(default)]
-    pub dy: i32,
-    /// Wheel (120 per notch).
-    #[serde(default)]
-    pub wheel: i32,
-    /// Button index: 0 left, 1 right, 2 middle.
-    #[serde(default)]
-    pub button: Option<usize>,
-    /// `"click"` (default), `"down"` or `"up"`.
-    #[serde(default)]
-    pub action: Option<String>,
-    #[serde(default)]
-    pub hold_ms: Option<u64>,
-    /// With `y`: put the UI cursor on this UI pixel first (a real CEGUI
-    /// MouseMove), then press. Both or neither. With no button, just moves
-    /// the cursor.
-    #[serde(default)]
-    pub x: Option<i32>,
-    #[serde(default)]
-    pub y: Option<i32>,
-}
-
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct LivewirePlanArgs {
     /// The `state` object returned by `server_minigame_state`.
@@ -235,40 +200,6 @@ pub struct MinigamePlayArgs {
     pub game: Option<String>,
 }
 
-/// Args for `client_ui_click`.
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct UiClickArgs {
-    /// Named CEGUI window (a Lua global, e.g. `"Login_LoginButton"`).
-    pub window: String,
-    /// 0 left (default), 1 right.
-    #[serde(default)]
-    pub button: Option<usize>,
-}
-
-/// Args for `client_cursor_move`.
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct CursorMoveArgs {
-    /// UI pixel x (the client area CEGUI uses).
-    pub x: i32,
-    /// UI pixel y.
-    pub y: i32,
-}
-
-/// Args for `client_type_text`.
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct TypeTextArgs {
-    /// Text to type into the focused edit box.
-    pub text: String,
-}
-
-/// Args for `client_input_focus`.
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct InputFocusArgs {
-    /// true: the game treats its window as foreground (input works while
-    /// it is in the background). false: normal focus.
-    pub on: bool,
-}
-
 /// The MCP server. Holds the shared supervisor (which owns the bridge
 /// client and the process lifecycle) and the timeline builder.
 #[derive(Clone)]
@@ -276,7 +207,7 @@ pub struct LabServer {
     supervisor: Arc<Supervisor>,
     livewire_atlas: Option<Arc<crate::supervisor::livewire_atlas::LivewireAtlas>>,
     timeline: Arc<Timeline>,
-    tool_router: ToolRouter<LabServer>,
+    pub(crate) tool_router: ToolRouter<LabServer>,
     instances: Arc<Instances>,
     /// Whether the call chose its instance (an `instance` argument, or a
     /// lease id that matched one), rather than falling through to the first.
@@ -328,7 +259,11 @@ impl LabServer {
                 + Self::golden_router()
                 + Self::ui_router()
                 + Self::composite_router()
-                + Self::lease_router(),
+                + Self::lease_router()
+                + Self::input_router()
+                + Self::watch_router()
+                + Self::recover_router()
+                + Self::trace_router(),
         }
     }
 
@@ -354,7 +289,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Play the current Livewire or placeholder minigame through native client mouse input. Reads the server board and ordered SmartFox tap, confirms rollover before every Livewire cut, and returns before/after movie images and the probe log. Requires the lab lease."
+        description = "Play the current Livewire or placeholder minigame through native client mouse input. Reads the server board and ordered SmartFox tap, confirms rollover before every Livewire cut, and returns before/after movie images and the probe log. Returns evidence: a real minigame is confirmed only when the server board says victory (no board read is inconclusive); a placeholder game is confirmed when the client window hides. Requires the lab lease."
     )]
     async fn client_minigame_play(
         &self,
@@ -554,110 +489,28 @@ impl LabServer {
         self.wrap(self.supervisor.status().await)
     }
 
-    // ---- Native input: DirectInput keys/buttons, window-message cursor/text
-
     #[tool(
-        description = "Press, release, or tap a key as the window messages a real key press produces (WM_KEYDOWN/WM_KEYUP; the game translates them itself). Works while the client is in the background. Keys: letters, digits, Enter, Escape, Tab, Space, Backspace, arrows, F1-F12, Shift, Ctrl, Alt, Home/End/PageUp/PageDown/Insert/Delete."
-    )]
-    async fn client_input_key(
-        &self,
-        Parameters(a): Parameters<InputKeyArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        let action = a.action.as_deref().unwrap_or("tap");
-        self.wrap(self.supervisor.input_key(&a.key, action, a.hold_ms).await)
-    }
-
-    #[tool(
-        description = "Relative mouse motion / wheel through the game's DirectInput mouse (mouse-look while the viewport has the mouse captured), and/or a mouse-button press, release or click (window messages). Give x and y (UI pixels, both or neither) to put the UI cursor there first, with a real CEGUI MouseMove, and have the press land on it; without them the press lands wherever the UI cursor already is (CEGUI applies a button at its own cursor, never at a message's coordinates). x and y with no button just move the cursor."
-    )]
-    async fn client_input_mouse(
-        &self,
-        Parameters(a): Parameters<InputMouseArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        let at = match cursor_target(a.x, a.y) {
-            Ok(at) => at,
-            Err(e) => return self.wrap(Err(e)),
-        };
-        self.wrap(
-            self.supervisor
-                .input_mouse(MouseInput {
-                    dx: a.dx,
-                    dy: a.dy,
-                    wheel: a.wheel,
-                    button: a.button,
-                    action: a.action.as_deref(),
-                    hold_ms: a.hold_ms,
-                    at,
-                })
-                .await,
-        )
-    }
-
-    #[tool(
-        description = "Click a named UI window like a player: read its on-screen rectangle, put the UI cursor on its centre (CEGUI cursor, mirrored into the virtual GetCursorPos), then click with real button messages. Refuses hidden or missing windows."
-    )]
-    async fn client_ui_click(
-        &self,
-        Parameters(a): Parameters<UiClickArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        self.wrap(
-            self.supervisor
-                .ui_click(&a.window, a.button.unwrap_or(0))
-                .await,
-        )
-    }
-
-    #[tool(
-        description = "Place the UI cursor at (x, y) in UI pixels and confirm it is there. Moves it through the client's own CEGUI injectMousePosition, so CEGUI sees a real MouseMove (hover, drag thresholds, minigames); cursor_via says native_inject, or lua_set_position (no MouseMove) with cursor_fallback_reason when the native call failed."
-    )]
-    async fn client_cursor_move(
-        &self,
-        Parameters(a): Parameters<CursorMoveArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        let r = self.supervisor.place_cursor(a.x, a.y).await;
-        self.wrap(r.map(|p| p.to_json()))
-    }
-
-    #[tool(
-        description = "Type text into the focused edit box, one key press per character (Shift held for capitals). Letters, digits, space, - _ / and . (so slash commands and the GM console can be typed into chat). Click the edit box first with client_ui_click."
-    )]
-    async fn client_type_text(
-        &self,
-        Parameters(a): Parameters<TypeTextArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        self.wrap(self.supervisor.type_text(&a.text).await)
-    }
-
-    #[tool(
-        description = "Virtual focus on/off: while on, the game reports its window as the foreground window, so it keeps reading the lab's input while the desktop has focus elsewhere."
-    )]
-    async fn client_input_focus(
-        &self,
-        Parameters(a): Parameters<InputFocusArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        self.wrap(self.supervisor.input_focus(a.on).await)
-    }
-
-    #[tool(
-        description = "Input hook status: DirectInput devices seen, GetDeviceState/GetDeviceData call counts, held keys/buttons, virtual focus."
-    )]
-    async fn client_input_status(&self) -> Result<CallToolResult, McpError> {
-        self.proxy("input_status", json!({})).await
-    }
-
-    #[tool(description = "Release every held key and mouse button.")]
-    async fn client_input_release(&self) -> Result<CallToolResult, McpError> {
-        self.proxy("input_release", json!({})).await
-    }
-
-    #[tool(
-        description = "Capture the client window's game area (client rect, UI pixel space) as a PNG. Refuses a minimised window or an all-black frame."
+        description = "Capture the client window's game area (client rect, UI pixel space) as a PNG. Refuses a minimised window or an all-black frame. The text names the client frames the capture spans, from heartbeats before and after."
     )]
     async fn lab_screenshot(&self) -> Result<CallToolResult, McpError> {
-        match self.supervisor.screenshot().await {
-            Ok((b64, w, h)) => Ok(CallToolResult::success(vec![
-                ContentBlock::text(format!("client window {w}x{h}")),
-                ContentBlock::image(b64, "image/png"),
+        let shot = self
+            .supervisor
+            .capture_bracketed()
+            .await
+            .and_then(|(img, b)| {
+                let png = crate::supervisor::screenshot::encode_png(&img)?;
+                Ok((png, img.width, img.height, b))
+            });
+        match shot {
+            Ok((png, w, h, b)) => Ok(CallToolResult::success(vec![
+                ContentBlock::text(format!(
+                    "client window {w}x{h}{}",
+                    crate::supervisor::capture_frames::frames_text(b)
+                )),
+                ContentBlock::image(
+                    crate::supervisor::screenshot::png_to_base64(&png),
+                    "image/png",
+                ),
             ])),
             Err(e) => Err(McpError::internal_error(format!("screenshot: {e}"), None)),
         }

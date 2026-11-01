@@ -66,6 +66,8 @@ pub const OPEN: &[&str] = &[
     "lab_record_stop",
     // Re-transforms a recording folder on disk: no client.
     "lab_record_transform",
+    // Detectors over the daemon's own samples and call rows: no client call.
+    "lab_detectors_read",
     // Golden runs: read bundles, write only the golden file (no client).
     "lab_golden_record",
     "lab_golden_diff",
@@ -81,6 +83,7 @@ pub const OPEN: &[&str] = &[
     "client_entity_table",
     "client_ui_state",
     "client_window_read",
+    "client_ui_clickables",
     "client_player_state",
     "client_hotbar",
     "lab_characters",
@@ -140,12 +143,18 @@ pub const LEASED: &[&str] = &[
     "client_use_ability",
     "client_item_action",
     "client_die_and_respawn",
+    // Recovery recipes: tap Escape, release input, turn the camera, jump.
+    "lab_recover",
     // Composites: each drives the client (ensure_in_world), runs
     // caller-chosen Lua and native calls (client_batch) or input
     // (client_ui_sequence).
     "lab_ensure_in_world",
     "client_batch",
     "client_ui_sequence",
+    // Starts and stops the DLL's per-frame watch.
+    "client_watch",
+    // A line trace through the engine's collision check (a read).
+    "client_trace_line",
     // Flows.
     "lab_login",
     "lab_logout",

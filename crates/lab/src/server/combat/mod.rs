@@ -166,7 +166,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Use an ability like a player, by id or name. On the hotbar: press its bound key (real input), or click the button. Not on the hotbar: click it in the Ability window (real click), or with place=true put it on an empty button first (reported N3); fallback=lua calls useAbility (N3). Reports the native level, what was pressed, and the result read from client events: sent (net.out useAbility), cast started (onSequence), effect applied (onEffectResults / combat text), refused (onErrorCode, feedback text), timings, and the button's cooldown after."
+        description = "Use an ability like a player, by id or name. On the hotbar: press its bound key (real input), or click the button. Not on the hotbar: click it in the Ability window (real click), or with place=true put it on an empty button first (reported N3); fallback=lua calls useAbility (N3). Reports the native level, what was pressed, and the result read from client events: sent (net.out useAbility), cast started (onSequence), effect applied (onEffectResults / combat text), refused (onErrorCode, feedback text), timings, and the button's cooldown after. Returns evidence on whether the press got an answer, not whether the ability worked: an effect or a refusal is confirmed, a cast with no result yet or a send with no reply is inconclusive, nothing observed is denied (ignored)."
     )]
     async fn client_use_ability(
         &self,
@@ -213,7 +213,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Die and respawn: optional GM setup (/gmsethealth n 0, reported as setup; it does not kill by itself), wait for the defeat window, read its respawners and countdown, click Release (real click) or let the countdown release, then verify: window closed, alive, position and world before / at death / after."
+        description = "Die and respawn: optional GM setup (/gmsethealth n 0, reported as setup; it does not kill by itself), wait for the defeat window, read its respawners and countdown, click Release (real click) or let the countdown release, then verify: window closed, alive, position and world before / at death / after. Returns evidence: confirmed only when the defeat window closed and a health read shows the player alive; a missing health read is inconclusive."
     )]
     async fn client_die_and_respawn(
         &self,

@@ -128,6 +128,8 @@ impl Supervisor {
             st.login = LoginState::NotStarted;
             pid
         };
+        // The client is going: its DLL lease ends with it, so the book starts over.
+        self.holds.lock().await.reset();
         match pid {
             Some(pid) => {
                 // Wait for the exit, not just the request: a start right

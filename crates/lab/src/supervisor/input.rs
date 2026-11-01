@@ -30,6 +30,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::cegui_native::Cegui;
+use super::ui::click_expect::{click_evidence, ClickExpect};
 use super::ui::{NativeLevel, NativeTrail};
 use super::{keys, process, Supervisor};
 
@@ -274,26 +275,16 @@ impl Supervisor {
     }
 
     /// `client_input_key` — press, release, or tap (press, hold, release)
-    /// a key, as the window messages a real key produces.
+    /// a key. Held through the DLL with a lease, so a dead daemon cannot
+    /// leave it down (AX-26); an old DLL gets the window messages instead.
     pub async fn input_key(
         &self,
         key: &str,
         action: &str,
         hold_ms: Option<u64>,
     ) -> Result<Value, String> {
-        let k = keys::named(key).ok_or_else(|| format!("unknown key {key:?}"))?;
         let hwnd = self.game_hwnd().await?;
-        match action {
-            "down" => self.post_key(hwnd, k, true).await?,
-            "up" => self.post_key(hwnd, k, false).await?,
-            "tap" => {
-                self.post_key(hwnd, k, true).await?;
-                tokio::time::sleep(Duration::from_millis(hold_ms.unwrap_or(DEFAULT_HOLD_MS))).await;
-                self.post_key(hwnd, k, false).await?;
-            }
-            other => return Err(format!("action must be down, up or tap, not {other:?}")),
-        }
-        Ok(json!({ "key": key, "action": action }))
+        self.input_key_at(hwnd, key, action, hold_ms).await
     }
 
     /// `client_input_mouse` — relative motion / wheel (DirectInput, for
@@ -346,8 +337,17 @@ impl Supervisor {
         let hwnd = self.game_hwnd().await?;
         let lp = lparam_xy(x, y);
         match action {
-            "down" => process::post_message(hwnd, down_msg, mk, lp),
-            "up" => process::post_message(hwnd, up_msg, 0, lp),
+            "down" => {
+                process::post_message(hwnd, down_msg, mk, lp)?;
+                // AX-27: a lease end must be able to let go of it.
+                self.holds.lock().await.button_down(button);
+                Ok(())
+            }
+            "up" => {
+                process::post_message(hwnd, up_msg, 0, lp)?;
+                self.holds.lock().await.button_up(button);
+                Ok(())
+            }
             "click" => {
                 process::post_message(hwnd, down_msg, mk, lp)?;
                 tokio::time::sleep(Duration::from_millis(hold_ms.unwrap_or(DEFAULT_HOLD_MS))).await;
@@ -435,23 +435,33 @@ impl Supervisor {
     }
 
     /// `client_ui_click` — find a named UI window, put the cursor on its
-    /// centre, and click it with real button messages.
-    pub async fn ui_click(&self, window: &str, button: usize) -> Result<Value, String> {
+    /// centre, and click it with real button messages. `expect` is judged
+    /// after the click; an empty one makes the result `posted_only` (AX-40).
+    pub async fn ui_click(
+        &self,
+        window: &str,
+        button: usize,
+        expect: &ClickExpect,
+    ) -> Result<Value, String> {
         let v = self
             .bridge_call("lua_eval", json!({ "chunk": widget_rect_chunk(window) }))
             .await?;
         let rect = parse_widget_rect(window, &results_of(&v))?;
         let (x, y) = rect.centre();
         let received_by = self.verify_click_target(window, x, y).await?;
+        let before = self.expect_before(expect).await;
         let placed = self.place_cursor(x, y).await?;
         let at = placed.at;
         // Give the UI a frame to register the hover before the press.
         tokio::time::sleep(Duration::from_millis(40)).await;
         self.post_button(button, "click", at, None).await?;
+        let checks = self.expect_after(expect, &before).await;
         let mut out = placed.to_json();
         out["window"] = json!(window);
         out["clicked_at"] = json!([at.0, at.1]);
         out["received_by"] = json!(received_by);
+        out["evidence"] =
+            click_evidence(Some(received_by.as_str()), window, None, checks).to_value();
         Ok(out)
     }
 

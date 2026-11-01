@@ -8,8 +8,10 @@ use tokio::time::Instant;
 use super::input::{parse_widget_rect, widget_rect_chunk, Rect};
 use super::livewire_atlas::LivewireAtlas;
 use super::livewire_solver;
+use super::minigame::proof::minigame_checks;
 use super::screenshot::{self, Region};
 use super::Supervisor;
+use crate::proof::Evidence;
 use crate::uat::invoke::ServerTools;
 
 const MOVIE_WINDOW: &str = "Minigame_Movie_Area";
@@ -505,7 +507,8 @@ pub async fn play(
         server_outcome,
         terminal_failure(&tap.rows),
     );
-    let effect_ok = action_effect(game, action.is_ok(), hidden, outcome);
+    let action_ok = action.is_ok();
+    let effect_ok = action_effect(game, action_ok, hidden, outcome);
     Ok(PlayResult {
         report: json!({
             "entity_id": entity_id,
@@ -520,6 +523,14 @@ pub async fn play(
             "probes": probes,
             "tap_rows": tap.rows,
             "native_level": {"tier":"N1"},
+            "evidence": Evidence::judge(minigame_checks(
+                game,
+                is_placeholder(game),
+                server_outcome,
+                hidden,
+                action_ok,
+            ))
+            .to_value(),
         }),
         before,
         after,

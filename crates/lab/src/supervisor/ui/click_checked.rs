@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use serde_json::json;
 
+use super::click_expect::ClickExpect;
 use super::slots::lua_path;
 use super::window_click::{click_point, locate_chunk, ClickTarget};
 use super::{NativeLevel, NativeTrail, Supervisor};
@@ -79,7 +80,7 @@ impl Supervisor {
         trail: &mut NativeTrail,
     ) -> Result<(), String> {
         let mut tried: Vec<String> = Vec::new();
-        match self.ui_click(window, 0).await {
+        match self.ui_click(window, 0, &ClickExpect::default()).await {
             Ok(clicked) => {
                 if self.click_took_effect(done).await? {
                     note_posted_cursor(&clicked, trail);

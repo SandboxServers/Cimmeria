@@ -2,8 +2,8 @@
 
 > **Type:** Explanation and Reference (campaign ledger)
 > **Audience:** The orchestrator, the owner, packet-reviewers
-> **Last updated:** 2026-10-31
-> **Companions:** [work packets](work-packets.md), [contract](contract.md), [resume card](RESUME.md), waves [1](packets-wave1.md), [2](packets-wave2.md), [3](packets-wave3.md), [4](packets-wave4.md), [5](packets-wave5.md), [6](packets-wave6.md), [user directives](user-directives.md), [stack inventory](inventory-lab.md), [UE3 back-port check](ue3-backport-verified.md)
+> **Last updated:** 2026-11-01
+> **Companions:** [work packets](work-packets.md), [contract](contract.md), [resume card](RESUME.md), waves [1](packets-wave1.md), [2](packets-wave2.md), [3](packets-wave3.md), [4](packets-wave4.md), [5](packets-wave5.md), [6](packets-wave6.md), [AX-64 UAT ledger](uat-ax64.md), [user directives](user-directives.md), [stack inventory](inventory-lab.md), [UE3 back-port check](ue3-backport-verified.md)
 
 ## Purpose
 
@@ -15,7 +15,7 @@ This campaign lifts what is worth lifting from ramenvr/autopilot (an Unreal 5 ag
 2. **Puppet control.** Key holds with a lease, a per-frame watch, same-frame batch reads, a line trace, a coast-aware walker, a ledge guard, stop reports, recovery recipes and detectors.
 3. **Lab only.** New client code lives only in the `lab-bridge` feature, never in a release build, the signed manifest or the launcher path, and every DLL packet proves it (C13).
 
-Design only so far: no code is written and no lab run is part of the design. Two packets need the lab (AX-02, AX-64), and each waits for the user's OK; the lab binaries are rebuilt from `main` before wave work and before each of them (O1, [§ Ops chores](#ops-chores)).
+The campaign is closed (2026-11-01, [§ Close-out](#close-out)): AX-01, AX-03 and AX-04 are on `main` (#2052, #2050, #2051); AX-10..AX-63 and the AX-64 ledger ship as one stacked PR from `lab-autopilot/wave6-int`; AX-64 ran once, thinly ([UAT ledger](uat-ax64.md)); AX-02 has not run. Two packets need the lab (AX-02, AX-64), and each waits for the user's OK; the lab binaries are rebuilt from `main` before wave work and before each of them (O1, [§ Ops chores](#ops-chores)).
 
 ## Findings: autopilot concept to SGW
 
@@ -37,7 +37,7 @@ Class: **RE** needs static reverse engineering first; **spike** needs a live lab
 | Anomaly detectors over the run | `lab_detectors_read`: hitch, teleport, long fall, out of world, NaN, stuck input, actor growth, repeated errors | Row 21; actor count needs AX-01 (static) | AX-51 | pure |
 | Frames named on every capture | Screenshots bracketed by heartbeat ticks; capture stays PrintWindow (D-AX2) | Row 17 PARTLY | AX-52 | pure |
 | Movement that models latency and coasting | Lag `Sim`; learned coast lead; arrival judged where the pawn settled | Coast and latency numbers come from AX-02 (defaults until then) | AX-53, AX-54 (priors from AX-02) | pure; spike for priors |
-| Sonar: line traces for walls and ledges | DLL `trace_line` through `UWorld::SingleLineCheck` `0x00875970`; `client_trace_line`; ledge guard in `move_to` | Row 5 VERIFIED live (L1, L2: `ret 0x1c`, flags `0x2086`/`0x20bf`; `0x3fff` faults); only interiors traced, so the ledge guard self-checks; terrain is AX-64 U4 | AX-55, AX-56 | pure |
+| Sonar: line traces for walls and ledges | DLL `trace_line` through `UWorld::SingleLineCheck` `0x00875970`; `client_trace_line`; ledge guard in `move_to` | Row 5 VERIFIED live (L1, L2: `ret 0x1c`, flags `0x2086`/`0x20bf`; `0x3fff` faults); only interiors traced, so the ledge guard self-checks; terrain answers `0x2086` (AX-64 U4: a trace straight down on outdoor terrain hit, floor 2.5 m under the pawn centre) | AX-55, AX-56 | pure |
 | A blind describer of frames | `frame-describer` agent: image paths and neutral questions only | n/a | AX-60, AX-61 | pure (no code) |
 | Honest end-to-end check | A live UAT with lie-bait cases | all of the above | AX-02, AX-64 | spike |
 
@@ -122,58 +122,58 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 
 | Wave | Packet | Title | Agent | Status |
 |---|---|---|---|---|
-| 0 | AX-01 | Static RE: one anchors record, the actor count, the clock owner | game-archaeology-specialist | Ready |
-| 0 | AX-02 | Live spike: coast, latency, frame bracketing, hover, clock; optional player death and DI mouse-look | lab-uat coordinator + lab-driver | BlockedDecision D-AX4 (after O1) |
-| 0 | AX-03 | `lab_login` selects the login-screen server from the account file | packet-coder | Ready |
-| 0 | AX-04 | `lab_client_start` names or clears a running screensaver | packet-coder | Ready |
-| 1 | AX-10 | The proof module | packet-coder | Ready |
-| 1 | AX-15 | Mechanical splits (server input tools, runner rows) | rust-gameserver-dev | Ready |
-| 1 | AX-11 | The evidence gate | packet-coder | Ready |
-| 1 | AX-12 | The runner reads verdicts | rust-gameserver-dev | Ready |
-| 1 | AX-13 | Server corroboration, Sim split | packet-coder | Ready |
-| 1 | AX-14 | Stop reports | packet-coder | Ready |
-| 1 | AX-16 | `resume_from` | rust-gameserver-dev | Ready |
-| 2 | AX-20 | Frame stamps and the Tick hub (DLL) | rust-gameserver-dev | Ready |
-| 2 | AX-21 | Key holds with a lease (DLL) | rust-gameserver-dev | Ready |
-| 2 | AX-24 | Watch sampler (DLL) | rust-gameserver-dev | Ready |
-| 2 | AX-25 | Same-frame batch (DLL) | rust-gameserver-dev | Ready |
-| 2 | AX-22 | Daemon reads frames, checks freshness | packet-coder | Ready |
-| 2 | AX-23 | World tools hold keys through the DLL | packet-coder | Ready |
-| 2 | AX-26 | Raw keys through DLL holds, one release path | packet-coder | Ready |
-| 3 | AX-27 | Release every key and button when a lease ends | packet-coder | Ready |
-| 3 | AX-30 | Splits: click result, move probe, unstick | rust-gameserver-dev | Ready |
-| 3 | AX-31 | Click and target evidence | packet-coder | Ready |
-| 3 | AX-32 | `move_to` evidence and stop reports | rust-gameserver-dev | Ready |
-| 3 | AX-33 | Camera evidence | packet-coder | Ready |
-| 3 | AX-34 | Ignored input and blocked UI | packet-coder | Ready |
-| 3 | AX-35 | `lab_recover` | rust-gameserver-dev | Ready |
-| 3 | AX-36 | Quick-fail cooldown | packet-coder | Ready |
-| 4 | AX-45 | `client_ui_clickables` | packet-coder | Ready |
-| 4 | AX-40 | Clicks that say what they expect | packet-coder | Ready |
-| 4 | AX-46 | Typing and sequences that read back | packet-coder | Ready |
-| 4 | AX-41 | Item, drag, vendor and map evidence | packet-coder | Ready |
-| 4 | AX-42 | Combat evidence | packet-coder | Ready |
-| 4 | AX-43 | Input primitives say what they know | packet-coder | Ready |
-| 4 | AX-44 | Flow evidence and the strict switch | rust-gameserver-dev | Ready |
-| 5 | AX-50 | `client_watch` and the watch store | packet-coder | Ready |
-| 5 | AX-51 | Detectors and `lab_detectors_read` | packet-coder | Ready |
-| 5 | AX-52 | Frame-bracketed screenshots, DLL batch path | packet-coder | Ready |
-| 5 | AX-53 | Lag and coast in the `Sim` | packet-coder | Ready |
-| 5 | AX-54 | The walker stops before it coasts past | packet-coder | Ready |
-| 5 | AX-55 | DLL `trace_line` | rust-gameserver-dev | Ready (after the wave 2 PR) |
-| 5 | AX-56 | `client_trace_line` and the ledge guard | packet-coder | BlockedDependency AX-55, AX-54 |
-| 6 | AX-60 | `frame-describer` agent | packet-coder | Ready (model per D-AX3, default haiku) |
-| 6 | AX-61 | lab-driver and lab-uat read verdicts | packet-coder | Ready (step 2 BlockedDecision D-AX10) |
-| 6 | AX-62 | Guide: evidence, stops, watch, detectors | documentation-writer | Ready |
-| 6 | AX-63 | ADR addendum, client-telemetry docs | documentation-writer | Ready |
-| 6 | AX-64 | Live UAT: try to make the tools lie | lab-uat coordinator | BlockedDecision D-AX4 |
-| 6 | AX-65 | Close-out | documentation-writer | Ready (after AX-64) |
+| 0 | AX-01 | Static RE: one anchors record, the actor count, the clock owner | game-archaeology-specialist | Done (on main) |
+| 0 | AX-02 | Live spike: coast, latency, frame bracketing, hover, clock; optional player death and DI mouse-look | lab-uat coordinator + lab-driver | UATPending (never run; waits on D-AX4) |
+| 0 | AX-03 | `lab_login` selects the login-screen server from the account file | packet-coder | Done (on main) |
+| 0 | AX-04 | `lab_client_start` names or clears a running screensaver | packet-coder | Done (on main) |
+| 1 | AX-10 | The proof module | packet-coder | Integrated |
+| 1 | AX-15 | Mechanical splits (server input tools, runner rows) | rust-gameserver-dev | Integrated |
+| 1 | AX-11 | The evidence gate | packet-coder | Integrated |
+| 1 | AX-12 | The runner reads verdicts | rust-gameserver-dev | Integrated |
+| 1 | AX-13 | Server corroboration, Sim split | packet-coder | Integrated |
+| 1 | AX-14 | Stop reports | packet-coder | Integrated |
+| 1 | AX-16 | `resume_from` | rust-gameserver-dev | Integrated |
+| 2 | AX-20 | Frame stamps and the Tick hub (DLL) | rust-gameserver-dev | Integrated |
+| 2 | AX-21 | Key holds with a lease (DLL) | rust-gameserver-dev | Integrated |
+| 2 | AX-24 | Watch sampler (DLL) | rust-gameserver-dev | Integrated |
+| 2 | AX-25 | Same-frame batch (DLL) | rust-gameserver-dev | Integrated |
+| 2 | AX-22 | Daemon reads frames, checks freshness | packet-coder | Integrated |
+| 2 | AX-23 | World tools hold keys through the DLL | packet-coder | Integrated |
+| 2 | AX-26 | Raw keys through DLL holds, one release path | packet-coder | Integrated |
+| 3 | AX-27 | Release every key and button when a lease ends | packet-coder | Integrated |
+| 3 | AX-30 | Splits: click result, move probe, unstick | rust-gameserver-dev | Integrated |
+| 3 | AX-31 | Click and target evidence | packet-coder | Integrated |
+| 3 | AX-32 | `move_to` evidence and stop reports | rust-gameserver-dev | Integrated |
+| 3 | AX-33 | Camera evidence | packet-coder | Integrated |
+| 3 | AX-34 | Ignored input and blocked UI | packet-coder | Integrated |
+| 3 | AX-35 | `lab_recover` | rust-gameserver-dev | Integrated |
+| 3 | AX-36 | Quick-fail cooldown | packet-coder | Integrated |
+| 4 | AX-45 | `client_ui_clickables` | packet-coder | Integrated |
+| 4 | AX-40 | Clicks that say what they expect | packet-coder | Integrated |
+| 4 | AX-46 | Typing and sequences that read back | packet-coder | Integrated |
+| 4 | AX-41 | Item, drag, vendor and map evidence | packet-coder | Integrated |
+| 4 | AX-42 | Combat evidence | packet-coder | Integrated |
+| 4 | AX-43 | Input primitives say what they know | packet-coder | Integrated |
+| 4 | AX-44 | Flow evidence and the strict switch | rust-gameserver-dev | Integrated |
+| 5 | AX-50 | `client_watch` and the watch store | packet-coder | Integrated |
+| 5 | AX-51 | Detectors and `lab_detectors_read` | packet-coder | Integrated |
+| 5 | AX-52 | Frame-bracketed screenshots, DLL batch path | packet-coder | Integrated |
+| 5 | AX-53 | Lag and coast in the `Sim` | packet-coder | Integrated |
+| 5 | AX-54 | The walker stops before it coasts past | packet-coder | Integrated |
+| 5 | AX-55 | DLL `trace_line` | rust-gameserver-dev | Integrated |
+| 5 | AX-56 | `client_trace_line` and the ledge guard | packet-coder | Integrated |
+| 6 | AX-60 | `frame-describer` agent | packet-coder | Integrated (model per D-AX3, default haiku) |
+| 6 | AX-61 | lab-driver and lab-uat read verdicts | packet-coder | Integrated (step 2 BlockedDecision D-AX10) |
+| 6 | AX-62 | Guide: evidence, stops, watch, detectors | documentation-writer | Integrated |
+| 6 | AX-63 | ADR addendum, client-telemetry docs | documentation-writer | Integrated |
+| 6 | AX-64 | Live UAT: try to make the tools lie | lab-uat coordinator | UATPending (ran 2026-11-01: 1 PASS, 2 FAIL, 10 NOT RUN; see uat-ax64.md; re-run owed) |
+| 6 | AX-65 | Close-out | documentation-writer | Done |
 
 Live lab needed: **AX-02** (spike) and **AX-64** (UAT), each after O1 and the user's OK. Static RE: **AX-01**, which gates only the watch's `actors` field and the `actor_growth` detector. Everything else is pure code or docs with stubbed tests. The live reads L1-L8 of 2026-10-31 answered the trace, view-point, loading, mouse-look, `GWorld` and window-registry questions; the full open list, live or static, is [work-packets.md § Live versus static](work-packets.md#live-versus-static-what-is-still-open). Still open after them:
 
 - **Static (AX-01):** the actor count at `[[GWorld+0x50]+0x3C/+0x40]`; the owner of `tickSync`'s `+0x32C` and the `WorldInfo.TimeSeconds` offset (nice to have). Not in this campaign: the `InputKey` slot, the SCT modifier strings and the CEGUI `fireEvent` binding (ue3-backport-verified, open static questions), since D-AX7 and D-AX12 keep those features out.
 - **Live, ask first (AX-02):** coast and input latency, screenshot frame bracketing, hover id `PC+0x4C0`, `game_t` against wall time; optionally the player's dead bit `+0x158` (seen only on an NPC) and DI-only mouse-look.
-- **Live, ask first (AX-64):** terrain and outdoor traces with `0x2086` (U4), the key fail-safe (U11), the login combo (U12), the screensaver path (U13).
+- **Live, ask first (AX-64 re-run):** the key fail-safe (U11), the login combo (U12), the screensaver path (U13), a real drop for the ledge stop and `allow_drops` (U4), a vendor for U1, a hostile for U6, and a `client_input_key` run for U7. Terrain does answer `0x2086` (answered by the first AX-64 run).
 
 Lab failures folded in on 2026-10-31: `lab_login` could log into the combo's preselected (dead) server (AX-03, D-AX18); `lab_client_start` failed on a running screensaver it did not name, because the check enumerated windows on the daemon's desktop only (AX-04); a raw key down outlived the daemon (AX-26, AX-27, D-AX16).
 
@@ -195,4 +195,20 @@ The concepts in this campaign (evidence and verdicts, stop reports, held-input l
 
 ## Close-out
 
-Filled by AX-65.
+Closed 2026-11-01 by AX-65. Waves 0 to 6 shipped through their wave reviews, and the campaign review passed at pass 3 (fixes applied between passes). 46 packets: 44 Done or Integrated, AX-02 and AX-64 UATPending.
+
+**Pull requests.** AX-03 #2050, AX-04 #2051 and AX-01 #2052 are merged. AX-10..AX-64 (waves 1 to 6, the campaign-review fixes and the AX-64 ledger) ship as ONE stacked PR from `lab-autopilot/wave6-int`: PR to be opened; link added by the orchestrator. This close-out ships with it.
+
+**What the lab tools now prove.** Every action tool returns `evidence` with a verdict, and the gate downgrades claims the evidence does not support. Server-corroborated: `client_move_to` and non-placeholder `client_minigame_play`. Everything else rests on client reads at least two frames after the action (see [§ What "confirmed" does and does not mean](#what-confirmed-does-and-does-not-mean)). The puppet-control tools (holds with a lease, watch, batch, trace, coast-aware walker, detectors, `lab_recover`, `resume_from`) are built and tested in-process; none has had a full live run.
+
+**AX-64 result** ([ledger](uat-ax64.md)): 1 PASS (partial), 2 FAIL (U3, U5), 10 NOT RUN. **Lies found: none.** That is thin evidence: most bait halves ran once or never, and no `frame-describer` ran. One answer came back: terrain does answer trace flags `0x2086`, with the floor 2.5 m under the pawn centre. Findings F1 and F3 were fixed in code after the run; neither fix has been seen live.
+
+Follow-ups for the owner (none is a proven lie; the campaign review passed at pass 3):
+
+- **Live runs, ask first (D-AX4):** AX-02 (coast, latency, frame bracketing, hover, clock, player dead bit) has never run. An AX-64 re-run covers the 10 NOT RUN cases and the two FAIL rows (U3, U5). The code fixes for F1 (camera yaw falls back to the controller readout) and F3 (ledge probe lifted 100 uu) landed after the run and are tested in-process only. Cases and setup: [unified-uat.md](../../guides/unified-uat.md#lab-autopilot-ax-64-cases-still-owed). Run `tools/lab/install.ps1` first (O1).
+- **Open decisions:** D-AX2 (capture stays PrintWindow), D-AX3 (describer model, default haiku), D-AX10 (lab-driver tool list, AX-61 step 2), D-AX4 (per run), and D-AX6 (`out_of_world` at z -100000 is provisional; no world floor was measured and AX-64 did not reach it).
+- **O2 not run:** the leftover `sgw_*` databases are still there (about 690 at design time); show the dry-run list to the user before dropping any.
+- **UAT setup debts:** the lab account file names a character that does not exist on the account; the `SGWEditor.ini` DST modal blocked the first launch and still hits p2 to p5 and any fresh host; `client_ui_clickables` cut off at 200 windows in the run. The `lab-driver` has no raw key tool, so the U7 `stuck_input` bait and U11 need a coordinator-level session with `client_input_key`. U9 must send three identical failing calls back to back with no model turn between (C9 backs off 500 ms then 1 s; the run's calls were seconds apart). U5's bait needs a window that really blocks look.
+- **Open questions for the re-run:** why `client_move_to` stopped `stuck` on a clear start (needs the walk's step log; F3, second symptom); the intermittent `face_entity_id` projection failure (U1); `client_camera face_entity_id` answering `inconclusive` beside `centred: true` (needs `verbose: true`; F1); a `confirmed` carrying `why: ignored` (F2); `lab_recover close_dialogs` returns `confirmed` for a no-op (arguably `no_dialog`, a behavior change for the owner).
+- **Code and size debts the reviews left unfixed:** AX-24 a `watch_start` queued after a daemon disconnect; AX-27 the takeover versus new-acquire race, and `lease/mod.rs` (411 lines after the render split) staying small; AX-43 `client_cursor_move` cannot show `denied` (`place_cursor` errors first, so the evidence is tautological; optional hardening in campaign-review-1a note 6); AX-46 the typed-text `contains` check; AX-56 the `movement.rs` wiring budget (579 lines, over the soft cap, under the hard cap). 70 files in `crates/lab` and `crates/client-telemetry` are over 500 lines, `world/io.rs` is 28 lines under the hard cap, and `uat/runner/tests.rs` (921) is over it, pre-existing. Clean up when next in those files.
+- **Pre-existing clippy errors** under `--features lab-bridge` in untouched client-telemetry code (`crash.rs`, `native_call.rs`, `lua_eval.rs`, `bridge/mod.rs` `serve_client`); not from this campaign.

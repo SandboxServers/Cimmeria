@@ -121,7 +121,7 @@ pub struct ExpectBefore { pub visible: Option<bool>, pub hidden: Option<bool> } 
 impl Supervisor {
     /// Read each expected window's visibility before the click (`click_checked::visible_chunk`).
     pub async fn expect_before(&self, e: &ClickExpect) -> ExpectBefore;
-    /// After the click: `wait_window(name, gone, e.timeout)` for each expected window.
+    /// After the click: `poll_window(name, gone, e.timeout)` (the `click_checked::visible_chunk` poll in `supervisor/ui/click_expect.rs`) for each expected window.
     pub async fn expect_after(&self, e: &ClickExpect, before: &ExpectBefore) -> Vec<Check>;
 }
 /// Pure: the evidence of one click.
@@ -130,9 +130,9 @@ pub fn click_evidence(received_by: Option<&str>, target: &str, row_selected: Opt
 
    - `expect_after`, for `visible: Some(w)`:
      - `before.visible == Some(true)` gives `Check::new("window_visible", Client, None, true)` with why `already_true`, `before: true`. Do not wait.
-     - Otherwise `wait_window(w, false, timeout)` (`supervisor/composite/mod.rs` ~l.97): `Ok(ms)` gives `ok: Some(true)` with `after: {"visible": true, "ms": ms}`. `Err(e)` gives `ok: Some(false)`, why `no_effect`, `after: {"visible": false, "error": e}`.
+     - Otherwise `poll_window(w, false, timeout)` (`supervisor/ui/click_expect.rs`; it does not call `wait_window`): `Ok(ms)` gives `ok: Some(true)` with `after: {"visible": true, "ms": ms}`. `Err(e)` gives `ok: Some(false)`, why `no_effect`, `after: {"visible": false, "error": e}`.
      - A failed before-read (`None`) is not `already_true`: wait as above and record `before: null`.
-   - `hidden: Some(w)` is the mirror: the check is `"window_hidden"`, `already_true` when the window was already not visible, and the wait is `wait_window(w, true, timeout)`.
+   - `hidden: Some(w)` is the mirror: the check is `"window_hidden"`, `already_true` when the window was already not visible, and the wait is `poll_window(w, true, timeout)`.
    - `click_evidence` builds these checks:
      - `cursor_on_target`, optional, Client: `ok: Some(received_by.is_some())`, `before: target`, `after: received_by`.
      - `row_selected` when `Some(sel)`: required, Client, `ok: Some(sel)`, why `no_effect` when false.
@@ -180,7 +180,7 @@ Files and changes:
 
 1. `client_type_text` (`server/input_tools.rs`, `TypeTextArgs`) gains `into: Option<String>`, documented as `"Edit box to click first and read back; the result is judged only with it."`
    - With `into`, the tool calls `ui_click(into, ..)` first with an empty `ClickExpect`, then `type_text`, then reads the box: `getText()` through `lua_json`, the same way `supervisor/ui/window_read.rs` reads text.
-   - Add the pure `pub fn typed_evidence(into: Option<&str>, typed: &str, read_back: Option<&str>) -> Evidence` to `click_expect.rs`:
+   - Add the pure `pub fn typed_evidence(into: Option<&str>, typed: &str, read_back: Option<&str>) -> Evidence` to `type_into.rs`:
      - `into` present: a required Client check `text_entered`, `ok = read_back.map(|t| t.contains(typed))`, `after: read_back`. A failed read gives `None`, why `no_post_read`.
      - `into` absent: `from_verdict(Inconclusive, PostedOnly, vec![])`.
    - Put the supervisor half in a new `supervisor/ui/type_into.rs`, `impl Supervisor { pub async fn type_into(&self, into: Option<&str>, text: &str) -> Result<Value, String> }`. It returns `{typed_chars, into?, read_back?, evidence}`. Declare it in `supervisor/ui/mod.rs`.
@@ -279,11 +279,13 @@ Files and changes:
 2. New `supervisor/combat/defeat_proof.rs`: `pub fn defeat_checks(window_closed: bool, alive: Option<bool>) -> Vec<Check>`. Rules:
    - `defeat_window_closed`: required, Client.
    - `alive`: required, Client. `None` gives `ok: None`, why `no_post_read`.
+   - `defeated_checks()`: one required Client check `defeat_window_open`, used by the `respawn: "none"` result.
    - Hook: `combat/defeat.rs` ~l.329-348, which builds `checks{defeat_window_closed, alive, ..}`. Add `evidence` next to `verified`; leave `verified` as it is.
    - `alive` stays what `defeat.rs` reads today. Do **not** read the `GameBeing + 0x158` dead bit: the live pass saw it only on an NPC (L6), and AX-02's optional step decides whether the player sets it. If it does, a later packet may add it as an **optional** Client check, never a required one.
-3. New `supervisor/minigame/proof.rs` (put it next to the file that holds `action_effect`, ~l.170, and the result tail, ~l.508-522; grep `fn action_effect`). `pub fn minigame_checks(game: &str, placeholder: bool, server_outcome: Option<&str>, client_window_hidden: bool) -> Vec<Check>`. Rules:
+3. New `supervisor/minigame/proof.rs` (put it next to the file that holds `action_effect`, ~l.170, and the result tail, ~l.508-522; grep `fn action_effect`). `pub fn minigame_checks(game: &str, placeholder: bool, server_outcome: Option<&str>, client_window_hidden: bool, action_ok: bool) -> Vec<Check>`. Rules:
    - The placeholder games are Hack, Activate, Analyze, Bypass and Converse. Use the list the file already has; grep `placeholder`.
    - Not placeholder: a required Server check `server_outcome`, `ok = server_outcome.map(|o| o == "victory")`. `None` gives why `server_unreachable`; `Some(other)` gives why `no_effect`, `after: other`.
+   - Placeholder, first: a required Client check `action_ran`, `ok = Some(action_ok)`, `before = game`, why `no_effect` when false.
    - Placeholder: a required Client check `client_window_hidden`, plus the same `server_outcome` check as **optional**.
 4. Wire each with `out["evidence"] = Evidence::judge(..).to_value();` at the point the tool builds its final JSON. Declare the new modules.
 5. `proof/claims.rs`: add `client_use_ability`, `client_die_and_respawn` and `client_minigame_play` to `JUDGED`.
@@ -316,7 +318,7 @@ Files and changes:
    - `pub fn key_evidence() -> Evidence`: `from_verdict(Inconclusive, PostedOnly, vec![])`.
    - `pub fn mouse_evidence(m: MouseFacts) -> Evidence`, with `MouseFacts { dx: i32, dy: i32, wheel: i32, button: bool, cursor_placed: Option<bool>, di_before: Option<u64>, di_after: Option<u64> }`. Rules:
      - `button`: `from_verdict(Inconclusive, PostedOnly, ..)`.
-     - Motion or wheel with `di_before` and `di_after` both `Some`: a required Bridge check `di_read`, `ok = Some(after > before)`, why `not_delivered` when false. `di_*` is the DirectInput read counter in `input_status` `hooks`; grep `input_status` and `hooks` in `supervisor/input.rs` and `bridge/input/`, and use whichever counter the DLL increments per `GetDeviceState`/`GetDeviceData` read. A confirmed `di_read` is reported with why `delivered` through `from_verdict(Inconclusive, Delivered, checks)`. The game read the input; whether it did anything is not judged.
+     - Motion or wheel with `di_before` and `di_after` both `Some`: a required Bridge check `di_delivered`, `ok = Some(after > before)`, why `not_delivered` when false. `di_delivered` reads the `hooks.events_delivered` counter in `input_status`; grep `input_status` and `hooks` in `supervisor/input.rs` and `bridge/input/`, and use whichever counter the DLL increments per `GetDeviceState`/`GetDeviceData` read. A confirmed `di_delivered` is reported with why `delivered` through `from_verdict(Inconclusive, Delivered, checks)`. The game read the input; whether it did anything is not judged.
      - Motion with no counter (an old DLL): `from_verdict(Inconclusive, PostedOnly, ..)`.
      - A cursor-only move (`cursor_placed: Some(p)`, from `place_cursor`'s `CursorPlaced`, which reads back within ±1 px): a required Client check `cursor_at`, `ok = Some(p)`.
    - `pub fn cursor_evidence(placed: bool, at: (i32, i32)) -> Evidence`: a required `cursor_at` with `after: at`.
@@ -338,7 +340,7 @@ Tests:
 | Test | Asserts | Fails on revert because |
 |---|---|---|
 | `a_key_is_posted_only` | `inconclusive` / `posted_only` | honesty |
-| `di_motion_read_is_delivered` | before 10, after 12: `inconclusive` / `delivered` with a `di_read` check `ok: true` | step 1 |
+| `di_motion_read_is_delivered` | before 10, after 12: `inconclusive` / `delivered` with a `di_delivered` check `ok: true` | step 1 |
 | `di_motion_unread_is_not_delivered` | before 10, after 10: `denied`, why `not_delivered` | step 1 |
 | `cursor_move_confirms_on_read_back` | placed: `confirmed`; not placed: `denied` | step 1 |
 | `focus_mismatch_denies` | want on, hwnd `None`: `denied` | step 1 |
@@ -379,7 +381,7 @@ Files and changes:
 
    - A flow that returns `Ok` **without** a final read gives `ok: None`, why `no_post_read`. List it in the report; do not add a read.
    - `lab_characters` is OPEN and stays out.
-3. `server/composite.rs` `lab_ensure_in_world` (~l.90): add `evidence`. It holds one required Client check `in_world`, `ok = Some(v["in_world"] == true)`, `after: {"world_id", "pos"}`. Put the pure builder in `flow_proof.rs`.
+3. `server/composite.rs` `lab_ensure_in_world` (~l.90): add `evidence`. It holds one required Client check `in_world`, `ok = Some(v["in_world"] == true)`, `after: {"world_id", "pos"}`. When the result has no `in_world` key and has a string `at` (a `stop_at` run), the single required Client check is `reached_stop`, `ok = Some(true)`, `after: {"at": at}`. Put the pure builder in `flow_proof.rs`.
 4. `proof/gate.rs`:
    - Set `pub const STRICT: bool = true;`.
    - Rule (e)'s `Unjudged` branch, when `STRICT`, does what the `Inconclusive` branch does.
@@ -400,6 +402,7 @@ Tests:
 |---|---|---|
 | `flow_ok_confirms_its_end_screen` | `flow_evidence("lab_login", &json!({..}))`: `confirmed`, `after.screen` as in your table | step 2 |
 | `ensure_in_world_false_denies` | `{"in_world": false}`: `denied` | step 3 |
+| `stop_at_result_confirms` | `{"at": "character_select"}`: `confirmed`, check `reached_stop` | step 3 |
 | `unjudged_drops_effect_ok_when_strict` | as step 7 | C3 (g) |
 | `an_unjudged_step_is_inconclusive_when_strict` | as step 7 | C3 (g), runner |
 | `every_leased_tool_is_judged_or_no_claim` | step 8 | the strict switch would silently make an unlisted tool's rows UNVERIFIED |

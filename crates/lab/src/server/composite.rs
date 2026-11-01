@@ -8,6 +8,7 @@ use rmcp::{
 };
 use serde_json::Value;
 
+use super::flow_proof::in_world_evidence;
 use super::LabServer;
 use crate::supervisor::composite::batch::parse_steps;
 use crate::supervisor::composite::ensure::{EnsureRequest, StopAt};
@@ -85,7 +86,7 @@ fn json_result(v: Value) -> CallToolResult {
 #[tool_router(router = composite_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Get in the world as a character in one call: start the client if none is running, wait for its window and bridge, log in (lab-account.json credentials), pick the server row, play the character (with `create` and the character missing: the arguments are checked first, then the oldest unprotected character may be deleted to free a slot, reported as deleted_to_free_a_slot, and it is created), finish an intro dialog, turn on virtual focus. `stop_at` running or character_select stops earlier. Already there: returns at once. Returns {in_world, character, world_id, pos, steps_ms} (or {at, characters?}); a failure names the step. Refuses to start while a client the lab did not launch is running."
+        description = "Get in the world as a character in one call: start the client if none is running, wait for its window and bridge, log in (lab-account.json credentials), pick the server row, play the character (with `create` and the character missing: the arguments are checked first, then the oldest unprotected character may be deleted to free a slot, reported as deleted_to_free_a_slot, and it is created), finish an intro dialog, turn on virtual focus. `stop_at` running or character_select stops earlier. Already there: returns at once. Returns {in_world, character, world_id, pos, steps_ms, evidence} (or {at, characters?}); evidence is one check: `in_world` with the world and position read back, or `reached_stop` for a stop_at result. A failure names the step. Refuses to start while a client the lab did not launch is running."
     )]
     async fn lab_ensure_in_world(
         &self,
@@ -112,12 +113,15 @@ impl LabServer {
         self.supervisor
             .ensure_in_world(req)
             .await
-            .map(json_result)
+            .map(|mut v| {
+                v["evidence"] = in_world_evidence(&v).to_value();
+                json_result(v)
+            })
             .map_err(|e| McpError::internal_error(format!("lab_ensure_in_world: {e}"), None))
     }
 
     #[tool(
-        description = "Run ordered read/probe steps in one call (lua, mem_read, call_native, wait, player_state, window_text) with $id references to earlier results. call_native is journaled and exception-guarded like client_call_native and never replayed after a crash. Returns {steps: {id: value | {error}}, ms, stopped_at?}."
+        description = "Run ordered read/probe steps in one call (lua, mem_read, call_native, wait, player_state, window_text) with $id references to earlier results. call_native is journaled and exception-guarded like client_call_native and never replayed after a crash. Returns {steps: {id: value | {error}}, ms, stopped_at?}. When every step is a literal mem_read or lua, the lab DLL runs them all in one client frame and the result carries that frame."
     )]
     async fn client_batch(
         &self,
@@ -132,7 +136,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Run a scripted UI step in one call: clicks on named windows, key taps, typing (optionally into an edit box clicked first), slot drags, and waits for a window to show or close. Same input paths as client_ui_click / client_input_key / client_type_text / client_drag_drop; refuses hidden or missing windows. Returns per-action results and the least native level used (native_level, native_tier, native_pass)."
+        description = "Run a scripted UI step in one call: clicks on named windows, key taps, typing (optionally into an edit box clicked first), slot drags, and waits for a window to show or close. Same input paths as client_ui_click / client_input_key / client_type_text / client_drag_drop; refuses hidden or missing windows. Returns per-action results and the least native level used (native_level, native_tier, native_pass). End a click with a wait_window step (or type with into) to make the result confirmed; a sequence of bare clicks and keys is inconclusive (posted_only)."
     )]
     async fn client_ui_sequence(
         &self,

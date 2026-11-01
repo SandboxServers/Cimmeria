@@ -34,6 +34,7 @@ use std::time::Duration;
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use serde_json::Value;
 
+pub mod batch;
 pub mod console;
 pub mod crash;
 pub mod dispatch;
@@ -45,9 +46,14 @@ pub mod lua_capture;
 pub mod lua_eval;
 pub mod mem_write;
 pub mod memory;
+pub mod meta;
 pub mod native_call;
 pub mod seh;
+pub mod tick;
+pub mod trace;
 pub mod transport;
+pub mod watch;
+pub mod watch_ring;
 
 pub use crate::session::LabConfig;
 pub use dispatch::{RpcError, RpcRequest, RpcResponse};
@@ -86,6 +92,8 @@ const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 struct PendingRequest {
     request: RpcRequest,
     respond: Sender<RpcResponse>,
+    /// `tick::CONN_GEN` when the request was queued.
+    gen: u64,
 }
 
 /// Handle to a running bridge. Holds the consumer end of the dispatch
@@ -115,6 +123,16 @@ impl BridgeHandle {
     /// Lua VM and process memory.
     pub fn drain(&self) {
         while let Ok(pending) = self.req_rx.try_recv() {
+            // Queued before the connection that sent it ended (the IO thread
+            // timed out waiting): its daemon is gone, so do not dispatch it.
+            if pending.gen != tick::CONN_GEN.load(Ordering::SeqCst) {
+                let _ = pending.respond.send(RpcResponse::error(
+                    pending.request.id.clone(),
+                    dispatch::INTERNAL_ERROR,
+                    "connection closed before dispatch",
+                ));
+                continue;
+            }
             // Flag the command as executing so the crash filter can tell
             // the supervisor a command was in flight when a fault hit
             // (ADR §6 quarantine). Cleared unconditionally after the
@@ -122,8 +140,9 @@ impl BridgeHandle {
             // left-set flag only survives an actual fault, which
             // terminates the process before the clear runs.
             journal::mark_in_flight();
-            let resp = dispatch::dispatch(&pending.request);
+            let mut resp = dispatch::dispatch(&pending.request);
             journal::clear_in_flight();
+            resp.meta = Some(meta::now(meta::live_game_t()));
             // Client may have disconnected mid-flight; that's fine.
             let _ = pending.respond.send(resp);
         }
@@ -147,6 +166,7 @@ pub fn start(cfg: LabConfig) -> io::Result<BridgeHandle> {
             "lab token must be 32 bytes (64 hex chars)",
         ));
     }
+    meta::mark_start();
     let epoch = crate::session::mint_bridge_epoch()?;
     let listener = TcpListener::bind((cfg.bind.as_str(), cfg.port))?;
     let local_addr = listener.local_addr()?;
@@ -197,6 +217,7 @@ pub fn drain_main_thread() {
     if let Some(handle) = BRIDGE.get() {
         handle.drain();
     }
+    tick::on_tick();
 }
 
 /// IO thread: accept connections, enforce single-client, hand each to
@@ -260,6 +281,8 @@ fn serve_client(mut stream: TcpStream, token: &str, req_tx: &Sender<PendingReque
             break;
         }
     }
+    // Authenticated sessions only: the bad-token paths return above.
+    tick::on_disconnect();
 }
 
 /// Parse a request body, enqueue it for the main thread, and wait for
@@ -284,6 +307,9 @@ fn handle_request_body(body: &[u8], req_tx: &Sender<PendingRequest>) -> RpcRespo
 /// Try to push a request onto the bounded queue. On success returns
 /// the response receiver; on overflow (or a dead consumer) returns
 /// the error response to send back — never blocks.
+// The error variant is the ready-to-send response; `meta` made it large and it
+// is built once per overflow, so boxing buys nothing.
+#[allow(clippy::result_large_err)]
 fn enqueue(
     req_tx: &Sender<PendingRequest>,
     request: RpcRequest,
@@ -292,6 +318,7 @@ fn enqueue(
     match req_tx.try_send(PendingRequest {
         request,
         respond: resp_tx,
+        gen: tick::CONN_GEN.load(Ordering::SeqCst),
     }) {
         Ok(()) => Ok(resp_rx),
         Err(TrySendError::Full(p)) => Err(RpcResponse::error(
@@ -318,6 +345,30 @@ mod tests {
             method: "module_info".to_string(),
             params: Value::Null,
         }
+    }
+
+    /// A request queued before the connection ended is answered with an error
+    /// and never dispatched, so its watch does not start with no daemon.
+    #[test]
+    fn a_request_from_an_ended_connection_is_not_dispatched() {
+        let _g = crate::bridge::meta::tests::SERIAL
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        tick::WATCH_ACTIVE.store(false, Ordering::SeqCst);
+        let (req_tx, req_rx) = bounded::<PendingRequest>(QUEUE_CAPACITY);
+        let mut req = a_request(7);
+        req.method = "watch_start".to_string();
+        let resp_rx = enqueue(&req_tx, req).unwrap();
+        tick::on_disconnect();
+        let handle = BridgeHandle {
+            req_rx,
+            local_addr: "127.0.0.1:0".parse().unwrap(),
+            epoch: "e".into(),
+        };
+        handle.drain();
+        let resp = resp_rx.try_recv().unwrap();
+        assert_eq!(resp.error.unwrap().code, dispatch::INTERNAL_ERROR);
+        assert!(!tick::WATCH_ACTIVE.load(Ordering::SeqCst));
     }
 
     fn a_session(lab: Option<LabConfig>) -> DllSession {

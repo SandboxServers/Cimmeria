@@ -15,10 +15,12 @@ use serde_json::{json, Value};
 
 use super::find::{find_entities, FindRequest};
 use super::geometry::{bearing, wrap_pi, Pose, Screen, Vec3};
+use super::ignored_input::look_delivered;
 use super::io::WorldIo;
 use super::memory;
 use super::steer::{FaceConfig, FaceController, FaceStep, TurnModel};
-use super::{PointArg, Steps, TargetArg, WorldError};
+use super::{camera_proof, fresh_wait, NativeLevel, PointArg, Steps, TargetArg, WorldError};
+use crate::proof::Evidence;
 
 /// Frames for a mouse-look motion to show up in the next projection.
 pub const LOOK_SETTLE_MS: u64 = 120;
@@ -498,13 +500,19 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
         (None, _) => req.zoom_notches.unwrap_or(0),
     };
     let wheel = notches * WHEEL_NOTCH;
+    let mut di_before: Option<Option<u64>> = None;
     if dx != 0 || dy != 0 || wheel != 0 {
         let t0 = io.now_ms();
+        let counters_before = io.input_counters().await;
         let level = io
             .look(dx, dy, wheel)
             .await
             .map_err(|e| steps.fail(io.now_ms(), "mouse_look", e))?;
         steps.used(level);
+        // Only the DirectInput path hands records to the game.
+        if level == NativeLevel::RealInput {
+            di_before = Some(counters_before);
+        }
         io.sleep(LOOK_SETTLE_MS).await;
         steps.record(
             "look",
@@ -555,9 +563,21 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
         absolute.insert("yaw".into(), abs_yaw(io, &mut steps, want).await?);
     }
 
+    // C4: the readout must trail the last input by a couple of frames.
+    let action_frame = io.frame().await;
+    let (fresh, _) = fresh_wait::wait_fresh(io, action_frame).await;
     let camera_after = io.camera_pose().await.ok();
     let readout = |r: Result<Value, String>| r.unwrap_or_else(|e| json!({ "error": e }));
     let view_after = readout(io.camera_readout().await);
+    // Read delivery at the same moment as the view: records the game takes
+    // later cannot have moved this readout. Old DLL (both `None`): no check.
+    let delivered = match di_before {
+        Some(before) => {
+            let after = io.input_counters().await;
+            (before.is_some() || after.is_some()).then(|| look_delivered(before, after))
+        }
+        None => None,
+    };
     let pinned = pinned_pitch_of(&view_after).is_some();
     let mut out = json!({
         "camera_before": camera_before.map(|p| p.to_json()),
@@ -570,6 +590,15 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
     if !absolute.is_empty() {
         out["absolute"] = Value::Object(absolute);
     }
+    steps.judged(Evidence::judge(camera_proof::checks(
+        &req,
+        &out["view_before"],
+        &out["view_after"],
+        &out["face"],
+        out.get("absolute"),
+        fresh,
+        delivered,
+    )));
     if pinned {
         out["pitch_clamped"] = json!(true);
         out["warning"] = json!(format!(

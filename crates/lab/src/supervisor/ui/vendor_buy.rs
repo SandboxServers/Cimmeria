@@ -17,8 +17,11 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use super::click_checked::handler_chunk;
+use super::click_expect::ClickExpect;
+use super::item_proof;
 use super::window_click::{click_point, locate_chunk, ClickTarget};
 use super::{NativeLevel, NativeTrail, Supervisor};
+use crate::proof::Evidence;
 use crate::supervisor::flows::widgets::lua_quote;
 
 /// Rows on screen in the stock vendor window.
@@ -101,7 +104,11 @@ impl Supervisor {
     ) -> Result<(Value, Value, bool), String> {
         // Buy attempts sent so far (a click that went out, or the handler).
         let mut sent = 0u32;
-        if self.ui_click(BUY_BUTTON, 0).await.is_ok() {
+        if self
+            .ui_click(BUY_BUTTON, 0, &ClickExpect::default())
+            .await
+            .is_ok()
+        {
             sent += 1;
             let (a, d) = self.await_inventory_change(before, wait).await?;
             if d["changed"] == json!(true) {
@@ -265,6 +272,9 @@ impl Supervisor {
                 out["native_pass"] = json!(false);
             }
         }
+        let got = u32::try_from(gained).unwrap_or(0);
+        let checks = item_proof::vendor_checks(expect_change, bought, got, quantity);
+        out["evidence"] = Evidence::judge(checks).to_value();
         out["elapsed_ms"] = json!(t0.elapsed().as_millis() as u64);
         Ok(out)
     }

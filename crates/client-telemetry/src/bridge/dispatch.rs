@@ -51,6 +51,9 @@ pub struct RpcResponse {
     pub result: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<RpcError>,
+    /// Frame stamp (C4); set by the main-thread drain only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta: Option<super::meta::Meta>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -71,6 +74,7 @@ impl RpcResponse {
             id,
             result: Some(result),
             error: None,
+            meta: None,
         }
     }
 
@@ -84,6 +88,7 @@ impl RpcResponse {
                 message: message.into(),
                 data: None,
             }),
+            meta: None,
         }
     }
 
@@ -99,6 +104,7 @@ impl RpcResponse {
                 message: message.into(),
                 data: Some(data),
             }),
+            meta: None,
         }
     }
 
@@ -195,12 +201,21 @@ pub fn dispatch(req: &RpcRequest) -> RpcResponse {
         "console" => console::dispatch(id, &req.params),
         // ── Lab input injection (DirectInput) ───────────────────────
         "input_key" => super::input::dispatch_key(id, &req.params),
+        "input_hold" => super::input::dispatch_hold(id, &req.params),
         "input_mouse" => super::input::dispatch_mouse(id, &req.params),
         "input_release" => super::input::dispatch_release(id),
         "input_focus" => super::input::dispatch_focus(id, &req.params),
         "input_cursor" => super::input::dispatch_cursor(id, &req.params),
         "input_modifiers" => super::input::dispatch_modifiers(id, &req.params),
         "input_status" => super::input::dispatch_status(id),
+        // ── Lab watch sampler (C6) ──────────────────────────────────
+        "watch_start" => super::watch::dispatch_start(id, &req.params),
+        "watch_read" => super::watch::dispatch_read(id, &req.params),
+        "watch_stop" => super::watch::dispatch_stop(id),
+        // ── Same-frame batch of reads (C7) ──────────────────────────
+        "batch" => super::batch::dispatch(id, &req.params),
+        // ── Line trace through UWorld::SingleLineCheck (C14) ────────
+        "trace_line" => super::trace::dispatch(id, &req.params),
         other => RpcResponse::error(id, METHOD_NOT_FOUND, format!("unknown method: {other}")),
     }
 }

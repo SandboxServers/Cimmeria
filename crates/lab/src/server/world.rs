@@ -37,7 +37,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Click an entity (entity_id, name or server template_id) or a world point in the 3D view like a player. Entity selectors accept alive, nearest (default true; false sorts by entity id) and zero-based index. Template/life filters require the server lab MCP; the click remains real input. Turns the camera, verifies mouse-over, then clicks (default right = interact). `expect` decides pass/fail. With `expect: nothing` (also the default for point clicks), the tool confirms native dispatch only: after-state fields are null and `after_observed` is false. Assert the destination world or other effect separately. Reports range and native_level."
+        description = "Click an entity (entity_id, name or server template_id) or a world point in the 3D view like a player. Entity selectors accept alive, nearest (default true; false sorts by entity id) and zero-based index. Template/life filters require the server lab MCP; the click remains real input. Turns the camera, verifies mouse-over, then clicks (default right = interact). `expect` decides pass/fail. With `expect: nothing` (also the default for point clicks), the tool confirms native dispatch only: after-state fields are null and `after_observed` is false. Assert the destination world or other effect separately. Reports range and native_level. Returns evidence: confirmed only when a fresh read after the click shows the expected target or window; expect nothing is inconclusive; a right-click beyond 5 m is denied (out_of_range)."
     )]
     async fn client_world_click(
         &self,
@@ -48,7 +48,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Target an entity (entity_id, name or server template_id; optional alive, nearest and zero-based index) by real left-click and verify Unit.Target. Template/life filters require the server lab MCP. With allow_fallback, a failed click uses stock targetUnit() and reports ui_lua (N3), never a native pass."
+        description = "Target an entity (entity_id, name or server template_id; optional alive, nearest and zero-based index) by real left-click and verify Unit.Target. Template/life filters require the server lab MCP. With allow_fallback, a failed click uses stock targetUnit() and reports ui_lua (N3), never a native pass. Returns evidence: confirmed only when a fresh read after the click shows the expected target or window; expect nothing is inconclusive; a right-click beyond 5 m is denied (out_of_range)."
     )]
     async fn client_target(
         &self,
@@ -59,7 +59,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Walk with real movement keys to a point, an entity (entity_id, name or server template_id; optional alive, nearest and zero-based index), through optional waypoints. Template/life filters require the server lab MCP. The entity goal follows its actor. Turns with bound turn keys, handles snags and teleports, and releases keys on every exit."
+        description = "Walk with real movement keys to a point, an entity (entity_id, name or server template_id; optional alive, nearest and zero-based index), through optional waypoints. Template/life filters require the server lab MCP. The entity goal follows its actor. Turns with bound turn keys, handles snags and teleports, and releases keys on every exit. Returns evidence: confirmed only when the client and the server both put the player within the arrival radius (server +1 m); a server that cannot be asked makes it inconclusive. Failures carry stop: what happened, what was tried, and lab_recover recipes to try. Stops before a drop of more than 2 m ahead (stop kind ledge) unless allow_drops; ledge_guard says whether the guard ran."
     )]
     async fn client_move_to(
         &self,
@@ -69,6 +69,9 @@ impl LabServer {
         let mut guard = HeldKeysGuard::new(move || async move {
             let mut io = LiveWorld::new(&sup);
             movement::release_stray(&mut io).await;
+            // A cancelled walk also drops its DLL holds (C5), not just the
+            // keys the planner knows it pressed.
+            sup.release_all_holds().await;
         });
         let mut io = LiveWorld::new(&self.supervisor);
         let r = movement::run(&mut io, a).await;
@@ -109,7 +112,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Camera control with real input: raw mouse-look (yaw_counts, pitch_counts), zoom (zoom_notches of the wheel, or zoom to a distance), and/or face an entity or point (turns until it projects near the screen centre, closed loop on worldToPixel), then absolute pitch_deg (readout degrees) and yaw_offset_deg (camera world yaw, -180..180, after any face), each closed loop. zoom is the same as zoom_to and is applied before the face. Reports the camera actor's pose before and after. Reports pitch_clamped (with a warning) when the camera ends at the +-78.75 deg pitch limit; a face that starts there brings it back to 10 deg first and says so under face.pitch_clamped."
+        description = "Camera control with real input: raw mouse-look (yaw_counts, pitch_counts), zoom (zoom_notches of the wheel, or zoom to a distance), and/or face an entity or point (turns until it projects near the screen centre, closed loop on worldToPixel), then absolute pitch_deg (readout degrees) and yaw_offset_deg (camera world yaw, -180..180, after any face), each closed loop. zoom is the same as zoom_to and is applied before the face. Reports the camera actor's pose before and after. Reports pitch_clamped (with a warning) when the camera ends at the +-78.75 deg pitch limit; a face that starts there brings it back to 10 deg first and says so under face.pitch_clamped. Returns evidence from the controller's camera readout: confirmed when every asked-for change is read back; a look that changed nothing is denied (ignored)."
     )]
     async fn client_camera(
         &self,
