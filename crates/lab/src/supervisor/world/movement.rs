@@ -35,7 +35,7 @@ pub const WAYPOINT_ARRIVAL_M: f64 = 0.5;
 
 /// What a failed walk tells the caller to try. The walk is a straight line
 /// with no path-finding.
-pub(super) const FAIL_HINT: &str ="client_move_to walks a straight line and cannot path-find. Go round the obstacle with waypoints, hold a movement key with a ui_sequence key step (hold_ms), or teleport on the server and click without walking; then stand 3.5 to 4.5 m from the target.";
+pub(super) const FAIL_HINT: &str = "client_move_to walks a straight line and cannot path-find. Go round the obstacle with waypoints, hold a movement key with a ui_sequence key step (hold_ms), or teleport on the server and click without walking; then stand 3.5 to 4.5 m from the target.";
 /// A jump this large in one tick is a teleport or a zone change, not a walk.
 pub const TELEPORT_M: f64 = 30.0;
 /// Path samples kept in the result.
