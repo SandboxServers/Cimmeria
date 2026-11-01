@@ -157,12 +157,21 @@ class ResumeCardTest(unittest.TestCase):
         self.assertIn("dispatches): demo.", card)
 
     def test_only_the_last_40_prompts_vote(self):
-        # The first 10 prompts name other. The last 40 are 27 demo and 13 other:
-        # 3 * 27 >= 2 * 40, so demo wins. All 50 would be 27 of 50 and no card.
+        # 30 other, then 40 demo. The last 40 are all demo: card for demo.
+        # The first 40 are 30 other and 10 demo: card for other, so reading
+        # the first 40 fails. All 70 are 40 demo of 70 (and 30 other): no card,
+        # so a window wider than 40 fails too.
         write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
         write_lines(self.project / "docs/analysis/other/RESUME.md", 3)
-        prompts = (["docs/analysis/other/a.md"] * 10 + ["docs/analysis/demo/a.md"] * 27
-                   + ["docs/analysis/other/b.md"] * 13)
+        prompts = (["docs/analysis/other/a.md"] * 30 + ["docs/analysis/demo/a.md"] * 40)
+        card = self.card(self.transcript(*(prompt_record(p) for p in prompts)))
+        self.assertIn("dispatches): demo.", card)
+
+    def test_three_of_three_prompts_name_the_campaign_by_reports_path(self):
+        # The reports path alone names a campaign, as dispatch briefs cite it.
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        prompts = [".claude/reports/demo/HT-01.md", "Read .claude/reports/demo/HT-02.md",
+                   "Check .claude/reports/demo/HT-03.md"]
         card = self.card(self.transcript(*(prompt_record(p) for p in prompts)))
         self.assertIn("dispatches): demo.", card)
 
@@ -195,6 +204,11 @@ class ResumeCardTest(unittest.TestCase):
     def test_pointer_with_bom_still_names_the_campaign(self):
         write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
         card = self.card(self.transcript(self.write_pointer("﻿demo\r\n")))
+        self.assertIn("Active campaign: demo.", card)
+
+    def test_pointer_with_leading_blank_lines_names_the_first_non_empty_line(self):
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        card = self.card(self.transcript(self.write_pointer("\n\ndemo\nextra\n")))
         self.assertIn("Active campaign: demo.", card)
 
     def test_rejects_campaign_name_that_is_a_path(self):
