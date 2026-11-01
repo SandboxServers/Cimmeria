@@ -27,6 +27,7 @@ pub mod item_action;
 pub mod lua_json;
 pub mod player_state;
 pub mod slots;
+pub mod type_into;
 pub mod typed;
 pub mod vendor_buy;
 pub mod window_click;

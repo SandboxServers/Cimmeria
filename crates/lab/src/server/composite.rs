@@ -132,7 +132,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Run a scripted UI step in one call: clicks on named windows, key taps, typing (optionally into an edit box clicked first), slot drags, and waits for a window to show or close. Same input paths as client_ui_click / client_input_key / client_type_text / client_drag_drop; refuses hidden or missing windows. Returns per-action results and the least native level used (native_level, native_tier, native_pass)."
+        description = "Run a scripted UI step in one call: clicks on named windows, key taps, typing (optionally into an edit box clicked first), slot drags, and waits for a window to show or close. Same input paths as client_ui_click / client_input_key / client_type_text / client_drag_drop; refuses hidden or missing windows. Returns per-action results and the least native level used (native_level, native_tier, native_pass). End a click with a wait_window step (or type with into) to make the result confirmed; a sequence of bare clicks and keys is inconclusive (posted_only)."
     )]
     async fn client_ui_sequence(
         &self,
