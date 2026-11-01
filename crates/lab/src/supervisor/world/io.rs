@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 
 use super::find::ServerEntity;
 use super::geometry::{Pose, Screen, Vec3};
+use super::ignored_input;
 use super::lua::{self, UnitInfo, UnitSlots};
 use super::memory::{self, PlayerCamera, WorldSnapshot};
 use super::NativeLevel;
@@ -97,6 +98,12 @@ pub trait WorldIo {
     async fn button(&mut self, button: usize, down: bool) -> Result<(), String>;
     /// Visible top-level UI windows.
     async fn visible_windows(&mut self) -> Result<Vec<String>, String>;
+    /// The DirectInput mouse counters (events delivered + mouse data reads),
+    /// or `None` when the client cannot say (an old DLL, no hooks). Only the
+    /// DI mouse-look path moves them; posted key messages never do.
+    async fn input_counters(&mut self) -> Option<u64> {
+        None
+    }
     /// Visible top-level windows' rects (`left, top, right, bottom`, UI
     /// pixels), leaving out the root and full-screen backdrops.
     async fn window_rects(&mut self) -> Result<Vec<(String, [f64; 4])>, String> {
@@ -585,6 +592,11 @@ impl WorldIo for LiveWorld<'_> {
         Ok(lua::parse_window_list(
             &self.lua(lua::VISIBLE_WINDOWS_CHUNK).await?,
         ))
+    }
+
+    async fn input_counters(&mut self) -> Option<u64> {
+        let v = self.sup.bridge_call("input_status", json!({})).await.ok()?;
+        ignored_input::delivery_count(&v["hooks"])
     }
 
     async fn window_rects(&mut self) -> Result<Vec<(String, [f64; 4])>, String> {

@@ -279,7 +279,7 @@ Files and changes:
 
 1. `supervisor/world/io.rs` `WorldIo`:
    - Add a default method `async fn input_counters(&mut self) -> Option<u64> { None }`.
-   - `LiveWorld` implements it from `self.sup.bridge_call("input_status", json!({}))` as `hooks.events_delivered + hooks.data_reads_mouse`, `None` when `hooks` is null.
+   - `LiveWorld` implements it from `self.sup.bridge_call("input_status", json!({}))` as `hooks.events_delivered` alone, through a pure `ignored_input::delivery_count(hooks: &Value) -> Option<u64>`; `None` when `hooks` is null. Not `data_reads_mouse`: it rises on every mouse poll, delivered or not (ruling `AX-34-ruling-1`).
    - At most 15 lines added.
 2. New `supervisor/world/ignored_input.rs`, pure:
    - `pub(super) fn classify(visible_windows: &[String], hud: &[&str]) -> StopKind`: `BlockedUi` when a visible window is not in `hud`, else `IgnoredInput`.
@@ -287,7 +287,7 @@ Files and changes:
    - `pub(super) fn look_delivered(before: Option<u64>, after: Option<u64>) -> Check`: `bridge` source, `required: true`, `ok: Some(after > before)` when both are `Some`, why `not_delivered` when false; both `None` gives `ok: None`, why `no_post_read`.
 3. `supervisor/world/move_probe.rs` (from AX-30): when the probe fails, read `io.visible_windows()` and pick the stop kind with `classify`. Its `suggest` comes from `move_proof::stop_report`.
 4. `supervisor/world/camera.rs`:
-   - Around the `io.look` call, read `input_counters()` before and after, only when `look` returned `NativeLevel::RealInput` (the DirectInput path, not the native camera).
+   - Read `input_counters()` before the `io.look` call and again right after the `view_after` readout (the same moment as the view), only when `look` returned `NativeLevel::RealInput` (the DirectInput path, not the native camera).
    - Push `look_delivered` into the checks, in front of `look_moved`: `camera_proof::checks` takes an extra `Option<Check>`.
    - Key presses never use the DI counters: posted `WM_KEYDOWN` does not go through DirectInput.
    - At most 10 lines added to `camera.rs`.
@@ -301,6 +301,7 @@ Tests:
 | `only_hud_is_ignored_input` | HUD windows only: `IgnoredInput` | rule |
 | `counters_that_did_not_move_deny_delivery` | `look_delivered(Some(5), Some(5))`: `ok` false, why `not_delivered` | C2 |
 | `no_counters_is_unmeasured` | `(None, None)`: `ok` None | honesty: an old DLL never denies |
+| `delivery_counts_only_records_handed_over` | `delivery_count({"events_delivered":3,"data_reads_mouse":900}) == Some(3)`; `Value::Null` gives `None` | ruling D1 |
 | `sim_probe_with_dialog_stops_blocked_ui` | a `Sim` whose pawn does not move under W with `DialogWin` visible: the error's `stop.kind == "blocked_ui"`, `suggest == ["close_dialogs"]` | step 3 |
 
 Checks: L1, L2. Report the `io.rs` and `camera.rs` line counts.

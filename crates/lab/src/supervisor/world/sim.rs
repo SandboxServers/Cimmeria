@@ -93,6 +93,10 @@ pub struct Sim {
     pub mouse_over_on_repeated_move: Option<u32>,
     repeated_move_override_active: bool,
     pub looks: Vec<(i32, i32, i32)>,
+    /// `input_status` delivery counter; `None` plays an old DLL.
+    pub counters: Option<u64>,
+    /// Whether a look raises `counters` (false: the game took nothing).
+    pub counters_follow_looks: bool,
     pub pins: u32,
     pub target_unit_calls: u32,
     pub buttons: Vec<(usize, bool)>,
@@ -371,6 +375,11 @@ impl WorldIo for Sim {
             std::future::pending().await
         }
         self.looks.push((dx, dy, wheel));
+        if self.counters_follow_looks {
+            if let Some(c) = self.counters.as_mut() {
+                *c += 1;
+            }
+        }
         self.cam_yaw = wrap_pi(self.cam_yaw + dx as f64 / self.gain);
         let sign = if self.pitch_inverted { -1.0 } else { 1.0 };
         let mut counts = f64::from(dy);
@@ -466,6 +475,10 @@ impl WorldIo for Sim {
 
     async fn visible_windows(&mut self) -> Result<Vec<String>, String> {
         Ok(self.windows.clone())
+    }
+
+    async fn input_counters(&mut self) -> Option<u64> {
+        self.counters
     }
 
     async fn window_rects(&mut self) -> Result<Vec<(String, [f64; 4])>, String> {

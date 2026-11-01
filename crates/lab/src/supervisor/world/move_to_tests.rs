@@ -355,6 +355,7 @@ async fn move_to_names_a_wall_ahead_not_dead_input() {
     assert_ne!(e.step, "input_probe", "{}", e.message);
     assert!(e.message.contains("blocked ahead"), "{}", e.message);
     assert!(e.to_json()["state"]["backward_m"].as_f64().unwrap() >= 0.1);
+    assert_eq!(e.to_json()["stop"]["kind"], "stuck");
     assert!(!sim.keys["W"] && !sim.keys["S"], "keys left held");
 }
 /// A target already inside the arrival radius costs no real move: the

@@ -37,6 +37,7 @@ pub mod find;
 pub mod fresh_wait;
 pub mod geometry;
 pub mod hover;
+mod ignored_input;
 pub mod io;
 pub mod lua;
 pub mod memory;
@@ -59,6 +60,8 @@ mod click_proof_tests;
 mod click_timeout_tests;
 #[cfg(test)]
 mod fresh_wait_tests;
+#[cfg(test)]
+mod ignored_input_tests;
 #[cfg(test)]
 mod move_to_tests;
 #[cfg(test)]

@@ -31,8 +31,11 @@ pub(super) fn checks(
     face: &Value,
     absolute: Option<&Value>,
     fresh: Freshness,
+    delivered: Option<Check>,
 ) -> Vec<Check> {
-    let mut out = Vec::new();
+    // The delivery check goes in front of `look_moved`: no counters moved
+    // means the look never reached the game, which explains a still view.
+    let mut out: Vec<Check> = delivered.into_iter().collect();
     // No post-read: nothing below can be measured.
     let no_read = view_after.get("error").is_some();
     let stale = fresh == Freshness::Stale;
