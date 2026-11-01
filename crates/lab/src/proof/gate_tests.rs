@@ -42,14 +42,15 @@ fn judged_without_evidence_is_no_evidence() {
 }
 
 #[test]
-fn unjudged_gets_unjudged_and_keeps_effect_ok() {
+fn unjudged_drops_effect_ok_when_strict() {
     let mut v = json!({"effect_ok": true, "counts_as_native_pass": true});
     stamp_with(Claim::Unjudged, &mut v);
     assert_eq!(v["evidence"]["verdict"], "unjudged");
     assert_eq!(v["evidence"]["why"], "not_yet_judged");
-    assert_eq!(v["effect_ok"], true);
+    assert!(v.get("effect_ok").is_none(), "{v}");
     assert_eq!(v["counts_as_native_pass"], false);
     assert_eq!(v["claimed"]["counts_as_native_pass"], true);
+    assert_eq!(v["claimed"]["effect_ok"], true);
 }
 
 #[test]

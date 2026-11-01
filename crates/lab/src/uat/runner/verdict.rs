@@ -5,6 +5,7 @@
 
 use serde_json::Value;
 
+use crate::proof::gate::STRICT;
 use crate::proof::{EvVerdict, Evidence};
 use crate::uat::evidence::{ClauseResult, Verdict};
 use crate::uat::grade::{mark_unverified, Grade};
@@ -31,6 +32,7 @@ pub(super) fn of_outcome(tool: &str, json: &Value) -> ActionVerdict {
         EvVerdict::Inconclusive => {
             ActionVerdict::Inconclusive(format!("{tool}: inconclusive ({})", ev.why.as_str()))
         }
+        EvVerdict::Unjudged if STRICT => ActionVerdict::Inconclusive(format!("{tool}: unjudged")),
         EvVerdict::Confirmed | EvVerdict::Unjudged => ActionVerdict::Proceed,
     }
 }

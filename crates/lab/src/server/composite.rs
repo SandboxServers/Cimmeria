@@ -8,6 +8,7 @@ use rmcp::{
 };
 use serde_json::Value;
 
+use super::flow_proof::in_world_evidence;
 use super::LabServer;
 use crate::supervisor::composite::batch::parse_steps;
 use crate::supervisor::composite::ensure::{EnsureRequest, StopAt};
@@ -85,7 +86,7 @@ fn json_result(v: Value) -> CallToolResult {
 #[tool_router(router = composite_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Get in the world as a character in one call: start the client if none is running, wait for its window and bridge, log in (lab-account.json credentials), pick the server row, play the character (with `create` and the character missing: the arguments are checked first, then the oldest unprotected character may be deleted to free a slot, reported as deleted_to_free_a_slot, and it is created), finish an intro dialog, turn on virtual focus. `stop_at` running or character_select stops earlier. Already there: returns at once. Returns {in_world, character, world_id, pos, steps_ms} (or {at, characters?}); a failure names the step. Refuses to start while a client the lab did not launch is running."
+        description = "Get in the world as a character in one call: start the client if none is running, wait for its window and bridge, log in (lab-account.json credentials), pick the server row, play the character (with `create` and the character missing: the arguments are checked first, then the oldest unprotected character may be deleted to free a slot, reported as deleted_to_free_a_slot, and it is created), finish an intro dialog, turn on virtual focus. `stop_at` running or character_select stops earlier. Already there: returns at once. Returns {in_world, character, world_id, pos, steps_ms, evidence} (or {at, characters?}); evidence is one check, `in_world`, with the world and position read back. A failure names the step. Refuses to start while a client the lab did not launch is running."
     )]
     async fn lab_ensure_in_world(
         &self,
@@ -112,7 +113,10 @@ impl LabServer {
         self.supervisor
             .ensure_in_world(req)
             .await
-            .map(json_result)
+            .map(|mut v| {
+                v["evidence"] = in_world_evidence(&v).to_value();
+                json_result(v)
+            })
             .map_err(|e| McpError::internal_error(format!("lab_ensure_in_world: {e}"), None))
     }
 

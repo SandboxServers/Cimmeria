@@ -39,6 +39,15 @@ pub const JUDGED: &[&str] = &[
     "client_cursor_move",
     "client_input_focus",
     "client_input_release",
+    "lab_ensure_in_world",
+    "lab_login",
+    "lab_create_character",
+    "lab_delete_character",
+    "lab_ensure_character_slot",
+    "lab_play_character",
+    "lab_finish_dialog",
+    "lab_logout",
+    "lab_disconnect",
 ];
 
 /// Tools that claim no effect: reads, lease, UAT and lifecycle tools.

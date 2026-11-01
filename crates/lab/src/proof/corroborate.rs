@@ -5,12 +5,19 @@
 
 use std::sync::{Arc, OnceLock};
 
-use serde_json::{json, Value};
+use serde_json::Value;
 
+#[cfg(test)]
+use serde_json::json;
+
+#[cfg(test)]
 use super::{Check, Source, Why};
-use crate::uat::invoke::{ServerInvoker, ServerTools, ToolOutcome};
+use crate::uat::invoke::ServerTools;
+#[cfg(test)]
+use crate::uat::invoke::{ServerInvoker, ToolOutcome};
 
 /// What the server should confirm about the world.
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expect {
     /// The entity's position is within `within_m` metres of `at` (server metres).
@@ -48,6 +55,7 @@ pub fn entity_position(reply: &Value) -> Option<[f64; 3]> {
 
 /// Asks the server about `e` and returns one check named `name`. `server`
 /// `None`, a failed call or a malformed reply leave `ok` absent.
+#[cfg(test)]
 pub async fn check(
     server: Option<&dyn ServerInvoker>,
     name: &str,
@@ -134,6 +142,7 @@ pub async fn check(
 }
 
 /// The `server_entity_get` reply for `entity_id`, or `None` when the call failed.
+#[cfg(test)]
 async fn entity_reply(server: &dyn ServerInvoker, entity_id: u32) -> Option<Value> {
     let out: ToolOutcome = server
         .call("server_entity_get", json!({ "entity_id": entity_id }))
@@ -142,18 +151,22 @@ async fn entity_reply(server: &dyn ServerInvoker, entity_id: u32) -> Option<Valu
 }
 
 /// The server answers that the entity no longer exists (`entity: null`).
+#[cfg(test)]
 fn gone(reply: &Value) -> bool {
     reply.get("entity") == Some(&Value::Null)
 }
 
+#[cfg(test)]
 fn gone_check(name: &str, required: bool) -> Check {
     Check::new(name, Source::Server, Some(false), required).with_why(Why::ServerDisagrees)
 }
 
+#[cfg(test)]
 fn unreachable(name: &str, required: bool) -> Check {
     Check::new(name, Source::Server, None, required).with_why(Why::ServerUnreachable)
 }
 
+#[cfg(test)]
 fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
     a.iter()
         .zip(b)

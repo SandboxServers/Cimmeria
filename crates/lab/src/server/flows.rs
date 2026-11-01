@@ -11,6 +11,7 @@ use rmcp::{
 };
 use serde_json::Value;
 
+use super::flow_proof::{end_screen, flow_evidence};
 use super::LabServer;
 use crate::supervisor::flows::characters::CreateRequest;
 use crate::supervisor::flows::login::LoginRequest;
@@ -108,14 +109,14 @@ impl LabServer {
             password: a.password,
             server: a.server,
         };
-        flow_result(self.supervisor.login_flow(req).await)
+        flow_result("lab_login", self.supervisor.login_flow(req).await)
     }
 
     #[tool(
         description = "List the characters at character select: slot index (1-based), name, level, alignment, archetype, playable. Errors when the client is not at character select."
     )]
     async fn lab_characters(&self) -> Result<CallToolResult, McpError> {
-        flow_result(self.supervisor.characters_flow().await)
+        flow_result("lab_characters", self.supervisor.characters_flow().await)
     }
 
     #[tool(
@@ -132,7 +133,10 @@ impl LabServer {
             archetype: a.archetype,
             gender: a.gender,
         };
-        flow_result(self.supervisor.create_character_flow(req).await)
+        flow_result(
+            "lab_create_character",
+            self.supervisor.create_character_flow(req).await,
+        )
     }
 
     #[tool(
@@ -142,7 +146,10 @@ impl LabServer {
         &self,
         Parameters(a): Parameters<CharacterNameArgs>,
     ) -> Result<CallToolResult, McpError> {
-        flow_result(self.supervisor.delete_character_flow(&a.name).await)
+        flow_result(
+            "lab_delete_character",
+            self.supervisor.delete_character_flow(&a.name).await,
+        )
     }
 
     #[tool(
@@ -153,6 +160,7 @@ impl LabServer {
         Parameters(a): Parameters<EnsureSlotArgs>,
     ) -> Result<CallToolResult, McpError> {
         flow_result(
+            "lab_ensure_character_slot",
             self.supervisor
                 .ensure_slot_flow(a.free_slots.unwrap_or(1), a.protect)
                 .await,
@@ -171,6 +179,7 @@ impl LabServer {
             .map(Duration::from_millis)
             .unwrap_or(DEFAULT_PLAY_TIMEOUT);
         flow_result(
+            "lab_play_character",
             self.supervisor
                 .play_flow(&a.name, a.skip_cutscene.unwrap_or(true), timeout)
                 .await,
@@ -185,6 +194,7 @@ impl LabServer {
         Parameters(a): Parameters<FinishDialogArgs>,
     ) -> Result<CallToolResult, McpError> {
         flow_result(
+            "lab_finish_dialog",
             self.supervisor
                 .finish_dialog_flow(a.accept, a.max_pages.unwrap_or(DEFAULT_MAX_PAGES))
                 .await,
@@ -195,22 +205,26 @@ impl LabServer {
         description = "Log out to character select: Enter, type /logout, Enter, wait for character select. Returns the character list. Already at character select is not an error."
     )]
     async fn lab_logout(&self) -> Result<CallToolResult, McpError> {
-        flow_result(self.supervisor.logout_flow().await)
+        flow_result("lab_logout", self.supervisor.logout_flow().await)
     }
 
     #[tool(
         description = "Log out to the login screen: at character select, click Back (the client sends the account logOff and shows the login screen), and wait for the login screen. Already at the login screen is not an error."
     )]
     async fn lab_disconnect(&self) -> Result<CallToolResult, McpError> {
-        flow_result(self.supervisor.disconnect_flow().await)
+        flow_result("lab_disconnect", self.supervisor.disconnect_flow().await)
     }
 }
 
-/// A flow's JSON as text content, or its failure as an MCP error whose
-/// `data` carries the step log.
-fn flow_result(r: Result<Value, FlowError>) -> Result<CallToolResult, McpError> {
+/// A flow's JSON as text content, with its end-screen `evidence` (judged
+/// flows only), or its failure as an MCP error whose `data` carries the step
+/// log.
+fn flow_result(tool: &str, r: Result<Value, FlowError>) -> Result<CallToolResult, McpError> {
     match r {
-        Ok(v) => {
+        Ok(mut v) => {
+            if end_screen(tool).is_some() {
+                v["evidence"] = flow_evidence(tool, &v).to_value();
+            }
             let text = serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string());
             Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
         }

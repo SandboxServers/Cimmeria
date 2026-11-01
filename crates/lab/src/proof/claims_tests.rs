@@ -35,6 +35,17 @@ fn no_claim_tool_is_not_leased_open() {
 }
 
 #[test]
+fn every_leased_tool_is_judged_or_no_claim() {
+    let unjudged: Vec<&str> = policy::LEASED
+        .iter()
+        .chain(policy::OWN_LEASE)
+        .copied()
+        .filter(|t| claim(t) == Claim::Unjudged)
+        .collect();
+    assert!(unjudged.is_empty(), "unjudged leased tools: {unjudged:?}");
+}
+
+#[test]
 fn unlisted_tools_are_unjudged() {
     assert_eq!(claim("client_some_future_tool"), Claim::Unjudged);
     assert_eq!(claim("lab_client_status"), Claim::NoClaim);

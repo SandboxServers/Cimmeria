@@ -7,9 +7,9 @@ use serde_json::{json, Map, Value};
 use super::claims::{claim, Claim};
 use super::{EvVerdict, Evidence};
 
-/// Whether an `Unjudged` result loses `effect_ok` like an `Inconclusive` one.
-/// AX-44 sets this on; until then unjudged results keep their legacy flag.
-pub const STRICT: bool = false;
+/// Whether an `Unjudged` result loses `effect_ok` like an `Inconclusive` one
+/// (C3 g). On since AX-44: an unjudged result counts as inconclusive.
+pub const STRICT: bool = true;
 
 /// Stamp `v`, a tool result from `tool`, in place (C3 rules a-f).
 pub fn stamp(tool: &str, v: &mut Value) {
