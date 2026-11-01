@@ -46,6 +46,12 @@ fn log_call(
         (false, true) => "error",
         (false, false) => "ok",
     };
+    crate::supervisor::detect::calls::record(crate::supervisor::detect::calls::CallRow {
+        ms: crate::supervisor::now_ms(),
+        instance: instance.into(),
+        tool: tool.into(),
+        outcome,
+    });
     let error: Option<String> = match out {
         Err(e) => Some(e.message.chars().take(ERROR_CAP).collect()),
         Ok(_) => None,

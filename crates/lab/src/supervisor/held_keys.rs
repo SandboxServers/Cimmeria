@@ -151,6 +151,23 @@ impl Supervisor {
         reasserted
     }
 
+    /// Every held key with the daemon wall ms it went down (the detectors'
+    /// clock). The book keeps monotonic ms, so the start is converted here.
+    pub(crate) async fn hold_starts(&self) -> Vec<(String, u64)> {
+        let now_mono = mono_ms();
+        let now_wall = super::now_ms() as u64;
+        self.holds
+            .lock()
+            .await
+            .holds()
+            .into_iter()
+            .map(|(name, since)| {
+                let ago = now_mono.saturating_sub(since);
+                (name, now_wall.saturating_sub(ago))
+            })
+            .collect()
+    }
+
     /// Let go of every key this book holds (a finished or cancelled tool).
     pub(crate) async fn release_all_holds(&self) {
         if self.holds.lock().await.is_empty() {

@@ -66,6 +66,8 @@ pub const OPEN: &[&str] = &[
     "lab_record_stop",
     // Re-transforms a recording folder on disk: no client.
     "lab_record_transform",
+    // Detectors over the daemon's own samples and call rows: no client call.
+    "lab_detectors_read",
     // Golden runs: read bundles, write only the golden file (no client).
     "lab_golden_record",
     "lab_golden_diff",
