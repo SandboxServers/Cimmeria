@@ -6,7 +6,7 @@ metadata:
 ---
 
 2026-09-28: fixed `requestEntityUpdate` (msg 0x07) end to end. The parser at
-`crates/base/src/base/connect_loop/encrypted/mod.rs::parse_request_entity_update`
+`crates/base/src/base/connect_loop/encrypted/message_framing.rs::parse_request_entity_update`
 had assumed `[u32 header][N × u32 entity_id]`; the real wire is `[u32
 entityId][N × u32 cacheStamp]` with N always 0 on the live client, so every
 real payload (a bare 4-byte entity id) decoded to an empty `Vec` and the
@@ -84,3 +84,6 @@ removed (its code path no longer exists); `pet_create_on_client_events`
 still has independent coverage in
 `crates/cell-world/src/cell/pets/tests/create_on_client.rs` for the real
 (AoI-tick) delivery path.
+
+INVALIDATED WHEN: the cell request_entity_update handler regains a re-create path or the not_in_witness_aoi refusal changes; parser path re-verified
+checked: re-verified (parser, handler reason, guard test exist) 2026-11-01

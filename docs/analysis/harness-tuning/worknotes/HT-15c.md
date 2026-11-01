@@ -51,3 +51,13 @@ Notes:
 - Left in my folders: aoi-witness-broadcast 4 (project_838_*, project_na34_*, project_na39_*), combat-systems-advisor 4, database-persistence/live-db-verification.md, bigworld-engine-advisor no_type 3 (aoi-entity-introduction, protocol-comparison, viewport-system), network-security-auth/security-audit.md is typed now. Next file: aoi-witness-broadcast/project_838_fragment_header_straddle.md.
 - Lint now: `memory_lint files=768 no_type=66 state_no_invalidated=52 index_over=1 index_missing=1 unindexed=197 orphan_folders=18 ip_like=3`
 - `lab-driver: left`.
+
+## Continuation 3 (commit part 6) - DONE
+
+- Done: aoi-witness-broadcast (4), combat-systems-advisor (4), database-persistence/live-db-verification, bigworld-engine-advisor (3 untyped, frontmatter added with type reference). 12 flagged files, all really verified by grep (0 uses of option (d) this session; 23 (d) in total).
+- Counts this session: (a) 10, (b) 2 (combat-telemetry-footprint first bullet marked FIXED; bigworld frontmatter), (c) 0, (d) 0.
+- Path fixes: parse_request_entity_update now in encrypted/message_framing.rs; death.rs is now abilities/death/mod.rs.
+- No flag left in my folders. Full-index case: none hit. No deleted paths this session (earlier deleted paths are listed above; ue3-reflection-trace-anchors.md untouched).
+- Lint before: `memory_lint files=768 no_type=66 state_no_invalidated=52 index_over=1 index_missing=1 unindexed=197 orphan_folders=18 ip_like=3`
+- Lint after: `memory_lint files=768 no_type=63 state_no_invalidated=43 index_over=1 index_missing=1 unindexed=197 orphan_folders=18 ip_like=3` (remaining flags belong to other owners, e.g. rust-gameserver-dev and orphan folders).
+- `lab-driver: left`.

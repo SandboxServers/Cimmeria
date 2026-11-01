@@ -66,3 +66,6 @@ at their old *module* paths, but the *file* paths moved (e.g. `base/` →
 `crates/base`, `base/helpers` → `crates/base-session`, `base/world_entry`
 → `crates/base-world-entry`, `cell/` → `crates/cell` + 7 sibling
 `cell-*` crates per `crates/README.md`).
+
+INVALIDATED WHEN: Channel::register_sent_packet stops sorted insertion (insert_tx_entry_sorted) or sends serialize under one lock
+checked: re-verified (insert_tx_entry_sorted exists) 2026-11-01

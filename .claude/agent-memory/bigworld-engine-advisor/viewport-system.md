@@ -1,3 +1,10 @@
+---
+name: viewport-system
+description: Client-side viewport tables and svidFollow: first UPDATE_AVATAR creates the ghost viewport association; promotion target spec.world.world-entry
+metadata:
+  type: reference
+---
+
 # Viewport System Architecture (Client-Side)
 
 > [!NOTE] PROMOTION TARGET: spec.world.world-entry §"viewport association" (or new spec.engine.viewport-system if depth warrants)
