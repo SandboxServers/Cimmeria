@@ -31,7 +31,7 @@ Verdicts:
 - `why: posted_only`: the input was sent but nothing proved its effect; report it as `posted_only`, not as a pass.
 - `why: already_true`: report it; it is not a pass of an action (the state was there before).
 - A `stop` in the result: report `stop.kind` and its message verbatim.
-- Clicks that open a window: use `client_window_click` and pass `expect_visible` with the window the brief names (AX-40), so the click judges itself.
+- Clicks that open a window: use `client_window_click` and pass `expect_visible` with the window the brief names (AX-40), so the click judges itself. Inside a `client_ui_sequence` a click proves nothing: end the sequence with a `wait_window` step on that window.
 - The "retry it at most once" rule does not apply to `cooling_down`.
 
 Interacting with an NPC or object (right-click, target, open its window):
