@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-The BM surface was ported in BM-01 and search is now LIMIT-bounded (search.rs:132). Whether the 20-per-player listing cap (D5) and clientKey-scoped result views have landed is unchecked; read black_market/ before relying on it.
+The BM surface was ported in BM-01 and search is now LIMIT-bounded (search.rs:132). The 20-per-player listing cap (D5) landed (black_market/validate.rs:37 `validate_listing_cap`, called at create.rs:147); whether clientKey-scoped result views landed is unchecked, so read black_market/search.rs before relying on it.
 
 For any auction or listing handler, require:
 - create: ownership join on `(character_id, item_id)`, atomic item lock + fee + listing insert, `startingPrice > 0`, `buyoutPrice >= startingPrice` or 0, a length cap, a per-player listing cap.
