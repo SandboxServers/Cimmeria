@@ -18,7 +18,10 @@ LINE = re.compile(r"^(?P<id>\S+)\s+(?P<status>done|blocked|failed)\s+(?P<sha>[0-
                   r"(?P<report>\S+\.md|-)(?P<extra>(?:\s+[a-z_]+=\S+)*)\s*$")
 SHORT_CHARS = 200
 CAP_MARKER = "Context cap reached"  # the user-level Haiku cap's deny text (D-HT3); never changed by this campaign
-WRITE_VERBS = ("WriteAllText", "Set-Content", "Out-File", "Add-Content", ">")
+# A real deny's result text starts with the marker, or with `PreToolUse:<tool> hook error: ` and then the marker. The
+# same pattern as .claude/hooks/report_contract.py, so a dispatch the hook treats as capped is counted as capped here.
+CAP_RE = re.compile(r"^(?:PreToolUse:\S+ hook error: )?" + re.escape(CAP_MARKER))
+WRITE_VERBS =("WriteAllText", "Set-Content", "Out-File", "Add-Content", ">")
 REPORT_TOOLS = ("Write", "Edit", "MultiEdit")
 SHELL_TOOLS = ("PowerShell", "Bash")
 
@@ -213,8 +216,8 @@ def return_line(final_text: str) -> tuple[str, re.Match | None]:
 
 
 def cap_denied(d: Dispatch) -> list[ToolUse]:
-    """The tool uses whose result holds the user-level cap's deny text."""
-    return [t for t in d.tool_uses if CAP_MARKER in d.results.get(t.id, "")]
+    """The tool uses whose result text starts with the cap deny (CAP_RE)."""
+    return [t for t in d.tool_uses if CAP_RE.match(d.results.get(t.id, "").lstrip())]
 
 
 def is_context_stop(d: Dispatch) -> bool:

@@ -1,6 +1,7 @@
 """The transcript reader (C1) and the harness CLI wiring (C2), on synthetic transcripts in a temp folder."""
 
 import contextlib
+import importlib.util
 import io
 import json
 import tempfile
@@ -9,12 +10,14 @@ from pathlib import Path
 
 from metrics import cli, harness_cli
 from metrics.transcript_fixtures import FIXTURE_PREFIX, write_agent_file, write_subagent
-from metrics.transcripts import (Dispatch, ToolUse, brief_report_paths, cap_denied, is_context_stop,
+from metrics.transcripts import (CAP_RE, Dispatch, ToolUse, brief_report_paths, cap_denied, is_context_stop,
                                  iter_dispatches, norm_path, read_dispatch, records, report_suffix,
                                  report_writer_types, report_written, return_line)
 
 REPO = Path(__file__).resolve().parents[3]
 REPORT = "C:\\repo\\.claude\\reports\\ht-01\\HT-01.md"
+DENY = ("PreToolUse:Edit hook error: Context cap reached: 90,515 tokens > 90,000. STOP NOW. "
+        "Do not call any more tools.")
 
 
 def _dispatch(final_text="", tool_uses=(), results=None):
@@ -83,9 +86,42 @@ class ContextStopTest(unittest.TestCase):
         self.assertTrue(is_context_stop(_dispatch("I am blocked, and the context window is full.")))
 
     def test_cap_denial(self):
-        d = _dispatch("", [ToolUse("t1", "Read", {}, 0)], {"t1": "Context cap reached: denied"})
+        d = _dispatch("", [ToolUse("t1", "Edit", {}, 0)], {"t1": DENY})
         self.assertEqual(len(cap_denied(d)), 1)
         self.assertTrue(is_context_stop(d))
+
+    def test_marker_quoted_in_read_is_not_a_cap(self):
+        read = ToolUse("t1", "Read", {}, 0)
+        grep = ToolUse("t2", "Grep", {}, 1)
+        results = {"t1": '    54\tCAP_MARKER = "Context cap reached"      # the deny text',
+                   "t2": "see Context cap reached in the doc"}
+        d = _dispatch("HT-01 done abc1234 -", [read, grep], results)
+        self.assertEqual(cap_denied(d), [])
+        self.assertFalse(is_context_stop(d))
+
+    def test_cap_deny_as_text_blocks(self):
+        def rec(kind, content):
+            return json.dumps({"type": kind, "timestamp": "2026-10-10T10:00:00Z",
+                               "message": {"role": kind, "content": content}})
+        records_ = [
+            rec("user", "brief"),
+            rec("assistant", [{"type": "tool_use", "id": "t1", "name": "Edit", "input": {}}]),
+            rec("user", [{"type": "tool_result", "tool_use_id": "t1", "is_error": True,
+                          "content": [{"type": "text", "text": DENY}]}]),
+            rec("assistant", [{"type": "text", "text": "Stopped."}]),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent-a1.jsonl"
+            path.write_text("\n".join(records_) + "\n", encoding="utf-8")
+            d = read_dispatch(path, "s1", "a1")
+        self.assertEqual(len(cap_denied(d)), 1)
+
+    @unittest.skipUnless((REPO / ".claude/hooks/report_contract.py").is_file(), "the hook is not in this tree")
+    def test_cap_re_matches_the_hook(self):
+        spec = importlib.util.spec_from_file_location("report_contract", REPO / ".claude/hooks/report_contract.py")
+        hook = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(hook)
+        self.assertEqual(hook.CAP_RE.pattern, CAP_RE.pattern)
 
     def test_done_is_not_a_stop(self):
         self.assertFalse(is_context_stop(_dispatch("HT-01 done abc1234 -")))
