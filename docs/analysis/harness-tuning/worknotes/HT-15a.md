@@ -20,3 +20,10 @@ Open items:
 - `concurrent-claude-sessions.md` and `tooling-filter-and-path-traps.md` contain local user paths; scrub when those files are reached.
 - Several of these notes cite stale claims were fixed in place (duel scan test renamed, damage_apply/mod.rs line count, .gitignore server/ rule gone).
 
+
+## Session 3 (ruling 1, part 4)
+
+Applied notes 1-5 of HT-15a-ruling-1 with a scratchpad script: appended minigame section moved to `.claude/agent-memory/rust-gameserver-dev/minigame-session-lifecycle.md` (type reference, 4 bullets verbatim, CRLF) with one index line under Cell systems; stray top line moved under Testing patterns; every index line converted to the bare `- x.md — hook` form; 8 `Files` lines added (tooling-quirks 22, launcher 11, injected-client-dlls 16, ue3-and-navmesh 18, seeds-and-content-chains 24, cell-systems 64, observability 19, testing-patterns 19 = 193 names, each once, all verified to exist on disk); header sentence rewritten.
+Lint for the folder, before: unindexed 193. After: no line for rust-gameserver-dev. Summary: unindexed 203 -> 10, index_over unchanged at 1 (other folder).
+MEMORY.md before: 155 lines, 19,356 bytes. After: 157 lines, 22,236 bytes (gates: <=180 lines, <=23,500 bytes). Pure CRLF checked for MEMORY.md and the new file. Unit tests green.
+Packet-wide counts (sessions 1-3): (a) 46, (b) 6, (c) 0, (d) 4. Deleted files: none.
