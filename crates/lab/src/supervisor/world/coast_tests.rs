@@ -179,6 +179,7 @@ async fn waypoint_legs_do_not_release() {
         coast_s: 0.3,
         samples: 1,
     });
+    let start = sim.pos;
     let corner = Vec3::new(sim.pos.x + 1000.0, sim.pos.y, sim.pos.z);
     let end = Vec3::new(corner.x + 1000.0, corner.y, corner.z);
     let out = movement::run(
@@ -194,16 +195,37 @@ async fn waypoint_legs_do_not_release() {
     // Only the final leg coasts: the waypoint is judged as it always was.
     assert!(out["legs"][0].get("coast").is_none());
     assert!(out["legs"][1]["coast"].is_object());
-    let w: Vec<bool> = sim
+    let w: Vec<&(String, bool, Vec3)> = sim
         .key_log
         .iter()
-        .filter(|(k, _)| k == movement::FORWARD_KEY)
-        .map(|(_, d)| *d)
+        .filter(|(k, _, _)| k == movement::FORWARD_KEY)
         .collect();
-    // One press per leg, then the cleanup release `run` sends after every walk.
+    let downs: Vec<bool> = w.iter().map(|(_, d, _)| *d).collect();
+    // The input probe's press and release, the walker's one press, its one
+    // early release on the final leg, then the cleanup release `run` sends.
+    // A waypoint that released early adds an up and a down at the corner.
     assert_eq!(
-        w,
+        downs,
         vec![true, false, true, false, false],
-        "W must press once per leg, with no early release on the corner"
+        "W must stay down through the corner"
+    );
+    // w[1] is the probe's release, a 300 ms hold (about 1.5 m) from the start.
+    let probe_m = horizontal_m(w[1].2, start);
+    assert!(
+        probe_m <= 2.0,
+        "the probe let go of W {probe_m} m from the start"
+    );
+    // The walker's only release, w[3], is on the final leg, past the corner.
+    let let_go = w[3].2;
+    assert!(
+        let_go.x > corner.x,
+        "the walker let go of W at x {} before the corner at x {}",
+        let_go.x,
+        corner.x
+    );
+    let let_go_m = horizontal_m(let_go, end);
+    assert!(
+        let_go_m <= 4.0,
+        "the final release came {let_go_m} m from the end"
     );
 }
