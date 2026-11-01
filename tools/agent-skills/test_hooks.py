@@ -135,9 +135,56 @@ class ResumeCardTest(unittest.TestCase):
         self.assertIsNone(self.card(self.transcript(*(prompt_record(p) for p in prompts))))
 
     def test_prompt_naming_a_campaign_without_resume_does_not_count(self):
+        # Unfiltered, ghost and demo split 3 to 3 and no card is printed.
         write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
-        prompts = ["docs/analysis/ghost/a.md"] * 3 + ["docs/analysis/demo/a.md"]
-        self.assertIsNone(self.card(self.transcript(*(prompt_record(p) for p in prompts))))
+        prompts = ["docs/analysis/ghost/a.md"] * 3 + ["docs/analysis/demo/a.md"] * 3
+        card = self.card(self.transcript(*(prompt_record(p) for p in prompts)))
+        self.assertIn("dispatches): demo.", card)
+
+    def test_three_of_three_prompts_name_the_campaign(self):
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        prompts = ["docs/analysis/demo/a.md"] * 3
+        card = self.card(self.transcript(*(prompt_record(p) for p in prompts)))
+        self.assertTrue(card.startswith("Context was compacted. Inferred campaign"))
+        self.assertIn("dispatches): demo.", card)
+
+    def test_two_of_three_prompts_name_the_campaign(self):
+        # 2 of 3 is exactly the threshold: 3 * 2 >= 2 * 3.
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        write_lines(self.project / "docs/analysis/other/RESUME.md", 3)
+        prompts = ["docs/analysis/demo/a.md", "docs/analysis/demo/b.md", "docs/analysis/other/a.md"]
+        card = self.card(self.transcript(*(prompt_record(p) for p in prompts)))
+        self.assertIn("dispatches): demo.", card)
+
+    def test_only_the_last_40_prompts_vote(self):
+        # The first 10 prompts name other. The last 40 are 27 demo and 13 other:
+        # 3 * 27 >= 2 * 40, so demo wins. All 50 would be 27 of 50 and no card.
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        write_lines(self.project / "docs/analysis/other/RESUME.md", 3)
+        prompts = (["docs/analysis/other/a.md"] * 10 + ["docs/analysis/demo/a.md"] * 27
+                   + ["docs/analysis/other/b.md"] * 13)
+        card = self.card(self.transcript(*(prompt_record(p) for p in prompts)))
+        self.assertIn("dispatches): demo.", card)
+
+    def test_campaign_name_is_matched_in_mixed_case(self):
+        # The needle is case-sensitive, so only the path's case is folded.
+        self.point_at("other")
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        path = str(self.project / ".CLAUDE" / "State" / "active-campaign")
+        card = self.card(self.transcript(tool_record("Write", {"file_path": path, "content": "demo\n"})))
+        self.assertIn("Active campaign: demo.", card)
+
+    def test_multiedit_last_edit_names_the_campaign(self):
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        edits = [{"old_string": "x", "new_string": "alpha\n"}, {"old_string": "y", "new_string": "demo\n"}]
+        card = self.card(self.transcript(tool_record("MultiEdit", {"file_path": self.pointer, "edits": edits})))
+        self.assertIn("Active campaign: demo.", card)
+
+    def test_pointer_lookalike_path_does_not_count(self):
+        # Only .claude/state/active-campaign is the pointer, not any path ending in its name.
+        write_lines(self.project / "docs/analysis/other/RESUME.md", 3)
+        decoy = str(self.project / ".claude" / "state" / "other" / "active-campaign")
+        self.assertIsNone(self.card(self.transcript(tool_record("Write", {"file_path": decoy, "content": "other\n"}))))
 
     def test_truncates_resume_at_40_lines(self):
         write_lines(self.project / "docs/analysis/demo/RESUME.md", 100)
