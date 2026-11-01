@@ -7,9 +7,10 @@ import io
 import json
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
-from metrics import returns
+from metrics import cli, returns
 from metrics.transcript_fixtures import FIXTURE_PREFIX, write_agent_file, write_subagent
 
 R1 = ".claude/reports/harness-tuning/R1.md"
@@ -125,6 +126,63 @@ class ReturnsTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(self._json()["groups"]["all"]["dispatches"], 0)
         self.assertEqual(self._json()["window"], {"since": "2026-10-11", "until": None})
+
+    def test_redispatch_counts_repeat_report_paths_but_not_continuations(self):
+        write_subagent(self.projects, "s1", "a8", "packet-reviewer",
+                       f"Review HT-01 again. Write the report to {R1}", [], f"R1 done - {R1}",
+                       ts="2026-10-10T11:00:00Z")
+        write_subagent(self.projects, "s1", "a9", "packet-coder",
+                       f"Continuation 3 of 3 for HT-01. Report path {R1}", [], "still going",
+                       ts="2026-10-10T12:00:00Z")
+        self._run()
+        groups = self._json()["groups"]
+        self.assertEqual(groups["all"]["redispatches"], 1)
+        self.assertEqual(groups["packet-reviewer"]["redispatches"], 1)
+
+    def test_privacy_gate_refuses(self):
+        with unittest.mock.patch.object(returns.Scrubber, "assert_clean",
+                                        side_effect=returns.PrivacyError("x")), \
+                contextlib.redirect_stderr(err := io.StringIO()):
+            code, _ = self._run()
+        self.assertEqual(code, 3)
+        self.assertIn("status=error privacy", err.getvalue())
+        self.assertFalse((self.out / "returns.json").exists())
+
+    def test_missing_projects_root_exits_2(self):
+        self.projects = self.root / "nowhere"
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code, _ = self._run()
+        self.assertEqual(code, 2)
+        self.assertTrue(err.getvalue().startswith("status=error"))
+
+    def test_cli_main_runs_returns(self):
+        argv = ["returns", "--projects-root", str(self.projects), "--repo", str(self.repo), "--out", str(self.out)]
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = cli.main(argv)
+        self.assertEqual(code, 0)
+        self.assertTrue((self.out / "returns.json").is_file())
+
+    def test_suffix_and_edge_counts(self):
+        self.projects = self.root / "p2"
+        write_subagent(self.projects, "s1", "b1", "packet-reviewer", f"Review HT-01. Write the report to {R1}", [],
+                       f"R1 done abc1234 {R1} not_assessed=2")
+        write_subagent(self.projects, "s1", "b2", "packet-reviewer", f"Review HT-02. Write the report to {R2}", [],
+                       f"R2 done abc1234 {R2}\nExtra text.")
+        write_subagent(self.projects, "s1", "b3", "packet-reviewer", f"Review HT-03. Write the report to {R3}", [], "")
+        write_subagent(self.projects, "s1", "b4", "packet-coder", "Implement the HT-04 returns check.",
+                       [("Edit", {"file_path": "returns.py"}, DENY, 1000)], "HT-04 blocked abc1234 - reason=context")
+        write_subagent(self.projects, "s1", "b5", "packet-coder", "Implement the HT-04 returns check again.", [],
+                       "HT-04 done abc1234 - not_run=2,3")
+        self._run()
+        all_ = self._json()["groups"]["all"]
+        self.assertEqual(all_["line_first"], 1)
+        self.assertEqual(all_["empty"], 1)
+        self.assertEqual(all_["not_assessed_suffix"], 1)
+        self.assertEqual(all_["reviewer_lines"], 2)
+        coder = self._json()["coder_lines"]
+        self.assertEqual(coder["capped_usable_line"], 1)
+        self.assertEqual(coder["not_run_suffix"], 1)
 
 
 if __name__ == "__main__":
