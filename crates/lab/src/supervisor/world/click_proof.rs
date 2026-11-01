@@ -1,11 +1,13 @@
 //! The evidence behind a world click (contract C1, C2, C4): did the client
 //! show the effect the caller asked for, and was a right-click even in range.
-//! Pure: it takes plain values, so the tests need no `Sim`.
+//! `checks` is pure: it takes plain values, so the tests need no `Sim`; `judge`
+//! is the one function that touches the I/O.
 
 use serde_json::{json, Value};
 
 use super::click::{met, ui_snap, Expect, UiSnap};
 use super::click_range::INTERACT_RANGE_M;
+use super::click_result::ClickTail;
 use super::fresh_wait::wait_fresh;
 use super::io::WorldIo;
 use super::{Steps, WorldError};
@@ -96,45 +98,35 @@ pub(super) fn checks(f: &ClickFacts) -> Vec<Check> {
     out
 }
 
-/// What `judge` needs besides the I/O: the click as it was planned.
-pub(super) struct ClickCase<'a> {
-    pub expect: Expect,
-    pub entity: Option<u32>,
-    pub before: &'a UiSnap,
-    pub hover_verified: bool,
-    pub button: usize,
-    pub range_m: Option<f64>,
-    /// `(Unit.Target, Unit.MouseOver)` slots for the post-read.
-    pub slots: (i32, i32),
-}
-
 /// Wait for a fresh frame, read the UI once more and attach the evidence.
 /// `expect: nothing` takes no post-read (a click may start a world load).
+/// `slots` is `(Unit.Target, Unit.MouseOver)` for the post-read.
 pub(super) async fn judge<W: WorldIo>(
     io: &mut W,
     steps: &mut Steps,
     action_frame: Option<u64>,
-    c: ClickCase<'_>,
+    t: &ClickTail<'_>,
+    slots: (i32, i32),
 ) -> Result<(), WorldError> {
     let (mut fresh, mut read_frame) = (Freshness::Fresh, None);
     let mut post = None;
-    if c.expect != Expect::Nothing {
+    if t.expect != Expect::Nothing {
         (fresh, read_frame) = wait_fresh(io, action_frame).await;
         post = Some(
-            ui_snap(io, c.slots.0, c.slots.1)
+            ui_snap(io, slots.0, slots.1)
                 .await
                 .map_err(|e| steps.fail(io.now_ms(), "read_after", e))?,
         );
     }
-    let after = post.as_ref().unwrap_or(c.before);
+    let after = post.as_ref().unwrap_or(t.before);
     let facts = ClickFacts {
-        expect: c.expect,
-        entity: c.entity,
-        before: c.before,
+        expect: t.expect,
+        entity: t.entity,
+        before: t.before,
         after,
-        hover_verified: c.hover_verified,
-        button: u8::from(c.button == 1),
-        range_m: c.range_m,
+        hover_verified: t.hover_verified,
+        button: u8::from(t.button == 1),
+        range_m: t.range_m,
         fresh,
         read_frame,
     };

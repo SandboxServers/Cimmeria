@@ -229,7 +229,6 @@ impl Steps {
 
     /// Attach the judged evidence; `finish` reports it and lets it decide
     /// whether the call counts as a native pass.
-    #[cfg_attr(not(test), allow(dead_code))] // Callers land in AX-11.
     pub fn judged(&mut self, ev: crate::proof::Evidence) {
         self.evidence = Some(ev);
     }

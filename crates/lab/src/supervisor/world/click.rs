@@ -19,10 +19,11 @@ use serde_json::{json, Value};
 
 use super::camera::{face, Aim, DEFAULT_FACE_STEPS};
 use super::click_hover::{
-    hover_once, read_mouse_over, wants_view_retry, Hover, HOVER_WAIT_MS, NEAR_AVATAR_M,
+    hover_deadline_error, hover_once, read_mouse_over, wants_view_retry, Hover, HOVER_WAIT_MS,
+    NEAR_AVATAR_M,
 };
 pub use super::click_hover::{restore_pitch_counts, VIEW_RETRIES};
-use super::click_proof::{judge, ClickCase};
+use super::click_proof::judge;
 #[cfg(test)]
 use super::click_range::{range_hint, range_json};
 use super::click_result::{click_result, ClickPlan, ClickTail};
@@ -568,22 +569,6 @@ pub async fn run<W: WorldIo>(
     click_and_observe(io, steps, &req, plan).await
 }
 
-fn hover_deadline_error<W: WorldIo>(
-    io: &W,
-    steps: &Steps,
-    phase: &str,
-    attempted_pixel: Option<(i32, i32)>,
-    tried: &[Value],
-    deadline: tokio::time::Instant,
-) -> WorldError {
-    steps.fail_with(
-        io.now_ms(),
-        "hover_timeout",
-        format!("target hover attempt exceeded its 10 s deadline during {phase}"),
-        json!({ "attempted_pixel": attempted_pixel, "remaining_deadline_ms": deadline.saturating_duration_since(tokio::time::Instant::now()).as_millis() as u64, "tried": tried }),
-    )
-}
-
 /// Steps 4 and 5: click, then watch what the client did.
 async fn click_and_observe<W: WorldIo>(
     io: &mut W,
@@ -671,19 +656,7 @@ async fn click_and_observe<W: WorldIo>(
         }
     }
 
-    if ok {
-        let case = ClickCase {
-            expect,
-            entity,
-            before: &before,
-            hover_verified,
-            button,
-            range_m,
-            slots: (units.target, units.mouse_over),
-        };
-        judge(io, &mut steps, action_frame, case).await?;
-    }
-    let out = click_result(ClickTail {
+    let tail = ClickTail {
         expect,
         entity,
         before: &before,
@@ -697,8 +670,19 @@ async fn click_and_observe<W: WorldIo>(
         hover_verified,
         face_json,
         fallback,
-    })
-    .map_err(|(msg, ev)| steps.fail_with(io.now_ms(), "observe", msg, ev))?;
+    };
+    if ok {
+        judge(
+            io,
+            &mut steps,
+            action_frame,
+            &tail,
+            (units.target, units.mouse_over),
+        )
+        .await?;
+    }
+    let out =
+        click_result(tail).map_err(|(msg, ev)| steps.fail_with(io.now_ms(), "observe", msg, ev))?;
     Ok(steps.finish(io.now_ms(), out))
 }
 
