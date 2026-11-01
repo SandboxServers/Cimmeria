@@ -62,6 +62,7 @@ fn lock() -> MutexGuard<'static, Option<Ring>> {
     WATCH.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Handle `watch_start` (contract C6).
 pub fn dispatch_start(id: Value, params: &Value) -> RpcResponse {
     let p: StartParams = match parse(params) {
         Ok(p) => p,
@@ -73,12 +74,17 @@ pub fn dispatch_start(id: Value, params: &Value) -> RpcResponse {
         p.cap.unwrap_or(DEFAULT_CAP),
         frame,
     );
-    let replaced = lock().replace(ring).is_some_and(|old| old.running);
-    PC_CACHE.store(0, Ordering::Relaxed);
-    WATCH_ACTIVE.store(true, Ordering::SeqCst);
+    let replaced = {
+        let mut g = lock();
+        let replaced = g.replace(ring).is_some_and(|old| old.running);
+        PC_CACHE.store(0, Ordering::Relaxed);
+        WATCH_ACTIVE.store(true, Ordering::SeqCst);
+        replaced
+    };
     RpcResponse::ok(id, json!({ "started_frame": frame, "replaced": replaced }))
 }
 
+/// Handle `watch_read` (contract C6); moves no cursor.
 pub fn dispatch_read(id: Value, params: &Value) -> RpcResponse {
     let p: ReadParams = match parse(params) {
         Ok(p) => p,
@@ -97,9 +103,10 @@ pub fn dispatch_read(id: Value, params: &Value) -> RpcResponse {
     RpcResponse::ok(id, result)
 }
 
+/// Handle `watch_stop` (contract C6); keeps the ring readable.
 pub fn dispatch_stop(id: Value) -> RpcResponse {
-    WATCH_ACTIVE.store(false, Ordering::SeqCst);
     let mut guard = lock();
+    WATCH_ACTIVE.store(false, Ordering::SeqCst);
     let result = match guard.as_mut() {
         Some(r) => {
             // Kept, not dropped: the caller can still read what was taken.
@@ -128,9 +135,11 @@ pub(crate) fn tick() {
 
 /// IO thread, when the daemon connection ends.
 pub(crate) fn disconnect() {
-    // Flag first so the next Tick does not even try the lock.
+    // Flag and ring change under one lock hold; `tick` only `try_lock`s, so the
+    // game thread never waits on this.
+    let mut guard = lock();
     WATCH_ACTIVE.store(false, Ordering::SeqCst);
-    *lock() = None;
+    *guard = None;
 }
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
