@@ -41,3 +41,13 @@ Notes:
 - Remaining flagged files in my folders (counts): movement-teleport-advisor 6, mission-systems-advisor 8, items-systems-advisor 8, minigame-systems-advisor 6, network-security-auth 5, npc-ai-spawn-advisor 5, aoi-witness-broadcast 4, bigworld-engine-advisor 4, combat-systems-advisor 4, database-persistence 2. social-systems-engineer, testing-validation-engineer and documentation-writer have no flag.
 - Next file: first `movement-teleport-advisor/` line in the lint output.
 - `lab-driver: left` (lab-autopilot AX-61 is open).
+
+## Continuation 2 (commits part 3, 4, 5)
+
+- Done: movement-teleport-advisor (6), mission-systems-advisor (8, 3 only needed index lines), items-systems-advisor (8), minigame-systems-advisor (6) plus bigworld minigame-launch-flow-facts, network-security-auth (5), npc-ai-spawn-advisor (5), database-persistence/schema-patterns. 39 flagged files.
+- Counts this session: (a) 22, (b) 2 (castle-has-no-navmesh rewritten, db_schema_trainer seed section dropped), (c) 2, (d) 13.
+- Deleted: `.claude/agent-memory/mission-systems-advisor/objective-state-not-persisted.md` (persist.rs fixed it), `.claude/agent-memory/items-systems-advisor/vendor_trainer_seed_gap.md` (seeds now exist; index line removed).
+- Removed a local user path from network-security-auth/worktree-build-gotchas.md.
+- Left in my folders: aoi-witness-broadcast 4 (project_838_*, project_na34_*, project_na39_*), combat-systems-advisor 4, database-persistence/live-db-verification.md, bigworld-engine-advisor no_type 3 (aoi-entity-introduction, protocol-comparison, viewport-system), network-security-auth/security-audit.md is typed now. Next file: aoi-witness-broadcast/project_838_fragment_header_straddle.md.
+- Lint now: `memory_lint files=768 no_type=66 state_no_invalidated=52 index_over=1 index_missing=1 unindexed=197 orphan_folders=18 ip_like=3`
+- `lab-driver: left`.
