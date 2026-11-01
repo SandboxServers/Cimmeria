@@ -31,6 +31,7 @@ pub mod click;
 mod click_hover;
 mod click_range;
 pub mod find;
+pub mod fresh_wait;
 pub mod geometry;
 pub mod hover;
 pub mod io;
@@ -45,6 +46,8 @@ mod turn_keys;
 mod camera_pitch_tests;
 #[cfg(test)]
 mod click_timeout_tests;
+#[cfg(test)]
+mod fresh_wait_tests;
 #[cfg(test)]
 mod move_to_tests;
 #[cfg(test)]

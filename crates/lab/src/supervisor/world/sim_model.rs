@@ -71,6 +71,7 @@ impl Sim {
             body_dz: vec![-40.0, 0.0, 50.0, 90.0],
             interact_range_m: None,
             server_pos: None,
+            frames: None,
         }
     }
 

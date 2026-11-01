@@ -20,6 +20,15 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 
+/// The C4 frame stamp (`meta`); absent from an old DLL.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
+pub struct BridgeMeta {
+    pub frame: u64,
+    pub mono_ms: u64,
+    #[serde(default)]
+    pub game_t: Option<f64>,
+}
+
 /// Must match the bridge's `MAX_FRAME_LEN`.
 const MAX_FRAME_LEN: u32 = 1 << 20;
 
@@ -76,9 +85,25 @@ impl BridgeClient {
         Ok(v)
     }
 
+    /// [`Self::call`] plus the frame stamp; a bad or missing `meta` is `None`.
+    #[allow(dead_code)] // Callers land in wave 3 (AX-30..).
+    pub async fn call_meta(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<(Value, Option<BridgeMeta>)> {
+        let resp = self.call_full_untracked(method, params).await?;
+        self.mark_ok();
+        Ok(split_meta(resp))
+    }
+
     /// [`Self::call`] without refreshing `last_ok_ms`: for callers that
     /// must validate the result before it counts as a live bridge.
     async fn call_untracked(&self, method: &str, params: Value) -> Result<Value> {
+        Ok(split_meta(self.call_full_untracked(method, params).await?).0)
+    }
+
+    async fn call_full_untracked(&self, method: &str, params: Value) -> Result<Value> {
         let mut guard = self.state.lock().await;
         match self.call_inner(&mut guard, method, params).await {
             Ok(v) => Ok(v),
@@ -131,9 +156,10 @@ impl BridgeClient {
                 .unwrap_or("(no message)");
             bail!("bridge error {code}: {msg}");
         }
-        resp.get("result")
-            .cloned()
-            .ok_or_else(|| anyhow!("bridge response had neither result nor error"))
+        if resp.get("result").is_none() {
+            bail!("bridge response had neither result nor error");
+        }
+        Ok(resp)
     }
 
     /// Milliseconds since the last successful bridge response, or `None`
@@ -159,6 +185,13 @@ impl BridgeClient {
         self.mark_ok();
         Ok(ticks)
     }
+}
+
+fn split_meta(mut resp: Value) -> (Value, Option<BridgeMeta>) {
+    let meta = resp
+        .get("meta")
+        .and_then(|m| serde_json::from_value(m.clone()).ok());
+    (resp["result"].take(), meta)
 }
 
 fn now_ms() -> i64 {
@@ -220,6 +253,10 @@ async fn read_frame(stream: &mut TcpStream) -> Result<Vec<u8>> {
     stream.read_exact(&mut body).await?;
     Ok(body)
 }
+
+#[cfg(test)]
+#[path = "client_meta_tests.rs"]
+mod client_meta_tests;
 
 #[cfg(test)]
 mod tests {
