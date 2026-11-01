@@ -21,6 +21,7 @@
 pub mod characters;
 pub mod create_confirm;
 pub mod login;
+mod login_combo;
 pub mod ui_state;
 pub mod widgets;
 pub mod world;
