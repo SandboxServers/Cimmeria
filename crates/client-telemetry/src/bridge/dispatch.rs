@@ -201,6 +201,7 @@ pub fn dispatch(req: &RpcRequest) -> RpcResponse {
         "console" => console::dispatch(id, &req.params),
         // ── Lab input injection (DirectInput) ───────────────────────
         "input_key" => super::input::dispatch_key(id, &req.params),
+        "input_hold" => super::input::dispatch_hold(id, &req.params),
         "input_mouse" => super::input::dispatch_mouse(id, &req.params),
         "input_release" => super::input::dispatch_release(id),
         "input_focus" => super::input::dispatch_focus(id, &req.params),

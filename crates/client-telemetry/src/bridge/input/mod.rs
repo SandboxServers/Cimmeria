@@ -11,6 +11,8 @@
 //! - `input_focus {hwnd?}` — with a window handle, `GetForegroundWindow`
 //!   reports that window, so the game keeps reading input while another
 //!   window has focus; without one, focus reporting goes back to normal.
+//! - `input_hold {hwnd, vk, lparam_down, lparam_up, down, lease_ms?}` — a
+//!   posted key that releases itself (see [`hold`]).
 //! - `input_status` — the hooks' call counts, the devices seen, and what
 //!   is held.
 
@@ -26,8 +28,10 @@ use super::dispatch::{RpcResponse, INTERNAL_ERROR, INVALID_PARAMS};
 pub mod dinput;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub mod focus;
+pub mod hold;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub mod modifiers;
+pub mod post;
 pub mod state;
 
 use state::{dik_for, InputState};
@@ -36,6 +40,14 @@ use state::{dik_for, InputState};
 pub fn input_state() -> &'static Mutex<InputState> {
     static S: OnceLock<Mutex<InputState>> = OnceLock::new();
     S.get_or_init(|| Mutex::new(InputState::default()))
+}
+
+/// Process-global key holds (AX-21). Locked by the main thread (dispatch,
+/// Tick) and by the bridge IO thread on disconnect, so every change to
+/// `tick::HOLDS_ACTIVE` happens with this lock held.
+pub(crate) fn hold_table() -> &'static Mutex<hold::HoldTable> {
+    static T: OnceLock<Mutex<hold::HoldTable>> = OnceLock::new();
+    T.get_or_init(|| Mutex::new(hold::HoldTable::default()))
 }
 
 /// The window `GetForegroundWindow` reports while virtual focus is on
@@ -182,8 +194,41 @@ pub fn dispatch_mouse(id: Value, params: &Value) -> RpcResponse {
     })
 }
 
-/// `input_release`.
+/// `input_hold`.
+pub fn dispatch_hold(id: Value, params: &Value) -> RpcResponse {
+    let p: hold::HoldParams = match serde_json::from_value(params.clone()) {
+        Ok(p) => p,
+        Err(e) => return RpcResponse::error(id, INVALID_PARAMS, format!("input_hold: {e}")),
+    };
+    let now = super::meta::mono_ms();
+    let mut t = hold_table().lock().unwrap_or_else(|e| e.into_inner());
+    let (posted, posts) = if p.down {
+        match t.press(&p, now) {
+            Ok(r) => r,
+            Err(e) => return RpcResponse::error(id, INVALID_PARAMS, e),
+        }
+    } else {
+        (true, t.release(&p))
+    };
+    post::post_all(&posts);
+    super::tick::HOLDS_ACTIVE.store(!t.is_empty(), Ordering::Relaxed);
+    RpcResponse::ok(id, json!({ "posted": posted, "held": held_json(&t, now) }))
+}
+
+fn held_json(t: &hold::HoldTable, now: u64) -> Vec<Value> {
+    t.snapshot(now)
+        .into_iter()
+        .map(|(vk, left_ms)| json!({ "vk": vk, "left_ms": left_ms }))
+        .collect()
+}
+
+/// `input_release`. Also lets go of every key hold (C5 key fail-safe).
 pub fn dispatch_release(id: Value) -> RpcResponse {
+    {
+        let mut t = hold_table().lock().unwrap_or_else(|e| e.into_inner());
+        post::post_all(&t.release_all());
+        super::tick::HOLDS_ACTIVE.store(false, Ordering::Relaxed);
+    }
     with_state(id, |s| {
         s.release_all();
         held(s)
@@ -250,11 +295,19 @@ pub fn dispatch_status(id: Value) -> RpcResponse {
     });
     #[cfg(not(all(target_os = "windows", target_arch = "x86")))]
     let hooks = Value::Null;
+    let holds = held_json(
+        &hold_table().lock().unwrap_or_else(|e| e.into_inner()),
+        super::meta::mono_ms(),
+    );
     with_state(id, |s| {
         json!({
             "hooks": hooks,
             "held": held(s),
             "virtual_focus_hwnd": virtual_focus_hwnd(),
+            "holds": holds,
+            "holds_expired": hold::HOLDS_EXPIRED.load(Ordering::Relaxed),
+            "holds_released_on_disconnect":
+                hold::HOLDS_RELEASED_ON_DISCONNECT.load(Ordering::Relaxed),
         })
     })
 }
