@@ -58,6 +58,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Union Omega](#union-omega) | [UO-U1 packet](../analysis/union-zone-planning/omega-packets/UO-U1.md) and this section |
 | [Mission data lock](#mission-data-lock) | This section (telemetry-gaps packet TG-DB-12) |
 | [Lab harness](#lab-harness) | [lab-harness close-out](../analysis/lab-harness/closeout.md#what-was-not-tested-live) |
+| [Lab-autopilot (AX-64)](#lab-autopilot-ax-64-cases-still-owed) | [uat-ax64.md](../analysis/lab-autopilot/uat-ax64.md) |
 | [Telemetry gaps](#telemetry-gaps) | [telemetry-gaps ledger](../analysis/telemetry-gaps/README.md#packet-status) and its [close-out handoff](../analysis/telemetry-gaps/handoffs/2026-10-11-closeout.md) |
 | [Launcher UAT fixes](#launcher-uat-fixes) | [launcher-uat-fixes ledger](../analysis/launcher-uat-fixes/README.md#close-out-2026-10-22) and the [laptop UAT worknote](../analysis/launcher-telemetry/worknotes/laptop-uat-2026-10-22.md) |
 | [Launcher on Windows on Arm](#launcher-on-windows-on-arm) | [launcher-win-arm64 ledger](../analysis/launcher-win-arm64/README.md#owner-uat-no-lab-use) |
@@ -1787,6 +1788,31 @@ The lab-harness campaign ([ledger](../analysis/lab-harness/README.md), #1660) fi
 | LH-U6 | Issue two `client_item_action {action: "use", name: "Health Slappack"}` calls at the same moment (two parallel calls in one turn) | One unit used; the other call reports `effect_ok: false` or an error. SigNoz: either one `consumable_consume_refused reason=not_removed`, or no second `consumable_requested` (refused client-side): record which | I4. On 2026-10-12 the calls ran one after the other |
 | LH-U7 | Run a lab brief with the `lab-driver` agent in a session started after the merge | The agent has `client_item_action`, `client_die_and_respawn`, `client_type_text`, `client_lua_eval`, `client_input_mouse`, `client_cursor_move`, `client_events_read` and `client_wait_event`, and finishes the brief without hitting its context cap | LH-17 |
 | LH-U8 | Stand within 4 m of a vendor and call `client_move_to {entity_id}`; then, at a trainer, click a tab in the Ability window and call `client_events_read` | The walk returns `arrived: true`, `already_in_range: true` and the avatar does not move; the event read has a `ui.click` record for the tab | LH-10 (brief D4) and LH-12 (COORD-2), neither recorded on 2026-10-12 |
+
+## Lab-autopilot (AX-64 cases still owed)
+
+The lab-autopilot campaign ([ledger](../analysis/lab-autopilot/README.md)) ran its live "try to make the tools lie" UAT once, thinly: 1 case passed, 2 failed, 10 were not run. The per-case results, the "never tested" list and the findings are in [uat-ax64.md](../analysis/lab-autopilot/uat-ax64.md); the case table is in [packets-wave6.md](../analysis/lab-autopilot/packets-wave6.md#ax-64-live-uat-try-to-make-the-tools-lie). No lie (a `confirmed` on a bait half) was found, but most bait halves did not run three times or at all.
+
+**Status:** Partly works. The FAIL rows below are expected to fail until the findings F1 and F3 are fixed; record what you see. Every row drives a lab client, so **ask the owner before running it** and wait until the lab is free.
+
+**Prerequisites:** the lab lease; a lab account file naming a character that exists; the `SGWEditor.ini` daylight-saving modal dismissed (it blocks the first launch); a coordinator-level session that has `client_input_key` (the `lab-driver` agent does not); for U1, a start area with a vendor within 12 m (not the one the first run used); for U6, a hostile within 30 m and an ability on the hotbar.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| U1 | `client_world_click` on a vendor NPC at 4 m with `expect_visible` its window, then the same click at 12 m | 4 m: `confirmed`. 12 m: `denied` or `inconclusive`, never `confirmed` | NOT RUN. The first run found no vendor and hit a camera or projection failure (`could not turn the camera onto the target`) |
+| U3 | `client_move_to` 10 m over open floor, `arrival_m` 0.5, three times; then a goal behind a real wall | `confirmed` all three times, server position within 1 m and still within 0.5 m after 1 s; the wall goal stops `stuck` or `stalled`, never `confirmed` | FAIL. 1 of 3 honest walks confirmed; the others stopped `stuck` and `ledge` on open ground (F3). The bait used a "blocked point", not a wall |
+| U4 | `client_move_to` toward a drop of more than 2 m, indoors and on an outdoor map, with `allow_drops: true` and by default | `allow_drops`: arrives, `ledge_guard: "off"`. Default: `stop.kind: "ledge"` before the edge | NOT RUN. No drop found on the start area. The terrain trace is answered: `client_trace_line` `0x2086` straight down hits |
+| U5 | `client_camera` a 30 degree yaw; then a yaw while a window that really blocks input is open | `confirmed`; the blocked yaw is not `confirmed` | FAIL. The honest yaw answered `inconclusive` `no_post_read` though the view moved 30 degrees (F1). The inventory window does not block look (F2) |
+| U6 | `client_use_ability` on a hostile in range, then out of range | Both `confirmed` (the press got an answer); `result.verdict` a hit or miss in range, and the refusal named out of range | NOT RUN. No hostile, empty hotbar |
+| U7 | `client_watch start`, walk 10 s, `read`, `lab_detectors_read`; then hold W into a wall 5 s with `client_input_key` and read the detectors | Rising `i`, `pulled` > 0, no `teleport`; `stuck_input` fires | NOT RUN. The pawn did not walk, and a key posted through `client_ui_sequence` is not a DLL hold |
+| U8 | `lab_screenshot` per case to `frame-describer` with neutral questions; also a black or covered frame | The describer agrees with each verdict; the covered frame gets `cannot tell` | NOT RUN. The agent file exists only on the wave 6 branch; start a session after it merges |
+| U9 | Three fast repeats of one identical failing call | The third answers `why: cooling_down` | NOT RUN. The first run's failures differed (F4); use the same call each time |
+| U10 | `lab_recover {recipe: "close_dialogs"}` with an NPC dialog open (stand within 5 m) | The dialog closes, the result is `confirmed` | NOT RUN. The dialog never opened. With no dialog open it already returned `confirmed` (a no-op `confirmed`; see uat-ax64.md) |
+| U11 | `client_input_key W down`, then `tools/lab/daemon.ps1 restart`; separately release the lease with W down | The avatar stops within 1 s, `input_status` after reconnect shows no holds; lease release logs `lab.input.released_on_lease_end` with `how: released` | NOT RUN |
+| U12 | `lab_login` with an account file naming a server that is not the combo's first row; then one naming no combo row | `login_server` is that server and the server log shows the login there; the second fails naming the rows and never logs in | NOT RUN. Needs an account file with two or more combo rows |
+| U13 | `lab_client_start` with a running non-secure `*.scr` screensaver | The log names it as dismissed and the launch proceeds | NOT RUN. Only with the owner's agreement; never unlock a secure session |
+
+U2 passed (bait run once) and is not listed.
 
 ## Recording results
 

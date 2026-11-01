@@ -3,7 +3,7 @@
 > **Type:** Explanation and Reference (campaign ledger)
 > **Audience:** The orchestrator, the owner, packet-reviewers
 > **Last updated:** 2026-10-31
-> **Companions:** [work packets](work-packets.md), [contract](contract.md), [resume card](RESUME.md), waves [1](packets-wave1.md), [2](packets-wave2.md), [3](packets-wave3.md), [4](packets-wave4.md), [5](packets-wave5.md), [6](packets-wave6.md), [user directives](user-directives.md), [stack inventory](inventory-lab.md), [UE3 back-port check](ue3-backport-verified.md)
+> **Companions:** [work packets](work-packets.md), [contract](contract.md), [resume card](RESUME.md), waves [1](packets-wave1.md), [2](packets-wave2.md), [3](packets-wave3.md), [4](packets-wave4.md), [5](packets-wave5.md), [6](packets-wave6.md), [AX-64 UAT ledger](uat-ax64.md), [user directives](user-directives.md), [stack inventory](inventory-lab.md), [UE3 back-port check](ue3-backport-verified.md)
 
 ## Purpose
 
