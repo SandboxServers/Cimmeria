@@ -164,7 +164,7 @@ What agents learn lives in two tiers with different bars:
 | Project memory | `.claude/agent-memory/<agent>/` for subagents, `.claude/agent-memory/main-session/` for top-level sessions | Traps, file locations, measurements, the state of an open investigation, what an external handoff contained | Dated and sourced. Not necessarily verified end to end. |
 | Documentation | `docs/` | Confirmed behaviour, decisions, RE findings | Cited evidence per [`evidence-standards.md`](../reverse-engineering/evidence-standards.md) |
 
-Subagents with `memory: project` in their definition write to their own folder automatically. A top-level session keeps its own memory outside the repo by default, so the main-session folder is opt-in by rule. `CLAUDE.md` imports its index, which makes it load every session. Follow these rules:
+Subagents with `memory: project` in their definition write to their own folder automatically. A top-level session keeps its own memory outside the repo by default, so the main-session folder is opt-in by rule. The main session's index is not imported by `CLAUDE.md`; grep `.claude/agent-memory/` before researching a topic. Follow these rules:
 
 - **Write project and reference facts to the repo.** Anything you learned from researching or writing code that the next contributor, or their agent, would otherwise have to rediscover goes in `.claude/agent-memory/main-session/`: one fact per file, with `name`, `description` and `type` frontmatter, plus a one-line pointer in its `MEMORY.md`. Commit it with the change that produced it, or on its own if there's no change.
 - **Keep personal and machine state out.** User preferences, local absolute paths, machine-specific tool setup, and the branch, worktree or PR status of work in flight stay in your personal memory. The same goes for anything true only for your session.
@@ -172,6 +172,14 @@ Subagents with `memory: project` in their definition write to their own folder a
 - **Date what can go stale.** When a memory stops being true, add a dated status line rather than silently rewriting it, and reword its index line so the always-loaded index asserts nothing stale.
 - **Promote, then trim.** When a memory's claim is verified to `docs/` standard, move it into the right doc (a finding, an ADR, [`rules-and-gotchas.md`](rules-and-gotchas.md)) in the same PR, and reduce the memory to a pointer or delete it.
 - **Merge indexes, never overwrite them.** `MEMORY.md` files change often and deliberately list one file under several sections. When landing memory from another branch, apply the diff 3-way (`git diff … | git apply --3way`) and don't copy an index over or de-duplicate it.
+
+### Memory rules
+
+- a memory is a lead, not evidence;
+- methods and traps over states;
+- a state claim carries `INVALIDATED WHEN: <condition>` and `checked: <YYYY-MM-DD>` in the body;
+- the index stays under 200 lines, one line per file;
+- `python tools/agent-skills/memory_lint.py` reports the gaps (HT-13 adds it).
 
 ## Shared docs without conflicts
 
