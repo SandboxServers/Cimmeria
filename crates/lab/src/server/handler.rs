@@ -23,9 +23,10 @@ fn holder_owner(lease_status: &Value) -> Option<String> {
 }
 
 /// Write the one INFO `lab.call` row for a finished `tools/call`. Outcome is
-/// `refused` when the lease gate turned the call away, `error` for a failed
-/// tool, else `ok`. `verdict` is the evidence gate's mirrored verdict, if
-/// any. The arguments are never logged: they can carry Lua or chat text.
+/// `refused` when the lease gate or the quick-fail cooldown (C9) turned the
+/// call away, `error` for a failed tool, else `ok`. `verdict` is the evidence
+/// gate's mirrored verdict, if any. The arguments are never logged: they can
+/// carry Lua or chat text.
 fn log_call(
     instance: &str,
     tool: &str,

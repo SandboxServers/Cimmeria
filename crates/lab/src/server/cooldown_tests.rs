@@ -4,6 +4,7 @@ use rmcp::{model::*, ErrorData as McpError};
 use serde_json::json;
 
 use super::{exempt, failed, key, Cooldown};
+use crate::daemon::http_tests::{spawn_daemon, test_server, McpSession};
 
 #[test]
 fn backoff_doubles_and_caps() {
@@ -109,4 +110,38 @@ fn denied_evidence_counts_as_failure() {
         CallToolResult::error(vec![ContentBlock::text("x")])
     ))));
     assert!(failed(&Err(McpError::internal_error("boom", None))));
+}
+
+#[tokio::test]
+async fn handler_refuses_a_repeat_of_a_failed_call() {
+    let url = spawn_daemon(test_server()).await;
+    let mut s = McpSession::open(&url).await;
+    let grant = s
+        .call(
+            "lab_lease_acquire",
+            json!({ "owner": "cooldown-test", "purpose": "cooldown test" }),
+        )
+        .await;
+    let text = grant["result"]["content"][0]["text"]
+        .as_str()
+        .expect("grant text");
+    let id = serde_json::from_str::<serde_json::Value>(text).unwrap()["lease_id"]
+        .as_str()
+        .expect("lease_id")
+        .to_string();
+    // A chunk no other test uses: the cooldown state is process-wide.
+    let args = json!({ "chunk": "return 'ax36-cooldown'", "lease_id": id });
+    let first = s.call("client_lua_eval", args.clone()).await;
+    let msg = first["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        msg.contains("bridge"),
+        "the first call reaches the absent bridge: {first}"
+    );
+    let second = s.call("client_lua_eval", args).await;
+    assert_eq!(second["result"]["isError"], true, "{second}");
+    let body = second["result"]["content"][0]["text"]
+        .as_str()
+        .expect("refusal text");
+    let v: serde_json::Value = serde_json::from_str(body).unwrap();
+    assert_eq!(v["why"], "cooling_down", "{second}");
 }
