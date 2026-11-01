@@ -42,6 +42,8 @@ impl Sim {
             windows: vec!["ChatWin".into(), "SelfStatusWin".into()],
             keys: HashMap::new(),
             lag: Default::default(),
+            coast_model: None,
+            key_log: Vec::new(),
             cursor: (0, 0),
             mouse_over_on_repeated_move: None,
             repeated_move_override_active: false,

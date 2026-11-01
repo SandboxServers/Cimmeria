@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use serde_json::{json, Value};
 
 use super::camera::WHEEL_NOTCH;
+use super::coast::CoastModel;
 use super::find::ServerEntity;
 use super::geometry::{distance_m, wrap_pi, Pose, Screen, Vec3};
 use super::io::{Projected, WorldIo};
@@ -81,6 +82,10 @@ pub struct Sim {
     pub jump_clears_wall: bool,
     /// Input latency and coasting (both 0 by default: no lag).
     pub lag: Lag,
+    /// The walker's coast model as the last walk left it (`None`: the prior).
+    pub coast_model: Option<CoastModel>,
+    /// Every key change the walker asked for, in order, with where the pawn was (before any input lag).
+    pub key_log: Vec<(String, bool, Vec3)>,
     pub screen: Screen,
     pub hfov: f64,
     pub entities: Vec<SimEntity>,
@@ -425,7 +430,16 @@ impl WorldIo for Sim {
         }))
     }
 
+    fn coast_model(&self) -> CoastModel {
+        self.coast_model.unwrap_or_default()
+    }
+
+    fn store_coast_model(&mut self, m: CoastModel) {
+        self.coast_model = Some(m);
+    }
+
     async fn key(&mut self, key: &str, down: bool) -> Result<(), String> {
+        self.key_log.push((key.to_string(), down, self.pos));
         if let Some((key, down)) = self.lag.key(self.now, key, down) {
             self.apply_key(&key, down);
         }

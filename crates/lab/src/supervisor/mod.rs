@@ -300,6 +300,8 @@ pub struct Supervisor {
     /// Set once the lab DLL answers `batch` with "method not found": an old
     /// DLL, so `batch` runs the per-step path. Shared by clones (`Arc`).
     dll_batch_unsupported: Arc<std::sync::atomic::AtomicBool>,
+    /// The walker's learned coast model, kept across `client_move_to` calls.
+    coast: Arc<std::sync::Mutex<world::coast::CoastModel>>,
 }
 
 impl Supervisor {
@@ -332,6 +334,7 @@ impl Supervisor {
             holds: Default::default(),
             watch: Default::default(),
             dll_batch_unsupported: Default::default(),
+            coast: Default::default(),
         }
     }
 

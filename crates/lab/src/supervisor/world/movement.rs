@@ -10,6 +10,7 @@
 use rmcp::schemars;
 use serde_json::{json, Value};
 
+use super::coast::CoastGlue;
 use super::find::{find_entities, FindRequest};
 use super::geometry::{horizontal_m, Pose, Vec3};
 use super::io::WorldIo;
@@ -302,8 +303,12 @@ async fn walk<W: WorldIo>(
     let mut probed = false;
     // The last leg's goal (client space) and radius, for the arrival proof.
     let mut final_leg: Option<(Vec3, f64)> = None;
+    // The final leg learns how far the pawn coasts after `W` goes up.
+    let mut glue = CoastGlue::new(io.coast_model());
+    let leg_count = legs.len();
 
     for (i, (mut goal, arrival)) in legs.into_iter().enumerate() {
+        let last_leg = i + 1 == leg_count;
         let t_leg = io.now_ms();
         let mut ctl = MoveController::new(
             MoveConfig {
@@ -377,7 +382,17 @@ async fn walk<W: WorldIo>(
                 last_sample = now;
             }
             let goal_pos = goal.position(io).await;
+            if last_leg {
+                glue.on_pose(pose.pos, now);
+                ctl.set_lead(glue.lead_m(), glue.holdoff_ms());
+            }
+            let was_coasting = ctl.coasting();
             let s = ctl.step(now, pose, goal_pos);
+            if last_leg && !was_coasting && ctl.coasting() {
+                glue.on_released(pose.pos);
+            } else if last_leg && was_coasting && !ctl.coasting() {
+                glue.on_settled(pose.pos);
+            }
             if leg_start_m.is_none() {
                 leg_start_m = Some(s.distance_m);
             }
@@ -417,7 +432,7 @@ async fn walk<W: WorldIo>(
             io.sleep(DEFAULT_TICK_MS).await;
         };
         rate = ctl.rate;
-        let report = json!({
+        let mut report = json!({
             "goal": goal.describe(),
             "arrival_m": arrival,
             "start_distance_m": leg_start_m,
@@ -430,6 +445,9 @@ async fn walk<W: WorldIo>(
                 MoveOutcome::NoTurn { ticks } => json!({ "arrived": false, "no_turn": true, "ticks": ticks }),
             },
         });
+        if last_leg {
+            report["coast"] = glue.leg_json();
+        }
         steps.record(&format!("leg_{i}"), t_leg, io.now_ms(), report.clone());
         leg_reports.push(report);
         leg_in_range.push(leg_start_m.is_some_and(|d| d <= arrival));
@@ -495,6 +513,7 @@ async fn walk<W: WorldIo>(
         }
         final_leg = Some((goal.position(io).await, arrival));
     }
+    io.store_coast_model(glue.model);
     if forward {
         io.key(FORWARD_KEY, false)
             .await
