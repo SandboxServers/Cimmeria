@@ -123,7 +123,7 @@ impl LabServer {
             Ok(at) => at,
             Err(e) => return self.wrap(Err(e)),
         };
-        let motion = a.dx != 0 || a.dy != 0 || a.wheel != 0;
+        let motion = a.button.is_none() && (a.dx != 0 || a.dy != 0 || a.wheel != 0);
         let di_before = if motion { self.di_now().await } else { None };
         let r = self
             .supervisor
@@ -242,6 +242,7 @@ impl LabServer {
         self.supervisor
             .bridge_call("input_status", json!({}))
             .await
+            .map_err(|e| tracing::warn!(error = %e, "input_status read-back failed (AX-43)"))
             .ok()
     }
 

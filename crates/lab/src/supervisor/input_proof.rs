@@ -11,16 +11,19 @@ use crate::supervisor::world::ignored_input::delivery_count;
 /// What one `client_input_mouse` call asked for and what it read back.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MouseFacts {
-    /// DirectInput relative motion and wheel.
+    /// DirectInput relative horizontal motion.
     pub dx: i32,
+    /// DirectInput relative vertical motion.
     pub dy: i32,
+    /// DirectInput wheel delta.
     pub wheel: i32,
     /// A button press, release or click was asked for.
     pub button: bool,
     /// `Some(true)` when the call put the UI cursor on its point first.
     pub cursor_placed: Option<bool>,
-    /// `hooks.events_delivered` before the call and after the settle poll.
+    /// `hooks.events_delivered` before the call.
     pub di_before: Option<u64>,
+    /// `hooks.events_delivered` after the settle poll.
     pub di_after: Option<u64>,
 }
 
