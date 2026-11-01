@@ -400,6 +400,44 @@ grants and status), `crates/lab/src/supervisor/instance.rs` and
 (`build_hosted_server`). Operating detail:
 [live-research-lab.md, Parallel clients](../guides/live-research-lab.md#parallel-clients-up-to-five).
 
+## 13. Addendum 2026-11: lab-autopilot
+
+The lab-autopilot campaign ([ledger](../analysis/lab-autopilot/README.md), [contract](../analysis/lab-autopilot/contract.md)) teaches the lab tools to prove what they did instead of reporting that a call returned. This section records the bridge methods it added and the rules every future bridge method follows. The tool-side behavior (verdicts, stops, watch, detectors) is in the [evidence guide](../guides/lab-evidence.md); this page keeps only the decisions.
+
+### New bridge methods
+
+All live under `crates/client-telemetry/src/bridge/`, so all compile only with `lab-bridge`.
+
+| Method | Purpose | Contract |
+|---|---|---|
+| `meta` on every drained response | Stamps `frame`, `mono_ms` and (when the fingerprint gate passed) `game_t`, so the daemon can tell a read taken after an action from one taken before it | [C4](../analysis/lab-autopilot/contract.md#c4-bridge-meta-dll-to-daemon) |
+| `input_hold` | Presses a key with a lease that expires on its own; `input_release` also lets go of every hold | [C5](../analysis/lab-autopilot/contract.md#c5-key-holds-with-a-lease) |
+| `watch_start`, `watch_read`, `watch_stop` | A ring-buffer sampler of pawn pose, hover, mode, buttons and actor count, read on the main thread | [C6](../analysis/lab-autopilot/contract.md#c6-watch-sampler) |
+| `batch` | Up to 16 allowed read calls run in one drain, so they share one frame | [C7](../analysis/lab-autopilot/contract.md#c7-batch-reads-in-one-frame) |
+| `trace_line` | One `SingleLineCheck` collision trace (flags `0x2086` or `0x20bf` only), for the ledge guard | [C14](../analysis/lab-autopilot/contract.md#c14-line-trace-and-ledge-guard-ax-55-ax-56) |
+
+### The safety proof is the rule for every future bridge method
+
+Each DLL change that adds a bridge method proves these seven lines in its report, one line each ([C13](../analysis/lab-autopilot/contract.md#c13-client-side-safety-proof-every-dll-packet)):
+
+1. **Absent from release.** All new code sits under `bridge/`, which compiles only with `lab-bridge`; the release build uses default features and its verify step refuses `LAB_BRIDGE_MARKER`.
+2. **Double gate.** Nothing runs unless the feature is compiled in and the session file carries the `lab` block.
+3. **Idle no-op.** With no holds, no watch and no client connected, a Tick costs at most two atomic loads, and a test asserts an idle tick posts nothing and reads no game memory.
+4. **Fingerprint gate.** No new hook; game-memory reads go through the existing readers, which return `None` when the gate failed.
+5. **Kill switch.** `CIMMERIA_CLIENT_HOOKS_DISABLE=all` disables the Tick hook, so nothing here runs.
+6. **No new writes.** The only side effects are the `WM_KEYDOWN`/`WM_KEYUP` posts the supervisor already sent. Watch and batch are read-only.
+7. **Release on disconnect.** Holds release and the watch stops when the daemon goes away, with a test.
+
+`trace_line` is the one exception to item 6. It calls a single engine function that reads collision and writes only the caller's stack buffer. Because its `GMem` stack mark may stay unrestored after an access violation, the first fault latches `trace_line` off until the client restarts. A future method that needs an exception to item 6 says so the same way, names what it writes, and says what bounds the write.
+
+### Decisions
+
+- **Frame capture stays supervisor-side (D-AX2).** Screenshots stay PrintWindow, bracketed by heartbeat frames. An in-DLL `Present` hook is a deeper hook on the render path, and the `CreateDevice` hook can miss the device; it needs its own ADR before anyone builds it.
+- **No `ProcessEvent` hook (D-AX5).** Everything this campaign reads has a direct reader. If a by-name call is ever added, it goes through an `FName` allowlist, never a general hook.
+- **No `InputKey` injection (D-AX12).** The slot is not located and posted messages work live. Input stays at the window-message level.
+
+Concepts here (the evidence gate, the stop report, the watch, the detectors, the blind describer) are adapted from ramenvr/autopilot (Apache 2.0); no code was copied.
+
 ## Base send-origin proof (DW-03S-G)
 
 `BaseService::start` mints a fresh 128-bit OS-CSPRNG boot ID. Successful Phase 3 admission assigns a counter-qualified generation and stores its immutable peer/time seed in the connected session's extensions under the insertion lock. The connect reply and time sync are the two reviewed pre-insertion send exemptions. A later caller can copy `ConnectedClientState::wire_send_origin()` before releasing that lock; the copied ticket samples the player entity at packet construction time, so account-only sends carry no player entity and a delayed send cannot acquire a newer relog's identity.
