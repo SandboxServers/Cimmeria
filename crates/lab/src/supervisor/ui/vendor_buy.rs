@@ -17,8 +17,10 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use super::click_checked::handler_chunk;
+use super::item_proof;
 use super::window_click::{click_point, locate_chunk, ClickTarget};
 use super::{NativeLevel, NativeTrail, Supervisor};
+use crate::proof::Evidence;
 use crate::supervisor::flows::widgets::lua_quote;
 
 /// Rows on screen in the stock vendor window.
@@ -265,6 +267,9 @@ impl Supervisor {
                 out["native_pass"] = json!(false);
             }
         }
+        let got = u32::try_from(gained).unwrap_or(0);
+        let checks = item_proof::vendor_checks(expect_change, bought, got, quantity);
+        out["evidence"] = Evidence::judge(checks).to_value();
         out["elapsed_ms"] = json!(t0.elapsed().as_millis() as u64);
         Ok(out)
     }

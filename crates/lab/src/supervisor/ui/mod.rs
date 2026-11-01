@@ -23,6 +23,7 @@ pub mod clickables;
 pub mod drag_drop;
 pub mod inventory;
 pub mod item_action;
+pub mod item_proof;
 pub mod lua_json;
 pub mod player_state;
 pub mod slots;
