@@ -62,6 +62,35 @@ fn firings_are_sorted_by_time() {
 }
 
 #[test]
+fn watch_samples_run_the_motion_detectors() {
+    use crate::supervisor::watch_store::WatchSample;
+    let s = |wall_ms: i64, f: u64, x: f32, z: f32| WatchSample {
+        i: f,
+        f,
+        ms: f * 16,
+        wall_ms,
+        t: None,
+        pos: Some([x, 0.0, z]),
+        rot: None,
+        hover: None,
+        mode: None,
+        buttons: None,
+        actors: None,
+    };
+    let samples = [s(0, 0, 0.0, 0.0), s(100, 1, 3100.0, -100_001.0)];
+    let fired = run_all(&Inputs {
+        samples: &samples,
+        heartbeats: &[],
+        holds: &[],
+        calls: &[],
+        now_ms: 200,
+    });
+    let names: Vec<&str> = fired.iter().map(|f| f.name).collect();
+    assert!(names.contains(&"teleport"));
+    assert!(names.contains(&"out_of_world"));
+}
+
+#[test]
 fn detectors_tool_is_open() {
     assert!(crate::lease::policy::OPEN.contains(&"lab_detectors_read"));
     assert!(!crate::proof::claims::NO_CLAIM.contains(&"lab_detectors_read"));

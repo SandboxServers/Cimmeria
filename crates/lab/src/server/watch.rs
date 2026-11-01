@@ -101,7 +101,7 @@ impl LabServer {
             .into_iter()
             .map(|(key, since)| (key, since as i64))
             .collect();
-        let calls = detect::calls::rows_for(self.supervisor.label());
+        let calls = detect::calls::rows_since(self.supervisor.label(), from);
         let fired = detect::run_all(&detect::Inputs {
             samples: &samples,
             heartbeats: &heartbeats,

@@ -49,6 +49,14 @@ pub fn rows_for(instance: &str) -> Vec<CallRow> {
         .collect()
 }
 
+/// The recent calls of one instance with ms >= from_ms, oldest first.
+pub fn rows_since(instance: &str, from_ms: i64) -> Vec<CallRow> {
+    rows_for(instance)
+        .into_iter()
+        .filter(|r| r.ms >= from_ms)
+        .collect()
+}
+
 /// `log_error`: per tool, three `error` rows within 60 s fire once, at the
 /// third. Rows dated after `now_ms` are ignored. The window restarts after a
 /// firing, so the next one needs three more errors.
@@ -123,5 +131,19 @@ mod tests {
         let rows = rows_for("ring-test");
         assert!(rows.len() <= CALLS_CAP);
         assert_eq!(rows.last().map(|r| r.ms), Some(299));
+    }
+
+    #[test]
+    fn rows_since_drops_old_rows() {
+        for ms in [100, 200, 300] {
+            record(CallRow {
+                ms,
+                instance: "since-test".into(),
+                tool: "lab_timeline".into(),
+                outcome: "error",
+            });
+        }
+        let kept: Vec<i64> = rows_since("since-test", 200).iter().map(|r| r.ms).collect();
+        assert_eq!(kept, [200, 300]);
     }
 }

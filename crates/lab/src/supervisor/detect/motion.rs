@@ -164,6 +164,16 @@ mod tests {
     }
 
     #[test]
+    fn teleport_fires_once_per_jump() {
+        let jump = [
+            at(0, 0, [0.0, 0.0, 0.0]),
+            at(100, 1, [3100.0, 0.0, 0.0]),
+            at(200, 2, [3100.0, 0.0, 0.0]),
+        ];
+        assert_eq!(teleport(&jump).len(), 1);
+    }
+
+    #[test]
     fn long_fall_after_three_seconds() {
         let falling: Vec<_> = (0..=7)
             .map(|k| at(k * 500, k as u64, [0.0, 0.0, 1000.0 - 100.0 * k as f32]))

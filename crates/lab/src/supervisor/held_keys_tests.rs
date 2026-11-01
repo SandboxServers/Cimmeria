@@ -187,3 +187,19 @@ async fn release_forgets_the_key_before_the_bridge_call() {
         "the book must forget the key before the release is sent"
     );
 }
+
+#[tokio::test]
+async fn hold_starts_are_wall_ms() {
+    let r: Responder = Arc::new(|_: &str, _: &Value| Ok(json!({})));
+    let sup = fake_bridge::supervisor(r).await;
+    sup.holds.lock().await.pressed(w().vk, "w", mono_ms());
+    let wall = crate::supervisor::now_ms();
+    let starts = sup.hold_starts().await;
+    assert_eq!(starts.len(), 1);
+    assert_eq!(starts[0].0, "w");
+    let since = starts[0].1 as i64;
+    assert!(
+        since <= wall && wall - since < 1000,
+        "since {since} wall {wall}"
+    );
+}
