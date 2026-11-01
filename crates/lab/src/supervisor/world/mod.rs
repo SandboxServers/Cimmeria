@@ -37,7 +37,7 @@ pub mod find;
 pub mod fresh_wait;
 pub mod geometry;
 pub mod hover;
-mod ignored_input;
+pub(in crate::supervisor) mod ignored_input;
 pub mod io;
 pub mod lua;
 pub mod memory;

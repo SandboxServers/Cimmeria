@@ -23,6 +23,11 @@ pub const JUDGED: &[&str] = &[
     "client_move_to",
     "client_camera",
     "lab_recover",
+    "client_input_key",
+    "client_input_mouse",
+    "client_cursor_move",
+    "client_input_focus",
+    "client_input_release",
 ];
 
 /// Tools that claim no effect: reads, lease, UAT and lifecycle tools.
