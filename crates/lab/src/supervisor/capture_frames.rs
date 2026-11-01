@@ -28,7 +28,12 @@ impl Supervisor {
     pub async fn capture_bracketed(&self) -> Result<(CapturedImage, Option<[u64; 2]>), String> {
         let before = self.bridge.heartbeat().await.ok();
         let img = self.capture().await?;
-        let after = self.bridge.heartbeat().await.ok();
+        // Without a first frame the bracket is `None` either way, so skip the
+        // second heartbeat: a wedged client would otherwise cost a second wait.
+        let after = match before {
+            Some(_) => self.bridge.heartbeat().await.ok(),
+            None => None,
+        };
         Ok((img, bracket(before, after)))
     }
 }

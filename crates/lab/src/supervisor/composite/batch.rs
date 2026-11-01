@@ -520,11 +520,9 @@ impl Supervisor {
         let t0 = Instant::now();
         // Literal reads and Lua run in one client frame when the DLL can
         // take them; anything else (or an old DLL, or a failed call) takes
-        // the step path below. `stop_on_error` keeps the step path: the DLL
-        // runs every step in one call, so it cannot stop between them, and
-        // each step's lease check must still run in turn.
-        if !stop_on_error
-            && batch_frame::dll_batchable(steps)
+        // the step path below. `stop_on_error` does not apply here: reads
+        // have no side effects and the DLL reports every step's error.
+        if batch_frame::dll_batchable(steps)
             && !self
                 .dll_batch_unsupported
                 .load(std::sync::atomic::Ordering::Relaxed)

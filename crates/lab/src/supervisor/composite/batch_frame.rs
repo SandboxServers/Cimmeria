@@ -111,12 +111,23 @@ impl Supervisor {
         let r = match self.bridge_call("batch", json!({ "calls": calls })).await {
             Ok(r) => r,
             Err(e) if e.contains("-32601") => {
+                tracing::debug!(target: "lab.batch", "batch unsupported by this DLL; using the step path");
                 self.dll_batch_unsupported.store(true, Ordering::Relaxed);
                 return Ok(None);
             }
-            Err(e) => return Err(e),
+            Err(e) => {
+                tracing::warn!(target: "lab.batch", error = %e, "DLL batch failed; using the step path");
+                return Err(e);
+            }
         };
         let results = r["results"].as_array().cloned().unwrap_or_default();
+        if results.len() != steps.len() {
+            return Err(format!(
+                "batch: expected {} results, got {}",
+                steps.len(),
+                results.len()
+            ));
+        }
         Ok(Some(BatchOutcome {
             values: decode_results(steps, &results),
             stopped_at: None,

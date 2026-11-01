@@ -68,12 +68,13 @@ async fn batch_goes_to_the_dll_once() {
                 json!({ "id": "a", "op": "mem_read", "addr": "0x1000", "as": "u32" }),
                 json!({ "id": "b", "op": "lua", "chunk": "return 7" }),
             ]),
-            false,
+            true,
         )
         .await;
     assert_eq!(out.values["a"], json!(42));
     assert_eq!(out.values["b"], json!("7"));
     assert_eq!(out.frame, Some(900));
+    assert_eq!(out.to_json()["frame"], json!(900));
     assert_eq!(calls(&seen), ["batch"]);
 }
 
@@ -101,6 +102,21 @@ async fn old_dll_falls_back_and_remembers() {
         calls(&seen),
         ["batch", "mem_read", "lua_eval", "mem_read", "lua_eval"]
     );
+}
+
+#[tokio::test]
+async fn short_dll_answer_falls_back() {
+    let (s, seen) = recording(|m: &str, _: &Value| match m {
+        "batch" => Ok(json!({ "results": [], "frame": 3 })),
+        "mem_read" => Ok(json!({ "hex": "2a000000" })),
+        other => Err(format!("unexpected {other}")),
+    })
+    .await;
+    let raw = vec![json!({ "id": "a", "op": "mem_read", "addr": "0x1000", "as": "u32" })];
+    let out = s.batch(&steps(raw), false).await;
+    assert_eq!(out.values["a"], json!(42));
+    assert_eq!(out.frame, None, "a short DLL answer is not a frame");
+    assert_eq!(calls(&seen), ["batch", "mem_read"]);
 }
 
 #[tokio::test]
