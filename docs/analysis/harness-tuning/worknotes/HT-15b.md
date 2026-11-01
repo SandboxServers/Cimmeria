@@ -17,7 +17,7 @@ Pass 1 settled all 48 files that carried `checked: unverified` (the 45 flagged a
 - (c) deleted: 2.
 - (d) left unverified: 0.
 
-Pass 2 found two (a)-stamped files that were still false (reference_custom_debug_map, project_four_zone_planning_2026_10_13) and corrected both; 9 of the 27 (a) stamps were spot-checked. N4 then swept the seven named status-word files and corrected stale status sentences in reference_worldforge_shell_2026_10_06, reference_custom_map_first_client_result_2026_10_06 and reference_cellblock_praxis_start_2026_10_13.
+Pass 2 found two (a)-stamped files that were still false (reference_custom_debug_map, project_four_zone_planning_2026_10_13) and corrected both; 9 of the 27 (a) stamps were spot-checked. N4 then swept the seven named status-word files and corrected stale status sentences in reference_worldforge_shell_2026_10_06, reference_custom_map_first_client_result_2026_10_06 and reference_cellblock_praxis_start_2026_10_13. Pass 3 found three more stale status sentences in stamped files (reference_ancient_asset_inventory_2026_10_06, reference_castle_letter_bridge_2026_10_14, project_cellblock_aftermath_dwell_2026_10_13) and corrected them. Ruling 1 traced the status sentences in five more stamped files (reference_dev_workbench_causal_trace_2026_10_16, reference_dev_workbench_dossier_2026_10_15, reference_dev_workbench_slash_3a_2026_10_16, reference_launcher_embedded_payload, reference_owner_lock_release_2026_10_04): 5 held, 0 rewritten, 0 marked checked: unverified. Three stamped files with no status words (reference_dev_workbench_progression_metadata_2026_10_16, reference_dev_workbench_slash_2b_2026_10_16, reference_janus_worldforge_design_2026_10_06) were accepted as is.
 
 Deleted in pass 1 (with their index lines): `project_cellblock_autoplay_campaign.md` (N2: contradicted by `crates/lab/src/supervisor/world/` and the D-AP1 VERIFIED row) and `project_lab_uat_reliability_2026_10_13.md` (the ledger `docs/analysis/lab-uat-reliability/README.md` carries its status).
 
@@ -28,7 +28,7 @@ Other fixes: N5 16 placeholder descriptions replaced; N6 two duplicate index pai
 ## Orphans
 
 All 18 orphan folders were removed. Their content was folded into three new main-session files:
-`reference_launcher_desktop_native_traps.md`, `reference_wine_guest_app_identity.md`, `reference_lab_route_and_livewire_traps.md` (method and trap files; no stamp lines).
+`reference_launcher_desktop_native_traps.md`, `reference_wine_guest_app_identity.md`, `reference_lab_route_and_livewire_traps.md` (trap files; only reference_wine_guest_app_identity carries a stamp, checked: 2026-11-01, and it is counted in the 27).
 
 Deleted paths (folders, 28 files): `.claude/agent-memory/{adoption-ui,cellblock_route,effective-settings,launcher-game-update,launcher-launch-engine,launcher-mac-graphics-fix,launcher-migration,launcher-migration-ui,launcher-play-integration,launcher-signed-updater,launcher-update-uat,launcher-updater-minimum,livewire-atlas,native-adoption,published-adoption,updater-apply,updater-handoff-fix,wine-computer-use}/`.
 
@@ -40,4 +40,4 @@ Deleted paths (folders, 28 files): `.claude/agent-memory/{adoption-ui,cellblock_
 
 Nothing left in these folders for pass 1.
 
-Pass 2 lint: files=766 no_type=32 state_no_invalidated=119 index_over=0 index_missing=0 unindexed=199 orphan_folders=0 ip_like=1; no main-session flag. Unit tests OK.
+Ruling 1 lint: files=766 no_type=32 state_no_invalidated=119 index_over=0 index_missing=0 unindexed=199 orphan_folders=0 ip_like=1; no main-session flag. Unit tests OK.
