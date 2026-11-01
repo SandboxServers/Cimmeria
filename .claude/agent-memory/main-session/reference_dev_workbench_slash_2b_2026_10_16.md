@@ -1,3 +1,10 @@
+---
+name: reference_dev_workbench_slash_2b_2026_10_16
+description: x
+metadata:
+  type: reference
+---
+
 # Slash palette evidence, entries 82–108 — 2026-10-16
 
 Source: `data/client-patches/012-gm-slash-commands/commands.toml` entries `/gmgiveminigamecontact` through `/gmsendgmshout`; `docs/protocol/cell-method-dispatch-table.md` indices 192–222; `crates/cell-console/src/cell/console/gm/{mod,query,physics,shout}.rs` and tests; `crates/base-session/src/base/gm_broadcast.rs`; `crates/base-world-entry/src/base/world_entry/cell_dispatch/chat_dispatch.rs`. Detailed per-word evidence: `docs/analysis/dev-workbench/evidence/DW-26B-E.md`.
@@ -9,3 +16,6 @@ The DW-26B descriptor code keeps all 27 source forms disabled, checks word/event
 DW-26B uses DW-26A's shared `TargetKind::AnyEntity` for `testLOS` so a non-being prop is not excluded from an otherwise valid pair. The typed validator can check a fresh explicit target but has no source-space field; `gm/query.rs::handle_test_los` checks both IDs in the caller's space. Source: `crates/lab/src/workbench/commands.rs`, `slash_descriptors_2b.rs`, `crates/cell-console/src/cell/console/gm/query.rs` (2026-10-16).
 
 Server method 216 `testLOS` requires two same-space entities and reports CLEAR, BLOCKED or UNKNOWN to the caller; missing target reports a refusal. Method 221 `onPhysics` changes only the caller's transient `movement_unrestricted` flag, with wire 0 enabling bypass and nonzero restoring validation. Method 222 `sendGMShout` is a public announcement: zero means exact space instance, nonzero means all online in-world players. The cell logs acceptance including text, then either cell or base logs delivered/failed counts; accepted does not mean delivered. Caller-only feedback covers invalid text. Companion history/export should redact typed text by default. Patch event-to-method binding and native slash submission remain unproved; all 27 forms are disabled pending DW-24B.
+
+INVALIDATED WHEN: patch 012 commands.toml or the slash descriptor code changes
+checked: unverified 2026-11-01

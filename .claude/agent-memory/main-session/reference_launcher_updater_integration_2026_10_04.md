@@ -1,3 +1,10 @@
+---
+name: reference_launcher_updater_integration_2026_10_04
+description: Desktop updater integration
+metadata:
+  type: reference
+---
+
 # Desktop updater integration
 
 The signed updater is a separate durable owner within DesktopState. Guard early
@@ -15,3 +22,6 @@ Source: crates/launcher/desktop/docs/updater.md. A verified saved package is not
 an installed update; production configuration and Apply/recovery are still open in that historical checkpoint.
 
 2026-10-23 status: native Apply/recovery are implemented; startup checks and known-offer Play admission now follow the current updater contract. See reference_launcher_display_startup_update.md. Actual packaged replacement/restart remains a separate acceptance gate.
+
+INVALIDATED WHEN: the updater admission guard is reworked
+checked: unverified 2026-11-01

@@ -1,3 +1,10 @@
+---
+name: reference_owner_lock_release_2026_10_04
+description: Explicit owner-lock release
+metadata:
+  type: reference
+---
+
 # Explicit owner-lock release
 
 Mac desktop CI run `37219800831` failed immediate re-lock in prerequisite prefix
@@ -19,3 +26,6 @@ no process-global or machine configuration was changed.
 
 After committing the fix, removing only the explicit `unlock` made the duplicate-
 handle regression fail with `WouldBlock`. Restoring it made the same test pass.
+
+INVALIDATED WHEN: the owner-lock guard is reworked
+checked: unverified 2026-11-01

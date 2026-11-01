@@ -1,3 +1,10 @@
+---
+name: reference_launcher_embedded_payload
+description: x
+metadata:
+  type: reference
+---
+
 # Embedded Windows launcher payload
 
 > **Type:** Reference · **Audience:** Resuming launcher contributors · **Updated:** 2026-10-23
@@ -16,3 +23,6 @@ game content and the downloaded Mac Wine runtime remain separate. The owner gave
 GO to merge the embedded-payload PR and release the launcher from main after
 merge, retaining the Windows ZIP. Packaged/game acceptance remains pending;
 this GO does not authorize a live game or lab session.
+
+INVALIDATED WHEN: the embedded-payload design or release contract changes
+checked: unverified 2026-11-01

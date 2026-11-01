@@ -1,3 +1,10 @@
+---
+name: reference_lab_point_click_matching_2026_10_13
+description: x
+metadata:
+  type: reference
+---
+
 # Lab world point matching (2026-10-13)
 
 The Cellblock NID Guard corpse can be rendered at its server point while a point-only click hovers the player's avatar instead. A click by entity ID can find a different body pixel or camera view and succeeds. The lab now matches a world point to rendered entities within 0.05 m, reports multiple candidate IDs as ambiguous, and requires a matched ID on `Unit.MouseOver` before input. This is a lab client interaction rule; it does not change server interaction range or content.
@@ -7,3 +14,6 @@ Local lab UAT with God mode on (2026-10-13): the old installed build clicked Fro
 Source: `crates/lab/src/supervisor/world/click.rs`, `occlusion_tests.rs`; issue #1708 live reproduction, 2026-10-13.
 
 Review follow-up: a successful body-height probe may not describe the final cursor state after moving back to its chosen pixel. Read `Unit.MouseOver` again after that move and reject a point click when it no longer equals the matched ID. The simulator reproduces this with mouse-over switching to the avatar on the repeated cursor move.
+
+INVALIDATED WHEN: world/click.rs changes point matching
+checked: unverified 2026-11-01

@@ -1,3 +1,10 @@
+---
+name: reference_dev_workbench_progression_metadata_2026_10_16
+description: x
+metadata:
+  type: reference
+---
+
 # DW-21 dot progression metadata (2026-10-16)
 
 Source: `docs/analysis/dev-workbench/evidence/DW-21-E.md` and the
@@ -19,3 +26,6 @@ shares reset forms) and `.cleareffects` (selected-subject cleanse-all). Their
 confirmation and before-state requirements cannot be enforced by command-wide
 availability; see docs/analysis/dev-workbench/worknotes/DW-21.md and
 workbench_progression.rs tests. No live client was used.
+
+INVALIDATED WHEN: per-form gating or the progression catalog changes
+checked: unverified 2026-11-01

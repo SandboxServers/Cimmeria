@@ -1,3 +1,10 @@
+---
+name: reference_dev_workbench_clicks_2026_10_15
+description: x
+metadata:
+  type: reference
+---
+
 # DW-07 click correlation (2026-10-15)
 
 - LR-10's CEGUI `Window/MouseClick` handler already records widget, top-level window and mouse button in a 512-row Lua ring, and the ring already has an epoch and sequence. DW-07 combines those as an event ID and samples `Unit.Target` existence/name in the callback; no keyboard text is read. Source: `crates/lab/src/supervisor/events/lua_rings.rs`.
@@ -5,3 +12,6 @@
 - The host timestamp on a stored `ui.click` is supervisor ingestion time. It can lag the CEGUI callback, so it must not be presented as an exact click timestamp. Source: `crates/lab/src/supervisor/events/mod.rs` and `store.rs`.
 - DW-07 review: stamp `client_pid` onto each stored `ui.click` at ring ingestion, requiring the PID to be unchanged across the read. The click sequence rejects missing PID or invalid identity with `rejected_identity_rows`; the pump reports Lua-side oversize/control-character click rejections and parser-rejected old-format lines. Exact CEGUI names up to 1,024 bytes are retained for `@window_click` replay; longer names are never silently shortened. Source: `crates/lab/src/supervisor/events/{mod,lua_rings}.rs`, `crates/lab/src/workbench/clicks.rs`.
 - An oversized or invalid child widget must still update the click callback's last ancestor chain before being rejected. Otherwise its bubbled parent becomes a false `ui.click` at the same time and cursor position. The Lua-stub regression in `lua_rings_tests.rs` pins this. DW-10 must carry `PumpReport`'s rejected-click counters into recording drafts as evidence gaps; the current sampler ignores them.
+
+INVALIDATED WHEN: the ui.click ring or its host timestamping changes
+checked: unverified 2026-11-01

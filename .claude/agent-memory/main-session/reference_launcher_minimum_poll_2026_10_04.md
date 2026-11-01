@@ -1,3 +1,10 @@
+---
+name: reference_launcher_minimum_poll_2026_10_04
+description: Launcher minimum survives polling
+metadata:
+  type: reference
+---
+
 # Launcher minimum survives polling
 
 The desktop Play view polls native status every second. Mapping only the
@@ -17,3 +24,6 @@ handle (OS error 33). Minimum and updater-exclusion snapshots now retain the loc
 entry and assert its empty length via metadata, while reading every state payload
 byte normally. Four minimum tests and the updater-exclusion test pass locally;
 the correction still requires its native Windows rerun.
+
+INVALIDATED WHEN: LaunchStatus.launcher_update_required is reworked
+checked: unverified 2026-11-01
