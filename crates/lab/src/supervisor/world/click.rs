@@ -22,7 +22,9 @@ use super::click_hover::{
     hover_once, read_mouse_over, wants_view_retry, Hover, HOVER_WAIT_MS, NEAR_AVATAR_M,
 };
 pub use super::click_hover::{restore_pitch_counts, VIEW_RETRIES};
+#[cfg(test)]
 use super::click_range::{range_hint, range_json};
+use super::click_result::{click_result, ClickPlan, ClickTail};
 // The hover_tests import path; the non-test build reads it from click_hover.
 #[cfg(test)]
 pub use super::click_hover::HOVER_OFFSETS;
@@ -109,10 +111,10 @@ fn button_index(name: Option<&str>, default: usize) -> Result<usize, String> {
 
 /// Evidence read before and after the click.
 #[derive(Debug, Clone, PartialEq)]
-struct UiSnap {
-    target: u32,
-    mouse_over: u32,
-    windows: Vec<String>,
+pub(super) struct UiSnap {
+    pub(super) target: u32,
+    pub(super) mouse_over: u32,
+    pub(super) windows: Vec<String>,
 }
 
 async fn ui_snap<W: WorldIo>(io: &mut W, target_slot: i32, mo_slot: i32) -> Result<UiSnap, String> {
@@ -577,20 +579,6 @@ fn hover_deadline_error<W: WorldIo>(
     )
 }
 
-/// What the click step needs from the resolve and hover steps.
-struct ClickPlan {
-    button: usize,
-    expect: Expect,
-    entity: Option<u32>,
-    units: super::lua::UnitSlots,
-    before: UiSnap,
-    at: (i32, i32),
-    hover_verified: bool,
-    face_json: Value,
-    found: Option<Found>,
-    range_m: Option<f64>,
-}
-
 /// Steps 4 and 5: click, then watch what the client did.
 async fn click_and_observe<W: WorldIo>(
     io: &mut W,
@@ -677,54 +665,22 @@ async fn click_and_observe<W: WorldIo>(
         }
     }
 
-    let opened: Vec<&String> = after
-        .windows
-        .iter()
-        .filter(|w| !before.windows.contains(w))
-        .collect();
-    let closed: Vec<&String> = before
-        .windows
-        .iter()
-        .filter(|w| !after.windows.contains(w))
-        .collect();
-    let mut evidence = json!({
-        "target_before": before.target,
-        "target_after": after.target,
-        "target_is_entity": entity.is_some_and(|e| after.target == e),
-        "windows_opened": opened,
-        "windows_closed": closed,
-        "mouse_over_after": after.mouse_over,
-        "range": range_json(range_m),
-    });
-    if expect == Expect::Nothing {
-        evidence["target_after"] = Value::Null;
-        evidence["target_is_entity"] = Value::Null;
-        evidence["windows_opened"] = Value::Null;
-        evidence["windows_closed"] = Value::Null;
-        evidence["mouse_over_after"] = Value::Null;
-        evidence["after_observed"] = json!(false);
-    }
-    if !ok {
-        return Err(steps.fail_with(
-            io.now_ms(),
-            "observe",
-            format!(
-                "the click did not produce the expected {expect:?} within {settle} ms{}",
-                range_hint(button, range_m)
-            ),
-            evidence,
-        ));
-    }
-    let out = json!({
-        "entity": found.as_ref().map(Found::to_json),
-        "button": if button == 0 { "left" } else { "right" },
-        "clicked_at": [x, y],
-        "hover_verified": hover_verified,
-        "expect": format!("{expect:?}").to_lowercase(),
-        "result": evidence,
-        "camera": face_json,
-        "fallback": fallback,
-    });
+    let out = click_result(ClickTail {
+        expect,
+        entity,
+        before: &before,
+        after: &after,
+        ok,
+        settle,
+        button,
+        range_m,
+        found,
+        at: (x, y),
+        hover_verified,
+        face_json,
+        fallback,
+    })
+    .map_err(|(msg, ev)| steps.fail_with(io.now_ms(), "observe", msg, ev))?;
     Ok(steps.finish(io.now_ms(), out))
 }
 

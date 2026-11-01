@@ -30,6 +30,7 @@ mod camera_read;
 pub mod click;
 mod click_hover;
 mod click_range;
+mod click_result;
 pub mod find;
 pub mod fresh_wait;
 pub mod geometry;
@@ -37,10 +38,13 @@ pub mod hover;
 pub mod io;
 pub mod lua;
 pub mod memory;
+mod move_probe;
 pub mod movement;
 pub mod routes;
 pub mod steer;
 mod turn_keys;
+mod turn_state;
+pub mod unstick;
 
 #[cfg(test)]
 mod camera_pitch_tests;
