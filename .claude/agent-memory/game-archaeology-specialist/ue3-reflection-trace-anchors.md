@@ -26,6 +26,9 @@ Full write-up with raw values: `docs/analysis/lab-autopilot/ue3-backport-verifie
 - **State field:** GameBeing `+0x158`. LIVE on an NPC: `0x0` → `0x41` on death (bit 0 Dead). Player death is untested: in SGC the player can't be killed (gmKillTarget refuses players).
 - **Mouse (LIVE):** gain `[[PC+0x2B0]+0x358]` = 20.0, giving **521.5 counts/rad**. AddYaw `0x00e7e600`.
 - **CEGUI (LIVE):** WindowManager `0x01f010c0`, map size `+8` = **21416** windows after login (not hundreds). The `CEGUI` global is not exposed to Lua.
+- **Actors (AX-01 static, 2026-11-01; CONFIRMED):** FActorIterator ctor `0x00555070`, `operator++` `0x00554730` (used by AllActors `0x006e4c10`). GWorld `+0x44`/`+0x48` = Levels data/count; `+0x50` = persistent level. Level `+0x3c`/`+0x40` = Actors data/count. The count covers the persistent level only and includes null slots. Dynamic iterator `0x005e6710` starts at level `+0xd8`.
+- **Game clock owner (AX-01 static):** tickSync handler `0x00dd6d00` writes ServerConnection `+0x32c` (gameTime), `+0x344` (tickRate*0.001). ServerConnection = `[[0x01EF2264]+0x28]`. Clock read `FUN_00dd6c60`. WorldInfo.TimeSeconds offset not found.
+- **Label fix:** `0x01EE2684` is GWorld, not WorldInfo; the address map and world-entry-pipeline were corrected in AX-01. Full table: `docs/reverse-engineering/findings/lab-autopilot-anchors.md`.
 - **Lab held keys (code read):** DI keys persist in the DLL until `input_release`. Only `client_move_to` has a cancel guard, and a daemon crash leaves keys held.
 
 **Why:** the lab-autopilot back-port needs native traces, by-name reflection and a reliable view point.
