@@ -62,6 +62,7 @@ pub mod minigame_play;
 pub mod process;
 pub mod process_activity;
 pub mod record_slot;
+mod recover_recipes;
 pub mod recovery;
 pub mod screenshot;
 pub mod session_file;

@@ -40,6 +40,7 @@ mod input_tools;
 mod instances;
 mod lease;
 mod record;
+mod recover_tools;
 mod uat;
 mod ui;
 mod world;
@@ -255,7 +256,8 @@ impl LabServer {
                 + Self::ui_router()
                 + Self::composite_router()
                 + Self::lease_router()
-                + Self::input_router(),
+                + Self::input_router()
+                + Self::recover_router(),
         }
     }
 

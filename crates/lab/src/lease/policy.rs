@@ -140,6 +140,8 @@ pub const LEASED: &[&str] = &[
     "client_use_ability",
     "client_item_action",
     "client_die_and_respawn",
+    // Recovery recipes: tap Escape, release input, turn the camera, jump.
+    "lab_recover",
     // Composites: each drives the client (ensure_in_world), runs
     // caller-chosen Lua and native calls (client_batch) or input
     // (client_ui_sequence).
