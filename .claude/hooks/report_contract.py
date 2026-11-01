@@ -20,6 +20,9 @@ RP = re.compile(r"[^\s`'\"()<>]*\.claude[\\/]reports[\\/][^\\/\s`'\"()<>]+[\\/][
 LINE = re.compile(r"^(?P<id>\S+)\s+(?P<status>done|blocked|failed)\s+(?P<sha>[0-9a-f]{7,40}|-)\s+"
                   r"(?P<report>\S+\.md|-)(?P<extra>(?:\s+[a-z_]+=\S+)*)\s*$")
 CAP_MARKER = "Context cap reached"
+# A real deny's result text starts with the marker, or with "PreToolUse:<tool> hook error: " and the marker.
+# Anchoring there keeps a brief, a Read or a Grep result that merely quotes the marker from counting.
+CAP_RE = re.compile(r"^(?:PreToolUse:\S+ hook error: )?" + re.escape(CAP_MARKER))
 SLACK_SECONDS = 5
 
 REASON_LINE = (
@@ -62,19 +65,37 @@ def message_text(rec):
                      if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str))
 
 
+def is_cap_deny(rec):
+    """True when the record is a user-level tool_result whose text starts with the cap deny."""
+    message = rec.get("message")
+    content = message.get("content") if rec.get("type") == "user" and isinstance(message, dict) else None
+    if not isinstance(content, list):
+        return False
+    for block in content:
+        if not isinstance(block, dict) or block.get("type") != "tool_result":
+            continue
+        body = block.get("content")
+        if isinstance(body, list):
+            body = "\n".join(b["text"] for b in body
+                             if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str))
+        if isinstance(body, str) and CAP_RE.match(body.lstrip()):
+            return True
+    return False
+
+
 def read_transcript(path):
     """Return the cap flag, the brief, the first timestamp and the last assistant text of a transcript."""
     info = {"cap": False, "brief": "", "first_ts": None, "last_text": ""}
     with path.open(encoding="utf-8", errors="replace") as handle:
         for raw in handle:
-            if CAP_MARKER in raw:
-                info["cap"] = True
             try:
                 rec = json.loads(raw)
             except ValueError:
                 continue
             if not isinstance(rec, dict):
                 continue
+            if is_cap_deny(rec):
+                info["cap"] = True
             if info["first_ts"] is None and isinstance(rec.get("timestamp"), str):
                 info["first_ts"] = parse_ts(rec["timestamp"])
             text = message_text(rec)

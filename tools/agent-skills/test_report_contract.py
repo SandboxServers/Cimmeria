@@ -19,8 +19,10 @@ AGENTS = {
     "packet-coder": "---\nname: packet-coder\nmodel: haiku\n---\n\n## Reporting\n\nWrite a line.\n",
     "packet-fixer": "---\nname: packet-fixer\nmodel: claude-haiku-4-5\n---\n\n## Reporting\n\nWrite a line.\n",
 }
+DENY_TEXT = ("PreToolUse:Edit hook error: Context cap reached: 90,515 tokens > 90,000. STOP NOW. "
+             "Do not call any more tools.")
 CAP_RESULT = {"type": "user", "timestamp": None, "message": {"role": "user", "content": [
-    {"type": "tool_result", "tool_use_id": "t1", "content": "Context cap reached. Write a final report."}]}}
+    {"type": "tool_result", "tool_use_id": "t1", "is_error": True, "content": DENY_TEXT}]}}
 OLD = datetime(2020, 1, 1, tzinfo=timezone.utc).timestamp()
 
 
@@ -80,7 +82,7 @@ class HookTest(unittest.TestCase):
             os.utime(path, (mtime, mtime))
         return path
 
-    def run_hook(self, data, raw=None, project_env=True):
+    def run_hook(self, data, raw=None, project_env=True, proc_cwd=None):
         """Run the hook and return its decoded reason, or None when it printed nothing."""
         env = dict(os.environ)
         if project_env:
@@ -89,7 +91,7 @@ class HookTest(unittest.TestCase):
             env.pop("CLAUDE_PROJECT_DIR", None)
         text = raw if raw is not None else json.dumps(data)
         done = subprocess.run([sys.executable, str(HOOK)], input=text, capture_output=True,
-                              text=True, check=False, cwd=str(self.root), env=env)
+                              text=True, check=False, cwd=proc_cwd or str(self.root), env=env)
         self.assertEqual(done.returncode, 0, done.stderr)
         if not done.stdout.strip():
             return None
@@ -164,7 +166,23 @@ class ReportModeTest(HookTest):
     def test_relative_brief_path_resolves_against_cwd(self):
         self.brief_transcript()
         self.report()
-        self.assertIsNone(self.run_hook(self.payload(final=GOOD), project_env=False))
+        self.assertIsNone(self.run_hook(self.payload(final=GOOD), project_env=False,
+                                           proc_cwd=tempfile.gettempdir()))
+
+    def test_explicit_agent_transcript_path_is_used(self):
+        self.brief_transcript()
+        explicit = self.root / "elsewhere.jsonl"
+        explicit.write_text(json.dumps(user(BRIEF)) + "\n", encoding="utf-8")
+        data = self.payload(final=GOOD, agent_transcript_path=str(explicit))
+        data["transcript_path"] = str(self.root / "nonexistent.jsonl")
+        self.assertIn("is missing, empty or older than this run", self.run_hook(data))
+
+    def test_marker_in_read_result_is_not_a_cap(self):
+        quote = '    54\tCAP_MARKER = "Context cap reached"      # the deny text'
+        read = {"type": "user", "timestamp": now_iso(), "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t2", "content": quote}]}}
+        self.transcript(user(BRIEF), read, assistant("Stopped."))
+        self.assertIn("has no return line", self.run_hook(self.payload(final="Stopped.")))
 
     def test_pass_two_names_old_and_new_report(self):
         brief = "Pass 2. Old: .claude/reports/ht/old.md. New: .claude/reports/ht/new.md."
@@ -200,6 +218,11 @@ class LineModeTest(HookTest):
         self.transcript(user(BRIEF), cap, assistant("Stopped."))
         self.assertIsNone(self.run_hook(self.payload(agent="packet-coder", final="Stopped.")))
 
+    def test_marker_in_brief_is_not_a_cap(self):
+        self.transcript(user(BRIEF + " At `Context cap reached`, call no tool."))
+        reason = self.run_hook(self.payload(agent="packet-coder", final="Stopped."))
+        self.assertIn("Write no file", reason)
+
     def test_haiku_model_string_is_line_mode(self):
         self.transcript(user(BRIEF))
         reason = self.run_hook(self.payload(agent="packet-fixer", final="Prose."))
@@ -211,6 +234,14 @@ class EveryAgentTest(HookTest):
 
     def test_cap_result_passes_a_reviewer_with_no_line(self):
         self.transcript(user(BRIEF), dict(CAP_RESULT, timestamp=now_iso()), assistant("Stopped."))
+        self.assertIsNone(self.run_hook(self.payload(final="Stopped.")))
+
+    def test_cap_deny_as_text_blocks_passes(self):
+        cap = dict(CAP_RESULT, timestamp=now_iso())
+        cap["message"] = {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t1", "is_error": True,
+             "content": [{"type": "text", "text": DENY_TEXT}]}]}
+        self.transcript(user(BRIEF), cap, assistant("Stopped."))
         self.assertIsNone(self.run_hook(self.payload(final="Stopped.")))
 
     def test_agent_without_a_file_passes(self):
