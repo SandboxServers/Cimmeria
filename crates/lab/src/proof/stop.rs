@@ -1,9 +1,6 @@
 //! Stop reports (C8): a world tool that gives up says why, what it tried and
 //! where the player was, so the caller can pick a recipe instead of retrying.
 
-// No tool emits a stop yet; AX-32, AX-34 and AX-56 do.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use serde::Serialize;
 
 /// Why a world tool stopped.
