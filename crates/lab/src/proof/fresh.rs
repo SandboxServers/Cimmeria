@@ -10,9 +10,12 @@ use serde_json::{json, Value};
 /// Frames a read must trail the action by to count as fresh.
 pub const FRESH_FRAMES: u64 = 2;
 
+/// How a post-read's frame compares with the action's frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Freshness {
+    /// The read trails the action by at least `FRESH_FRAMES`.
     Fresh,
+    /// Both frames are known and the read is too close to the action.
     Stale,
     /// Either frame is unknown (an old DLL, or no frame source).
     Unstamped,

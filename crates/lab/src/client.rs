@@ -23,8 +23,11 @@ use tokio::sync::Mutex;
 /// The C4 frame stamp (`meta`); absent from an old DLL.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
 pub struct BridgeMeta {
+    /// Bridge tick counter when the response was built.
     pub frame: u64,
+    /// Milliseconds since the bridge started.
     pub mono_ms: u64,
+    /// Game clock in seconds; absent when the fingerprint gate failed.
     #[serde(default)]
     pub game_t: Option<f64>,
 }

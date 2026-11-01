@@ -293,7 +293,13 @@ impl WorldIo for LiveWorld<'_> {
     async fn frame(&mut self) -> Option<u64> {
         // The heartbeat tick_count is the same counter as C4 `meta.frame`,
         // so this works against a DLL that does not stamp responses yet.
-        self.sup.bridge.heartbeat().await.ok()
+        match self.sup.bridge.heartbeat().await {
+            Ok(f) => Some(f),
+            Err(e) => {
+                tracing::debug!(error = %e, "frame read failed; post-read will be unstamped");
+                None
+            }
+        }
     }
 
     async fn snapshot(&mut self) -> Result<WorldSnapshot, String> {
