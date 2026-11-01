@@ -22,8 +22,10 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
+use super::defeat_proof::defeat_checks;
 use super::player::DEFEAT_WIN;
 use super::NativeLevel;
+use crate::proof::Evidence;
 use crate::supervisor::flows::{settle, widgets, FlowError, FlowRun};
 use crate::supervisor::Supervisor;
 
@@ -344,6 +346,7 @@ impl Supervisor {
             "at_death": at_death.map(|p| p.to_json()),
             "after": after.to_json(),
             "checks": checks,
+            "evidence": Evidence::judge(defeat_checks(hidden.met, after.alive())).to_value(),
             "verified": hidden.met && after.alive() == Some(true),
             "event_seq": { "before": seq_before, "after": pump.map(|p| p.head) },
         })))

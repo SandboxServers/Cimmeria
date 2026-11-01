@@ -23,6 +23,9 @@ pub const JUDGED: &[&str] = &[
     "client_move_to",
     "client_camera",
     "lab_recover",
+    "client_use_ability",
+    "client_die_and_respawn",
+    "client_minigame_play",
 ];
 
 /// Tools that claim no effect: reads, lease, UAT and lifecycle tools.

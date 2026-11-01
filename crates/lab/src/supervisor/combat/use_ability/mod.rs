@@ -26,6 +26,7 @@
 //! arrives.
 
 pub mod outcome;
+pub mod proof;
 pub mod resolve;
 pub mod window;
 
@@ -38,6 +39,7 @@ use super::NativeLevel;
 use crate::supervisor::flows::{settle, FlowError, FlowRun};
 use crate::supervisor::{now_ms, Supervisor};
 use outcome::classify;
+use proof::ability_evidence;
 use resolve::{known_chunk, parse_known, resolve, Query};
 use window::pressable;
 
@@ -351,6 +353,7 @@ impl Supervisor {
             "was_on_cooldown": cooldown_before,
             "target_before": { "name": before.target, "hostility": before.target_hostility },
             "result": out.to_json(),
+            "evidence": ability_evidence(out.verdict(), out.was_sent()).to_value(),
             "cooldown_after": cooldown_after,
             "player_after": after.map(|a| a.to_json()),
             "event_seq": { "before": seq_before, "after": last_head },

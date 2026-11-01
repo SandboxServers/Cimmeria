@@ -8,8 +8,10 @@ use tokio::time::Instant;
 use super::input::{parse_widget_rect, widget_rect_chunk, Rect};
 use super::livewire_atlas::LivewireAtlas;
 use super::livewire_solver;
+use super::minigame::proof::minigame_checks;
 use super::screenshot::{self, Region};
 use super::Supervisor;
+use crate::proof::Evidence;
 use crate::uat::invoke::ServerTools;
 
 const MOVIE_WINDOW: &str = "Minigame_Movie_Area";
@@ -520,6 +522,13 @@ pub async fn play(
             "probes": probes,
             "tap_rows": tap.rows,
             "native_level": {"tier":"N1"},
+            "evidence": Evidence::judge(minigame_checks(
+                game,
+                is_placeholder(game),
+                server_outcome,
+                hidden,
+            ))
+            .to_value(),
         }),
         before,
         after,
