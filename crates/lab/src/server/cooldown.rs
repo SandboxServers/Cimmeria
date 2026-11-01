@@ -180,13 +180,19 @@ fn state() -> &'static Mutex<(Cooldown, Instant)> {
 /// The handler's pre-call step: the key and, when a backoff is running, the
 /// refusal result. `None` for exempt tools.
 pub(super) fn gate(
+    instance: &str,
     tool: &str,
     args: Option<&Map<String, Value>>,
 ) -> Option<(u64, Option<CallToolResult>)> {
     if exempt(tool) {
         return None;
     }
-    let k = key(tool, &Value::Object(args.cloned().unwrap_or_default()));
+    // The state is process-wide, so the instance keeps one client's failure
+    // from cooling another client's identical call.
+    let mut h = DefaultHasher::new();
+    instance.hash(&mut h);
+    key(tool, &Value::Object(args.cloned().unwrap_or_default())).hash(&mut h);
+    let k = h.finish();
     let mut g = state().lock().unwrap_or_else(|p| p.into_inner());
     let now = g.1.elapsed().as_millis() as u64;
     let refusal =

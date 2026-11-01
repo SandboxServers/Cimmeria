@@ -248,7 +248,7 @@ pub struct StopPlayer { pub at: [f64; 3], pub now: [f64; 3], pub moved_m: f64 }
 
 `crates/lab/src/server/cooldown.rs`, MCP path only (the UAT runner never sees it):
 
-- Key: tool name plus a hash of the args with `lease_id`, `instance`, `verbose` and `fields` removed (canonical JSON, sorted keys).
+- Key: tool name plus the instance label plus a hash of the args with `lease_id`, `instance`, `verbose` and `fields` removed (canonical JSON, sorted keys). The state is process-wide, so the instance label keeps one client's failure from cooling another's call.
 - A call fails when the tool returns an MCP error, `is_error: true`, or a JSON body whose `evidence.verdict` is `denied`.
 - After the n-th consecutive failure of a key, the next identical call within `min(8000, 500 * 2^(n-1))` ms is refused without running: an `is_error` result with `{"error": "cooling down", "why": "cooling_down", "hint": <C2 hint>, "retry_after_ms": <left>, "failures": n}`.
 - A success clears the key. A key idle for 60 s is forgotten. At most 256 keys (oldest evicted).

@@ -205,7 +205,7 @@ impl ServerHandler for LabServer {
             }
         };
         // C9: an identical call that just failed is turned away unrun.
-        let cool = cooldown::gate(&tool, request.arguments.as_ref());
+        let cool = cooldown::gate(instance, &tool, request.arguments.as_ref());
         if let Some((_, Some(refusal))) = &cool {
             let out = Ok(CallToolResponse::Complete(refusal.clone()));
             log_call(

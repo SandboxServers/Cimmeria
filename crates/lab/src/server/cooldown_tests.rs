@@ -3,7 +3,7 @@
 use rmcp::{model::*, ErrorData as McpError};
 use serde_json::json;
 
-use super::{exempt, failed, key, Cooldown};
+use super::{exempt, failed, gate, key, note, Cooldown};
 use crate::daemon::http_tests::{spawn_daemon, test_server, McpSession};
 
 #[test]
@@ -110,6 +110,25 @@ fn denied_evidence_counts_as_failure() {
         CallToolResult::error(vec![ContentBlock::text("x")])
     ))));
     assert!(failed(&Err(McpError::internal_error("boom", None))));
+}
+
+#[test]
+fn same_call_on_another_instance_is_not_cooled() {
+    // A tool and argument value no other test uses: the state is process-wide.
+    let args = json!({ "entity_id": 90_036 });
+    let args = args.as_object().unwrap();
+    let failed_response = Ok(CallToolResponse::Complete(CallToolResult::error(vec![
+        ContentBlock::text("denied"),
+    ])));
+    let (k_a, _) = gate("a", "client_world_click", Some(args)).expect("keyed");
+    note(k_a, &failed_response);
+    let (_, refused_a) = gate("a", "client_world_click", Some(args)).expect("keyed");
+    let (_, refused_b) = gate("b", "client_world_click", Some(args)).expect("keyed");
+    assert!(refused_a.is_some(), "instance a is cooling down");
+    assert!(
+        refused_b.is_none(),
+        "instance b is not cooled by a's failure"
+    );
 }
 
 #[tokio::test]
