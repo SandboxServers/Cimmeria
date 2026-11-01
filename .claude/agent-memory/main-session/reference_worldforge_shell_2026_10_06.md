@@ -20,8 +20,9 @@ metadata:
 - A 3 × 3 shell from those modules is packaged as the v6 local client probe.
   Cardinally oriented elbows close corners, three-ways line the edges and
   four-ways form the two central nodes. The south exit connects to the gate
-  apron. Structural and property-name audits pass. Client collision and
-  visual seams remain unverified. The exterior garden slab is not bounded;
+  apron. Structural and property-name audits pass. The v6 shell was later
+  client-photographed and the user reported joined, walkable sections
+  (`reference_custom_debug_map`); visual seams were not graded. The exterior garden slab is not bounded;
   do not call the whole world sealed.
 
 INVALIDATED WHEN: the custom-debug-map clone path changes
