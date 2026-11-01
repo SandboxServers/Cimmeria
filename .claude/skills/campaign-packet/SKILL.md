@@ -1,6 +1,6 @@
 ---
 name: campaign-packet
-description: Run a multi-PR effort as a coordinated campaign - the orchestrator dispatches an architect for the ledger and packets, ops for worktrees and shipping, one packet-coder per packet, and read-only packet-reviewer loops per packet, wave and campaign whose fix notes go to a fresh packet-coder, with report files and one-line returns. Use when the user says "design this as a campaign", "split this into packets", "dispatch workers", "resume the <name> campaign", or when a change is too big for one PR. Also use when writing or reviewing a work-packets.md, RESUME.md, worknote or ledger.
+description: Run a multi-PR effort as a coordinated campaign - the orchestrator dispatches an architect for the ledger and packets, ops for worktrees and shipping, one packet-coder per packet, and read-only packet-reviewer loops per packet, wave and campaign whose fix notes go to a fresh packet-coder, with one-line returns (every worker except a packet-coder also writes a report file). Use when the user says "design this as a campaign", "split this into packets", "dispatch workers", "resume the <name> campaign", or when a change is too big for one PR. Also use when writing or reviewing a work-packets.md, RESUME.md, worknote or ledger.
 ---
 
 # Campaign and work packets
@@ -13,9 +13,9 @@ that does one phase and stops:
 |---|---|---|
 | Design, packet slicing, hard trade-offs | `architect` | `README.md`, `work-packets.md`, `RESUME.md` |
 | Worktrees, PRs, merge, retire | `ops` | nothing; one-line return |
-| One packet, one worktree | `packet-coder` (or a domain agent) | a local commit and a report file |
+| One packet, one worktree | `packet-coder` (or a domain agent) | local commits and a one-line return (a domain agent also writes a report file) |
 | Review one packet, a wave or the campaign (read-only) | `packet-reviewer` | a report with numbered fix notes |
-| Apply a review's fix notes | `packet-coder` (fresh) | a fix commit and a report file |
+| Apply a review's fix notes | `packet-coder` (fresh) | a fix commit and a one-line return |
 
 Canonical rules: [docs/agents/development-workflow.md](../../../docs/agents/development-workflow.md)
 (default persona, worker lifetime, notifications, shared docs, definition of
@@ -99,14 +99,28 @@ shape.
    background**. Each brief stays under about 25 lines and carries:
    - the worktree path;
    - the packet section path (not its text; the agent reads it);
-   - the absolute report path inside that worker's own worktree,
+   - for every implementer except a packet-coder, and for every reviewer, the
+     absolute report path inside that worker's own worktree,
      `<worktree>\.claude\reports\<campaign>\<packet>-<role>.md`, never the
      root checkout (D-LO16). Retiring the worktree deletes the report, so the
      orchestrator copies anything worth keeping to the campaign's `worknotes/`
-     first;
+     first. **A packet-coder brief names no report path.**
    - the commit message's attribution lines;
-   - the return contract, exactly one line:
-     `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`.
+   - the return contract, exactly one line. A packet-coder's is
+     `<packet> <done|blocked|failed> <commit-sha|-> -`, then optional suffixes
+     in this order: `reason=<context|checks|spec|host|platform|tool>` on
+     `blocked` or `failed`, `at=<k>` (the check or step where it stopped) and
+     `not_run=<k>,...` (the checks it skipped; absent means all ran). The SHA is
+     the branch's last commit, or `-` when nothing was committed. Any other
+     implementer's is `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`.
+   - for a continuation, `continuation N of 3, base=<start SHA>`.
+
+   Why a packet-coder writes no report: the owner's rule (D-HT3) is that Haiku
+   coders write code, not reports. The commits are the coder's record and the
+   reviewer's report is the packet's record. The user-level context cap for
+   Haiku agents stays; at `Context cap reached` the coder returns
+   `<packet> blocked <sha|-> - reason=context`. Sonnet and Opus agents keep
+   their reports and worknotes.
 3. Workers use the shell their platform names (the `lane-build` skill
    § Linux and WSL hosts): on `win32`, PowerShell and `lane.ps1`; on `linux`,
    which WSL reports, Bash and the `.sh` twins with the same arguments. Never
@@ -114,10 +128,14 @@ shape.
    (Windows unless it says otherwise); a mismatch returns `blocked`. Always:
    the lane only, no direct `cargo`, no `git worktree prune`, no `git stash`,
    no push. They commit locally and stop.
-4. On a one-line return, update the ledger row; an implementer's `done` (a packet-coder or a domain agent) starts that packet's review loop (§ 4). Open the report file
-   only when the return says `blocked`, `failed` or `verdict=decision`. A `blocked` return with
-   the reason `context` starts the coder loop in § Sessions, passes and
-   escalation.
+4. On a one-line return, update the ledger row; an implementer's `done` (a packet-coder or a domain agent) starts that packet's review loop (§ 4). Open a report file
+   only when a non-coder's return says `blocked`, `failed` or `verdict=decision`.
+   Route a packet-coder's `blocked` or `failed` by its `reason=`:
+   - `context`, or no usable line at all → a continuation, the coder loop in
+     § Sessions, passes and escalation;
+   - `checks` → the Sonnet implementer;
+   - `spec` → `architect`;
+   - `host`, `platform` or `tool` → the packet's host note.
 
 **No teammates.** Never use SendMessage to keep an agent alive or to chat
 with a running one. Never resume a finished agent: review fixes go to a fresh
@@ -140,9 +158,11 @@ session. It returns `verdict=ship`, `fix` or `decision`:
 1. `ship`: the loop is done.
 2. `fix` on pass 1 or 2: dispatch a fresh `packet-coder` with "review fix,
    pass N of 3", the worktree and the report path. It applies only the
-   report's `## Fix notes`, rejects a note that does not match the code (and
-   says why), reruns every check the packet lists, and commits
-   `<packet> review fixes, pass N`. Then dispatch a fresh reviewer for pass
+   report's `## Fix notes`, rejects a note that does not match the code (a
+   commit-body line `Rejected <note-id>: <reason>`), reruns every check the
+   packet lists, and commits `<packet> review fixes, pass N`; if it rejects
+   every note it commits with `--allow-empty`, so the reasons reach the
+   reviewer. Then dispatch a fresh reviewer for pass
    N+1, with the previous report's path.
 3. `fix` on pass 3, or `decision` on any pass: § Sessions, passes and
    escalation, step 3.
@@ -152,7 +172,7 @@ A reviewer's brief carries the scope, the worktree, the commit range
 campaign the work-packets file and the ledger README), the pass number, from
 pass 2 the previous report, and the report path
 `<worktree>\.claude\reports\<campaign>\<packet>-review-<N>.md` (a wave:
-`wave<W>-review-<N>.md`; the campaign: `campaign-review-<N>.md`). A fix pass writes `<packet>-fix-<N>.md` (the wave: `wave<W>-fix-<N>.md`). The `<role>` in § 3 is `coder`, `review-<N>` or `fix-<N>`. The implementer that applies a ruling writes `<packet>-ruling-<N>.md` and a ruling check writes `<packet>-ruling-check.md` (the wave: `wave<W>-ruling-check.md`; the campaign: `campaign-ruling-check.md`); a ruling-check brief names the ruling note and has no pass number. Dispatch a
+`wave<W>-review-<N>.md`; the campaign: `campaign-review-<N>.md`). A packet-coder fix pass writes no report. The `<role>` in § 3 is `coder` (an implementer other than a packet-coder) or `review-<N>`. The implementer that applies a ruling writes `<packet>-ruling-<N>.md` and a ruling check writes `<packet>-ruling-check.md` (the wave: `wave<W>-ruling-check.md`; the campaign: `campaign-ruling-check.md`); a ruling-check brief names the ruling note and has no pass number. Dispatch a
 packet's first pass as soon as its coder returns; don't wait for the rest of
 the wave. Add the matching domain advisor or `server-authority-enforcer` as a
 parallel read-only pass only when a packet touches their area. Its brief asks for the packet-reviewer's three report sections and verdict words (`ship`, `fix`, `decision`), numbers its notes `A<k>`, and gives its own report path; the fix brief names both reports, and the loop is done only when both say `ship`.
@@ -186,25 +206,29 @@ Then ship:
    integration branch has no PR of its own, so `rm-worktree.ps1 --merged`
    skips its worktree; once the wave PR has merged, `ops` retires those with
    `rm-worktree.ps1 --merged-into <PR> <name>...`.
-2. Update the packet rows in the ledger, and write
-   `worknotes/<packet>.md` only if anything is left over.
+2. Update the packet rows in the ledger. Worknotes are the orchestrator's:
+   it writes `worknotes/<packet>.md` only if anything is left over (a coder
+   writes none).
 
 ### Sessions, passes and escalation
 
 | Count | Limit | Meaning |
 |---|---|---|
 | Fix round | 5 per check | One rerun of a lane check inside one session |
-| Coder session | 3 per packet, and 3 per fix pass | One packet-coder run. A context stop leaves a worknote, and the next fresh session continues from it. |
+| Coder session | 3 per packet, and 3 per fix pass | One packet-coder run. A context stop returns `reason=context` and leaves the work on the branch, and the next fresh session resumes from the branch with `base=`. |
 | Review pass | 3 per loop | One fresh packet-reviewer session over one scope: a packet, a wave or the campaign |
 
 Escalation, one tier at a time:
 
-1. Context stop → a fresh packet-coder with "continuation N of 3" and the
-   worknote. A fix session that stops on context continues the same way.
+1. Context stop → a fresh packet-coder with `continuation N of 3,
+   base=<start SHA>`. It resumes from the branch: it reads
+   `git log <base>..HEAD`, `git status --porcelain` and `git diff --stat`,
+   and starts at the first step not done. A fix session that stops on context continues the same way.
    Fix notes never go back into the session that wrote the code.
 2. After 3 coder sessions, or 2 sessions that each end at 5 failed fix
    rounds → one Sonnet implementer (`rust-gameserver-dev` for code and
-   tools, `documentation-writer` for docs) with the worknote → then
+   tools, `documentation-writer` for docs) with the same base and a report
+   path → then
    `architect` re-slices. Opus never implements a packet.
 3. `fix` after pass 3, or `decision` on any pass → `architect` (or the Opus
    advisor for protocol and RE) decides only what to fix and how, in a

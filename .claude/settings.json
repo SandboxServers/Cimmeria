@@ -45,6 +45,17 @@
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/report_contract.py\"; [ -n \"$CLAUDE_PROJECT_DIR\" ] && [ -f \"$f\" ] || exit 0; set -- \"$f\"; . \"$CLAUDE_PROJECT_DIR/.claude/hooks/py.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
