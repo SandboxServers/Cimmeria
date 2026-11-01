@@ -1,10 +1,11 @@
 //! How the runner reads a tool's `evidence` verdict (AX-12, contract C1):
 //! a denied action fails like `effect_ok: false`; an inconclusive one is
 //! noted and, without an independent passing proof, holds the row at
-//! UNVERIFIED. Unjudged results change nothing.
+//! UNVERIFIED. Unjudged results count as inconclusive while `STRICT` is on (AX-44).
 
 use serde_json::Value;
 
+use crate::proof::gate::STRICT;
 use crate::proof::{EvVerdict, Evidence};
 use crate::uat::evidence::{ClauseResult, Verdict};
 use crate::uat::grade::{mark_unverified, Grade};
@@ -31,6 +32,7 @@ pub(super) fn of_outcome(tool: &str, json: &Value) -> ActionVerdict {
         EvVerdict::Inconclusive => {
             ActionVerdict::Inconclusive(format!("{tool}: inconclusive ({})", ev.why.as_str()))
         }
+        EvVerdict::Unjudged if STRICT => ActionVerdict::Inconclusive(format!("{tool}: unjudged")),
         EvVerdict::Confirmed | EvVerdict::Unjudged => ActionVerdict::Proceed,
     }
 }

@@ -96,10 +96,14 @@ async fn an_inconclusive_step_with_a_passing_required_clause_keeps_pass() {
 }
 
 #[tokio::test]
-async fn an_unjudged_step_changes_nothing() {
-    let r = run(evidence("unjudged", "not_yet_judged"), &row(true, false)).await;
-    assert_eq!(r.result, RowResult::Pass, "{:?}", r.reasons);
-    assert!(!flagged(&r), "{:?}", r.flags);
+async fn an_unjudged_step_is_inconclusive_when_strict() {
+    let r = run(evidence("unjudged", "not_yet_judged"), &row(false, false)).await;
+    assert_eq!(r.result, RowResult::Unverified, "{:?}", r.reasons);
+    assert!(
+        r.flags.contains(&format!("inconclusive: {TOOL}: unjudged")),
+        "{:?}",
+        r.flags
+    );
 }
 
 #[tokio::test]

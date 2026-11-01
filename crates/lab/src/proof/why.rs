@@ -29,6 +29,7 @@ pub enum Why {
 
 impl Why {
     /// Every code, in contract table order.
+    #[cfg(test)]
     pub const ALL: [Why; 18] = [
         Why::Confirmed,
         Why::NotDelivered,

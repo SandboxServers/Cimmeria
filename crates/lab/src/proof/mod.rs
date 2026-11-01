@@ -1,8 +1,6 @@
 //! Evidence for judged tool results (contract C1): each result carries one
 //! `evidence` object with a verdict, the C2 reason and the checks behind it.
 
-#![cfg_attr(not(test), allow(dead_code))] // Callers land in AX-11..AX-44; AX-44 removes this.
-
 pub mod claims;
 pub mod corroborate;
 pub mod fresh;

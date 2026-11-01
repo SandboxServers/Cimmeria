@@ -34,6 +34,7 @@ pub(crate) mod compact;
 mod composite;
 mod cooldown;
 mod evidence_gate;
+mod flow_proof;
 mod flows;
 mod golden;
 mod handler;
