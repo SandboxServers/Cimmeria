@@ -1,13 +1,14 @@
 """Tests for the live guard probe in tools/agent-skills/live_guard_probe.py, offline.
 
-The live legs run against tools/agent-skills/fake_claude.py, never against a real session. The
-live tests use this worktree itself, so they save and restore crates/README.md and delete the
-report they write.
+The live legs run against tools/agent-skills/fake_claude.py, never against a real session. Each
+live test adds its own throwaway linked worktree of this repo, so the real checkout keeps its
+crates/README.md and its reports folder untouched.
 """
 
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,8 +21,6 @@ AGENT_SKILLS = Path(__file__).resolve().parent
 SCRIPT = AGENT_SKILLS / "live_guard_probe.py"
 FAKE = AGENT_SKILLS / "fake_claude.py"
 REPO = AGENT_SKILLS.parents[1]
-README = REPO / "crates" / "README.md"
-REPORT = REPO / ".claude" / "reports" / "harness-tuning" / f"live-guard-{date.today().isoformat()}.json"
 DEFAULT_LEGS = ["orchestrator-edit", "hands-on-cargo", "subagent-stop"]
 
 
@@ -42,11 +41,24 @@ def clean_env(**extra: str) -> dict:
     return env
 
 
+def add_worktree(test: unittest.TestCase) -> Path:
+    """Add a throwaway linked worktree of REPO for one test and remove it again at cleanup."""
+    tmp = Path(tempfile.mkdtemp()) / "wt"
+    subprocess.run(["git", "-C", str(REPO), "worktree", "add", "--detach", "--no-checkout", str(tmp)],
+                   check=True, capture_output=True)
+    (tmp / "crates").mkdir()
+    (tmp / "crates" / "README.md").write_bytes(b"# crates\n")
+    test.addCleanup(shutil.rmtree, tmp.parent, True)
+    test.addCleanup(lambda: subprocess.run(["git", "-C", str(REPO), "worktree", "remove", "--force", str(tmp)],
+                                           check=False, capture_output=True))
+    return tmp
+
+
 class DryRunTest(unittest.TestCase):
     def test_dry_run_prints_default_legs_and_starts_nothing(self):
         raiser = Path(tempfile.mkdtemp()) / "must_not_run.py"
         raiser.write_text("raise SystemExit('claude must not run')\n", encoding="utf-8")
-        done = run_probe("--worktree", str(REPO), "--claude", str(raiser), "--codex")
+        done = run_probe("--worktree", str(add_worktree(self)), "--claude", str(raiser), "--codex")
         self.assertEqual(done.returncode, 0, done.stderr)
         for leg in [*DEFAULT_LEGS, "codex"]:
             self.assertIn(f"{leg}:", done.stdout)
@@ -73,20 +85,20 @@ class RefusalTest(unittest.TestCase):
 
 class LiveTest(unittest.TestCase):
     def setUp(self):
-        self.readme_bytes = README.read_bytes()
+        self.wt = add_worktree(self)
+        self.report = self.wt / ".claude" / "reports" / "harness-tuning" / f"live-guard-{date.today().isoformat()}.json"
+        self.readme = self.wt / "crates" / "README.md"
         self.projects = tempfile.TemporaryDirectory()
         self.env = clean_env(LIVE_GUARD_PROJECTS_ROOT=self.projects.name)
 
     def tearDown(self):
-        README.write_bytes(self.readme_bytes)
-        REPORT.unlink(missing_ok=True)
         self.projects.cleanup()
 
     def live(self, legs: str = ",".join(DEFAULT_LEGS), **extra: str) -> tuple[subprocess.CompletedProcess, dict]:
         """Run the probe live against the fake and return the run and the JSON report."""
         env = dict(self.env, **extra)
-        done = run_probe("--worktree", str(REPO), "--claude", str(FAKE), "--legs", legs, "--live", env=env)
-        report = json.loads(REPORT.read_text(encoding="utf-8")) if REPORT.exists() else {}
+        done = run_probe("--worktree", str(self.wt), "--claude", str(FAKE), "--legs", legs, "--live", env=env)
+        report = json.loads(self.report.read_text(encoding="utf-8")) if self.report.exists() else {}
         return done, report
 
     def test_fake_passes_all_three_legs_and_writes_the_report(self):
@@ -100,7 +112,7 @@ class LiveTest(unittest.TestCase):
             self.assertEqual(set(result), {"ran", "pass", "evidence"})
             self.assertTrue(result["ran"])
             self.assertTrue(result["pass"], result)
-            self.assertNotIn(str(REPO), result["evidence"])
+            self.assertNotIn(str(self.wt), result["evidence"])
             self.assertNotIn("\\", result["evidence"])
 
     def test_a_fake_without_the_marker_fails_that_leg_with_exit_zero(self):
@@ -119,7 +131,7 @@ class LiveTest(unittest.TestCase):
     def test_child_env_lacks_the_claude_code_session_keys(self):
         echo = Path(self.projects.name, "env-keys.json")
         env = dict(self.env, CLAUDECODE="1", CLAUDE_CODE_ENTRYPOINT="cli", FAKE_CLAUDE_ECHO_ENV=str(echo))
-        done = run_probe("--worktree", str(REPO), "--claude", str(FAKE), "--legs", "orchestrator-edit",
+        done = run_probe("--worktree", str(self.wt), "--claude", str(FAKE), "--legs", "orchestrator-edit",
                          "--live", env=env)
         self.assertEqual(done.returncode, 0, done.stderr)
         keys = json.loads(echo.read_text(encoding="utf-8"))
