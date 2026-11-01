@@ -12,11 +12,11 @@ use serde_json::{json, Value};
 
 use super::coast::CoastModel;
 use super::find::ServerEntity;
-use super::trace_io;
 use super::geometry::{Pose, Screen, Vec3};
 use super::ignored_input;
 use super::lua::{self, UnitInfo, UnitSlots};
 use super::memory::{self, PlayerCamera, WorldSnapshot};
+use super::trace_io;
 use super::NativeLevel;
 use crate::supervisor::cegui_native::{float_word, thiscall_params};
 use crate::supervisor::entity_table::{decode_hex, Memory, DEFAULT_MAX_NODES};
@@ -142,7 +142,12 @@ pub trait WorldIo {
     /// Keep the walker's coast model for the next walk.
     fn store_coast_model(&mut self, _m: CoastModel) {}
     /// Trace a line through the client's collision check (C14). `Ok(None)`: nothing hit.
-    async fn trace_line(&mut self, _start: Vec3, _end: Vec3, _flags: u32) -> Result<Option<TraceHit>, String> {
+    async fn trace_line(
+        &mut self,
+        _start: Vec3,
+        _end: Vec3,
+        _flags: u32,
+    ) -> Result<Option<TraceHit>, String> {
         Err("trace_line unsupported".into())
     }
 }
@@ -652,7 +657,12 @@ impl WorldIo for LiveWorld<'_> {
         *self.sup.coast.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    async fn trace_line(&mut self, start: Vec3, end: Vec3, flags: u32) -> Result<Option<TraceHit>, String> {
+    async fn trace_line(
+        &mut self,
+        start: Vec3,
+        end: Vec3,
+        flags: u32,
+    ) -> Result<Option<TraceHit>, String> {
         trace_io::live_trace(self.sup, start, end, flags).await
     }
 

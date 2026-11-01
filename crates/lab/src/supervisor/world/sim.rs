@@ -446,7 +446,12 @@ impl WorldIo for Sim {
         self.coast_model = Some(m);
     }
 
-    async fn trace_line(&mut self, start: Vec3, end: Vec3, _flags: u32) -> Result<Option<TraceHit>, String> {
+    async fn trace_line(
+        &mut self,
+        start: Vec3,
+        end: Vec3,
+        _flags: u32,
+    ) -> Result<Option<TraceHit>, String> {
         self.trace(start, end)
     }
 

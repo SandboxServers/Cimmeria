@@ -14,8 +14,8 @@ use super::coast::CoastGlue;
 use super::find::{find_entities, FindRequest};
 use super::geometry::{horizontal_m, Pose, Vec3};
 use super::io::WorldIo;
-use super::move_probe::input_probe;
 use super::ledge::{self, Guard};
+use super::move_probe::input_probe;
 use super::move_proof::{arrival_checks, server_end_json, stop_report, tried_list};
 use super::steer::{MoveConfig, MoveController, MoveOutcome, TurnKey, TurnRate};
 use super::turn_state::{apply_turn, TurnKeys};
@@ -303,7 +303,11 @@ async fn walk<W: WorldIo>(
     let mut leg_reports = Vec::new();
     let mut prev = start;
     let mut forward = false;
-    let mut guard = if req.allow_drops == Some(true) { Guard::Off } else { Guard::On { last_ms: None } };
+    let mut guard = if req.allow_drops == Some(true) {
+        Guard::Off
+    } else {
+        Guard::On { last_ms: None }
+    };
     ledge::self_check(&mut guard, io, start).await;
     let mut leg_in_range: Vec<bool> = Vec::new();
     let mut probed = false;
@@ -429,8 +433,22 @@ async fn walk<W: WorldIo>(
             if forward && ledge::check(&mut guard, io, now, pose).await {
                 release(io, turn_keys).await;
                 let state = json!({ "at": pose.to_json(), "goal": goal.describe(), "ledge_guard": guard.label(), "path": path, "hint": FAIL_HINT });
-                let stop = stop_of(StopKind::Ledge, i, io.now_ms().saturating_sub(t_start), &unsticks, probed, start, pose);
-                return Err(steps.fail_with_stop(io.now_ms(), &format!("leg_{i}"), "ledge ahead: no floor within 2 m".to_string(), state, stop));
+                let stop = stop_of(
+                    StopKind::Ledge,
+                    i,
+                    io.now_ms().saturating_sub(t_start),
+                    &unsticks,
+                    probed,
+                    start,
+                    pose,
+                );
+                return Err(steps.fail_with_stop(
+                    io.now_ms(),
+                    &format!("leg_{i}"),
+                    "ledge ahead: no floor within 2 m".to_string(),
+                    state,
+                    stop,
+                ));
             }
             if s.forward != forward {
                 io.key(FORWARD_KEY, s.forward)
