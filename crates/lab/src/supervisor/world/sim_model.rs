@@ -79,6 +79,9 @@ impl Sim {
             server_pos_end: None,
             server_pos_reads: 0,
             frames: None,
+            floor_end_x: None,
+            trace_error: None,
+            trace_calls: 0,
         }
     }
 

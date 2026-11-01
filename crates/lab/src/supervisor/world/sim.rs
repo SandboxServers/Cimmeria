@@ -14,7 +14,7 @@ use super::camera::WHEEL_NOTCH;
 use super::coast::CoastModel;
 use super::find::ServerEntity;
 use super::geometry::{distance_m, wrap_pi, Pose, Screen, Vec3};
-use super::io::{Projected, WorldIo};
+use super::io::{Projected, TraceHit, WorldIo};
 use super::lua::{UnitInfo, UnitSlots};
 use super::memory::{
     clamped_pitch_counts, WorldEntity, WorldSnapshot, CAMERA_DIST_MAX, CAMERA_DIST_MIN,
@@ -171,10 +171,18 @@ pub struct Sim {
     /// The bridge frame counter; `None` models a client without frames.
     /// `sleep` advances it by `max(1, ms / 16)`.
     pub frames: Option<u64>,
+    /// The floor ends at this x: a trace starting past it finds nothing (C14).
+    pub floor_end_x: Option<f64>,
+    /// Makes `trace_line` fail with this error.
+    pub trace_error: Option<String>,
+    /// How many `trace_line` calls the walk made.
+    pub trace_calls: u32,
 }
 
 #[path = "sim_model.rs"]
 mod model;
+#[path = "sim_trace.rs"]
+mod trace;
 
 impl WorldIo for Sim {
     fn now_ms(&self) -> u64 {
@@ -436,6 +444,10 @@ impl WorldIo for Sim {
 
     fn store_coast_model(&mut self, m: CoastModel) {
         self.coast_model = Some(m);
+    }
+
+    async fn trace_line(&mut self, start: Vec3, end: Vec3, _flags: u32) -> Result<Option<TraceHit>, String> {
+        self.trace(start, end)
     }
 
     async fn key(&mut self, key: &str, down: bool) -> Result<(), String> {
