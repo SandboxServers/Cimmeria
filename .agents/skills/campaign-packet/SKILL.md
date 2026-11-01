@@ -1,6 +1,6 @@
 ---
 name: campaign-packet
-description: Run a multi-PR effort as a coordinated campaign - the orchestrator dispatches an architect for the ledger and packets, ops for worktrees and shipping, one packet-coder per packet, and read-only packet-reviewer loops per packet, wave and campaign whose fix notes go to a fresh packet-coder, with report files and one-line returns. Use when the user says "design this as a campaign", "split this into packets", "dispatch workers", "resume the <name> campaign", or when a change is too big for one PR. Also use when writing or reviewing a work-packets.md, RESUME.md, worknote or ledger.
+description: Run a multi-PR effort as a coordinated campaign - the orchestrator dispatches an architect for the ledger and packets, ops for worktrees and shipping, one packet-coder per packet, and read-only packet-reviewer loops per packet, wave and campaign whose fix notes go to a fresh packet-coder, with one-line returns (every worker except a packet-coder also writes a report file). Use when the user says "design this as a campaign", "split this into packets", "dispatch workers", "resume the <name> campaign", or when a change is too big for one PR. Also use when writing or reviewing a work-packets.md, RESUME.md, worknote or ledger.
 ---
 <!-- Generated from .claude/skills/campaign-packet/ by tools/agent-skills/sync.py. Edit the source, then rerun the script. -->
 

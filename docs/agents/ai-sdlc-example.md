@@ -47,7 +47,7 @@ The coder is a Haiku `packet-coder` (ledger D-AH2) in its own worktree. See [Age
 
 ## 3. The return line
 
-A packet-coder writes no report and returns one line: `<packet> <done|blocked|failed> <commit-sha|-> -`, with optional `reason=`, `at=` and `not_run=` suffixes ([Reports and one-line returns](ai-sdlc.md#reports-and-one-line-returns)). AH-11m ran before that contract, so the real line carried a report path. Under it, the line has this shape:
+A packet-coder writes no report and returns one line: `<packet> <done|blocked|failed> <commit-sha|-> -`, with optional `reason=`, `at=` and `not_run=` suffixes ([Reports and one-line returns](ai-sdlc.md#reports-and-one-line-returns)). AH-11m ran before that contract, so its line would have ended in a report path where this one has `-`. Under the contract, the line has this shape:
 
 ```text
 AH-11m done f87b140144dfcf3618b6826ef9193175f2f1179f -
