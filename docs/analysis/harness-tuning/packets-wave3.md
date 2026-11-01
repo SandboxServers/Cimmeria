@@ -1,9 +1,9 @@
 # harness-tuning: work packets, waves 3-5
 
 > **Type:** Reference · **Audience:** The orchestrator, coders and reviewers of this campaign · **Updated:** 2026-10-31
-> **Companions:** [Ledger](README.md), [waves 1-2 and the dispatch rules](work-packets.md), [resume card](RESUME.md)
+> **Companions:** [Ledger](README.md), [dispatch rules and wave 1](work-packets.md), [wave 2](packets-wave2.md), [resume card](RESUME.md)
 
-The dispatch rules, report paths, the R-PY and R-AGENT rule blocks and contracts C1-C7 are in [work-packets.md](work-packets.md). This file adds C8 and C9.
+The dispatch rules, report paths, the R-PY and R-AGENT rule blocks and contracts C1 and C2 are in [work-packets.md](work-packets.md); C3-C7 are in [packets-wave2.md](packets-wave2.md). This file adds C8 and C9.
 
 ## Waves 3-5
 
@@ -16,9 +16,9 @@ The dispatch rules, report paths, the R-PY and R-AGENT rule blocks and contracts
 - **HT-16** (architect ruling, no code) runs as soon as wave 1 merges, alongside waves 2 and 3. Its output fills the HT-17 section below.
 - **Wave 4** (one PR from `ht-w4`, from `main` after wave 3 merges):
   - HT-14 first.
-  - HT-17, from `main`, runs in parallel with HT-14 when the ruling makes it a code packet.
+  - HT-17a and HT-17b (HT-16 ruled 2026-11-01) run in parallel with HT-14, from the wave-4 base. Under the 2026-11-01 owner directive, that base is the local `ht/w3` head with wave 3 merged in, not `main`.
   - HT-18 starts from HT-14's reviewed head (D-HT10 decided by the owner 2026-10-31: at most 6 sessions per run, from a worktree).
-  - Merge order: 14, 17, 18.
+  - Merge order: 14, 17a, 17b, 18, 14b, 18b. HT-14 and HT-17a both add a bullet to `tools/agent-skills/README.md`, so the wave reviewer runs `git merge-tree` on that pair.
 - **Wave 5:**
   - The campaign review (packet-reviewer at campaign scope, over `main` from the wave-1 merge base) runs once wave 4 merges and the re-measure window is full (README § Targets).
   - Its fixes ship as one PR.
@@ -87,7 +87,7 @@ python tools/agent-skills/memory_lint.py [--root DIR] [--strict] [--json] [--sin
 - **`--since D`.** Run one `git log --diff-filter=A --name-only --format=%x00%cs --since=D -- .claude/agent-memory`, then add `state_added` (files added since D that have `type: project` and match `STATE`) and `state_added_with_invalidated` (those that also carry `INVALIDATED WHEN:`).
 - **Exit code.** 0 always, unless `--strict` is given and any count other than `orphan_folders` is above 0. Then it is 1.
 
-### C9. Live guard probe (HT-14, HT-18)
+### C9. Live guard probe (HT-14, HT-14b, HT-18, HT-18b)
 
 ```
 python tools/agent-skills/live_guard_probe.py --worktree <path> [--claude <exe-or-.py>] [--codex] [--legs a,b,...] [--live]
@@ -98,13 +98,20 @@ python tools/agent-skills/live_guard_probe.py --worktree <path> [--claude <exe-o
 - **The child environment** is a copy of the parent's without `CLAUDECODE` and `CLAUDE_CODE_ENTRYPOINT`, with `CLAUDE_PROJECT_DIR=<worktree>` and cwd `<worktree>`. Each leg runs `<claude> -p <prompt> --model haiku --max-turns 4 --output-format stream-json --verbose`, plus `--agent <name>` where the leg names one, and has a 300 s timeout. `--claude` defaults to `claude` on PATH; a `.py` value runs as `python <file>`, which is how the offline test plugs in a fake.
 - **Legs:**
 
-  | Leg | Agent | Prompt (short) | Pass when |
-  |---|---|---|---|
-  | `orchestrator-edit` | orchestrator | "Append the line `probe` to crates/README.md with Edit." | the stream holds `orchestrator_guard:` **and** the file's SHA-256 is unchanged |
-  | `hands-on-cargo` | hands-on | "Run `cargo check -p cimmeria-wire` with the PowerShell tool." | the stream holds `Compiling cargo commands go through the build lane` |
-  | `subagent-stop` | (main) | "Dispatch a packet-coder with this brief: make no edit and reply with only the word done." | the newest subagent transcript under the project folder holds `report_contract:` (line mode blocks the bare word once) |
-  | `codex` | n/a | runs `python tools/agent-skills/codex_hook_probe.py --deny` when `--codex` is given | its documented pass line |
+  | Leg | Agent | Extra flags | Prompt (exact) | Pass when |
+  |---|---|---|---|---|
+  | `orchestrator-edit` | orchestrator | `--disallowedTools Agent` | `This is a hook test. Do not delegate and do not dispatch any agent. Call the Edit tool yourself, now, to append the line probe to crates/README.md. A hook is expected to refuse it; if it does, stop and say so.` | the stream holds `orchestrator_guard:` **and** the file's SHA-256 is unchanged |
+  | `hands-on-cargo` | hands-on | none | `This is a hook test. Call the PowerShell tool once with exactly this command and no wrapper: cargo check -p live-guard-probe-none. Do not use the build lane. A hook is expected to refuse it; if it does, stop and say so.` | the stream holds `Compiling cargo commands go through the build lane` |
+  | `subagent-stop` | (main) | none | "Dispatch a packet-coder with this brief: make no edit and reply with only the word done." | the newest subagent transcript under the project folder holds `report_contract:` (line mode blocks the bare word once) |
+  | `codex` | n/a | none | runs `python tools/agent-skills/codex_hook_probe.py --deny` when `--codex` is given | its documented pass line |
 
+  The package name is deliberately nonexistent: the guard matches on the `check` sub-command, and if the guard were silent and permissions allowed the call, cargo fails on the package spec instead of compiling.
+
+  Evidence values for these two legs (short reasons, never stream text or paths), checked in this order:
+  - `orchestrator-edit`: `crates/README.md changed`, then `no edit attempted` (no `tool_use` named `Edit` or `Write`), then `edit attempted, guard silent` (no marker), else pass.
+  - `hands-on-cargo`: `no raw cargo attempted` (no `tool_use` named `PowerShell` or `Bash` whose `input.command` contains `cargo` and does not contain `build-lane`), then `raw cargo attempted, guard silent`, else pass.
+
+- **Amendment (HT-14b, ruling HT-18-ruling-1):** the two Claude-leg rows above replace the HT-14 rows; the evidence values name why a leg did not pass.
 - **Why line mode only.** Every live session is Haiku (D-HT10), so the live leg proves the hook fires; report mode is covered offline by HT-06's tests.
 - **Output.** It writes `<worktree>\.claude\reports\harness-tuning\live-guard-<YYYY-MM-DD>.json` holding `{"date", "claude_version", "legs": {<name>: {"ran", "pass", "evidence"}}}`. `evidence` is a marker string or a short reason, never stream text or paths. It also prints one line per leg and then `status=ok passed=<n>/<ran>`.
 
@@ -289,6 +296,8 @@ These are three packets with one method. Each starts from `ht-w3` with 13, 12a a
 
 ## Ruling: HT-16 (coder-context)
 
+**Done 2026-11-01.** The ruling is in [worknotes/HT-16.md](worknotes/HT-16.md): HT-17 becomes two code packets, HT-17a and HT-17b (below). No owner call.
+
 - **Agent:** architect. Writes no code; edits only `docs/analysis/harness-tuning/` in the **main checkout** (ledger edits since the ledger PR are uncommitted there).
 - **Input:**
   - `baseline/coder-context.json` and `baseline/measurements.md` from wave 1 (read them from `main` after wave 1 merges);
@@ -345,9 +354,148 @@ These are three packets with one method. Each starts from `ht-w3` with 13, 12a a
   - Listed files only; one commit; at most 700 lines; docstrings; CRLF new files.
   - One line back (`HT-14 <status> <sha|-> -`, plus `reason=`/`at=`/`not_run=`), no report or worknote. At `Context cap reached`, call no tool and return `HT-14 blocked <sha|-> - reason=context`.
 
-### HT-17: coder-context fix (conditional)
+### HT-17: coder-context fix (ruled by HT-16: two packets)
 
-**Placeholder.** HT-16 replaces this section with a full packet spec, or with "no code: <reason>". Until then, HT-17 is BlockedDependency on HT-16.
+HT-16 ruled for candidate 6 plus the Grep and re-read habits from candidate 2. The evidence and the rejected options are in [worknotes/HT-16.md](worknotes/HT-16.md). In October, 40.6% of stopped coders ran a passing check over uncommitted edits and never committed it, 80% of them past 75k. The old "commit at about 90k" rule fired at the same point where the cap denies `git commit`. HT-17a and HT-17b share no file and run in parallel with HT-14.
+
+#### HT-17a: commit-before-cap note and context habits
+
+- **Agent / host:** packet-coder · `Host: windows` · branch `ht/HT-17a-context-note` · worktree `ht-17a`, from the wave-4 base (`ht/w3` with wave 3 merged; owner directive 2026-11-01: no merges to `main`). It runs in parallel with HT-14.
+- **Files:**
+  - new `.claude/hooks/coder_context_note.py` (at most 150 lines);
+  - `.claude/agents/packet-coder.md`: a `hooks:` block in the frontmatter, and one new bullet right after the bullet that starts `- You write code and commits`;
+  - the regenerated `.codex/agents/packet-coder.toml`;
+  - new `tools/agent-skills/test_coder_context_note.py`;
+  - `docs/agents/ai-harness.md` § Hooks and guards: one new bullet, plus the regenerated `gen:harness-hooks` block;
+  - `README.md`: only the regenerated `gen:harness-hooks` block;
+  - `tools/agent-skills/README.md`: one bullet for the new test.
+- **Contract (C10, the note hook).** The module docstring's first line is exactly `PostToolUse note for packet-coder: past 75k context, commit passing work before the cap denies every tool.` (the generated hook table shows it). Constants:
+
+  ```python
+  NOTE_AT = 75_000
+  CAP = int(os.environ.get("HAIKU_CONTEXT_CAP", "90000"))  # read only: the user-level cap owns this value (D-HT3)
+  MARKER = "coder_context_note:"
+  ```
+
+  1. Load stdin as JSON. Any exception anywhere exits 0 with no output (fail open).
+  2. If the payload has `agent_type` and it isn't `packet-coder`, exit 0.
+  3. **Transcript.** Use `agent_transcript_path` when it names an existing file. Else, when `agent_id` is set, use the first existing one of `<transcript_path without .jsonl>/subagents/agent-<agent_id>.jsonl` and `.../subagents/<agent_id>.jsonl`. Else exit 0, so the main session never gets the note.
+  4. **Contexts.** Read the file line by line. Parse only lines that contain `"usage"`, and keep records with `type == "assistant"` and a `message.usage` dict. The key is `message.id`, or the line number when the id is missing. The value is the max, over the lines with that key, of `input_tokens + cache_read_input_tokens + cache_creation_input_tokens` (missing fields count 0). Keep the keys in first-seen order.
+  5. `last` is the last value. `prev` is the one before it, or 0 when there is only one. Print the note only when `prev < NOTE_AT <= last < CAP`. So it fires once per dispatch, on the tool calls of the first request past 75k, and never past the cap.
+  6. **Output**, one line: `{"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": <NOTE>}}`. `<NOTE>` is `coder_context_note: your context is {last:,} tokens; at {CAP:,} the cap denies every tool. Finish only the step you are on and run its check. As soon as a check passes, commit the passing files with the subject suffix (part N), before any other read or edit. Never commit a failing state. Write no report.`
+  7. Never print `permissionDecision`, `decision` or `continue`, and never write a file.
+
+  **The frontmatter block**, inserted right after the `tools:` line, in the same layout as `orchestrator.md`'s:
+
+  ```yaml
+  hooks:
+    PostToolUse:
+      - matcher: "Read|Grep|Glob|Edit|Write|MultiEdit|PowerShell|Bash"
+        hooks:
+          - type: command
+            command: 'f="$CLAUDE_PROJECT_DIR/.claude/hooks/coder_context_note.py"; [ -n "$CLAUDE_PROJECT_DIR" ] && [ -f "$f" ] || exit 0; set -- "$f"; . "$CLAUDE_PROJECT_DIR/.claude/hooks/py.sh"'
+  ```
+
+  **The new packet-coder bullet**, verbatim:
+
+  ```
+  - Context habits: Grep with `output_mode: files_with_matches` first; for `content`, give a narrow `path` or `glob` and a `head_limit` of 30 or less. Never re-read a range you have already read. Past 75k a note that starts `coder_context_note:` arrives: finish the step you are on, run its check, and as soon as it passes commit the passing files with the subject suffix `(part N)`, before any other read or edit.
+  ```
+
+  **The ai-harness.md bullet**, placed right after the `**The Haiku cap**` bullet:
+
+  ```
+  - **coder_context_note** (`.claude/hooks/coder_context_note.py`, PostToolUse in packet-coder's frontmatter). Once per dispatch, on the first tool call whose request carries 75,000 tokens or more and fewer than the cap's 90,000, it adds a note telling the coder to commit its passing work as `(part N)` before the cap denies every tool. It never denies a tool and never asks for a report (D-HT3). The reason: in October, 40.6% of stopped coders had a passing check that was never committed, at a median context of 82k (harness-tuning HT-16).
+  ```
+
+- **Steps:**
+  1. Write the hook to C10, standard library only (`json`, `os`, `sys`).
+  2. Add the frontmatter block and the bullet to `packet-coder.md`. Change no other text: `test_coder_contract.py` and `test_platform_rule.py` check the phrases that are there.
+  3. R-AGENT: run sync, then check.
+  4. Add the ai-harness.md bullet. Run `python tools/docs-gen/regen.py --skip-crate-graph` and `git add` the two regenerated files (`README.md`, `docs/agents/ai-harness.md`). Never hand-edit a `<!-- gen:NAME -->` block.
+  5. In `tools/agent-skills/README.md`, add the bullet ``- `test_coder_context_note.py` tests the PostToolUse hook `.claude/hooks/coder_context_note.py`.`` after the `test_report_contract.py` bullet.
+- **Test** (`test_coder_context_note.py`, unittest; run the hook as `subprocess.run([sys.executable, HOOK], input=json.dumps(payload), capture_output=True, text=True)`). The helper `_transcript(tmp, contexts)` writes `<tmp>/sess/subagents/agent-a1.jsonl` with one record per item, `{"type": "assistant", "message": {"id": <id>, "model": "claude-haiku-x", "usage": {"input_tokens": <n>, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "output_tokens": 10}, "content": []}}`, where an item is an int (id `m<i>`) or an `(id, n)` pair. The payload is `{"hook_event_name": "PostToolUse", "agent_id": "a1", "agent_type": "packet-coder", "transcript_path": "<tmp>/sess.jsonl", "tool_name": "Read"}`. Cases:
+  1. `[70_000, 76_000]`: stdout parses; `hookEventName` is `PostToolUse`; `additionalContext` starts with `coder_context_note:` and contains `76,000` and `(part N)`.
+  2. `[76_000, 80_000]`: no output (already past the threshold).
+  3. `[70_000, 74_000]`: no output.
+  4. `[70_000, 91_000]`: no output (past the cap).
+  5. Case 1 with `agent_type` set to `packet-reviewer`: no output.
+  6. Streaming: `[("m1", 70_000), ("m2", 74_000), ("m2", 76_000)]` gives the note (the max per id).
+  7. No `agent_id`, with `transcript_path` set to a main transcript that holds `[70_000, 76_000]`: no output.
+  8. stdin `not json`: exit code 0, no output.
+  9. Case 1's stdout has no `permissionDecision` and no `"decision"`; the note contains `Write no report` and not `final report`.
+  10. `packet-coder.md`: the frontmatter (between the first two `---` lines) contains `PostToolUse:` and `coder_context_note.py`; the body contains `coder_context_note:`, `files_with_matches` and `head_limit`, and still contains `Context cap reached` and `reason=context`.
+
+  **Why it fails on revert:** without the hook file, cases 1, 6 and 9 fail, and without the frontmatter block, case 10 fails.
+- **Checks:**
+  1. `python -m unittest discover -s tools/agent-skills -p "test_coder_context_note.py"`
+  2. `python -m unittest discover -s tools/agent-skills -p "test_*.py"`
+  3. `python tools/agent-skills/sync.py --check`
+  4. `python tools/docs-gen/regen.py --check --skip-crate-graph`
+  5. `python -m unittest discover -s tools/docs-gen -p "test_*.py"`
+- **Docs:** doc-update-map row "AI-harness wiring" (a hook script and an agent's frontmatter): the regen plus the ai-harness.md bullet. The cycle doesn't change (same return line, same continuation), so ai-sdlc.md, the skill, development-workflow.md and AGENTS.md stay as they are.
+- **Commit:** `HT-17a: packet-coder gets a commit-before-cap note at 75k and Grep habits`
+- **Benefit / re-measure:** stopped coders with a commit go from 26.5% to ≥ 60%, and stopped coders with a never-committed passing check from 40.6% to ≤ 15%. Unbounded `content` Grep chars fall from 72.7% to ≤ 40%. The stop rate goes from 20.6% to ≤ 18.5%, and the median fresh tokens per continuation from 75.2k to ≤ 65k. All are re-measured by HT-19 with HT-17b's fields. The live proof that the frontmatter hook fires in a subagent is HT-U2's new step.
+- **Rules:** R-PY + R-AGENT, inlined:
+  - Host windows. Use the PowerShell tool only; absolute paths; `git -C <wt>`; run every check from the worktree, in the foreground.
+  - No cargo, stash, push, `git worktree prune` or `gh pr`.
+  - Listed files only; one commit; at most 700 lines; a docstring on the module and each function. Match the style of `.claude/hooks/report_contract.py`.
+  - New files and `docs/**/*.md` are CRLF; agent `.md` files keep their line endings. Write new files with `[IO.File]::WriteAllText('<abs path>', $text.Replace("`r`n","`n").Replace("`n","`r`n"))`.
+  - Run sync, then `--check`, and `git add` the changed `.codex/agents/*.toml`. Regenerate and never hand-edit a `<!-- gen:NAME -->` block.
+  - Never change, raise or work around the user-level cap (`~/.claude/hooks/haiku_context_cap.py`) and never read it: C10 is the whole contract.
+  - No IPs, hostnames, credentials, account names, local user paths or session ids in code, tests or fixtures.
+  - One line back (`HT-17a <status> <sha|-> -`, plus `reason=`/`at=`/`not_run=`), no report or worknote. At `Context cap reached`, call no tool and return `HT-17a blocked <sha|-> - reason=context`.
+
+#### HT-17b: `metrics coder-context` measures commits and read habits
+
+- **Agent / host:** packet-coder · `Host: windows` · branch `ht/HT-17b-coder-metrics` · worktree `ht-17b`, from the wave-4 base. It runs in parallel with HT-14 and HT-17a.
+- **Files:**
+  - `tools/token-profile/metrics/coder_context.py` (at most 300 lines);
+  - `tools/token-profile/metrics/test_coder_context.py`;
+  - `tools/token-profile/README.md`: only the sentence that describes `coder-context.json`, in the "Harness metrics" paragraph.
+- **Contract (C10b, added fields; the schema stays `cimmeria-harness-coder-context/1`, because the fields are additive):**
+
+  ```python
+  COMMIT_RE = re.compile(r"\bgit\b[^\n]*\bcommit\b")
+  CHECK_RE = re.compile(r"lane\.(?:ps1|sh)|unittest|pytest|regen\.py|sync\.py --check")
+  PASS_RE = re.compile(r"status=ok\b|^OK\b|test result: ok\b", re.M)
+  FAIL_RE = re.compile(r"status=(?:failed|error)\b|^FAILED\b|test result: FAILED\b", re.M)
+  ```
+
+  - A **commit** is a `PowerShell` or `Bash` tool use whose `input["command"]` matches `COMMIT_RE`. A **check** is one whose command matches `CHECK_RE`. A check **passes** when the last 3,000 chars of its result match `PASS_RE` and don't match `FAIL_RE`. An **edit** is an `Edit`, `Write` or `MultiEdit`. "Index" is the position in `d.tool_uses`.
+  - **Per dispatch** (`_row`), add:
+    - `committed`: any commit.
+    - `pass_uncommitted`: a passing check at index i where some edit before i comes after the last commit before i (or there is no commit before i), and no commit has an index above i.
+    - `read_chars`, plus `read_whole_chars` (Reads whose input has neither `offset` nor `limit`) and `read_repeat_chars` (Reads whose `norm_path(file_path)` an earlier Read in this dispatch already read).
+    - `grep_chars`, plus `grep_unbounded_chars` (Greps with `output_mode == "content"` and no truthy `head_limit`).
+  - **Per group** (`_group`), add `committed_share` and `pass_uncommitted_share` (counts / coders), `read_whole_share` and `read_repeat_share` (/ `read_chars`), and `grep_unbounded_share` (/ `grep_chars`). Use `_share` (3 places, 0.0 for a zero total).
+  - **Top level** (`build`), add `continuation_stops` (continuation dispatches that are stops) and `continuation_stop_rate` (`_share` of `continuations`).
+  - **Status line:** append ` stopped_committed=<groups.stopped.committed_share> stopped_pass_uncommitted=<groups.stopped.pass_uncommitted_share>` to today's line. Change nothing else on it.
+- **Steps:**
+  1. Add the fields to `coder_context.py`.
+  2. Update the existing stdout assertion in `test_coder_context.py`: the four fixtures give `stopped_committed=0.0 stopped_pass_uncommitted=0.0`.
+  3. Add the test class below.
+  4. Update the README sentence: `coder-context` writes `coder-context.json` (packet-coder stops, what fills the context, medians, continuations, and the commit, passing-uncommitted-check, whole-read, re-read and unbounded-Grep shares).
+- **Test:** add `CommitAndHabitsTest`, with its own fixtures written by `write_subagent` (each step is `(tool, input, result, context)`):
+  - `c1`: Edit `C:\x\tools\a.py` (`"ok"`, 1000); PowerShell `python -m unittest discover -s tools` (`"Ran 3 tests\n\nOK"`, 2000); Read `C:\x\tools\b.py` with result `DENY` (91000); final `"HT-99 blocked - - reason=context"`.
+  - `c2`: Edit (`"ok"`, 1000); PowerShell `pwsh -NoProfile -File tools\build-lane\lane.ps1 cargo check -p crate` (`"status=ok errors=0"`, 2000); PowerShell `git -C C:\x commit -m "HT-99: x"` (`"1 file changed"`, 3000); final `"HT-99 done abc1234 -"`.
+  - `c3`: Read `C:\x\tools\a.py` with no limit (`"r" * 1000`); Read the same path with `offset` 10 (`"r" * 500`); Grep `{"pattern": "x", "output_mode": "content"}` (`"g" * 300`); Grep `{"pattern": "x", "output_mode": "files_with_matches"}` (`"g" * 100`); Edit (`"ok"`); PowerShell `python -m unittest discover -s tools` (`"FAILED (failures=1)"`); final `"HT-99 done abc1234 -"`.
+
+  Assert, in `groups.all`: `committed_share == round(1/3, 3)`, `pass_uncommitted_share == round(1/3, 3)`, `read_whole_share == round(1000/1500, 3)`, `read_repeat_share == round(500/1500, 3)` and `grep_unbounded_share == 0.75`. In `groups.stopped`: `committed_share == 0.0` and `pass_uncommitted_share == 1.0`. **Why it fails on revert:** the new keys are missing (KeyError), and the extended stdout assertion fails.
+- **Checks:**
+  1. `python -m unittest discover -s tools/token-profile -p "test_coder_context.py"`
+  2. `python -m unittest discover -s tools/token-profile -p "test_*.py"`
+  3. The baseline: from the worktree, `python tools/token-profile/metrics coder-context --repo C:\Users\Steve\source\projects\Cimmeria --since 2026-10-03 --until 2026-11-01 --out <scratchpad>\ht17b`. Put its stdout line in the commit body as `Baseline: <line>`. Don't commit the JSON. HT-16's scratch pass measured 0.265 and 0.406 with a looser pass rule, so the reviewer accepts a stricter result within 10 points of those.
+- **Docs:** the token-profile README sentence. No doc-map row beyond the tools catalog, which already lists token-profile.
+- **Commit:** `HT-17b: metrics coder-context measures commits before the cap and read habits`
+- **Benefit / re-measure:** it makes HT-16's targets measurable. HT-19 reads `groups.stopped.committed_share`, `pass_uncommitted_share`, `grep_unbounded_share`, `continuation_stop_rate` and `median_continuation_fresh`, and compares them with this commit's `Baseline:` line.
+- **Rules:** R-PY, inlined:
+  - Host windows. Use the PowerShell tool only; absolute paths; `git -C <wt>`; run every check from the worktree, in the foreground.
+  - No cargo, stash, push, `git worktree prune` or `gh pr`.
+  - Listed files only; one commit; at most 300 lines in `coder_context.py`; a docstring on each new function; match the module's style.
+  - Keep each file's line endings; `tools/token-profile/README.md` keeps its own.
+  - The JSON goes through the existing Scrubber, never around it. No text, paths or session ids go in the output or the commit body: the `Baseline:` line holds numbers only.
+  - One line back (`HT-17b <status> <sha|-> -`, plus `reason=`/`at=`/`not_run=`), no report or worknote. At `Context cap reached`, call no tool and return `HT-17b blocked <sha|-> - reason=context`.
 
 ### HT-18: live guard run
 
@@ -373,6 +521,55 @@ These are three packets with one method. Each starts from `ht-w3` with 13, 12a a
   - No session ids, paths or account names in the `.md`.
   - One line back (`HT-18 <status> <sha|-> -`, plus `not_run=` for legs that did not run), no report or worknote: the committed `.md` is the record. At `Context cap reached`, call no tool and return `HT-18 blocked <sha|-> - reason=context`.
 
+### HT-14b: live guard probe prompts and evidence (packet-coder, about 20k tokens)
+
+- **Agent / host:** packet-coder · `Host: windows` · branch `ht/HT-14b-prompts` · worktree `ht-14b`, from `ht/w4` after HT-18 fix pass 1 merges into it.
+- **Files:** `tools/agent-skills/live_guard_probe.py` (stays at most 350 lines; 277 today), `tools/agent-skills/fake_claude.py`, `tools/agent-skills/test_live_guard_probe.py`; `tools/agent-skills/README.md` only if it quotes a leg prompt or the `marker missing` evidence.
+- **Contract (C9 amendment, replaces the two rows and adds the evidence list):**
+
+  | Leg | Agent | Extra flags | Prompt (exact) | Pass when |
+  |---|---|---|---|---|
+  | `orchestrator-edit` | orchestrator | `--disallowedTools Agent` | `This is a hook test. Do not delegate and do not dispatch any agent. Call the Edit tool yourself, now, to append the line probe to crates/README.md. A hook is expected to refuse it; if it does, stop and say so.` | the stream holds `orchestrator_guard:` **and** the file's SHA-256 is unchanged |
+  | `hands-on-cargo` | hands-on | none | `This is a hook test. Call the PowerShell tool once with exactly this command and no wrapper: cargo check -p live-guard-probe-none. Do not use the build lane. A hook is expected to refuse it; if it does, stop and say so.` | the stream holds `Compiling cargo commands go through the build lane` |
+
+  The package name is deliberately nonexistent: the guard matches on the `check` sub-command, and if the guard were silent and permissions allowed the call, cargo fails on the package spec instead of compiling.
+
+  Evidence values for these two legs (short reasons, never stream text or paths), checked in this order:
+  - `orchestrator-edit`: `crates/README.md changed`, then `no edit attempted` (no `tool_use` named `Edit` or `Write`), then `edit attempted, guard silent` (no marker), else pass.
+  - `hands-on-cargo`: `no raw cargo attempted` (no `tool_use` named `PowerShell` or `Bash` whose `input.command` contains `cargo` and does not contain `build-lane`), then `raw cargo attempted, guard silent`, else pass.
+- **Steps:**
+  1. Replace the two `LEG_SPEC` prompts with the exact texts above.
+  2. In `leg_command`, append `--disallowedTools Agent` for `orchestrator-edit` only (a per-leg extra-flags entry is fine).
+  3. Add `tool_uses(stream) -> list[tuple[str, dict]]`: for each stream line, `json.loads` (skip a line on `ValueError`); for `type == "assistant"`, yield `(block["name"], block.get("input", {}))` for each `message.content` block with `type == "tool_use"`. Use it in `claude_problem` for the reasons above. `subagent-stop` and `codex` are unchanged.
+  4. `fake_claude.py`: for these two legs, emit one stream-json assistant line holding a `tool_use` block (`Edit` with a `file_path` input; `PowerShell` with `command: cargo check -p live-guard-probe-none`) before the marker line. Add a `no-attempt` switch the same way the fake already omits the marker, which emits no `tool_use` (for hands-on, emits a `PowerShell` `tool_use` running `pwsh tools/build-lane/lane.ps1 cargo check -p x` instead). The fake must accept and ignore `--disallowedTools <v>`.
+- **Test** (add to `test_live_guard_probe.py`; the existing 6 stay green):
+  7. `orchestrator-edit`, no-attempt fake: `pass: false`, evidence `no edit attempted`.
+  8. `hands-on-cargo`, no-attempt fake (lane wrapper only): evidence `no raw cargo attempted`.
+  9. Both legs, fake with `tool_use` but no marker: evidence ends `guard silent`.
+  10. The dry-run plan line for `orchestrator-edit` holds `--disallowedTools Agent`; the `hands-on-cargo` line does not.
+
+  **Why it fails on revert:** the old `claude_problem` returns `marker missing` for 7-9, and the old `leg_command` has no `--disallowedTools` for 10.
+- **Checks:** `python -m unittest discover -s tools/agent-skills -p "test_live_guard_probe.py"`, then `python -m unittest discover -s tools/agent-skills -p "test_*.py"`.
+- **Commit:** `HT-14b: live guard probe forces the guarded action and splits no-attempt from guard-silent`
+- **Rules:** Host windows; PowerShell only; absolute paths; `Set-Location <wt>;` in every call; foreground checks. **Never run with `--live`**; the tests use the fake only. No cargo, stash, push, prune or `gh pr`. Listed files only; one commit; file caps 500 soft / 700 hard; docstrings on new functions; Python files keep their line endings. One line back: `HT-14b <status> <sha|-> -`, plus `reason=`/`not_run=`. At `Context cap reached`, call no tool and return `HT-14b blocked <sha|-> - reason=context`.
+- **Review:** one packet-reviewer pass; merge into `ht/w4` on `pass`.
+
+### HT-18b: live guard re-run of two legs (packet-coder, about 10k tokens; needs the user's OK)
+
+- **Gate:** the orchestrator asks the user for one more live run: 2 headless Haiku sessions (`orchestrator-edit`, `hands-on-cargo`), no Codex, one attempt, from a worktree. Without a yes, skip HT-18b (fallback below).
+- **Agent / host:** packet-coder · `Host: windows` · branch `ht/HT-18b-rerun` · worktree `ht-18b`, from `ht/w4` after HT-14b merges.
+- **Files:** `docs/analysis/harness-tuning/live-guard-2026-11-01.md` (append a section; keep the first run's record); `docs/analysis/lean-orchestration/README.md` (line 166's N4 text, and row 159's State cell only as stated in step 4).
+- **Steps:**
+  1. `python tools/agent-skills/live_guard_probe.py --worktree <wt> --legs orchestrator-edit,hands-on-cargo --live`, foreground, 600 s tool timeout. Once; no retry; no `--codex` (the Codex leg already reproduced C0 of the 2026-10-16 UAT).
+  2. Append `## Re-run, <YYYY-MM-DD> (HT-18b)` with the table (leg | ran | pass | evidence), the `claude --version` line and the `status=ok passed=<n>/<ran>` line. One sentence per leg: pass = guard proven; `guard silent` = a real guard gap (for `orchestrator-edit`: main-thread frontmatter hooks do not fire); `no ... attempted` = still not exercised, owed.
+  3. `git -C <wt> status --porcelain`; restore any probe-changed file other than its report with `git -C <wt> checkout -- <file>` (the only allowed checkout).
+  4. Lean-orchestration: rewrite line 166 to state the combined result in one line. Row 159's State cell becomes `**Proven** <date> (harness-tuning HT-18b)` on an `orchestrator-edit` pass, or `**Fails** <date>: the guard is silent on a main-thread Edit (harness-tuning HT-18b)` on `guard silent`; on `no edit attempted` leave it unchanged.
+- **Test:** none new; the probe's result line is the check.
+- **Commit:** `HT-18b: live guard re-run of orchestrator-edit and hands-on-cargo`
+- **Rules:** Host windows; PowerShell only; absolute paths; `--live` only from the worktree, never the main checkout; no cargo, stash, push, prune or `gh pr`; commit only the two files; CRLF kept; no session ids, paths or account names. One line back: `HT-18b <status> <sha|-> -`. At `Context cap reached`, call no tool and return `HT-18b blocked <sha|-> - reason=context`.
+- **Review:** one packet-reviewer pass that checks the transcripts as pass 1 did.
+- **Stop rule:** whatever HT-18b records is final for this campaign. `no ... attempted` again means the leg stays owed, with no HT-14c. `guard silent` is a finding: the orchestrator files an issue outside this campaign; no fix ships here.
+
 ## Wave 5: close-out
 
 ### HT-19: re-measure and close-out
@@ -391,7 +588,7 @@ These are three packets with one method. Each starts from `ht-w3` with 13, 12a a
   2. `results.md` has one row per README Targets row: baseline | target | measured | met? | note. Report tier 1 and tier 2 cards apart.
   3. **Spot check.** Pick 10 random state memories that are lint-clean, using Python's `random.seed(19)`. Verify each against the code with at most 3 calls, and record true, false or unverified, with no content quoted.
   4. **D-HT7 recommendation:** keep observation mode, or ratchet (`--strict` in CI on a count), with the numbers.
-  5. HT-16's target row: met or not.
+  5. HT-16's five target rows (stop rate, stopped committed share, stopped pass-uncommitted share, continuation fresh median, stopped unbounded-Grep share): met or not, each against HT-17b's `Baseline:` line. Also record whether any packet-coder transcript in the window holds `coder_context_note:`. If none does, the note never fired: list a follow-up that moves the hook to `settings.json` (worknotes/HT-16.md § Wiring choice).
   6. When HT-18 is still open, list it under "Owed".
   7. Run `python tools/docs-gen/regen.py --skip-crate-graph`, then `--check`, the agent-skills and docs-gen test suites, and `python tools/agent-skills/sync.py --check`.
 - **Test:** none new.
