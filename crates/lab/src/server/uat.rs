@@ -218,7 +218,11 @@ impl ToolInvoker for RouterInvoker<'_> {
         let result = under_lease(self.lease, self.server.tool_router.call(tcc)).await;
         match result {
             Ok(CallToolResponse::Complete(r)) => {
-                normalize_result(&serde_json::to_value(&r).unwrap_or(Value::Null))
+                let mut o = normalize_result(&serde_json::to_value(&r).unwrap_or(Value::Null));
+                if o.ok {
+                    crate::proof::gate::stamp(name, &mut o.json);
+                }
+                o
             }
             Ok(_) => ToolOutcome::err(format!(
                 "{name} asked for client input; not supported in a run"
