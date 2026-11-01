@@ -37,54 +37,194 @@ def write_lines(path, count):
     path.write_text("".join(f"row {i:03d}\n" for i in range(1, count + 1)), encoding="utf-8")
 
 
+def tool_record(name, tool_input):
+    """A transcript record holding one tool use."""
+    block = {"type": "tool_use", "id": "toolu", "name": name, "input": tool_input}
+    return {"type": "assistant", "message": {"content": [block]}}
+
+
+def prompt_record(prompt):
+    """A transcript record holding one Agent dispatch with this prompt."""
+    return tool_record("Agent", {"description": "dispatch", "prompt": prompt})
+
+
 class ResumeCardTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.project = Path(self.tmp.name)
+        self.pointer = str(self.project / ".claude" / "state" / "active-campaign")
 
     def tearDown(self):
         self.tmp.cleanup()
 
     def point_at(self, name):
+        """Write the global pointer file, which the hook must ignore."""
         state = self.project / ".claude" / "state"
         state.mkdir(parents=True, exist_ok=True)
         (state / "active-campaign").write_text(name + "\n", encoding="utf-8")
 
-    def test_prints_nothing_without_pointer(self):
-        write_lines(self.project / "docs/analysis/demo/RESUME.md", 5)
-        result = run_hook(RESUME_CARD, self.project, "{}")
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout, "")
+    def transcript(self, *records):
+        """Write a session transcript; return the hook payload that names it."""
+        path = self.project / "session.jsonl"
+        path.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
+        return json.dumps({"transcript_path": str(path)})
 
-    def test_prints_card_with_pointer(self):
-        self.point_at("demo")
-        write_lines(self.project / "docs/analysis/demo/RESUME.md", 5)
-        result = run_hook(RESUME_CARD, self.project, "{}")
+    def card(self, stdin_text):
+        """Run the hook; return the additional context, or None when it prints nothing."""
+        result = run_hook(RESUME_CARD, self.project, stdin_text)
         self.assertEqual(result.returncode, 0)
-        output = json.loads(result.stdout)["hookSpecificOutput"]
-        self.assertEqual(output["hookEventName"], "SessionStart")
-        self.assertTrue(output["additionalContext"].startswith(
-            "Context was compacted. Active campaign: demo. Read docs/analysis/demo/RESUME.md "
-            "and the ledger README before acting."))
-        self.assertIn("row 005", output["additionalContext"])
+        if not result.stdout:
+            return None
+        return json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+
+    def write_pointer(self, content):
+        return tool_record("Write", {"file_path": self.pointer, "content": content})
+
+    def test_no_card_when_the_session_never_wrote_the_pointer(self):
+        # F7: the global file names "other", which has a RESUME, but this session
+        # wrote nothing and dispatched nothing.
+        self.point_at("other")
+        write_lines(self.project / "docs/analysis/other/RESUME.md", 5)
+        payload = self.transcript({"type": "user", "message": {"content": "hello"}})
+        self.assertIsNone(self.card(payload))
+
+    def test_last_write_of_the_pointer_names_the_campaign(self):
+        self.point_at("other")
+        write_lines(self.project / "docs/analysis/other/RESUME.md", 3)
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        card = self.card(self.transcript(self.write_pointer("demo\n")))
+        self.assertTrue(card.startswith("Context was compacted. Active campaign: demo. "))
+
+    def test_later_write_wins_over_earlier_write(self):
+        write_lines(self.project / "docs/analysis/alpha/RESUME.md", 3)
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        payload = self.transcript(self.write_pointer("alpha\n"), self.write_pointer("demo\n"))
+        self.assertIn("Active campaign: demo.", self.card(payload))
+
+    def test_edit_new_string_names_the_campaign(self):
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        edit = {"file_path": self.pointer, "old_string": "old\n", "new_string": "demo\n"}
+        card = self.card(self.transcript(tool_record("Edit", edit)))
+        self.assertIn("Active campaign: demo.", card)
+
+    def test_empty_last_write_means_no_card_even_with_agent_prompts(self):
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        records = [self.write_pointer(""), *(prompt_record("Read docs/analysis/demo/RESUME.md")
+                                              for _ in range(5))]
+        self.assertIsNone(self.card(self.transcript(*records)))
+
+    def test_inferred_card_when_three_of_four_prompts_name_the_campaign(self):
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        write_lines(self.project / "docs/analysis/other/RESUME.md", 3)
+        prompts = ["Read docs/analysis/demo/RESUME.md", "Check docs/analysis/demo/x.md",
+                   ".claude/reports/demo/HT-01.md", "Read docs/analysis/other/RESUME.md"]
+        card = self.card(self.transcript(*(prompt_record(p) for p in prompts)))
+        self.assertTrue(card.startswith("Context was compacted. Inferred campaign"))
+        self.assertIn("demo", card.splitlines()[0])
+
+    def test_no_card_when_two_of_four_prompts_name_the_campaign(self):
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        write_lines(self.project / "docs/analysis/other/RESUME.md", 3)
+        prompts = ["docs/analysis/demo/a.md", "docs/analysis/demo/b.md",
+                   "docs/analysis/other/a.md", "docs/analysis/other/b.md"]
+        self.assertIsNone(self.card(self.transcript(*(prompt_record(p) for p in prompts))))
+
+    def test_no_card_when_there_are_only_two_prompts(self):
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        prompts = ["docs/analysis/demo/a.md", "docs/analysis/demo/b.md"]
+        self.assertIsNone(self.card(self.transcript(*(prompt_record(p) for p in prompts))))
+
+    def test_prompt_naming_a_campaign_without_resume_does_not_count(self):
+        # Unfiltered, ghost and demo split 3 to 3 and no card is printed.
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        prompts = ["docs/analysis/ghost/a.md"] * 3 + ["docs/analysis/demo/a.md"] * 3
+        card = self.card(self.transcript(*(prompt_record(p) for p in prompts)))
+        self.assertIn("dispatches): demo.", card)
+
+    def test_three_of_three_prompts_name_the_campaign(self):
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        prompts = ["docs/analysis/demo/a.md"] * 3
+        card = self.card(self.transcript(*(prompt_record(p) for p in prompts)))
+        self.assertTrue(card.startswith("Context was compacted. Inferred campaign"))
+        self.assertIn("dispatches): demo.", card)
+
+    def test_two_of_three_prompts_name_the_campaign(self):
+        # 2 of 3 is exactly the threshold: 3 * 2 >= 2 * 3.
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        write_lines(self.project / "docs/analysis/other/RESUME.md", 3)
+        prompts = ["docs/analysis/demo/a.md", "docs/analysis/demo/b.md", "docs/analysis/other/a.md"]
+        card = self.card(self.transcript(*(prompt_record(p) for p in prompts)))
+        self.assertIn("dispatches): demo.", card)
+
+    def test_only_the_last_40_prompts_vote(self):
+        # 30 other, then 40 demo. The last 40 are all demo: card for demo.
+        # The first 40 are 30 other and 10 demo: card for other, so reading
+        # the first 40 fails. All 70 are 40 demo of 70 (and 30 other): no card,
+        # so a window wider than 40 fails too.
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        write_lines(self.project / "docs/analysis/other/RESUME.md", 3)
+        prompts = (["docs/analysis/other/a.md"] * 30 + ["docs/analysis/demo/a.md"] * 40)
+        card = self.card(self.transcript(*(prompt_record(p) for p in prompts)))
+        self.assertIn("dispatches): demo.", card)
+
+    def test_three_of_three_prompts_name_the_campaign_by_reports_path(self):
+        # The reports path alone names a campaign, as dispatch briefs cite it.
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        prompts = [".claude/reports/demo/HT-01.md", "Read .claude/reports/demo/HT-02.md",
+                   "Check .claude/reports/demo/HT-03.md"]
+        card = self.card(self.transcript(*(prompt_record(p) for p in prompts)))
+        self.assertIn("dispatches): demo.", card)
+
+    def test_campaign_name_is_matched_in_mixed_case(self):
+        # The needle is case-sensitive, so only the path's case is folded.
+        self.point_at("other")
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        path = str(self.project / ".CLAUDE" / "State" / "active-campaign")
+        card = self.card(self.transcript(tool_record("Write", {"file_path": path, "content": "demo\n"})))
+        self.assertIn("Active campaign: demo.", card)
+
+    def test_multiedit_last_edit_names_the_campaign(self):
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        edits = [{"old_string": "x", "new_string": "alpha\n"}, {"old_string": "y", "new_string": "demo\n"}]
+        card = self.card(self.transcript(tool_record("MultiEdit", {"file_path": self.pointer, "edits": edits})))
+        self.assertIn("Active campaign: demo.", card)
+
+    def test_pointer_lookalike_path_does_not_count(self):
+        # Only .claude/state/active-campaign is the pointer, not any path ending in its name.
+        write_lines(self.project / "docs/analysis/other/RESUME.md", 3)
+        decoy = str(self.project / ".claude" / "state" / "other" / "active-campaign")
+        self.assertIsNone(self.card(self.transcript(tool_record("Write", {"file_path": decoy, "content": "other\n"}))))
 
     def test_truncates_resume_at_40_lines(self):
-        self.point_at("demo")
         write_lines(self.project / "docs/analysis/demo/RESUME.md", 100)
-        result = run_hook(RESUME_CARD, self.project, "{}")
-        card = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+        card = self.card(self.transcript(self.write_pointer("demo\n")))
         self.assertIn("row 040", card)
         self.assertNotIn("row 041", card)
 
-    def test_exits_zero_on_malformed_json(self):
-        self.point_at("demo")
+    def test_pointer_with_bom_still_names_the_campaign(self):
         write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
-        result = run_hook(RESUME_CARD, self.project, "{not json")
-        self.assertEqual(result.returncode, 0)
+        card = self.card(self.transcript(self.write_pointer("﻿demo\r\n")))
+        self.assertIn("Active campaign: demo.", card)
+
+    def test_pointer_with_leading_blank_lines_names_the_first_non_empty_line(self):
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        card = self.card(self.transcript(self.write_pointer("\n\ndemo\nextra\n")))
+        self.assertIn("Active campaign: demo.", card)
+
+    def test_rejects_campaign_name_that_is_a_path(self):
+        # The RESUME.md sits where "../demo" and "..\demo" would resolve, so
+        # only the name check keeps the card empty.
+        write_lines(self.project / "docs/demo/RESUME.md", 3)
+        for name in ("../demo", "..\\demo", "."):
+            payload = self.transcript(self.write_pointer(name + "\n"))
+            self.assertIsNone(self.card(payload), name)
+
+    def test_exits_zero_on_malformed_json(self):
+        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
+        self.assertIsNone(self.card("{not json"))
 
     def test_exits_zero_when_building_the_card_raises(self):
-        # The stdin payload is never parsed, so a bad payload cannot reach the
-        # catch-all; force the failure inside main() instead.
+        # The payload parses, so the failure must be forced inside main().
         spec = importlib.util.spec_from_file_location("resume_card_under_test", RESUME_CARD)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -94,24 +234,10 @@ class ResumeCardTest(unittest.TestCase):
             self.assertEqual(module.main(), 0)
         self.assertEqual(out.getvalue(), "")
 
-    def test_pointer_with_bom_still_names_the_campaign(self):
-        state = self.project / ".claude" / "state"
-        state.mkdir(parents=True)
-        (state / "active-campaign").write_bytes(b"\xef\xbb\xbfdemo\r\n")
-        write_lines(self.project / "docs/analysis/demo/RESUME.md", 3)
-        result = run_hook(RESUME_CARD, self.project, "{}")
-        card = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("Active campaign: demo.", card)
-
-    def test_rejects_campaign_name_that_is_a_path(self):
-        # The RESUME.md sits where "../demo" and "..\demo" would resolve, so
-        # only the name check keeps the card empty.
-        write_lines(self.project / "docs/demo/RESUME.md", 3)
-        for name in ("../demo", "..\\demo"):
-            self.point_at(name)
-            result = run_hook(RESUME_CARD, self.project, "{}")
-            self.assertEqual(result.returncode, 0)
-            self.assertEqual(result.stdout, "", name)
+    def test_missing_transcript_means_no_card(self):
+        self.assertIsNone(self.card("{}"))
+        missing = str(self.project / "gone.jsonl")
+        self.assertIsNone(self.card(json.dumps({"transcript_path": missing})))
 
 
 class OrchestratorGuardTest(unittest.TestCase):
