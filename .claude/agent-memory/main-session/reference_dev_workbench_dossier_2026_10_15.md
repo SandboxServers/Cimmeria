@@ -1,3 +1,10 @@
+---
+name: reference_dev_workbench_dossier_2026_10_15
+description: "Dev workbench target dossier: how the selected entity is read and which fields stay null"
+metadata:
+  type: reference
+---
+
 # Dev workbench target dossier — 2026-10-15
 
 Source: `crates/lab/src/workbench/dossier.rs`, `crates/lab/src/supervisor/world/{memory,io}.rs`, `crates/lab-mcp/src/tools/{entities,witnesses,logs}.rs`, and `docs/analysis/dev-workbench/work-packets.md` DW-03.
@@ -8,3 +15,6 @@ Source: `crates/lab/src/workbench/dossier.rs`, `crates/lab/src/supervisor/world/
 - Once bound, witnesses come from `server_witnesses`; nondestructive `server_log_tail` requests the full 500-row ring, filters structured entity-id rows, and reports `log_tail_truncated` when the reply is incomplete. It is still a buffered subset rather than full wire history; DW-08 supplies fuller capture evidence.
 - The client `entity_table` row's embedded id and pointer must agree with the world snapshot, and a `WorldEntity.pose_error` is an explicit client position gap.
 - A second selected-slot read after the other sources invalidates every dossier field if the target changed during the read. Live client validation remains pending because no lab lease was requested.
+
+INVALIDATED WHEN: the workbench dossier gains a trusted live CaptureContext producer
+checked: 2026-11-01

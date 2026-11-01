@@ -1,3 +1,10 @@
+---
+name: reference_worldforge_shell_2026_10_06
+description: Worldforge shell probe
+metadata:
+  type: reference
+---
+
 # Worldforge shell probe, 2026-10-06
 
 - The `CimmeriaLab` direct package route can clone Agnos small hallway elbow,
@@ -13,6 +20,10 @@
 - A 3 × 3 shell from those modules is packaged as the v6 local client probe.
   Cardinally oriented elbows close corners, three-ways line the edges and
   four-ways form the two central nodes. The south exit connects to the gate
-  apron. Structural and property-name audits pass. Client collision and
-  visual seams remain unverified. The exterior garden slab is not bounded;
-  do not call the whole world sealed.
+  apron. Structural and property-name audits pass. The v6 shell was later
+  client-photographed and the user confirmed the sections join and are
+  walkable (docs/analysis/custom-debug-map/README.md). The exterior garden
+  slab is not bounded; do not call the whole world sealed.
+
+INVALIDATED WHEN: the custom-debug-map clone path changes
+checked: 2026-11-01

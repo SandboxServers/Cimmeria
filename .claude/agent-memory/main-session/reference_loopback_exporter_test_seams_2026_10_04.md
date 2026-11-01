@@ -8,12 +8,12 @@ metadata:
 Learned while adding `storage/launcher_summary/export.rs` and its wiremock
 tests to the desktop engine (`crates/launcher/desktop/engine`) on 2026-10-04:
 
-- **A closed `127.0.0.1` port is not always refused.** Under WSL2 with
-  `networkingMode=mirrored`, a connection to an unbound port on `127.0.0.1`
+- **A closed loopback port is not always refused.** Under WSL2 with
+  `networkingMode=mirrored`, a connection to an unbound port on IPv4 loopback
   (or `localhost`) hangs until the caller's own deadline; it is not refused.
   `[::1]` and other `127/8` addresses refuse at once. A test that needs a
-  dead endpoint uses `http://[::1]:9` (macOS has no `127.0.0.2` by default, so
-  that one is not portable either). With `127.0.0.1:9` the refused-connection
+  dead endpoint uses `http://[::1]:9` (macOS has no second loopback address by default, so
+  that one is not portable either). With port 9 on IPv4 loopback the refused-connection
   test took 90 s (three 30 s deadlines) instead of milliseconds.
 - **A wiremock 0.6 responder is synchronous and runs on the mock server's own
   thread, while that server's state lock is held.** It can therefore lock
