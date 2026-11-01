@@ -432,12 +432,22 @@ class WiringTest(unittest.TestCase):
         self.assertIn("mode_banner.sh", command)
         self.assertIn("|| exit 0", command)
 
+    def test_settings_wires_report_contract_on_subagent_stop(self):
+        settings = json.loads((REPO / ".claude/settings.json").read_text(encoding="utf-8"))
+        entries = settings["hooks"]["SubagentStop"]
+        self.assertEqual(len(entries), 1)
+        command = entries[0]["hooks"][0]["command"]
+        self.assertIn("report_contract.py", command)
+        self.assertIn("py.sh", command)
+        self.assertIn("|| exit 0", command)
+
     def test_every_python_hook_goes_through_the_launcher(self):
         settings = json.loads((REPO / ".claude/settings.json").read_text(encoding="utf-8"))
-        commands = [h["command"] for event in ("SessionStart", "PreToolUse")
-                    for entry in settings["hooks"][event] for h in entry["hooks"]]
-        front = (REPO / ".claude/agents/orchestrator.md").read_text(encoding="utf-8").split("---")[1]
-        commands.append(re.search(r"command: (.+)", front).group(1))
+        commands = [h["command"] for event in settings["hooks"].values()
+                    for entry in event for h in entry["hooks"]]
+        for agent in sorted((REPO / ".claude/agents").glob("*.md")):
+            front = agent.read_text(encoding="utf-8").split("---")[1]
+            commands += re.findall(r"command: (.+)", front)
         codex = json.loads((REPO / ".codex/hooks.json").read_text(encoding="utf-8"))
         commands += [h["command"] for event in codex["hooks"].values()
                      for entry in event for h in entry["hooks"]]

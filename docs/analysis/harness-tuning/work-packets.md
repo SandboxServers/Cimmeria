@@ -159,7 +159,7 @@ This is a SubagentStop hook. It reads these input keys: `stop_hook_active`, `age
 2. If `.claude/agents/<agent_type>.md` doesn't exist or doesn't contain `## Reporting`, exit 0. That covers ops, lab-driver, hands-on and the built-in agents.
 3. **Mode.** `line` when the frontmatter `model:` value contains `haiku` (case-insensitive; today only packet-coder), else `report`.
 4. Find the transcript: `agent_transcript_path`, or else `<transcript_path without .jsonl>/subagents/agent-<agent_id>.jsonl`. `final` is `last_assistant_message`, or else the last assistant text in the transcript. If there is neither a transcript nor `final`, exit 0.
-5. **The cap.** If the transcript exists and any of its lines contains `Context cap reached`, exit 0. The user-level cap has denied a tool, and the hook never asks for more (D-HT3).
+5. **The cap.** If the transcript exists and a `user` record has a `tool_result` block whose text, after `.lstrip()`, starts with `Context cap reached` or with `PreToolUse:<tool> hook error: Context cap reached`, exit 0. The text is the block's `content` when it is a string, or else the `text` of its `type: "text"` items joined with `\n`; `is_error` is not required. A marker that appears anywhere else (the brief, a Read or Grep result quoting it) is not a cap. The user-level cap has denied a tool, and the hook never asks for more (D-HT3).
 6. **Line mode.** If a line of `final` matches LINE (strip one pair of backticks first), exit 0. Otherwise block with reason L. Line mode never reads the brief and never checks a file.
 7. **Report mode.**
    - Take the brief (the first user text) and `paths = RP.findall(brief)`. If there is no transcript or no path, exit 0.
@@ -493,7 +493,10 @@ def category(name, inp):
 
   18. a reviewer with no line and a `Context cap reached` result: no output;
   19. `agent_type` `Explore` (no agent file): no output;
-  20. malformed stdin: exit 0, no output.
+  20. malformed stdin: exit 0, no output;
+  21. a `tool_result` that quotes `CAP_MARKER = "Context cap reached"` (a Read result), reviewer, prose: block A;
+  22. a brief that quotes `Context cap reached`, packet-coder, prose: block L;
+  23. the cap deny as a `tool_result` whose content is a list of `text` blocks, reviewer, prose: no output.
 
   **Why it fails on revert:** without the hook, cases 1, 3, 4, 5 and 13 see no block output.
 - **Checks:**
