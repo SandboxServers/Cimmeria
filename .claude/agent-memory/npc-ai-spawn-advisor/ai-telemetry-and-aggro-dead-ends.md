@@ -137,3 +137,6 @@ and unreachable for ordinary guards).
 
 Related: [[npc-follow-state-gaps]], [[npc-death-credit-and-respawn-gaps]],
 [[castle-cellblock-navmesh-components]], [[submit-state-semantics]]
+
+INVALIDATED WHEN: npc_ai dispatch unifies the two decision_outcome halves or the leash predicate changes; line numbers are as of 2026-09-18
+checked: unverified 2026-11-01
