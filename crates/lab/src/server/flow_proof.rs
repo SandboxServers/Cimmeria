@@ -41,8 +41,21 @@ pub(super) fn flow_evidence(tool: &str, _v: &Value) -> Evidence {
 }
 
 /// The evidence of a `lab_ensure_in_world` result: one required Client check
-/// `in_world`, true when the result says the character is in the world.
+/// `in_world`, true when the result says the character is in the world; or,
+/// for a `stop_at` result with no `in_world`, one required Client check
+/// `reached_stop`.
 pub(super) fn in_world_evidence(v: &Value) -> Evidence {
+    if v.get("in_world").is_none() {
+        if let Some(at) = v.get("at").and_then(Value::as_str) {
+            return Evidence::judge(vec![Check::new(
+                "reached_stop",
+                Source::Client,
+                Some(true),
+                true,
+            )
+            .with_after(json!({ "at": at }))]);
+        }
+    }
     let in_world = v["in_world"] == true;
     Evidence::judge(vec![Check::new(
         "in_world",

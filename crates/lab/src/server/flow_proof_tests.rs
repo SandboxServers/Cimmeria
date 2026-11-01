@@ -48,6 +48,14 @@ fn in_world_true_confirms_with_the_world_and_position() {
 }
 
 #[test]
+fn a_stop_at_result_confirms_instead_of_denying() {
+    let ev = in_world_evidence(&json!({"at": "character_select", "steps_ms": {}}));
+    assert_eq!(ev.verdict, EvVerdict::Confirmed);
+    assert_eq!(ev.checks[0].name, "reached_stop");
+    assert_eq!(ev.checks[0].after, Some(json!({"at": "character_select"})));
+}
+
+#[test]
 fn in_world_false_denies() {
     let ev = in_world_evidence(&json!({"in_world": false, "at": "character_select"}));
     assert_eq!(ev.verdict, EvVerdict::Denied);

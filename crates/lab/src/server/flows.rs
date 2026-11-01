@@ -98,7 +98,7 @@ pub struct EnsureSlotArgs {
 #[tool_router(router = flows_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Log in with the client's own input: Escape through the intro movies, type the account and password into the login boxes, press Login, pick the server row (by name when given), press Select, and stop at character select. Credentials default to lab-account.json. Returns the character list and per-step timings; a failure names the step and shows any prompt text (e.g. a bad password)."
+        description = "Log in with the client's own input: Escape through the intro movies, type the account and password into the login boxes, press Login, pick the server row (by name when given), press Select, and stop at character select. Credentials default to lab-account.json. Returns the character list and per-step timings; a failure names the step and shows any prompt text (e.g. a bad password). Returns evidence: one check, `end_state`, the screen the flow waited for (character_select)."
     )]
     async fn lab_login(
         &self,
@@ -120,7 +120,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Create a character from character select: Create, alignment, archetype, gender, first and last name, Create; waits for the return to character select. A creation error prompt (name taken, invalid) is returned as the error. Needs a free slot (see lab_ensure_character_slot)."
+        description = "Create a character from character select: Create, alignment, archetype, gender, first and last name, Create; waits for the return to character select. A creation error prompt (name taken, invalid) is returned as the error. Needs a free slot (see lab_ensure_character_slot). Returns evidence: one check, `end_state`, the screen the flow waited for (character_select)."
     )]
     async fn lab_create_character(
         &self,
@@ -140,7 +140,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Delete a character by name: select its slot (verified against the client's selection), Delete, and confirm only when the prompt names that character; waits until it leaves the list."
+        description = "Delete a character by name: select its slot (verified against the client's selection), Delete, and confirm only when the prompt names that character; waits until it leaves the list. Returns evidence: one check, `end_state`, the screen the flow waited for (character_select)."
     )]
     async fn lab_delete_character(
         &self,
@@ -153,7 +153,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Keep room under the client's 8-character cap: delete the oldest (lowest slot) characters not in `protect` until `free_slots` slots are open. The lab account's character is always protected. Returns what was deleted."
+        description = "Keep room under the client's 8-character cap: delete the oldest (lowest slot) characters not in `protect` until `free_slots` slots are open. The lab account's character is always protected. Returns what was deleted. Returns evidence: one check, `end_state`, the screen the flow waited for (character_select)."
     )]
     async fn lab_ensure_character_slot(
         &self,
@@ -168,7 +168,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Enter the world on a character: select it, Play, Escape through the loading and arrival cutscenes (skip_cutscene, default true), and stop when the world HUD (SelfStatusWin) is visible; a new character's intro dialog over the arrival cutscene is not enough, Escape continues until the HUD shows or the timeout. Reports whether a dialog is open and its title/text/buttons."
+        description = "Enter the world on a character: select it, Play, Escape through the loading and arrival cutscenes (skip_cutscene, default true), and stop when the world HUD (SelfStatusWin) is visible; a new character's intro dialog over the arrival cutscene is not enough, Escape continues until the HUD shows or the timeout. Reports whether a dialog is open and its title/text/buttons. Returns evidence: one check, `end_state`, the screen the flow waited for (world_hud)."
     )]
     async fn lab_play_character(
         &self,
@@ -187,7 +187,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Finish the open dialog like a player: page with Next until the green checkmark (Done) shows, then press it. Never closes with the X. With accept=true, presses Accept on an offer that has no Done. Reports the title and pages clicked; no dialog open is not an error."
+        description = "Finish the open dialog like a player: page with Next until the green checkmark (Done) shows, then press it. Never closes with the X. With accept=true, presses Accept on an offer that has no Done. Reports the title and pages clicked; no dialog open is not an error. Returns evidence: one check, `end_state`, the screen the flow waited for (dialog_closed)."
     )]
     async fn lab_finish_dialog(
         &self,
@@ -202,14 +202,14 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Log out to character select: Enter, type /logout, Enter, wait for character select. Returns the character list. Already at character select is not an error."
+        description = "Log out to character select: Enter, type /logout, Enter, wait for character select. Returns the character list. Already at character select is not an error. Returns evidence: one check, `end_state`, the screen the flow waited for (character_select)."
     )]
     async fn lab_logout(&self) -> Result<CallToolResult, McpError> {
         flow_result("lab_logout", self.supervisor.logout_flow().await)
     }
 
     #[tool(
-        description = "Log out to the login screen: at character select, click Back (the client sends the account logOff and shows the login screen), and wait for the login screen. Already at the login screen is not an error."
+        description = "Log out to the login screen: at character select, click Back (the client sends the account logOff and shows the login screen), and wait for the login screen. Already at the login screen is not an error. Returns evidence: one check, `end_state`, the screen the flow waited for (login_screen)."
     )]
     async fn lab_disconnect(&self) -> Result<CallToolResult, McpError> {
         flow_result("lab_disconnect", self.supervisor.disconnect_flow().await)
@@ -235,6 +235,8 @@ fn flow_result(tool: &str, r: Result<Value, FlowError>) -> Result<CallToolResult
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+
+    use rmcp::model::ContentBlock;
 
     use crate::client::BridgeClient;
     use crate::server::LabServer;
@@ -302,5 +304,30 @@ mod tests {
             .as_deref()
             .unwrap_or_default()
             .contains("Escape through the intro movies"));
+    }
+
+    fn text_of(r: &rmcp::model::CallToolResult) -> serde_json::Value {
+        let ContentBlock::Text(t) = &r.content[0] else {
+            panic!("not text")
+        };
+        serde_json::from_str(&t.text).unwrap()
+    }
+
+    #[test]
+    fn an_ok_flow_result_carries_its_end_screen_evidence() {
+        let r = super::flow_result(
+            "lab_play_character",
+            Ok(serde_json::json!({"in_world": true})),
+        )
+        .unwrap();
+        let v = text_of(&r);
+        assert_eq!(v["evidence"]["verdict"], "confirmed");
+        assert_eq!(v["evidence"]["checks"][0]["after"]["screen"], "world_hud");
+    }
+
+    #[test]
+    fn lab_characters_result_carries_no_evidence() {
+        let r = super::flow_result("lab_characters", Ok(serde_json::json!({"count": 0}))).unwrap();
+        assert!(text_of(&r).get("evidence").is_none());
     }
 }
