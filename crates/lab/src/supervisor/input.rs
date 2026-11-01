@@ -30,6 +30,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::cegui_native::Cegui;
+use super::ui::click_expect::{click_evidence, ClickExpect};
 use super::ui::{NativeLevel, NativeTrail};
 use super::{keys, process, Supervisor};
 
@@ -434,23 +435,33 @@ impl Supervisor {
     }
 
     /// `client_ui_click` — find a named UI window, put the cursor on its
-    /// centre, and click it with real button messages.
-    pub async fn ui_click(&self, window: &str, button: usize) -> Result<Value, String> {
+    /// centre, and click it with real button messages. `expect` is judged
+    /// after the click; an empty one makes the result `posted_only` (AX-40).
+    pub async fn ui_click(
+        &self,
+        window: &str,
+        button: usize,
+        expect: &ClickExpect,
+    ) -> Result<Value, String> {
         let v = self
             .bridge_call("lua_eval", json!({ "chunk": widget_rect_chunk(window) }))
             .await?;
         let rect = parse_widget_rect(window, &results_of(&v))?;
         let (x, y) = rect.centre();
         let received_by = self.verify_click_target(window, x, y).await?;
+        let before = self.expect_before(expect).await;
         let placed = self.place_cursor(x, y).await?;
         let at = placed.at;
         // Give the UI a frame to register the hover before the press.
         tokio::time::sleep(Duration::from_millis(40)).await;
         self.post_button(button, "click", at, None).await?;
+        let checks = self.expect_after(expect, &before).await;
         let mut out = placed.to_json();
         out["window"] = json!(window);
         out["clicked_at"] = json!([at.0, at.1]);
         out["received_by"] = json!(received_by);
+        out["evidence"] =
+            click_evidence(Some(received_by.as_str()), window, None, checks).to_value();
         Ok(out)
     }
 

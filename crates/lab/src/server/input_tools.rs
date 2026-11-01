@@ -9,6 +9,7 @@ use serde_json::json;
 
 use super::LabServer;
 use crate::supervisor::input::{cursor_target, MouseInput};
+use crate::supervisor::ui::click_expect::ClickExpect;
 /// Args for `client_input_key`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct InputKeyArgs {
@@ -58,6 +59,15 @@ pub struct UiClickArgs {
     /// 0 left (default), 1 right.
     #[serde(default)]
     pub button: Option<usize>,
+    /// Window that must be visible after the click; the result is judged on it.
+    #[serde(default)]
+    pub expect_visible: Option<String>,
+    /// Window that must be hidden after the click.
+    #[serde(default)]
+    pub expect_hidden: Option<String>,
+    /// How long to wait for the expected window, ms (default 2000, max 10000).
+    #[serde(default)]
+    pub expect_timeout_ms: Option<u64>,
 }
 
 /// Args for `client_cursor_move`.
@@ -124,15 +134,16 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Click a named UI window like a player: read its on-screen rectangle, put the UI cursor on its centre (CEGUI cursor, mirrored into the virtual GetCursorPos), then click with real button messages. Refuses hidden or missing windows."
+        description = "Click a named UI window like a player: read its on-screen rectangle, put the UI cursor on its centre (CEGUI cursor, mirrored into the virtual GetCursorPos), then click with real button messages. Refuses hidden or missing windows. Pass expect_visible or expect_hidden to have the click judged: without one the result is inconclusive (posted_only), because a click alone proves nothing."
     )]
     async fn client_ui_click(
         &self,
         Parameters(a): Parameters<UiClickArgs>,
     ) -> Result<CallToolResult, McpError> {
+        let expect = ClickExpect::from_args(a.expect_visible, a.expect_hidden, a.expect_timeout_ms);
         self.wrap(
             self.supervisor
-                .ui_click(&a.window, a.button.unwrap_or(0))
+                .ui_click(&a.window, a.button.unwrap_or(0), &expect)
                 .await,
         )
     }

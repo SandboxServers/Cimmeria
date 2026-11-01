@@ -22,6 +22,8 @@ pub const JUDGED: &[&str] = &[
     "client_target",
     "client_move_to",
     "client_camera",
+    "client_window_click",
+    "client_ui_click",
     "lab_recover",
 ];
 
