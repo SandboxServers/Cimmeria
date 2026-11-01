@@ -7,7 +7,8 @@ use std::sync::{Arc, Mutex};
 use serde_json::{json, Value};
 
 use super::{
-    dialog_closed_check, input_released_check, moved_check, pitch_level_check, server_moved_check,
+    dialog_closed_check, input_released_check, moved_check, moved_m, pitch_level_check,
+    server_moved_check,
 };
 use crate::proof::{EvVerdict, Why};
 use crate::supervisor::events::fake_bridge::{self, Responder};
@@ -159,6 +160,30 @@ fn dialog_closed_cases() {
     assert_eq!(dialog_closed_check(Some(&json!({}))).ok, Some(true));
     assert_eq!(
         dialog_closed_check(Some(&json!({ "dialog": { "title": "x" } }))).ok,
+        Some(false)
+    );
+    // A dialog section that threw reads `dialog: null`; that is not closed.
+    let threw = json!({"dialog": null, "errors": ["dialog: boom"]});
+    assert_eq!(dialog_closed_check(Some(&threw)).ok, None);
+    let other = json!({"dialog": null, "errors": ["windows: boom"]});
+    assert_eq!(dialog_closed_check(Some(&other)).ok, Some(true));
+}
+
+#[test]
+fn jump_in_place_is_not_moved() {
+    // A jump lifts the pawn along Z (UE3 units); that is not walking.
+    let origin = Vec3::new(0.0, 0.0, 0.0);
+    assert!(moved_m(origin, Vec3::new(0.0, 0.0, 150.0)) < 0.01);
+    assert_eq!(moved_m(origin, Vec3::new(100.0, 0.0, 0.0)), 1.0);
+}
+
+#[test]
+fn server_vertical_move_is_not_moved() {
+    // Server Y is up: a rise of 2 m is not a horizontal move.
+    let a = Vec3::new(0.0, 0.0, 0.0);
+    let up = Vec3::new(0.0, 2.0, 0.0);
+    assert_eq!(
+        server_moved_check(Some(a), Some(up)).unwrap().ok,
         Some(false)
     );
 }

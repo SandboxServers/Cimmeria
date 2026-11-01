@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use super::world::geometry::{distance_m, Vec3};
+use super::world::geometry::{horizontal_m, Vec3};
 use super::world::io::{LiveWorld, WorldIo};
 use super::world::steer::Unstick;
 use super::world::unstick::run_unstick;
@@ -62,6 +62,16 @@ pub fn dialog_closed_check(ui: Option<&Value>) -> Check {
     let Some(ui) = ui else {
         return Check::new(name, Source::Client, None, true).with_why(Why::NoPostRead);
     };
+    // `dialog: null` also comes back when the Lua dialog section threw; that
+    // is an unread dialog, not a closed one.
+    if ui.get("errors").and_then(Value::as_array).is_some_and(|e| {
+        e.iter()
+            .any(|s| s.as_str().is_some_and(|s| s.starts_with("dialog:")))
+    }) {
+        return Check::new(name, Source::Client, None, true)
+            .with_after(ui.get("errors").cloned().unwrap_or(Value::Null))
+            .with_why(Why::NoPostRead);
+    }
     let closed = ui.get("dialog").is_none_or(Value::is_null);
     Check::new(name, Source::Client, Some(closed), true)
         .with_after(ui.get("dialog").cloned().unwrap_or(Value::Null))
@@ -84,6 +94,11 @@ pub fn pitch_level_check(pitch_offset_deg: Option<f64>) -> Check {
     }
 }
 
+/// Horizontal metres moved; a jump in place does not count.
+pub fn moved_m(start: Vec3, now: Vec3) -> f64 {
+    horizontal_m(start, now)
+}
+
 /// The pawn moved at least [`MOVED_MIN_M`] by the client pose.
 pub fn moved_check(moved_m: Option<f64>) -> Check {
     let name = "moved";
@@ -99,8 +114,9 @@ pub fn moved_check(moved_m: Option<f64>) -> Check {
 /// answered both before and after.
 pub fn server_moved_check(before: Option<Vec3>, after: Option<Vec3>) -> Option<Check> {
     let (b, a) = (before?, after?);
-    let (dx, dy, dz) = (a.x - b.x, a.y - b.y, a.z - b.z);
-    let m = (dx * dx + dy * dy + dz * dz).sqrt();
+    // Server Y is up, so the horizontal plane is x/z.
+    let (dx, dz) = (a.x - b.x, a.z - b.z);
+    let m = (dx * dx + dz * dz).sqrt();
     Some(
         Check::new(
             "server_moved",
@@ -145,10 +161,17 @@ impl Supervisor {
                 ))
             }
         };
-        tracing::info!(target: "lab.input", recipe, "lab.recover");
+        let evidence = Evidence::judge(checks);
+        tracing::info!(
+            target: "lab.input",
+            recipe,
+            verdict = ?evidence.verdict,
+            why = ?evidence.why,
+            "lab.recover"
+        );
         Ok(json!({
             "recipe": recipe,
-            "evidence": Evidence::judge(checks).to_value(),
+            "evidence": evidence.to_value(),
             "steps": steps,
         }))
     }
@@ -234,7 +257,11 @@ impl Supervisor {
             }
             Err(e) => {
                 steps.push(step("camera", false, Some(json!(e.summary()))));
-                None
+                // The pitch may still be readable: judge on it, not on the error.
+                io.camera_readout()
+                    .await
+                    .ok()
+                    .and_then(|r| r["pitch_offset_deg"].as_f64())
             }
         };
         vec![pitch_level_check(pitch)]
@@ -266,7 +293,7 @@ impl Supervisor {
             }
             match io.actor_pose(actor).await {
                 Ok(p) => {
-                    let m = distance_m(start_pose.pos, p.pos);
+                    let m = moved_m(start_pose.pos, p.pos);
                     steps.push(step(u.name(), true, Some(json!({ "moved_m": m }))));
                     moved = Some(m);
                     if m >= MOVED_MIN_M {
