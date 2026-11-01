@@ -123,6 +123,16 @@ impl Supervisor {
             match self.send_hold(hwnd, k, true).await {
                 Ok(v) => {
                     let posted = v.get("posted").and_then(Value::as_bool).unwrap_or(false);
+                    let still_held = self.holds.lock().await.name_of(vk).is_some();
+                    if !still_held {
+                        // Released while the renewal was in flight: undo the press it caused.
+                        if posted {
+                            if let Err(e) = self.send_hold(hwnd, k, false).await {
+                                tracing::debug!(target: "lab.hold", vk, error = %e, "late hold undo failed");
+                            }
+                        }
+                        continue;
+                    }
                     if self.holds.lock().await.renewed(vk, mono_ms(), posted) {
                         reasserted += 1;
                         tracing::warn!(target: "lab.hold", vk, "lab.hold.reasserted");

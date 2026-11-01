@@ -117,3 +117,45 @@ async fn release_all_sends_ups() {
     assert!(sent.iter().all(|p| p["down"] == false));
     assert!(sup.holds.lock().await.is_empty());
 }
+
+#[tokio::test]
+async fn renew_undoes_a_press_released_mid_flight() {
+    // The responder runs inside the renewal call, so it reaches the book
+    // through a slot filled once the supervisor exists. `try_lock` is safe
+    // there: `renew_holds_at` drops the book lock before it sends.
+    type Slot = Arc<Mutex<Option<Arc<tokio::sync::Mutex<crate::supervisor::hold_book::HoldBook>>>>>;
+    let slot: Slot = Arc::default();
+    let book_slot = slot.clone();
+    let calls: Calls = Arc::default();
+    let log = calls.clone();
+    let r: Responder = Arc::new(move |m: &str, p: &Value| {
+        if m != "input_hold" {
+            return Ok(json!({}));
+        }
+        log.lock().unwrap().push((m.to_string(), p.clone()));
+        if p["down"] == true {
+            // A release lands while this renewal is in flight.
+            if let Some(book) = book_slot.lock().unwrap().as_ref() {
+                book.try_lock().unwrap().clear();
+            }
+        }
+        Ok(json!({ "posted": true, "held": [] }))
+    });
+    let sup = fake_bridge::supervisor(r).await;
+    *slot.lock().unwrap() = Some(sup.holds.clone());
+    {
+        let mut b = sup.holds.lock().await;
+        b.set_lease_ms(0);
+        b.pressed(w().vk, "w", 0);
+    }
+    assert_eq!(
+        sup.renew_holds_at(7).await,
+        0,
+        "a released hold is not reasserted"
+    );
+    let sent = holds(&calls);
+    assert_eq!(sent.len(), 2);
+    assert_eq!(sent[0]["down"], true);
+    assert_eq!(sent[1]["down"], false, "the late press must be undone");
+    assert!(sup.holds.lock().await.is_empty());
+}

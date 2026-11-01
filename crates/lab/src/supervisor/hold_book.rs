@@ -103,6 +103,13 @@ impl HoldBook {
         self.held.clear();
     }
 
+    /// Forget everything: holds and the old-DLL fallback. A new or stopped
+    /// client starts with a clean book (C5: fallback is per connection).
+    pub fn reset(&mut self) {
+        self.held.clear();
+        self.fallback = false;
+    }
+
     /// Tests: a zero lease makes every hold due at once.
     #[cfg(test)]
     pub fn set_lease_ms(&mut self, ms: u32) {
@@ -151,5 +158,15 @@ mod tests {
         assert!(!b.released(1));
         b.clear();
         assert!(b.is_empty());
+    }
+
+    #[test]
+    fn reset_forgets_holds_and_fallback() {
+        let mut b = HoldBook::default();
+        b.pressed(1, "a", 0);
+        b.set_fallback();
+        b.reset();
+        assert!(b.is_empty());
+        assert!(!b.is_fallback());
     }
 }

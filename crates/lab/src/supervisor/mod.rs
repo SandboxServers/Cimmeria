@@ -530,6 +530,9 @@ impl Supervisor {
         } else {
             "minted"
         };
+        // A fresh client starts with a clean hold book: no key from the last
+        // one, and no fallback learned from its DLL (C5).
+        self.holds.lock().await.reset();
         {
             let mut st = self.state.lock().await;
             lifecycle::record_pid(&mut st, pid, process::is_alive);
