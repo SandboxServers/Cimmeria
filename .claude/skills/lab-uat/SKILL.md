@@ -93,7 +93,7 @@ Verdicts from the driver:
 
 - `lab_uat_run`: run `plan_only: true` first. Then run batches of about 5 rows on one `run_dir`, and pass `server_version`.
 - SigNoz clauses come back PENDING with their filter. Run each filter, `lab_uat_attest` the row, then `lab_uat_report { ledger: true }`.
-- `lab_uat_run` rows with `strict` (AX-44) carry their verdicts; a row is PASS only on `confirmed`.
+- `lab_uat_run` returns each action's verdict (AX-44's strict switch counts `unjudged` as `inconclusive`). An action is done only on `confirmed`; the row's grade follows D-AX1 above.
 - Manual rows: record the result and evidence in the campaign ledger and the unified UAT guide row.
 - A FAIL becomes a fix packet in the campaign's ledger.
 - Release the lease.
