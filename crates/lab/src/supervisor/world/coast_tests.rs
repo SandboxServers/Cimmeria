@@ -194,6 +194,16 @@ async fn waypoint_legs_do_not_release() {
     // Only the final leg coasts: the waypoint is judged as it always was.
     assert!(out["legs"][0].get("coast").is_none());
     assert!(out["legs"][1]["coast"].is_object());
-    let corner_m = out["legs"][0]["outcome"]["distance_m"].as_f64().unwrap();
-    assert!(corner_m <= 0.5, "waypoint released early: {corner_m} m");
+    let w: Vec<bool> = sim
+        .key_log
+        .iter()
+        .filter(|(k, _)| k == movement::FORWARD_KEY)
+        .map(|(_, d)| *d)
+        .collect();
+    // One press per leg, then the cleanup release `run` sends after every walk.
+    assert_eq!(
+        w,
+        vec![true, false, true, false, false],
+        "W must press once per leg, with no early release on the corner"
+    );
 }

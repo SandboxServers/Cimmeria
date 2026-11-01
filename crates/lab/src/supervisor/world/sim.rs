@@ -84,6 +84,8 @@ pub struct Sim {
     pub lag: Lag,
     /// The walker's coast model as the last walk left it (`None`: the prior).
     pub coast_model: Option<CoastModel>,
+    /// Every key change the walker asked for, in order (before any input lag).
+    pub key_log: Vec<(String, bool)>,
     pub screen: Screen,
     pub hfov: f64,
     pub entities: Vec<SimEntity>,
@@ -437,6 +439,7 @@ impl WorldIo for Sim {
     }
 
     async fn key(&mut self, key: &str, down: bool) -> Result<(), String> {
+        self.key_log.push((key.to_string(), down));
         if let Some((key, down)) = self.lag.key(self.now, key, down) {
             self.apply_key(&key, down);
         }

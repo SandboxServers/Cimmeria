@@ -23,7 +23,9 @@ pub const MIN_HOLDOFF_MS: u64 = 300;
 /// The learned coast time, seconds, and how many releases taught it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CoastModel {
+    /// Learned coast time, seconds.
     pub coast_s: f64,
+    /// Releases that taught it.
     pub samples: u32,
 }
 
@@ -61,6 +63,7 @@ impl CoastModel {
         self.samples += 1;
     }
 
+    /// The model as the leg report's `coast` object.
     pub fn as_json(&self) -> Value {
         json!({ "coast_s": self.coast_s, "samples": self.samples })
     }
@@ -70,6 +73,7 @@ impl CoastModel {
 #[derive(Debug, Clone, Default)]
 pub struct SpeedEst {
     last: Option<(Vec3, u64)>,
+    /// Horizontal speed, metres per second.
     pub mps: f64,
 }
 
@@ -92,6 +96,7 @@ impl SpeedEst {
 /// The final leg's coast bookkeeping: the model, the speed, the release.
 #[derive(Debug, Clone)]
 pub struct CoastGlue {
+    /// The model the walk started from and updated.
     pub model: CoastModel,
     speed: SpeedEst,
     /// The release point and the speed it was released at.
@@ -103,6 +108,7 @@ pub struct CoastGlue {
 }
 
 impl CoastGlue {
+    /// A glue holding `model` with no release seen yet.
     pub fn new(model: CoastModel) -> Self {
         Self {
             model,
@@ -122,10 +128,12 @@ impl CoastGlue {
         self.model.lead_m(self.speed.mps)
     }
 
+    /// The hold-off the model asks for, ms.
     pub fn holdoff_ms(&self) -> u64 {
         self.model.holdoff_ms()
     }
 
+    /// Feed the speed estimate with this tick's pose.
     pub fn on_pose(&mut self, pos: Vec3, now_ms: u64) {
         self.speed.observe(pos, now_ms);
     }
@@ -160,17 +168,21 @@ impl CoastGlue {
 /// the hold-off ends.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Lead {
+    /// Release distance before the goal, metres.
     pub lead_m: f64,
+    /// Hold-off after a release, ms.
     pub hold_ms: u64,
     until_ms: Option<u64>,
 }
 
 impl Lead {
+    /// Set the lead and hold-off for the next step.
     pub fn set(&mut self, lead_m: f64, hold_ms: u64) {
         self.lead_m = lead_m;
         self.hold_ms = hold_ms;
     }
 
+    /// True between an early release and the end of its hold-off.
     pub fn coasting(&self) -> bool {
         self.until_ms.is_some()
     }

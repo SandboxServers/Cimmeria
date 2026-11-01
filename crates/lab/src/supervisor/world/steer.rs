@@ -13,7 +13,6 @@ use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 use serde_json::{json, Value};
 
-use super::coast::Lead;
 use super::geometry::{horizontal_m, wrap_pi, yaw_error, Pose, Screen, Vec3};
 
 /// Starting guess for DirectInput counts per radian of camera yaw.
@@ -326,8 +325,7 @@ pub struct MoveController {
     best_m: f64,
     best_at: u64,
     min_m: f64,
-    /// The early release and hold-off (zero lead: arrival is judged as ever).
-    lead: Lead,
+    lead: super::coast::Lead,
 }
 
 impl MoveController {
@@ -342,7 +340,7 @@ impl MoveController {
             best_m: f64::INFINITY,
             best_at: 0,
             min_m: f64::INFINITY,
-            lead: Lead::default(),
+            lead: super::coast::Lead::default(),
         }
     }
 
@@ -397,7 +395,6 @@ impl MoveController {
             None => false,
         };
 
-        // The pawn is still coasting in after an early release: no judgement yet.
         if self.lead.holding(now_ms) {
             self.last = None;
             return out;
