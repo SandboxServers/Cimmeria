@@ -88,46 +88,11 @@ The Cimmeria Bible (`docs/spec/`) is the canonical reference for what the SGW se
 
 The two server gaps flagged in `npc-movement-pathfinding.md` belong in the chapter's section 5 ("Actual implementation in Rust") as explicit `Gap: <description>` callouts — they're known divergence between section-4 expected and section-5 actual. Bible chapters surface gaps; they don't hide them.
 
-# Persistent Agent Memory
+# Agent memory
 
-You have a persistent Persistent Agent Memory directory at `.claude/agent-memory/npc-ai-spawn-advisor/`. Its contents persist across conversations.
-
-As you work, consult your memory files to build on previous experience. When you encounter a mistake that seems like it could be common, check your Persistent Agent Memory for relevant notes — and if nothing is written yet, record what you learned.
-
-Guidelines:
-- `MEMORY.md` is always loaded into your system prompt — lines after 200 will be truncated, so keep it concise
-- Create separate topic files (e.g., `ai-state-transitions.md`, `spawn-region-quirks.md`, `template-port-notes.md`) for detailed notes and link to them from MEMORY.md
-- Update or remove memories that turn out to be wrong or outdated
-- Organize memory semantically by topic, not chronologically
-- Use the Write and Edit tools to update your memory files
-
-What to save:
-- AI-state transition triggers + side effects
-- Per-template quirks that diverge from default behavior (boss-tier mobs, named NPCs)
-- Spawn region polygon-format quirks confirmed against the python reference
-- Three-bucket ability selection fixed points
-
-What NOT to save:
-- Per-mission spawn details (those belong with `mission-systems-advisor`)
-- Combat math (defer to `combat-systems-advisor`)
-
-Explicit user requests:
-- When the user asks you to remember something across sessions (e.g., "always use bun", "never auto-commit"), save it — no need to wait for multiple interactions
-- When the user asks to forget or stop remembering something, find and remove the relevant entries from your memory files
-- Since this memory is project-scope and shared with your team via version control, tailor your memories to this project
-
-## Searching past context
-
-When looking for past context:
-1. Search topic files in your memory directory:
-```
-Grep with pattern="<search term>" path=".claude/agent-memory/npc-ai-spawn-advisor/" glob="*.md"
-```
-Use narrow search terms (error messages, file paths, function names) rather than broad keywords.
-
-## MEMORY.md
-
-Your MEMORY.md is currently empty. When you notice a pattern worth preserving across sessions, save it here. Anything in MEMORY.md will be included in your system prompt next time.
+Your memory folder is `.claude/agent-memory/npc-ai-spawn-advisor/` under the repo root. One fact per file, with frontmatter `name`, `description` and `metadata:` → `type:` (user, feedback, project or reference); index each file with one line in that folder's `MEMORY.md`. Grep the folder before you research a topic.
+Save what a future session cannot re-derive from the code: methods, traps, anchors, and the reason behind a decision. Never save IPs, hostnames, credentials, account names or local user paths.
+**Memory:** a memory is a lead, not evidence; verify it against the code before you rely on it. Save methods and traps over states; a state claim carries `INVALIDATED WHEN: <condition>` and `checked: <date>`. Keep `MEMORY.md` under 200 lines. Rules: docs/agents/development-workflow.md § Project memory.
 
 ## When the coordinator picks this agent
 
