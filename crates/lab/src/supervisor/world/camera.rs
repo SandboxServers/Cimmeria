@@ -18,8 +18,7 @@ use super::geometry::{bearing, wrap_pi, Pose, Screen, Vec3};
 use super::io::WorldIo;
 use super::memory;
 use super::steer::{FaceConfig, FaceController, FaceStep, TurnModel};
-use super::{camera_proof, fresh_wait};
-use super::{PointArg, Steps, TargetArg, WorldError};
+use super::{camera_proof, fresh_wait, PointArg, Steps, TargetArg, WorldError};
 use crate::proof::Evidence;
 
 /// Frames for a mouse-look motion to show up in the next projection.
