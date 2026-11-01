@@ -29,11 +29,11 @@ A lead, not evidence. Each trap names where the verified contract lives. Folded 
 ## Migration
 
 - Three distinct legacy sources: executable-adjacent config and identity, and the game-root ledger. Historical telemetry `enabled` is not consent. A legacy ledger can never be promoted to signed ownership.
-- Confirm IPC carries only digest, revision and an explicit Boolean; extra fields are rejected. The egui launcher source is gone, so the importer's tests pin the legacy formats.
+- Confirm IPC carries only digest, revision and an explicit Boolean; extra fields are rejected. The importer's tests pin the legacy formats.
 
 ## Updater, update, launch
 
-- Updater: a Minisign global signature authenticates the trusted-comment version; artifact verification alone does not bind the feed version. Call `ensure_updater_idle()` before other mutation preparations. Production composition has no endpoint or key (reports Disabled).
+- Updater: a Minisign global signature authenticates the trusted-comment version; artifact verification alone does not bind the feed version. Call `ensure_updater_idle()` before other mutation preparations.
 - Native shutdown belongs to the retained worker, not the awaited IPC response. After a successful spawn the handoff signal must fire even when final persistence fails; completion comes from startup reconciliation.
 - Tree fingerprints that authorize rollback or deletion must frame directories with child counts and symlinks with target lengths. A derived UUID path is not ownership evidence.
 - Update recovery must reconcile partial root-receipt and installed-index publication; do not call `installed_content()` during it. Rollback is a new confirmed Update from previous signed evidence with a fresh minimum check; its evidence identity differs from the original even when the manifest digest matches.
@@ -42,6 +42,3 @@ A lead, not evidence. Each trap names where the verified contract lives. Folded 
 - Environment and fixture tests prove logic, not rendering, login, signed packaged upgrade or gameplay; those need retained native UAT.
 
 Docs: `crates/launcher/desktop/docs/{migration,updater,launch-mac}.md` and `docs/analysis/playtests/2026-10-03-macos-wine/worknotes/`.
-
-INVALIDATED WHEN: the desktop launcher's storage, host or updater modules are restructured.
-checked: unverified 2026-11-01

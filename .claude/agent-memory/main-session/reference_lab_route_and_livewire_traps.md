@@ -19,6 +19,3 @@ A lead, not evidence (2026-10-13 work).
 - `docs/analysis/cellblock-autoplay/livewire-spike/test_atlas.py` holds a golden per library; set `CIMMERIA_LIVEWIRE_UPK` to run it against a local client copy.
 - The lab server clones per request, so keep the atlas as an `Arc` field on `LabServer`, not a local in router setup.
 - `CIMMERIA_LAB_HOME` or the installer `-LabHome` relocates the lab cache.
-
-INVALIDATED WHEN: lab route output or the Livewire solver is reworked.
-checked: unverified 2026-11-01

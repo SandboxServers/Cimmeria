@@ -16,4 +16,4 @@ Observed 2026-10-04 on macOS with the pinned runtime, using native fixtures and 
 - With `ROSETTA_X87_PATH` set, the window owner's executable path is unobserved.
 
 INVALIDATED WHEN: the pinned Wine runtime changes.
-checked: unverified 2026-11-01
+checked: 2026-11-01

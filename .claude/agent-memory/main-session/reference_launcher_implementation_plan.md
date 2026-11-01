@@ -16,6 +16,3 @@ Traps from the first implementation (2026-10-04):
 - The headless UAT drives the real Rust `commands.rs` through the `state_bridge` example.
 
 Related: [[reference_launcher_desktop_native_traps]].
-
-INVALIDATED WHEN: the plan ledger is superseded or the desktop CI workflow is renamed.
-checked: unverified 2026-11-01
