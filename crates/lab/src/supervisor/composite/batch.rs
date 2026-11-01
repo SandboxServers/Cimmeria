@@ -26,6 +26,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Map, Value};
 
+use super::batch_frame;
 use crate::supervisor::flows::widgets::lua_quote;
 use crate::supervisor::Supervisor;
 
@@ -65,7 +66,7 @@ impl ReadAs {
     }
 
     /// Bytes per value (hex reads default to 4).
-    fn width(self) -> u32 {
+    pub fn width(self) -> u32 {
         match self {
             Self::U8 => 1,
             Self::U16 => 2,
@@ -433,6 +434,8 @@ pub struct BatchOutcome {
     /// The step the batch stopped at (stop_on_error).
     pub stopped_at: Option<String>,
     pub ms: u64,
+    /// The client frame the steps ran in (the DLL batch only).
+    pub frame: Option<u64>,
 }
 
 impl BatchOutcome {
@@ -440,6 +443,9 @@ impl BatchOutcome {
         let mut out = json!({ "steps": self.values, "ms": self.ms });
         if let Some(s) = &self.stopped_at {
             out["stopped_at"] = json!(s);
+        }
+        if let Some(f) = self.frame {
+            out["frame"] = json!(f);
         }
         out
     }
@@ -452,11 +458,7 @@ impl Supervisor {
             Op::Lua { chunk } => {
                 let chunk = text_of(&resolve(&json!(chunk), values)?);
                 let r = self.lua_results(&chunk).await?;
-                Ok(match r.len() {
-                    0 => json!(true),
-                    1 => json!(r[0]),
-                    _ => json!(r),
-                })
+                Ok(batch_frame::lua_value(r))
             }
             Op::MemRead { addr, len, read_as } => {
                 let addr = addr_text(&resolve(addr, values)?)?;
@@ -516,6 +518,21 @@ impl Supervisor {
     /// `{"error": ...}`; with `stop_on_error` the batch ends there.
     pub async fn batch(&self, steps: &[Step], stop_on_error: bool) -> BatchOutcome {
         let t0 = Instant::now();
+        // Literal reads and Lua run in one client frame when the DLL can
+        // take them; anything else (or an old DLL, or a failed call) takes
+        // the step path below. `stop_on_error` keeps the step path: the DLL
+        // runs every step in one call, so it cannot stop between them, and
+        // each step's lease check must still run in turn.
+        if !stop_on_error
+            && batch_frame::dll_batchable(steps)
+            && !self
+                .dll_batch_unsupported
+                .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            if let Ok(Some(o)) = self.batch_in_frame(steps).await {
+                return o;
+            }
+        }
         let mut values = Map::new();
         let mut stopped_at = None;
         for s in steps {
@@ -537,6 +554,7 @@ impl Supervisor {
             values,
             stopped_at,
             ms: t0.elapsed().as_millis() as u64,
+            frame: None,
         }
     }
 }

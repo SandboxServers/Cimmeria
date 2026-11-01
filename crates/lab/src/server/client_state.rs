@@ -112,7 +112,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Capture a rectangle of the client window (capture pixels: the whole window, frame included, same space as lab_screenshot) and return it as a PNG image."
+        description = "Capture a rectangle of the client window (capture pixels: the whole window, frame included, same space as lab_screenshot) and return it as a PNG image. The text (or JSON frames) names the client frames the capture spans, from heartbeats before and after."
     )]
     async fn lab_screenshot_region(
         &self,
@@ -126,13 +126,21 @@ impl LabServer {
         };
         let img = self
             .supervisor
-            .capture()
+            .capture_bracketed()
             .await
-            .and_then(|full| screenshot::crop(&full, region))
-            .and_then(|c| screenshot::encode_png(&c).map(|png| (png, c.width, c.height)));
+            .and_then(|(full, b)| {
+                let c = screenshot::crop(&full, region)?;
+                let png = screenshot::encode_png(&c)?;
+                Ok((png, c.width, c.height, b))
+            });
         match img {
-            Ok((png, w, h)) => Ok(CallToolResult::success(vec![
-                ContentBlock::text(format!("region {w}x{h} at ({}, {})", a.x, a.y)),
+            Ok((png, w, h, b)) => Ok(CallToolResult::success(vec![
+                ContentBlock::text(format!(
+                    "region {w}x{h} at ({}, {}){}",
+                    a.x,
+                    a.y,
+                    crate::supervisor::capture_frames::frames_text(b)
+                )),
                 ContentBlock::image(screenshot::png_to_base64(&png), "image/png"),
             ])),
             Err(e) => Err(McpError::internal_error(
@@ -143,7 +151,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Count the pixels in a rectangle of the client window whose RGB lies in an inclusive [min, max] box, plus the rectangle's mean colour. Cheap on-screen checks (a nameplate colour, a HUD element) without reading the image."
+        description = "Count the pixels in a rectangle of the client window whose RGB lies in an inclusive [min, max] box, plus the rectangle's mean colour. Cheap on-screen checks (a nameplate colour, a HUD element) without reading the image. The text (or JSON frames) names the client frames the capture spans, from heartbeats before and after."
     )]
     async fn lab_pixel_probe(
         &self,
@@ -157,16 +165,20 @@ impl LabServer {
         };
         let r = self
             .supervisor
-            .capture()
+            .capture_bracketed()
             .await
-            .and_then(|full| screenshot::probe(&full, region, a.min, a.max))
-            .map(|p| {
-                json!({
+            .and_then(|(full, b)| Ok((screenshot::probe(&full, region, a.min, a.max)?, b)))
+            .map(|(p, b)| {
+                let mut out = json!({
                     "matched": p.matched,
                     "total": p.total,
                     "fraction": p.matched as f64 / p.total.max(1) as f64,
                     "mean_rgb": p.mean_rgb,
-                })
+                });
+                if let Some(f) = b {
+                    out["frames"] = json!(f);
+                }
+                out
             });
         self.wrap(r)
     }

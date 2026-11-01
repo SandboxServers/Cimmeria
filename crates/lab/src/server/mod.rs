@@ -488,13 +488,27 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Capture the client window's game area (client rect, UI pixel space) as a PNG. Refuses a minimised window or an all-black frame."
+        description = "Capture the client window's game area (client rect, UI pixel space) as a PNG. Refuses a minimised window or an all-black frame. The text names the client frames the capture spans, from heartbeats before and after."
     )]
     async fn lab_screenshot(&self) -> Result<CallToolResult, McpError> {
-        match self.supervisor.screenshot().await {
-            Ok((b64, w, h)) => Ok(CallToolResult::success(vec![
-                ContentBlock::text(format!("client window {w}x{h}")),
-                ContentBlock::image(b64, "image/png"),
+        let shot = self
+            .supervisor
+            .capture_bracketed()
+            .await
+            .and_then(|(img, b)| {
+                let png = crate::supervisor::screenshot::encode_png(&img)?;
+                Ok((png, img.width, img.height, b))
+            });
+        match shot {
+            Ok((png, w, h, b)) => Ok(CallToolResult::success(vec![
+                ContentBlock::text(format!(
+                    "client window {w}x{h}{}",
+                    crate::supervisor::capture_frames::frames_text(b)
+                )),
+                ContentBlock::image(
+                    crate::supervisor::screenshot::png_to_base64(&png),
+                    "image/png",
+                ),
             ])),
             Err(e) => Err(McpError::internal_error(format!("screenshot: {e}"), None)),
         }

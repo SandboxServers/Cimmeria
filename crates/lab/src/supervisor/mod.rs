@@ -32,6 +32,7 @@
 //! - [`combat`] — hotbar, ability use, combat log, defeat and respawn.
 
 mod account;
+pub mod capture_frames;
 #[cfg(test)]
 mod cegui_fake;
 pub mod cegui_native;
@@ -295,6 +296,9 @@ pub struct Supervisor {
     holds: Arc<Mutex<hold_book::HoldBook>>,
     /// The daemon's copy of the DLL watch (`client_watch`, C15).
     watch: Arc<Mutex<watch_store::WatchStore>>,
+    /// Set once the lab DLL answers `batch` with "method not found": an old
+    /// DLL, so `batch` runs the per-step path. Shared by clones (`Arc`).
+    dll_batch_unsupported: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Supervisor {
@@ -326,6 +330,7 @@ impl Supervisor {
             record: Default::default(),
             holds: Default::default(),
             watch: Default::default(),
+            dll_batch_unsupported: Default::default(),
         }
     }
 
@@ -562,18 +567,6 @@ impl Supervisor {
     /// Record login progress for `lab_client_status`.
     pub(crate) async fn set_login_state(&self, login: LoginState) {
         self.state.lock().await.login = login;
-    }
-
-    /// `lab_screenshot` — capture the client window as PNG bytes +
-    /// base64, for the caller to wrap in an MCP image block.
-    pub async fn screenshot(&self) -> Result<(String, u32, u32), String> {
-        let captured = self.capture().await?;
-        let png = screenshot::encode_png(&captured)?;
-        Ok((
-            screenshot::png_to_base64(&png),
-            captured.width,
-            captured.height,
-        ))
     }
 
     /// Capture the client window as RGBA (for screenshots, crops and

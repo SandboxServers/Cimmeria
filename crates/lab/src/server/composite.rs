@@ -121,7 +121,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Run ordered read/probe steps in one call (lua, mem_read, call_native, wait, player_state, window_text) with $id references to earlier results. call_native is journaled and exception-guarded like client_call_native and never replayed after a crash. Returns {steps: {id: value | {error}}, ms, stopped_at?}."
+        description = "Run ordered read/probe steps in one call (lua, mem_read, call_native, wait, player_state, window_text) with $id references to earlier results. call_native is journaled and exception-guarded like client_call_native and never replayed after a crash. Returns {steps: {id: value | {error}}, ms, stopped_at?}. When every step is a literal mem_read or lua, the lab DLL runs them all in one client frame and the result carries that frame."
     )]
     async fn client_batch(
         &self,
