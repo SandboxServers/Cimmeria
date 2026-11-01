@@ -13,9 +13,19 @@ pub fn minigame_checks(
     placeholder: bool,
     server_outcome: Option<&str>,
     client_window_hidden: bool,
+    action_ok: bool,
 ) -> Vec<Check> {
     if placeholder {
         vec![
+            {
+                let action = Check::new("action_ran", Source::Client, Some(action_ok), true)
+                    .with_before(json!(game));
+                if action_ok {
+                    action
+                } else {
+                    action.with_why(Why::NoEffect)
+                }
+            },
             Check::new(
                 "client_window_hidden",
                 Source::Client,

@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use super::defeat_proof::defeat_checks;
+use super::defeat_proof::{defeat_checks, defeated_checks};
 use super::player::DEFEAT_WIN;
 use super::NativeLevel;
 use crate::proof::Evidence;
@@ -267,6 +267,7 @@ impl Supervisor {
                     "before": before.to_json(),
                     "respawned": false,
                     "event_seq": { "before": seq_before, "after": self.event_head().await },
+                    "evidence": Evidence::judge(defeated_checks()).to_value(),
                 })));
             }
             Respawn::Release => {

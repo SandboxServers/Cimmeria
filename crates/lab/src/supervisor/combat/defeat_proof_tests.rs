@@ -23,3 +23,11 @@ fn a_dead_player_after_the_window_closes_is_denied() {
     assert_eq!(dead.verdict, EvVerdict::Denied);
     assert_eq!(dead.checks[1].why, None);
 }
+
+#[test]
+fn a_left_dead_result_is_confirmed() {
+    assert_eq!(
+        Evidence::judge(defeated_checks()).verdict,
+        EvVerdict::Confirmed
+    );
+}

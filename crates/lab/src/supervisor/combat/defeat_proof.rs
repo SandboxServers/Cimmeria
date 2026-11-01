@@ -24,6 +24,16 @@ pub fn defeat_checks(window_closed: bool, alive: Option<bool>) -> Vec<Check> {
     ]
 }
 
+/// The one required Client check behind a `respawn: "none"` result: the defeat window was seen open.
+pub fn defeated_checks() -> Vec<Check> {
+    vec![Check::new(
+        "defeat_window_open",
+        Source::Client,
+        Some(true),
+        true,
+    )]
+}
+
 #[cfg(test)]
 #[path = "defeat_proof_tests.rs"]
 mod tests;

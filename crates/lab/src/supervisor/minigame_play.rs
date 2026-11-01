@@ -507,7 +507,8 @@ pub async fn play(
         server_outcome,
         terminal_failure(&tap.rows),
     );
-    let effect_ok = action_effect(game, action.is_ok(), hidden, outcome);
+    let action_ok = action.is_ok();
+    let effect_ok = action_effect(game, action_ok, hidden, outcome);
     Ok(PlayResult {
         report: json!({
             "entity_id": entity_id,
@@ -527,6 +528,7 @@ pub async fn play(
                 is_placeholder(game),
                 server_outcome,
                 hidden,
+                action_ok,
             ))
             .to_value(),
         }),
