@@ -19,6 +19,7 @@ use super::memory::{
     clamped_pitch_counts, WorldEntity, WorldSnapshot, CAMERA_DIST_MAX, CAMERA_DIST_MIN,
     CAMERA_ZOOM_STEP,
 };
+use super::sim_lag::Lag;
 use super::NativeLevel;
 
 pub const PLAYER_ID: u32 = 1;
@@ -78,6 +79,8 @@ pub struct Sim {
     /// Walls: forward motion stops at x >= wall until a jump clears it.
     pub wall_x: Option<f64>,
     pub jump_clears_wall: bool,
+    /// Input latency and coasting (both 0 by default: no lag).
+    pub lag: Lag,
     pub screen: Screen,
     pub hfov: f64,
     pub entities: Vec<SimEntity>,
@@ -423,10 +426,9 @@ impl WorldIo for Sim {
     }
 
     async fn key(&mut self, key: &str, down: bool) -> Result<(), String> {
-        if key == "Space" && down && self.jump_clears_wall {
-            self.wall_x = None;
+        if let Some((key, down)) = self.lag.key(self.now, key, down) {
+            self.apply_key(&key, down);
         }
-        self.keys.insert(key.to_string(), down);
         Ok(())
     }
 

@@ -41,6 +41,7 @@ impl Sim {
             slots,
             windows: vec!["ChatWin".into(), "SelfStatusWin".into()],
             keys: HashMap::new(),
+            lag: Default::default(),
             cursor: (0, 0),
             mouse_over_on_repeated_move: None,
             repeated_move_override_active: false,
@@ -102,6 +103,22 @@ impl Sim {
 
     pub(super) fn held(&self, k: &str) -> bool {
         self.keys.get(k).copied().unwrap_or(false)
+    }
+
+    /// Applies one key change now. `W` feeds the coast model: a press ends
+    /// any coast, a release (while held) starts one.
+    pub(super) fn apply_key(&mut self, key: &str, down: bool) {
+        if key == "W" {
+            if down {
+                self.lag.pressed_forward();
+            } else if self.held("W") {
+                self.lag.released_forward(self.now);
+            }
+        }
+        if key == "Space" && down && self.jump_clears_wall {
+            self.wall_x = None;
+        }
+        self.keys.insert(key.to_string(), down);
     }
 
     pub(super) fn slot(&self, s: i32) -> u32 {
@@ -185,6 +202,9 @@ impl Sim {
             let dt = left.min(10);
             left -= dt;
             self.now += dt;
+            for (key, down) in self.lag.due(self.now) {
+                self.apply_key(&key, down);
+            }
             if self.live_pawn {
                 let (l, r) = self.turn_key_names.clone();
                 let dir = f64::from(u8::from(self.held(&r))) - f64::from(u8::from(self.held(&l)));
@@ -198,8 +218,9 @@ impl Sim {
                 self.pos.x -= self.pawn_yaw.cos() * step;
                 self.pos.y -= self.pawn_yaw.sin() * step;
             }
-            if self.held("W") {
-                if !self.live_pawn {
+            let forward = self.held("W");
+            if forward || self.lag.coasting(self.now) {
+                if forward && !self.live_pawn {
                     self.pawn_yaw = self.cam_yaw;
                 }
                 let step = self.speed_uu_s * dt as f64 / 1000.0;

@@ -71,6 +71,10 @@ mod range_tests;
 #[cfg(test)]
 mod sim;
 #[cfg(test)]
+mod sim_lag;
+#[cfg(test)]
+mod sim_lag_tests;
+#[cfg(test)]
 mod steer_tests;
 #[cfg(test)]
 #[path = "steps_tests.rs"]
