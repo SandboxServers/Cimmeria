@@ -11,10 +11,10 @@ AX-64 asked the live lab client to make the autopilot tools lie: every case pair
 
 Read this first. The run was thinner than the packet asked for.
 
-- **Most halves ran once, not three times.** The packet asks for 3 runs per half. Only U2 honest (3 runs) and U3 honest (3 runs) reached three. Every other half ran once or not at all.
-- **Not run at all:** U1, U6, U8, U10 (honest half), U11, U12, U13. U7's bait half did not run validly.
+- **Most halves ran once, not three times.** The packet asks for 3 runs per half. Only U2 honest, U3 honest, U3 bait and the three U9 calls reached three. Every other half ran once or not at all.
+- **Scored NOT RUN:** U1, U4, U6, U7, U8, U9, U10, U11, U12, U13 (U4, U7, U9 and U10 ran some steps but not the case; see their sections).
 - **No `frame-describer` ran.** No screenshot went to a describer, so no verdict was cross-checked against a blind frame description anywhere in this ledger.
-- **No clean U4.** No drop was found on either map, so neither the `allow_drops` arrival nor the `ledge` stop was exercised against a real edge.
+- **No clean U4.** No drop was found on the one map tried (the start area, outdoors; the indoor half was not tried), so neither the `allow_drops` arrival nor the `ledge` stop was exercised against a real edge.
 - **No coordinator-level `client_input_key` run.** The Haiku `lab-driver` is not given `client_input_key` by design, so the "W held into a wall" bait of U7 and the key fail-safe U11 never ran with real DLL holds.
 - **No server-side corroboration was recorded** for most rows (server position, packet tap). Where a row says "client read only", that is all there is.
 - **Telemetry (SigNoz) was not consulted.**
@@ -62,7 +62,9 @@ The only NPC within 60 m was a hostile quest NPC, not a vendor, so this was neve
 
 Extra, outside the case table: a key press (B) sent through `client_ui_sequence` answered `inconclusive`, `posted_only`. That is the expected answer for a step that reads no effect.
 
-**U2: PASS.** Both halves gave the expected verdict. The bait half ran once, not three times.
+The `confirmed` rests on the sequence's `wait_window` step reading the window gone, a client read; a click step alone proves nothing (see lab-evidence § Clicks and items).
+
+**U2: PASS (partial: bait ran 1 of 3 times).** Both halves gave the expected verdict. The bait half ran once, not three times.
 
 ### U3: `client_move_to` 10 m over open floor, and a goal that is not reachable
 
@@ -161,7 +163,7 @@ The case asks us to record what `close_dialogs` returns with no dialog open: it 
 | Case | Result | Reason in one line |
 |---|---|---|
 | U1 | NOT RUN | no vendor; camera or projection failure |
-| U2 | PASS | honest 3 of 3 confirmed; bait denied (bait run once) |
+| U2 | PASS (partial) | honest 3 of 3 confirmed; bait denied (bait run once) |
 | U3 | FAIL | honest confirmed in 1 of 3 runs; no false confirm |
 | U4 | NOT RUN | no drop found; terrain trace answered |
 | U5 | FAIL | honest camera yaw `inconclusive`; bait not valid |
@@ -174,7 +176,7 @@ The case asks us to record what `close_dialogs` returns with no dialog open: it 
 | U12 | NOT RUN | no two-row account file |
 | U13 | NOT RUN | no screensaver run |
 
-1 PASS, 2 FAIL, 10 NOT RUN.
+1 PASS (partial: bait ran once), 2 FAIL, 10 NOT RUN.
 
 ## Lies found
 

@@ -1791,7 +1791,7 @@ The lab-harness campaign ([ledger](../analysis/lab-harness/README.md), #1660) fi
 
 ## Lab-autopilot (AX-64 cases still owed)
 
-The lab-autopilot campaign ([ledger](../analysis/lab-autopilot/README.md)) ran its live "try to make the tools lie" UAT once, thinly: 1 case passed, 2 failed, 10 were not run. The per-case results, the "never tested" list and the findings are in [uat-ax64.md](../analysis/lab-autopilot/uat-ax64.md); the case table is in [packets-wave6.md](../analysis/lab-autopilot/packets-wave6.md#ax-64-live-uat-try-to-make-the-tools-lie). No lie (a `confirmed` on a bait half) was found, but most bait halves did not run three times or at all.
+The lab-autopilot campaign ([ledger](../analysis/lab-autopilot/README.md)) ran its live "try to make the tools lie" UAT once, thinly: 1 case passed in part (its bait half ran once of three), 2 failed, 10 were not run. The per-case results, the "never tested" list and the findings are in [uat-ax64.md](../analysis/lab-autopilot/uat-ax64.md); the case table is in [packets-wave6.md](../analysis/lab-autopilot/packets-wave6.md#ax-64-live-uat-try-to-make-the-tools-lie). No lie (a `confirmed` on a bait half) was found, but most bait halves did not run three times or at all.
 
 **Status:** Partly works. The FAIL rows below are expected to fail until the findings F1 and F3 are fixed; record what you see. Every row drives a lab client, so **ask the owner before running it** and wait until the lab is free.
 
@@ -1812,7 +1812,7 @@ The lab-autopilot campaign ([ledger](../analysis/lab-autopilot/README.md)) ran i
 | U12 | `lab_login` with an account file naming a server that is not the combo's first row; then one naming no combo row | `login_server` is that server and the server log shows the login there; the second fails naming the rows and never logs in | NOT RUN. Needs an account file with two or more combo rows |
 | U13 | `lab_client_start` with a running non-secure `*.scr` screensaver | The log names it as dismissed and the launch proceeds | NOT RUN. Only with the owner's agreement; never unlock a secure session |
 
-U2 passed (bait run once) and is not listed.
+U2 passed in part (bait run once of three) and is not listed; re-run its bait half three times.
 
 ## Recording results
 
