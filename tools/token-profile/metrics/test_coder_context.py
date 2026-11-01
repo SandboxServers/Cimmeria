@@ -135,6 +135,21 @@ class CommitAndHabitsTest(unittest.TestCase):
         self.assertEqual((st["committed_share"], st["pass_uncommitted_share"]), (0.0, 1.0))
         self.assertEqual((doc["continuation_stops"], doc["continuation_stop_rate"]), (0, 0.0))
 
+    def test_cap_denied_commit_is_not_a_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, out = Path(tmp) / "projects", Path(tmp) / "out"
+            write_subagent(root, "s1", "c1", "packet-coder", "Packet HT-99.", [
+                ("Edit", {"file_path": "C:\\x\\tools\\a.py"}, "ok", 1000),
+                ("PowerShell", {"command": "python -m unittest discover -s tools"}, "Ran 3 tests\n\nOK", 2000),
+                ("PowerShell", {"command": 'git -C C:\\x commit -m "HT-99: x"'}, DENY, 91000),
+            ], "HT-99 blocked - - reason=context")
+            args = Namespace(projects_root=root, prefix="C--fixture-repo", since=None, until=None, out=out)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(coder_context.run(args), 0)
+            doc = json.loads((out / "coder-context.json").read_text(encoding="utf-8"))
+        st = doc["groups"]["stopped"]
+        self.assertEqual((st["committed_share"], st["pass_uncommitted_share"]), (0.0, 1.0))
+
 
 class CategoryTest(unittest.TestCase):
     def test_categories_and_targets(self):
