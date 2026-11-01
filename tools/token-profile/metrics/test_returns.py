@@ -184,6 +184,29 @@ class ReturnsTest(unittest.TestCase):
         self.assertEqual(coder["capped_usable_line"], 1)
         self.assertEqual(coder["not_run_suffix"], 1)
 
+    def test_unknown_labels_count_under_other(self):
+        """An agent type with no agent file and no built-in or retired name is counted under `other`, and its name is
+        not written; built-in and retired names keep their own groups."""
+        with tempfile.TemporaryDirectory() as tmp:
+            self.projects = Path(tmp) / "projects"
+            self.repo = Path(tmp) / "repo"
+            self.out = Path(tmp) / "out"
+            write_agent_file(self.repo, "packet-reviewer", "sonnet")
+            write_subagent(self.projects, "s1", "c1", "cm10-closeout-docs", "Close out the docs.", [], "x")
+            write_subagent(self.projects, "s1", "c2", "nt-50a", "Check the notes.", [], "x")
+            write_subagent(self.projects, "s1", "c3", "general-purpose", "Summarise the notes.", [], "x")
+            write_subagent(self.projects, "s1", "c4", "packet-review-fixer", "Apply the fixes.", [], "x")
+            code, _ = self._run()
+            text = (self.out / "returns.json").read_text(encoding="utf-8")
+        self.assertEqual(code, 0)
+        groups = json.loads(text)["groups"]
+        self.assertEqual(groups["other"]["dispatches"], 2)
+        self.assertEqual(groups["general-purpose"]["dispatches"], 1)
+        self.assertEqual(groups["packet-review-fixer"]["dispatches"], 1)
+        self.assertEqual(groups["all"]["dispatches"], 4)
+        self.assertNotIn("cm10-closeout-docs", text)
+        self.assertNotIn("nt-50a", text)
+
 
 if __name__ == "__main__":
     unittest.main()
