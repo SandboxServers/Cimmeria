@@ -27,6 +27,7 @@
 - `test_hooks.py`: HT-06 (`WiringTest`) and HT-08 (`ResumeCardTest`). `orchestrator.md`: HT-07 and HT-08 (different paragraphs), then HT-09. Check both pairs with `git merge-tree`.
 - No cargo anywhere in this campaign; every check is a foreground `python` command.
 - HT-18 runs live Haiku sessions (at most 6): only from a worktree.
+- **lab-autopilot (#2048) runs in parallel.** HT-15c keeps `game-archaeology-specialist/ue3-reflection-trace-anchors.md` (AX-64 may update it) and must not touch `lab-driver/` while AX-61 is open. HT-11a/11b/12a: `git merge-tree` `development-workflow.md` against AX wave 6 (frame-describer roster row). README § Overlap.
 
 **Open decisions:** none. D-HT3 and D-HT10 were decided by the owner on 2026-10-31.
 
