@@ -26,6 +26,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
             actions: vec![],
             blocked: vec![],
             unverified: vec![],
+            inconclusive: vec![],
             chat_marks: HashMap::new(),
             attachments: vec![],
             character: json!({ "name": self.character_name(spec) }),
@@ -70,6 +71,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
         let clauses: Vec<ClauseResult> = results.into_iter().flatten().collect();
         let mut g = grade(&ctx.blocked, &ctx.actions, &clauses, row.required_native);
         mark_unverified(&mut g, &ctx.unverified);
+        super::verdict::settle(&mut g, &ctx.inconclusive, &clauses);
         // A failed session end does not change what the row proved, but the
         // next login may meet the character still online: show it.
         g.flags

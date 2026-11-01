@@ -7,6 +7,7 @@ use std::time::Duration;
 use serde_json::{json, Map, Value};
 
 use super::players::Who;
+use super::verdict::{self, ActionVerdict};
 use super::{now_ms, RowCtx, Runner};
 use crate::uat::clause::json_at;
 use crate::uat::evidence::{clip, ActionRecord, Attachment};
@@ -354,6 +355,13 @@ impl<I: ToolInvoker> Runner<'_, I> {
         }
         self.attach_images(ctx, &format!("action{}", rec.index), &name, &out);
         record_outcome(rec, &out);
+        // The tool's own evidence verdict (AX-12): denied fails the action,
+        // inconclusive is noted for grading; teardown is outside the claim.
+        match verdict::of_outcome(&name, &out.json) {
+            ActionVerdict::Denied(m) if out.ok => return fail(rec, m),
+            ActionVerdict::Inconclusive(m) if role != Role::Teardown => ctx.inconclusive.push(m),
+            _ => {}
+        }
         // A tool that ran but says its effect did not happen (a drag that
         // moved nothing: `effect_ok: false`) fails the action, so it can
         // never count toward a native pass.

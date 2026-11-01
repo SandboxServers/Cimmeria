@@ -32,6 +32,7 @@ mod server_wait;
 mod session;
 mod snapshot;
 mod targets;
+mod verdict;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -196,6 +197,8 @@ pub(crate) struct RowCtx {
     pub blocked: Vec<String>,
     /// A required server read could not be made; preserve UNVERIFIED.
     pub unverified: Vec<String>,
+    /// Actions whose result could not be judged (AX-12): flags, and UNVERIFIED without a passing required clause.
+    pub inconclusive: Vec<String>,
     pub chat_marks: HashMap<String, Vec<String>>,
     pub attachments: Vec<Attachment>,
     pub character: Value,
