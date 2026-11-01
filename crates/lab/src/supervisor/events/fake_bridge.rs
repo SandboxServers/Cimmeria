@@ -18,6 +18,10 @@ use crate::supervisor::{Supervisor, SupervisorConfig};
 /// Answers one call: `Ok(result)` or `Err(message)` (a bridge error).
 pub type Responder = Arc<dyn Fn(&str, &Value) -> Result<Value, String> + Send + Sync>;
 
+/// Answers one call with an optional C4 `meta` stamp for the response.
+pub type MetaResponder =
+    Arc<dyn Fn(&str, &Value) -> Result<(Value, Option<Value>), String> + Send + Sync>;
+
 pub const TOKEN: &str = "fake-bridge-token";
 
 async fn read_frame(s: &mut TcpStream) -> Option<Vec<u8>> {
@@ -34,7 +38,23 @@ async fn write_frame(s: &mut TcpStream, v: &Value) {
     let _ = s.write_all(&body).await;
 }
 
-async fn serve(mut s: TcpStream, responder: Responder) {
+/// How a connection answers: plain results, or results with a `meta`.
+#[derive(Clone)]
+enum Answer {
+    Plain(Responder),
+    Meta(MetaResponder),
+}
+
+impl Answer {
+    fn respond(&self, method: &str, params: &Value) -> Result<(Value, Option<Value>), String> {
+        match self {
+            Answer::Plain(r) => r(method, params).map(|v| (v, None)),
+            Answer::Meta(r) => r(method, params),
+        }
+    }
+}
+
+async fn serve(mut s: TcpStream, responder: Answer) {
     let Some(auth) = read_frame(&mut s).await else {
         return;
     };
@@ -47,8 +67,14 @@ async fn serve(mut s: TcpStream, responder: Responder) {
     while let Some(req) = read_frame(&mut s).await {
         let req: Value = serde_json::from_slice(&req).unwrap_or(Value::Null);
         let method = req["method"].as_str().unwrap_or_default();
-        let resp = match responder(method, &req["params"]) {
-            Ok(result) => json!({ "jsonrpc": "2.0", "id": req["id"], "result": result }),
+        let resp = match responder.respond(method, &req["params"]) {
+            Ok((result, meta)) => {
+                let mut r = json!({ "jsonrpc": "2.0", "id": req["id"], "result": result });
+                if let Some(m) = meta {
+                    r["meta"] = m;
+                }
+                r
+            }
             Err(e) => json!({ "jsonrpc": "2.0", "id": req["id"],
                               "error": { "code": -32000, "message": e } }),
         };
@@ -58,6 +84,21 @@ async fn serve(mut s: TcpStream, responder: Responder) {
 
 /// Start the fake and return a supervisor wired to it.
 pub async fn supervisor(responder: Responder) -> Supervisor {
+    supervisor_at(listen(Answer::Plain(responder)).await)
+}
+
+/// [`supervisor`] whose responses may carry a C4 `meta` stamp.
+#[allow(dead_code)] // The packet's named entry point; tests use `client_with_meta`.
+pub async fn supervisor_with_meta(responder: MetaResponder) -> Supervisor {
+    supervisor_at(listen(Answer::Meta(responder)).await)
+}
+
+/// A bare client wired to a stamping fake, for `client.rs` tests.
+pub async fn client_with_meta(responder: MetaResponder) -> BridgeClient {
+    BridgeClient::new(listen(Answer::Meta(responder)).await, TOKEN)
+}
+
+async fn listen(responder: Answer) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("addr").to_string();
     tokio::spawn(async move {
@@ -65,6 +106,10 @@ pub async fn supervisor(responder: Responder) -> Supervisor {
             tokio::spawn(serve(s, responder.clone()));
         }
     });
+    addr
+}
+
+fn supervisor_at(addr: String) -> Supervisor {
     let config = SupervisorConfig {
         install_dir: None,
         dll_path: None,

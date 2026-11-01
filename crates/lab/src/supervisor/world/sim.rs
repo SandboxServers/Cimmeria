@@ -153,6 +153,9 @@ pub struct Sim {
     /// The position the server reports for the player (see `server_position`).
     #[allow(dead_code)] // Callers land in AX-32.
     pub server_pos: Option<Vec3>,
+    /// The bridge frame counter; `None` models a client without frames.
+    /// `sleep` advances it by `max(1, ms / 16)`.
+    pub frames: Option<u64>,
 }
 
 #[path = "sim_model.rs"]
@@ -165,6 +168,13 @@ impl WorldIo for Sim {
 
     async fn sleep(&mut self, ms: u64) {
         self.advance(ms);
+        if let Some(f) = self.frames.as_mut() {
+            *f += (ms / 16).max(1);
+        }
+    }
+
+    async fn frame(&mut self) -> Option<u64> {
+        self.frames
     }
 
     async fn server_position(&mut self, _entity_id: u32) -> Result<Option<Vec3>, String> {

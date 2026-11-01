@@ -42,6 +42,12 @@ pub trait WorldIo {
     /// Milliseconds since this tool call started.
     fn now_ms(&self) -> u64;
     async fn sleep(&mut self, ms: u64);
+    /// The bridge frame counter now (C4), or `None` when no frame source
+    /// exists. Freshness checks compare two of these.
+    #[allow(dead_code)] // Callers land in wave 3 (AX-30..).
+    async fn frame(&mut self) -> Option<u64> {
+        None
+    }
     /// All entities with poses, plus the unit-slot map.
     async fn snapshot(&mut self) -> Result<WorldSnapshot, String>;
     /// One actor's pose (one read; used per tick).
@@ -282,6 +288,18 @@ impl WorldIo for LiveWorld<'_> {
 
     async fn sleep(&mut self, ms: u64) {
         tokio::time::sleep(Duration::from_millis(ms)).await;
+    }
+
+    async fn frame(&mut self) -> Option<u64> {
+        // The heartbeat tick_count is the same counter as C4 `meta.frame`,
+        // so this works against a DLL that does not stamp responses yet.
+        match self.sup.bridge.heartbeat().await {
+            Ok(f) => Some(f),
+            Err(e) => {
+                tracing::debug!(error = %e, "frame read failed; post-read will be unstamped");
+                None
+            }
+        }
     }
 
     async fn snapshot(&mut self) -> Result<WorldSnapshot, String> {
