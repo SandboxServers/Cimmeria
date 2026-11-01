@@ -2,7 +2,7 @@
 name: services-split-extraction-traps
 description: Traps when extracting a module tree out of cimmeria-services into its own crate (services-crate-split waves) — guards that fire on a crate with no DB tests, allowlist edges that vanish, unreachable_pub, tests whose helper stays behind, and the shim for a file that stays behind
 metadata:
-  type: project
+  type: reference
 ---
 
 Learned extracting `cimmeria-resources` (wave W1b, 2026-09-26). Plan:

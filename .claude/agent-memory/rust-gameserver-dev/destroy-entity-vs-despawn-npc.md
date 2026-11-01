@@ -2,7 +2,7 @@
 name: destroy-entity-vs-despawn-npc
 description: SpaceManager::destroy_entity (bare) leaves the target in every witness's `witnesses` set with no immediate LeftAoI — despawn_npc is the correct primitive for any content-authored NPC removal that must be visible to observers right away.
 metadata:
-  type: project
+  type: reference
 ---
 
 `SpaceManager::destroy_entity` (`crates/cell-world/src/cell/space_manager/entities.rs`) is a pure state-removal primitive: it drops the entity from `space.entities` and the spatial grid, but does **not** touch any other entity's `witnesses` set and sends no `LeftAoI`. The next AoI tick will *eventually* notice and clean up, but only for players the tick happens to visit, and only after up to a full tick of the client rendering a corpse that's already gone server-side. This is the same failure shape as the Castle Cellblock invisible-corpse bug (issue #582).

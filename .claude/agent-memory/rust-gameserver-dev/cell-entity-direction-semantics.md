@@ -1,3 +1,9 @@
+---
+name: cell-entity-direction-semantics
+description: CellEntity.direction is [pitch, yaw, roll] in radians for every entity; the struct doc comment's yaw/unit-vector ambiguity is wrong
+metadata:
+  type: reference
+---
 # `CellEntity.direction` semantics — settled
 
 `crates/entity/src/cell_entity/entity_struct.rs`'s doc comment still says

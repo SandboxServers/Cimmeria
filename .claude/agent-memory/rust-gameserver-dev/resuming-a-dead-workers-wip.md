@@ -1,3 +1,9 @@
+---
+name: resuming-a-dead-workers-wip
+description: A dead worker's wip commit is a draft: it may not compile and its tests encode the starting design
+metadata:
+  type: feedback
+---
 # Resuming a dead worker's WIP commit
 
 A `wip(...): session-N worker output, unbuilt, unverified` commit is a
