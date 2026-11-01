@@ -28,7 +28,7 @@ pub(super) fn stamp_response(
             continue;
         }
         gate::stamp(tool, &mut v);
-        if verdict.is_none() {
+        if verdict.is_none() && v.get("evidence").is_some() {
             verdict = gate::verdict_of(&v).map(String::from);
         }
         if let Ok(s) = serde_json::to_string(&v) {

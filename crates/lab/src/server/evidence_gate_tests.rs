@@ -45,3 +45,12 @@ fn stamp_response_skips_errors_and_non_objects() {
     assert_eq!(stamp_response("x_unrouted_tool", &mut out), None);
     assert_eq!(text_of(&out, 0), "[1, 2]");
 }
+
+#[test]
+fn stamp_response_logs_no_verdict_for_no_claim_tools() {
+    let mut out = complete(vec![ContentBlock::text(
+        json!({"verdict": "ok"}).to_string(),
+    )]);
+    assert_eq!(stamp_response("client_hover_probe", &mut out), None);
+    assert_eq!(text_of(&out, 0), json!({"verdict": "ok"}).to_string());
+}
