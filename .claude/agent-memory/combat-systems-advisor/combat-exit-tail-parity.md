@@ -101,5 +101,5 @@ combat by damage. But `set_npc_ai_state` (`executor/world/mod.rs:212`),
 `aggression = 0` belt-and-braces on a Submit NPC is load-bearing rather than
 redundant.
 
-INVALIDATED WHEN: apply_death_transition is reorganised or a non-death combat-exit path gains the cleanup tail; function names re-verified, line numbers and the known-gap claim not re-checked
-checked: re-verified (functions exist; death.rs moved to death/mod.rs) 2026-11-01
+INVALIDATED WHEN: apply_death_transition is reorganised or a non-death combat-exit path gains the cleanup tail; function names re-verified, line numbers and the known-gap claim not re-checked; known-gap claim (set_npc_ai_state does not run the exit tail) not re-checked
+checked: unverified 2026-11-01

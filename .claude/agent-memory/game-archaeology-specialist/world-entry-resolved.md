@@ -13,4 +13,4 @@ World-entry facts recovered from SGW.exe (full detail in `docs/reverse-engineeri
 Re-verify the last three against the finding before relying on them.
 
 INVALIDATED WHEN: the world-entry-pipeline finding revises the PostLoad, World_Loaded or ClientReady addresses
-checked: 2026-11-01
+checked: unverified 2026-11-01

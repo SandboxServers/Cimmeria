@@ -23,7 +23,7 @@ Recovered 2026-09-17 during the read-only evidence pass for a Harset zone restor
 3. **The ring interact tags are not what the spec describes.** `Harset.py` subscribes `entity.interact.tag::` on exactly `HarsetRingLeftBottom`(→region 4), `HarsetRingRightBottom`(5), `HarsetRingLeft`(6), `HarsetRingLeftTop`(7), `HarsetRingRight`(8). These byte-match `spawnlist.tag` for spawns 4/127/128/129/130. The spec's `"HarsetinRingRightRegion"` typo lives only in `ring_transport_regions.tag` (region 8) — a column that is **never copied into `RingTransporter`, never wire-encoded and never string-matched**. Cosmetic; routing is by `point_set_id`.
 4. **Trigger point set 1001 has `tag = NULL` in `generic_regions`.** The name `Harset.Stargate` comes from `point_sets`, not `generic_regions`. And `generic_regions` has only 28 rows total (ids 1–245, 1001–1011) — there is **no** row for 2078/2079/2052–2056. `point_sets` is the live table; `generic_regions.handler` is dead (`spawner/regions.rs` reads `point_sets WHERE type='AreaSet'`).
 
-**The trigger regions are client-hinted.** `GenericRegion.py:174-183` shows the original dispatch order: `REGION_FLAG_Stargate` (bit 2) short-circuits to `entity.stargatePassed()` *before* `region.callback`, so the `handler` string `cell.SGWPlayer.stargateRegionTriggered` was never actually invoked for stargate-flagged regions. Flags are `ClientHinted=1, Stargate=2, PvPZone=4, NonPvPZone=8` (`Atrea/enums.py:1202-1205`); point set 1001 carries `flags=3` = ClientHinted|Stargate. (As of 2026-09-17 Cimmeria defined only `REGION_FLAG_CLIENT_HINTED`; `REGION_FLAG_STARGATE` is defined and tested now, in `gate_travel/sequences.rs`.)
+**The trigger regions are client-hinted.** `GenericRegion.py:174-183` shows the original dispatch order: `REGION_FLAG_Stargate` (bit 2) short-circuits to `entity.stargatePassed()` *before* `region.callback`, so the `handler` string `cell.SGWPlayer.stargateRegionTriggered` was never actually invoked for stargate-flagged regions. Flags are `ClientHinted=1, Stargate=2, PvPZone=4, NonPvPZone=8` (`Atrea/enums.py:1202-1205`); point set 1001 carries `flags=3` = ClientHinted|Stargate. (As of 2026-09-17 Cimmeria defined only `REGION_FLAG_CLIENT_HINTED`; `REGION_FLAG_STARGATE` is defined and tested now, (const at `cell-world/.../space_manager/mod.rs:131`, tested at `cell-methods/.../player/world/mod.rs:127`).)
 
 **Design detail worth preserving:** both authored arrival coordinates sit deliberately *outside* the opposing trigger box, so there is no ping-pong. PS 2078 spans Z −243.52…−238.41 and the return arrival is Z −231; PS 2079 spans Z −37.58…−29.48 and the outbound arrival is Z −20. Roughly 8 units of clearance each way. Any re-pin of these coordinates must preserve that margin.
 
@@ -44,18 +44,17 @@ Two consequences that keep getting missed:
 
 1. **2009 also arrived on the gate row verbatim, and used `addr.yaw` as the
    facing.** So a per-gate arrival column is *new authoring*, not restoration —
-   justified only because Harset is the first navmesh-backed destination and the
+   justified because Harset has a navmesh and the
    2009 server had no containment validator. Any `arrival_yaw` must fall back to
    `stargates.yaw`, which is already the authored "face this way" value.
 2. **The dial state lived on the cell entity** (`dialedAddress`, `gatePassable`,
    `gateDialTimer` are `SGWPlayer` attributes), so it died with the entity for
-   free. A Cimmeria manager-side map does not get that; it needs an explicit
-   scrub in `SpaceManager::destroy_entity` (`space_manager/entities.rs`, which
+   free. Cimmeria's manager-side `pending_gate_dials` map gets that scrub in `SpaceManager::destroy_entity` (`space_manager/entities.rs`, which
    already scrubs `authoring_changes`, `autosave_spawns`,
    `pending_content_actions` and calls `movement_validator.forget`). 2009 put no
    expiry on an arm — that is a gap to close, not parity to copy.
 
-See [[arrival-coordinate-offnavmesh]] — the recovered coordinates above are *authored* values and none of them has been checked against `data/spaces/harset.nav`; the gate arrival demonstrably fails. See [[region-trigger-containment-gap]] for why routing the flag-2 region to travel needs the 2009 containment re-check ported alongside it.
+See [[arrival-coordinate-offnavmesh]] — the recovered coordinates above are *authored* values and none of them has been checked against `data/spaces/harset.nav`; the Harset gate arrival was fixed by the NA26 mesh (see the 2026-09-25 status there), so these are still unchecked for the other Harset transitions. See [[region-trigger-containment-gap]] for why routing the flag-2 region to travel needs the 2009 containment re-check ported alongside it.
 
 INVALIDATED WHEN: the Harset space scripts or the harset seed rows change the transition coordinates
 checked: 2026-11-01

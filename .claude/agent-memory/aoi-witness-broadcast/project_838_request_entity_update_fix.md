@@ -13,7 +13,7 @@ real payload (a bare 4-byte entity id) decoded to an empty `Vec` and the
 whole handler had never run on production traffic (colo: 0/2,275 decoded).
 
 **RE evidence** (headless Ghidra, no GUI/MCP needed — the project already
-existed at `C:\Users\Steve\source\projects\SGW\Stargate Worlds-QA\Working\binaries\SGW.gpr`):
+existed at `<client-tree>\Working\binaries\SGW.gpr`):
 full writeup in `docs/reverse-engineering/findings/request-entity-update-cache-stamp.md`.
 Key facts for future AoI work:
 

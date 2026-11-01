@@ -19,7 +19,7 @@ The termination chain then dead-ends, because `resolve_recovery_position` (`cell
 
 → `CorrectionSuppressed` from the first packet onward. Not the #644 rubber-band (that needs a *sound* target); the failure shape here is **silent**: the server never writes the player's position, so they move normally on their own client, never move for witnesses, and can't interact. Distinguish the two in triage by the outcome counter, not by the player's description.
 
-**Why nobody has hit this yet:** the navmesh layer *fails open* when `space.navmesh` is `None` (`cell/space_manager/spatial.rs:54-67`, three separate `return true`s). Castle (world 8), the main gate destination, has **no** `data/spaces/castle.nav` — only `castle_cellblock.nav` exists. The defect is latent in every gate arrival and only fires in a navmesh-backed destination. `data/spaces/` currently holds `agnos.nav`, `castle_cellblock.nav`, `harset.nav`, `harset_storagerm.nav`, `sgc_w1.nav` — so **Harset is the first navmesh-backed gate destination**, and any Harset campaign is what surfaces this.
+**Why this was latent:** the navmesh layer fails open when `space.navmesh` is `None` (`cell/space_manager/spatial.rs:54-67`, three separate `return true`s), so a gate arrival into a meshless world is never validated. As of 2026-11-01 most shipped worlds have a `.nav` in `data/spaces/` (ls it before citing a list); the measurements above were taken on the 2012 Harset mesh and the 2026-09-25 status below supersedes them.
 
 **How to apply:**
 

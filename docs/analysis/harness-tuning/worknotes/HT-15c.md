@@ -61,3 +61,14 @@ Notes:
 - Lint before: `memory_lint files=768 no_type=66 state_no_invalidated=52 index_over=1 index_missing=1 unindexed=197 orphan_folders=18 ip_like=3`
 - Lint after: `memory_lint files=768 no_type=63 state_no_invalidated=43 index_over=1 index_missing=1 unindexed=197 orphan_folders=18 ip_like=3` (remaining flags belong to other owners, e.g. rust-gameserver-dev and orphan folders).
 - `lab-driver: left`.
+
+## Review fix pass 1 (N1-N10)
+
+- N1 admin_api_unauth: verified bind via admin_bind (loopback default); rewritten and stamped checked.
+- N2 buyback: #798 fixed in code (container_refusal both ends); rewritten, stamped checked. Same-class bullet dropped (use_instance.rs has no container filter visible in 1 grep; remove_by_type not found).
+- N3, N4 movement files: false claims replaced. Also softened one 'first navmesh-backed' line in harset-travel-ground-truth.md.
+- N5 six dangling [[links]] removed. N6 black market description and checked line fixed (checked: unverified). N7 two stamps set to unverified. N8 index hooks fixed (also exploit_buyback index hook). N9 user paths replaced in 3 files (rust-gameserver-dev/live-db-scratch-cluster.md is outside the packet folders, left).
+- N10 this worknote converted to CRLF. Correct counts: 21 files carry `checked: unverified` in the diff (not 23); N1 and N2 are no longer among them, N6 and N7 add three.
+- Rejected: none.
+- Lint: `memory_lint files=768 no_type=63 state_no_invalidated=43 index_over=1 index_missing=1 unindexed=197 orphan_folders=18 ip_like=3` (no flag in the 16 packet folders).
+- Unit tests: Ran 160 tests, OK (skipped=1).
