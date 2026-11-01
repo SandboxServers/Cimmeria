@@ -82,6 +82,7 @@ async fn read_pulls_and_reports_pulled() {
     let (running, samples) = sup.watch_samples_since(0).await;
     assert!(running);
     assert_eq!(samples.len(), 3);
+    assert!(samples[0].wall_ms < samples[2].wall_ms);
 }
 
 #[tokio::test]
