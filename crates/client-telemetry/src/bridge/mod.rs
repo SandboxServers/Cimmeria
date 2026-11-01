@@ -50,6 +50,7 @@ pub mod meta;
 pub mod native_call;
 pub mod seh;
 pub mod tick;
+pub mod trace;
 pub mod transport;
 pub mod watch;
 pub mod watch_ring;
