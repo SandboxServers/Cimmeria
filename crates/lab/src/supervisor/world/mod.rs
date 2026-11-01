@@ -26,25 +26,49 @@
 //! nothing. A tool that fell back reports the lowest level it used.
 
 pub mod camera;
+mod camera_proof;
 mod camera_read;
 pub mod click;
 mod click_hover;
+mod click_proof;
 mod click_range;
+mod click_result;
+pub mod coast;
 pub mod find;
+pub mod fresh_wait;
 pub mod geometry;
 pub mod hover;
+pub(in crate::supervisor) mod ignored_input;
 pub mod io;
+pub mod ledge;
 pub mod lua;
 pub mod memory;
+mod move_probe;
+mod move_proof;
 pub mod movement;
 pub mod routes;
 pub mod steer;
+mod trace_io;
 mod turn_keys;
+mod turn_state;
+pub mod unstick;
 
 #[cfg(test)]
 mod camera_pitch_tests;
 #[cfg(test)]
+mod camera_proof_tests;
+#[cfg(test)]
+mod click_proof_tests;
+#[cfg(test)]
 mod click_timeout_tests;
+#[cfg(test)]
+mod coast_tests;
+#[cfg(test)]
+mod fresh_wait_tests;
+#[cfg(test)]
+mod ignored_input_tests;
+#[cfg(test)]
+mod ledge_tests;
 #[cfg(test)]
 mod move_to_tests;
 #[cfg(test)]
@@ -54,7 +78,14 @@ mod range_tests;
 #[cfg(test)]
 mod sim;
 #[cfg(test)]
+mod sim_lag;
+#[cfg(test)]
+mod sim_lag_tests;
+#[cfg(test)]
 mod steer_tests;
+#[cfg(test)]
+#[path = "steps_tests.rs"]
+mod steps_tests;
 #[cfg(test)]
 mod target_filter_tests;
 #[cfg(test)]
@@ -125,6 +156,8 @@ pub struct WorldFailure {
     pub native_level: NativeLevel,
     pub elapsed_ms: u64,
     pub steps: Vec<Value>,
+    /// Set when the tool stopped on purpose (C8); see `Steps::fail_stop`.
+    pub stop: Option<crate::proof::stop::StopReport>,
 }
 
 impl std::ops::Deref for WorldError {
@@ -146,14 +179,19 @@ impl WorldError {
             .as_ref()
             .map(|s| format!("; state: {s}"))
             .unwrap_or_default();
+        let stop = self
+            .stop
+            .as_ref()
+            .map(|s| format!("; stop: {}", s.kind.as_str()))
+            .unwrap_or_default();
         format!(
-            "{} failed at step '{}'{subject} after {} ms: {}{state}",
+            "{} failed at step '{}'{subject} after {} ms: {}{state}{stop}",
             self.tool, self.step, self.elapsed_ms, self.message
         )
     }
 
     pub fn to_json(&self) -> Value {
-        json!({
+        let mut out = json!({
             "tool": self.tool,
             "step": self.step,
             "error": self.message,
@@ -162,7 +200,11 @@ impl WorldError {
             "native_level": self.native_level.as_str(),
             "elapsed_ms": self.elapsed_ms,
             "steps": self.steps,
-        })
+        });
+        if let Some(stop) = &self.stop {
+            out["stop"] = serde_json::to_value(stop).unwrap_or(Value::Null);
+        }
+        out
     }
 }
 
@@ -174,6 +216,7 @@ pub struct Steps {
     started_ms: u64,
     level: NativeLevel,
     subject: Option<Value>,
+    evidence: Option<crate::proof::Evidence>,
 }
 
 impl Steps {
@@ -184,6 +227,7 @@ impl Steps {
             started_ms: now_ms,
             level: NativeLevel::Read,
             subject: None,
+            evidence: None,
         }
     }
 
@@ -199,6 +243,12 @@ impl Steps {
 
     pub fn subject(&mut self, s: Value) {
         self.subject = Some(s);
+    }
+
+    /// Attach the judged evidence; `finish` reports it and lets it decide
+    /// whether the call counts as a native pass.
+    pub fn judged(&mut self, ev: crate::proof::Evidence) {
+        self.evidence = Some(ev);
     }
 
     /// Log a finished step that started at `t0_ms`.
@@ -220,7 +270,36 @@ impl Steps {
             native_level: self.level,
             elapsed_ms: now_ms.saturating_sub(self.started_ms),
             steps: self.steps.clone(),
+            stop: None,
         }))
+    }
+
+    /// Like `fail`, but the tool gave up on purpose and says why (C8).
+    #[cfg_attr(not(test), allow(dead_code))] // Callers land in AX-32, AX-34 and AX-56.
+    pub fn fail_stop(
+        &self,
+        now_ms: u64,
+        step: &str,
+        message: impl Into<String>,
+        stop: crate::proof::stop::StopReport,
+    ) -> WorldError {
+        let mut e = self.fail(now_ms, step, message);
+        e.0.stop = Some(stop);
+        e
+    }
+
+    /// `fail_with` plus a stop report: keeps the evidence JSON under `state`.
+    pub fn fail_with_stop(
+        &self,
+        now_ms: u64,
+        step: &str,
+        message: impl Into<String>,
+        state: Value,
+        stop: crate::proof::stop::StopReport,
+    ) -> WorldError {
+        let mut e = self.fail_with(now_ms, step, message, state);
+        e.0.stop = Some(stop);
+        e
     }
 
     pub fn fail_with(
@@ -240,6 +319,10 @@ impl Steps {
         out["native_level"] = json!(self.level.as_str());
         out["native_tier"] = json!(self.level.tier());
         out["counts_as_native_pass"] = json!(self.level.counts_as_native());
+        if let Some(ev) = &self.evidence {
+            out["evidence"] = ev.to_value();
+            out["counts_as_native_pass"] = json!(self.level.counts_as_native() && ev.counts());
+        }
         out["elapsed_ms"] = json!(now_ms.saturating_sub(self.started_ms));
         out["steps"] = json!(self.steps);
         out

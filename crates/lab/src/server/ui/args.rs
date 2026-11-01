@@ -32,6 +32,24 @@ pub struct WindowReadArgs {
     pub include_nodes: Option<bool>,
 }
 
+/// Args for `client_ui_clickables`.
+#[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
+pub struct ClickablesArgs {
+    /// The window to walk from (default `Root`).
+    #[serde(default)]
+    pub root: Option<String>,
+    /// Include hidden windows and their children (default false).
+    #[serde(default)]
+    pub include_hidden: Option<bool>,
+    /// Windows returned in this page, 1..=500 (default 200).
+    #[serde(default)]
+    pub limit: Option<u32>,
+    /// Walk position to start this page at, from the last page's `next`
+    /// (default 0).
+    #[serde(default)]
+    pub cursor: Option<u32>,
+}
+
 /// Args for `client_window_click`. Give exactly one target: `target`,
 /// `root` + `text`, or `list` + `row_index`/`row_text`.
 #[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
@@ -66,6 +84,15 @@ pub struct WindowClickArgs {
     /// list's Lua and report that level (default true).
     #[serde(default)]
     pub allow_lua_fallback: Option<bool>,
+    /// Window that must be visible after the click; the result is judged on it.
+    #[serde(default)]
+    pub expect_visible: Option<String>,
+    /// Window that must be hidden after the click.
+    #[serde(default)]
+    pub expect_hidden: Option<String>,
+    /// How long to wait for the expected window, ms (default 2000, max 10000).
+    #[serde(default)]
+    pub expect_timeout_ms: Option<u64>,
 }
 
 /// Click a ring destination on the world map. The coordinates are client-area

@@ -159,7 +159,7 @@ Tests: none. Checks: D1 on every docs file; the step 5 grep output in the report
 ### AX-64 Live UAT: try to make the tools lie
 
 - **Host:** windows · **Agent:** a `lab-uat` coordinator (`hands-on`, Sonnet) with Haiku `lab-driver`s for the driving and one `frame-describer` · **Branch:** `lab-autopilot/AX-64-uat` · **Worktree:** `lax-64` (from main after the wave 6 PR merged)
-- **Status:** BlockedDecision D-AX4 (the user's OK for this lab run). UATPending until it runs.
+- **Status:** UATPending. Ran once on 2026-11-01 with the user's OK, thinly: 1 PASS (partial), 2 FAIL, 10 NOT RUN; see [uat-ax64.md](uat-ax64.md).
 - **Commit:** `docs(lab): lab-autopilot live UAT ledger (AX-64)`
 - **Rules:** R1, R3, R5, R7. Follow the `lab-uat` skill end to end (§ 0 ask is the orchestrator's; the coordinator confirms the lab is free, takes the lease, `lab_ensure_in_world`). The O1 rebuild (lab daemon and lab DLL from the merged `main`, `tools/lab/install.ps1`) ran before this packet; the first step confirms heartbeat, `input_status` and `module_info` show that build. Never a release client.
 

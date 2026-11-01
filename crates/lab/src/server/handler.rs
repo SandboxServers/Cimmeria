@@ -9,7 +9,7 @@ use rmcp::{model::*, tool_handler, ErrorData as McpError, ServerHandler};
 use serde_json::Value;
 use tracing::Instrument;
 
-use super::{compact, lease, LabServer};
+use super::{compact, cooldown, evidence_gate, lease, LabServer};
 
 /// The longest `error` text a `lab.call` row carries.
 const ERROR_CAP: usize = 200;
@@ -23,9 +23,10 @@ fn holder_owner(lease_status: &Value) -> Option<String> {
 }
 
 /// Write the one INFO `lab.call` row for a finished `tools/call`. Outcome is
-/// `refused` when the lease gate turned the call away, `error` for a failed
-/// tool, else `ok`. The arguments are never logged: they can carry Lua or
-/// chat text.
+/// `refused` when the lease gate or the quick-fail cooldown (C9) turned the
+/// call away, `error` for a failed tool, else `ok`. `verdict` is the evidence
+/// gate's mirrored verdict, if any. The arguments are never logged: they can
+/// carry Lua or chat text.
 fn log_call(
     instance: &str,
     tool: &str,
@@ -33,6 +34,7 @@ fn log_call(
     started: Instant,
     refused: bool,
     out: &Result<CallToolResponse, McpError>,
+    verdict: Option<&str>,
 ) {
     let failed = match out {
         Ok(CallToolResponse::Complete(r)) => r.is_error == Some(true),
@@ -44,6 +46,12 @@ fn log_call(
         (false, true) => "error",
         (false, false) => "ok",
     };
+    crate::supervisor::detect::calls::record(crate::supervisor::detect::calls::CallRow {
+        ms: crate::supervisor::now_ms(),
+        instance: instance.into(),
+        tool: tool.into(),
+        outcome,
+    });
     let error: Option<String> = match out {
         Err(e) => Some(e.message.chars().take(ERROR_CAP).collect()),
         Ok(_) => None,
@@ -57,6 +65,7 @@ fn log_call(
         outcome,
         duration_ms,
         error = error.as_deref(),
+        verdict,
         "lab tool call"
     );
 }
@@ -150,7 +159,15 @@ impl ServerHandler for LabServer {
             Ok(routed) => routed,
             Err(e) => {
                 let out = Err(e);
-                log_call(self.supervisor.label(), &tool, None, started, false, &out);
+                log_call(
+                    self.supervisor.label(),
+                    &tool,
+                    None,
+                    started,
+                    false,
+                    &out,
+                    None,
+                );
                 return out;
             }
         };
@@ -181,12 +198,35 @@ impl ServerHandler for LabServer {
             Ok(permit) => permit,
             Err(e) => {
                 let out = Err(e);
-                log_call(instance, &tool, holder.as_deref(), started, true, &out);
+                log_call(
+                    instance,
+                    &tool,
+                    holder.as_deref(),
+                    started,
+                    true,
+                    &out,
+                    None,
+                );
                 return shape_response(&shape, out);
             }
         };
+        // C9: an identical call that just failed is turned away unrun.
+        let cool = cooldown::gate(instance, &tool, request.arguments.as_ref());
+        if let Some((_, Some(refusal))) = &cool {
+            let out = Ok(CallToolResponse::Complete(refusal.clone()));
+            log_call(
+                instance,
+                &tool,
+                holder.as_deref(),
+                started,
+                true,
+                &out,
+                None,
+            );
+            return shape_response(&shape, out);
+        }
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(target, request, context);
-        let out = match permit {
+        let mut out = match permit {
             // The gate admits once; the permit makes every action of the
             // tool re-check the lease, so a takeover stops it mid-flow.
             Some(p) => {
@@ -196,7 +236,19 @@ impl ServerHandler for LabServer {
             }
             None => target.tool_router.call(tcc).instrument(span).await,
         };
-        log_call(instance, &tool, holder.as_deref(), started, false, &out);
+        let verdict = evidence_gate::stamp_response(&tool, &mut out);
+        if let Some((k, _)) = cool {
+            cooldown::note(k, &out);
+        }
+        log_call(
+            instance,
+            &tool,
+            holder.as_deref(),
+            started,
+            false,
+            &out,
+            verdict.as_deref(),
+        );
         shape_response(&shape, out)
     }
 

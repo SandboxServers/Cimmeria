@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
+use super::item_proof;
 use super::{NativeLevel, NativeTrail, Supervisor};
+use crate::proof::Evidence;
 use crate::supervisor::input::MouseInput;
 
 const PREFLIGHT: &str = r#"
@@ -127,6 +129,8 @@ impl Supervisor {
             "mouse": click,
         });
         stamp_click(&mut result, &click, fallback, closed);
+        let checks = item_proof::map_checks(closed);
+        result["evidence"] = Evidence::judge(checks).to_value();
         Ok(result)
     }
 }

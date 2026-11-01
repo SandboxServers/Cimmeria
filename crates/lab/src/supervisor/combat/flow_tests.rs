@@ -343,6 +343,7 @@ async fn respawn_none_stops_at_the_window() {
         .unwrap();
     assert_eq!(out["respawned"], false);
     assert_eq!(out["at_death"]["defeat_window"], true);
+    assert_eq!(out["evidence"]["verdict"], "confirmed");
 }
 
 #[tokio::test]

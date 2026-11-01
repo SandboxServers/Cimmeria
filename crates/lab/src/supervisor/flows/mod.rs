@@ -31,6 +31,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use super::Supervisor;
+use crate::supervisor::ui::click_expect::ClickExpect;
 
 /// Default poll cadence for flow waits.
 pub const POLL: Duration = Duration::from_millis(500);
@@ -165,7 +166,7 @@ impl<'a> FlowRun<'a> {
     /// Click a named window like a player.
     pub async fn click(&mut self, step: &str, window: &str) -> Result<(), FlowError> {
         let t0 = Instant::now();
-        if let Err(e) = self.sup.ui_click(window, 0).await {
+        if let Err(e) = self.sup.ui_click(window, 0, &ClickExpect::default()).await {
             return Err(self
                 .fail_with_state(step, format!("click {window}: {e}"))
                 .await);

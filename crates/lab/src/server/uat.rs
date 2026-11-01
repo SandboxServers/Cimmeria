@@ -66,6 +66,9 @@ pub struct UatRunArgs {
     /// it.
     #[serde(default)]
     pub fingerprint: bool,
+    /// Resume an appended run (`run_dir`) at "<section>/<row>", or "auto" for the first row with no manifest entry.
+    #[serde(default)]
+    pub resume_from: Option<String>,
     /// Check specs and tool availability only; drive nothing (no lease).
     #[serde(default)]
     pub plan_only: bool,
@@ -218,7 +221,11 @@ impl ToolInvoker for RouterInvoker<'_> {
         let result = under_lease(self.lease, self.server.tool_router.call(tcc)).await;
         match result {
             Ok(CallToolResponse::Complete(r)) => {
-                normalize_result(&serde_json::to_value(&r).unwrap_or(Value::Null))
+                let mut o = normalize_result(&serde_json::to_value(&r).unwrap_or(Value::Null));
+                if o.ok {
+                    crate::proof::gate::stamp(name, &mut o.json);
+                }
+                o
             }
             Ok(_) => ToolOutcome::err(format!(
                 "{name} asked for client input; not supported in a run"
@@ -455,6 +462,7 @@ impl LabServer {
             fingerprint: a.fingerprint,
             end_session: a.end_session && !a.plan_only,
             chaos,
+            resume_from: a.resume_from,
         };
         let inv = RouterInvoker::new(self, ctx.clone(), run_lease.as_ref());
         // The second player is set up only when a row needs it.
@@ -542,19 +550,13 @@ impl LabServer {
         if let Some(reason) = &p1_revoked {
             tracing::warn!(target: "lab.lease", event = "uat_run_revoked", %reason,
                 "UAT run stopped: lease lost");
-            let _ = self
-                .supervisor
-                .bridge_call("input_release", json!({}))
-                .await;
+            let _ = self.supervisor.release_all_input("uat_lease_lost").await;
         }
         // A row cut off mid-press may have left a key or button down;
         // letting go is allowed without the lease. p2's input goes once,
         // whichever lease was lost.
         if let (Some(server), true) = (&p2_server, p1_revoked.is_some() || p2_revoked.is_some()) {
-            let _ = server
-                .supervisor
-                .bridge_call("input_release", json!({}))
-                .await;
+            let _ = server.supervisor.release_all_input("uat_lease_lost").await;
         }
         let mut head = json!({ "run_dir": out.run_dir, "rows": out.rows });
         // The runner's own headers (seed resolved), which the CLI prints in

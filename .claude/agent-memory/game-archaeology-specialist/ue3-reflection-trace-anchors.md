@@ -13,6 +13,7 @@ Full write-up with raw values: `docs/analysis/lab-autopilot/ue3-backport-verifie
   - A BSP hit returns Actor = WorldInfo and Item = the BSP node. A static mesh returns its StaticMeshActor.
   - Flags `0x3fff` raise a guarded AV at `0x00914fd3`; the client survives.
   - The AActor::Trace helper is `0x006e6d20`. The EncroachingWorldGeometry string is absent from the exe entirely.
+  - **Terrain answers `0x2086` (AX-64 U4, LIVE 2026-11-01):** a trace straight down on outdoor terrain hits, with the floor 2.5 m under the pawn centre and normal +z. Indoor ledges were not tried.
 - **Calling a 7+-arg thiscall from the lab:** `client_call_native` takes at most 6 args. Instead, VirtualAlloc an RWX page (IAT `0x017ef1f8`) and call a cdecl shim: `8b442404 ff701c ff7018 ff7014 ff7010 ff700c ff7008 ff7004 8b08 ff5020 c3`. It sets ECX = blk[0], pushes blk[7..1] and calls blk[8]. Free the page with VirtualFree (IAT `0x017ef1f4`).
 - **GWorld = `0x01EE2684`** (a UWorld; name "TheWorld", class "World", LIVE). The pointer changes on every zone change.
 - **Reflection:**

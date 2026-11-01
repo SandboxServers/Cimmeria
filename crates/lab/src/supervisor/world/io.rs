@@ -10,10 +10,13 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
+use super::coast::CoastModel;
 use super::find::ServerEntity;
 use super::geometry::{Pose, Screen, Vec3};
+use super::ignored_input;
 use super::lua::{self, UnitInfo, UnitSlots};
 use super::memory::{self, PlayerCamera, WorldSnapshot};
+use super::trace_io;
 use super::NativeLevel;
 use crate::supervisor::cegui_native::{float_word, thiscall_params};
 use crate::supervisor::entity_table::{decode_hex, Memory, DEFAULT_MAX_NODES};
@@ -36,12 +39,27 @@ pub struct Projected {
     pub host: String,
 }
 
+/// A line trace hit (C14): when along the line, where, and what was hit.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TraceHit {
+    pub time: f64,
+    pub location: Vec3,
+    pub item: i32,
+    pub actor: u32,
+}
+
 /// Everything the world tools need from the client.
 #[allow(async_fn_in_trait)]
 pub trait WorldIo {
     /// Milliseconds since this tool call started.
     fn now_ms(&self) -> u64;
     async fn sleep(&mut self, ms: u64);
+    /// The bridge frame counter now (C4), or `None` when no frame source
+    /// exists. Freshness checks compare two of these.
+    #[allow(dead_code)] // Callers land in wave 3 (AX-30..).
+    async fn frame(&mut self) -> Option<u64> {
+        None
+    }
     /// All entities with poses, plus the unit-slot map.
     async fn snapshot(&mut self) -> Result<WorldSnapshot, String>;
     /// One actor's pose (one read; used per tick).
@@ -61,6 +79,13 @@ pub trait WorldIo {
         _template_id: Option<i32>,
     ) -> Result<Vec<ServerEntity>, String> {
         Err("template_id/alive needs the server lab MCP".into())
+    }
+    /// The server's position of an entity (server metres), `None` when no
+    /// server is asked. Only `move_to` corroboration reads it (D-AX11).
+    #[allow(dead_code)] // Callers land in AX-32.
+    async fn server_position(&mut self, entity_id: u32) -> Result<Option<Vec3>, String> {
+        let _ = entity_id;
+        Ok(None)
     }
     /// Project client-space points with the game's own view.
     async fn project(&mut self, points: &[Vec3]) -> Result<Projected, String>;
@@ -84,6 +109,12 @@ pub trait WorldIo {
     async fn button(&mut self, button: usize, down: bool) -> Result<(), String>;
     /// Visible top-level UI windows.
     async fn visible_windows(&mut self) -> Result<Vec<String>, String>;
+    /// The DirectInput mouse counters (events delivered + mouse data reads),
+    /// or `None` when the client cannot say (an old DLL, no hooks). Only the
+    /// DI mouse-look path moves them; posted key messages never do.
+    async fn input_counters(&mut self) -> Option<u64> {
+        None
+    }
     /// Visible top-level windows' rects (`left, top, right, bottom`, UI
     /// pixels), leaving out the root and full-screen backdrops.
     async fn window_rects(&mut self) -> Result<Vec<(String, [f64; 4])>, String> {
@@ -103,6 +134,21 @@ pub trait WorldIo {
             super::turn_keys::DEFAULT_LEFT.to_string(),
             super::turn_keys::DEFAULT_RIGHT.to_string(),
         ))
+    }
+    /// The walker's learned coast model (starts from the prior when absent).
+    fn coast_model(&self) -> CoastModel {
+        CoastModel::default()
+    }
+    /// Keep the walker's coast model for the next walk.
+    fn store_coast_model(&mut self, _m: CoastModel) {}
+    /// Trace a line through the client's collision check (C14). `Ok(None)`: nothing hit.
+    async fn trace_line(
+        &mut self,
+        _start: Vec3,
+        _end: Vec3,
+        _flags: u32,
+    ) -> Result<Option<TraceHit>, String> {
+        Err("trace_line unsupported".into())
     }
 }
 
@@ -274,7 +320,26 @@ impl WorldIo for LiveWorld<'_> {
     }
 
     async fn sleep(&mut self, ms: u64) {
-        tokio::time::sleep(Duration::from_millis(ms)).await;
+        // Slices, so held keys renew their DLL lease during a long wait.
+        let mut left = ms;
+        while left > 0 {
+            let slice = left.min(1000);
+            tokio::time::sleep(Duration::from_millis(slice)).await;
+            left -= slice;
+            self.sup.renew_holds().await;
+        }
+    }
+
+    async fn frame(&mut self) -> Option<u64> {
+        // The heartbeat tick_count is the same counter as C4 `meta.frame`,
+        // so this works against a DLL that does not stamp responses yet.
+        match self.sup.bridge.heartbeat().await {
+            Ok(f) => Some(f),
+            Err(e) => {
+                tracing::debug!(error = %e, "frame read failed; post-read will be unstamped");
+                None
+            }
+        }
     }
 
     async fn snapshot(&mut self) -> Result<WorldSnapshot, String> {
@@ -337,6 +402,23 @@ impl WorldIo for LiveWorld<'_> {
         Ok(lua::parse_unit_info(
             &self.lua(&lua::unit_info_chunk(slots)).await?,
         ))
+    }
+
+    async fn server_position(&mut self, entity_id: u32) -> Result<Option<Vec3>, String> {
+        let Some(server) = crate::proof::corroborate::default_server() else {
+            return Ok(None);
+        };
+        let reply = server
+            .call("server_entity_get", json!({ "entity_id": entity_id }))
+            .await;
+        if !reply.ok {
+            return Err(format!(
+                "server_entity_get: {}",
+                reply.error.unwrap_or_else(|| "unknown error".into())
+            ));
+        }
+        Ok(crate::proof::corroborate::entity_position(&reply.json)
+            .map(|[x, y, z]| Vec3::new(x, y, z)))
     }
 
     async fn server_entities(
@@ -508,10 +590,7 @@ impl WorldIo for LiveWorld<'_> {
     }
 
     async fn key(&mut self, key: &str, down: bool) -> Result<(), String> {
-        self.sup
-            .input_key(key, if down { "down" } else { "up" }, None)
-            .await
-            .map(|_| ())
+        self.sup.hold_key(key, down).await
     }
 
     async fn place_cursor(&mut self, x: i32, y: i32, mouse_move: bool) -> Result<(), String> {
@@ -541,6 +620,11 @@ impl WorldIo for LiveWorld<'_> {
         ))
     }
 
+    async fn input_counters(&mut self) -> Option<u64> {
+        let v = self.sup.bridge_call("input_status", json!({})).await.ok()?;
+        ignored_input::delivery_count(&v["hooks"])
+    }
+
     async fn window_rects(&mut self) -> Result<Vec<(String, [f64; 4])>, String> {
         let r = self
             .lua(&lua_json::chunk(&lua::window_rects_chunk()))
@@ -567,5 +651,22 @@ impl WorldIo for LiveWorld<'_> {
     async fn turn_keys(&mut self) -> Result<(String, String), String> {
         let r = self.lua(super::turn_keys::TURN_KEYS_CHUNK).await?;
         Ok(super::turn_keys::parse_turn_keys(&r))
+    }
+
+    fn coast_model(&self) -> CoastModel {
+        *self.sup.coast.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    async fn trace_line(
+        &mut self,
+        start: Vec3,
+        end: Vec3,
+        flags: u32,
+    ) -> Result<Option<TraceHit>, String> {
+        trace_io::live_trace(self.sup, start, end, flags).await
+    }
+
+    fn store_coast_model(&mut self, m: CoastModel) {
+        *self.sup.coast.lock().unwrap_or_else(|e| e.into_inner()) = m;
     }
 }

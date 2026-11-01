@@ -161,6 +161,36 @@ fn release_frees_the_lab_and_only_the_holder_can_release() {
 }
 
 #[test]
+fn current_id_sees_expiry() {
+    let book = LeaseBook::default();
+    let l = book
+        .acquire_at(
+            AcquireRequest {
+                ttl_s: Some(30),
+                ..req("a")
+            },
+            T0,
+        )
+        .unwrap();
+    assert_eq!(book.current_id_at(T0 + 29_999), Some(l.lease_id.clone()));
+    assert_eq!(book.current_id_at(T0 + 30_000), None);
+    assert_eq!(book.ended_how(&l.lease_id), Some("expired"));
+}
+
+#[test]
+fn ended_how_names_takeover() {
+    let book = LeaseBook::default();
+    let a = book.acquire_at(req("a"), T0).unwrap();
+    let b = book
+        .acquire_at(force("b", Some("a crashed")), T0 + 1)
+        .unwrap();
+    assert_eq!(book.ended_how(&a.lease_id), Some("taken_over"));
+    book.release_at(&b.lease_id, T0 + 2).unwrap();
+    assert_eq!(book.ended_how(&b.lease_id), Some("released"));
+    assert_eq!(book.ended_how("lease-unknown"), None);
+}
+
+#[test]
 fn status_never_shows_the_lease_id() {
     let book = LeaseBook::default();
     let l = book.acquire_at(req("a"), T0).unwrap();
