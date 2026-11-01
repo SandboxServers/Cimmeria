@@ -287,7 +287,14 @@ impl WorldIo for LiveWorld<'_> {
     }
 
     async fn sleep(&mut self, ms: u64) {
-        tokio::time::sleep(Duration::from_millis(ms)).await;
+        // Slices, so held keys renew their DLL lease during a long wait.
+        let mut left = ms;
+        while left > 0 {
+            let slice = left.min(1000);
+            tokio::time::sleep(Duration::from_millis(slice)).await;
+            left -= slice;
+            self.sup.renew_holds().await;
+        }
     }
 
     async fn frame(&mut self) -> Option<u64> {
@@ -550,10 +557,7 @@ impl WorldIo for LiveWorld<'_> {
     }
 
     async fn key(&mut self, key: &str, down: bool) -> Result<(), String> {
-        self.sup
-            .input_key(key, if down { "down" } else { "up" }, None)
-            .await
-            .map(|_| ())
+        self.sup.hold_key(key, down).await
     }
 
     async fn place_cursor(&mut self, x: i32, y: i32, mouse_move: bool) -> Result<(), String> {

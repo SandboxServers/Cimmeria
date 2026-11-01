@@ -43,6 +43,8 @@ pub mod entity_table;
 pub mod events;
 pub mod flows;
 pub mod heartbeat;
+mod held_keys;
+mod hold_book;
 pub mod ini_overrides;
 pub mod input;
 pub mod instance;
@@ -283,6 +285,8 @@ pub struct Supervisor {
     uat_progress: crate::uat::progress::ProgressCell,
     /// This instance's recording (lab-record): at most one at a time.
     record: Arc<record_slot::RecordSlot>,
+    /// Keys the world tools hold through the DLL (C5).
+    holds: Arc<Mutex<hold_book::HoldBook>>,
 }
 
 impl Supervisor {
@@ -312,6 +316,7 @@ impl Supervisor {
             account: Arc::new(std::sync::Mutex::new(account::AccountCache::default())),
             uat_progress: Default::default(),
             record: Default::default(),
+            holds: Default::default(),
         }
     }
 
