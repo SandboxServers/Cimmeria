@@ -21,6 +21,7 @@ Tests (CI runs every `test_*.py` here in `agent-skills.yml`):
 - `test_live_guard_probe.py` tests the live guard probe offline, against `fake_claude.py`.
 - `test_shell_guard.py` tests the `PreToolUse` shell guard in `.claude/hooks/shell_guard.py`.
 - `test_report_contract.py` tests the `SubagentStop` hook `.claude/hooks/report_contract.py`.
+- `test_coder_context_note.py` tests the PostToolUse hook `.claude/hooks/coder_context_note.py`.
 - `test_coder_contract.py` tests the packet-coder contract (no report, one return line).
 - `test_report_formats.py` tests the verdict words, the reviewer's report sections and the return-line formats.
 - `test_agent_refs.py` checks that the harness docs name only agents that exist.
