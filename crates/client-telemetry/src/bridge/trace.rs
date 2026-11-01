@@ -26,8 +26,8 @@ use crate::hooks::camera::layout::{
 };
 use crate::hooks::entity_trace::map::Mem;
 
-/// `-32000`: the trace cannot run now (the same code `call_native` style
-/// refusals use for "unavailable").
+/// `-32000`: contract C14's code for every `trace_line` refusal and fault (not
+/// `NATIVE_FAULT`, which `call_native` uses).
 pub const UNAVAILABLE: i32 = -32000;
 
 /// `UWorld::SingleLineCheck`, 7 stack arguments, `ret 0x1c` (live L1).
@@ -60,8 +60,11 @@ pub(crate) fn reset_latch() {
 /// A parsed request.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TraceReq {
+    /// Segment start, UE3 units.
     pub start: [f32; 3],
+    /// Segment end, UE3 units.
     pub end: [f32; 3],
+    /// Trace flags; only `FLAGS_LEVEL` or `FLAGS_PAWNS` get past `parse`.
     pub flags: u32,
 }
 

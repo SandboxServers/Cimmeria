@@ -242,3 +242,17 @@ fn flags_other_than_proven_refused() {
 fn batch_does_not_allow_trace() {
     assert!(!ALLOWED.contains(&"trace_line"));
 }
+
+#[test]
+fn trace_line_is_routed() {
+    use crate::bridge::dispatch::{dispatch, RpcRequest, METHOD_NOT_FOUND};
+    let r = dispatch(&RpcRequest {
+        id: json!(1),
+        method: "trace_line".to_string(),
+        params: json!({}),
+    });
+    let e = r.error.expect("error");
+    assert_ne!(e.code, METHOD_NOT_FOUND);
+    assert_eq!(e.code, INVALID_PARAMS);
+    assert_eq!(e.message, "trace_line: start and end must be [x, y, z]");
+}
