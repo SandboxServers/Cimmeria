@@ -40,8 +40,8 @@ draft, not a finding.
 
 These seven rules expand ADR §7. They apply to every session, local or
 colo.
-Beyond the seven: **a tool's word is its `evidence.verdict`.** Read [lab-evidence.md](lab-evidence.md) before you report that anything worked.
 
+Beyond the seven: **a tool's word is its `evidence.verdict`.** Read [lab-evidence.md](lab-evidence.md) before you report that anything worked.
 
 ### 1. Ask the running game first
 

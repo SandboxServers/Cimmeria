@@ -68,11 +68,11 @@ A judged tool returns one top-level `evidence` object, mirrored as a top-level `
 | `cooling_down` | (refused call) | The same call failed moments ago. Wait `retry_after_ms` or change the arguments. |
 | `delivered` | `inconclusive` | The game received the input (the DirectInput counter rose). Whether it did anything is not judged: read the state. |
 | `posted_only` | `inconclusive` | A key or button was posted to the window. Nothing can read back that the game used it. Read the state. |
-| `timeout` | `denied` or stop | The action missed its deadline. |
-| `stalled` | `denied` or stop | The action stopped making progress. Read `stop` for what was tried. |
+| `timeout` | (reserved) | No tool sets this code today. A walk that runs out of time reports `stop.kind: "timeout"` (section 4). |
+| `stalled` | (reserved) | No tool sets this code today. A walk that stops making progress reports `stop.kind: "stalled"` (section 4). |
 | `already_true` | `inconclusive` | The expected state held before the action, so the read-back proves nothing. Start from a state where it does not hold. |
 
-**Cooldown.** After the same call (same tool, instance and arguments, ignoring `lease_id`, `instance`, `verbose` and `fields`) fails, an identical retry inside `min(8000, 500 * 2^(n-1))` ms is refused without running, as an `is_error` result with `why: "cooling_down"` and `retry_after_ms`. A failure is an MCP error, `is_error: true`, or a `denied` verdict. A success clears it; an idle key is forgotten after 60 s. Lease, `lab_uat_*`, client lifecycle and `lab_recover` calls are exempt, and so is the UAT runner. The point is to stop a coordinator hammering a call that cannot work; change an argument or read state first.
+**Cooldown.** After the same call (same tool, instance and arguments, ignoring `lease_id`, `instance`, `verbose` and `fields`) fails, an identical retry inside `min(8000, 500 * 2^(n-1))` ms is refused without running, as an `is_error` result with `why: "cooling_down"` and `retry_after_ms`. A failure is an MCP error, `is_error: true`, or a `denied` verdict. A success clears it; an idle key is forgotten after 60 s. Open (unleased) read tools, the `lab_lease_*` and `lab_uat_*` tools, `lab_client_start/stop/restart/status` and `lab_recover` are exempt, and so is the UAT runner. The point is to stop a coordinator hammering a call that cannot work; change an argument or read state first.
 
 ## 3. Server corroboration
 
@@ -91,7 +91,7 @@ A walk that cannot finish fails with a `stop` object next to the error, so you d
 
 ```json
 { "stop": { "kind": "stuck", "step": "leg_0", "seconds": 12.4,
-            "tried": ["unstick_back", "input_probe"],
+            "tried": ["jump", "input_probe"],
             "player": { "at": [10.0, 5.0, 3.0], "now": [10.2, 5.0, 3.0], "moved_m": 0.2 },
             "suggest": ["unstick", "release_input"] } }
 ```
@@ -130,7 +130,7 @@ A click alone proves nothing, and the tools say so. `client_ui_click` and `clien
 - `expect_hidden: "<window>"`: judged on that window being hidden.
 - `expect_timeout_ms`: how long to wait for it.
 
-`client_ui_sequence` judges its steps the same way; a click step with no expectation stays `posted_only`.
+`client_ui_sequence` takes no `expect_*`. It is judged by its `wait_window` steps (the window appeared or went), its drags (the item moved) and its typed edit boxes (the text is in the box). A click or key step proves nothing, and a sequence made only of those is `inconclusive` / `posted_only`. To prove a click, use `client_ui_click` or `client_window_click` with `expect_visible` / `expect_hidden`, or end the sequence with a `wait_window` step.
 
 **Finding the name to click.** `client_ui_clickables { root?, include_hidden?, limit?, cursor? }` (a read) lists the clickable windows under `root` (default `Root`) with their full CEGUI `name`, `type`, `text`, pixel `rect`, `visible` and `enabled`. A name containing `__auto_` is a stock, unnamed child (`VendorWin/__auto_closebutton__`); pass the full name to a click. The client has about 21 000 windows, so a call inspects at most 2000, lists visible ones only unless you ask, and sets `truncated: true` with `next` when there is more: pass `next` back as `cursor`. A page is a snapshot of one frame; treat `next` as a hint.
 
@@ -167,13 +167,13 @@ A DLL without the method gives `watch needs a lab DLL with watch_start (AX-24)`.
 | `actor_growth` | Actor count up more than 50% within 60 s. Only when samples carry `actors`. |
 | `log_error` | The same tool errored three times in 60 s. |
 
-**What runs without a watch.** Only `hitch` (from heartbeat gaps) and `log_error`, and `watch` is `false`. Start a watch before a walk or a fight you want checked, read the detectors after, stop the watch. A detector that fired is a lead, not a verdict: look at `detail` and the screenshot before you call it a bug. There is no pitch-clamp detector; `client_camera`'s own evidence covers a stuck pitch.
+**What runs without a watch.** Only `hitch` (from heartbeat gaps) and `log_error`, and `watch` is `false` (no samples pulled). Start a watch before a walk or a fight you want checked. The detectors only see samples you pulled, so call `client_watch` `read` (passing `next` back as `since`) during the run and once more at the end, often enough that the ring (`cap`, default 1024) does not drop samples. Then read the detectors, then `stop` the watch. `client_watch` `start` clears the daemon's copy. A detector that fired is a lead, not a verdict: look at `detail` and the screenshot before you call it a bug. There is no pitch-clamp detector; `client_camera`'s own evidence covers a stuck pitch.
 
 ## 7. Frames
 
 The DLL stamps every bridge reply with `meta { frame, mono_ms, game_t? }`, and the daemon compares the frame of a read with the frame of the action it follows. A read-back taken fewer than 2 frames after the action is **stale**: its check goes unmeasured with `why: stale_read`, and the tool re-reads (3 times, 50 ms apart) before keeping it. A reply with no frame (an older DLL) is *unstamped*: the measured result stands and the check's `after` carries `"unstamped": true`.
 
-- **Screenshots name their frames.** `lab_screenshot_region` says `frames <from>..<to>` in its text, and `lab_pixel_probe` carries `frames: [from, to]`. They come from a heartbeat before and after the capture, so the picture is somewhere in that span, not at a point. A wide span means the client was busy; capture again before you trust a fast-moving scene. No `frames` means a heartbeat failed, not that the capture did.
+- **Screenshots name their frames.** `lab_screenshot` and `lab_screenshot_region` say `frames <from>..<to>` in their text, and `lab_pixel_probe` carries `frames: [from, to]`. They come from a heartbeat before and after the capture, so the picture is somewhere in that span, not at a point. A wide span means the client was busy; capture again before you trust a fast-moving scene. No `frames` means a heartbeat failed, not that the capture did.
 - **One frame, several reads.** `client_batch` runs literal `mem_read` and `lua` steps inside a single client frame when every step is one of those, and its result carries `frame`. Use it when two values must come from the same instant (a position and a hover id). A batch with a `wait`, `call_native` or other step runs step by step and carries no shared frame.
 - **Capture stays PrintWindow** (D-AX2). Capturing the back buffer inside the client needs a deeper render hook; that is an open owner decision, not a missing feature.
 
