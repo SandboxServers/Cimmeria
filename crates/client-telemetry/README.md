@@ -58,6 +58,14 @@ exercise the gated code and will give you a false green.
   session's `capture` block and `CIMMERIA_CLIENT_CAPTURE`).
 - `queue.rs` / `uploader.rs` — the bounded event queue + batched uploader (host-testable).
 - `events.rs` — the typed event taxonomy shipped to the server.
+- `bridge/` (only with `--features lab-bridge`) — the lab's inbound channel. The lab-autopilot methods:
+  - `meta` — `frame`, `mono_ms` and `game_t` on every drained response.
+  - `input_hold` (plus `input_release`) — a key press on a lease that releases itself.
+  - `watch_start` / `watch_read` / `watch_stop` — a ring-buffer pose sampler.
+  - `batch` — up to 16 read calls in one drain, one frame.
+  - `trace_line` — one `SingleLineCheck` collision trace, latched off after a fault.
+
+  Rules for every method: [live-research-lab.md § 13](../../docs/architecture/live-research-lab.md#13-addendum-2026-11-lab-autopilot).
 
 See [`docs/reverse-engineering/findings/client-instrumentation-hookpoints.md`](../../docs/reverse-engineering/findings/client-instrumentation-hookpoints.md)
 and [`client-instrumentation-entry-points.md`](../../docs/reverse-engineering/findings/client-instrumentation-entry-points.md)
