@@ -4,6 +4,7 @@
 use serde_json::json;
 
 use super::geometry::{horizontal_m, Pose};
+use super::ignored_input;
 use super::io::WorldIo;
 use super::move_proof;
 use super::movement::{Goal, BACKWARD_KEY, FAIL_HINT, FORWARD_KEY};
@@ -61,10 +62,18 @@ pub(super) async fn input_probe<W: WorldIo>(
         .await
         .map_err(|e| steps.fail(io.now_ms(), "input_probe", e))?;
     let back_m = horizontal_m(after.pos, back.pos);
-    // AX-34 refines these two stops (wall vs dead input); both are ignored input for now.
+    // A wall (S moved the pawn) is geometry: stuck. Dead input is a window
+    // swallowing the keys (any visible non-HUD window) or plain ignored input.
+    // An unreadable window list leaves it at ignored input.
+    let kind = if back_m >= PROBE_MIN_M {
+        StopKind::Stuck
+    } else {
+        let windows = io.visible_windows().await.unwrap_or_default();
+        ignored_input::classify(&windows, ignored_input::HUD_WINDOWS)
+    };
     let stop = |io: &W, step: &str| {
         move_proof::stop_report(
-            StopKind::IgnoredInput,
+            kind,
             step,
             io.now_ms().saturating_sub(t_start) as f64 / 1000.0,
             move_proof::tried_list(&[], true),

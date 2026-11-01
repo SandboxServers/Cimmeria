@@ -13,7 +13,7 @@ fn view(yaw: f64, pitch: f64, zoom: f64) -> Value {
 }
 
 fn judge(req: &CameraRequest, before: &Value, after: &Value, fresh: Freshness) -> Evidence {
-    Evidence::judge(checks(req, before, after, &Value::Null, None, fresh))
+    Evidence::judge(checks(req, before, after, &Value::Null, None, fresh, None))
 }
 
 fn yaw_req() -> CameraRequest {
@@ -164,6 +164,7 @@ fn face_that_did_not_centre_is_denied() {
             &json!({ "centred": centred }),
             None,
             Freshness::Fresh,
+            None,
         ))
     };
     assert_eq!(run(true).verdict, EvVerdict::Confirmed);
@@ -186,6 +187,7 @@ fn yaw_at_reads_the_loop_result() {
             &Value::Null,
             Some(&a),
             Freshness::Fresh,
+            None,
         ))
     };
     assert_eq!(run(abs(json!(25.2))).verdict, EvVerdict::Confirmed);

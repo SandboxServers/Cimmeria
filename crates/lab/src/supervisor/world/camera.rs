@@ -15,10 +15,11 @@ use serde_json::{json, Value};
 
 use super::find::{find_entities, FindRequest};
 use super::geometry::{bearing, wrap_pi, Pose, Screen, Vec3};
+use super::ignored_input::look_delivered;
 use super::io::WorldIo;
 use super::memory;
 use super::steer::{FaceConfig, FaceController, FaceStep, TurnModel};
-use super::{camera_proof, fresh_wait, PointArg, Steps, TargetArg, WorldError};
+use super::{camera_proof, fresh_wait, NativeLevel, PointArg, Steps, TargetArg, WorldError};
 use crate::proof::Evidence;
 
 /// Frames for a mouse-look motion to show up in the next projection.
@@ -499,13 +500,23 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
         (None, _) => req.zoom_notches.unwrap_or(0),
     };
     let wheel = notches * WHEEL_NOTCH;
+    let mut delivered = None;
     if dx != 0 || dy != 0 || wheel != 0 {
         let t0 = io.now_ms();
+        let counters_before = io.input_counters().await;
         let level = io
             .look(dx, dy, wheel)
             .await
             .map_err(|e| steps.fail(io.now_ms(), "mouse_look", e))?;
         steps.used(level);
+        // Only the DirectInput path moves the counters; an old DLL (both
+        // `None`) adds no check rather than an unmeasured required one.
+        if level == NativeLevel::RealInput {
+            let counters_after = io.input_counters().await;
+            if counters_before.is_some() || counters_after.is_some() {
+                delivered = Some(look_delivered(counters_before, counters_after));
+            }
+        }
         io.sleep(LOOK_SETTLE_MS).await;
         steps.record(
             "look",
@@ -581,6 +592,7 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
         &out["face"],
         out.get("absolute"),
         fresh,
+        delivered,
     )));
     if pinned {
         out["pitch_clamped"] = json!(true);
