@@ -2,11 +2,10 @@
 
 ## Exploit references (concrete shapes found in code)
 
-- [Bandolier ammo TOCTOU](exploit_bandolier_ammo_toctou.md) — base UPDATE keys on `type_id` instead of `item_id`; same-type swap dupes ammo across instances.
 - [AVATAR_UPDATE_EXPLICIT trust](exploit_avatar_update_explicit.md) — base wire 0x03 accepts client position unconditionally; no anti-teleport, no speed check.
-- [Admin API unauthenticated](exploit_admin_api_unauth.md) — `/api/config/stop` and `/api/editor/content` bind on 0.0.0.0 with no auth middleware; trivially DoS-able.
+- [Admin API unauthenticated](exploit_admin_api_unauth.md) — `/api/config/stop` and `/api/editor/content` have no auth middleware (bind defaults to loopback); trivially DoS-able if exposed.
 - [useAbility no faction check](exploit_use_ability_no_faction.md) — single-target ability resolves damage on any non-dead target in range; party/vendor friendly fire possible.
-- [Lootable no ownership](exploit_loot_no_ownership.md) — lootItem trusts player's own `looting_entity` state; no kill-credit check, no post-interact range re-check.
+- [Lootable no ownership](exploit_loot_no_ownership.md) — lootItem trusts player's own `looting_entity` state; range is re-checked per take (#446) but kill-credit ownership is not enforced.
 - [Reference: authoritative state locations](reference_authority_sources.md) — where the server-of-truth state lives for inventory, position, currency, GM flag.
 
 ## 2026-05-31 server-authority audit — per-system findings
@@ -16,12 +15,7 @@
 - [project_black_market_bm02_review.md](project_black_market_bm02_review.md) — BM-02 auctioneer gate + container-18 escrow cleared; residual mint-on-missing-escrow, int4 refund overflow
 - [project_black_market_bm07_review.md](project_black_market_bm07_review.md) — BM-07 Auctioneer marker + seller read-back + .bm_* cleared; seed key and old account fixed in-PR, respawn residual
 - [project_black_market_unimplemented.md](project_black_market_unimplemented.md) — BM/Auction surface was stubbed (superseded 2026-09-27 by the BM-01 port); CAT-I invariants still open go to BM-02
-- [project_mission_dialog_audit_2026-05-31.md](project_mission_dialog_audit_2026-05-31.md) — CAT-J audit findings; mission/dialog/interaction trust posture as of 2026-05-31
-- [project_gm_commands_audit_2026-05-31.md](project_gm_commands_audit_2026-05-31.md) — CAT-N audit findings; GM/debug/cheat commands trust posture as of 2026-05-31
-- [project_org_squad_duel_unimplemented.md](project_org_squad_duel_unimplemented.md) — CAT-M audit findings; all 18 org/squad/duel wire surfaces are stubbed, full checklist for implementer
 - [project_crafting_unimplemented.md](project_crafting_unimplemented.md) — CAT-F audit findings; TrainAbility wired (with trainer-NPC gap), all other craft RPCs stubbed; future-implementer must-validate checklist
-- [project_chat_contact_audit_2026-05-31.md](project_chat_contact_audit_2026-05-31.md) — CAT-L audit findings; chat/contact/communication trust posture as of 2026-05-31
-- [project_world_space_gate_audit_2026-05-31.md](project_world_space_gate_audit_2026-05-31.md) — CAT-O audit findings; gate/ring/region/world-instance trust posture as of 2026-05-31
 
 ## Wire-spec references (Ghidra + .def anchors per system)
 
@@ -51,7 +45,7 @@
 
 - [trade-container-whitelist.md](trade-container-whitelist.md) — Trade swap must whitelist source containers (backpack + crafting bag since 2026-09-27) — blacklist-only is a dupe-strip exploit
 - [exploit_bind_on_acquire_unenforced.md](exploit_bind_on_acquire_unenforced.md) — BoA item flag never applied (grants insert bound=false); trade and mail move BoA items
-- [exploit_buyback_moveitem_source.md](exploit_buyback_moveitem_source.md) — moveItem never checks source container; 16->bag is free buyback; whitelist 1-15 fix drafted 2026-09-25
+- [exploit_buyback_moveitem_source.md](exploit_buyback_moveitem_source.md) — FIXED (#798): moveItem checked only the target, so 16->bag was free buyback; source+target whitelist now
 - [advisory-lock-namespaces.md](advisory-lock-namespaces.md) — Advisory keys + row lock order per inventory/cash writer; trade row order unsorted (ABBA vs ascending paths)
 - [pattern-checked-alloc-size.md](pattern-checked-alloc-size.md) — Canonical helper for count*stride bounds + overflow checks on attacker-influenced binary input
 - [pr-426-navmesh-extractor.md](pr-426-navmesh-extractor.md) — Build-time navmesh parser hardened with checked_alloc_size; pattern worth reusing for header-driven Vec allocation

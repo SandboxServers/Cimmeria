@@ -5,6 +5,8 @@ metadata:
   type: project
 ---
 
+INVALIDATED WHEN: the cover form of H9 (objective 2484) is wired into the Castle chain set, or the replay/abandon edge handling in the content executor is reworked. checked: unverified (2026-11-01)
+
 Playtest finding H9 (2026-09-18 Castle) is a class, not a bug: an edge event
 (`enter_region`, `player_loaded`, cover, abandon) that fires before the step
 or state gating its chain becomes true is **spent**, and never re-fires.

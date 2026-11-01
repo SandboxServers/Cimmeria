@@ -2,7 +2,7 @@
 name: cross-world-transfer-flow
 description: Cell/base split of the gate-travel flow — where teardown actually happens, why find_or_create_space can't join an instance, and which "default instance" mechanisms are fake.
 metadata:
-  type: project
+  type: reference
 ---
 
 Learned while implementing P45 (legacy-command-parity G05). Verify against

@@ -17,3 +17,6 @@ Beta E1 (`data/spaces/beta_site_evo_1.nav`, tiled XRCT, agent r0.6 h1.8 climb0.6
 - Region test: one-point AreaSet is a box at +-r in X/Z, widened 1.5 on all axes (`GENERIC_REGION_CHECK_THRESHOLD`), so "outside by N" is Chebyshev >= r + 1.5 + N.
 - Beam pads (census): ground (746.480,-19.920,68.640) = spawn 149 on 251; deck (700.440,157.240,70.360) = spawn 151 on 355. The deck is not walkable from ARRIVAL.
 - Science door gap between 890 and 251 is 0.90 m at (650.8,19.8,814.1)->(651.7,19.8,814.1), narrower than the 1.2 m agent: find_path may refuse it.
+
+INVALIDATED WHEN: beta_site_evo_1.nav is rebuilt or placement-seal.md changes its anchor table
+checked: 2026-11-01

@@ -1,3 +1,10 @@
+---
+name: reference_lab_ring_map_click_2026_10_13
+description: "Ring map click routing in the QA lab client: why client_input_mouse alone sends no destination and the Lua binding fix"
+metadata:
+  type: reference
+---
+
 # Ring map click routing in the QA lab client (2026-10-13)
 
 Live Cellblock probe on a fresh character: the server sent `onRingTransporterList` for source region 1 and destination region 2, and the map rendered the destination. `client_input_mouse` placed the CEGUI cursor and clicked the marker, but sent no `setRingTransporterDestination`. The same tool closed the map through its X button. A temporary click-event probe showed the map click on `WorldMapImageWin`, while the stock `WorldMap.lua` subscribes `WorldMapMod.onClick` on `WorldMapWin`; the parent saw no click in this lab session. Invoking `WorldMapMod.onClick` directly at the image pixel selected the destination.

@@ -50,3 +50,6 @@ Checkpoint: docs/reverse-engineering/v5-campaign/worker-state.checkpoint.json
 
 **Why**: Assigned W-state in session 4 orchestrated campaign.
 **How to apply**: Use these addresses for weapon animation, locomotion, entity state broadcast investigations. BSF_Holster correction is critical.
+
+INVALIDATED WHEN: the state-field broadcast finding or BSF_* dispatch in SGW.exe is re-analysed
+checked: 2026-11-01

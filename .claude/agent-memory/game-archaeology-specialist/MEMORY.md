@@ -65,7 +65,6 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 - [createAuction send wiring — NOP patch confirmed](bm-create-auction-send-wiring.md) — **[PROMOTE → docs/reverse-engineering/findings/black-market-client-window-patch.md §createAuction-send]** — Entity-guard JZ at 0x00e599a8 NOP'd (6 bytes), send BP hit confirmed, wire layout vs server decode verified. Full Lua binding map + reversibility bytes.
 - [createAuction FUN_00A372F0 dispatch diagnosis](bm-create-auction-dispatch-diagnosis.md) — **RE-VERIFIED 2026-07-25**: hash constant `0x6DF41E32` / stride ×4 / hash-derived (not static) bucket slot all CONFIRMED by fresh decompile + independent Python re-derivation. Sections calling `FUN_00D6CE00` are RETRACTED inline (marked at each heading); the file's own "FINAL LOCKED PLAN — OPTION B SYNTHESIZE" section is CONFIRMED CORRECT (manual callback_obj + direct `FUN_00A37790`, never calls D6CE00) — don't conflate the two.
 - [createAuction registration key mismatch — UN-SUPERSEDED 2026-07-25](bm-create-auction-registration-key-bug.md) — **THIS IS THE CORRECT PLAN.** FUN_00D46F70 hardcodes SellItems' C++ template (confirmed via Ghidra RTTI symbol names, not just offsets) — CME subscription must use a manual callback_obj + direct `FUN_00A37790`, never `FUN_00D6CE00` (which mis-keys under SellItems regardless of args passed). "SLOT 2 static" rendezvous claim in this file corrected to hash-derived math.
-- [createAuction FINAL execution plan — SUPERSEDED 2026-07-25](bm-create-auction-next-session-plan.md) — **DO NOT EXECUTE.** Both its bucket slot (claimed static 2, is hash-derived) and its registration call (`FUN_00D6CE00`, hardcodes SellItems' template) are wrong. The "FUN_00C6EA70 throws on first-registration" BLOCKER is also backwards (disasm-confirmed: throws on duplicate, not first insert) — moot anyway since C6EA70 doesn't touch the CME table. Use `bm-create-auction-registration-key-bug.md` instead.
 
 ## Black Market fork-B session (2026-06-21)
 
@@ -137,6 +136,8 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 ## Minigames (MG-R3, 2026-10-19)
 
 - [GoauldCrystals extension rules](goauld-crystals-extension-rules.md) — victory = powered finish cell; unseeded RNG; Python is a Livewire copy; no core shared with CrystalGame
-- [BM reopen = overlay clock bug (LN-12)](bm-overlay-clock-reopen-ln12.md) — worldGetDeltaSeconds is per-frame delta; overlay now() misuses it; fix the Lua, server push is only a stopgap
+- [BM reopen = overlay clock bug (LN-12)](bm-overlay-clock-reopen-ln12.md) — worldGetDeltaSeconds is a per-frame delta; accumulate it, never use it as a clock (fixed by LN-12b)
 - [UE3 trace/reflection/view anchors](ue3-reflection-trace-anchors.md) — LIVE 2026-10-31: pawn traces need flag bit 0x1, FindFunctionChecked 0x0049ffb0, gain 20, load flag unobservable, 7-arg shim; AX-01 actor count + clock owner
 - [controller-mouse-input-model.md](controller-mouse-input-model.md) — PC mouse handlers, button/mode bits, drag/click classes, DI pump (static 2026-10-22)
+- [client-display-knobs](client-display-knobs.md) — SavedSystemOptions windowedMode wins over the ini and args for display mode
+- [client-mouse-lock-pd38](client-mouse-lock-pd38.md) — the client never clips the cursor in game; engine mode global addresses

@@ -1,3 +1,9 @@
+---
+name: content-chain-condition-context-gaps
+description: What each content-engine dispatcher actually puts in the condition context; archetype was unpopulated on dialog chains before CS-01b and neq fails open
+metadata:
+  type: reference
+---
 # Content-chain authoring: what each dispatcher actually puts in the context
 
 Read before authoring any `content_*` seed rows. Every item here cost real

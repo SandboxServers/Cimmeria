@@ -60,3 +60,6 @@ per completed leg against a stale player position. Default `move_speed 0.6`
 `move_speed >= ~0.9`.
 
 Related: [[castle-cellblock-navmesh-components]], [[npc-death-credit-and-respawn-gaps]]
+
+INVALIDATED WHEN: Follow gains auto-resume after combat or entity_templates.move_speed is removed
+checked: 2026-11-01

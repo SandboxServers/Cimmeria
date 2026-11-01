@@ -1,3 +1,10 @@
+---
+name: live-db-scratch-cluster
+description: Throwaway Postgres cluster for live-DB revert-verification
+metadata:
+  type: reference
+---
+
 # Standing up a throwaway Postgres for live-DB revert-verification
 
 `db.bat init` only runs `initdb` — it does **not** create the `sgw` database,
@@ -11,7 +18,7 @@ binaries. Needed whenever you have to *actually run* a live-DB guard —
 is impossible without a real DB.
 
 ```powershell
-$bin  = "C:\Users\Steve\source\projects\Cimmeria\external\postgresql_server\bin"
+$bin  = "<repo root>\external\postgresql_server\bin"
 $data = "<scratchpad>\pgdata"
 & "$bin\initdb.exe" -D $data -U postgres -E UTF8 --locale=C -A trust
 Add-Content "$data\postgresql.conf" "port = 5544"
@@ -36,3 +43,6 @@ Stop with `pg_ctl -D $data -w stop` when done — don't leak the process.
 Timings on this host: `initdb` + start exceeds the 300s Bash-tool default
 (run it backgrounded); schema load ~1 min; full `ci-live-db` suite ~54s for
 1,687 tests.
+
+INVALIDATED WHEN: db.bat init learns to create the sgw database and role, or the bundled Postgres version changes
+checked: 2026-11-01

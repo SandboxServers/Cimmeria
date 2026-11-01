@@ -651,3 +651,6 @@ SystemOptions.xml for negative confirmation).
 
 **Total distinct findings**: 31 (C1-A through C1-L + I2-A through I2-D + R1-R12 + T1-T6 + D1-D6 + S1-S5,
 minus overlaps with Section 1).
+
+INVALIDATED WHEN: spec.protocol.mercury-wire-format section 2 is promoted over this note or SGW.exe changes
+checked: 2026-11-01

@@ -1,3 +1,10 @@
+---
+name: reference_cellblock_routes_2026_10_13
+description: Cellblock route recording
+metadata:
+  type: reference
+---
+
 # Cellblock route recording, 2026-10-13
 
 Source: AP-11 in `docs/analysis/cellblock-autoplay/work-packets.md`; implementation in `crates/lab/src/supervisor/world/routes.rs`.

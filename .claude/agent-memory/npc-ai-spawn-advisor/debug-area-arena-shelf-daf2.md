@@ -40,3 +40,6 @@ colo SigNoz on v2026-10-05.1, plus review round 1.
   Edit docs with a Python script that preserves `\r\n`.
 
 Related: [[debug-area-combat-zones-da04]], [[leash-reset-na12]], [[npc-vs-npc-1009]].
+
+INVALIDATED WHEN: the Debug Area arena rows move or the every_arena_row_stands_on_terrain guard in arena.rs changes
+checked: 2026-11-01

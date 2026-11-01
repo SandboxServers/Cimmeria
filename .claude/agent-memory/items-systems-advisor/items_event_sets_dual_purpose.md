@@ -25,4 +25,7 @@ Confirmed 2026-09-18 during a read-only audit of the SGW handoff pack v1.2's wea
 
 **Known pre-existing seed noise (not a bug to fix blindly):** 58/1,278 weapon records show the moniker-derived "expected" ability disagreeing with the actual `items_event_sets` row (e.g. item 3584 "CO2 Pistol Dartgun": moniker suggests melee ability 1087, but the seed row binds melee to 708, the generic Pistol Melee AA). Worst-hit families: Dart Gun (0/25 match), Ribbon Device (151/178), Grenade Launcher (25/27). Likely the same "orphaned generic placeholder" pattern documented in [[item_use_trigger_mechanism]] (ability 597 bound to unrelated Harset items) — original content authoring left some weapons on a generic fallback binding instead of a weapon-specific one. Don't silently "fix" these by trusting the moniker guess over the seed; flag for a content-authoring decision.
 
-Related: [[project_pr520_bandolier_ammo_fix]] (the runtime consumer of `BandolierItem`, which is populated using this same event-binding data at equip time), [[vendor_trainer_seed_gap]] (a parallel finding on other item-adjacent tables being real-but-unseeded rather than legacy).
+Related: [[project_pr520_bandolier_ammo_fix]] (the runtime consumer of `BandolierItem`, which is populated using this same event-binding data at equip time).
+
+INVALIDATED WHEN: load_item_event_set_abilities or ability_for_item stops reading event_id 6/7
+checked: 2026-11-01

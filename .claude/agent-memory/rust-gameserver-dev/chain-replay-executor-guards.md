@@ -1,3 +1,10 @@
+---
+name: chain-replay-executor-guards
+description: Chain-replay tests must execute the executor arm
+metadata:
+  type: feedback
+---
+
 # Chain-replay tests must *execute* when the change is an executor arm
 
 `crates/cell-content/src/cell/content/chain_replay_tests/` historically stopped at

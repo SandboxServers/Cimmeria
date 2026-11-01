@@ -1,3 +1,9 @@
+---
+name: content-chain-dispatch-traps
+description: Ten content-engine dispatch facts invisible from seed SQL (display_dialog needs an interact in history, and more)
+metadata:
+  type: reference
+---
 # Content-chain dispatch traps
 
 Ten facts about the content engine that are not visible from the seed

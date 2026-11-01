@@ -24,3 +24,6 @@ Lab pitfalls found doing this (colo test server, shared machine):
 - A direct login into a character saved in DebugArea died 6 of 6 times with stock and patched files alike; entering via Castle_CellBlock then `.gotolocation DebugArea` loaded fine with the same polling-heavy pattern. Do not blame a patch for a direct-entry death before running the stock control on the same path.
 - Server console `.gotolocation` through lab-server needs the entity to be `in_world` (not `loading`), else "not authorized"; a character saved in DebugArea cannot be taken back to the cellblock, so delete and recreate the lab character for each cellblock entry.
 - Kill Ribbons.scr before starting the client (D3DERR_NOTAVAILABLE).
+
+INVALIDATED WHEN: patch 013 or the MapData.upk world-map layout handling changes
+checked: 2026-11-01

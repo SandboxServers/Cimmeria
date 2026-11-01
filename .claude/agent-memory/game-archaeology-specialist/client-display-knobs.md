@@ -23,3 +23,6 @@ The SGW client has two display layers. **SavedSystemOptions wins once the game i
 **Why:** the D2 black-screen and display-takeover diagnosis looked only at the ini. The real cause was the saved `windowedMode=false`.
 
 **How to apply:** any launcher or lab display control must write `SavedSystemOptions.xml` `windowedMode` before every launch; the ini and args are secondary. See [[multi-client-lab-findings]].
+
+INVALIDATED WHEN: the SGW.exe build changes or the launcher stops depending on SavedSystemOptions windowedMode
+checked: 2026-11-01

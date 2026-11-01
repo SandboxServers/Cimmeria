@@ -1,3 +1,9 @@
+---
+name: dialog-button-strip-and-seed-agreement
+description: Dialog button strips: seed and patch must agree, and the seed-linter vacuity floors they break (DU-02a)
+metadata:
+  type: reference
+---
 # Dialog button strips: seed/patch agreement, and the linter floors they break
 
 Learned landing DU-02a (twelve Castle_CellBlock dialogs stripped to zero buttons).

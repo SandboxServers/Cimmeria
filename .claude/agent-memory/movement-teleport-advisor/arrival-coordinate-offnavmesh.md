@@ -19,7 +19,7 @@ The termination chain then dead-ends, because `resolve_recovery_position` (`cell
 
 → `CorrectionSuppressed` from the first packet onward. Not the #644 rubber-band (that needs a *sound* target); the failure shape here is **silent**: the server never writes the player's position, so they move normally on their own client, never move for witnesses, and can't interact. Distinguish the two in triage by the outcome counter, not by the player's description.
 
-**Why nobody has hit this yet:** the navmesh layer *fails open* when `space.navmesh` is `None` (`cell/space_manager/spatial.rs:54-67`, three separate `return true`s). Castle (world 8), the main gate destination, has **no** `data/spaces/castle.nav` — only `castle_cellblock.nav` exists. The defect is latent in every gate arrival and only fires in a navmesh-backed destination. `data/spaces/` currently holds `agnos.nav`, `castle_cellblock.nav`, `harset.nav`, `harset_storagerm.nav`, `sgc_w1.nav` — so **Harset is the first navmesh-backed gate destination**, and any Harset campaign is what surfaces this.
+**Why this was latent:** the navmesh layer fails open when `space.navmesh` is `None` (`cell/space_manager/spatial.rs:54-67`, three separate `return true`s), so a gate arrival into a meshless world is never validated. As of 2026-11-01 most shipped worlds have a `.nav` in `data/spaces/` (ls it before citing a list); the measurements above were taken on the 2012 Harset mesh and the 2026-09-25 status below supersedes them.
 
 **How to apply:**
 
@@ -36,3 +36,6 @@ See [[snap-back-termination]] for the sound-target loop this is the mirror image
 **Status 2026-09-25 (NA29):** the mesh resolved the Harset case; the pin was not needed. The NA26 `harset.nav` has the gate dais: the gate row has dy -0.04, a 13/13 disc at r 0.6 and 1.2, and `Ok` paths to the plaza, the ring pads and the CC door. So the PL-A-01 pin was dropped and Harset arrives on the raw gate row again. The 5 u hole described above was the 2012 mesh. The rule still applies to every other world: measure before trusting a row.
 
 **Non-obvious corollary: a gate arrival lands INSIDE its own `REGION_FLAG_Stargate` volume.** Harset's row is 0.72 m off point set 1001's axis. That is safe only because the dial is keyed per entity (`pending_gate_dials[entity_id]`, cancelled before travel and scrubbed in `destroy_entity`), so the arrival's enter hint is a no-op even while someone else has the gate open. Block on sight any change that scopes the dial to the gate or the world, or that authors a chain on a `*.Stargate` tag: both would fire on every arrival. Guards: `harset_gate_arrival_is_the_gate_row_on_the_mesh_and_inert_in_the_gate_volume` and `a_traveller_arriving_while_another_player_holds_an_open_dial_is_not_crossed`.
+
+INVALIDATED WHEN: a transfer path validates arrivals against the destination navmesh, or gate rows gain a standable arrival column
+checked: 2026-11-01

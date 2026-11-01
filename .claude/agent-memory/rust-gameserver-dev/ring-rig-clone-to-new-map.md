@@ -5,6 +5,8 @@ metadata:
   type: project
 ---
 
+INVALIDATED WHEN: the ShowPlayer/traveller-hidden behaviour (FUN_00d06f30) is fixed or the ring rig is cloned into another map. checked: unverified (2026-11-01)
+
 Facts from building `010-debug-area-rings` (2026-10-04, eight rigs in `Ihpet_Crater_Light-fff80002`).
 
 - **Rig source.** Region 3's de-prefabbed rig in `Castle_CellBlock-fffeffff`: roots

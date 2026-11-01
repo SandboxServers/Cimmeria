@@ -10,3 +10,6 @@ UB-00b-3 (2026-10-19): Beta RuinNote (122.2, 27.17, 356.8) looked unreachable be
 **Why:** `find_path` Partial ends at the visited poly nearest the goal in straight-line distance; the true route detours away first. Also the 256-poly cap.
 
 **How to apply:** to prove reachability, chain toward intermediate targets and assert each leg Ok within 2.0 m; to prove an island, use a negative control that really is one (nav 890 Science interior behind the 0.90 m gap fails honestly). Reverse legs are not symmetric. Probe by throwaway example in `crates/entity/examples`, deleted after. Detail: placement-seal.md Addendum UB-00b-3 in the uzp-e1 worktree. See [[tiled-navmesh-seams]].
+
+INVALIDATED WHEN: find_path Partial stops ending at the straight-line-nearest poly, or the 256-poly cap changes
+checked: 2026-11-01

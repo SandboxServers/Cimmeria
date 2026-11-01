@@ -41,3 +41,6 @@ Still open from #532: Flash policy `domain='*'`, accept-rate limiting, and ticke
 against the session addresses, not the ticket a login claims).
 
 See also [[session-lifecycle-original]].
+
+INVALIDATED WHEN: ListenerLimits defaults, SessionRegistry::try_admit or parse_message logging change
+checked: 2026-11-01

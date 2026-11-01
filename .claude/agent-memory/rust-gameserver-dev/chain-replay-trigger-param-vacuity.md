@@ -1,3 +1,10 @@
+---
+name: chain-replay-trigger-param-vacuity
+description: Chain-replay trigger needs its own param or negatives are vacuous
+metadata:
+  type: feedback
+---
+
 # Chain-replay tests: the trigger needs its OWN param, or every negative is vacuous
 
 `ChainEngine::resolve_event` matches the trigger BEFORE it evaluates any

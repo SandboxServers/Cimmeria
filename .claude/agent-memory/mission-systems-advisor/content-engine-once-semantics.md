@@ -54,3 +54,6 @@ is: route the one-shot through a step advance, OR add a counter/objective the
 condition can read. Bit-clear alone does NOT stop the chain re-firing (it only
 stops the *client* re-opening the dialog, which is usually enough in practice
 since the dialog_open event won't fire if the body isn't clickable).
+
+INVALIDATED WHEN: once_gate.rs is removed or the once flag is persisted across relog
+checked: 2026-11-01

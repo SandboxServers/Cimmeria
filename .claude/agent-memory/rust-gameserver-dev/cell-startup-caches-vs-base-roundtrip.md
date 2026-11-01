@@ -2,7 +2,7 @@
 name: cell-startup-caches-vs-base-roundtrip
 description: The cell has a DB pool at startup and ~20 SpaceManager caches, including entity_templates since Harset H03 — don't reach for a cell→base round-trip inside a content-executor action, it breaks chain action ordering.
 metadata:
-  type: project
+  type: reference
 ---
 
 # Cell startup caches beat cell→base round-trips inside the content executor

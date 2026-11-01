@@ -20,7 +20,7 @@ now lives in a dedicated module, not inline in handlers.
 
 ## Key files
 
-- `crates/services/src/auth/credentials.rs` — `ClientCredential` enum
+- `crates/auth/src/auth/credentials.rs` — `ClientCredential` enum
   (LegacySha1Hex / Plaintext), `classify_credential` (the TLS gate, unit-
   testable), `validate_credentials` (branches on `(password_algo, credential)`),
   argon2id hash/verify helpers, `migrate_to_argon2id`. Live-DB tests in
@@ -63,3 +63,6 @@ Deps: `argon2` 0.5 (std feature) + `sha1` 0.10, added as workspace deps.
 
 - Client-side plaintext patch (Phase 2b): LoginReplyHandler ctor `0x00DDED60`.
 - Dropping the legacy `password` column once migration covers the player base.
+
+INVALIDATED WHEN: crates/auth credentials.rs changes classify_credential, the dual-column schema or the on-login migration
+checked: 2026-11-01

@@ -75,3 +75,6 @@ See also [[converse-minigame-evidence]], [[chain-wiring-and-gaps]].
 - No client code uses `seed` (only the extension, via java.util.Random). No PRNG port is needed for client compatibility.
 - Alignment's client sends `doscore` and `dovictory`: client-reported, must be ignored by a server-authoritative port.
 - Full detail: `docs/analysis/minigames/spec-protocol-common.md`.
+
+INVALIDATED WHEN: any GameKind module flips its PORTED constant or Livewire starts refusing processreset
+checked: 2026-11-01

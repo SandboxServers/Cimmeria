@@ -1,3 +1,10 @@
+---
+name: effect-scripts-run-after-the-death-check
+description: Effect scripts run after damage_apply death check
+metadata:
+  type: feedback
+---
+
 # Effect scripts run AFTER damage_apply's death check
 
 **Read before touching `cell/abilities/damage_apply`, `cell/effects/scripts.rs`, or
@@ -60,3 +67,6 @@ health damage. NPC at 20 HP → survives direct, dies to the bleed. See
 `npc_ai_retry_sweep` drop any NPC at HEALTH <= 0 before the `ai_state` filter, and
 warn when such an NPC has no `BSF_DEAD`. Proven non-vacuous — with the fix
 reverted the 0-HP NPC really does start its ability cooldown.
+
+INVALIDATED WHEN: effect scripts gain their own death check or abilities::death::resolve_death is renamed/removed
+checked: 2026-11-01

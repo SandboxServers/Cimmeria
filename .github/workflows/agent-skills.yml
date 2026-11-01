@@ -16,7 +16,9 @@ on:
       - ".codex/agents/**"
       - ".claude/hooks/**"
       - "tools/agent-skills/**"
+      - ".claude/agent-memory/**"
       - "docs/analysis/**/RESUME.md"
+      - "docs/analysis/**/*.md"
       - "docs/agents/**"
       - "README.md"
       - "AGENTS.md"
@@ -31,7 +33,9 @@ on:
       - ".codex/agents/**"
       - ".claude/hooks/**"
       - "tools/agent-skills/**"
+      - ".claude/agent-memory/**"
       - "docs/analysis/**/RESUME.md"
+      - "docs/analysis/**/*.md"
       - "docs/agents/**"
       - "README.md"
       - "AGENTS.md"
@@ -50,5 +54,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: unit tests
         run: python3 -m unittest discover -s tools/agent-skills -p "test_*.py"
+      - name: memory lint (observation)
+        run: python3 tools/agent-skills/memory_lint.py
       - name: mirror is current
         run: python3 tools/agent-skills/sync.py --check

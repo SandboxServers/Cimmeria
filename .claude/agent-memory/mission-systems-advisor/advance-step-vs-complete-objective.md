@@ -51,3 +51,6 @@ not a data gap (restore only WARNs for an ACTIVE mission on an unseeded step).
 H50 landed: `MissionUpdate` carries real objective ids, completed objectives
 and completed steps. `objective_status … eq completed` and
 `step_status … eq completed` survive a relog.
+
+INVALIDATED WHEN: progression.rs advance_step or complete_objective changes how it force-completes or auto-completes objectives
+checked: 2026-11-01

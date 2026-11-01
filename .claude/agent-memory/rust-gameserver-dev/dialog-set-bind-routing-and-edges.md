@@ -1,3 +1,9 @@
+---
+name: dialog-set-bind-routing-and-edges
+description: Dialog-set binds: add_dialog_set target_id is a dialog_set_map_id, NULL-dialog rows, and the edge-trigger trap (Harset H20/H22)
+metadata:
+  type: reference
+---
 # Dialog-set binds: click routing, NULL-dialog rows, and the edge-trigger trap
 
 Learned authoring the Harset H20/H22 talk chains (2026-09-19). None of this is

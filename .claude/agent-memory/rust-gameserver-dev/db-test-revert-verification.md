@@ -1,3 +1,9 @@
+---
+name: db-test-revert-verification
+description: Revert-verifying DB-bound code when live Postgres is unavailable: the live-DB guard auto-skips, so prove the revert another way
+metadata:
+  type: feedback
+---
 # Revert-verifying DB-bound code without a live DB
 
 When fixing a bug in an async DB-touching function (slot reservation, balance

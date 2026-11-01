@@ -1,3 +1,10 @@
+---
+name: reference_dev_workbench_causal_trace_2026_10_16
+description: "DW-13 causal trace boundary: what the workbench assembler can and cannot prove across client and server stages"
+metadata:
+  type: reference
+---
+
 # DW-13 causal trace boundary (2026-10-16)
 
 `crates/lab/src/workbench/causal.rs` is a conservative eight-stage
@@ -20,3 +27,6 @@ process or session scope and cannot cross relog by numeric equality alone.
 Failed shown handlers remain failure evidence, not visible result. Time,
 entity and method alone cannot join stages. The complete offline latency
 fixture assumes future verified identity and clock projection.
+
+INVALIDATED WHEN: the workbench causal assembler gains a trusted server session feed
+checked: 2026-11-01

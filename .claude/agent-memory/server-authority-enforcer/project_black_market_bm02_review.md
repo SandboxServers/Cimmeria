@@ -40,3 +40,7 @@ inventory in a server-held container" design:
 **How to apply:** start BM re-reviews from these residuals; related
 [[project-black-market-unimplemented]], [[exploit-bind-on-acquire-unenforced]]
 (BoA rows still list, `bound` is the only check).
+
+checked: unverified 2026-11-01
+
+INVALIDATED WHEN: the container-18 escrow, black_market_access gate or the escrow-delivery path is rewritten

@@ -179,6 +179,14 @@ Each metric, one line:
 
 **Outputs.** Aggregate data goes to `docs/analysis/campaign-metrics/data/` and the Markdown reports to `docs/analysis/campaign-metrics/reports/`.
 
+Harness metrics read the agent transcripts for the harness-tuning campaign. Three subcommands, `returns`, `coder-context` and `resume-cards`, run as `python tools/token-profile/metrics <name> [--projects-root DIR] [--repo DIR] [--since YYYY-MM-DD] [--until YYYY-MM-DD] --out DIR`. Each writes one JSON file with a `schema` name and a `window`, and each prints one `status=ok` line.
+
+- `returns` writes `returns.json`. It holds report-contract dispatches, return-line kinds and report writes per agent type. A label with no agent file and no built-in or retired name is counted under `other`, so no task or campaign name reaches the file. The `report_writers` group covers the non-Haiku agents with a `## Reporting` section. `coder_lines` covers every packet-coder dispatch, with or without a report path.
+- `coder-context` writes `coder-context.json`: packet-coder context stops, what fills the context, medians, and continuation tokens.
+- `resume-cards` writes `resume-cards.json`: compaction resume cards, matched, wrong or mixed, by tier.
+
+The outputs hold counts, shares and medians only, with no text, paths, session ids or campaign names. Before writing, the JSON passes the privacy scrubber. On a refusal the command prints `status=error privacy`, writes nothing and exits 3. `--repo` defaults to the current directory and resolves to the checkout above `.claude/worktrees/`. To re-measure after a harness change, pass `--since <merge date>`. The committed baseline is in `docs/analysis/harness-tuning/baseline/`.
+
 ## Telemetry
 
 Claude Code can also export OpenTelemetry events to the colo SigNoz. The setup, the privacy settings and the kill switch are in [claude-code-telemetry.md](../operations/claude-code-telemetry.md). The profiler doesn't need it, but the OTel reconciliation does. As of 2026-10-03 the workstation is configured and nothing has arrived yet: Claude Code reads the exporter settings only when it starts, so the window opens at the first restart.

@@ -1,0 +1,31 @@
+{
+  "by_tier": {
+    "active": {
+      "firings": 32,
+      "matched": 15,
+      "mixed": 3,
+      "undetermined": 1,
+      "wrong": 13
+    },
+    "inferred": {
+      "firings": 0,
+      "matched": 0,
+      "mixed": 0,
+      "undetermined": 0,
+      "wrong": 0
+    }
+  },
+  "compactions": 45,
+  "compactions_followed_by_dispatch": 41,
+  "firings": 32,
+  "matched": 15,
+  "mixed": 3,
+  "read_resume_before_dispatch": 2,
+  "schema": "cimmeria-harness-resume-cards/1",
+  "undetermined": 1,
+  "window": {
+    "since": "2026-10-03",
+    "until": "2026-11-01"
+  },
+  "wrong": 13
+}

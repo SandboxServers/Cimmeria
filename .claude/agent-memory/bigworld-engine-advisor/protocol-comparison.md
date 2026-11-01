@@ -1,3 +1,10 @@
+---
+name: protocol-comparison
+description: Stock BigWorld 2.0.1 vs SGW protocol divergences (encryption, flags, footer, createCellPlayer); promotion target spec.protocol.mercury-wire-format
+metadata:
+  type: reference
+---
+
 # Stock BigWorld 2.0.1 vs SGW Protocol Comparison
 
 > [!NOTE] PROMOTION TARGET: spec.protocol.mercury-wire-format §"Divergences from stock BigWorld"

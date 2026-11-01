@@ -1,3 +1,10 @@
+---
+name: reference_launcher_updater_integration_2026_10_04
+description: Desktop updater integration
+metadata:
+  type: reference
+---
+
 # Desktop updater integration
 
 The signed updater is a separate durable owner within DesktopState. Guard early

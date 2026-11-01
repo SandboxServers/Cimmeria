@@ -1,3 +1,10 @@
+---
+name: reference_cellblock_praxis_start_2026_10_13
+description: Cellblock fresh-character start profile
+metadata:
+  type: reference
+---
+
 # Cellblock fresh-character start, 2026-10-13
 
 Live lab creation and first play of a fresh SGU Commando landed in SGC_W1
@@ -10,5 +17,9 @@ corpse interactions and pistol mission.
 Use `alignment = "praxis", archetype = "Commando"` for the automated fresh
 Cellblock walkthrough. The earlier SGU setup in the UAT spec and campaign
 notes was stale. This observation does not establish the later combat and
-Livewire steps; the first guard encounter remains blocked by the pistol
-behavior tracked in issue #1667.
+Livewire steps; the first guard encounter was blocked by the pistol
+behavior tracked in issue #1667; its later status is in
+`docs/analysis/cellblock-continuation/route-baseline.md`.
+
+INVALIDATED WHEN: world-entry profiles in gm_only_worlds.rs change
+checked: 2026-11-01

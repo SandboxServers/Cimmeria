@@ -2,7 +2,7 @@
 name: debug-area-plaza-and-training-dummies
 description: DA-02 (2026-10-04) facts - chain tags fire in any world, TrainingDummy mark is the one never-fights-back switch, gm_ability_bulk action, SpawnRecord field adds touch ~20 literals, hub single-placement guards scoped to Castle_CellBlock, nav_inspect dy sign.
 metadata:
-  type: project
+  type: reference
 ---
 
 Found building the Debug Area services plaza and dummies (DA-02, world 1300,

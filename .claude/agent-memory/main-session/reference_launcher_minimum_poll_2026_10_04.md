@@ -1,3 +1,10 @@
+---
+name: reference_launcher_minimum_poll_2026_10_04
+description: Launcher minimum survives polling
+metadata:
+  type: reference
+---
+
 # Launcher minimum survives polling
 
 The desktop Play view polls native status every second. Mapping only the

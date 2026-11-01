@@ -1,3 +1,10 @@
+---
+name: player-loaded-edge-trigger-race
+description: player_loaded plus a state gate never fires for a player already inside
+metadata:
+  type: feedback
+---
+
 # `player_loaded` + a state gate = a chain that never fires for the player who just opened the gate
 
 A chain triggered on `player_loaded <World>` and gated on a mission/step

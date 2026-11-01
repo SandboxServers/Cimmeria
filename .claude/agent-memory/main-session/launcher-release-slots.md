@@ -1,3 +1,10 @@
+---
+name: launcher-release-slots
+description: Launcher release identity scheme, slots and overlay identity rules
+metadata:
+  type: reference
+---
+
 # Launcher release identity
 
 Owner-approved D-LX15 supersedes D-LX8: stable UTC YYYY.M.(D*100+N), slots

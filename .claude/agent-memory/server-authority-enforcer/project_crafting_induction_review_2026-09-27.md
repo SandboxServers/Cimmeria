@@ -18,3 +18,7 @@ Status after the follow-up commit on the same branch (5948edda): the lock order 
 
 **Why:** the verbs (craft/research/RE/alloy) plug in later and inherit these seams.
 **How to apply:** when reviewing any verb PR, check it builds CraftTransaction with checked arithmetic, ties named_items to consume designs, and that the above fixes landed.
+
+checked: unverified 2026-11-01
+
+INVALIDATED WHEN: the crafting session or transaction lock order is changed

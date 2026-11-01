@@ -1,3 +1,10 @@
+---
+name: reference_codex_worktree_lane_2026_10_15
+description: Codex worktree and build-lane observations
+metadata:
+  type: reference
+---
+
 # Codex worktree and build-lane observations (2026-10-15)
 
 - DW-01's app-managed worktree lacked the `external/` junction that `tools/build-lane/mk-worktree.ps1` creates. Its first `cimmeria-entity` C++ build failed until the junction was added to the repository's existing `external/` tree; the rerun passed clippy and broker tests. Source: DW-01 packet run and `tools/build-lane/mk-worktree.ps1`.

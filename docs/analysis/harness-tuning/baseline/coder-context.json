@@ -1,0 +1,92 @@
+{
+  "continuation_tokens_fresh": 6671389,
+  "continuations": 86,
+  "groups": {
+    "all": {
+      "cap_denied": 240,
+      "coders": 1209,
+      "median": {
+        "edits": 5,
+        "first_context": 10784,
+        "greps": 6,
+        "lane_calls": 3,
+        "last_context": 62469,
+        "output_tokens": 20075,
+        "reads": 7,
+        "requests": 26,
+        "result_tokens": 15152
+      },
+      "read_targets_share": {
+        ".claude": 0.038,
+        "crates": 0.267,
+        "docs-other": 0.012,
+        "docs/analysis": 0.145,
+        "other": 0.014,
+        "tools": 0.009
+      },
+      "result_chars_share": {
+        "Edit/Write": 0.023,
+        "Glob": 0.003,
+        "Grep": 0.246,
+        "Read": 0.485,
+        "lane-check": 0.0,
+        "lane-clippy": 0.008,
+        "lane-fmt": 0.012,
+        "lane-other": 0.003,
+        "lane-test": 0.013,
+        "other": 0.0,
+        "shell-git": 0.094,
+        "shell-other": 0.018,
+        "shell-read": 0.095
+      },
+      "stop_rate": 0.206,
+      "stops": 249
+    },
+    "stopped": {
+      "cap_denied": 240,
+      "coders": 249,
+      "median": {
+        "edits": 11,
+        "first_context": 11629,
+        "greps": 11,
+        "lane_calls": 3,
+        "last_context": 92385,
+        "output_tokens": 37001,
+        "reads": 12,
+        "requests": 34,
+        "result_tokens": 23243
+      },
+      "read_targets_share": {
+        ".claude": 0.034,
+        "crates": 0.312,
+        "docs-other": 0.007,
+        "docs/analysis": 0.136,
+        "other": 0.009,
+        "tools": 0.008
+      },
+      "result_chars_share": {
+        "Edit/Write": 0.023,
+        "Glob": 0.002,
+        "Grep": 0.267,
+        "Read": 0.506,
+        "lane-check": 0.0,
+        "lane-clippy": 0.005,
+        "lane-fmt": 0.007,
+        "lane-other": 0.002,
+        "lane-test": 0.007,
+        "other": 0.0,
+        "shell-git": 0.062,
+        "shell-other": 0.014,
+        "shell-read": 0.105
+      },
+      "stop_rate": 1.0,
+      "stops": 249
+    }
+  },
+  "median_continuation_fresh": 75240.5,
+  "schema": "cimmeria-harness-coder-context/1",
+  "window": {
+    "since": "2026-10-03",
+    "until": "2026-11-01"
+  }
+}

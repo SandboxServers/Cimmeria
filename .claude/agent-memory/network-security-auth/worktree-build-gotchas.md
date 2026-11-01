@@ -29,7 +29,7 @@ normally. It is gitignored, so it never shows up in `git status`:
 ```powershell
 New-Item -ItemType Junction `
   -Path "<worktree>\external" `
-  -Target "C:\Users\Steve\source\projects\Cimmeria\external"
+  -Target "<main checkout>\external"
 ```
 
 Do NOT re-run `setup.ps1` for this — the user prefers to drive builds/setup
@@ -78,3 +78,6 @@ and the shared :5433 Postgres may be down; crash recovery after restart took
 about 6 minutes of fsync on 2026-10-10.
 
 Related: [[MEMORY]]
+
+INVALIDATED WHEN: worktrees get external/ automatically, or the lane stops needing the junction
+checked: 2026-11-01

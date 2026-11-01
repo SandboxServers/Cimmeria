@@ -39,7 +39,7 @@ Cross-referencing the AteraLoader session log with the disassembly revealed **tw
 Evidence (from `sessions/2026-05-15_12-43.log`):
 
 ```
-ServerConnection::logOnBegin: server:http://47.45.19.7:8081 username:test
+ServerConnection::logOnBegin: server:http://<server-ip>:8081 username:test
 protocol_digest: 58AFA196AD3AC4F65CADD99BFF23B799
 ```
 
@@ -96,9 +96,9 @@ The `sessions/<date>.log` file from `AtreaGameDebug.bat` runs is **a Mercury fun
 **Tick rate (NEW)**: `Nub::Nub() using thread sleep time of 10` — 10ms tick interval = **100 Hz tick rate**. This is the inner loop frequency of `Nub::tick` / `ProcessPendingEvents`.
 
 **Endpoints observed (NEW)**:
-- Auth/SOAP: `http://47.45.19.7:8081`
-- BaseApp Mercury: `47.45.19.7:32832` (UDP)
-- Client outbound: `172.26.240.1:55293` (bound to all interfaces, advertising eth0)
+- Auth/SOAP: `http://<server-ip>:8081`
+- BaseApp Mercury: `<server-ip>:32832` (UDP)
+- Client outbound: `<server-ip>:55293` (bound to all interfaces, advertising eth0)
 
 **Mercury connection lifecycle (NEW — 8-step sequence)**:
 
@@ -133,14 +133,14 @@ N+5. EntityManager::disconnected
 **R12 out-of-order behavior live-confirmed**:
 
 ```
-UnAckedHandler::queueAckForPacket( 47.45.19.7:32832 ): Buffering packet #24 above #21
-UnAckedHandler::queueAckForPacket( 47.45.19.7:32832 ): Buffering packet #25 above #23
-UnAckedHandler::queueAckForPacket( 47.45.19.7:32832 ): Buffering packet #481 above #480
-UnAckedHandler::queueAckForPacket( 47.45.19.7:32832 ): Buffering packet #797 above #796
-UnAckedHandler::queueAckForPacket( 47.45.19.7:32832 ): Buffering packet #1125 above #1124
-UnAckedHandler::queueAckForPacket( 47.45.19.7:32832 ): Buffering packet #1523 above #1522
-UnAckedHandler::queueAckForPacket( 47.45.19.7:32832 ): Buffering packet #2083 above #2082
-UnAckedHandler::queueAckForPacket( 47.45.19.7:32832 ): Buffering packet #4529 above #4528
+UnAckedHandler::queueAckForPacket( <server-ip>:32832 ): Buffering packet #24 above #21
+UnAckedHandler::queueAckForPacket( <server-ip>:32832 ): Buffering packet #25 above #23
+UnAckedHandler::queueAckForPacket( <server-ip>:32832 ): Buffering packet #481 above #480
+UnAckedHandler::queueAckForPacket( <server-ip>:32832 ): Buffering packet #797 above #796
+UnAckedHandler::queueAckForPacket( <server-ip>:32832 ): Buffering packet #1125 above #1124
+UnAckedHandler::queueAckForPacket( <server-ip>:32832 ): Buffering packet #1523 above #1522
+UnAckedHandler::queueAckForPacket( <server-ip>:32832 ): Buffering packet #2083 above #2082
+UnAckedHandler::queueAckForPacket( <server-ip>:32832 ): Buffering packet #4529 above #4528
 ```
 
 Confirms the sliding-window reorder behavior from Track B finding 1.2. Buffer offsets observed in this session: typically 1–3 positions ahead of expected (`#24` above `#21` = 3 ahead, `#1523` above `#1522` = 1 ahead).
@@ -538,3 +538,6 @@ struct Packet {                       // 0x60-byte header + buffer
 - **AES-256-CBC + HMAC-MD5 session keys**: BP at the key-install site, OR decrypt the 16-byte random in the captured packet to test the key-derivation hypothesis.
 - **rdtsc baseline write site (Q2)**: hardware-write BP on `[ServerConnection+0x170]` / `+0x174`.
 - **Outbound Bundle::newMessage capture**: mirror of inbound, on the send path.
+
+INVALIDATED WHEN: spec.protocol.mercury-wire-format section 2.5 is promoted over this note or SGW.exe changes
+checked: 2026-11-01

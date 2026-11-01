@@ -1,3 +1,9 @@
+---
+name: stargate-address-book-three-legs
+description: The stargate address book has three copies (per layer) that drift differently; read before touching known_stargates or the DHD dial UI
+metadata:
+  type: reference
+---
 # The stargate address book has three copies, and they drift differently
 
 Read before touching `known_stargates`, the DHD dial UI, or any "grant the

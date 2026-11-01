@@ -48,3 +48,6 @@ pins it (Human branch, not a dead end).
 Commando 2, Scientist 3, Archeologist 4, Asgard 5, Goa'uld 6, Shol'va 7,
 Jaffa 8. The shared `:5433` `sgw` DB can be stale against the seed; scan
 `db/resources/` instead when counting seeded chains.
+
+INVALIDATED WHEN: the owner rule OD-CS13 (guns acquired empty) is reversed or a new acquisition path is added
+checked: 2026-11-01

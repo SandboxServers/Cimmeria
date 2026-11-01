@@ -12,4 +12,4 @@ ORG-02 (PR #881, reviewed 2026-09-27) put Team/Command state in `sgw_organizatio
 - Leader invariant: AFTER DELETE trigger `org_member_after_delete` promotes/disbands; there is no UPDATE guard, so raw SQL can demote the leader or move a member's org_id and leave an org leaderless.
 - Audit (`sgw_organization_events` + `organization::audit`): stamps `exported_at` before logging, so it is at-most-once, not exactly-once; the in-transaction path logs at DEBUG and stamps, so kick/leave promotions never reach INFO.
 
-Re-review incrementally from these points when ORG-05..08 or the Bank vault land. Related: [[project-org-squad-duel-unimplemented]], [[advisory-lock-namespaces]].
+Re-review incrementally from these points when ORG-05..08 or the Bank vault land. Related: [[advisory-lock-namespaces]].

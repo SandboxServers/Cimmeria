@@ -1,3 +1,10 @@
+---
+name: aoi-entity-introduction
+description: Three-phase AoI entity introduction (CREATE_ENTITY, cached deltas, createOnClient cascade) from the BigWorld reference; promotion target spec.world.world-entry
+metadata:
+  type: reference
+---
+
 # AoI Entity Introduction Protocol
 
 > [!NOTE] PROMOTION TARGET: spec.world.world-entry §"AoI introduction" + spec.engine.entity-description-parse-chain

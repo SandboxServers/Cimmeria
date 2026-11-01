@@ -5,6 +5,8 @@ metadata:
   type: project
 ---
 
+INVALIDATED WHEN: the Castle extraction is re-run after the BSP decoder work, or the export-table serial_size gap is closed. checked: unverified (2026-11-01)
+
 # Navmesh: the limit that actually bites, and Castle's real topology
 
 **Why:** the `castle.nav` spike burned a lot of time on hypotheses that a

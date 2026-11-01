@@ -13,3 +13,7 @@ Residual: `clear_cod` (paid, or cancelled-sender-gone) does not restamp `expires
 
 **Why:** SS-M5+/black-market expiry will reuse this terminal-path shape.
 **How to apply:** when reviewing later mail/BM expiry or a GM quarantine-release command, check TTL restamp on state change and that release goes through `lock_mail`-order locks. See [[project-mail-escrow-ss-m2]].
+
+checked: unverified 2026-11-01
+
+INVALIDATED WHEN: mail expiry or quarantine handling changes

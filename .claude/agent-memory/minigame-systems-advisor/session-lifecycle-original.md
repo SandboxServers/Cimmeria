@@ -83,3 +83,6 @@ Half-open TCP pinning a session forever is equally true of the original (asio
 `async_receive` with no read timeout, `minigame_connection.cpp:534-541`).
 
 See also [[difficulty-ranges]], [[chain-wiring-and-gaps]], [[game-implementation-status]].
+
+INVALIDATED WHEN: the deprecated C++ reference tree is re-read and disagrees (it is a historical-reference note)
+checked: 2026-11-01

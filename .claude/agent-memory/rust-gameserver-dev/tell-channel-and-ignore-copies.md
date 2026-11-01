@@ -15,3 +15,6 @@ Facts from SS-C1 (tells and Ignore, 2026-09-27):
 
 **Why:** each of these fails silently: a tell renders as "channel not supported", an ignore does nothing until relog, and an assertion "never sees" a CM 87 that was sent.
 **How to apply:** check these before touching chat channels, the Ignore list or base-side packet-decoding tests. See [[witness-entity-method-dual-fn]] for the idbase 61/62 split.
+
+INVALIDATED WHEN: CHAN_TELL changes from 10, or resync_ignore_cache / the three-copy Ignore layout is restructured
+checked: 2026-11-01

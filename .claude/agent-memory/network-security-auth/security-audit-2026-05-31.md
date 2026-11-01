@@ -42,3 +42,6 @@ The old [security-audit.md](security-audit.md) flagged 4 items as `OPEN`:
 - Re-verify whether finding #4 fix lands as IP-binding or as session_key challenge-response.
 - Watch `crates/admin-api/src/middleware.rs` — if JWT middleware lands, re-verify it actually wraps all routes (not just `/api/*` nested router missing some sub-routes).
 - The BroadcastLayer field-deny pattern (if implemented per finding #2) should be tested with a unit test that asserts known-sensitive field names never round-trip through it.
+
+INVALIDATED WHEN: any listed finding is fixed or re-tested (its own re-verification notes say which); it is a snapshot at commit 14827c9c
+checked: unverified 2026-11-01

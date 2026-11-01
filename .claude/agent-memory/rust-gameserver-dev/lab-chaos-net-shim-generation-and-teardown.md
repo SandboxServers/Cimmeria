@@ -33,3 +33,6 @@ and dropping the `SendLine` drops a oneshot sender the line task selects on
 - Mutation-check the sweep and the cancel with `a_dead_peer_is_swept_by_any_send`.
 
 Related: [[lab-uat-runner-in-process-tool-calls]].
+
+INVALIDATED WHEN: lab_chaos_transport.rs is restructured or the generation scheme in SessionChaos changes
+checked: 2026-11-01

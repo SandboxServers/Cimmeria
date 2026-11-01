@@ -77,3 +77,6 @@ the Rust loader never selected the column, so any ability fired with any gun.
   metric still counts every press.
 
 Related: [[ability-mechanics-gaps]], [[ability-range-units]].
+
+INVALIDATED WHEN: the weapon_requirement gate, weapon_requirement_audit.py or the moniker seed rows change
+checked: re-verified (gate file, test file and audit script exist; seed row ids not re-checked) 2026-11-01
