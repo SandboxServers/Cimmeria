@@ -36,6 +36,13 @@ def _after():
         {"type": "text", "text": "Resumed."}]}}
 
 
+def _read_resume():
+    """An assistant turn that reads a RESUME.md."""
+    return {"type": "assistant", "timestamp": TS, "message": {"id": "read", "role": "assistant", "content": [
+        {"type": "tool_use", "id": "toolu_read", "name": "Read",
+         "input": {"file_path": "C:/repo/docs/analysis/alpha/RESUME.md"}}]}}
+
+
 def _session(root, session_id, prompts, card=None):
     """A main session: one Agent turn per prompt, then a compaction with `card` (if any), then an assistant turn."""
     recs = [_agent(i, p) for i, p in enumerate(prompts)] + [_boundary()]
@@ -98,14 +105,25 @@ class ResumeCardsTest(unittest.TestCase):
 
     def test_resume_read_before_dispatch_is_counted(self):
         with tempfile.TemporaryDirectory() as tmp:
-            read = {"type": "assistant", "timestamp": TS, "message": {"id": "read", "role": "assistant", "content": [
-                {"type": "tool_use", "id": "toolu_read", "name": "Read",
-                 "input": {"file_path": "C:/repo/docs/analysis/alpha/RESUME.md"}}]}}
-            _session_records = [_boundary(), read, _agent(0, ALPHA)]
+            _session_records = [_boundary(), _read_resume(), _agent(0, ALPHA)]
             write_main(tmp, "s1", _session_records)
             _, _, data = _run(tmp)
             self.assertEqual(data["read_resume_before_dispatch"], 1)
             self.assertEqual(data["compactions_followed_by_dispatch"], 1)
+
+    def test_resume_read_after_dispatch_is_not_counted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_main(tmp, "s1", [_boundary(), _agent(0, ALPHA), _read_resume()])
+            _, _, data = _run(tmp)
+            self.assertEqual(data["read_resume_before_dispatch"], 0)
+            self.assertEqual(data["compactions_followed_by_dispatch"], 1)
+
+    def test_attachment_after_the_first_assistant_turn_is_not_the_card(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_main(tmp, "s1", [_agent(i, ALPHA) for i in range(4)]
+                       + [_boundary(), _after(), _card("Active campaign: beta.")])
+            _, _, data = _run(tmp)
+            self.assertEqual((data["compactions"], data["firings"], data["wrong"]), (1, 0, 0))
 
     def test_boundary_outside_the_window_is_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
