@@ -18,7 +18,9 @@ use super::geometry::{bearing, wrap_pi, Pose, Screen, Vec3};
 use super::io::WorldIo;
 use super::memory;
 use super::steer::{FaceConfig, FaceController, FaceStep, TurnModel};
+use super::{camera_proof, fresh_wait};
 use super::{PointArg, Steps, TargetArg, WorldError};
+use crate::proof::Evidence;
 
 /// Frames for a mouse-look motion to show up in the next projection.
 pub const LOOK_SETTLE_MS: u64 = 120;
@@ -555,6 +557,9 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
         absolute.insert("yaw".into(), abs_yaw(io, &mut steps, want).await?);
     }
 
+    // C4: the readout must trail the last input by a couple of frames.
+    let action_frame = io.frame().await;
+    let (fresh, _) = fresh_wait::wait_fresh(io, action_frame).await;
     let camera_after = io.camera_pose().await.ok();
     let readout = |r: Result<Value, String>| r.unwrap_or_else(|e| json!({ "error": e }));
     let view_after = readout(io.camera_readout().await);
@@ -570,6 +575,14 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
     if !absolute.is_empty() {
         out["absolute"] = Value::Object(absolute);
     }
+    steps.judged(Evidence::judge(camera_proof::checks(
+        &req,
+        &out["view_before"],
+        &out["view_after"],
+        &out["face"],
+        out.get("absolute"),
+        fresh,
+    )));
     if pinned {
         out["pitch_clamped"] = json!(true);
         out["warning"] = json!(format!(

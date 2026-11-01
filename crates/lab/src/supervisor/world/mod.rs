@@ -26,6 +26,7 @@
 //! nothing. A tool that fell back reports the lowest level it used.
 
 pub mod camera;
+mod camera_proof;
 mod camera_read;
 pub mod click;
 mod click_hover;
@@ -48,6 +49,8 @@ pub mod unstick;
 
 #[cfg(test)]
 mod camera_pitch_tests;
+#[cfg(test)]
+mod camera_proof_tests;
 #[cfg(test)]
 mod click_timeout_tests;
 #[cfg(test)]
