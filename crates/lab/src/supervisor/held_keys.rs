@@ -58,6 +58,11 @@ impl Supervisor {
         if self.holds.lock().await.is_fallback() {
             return self.post_key(hwnd, k, down).await;
         }
+        if !down {
+            // Drop the entry first: a renewal that lands after this release
+            // must see the key gone and undo its own press.
+            self.holds.lock().await.released(k.vk);
+        }
         match self.send_hold(hwnd, k, down).await {
             Ok(_) => {
                 let mut book = self.holds.lock().await;

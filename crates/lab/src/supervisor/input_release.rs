@@ -45,8 +45,8 @@ impl Supervisor {
     /// call returned: a failed release is left to the DLL lease, and a stale
     /// book entry would only be renewed forever.
     pub(crate) async fn release_all_input(&self, reason: &str) -> Result<Value, String> {
-        let result = self.bridge_call("input_release", json!({})).await;
         self.holds.lock().await.clear();
+        let result = self.bridge_call("input_release", json!({})).await;
         // AX-27: button-ups
         match &result {
             Ok(_) => tracing::info!(target: "lab.input", reason, "lab.input.released"),

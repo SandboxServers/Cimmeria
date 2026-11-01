@@ -159,3 +159,31 @@ async fn renew_undoes_a_press_released_mid_flight() {
     assert_eq!(sent[1]["down"], false, "the late press must be undone");
     assert!(sup.holds.lock().await.is_empty());
 }
+
+#[tokio::test]
+async fn release_forgets_the_key_before_the_bridge_call() {
+    // The responder runs while the release is in flight. The book must
+    // already be empty then, so a renewal landing now sees the key gone.
+    type Slot = Arc<Mutex<Option<Arc<tokio::sync::Mutex<crate::supervisor::hold_book::HoldBook>>>>>;
+    let slot: Slot = Arc::default();
+    let book_slot = slot.clone();
+    let seen: Arc<Mutex<Option<bool>>> = Arc::default();
+    let seen_in = seen.clone();
+    let r: Responder = Arc::new(move |m: &str, p: &Value| {
+        if m == "input_hold" && p["down"] == false {
+            if let Some(book) = book_slot.lock().unwrap().as_ref() {
+                *seen_in.lock().unwrap() = Some(book.try_lock().unwrap().is_empty());
+            }
+        }
+        Ok(json!({ "posted": true, "held": [] }))
+    });
+    let sup = fake_bridge::supervisor(r).await;
+    *slot.lock().unwrap() = Some(sup.holds.clone());
+    sup.holds.lock().await.pressed(w().vk, "w", 0);
+    sup.hold_key_at(7, "w", w(), false).await.unwrap();
+    assert_eq!(
+        *seen.lock().unwrap(),
+        Some(true),
+        "the book must forget the key before the release is sent"
+    );
+}
