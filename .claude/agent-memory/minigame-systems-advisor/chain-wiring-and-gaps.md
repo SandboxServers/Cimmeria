@@ -69,3 +69,6 @@ the `Hack` game name has no dedicated cursor bit, so a "Hack the terminal"
 step should use `Livewire` (256) unless someone finds a client mapping.
 
 See also [[game-implementation-status]], [[converse-minigame-evidence]].
+
+INVALIDATED WHEN: start_minigame params or the tech_competency hardcode change, or the castle chain line numbers move
+checked: unverified 2026-11-01

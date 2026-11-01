@@ -38,3 +38,6 @@ on `pending.player_id`:
   player-load query already carries that guard.
 
 Related: [[known-stargates-write-path]].
+
+INVALIDATED WHEN: default_player_load_data stops returning player_id 0 or client_ready.rs stops keying reads on pending.player_id
+checked: 2026-11-01

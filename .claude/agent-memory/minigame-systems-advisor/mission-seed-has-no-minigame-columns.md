@@ -35,3 +35,6 @@ Only three rows in the whole mission seed mention a minigame, all as free text:
 - `mission_objectives.sql:559` — obj 4203 `'Placeholder minigame.'`
 - `mission_objectives.sql:1751` — obj 4963 `'to do: add button to dialog for minigame'`
 - `mission_steps.sql:5327` — mission 582 step 2307 `'Conversation Minigame With Marsh'`
+
+INVALIDATED WHEN: db/resources/Missions/Seed gains a minigame column or task_type stops being a single value
+checked: unverified 2026-11-01

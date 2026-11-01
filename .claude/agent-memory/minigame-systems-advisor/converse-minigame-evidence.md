@@ -7,7 +7,7 @@ metadata:
 
 # Converse minigame — evidence from the abilities seed
 
-Server side Converse is a **placeholder auto-win** (see
+When this was written Converse was a **placeholder auto-win**; ConverseBasicHumanoid has since been ported (`PORTED`), the other Converse kinds are still shells (see
 [[game-implementation-status]]). But the abilities seed preserves real design
 data about what the game actually was. Do NOT invent rules from this — it is a
 lead for SWF disassembly, not a spec.
@@ -74,3 +74,6 @@ authoring, not just design docs.
 Real Converse rules are **blocked** on Flash SWF disassembly
 (`Flash/Converse.upk`, `Flash/ConverseBasicHumanoid.upk`). Section 1 of any
 bible chapter here is "N/A — logic lives in the client SWF, not SGW.exe".
+
+INVALIDATED WHEN: the abilities seed rows 778/779/792/793 change or the Converse SWF is disassembled into a rule spec
+checked: 2026-11-01
