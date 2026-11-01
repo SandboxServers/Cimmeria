@@ -40,6 +40,7 @@ pub mod geometry;
 pub mod hover;
 pub(in crate::supervisor) mod ignored_input;
 pub mod io;
+pub mod ledge;
 pub mod lua;
 pub mod memory;
 mod move_probe;
@@ -47,6 +48,7 @@ mod move_proof;
 pub mod movement;
 pub mod routes;
 pub mod steer;
+mod trace_io;
 mod turn_keys;
 mod turn_state;
 pub mod unstick;
@@ -65,6 +67,8 @@ mod coast_tests;
 mod fresh_wait_tests;
 #[cfg(test)]
 mod ignored_input_tests;
+#[cfg(test)]
+mod ledge_tests;
 #[cfg(test)]
 mod move_to_tests;
 #[cfg(test)]

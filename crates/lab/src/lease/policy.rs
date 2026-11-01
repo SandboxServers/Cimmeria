@@ -153,6 +153,8 @@ pub const LEASED: &[&str] = &[
     "client_ui_sequence",
     // Starts and stops the DLL's per-frame watch.
     "client_watch",
+    // A line trace through the engine's collision check (a read).
+    "client_trace_line",
     // Flows.
     "lab_login",
     "lab_logout",
