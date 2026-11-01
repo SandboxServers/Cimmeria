@@ -69,6 +69,9 @@ impl LabServer {
         let mut guard = HeldKeysGuard::new(move || async move {
             let mut io = LiveWorld::new(&sup);
             movement::release_stray(&mut io).await;
+            // A cancelled walk also drops its DLL holds (C5), not just the
+            // keys the planner knows it pressed.
+            sup.release_all_holds().await;
         });
         let mut io = LiveWorld::new(&self.supervisor);
         let r = movement::run(&mut io, a).await;
