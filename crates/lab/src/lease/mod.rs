@@ -279,6 +279,7 @@ impl LeaseBook {
         self.current_id_at(now_ms())
     }
 
+    /// `current_id` at an injected clock (the test seam).
     pub fn current_id_at(&self, now: i64) -> Option<String> {
         let mut st = self.lock();
         st.expire_if_due(now);

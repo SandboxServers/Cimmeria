@@ -106,6 +106,7 @@ impl HoldBook {
         self.buttons.insert(b);
     }
 
+    /// A mouse button this daemon posted up (AX-27).
     pub fn button_up(&mut self, b: usize) {
         self.buttons.remove(&b);
     }
@@ -125,6 +126,7 @@ impl HoldBook {
     /// client starts with a clean book (C5: fallback is per connection).
     pub fn reset(&mut self) {
         self.held.clear();
+        self.buttons.clear();
         self.fallback = false;
     }
 
@@ -193,9 +195,11 @@ mod tests {
     fn reset_forgets_holds_and_fallback() {
         let mut b = HoldBook::default();
         b.pressed(1, "a", 0);
+        b.button_down(2);
         b.set_fallback();
         b.reset();
         assert!(b.is_empty());
         assert!(!b.is_fallback());
+        assert!(b.take_buttons().is_empty());
     }
 }
