@@ -1298,3 +1298,6 @@ This produces HEAD==TAIL==sentinel, matching what a freshly-initialized empty sl
 - `[ECX+0x08/0x14/0x20]` → all off by 0x1c from outer-table base
 - `SHL 3` → wrong; use `SHL 2` (stride is `slot*4` per disasm + ctor)
 - "SLOT 2 (static)" → wrong; slot is hash-derived at runtime from mask
+
+INVALIDATED WHEN: the registration-key-bug plan or the FUN_00A372F0 bucket math is re-derived
+checked: unverified 2026-11-01

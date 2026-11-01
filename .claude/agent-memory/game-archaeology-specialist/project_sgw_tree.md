@@ -91,3 +91,6 @@ game/sgw/
 4. **SGWGame.u** (compiled UnrealScript) is the most information-dense artifact for message/property RE that hasn't been fully catalogued. Needs UE3 .u decompiler (e.g., UELib/UModel) to extract readable class definitions.
 5. **Map list in CookedPC/Maps/** shows 20 zones — Agnos, Agnos_Library, Beta_Site, Castle, Dakara, Harset, Ihpet_Crater x2, Lucia, Menfa x2, Omega_Site, SGC, Login_Map, etc. Good cross-reference for zone IDs in the server.
 6. **Character package naming convention:** ACC_ = accessories, AR_ = armor, AD_ = animation, then faction suffix (G=Goa'uld, J=Jaffa, H=Human).
+
+INVALIDATED WHEN: the client install layout or its cooked directory structure changes
+checked: 2026-11-01

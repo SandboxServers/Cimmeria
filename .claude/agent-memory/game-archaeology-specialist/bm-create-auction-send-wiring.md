@@ -317,3 +317,6 @@ ALL SGW entity/method functions must run from main-thread tick cave. No exceptio
 5. Watch BP hits at `0x01674440` (thunk), `0x01674466` (call), `0x00D6CE00` (entry).
 6. Verify DB for new auction row.
 7. **Permanent patch shipping:** Add `0x00e599a8: 90 90 90 90 90 90` to the launcher patcher alongside the existing `onBMOpen` method-90 patch.
+
+INVALIDATED WHEN: the black-market client window patch moves off the 0x00e599a8 entity-guard NOP
+checked: unverified 2026-11-01
