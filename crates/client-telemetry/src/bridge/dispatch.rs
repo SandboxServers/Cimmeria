@@ -207,6 +207,8 @@ pub fn dispatch(req: &RpcRequest) -> RpcResponse {
         "input_cursor" => super::input::dispatch_cursor(id, &req.params),
         "input_modifiers" => super::input::dispatch_modifiers(id, &req.params),
         "input_status" => super::input::dispatch_status(id),
+        // ── Same-frame batch of reads (C7) ──────────────────────────
+        "batch" => super::batch::dispatch(id, &req.params),
         other => RpcResponse::error(id, METHOD_NOT_FOUND, format!("unknown method: {other}")),
     }
 }
