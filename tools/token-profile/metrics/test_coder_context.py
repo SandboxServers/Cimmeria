@@ -73,6 +73,17 @@ class CoderContextTest(unittest.TestCase):
                          f"status=ok coder-context coders=4 stops=2 stop_rate=0.5 read_share={round(4000 / total, 3)} "
                          f"grep_share={round(1000 / total, 3)} continuations=1")
 
+    def test_missing_projects_root_exits_2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, out = Path(tmp) / "nowhere", Path(tmp) / "out"
+            args = Namespace(projects_root=root, prefix="C--fixture-repo", since=None, until=None, out=out)
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                rc = coder_context.run(args)
+            self.assertEqual(rc, 2)
+            self.assertTrue(err.getvalue().startswith("status=error"))
+            self.assertFalse((out / "coder-context.json").exists())
+
     def test_medians_count_calls_and_contexts(self):
         d = Dispatch(session_id="s", agent_id="a", agent_type="packet-coder", first_ts=None, brief="Packet HT-03.",
                      final_text="HT-03 done abc1234 -",

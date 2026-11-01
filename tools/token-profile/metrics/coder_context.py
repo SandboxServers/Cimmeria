@@ -13,7 +13,7 @@ from pathlib import Path
 
 from report.scrub import PrivacyError, Scrubber
 
-from .transcripts import Dispatch, cap_denied, is_context_stop, iter_dispatches, norm_path
+from .transcripts import CONTINUATION_RE, Dispatch, cap_denied, is_context_stop, iter_dispatches, norm_path
 
 CATEGORIES = ("Read", "Grep", "Glob", "shell-read", "shell-git", "lane-check", "lane-clippy", "lane-test", "lane-fmt",
               "lane-other", "shell-other", "Edit/Write", "other")
@@ -22,7 +22,6 @@ MEDIANS = ("first_context", "last_context", "output_tokens", "requests", "result
            "greps", "edits")
 TARGET_MARKS = (("/docs/analysis/", "docs/analysis"), ("/docs/", "docs-other"), ("/crates/", "crates"),
                 ("/tools/", "tools"), ("/.claude/", ".claude"))
-CONTINUATION_RE = re.compile(r"(?i)continuation \d of 3")
 
 
 def category(name, inp):
@@ -125,8 +124,12 @@ def build(dispatches) -> dict:
 
 def run(args):
     """Write coder-context.json under args.out and print its status line; returns the exit status."""
-    dispatches = list(iter_dispatches(args.projects_root, args.prefix, args.since, args.until))
-    doc = {"schema": "cimmeria-harness-coder-context/1", "window": {"since": args.since, "until": args.until}}
+    try:
+        dispatches = list(iter_dispatches(args.projects_root, args.prefix, args.since, args.until))
+    except OSError as e:
+        print(f"status=error {type(e).__name__}", file=sys.stderr)
+        return 2
+    doc ={"schema": "cimmeria-harness-coder-context/1", "window": {"since": args.since, "until": args.until}}
     doc.update(build(dispatches))
     text = json.dumps(doc, indent=2, sort_keys=True) + "\n"
     try:

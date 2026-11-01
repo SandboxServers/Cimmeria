@@ -6,17 +6,15 @@ type with no agent file and no built-in or retired name is counted under `other`
 """
 
 import json
-import re
 import sys
 from pathlib import Path
 
 from report.scrub import PrivacyError, Scrubber
 
-from .transcripts import (Dispatch, brief_report_paths, cap_denied, is_context_stop, iter_dispatches, report_suffix,
-                          report_writer_types, report_written, return_line)
+from .transcripts import (CONTINUATION_RE, Dispatch, brief_report_paths, cap_denied, is_context_stop, iter_dispatches,
+                          report_suffix, report_writer_types, report_written, return_line)
 
 SCHEMA = "cimmeria-harness-returns/1"
-CONTINUATION = re.compile(r"(?i)continuation \d of 3")
 USABLE = ("strict", "line_first", "buried")
 NO_LINE = ("prose", "short", "empty")
 BUILTIN_TYPES = frozenset({"general-purpose", "Explore", "Plan", "claude", "fork", "claude-code-guide",
@@ -41,7 +39,7 @@ def _row(d: Dispatch, paths: list[str], flagged: bool) -> dict:
         "usable": kind in USABLE,
         "report": m.group("report") if m else "",
         "extra": m.group("extra") if m else "",
-        "continuation": CONTINUATION.search(d.brief) is not None,
+        "continuation": CONTINUATION_RE.search(d.brief) is not None,
         "redispatch": flagged,
         "capped": bool(cap_denied(d)),
         "stop": is_context_stop(d),
@@ -63,7 +61,7 @@ def _rows(args) -> list[dict]:
         flagged = False
         if paths:
             suffix = report_suffix(paths[0])
-            flagged = suffix in seen and CONTINUATION.search(d.brief) is None
+            flagged = suffix in seen and CONTINUATION_RE.search(d.brief) is None
             seen.add(suffix)
         rows.append(_row(d, paths, flagged))
     return rows

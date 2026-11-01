@@ -10,8 +10,8 @@ from pathlib import Path
 
 from metrics import cli, harness_cli
 from metrics.transcript_fixtures import FIXTURE_PREFIX, write_agent_file, write_subagent
-from metrics.transcripts import (CAP_RE, Dispatch, ToolUse, brief_report_paths, cap_denied, is_context_stop,
-                                 iter_dispatches, norm_path, read_dispatch, records, report_suffix,
+from metrics.transcripts import (CAP_RE, LINE, RP, Dispatch, ToolUse, brief_report_paths, cap_denied,
+                                 is_context_stop, iter_dispatches, norm_path, read_dispatch, records, report_suffix,
                                  report_writer_types, report_written, return_line)
 
 REPO = Path(__file__).resolve().parents[3]
@@ -122,6 +122,8 @@ class ContextStopTest(unittest.TestCase):
         hook = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(hook)
         self.assertEqual(hook.CAP_RE.pattern, CAP_RE.pattern)
+        self.assertEqual(hook.RP.pattern, RP.pattern)
+        self.assertEqual(hook.LINE.pattern, LINE.pattern)
 
     def test_done_is_not_a_stop(self):
         self.assertFalse(is_context_stop(_dispatch("HT-01 done abc1234 -")))
@@ -190,16 +192,20 @@ class UsageTest(unittest.TestCase):
 
 
 class CliWiringTest(unittest.TestCase):
-    def test_harness_commands_reach_the_stubs(self):
-        # `returns` (HT-02), `coder-context` (HT-03) and `resume-cards` (HT-04) are implemented and tested in
-        # their own test files, so only the remaining stubs are checked here.
-        for name in (n for n in harness_cli.NAMES if n not in ("returns", "coder-context", "resume-cards")):
+    def test_harness_commands_run_through_cli_main(self):
+        # Every harness subcommand through the real parser and `harness_cli.dispatch`, on an empty projects root.
+        for name in harness_cli.NAMES:
             with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
-                err = io.StringIO()
-                with contextlib.redirect_stderr(err):
-                    code = cli.main([name, "--out", tmp])
-                self.assertEqual(code, 2)
-                self.assertIn("not-implemented", err.getvalue())
+                root = Path(tmp)
+                (root / "projects").mkdir()
+                (root / "repo").mkdir()
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    code = cli.main([name, "--projects-root", str(root / "projects"), "--repo", str(root / "repo"),
+                                     "--out", str(root / "out")])
+                self.assertEqual(code, 0)
+                self.assertTrue(out.getvalue().startswith(f"status=ok {name} "))
+                self.assertTrue((root / "out" / f"{name}.json").is_file())
 
     def test_repo_root_and_registry_still_run(self):
         with tempfile.TemporaryDirectory() as tmp:

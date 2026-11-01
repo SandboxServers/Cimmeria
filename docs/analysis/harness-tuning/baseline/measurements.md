@@ -8,7 +8,7 @@ HT-05 ran the three `metrics` subcommands over the window, with `--repo` set to 
 - `status=ok coder-context coders=1209 stops=249 stop_rate=0.206 read_share=0.485 grep_share=0.246 continuations=86`
 - `status=ok resume-cards compactions=45 firings=32 wrong=13 wrong_pct=40.6`
 
-The raw outputs are `returns.json`, `coder-context.json` and `resume-cards.json` in this folder. The ledger values are README F1-F7 and F3a. "Within 10%" means the measured value is within 10% of the ledger value, relative to the ledger value. The ledger README is not edited; the orchestrator copies the numbers. `returns.json` counts an agent-type label that has no agent file and no built-in or retired name under `other` (HT-02a); on real transcripts these are one-off dispatch labels.
+The raw outputs are `returns.json`, `coder-context.json` and `resume-cards.json` in this folder. The ledger values are README F1-F7 and F3a. "Within 10%" means the measured value is within 10% of the ledger value, relative to the ledger value. The ledger README is not edited; the orchestrator copies the numbers. `returns.json` counts an agent-type label that has no agent file and no built-in or retired name under `other` (HT-02a); on real transcripts the `other` group holds 528 of 4,192 dispatches (12.6%), none of them contract dispatches, with 32 context stops; the labels were not listed or examined.
 
 | metric | ledger value | measured | within 10%? | note |
 |---|---|---|---|---|

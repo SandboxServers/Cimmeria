@@ -21,6 +21,7 @@ CAP_MARKER = "Context cap reached"  # the user-level Haiku cap's deny text (D-HT
 # A real deny's result text starts with the marker, or with `PreToolUse:<tool> hook error: ` and then the marker. The
 # same pattern as .claude/hooks/report_contract.py, so a dispatch the hook treats as capped is counted as capped here.
 CAP_RE = re.compile(r"^(?:PreToolUse:\S+ hook error: )?" + re.escape(CAP_MARKER))
+CONTINUATION_RE = re.compile(r"(?i)continuation \d of 3")  # a continuation brief: "Continuation 2 of 3"
 WRITE_VERBS =("WriteAllText", "Set-Content", "Out-File", "Add-Content", ">")
 REPORT_TOOLS = ("Write", "Edit", "MultiEdit")
 SHELL_TOOLS = ("PowerShell", "Bash")
