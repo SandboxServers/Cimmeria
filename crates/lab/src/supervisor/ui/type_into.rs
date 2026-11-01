@@ -18,7 +18,7 @@ use crate::supervisor::Supervisor;
 /// `done` is false when the window is missing or has no text.
 pub fn read_text_chunk(name: &str) -> String {
     format!(
-        "local w = _G[{n}] if w == nil then w = __jcall(getWindow, {n}) end \
+        "local w local p, c = string.match({n}, '^([^/]+)/(.+)$') if p then local pw = _G[p] or __jcall(getWindow, p) w = pw and __jcall(function() return pw:getChildRecursive(c) end) else w = _G[{n}] if w == nil then w = __jcall(getWindow, {n}) end end \
          local t = w ~= nil and __jcall(function() return w:getText() end) or nil \
          return __jenc({{ done = type(t) == 'string', text = t or '' }})",
         n = lua_quote(name)
@@ -58,6 +58,21 @@ impl Supervisor {
         }
     }
 
+    /// Read edit box `name` until it holds `typed`, for about a second: the
+    /// keys are posted, and the client applies them on its own frames.
+    /// Returns the last read.
+    pub async fn read_until_typed(&self, name: &str, typed: &str) -> Option<String> {
+        let mut last = None;
+        for _ in 0..10 {
+            last = self.read_edit_box(name).await;
+            if last.as_deref().is_some_and(|t| t.contains(typed)) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        last
+    }
+
     /// `client_type_text`: click the edit box `into` (when given) with no
     /// expectation, type `text`, then read the box back. The result carries
     /// `typed_chars`, `into`, `read_back` (when read) and `evidence`; with
@@ -74,7 +89,7 @@ impl Supervisor {
         }
         self.type_text(text).await?;
         let read_back = match into {
-            Some(w) => self.read_edit_box(w).await,
+            Some(w) => self.read_until_typed(w, text).await,
             None => None,
         };
         if let Some(t) = &read_back {

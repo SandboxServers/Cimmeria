@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use serde_json::{json, Value};
@@ -66,4 +67,30 @@ fn read_back_failure_is_no_post_read() {
 fn read_chunk_reads_the_text_through_get_window() {
     let c = read_text_chunk("Inst1Chat/Input");
     assert!(c.contains("getWindow") && c.contains("getText"), "{c}");
+    assert!(c.contains("getChildRecursive"), "{c}");
+}
+
+/// The keys land a few frames late: the read polls until the text shows.
+#[tokio::test]
+async fn read_until_typed_waits_for_the_keys() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counter = calls.clone();
+    let responder: Responder = Arc::new(move |method, _: &Value| {
+        if method != "lua_eval" {
+            return Err(format!("unexpected call: {method}"));
+        }
+        let n = counter.fetch_add(1, Ordering::SeqCst);
+        let v = if n == 0 {
+            json!({ "done": true, "text": "" })
+        } else {
+            json!({ "done": true, "text": "hello" })
+        };
+        Ok(lua_ok(&[v.to_string()]))
+    });
+    let sup = fake_bridge::supervisor(responder).await;
+    assert_eq!(
+        sup.read_until_typed("ChatEdit", "hello").await,
+        Some("hello".to_string())
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
 }
