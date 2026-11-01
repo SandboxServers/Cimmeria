@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
+use super::coast::CoastModel;
 use super::find::ServerEntity;
 use super::geometry::{Pose, Screen, Vec3};
 use super::ignored_input;
@@ -124,6 +125,12 @@ pub trait WorldIo {
             super::turn_keys::DEFAULT_RIGHT.to_string(),
         ))
     }
+    /// The walker's learned coast model (starts from the prior when absent).
+    fn coast_model(&self) -> CoastModel {
+        CoastModel::default()
+    }
+    /// Keep the walker's coast model for the next walk.
+    fn store_coast_model(&mut self, _m: CoastModel) {}
 }
 
 /// [`WorldIo`] over the running client.
@@ -625,5 +632,13 @@ impl WorldIo for LiveWorld<'_> {
     async fn turn_keys(&mut self) -> Result<(String, String), String> {
         let r = self.lua(super::turn_keys::TURN_KEYS_CHUNK).await?;
         Ok(super::turn_keys::parse_turn_keys(&r))
+    }
+
+    fn coast_model(&self) -> CoastModel {
+        *self.sup.coast.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn store_coast_model(&mut self, m: CoastModel) {
+        *self.sup.coast.lock().unwrap_or_else(|e| e.into_inner()) = m;
     }
 }

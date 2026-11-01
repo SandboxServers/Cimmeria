@@ -295,6 +295,8 @@ pub struct Supervisor {
     holds: Arc<Mutex<hold_book::HoldBook>>,
     /// The daemon's copy of the DLL watch (`client_watch`, C15).
     watch: Arc<Mutex<watch_store::WatchStore>>,
+    /// The walker's learned coast model, kept across `client_move_to` calls.
+    coast: Arc<std::sync::Mutex<world::coast::CoastModel>>,
 }
 
 impl Supervisor {
@@ -326,6 +328,7 @@ impl Supervisor {
             record: Default::default(),
             holds: Default::default(),
             watch: Default::default(),
+            coast: Default::default(),
         }
     }
 

@@ -33,6 +33,7 @@ mod click_hover;
 mod click_proof;
 mod click_range;
 mod click_result;
+pub mod coast;
 pub mod find;
 pub mod fresh_wait;
 pub mod geometry;
@@ -58,6 +59,8 @@ mod camera_proof_tests;
 mod click_proof_tests;
 #[cfg(test)]
 mod click_timeout_tests;
+#[cfg(test)]
+mod coast_tests;
 #[cfg(test)]
 mod fresh_wait_tests;
 #[cfg(test)]
