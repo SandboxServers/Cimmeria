@@ -359,8 +359,7 @@ mod win {
 
 #[cfg(windows)]
 pub use win::{
-    find_main_window, is_alive, launch, observe, post_message, running_pids_where,
-    running_sgw_pids, terminate,
+    find_main_window, is_alive, launch, observe, post_message, running_sgw_pids, terminate,
 };
 
 #[cfg(not(windows))]
