@@ -1,3 +1,10 @@
+---
+name: test-file-split-without-touching-mod-rs
+description: Split a growing tests.rs into tests/mod.rs without editing the parent mod.rs
+metadata:
+  type: feedback
+---
+
 # Splitting a growing `tests.rs` without touching the shared `mod.rs`
 
 When a packet's regression suite would push a single `tests.rs` past the

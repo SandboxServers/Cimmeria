@@ -14,3 +14,6 @@ Found 2026-10-11 while adding the LX-12 PhysX panel (`frontend/src/physx-view.ts
 - `tools/lint-md.ps1` ignores path arguments and lints the whole repo; filter its output with `Select-String`.
 
 Related: [[launcher-preferences-schema-change-fanout]].
+
+INVALIDATED WHEN: the launcher frontend panels stop invoking native IPC on mount, or view.test.ts stops pinning the call order
+checked: 2026-11-01

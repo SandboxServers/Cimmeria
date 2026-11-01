@@ -34,3 +34,6 @@ Learned implementing CS-02 (2026-10-05).
   (gate + DHD); control point (-152, -20.55, 300) is on component 473.
 
 Related: [[ability-grant-provenance-seams]], [[navmesh-onmesh-assertions-are-weak]].
+
+INVALIDATED WHEN: resources.char_creation or cimmeria_resources::base::start_profiles is restructured
+checked: 2026-11-01

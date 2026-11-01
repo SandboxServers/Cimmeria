@@ -1,3 +1,10 @@
+---
+name: stat-with-no-consumer-trap
+description: A stat in StatList does not mean the server reads it
+metadata:
+  type: feedback
+---
+
 # Stat-with-no-consumer trap (Cimmeria stat porting)
 
 A stat existing in `crates/entity/src/stats/` does **not** mean anything reads
@@ -43,3 +50,6 @@ curr/100". Cite that, not a pre-bible protocol doc.
   branch cannot be exercised through a real fixture from outside
   `cimmeria-entity`. Test the formatting/fallback function directly and say
   why (existing precedent: `console/stats.rs::format_stat_line`).
+
+INVALIDATED WHEN: ROTATION_SPEED_MOD gains a server consumer, or StatList gains an empty constructor/remove
+checked: 2026-11-01

@@ -38,3 +38,6 @@ Related: [[db-test-revert-verification]] for the other case where the local
 runner can't prove what CI proves.
 
 checked: unverified 2026-11-01
+
+INVALIDATED WHEN: LogCapture installs a process-wide subscriber or CI stops gating on nextest
+checked: 2026-11-01
