@@ -45,7 +45,7 @@ Never use SendMessage to keep an agent alive, and never resume a finished agent:
 
 ## State on disk
 
-Keep `docs/analysis/<campaign>/RESUME.md` current at every wave boundary, and set `.claude/state/active-campaign`. After a compaction, read RESUME.md first.
+Keep `docs/analysis/<campaign>/RESUME.md` current at every wave boundary. When you start or resume a campaign in a session, Write its folder name to `.claude/state/active-campaign`: the resume card after a compaction comes from this session's own last write of that file (or, failing that, from the campaign most of your recent dispatches name). Write an empty file when the campaign closes. After a compaction, read RESUME.md first.
 
 ## Ask the user
 
