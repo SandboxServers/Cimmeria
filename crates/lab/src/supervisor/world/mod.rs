@@ -29,6 +29,7 @@ pub mod camera;
 mod camera_read;
 pub mod click;
 mod click_hover;
+mod click_proof;
 mod click_range;
 mod click_result;
 pub mod find;
@@ -48,6 +49,8 @@ pub mod unstick;
 
 #[cfg(test)]
 mod camera_pitch_tests;
+#[cfg(test)]
+mod click_proof_tests;
 #[cfg(test)]
 mod click_timeout_tests;
 #[cfg(test)]

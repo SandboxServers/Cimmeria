@@ -37,7 +37,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Click an entity (entity_id, name or server template_id) or a world point in the 3D view like a player. Entity selectors accept alive, nearest (default true; false sorts by entity id) and zero-based index. Template/life filters require the server lab MCP; the click remains real input. Turns the camera, verifies mouse-over, then clicks (default right = interact). `expect` decides pass/fail. With `expect: nothing` (also the default for point clicks), the tool confirms native dispatch only: after-state fields are null and `after_observed` is false. Assert the destination world or other effect separately. Reports range and native_level."
+        description = "Click an entity (entity_id, name or server template_id) or a world point in the 3D view like a player. Entity selectors accept alive, nearest (default true; false sorts by entity id) and zero-based index. Template/life filters require the server lab MCP; the click remains real input. Turns the camera, verifies mouse-over, then clicks (default right = interact). `expect` decides pass/fail. With `expect: nothing` (also the default for point clicks), the tool confirms native dispatch only: after-state fields are null and `after_observed` is false. Assert the destination world or other effect separately. Reports range and native_level. Returns evidence: confirmed only when a fresh read after the click shows the expected target or window; expect nothing is inconclusive; a right-click beyond 5 m is denied (out_of_range)."
     )]
     async fn client_world_click(
         &self,
@@ -48,7 +48,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Target an entity (entity_id, name or server template_id; optional alive, nearest and zero-based index) by real left-click and verify Unit.Target. Template/life filters require the server lab MCP. With allow_fallback, a failed click uses stock targetUnit() and reports ui_lua (N3), never a native pass."
+        description = "Target an entity (entity_id, name or server template_id; optional alive, nearest and zero-based index) by real left-click and verify Unit.Target. Template/life filters require the server lab MCP. With allow_fallback, a failed click uses stock targetUnit() and reports ui_lua (N3), never a native pass. Returns evidence: confirmed only when a fresh read after the click shows the expected target or window; expect nothing is inconclusive; a right-click beyond 5 m is denied (out_of_range)."
     )]
     async fn client_target(
         &self,

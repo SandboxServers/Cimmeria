@@ -22,6 +22,7 @@ use super::click_hover::{
     hover_once, read_mouse_over, wants_view_retry, Hover, HOVER_WAIT_MS, NEAR_AVATAR_M,
 };
 pub use super::click_hover::{restore_pitch_counts, VIEW_RETRIES};
+use super::click_proof::{judge, ClickCase};
 #[cfg(test)]
 use super::click_range::{range_hint, range_json};
 use super::click_result::{click_result, ClickPlan, ClickTail};
@@ -117,7 +118,11 @@ pub(super) struct UiSnap {
     pub(super) windows: Vec<String>,
 }
 
-async fn ui_snap<W: WorldIo>(io: &mut W, target_slot: i32, mo_slot: i32) -> Result<UiSnap, String> {
+pub(super) async fn ui_snap<W: WorldIo>(
+    io: &mut W,
+    target_slot: i32,
+    mo_slot: i32,
+) -> Result<UiSnap, String> {
     let slots = io.slots().await?;
     Ok(UiSnap {
         target: slot_entity(&slots, target_slot),
@@ -127,7 +132,7 @@ async fn ui_snap<W: WorldIo>(io: &mut W, target_slot: i32, mo_slot: i32) -> Resu
 }
 
 /// Is `after` what `expect` asked for?
-fn met(expect: Expect, entity: Option<u32>, before: &UiSnap, after: &UiSnap) -> bool {
+pub(super) fn met(expect: Expect, entity: Option<u32>, before: &UiSnap, after: &UiSnap) -> bool {
     let targeted = entity.is_some_and(|e| after.target == e)
         || (entity.is_none() && after.target != before.target);
     let opened = after.windows.iter().any(|w| !before.windows.contains(w));
@@ -608,6 +613,7 @@ async fn click_and_observe<W: WorldIo>(
         .await
         .map_err(|e| steps.fail(io.now_ms(), "click", e))?;
     steps.used(NativeLevel::RealInput);
+    let action_frame = io.frame().await;
     steps.record(
         "click",
         t_click,
@@ -665,6 +671,18 @@ async fn click_and_observe<W: WorldIo>(
         }
     }
 
+    if ok {
+        let case = ClickCase {
+            expect,
+            entity,
+            before: &before,
+            hover_verified,
+            button,
+            range_m,
+            slots: (units.target, units.mouse_over),
+        };
+        judge(io, &mut steps, action_frame, case).await?;
+    }
     let out = click_result(ClickTail {
         expect,
         entity,
