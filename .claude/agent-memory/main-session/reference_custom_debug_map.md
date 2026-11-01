@@ -25,4 +25,4 @@ metadata:
 - A human-authored `Debug` package set was installed in the QA client as separate `MapperDebug` world 1302. It has four streamed terrain chunks, each with 25 Terrain/25 TerrainComponent exports; the persistent level references all four. Local lab DB row, world table, spaces and override are wired; the restarted server logged world 1302 and successful startup. No client load yet; no server navmesh/occluders/cover. See `docs/analysis/custom-debug-map/mapper-debug-import.md` and `functional-requirements.md`.
 
 INVALIDATED WHEN: the custom-debug-map campaign reaches or fails its CM-00 client load gate
-checked: unverified 2026-11-01
+checked: 2026-11-01

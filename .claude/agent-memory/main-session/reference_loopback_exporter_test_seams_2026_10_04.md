@@ -8,12 +8,12 @@ metadata:
 Learned while adding `storage/launcher_summary/export.rs` and its wiremock
 tests to the desktop engine (`crates/launcher/desktop/engine`) on 2026-10-04:
 
-- **A closed `the IPv4 loopback address` port is not always refused.** Under WSL2 with
-  `networkingMode=mirrored`, a connection to an unbound port on `the IPv4 loopback address`
+- **A closed loopback port is not always refused.** Under WSL2 with
+  `networkingMode=mirrored`, a connection to an unbound port on IPv4 loopback
   (or `localhost`) hangs until the caller's own deadline; it is not refused.
   `[::1]` and other `127/8` addresses refuse at once. A test that needs a
-  dead endpoint uses `http://[::1]:9` (macOS has no `a second loopback address` by default, so
-  that one is not portable either). With `the IPv4 loopback address:9` the refused-connection
+  dead endpoint uses `http://[::1]:9` (macOS has no second loopback address by default, so
+  that one is not portable either). With port 9 on IPv4 loopback the refused-connection
   test took 90 s (three 30 s deadlines) instead of milliseconds.
 - **A wiremock 0.6 responder is synchronous and runs on the mock server's own
   thread, while that server's state lock is held.** It can therefore lock
@@ -34,6 +34,3 @@ tests to the desktop engine (`crates/launcher/desktop/engine`) on 2026-10-04:
   generation re-checks; the tests keep those guarded with changes that
   invalidate the batch without cancelling (`Replaced`, `Moved` in
   `tests/exporter/races.rs`).
-
-INVALIDATED WHEN: the exporter tests change their dead-endpoint choice
-checked: unverified 2026-11-01

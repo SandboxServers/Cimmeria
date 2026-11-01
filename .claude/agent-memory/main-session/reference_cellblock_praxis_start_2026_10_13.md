@@ -21,4 +21,4 @@ Livewire steps; the first guard encounter remains blocked by the pistol
 behavior tracked in issue #1667.
 
 INVALIDATED WHEN: world-entry profiles in gm_only_worlds.rs change
-checked: unverified 2026-11-01
+checked: 2026-11-01

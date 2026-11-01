@@ -28,4 +28,4 @@ After committing the fix, removing only the explicit `unlock` made the duplicate
 handle regression fail with `WouldBlock`. Restoring it made the same test pass.
 
 INVALIDATED WHEN: the owner-lock guard is reworked
-checked: unverified 2026-11-01
+checked: 2026-11-01

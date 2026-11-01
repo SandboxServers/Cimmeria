@@ -14,4 +14,4 @@ metadata:
 - Subsequent screenshots after the skylight package install show visible SGC floor material and cover mesh with the avatar standing on the test geometry. This closes the minimal visual/collision client gate, but the sky is black, spawn overlaps cover, and cross-piece walkability and cover nodes remain unverified.
 
 INVALIDATED WHEN: the custom map client-load-test doc records a later result
-checked: unverified 2026-11-01
+checked: 2026-11-01

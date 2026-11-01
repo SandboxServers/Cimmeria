@@ -15,4 +15,4 @@ Source: issue #1721 and the Cellblock completion UAT server log at 2026-10-14T01
 - Live lab verification on the changed seed is required before the PR merges.
 
 INVALIDATED WHEN: chains 1161/1172 are reseeded with different delays
-checked: unverified 2026-11-01
+checked: 2026-11-01

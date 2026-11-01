@@ -25,4 +25,4 @@ metadata:
   do not call the whole world sealed.
 
 INVALIDATED WHEN: the custom-debug-map clone path changes
-checked: unverified 2026-11-01
+checked: 2026-11-01

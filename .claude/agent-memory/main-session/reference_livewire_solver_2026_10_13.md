@@ -24,6 +24,3 @@ The planner treats missing playfield or moving art as unattached, matching
 the current unsuffixed library names. It refuses a missing goal library.
 The candidate band excludes the static cover and frame, and plan steps
 account for earlier cuts before predicting later topmost targets.
-
-INVALIDATED WHEN: server_minigame_state or the tap reader change
-checked: unverified 2026-11-01

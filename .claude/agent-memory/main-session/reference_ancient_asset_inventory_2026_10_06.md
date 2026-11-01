@@ -13,4 +13,4 @@ metadata:
 - Temporary one-floor + standard gate ring + Ancient holographic terminal candidate is under system TEMP, not installed. Full procedural notes in `docs/analysis/custom-debug-map/handoff-2026-10-06.md`.
 
 INVALIDATED WHEN: the QA client assets or the ancient-asset audit are regenerated
-checked: unverified 2026-11-01
+checked: 2026-11-01

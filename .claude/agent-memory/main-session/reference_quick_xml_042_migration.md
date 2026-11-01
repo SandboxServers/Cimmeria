@@ -16,4 +16,4 @@ Sources: `Cargo.toml`, `crates/resources/src/base/dialog_overrides/parse.rs`, `c
 - 2026-10-11: `sgw-launcher` was deleted in LX-18, so CI's excluded crates are now `cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `cimmeria-client-telemetry`, `cimmeria-client-patches` and `cimmeria-lab`. The desktop launcher is its own workspace (`crates/launcher/desktop/`), checked by `launcher-desktop.yml`; check it separately after a dependency update it shares.
 
 INVALIDATED WHEN: quick-xml is upgraded again
-checked: unverified 2026-11-01
+checked: 2026-11-01

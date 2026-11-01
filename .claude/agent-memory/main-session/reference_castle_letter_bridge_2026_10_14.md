@@ -13,4 +13,4 @@ metadata:
 - Crossing credit occurs before destination hydration. Travel failure may leave 4038 active in Castle; GM teleport provides no catch-up. Harset receipt still depends on HA-1360a/b successful consumption before completion. Offline bridge results do not establish client journal rendering or full playable delivery.
 
 INVALIDATED WHEN: chain 1366, mission 1360 or the HA-1360 consumption path changes
-checked: unverified 2026-11-01
+checked: 2026-11-01
