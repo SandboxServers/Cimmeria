@@ -122,6 +122,7 @@ impl Supervisor {
         };
         let results = r["results"].as_array().cloned().unwrap_or_default();
         if results.len() != steps.len() {
+            tracing::warn!(target: "lab.batch", expected = steps.len(), got = results.len(), "DLL batch answered the wrong number of results; using the step path");
             return Err(format!(
                 "batch: expected {} results, got {}",
                 steps.len(),
