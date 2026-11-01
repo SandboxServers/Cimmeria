@@ -128,6 +128,8 @@ pub struct WorldFailure {
     pub native_level: NativeLevel,
     pub elapsed_ms: u64,
     pub steps: Vec<Value>,
+    /// Set when the tool stopped on purpose (C8); see `Steps::fail_stop`.
+    pub stop: Option<crate::proof::stop::StopReport>,
 }
 
 impl std::ops::Deref for WorldError {
@@ -149,14 +151,19 @@ impl WorldError {
             .as_ref()
             .map(|s| format!("; state: {s}"))
             .unwrap_or_default();
+        let stop = self
+            .stop
+            .as_ref()
+            .map(|s| format!("; stop: {}", s.kind.as_str()))
+            .unwrap_or_default();
         format!(
-            "{} failed at step '{}'{subject} after {} ms: {}{state}",
+            "{} failed at step '{}'{subject} after {} ms: {}{state}{stop}",
             self.tool, self.step, self.elapsed_ms, self.message
         )
     }
 
     pub fn to_json(&self) -> Value {
-        json!({
+        let mut out = json!({
             "tool": self.tool,
             "step": self.step,
             "error": self.message,
@@ -165,7 +172,11 @@ impl WorldError {
             "native_level": self.native_level.as_str(),
             "elapsed_ms": self.elapsed_ms,
             "steps": self.steps,
-        })
+        });
+        if let Some(stop) = &self.stop {
+            out["stop"] = serde_json::to_value(stop).unwrap_or(Value::Null);
+        }
+        out
     }
 }
 
@@ -232,7 +243,22 @@ impl Steps {
             native_level: self.level,
             elapsed_ms: now_ms.saturating_sub(self.started_ms),
             steps: self.steps.clone(),
+            stop: None,
         }))
+    }
+
+    /// Like `fail`, but the tool gave up on purpose and says why (C8).
+    #[cfg_attr(not(test), allow(dead_code))] // Callers land in AX-32, AX-34 and AX-56.
+    pub fn fail_stop(
+        &self,
+        now_ms: u64,
+        step: &str,
+        message: impl Into<String>,
+        stop: crate::proof::stop::StopReport,
+    ) -> WorldError {
+        let mut e = self.fail(now_ms, step, message);
+        e.0.stop = Some(stop);
+        e
     }
 
     pub fn fail_with(
