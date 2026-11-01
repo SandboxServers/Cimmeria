@@ -302,7 +302,9 @@ impl Supervisor {
             json!({ "screen": format!("{screen:?}"), "escapes": escapes }),
         );
 
+        let mut login_server = None;
         if screen == StartScreen::Login {
+            login_server = self.pick_login_combo(run, creds).await?;
             // On a freshly booted client the password box sometimes reads
             // empty after typing (twice on 2026-10-10, both after 16 Escape
             // presses to skip the intro movies; late Escapes are the likely
@@ -339,6 +341,7 @@ impl Supervisor {
             "at": "character_select",
             "account": creds.account,
             "server": server_name,
+            "login_server": login_server,
             "characters": characters,
         }))
     }
