@@ -1,6 +1,6 @@
 ---
 name: reference_launcher_embedded_payload
-description: x
+description: "Embedded Windows launcher payload: single EXE with pinned worker and DLLs, public ZIP name kept, macOS layout unchanged"
 metadata:
   type: reference
 ---
@@ -25,4 +25,4 @@ merge, retaining the Windows ZIP. Packaged/game acceptance remains pending;
 this GO does not authorize a live game or lab session.
 
 INVALIDATED WHEN: the embedded-payload design or release contract changes
-checked: unverified 2026-11-01
+checked: 2026-11-01

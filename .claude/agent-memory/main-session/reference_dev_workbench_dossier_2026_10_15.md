@@ -1,6 +1,6 @@
 ---
 name: reference_dev_workbench_dossier_2026_10_15
-description: x
+description: "Dev workbench target dossier: how the selected entity is read and which fields stay null"
 metadata:
   type: reference
 ---
@@ -17,4 +17,4 @@ Source: `crates/lab/src/workbench/dossier.rs`, `crates/lab/src/supervisor/world/
 - A second selected-slot read after the other sources invalidates every dossier field if the target changed during the read. Live client validation remains pending because no lab lease was requested.
 
 INVALIDATED WHEN: the workbench dossier gains a trusted live CaptureContext producer
-checked: unverified 2026-11-01
+checked: 2026-11-01

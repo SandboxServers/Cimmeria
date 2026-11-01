@@ -1,6 +1,6 @@
 ---
 name: reference_lab_login_foreground_lanes_2026_10_14
-description: x
+description: "Concurrent lab logins share one Windows foreground; how credential entry is serialized and activation denial handled"
 metadata:
   type: reference
 ---
@@ -14,6 +14,3 @@ One lab daemon can host multiple client instances, but Windows supplies only one
 Follow-up: Windows may deny both physical activation attempts even with credential entry serialized. `lab_login` now verifies that the target HWND still belongs to its client PID, then treats activation denial as a diagnostic (target and foreground HWND/PID). Input remains PID-scoped via `PostMessage` and virtual focus; CEGUI hit-test, native edit click, and typed-value readback remain mandatory. Source: `crates/lab/src/supervisor/flows/login.rs` and focused flow tests. Native two-client UAT remains pending.
 
 The foreground probe is injected at the supervisor field-preparation seam in tests. The fake bridge still answers the real CEGUI location and dispatch hit-test queries, so a production branch that rejects denied activation fails the regression. After installing the build, run a native recovery probe with a second foreground window to confirm both credentials are read back by the intended client; that remains unverified here.
-
-INVALIDATED WHEN: lab_login changes its foreground verification
-checked: unverified 2026-11-01

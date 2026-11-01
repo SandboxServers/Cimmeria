@@ -1,6 +1,6 @@
 ---
 name: reference_dev_workbench_slash_2b_2026_10_16
-description: x
+description: "Slash palette evidence for entries 82-108 (DW-26B): patch 012 signatures versus server methods 192-222"
 metadata:
   type: reference
 ---
@@ -18,4 +18,4 @@ DW-26B uses DW-26A's shared `TargetKind::AnyEntity` for `testLOS` so a non-being
 Server method 216 `testLOS` requires two same-space entities and reports CLEAR, BLOCKED or UNKNOWN to the caller; missing target reports a refusal. Method 221 `onPhysics` changes only the caller's transient `movement_unrestricted` flag, with wire 0 enabling bypass and nonzero restoring validation. Method 222 `sendGMShout` is a public announcement: zero means exact space instance, nonzero means all online in-world players. The cell logs acceptance including text, then either cell or base logs delivered/failed counts; accepted does not mean delivered. Caller-only feedback covers invalid text. Companion history/export should redact typed text by default. Patch event-to-method binding and native slash submission remain unproved; all 27 forms are disabled pending DW-24B.
 
 INVALIDATED WHEN: patch 012 commands.toml or the slash descriptor code changes
-checked: unverified 2026-11-01
+checked: 2026-11-01

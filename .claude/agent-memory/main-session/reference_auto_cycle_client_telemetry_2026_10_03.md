@@ -63,4 +63,4 @@ is outside git at `../SGW/Stargate Worlds-QA/Working/SGWGame/Content/UI/Core/Aut
   abilities/auto_cycle_state.rs).
 
 INVALIDATED WHEN: the auto-cycle tick or the client AutoAttack Lua is changed
-checked: unverified 2026-11-01
+checked: 2026-11-01

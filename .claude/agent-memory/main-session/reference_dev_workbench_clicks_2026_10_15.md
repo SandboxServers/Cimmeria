@@ -1,6 +1,6 @@
 ---
 name: reference_dev_workbench_clicks_2026_10_15
-description: x
+description: "DW-07 click correlation: how ui.click rows come from the CEGUI Lua ring and what they cannot establish"
 metadata:
   type: reference
 ---
@@ -14,4 +14,4 @@ metadata:
 - An oversized or invalid child widget must still update the click callback's last ancestor chain before being rejected. Otherwise its bubbled parent becomes a false `ui.click` at the same time and cursor position. The Lua-stub regression in `lua_rings_tests.rs` pins this. DW-10 must carry `PumpReport`'s rejected-click counters into recording drafts as evidence gaps; the current sampler ignores them.
 
 INVALIDATED WHEN: the ui.click ring or its host timestamping changes
-checked: unverified 2026-11-01
+checked: 2026-11-01

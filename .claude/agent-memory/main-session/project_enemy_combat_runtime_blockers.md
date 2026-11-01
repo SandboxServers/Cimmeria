@@ -1,6 +1,6 @@
 ---
 name: project-enemy-combat-runtime-blockers
-description: "Enemy-combat work (2026-09-26): an external 'live combat v3' handoff was reviewed, not imported; #819/#822 landed; four runtime blockers remain (MITIGATION 0/0, forced DT_PHYSICAL, EF_DONT_USE_QR value, DoT killing blow without entity_death)"
+description: "Enemy-combat work (2026-09-26): an external 'live combat v3' handoff was reviewed, not imported; #819/#822 landed; two runtime blockers still open (MITIGATION 0/0, forced DT_PHYSICAL)"
 metadata:
   type: project
 ---
@@ -12,12 +12,12 @@ Landed the same day:
 - **#819** removed the temporary 2x player damage multiplier (it was a testing aid).
 - **#822** restored 220 `abilities.event_set_id` links. Finding: `docs/reverse-engineering/findings/ability-animation-links.md`. Still open there: abilities 1176, 1829 and 1640, and 1138 Cloak (belongs on effect 1290).
 
-**Runtime blockers found in that review (as of 2026-09-26; re-verify before acting):**
+**Runtime blockers found in that review, still open at 2026-11-01:**
 
-1. The `MITIGATION` stat is clamped to 0/0, so armor is inert.
-2. Damage is forced to `DT_PHYSICAL` instead of the authored damage type.
-3. `EF_DONT_USE_QR` is defined as 32 but should be 16, and nothing reads it.
-4. A damage-over-time killing blow fires no `entity_death` (also recorded in `docs/analysis/castle-rebuild/worknotes/m702-704.md`).
+1. The `MITIGATION` stat is clamped to 0/0 (`s!(MITIGATION, 0, 0, 0)` in `crates/entity/src/stats/stat_list.rs`), so armor is inert.
+2. Damage is `DT_PHYSICAL` unless an ammo shot supplies a type (`damage_apply/mod.rs` in `crates/cell-combat`), not the authored damage type.
+
+Two more from that review are fixed: `EF_DONT_USE_QR` is now 16 (`crates/entity/src/abilities/defs.rs`), and a damage-over-time killing blow now goes through `dot_kill_credit` in `crates/cell-combat/src/cell/effects/pulsing/pulse.rs`.
 
 There is also no rank/profile layer and no conditional boss selector.
 
@@ -25,5 +25,5 @@ There is also no rank/profile layer and no conditional boss selector.
 
 After the services split (#825), the fix sites are in `crates/cell-combat` (damage apply, abilities) and `crates/entity` (stat caps, EF constants). Label any reconstructed data as reconstruction: the seed is Project Giza's client-derived approximation, not 2009 data (`docs/agents/rules-and-gotchas.md`).
 
-INVALIDATED WHEN: any of the four listed runtime blockers is fixed or the NPC combat profile layer lands
-checked: unverified 2026-11-01
+INVALIDATED WHEN: blocker 1 or 2 above is fixed or the NPC combat profile layer lands
+checked: 2026-11-01

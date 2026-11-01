@@ -1,6 +1,6 @@
 ---
 name: reference_dev_workbench_patrol_authoring_2026_10_16
-description: x
+description: "DW-20B-E source findings: shared-state and readback traps in the patrol and entity authoring console commands"
 metadata:
   type: reference
 ---
@@ -14,4 +14,4 @@ metadata:
 - `patrol.rs::{waypoint_set,path_set_tp,path_clear_tp,path_set_tp_delay}` queues SQL with `ORDER BY point_id OFFSET index`; the row is chosen at later `.seedconfirm`, so an intervening insert/delete can retarget it. The three `waypoint_set` commands all use `path_seq` as the base feedback label. `path_clear` queues child and parent DELETEs separately, without one transaction; one can succeed while the other fails. The DW-20B typed palette must pin `point_id` server-side for waypoint edits and report both clear results, or leave the actions disabled.
 
 INVALIDATED WHEN: the patrol authoring console commands in cell-console are reworked
-checked: unverified 2026-11-01
+checked: 2026-11-01

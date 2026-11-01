@@ -1,6 +1,6 @@
 ---
 name: reference_dev_workbench_progression_metadata_2026_10_16
-description: x
+description: "DW-21 dot progression metadata: why some progression, ammo and pet commands stay disabled"
 metadata:
   type: reference
 ---
@@ -28,4 +28,4 @@ availability; see docs/analysis/dev-workbench/worknotes/DW-21.md and
 workbench_progression.rs tests. No live client was used.
 
 INVALIDATED WHEN: per-form gating or the progression catalog changes
-checked: unverified 2026-11-01
+checked: 2026-11-01

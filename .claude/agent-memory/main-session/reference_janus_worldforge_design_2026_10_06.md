@@ -1,6 +1,6 @@
 ---
 name: reference_janus_worldforge_design_2026_10_06
-description: x
+description: "Janus Worldforge debug-world design pointers and the Agnos actor inventory behind them"
 metadata:
   type: reference
 ---
@@ -13,4 +13,4 @@ metadata:
 - Janus's world-building annex is original fiction for the debug world. Existing Stargate material supports Janus as an inventor with concealed lab work, not this particular facility.
 
 INVALIDATED WHEN: the custom-debug-map design docs are replaced
-checked: unverified 2026-11-01
+checked: 2026-11-01

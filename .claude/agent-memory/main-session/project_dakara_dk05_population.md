@@ -14,4 +14,4 @@ DK-05 spawn ids 8004-8007 place Bra'tac and Moh'katan in world 62, Rak'nor at th
 Evidence and correction row: `docs/analysis/dakara-e1-rebuild/worknotes/DK-05.md` and `placements/A-world61-story-placements.md`. M2 client UAT pending.
 
 INVALIDATED WHEN: DK-05 M2 client UAT confirms or corrects the outpost position
-checked: unverified 2026-11-01
+checked: 2026-11-01

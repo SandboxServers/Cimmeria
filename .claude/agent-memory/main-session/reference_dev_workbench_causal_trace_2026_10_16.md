@@ -1,6 +1,6 @@
 ---
 name: reference_dev_workbench_causal_trace_2026_10_16
-description: x
+description: "DW-13 causal trace boundary: what the workbench assembler can and cannot prove across client and server stages"
 metadata:
   type: reference
 ---
@@ -29,4 +29,4 @@ entity and method alone cannot join stages. The complete offline latency
 fixture assumes future verified identity and clock projection.
 
 INVALIDATED WHEN: the workbench causal assembler gains a trusted server session feed
-checked: unverified 2026-11-01
+checked: 2026-11-01

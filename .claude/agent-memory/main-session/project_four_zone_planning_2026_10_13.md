@@ -21,4 +21,4 @@ metadata:
 - Four active continuation branches follow `execution-contract.md`: one feature branch per zone, packet worktrees merged by wave, about 40k working tokens when a bounded Haiku packet fits, local CI and up to three independent fixer/fresh-reviewer rounds, then one remote PR for the entire zone campaign. The owner prioritizes the cheapest capable model per activity without sacrificing quality and has standing lab and merge approval within the 2026-10-14 decision register.
 
 INVALIDATED WHEN: docs/analysis/four-zone-planning owner decisions are superseded
-checked: unverified 2026-11-01
+checked: 2026-11-01

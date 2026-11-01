@@ -1,6 +1,6 @@
 ---
 name: reference_lab_dialog_close_2026_10_13
-description: x
+description: "Lab dialog Done closure: lab_finish_dialog must read visibility after Done and fall back to the native close button"
 metadata:
   type: reference
 ---
@@ -12,6 +12,3 @@ Issue #1706 reproduced a one-page Cellblock pistol dialog whose visible Done but
 Local lab UAT (2026-10-13, fresh Praxis Commando, God mode on): the two-page intro and one-page Frost dialogs closed with `dialog_still_open=false`. Searching the Guard opened tutorial 5882 over one-page dialog 3996; `lab_finish_dialog` failed at `done` with `covered-target` instead of reporting success. Closing `TutorialWin`, then rerunning `lab_finish_dialog`, closed `DialogWin` and returned `dialog_still_open=false`. The native-close fallback was covered by the flow regression test, not triggered by this run.
 
 Controlled live fallback probe on a fresh God-mode character: a one-time client UI event callback reopened Frost's one-page `DialogWin` immediately after Done. The first corrected build reached `native_close` but failed because its widget path was wrong. `client_window_read` identified the actual button as `DialogWin__auto_closebutton__`. After correcting the constant and reinstalling, the same probe returned `steps=[done,native_close]`, `dialog_still_open=false`; a separate Lua read showed the callback fired once and `DialogWin:isVisible()` was false. This probes the fallback with a real client click and real window state; the Done failure was intentionally injected.
-
-INVALIDATED WHEN: lab_finish_dialog changes its close path
-checked: unverified 2026-11-01
