@@ -62,6 +62,13 @@ pub trait WorldIo {
     ) -> Result<Vec<ServerEntity>, String> {
         Err("template_id/alive needs the server lab MCP".into())
     }
+    /// The server's position of an entity (server metres), `None` when no
+    /// server is asked. Only `move_to` corroboration reads it (D-AX11).
+    #[allow(dead_code)] // Callers land in AX-32.
+    async fn server_position(&mut self, entity_id: u32) -> Result<Option<Vec3>, String> {
+        let _ = entity_id;
+        Ok(None)
+    }
     /// Project client-space points with the game's own view.
     async fn project(&mut self, points: &[Vec3]) -> Result<Projected, String>;
     /// The local camera actor's pose, when the chain resolves.
@@ -337,6 +344,23 @@ impl WorldIo for LiveWorld<'_> {
         Ok(lua::parse_unit_info(
             &self.lua(&lua::unit_info_chunk(slots)).await?,
         ))
+    }
+
+    async fn server_position(&mut self, entity_id: u32) -> Result<Option<Vec3>, String> {
+        let Some(server) = crate::proof::corroborate::default_server() else {
+            return Ok(None);
+        };
+        let reply = server
+            .call("server_entity_get", json!({ "entity_id": entity_id }))
+            .await;
+        if !reply.ok {
+            return Err(format!(
+                "server_entity_get: {}",
+                reply.error.unwrap_or_else(|| "unknown error".into())
+            ));
+        }
+        Ok(crate::proof::corroborate::entity_position(&reply.json)
+            .map(|[x, y, z]| Vec3::new(x, y, z)))
     }
 
     async fn server_entities(
