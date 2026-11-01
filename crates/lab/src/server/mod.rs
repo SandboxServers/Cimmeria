@@ -45,6 +45,7 @@ mod record;
 mod recover_tools;
 mod uat;
 mod ui;
+mod watch;
 mod world;
 
 pub use instances::{parse_list, Hosted, Instances, INSTANCES_ENV};
@@ -259,6 +260,7 @@ impl LabServer {
                 + Self::composite_router()
                 + Self::lease_router()
                 + Self::input_router()
+                + Self::watch_router()
                 + Self::recover_router(),
         }
     }

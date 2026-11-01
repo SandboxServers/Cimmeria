@@ -73,6 +73,7 @@ pub mod stall_grace;
 mod status;
 pub mod telemetry_session;
 pub mod ui;
+pub mod watch_store;
 mod watchdog;
 pub mod world;
 
@@ -292,6 +293,8 @@ pub struct Supervisor {
     record: Arc<record_slot::RecordSlot>,
     /// Keys the world tools hold through the DLL (C5).
     holds: Arc<Mutex<hold_book::HoldBook>>,
+    /// The daemon's copy of the DLL watch (`client_watch`, C15).
+    watch: Arc<Mutex<watch_store::WatchStore>>,
 }
 
 impl Supervisor {
@@ -322,6 +325,7 @@ impl Supervisor {
             uat_progress: Default::default(),
             record: Default::default(),
             holds: Default::default(),
+            watch: Default::default(),
         }
     }
 

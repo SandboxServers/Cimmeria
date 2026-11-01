@@ -149,6 +149,8 @@ pub const LEASED: &[&str] = &[
     "lab_ensure_in_world",
     "client_batch",
     "client_ui_sequence",
+    // Starts and stops the DLL's per-frame watch.
+    "client_watch",
     // Flows.
     "lab_login",
     "lab_logout",

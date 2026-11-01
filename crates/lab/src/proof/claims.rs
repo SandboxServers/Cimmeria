@@ -69,6 +69,7 @@ pub const NO_CLAIM: &[&str] = &[
     "client_wait_event",
     "client_batch",
     "client_hover_probe",
+    "client_watch",
     // Process lifecycle.
     "lab_client_start",
     "lab_client_stop",
