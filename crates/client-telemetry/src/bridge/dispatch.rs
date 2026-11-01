@@ -212,6 +212,8 @@ pub fn dispatch(req: &RpcRequest) -> RpcResponse {
         "watch_start" => super::watch::dispatch_start(id, &req.params),
         "watch_read" => super::watch::dispatch_read(id, &req.params),
         "watch_stop" => super::watch::dispatch_stop(id),
+        // ── Same-frame batch of reads (C7) ──────────────────────────
+        "batch" => super::batch::dispatch(id, &req.params),
         other => RpcResponse::error(id, METHOD_NOT_FOUND, format!("unknown method: {other}")),
     }
 }

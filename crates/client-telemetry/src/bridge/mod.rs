@@ -34,6 +34,7 @@ use std::time::Duration;
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use serde_json::Value;
 
+pub mod batch;
 pub mod console;
 pub mod crash;
 pub mod dispatch;
