@@ -56,6 +56,9 @@ mod sim;
 #[cfg(test)]
 mod steer_tests;
 #[cfg(test)]
+#[path = "steps_tests.rs"]
+mod steps_tests;
+#[cfg(test)]
 mod target_filter_tests;
 #[cfg(test)]
 mod tool_tests;
@@ -174,6 +177,7 @@ pub struct Steps {
     started_ms: u64,
     level: NativeLevel,
     subject: Option<Value>,
+    evidence: Option<crate::proof::Evidence>,
 }
 
 impl Steps {
@@ -184,6 +188,7 @@ impl Steps {
             started_ms: now_ms,
             level: NativeLevel::Read,
             subject: None,
+            evidence: None,
         }
     }
 
@@ -199,6 +204,13 @@ impl Steps {
 
     pub fn subject(&mut self, s: Value) {
         self.subject = Some(s);
+    }
+
+    /// Attach the judged evidence; `finish` reports it and lets it decide
+    /// whether the call counts as a native pass.
+    #[cfg_attr(not(test), allow(dead_code))] // Callers land in AX-11.
+    pub fn judged(&mut self, ev: crate::proof::Evidence) {
+        self.evidence = Some(ev);
     }
 
     /// Log a finished step that started at `t0_ms`.
@@ -240,6 +252,10 @@ impl Steps {
         out["native_level"] = json!(self.level.as_str());
         out["native_tier"] = json!(self.level.tier());
         out["counts_as_native_pass"] = json!(self.level.counts_as_native());
+        if let Some(ev) = &self.evidence {
+            out["evidence"] = ev.to_value();
+            out["counts_as_native_pass"] = json!(self.level.counts_as_native() && ev.counts());
+        }
         out["elapsed_ms"] = json!(now_ms.saturating_sub(self.started_ms));
         out["steps"] = json!(self.steps);
         out

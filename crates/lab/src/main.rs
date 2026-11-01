@@ -65,6 +65,7 @@ mod client;
 mod daemon;
 mod lease;
 mod otlp;
+mod proof;
 mod server;
 mod supervisor;
 mod timeline;
