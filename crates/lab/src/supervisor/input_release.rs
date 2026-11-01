@@ -48,7 +48,12 @@ impl Supervisor {
         let result = self.bridge_call("input_release", json!({})).await;
         self.holds.lock().await.clear();
         // AX-27: button-ups
-        tracing::info!(target: "lab.input", reason, "lab.input.released");
+        match &result {
+            Ok(_) => tracing::info!(target: "lab.input", reason, "lab.input.released"),
+            Err(e) => {
+                tracing::warn!(target: "lab.input", reason, error = %e, "lab.input.release_failed")
+            }
+        }
         result
     }
 }
