@@ -12,11 +12,11 @@ use serde_json::{json, Value};
 use super::LabServer;
 use crate::proof::{EvVerdict, Evidence, Why};
 use crate::supervisor::input::{cursor_target, MouseInput};
-use crate::supervisor::ui::click_expect::ClickExpect;
 use crate::supervisor::input_proof::{
     cursor_evidence, di_count, focus_evidence, key_evidence, mouse_evidence, release_evidence,
     MouseFacts,
 };
+use crate::supervisor::ui::click_expect::ClickExpect;
 
 /// How long `client_input_mouse` waits for the game to take the synthetic
 /// records it queued: the game takes them on its next pump (AX-34).
