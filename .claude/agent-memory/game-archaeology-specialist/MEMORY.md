@@ -136,7 +136,7 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 ## Minigames (MG-R3, 2026-10-19)
 
 - [GoauldCrystals extension rules](goauld-crystals-extension-rules.md) — victory = powered finish cell; unseeded RNG; Python is a Livewire copy; no core shared with CrystalGame
-- [BM reopen = overlay clock bug (LN-12)](bm-overlay-clock-reopen-ln12.md) — worldGetDeltaSeconds is per-frame delta; overlay now() misuses it; fix the Lua, server push is only a stopgap
+- [BM reopen = overlay clock bug (LN-12)](bm-overlay-clock-reopen-ln12.md) — worldGetDeltaSeconds is a per-frame delta; accumulate it, never use it as a clock (fixed by LN-12b)
 - [UE3 trace/reflection/view anchors](ue3-reflection-trace-anchors.md) — LIVE 2026-10-31: pawn traces need flag bit 0x1, FindFunctionChecked 0x0049ffb0, gain 20, load flag unobservable, 7-arg shim; AX-01 actor count + clock owner
 - [controller-mouse-input-model.md](controller-mouse-input-model.md) — PC mouse handlers, button/mode bits, drag/click classes, DI pump (static 2026-10-22)
 - [client-display-knobs](client-display-knobs.md) — SavedSystemOptions windowedMode wins over the ini and args for display mode

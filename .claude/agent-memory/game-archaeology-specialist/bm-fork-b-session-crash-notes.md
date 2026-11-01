@@ -15,3 +15,4 @@ Correct sequence to register a C function as a Lua global from native code:
 Code caves allocated from the heap do not survive a client restart, so any patch built on them needs a full rebuild each session; only fixed-VA exe space persists. The 2009-client black-market read-repoint proof from the same session is in `docs/reverse-engineering/findings/black-market-client-window-patch.md`.
 
 INVALIDATED WHEN: the 0x00403EC0 / 0x00403BB0 Lua helper addresses change with a different SGW.exe build
+checked: unverified 2026-11-01

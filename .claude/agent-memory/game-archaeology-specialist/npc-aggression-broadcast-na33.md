@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-> [!NOTE] PROMOTION TARGET: docs/reverse-engineering/findings/npc-aggression-broadcast.md (already written and merged, PR pending as of this memory)
+> [!NOTE] PROMOTED: docs/reverse-engineering/findings/npc-aggression-broadcast.md carries the verified finding; this file keeps the wire-index gotcha.
 
 NA33 (2026-09-25): confirmed SGWMob's own `ClientMethods` (`onAggressionOverrideUpdate` INT8, `onAggressionOverrideCleared` none-args) sit at flat indices **27** and **28** — SGWMob shares indices 0-26 with SGWPlayer (identical `SGWSpawnableEntity → SGWBeing` ancestor prefix), and `Lootable` (SGWMob's only `<Implements>`) contributes zero client methods, so SGWMob's own two begin immediately at 27. Ghidra: paired-handler registration `0x00d31cd0` wires `MemberCallback<GameMob, Event_NetIn_onAggressionOverrideUpdate>` and the `...Cleared` sibling; the Update handler `0x00d31bd0` reads `aAggressionLevel` INT8 and stores it at `GameMob + 0x16c`.
 
