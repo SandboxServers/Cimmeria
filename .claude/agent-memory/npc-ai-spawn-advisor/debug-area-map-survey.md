@@ -36,3 +36,6 @@ direction): 2-19, 2-27, 2-29, 23-29, 27-29, 27-36. Faction 10 is mutual-hostile 
 players ([[faction-10-gates-everything]]).
 
 Related: [[npc-vs-npc-1009]], [[cover-behaviour-na22]], [[harset-zone-evidence]].
+
+INVALIDATED WHEN: the client maps are re-surveyed or Ihpet_Crater_Light navmesh/occluder data is rebuilt
+checked: unverified 2026-11-01

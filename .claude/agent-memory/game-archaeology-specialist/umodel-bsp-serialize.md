@@ -95,3 +95,6 @@ directly. Triangulate via `Nodes` (NumVertices>0) → `Verts[iVertPool+k].pVerte
 → `Points[...]`, fan-triangulate. Apply actor transform only for `Brush`-
 owned Models (not the persistent-level Model, which is already world-space);
 exclude `TriggerVolume`/other non-`BlockingVolume` volume classes.
+
+INVALIDATED WHEN: the navmesh extraction stops reading UModel Polys or the bsp-model-polys-serialize finding is revised
+checked: 2026-11-01

@@ -36,8 +36,7 @@ own accept/complete arms. A mission accepted by any non-chain path raises nothin
 
 ## Actions that parse but have NO executor arm (silent no-op, `debug!` only)
 
-`qr_combat_damage`, `apply_effect`, `remove_effect`, `fail_objective`,
-`move_entity`, `launch_ability`. `system_message` has an arm that only logs
+`qr_combat_damage`, `remove_effect`, `fail_objective` (the banner lists the arms that have landed). `system_message` has an arm that only logs
 (wire format unknown, issue #268).
 
 Partial: `change_stat` no-ops on `use_ammo_stat`/negative stat id;
@@ -47,11 +46,8 @@ routed through a player-only address map, so nothing reaches any client.
 
 ## Actions with no DB key at all (unauthorable)
 
-`GrantXP`, `Teleport` (same-space), `SpawnEntity`, `DespawnEntity`,
-`PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`,
+`Teleport` (same-space), `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`,
 `StartTimer`, `CancelTimer`, `TriggerChain`, `ExecuteCustom`, `SendMessage`.
-
-**No spawn action of any kind, and no currency/cash action at all.**
 
 ## Conditions
 
@@ -95,38 +91,6 @@ default. `mission_tasks.is_enabled` is `true` on all 4,358 rows.
 A spec that infers "all steps disabled ⇒ this content was switched off / must be
 re-enabled" is reading a flag the server never consults. Push back on it.
 
-## Objective state is NOT persisted — `active_objective_ids` carries the STEP id
-
-`executor/mission.rs:85` (accept) and `:242` (advance_step) both send
-`active_objective_ids: vec![step_id]` and `completed_objective_ids: vec![]`.
-The relog hydration at
-`cell/service/base_messages/player_init/mod.rs:172-177` rebuilds
-`MissionInstance.active_objectives` **from that field**, so after any relog a
-mid-mission player's cell-side objective list is `[<step_id>]` — the step id
-masquerading as an objective — and the real objective ids are gone.
-
-Consequences for chain authoring:
-- A later `complete_mission` closes objective `<step_id>` and emits
-  `onObjectiveUpdate(<step_id>, completed)`; the client's real objective row
-  (e.g. 4653 on Castle step 2419) is never closed. Completed mission, objective
-  still active in the log — **only after a relog**, not on a clean run.
-- `Condition::objective_status` on a post-relog player reads the wrong id.
-- Don't "fix" this in a chain. It is an engine defect in the MissionUpdate
-  payload + hydration pair; file it, don't paper over it with
-  `complete_objective` spam.
-
-`complete_mission_direct` itself is fine: `missions/progression.rs:252-281`
-force-completes every entry in `active_objectives` and emits one
-`onObjectiveUpdate(..., STATUS_COMPLETED)` each, and `advance_step`
-(`:57-66`) force-completes the outgoing step's objectives **including optional
-and hidden ones**. Never hand-complete a multi-objective step.
-
-Note `advance_step` emits **no** `onObjectiveUpdate` for the objectives it
-force-completed (`progression.rs:88-128` sends only the two `onStepUpdate`s
-plus the new step's objectives). The client is expected to retire a step's
-objective rows on `onStepUpdate(old, COMPLETED)`. Shipped behavior for every
-Cellblock chain, so precedent — but it is an assumption, not verified.
-
 ## `crates/game/src/missions/objectives.rs` is DEAD CODE
 
 > Update 2026-09-28: the whole `crates/game/src/missions/` module was deleted in #803.
@@ -139,18 +103,6 @@ chains using `complete_objective` / `increment_counter` + `Condition::Counter`.
 Do not cite those primitives as if they were implemented.
 
 Corollary: `resources.mission_tasks.task_type` is not read by any Rust code.
-
-## Branch status (2026-09-17, none merged)
-
-- `content/castle-cellblock-rebuild` — adds `delay_ms` honoring only
-  (`Chain.action_delays` + `deferred_content_actions.rs`). Refactors the
-  executor match into `execute_one_action`, so it textually conflicts with the
-  two feat branches.
-- `feat/content-move-entity-grant-xp` — adds `grant_xp` loader key + `GrantXP`
-  and `MoveEntity` executor arms.
-- `feat/content-effect-apply-entry-point` — **strict superset of the above**,
-  plus `effect_apply.rs`, `LaunchAbility` and `ApplyEffect` arms. Supersedes the
-  move-entity branch entirely.
 
 ## Mission-progression semantics (verified 2026-09-18, castle-m706 worktree)
 
@@ -189,18 +141,6 @@ Prefer `complete_mission` over N× `complete_objective` for a final step:
 auto-complete path sends `MISSION_ACTIVE` as the status byte
 (`progression.rs:202`) — almost certainly a bug, and a reason not to rely on it.
 
-### `active_objective_ids` is persisted as the STEP id — objective state does not survive relog
-
-`cell/content/executor/mission.rs:85` and `:242` send
-`active_objective_ids: vec![step_id]` and `completed_objective_ids: vec![]`.
-`player_init/mod.rs:169-189` rebuilds `active_objectives` from that list with
-`hidden: false, optional: false`. So after a relog a mission's
-`active_objectives` is `[<step_id masquerading as an objective>]`:
-`complete_objective` no-ops, `advance_step` still works, objective ticks in the
-client log are lost, and `complete_mission_direct` emits
-`onObjectiveUpdate(<step_id>, COMPLETED)`. Multi-step ports must not depend on
-objective state across a relog.
-
 ### `set_interaction_type` is GLOBAL; `add_dialog_set` is PER-PLAYER
 
 `executor/world/mod.rs:19-64` mutates the shared `CellEntity.interaction_type_flags`
@@ -222,3 +162,6 @@ exactly like the `once` column. Only conditions gate a chain.
 `loader/mod.rs:170-205`: N trigger rows → N in-memory `Chain`s sharing one id,
 conditions and action list. Safe as long as no two trigger rows can match the
 same event — if they can, the action list runs twice.
+
+INVALIDATED WHEN: dialog_set_open gets a dispatch site, or any listed no-arm action gains an executor arm
+checked: unverified 2026-11-01

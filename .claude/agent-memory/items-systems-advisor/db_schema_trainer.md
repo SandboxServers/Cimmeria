@@ -41,7 +41,5 @@ trainer_ability_list_id  integer  -- NULL for non-trainer NPCs
 
 Loaded into `SpaceManager.template_trainer_lists: HashMap<template_id, list_id>`.
 
-## Seed data (2026-05-27)
-- One trainer list (list_id=1), Commando-only entries.
-- Template 25 ("Interaction Debug NPC") has `trainer_ability_list_id=1`.
-- Soldier (archetype_id=1) and Commando (archetype_id=2) have populated `archetype_ability_tree` (169 rows total). Other archetypes are empty pending Phase 7.
+INVALIDATED WHEN: the trainer tables in db/resources/Abilities or archetype_ability_tree gain or lose columns (it has since gained branch columns not listed here)
+checked: 2026-11-01

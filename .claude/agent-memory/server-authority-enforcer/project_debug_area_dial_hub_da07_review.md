@@ -18,3 +18,7 @@ Open residuals (both closed in the PR's fix batch, 2026-10-04: gate 22 is on `HU
 - `handle_dial_gate` still has no `world_is_enterable` guard, so gmDHD to one of the 14 worlds with no space strands the GM.
 
 **How to apply:** if a future gate or address feature adds a grant path or an SQL writer to `known_stargates`, check it filters `debug_dial_hub`. See [[reference-world-1300-not-gm-enforced]].
+
+checked: unverified 2026-11-01
+
+INVALIDATED WHEN: known_stargates gains a new writer or the hub filter changes

@@ -128,5 +128,3 @@ A `disconnect mid-duel` auto-forfeit path (CAT-M-15) must consult
 | `Event_NetOut_DuelResponse` | `0x0195fb58` |
 | `Event_NetOut_DuelForfeit` | `0x019b4478` |
 
-Reference: [[project-org-squad-duel-unimplemented]] for the trust-
-posture summary and the 18-finding checklist.

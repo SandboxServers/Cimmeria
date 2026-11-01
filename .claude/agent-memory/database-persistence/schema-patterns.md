@@ -1,3 +1,9 @@
+---
+name: schema-patterns
+description: STALE 2026-05 schema patterns and file locations for persistence; re-read db/sgw before relying on it
+metadata:
+  type: project
+---
 # Schema Patterns & File Locations
 
 > [!WARNING] Confidence: STALE — verify against current `db/sgw/` and `crates/base/src/base/character_create.rs`
@@ -73,3 +79,6 @@ Has DEFAULT:
 - applied_science_points (integer, DEFAULT 0)
 - blueprint_ids (integer[], DEFAULT '{}')
 - known_respawners (integer[], DEFAULT '{}')
+
+INVALIDATED WHEN: db/sgw/Players/Tables/sgw_player.sql or character_create.rs changes the column defaults described here
+checked: unverified 2026-11-01

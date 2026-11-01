@@ -7,7 +7,7 @@ metadata:
 
 # Combat-exit cleanup tail — death vs. non-death parity
 
-`apply_death_transition` (`crates/cell-combat/src/cell/abilities/death.rs`) is the only
+`apply_death_transition` (`crates/cell-combat/src/cell/abilities/death/mod.rs` (moved from death.rs; the death.rs:NNN line numbers below are as of 2026-09 and stale)) is the only
 fully-correct combat-exit tail in the tree. Any NEW path that ends an NPC's combat
 while the NPC stays alive (surrender/submit, scripted pacify, future yield) must
 copy a **subset** of it. The subset boundary, as of 2026-09:
@@ -100,3 +100,6 @@ combat by damage. But `set_npc_ai_state` (`executor/world/mod.rs:212`),
 `npc_respawn` (:228) can all flip an NPC to `Idle` — which is why an
 `aggression = 0` belt-and-braces on a Submit NPC is load-bearing rather than
 redundant.
+
+INVALIDATED WHEN: apply_death_transition is reorganised or a non-death combat-exit path gains the cleanup tail; function names re-verified, line numbers and the known-gap claim not re-checked; known-gap claim (set_npc_ai_state does not run the exit tail) not re-checked
+checked: unverified 2026-11-01

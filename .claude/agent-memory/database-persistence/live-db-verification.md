@@ -76,3 +76,6 @@ CI's live-DB job runs **only** `-p cimmeria-services --lib`. `cimmeria-admin-api
 have **no live-DB test coverage anywhere in CI** — `admin-api/src/routes/audit.rs`
 and `editor.rs` have no tests at all. Changes to their query paths are compile-checked
 only. Flag this when reviewing changes there.
+
+INVALIDATED WHEN: require_db_or_skip starts failing on an unset DATABASE_URL, or the lane replaces the Docker recipe
+checked: re-verified gate semantics (unset skips as pass, set-but-unreachable fails); Docker recipe and timings not re-run 2026-11-01

@@ -24,3 +24,6 @@ Landed on branch `feat/item-use-abilities` (2026-09-28). Supersedes the "event 5
 **Magnitudes** are new `effect_nvps` rows 400-462, each the number in the effect's `effect_desc` (checked by `live_db_every_consumable_magnitude_is_its_effect_description`). `HealAmount` (flat) is read before `HealPercentage` by the one `HealHealth` / `HealFocus` script (`effects/heal.rs`). Stim NVP names: Coordination, Engagement, Fortitude, Intellect (→ INTELLIGENCE), Morale, Perception.
 
 Also: event 5 is probed by `resolve.rs::is_ability_granted_by_active_weapon` for bandolier weapons — unrelated to consumables.
+
+INVALIDATED WHEN: consumable_use::classify changes its gate, or the 46-item native set pinned by the live-DB guard changes
+checked: 2026-11-01

@@ -15,3 +15,6 @@ Findings docs: `docs/reverse-engineering/findings/ability-client-hook-anchors.md
 - **Naming traps.** `resetMyAbilities` is `Event_NetOut_RespecAbility`; `onTimerUpdate` is `Event_NetIn_TimerUpdate`; `onKnownAbilitiesUpdate` is `Event_NetIn_KnownAbilitiesUpdate`; the annotation script names the bind sweep `0x00db3390` `register_NetOut_onStrikeTeamResponse` (it binds many methods, both directions).
 - **Headless Ghidra tips.** `Probe.java` gained `IF:` (whole function disassembly), `RE:` (instruction-text regex), `BYTES:` (hex dump for undefined regions) and `U16:`; use `+` not `,` in `I:`/`VT:` (cmd splits at commas). `cmd` also eats `^ & | < >`. Regions can be undefined in the project (`0x00cf33e0`, `0x00ac67e0`): `BYTES:` to find a prologue, then `F:`. The worktree sandbox refuses shell scripts with computed paths; run `analyzeHeadless.bat` from PowerShell with literal paths.
 - **Still open** (listed in the finding): live check of `GameBeing+0xfc` as the current target, bag arrays, `Event_UI_*` field layouts, `0x00e0a810` removal body, `onErrorCode` tail at `0x00cf33e0`, slash keyword derivation.
+
+INVALIDATED WHEN: the client binary is re-based or a different SGW.exe build is analysed
+checked: 2026-11-01

@@ -28,3 +28,6 @@ PD-38 (2026-10-24), static RE with pefile and capstone on macOS (no Ghidra). Ful
 **Why:** PD-39 (the client-patch cursor lock) was pre-approved only if this verdict is `none`.
 
 **How to apply:** don't re-investigate an in-game mouse-lock option. Use the globals above when reading UE3 engine gates. See also [[client-display-knobs]] and [[controller-mouse-input-model]].
+
+INVALIDATED WHEN: the SGW.exe build changes or a cursor-confinement switch is found
+checked: 2026-11-01
