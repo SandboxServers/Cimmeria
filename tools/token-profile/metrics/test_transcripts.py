@@ -191,7 +191,7 @@ class UsageTest(unittest.TestCase):
 
 class CliWiringTest(unittest.TestCase):
     def test_harness_commands_reach_the_stubs(self):
-        for name in harness_cli.NAMES:
+        for name in (n for n in harness_cli.NAMES if n != "coder-context"):  # coder-context is filled in (HT-03)
             with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
                 err = io.StringIO()
                 with contextlib.redirect_stderr(err):
