@@ -177,6 +177,10 @@ impl LabServer {
 
     #[tool(description = "Release every held key and mouse button.")]
     async fn client_input_release(&self) -> Result<CallToolResult, McpError> {
-        self.proxy("input_release", json!({})).await
+        self.wrap(self.supervisor.release_all_input("tool").await)
     }
 }
+
+#[cfg(test)]
+#[path = "input_tools_tests.rs"]
+mod tests;

@@ -140,6 +140,7 @@ fn build_server() -> Result<LabServer> {
     let supervisor = Arc::new(Supervisor::new(bridge, config));
     // Expired leases are logged when they run out, not when someone next asks.
     lease::spawn_sweeper(supervisor.leases().clone());
+    supervisor::spawn_input_guards(supervisor.clone());
     Ok(LabServer::new(supervisor))
 }
 
@@ -189,6 +190,7 @@ fn build_hosted_server(raw: &str) -> Result<LabServer> {
             let _span =
                 tracing::info_span!("lab_instance", instance = supervisor.label()).entered();
             lease::spawn_sweeper(supervisor.leases().clone());
+            supervisor::spawn_input_guards(supervisor.clone());
         }
         hosted.push(Hosted {
             label: entry.unwrap_or_else(|| "default".to_string()),
