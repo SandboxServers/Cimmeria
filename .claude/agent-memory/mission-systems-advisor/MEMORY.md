@@ -14,3 +14,6 @@
 - [hidden-mission-frame-gate.md](hidden-mission-frame-gate.md) — #715: hidden missions (682-686, 689) send no client frames; new send sites must call `suppress_hidden_mission_frames`; client abandon refuses them.
 - [dakara-e1-evidence.md](dakara-e1-evidence.md) — Worlds 61/62: twelve missions (1570 + 1645-1655, labelled General), the arc assumes an SGC start, one location clue (dialog 6110), no positions or encounters anywhere.
 - [tollana-568-spec.md](tollana-568-spec.md) — Sealed T-03a design for Tollana 568 (chains 9001-9018): one-bind-per-state slot hygiene, accept-on-close wart, one-shot via chain gate.
+- [add-dialog-set-no-dedupe-first-wins.md](add-dialog-set-no-dedupe-first-wins.md) — add_dialog_set appends without dedupe and handle_interact takes .first(): two missions on one NPC template collide (2026-09-18, re-check).
+- [dialog-choice-cannot-branch-on-button.md](dialog-choice-cannot-branch-on-button.md) — OnDialogChoice keyed on dialog_id only (2026-09-18); dialog-chain-authoring-rules says buttons are keyed by screen_id now, so re-check first.
+- [dialog-set-engine-gaps.md](dialog-set-engine-gaps.md) — NULL-dialog_id dialog_set_map rows dropped at load; dialog_set_open never dispatches (2026-09-17, partly fixed by #661).

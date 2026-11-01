@@ -222,3 +222,6 @@ exactly like the `once` column. Only conditions gate a chain.
 `loader/mod.rs:170-205`: N trigger rows → N in-memory `Chain`s sharing one id,
 conditions and action list. Safe as long as no two trigger rows can match the
 same event — if they can, the action list runs twice.
+
+INVALIDATED WHEN: dialog_set_open gets a dispatch site, or any listed no-arm action gains an executor arm
+checked: unverified 2026-11-01

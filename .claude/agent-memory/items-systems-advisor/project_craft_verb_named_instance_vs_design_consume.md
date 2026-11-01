@@ -22,3 +22,6 @@ Confirmed no existing test exercises this path — `transaction/tests/named.rs` 
 **Recommendation given at review time:** either (a) accept as a rare, safe-but-annoying edge case (no corruption — the reject path fully resyncs inventory) and add a regression test documenting the accepted behavior, or (b) skip `check_named_items` entirely for jobs whose `consume_named` is empty, since `consume_design`'s own existence+quantity check already fully re-validates ownership/location/amount without needing the literal instance to survive.
 
 **Container map confirmed while reviewing** (`crates/cell-catalog/src/item_placement.rs`): `INV_MAIN = 1`, `INV_CRAFTING = 15`, storage `17..=20`. Container 1 is the main bag only — equipped items live in a separate container, so bag-1 crafting consumption cannot accidentally eat an equipped item. `sgw_inventory` (`db/sgw/Inventory/Tables/sgw_inventory.sql`) carries `bound`, `durability`, `charges`, `ammo`, `cur_ammo_type` columns; crafting's `consume_design`/`consume_instance` touch only `stack_size` and correctly ignore `bound`/`durability`/`charges` since components are stackable materials, not gear.
+
+INVALIDATED WHEN: base-crafting check_named_items or consume_design changes, so a named instance no longer has to still exist at completion
+checked: unverified 2026-11-01

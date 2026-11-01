@@ -24,3 +24,6 @@ Full report delivered to team-lead 2026-09-18 as a teammate audit task. Key dura
 **No propId/wire-format errors found in the pack** — it never touches propIds, AccessLevel, or AmmoTypeId, so no collision with [[db_schema_trainer]]-adjacent wire-format hazards this agent normally watches for.
 
 Related: [[items_event_sets_dual_purpose]] (the corrected liveness finding this audit produced), [[project_pr520_bandolier_ammo_fix]] (the ammo-persistence code this audit re-verified is still correct), [[vendor_trainer_seed_gap]] (same "plumbing done, content/formula gap remains" shape as the ammo-toggle/TechComp findings here).
+
+INVALIDATED WHEN: the handoff pack or the weapon seed (items.sql, items_event_sets.sql) is regenerated
+checked: unverified 2026-11-01

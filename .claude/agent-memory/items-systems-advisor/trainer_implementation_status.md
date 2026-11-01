@@ -25,3 +25,6 @@ As of 2026-05-27, the ability trainer feature is largely implemented:
 1. Routing split: `dispatch.rs` calling old stub vs `try_open_trainer` — likely resolved since, given current `trainer.rs` is the sole file now.
 2. "Resend list on prereq unlock" Python parity gap — status unverified this pass.
 3. Dead stub removal — DONE per the `crates/game/src/lib.rs` doc comment found this pass.
+
+INVALIDATED WHEN: trainer.rs is rewritten or NpcState trainer_list_id gets wired to the trainer flow
+checked: 2026-11-01
