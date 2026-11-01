@@ -3,7 +3,7 @@
 > **Type:** Reference · **Audience:** The orchestrator resuming this campaign · **Updated:** 2026-11-01
 > **Companions:** [Ledger](README.md), [wave 1](work-packets.md), [wave 2](packets-wave2.md), [waves 3-5](packets-wave3.md)
 
-**State (2026-11-01):** waves 1 and 2 DONE locally; HT-16 DONE; wave 3 next or running in `ht-w3`. 24 packets in 5 waves (HT-16 split HT-17 into HT-17a and HT-17b). Ledger edits since the ledger PR live in the main checkout and ride along with HT-19.
+**State (2026-11-01):** waves 1 and 2 DONE locally; HT-16 DONE; waves 1-4 DONE in `ht-w1`..`ht-w4`; campaign review, then HT-19 next. 24 packets in 5 waves (HT-16 split HT-17 into HT-17a and HT-17b). Ledger edits since the ledger PR live in the main checkout and ride along with HT-19.
 
 **Goal:** a net-positive harness. Report-writer contract misses, coder stops, wrong-campaign resume cards, stale memory and owed guard proofs each get measured (wave 1), fixed (waves 2-4) and re-measured (HT-19) against README § Targets.
 
@@ -19,10 +19,7 @@
 
 **Start here:**
 
-1. Campaign-packet § 0: check that no peer runs this campaign.
-2. Wave 3 (`ht-w3` = join of `ht/w1` + `ht/w2`): HT-13 and HT-12a, then 12b, then 15a/15b/15c (Sonnet, multi-session, from worknotes). Merge order 13, 12a, 12b, 15b, 15c, 15a.
-3. Wave 4 (`ht-w4` from the wave-3 head): HT-14, HT-17a and HT-17b at once; HT-18 at HT-14's head (D-HT10). Merge order 14, 17a, 17b, 18. Before the merges, run `git merge-tree` on HT-14/HT-17a (`tools/agent-skills/README.md`).
-4. Campaign review once the re-measure window is full (at least 100 report-writer contract dispatches, 20 coder stops and 15 cards), then HT-19.
+1. Campaign-packet § 0: check that no peer runs this campaign. Then the campaign review once the re-measure window is full (at least 100 report-writer contract dispatches, 20 coder stops and 15 cards), then HT-19.
 
 **Hazards:**
 
@@ -36,8 +33,8 @@
 - HT-18 runs live Haiku sessions (at most 6), only from a worktree.
 - **lab-autopilot runs in parallel.** HT-15c keeps `game-archaeology-specialist/ue3-reflection-trace-anchors.md` and leaves `lab-driver/` alone while AX-61 is open. HT-11a/11b/12a: run `git merge-tree` on `development-workflow.md` against AX wave 6. README § Overlap.
 
-**Measure:** Guard proofs 2026-11-01: 2/4 (subagent-stop proven; Codex does not fire); orchestrator-edit and hands-on-cargo not exercised (probe prompts) -> HT-14b, HT-18b (user OK needed).
+**Measure:** Guard proofs 2026-11-01: 3/4 (subagent-stop and hands-on-cargo proven; Codex hooks do not fire); orchestrator-edit is owed (no HT-14c).
 
 **Open decisions:** none. D-HT3 and D-HT10 were decided by the owner on 2026-10-31.
 
-**Next ledger update:** at the wave 3 boundary.
+**Next ledger update:** at the campaign review (HT-19).

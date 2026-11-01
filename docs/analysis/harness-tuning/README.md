@@ -1,6 +1,6 @@
 # harness-tuning: ledger
 
-> **Type:** Reference · **Audience:** The orchestrator and packet workers of this campaign · **Updated:** 2026-10-31 (re-sliced for owner rulings D-HT3 and D-HT10)
+> **Type:** Reference · **Audience:** The orchestrator and packet workers of this campaign · **Updated:** 2026-11-01 (waves 1-4 merged into the integration branches; HT-19 open)
 > **Companions:** [Work packets, wave 1](work-packets.md), [wave 2](packets-wave2.md), [waves 3-5](packets-wave3.md), [resume card](RESUME.md)
 
 ## Purpose
@@ -121,32 +121,32 @@ Ship modes and merge orders are in [work-packets.md § Waves](work-packets.md#wa
 
 | Packet | Wave | Agent | Status | Depends on | Moves |
 |---|---|---|---|---|---|
-| HT-01 transcript reader, CLI wiring | 1 | packet-coder | Ready | none | enabler |
-| HT-02 `metrics returns` | 1 | packet-coder | BlockedDependency | HT-01 | F2, F3, F3a baseline |
-| HT-03 `metrics coder-context` | 1 | packet-coder | BlockedDependency | HT-01 | F4, F6 baseline |
-| HT-04 `metrics resume-cards` | 1 | packet-coder | BlockedDependency | HT-01 | F7 baseline |
-| HT-05 baseline run and token-profile docs | 1 | packet-coder | BlockedDependency | HT-02, 03, 04 | the baseline |
-| HT-02a bucket free-form agent-type labels in `metrics returns` | 1 | packet-coder | Ready | HT-02 | keeps task and campaign names out of `returns.json`; branch `ht/HT-02a-type-buckets`, worktree `ht-02a` |
-| HT-06 report-contract SubagentStop hook | 2 | packet-coder | Ready | none | report writers: no report 5.5% → < 2%, no line 14.6% → < 3%; coder no line 4.9% → < 1% |
-| HT-07 the Haiku coder contract in the agent files | 2 | packet-coder | Ready | none | D-HT3; coder lines; continuation from the branch |
-| HT-08 per-session resume card | 2 | packet-coder | Ready | none | wrong cards 44% → ≤ 5% |
-| HT-09 Not checked, `not_run=`, and the format test | 2 | packet-coder | BlockedDependency | HT-06, HT-07, HT-08 | F10 |
-| HT-10 unique ID prefixes test | 2 | packet-coder | Ready | none | collisions → 0 |
-| HT-11a the coder contract in the skill and docs | 2 | documentation-writer | BlockedDependency | HT-07 | D-HT3 docs |
-| HT-11b wave-2 harness docs and regen | 2 | documentation-writer | BlockedDependency | HT-06..HT-10, HT-11a | docs |
-| HT-12a memory rule and the line in 4 agents | 3 | packet-coder | BlockedDependency | wave 2 merged | F9 |
-| HT-12b trim the copied memory prompt in 14 agents | 3 | packet-coder | BlockedDependency | HT-12a head | F14: about 0.6-3.2k prompt tokens per request |
-| HT-13 memory lint and CI step | 3 | packet-coder | BlockedDependency | wave 2 merged | F8 |
-| HT-15a memory prune: rust-gameserver-dev | 3 | rust-gameserver-dev | BlockedDependency | HT-12b, HT-13 in `ht-w3` | F8, F9 |
-| HT-15b memory prune: main-session and orphan folders | 3 | documentation-writer | BlockedDependency | HT-12b, HT-13 in `ht-w3` | F8 |
-| HT-15c memory prune: the other 16 agent folders | 3 | rust-gameserver-dev | BlockedDependency | HT-12b, HT-13 in `ht-w3` | F8, F9 |
+| HT-01 transcript reader, CLI wiring | 1 | packet-coder | Done | none | enabler |
+| HT-02 `metrics returns` | 1 | packet-coder | Done | HT-01 | F2, F3, F3a baseline |
+| HT-03 `metrics coder-context` | 1 | packet-coder | Done | HT-01 | F4, F6 baseline |
+| HT-04 `metrics resume-cards` | 1 | packet-coder | Done | HT-01 | F7 baseline |
+| HT-05 baseline run and token-profile docs | 1 | packet-coder | Done | HT-02, 03, 04 | the baseline |
+| HT-02a bucket free-form agent-type labels in `metrics returns` | 1 | packet-coder | Done | HT-02 | keeps task and campaign names out of `returns.json`; branch `ht/HT-02a-type-buckets`, worktree `ht-02a` |
+| HT-06 report-contract SubagentStop hook | 2 | packet-coder | Done | none | report writers: no report 5.5% → < 2%, no line 14.6% → < 3%; coder no line 4.9% → < 1% |
+| HT-07 the Haiku coder contract in the agent files | 2 | packet-coder | Done | none | D-HT3; coder lines; continuation from the branch |
+| HT-08 per-session resume card | 2 | packet-coder | Done | none | wrong cards 44% → ≤ 5% |
+| HT-09 Not checked, `not_run=`, and the format test | 2 | packet-coder | Done | HT-06, HT-07, HT-08 | F10 |
+| HT-10 unique ID prefixes test | 2 | packet-coder | Done | none | collisions → 0 |
+| HT-11a the coder contract in the skill and docs | 2 | documentation-writer | Done | HT-07 | D-HT3 docs |
+| HT-11b wave-2 harness docs and regen | 2 | documentation-writer | Done | HT-06..HT-10, HT-11a | docs |
+| HT-12a memory rule and the line in 4 agents | 3 | packet-coder | Done | wave 2 merged | F9 |
+| HT-12b trim the copied memory prompt in 14 agents | 3 | packet-coder | Done | HT-12a head | F14: about 0.6-3.2k prompt tokens per request |
+| HT-13 memory lint and CI step | 3 | packet-coder | Done | wave 2 merged | F8 |
+| HT-15a memory prune: rust-gameserver-dev | 3 | rust-gameserver-dev | Done | HT-12b, HT-13 in `ht-w3` | F8, F9 |
+| HT-15b memory prune: main-session and orphan folders | 3 | documentation-writer | Done | HT-12b, HT-13 in `ht-w3` | F8 |
+| HT-15c memory prune: the other 16 agent folders | 3 | rust-gameserver-dev | Done | HT-12b, HT-13 in `ht-w3` | F8, F9 |
 | HT-16 coder-context ruling | after wave 1 | architect | Done 2026-11-01 ([worknotes/HT-16.md](worknotes/HT-16.md)) | HT-05 merged | F4, F6 |
-| HT-14 live guard probe (offline-tested) | 4 | packet-coder | BlockedDependency | wave 3 merged | F12 |
-| HT-17a commit-before-cap note at 75k and Grep/re-read habits | 4 | packet-coder | Ready at the wave-4 base | HT-16, wave 3 merged | stopped committed 26.5% → ≥ 60%; pass-uncommitted 40.6% → ≤ 15%; stop rate 20.6% → ≤ 18.5% |
-| HT-17b `metrics coder-context` commit and habit fields | 4 | packet-coder | Ready at the wave-4 base | HT-16, wave 3 merged | makes HT-16's targets measurable; records the baseline |
-| HT-18 live guard run | 4 | packet-coder | BlockedDependency | HT-14 head (D-HT10 decided) | F12 |
-| HT-14b live guard probe prompts and evidence | 4 | packet-coder | Ready | HT-18 fix pass 1 merged into ht/w4 | F12 |
-| HT-18b live guard re-run (2 legs) | 4 | packet-coder | BlockedDependency | HT-14b merged; user OK for one 2-session run | F12 |
+| HT-14 live guard probe (offline-tested) | 4 | packet-coder | Done | wave 3 merged | F12 |
+| HT-17a commit-before-cap note at 75k and Grep/re-read habits | 4 | packet-coder | Done | HT-16, wave 3 merged | stopped committed 26.5% → ≥ 60%; pass-uncommitted 40.6% → ≤ 15%; stop rate 20.6% → ≤ 18.5% |
+| HT-17b `metrics coder-context` commit and habit fields | 4 | packet-coder | Done | HT-16, wave 3 merged | makes HT-16's targets measurable; records the baseline |
+| HT-18 live guard run | 4 | packet-coder | Done | HT-14 head (D-HT10 decided) | F12 |
+| HT-14b live guard probe prompts and evidence | 4 | packet-coder | Done | HT-18 fix pass 1 merged into ht/w4 | F12 |
+| HT-18b live guard re-run (2 legs) | 4 | packet-coder | Done | HT-14b merged; user OK for one 2-session run | F12 |
 | HT-19 re-measure and close-out | 5 | documentation-writer | BlockedDependency | campaign review, re-measure window | all targets |
 
 HT-05 gets a fix pass after HT-02a merges (ruling `HT-05-ruling-1`); wave 1 merge order is 01, 02, 03, 04, 02a, 05.

@@ -194,6 +194,19 @@ class ReportModeTest(HookTest):
         (self.root / ".claude" / "reports" / "ht" / "new.md").unlink()
         self.assertIn("ht/new.md", self.run_hook(self.payload(final="No line.")))
 
+    def test_input_report_is_not_the_candidate(self):
+        brief = "Review against .claude/reports/ht/old.md. Write your report to .claude/reports/ht/HT-01.md and end with the return line."
+        self.brief_transcript(brief=brief)
+        self.report("ht/old.md", mtime=OLD)
+        self.report()
+        reason = self.run_hook(self.payload(final="No line."))
+        self.assertIn(".claude/reports/ht/HT-01.md", reason)
+        self.assertNotIn("old.md", reason)
+        (self.root / ".claude" / "reports" / "ht" / "HT-01.md").unlink()
+        reason = self.run_hook(self.payload(final="No line."))
+        self.assertIn(".claude/reports/ht/HT-01.md", reason)
+        self.assertNotIn("old.md", reason)
+
 
 class LineModeTest(HookTest):
     """packet-coder (haiku): one return line, and no report file."""

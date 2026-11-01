@@ -205,8 +205,9 @@ def contract_reason(payload):
     if not paths:
         return None
     start = scan["first_ts"]
-    stale = [p for p in paths if not is_fresh(resolve(p, cwd, root), start)]
-    candidate = stale[-1] if stale else paths[-1]
+    fresh = [p for p in paths if is_fresh(resolve(p, cwd, root), start)]
+    missing = [p for p in paths if not resolve(p, cwd, root).is_file()]
+    candidate = (fresh or missing or paths)[-1]
     if match is None:
         return REASON_NO_LINE.format(path=candidate)
     report = match.group("report")
