@@ -51,6 +51,9 @@ pub struct RpcResponse {
     pub result: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<RpcError>,
+    /// Frame stamp (C4); set by the main-thread drain only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta: Option<super::meta::Meta>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -71,6 +74,7 @@ impl RpcResponse {
             id,
             result: Some(result),
             error: None,
+            meta: None,
         }
     }
 
@@ -84,6 +88,7 @@ impl RpcResponse {
                 message: message.into(),
                 data: None,
             }),
+            meta: None,
         }
     }
 
@@ -99,6 +104,7 @@ impl RpcResponse {
                 message: message.into(),
                 data: Some(data),
             }),
+            meta: None,
         }
     }
 
