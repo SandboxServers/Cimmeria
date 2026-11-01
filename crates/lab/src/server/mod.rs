@@ -32,6 +32,7 @@ mod client_state;
 mod combat;
 pub(crate) mod compact;
 mod composite;
+mod evidence_gate;
 mod flows;
 mod golden;
 mod handler;
@@ -201,7 +202,7 @@ pub struct LabServer {
     supervisor: Arc<Supervisor>,
     livewire_atlas: Option<Arc<crate::supervisor::livewire_atlas::LivewireAtlas>>,
     timeline: Arc<Timeline>,
-    tool_router: ToolRouter<LabServer>,
+    pub(crate) tool_router: ToolRouter<LabServer>,
     instances: Arc<Instances>,
     /// Whether the call chose its instance (an `instance` argument, or a
     /// lease id that matched one), rather than falling through to the first.
