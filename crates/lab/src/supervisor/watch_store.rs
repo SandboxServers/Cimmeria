@@ -77,8 +77,6 @@ impl WatchStore {
     }
 
     /// The samples with `wall_ms >= wall_ms`, oldest first.
-    // AX-51 (the detectors) is the first caller; until it lands nothing reads this.
-    #[allow(dead_code)]
     pub fn since(&self, wall_ms: i64) -> Vec<WatchSample> {
         self.samples
             .iter()
@@ -156,8 +154,6 @@ impl Supervisor {
 
     /// Whether the watch runs, and the stored samples at or after `wall_ms`
     /// (the C12 detectors read these).
-    // AX-51 (the detectors) is the first caller; until it lands nothing reads this.
-    #[allow(dead_code)]
     pub async fn watch_samples_since(&self, wall_ms: i64) -> (bool, Vec<WatchSample>) {
         let store = self.watch.lock().await;
         (store.running, store.since(wall_ms))
