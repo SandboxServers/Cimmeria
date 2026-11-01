@@ -55,11 +55,13 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use super::inventory::diff;
+use super::item_proof;
 use super::lua_json::list;
 use super::slots::ContainerRef;
 use super::window_click::{click_point, locate_chunk, ClickTarget};
 use super::window_read::WALK_FN;
 use super::{NativeLevel, NativeTrail, Supervisor};
+use crate::proof::Evidence;
 use crate::supervisor::cegui_native::{drop_plan, Cegui, DropPlan, LEFT_BUTTON};
 use crate::supervisor::flows::widgets::lua_quote;
 use crate::supervisor::keys;
@@ -504,6 +506,8 @@ impl Supervisor {
         if !moved {
             out["native_pass"] = json!(false);
         }
+        let checks = item_proof::drag_checks(started, moved, moved_check, started && !moved);
+        out["evidence"] = Evidence::judge(checks).to_value();
         out["elapsed_ms"] = json!(t0.elapsed().as_millis() as u64);
         Ok(out)
     }

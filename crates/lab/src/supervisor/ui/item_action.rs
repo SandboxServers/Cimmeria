@@ -21,6 +21,7 @@ use serde_json::{json, Value};
 
 use super::click_expect::ClickExpect;
 use super::inventory::{diff, find_items};
+use super::item_proof;
 use super::slots::ContainerRef;
 use super::window_click::{click_point, locate_chunk, ClickTarget};
 use super::{NativeLevel, NativeTrail, Supervisor};
@@ -406,6 +407,9 @@ impl Supervisor {
                 out["native_pass"] = json!(false);
             }
         }
+        // Judged (AX-41): loot decides by its counters, the rest by the diff.
+        let is_loot = matches!(verb, ItemVerb::LootAll | ItemVerb::LootSlot);
+        out["evidence"] = item_proof::item_evidence(&out, expect_change, is_loot).to_value();
         out["elapsed_ms"] = json!(t0.elapsed().as_millis() as u64);
         Ok(out)
     }
