@@ -191,9 +191,9 @@ class UsageTest(unittest.TestCase):
 
 class CliWiringTest(unittest.TestCase):
     def test_harness_commands_reach_the_stubs(self):
-        # `returns` (HT-02) and `coder-context` (HT-03) are implemented and tested in their own test files,
-        # so only the remaining stubs are checked here.
-        for name in (n for n in harness_cli.NAMES if n not in ("returns", "coder-context")):
+        # `returns` (HT-02), `coder-context` (HT-03) and `resume-cards` (HT-04) are implemented and tested in
+        # their own test files, so only the remaining stubs are checked here.
+        for name in (n for n in harness_cli.NAMES if n not in ("returns", "coder-context", "resume-cards")):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
                 err = io.StringIO()
                 with contextlib.redirect_stderr(err):
