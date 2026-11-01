@@ -27,9 +27,9 @@ async fn auto_flag_and_empty_fields() {
     let sup = answering(json!({
         "found": true, "truncated": false, "visited": 2,
         "windows": [
-            { "name": "VendorWin/__auto_closebutton__", "text": "",
+            { "name": "VendorWin__auto_closebutton__", "text": "",
               "visible": true, "enabled": true, "parent": "VendorWin" },
-            { "name": "VendorWin/BuyButton", "type": "TaharezLook/Button",
+            { "name": "BuyButton", "type": "TaharezLook/Button",
               "text": "Buy", "rect": [10, 20, 80, 24],
               "visible": true, "enabled": true, "parent": "VendorWin" }
         ]

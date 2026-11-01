@@ -1,6 +1,8 @@
 //! `client_ui_clickables`: list the CEGUI windows under a root with the full
 //! names `getWindow` accepts, so an agent can find the stock UI's unnamed
 //! `__auto_` children (LH-04 made them clickable; this makes them findable).
+//! `name` and `parent` are each window's own `getName()`, the key `getWindow`
+//! takes; the client already puts the parent's key into an auto child's name.
 //!
 //! One Lua walk per call, depth-first in child-index order. Windows before
 //! `cursor` are stepped past reading only visibility and child indices, so a
@@ -31,18 +33,10 @@ local top = __jcall(getWindow, @ROOT@)
 if top == nil then return __jenc({ found = false }) end
 local pos, inspected, truncated, nextpos = 0, 0, false, nil
 local out, stop = {}, false
-local function __lab_path(link)
-  if link.path == nil then
-    local nm = __jcall(function() return link.w:getName() end) or ''
-    if link.up then link.path = __lab_path(link.up) .. '/' .. nm else link.path = nm end
-  end
-  return link.path
-end
 local function visit(w, up)
   if stop then return end
   local vis = __jcall(function() return w:isVisible() end) == true
   @HIDDEN_GUARD@
-  local link = { w = w, up = up }
   if pos < @CURSOR@ then
     pos = pos + 1
   else
@@ -56,12 +50,12 @@ local function visit(w, up)
     if type(w.getType) == "function" then ty = __jcall(function() return w:getType() end) end
     local r = __jcall(function() return w:getUnclippedPixelRect() end)
     local node = {
-      name = __lab_path(link),
+      name = __jcall(function() return w:getName() end) or '',
       type = ty or '',
       text = __jcall(function() return w:getText() end) or '',
       visible = vis,
       enabled = __jcall(function() return w:isDisabled() end) ~= true,
-      parent = up and __lab_path(up) or nil,
+      parent = up and __jcall(function() return up:getName() end) or nil,
     }
     if r then node.rect = { r.left, r.top, r.right - r.left, r.bottom - r.top } end
     out[#out + 1] = node
@@ -70,7 +64,7 @@ local function visit(w, up)
   for i = 0, cc - 1 do
     if stop then return end
     local c = __jcall(function() return w:getChildAtIdx(i) end)
-    if c then visit(c, link) end
+    if c then visit(c, w) end
   end
 end
 visit(top, nil)
@@ -162,6 +156,8 @@ mod tests {
         assert!(c.contains("getChildCount") && c.contains("getChildAtIdx"));
         assert!(c.contains(r#"type(w.getType) == "function""#));
         assert!(c.contains(r#"__jcall(getWindow, "Root")"#));
+        assert!(c.contains("w:getName()"));
+        assert!(!c.contains("__lab_path"));
         assert!(c.contains("#out >= 500"), "limit 9999 clamps to 500");
         assert!(clickables_chunk("Root", false, 0, 0).contains("#out >= 1"));
         assert!(c.trim_end().ends_with("})"));

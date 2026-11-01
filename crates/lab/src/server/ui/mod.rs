@@ -137,7 +137,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "List the CEGUI windows under `root` (default `Root`) with the full names `client_window_read` and `client_window_click` accept, including the unnamed `__auto_` children (`auto` true). Each window has name, type (when the binding gives one), text, rect [x,y,w,h] in client pixels (when present), visible, enabled, auto and parent. Hidden windows are skipped unless include_hidden. Pages are walk positions: pass the returned `next` as `cursor` while `truncated` is true (limit 1..=500, default 200; each call inspects at most 2000 windows). Read-only (client_ui_lua)."
+        description = "List the clickable CEGUI windows under root (default Root) with their full names, type, text, pixel rect, visible and enabled. Names containing __auto_ are the stock UI's unnamed children; pass the full name to client_ui_click or a client_ui_sequence click step. Large trees page: pass next back as cursor while truncated is true. Read-only."
     )]
     async fn client_ui_clickables(
         &self,
