@@ -12,9 +12,9 @@ When multiple Claude sessions run concurrently on the same Cimmeria checkout, br
 **How to apply:** Before starting any non-trivial implementation, check `Get-Process -Name claude` for other running sessions, and `git worktree list` for active worktrees. If concurrent activity is suspected, create a dedicated worktree under `.claude/worktrees/<task-slug>/` and work there:
 
 ```powershell
-git worktree add C:/Users/Steve/source/projects/Cimmeria/.claude/worktrees/<slug> <branch-name>
+git worktree add <main-checkout>/.claude/worktrees/<slug> <branch-name>
 # external/ is git-ignored — junction it into the worktree:
-New-Item -ItemType Junction -Path "<worktree>/external" -Target "C:/Users/Steve/source/projects/Cimmeria/external"
+New-Item -ItemType Junction -Path "<worktree>/external" -Target "<main-checkout>/external"
 ```
 
 Then `cd` into the worktree for all bash/cargo commands. The worktree has independent HEAD + index + working tree, immune to checkouts in the main checkout.

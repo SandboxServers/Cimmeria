@@ -13,3 +13,6 @@ Desktop launcher `Preferences` (`crates/launcher/desktop/engine/src/storage/mod.
 
 **Why:** a schema bump that only touches the Rust struct passes engine tests and fails `npm test`, recovery comparisons, or in-flight digests.
 **How to apply:** for the next preferences field, add it to `StoredPreferences` as `Option`, decide the per-version rule in `TryFrom`, extend `digest_form` so values at the new field's default still digest in the older shape, then sweep the TS fixtures. Adoption file reads are macOS-only (file identity checks), so the persisted-recovery half of a digest test only runs on macOS. Related: [[launcher-state-key-and-egui-wake]].
+
+INVALIDATED WHEN: Preferences moves out of storage/mod.rs, the frontend stops strict-decoding NativeSnapshot, or adoption Plan::digest changes
+checked: 2026-11-01

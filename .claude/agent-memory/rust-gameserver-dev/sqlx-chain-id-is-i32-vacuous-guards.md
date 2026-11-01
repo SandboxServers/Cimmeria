@@ -1,3 +1,10 @@
+---
+name: sqlx-chain-id-is-i32-vacuous-guards
+description: content chain_id is integer; i64 decode hides behind vacuous guards
+metadata:
+  type: feedback
+---
+
 # `content_*.chain_id` is `integer` — an `i64` decode hides behind a vacuous guard
 
 `db/resources/Content/Tables/content_actions.sql` (and its sibling
@@ -36,3 +43,6 @@ tuple are normal here; read the DDL.
 
 See also [[vacuous-guard-and-sentinel-collision-review]],
 [[db-test-revert-verification]].
+
+INVALIDATED WHEN: the content_* tables change chain_id to bigint
+checked: 2026-11-01

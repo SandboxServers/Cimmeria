@@ -1,3 +1,9 @@
+---
+name: python-write-mangles-utf8-and-crlf
+description: Python write_text on Windows encodes cp1252 and mangles new UTF-8 and CRLF; write bytes explicitly in scripted edits
+metadata:
+  type: feedback
+---
 # Scripted edits: Python `write_text` mangles UTF-8 and CRLF on Windows
 
 `pathlib.Path.write_text(s)` on this host encodes with **cp1252**, not UTF-8.

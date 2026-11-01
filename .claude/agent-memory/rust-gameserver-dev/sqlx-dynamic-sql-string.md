@@ -1,3 +1,10 @@
+---
+name: sqlx-dynamic-sql-string
+description: sqlx rejects dynamic SQL strings; share SQL with concat!
+metadata:
+  type: feedback
+---
+
 # sqlx 0.9 rejects `&String` queries — share SQL with `concat!`, not `format!`
 
 `sqlx::query()` takes `impl SqlSafeStr`, and **`SqlSafeStr` is implemented for
@@ -42,3 +49,6 @@ root) and `cell/spawner/mod.rs` re-exports it with
 
 Live example: `crates/cell-catalog/src/cell/spawner/templates.rs`, shared with
 `crates/base-session/src/base/gm_spawn.rs` (PR #662 review, finding 3).
+
+INVALIDATED WHEN: sqlx is upgraded so query() accepts non-static strings, or the macro moves out of cimmeria-cell-catalog
+checked: 2026-11-01

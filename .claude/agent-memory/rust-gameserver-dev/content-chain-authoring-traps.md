@@ -1,3 +1,9 @@
+---
+name: content-chain-authoring-traps
+description: Content-chain seed authoring traps verified while authoring Castle missions 702-704: dialogs dropped on non-interact triggers and similar
+metadata:
+  type: reference
+---
 # Content-chain authoring traps (content engine, `db/resources/Content/Seed/*.sql`)
 
 Found while authoring Castle missions 702/703/704 (packets CA06/CA07). All

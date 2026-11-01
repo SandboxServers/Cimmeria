@@ -13,3 +13,6 @@ Built 2026-09-28 (PR for AM-02, campaign #1026). Worknote: `docs/analysis/ammo/w
 - Per-player cell state goes in `CellEntity::extensions` (typed map, #962) — no struct field, no `construction.rs` edit.
 - A type-5 race here: the advisory lock serializes the drawers, so the forced-overlap SHARE-gate recipe ([[forced-db-race-share-lock]]) counts gate-blocked A plus advisory-blocked B = 2.
 - `ammo_feature::finite_special()` is a process global: read it at the entrypoint and pass a bool (`handle_reload_with`, `begin_switch_return_with`) so tests never flip it.
+
+INVALIDATED WHEN: the base cell-message loop stops being sequential or reload_reserve::completion_target is removed
+checked: 2026-11-01

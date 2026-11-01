@@ -74,3 +74,6 @@ still picks the nearer one, which is the right answer.
 **How to apply:** any per-storey Y window (NA11's ground clamp, spawn
 snap) must stay below ~3.9 half-height on this mesh, or be re-probed.
 Reuse the sweep above; it runs in ~3 s in a debug test.
+
+INVALIDATED WHEN: data/spaces/castle_cellblock.nav is regenerated or NavGraph::locate_within / bsp::TerrainCeiling change
+checked: 2026-11-01

@@ -1,3 +1,13 @@
+---
+name: lab-small-prop-hover-offsets
+description: Lab entity hover search also tries the actor origin for small props
+metadata:
+  type: project
+---
+
 # Lab small-prop hover offsets
 
 2026-10-14: `client_world_click` and `client_hover_probe` share the entity hover search in `crates/lab/src/supervisor/world/click_hover.rs`. Humanoid probes use heights 100, 140, 170, 60 UE3 units above actor `Location`. A small desk prop can hover only at its actor origin, so entity search also tries height 0 last. An empty origin is not a click candidate after an avatar or other entity covered a humanoid body height; `occlusion_tests::an_avatar_that_cannot_be_dodged_is_named` caught that regression. `client_hover_probe` uses the same fallback, while its `avatar_px` calculation remains on humanoid heights. Source: the native Ambernol vial click at the projected origin during live lab triage, and the simulated click/probe guards in `occlusion_tests.rs` and `hover_tests.rs`.
+
+INVALIDATED WHEN: crates/lab/src/supervisor/world/click_hover.rs changes its probe heights or drops the origin fallback
+checked: 2026-11-01

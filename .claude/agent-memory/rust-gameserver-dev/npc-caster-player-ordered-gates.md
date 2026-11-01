@@ -23,3 +23,6 @@ engages through `engage_pet_target(.., PetEngagement::OwnerOrder)` only once the
 An `onErrorCode` alone is invisible (no Lua consumer, AT-E1): pair it with a `CHAN_FEEDBACK` line. Reviewer also flagged (unverified, not fixed): the player launch path has no
 same-space target check, and `fire_los` lets other-space targets through, so an instanced
 NPC at matching coordinates may be hittable. See [[interact-range-and-logcapture-traps]].
+
+INVALIDATED WHEN: handle_use_ability / fire_los / warmup fire_time_refusal start gating NPC casters on player orders
+checked: 2026-11-01
