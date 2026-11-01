@@ -9,7 +9,7 @@ use rmcp::{model::*, tool_handler, ErrorData as McpError, ServerHandler};
 use serde_json::Value;
 use tracing::Instrument;
 
-use super::{compact, evidence_gate, lease, LabServer};
+use super::{compact, cooldown, evidence_gate, lease, LabServer};
 
 /// The longest `error` text a `lab.call` row carries.
 const ERROR_CAP: usize = 200;
@@ -203,6 +203,21 @@ impl ServerHandler for LabServer {
                 return shape_response(&shape, out);
             }
         };
+        // C9: an identical call that just failed is turned away unrun.
+        let cool = cooldown::gate(&tool, request.arguments.as_ref());
+        if let Some((_, Some(refusal))) = &cool {
+            let out = Ok(CallToolResponse::Complete(refusal.clone()));
+            log_call(
+                instance,
+                &tool,
+                holder.as_deref(),
+                started,
+                true,
+                &out,
+                None,
+            );
+            return shape_response(&shape, out);
+        }
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(target, request, context);
         let mut out = match permit {
             // The gate admits once; the permit makes every action of the
@@ -215,6 +230,9 @@ impl ServerHandler for LabServer {
             None => target.tool_router.call(tcc).instrument(span).await,
         };
         let verdict = evidence_gate::stamp_response(&tool, &mut out);
+        if let Some((k, _)) = cool {
+            cooldown::note(k, &out);
+        }
         log_call(
             instance,
             &tool,
