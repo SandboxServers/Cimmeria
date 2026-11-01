@@ -1,6 +1,7 @@
 """The return-line formats: the hook's LINE matches what the agents are told to write (C6, C1)."""
 import importlib.util
 import re
+import sys
 import unittest
 from pathlib import Path
 
@@ -95,7 +96,12 @@ class ReportFormatTest(unittest.TestCase):
 
     @unittest.skipUnless(METRICS.is_file(), "the metrics reader is not in this tree")
     def test_metrics_line_equals_the_hook_line(self):
-        metrics = load_module("transcripts", METRICS)
+        token_profile = str(ROOT / "tools" / "token-profile")
+        sys.path.insert(0, token_profile)
+        try:
+            metrics = load_module("transcripts", METRICS)
+        finally:
+            sys.path.remove(token_profile)
         self.assertEqual(metrics.LINE.pattern, self.line.pattern)
 
 
