@@ -3,6 +3,10 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use super::input::hold::{HOLDS_EXPIRED, HOLDS_RELEASED_ON_DISCONNECT};
+use super::input::post::post_all;
+use super::input::{hold_table, input_state};
+
 #[cfg(test)]
 use std::sync::atomic::AtomicU64;
 
@@ -34,12 +38,40 @@ pub(crate) fn on_disconnect() {
 fn holds_tick() {
     #[cfg(test)]
     TICK_WORK.fetch_add(1, Ordering::SeqCst);
-    // AX-21
+    // try_lock: never block the game thread. The IO thread holds the table
+    // only for a disconnect release, so a miss just waits one frame.
+    let mut t = match hold_table().try_lock() {
+        Ok(g) => g,
+        Err(std::sync::TryLockError::Poisoned(e)) => e.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => return,
+    };
+    let posts = t.expire(crate::bridge::meta::mono_ms());
+    if !posts.is_empty() {
+        post_all(&posts);
+        HOLDS_EXPIRED.fetch_add(posts.len() as u64, Ordering::Relaxed);
+    }
+    if t.is_empty() {
+        HOLDS_ACTIVE.store(false, Ordering::Relaxed);
+    }
 }
+
+/// Runs on the bridge IO thread while `holds_tick` runs on the main thread:
+/// the blocking lock serialises them, and `HOLDS_ACTIVE` is cleared under it
+/// so a concurrent press cannot be left active-but-forgotten.
 fn holds_disconnect() {
     #[cfg(test)]
     TICK_WORK.fetch_add(1, Ordering::SeqCst);
-    // AX-21
+    let mut t = hold_table().lock().unwrap_or_else(|e| e.into_inner());
+    let posts = t.release_all();
+    post_all(&posts);
+    HOLDS_RELEASED_ON_DISCONNECT.fetch_add(posts.len() as u64, Ordering::Relaxed);
+    HOLDS_ACTIVE.store(false, Ordering::Relaxed);
+    drop(t);
+    // The DirectInput state goes too (C5); virtual focus stays as it is.
+    input_state()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .release_all();
 }
 fn watch_tick() {
     #[cfg(test)]
