@@ -16,6 +16,9 @@ pub struct Held {
     pub name: String,
     /// Monotonic ms at which the lease is half spent.
     pub renew_at_ms: u64,
+    /// The clock (as `pressed` was given it) when the key first went down;
+    /// a renewal keeps it.
+    pub since_ms: u64,
 }
 
 /// What the daemon holds through the DLL, and when to renew it.
@@ -49,13 +52,23 @@ impl HoldBook {
     /// Note a hold (or its renewal) sent at `now`.
     pub fn pressed(&mut self, vk: u8, name: &str, now: u64) {
         let renew_at_ms = self.renew_at(now);
+        let since_ms = self.held.get(&vk).map_or(now, |h| h.since_ms);
         self.held.insert(
             vk,
             Held {
                 name: name.to_string(),
                 renew_at_ms,
+                since_ms,
             },
         );
+    }
+
+    /// Every held key with its name and when it first went down.
+    pub fn holds(&self) -> Vec<(String, u64)> {
+        self.held
+            .values()
+            .map(|h| (h.name.clone(), h.since_ms))
+            .collect()
     }
 
     /// Forget a hold; whether it was in the book.
@@ -201,5 +214,16 @@ mod tests {
         assert!(b.is_empty());
         assert!(!b.is_fallback());
         assert!(b.take_buttons().is_empty());
+    }
+
+    #[test]
+    fn pressed_again_keeps_since() {
+        let mut b = HoldBook::default();
+        b.pressed(0x57, "w", 0);
+        b.pressed(0x57, "w", 5000);
+        assert_eq!(b.holds(), vec![("w".to_string(), 0)]);
+        b.released(0x57);
+        b.pressed(0x57, "w", 6000);
+        assert_eq!(b.holds(), vec![("w".to_string(), 6000)]);
     }
 }

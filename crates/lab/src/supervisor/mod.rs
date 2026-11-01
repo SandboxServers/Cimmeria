@@ -38,6 +38,7 @@ pub mod cegui_native;
 pub mod combat;
 pub mod composite;
 pub mod crash_report;
+pub mod detect;
 pub mod display;
 pub mod entity_table;
 pub mod events;

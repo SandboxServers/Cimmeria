@@ -8,6 +8,20 @@ use rmcp::{
 use serde_json::{json, Map, Value};
 
 use super::LabServer;
+use crate::supervisor::detect;
+use crate::supervisor::now_ms;
+
+/// The window `lab_detectors_read` looks back over when `since_ms` is omitted.
+const DEFAULT_SINCE_MS: u64 = 120_000;
+
+/// Args for `lab_detectors_read`. `instance` and `lease_id` are routed by the
+/// handler, so they need no field here.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct DetectArgs {
+    /// How far back to look, in ms (default 120000).
+    #[serde(default)]
+    pub since_ms: Option<u64>,
+}
 
 /// Args for `client_watch`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -60,5 +74,48 @@ impl LabServer {
                 CallToolResult::error(vec![ContentBlock::text(json!({ "error": e }).to_string())])
             }
         })
+    }
+
+    #[tool(
+        description = "Run the lab detectors (hitch, teleport, long_fall, out_of_world, nan, stuck_input, actor_growth, log_error) over what the daemon already holds: client_watch samples, the heartbeat history, held keys and recent tool calls. No client call; watch is false when no samples were pulled, and then only hitch and log_error run."
+    )]
+    async fn lab_detectors_read(
+        &self,
+        Parameters(a): Parameters<DetectArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let window_ms = a.since_ms.unwrap_or(DEFAULT_SINCE_MS);
+        let now = now_ms();
+        let from = now.saturating_sub(i64::try_from(window_ms).unwrap_or(i64::MAX));
+        let (_, samples) = self.supervisor.watch_samples_since(from).await;
+        let heartbeats: Vec<_> = self
+            .supervisor
+            .heartbeat_samples()
+            .await
+            .into_iter()
+            .filter(|b| b.observed_ms >= from)
+            .collect();
+        let holds: Vec<(String, i64)> = self
+            .supervisor
+            .hold_starts()
+            .await
+            .into_iter()
+            .map(|(key, since)| (key, since as i64))
+            .collect();
+        let calls = detect::calls::rows_for(self.supervisor.label());
+        let fired = detect::run_all(&detect::Inputs {
+            samples: &samples,
+            heartbeats: &heartbeats,
+            holds: &holds,
+            calls: &calls,
+            now_ms: now,
+        });
+        let body = json!({
+            "watch": !samples.is_empty(),
+            "window_ms": window_ms,
+            "fired": fired,
+        });
+        Ok(CallToolResult::success(vec![ContentBlock::text(
+            body.to_string(),
+        )]))
     }
 }
