@@ -69,7 +69,7 @@ pub fn combo_rows_chunk() -> String {
            end \
            return out end) \
          if not ok then return 'no_combo' end \
-         return table.unpack(rows)"
+         return (table.unpack or unpack)(rows)"
     )
 }
 
@@ -201,6 +201,15 @@ mod tests {
         let chunk = select_combo_chunk(name);
         assert!(chunk.contains(&widgets::lua_quote(name)), "{chunk}");
         assert!(!chunk.contains(name), "raw name leaked into chunk: {chunk}");
+    }
+
+    #[test]
+    fn rows_chunk_unpacks_on_lua_51_and_later() {
+        let chunk = combo_rows_chunk();
+        assert!(chunk.contains("(table.unpack or unpack)(rows)"), "{chunk}");
+        assert!(!chunk.contains("return table.unpack"), "{chunk}");
+        assert!(chunk.contains("pcall"), "{chunk}");
+        assert!(chunk.contains("no_combo"), "{chunk}");
     }
 
     #[test]
