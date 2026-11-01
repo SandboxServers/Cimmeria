@@ -412,7 +412,7 @@ All live under `crates/client-telemetry/src/bridge/`, so all compile only with `
 |---|---|---|
 | `meta` on every drained response | Stamps `frame`, `mono_ms` and (when the fingerprint gate passed) `game_t`, so the daemon can tell a read taken after an action from one taken before it | [C4](../analysis/lab-autopilot/contract.md#c4-bridge-meta-dll-to-daemon) |
 | `input_hold` | Presses a key with a lease that expires on its own; `input_release` also lets go of every hold | [C5](../analysis/lab-autopilot/contract.md#c5-key-holds-with-a-lease) |
-| `watch_start`, `watch_read`, `watch_stop` | A ring-buffer sampler of pawn pose, hover, mode, buttons and (when confirmed) actor count, read on the main thread | [C6](../analysis/lab-autopilot/contract.md#c6-watch-sampler) |
+| `watch_start`, `watch_read`, `watch_stop` | A ring-buffer sampler of pawn pose, hover, mode, buttons and actor count, read on the main thread | [C6](../analysis/lab-autopilot/contract.md#c6-watch-sampler) |
 | `batch` | Up to 16 allowed read calls run in one drain, so they share one frame | [C7](../analysis/lab-autopilot/contract.md#c7-batch-reads-in-one-frame) |
 | `trace_line` | One `SingleLineCheck` collision trace (flags `0x2086` or `0x20bf` only), for the ledge guard | [C14](../analysis/lab-autopilot/contract.md#c14-line-trace-and-ledge-guard-ax-55-ax-56) |
 
@@ -437,6 +437,7 @@ Each DLL change that adds a bridge method proves these seven lines in its report
 - **No `InputKey` injection (D-AX12).** The slot is not located and posted messages work live. Input stays at the window-message level.
 
 Concepts here (the evidence gate, the stop report, the watch, the detectors, the blind describer) are adapted from ramenvr/autopilot (Apache 2.0); no code was copied.
+
 ## Base send-origin proof (DW-03S-G)
 
 `BaseService::start` mints a fresh 128-bit OS-CSPRNG boot ID. Successful Phase 3 admission assigns a counter-qualified generation and stores its immutable peer/time seed in the connected session's extensions under the insertion lock. The connect reply and time sync are the two reviewed pre-insertion send exemptions. A later caller can copy `ConnectedClientState::wire_send_origin()` before releasing that lock; the copied ticket samples the player entity at packet construction time, so account-only sends carry no player entity and a delayed send cannot acquire a newer relog's identity.
