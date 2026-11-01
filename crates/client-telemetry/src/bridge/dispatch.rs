@@ -207,6 +207,10 @@ pub fn dispatch(req: &RpcRequest) -> RpcResponse {
         "input_cursor" => super::input::dispatch_cursor(id, &req.params),
         "input_modifiers" => super::input::dispatch_modifiers(id, &req.params),
         "input_status" => super::input::dispatch_status(id),
+        // ── Lab watch sampler (C6) ──────────────────────────────────
+        "watch_start" => super::watch::dispatch_start(id, &req.params),
+        "watch_read" => super::watch::dispatch_read(id, &req.params),
+        "watch_stop" => super::watch::dispatch_stop(id),
         other => RpcResponse::error(id, METHOD_NOT_FOUND, format!("unknown method: {other}")),
     }
 }

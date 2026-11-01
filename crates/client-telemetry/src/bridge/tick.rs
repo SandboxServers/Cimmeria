@@ -44,12 +44,12 @@ fn holds_disconnect() {
 fn watch_tick() {
     #[cfg(test)]
     TICK_WORK.fetch_add(1, Ordering::SeqCst);
-    // AX-24
+    super::watch::tick();
 }
 fn watch_disconnect() {
     #[cfg(test)]
     TICK_WORK.fetch_add(1, Ordering::SeqCst);
-    // AX-24
+    super::watch::disconnect();
 }
 
 #[cfg(test)]
