@@ -345,6 +345,7 @@ async fn walk<W: WorldIo>(
                         "turn_rate": ctl.rate.to_json(),
                         "unsticks": unsticks,
                         "path": path,
+                        "ledge_guard": guard.label(),
                         "hint": FAIL_HINT,
                     }),
                     stop_of(
@@ -374,7 +375,7 @@ async fn walk<W: WorldIo>(
                     io.now_ms(),
                     &format!("leg_{i}"),
                     format!("the player moved {jumped:.1} m in one tick (teleport or zone change)"),
-                    json!({ "from": prev.to_json(), "to": pose.to_json() }),
+                    json!({ "from": prev.to_json(), "to": pose.to_json(), "ledge_guard": guard.label() }),
                     stop_of(
                         StopKind::Stalled,
                         i,

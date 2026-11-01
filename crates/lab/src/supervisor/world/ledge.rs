@@ -73,6 +73,9 @@ pub async fn self_check<W: WorldIo>(g: &mut Guard, io: &mut W, pose: Pose) {
         Ok(None) => Guard::Unavailable("no floor under pawn".into()),
         Err(e) => Guard::Unavailable(e),
     };
+    if let Guard::Unavailable(why) = &*g {
+        tracing::info!(%why, "ledge guard unavailable for this walk");
+    }
 }
 
 /// True when the walk must stop: the probe ahead finds no floor. Probes at
@@ -90,6 +93,7 @@ pub async fn check<W: WorldIo>(g: &mut Guard, io: &mut W, now: u64, pose: Pose) 
         Ok(None) => true,
         Ok(Some(_)) => false,
         Err(e) => {
+            tracing::info!(%e, "ledge guard unavailable for this walk");
             *g = Guard::Unavailable(e);
             false
         }

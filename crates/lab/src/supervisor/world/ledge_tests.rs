@@ -169,3 +169,35 @@ async fn the_guard_probes_at_most_twice_a_second_during_a_walk() {
     assert!(sim.now > 1000, "the walk too short to test: {} ms", sim.now);
     assert!(u64::from(sim.trace_calls) <= 2 + sim.now / 500);
 }
+
+#[test]
+fn probe_follows_the_yaw() {
+    let (s, e) = ledge::probe(pose(0.0, std::f64::consts::FRAC_PI_2));
+    assert!(s.x.abs() < 1e-9 && (s.y - 150.0).abs() < 1e-9 && s.z == 100.0);
+    assert!(e.x.abs() < 1e-9 && (e.y - 150.0).abs() < 1e-9 && e.z == -178.0);
+}
+
+#[test]
+fn trace_tool_is_classified() {
+    use crate::proof::claims::{claim, Claim};
+    assert_eq!(claim("client_trace_line"), Claim::NoClaim);
+    assert!(crate::lease::policy::LEASED.contains(&"client_trace_line"));
+}
+
+#[tokio::test]
+async fn timeout_stop_names_the_guard() {
+    let mut sim = Sim::live();
+    let e = movement::run(
+        &mut sim,
+        MoveRequest {
+            point: Some(client_point(2000.0, 0.0, 0.0)),
+            timeout_ms: Some(800),
+            ..MoveRequest::default()
+        },
+    )
+    .await
+    .unwrap_err();
+    let v = e.to_json();
+    assert_eq!(v["stop"]["kind"], "timeout");
+    assert!(v.to_string().contains("\"ledge_guard\":\"on\""));
+}

@@ -19,8 +19,8 @@ pub(super) async fn live_trace(
         "end": [end.x, end.y, end.z],
         "flags": flags,
     });
-    let v = sup.bridge.call("trace_line", params).await.map_err(|e| {
-        if e.to_string().contains("-32601") {
+    let v = sup.bridge_call("trace_line", params).await.map_err(|e| {
+        if e.contains("-32601") {
             "trace_line unsupported".to_string()
         } else {
             format!("trace_line: {e}")
@@ -41,3 +41,7 @@ pub(super) async fn live_trace(
         actor: v["actor"].as_u64().unwrap_or(0) as u32,
     }))
 }
+
+#[cfg(test)]
+#[path = "trace_io_tests.rs"]
+mod tests;

@@ -4,8 +4,6 @@
 use serde::Serialize;
 
 /// Why a world tool stopped.
-// The variants other than `Stuck` and `Ledge` have no producer until AX-32 and AX-34.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StopKind {

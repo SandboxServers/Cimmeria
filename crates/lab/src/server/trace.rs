@@ -16,6 +16,26 @@ const DEFAULT_TRACE_FLAGS: u32 = 0x2086;
 /// The only trace flags the DLL has proven live (C14, L2).
 const ALLOWED_TRACE_FLAGS: [u32; 2] = [0x2086, 0x20bf];
 
+/// The flags to send: the default when none is given, else only an allowed value.
+fn trace_flags(flags: Option<u32>) -> Result<u32, &'static str> {
+    let f = flags.unwrap_or(DEFAULT_TRACE_FLAGS);
+    if ALLOWED_TRACE_FLAGS.contains(&f) {
+        Ok(f)
+    } else {
+        Err("trace_line: flags must be 0x2086 or 0x20bf")
+    }
+}
+
+/// The tool's error body for a failed bridge call. An old DLL without
+/// `trace_line` (`-32601`) gets a hint instead of the raw bridge text.
+fn trace_failure(e: &str) -> String {
+    if e.contains("-32601") {
+        json!({ "error": "trace_line needs a lab DLL with trace_line (AX-55)" }).to_string()
+    } else {
+        json!({ "error": e }).to_string()
+    }
+}
+
 /// Args for `client_trace_line`. `instance` and `lease_id` are routed by the
 /// handler, so they need no field here.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -38,24 +58,54 @@ impl LabServer {
         &self,
         Parameters(a): Parameters<TraceArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let flags = a.flags.unwrap_or(DEFAULT_TRACE_FLAGS);
-        if !ALLOWED_TRACE_FLAGS.contains(&flags) {
-            return Err(McpError::invalid_params(
-                "trace_line: flags must be 0x2086 or 0x20bf",
-                None,
-            ));
-        }
+        let flags = trace_flags(a.flags).map_err(|m| McpError::invalid_params(m, None))?;
         let params = json!({ "start": a.start, "end": a.end, "flags": flags });
         let out = self.supervisor.bridge_call("trace_line", params).await;
         Ok(match out {
             Ok(v) => CallToolResult::success(vec![ContentBlock::text(v.to_string())]),
-            Err(e) if e.contains("-32601") => CallToolResult::error(vec![ContentBlock::text(
-                json!({ "error": "trace_line needs a lab DLL with trace_line (AX-55)" })
-                    .to_string(),
-            )]),
-            Err(e) => {
-                CallToolResult::error(vec![ContentBlock::text(json!({ "error": e }).to_string())])
-            }
+            Err(e) => CallToolResult::error(vec![ContentBlock::text(trace_failure(&e))]),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::Value;
+
+    use super::*;
+
+    #[test]
+    fn flags_default_and_allowed_values_pass() {
+        assert_eq!(trace_flags(None), Ok(0x2086));
+        assert_eq!(trace_flags(Some(0x20bf)), Ok(0x20bf));
+    }
+
+    #[test]
+    fn other_flags_are_refused_before_the_bridge() {
+        for v in [0, 0x20be, 0x3fff, 0x2087] {
+            assert_eq!(
+                trace_flags(Some(v)),
+                Err("trace_line: flags must be 0x2086 or 0x20bf"),
+                "flags {v:#x}"
+            );
+        }
+    }
+
+    #[test]
+    fn old_dll_gets_the_upgrade_hint() {
+        let body: Value = serde_json::from_str(&trace_failure(
+            "bridge: bridge error -32601: method not found",
+        ))
+        .unwrap();
+        assert_eq!(
+            body,
+            json!({ "error": "trace_line needs a lab DLL with trace_line (AX-55)" })
+        );
+    }
+
+    #[test]
+    fn other_failures_keep_their_text() {
+        let body: Value = serde_json::from_str(&trace_failure("boom")).unwrap();
+        assert_eq!(body, json!({ "error": "boom" }));
     }
 }
