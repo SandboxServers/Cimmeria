@@ -66,6 +66,9 @@ pub struct UatRunArgs {
     /// it.
     #[serde(default)]
     pub fingerprint: bool,
+    /// Resume an appended run (`run_dir`) at "<section>/<row>", or "auto" for the first row with no manifest entry.
+    #[serde(default)]
+    pub resume_from: Option<String>,
     /// Check specs and tool availability only; drive nothing (no lease).
     #[serde(default)]
     pub plan_only: bool,
@@ -455,6 +458,7 @@ impl LabServer {
             fingerprint: a.fingerprint,
             end_session: a.end_session && !a.plan_only,
             chaos,
+            resume_from: a.resume_from,
         };
         let inv = RouterInvoker::new(self, ctx.clone(), run_lease.as_ref());
         // The second player is set up only when a row needs it.
