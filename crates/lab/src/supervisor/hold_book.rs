@@ -3,7 +3,7 @@
 //! bridge. The DLL ends a hold when its lease runs out, so the book's job is
 //! to ask for a renewal before that happens.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Lease asked of the DLL for every hold (D-AX8: its maximum). Renewed at
 /// half of it, so one lost renewal still leaves a full half-lease of slack.
@@ -26,11 +26,14 @@ pub struct HoldBook {
     /// An old DLL answered `input_hold` with "method not found": post
     /// window messages directly from then on.
     fallback: bool,
+    /// Posted mouse buttons not yet released (AX-27).
+    buttons: BTreeSet<usize>,
 }
 
 impl Default for HoldBook {
     fn default() -> Self {
         Self {
+            buttons: BTreeSet::new(),
             held: BTreeMap::new(),
             lease_ms: LEASE_MS,
             fallback: false,
@@ -98,7 +101,22 @@ impl HoldBook {
         self.held.is_empty()
     }
 
+    /// A mouse button this daemon posted down (AX-27).
+    pub fn button_down(&mut self, b: usize) {
+        self.buttons.insert(b);
+    }
+
+    pub fn button_up(&mut self, b: usize) {
+        self.buttons.remove(&b);
+    }
+
+    /// Every button still down, forgotten as they are returned.
+    pub fn take_buttons(&mut self) -> Vec<usize> {
+        std::mem::take(&mut self.buttons).into_iter().collect()
+    }
+
     /// Forget every hold (the caller released them, or the DLL lease will).
+    /// Buttons are left alone: they are not DLL holds, `take_buttons` owns them.
     pub fn clear(&mut self) {
         self.held.clear();
     }
@@ -158,6 +176,17 @@ mod tests {
         assert!(!b.released(1));
         b.clear();
         assert!(b.is_empty());
+    }
+
+    #[test]
+    fn buttons_are_tracked_until_up() {
+        let mut b = HoldBook::default();
+        b.button_down(0);
+        b.button_down(1);
+        b.button_up(0);
+        b.clear();
+        assert_eq!(b.take_buttons(), vec![1]);
+        assert!(b.take_buttons().is_empty());
     }
 
     #[test]

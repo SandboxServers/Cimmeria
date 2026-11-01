@@ -274,6 +274,27 @@ impl LeaseBook {
         st.current.as_ref().is_some_and(|l| l.lease_id == id)
     }
 
+    /// The id of the current, unexpired lease (AX-27: the input guard's view).
+    pub fn current_id(&self) -> Option<String> {
+        self.current_id_at(now_ms())
+    }
+
+    pub fn current_id_at(&self, now: i64) -> Option<String> {
+        let mut st = self.lock();
+        st.expire_if_due(now);
+        st.current.as_ref().map(|l| l.lease_id.clone())
+    }
+
+    /// How the lease `id` ended, while the history still remembers it.
+    pub fn ended_how(&self, id: &str) -> Option<&'static str> {
+        self.lock()
+            .history
+            .iter()
+            .rev()
+            .find(|e| e.lease_id == id)
+            .map(|e| e.how)
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         // A panic while holding the lock leaves plain data; keep going.
         self.inner.lock().unwrap_or_else(|p| p.into_inner())

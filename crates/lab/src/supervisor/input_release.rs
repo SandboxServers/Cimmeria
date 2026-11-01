@@ -47,7 +47,17 @@ impl Supervisor {
     pub(crate) async fn release_all_input(&self, reason: &str) -> Result<Value, String> {
         self.holds.lock().await.clear();
         let result = self.bridge_call("input_release", json!({})).await;
-        // AX-27: button-ups
+        // Posted buttons are window messages, not DLL holds: undo them here.
+        let buttons = self.holds.lock().await.take_buttons();
+        if !buttons.is_empty() {
+            let at = self.cursor().await.unwrap_or((0, 0));
+            for b in buttons {
+                if let Err(e) = self.post_button(b, "up", at, None).await {
+                    tracing::warn!(target: "lab.input", reason, button = b, error = %e,
+                        "lab.input.button_release_failed");
+                }
+            }
+        }
         match &result {
             Ok(_) => tracing::info!(target: "lab.input", reason, "lab.input.released"),
             Err(e) => {
@@ -58,13 +68,36 @@ impl Supervisor {
     }
 }
 
-/// Keep held keys alive while the daemon lives. AX-27 adds the lease watch.
+/// Whether the lease the guard last saw is over: gone, or replaced by another.
+/// `None` to `Some` is a first acquire, not an end.
+pub fn lease_ended(seen: Option<&str>, now: Option<&str>) -> bool {
+    seen.is_some() && seen != now
+}
+
+/// Keep held keys alive while the daemon lives, and let go of every key and
+/// button when the lease they were pressed under ends (release, expiry,
+/// takeover). Expiry does not notify, so the 1 s tick is what sees it.
 pub fn spawn_input_guards(sup: Arc<Supervisor>) {
     tokio::spawn(
         async move {
+            let mut seen = sup.leases().current_id();
+            let mut changes = sup.leases().subscribe();
             loop {
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                tokio::select! {
+                    _ = changes.changed() => {}
+                    _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+                }
                 sup.renew_holds().await;
+                let now = sup.leases().current_id();
+                if lease_ended(seen.as_deref(), now.as_deref()) {
+                    let how = seen
+                        .as_deref()
+                        .and_then(|old| sup.leases().ended_how(old))
+                        .unwrap_or("?");
+                    let _ = sup.release_all_input("lease_end").await;
+                    tracing::info!(target: "lab.input", how, "lab.input.released_on_lease_end");
+                }
+                seen = now;
             }
         }
         .in_current_span(),
