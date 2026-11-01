@@ -371,7 +371,7 @@ Recovered in session 4b-world-entry (2026-05-13). Full findings in
 | `0x00de8430` | `FUN_00de8430` | PostLoad body: assigns UE3 PlayerController to mPlayerController, sets input mode, copies transform |
 | `0x00de9e60` | `LAB_00de9e60` | alternate PostLoad handler (account-disconnect code path only) |
 | `0x00df4270` | `FUN_00df4270` | main GameProxyPlayer callback registration fn (35 event subscriptions) |
-| `0x005541a0` | `FUN_005541a0` | Event_World_Loaded emitter; fires after all sub-levels ready and entities settled |
+| `0x005541a0` | `FUN_005541a0` | Event_World_Loaded emitter; fires after all streaming levels are ready and no level has +0x164 set, and only while DAT_01ee2b6c is 0 |
 | `0x007100d0` | `FUN_007100d0` | Event_World_Loaded trigger thunk; reads DAT_01ee2684; no static callers |
 | `0x00d43dc0` | `SGWNetworkManager_EventHandler_ClientReady_invoke` | ClientReady wire-send; calls RouteOutgoingEntityRpc |
 | `0x00d57030` | `FUN_00d57030` | SGWNetworkManager::EventHandler<ClientReady> ctor |

@@ -36,10 +36,10 @@ metadata:
 ### Q3: Event_World_Loaded emitter
 
 **Emitter: `FUN_005541a0` (0x005541a0)**.
-- Called from `FUN_007100d0` (0x007100d0) — reads global WorldInfo* from `DAT_01ee2684`.
+- Called from `FUN_007100d0` (0x007100d0) — reads `GWorld` (a `UWorld*`, not a WorldInfo*) from `DAT_01ee2684`.
 - `FUN_007100d0` has NO static callers — invoked via UE3 streaming completion callback table.
-- Fires after: (a) no sub-level has pending-stream bit set, (b) all entities at level have `+0x164==0`.
-- Guard: `DAT_01ee2b6c` — prevents double-emit.
+- Fires after: (a) no sub-level has pending-stream bit set, (b) all levels in `GWorld+0x44` (count `+0x48`) have `+0x164==0`.
+- Flag: `DAT_01ee2b6c` is 1 while a map load is in progress; the emitter returns 0 while it is set (not a double-emit guard).
 - Distinct from `Event_Level_PostLoad` which fires per-level from `EntityManager_PostLoadMap` (0x00dd0b00).
 
 ### Q4: SGWNetworkManager ClientReady handler wire-send

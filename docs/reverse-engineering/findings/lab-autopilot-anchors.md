@@ -88,12 +88,12 @@ AX-01 read the engine's own actor iterator, which is the code evidence the `acto
 **`actor_count` verdict: confirmed.** `[[GWorld+0x50]+0x40]` is the actor count of the persistent level, on code evidence (the iterator above) plus live use. Two limits for C6 `actors` and C12 `actor_growth`:
 
 1. It counts the **persistent level only**. Actors in streamed sub-levels sit in `GWorld->Levels[1..]` (`+0x44/+0x48`) and are not in it. If a zone streams its content, sum the `+0x40` of every level in `Levels`.
-2. It counts **slots, including null ones**. Whether a destroyed actor leaves a null slot until a later compaction (the later-UE3 behaviour) is not read in this build; for a growth detector that only makes the count lag a destroy, never miss a spawn.
+2. It counts **slots, including null ones**. Whether a destroyed actor leaves a null slot until a later compaction (the later-UE3 behaviour) is not read in this build; a spawn that reuses a freed null slot would leave the count unchanged, and this build's spawn path was not read, so a growth detector (C12 actor_growth) must treat the count as a lower bound and use a rise over a baseline, not exact equality.
 
 ## Clock
 
 - **Owner: the `ServerConnection`.** The `tickSync` handler `0x00dd6d00` (Ghidra has no function there; AX-01 created one read-only) is `__thiscall(ServerConnection*, {u32 gameTime, u32 tickRate}*)`: it copies `+0x33c` to `+0x334`, stores `gameTime` at `+0x32c`, stores the time pointer `+0x174` at `+0x34c`, reads `*(+0x174)` into `+0x33c` and stores `tickRate * 0.001` at `+0x344` (AX-01; agrees with [system-protocol-wire-formats.md](system-protocol-wire-formats.md) and `docs/analysis/crafting/worknotes/cr-02.md`).
-- **A global the DLL can read**: the singleton pointer **`0x01EF2264`**, created on first use by `0x00c6f870` (`scalable_malloc(0x3c)`, then constructor `0x00c6f690`) and also read and written by `0x00c6f840` (AX-01 xrefs). The constructor stores the `ServerConnection` at singleton `+0x28` ([system-protocol-wire-formats.md](system-protocol-wire-formats.md)). So the clock fields are at `[[0x01EF2264]+0x28] + 0x32c`.
+- **A global the DLL can read**: the singleton pointer **`0x01EF2264`**, created on first use by `0x00c6f870` (`scalable_malloc(0x3c)`, then constructor `0x00c6f690`) and also read and written by `0x00c6f840` (AX-01 xrefs). The constructor stores the `ServerConnection` at singleton `+0x28` ([system-protocol-wire-formats.md](system-protocol-wire-formats.md)). So the clock fields are at `[[0x01EF2264]+0x28] + 0x32c`. The pointer is null before first use and after `0x00c6f840` (it frees the singleton and stores 0), so a reader must null-check both hops.
 - **The clock value** is `FUN_00dd6c60(ServerConnection)` = `((u32)+0x32c + (*(+0x34c) - +0x334) / +0x344) / hertz`, with `hertz` the float global `0x01e51cb8` set by `updateFrequencyNotification` (AX-01 decompile). C4's `game_t` already uses `hooks/ability_trace/clock.rs`; this record only names the owner.
 - **`WorldInfo.TimeSeconds`: not found.** There is no `TimeSeconds` string in the exe (the name lives in the script packages), and `AActor_execSetTimer` `0x00527dc0` does not read it. The runtime route is the S2.6 property walk on WorldInfo's class with the FName for `TimeSeconds`.
 
@@ -120,7 +120,7 @@ AX-01 read the engine's own actor iterator, which is the code evidence the `acto
 | Mouse gain | 20.0, so 521.5 counts per radian | live | L5, S5.2 | DI-only mouse-look (AX-02) |
 | AddYaw / AddPitch | `0x00e7e600` / `0x00e7e590` | live (AddYaw), static (AddPitch) | L5, S3.3 | none |
 | PlayerController | found by vtable `0x019E2B2C` in the level `Actors` array | live | `memory.rs`, cegui-mouse-input-feed §10.2 | none |
-| State field | `GameBeing +0x158`, bit 0 Dead | live on an NPC, static for the player | S4.2, L6 | player death (AX-02 step 5) |
+| State field | `GameBeing +0x158`, bit 0 Dead | live on an NPC (player death untested); static (S4.2) for the field and bit | S4.2, L6 | player death (AX-02 step 5) |
 | ProcessEvent | `0x004e06a0`, slot 58 | static | S2.1 | a by-name call not yet made |
 | FindFunctionChecked | `0x0049ffb0`, thiscall `(obj, Index, Number, int)`, `ret 0xc` | live | live pass | none |
 | `UFunction` fields | Children `+0x4c`, FunctionFlags `+0x8c`, ParmsSize `+0x9e`, `Func` `+0xa8` | live (flags, ParmsSize), static (rest) | S2.2, live pass | none |
