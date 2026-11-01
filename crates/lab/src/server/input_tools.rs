@@ -84,6 +84,8 @@ pub struct CursorMoveArgs {
 pub struct TypeTextArgs {
     /// Text to type into the focused edit box.
     pub text: String,
+    /// Edit box to click first and read back; the result is judged only with it.
+    pub into: Option<String>,
 }
 
 /// Args for `client_input_focus`.
@@ -166,7 +168,7 @@ impl LabServer {
         &self,
         Parameters(a): Parameters<TypeTextArgs>,
     ) -> Result<CallToolResult, McpError> {
-        self.wrap(self.supervisor.type_text(&a.text).await)
+        self.wrap(self.supervisor.type_into(a.into.as_deref(), &a.text).await)
     }
 
     #[tool(

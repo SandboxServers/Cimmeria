@@ -18,6 +18,7 @@
 pub mod batch;
 pub mod ensure;
 pub mod sequence;
+pub mod sequence_proof;
 
 use std::time::{Duration, Instant};
 
