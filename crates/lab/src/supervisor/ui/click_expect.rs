@@ -6,6 +6,7 @@
 //! result is inconclusive with `posted_only`.
 
 use std::time::Duration;
+use std::time::Instant;
 
 use serde_json::json;
 
@@ -115,7 +116,7 @@ impl Supervisor {
                 .with_before(json!(before))
                 .with_why(Why::AlreadyTrue);
         }
-        match self.wait_window(window, gone, timeout).await {
+        match self.poll_window(window, gone, timeout).await {
             Ok(ms) => Check::new(name, Source::Client, Some(true), true)
                 .with_before(json!(before))
                 .with_after(json!({ "visible": !gone, "ms": ms })),
@@ -123,6 +124,29 @@ impl Supervisor {
                 .with_before(json!(before))
                 .with_after(json!({ "visible": gone, "error": e }))
                 .with_why(Why::NoEffect),
+        }
+    }
+
+    /// Poll until `window` is visible (or, with `gone`, not visible), reading
+    /// through `visible_chunk` so names that are not Lua globals work. A failed
+    /// read counts as "not yet".
+    async fn poll_window(
+        &self,
+        window: &str,
+        gone: bool,
+        timeout: Duration,
+    ) -> Result<u64, String> {
+        let t0 = Instant::now();
+        loop {
+            if self.read_visible(Some(window)).await == Some(!gone) {
+                return Ok(t0.elapsed().as_millis() as u64);
+            }
+            let ms = t0.elapsed().as_millis() as u64;
+            if t0.elapsed() >= timeout {
+                let state = if gone { "still visible" } else { "not visible" };
+                return Err(format!("{window} {state} after {ms} ms"));
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
         }
     }
 }

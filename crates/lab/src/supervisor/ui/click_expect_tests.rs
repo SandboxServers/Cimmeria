@@ -8,29 +8,20 @@ use super::{click_evidence, ClickExpect, ExpectBefore};
 use crate::proof::{EvVerdict, Why};
 use crate::supervisor::events::fake_bridge::{self, lua_ok, Responder};
 
-/// A fake client whose visibility reads answer `done` from `visible_now`
-/// and whose waits (poll chunks) answer `met` from `polls`. Returns the
-/// count of `lua_eval` calls.
+/// A fake client whose every `lua_eval` (a visibility read or a poll)
+/// answers `done` from `polls`, given the running 0-based count of calls.
+/// Returns the count of `lua_eval` calls.
 async fn fake(
-    visible_now: bool,
     polls: impl Fn(usize) -> bool + Send + Sync + 'static,
 ) -> (crate::supervisor::Supervisor, Arc<AtomicUsize>) {
     let calls = Arc::new(AtomicUsize::new(0));
     let seen = calls.clone();
-    let poll_count = Arc::new(AtomicUsize::new(0));
-    let responder: Responder = Arc::new(move |method, params: &Value| {
+    let responder: Responder = Arc::new(move |method, _: &Value| {
         if method != "lua_eval" {
             return Err(format!("unexpected call: {method}"));
         }
-        seen.fetch_add(1, Ordering::SeqCst);
-        let chunk = params["chunk"].as_str().unwrap_or_default();
-        if chunk.contains("done = ") {
-            let done = json!({ "done": visible_now });
-            return Ok(lua_ok(&[done.to_string()]));
-        }
-        let n = poll_count.fetch_add(1, Ordering::SeqCst);
-        let met = polls(n);
-        Ok(lua_ok(&[met.to_string(), String::new(), String::new()]))
+        let n = seen.fetch_add(1, Ordering::SeqCst);
+        Ok(lua_ok(&[json!({ "done": polls(n) }).to_string()]))
     });
     (fake_bridge::supervisor(responder).await, calls)
 }
@@ -67,7 +58,7 @@ fn timeout_is_clamped() {
 #[tokio::test]
 async fn expected_window_appearing_confirms() {
     // The first wait poll sees it hidden, the second sees it shown.
-    let (sup, _) = fake(false, |n| n >= 1).await;
+    let (sup, _) = fake(|n| n >= 1).await;
     let e = expect_visible(None);
     let before = ExpectBefore {
         visible: Some(false),
@@ -83,7 +74,7 @@ async fn expected_window_appearing_confirms() {
 
 #[tokio::test]
 async fn expected_window_never_appearing_denies() {
-    let (sup, _) = fake(false, |_| false).await;
+    let (sup, _) = fake(|_| false).await;
     let e = expect_visible(Some(300));
     let before = ExpectBefore {
         visible: Some(false),
@@ -98,7 +89,7 @@ async fn expected_window_never_appearing_denies() {
 
 #[tokio::test]
 async fn already_visible_is_already_true() {
-    let (sup, calls) = fake(true, |_| true).await;
+    let (sup, calls) = fake(|_| true).await;
     let e = expect_visible(None);
     // The before-read is the one lua_eval; the expectation adds none.
     let before = sup.expect_before(&e).await;
@@ -115,7 +106,7 @@ async fn already_visible_is_already_true() {
 async fn hidden_mirror() {
     let e = ClickExpect::from_args(None, Some("DialogWin".into()), None);
     // Before visible, then gone: the wait sees it hidden at once.
-    let (sup, _) = fake(true, |_| true).await;
+    let (sup, _) = fake(|_| false).await;
     let before = ExpectBefore {
         visible: None,
         hidden: Some(true),
@@ -127,7 +118,7 @@ async fn hidden_mirror() {
         EvVerdict::Confirmed
     );
     // Already hidden before the click: already_true, no wait.
-    let (sup, calls) = fake(false, |_| true).await;
+    let (sup, calls) = fake(|_| true).await;
     let before = ExpectBefore {
         visible: None,
         hidden: Some(false),
@@ -139,4 +130,26 @@ async fn hidden_mirror() {
         click_evidence(Some("Btn"), "Btn", None, checks).verdict,
         EvVerdict::Inconclusive
     );
+}
+
+#[tokio::test]
+async fn expected_window_is_read_through_get_window() {
+    // Only the `getWindow` branch of `visible_chunk` sees a name that is
+    // not a Lua global, such as a slash path.
+    let responder: Responder = Arc::new(|method, params: &Value| {
+        if method != "lua_eval" {
+            return Err(format!("unexpected call: {method}"));
+        }
+        let chunk = params["chunk"].as_str().unwrap_or_default();
+        let done = chunk.contains("getWindow");
+        Ok(lua_ok(&[json!({ "done": done }).to_string()]))
+    });
+    let sup = fake_bridge::supervisor(responder).await;
+    let e = ClickExpect::from_args(Some("VendorWin/BuyButton".into()), None, None);
+    let before = ExpectBefore {
+        visible: Some(false),
+        hidden: None,
+    };
+    let checks = sup.expect_after(&e, &before).await;
+    assert_eq!(checks[0].ok, Some(true));
 }
