@@ -25,17 +25,33 @@ pub fn read_text_chunk(name: &str) -> String {
     )
 }
 
+/// How many times `needle` occurs in `hay`; an empty needle occurs never.
+fn count_of(hay: &str, needle: &str) -> usize {
+    if needle.is_empty() {
+        0
+    } else {
+        hay.matches(needle).count()
+    }
+}
+
 /// Pure: the evidence of one typing step. With `into`, the edit box must
-/// hold the typed text afterwards; a failed read is `no_post_read`. Without
-/// `into` nothing is read back, so the result is `posted_only`.
-pub fn typed_evidence(into: Option<&str>, typed: &str, read_back: Option<&str>) -> Evidence {
+/// hold more copies of the typed text than `before` (the count before the
+/// keys were posted), so text already in the box cannot confirm a type that
+/// posted nothing; a failed read is `no_post_read`. Without `into` nothing is
+/// read back, so the result is `posted_only`.
+pub fn typed_evidence(
+    into: Option<&str>,
+    typed: &str,
+    before: usize,
+    read_back: Option<&str>,
+) -> Evidence {
     if into.is_none() {
         return Evidence::from_verdict(EvVerdict::Inconclusive, Why::PostedOnly, vec![]);
     }
     let check = Check::new(
         "text_entered",
         Source::Client,
-        read_back.map(|t| t.contains(typed)),
+        read_back.map(|t| count_of(t, typed) > before),
         true,
     )
     .with_after(json!(read_back));
@@ -61,11 +77,11 @@ impl Supervisor {
     /// Read edit box `name` until it holds `typed`, for about a second: the
     /// keys are posted, and the client applies them on its own frames.
     /// Returns the last read.
-    pub async fn read_until_typed(&self, name: &str, typed: &str) -> Option<String> {
+    pub async fn read_until_typed(&self, name: &str, typed: &str, before: usize) -> Option<String> {
         let mut last = None;
         for _ in 0..10 {
             last = self.read_edit_box(name).await;
-            if last.as_deref().is_some_and(|t| t.contains(typed)) {
+            if last.as_deref().is_some_and(|t| count_of(t, typed) > before) {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
@@ -87,15 +103,23 @@ impl Supervisor {
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
+        // Count what the box holds before typing, so old text cannot confirm.
+        let before = match into {
+            Some(w) => self
+                .read_edit_box(w)
+                .await
+                .map_or(0, |t| count_of(&t, text)),
+            None => 0,
+        };
         self.type_text(text).await?;
         let read_back = match into {
-            Some(w) => self.read_until_typed(w, text).await,
+            Some(w) => self.read_until_typed(w, text, before).await,
             None => None,
         };
         if let Some(t) = &read_back {
             out["read_back"] = json!(t);
         }
-        out["evidence"] = typed_evidence(into, text, read_back.as_deref()).to_value();
+        out["evidence"] = typed_evidence(into, text, before, read_back.as_deref()).to_value();
         Ok(out)
     }
 }

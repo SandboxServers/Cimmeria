@@ -13,6 +13,8 @@ pub const LEDGE_HALF_HEIGHT_UU: f64 = 78.0;
 pub const LEDGE_DROP_UU: f64 = 200.0;
 /// The probe runs at most this often while walking.
 pub const LEDGE_EVERY_MS: u64 = 500;
+/// Lift the trace start so it begins in open air even when the pose z is at the floor.
+pub const LEDGE_LIFT_UU: f64 = 100.0;
 /// Level geometry only; pawns are not hit.
 const LEDGE_FLAGS: u32 = 0x2086;
 
@@ -21,12 +23,12 @@ fn floor_z(z: f64) -> f64 {
     z - LEDGE_HALF_HEIGHT_UU - LEDGE_DROP_UU
 }
 
-/// The probe: a line from the pawn's height down, `LEDGE_AHEAD_UU` ahead along its yaw.
+/// The probe: a line from above the pawn, `LEDGE_AHEAD_UU` ahead along its yaw.
 pub fn probe(pose: Pose) -> (Vec3, Vec3) {
     let x = pose.pos.x + LEDGE_AHEAD_UU * pose.yaw.cos();
     let y = pose.pos.y + LEDGE_AHEAD_UU * pose.yaw.sin();
     (
-        Vec3::new(x, y, pose.pos.z),
+        Vec3::new(x, y, pose.pos.z + LEDGE_LIFT_UU),
         Vec3::new(x, y, floor_z(pose.pos.z)),
     )
 }
@@ -34,7 +36,7 @@ pub fn probe(pose: Pose) -> (Vec3, Vec3) {
 /// The same span straight down under the pawn (the self-check).
 pub fn under(pose: Pose) -> (Vec3, Vec3) {
     (
-        pose.pos,
+        Vec3::new(pose.pos.x, pose.pos.y, pose.pos.z + LEDGE_LIFT_UU),
         Vec3::new(pose.pos.x, pose.pos.y, floor_z(pose.pos.z)),
     )
 }

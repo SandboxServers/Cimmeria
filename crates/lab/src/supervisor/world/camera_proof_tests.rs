@@ -192,7 +192,31 @@ fn yaw_at_reads_the_loop_result() {
     };
     assert_eq!(run(abs(json!(25.2))).verdict, EvVerdict::Confirmed);
     assert_eq!(run(abs(json!(20.0))).verdict, EvVerdict::Denied);
-    assert_eq!(run(abs(Value::Null)).why, Why::NoPostRead);
+    assert_eq!(run(abs(Value::Null)).verdict, EvVerdict::Denied);
+}
+
+#[test]
+fn yaw_at_falls_back_to_the_controller_readout() {
+    let req = CameraRequest {
+        yaw_offset_deg: Some(25.0),
+        ..CameraRequest::default()
+    };
+    let run = |after: Value| {
+        Evidence::judge(checks(
+            &req,
+            &view(0.0, 0.0, 300.0),
+            &after,
+            &Value::Null,
+            Some(&json!({ "yaw": { "want": 25.0, "got": null, "open_loop": true } })),
+            Freshness::Fresh,
+            None,
+        ))
+    };
+    let moved = run(view(25.0, 0.0, 300.0));
+    assert_eq!(moved.verdict, EvVerdict::Confirmed, "{moved:?}");
+    assert_eq!(run(view(5.0, 0.0, 300.0)).verdict, EvVerdict::Denied);
+    let errored = run(json!({ "error": "x" }));
+    assert_eq!(errored.why, Why::NoPostRead, "{errored:?}");
 }
 
 #[tokio::test]

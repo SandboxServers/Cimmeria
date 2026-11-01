@@ -87,7 +87,6 @@ pub fn spawn_input_guards(sup: Arc<Supervisor>) {
                     _ = changes.changed() => {}
                     _ = tokio::time::sleep(Duration::from_secs(1)) => {}
                 }
-                sup.renew_holds().await;
                 let now = sup.leases().current_id();
                 if lease_ended(seen.as_deref(), now.as_deref()) {
                     let how = seen
@@ -97,6 +96,9 @@ pub fn spawn_input_guards(sup: Arc<Supervisor>) {
                     let _ = sup.release_all_input("lease_end").await;
                     tracing::info!(target: "lab.input", how, "lab.input.released_on_lease_end");
                 }
+                // Release before the renew round trip, so a new holder's key
+                // taken in that window is not cleared by the old lease's release.
+                sup.renew_holds().await;
                 seen = now;
             }
         }

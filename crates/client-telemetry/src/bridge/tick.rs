@@ -1,19 +1,19 @@
 //! Per-frame work for lab features: called once per Tick from
 //! `drain_main_thread`. Idle cost: two relaxed atomic loads (C13 item 3).
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::input::hold::{HOLDS_EXPIRED, HOLDS_RELEASED_ON_DISCONNECT};
 use super::input::post::post_all;
 use super::input::{hold_table, input_state};
 
-#[cfg(test)]
-use std::sync::atomic::AtomicU64;
-
 /// Set while any key hold is live (AX-21).
 pub(crate) static HOLDS_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// Set while a watch is running (AX-24).
 pub(crate) static WATCH_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// Counts daemon connections that ended; a queued request from an earlier
+/// connection is answered with an error instead of dispatched (AX-24).
+pub(crate) static CONN_GEN: AtomicU64 = AtomicU64::new(0);
 
 /// Counts calls into the four stubs; later packets keep the increment at
 /// the top of their bodies so tests can see work happen.
@@ -31,6 +31,7 @@ pub(crate) fn on_tick() {
 
 /// Called when the authenticated daemon connection ends.
 pub(crate) fn on_disconnect() {
+    CONN_GEN.fetch_add(1, Ordering::SeqCst);
     holds_disconnect();
     watch_disconnect();
 }

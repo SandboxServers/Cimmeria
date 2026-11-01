@@ -148,8 +148,17 @@ pub(super) fn checks(
     }
     if let Some(want) = req.yaw_offset_deg {
         // The yaw loop measures the camera actor's turn, so its own report is
-        // the reading; an open-loop run has none.
-        let got = absolute.and_then(|a| num(&a["yaw"], "got"));
+        // the reading. An open-loop run has none (and the actor pose may read
+        // as zeros), so fall back to the controller's yaw offset change.
+        let got = absolute.and_then(|a| num(&a["yaw"], "got")).or_else(|| {
+            match (
+                num(view_before, "yaw_offset_deg"),
+                num(view_after, "yaw_offset_deg"),
+            ) {
+                (Some(b), Some(a)) => Some(wrap_pi((a - b).to_radians()).to_degrees()),
+                _ => None,
+            }
+        });
         out.push(match got {
             Some(got) if !no_read => Check::new(
                 "yaw_at",

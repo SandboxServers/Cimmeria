@@ -7,7 +7,7 @@ use super::movement::{self, MoveRequest};
 use super::sim::Sim;
 use super::tool_tests::client_point;
 
-/// A pawn at `(x, 0)`, standing 100 UU above the floor.
+/// A pawn at `(x, 0)`, standing 100 UU above the floor; probes start 100 UU above its z.
 fn pose(x: f64, yaw: f64) -> Pose {
     Pose {
         pos: Vec3::new(x, 0.0, 100.0),
@@ -19,14 +19,14 @@ fn pose(x: f64, yaw: f64) -> Pose {
 #[test]
 fn probe_points_ahead_and_down() {
     let (start, end) = ledge::probe(pose(0.0, 0.0));
-    assert_eq!(start, Vec3::new(150.0, 0.0, 100.0));
+    assert_eq!(start, Vec3::new(150.0, 0.0, 200.0));
     assert_eq!(end, Vec3::new(150.0, 0.0, -178.0));
 }
 
 #[test]
 fn self_check_span_is_straight_down_under_the_pawn() {
     let (start, end) = ledge::under(pose(0.0, 0.0));
-    assert_eq!(start, Vec3::new(0.0, 0.0, 100.0));
+    assert_eq!(start, Vec3::new(0.0, 0.0, 200.0));
     assert_eq!(end, Vec3::new(0.0, 0.0, -178.0));
 }
 
@@ -173,7 +173,7 @@ async fn the_guard_probes_at_most_twice_a_second_during_a_walk() {
 #[test]
 fn probe_follows_the_yaw() {
     let (s, e) = ledge::probe(pose(0.0, std::f64::consts::FRAC_PI_2));
-    assert!(s.x.abs() < 1e-9 && (s.y - 150.0).abs() < 1e-9 && s.z == 100.0);
+    assert!(s.x.abs() < 1e-9 && (s.y - 150.0).abs() < 1e-9 && s.z == 200.0);
     assert!(e.x.abs() < 1e-9 && (e.y - 150.0).abs() < 1e-9 && e.z == -178.0);
 }
 

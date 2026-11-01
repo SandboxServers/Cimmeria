@@ -86,7 +86,7 @@ fn a_typed_box_is_checked_as_typed() {
         into: Some("ChatEdit".into()),
     };
     let result =
-        json!({ "evidence": typed_evidence(Some("ChatEdit"), "hi", Some("hi")).to_value() });
+        json!({ "evidence": typed_evidence(Some("ChatEdit"), "hi", 0, Some("hi")).to_value() });
     let ev = judge(&[(typed, Ok(result))]);
     assert_eq!(ev.verdict, EvVerdict::Confirmed);
     assert!(ev.checks.iter().any(|c| c.name == "typed_0" && c.required));

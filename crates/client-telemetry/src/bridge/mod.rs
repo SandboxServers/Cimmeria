@@ -92,6 +92,8 @@ const RESPONSE_TIMEOUT: Duration = Duration::from_secs(5);
 struct PendingRequest {
     request: RpcRequest,
     respond: Sender<RpcResponse>,
+    /// `tick::CONN_GEN` when the request was queued.
+    gen: u64,
 }
 
 /// Handle to a running bridge. Holds the consumer end of the dispatch
@@ -121,6 +123,16 @@ impl BridgeHandle {
     /// Lua VM and process memory.
     pub fn drain(&self) {
         while let Ok(pending) = self.req_rx.try_recv() {
+            // Queued before the connection that sent it ended (the IO thread
+            // timed out waiting): its daemon is gone, so do not dispatch it.
+            if pending.gen != tick::CONN_GEN.load(Ordering::SeqCst) {
+                let _ = pending.respond.send(RpcResponse::error(
+                    pending.request.id.clone(),
+                    dispatch::INTERNAL_ERROR,
+                    "connection closed before dispatch",
+                ));
+                continue;
+            }
             // Flag the command as executing so the crash filter can tell
             // the supervisor a command was in flight when a fault hit
             // (ADR §6 quarantine). Cleared unconditionally after the
@@ -306,6 +318,7 @@ fn enqueue(
     match req_tx.try_send(PendingRequest {
         request,
         respond: resp_tx,
+        gen: tick::CONN_GEN.load(Ordering::SeqCst),
     }) {
         Ok(()) => Ok(resp_rx),
         Err(TrySendError::Full(p)) => Err(RpcResponse::error(
@@ -332,6 +345,30 @@ mod tests {
             method: "module_info".to_string(),
             params: Value::Null,
         }
+    }
+
+    /// A request queued before the connection ended is answered with an error
+    /// and never dispatched, so its watch does not start with no daemon.
+    #[test]
+    fn a_request_from_an_ended_connection_is_not_dispatched() {
+        let _g = crate::bridge::meta::tests::SERIAL
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        tick::WATCH_ACTIVE.store(false, Ordering::SeqCst);
+        let (req_tx, req_rx) = bounded::<PendingRequest>(QUEUE_CAPACITY);
+        let mut req = a_request(7);
+        req.method = "watch_start".to_string();
+        let resp_rx = enqueue(&req_tx, req).unwrap();
+        tick::on_disconnect();
+        let handle = BridgeHandle {
+            req_rx,
+            local_addr: "127.0.0.1:0".parse().unwrap(),
+            epoch: "e".into(),
+        };
+        handle.drain();
+        let resp = resp_rx.try_recv().unwrap();
+        assert_eq!(resp.error.unwrap().code, dispatch::INTERNAL_ERROR);
+        assert!(!tick::WATCH_ACTIVE.load(Ordering::SeqCst));
     }
 
     fn a_session(lab: Option<LabConfig>) -> DllSession {

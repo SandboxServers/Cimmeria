@@ -29,14 +29,24 @@ async fn edit_box(text: Option<&'static str>) -> Supervisor {
 async fn type_into_reads_back() {
     let sup = edit_box(Some("hello")).await;
     let read = sup.read_edit_box("ChatEdit").await;
-    let ev = typed_evidence(Some("ChatEdit"), "hello", read.as_deref());
+    let ev = typed_evidence(Some("ChatEdit"), "hello", 0, read.as_deref());
     assert_eq!(ev.verdict, EvVerdict::Confirmed);
 
     let sup = edit_box(Some("")).await;
     let read = sup.read_edit_box("ChatEdit").await;
-    let ev = typed_evidence(Some("ChatEdit"), "hello", read.as_deref());
+    let ev = typed_evidence(Some("ChatEdit"), "hello", 0, read.as_deref());
     assert_eq!(ev.verdict, EvVerdict::Denied);
     assert_eq!(ev.why, Why::NoEffect);
+}
+
+/// Text already in the box does not confirm a type that posted nothing: the
+/// box must hold more copies than it held before the keys.
+#[test]
+fn old_text_does_not_confirm_a_type() {
+    let ev = typed_evidence(Some("ChatEdit"), "hi", 1, Some("hi"));
+    assert_eq!(ev.verdict, EvVerdict::Denied);
+    let ev = typed_evidence(Some("ChatEdit"), "hi", 1, Some("hihi"));
+    assert_eq!(ev.verdict, EvVerdict::Confirmed);
 }
 
 /// A box that cannot be read gives no read-back, so nothing is judged.
@@ -44,20 +54,20 @@ async fn type_into_reads_back() {
 async fn a_missing_box_reads_as_no_text() {
     let sup = edit_box(None).await;
     assert_eq!(sup.read_edit_box("ChatEdit").await, None);
-    let ev = typed_evidence(Some("ChatEdit"), "x", None);
+    let ev = typed_evidence(Some("ChatEdit"), "x", 0, None);
     assert_eq!(ev.verdict, EvVerdict::Inconclusive);
 }
 
 #[test]
 fn type_without_into_is_posted_only() {
-    let ev = typed_evidence(None, "x", None);
+    let ev = typed_evidence(None, "x", 0, None);
     assert_eq!(ev.verdict, EvVerdict::Inconclusive);
     assert_eq!(ev.why, Why::PostedOnly);
 }
 
 #[test]
 fn read_back_failure_is_no_post_read() {
-    let ev = typed_evidence(Some("ChatEdit"), "x", None);
+    let ev = typed_evidence(Some("ChatEdit"), "x", 0, None);
     assert_eq!(ev.verdict, EvVerdict::Inconclusive);
     assert_eq!(ev.why, Why::NoPostRead);
 }
@@ -89,7 +99,7 @@ async fn read_until_typed_waits_for_the_keys() {
     });
     let sup = fake_bridge::supervisor(responder).await;
     assert_eq!(
-        sup.read_until_typed("ChatEdit", "hello").await,
+        sup.read_until_typed("ChatEdit", "hello", 0).await,
         Some("hello".to_string())
     );
     assert_eq!(calls.load(Ordering::SeqCst), 2);
