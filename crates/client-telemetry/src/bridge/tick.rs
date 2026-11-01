@@ -40,8 +40,10 @@ fn holds_tick() {
     TICK_WORK.fetch_add(1, Ordering::SeqCst);
     // try_lock: never block the game thread. The IO thread holds the table
     // only for a disconnect release, so a miss just waits one frame.
-    let Ok(mut t) = hold_table().try_lock() else {
-        return;
+    let mut t = match hold_table().try_lock() {
+        Ok(g) => g,
+        Err(std::sync::TryLockError::Poisoned(e)) => e.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => return,
     };
     let posts = t.expire(crate::bridge::meta::mono_ms());
     if !posts.is_empty() {

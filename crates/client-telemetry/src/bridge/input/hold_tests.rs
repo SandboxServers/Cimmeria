@@ -197,6 +197,32 @@ fn tick_expires_holds_and_clears_active() {
     assert!(!HOLDS_ACTIVE.load(Ordering::SeqCst));
 }
 
+/// A panic while the table is locked poisons it. The Tick must still expire
+/// holds instead of skipping every frame.
+#[test]
+fn tick_expires_holds_through_poisoned_table() {
+    let _g = serial();
+    crate::bridge::meta::mark_start();
+    let poisoner = std::thread::spawn(|| {
+        let mut t = hold_table().lock().unwrap();
+        t.press(&hp(9, true, Some(200)), 0).unwrap();
+        panic!("poison the hold table");
+    });
+    assert!(poisoner.join().is_err());
+    assert!(hold_table().is_poisoned());
+    HOLDS_ACTIVE.store(true, Ordering::SeqCst);
+    let before = HOLDS_EXPIRED.load(Ordering::SeqCst);
+    std::thread::sleep(std::time::Duration::from_millis(260));
+    tick::on_tick();
+    assert_eq!(HOLDS_EXPIRED.load(Ordering::SeqCst), before + 1);
+    assert!(hold_table()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .is_empty());
+    assert!(!HOLDS_ACTIVE.load(Ordering::SeqCst));
+    hold_table().clear_poison();
+}
+
 /// Disconnect (IO thread) racing Tick (main thread) must not deadlock or
 /// leave the active flag set over an empty table.
 #[test]
@@ -207,6 +233,21 @@ fn disconnect_races_tick_without_stuck_flag() {
             tick::on_tick();
         }
     });
+    // Checker: while the table lock is held, a non-empty table must have the
+    // flag set. The lock discipline makes that hold at every point.
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let s2 = stop.clone();
+    let chk = std::thread::spawn(move || {
+        while !s2.load(Ordering::SeqCst) {
+            let t = hold_table().lock().unwrap_or_else(|e| e.into_inner());
+            assert!(
+                t.is_empty() || HOLDS_ACTIVE.load(Ordering::SeqCst),
+                "held keys with HOLDS_ACTIVE false"
+            );
+            drop(t);
+            std::thread::yield_now();
+        }
+    });
     for _ in 0..200 {
         dispatch_hold(
             json!(1),
@@ -214,6 +255,8 @@ fn disconnect_races_tick_without_stuck_flag() {
         );
         tick::on_disconnect();
     }
+    stop.store(true, Ordering::SeqCst);
+    chk.join().unwrap();
     t.join().unwrap();
     assert!(hold_table().lock().unwrap().is_empty());
     assert!(!HOLDS_ACTIVE.load(Ordering::SeqCst));
