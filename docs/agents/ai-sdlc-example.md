@@ -47,15 +47,15 @@ The coder is a Haiku `packet-coder` (ledger D-AH2) in its own worktree. See [Age
 
 ## 3. The return line
 
-A packet-coder writes its full report to a file in its worktree and returns one line: `<packet> <done|blocked|failed> <commit-sha|-> <report-path>` ([Reports and one-line returns](ai-sdlc.md#reports-and-one-line-returns)). For AH-11m that is a line of this shape:
+A packet-coder writes no report and returns one line: `<packet> <done|blocked|failed> <commit-sha|-> -`, with optional `reason=`, `at=` and `not_run=` suffixes ([Reports and one-line returns](ai-sdlc.md#reports-and-one-line-returns)). AH-11m ran before that contract, so the real line carried a report path. Under it, the line has this shape:
 
 ```text
-AH-11m done f87b140144dfcf3618b6826ef9193175f2f1179f <report-path>
+AH-11m done f87b140144dfcf3618b6826ef9193175f2f1179f -
 ```
 
-The SHA is real: it is the PR's only commit. The line the coder actually returned and its report path are **not recorded**, so the line above shows the shape, not a quotation.
+The SHA is real: it is the PR's only commit. The line the coder actually returned is **not recorded**, so the line above shows the shape, not a quotation.
 
-The orchestrator then sets the ledger row to Review. It opens the report only on `blocked` or `failed`.
+The orchestrator then sets the ledger row to Review. It routes a `blocked` or `failed` by its `reason=`.
 
 ## 4. The commit
 
@@ -99,7 +99,7 @@ PR #1842 merged at 20:27:12Z as `2b4017c030a0059a5e42d7fb7bee4ac51643ec66`, 18 m
 | Ship | `ship.ps1` | the PR, its body, the merge commit |
 | Close | orchestrator | the ledger row |
 
-Not shown, because AH-11m did not need it, or because nothing records it: a `blocked` return, a worknote after a context stop, a `fix` pass and an architect ruling. The mechanics for those are in [ai-sdlc.md](ai-sdlc.md).
+Not shown, because AH-11m did not need it, or because nothing records it: a `blocked` return, a continuation after a context stop, a `fix` pass and an architect ruling. The mechanics for those are in [ai-sdlc.md](ai-sdlc.md).
 
 ## Further reading
 
