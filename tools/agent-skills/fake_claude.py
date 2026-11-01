@@ -8,8 +8,12 @@ subagent leg writes a transcript holding `report_contract:` under
 LIVE_GUARD_PROJECTS_ROOT/<project folder>/session/subagents/, where the project folder is the
 CLAUDE_PROJECT_DIR path with every non-alphanumeric character turned into `-`.
 
+The two shell-and-edit legs first print a stream-json tool_use line (the Edit or the PowerShell call)
+and then the marker line.
+
 Environment knobs, set by the tests:
-  FAKE_CLAUDE_MODE=omit-marker     print no guard marker
+  FAKE_CLAUDE_MODE=omit-marker     keep the tool_use line, print no guard marker
+  FAKE_CLAUDE_MODE=no-attempt      print no Edit tool_use, and for hands-on a lane-wrapper call only
   FAKE_CLAUDE_MODE=change-readme   append `probe` to crates/README.md under the cwd
   FAKE_CLAUDE_ECHO_ENV=<file>      write the env keys it got, as a JSON list, to that file
 
@@ -33,6 +37,12 @@ def emit(text: str) -> None:
     print(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": text}]}}))
 
 
+def tool_use(name: str, tool_input: dict) -> None:
+    """Print one stream-json assistant line holding a tool_use block named `name`."""
+    block = {"type": "tool_use", "name": name, "input": tool_input}
+    print(json.dumps({"type": "assistant", "message": {"content": [block]}}))
+
+
 def write_transcript() -> None:
     """Write a fake subagent transcript that holds the report_contract marker."""
     root = Path(os.environ["LIVE_GUARD_PROJECTS_ROOT"])
@@ -53,6 +63,7 @@ def main(argv=None) -> int:
     parser.add_argument("--output-format", default=None)
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--version", action="store_true")
+    parser.add_argument("--disallowedTools", default=None)
     args, _unknown = parser.parse_known_args(argv)
 
     if args.version:
@@ -63,14 +74,21 @@ def main(argv=None) -> int:
         Path(echo).write_text(json.dumps(sorted(os.environ)), encoding="utf-8")
 
     mode = os.environ.get("FAKE_CLAUDE_MODE", "")
+    silent = mode in ("omit-marker", "no-attempt")
     if "crates/README.md" in args.prompt:
+        if mode != "no-attempt":
+            tool_use("Edit", {"file_path": "crates/README.md", "old_string": "", "new_string": "probe"})
         if mode == "change-readme":
             readme = Path.cwd() / "crates" / "README.md"
             with readme.open("a", encoding="utf-8", newline="\n") as handle:
                 handle.write("probe\n")
-        emit("" if mode == "omit-marker" else ORCH_TEXT)
+        emit("" if silent else ORCH_TEXT)
     elif "cargo check" in args.prompt:
-        emit("" if mode == "omit-marker" else CARGO_TEXT)
+        if mode == "no-attempt":
+            tool_use("PowerShell", {"command": "pwsh tools/build-lane/lane.ps1 cargo check -p x"})
+        else:
+            tool_use("PowerShell", {"command": "cargo check -p live-guard-probe-none"})
+        emit("" if silent else CARGO_TEXT)
     elif "packet-coder" in args.prompt:
         write_transcript()
         emit("done")

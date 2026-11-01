@@ -66,6 +66,15 @@ class DryRunTest(unittest.TestCase):
         self.assertIn("Compiling cargo commands go through the build lane", done.stdout)
         self.assertNotIn("status=", done.stdout)
 
+    def test_only_the_orchestrator_leg_disallows_agent_dispatch(self):
+        done = run_probe("--worktree", str(add_worktree(self)), "--claude", "claude")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        lines = done.stdout.splitlines()
+        orchestrator = next(line for line in lines if line.startswith("orchestrator-edit:"))
+        hands_on = next(line for line in lines if line.startswith("hands-on-cargo:"))
+        self.assertIn("--disallowedTools Agent", orchestrator)
+        self.assertNotIn("--disallowedTools", hands_on)
+
 
 class RefusalTest(unittest.TestCase):
     def test_refuses_a_main_checkout_with_git_folder(self):
@@ -127,6 +136,26 @@ class LiveTest(unittest.TestCase):
         result = report["legs"]["orchestrator-edit"]
         self.assertFalse(result["pass"])
         self.assertEqual(result["evidence"], "crates/README.md changed")
+
+    def test_orchestrator_leg_without_an_edit_attempt_says_so(self):
+        done, report = self.live("orchestrator-edit", FAKE_CLAUDE_MODE="no-attempt")
+        self.assertEqual(done.returncode, 0)
+        result = report["legs"]["orchestrator-edit"]
+        self.assertFalse(result["pass"])
+        self.assertEqual(result["evidence"], "no edit attempted")
+
+    def test_hands_on_leg_with_only_the_lane_wrapper_says_no_raw_cargo_attempt(self):
+        done, report = self.live("hands-on-cargo", FAKE_CLAUDE_MODE="no-attempt")
+        self.assertEqual(done.returncode, 0)
+        result = report["legs"]["hands-on-cargo"]
+        self.assertFalse(result["pass"])
+        self.assertEqual(result["evidence"], "no raw cargo attempted")
+
+    def test_a_tool_use_without_the_marker_is_reported_as_guard_silent(self):
+        done, report = self.live("orchestrator-edit,hands-on-cargo", FAKE_CLAUDE_MODE="omit-marker")
+        self.assertEqual(done.returncode, 0)
+        self.assertTrue(report["legs"]["orchestrator-edit"]["evidence"].endswith("guard silent"))
+        self.assertTrue(report["legs"]["hands-on-cargo"]["evidence"].endswith("guard silent"))
 
     def test_child_env_lacks_the_claude_code_session_keys(self):
         echo = Path(self.projects.name, "env-keys.json")
