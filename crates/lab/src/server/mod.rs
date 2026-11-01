@@ -32,6 +32,7 @@ mod client_state;
 mod combat;
 pub(crate) mod compact;
 mod composite;
+mod cooldown;
 mod evidence_gate;
 mod flows;
 mod golden;
