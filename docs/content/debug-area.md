@@ -1249,7 +1249,7 @@ Each vendor is a copy of the Munitions vendor template 1302 (see [Munitions vend
 | Armory 5 | 1615 | 14115 | 266.0, 7.09, -930.0 | Armory 5: Tri-Naq Alloy Ballistic Gloves to Boron-Carbide Ballistic Boots | 1315 (19) |
 | Armory 6 | 1616 | 14116 | 266.0, 7.15, -933.0 | Armory 6: Trinium Ballistic Boots to Neutronium Ablative Boots | 1316 (3) |
 
-Sources: `entity_templates_debug_area_armory.sql`, `spawnlist_debug_area_armory.sql` and `item_lists_debug_area_armory.sql`. Each buy row is quantity 1. 112 designs cost 1 naquadah, one costs 300 and one costs 1000. The sell list 1349 holds all 114 designs and pays 0 naquadah (the sell path accepts 0), so a sale removes the item from the bag.
+Sources: `entity_templates_debug_area_armory.sql`, `spawnlist_debug_area_armory.sql` and `item_lists_debug_area_armory.sql`. Each buy row is quantity 1. 112 designs cost 1 naquadah, one costs 300 and one costs 1000. The sell list 1349 holds 113 of the 114 designs (all but Fists, 2699) and pays 0 naquadah (the sell path accepts 0), so a sale removes the item from the bag.
 
 ### Using it
 
@@ -1258,11 +1258,11 @@ Sources: `entity_templates_debug_area_armory.sql`, `spawnlist_debug_area_armory.
 3. Buy: open a vendor and buy a design. Each row is one unit.
 4. Equip: from the bag, equip the weapon or armor piece.
 5. Fire: shoot the training dummies at z -872 (see [Training dummies](#training-dummies-templates-1310-1314)).
-6. Sell back: sell the design to any Armory vendor. It leaves the bag for 0 naquadah.
+6. Sell back: sell the design (any but Fists) to any Armory vendor. It leaves the bag for 0 naquadah.
 
 ### Not sold back
 
-None. DR-03b left no design off sell list 1349 (its commit body: "skipped from sell list: none"), so every stocked design sells back. If a later change leaves a design off the list, it stays in the bag until a `.removeitem` exists (D-DR5).
+Fists (design 2699, Armory 0) cannot be sold back: its `items.flags` lacks CanBeSold (1024), so the sell path refuses it as `not_sellable`. It was left off sell list 1349 (the generator prints `skipped from sell list: 2699 Fists, not sellable ...`) and stays in the bag until a `.removeitem` exists (D-DR5). Every other stocked design sells back.
 
 ### What it does not do
 

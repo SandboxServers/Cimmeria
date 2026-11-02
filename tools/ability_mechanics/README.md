@@ -179,4 +179,4 @@ python tools/ability_mechanics/debug_armory.py seed probes --out probes.txt
 python tools/ability_mechanics/debug_armory.py seed emit --heights heights.txt --probes probes.txt --out-dir out
 ```
 
-`test_debug_armory.py` pins the layout spacing, the 2.5 m refusal, the +2.0 x re-probe, exit 4 with no SQL file, the 1349 sell list and the 1348 buy-list stop, the quality drop, the pricing, the cheaper-elsewhere skip, the id blocks and the emitted SQL parsing back with `sql_rows`.
+`test_debug_armory.py` pins the layout spacing, the 2.5 m refusal, the +2.0 x re-probe, exit 4 with no SQL file, the 1349 sell list and the 1348 buy-list stop, the quality drop, the pricing, the cheaper-elsewhere skip, the not-sellable skip, the id blocks and the emitted SQL parsing back with `sql_rows`.

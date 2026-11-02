@@ -14,6 +14,8 @@
 //!   row carrying one, other than the four weapon-requirement audit FAILs;
 //! * an equipment slot (containers 4-14) and tier in `resources.items` with
 //!   no Armory row.
+//! * a sell-list row whose design the sell path refuses (items.flags without
+//!   1024, or with 4).
 //!
 //! Revert proofs (the seed edits stay local; reload after each):
 //! * `item_lists_debug_area_armory.sql`: row 131000 (list 1310, design 3128)
@@ -23,6 +25,9 @@
 //!   items 131032-131036), deleted; `live_db_armory_covers_tree_weapons` fails
 //!   naming 612. No covered ability has exactly one carrier (the minimum is 5),
 //!   so the proof removes all of them.
+//! * a third row, `INSERT INTO item_list_items (item_id, item_list_id, design_id,
+//!   quantity, naquadah) VALUES (131300, 1349, 2699, 1, 0);`, added to the seed and
+//!   reloaded: `live_db_armory_sell_list_is_sellable` fails naming (1349, 2699).
 mod live_db {
     use crate::test_support::require_db_or_skip;
 
@@ -234,6 +239,42 @@ mod live_db {
         assert!(
             uncovered.is_empty(),
             "equipment (slot, tier) with no Armory row: {uncovered:?}"
+        );
+    }
+
+    /// Every Armory sell-list row names a design the sell path accepts:
+    /// `items.flags` has CanBeSold (1024) and not BindOnAcquire (4), the two
+    /// bits `vendor/sell/mod.rs` joins on. A design it refuses stays in the
+    /// bag (README F7), so the sell list must hold only sellable designs.
+    #[tokio::test]
+    async fn live_db_armory_sell_list_is_sellable() {
+        let pool = require_db_or_skip!();
+        let rows: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM resources.item_list_items WHERE item_list_id IN \
+               (SELECT sell_item_list FROM resources.entity_templates \
+                 WHERE template_id BETWEEN 1610 AND 1659 AND sell_item_list IS NOT NULL)",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("armory sell-list count");
+        assert!(rows > 0, "the Armory sell list must have rows (control)");
+
+        let bad: Vec<(i32, i32)> = sqlx::query_as(
+            "SELECT b.item_list_id, b.design_id \
+               FROM resources.item_list_items b \
+               JOIN resources.items i ON i.item_id = b.design_id \
+              WHERE b.item_list_id IN \
+                    (SELECT sell_item_list FROM resources.entity_templates \
+                      WHERE template_id BETWEEN 1610 AND 1659 AND sell_item_list IS NOT NULL) \
+                AND ((COALESCE(i.flags, 0) & 1024) = 0 OR (COALESCE(i.flags, 0) & 4) <> 0) \
+              ORDER BY 1, 2",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("armory sell-list sellable query");
+        assert!(
+            bad.is_empty(),
+            "Armory sell-list rows the sell path refuses (no CanBeSold, or BindOnAcquire), as (list, design): {bad:?}"
         );
     }
 }

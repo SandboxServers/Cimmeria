@@ -209,6 +209,13 @@ class SeedProbesTest(unittest.TestCase):
         self.assertEqual(sell, [1])
         self.assertEqual(skipped, ["skipped from sell list: 2 b, cheaper on list 1400 at 3"])
 
+    def test_the_sell_list_skips_a_design_the_sell_path_refuses(self):
+        items = {1: {"name": "a"}, 2: {"name": "b", "sellable": False}}
+        with mock.patch.object(armory, "price_maps", lambda: ({}, {})):
+            buy, sell, skipped = armory.stock([[1, 2]], items, sell_price=0)
+        self.assertEqual(sell, [1])
+        self.assertEqual(skipped, ["skipped from sell list: 2 b, not sellable (items.flags lacks CanBeSold 1024 or has BindOnAcquire 4)"])
+
     def test_buy_lists_stop_at_1348_and_the_sell_list_is_1349(self):
         sql = armory.item_sql([[(1, 1)]] * 39, [1], 0)
         lists = [int(line.split("VALUES (")[1].split(",")[0]) for line in sql.splitlines() if line.startswith("INSERT INTO item_lists")]
