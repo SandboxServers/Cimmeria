@@ -46,6 +46,34 @@ Inst9Chat_Tab, Inst9Chat_TabOutput = tab(true, {"Welcome", "New Mission"})
     assert_eq!(v["chat_tab"], "Inst9Chat_TabOutput");
 }
 
+/// The visible tab wins over a higher-index hidden tab that has items.
+#[test]
+fn visible_tab_beats_a_higher_hidden_tab_with_items() {
+    let v = read(
+        r#"
+Inst2Chat_Tab, Inst2Chat_TabOutput = tab(true, {"mine"})
+Inst7Chat_Tab, Inst7Chat_TabOutput = tab(false, {"stale"})
+"#,
+        10,
+    );
+    assert_eq!(v["chat_tail"], serde_json::json!(["mine"]));
+    assert_eq!(v["chat_tab"], "Inst2Chat_TabOutput");
+}
+
+/// Several visible tabs: the highest index wins (matches `chat_section_lua`).
+#[test]
+fn highest_visible_tab_wins() {
+    let v = read(
+        r#"
+Inst2Chat_Tab, Inst2Chat_TabOutput = tab(true, {"low"})
+Inst5Chat_Tab, Inst5Chat_TabOutput = tab(true, {"high"})
+"#,
+        10,
+    );
+    assert_eq!(v["chat_tail"], serde_json::json!(["high"]));
+    assert_eq!(v["chat_tab"], "Inst5Chat_TabOutput");
+}
+
 #[test]
 fn falls_back_to_highest_tab_with_items_then_inst1() {
     let v = read(
