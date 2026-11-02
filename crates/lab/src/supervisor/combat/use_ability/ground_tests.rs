@@ -13,13 +13,13 @@ use crate::supervisor::combat::use_ability::resolve::Query;
 use crate::supervisor::events::fake_bridge::{
     self, empty_rings, events, is_ring_pump, lua_ok, Responder,
 };
-use crate::supervisor::world::{PointArg, Space};
+use super::ground::GroundArg;
 
 /// What the fake client saw: the press (Lua `useAbility`) and the click.
 #[derive(Debug, Default)]
 struct Seen {
     pressed: bool,
-    clicked: Option<PointArg>,
+    clicked: Option<GroundArg>,
 }
 
 fn ground_fake(seen: Arc<Mutex<Seen>>) -> Responder {
@@ -70,16 +70,17 @@ fn ground_fake(seen: Arc<Mutex<Seen>>) -> Responder {
     })
 }
 
-fn plaza() -> PointArg {
-    PointArg {
-        x: -87000.0,
-        y: 24600.0,
-        z: 663.0,
-        space: Some(Space::Client),
+fn plaza() -> GroundArg {
+    GroundArg {
+        x: Some(-87000.0),
+        y: Some(24600.0),
+        z: Some(663.0),
+        space: Some(crate::supervisor::world::Space::Client),
+        ..GroundArg::default()
     }
 }
 
-fn req(ground: Option<PointArg>) -> UseAbilityRequest {
+fn req(ground: Option<GroundArg>) -> UseAbilityRequest {
     UseAbilityRequest {
         query: Query::Id(4000),
         press: Press::Auto,
@@ -100,7 +101,7 @@ async fn a_ground_point_is_clicked_after_the_press_and_the_send_follows() {
             let mut s = clicks.lock().unwrap();
             assert!(s.pressed, "the click comes after the press");
             s.clicked = Some(p);
-            Ok(json!({ "native_level": "real_input" }))
+            Ok(json!({ "point": { "x": -87000.0, "space": "client" }, "native_level": "real_input" }))
         })
         .await
         .map_err(|e| e.summary())

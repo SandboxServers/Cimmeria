@@ -30,6 +30,9 @@ pub mod proof;
 pub mod resolve;
 pub mod window;
 
+pub mod ground;
+#[cfg(test)]
+mod ground_offset_tests;
 #[cfg(test)]
 mod ground_tests;
 
@@ -41,9 +44,8 @@ use super::hotbar::{Hotbar, HotbarButton};
 use super::NativeLevel;
 use crate::supervisor::flows::{settle, FlowError, FlowRun};
 use crate::supervisor::ui::click_expect::ClickExpect;
-use crate::supervisor::world::click::{self, ClickRequest, Expect};
-use crate::supervisor::world::io::{LiveWorld, WorldIo};
-use crate::supervisor::world::{PointArg, Space};
+use crate::supervisor::world::io::LiveWorld;
+use ground::{GroundArg, LiveGround};
 use crate::supervisor::{now_ms, Supervisor};
 use outcome::classify;
 use proof::ability_evidence;
@@ -58,34 +60,6 @@ const OBSERVE_POLL: Duration = Duration::from_millis(250);
 const STRAGGLE: Duration = Duration::from_millis(400);
 /// Let the reticle open after the press before the ground click lands.
 const GROUND_RETICLE_MS: u64 = 250;
-
-fn ground_space(p: PointArg) -> &'static str {
-    match p.space.unwrap_or(Space::Server) {
-        Space::Server => "server",
-        Space::Client => "client",
-    }
-}
-
-/// Left-click a ground point through the world-click path (real input).
-/// `expect: nothing`: the effect is the ability send, which the observe loop
-/// reads, not a target or window change.
-pub(crate) async fn click_ground<W: WorldIo>(io: &mut W, p: PointArg) -> Result<Value, String> {
-    let req = ClickRequest {
-        point: Some(p),
-        button: Some("left".into()),
-        expect: Some(Expect::Nothing),
-        settle_ms: Some(300),
-        ..ClickRequest::default()
-    };
-    click::run(io, "client_world_click", req, None)
-        .await
-        .map_err(|e| {
-            format!(
-                "ground click at ({}, {}, {}) failed at {}: {}",
-                p.x, p.y, p.z, e.step, e.message
-            )
-        })
-}
 
 /// How to press a hotbar button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,7 +92,7 @@ pub struct UseAbilityRequest {
     /// reticle on the press; the client sends `useAbilityOnGroundTarget`
     /// after a left click on the ground. When set, the flow left-clicks this
     /// point between the press and the observe loop.
-    pub ground: Option<PointArg>,
+    pub ground: Option<GroundArg>,
 }
 
 impl Press {
@@ -219,8 +193,8 @@ impl Supervisor {
 
     pub async fn use_ability_flow(&self, req: UseAbilityRequest) -> Result<Value, FlowError> {
         self.use_ability_flow_with(req, |p| async move {
-            let mut io = LiveWorld::new(self);
-            click_ground(&mut io, p).await
+            let mut io = LiveGround(LiveWorld::new(self));
+            ground::confirm(&mut io, p).await
         })
         .await
     }
@@ -233,7 +207,7 @@ impl Supervisor {
         ground_click: G,
     ) -> Result<Value, FlowError>
     where
-        G: FnOnce(PointArg) -> Fut,
+        G: FnOnce(GroundArg) -> Fut,
         Fut: std::future::Future<Output = Result<Value, String>>,
     {
         let mut run = FlowRun::new(self, "client_use_ability");
@@ -372,11 +346,7 @@ impl Supervisor {
             let click = ground_click(p)
                 .await
                 .map_err(|e| run.fail("ground_confirm", e))?;
-            ground_detail = json!({
-                "point": { "x": p.x, "y": p.y, "z": p.z, "space": ground_space(p) },
-                "button": "left",
-                "native_level": click["native_level"],
-            });
+            ground_detail = click;
             run.record("ground_confirm", tg, ground_detail.clone());
         }
 

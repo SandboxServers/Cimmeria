@@ -766,12 +766,12 @@ id = "Scientist-1223"
 title = "Deployable: Focus Regen (1223): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1223, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1223, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1223 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1223, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1223, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -830,12 +830,12 @@ id = "Scientist-1224"
 title = "Deployable: Med Station (1224): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1224, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1224, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1224 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1224, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1224, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1082,12 +1082,12 @@ id = "Scientist-1015"
 title = "Deployable: Gravity Well (1015): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1015, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1015, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1015 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1015, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1015, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1192,12 +1192,12 @@ id = "Scientist-1012"
 title = "Deployable: Microwave Emitter (1012): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1012, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1012, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1012 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1012, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1012, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1301,12 +1301,12 @@ id = "Scientist-1236"
 title = "Deployable: Aggression Inducer (1236): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1236, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1236, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1236 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1236, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1236, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1379,12 +1379,12 @@ id = "Scientist-1229"
 title = "Strike: Incendiary (1229): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1229, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1229, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1229 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1229, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1229, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1443,12 +1443,12 @@ id = "Scientist-1230"
 title = "Strike: Gamma (1230): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1230, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1230, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1230 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1230, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1230, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1571,12 +1571,12 @@ id = "Scientist-962"
 title = "Summon Turret: Prototype (962): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 962, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 962, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 962 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 962, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 962, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1634,12 +1634,12 @@ id = "Scientist-963"
 title = "Summon Turret: Offensive (963): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 963, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 963, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 963 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 963, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 963, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1697,12 +1697,12 @@ id = "Scientist-964"
 title = "Summon Turret: Defensive (964): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 964, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 964, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 964 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 964, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 964, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1885,12 +1885,12 @@ id = "Scientist-966"
 title = "Summon Turret: Advanced (966): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 966, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 966, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 966 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 966, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 966, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

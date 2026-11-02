@@ -26,7 +26,7 @@ use crate::supervisor::events::wait::{
     WaitRequest, DEFAULT_CURSOR, DEFAULT_POLL_MS, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS,
 };
 use crate::supervisor::flows::FlowError;
-use crate::supervisor::world::PointArg;
+use crate::supervisor::combat::use_ability::ground::GroundArg;
 
 /// Args for `client_hotbar`.
 #[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
@@ -65,11 +65,14 @@ pub struct UseAbilityArgs {
     #[serde(default)]
     pub observe_ms: Option<u64>,
     /// Ground-targeted abilities (target_type_id 3, e.g. an area-of-effect
-    /// reticle): the press only opens the reticle, so left-click this point
-    /// right after it. `{x, y, z, space}` as `client_world_click`'s `point`
-    /// (`space` `server` metres by default, or `client` UE3 units).
+    /// reticle): the press only opens the reticle, so left-click a ground
+    /// point right after it. Either `{x, y, z, space}` as `client_world_click`'s
+    /// `point` (`space` `server` metres by default, or `client` UE3 units), or
+    /// an offset from the live avatar `{distance_m, bearing_deg}` (default 8 m,
+    /// 0 degrees from the camera's forward), which retries nearby offsets when
+    /// the hover is covered by the avatar or off screen.
     #[serde(default)]
-    pub ground: Option<PointArg>,
+    pub ground: Option<GroundArg>,
 }
 
 /// Args for `client_combat_log`.
@@ -173,7 +176,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Use an ability like a player, by id or name. On the hotbar: press its bound key (real input), or click the button. Not on the hotbar: click it in the Ability window (real click), or with place=true put it on an empty button first (reported N3); fallback=lua calls useAbility (N3). A ground-targeted ability (target_type_id 3) only opens its reticle on the press: pass ground {x,y,z,space} and the point is left-clicked right after the press (reported as the ground_confirm step). Reports the native level, what was pressed, and the result read from client events: sent (net.out useAbility), cast started (onSequence), effect applied (onEffectResults / combat text), refused (onErrorCode, feedback text), timings, and the button's cooldown after. Returns evidence on whether the press got an answer, not whether the ability worked: an effect or a refusal is confirmed, a cast with no result yet or a send with no reply is inconclusive, nothing observed is denied (ignored)."
+        description = "Use an ability like a player, by id or name. On the hotbar: press its bound key (real input), or click the button. Not on the hotbar: click it in the Ability window (real click), or with place=true put it on an empty button first (reported N3); fallback=lua calls useAbility (N3). A ground-targeted ability (target_type_id 3) only opens its reticle on the press: pass ground {distance_m,bearing_deg} (an offset from the avatar, nearby offsets are retried) or {x,y,z,space} and the point is left-clicked right after the press (reported as the ground_confirm step). Reports the native level, what was pressed, and the result read from client events: sent (net.out useAbility), cast started (onSequence), effect applied (onEffectResults / combat text), refused (onErrorCode, feedback text), timings, and the button's cooldown after. Returns evidence on whether the press got an answer, not whether the ability worked: an effect or a refusal is confirmed, a cast with no result yet or a send with no reply is inconclusive, nothing observed is denied (ignored)."
     )]
     async fn client_use_ability(
         &self,

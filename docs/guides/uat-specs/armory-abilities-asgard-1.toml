@@ -588,12 +588,12 @@ id = "Asgard-3183"
 title = "DefensiveProtocol: Anti-WeaponField (3183): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3183, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3183, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3183 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3183, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3183, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -620,12 +620,12 @@ id = "Asgard-3259"
 title = "DefensiveProtocol: Induce Self Preservation (3259): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3259, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3259, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3259 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3259, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3259, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -652,12 +652,12 @@ id = "Asgard-3190"
 title = "DefensiveProtocol: TimeDisruption (3190): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3190, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3190, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3190 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3190, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3190, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -684,12 +684,12 @@ id = "Asgard-3265"
 title = "DefensiveProtocol: AreaShield (3265): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3265, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3265, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3265 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3265, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3265, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

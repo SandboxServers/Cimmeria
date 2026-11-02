@@ -302,12 +302,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 2419, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2419, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2419 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2419, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2419, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -395,12 +395,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 808, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 808, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 808 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 808, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 808, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -442,12 +442,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 2103, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2103, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2103 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2103, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2103, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -567,12 +567,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 1882, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1882, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1882 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1882, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1882, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -614,12 +614,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 2102, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2102, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2102 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2102, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2102, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -701,12 +701,12 @@ id = "Soldier-724"
 title = "Anti-Personnel Mortar (724): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 724, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 724, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 724 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 724, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 724, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -740,12 +740,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 1885, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1885, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1885 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1885, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1885, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -780,12 +780,12 @@ id = "Soldier-852"
 title = "High Explosive Mortar (852): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 852, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 852, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 852 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 852, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 852, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -819,12 +819,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 1889, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1889, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1889 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1889, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1889, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -905,12 +905,12 @@ id = "Soldier-1485"
 title = "Cluster Mortars (1485): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1485, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1485, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1485 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1485, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1485, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -944,12 +944,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 2105, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2105, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2105 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2105, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2105, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -991,12 +991,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 1487, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1487, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1487 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1487, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1487, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

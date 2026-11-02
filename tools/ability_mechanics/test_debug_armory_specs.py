@@ -80,7 +80,7 @@ class AbilityRowTest(unittest.TestCase):
 
     def test_a_ground_ability_passes_the_ground_point_on_both_presses(self):
         row = parse_row(specs.ability_row("Soldier", 724, ability(target=3), None, {}, {}))
-        point = {"x": -87000, "y": 24600, "z": 663, "space": "client"}
+        point = {"distance_m": 8, "bearing_deg": 30}
         self.assertEqual(row["setup"][0]["args"], {"ability_id": 724, "place": True, "ground": point})
         self.assertEqual(row["step"][0]["args"], {"ability_id": 724, "press": "key", "fallback": "none", "ground": point})
 

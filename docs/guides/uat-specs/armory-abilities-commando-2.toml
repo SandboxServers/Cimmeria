@@ -531,12 +531,12 @@ id = "Commando-877"
 title = "Forward Observer (877): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 877, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 877, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 877 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 877, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 877, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

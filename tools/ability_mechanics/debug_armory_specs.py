@@ -47,9 +47,11 @@ TARGET_SELF, TARGET_GROUND = 1, 3  # target_type_id values that have no target t
 # Weapon-gated tree abilities with no shipped weapon (weapon-requirement audit FAIL, DR-04).
 KNOWN_UNCOVERED = (997, 1246, 1250, 1355)
 # A ground-targeted ability only opens its reticle on the press; client_use_ability's
-# `ground` point is left-clicked right after it (canary.md 2026-11-02). The point is in UE3
-# client space, about 8 m from the plaza the setup row places the character on.
-GROUND_POINT = {"x": -87000, "y": 24600, "z": 663, "space": "client"}
+# `ground` point is left-clicked right after it (canary.md 2026-11-02). It is an OFFSET from
+# the live avatar, not a map point: every lab_uat_run logs in a fresh character that spawns
+# elsewhere, and a fixed point landed under the avatar's own body (DR-07m). 30 degrees off the
+# camera's forward keeps it out from behind the avatar; the tool retries nearby offsets itself.
+GROUND_POINT = {"distance_m": 8, "bearing_deg": 30}
 UNCOVERED_MISMATCH = 1
 
 
