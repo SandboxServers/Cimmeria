@@ -5,7 +5,7 @@
 fresh), split at 30 rows (one file, one fresh character, at most 30 grants into the 40-slot main bag) as ``-1``, ``-2``. The representatives are the ones
 ``representatives()`` stocks. A weapon with a RANGED binding expects its
 ability's ``client.ability.sent``; an unbound one expects ``weapon_unbound``
-(F8: the gap is measured, not failed). An armor row equips its piece and reads
+(F8: the gap is measured, not failed). A weapon row resets bandolier slot 1, equips into it, selects it with F1 and asserts the active weapon (`armed`, DR-07h). An armor row equips its piece and reads
 the character sheet; the only server line is the DEBUG ``Inventory move persisted``, so that clause is optional.
 """
 
@@ -28,7 +28,9 @@ from debug_armory import (  # noqa: E402
     vendor_count,
     weapon_keys,
 )
-from debug_armory_specs import chat, tstr  # noqa: E402
+# The inventory bag's close button (DR-07g) and the sheet and select-slot-1 constants (DR-07h), all from debug_armory_specs.
+# Equip opens the bag with B and leaves it open; a world right-click under it hits the bag (DR-07g).
+from debug_armory_specs import BAG_CLOSE, SELECT_KEY, SHEET_CLOSE, chat, tstr  # noqa: E402
 from weapon_requirement_audit import EVENT_RANGED, load  # noqa: E402
 
 # INV_Main capacity (docs/gameplay/inventory-system.md:118). Every row grants one item into it and nothing in a spec removes one; a split file runs on its own fresh character, so one file's grants must fit even if no equip succeeds. 30 leaves 10 slots of margin (DR-07 ruling 1).
@@ -40,8 +42,6 @@ DUMMY_TEMPLATE = 1310
 FIRST_LOGIN_HOLD = "  { wait_ms = 17000 },"
 # The ability log's target and the event that names an unbound weapon (hostile_attack.rs, refuse_no_ranged_attack).
 UNBOUND_SCOPE = "abilities"
-# The inventory bag's close button. Equip opens the bag with B and leaves it open; a world right-click under it hits the bag (DR-07g).
-BAG_CLOSE = "InventoryWin__auto_closebutton__"
 # The teardown clear. It fails in every gear row ("no rendered entity matches" for the player), so it is optional (DR-07g).
 CLEAR_EFFECTS = '{ tool = "@clear_effects", args = { name = "${character}" }, optional = true }'
 SECTION_TAIL = """
@@ -74,12 +74,16 @@ def _inline(pairs: List[Tuple[str, str]]) -> str:
     return "{ " + ", ".join(f"{k} = {v}" for k, v in pairs) + " }"
 
 
-def _tool(alias: str, args: Optional[List[Tuple[str, str]]] = None, label: Optional[str] = None) -> str:
+def _tool(
+    alias: str, args: Optional[List[Tuple[str, str]]] = None, label: Optional[str] = None, optional: bool = False
+) -> str:
     pairs = [("tool", tstr(alias))]
     if args is not None:
         pairs.append(("args", _inline(args)))
     if label is not None:
         pairs.append(("label", tstr(label)))
+    if optional:
+        pairs.append(("optional", "true"))
     return _inline(pairs)
 
 
@@ -130,6 +134,17 @@ def weapon_row(item_id: int, name: str, ability_id: Optional[int]) -> str:
             f"match_fields = {_inline([('ability_id', str(ability_id))])}",
             'since = "press"',
         ]
+    # The active weapon must be this row's item before the press, so a wrong one fails here by name (DR-07h).
+    clause += [
+        "[[row.expect]]",
+        'id = "armed"',
+        f"text = {tstr(f'the active bandolier weapon is item {item_id} before the press')}",
+        'source = "tool"',
+        'tool = "@player_state"',
+        'pointer = "/ammo/weapon_item_id"',
+        'op = "eq"',
+        f"value = {item_id}",
+    ]
     # weapon_unbound is logged at most once per player per 10 s (NO_RANGED_ATTACK_LOG_INTERVAL), so wait it out.
     throttle = ["  { wait_ms = 10500 },"] if ability_id is None else []
     return "\n".join(
@@ -140,9 +155,13 @@ def weapon_row(item_id: int, name: str, ability_id: Optional[int]) -> str:
             f"expected = {tstr(expected)}",
             "setup = [",
             *throttle,
+            # Reset slot 1 (the starter or the previous row's weapon), then equip into it and select it with F1 (DR-07h).
+            f"  {_tool('@item_action', [('action', tstr('unequip')), ('container', tstr('Bandolier')), ('slot', '1')], 'reset-slot1', optional=True)},",
+            f"  {_tool('@window_click', [('target', tstr(SHEET_CLOSE))], 'close-sheet', optional=True)},",
             f"  {chat(f'/gmgiveitem {item_id} 1')},",
             f"  {_tool('@item_action', [('action', tstr('equip')), ('name', tstr(name))])},",
             f"  {_tool('@window_click', [('target', tstr(BAG_CLOSE))], 'close-bag')},",
+            f"  {_tool('@key', [('key', tstr(SELECT_KEY))], 'select-slot1')},",
             f"  {_tool('@dummy', [('disposition', tstr('hostile')), ('template_id', str(DUMMY_TEMPLATE))])},",
             "  { wait_ms = 2000 },",
             "]",

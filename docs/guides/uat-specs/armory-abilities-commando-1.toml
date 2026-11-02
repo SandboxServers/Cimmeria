@@ -112,8 +112,13 @@ id = "Commando-641"
 title = "Surprise Attack (641): press it from the bar with Heavy Combat Knife equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3334 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 641, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 641 } },
@@ -139,14 +144,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3334 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3334
 
 [[row]]
 id = "Commando-651"
 title = "Wounding Strike (651): press it from the bar with Heavy Combat Knife equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3334 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 651, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 651 } },
@@ -172,6 +190,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3334 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3334
 
 [[row]]
 id = "Commando-1518"
@@ -624,8 +650,13 @@ id = "Commando-1356"
 title = "Evisceration (1356): press it from the bar with Heavy Combat Knife equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3334 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1356, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1356 } },
@@ -651,6 +682,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3334 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3334
 
 [[row]]
 id = "Commando-1244"
@@ -721,8 +760,13 @@ id = "Commando-1357"
 title = "Execution (1357): press it from the bar with Heavy Combat Knife equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3334 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1357, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1357 } },
@@ -748,3 +792,11 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3334 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3334

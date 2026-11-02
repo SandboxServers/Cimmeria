@@ -27,9 +27,12 @@ expected = "The right-click gets the no-ranged-attack line and the server logs w
 setup = [
   { wait_ms = 17000 },
   { wait_ms = 10500 },
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 5009 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "GL 24 Grenade Launcher" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -51,6 +54,14 @@ text = "SigNoz: weapon_unbound for item 5009, reason no_ranged_attack (a measure
 source = "signoz"
 filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 5009 AND player_name CONTAINS '${character}'"
 min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 5009 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 5009
 
 [[row]]
 id = "GW-5012"
@@ -58,9 +69,12 @@ title = "GL 25 Grenade Launcher has no ranged binding (F8): the right-click is r
 expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
 setup = [
   { wait_ms = 10500 },
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 5012 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "GL 25 Grenade Launcher" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -82,15 +96,26 @@ text = "SigNoz: weapon_unbound for item 5012, reason no_ranged_attack (a measure
 source = "signoz"
 filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 5012 AND player_name CONTAINS '${character}'"
 min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 5012 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 5012
 
 [[row]]
 id = "GW-3260"
 title = "SK37 LMG fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 582."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3260 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 LMG" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -113,15 +138,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 582 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3260 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3260
 
 [[row]]
 id = "GW-3268"
 title = "SK37 B LMG fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 582."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3268 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 B LMG" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -144,15 +180,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 582 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3268 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3268
 
 [[row]]
 id = "GW-4841"
 title = "SK38 LMG fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 582."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4841 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK38 LMG" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -175,15 +222,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 582 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4841 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4841
 
 [[row]]
 id = "GW-4849"
 title = "SK38 X LMG fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 582."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4849 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK38 X LMG" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -206,15 +264,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 582 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4849 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4849
 
 [[row]]
 id = "GW-4853"
 title = "SK Gauss LMG fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 582."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4853 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK Gauss LMG" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -237,15 +306,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 582 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4853 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4853
 
 [[row]]
 id = "GW-55"
 title = "SI 3 9mm Pistol fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 579."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 55 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SI 3 9mm Pistol" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -268,15 +348,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 579 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 55 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 55
 
 [[row]]
 id = "GW-3243"
 title = "SI 4 9mm Pistol fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 579."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3243 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SI 4 9mm Pistol" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -299,15 +390,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 579 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3243 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3243
 
 [[row]]
 id = "GW-5481"
 title = "Crafted Pistol of the Whale fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 579."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 5481 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Crafted Pistol of the Whale" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -330,15 +432,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 579 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 5481 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 5481
 
 [[row]]
 id = "GW-4885"
 title = "SI 5 9mm Pistol fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 579."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4885 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SI 5 9mm Pistol" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -361,15 +474,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 579 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4885 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4885
 
 [[row]]
 id = "GW-4891"
 title = "SI-P 5 9mm Pistol fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 579."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4891 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SI-P 5 9mm Pistol" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -392,15 +516,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 579 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4891 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4891
 
 [[row]]
 id = "GW-4894"
 title = "SI-A 9mm Pistol fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 579."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4894 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SI-A 9mm Pistol" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -423,15 +558,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 579 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4894 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4894
 
 [[row]]
 id = "GW-4458"
 title = "Discharge Ribbon Device fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 584."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4458 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Discharge Ribbon Device" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -454,15 +600,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 584 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4458 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4458
 
 [[row]]
 id = "GW-4466"
 title = "Spark Ribbon Device fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 584."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4466 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Spark Ribbon Device" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -485,15 +642,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 584 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4466 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4466
 
 [[row]]
 id = "GW-4472"
 title = "Surge Ribbon Device fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 584."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4472 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Surge Ribbon Device" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -516,15 +684,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 584 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4472 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4472
 
 [[row]]
 id = "GW-4478"
 title = "Bolt Ribbon Device fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 584."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4478 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Bolt Ribbon Device" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -547,15 +726,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 584 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4478 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4478
 
 [[row]]
 id = "GW-8339"
 title = "Lightning Ribbon Device fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 584."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 8339 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Lightning Ribbon Device" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -578,15 +768,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 584 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 8339 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 8339
 
 [[row]]
 id = "GW-3287"
 title = "SR1 .50-Cal Rifle fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 581."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3287 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SR1 .50-Cal Rifle" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -609,15 +810,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 581 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3287 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3287
 
 [[row]]
 id = "GW-3294"
 title = "SR2 .50-Cal Rifle fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 581."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3294 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SR2 .50-Cal Rifle" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -640,15 +852,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 581 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3294 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3294
 
 [[row]]
 id = "GW-4948"
 title = "Nenz 25S Rifle fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 581."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4948 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Nenz 25S Rifle" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -671,15 +894,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 581 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4948 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4948
 
 [[row]]
 id = "GW-4954"
 title = "Nenz 25S-II Rifle fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 581."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4954 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Nenz 25S-II Rifle" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -702,15 +936,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 581 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4954 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4954
 
 [[row]]
 id = "GW-4957"
 title = "Nenz 2500 Rifle fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 581."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4957 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Nenz 2500 Rifle" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -733,15 +978,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 581 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4957 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4957
 
 [[row]]
 id = "GW-3313"
 title = "Pump Shotgun fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 583."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3313 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Pump Shotgun" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -764,15 +1020,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 583 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3313 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3313
 
 [[row]]
 id = "GW-3320"
 title = "Semi Auto Shotgun fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 583."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3320 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Semi Auto Shotgun" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -795,15 +1062,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 583 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3320 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3320
 
 [[row]]
 id = "GW-4928"
 title = "Combat Shotgun fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 583."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4928 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Combat Shotgun" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -826,15 +1104,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 583 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4928 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4928
 
 [[row]]
 id = "GW-4933"
 title = "Assault Shotgun fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 583."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4933 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Assault Shotgun" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -857,15 +1146,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 583 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4933 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4933
 
 [[row]]
 id = "GW-4937"
 title = "Strike Shotgun fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 583."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4937 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Strike Shotgun" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -888,15 +1188,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 583 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4937 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4937
 
 [[row]]
 id = "GW-2797"
 title = "Serpent Staff fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 584."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -919,15 +1230,26 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 584 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 2797 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 2797
 
 [[row]]
 id = "GW-3478"
 title = "Venom Staff fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 584."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3478 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Venom Staff" } },
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
@@ -950,3 +1272,11 @@ source = "client_event"
 event = "client.ability.sent"
 match_fields = { ability_id = 584 }
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3478 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3478

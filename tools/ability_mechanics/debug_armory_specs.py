@@ -37,6 +37,12 @@ TREE_PREFIX = "ARCHETYPE_"  # archetype_ability_tree.archetype is e.g. ARCHETYPE
 SPLIT_ROWS = 60  # a tree with more rows than this writes one file per tree_index
 SETUP_LOCATION = ".gotolocation DebugArea 246 6.6 -878"  # the Debug Area dummy plaza
 FIRST_LOGIN_HOLD = "{ wait_ms = 17000 }"  # the 16 s first-login cinematic hold, plus margin
+# Equip lands in the first empty bandolier slot and never moves the active slot
+# (use_instance.rs resolve_auto_equip_target), so a weapon row empties slot 1,
+# equips into it and selects it with F1 (BandolierMod.ActivateBandolierSlot1) (DR-07h).
+BAG_CLOSE = "InventoryWin__auto_closebutton__"
+SHEET_CLOSE = "CharacterWin__auto_closebutton__"
+SELECT_KEY = "F1"
 TARGET_SELF, TARGET_GROUND = 1, 3  # target_type_id values that have no target to apply to
 # Weapon-gated tree abilities with no shipped weapon (weapon-requirement audit FAIL, DR-04).
 KNOWN_UNCOVERED = (997, 1246, 1250, 1355)
@@ -122,8 +128,13 @@ def ability_row(arch: str, aid: int, ability: dict, rep: Optional[int], items, m
         if rep is None:
             blocked = f"no shipped weapon carries {_label_monikers(ability['item_monikers'], monikers)} (weapon-requirement audit FAIL)"
         else:
+            setup.append(call("@item_action", {"action": "unequip", "container": "Bandolier", "slot": 1}, label="reset-slot1", optional=True))
+            setup.append(call("@window_click", {"target": SHEET_CLOSE}, label="close-sheet", optional=True))
             setup.append(chat(f"/gmgiveitem {rep} 1"))
             setup.append(call("@item_action", {"action": "equip", "name": items[rep]["name"]}, label="equip"))
+            setup.append(call("@window_click", {"target": BAG_CLOSE}, label="close-bag", optional=True))
+            setup.append(call("@key", {"key": SELECT_KEY}, label="select-slot1"))
+            setup.append("{ wait_ms = 1500 }")
     setup.append(call("@use_ability", {"ability_id": aid, "place": True}, label="place"))
     setup.append("{ wait_ms = 3000 }")
     setup.append(call("@cooldowns_reset", {"ability_id": aid}))
@@ -162,6 +173,18 @@ def ability_row(arch: str, aid: int, ability: dict, rep: Optional[int], items, m
     ]
     if self_or_ground:
         lines.append("required = false")
+    if ability["item_monikers"] and rep is not None:
+        # Last on purpose: expect[0] and expect[1] keep their meaning. A wrong active weapon fails here by name (DR-07h).
+        lines += [
+            "[[row.expect]]",
+            'id = "armed"',
+            f"text = {tstr(f'the active bandolier weapon is item {rep} before the press')}",
+            'source = "tool"',
+            'tool = "@player_state"',
+            'pointer = "/ammo/weapon_item_id"',
+            'op = "eq"',
+            f"value = {rep}",
+        ]
     return lines
 
 

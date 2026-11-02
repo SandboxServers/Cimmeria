@@ -28,12 +28,37 @@ class AbilityRowTest(unittest.TestCase):
         row = parse_row(specs.ability_row("Soldier", 592, ability(monikers=[5]), 42, items, monikers))
         self.assertEqual(row["id"], "Soldier-592")
         setup = row["setup"]
-        self.assertEqual(setup[0], {"chat": "/gmgiveitem 42 1", "tier": "G"})
-        self.assertEqual(setup[1]["tool"], "@item_action")
-        self.assertEqual(setup[1]["args"], {"action": "equip", "name": "Pistol"})
-        self.assertEqual(setup[2]["tool"], "@use_ability")
-        self.assertEqual(setup[2]["args"], {"ability_id": 592, "place": True})
+        self.assertEqual(setup[0], {"tool": "@item_action", "args": {"action": "unequip", "container": "Bandolier", "slot": 1}, "label": "reset-slot1", "optional": True})
+        self.assertEqual(setup[1], {"tool": "@window_click", "args": {"target": specs.SHEET_CLOSE}, "label": "close-sheet", "optional": True})
+        self.assertEqual(setup[2], {"chat": "/gmgiveitem 42 1", "tier": "G"})
+        self.assertEqual(setup[3]["tool"], "@item_action")
+        self.assertEqual(setup[3]["args"], {"action": "equip", "name": "Pistol"})
+        self.assertEqual(setup[4], {"tool": "@window_click", "args": {"target": specs.BAG_CLOSE}, "label": "close-bag", "optional": True})
+        self.assertEqual(setup[5], {"tool": "@key", "args": {"key": "F1"}, "label": "select-slot1"})
+        self.assertEqual(setup[6], {"wait_ms": 1500})
+        self.assertEqual(setup[7]["tool"], "@use_ability")
+        self.assertEqual(setup[7]["args"], {"ability_id": 592, "place": True})
         self.assertNotIn("blocked", row)
+
+    def test_a_gated_row_asserts_the_active_weapon(self):
+        items = {42: {"name": "Pistol"}}
+        monikers = {5: "ITEM_PISTOL"}
+        row = parse_row(specs.ability_row("Soldier", 592, ability(monikers=[5]), 42, items, monikers))
+        armed = row["expect"][-1]
+        self.assertEqual(armed["id"], "armed")
+        self.assertEqual(armed["tool"], "@player_state")
+        self.assertEqual(armed["pointer"], "/ammo/weapon_item_id")
+        self.assertEqual(armed["op"], "eq")
+        self.assertEqual(armed["value"], 42)
+        self.assertNotIn("required", armed)
+
+    def test_an_ungated_row_neither_resets_nor_selects(self):
+        ungated = parse_row(specs.ability_row("Soldier", 592, ability(), None, {}, {}))
+        blocked = parse_row(specs.ability_row("Soldier", 997, ability(monikers=[9]), None, {}, {9: "ITEM_RIFLE"}))
+        for row in (ungated, blocked):
+            self.assertFalse(any(a.get("tool") == "@key" for a in row["setup"] if isinstance(a, dict)))
+            self.assertFalse(any(a.get("args", {}).get("action") == "unequip" for a in row["setup"] if isinstance(a, dict)))
+            self.assertFalse(any(e["id"] == "armed" for e in row["expect"]))
 
     def test_the_step_presses_the_key_and_is_not_in_setup(self):
         row = parse_row(specs.ability_row("Soldier", 592, ability(), None, {}, {}))

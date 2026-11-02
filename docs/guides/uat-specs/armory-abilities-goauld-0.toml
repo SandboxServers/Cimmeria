@@ -142,8 +142,13 @@ id = "Goauld-1613"
 title = "Ashrak Dagger: Back Slash (1613): press it from the bar with Heavy Combat Knife equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3334 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1613, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1613 } },
@@ -169,6 +174,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3334 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3334
 
 [[row]]
 id = "Goauld-1625"
@@ -270,8 +283,13 @@ id = "Goauld-2860"
 title = "Decimation Wound (2860): press it from the bar with Heavy Combat Knife equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3334 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 2860, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2860 } },
@@ -297,14 +315,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3334 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3334
 
 [[row]]
 id = "Goauld-2858"
 title = "Ashrak Dagger: Dervish (2858): press it from the bar with Heavy Combat Knife equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3334 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 2858, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2858 } },
@@ -330,14 +361,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3334 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3334
 
 [[row]]
 id = "Goauld-1621"
 title = "Ashrak Dagger: Paralyze (1621): press it from the bar with Heavy Combat Knife equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3334 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1621, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1621 } },
@@ -363,6 +407,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3334 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3334
 
 [[row]]
 id = "Goauld-2859"
@@ -433,8 +485,13 @@ id = "Goauld-2861"
 title = "Prolong Agony (2861): press it from the bar with Heavy Combat Knife equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3334 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 2861, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2861 } },
@@ -460,14 +517,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3334 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3334
 
 [[row]]
 id = "Goauld-2857"
 title = "Ashrak Dagger: Crippling Slash (2857): press it from the bar with Heavy Combat Knife equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3334 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 2857, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2857 } },
@@ -493,6 +563,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3334 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3334
 
 [[row]]
 id = "Goauld-2863"
@@ -563,8 +641,13 @@ id = "Goauld-1620"
 title = "Ashrak Dagger: Onslaught (1620): press it from the bar with Heavy Combat Knife equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3334 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1620, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1620 } },
@@ -590,6 +673,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3334 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3334
 
 [[row]]
 id = "Goauld-866"
@@ -628,8 +719,13 @@ id = "Goauld-2869"
 title = "Disrupt Soul (2869): press it from the bar with Discharge Ribbon Device equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4458 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Discharge Ribbon Device" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 2869, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2869 } },
@@ -655,6 +751,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 4458 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 4458
 
 [[row]]
 id = "Goauld-2868"
@@ -693,8 +797,13 @@ id = "Goauld-2862"
 title = "Inevitable End (2862): press it from the bar with Heavy Combat Knife equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3334 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 2862, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2862 } },
@@ -720,3 +829,11 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is item 3334 before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon_item_id"
+op = "eq"
+value = 3334

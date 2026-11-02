@@ -67,6 +67,44 @@ class ThrottleTest(unittest.TestCase):
         self.assertNotIn("wait_ms = 10500", gear.weapon_row(1, "x", 584))
 
 
+class WeaponSelectTest(unittest.TestCase):
+    def test_weapon_row_resets_slot_one_then_equips_then_selects_it(self):
+        setup = _parse(gear.weapon_row(3753, "Cobra Staff", 584))["row"][0]["setup"]
+        steps = {}
+        for index, action in enumerate(setup):
+            if "chat" in action:
+                steps.setdefault("give", index)
+            elif action.get("args", {}).get("action") == "equip":
+                steps.setdefault("equip", index)
+            elif action.get("tool") == "@dummy":
+                steps.setdefault("dummy", index)
+            elif "label" in action:
+                steps.setdefault(action["label"], index)
+        self.assertLess(steps["reset-slot1"], steps["give"])
+        self.assertLess(steps["give"], steps["equip"])
+        self.assertLess(steps["equip"], steps["close-bag"])
+        self.assertLess(steps["close-bag"], steps["select-slot1"])
+        self.assertLess(steps["select-slot1"], steps["dummy"])
+        by_label = {a["label"]: a for a in setup if "label" in a}
+        self.assertIs(by_label["reset-slot1"]["optional"], True)
+        self.assertIs(by_label["close-sheet"]["optional"], True)
+        self.assertNotIn("optional", by_label["select-slot1"])
+
+    def test_both_weapon_kinds_assert_the_active_weapon(self):
+        for item_id, name, ability_id in ((3753, "Cobra Staff", 584), (3754, "Plain Club", None)):
+            expect = _parse(gear.weapon_row(item_id, name, ability_id))["row"][0]["expect"]
+            armed = [e for e in expect if e["id"] == "armed"]
+            self.assertEqual(len(armed), 1)
+            self.assertEqual(armed[0]["pointer"], "/ammo/weapon_item_id")
+            self.assertEqual(armed[0]["value"], item_id)
+            self.assertIs(expect[-1], armed[0])
+
+    def test_armor_rows_do_not_touch_the_bandolier(self):
+        row = gear.armor_row(77, "Test Helm", 5)
+        self.assertNotIn("unequip", row)
+        self.assertNotIn("@key", row)
+
+
 class ArmorRowTest(unittest.TestCase):
     def test_armor_row_has_an_optional_move_persisted_clause(self):
         row = gear.armor_row(77, "Test Helm", 5)
