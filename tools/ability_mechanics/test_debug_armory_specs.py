@@ -1,5 +1,6 @@
 """Tests for debug_armory_specs.py: a row per tree ability, gear before the press, the 60-row split, LF output."""
 
+import re
 import tempfile
 import tomllib
 import unittest
@@ -101,6 +102,13 @@ class UncoveredCheckTest(unittest.TestCase):
         with self.assertRaises(specs.Stop):
             specs.check_uncovered({5: None}, [5])
 
+    def test_known_uncovered_matches_the_live_db_guard(self):
+        rust = REPO_ROOT / "crates" / "cell-catalog" / "src" / "cell" / "spawner" / "tests" / "live_db_debug_area_armory.rs"
+        match = re.search(r"const KNOWN_UNCOVERED: \[i32; \d+\] = \[([^\]]*)\]", rust.read_text(encoding="utf-8"))
+        self.assertIsNotNone(match)
+        ids = sorted(int(part) for part in match.group(1).split(",") if part.strip())
+        self.assertEqual(ids, sorted(specs.KNOWN_UNCOVERED))
+
 
 class WriteAbilitySpecsTest(unittest.TestCase):
     def test_every_committed_file_is_lf_parses_and_has_one_row_per_tree_ability(self):
@@ -121,6 +129,15 @@ class WriteAbilitySpecsTest(unittest.TestCase):
             # Each file is its own section, so each carries its own -00 setup row.
             tree_rows = sum(len(t) for t in specs.tree_by_archetype().values())
             self.assertEqual(rows, tree_rows + len(files))
+
+    def test_committed_files_match_the_generator(self):
+        committed = REPO_ROOT / "docs" / "guides" / "uat-specs"
+        with tempfile.TemporaryDirectory() as tmp:
+            specs.write_ability_specs(Path(tmp), REPO_ROOT)
+            names = {p.name for p in Path(tmp).glob("armory-abilities-*.toml")}
+            self.assertEqual(names, {p.name for p in committed.glob("armory-abilities-*.toml")})
+            for name in names:
+                self.assertEqual((Path(tmp) / name).read_bytes(), (committed / name).read_bytes(), name)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,6 @@ the character sheet; the only server line is the DEBUG ``Inventory move persiste
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -29,6 +28,7 @@ from debug_armory import (  # noqa: E402
     vendor_count,
     weapon_keys,
 )
+from debug_armory_specs import chat, tstr  # noqa: E402
 from weapon_requirement_audit import EVENT_RANGED, load  # noqa: E402
 
 # INV_Main capacity (docs/gameplay/inventory-system.md:118). Every row grants one item into it and nothing in a spec removes one; a split file runs on its own fresh character, so one file's grants must fit even if no equip succeeds. 30 leaves 10 slots of margin (DR-07 ruling 1).
@@ -62,27 +62,18 @@ HEADER = """# Unified UAT, section "{section}" (Debug Area Armory gear, DR-07).
 """
 
 
-def _q(text: str) -> str:
-    """A TOML basic string (JSON escapes are valid TOML)."""
-    return json.dumps(text, ensure_ascii=False)
-
-
 def _inline(pairs: List[Tuple[str, str]]) -> str:
     """An inline table from (key, already-rendered TOML value) pairs."""
     return "{ " + ", ".join(f"{k} = {v}" for k, v in pairs) + " }"
 
 
 def _tool(alias: str, args: Optional[List[Tuple[str, str]]] = None, label: Optional[str] = None) -> str:
-    pairs = [("tool", _q(alias))]
+    pairs = [("tool", tstr(alias))]
     if args is not None:
         pairs.append(("args", _inline(args)))
     if label is not None:
-        pairs.append(("label", _q(label)))
+        pairs.append(("label", tstr(label)))
     return _inline(pairs)
-
-
-def _chat(line: str) -> str:
-    return _inline([("chat", _q(line)), ("tier", _q("G"))])
 
 
 def gear_representatives(cap: int = DEFAULT_CAP):
@@ -111,10 +102,10 @@ def weapon_row(item_id: int, name: str, ability_id: Optional[int]) -> str:
         clause = [
             "[[row.expect]]",
             'id = "unbound"',
-            f"text = {_q(f'SigNoz: weapon_unbound for item {item_id}, reason no_ranged_attack (a measured gap, PASS on this line)')}",
+            f"text = {tstr(f'SigNoz: weapon_unbound for item {item_id}, reason no_ranged_attack (a measured gap, PASS on this line)')}",
             'source = "signoz"',
             "filter = "
-            + _q(
+            + tstr(
                 f"scope_name = '{UNBOUND_SCOPE}' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' "
                 f"AND item_type_id = {item_id} AND player_name CONTAINS '${{character}}'"
             ),
@@ -126,7 +117,7 @@ def weapon_row(item_id: int, name: str, ability_id: Optional[int]) -> str:
         clause = [
             "[[row.expect]]",
             'id = "sent"',
-            f"text = {_q(f'the right-click sends ability {ability_id} (RANGED binding)')}",
+            f"text = {tstr(f'the right-click sends ability {ability_id} (RANGED binding)')}",
             'source = "client_event"',
             'event = "client.ability.sent"',
             f"match_fields = {_inline([('ability_id', str(ability_id))])}",
@@ -137,25 +128,25 @@ def weapon_row(item_id: int, name: str, ability_id: Optional[int]) -> str:
     return "\n".join(
         [
             "[[row]]",
-            f"id = {_q(f'GW-{item_id}')}",
-            f"title = {_q(title)}",
-            f"expected = {_q(expected)}",
+            f"id = {tstr(f'GW-{item_id}')}",
+            f"title = {tstr(title)}",
+            f"expected = {tstr(expected)}",
             "setup = [",
             *throttle,
-            f"  {_chat(f'/gmgiveitem {item_id} 1')},",
-            f"  {_tool('@item_action', [('action', _q('equip')), ('name', _q(name))])},",
-            f"  {_tool('@dummy', [('disposition', _q('hostile')), ('template_id', str(DUMMY_TEMPLATE))])},",
+            f"  {chat(f'/gmgiveitem {item_id} 1')},",
+            f"  {_tool('@item_action', [('action', tstr('equip')), ('name', tstr(name))])},",
+            f"  {_tool('@dummy', [('disposition', tstr('hostile')), ('template_id', str(DUMMY_TEMPLATE))])},",
             "  { wait_ms = 2000 },",
             "]",
             "step = [",
-            f"  {_tool('@target', [('entity_id', _q('${dummy_id}'))])},",
-            f"  {_tool('@world_click', [('entity_id', _q('${dummy_id}')), ('button', _q('right'))], 'press')},",
+            f"  {_tool('@target', [('entity_id', tstr('${dummy_id}'))])},",
+            f"  {_tool('@world_click', [('entity_id', tstr('${dummy_id}')), ('button', tstr('right'))], 'press')},",
             "  { wait_ms = 3000 },",
             "]",
             "teardown = [",
-            f"  {_tool('@clear_effects', [('name', _q('${character}'))])},",
+            f"  {_tool('@clear_effects', [('name', tstr('${character}'))])},",
             "  { tool = \"@cooldowns_reset\" },",
-            f"  {_tool('@dummy', [('disposition', _q('clear'))])},",
+            f"  {_tool('@dummy', [('disposition', tstr('clear'))])},",
             "]",
             *clause,
             "",
@@ -168,16 +159,16 @@ def armor_row(item_id: int, name: str, slot: int) -> str:
     return "\n".join(
         [
             "[[row]]",
-            f"id = {_q(f'GA-{item_id}')}",
-            f"title = {_q(f'{name} equips into its slot')}",
-            f"expected = {_q(f'The piece sits in equipment container {slot} on the character sheet.')}",
+            f"id = {tstr(f'GA-{item_id}')}",
+            f"title = {tstr(f'{name} equips into its slot')}",
+            f"expected = {tstr(f'The piece sits in equipment container {slot} on the character sheet.')}",
             "setup = [",
-            f"  {_chat(f'/gmgiveitem {item_id} 1')},",
-            f"  {_tool('@item_action', [('action', _q('equip')), ('name', _q(name))])},",
+            f"  {chat(f'/gmgiveitem {item_id} 1')},",
+            f"  {_tool('@item_action', [('action', tstr('equip')), ('name', tstr(name))])},",
             "  { wait_ms = 2000 },",
             "]",
             "step = [",
-            f"  {_tool('@window_read', [('kind', _q('character'))], 'sheet')},",
+            f"  {_tool('@window_read', [('kind', tstr('character'))], 'sheet')},",
             f"  {_tool('@screenshot')},",
             "]",
             "teardown = [",
@@ -185,16 +176,16 @@ def armor_row(item_id: int, name: str, slot: int) -> str:
             "]",
             "[[row.expect]]",
             'id = "sheet"',
-            f"text = {_q(f'the character sheet shows {name} in equipment container {slot}')}",
+            f"text = {tstr(f'the character sheet shows {name} in equipment container {slot}')}",
             'source = "human"',
-            f"question = {_q(f'Does the character sheet show {name} equipped (see the screenshot)?')}",
+            f"question = {tstr(f'Does the character sheet show {name} equipped (see the screenshot)?')}",
             "[[row.expect]]",
             'id = "moved"',
-            f"text = {_q(f'SigNoz: Inventory move persisted for {name} into container {slot}')}",
+            f"text = {tstr(f'SigNoz: Inventory move persisted for {name} into container {slot}')}",
             'source = "signoz"',
             'required = false',
             "filter = "
-            + _q(
+            + tstr(
                 f"body CONTAINS 'Inventory move persisted' AND item_name = '{name}' "
                 f"AND target_container_id = {slot} AND player_name CONTAINS '${{character}}'"
             ),
@@ -254,6 +245,8 @@ def write_gear_specs(out_dir: Path, cap: int = DEFAULT_CAP) -> int:
         ("armory-gear-armor", "armor", armor_blocks(equipment, items)),
     ]
     out_dir.mkdir(parents=True, exist_ok=True)
+    for stale in out_dir.glob("armory-gear-*.toml"):
+        stale.unlink()
     for stem, kind, blocks in groups:
         for name, chunk in split(stem, blocks):
             path = out_dir / f"{name}.toml"

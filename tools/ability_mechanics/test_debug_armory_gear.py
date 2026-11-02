@@ -152,6 +152,13 @@ class CommittedFilesTest(unittest.TestCase):
             for name in names:
                 self.assertEqual((Path(tmp) / name).read_bytes(), (COMMITTED / name).read_bytes(), name)
 
+    def test_stale_split_file_is_removed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            stale = Path(tmp) / "armory-gear-weapons-9.toml"
+            stale.write_text("stale\n", encoding="utf-8")
+            gear.write_gear_specs(Path(tmp))
+            self.assertFalse(stale.exists())
+
     def test_generator_writes_split_lf_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)
