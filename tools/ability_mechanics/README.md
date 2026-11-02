@@ -156,3 +156,16 @@ python tools/ability_mechanics/weapon_requirement_audit.py --stdout # print, wri
 ```
 
 `test_weapon_requirement_audit.py` pins the five Class Start starter cases against the seeds, the content-grant parsing, the new sections and the line-ending rule. Rerun the script when a seed changes an ability's `item_monikers`, an item's `moniker_ids`, or a player grant.
+
+## Debug armory (campaign debug-armory, DR-01)
+
+`debug_armory.py` is a read-only tool. It reads the seeds only, never a database. `survey` writes [`docs/analysis/debug-armory/catalog.md`](../../docs/analysis/debug-armory/catalog.md): one representative per weapon family, tier and quality, one per equipment slot, tier and quality, the archetype ability coverage, and the vendor count at a row cap. `audit` prints each free-id block the Armory needs (README F4) and exits 1 if an id in one is already used under `db/resources/`.
+
+```bash
+python tools/ability_mechanics/debug_armory.py survey           # rewrite the catalog
+python tools/ability_mechanics/debug_armory.py survey --check   # exit 1 if it drifted
+python tools/ability_mechanics/debug_armory.py survey --stdout  # print, write nothing
+python tools/ability_mechanics/debug_armory.py audit            # exit 1 on a collision
+```
+
+`test_debug_armory.py` pins the representative choice, the family and slot keys, the vendor count, the audit and the line-ending rule. Rerun `survey` when a seed changes an item's tier, quality, container or moniker.
