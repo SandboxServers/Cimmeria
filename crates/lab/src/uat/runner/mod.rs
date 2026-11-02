@@ -551,6 +551,8 @@ mod snapshot_mode_tests;
 #[cfg(test)]
 mod snapshot_tests;
 #[cfg(test)]
+mod stale_login_tests;
+#[cfg(test)]
 mod targets_tests;
 #[cfg(test)]
 mod test_server;

@@ -104,6 +104,25 @@ impl<I: ToolInvoker> Runner<'_, I> {
         self.setup_call_on(Who::P1, tool, args, ctx).await
     }
 
+    /// A character-select call that survives a stale `login_state`: when the
+    /// client reports it is not at character select (a server kick or a
+    /// timeout back to the login screen the supervisor never saw), log in once
+    /// and retry. The error text is the flow tool's own.
+    async fn char_select_call(
+        &mut self,
+        tool: &str,
+        args: Value,
+        ctx: &mut RowCtx,
+    ) -> Result<Value, String> {
+        match self.setup_call(tool, args.clone(), ctx).await {
+            Err(e) if e.contains("not at character select") => {
+                self.setup_call("lab_login", json!({}), ctx).await?;
+                self.setup_call(tool, args, ctx).await
+            }
+            other => other,
+        }
+    }
+
     /// Bring the client to `state`. Uses the flows by name, so a missing
     /// flow tool BLOCKs the row with its name.
     pub(crate) async fn ensure_state(
@@ -175,7 +194,9 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 .fresh
                 .clone()
                 .ok_or("character = fresh without [section.fresh]")?;
-            let list = self.setup_call("lab_characters", json!({}), ctx).await?;
+            let list = self
+                .char_select_call("lab_characters", json!({}), ctx)
+                .await?;
             let listed = list
                 .get("characters")
                 .and_then(Value::as_array)
@@ -225,7 +246,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
             }
         }
         let played = self
-            .setup_call("lab_play_character", json!({ "name": name }), ctx)
+            .char_select_call("lab_play_character", json!({ "name": name }), ctx)
             .await?;
         self.in_world_as = Some(name);
         let intro_pending = spec.section.fresh.as_ref().is_some_and(|f| f.finish_intro)
