@@ -12,6 +12,7 @@
 use serde_json::{json, Value};
 
 use super::binding::{parse_binding, Binding};
+use super::use_ability::window::pressable;
 use crate::supervisor::Supervisor;
 
 /// Button ids the stock profile code registers (`ActionProfileMod.MaxButtons`).
@@ -155,9 +156,27 @@ impl Hotbar {
         v
     }
 
-    /// The first visible empty button (for placing an ability).
-    pub fn first_empty_visible(&self) -> Option<&HotbarButton> {
-        self.buttons.iter().find(|b| b.visible && b.action_id <= 0)
+    /// The button `place` should put an ability on. With `need_key` (a key
+    /// press) the button must carry a binding the lab can press: buttons
+    /// past the stock bindings are visible and empty but unpressable, which
+    /// is where a long generated file used to die ("button 21 has no binding
+    /// the lab can press"). When every pressable button is taken, the last
+    /// pressable visible ability button is reused: the lab places in
+    /// ascending order, so that is the previous row's ability, and a file of
+    /// any length cycles on one button instead of running the bar out.
+    pub fn placement_target(&self, need_key: bool) -> Option<&HotbarButton> {
+        let usable = |b: &&HotbarButton| b.visible && (!need_key || pressable(&b.keys).is_some());
+        self.buttons
+            .iter()
+            .filter(usable)
+            .find(|b| b.action_id <= 0)
+            .or_else(|| {
+                self.buttons
+                    .iter()
+                    .filter(usable)
+                    .filter(|b| b.ability_id().is_some())
+                    .max_by_key(|b| b.button)
+            })
     }
 
     pub fn to_json(&self) -> Value {
@@ -310,7 +329,39 @@ mod tests {
             .map(|b| b.button)
             .collect();
         assert_eq!(ids, vec![2, 12, 30]);
-        assert_eq!(hb.first_empty_visible().unwrap().button, 4);
+        assert_eq!(hb.placement_target(false).unwrap().button, 4);
+    }
+
+    #[test]
+    fn placement_skips_empty_buttons_with_no_pressable_key() {
+        // Button 21 is visible and empty but has no binding: the DR-07n run
+        // placed there and then failed "no binding the lab can press".
+        let bound = "key=50".to_string();
+        let hb = parse_hotbar(&s(&[
+            &button_line(2, "1", "7", "Ability", "1100", &bound),
+            &button_line(21, "1", "0", "", "", ""),
+        ]))
+        .unwrap();
+        assert_eq!(hb.placement_target(true).unwrap().button, 2, "reuses 2");
+        assert_eq!(
+            hb.placement_target(false).unwrap().button,
+            21,
+            "click is fine"
+        );
+    }
+
+    #[test]
+    fn a_full_pressable_bar_reuses_the_last_ability_button() {
+        let bound = "key=50".to_string();
+        let hb = parse_hotbar(&s(&[
+            &button_line(1, "1", "6", "Ability", "1000", &bound),
+            &button_line(2, "1", "7", "Ability", "1100", &bound),
+            &button_line(21, "1", "0", "", "", ""),
+        ]))
+        .unwrap();
+        assert_eq!(hb.placement_target(true).unwrap().button, 2);
+        let none = parse_hotbar(&s(&[&button_line(21, "1", "0", "", "", "")])).unwrap();
+        assert!(none.placement_target(true).is_none());
     }
 
     #[test]

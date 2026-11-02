@@ -45,8 +45,8 @@ use super::NativeLevel;
 use crate::supervisor::flows::{settle, FlowError, FlowRun};
 use crate::supervisor::ui::click_expect::ClickExpect;
 use crate::supervisor::world::io::LiveWorld;
-use ground::{GroundArg, LiveGround};
 use crate::supervisor::{now_ms, Supervisor};
+use ground::{GroundArg, LiveGround};
 use outcome::classify;
 use proof::ability_evidence;
 use resolve::{known_chunk, parse_known, resolve, Query};
@@ -248,17 +248,20 @@ impl Supervisor {
             .and_then(|n| hotbar_now.buttons.iter().find(|b| b.button == *n))
             .cloned();
         if button.is_none() && req.place {
-            let target = hotbar_now.first_empty_visible().cloned().ok_or_else(|| {
-                run.fail(
-                    "place",
-                    format!(
-                        "no visible empty hotbar button to place the ability on \
+            let target = hotbar_now
+                .placement_target(req.press != Press::Click)
+                .cloned()
+                .ok_or_else(|| {
+                    run.fail(
+                        "place",
+                        format!(
+                            "no visible empty hotbar button to place the ability on \
                          ({} buttons read, {} visible)",
-                        hotbar_now.buttons.len(),
-                        hotbar_now.buttons.iter().filter(|b| b.visible).count()
-                    ),
-                )
-            })?;
+                            hotbar_now.buttons.len(),
+                            hotbar_now.buttons.iter().filter(|b| b.visible).count()
+                        ),
+                    )
+                })?;
             let tp = Instant::now();
             let r = run
                 .lua("place", &place_chunk(target.button, ability.id))
