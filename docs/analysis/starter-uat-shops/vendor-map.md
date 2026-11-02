@@ -84,26 +84,12 @@ Lists are `buy / sell / repair / recharge` (list ids; `-` is NULL) and then `tra
 | 18 Omega_Site | 63969 | UnionOmega_JaffaCraftingElec | 63840 | Union Omega - Jaffa Crafting Electronics | 63818 / 2 / 2 / 2 | 20 | starter-uat-union UO-R5: UO-U1 S12 (open); S13 for the six purchase-table items |
 | 18 Omega_Site | 63970 | UnionOmega_JaffaCraftingPowerSys | 63841 | Union Omega - Jaffa Crafting Power Systems | 63819 / 2 / 2 / 2 | 20 | starter-uat-union UO-R5: UO-U1 S12 (open); S13 for the six purchase-table items |
 | 18 Omega_Site | 63971 | UnionOmega_JaffaCraftingMat | 63842 | Union Omega - Jaffa Crafting Materials | 63820 / 2 / 2 / 2 | 20 | starter-uat-union UO-R5: UO-U1 S12 (open); S13 for the six purchase-table items |
-| 19 Tollana | 19001 | Tollana_Copplemann | 420 | mob (Copplemann) | trainer list 968 | - | none: no row (tollana-continuation claims template 420, tollana-continuation/w1-packets.md:61) |
+| 19 Tollana | 19001 | Tollana_Copplemann | 420 | Tollana - Capt. Copplemann | trainer list 968 | - | none: no row (tollana-continuation claims template 420, tollana-continuation/w1-packets.md:61) |
 | 1300 DebugArea | 13001 | DebugArea_Vendor | 300 | Debug Hub - Vendor | 1 / 2 / 2 / 2 | 3 | SS-D1 (V1, V4-V6, V8, V12) |
 | 1300 DebugArea | 13002 | DebugArea_Trainer | 301 | Debug Hub - Trainer | -; trainer list 1 | - | SS-D1 (V10, V11) |
 | 1300 DebugArea | 13006 | DebugArea_MunitionsVendor | 1302 | Debug Area - Munitions Vendor | 1300 / 2 / 2 / 2 | 19 | SS-D1 (V2, V3) |
 | 1300 DebugArea | 13007 | DebugArea_PetTrainer | 360 | Debug Hub - Pet Trainer | -; trainer list 350 | - | none: no row (pet trainer is not in SS-03a/b) |
 | 1300 DebugArea | 13019 | DebugArea_CraftSupplies | 314 | Debug Hub - Crafting Supplies | 310 / - / - / - | 24 | SS-D1 (V7) |
-| 1300 DebugArea | 13200 | DebugArea_Yard_Friendly_1 | 1330 | DebugArea - Friendly (faction 1 World Object) |  /  /  / ; trainer list  |  | none: no row |
-| 1300 DebugArea | 13201 | DebugArea_Yard_Friendly_2 | 1330 | DebugArea - Friendly (faction 1 World Object) |  /  /  / ; trainer list  |  | none: no row |
-| 1300 DebugArea | 13202 | DebugArea_Yard_Friendly_3 | 1331 | DebugArea - Friendly (faction 9 Friendly_Ambient) |  /  /  / ; trainer list  |  | none: no row |
-| 1300 DebugArea | 13203 | DebugArea_Yard_Friendly_4 | 1331 | DebugArea - Friendly (faction 9 Friendly_Ambient) |  /  /  / ; trainer list  |  | none: no row |
-| 1300 DebugArea | 13204 | DebugArea_Yard_Neutral_1 | 1332 | DebugArea - Neutral (faction 7 Neutral_Ambient) |  /  /  / ; trainer list  |  | none: no row |
-| 1300 DebugArea | 13205 | DebugArea_Yard_Neutral_2 | 1332 | DebugArea - Neutral (faction 7 Neutral_Ambient) |  /  /  / ; trainer list  |  | none: no row |
-| 1300 DebugArea | 13206 | DebugArea_Yard_NeutralPinned_1 | 1333 | DebugArea - Neutral Jaffa (faction 10, spawn pinned NEUTRAL) |  /  /  / ; trainer list  |  | none: no row |
-| 1300 DebugArea | 13207 | DebugArea_Yard_NeutralPinned_2 | 1333 | DebugArea - Neutral Jaffa (faction 10, spawn pinned NEUTRAL) |  /  /  / ; trainer list  |  | none: no row |
-| 1300 DebugArea | 13240 | DebugArea_Slope_Patrol | 1340 | DebugArea - Patroller |  /  /  / ; trainer list  |  | none: no row |
-| 1300 DebugArea | 13241 | DebugArea_Slope_Wander | 1341 | DebugArea - Wanderer |  /  /  / ; trainer list  |  | none: no row |
-| 1300 DebugArea | 13242 | DebugArea_Slope_Leash | 1342 | DebugArea - Leash test |  /  /  / ; trainer list  |  | none: no row |
-| 1300 DebugArea | 13243 | DebugArea_Slope_Assist_A | 1343 | DebugArea - Assist trio |  /  /  / ; trainer list  |  | none: no row |
-| 1300 DebugArea | 13244 | DebugArea_Slope_Assist_B | 1343 | DebugArea - Assist trio |  /  /  / ; trainer list  |  | none: no row |
-| 1300 DebugArea | 13245 | DebugArea_Slope_Assist_C | 1343 | DebugArea - Assist trio |  /  /  / ; trainer list  |  | none: no row |
 
 Row ids in the Debug Area and stasis rows are this campaign's rows from [work-packets.md](work-packets.md): V1-V12 (SS-03a, SS-03b) run in SS-D1 at the plaza; SS-D2 runs the stasis hub. The Debug Area pet trainer (13007) and Tollana's trainer (19001) have no row yet.
 
@@ -116,7 +102,7 @@ These worlds have no vendor in the seed. Table 2 records what a player could rea
 | Tollana (19) | None on a vendor list. One trainer: Copplemann, spawn 19001, template 420, trainer list 968 (`spawnlist_tollana.sql:10`) | Not established. The ledger names no route from Tollana to a vendor world. The seeded vendors are in worlds 12, 8, 18 and 1300. | none. `tollana-continuation` has no vendor or shop row; template 420 appears only as the Copplemann claim at `tollana-continuation/w1-packets.md:61` |
 | SGC_W1 (58) | None (no spawn in world 58) | Omega (18), through the SGC-to-Omega crossing that `union-sgc-continuation/README.md:49-53` describes. Its arrival is checked by UO-U3. | none. `union-sgc-continuation` has no match for vendor, shop, store or trainer |
 | Dakara_E1 (61, 62) | None (the seed has only the DHD in world 61: `dakara-e1-rebuild/audit.md:74`) | Not established. The ledger names crossings from Dakara to SGC_W1 (1651, 1654, `union-sgc-continuation/README.md:51`) and from SGC_W1 to Omega, so Omega is two crossings away. | `dakara-e1-rebuild/README.md:32` ("no vendor data") and `:293` ("Vendors, trainers, ambient population: BLOCKED (no data)") |
-| Beta Site E1 (23) | None (no spawn in world 23) | Not established. The ledger names no route from Beta Site E1 to a vendor world. | none. `union-beta-e1-continuation/uat/UB-U2.md:21` names a Quartermaster NPC, a story speaker and not a seeded vendor; `union-beta-e1-continuation/reward-proposal.md:37` names a "Closing Shop" speaker (template 381), not a vendor |
+| Beta Site E1 (23) | None (no spawn in world 23) | Not established. The ledger names no route from Beta Site E1 to a vendor world. | none. `union-beta-e1-continuation/uat/UB-U2.md:21` is the walk row for the Quartermaster area (Satterfield, template 2302, and Life_QM_1/2, template 2308); neither has a vendor list in the seed. `union-beta-e1-continuation/reward-proposal.md:37` is mission 381 "Closing Shop", a reward row, not a vendor |
 | Harset (57, 68, 69, 70) | None (no spawn in worlds 57, 68, 69 or 70) | Not built. Omega (18) is the stated reference for Harset vendors (`harset-continuation/lomiada-brief.md:31`, O18-04). No Harset route to Omega is in the ledger. | `harset-continuation/README.md:226-227` (PU-07 and PU-08, PROVISIONAL drafts, not merged) and `harset-continuation/work-packets.md:70` (HA-15b, BlockedDependency) |
 
 ## D-SS2 and OD-5 (Castle hub Quartermaster)
