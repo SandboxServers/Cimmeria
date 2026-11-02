@@ -51,6 +51,9 @@
 //! - [`live_db_castle_standoff`]: live-DB guards for the Castle standoff rows
 //!   and templates 187-189 (NPC-vs-NPC, #1009): faction 3, a hostile in reach,
 //!   and the templates they were cloned from left alone.
+//! - [`live_db_debug_area_armory`]: live-DB guards for the Debug Area Armory
+//!   (DR-04, templates 1610-1659, spawns 14110-14299): every vendor spawned,
+//!   buy lists stocked and priced, tree weapons and equipment slots covered.
 //! - [`live_db_debug_area_lineup`]: live-DB guards for the Debug Area Visual NPC
 //!   lineup (DA-10, world 1300, templates 1410-1599, spawns 13870-14099):
 //!   every character look has one passive display actor, so a template
@@ -156,6 +159,7 @@ mod live_db_castle_standoff;
 mod live_db_content_loaders;
 mod live_db_crafting_hub;
 mod live_db_dakara_bridge_mission;
+mod live_db_debug_area_armory;
 mod live_db_debug_area_lineup;
 mod live_db_debug_area_lineup_tint;
 mod live_db_debug_area_npcs;
