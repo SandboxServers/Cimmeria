@@ -37,6 +37,8 @@ DUMMY_TEMPLATE = 1310
 # The ability log's target and the event that names an unbound weapon (hostile_attack.rs, refuse_no_ranged_attack).
 UNBOUND_SCOPE = "abilities"
 SECTION_TAIL = """
+schema = 1
+
 [section]
 id = "{section}"
 system = "Debug Area Armory gear ({kind})"

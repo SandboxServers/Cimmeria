@@ -1,0 +1,1688 @@
+# Unified UAT, section "armory-gear-weapons-1" (Debug Area Armory gear, DR-07).
+# Written by: python tools/ability_mechanics/debug_armory.py specs gear --out-dir docs/guides/uat-specs
+# Generated: do not hand-edit; rerun the command. Campaign: docs/analysis/debug-armory/README.md.
+
+schema = 1
+
+[section]
+id = "armory-gear-weapons-1"
+system = "Debug Area Armory gear (weapons)"
+guide = "docs/guides/unified-uat.md#debug-area"
+ledger = "docs/analysis/debug-armory/README.md"
+account = "gm"
+character = "fresh"
+
+[section.fresh]
+alignment = "sgu"
+archetype = "Soldier"
+gender = "male"
+first = "Uat"
+
+[[row]]
+id = "GW-3128"
+title = "Test Weapon fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 559."
+setup = [
+  { chat = "/gmgiveitem 3128 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Test Weapon" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 559 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 559 }
+since = "press"
+
+[[row]]
+id = "GW-17"
+title = "P-90 of the Whale 2 has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { chat = "/gmgiveitem 17 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "P-90 of the Whale 2" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 17, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 17 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-5680"
+title = "Rekkr Attack Program fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1216."
+setup = [
+  { chat = "/gmgiveitem 5680 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Rekkr Attack Program" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1216 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1216 }
+since = "press"
+
+[[row]]
+id = "GW-5686"
+title = "Valkyrie Attack Program fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1216."
+setup = [
+  { chat = "/gmgiveitem 5686 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Valkyrie Attack Program" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1216 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1216 }
+since = "press"
+
+[[row]]
+id = "GW-5692"
+title = "Einherjar Attack Program fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1216."
+setup = [
+  { chat = "/gmgiveitem 5692 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Einherjar Attack Program" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1216 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1216 }
+since = "press"
+
+[[row]]
+id = "GW-5695"
+title = "Mjolnir Attack Program fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1216."
+setup = [
+  { chat = "/gmgiveitem 5695 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Mjolnir Attack Program" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1216 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1216 }
+since = "press"
+
+[[row]]
+id = "GW-3145"
+title = "AR 21 Assault Rifle fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 559."
+setup = [
+  { chat = "/gmgiveitem 3145 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "AR 21 Assault Rifle" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 559 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 559 }
+since = "press"
+
+[[row]]
+id = "GW-3169"
+title = "AR 21A Assault Rifle fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 559."
+setup = [
+  { chat = "/gmgiveitem 3169 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "AR 21A Assault Rifle" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 559 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 559 }
+since = "press"
+
+[[row]]
+id = "GW-4774"
+title = "AR 21A TACMOD Assault Rifle fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 559."
+setup = [
+  { chat = "/gmgiveitem 4774 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "AR 21A TACMOD Assault Rifle" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 559 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 559 }
+since = "press"
+
+[[row]]
+id = "GW-4780"
+title = "AR 200 Assault Rifle fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 559."
+setup = [
+  { chat = "/gmgiveitem 4780 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "AR 200 Assault Rifle" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 559 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 559 }
+since = "press"
+
+[[row]]
+id = "GW-4783"
+title = "ACR 200 Assault Rifle fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 559."
+setup = [
+  { chat = "/gmgiveitem 4783 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "ACR 200 Assault Rifle" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 559 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 559 }
+since = "press"
+
+[[row]]
+id = "GW-21"
+title = "SGHC 6 SMG fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 559."
+setup = [
+  { chat = "/gmgiveitem 21 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SGHC 6 SMG" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 559 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 559 }
+since = "press"
+
+[[row]]
+id = "GW-3138"
+title = "SGHC 6 AP SMG fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 559."
+setup = [
+  { chat = "/gmgiveitem 3138 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SGHC 6 AP SMG" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 559 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 559 }
+since = "press"
+
+[[row]]
+id = "GW-4695"
+title = "SGHC 7 SMG fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 559."
+setup = [
+  { chat = "/gmgiveitem 4695 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SGHC 7 SMG" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 559 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 559 }
+since = "press"
+
+[[row]]
+id = "GW-4701"
+title = "SGHC X SMG fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 559."
+setup = [
+  { chat = "/gmgiveitem 4701 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SGHC X SMG" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 559 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 559 }
+since = "press"
+
+[[row]]
+id = "GW-4705"
+title = "SGHC Gauss SMG fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 559."
+setup = [
+  { chat = "/gmgiveitem 4705 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SGHC Gauss SMG" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 559 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 559 }
+since = "press"
+
+[[row]]
+id = "GW-5094"
+title = "Rak'tel fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 740."
+setup = [
+  { chat = "/gmgiveitem 5094 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Rak'tel" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 740 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 740 }
+since = "press"
+
+[[row]]
+id = "GW-3334"
+title = "Heavy Combat Knife has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { chat = "/gmgiveitem 3334 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 3334, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 3334 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-5077"
+title = "Composite Combat Knife has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { chat = "/gmgiveitem 5077 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Composite Combat Knife" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 5077, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 5077 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-5083"
+title = "Microblade Combat Knife has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { chat = "/gmgiveitem 5083 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Microblade Combat Knife" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 5083, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 5083 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-5086"
+title = "Molecular Combat Knife has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { chat = "/gmgiveitem 5086 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Molecular Combat Knife" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 5086, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 5086 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-3584"
+title = "CO2 Pistol Dartgun fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1086."
+setup = [
+  { chat = "/gmgiveitem 3584 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "CO2 Pistol Dartgun" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1086 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1086 }
+since = "press"
+
+[[row]]
+id = "GW-3591"
+title = "CO2 Rifle Dartgun fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1086."
+setup = [
+  { chat = "/gmgiveitem 3591 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "CO2 Rifle Dartgun" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1086 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1086 }
+since = "press"
+
+[[row]]
+id = "GW-5025"
+title = "CO2 Semi Auto Dartgun fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1086."
+setup = [
+  { chat = "/gmgiveitem 5025 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "CO2 Semi Auto Dartgun" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1086 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1086 }
+since = "press"
+
+[[row]]
+id = "GW-5034"
+title = "CO2 ACR Dartgun fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1086."
+setup = [
+  { chat = "/gmgiveitem 5034 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "CO2 ACR Dartgun" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1086 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1086 }
+since = "press"
+
+[[row]]
+id = "GW-5037"
+title = "Gauss Dartgun fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1086."
+setup = [
+  { chat = "/gmgiveitem 5037 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Gauss Dartgun" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1086 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1086 }
+since = "press"
+
+[[row]]
+id = "GW-2699"
+title = "Fists has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { chat = "/gmgiveitem 2699 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Fists" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 2699, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 2699 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-4990"
+title = "GL 21 Grenade Launcher has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { chat = "/gmgiveitem 4990 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "GL 21 Grenade Launcher" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 4990, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 4990 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-4997"
+title = "GL 22 Grenade Launcher has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { chat = "/gmgiveitem 4997 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "GL 22 Grenade Launcher" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 4997, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 4997 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-5003"
+title = "GL 23 Grenade Launcher has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { chat = "/gmgiveitem 5003 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "GL 23 Grenade Launcher" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 5003, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 5003 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-5009"
+title = "GL 24 Grenade Launcher has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { chat = "/gmgiveitem 5009 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "GL 24 Grenade Launcher" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 5009, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 5009 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-5012"
+title = "GL 25 Grenade Launcher has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { chat = "/gmgiveitem 5012 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "GL 25 Grenade Launcher" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 5012, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 5012 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-3260"
+title = "SK37 LMG fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 582."
+setup = [
+  { chat = "/gmgiveitem 3260 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SK37 LMG" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 582 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 582 }
+since = "press"
+
+[[row]]
+id = "GW-3268"
+title = "SK37 B LMG fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 582."
+setup = [
+  { chat = "/gmgiveitem 3268 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SK37 B LMG" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 582 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 582 }
+since = "press"
+
+[[row]]
+id = "GW-4841"
+title = "SK38 LMG fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 582."
+setup = [
+  { chat = "/gmgiveitem 4841 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SK38 LMG" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 582 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 582 }
+since = "press"
+
+[[row]]
+id = "GW-4849"
+title = "SK38 X LMG fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 582."
+setup = [
+  { chat = "/gmgiveitem 4849 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SK38 X LMG" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 582 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 582 }
+since = "press"
+
+[[row]]
+id = "GW-4853"
+title = "SK Gauss LMG fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 582."
+setup = [
+  { chat = "/gmgiveitem 4853 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SK Gauss LMG" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 582 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 582 }
+since = "press"
+
+[[row]]
+id = "GW-55"
+title = "SI 3 9mm Pistol fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 579."
+setup = [
+  { chat = "/gmgiveitem 55 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SI 3 9mm Pistol" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 579 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 579 }
+since = "press"
+
+[[row]]
+id = "GW-3243"
+title = "SI 4 9mm Pistol fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 579."
+setup = [
+  { chat = "/gmgiveitem 3243 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SI 4 9mm Pistol" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 579 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 579 }
+since = "press"
+
+[[row]]
+id = "GW-5481"
+title = "Crafted Pistol of the Whale fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 579."
+setup = [
+  { chat = "/gmgiveitem 5481 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Crafted Pistol of the Whale" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 579 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 579 }
+since = "press"
+
+[[row]]
+id = "GW-4885"
+title = "SI 5 9mm Pistol fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 579."
+setup = [
+  { chat = "/gmgiveitem 4885 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SI 5 9mm Pistol" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 579 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 579 }
+since = "press"
+
+[[row]]
+id = "GW-4891"
+title = "SI-P 5 9mm Pistol fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 579."
+setup = [
+  { chat = "/gmgiveitem 4891 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SI-P 5 9mm Pistol" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 579 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 579 }
+since = "press"
+
+[[row]]
+id = "GW-4894"
+title = "SI-A 9mm Pistol fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 579."
+setup = [
+  { chat = "/gmgiveitem 4894 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SI-A 9mm Pistol" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 579 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 579 }
+since = "press"
+
+[[row]]
+id = "GW-4458"
+title = "Discharge Ribbon Device fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 584."
+setup = [
+  { chat = "/gmgiveitem 4458 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Discharge Ribbon Device" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 584 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 584 }
+since = "press"
+
+[[row]]
+id = "GW-4466"
+title = "Spark Ribbon Device fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 584."
+setup = [
+  { chat = "/gmgiveitem 4466 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Spark Ribbon Device" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 584 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 584 }
+since = "press"
+
+[[row]]
+id = "GW-4472"
+title = "Surge Ribbon Device fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 584."
+setup = [
+  { chat = "/gmgiveitem 4472 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Surge Ribbon Device" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 584 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 584 }
+since = "press"
+
+[[row]]
+id = "GW-4478"
+title = "Bolt Ribbon Device fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 584."
+setup = [
+  { chat = "/gmgiveitem 4478 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Bolt Ribbon Device" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 584 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 584 }
+since = "press"
+
+[[row]]
+id = "GW-8339"
+title = "Lightning Ribbon Device fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 584."
+setup = [
+  { chat = "/gmgiveitem 8339 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Lightning Ribbon Device" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 584 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 584 }
+since = "press"
+
+[[row]]
+id = "GW-3287"
+title = "SR1 .50-Cal Rifle fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 581."
+setup = [
+  { chat = "/gmgiveitem 3287 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SR1 .50-Cal Rifle" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 581 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 581 }
+since = "press"
+
+[[row]]
+id = "GW-3294"
+title = "SR2 .50-Cal Rifle fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 581."
+setup = [
+  { chat = "/gmgiveitem 3294 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "SR2 .50-Cal Rifle" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 581 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 581 }
+since = "press"
+
+[[row]]
+id = "GW-4948"
+title = "Nenz 25S Rifle fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 581."
+setup = [
+  { chat = "/gmgiveitem 4948 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Nenz 25S Rifle" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 581 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 581 }
+since = "press"
+
+[[row]]
+id = "GW-4954"
+title = "Nenz 25S-II Rifle fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 581."
+setup = [
+  { chat = "/gmgiveitem 4954 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Nenz 25S-II Rifle" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 581 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 581 }
+since = "press"
+
+[[row]]
+id = "GW-4957"
+title = "Nenz 2500 Rifle fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 581."
+setup = [
+  { chat = "/gmgiveitem 4957 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Nenz 2500 Rifle" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 581 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 581 }
+since = "press"
+
+[[row]]
+id = "GW-3313"
+title = "Pump Shotgun fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 583."
+setup = [
+  { chat = "/gmgiveitem 3313 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Pump Shotgun" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 583 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 583 }
+since = "press"
+
+[[row]]
+id = "GW-3320"
+title = "Semi Auto Shotgun fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 583."
+setup = [
+  { chat = "/gmgiveitem 3320 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Semi Auto Shotgun" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 583 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 583 }
+since = "press"
+
+[[row]]
+id = "GW-4928"
+title = "Combat Shotgun fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 583."
+setup = [
+  { chat = "/gmgiveitem 4928 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Combat Shotgun" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 583 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 583 }
+since = "press"
+
+[[row]]
+id = "GW-4933"
+title = "Assault Shotgun fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 583."
+setup = [
+  { chat = "/gmgiveitem 4933 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Assault Shotgun" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 583 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 583 }
+since = "press"
+
+[[row]]
+id = "GW-4937"
+title = "Strike Shotgun fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 583."
+setup = [
+  { chat = "/gmgiveitem 4937 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Strike Shotgun" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 583 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 583 }
+since = "press"
+
+[[row]]
+id = "GW-2797"
+title = "Serpent Staff fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 584."
+setup = [
+  { chat = "/gmgiveitem 2797 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 584 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 584 }
+since = "press"
+
+[[row]]
+id = "GW-3478"
+title = "Venom Staff fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 584."
+setup = [
+  { chat = "/gmgiveitem 3478 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Venom Staff" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 584 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 584 }
+since = "press"

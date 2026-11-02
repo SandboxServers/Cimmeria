@@ -1,0 +1,921 @@
+# Unified UAT, section "armory-gear-armor" (Debug Area Armory gear, DR-07).
+# Written by: python tools/ability_mechanics/debug_armory.py specs gear --out-dir docs/guides/uat-specs
+# Generated: do not hand-edit; rerun the command. Campaign: docs/analysis/debug-armory/README.md.
+
+schema = 1
+
+[section]
+id = "armory-gear-armor"
+system = "Debug Area Armory gear (armor)"
+guide = "docs/guides/unified-uat.md#debug-area"
+ledger = "docs/analysis/debug-armory/README.md"
+account = "gm"
+character = "fresh"
+
+[section.fresh]
+alignment = "sgu"
+archetype = "Soldier"
+gender = "male"
+first = "Uat"
+
+[[row]]
+id = "GA-33"
+title = "Aramid Fiber Ballistic Helmet equips into its slot"
+expected = "The piece sits in equipment container 4 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 33 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Aramid Fiber Ballistic Helmet" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Aramid Fiber Ballistic Helmet in equipment container 4"
+source = "human"
+question = "Does the character sheet show Aramid Fiber Ballistic Helmet equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-2933"
+title = "Boron-Carbide Ballistic Helmet equips into its slot"
+expected = "The piece sits in equipment container 4 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 2933 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Helmet" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Boron-Carbide Ballistic Helmet in equipment container 4"
+source = "human"
+question = "Does the character sheet show Boron-Carbide Ballistic Helmet equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-4074"
+title = "Trinium Ablative Helmet equips into its slot"
+expected = "The piece sits in equipment container 4 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4074 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Trinium Ablative Helmet" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Trinium Ablative Helmet in equipment container 4"
+source = "human"
+question = "Does the character sheet show Trinium Ablative Helmet equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-4081"
+title = "Tri-Naq Alloy Ablative Helmet equips into its slot"
+expected = "The piece sits in equipment container 4 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4081 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Tri-Naq Alloy Ablative Helmet" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Tri-Naq Alloy Ablative Helmet in equipment container 4"
+source = "human"
+question = "Does the character sheet show Tri-Naq Alloy Ablative Helmet equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-5326"
+title = "Neutronium Ablative Helmet equips into its slot"
+expected = "The piece sits in equipment container 4 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 5326 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Helmet" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Neutronium Ablative Helmet in equipment container 4"
+source = "human"
+question = "Does the character sheet show Neutronium Ablative Helmet equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-3497"
+title = "Eyeglasses equips into its slot"
+expected = "The piece sits in equipment container 5 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 3497 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Eyeglasses" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Eyeglasses in equipment container 5"
+source = "human"
+question = "Does the character sheet show Eyeglasses equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-7361"
+title = "Goggles equips into its slot"
+expected = "The piece sits in equipment container 5 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7361 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Goggles" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Goggles in equipment container 5"
+source = "human"
+question = "Does the character sheet show Goggles equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-7364"
+title = "Goggles equips into its slot"
+expected = "The piece sits in equipment container 5 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7364 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Goggles" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Goggles in equipment container 5"
+source = "human"
+question = "Does the character sheet show Goggles equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-7367"
+title = "Goggles equips into its slot"
+expected = "The piece sits in equipment container 5 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7367 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Goggles" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Goggles in equipment container 5"
+source = "human"
+question = "Does the character sheet show Goggles equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-7369"
+title = "Goggles equips into its slot"
+expected = "The piece sits in equipment container 5 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7369 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Goggles" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Goggles in equipment container 5"
+source = "human"
+question = "Does the character sheet show Goggles equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-34"
+title = "Aramid Fiber Ballistic Vest equips into its slot"
+expected = "The piece sits in equipment container 7 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 34 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Aramid Fiber Ballistic Vest" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Aramid Fiber Ballistic Vest in equipment container 7"
+source = "human"
+question = "Does the character sheet show Aramid Fiber Ballistic Vest equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-2891"
+title = "Testing Ballistic Vest equips into its slot"
+expected = "The piece sits in equipment container 7 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 2891 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Testing Ballistic Vest" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Testing Ballistic Vest in equipment container 7"
+source = "human"
+question = "Does the character sheet show Testing Ballistic Vest equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-2945"
+title = "Boron-Carbide Ballistic Vest equips into its slot"
+expected = "The piece sits in equipment container 7 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 2945 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Vest" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Boron-Carbide Ballistic Vest in equipment container 7"
+source = "human"
+question = "Does the character sheet show Boron-Carbide Ballistic Vest equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-4114"
+title = "Trinium Ballistic Vest equips into its slot"
+expected = "The piece sits in equipment container 7 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4114 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Trinium Ballistic Vest" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Trinium Ballistic Vest in equipment container 7"
+source = "human"
+question = "Does the character sheet show Trinium Ballistic Vest equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-4120"
+title = "Tri-Naq Alloy Ballistic Vest equips into its slot"
+expected = "The piece sits in equipment container 7 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4120 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Tri-Naq Alloy Ballistic Vest" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Tri-Naq Alloy Ballistic Vest in equipment container 7"
+source = "human"
+question = "Does the character sheet show Tri-Naq Alloy Ballistic Vest equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-5323"
+title = "Neutronium Ablative Vest equips into its slot"
+expected = "The piece sits in equipment container 7 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 5323 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Vest" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Neutronium Ablative Vest in equipment container 7"
+source = "human"
+question = "Does the character sheet show Neutronium Ablative Vest equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-2921"
+title = "Test Gloves equips into its slot"
+expected = "The piece sits in equipment container 8 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 2921 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Test Gloves" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Test Gloves in equipment container 8"
+source = "human"
+question = "Does the character sheet show Test Gloves equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-2980"
+title = "Boron-Carbide Ballistic Gloves equips into its slot"
+expected = "The piece sits in equipment container 8 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 2980 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Gloves" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Boron-Carbide Ballistic Gloves in equipment container 8"
+source = "human"
+question = "Does the character sheet show Boron-Carbide Ballistic Gloves equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-4165"
+title = "Trinium Ballistic Gloves equips into its slot"
+expected = "The piece sits in equipment container 8 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4165 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Trinium Ballistic Gloves" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Trinium Ballistic Gloves in equipment container 8"
+source = "human"
+question = "Does the character sheet show Trinium Ballistic Gloves equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-4172"
+title = "Tri-Naq Alloy Ballistic Gloves equips into its slot"
+expected = "The piece sits in equipment container 8 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4172 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Tri-Naq Alloy Ballistic Gloves" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Tri-Naq Alloy Ballistic Gloves in equipment container 8"
+source = "human"
+question = "Does the character sheet show Tri-Naq Alloy Ballistic Gloves equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-5317"
+title = "Neutronium Ablative Gloves equips into its slot"
+expected = "The piece sits in equipment container 8 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 5317 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Gloves" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Neutronium Ablative Gloves in equipment container 8"
+source = "human"
+question = "Does the character sheet show Neutronium Ablative Gloves equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-3632"
+title = "Grenade Belt equips into its slot"
+expected = "The piece sits in equipment container 9 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 3632 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Grenade Belt" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Grenade Belt in equipment container 9"
+source = "human"
+question = "Does the character sheet show Grenade Belt equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-7247"
+title = "Deployment Belt equips into its slot"
+expected = "The piece sits in equipment container 9 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7247 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Deployment Belt" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Deployment Belt in equipment container 9"
+source = "human"
+question = "Does the character sheet show Deployment Belt equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-7250"
+title = "Deployment Belt equips into its slot"
+expected = "The piece sits in equipment container 9 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7250 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Deployment Belt" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Deployment Belt in equipment container 9"
+source = "human"
+question = "Does the character sheet show Deployment Belt equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-7253"
+title = "Deployment Belt equips into its slot"
+expected = "The piece sits in equipment container 9 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7253 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Deployment Belt" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Deployment Belt in equipment container 9"
+source = "human"
+question = "Does the character sheet show Deployment Belt equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-7255"
+title = "Deployment Belt equips into its slot"
+expected = "The piece sits in equipment container 9 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7255 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Deployment Belt" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Deployment Belt in equipment container 9"
+source = "human"
+question = "Does the character sheet show Deployment Belt equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-7257"
+title = "Deployment Harness equips into its slot"
+expected = "The piece sits in equipment container 10 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7257 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Deployment Harness" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Deployment Harness in equipment container 10"
+source = "human"
+question = "Does the character sheet show Deployment Harness equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-7261"
+title = "Deployment Harness equips into its slot"
+expected = "The piece sits in equipment container 10 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7261 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Deployment Harness" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Deployment Harness in equipment container 10"
+source = "human"
+question = "Does the character sheet show Deployment Harness equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-7264"
+title = "Deployment Harness equips into its slot"
+expected = "The piece sits in equipment container 10 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7264 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Deployment Harness" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Deployment Harness in equipment container 10"
+source = "human"
+question = "Does the character sheet show Deployment Harness equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-7267"
+title = "Deployment Harness equips into its slot"
+expected = "The piece sits in equipment container 10 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7267 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Deployment Harness" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Deployment Harness in equipment container 10"
+source = "human"
+question = "Does the character sheet show Deployment Harness equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-7269"
+title = "Deployment Harness equips into its slot"
+expected = "The piece sits in equipment container 10 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7269 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Deployment Harness" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Deployment Harness in equipment container 10"
+source = "human"
+question = "Does the character sheet show Deployment Harness equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-2920"
+title = "Test Legs equips into its slot"
+expected = "The piece sits in equipment container 11 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 2920 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Test Legs" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Test Legs in equipment container 11"
+source = "human"
+question = "Does the character sheet show Test Legs equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-3007"
+title = "Boron-Carbide Ballistic Pants equips into its slot"
+expected = "The piece sits in equipment container 11 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 3007 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Pants" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Boron-Carbide Ballistic Pants in equipment container 11"
+source = "human"
+question = "Does the character sheet show Boron-Carbide Ballistic Pants equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-4132"
+title = "Trinium Ballistic Pants equips into its slot"
+expected = "The piece sits in equipment container 11 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4132 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Trinium Ballistic Pants" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Trinium Ballistic Pants in equipment container 11"
+source = "human"
+question = "Does the character sheet show Trinium Ballistic Pants equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-4140"
+title = "Tri-Naq Alloy Ballistic Pants equips into its slot"
+expected = "The piece sits in equipment container 11 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4140 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Tri-Naq Alloy Ballistic Pants" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Tri-Naq Alloy Ballistic Pants in equipment container 11"
+source = "human"
+question = "Does the character sheet show Tri-Naq Alloy Ballistic Pants equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-5329"
+title = "Neutronium Ablative Pants equips into its slot"
+expected = "The piece sits in equipment container 11 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 5329 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Pants" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Neutronium Ablative Pants in equipment container 11"
+source = "human"
+question = "Does the character sheet show Neutronium Ablative Pants equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-2922"
+title = "Test Boots equips into its slot"
+expected = "The piece sits in equipment container 12 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 2922 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Test Boots" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Test Boots in equipment container 12"
+source = "human"
+question = "Does the character sheet show Test Boots equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-2962"
+title = "Boron-Carbide Ballistic Boots equips into its slot"
+expected = "The piece sits in equipment container 12 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 2962 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Boots" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Boron-Carbide Ballistic Boots in equipment container 12"
+source = "human"
+question = "Does the character sheet show Boron-Carbide Ballistic Boots equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-4192"
+title = "Trinium Ballistic Boots equips into its slot"
+expected = "The piece sits in equipment container 12 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4192 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Trinium Ballistic Boots" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Trinium Ballistic Boots in equipment container 12"
+source = "human"
+question = "Does the character sheet show Trinium Ballistic Boots equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-4206"
+title = "Tri-Naq AlloyBallistic Boots equips into its slot"
+expected = "The piece sits in equipment container 12 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4206 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Tri-Naq AlloyBallistic Boots" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Tri-Naq AlloyBallistic Boots in equipment container 12"
+source = "human"
+question = "Does the character sheet show Tri-Naq AlloyBallistic Boots equipped (see the screenshot)?"
+
+[[row]]
+id = "GA-5320"
+title = "Neutronium Ablative Boots equips into its slot"
+expected = "The piece sits in equipment container 12 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 5320 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Boots" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Neutronium Ablative Boots in equipment container 12"
+source = "human"
+question = "Does the character sheet show Neutronium Ablative Boots equipped (see the screenshot)?"
