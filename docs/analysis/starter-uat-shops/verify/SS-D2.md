@@ -68,7 +68,7 @@ PASS: `store_opened` for `vendor_template_id` 300 (or the field name the first p
 
 ### ROW D2-2 grade
 
-PASS: `transaction` action `buy` for template 314 (list 310 row 3101, design 5254), in the D2-2 window, with `price` and `cash_after`; the driver's cash before and after agrees with the server's cash_after. N1 (the existing tool). FAIL: a `refused` row for the buy (name the reason). BLOCKED if the driver's `client_vendor_buy` never ran. cash_before 0 with no `/gmgivecash` in the driver report is BLOCKED (setup), not FAIL.
+PASS: `transaction` action `buy` for template 314 (list 310, expected row 3101, design 5254; if the driver recorded another row 1, grade the design the server logged and say so in Notes), in the D2-2 window, with `price` and `cash_after`; the driver's cash before and after agrees with the server's cash_after. N1 (the existing tool). FAIL: a `refused` row for the buy (name the reason). BLOCKED if the driver's `client_vendor_buy` never ran. cash_before 0 with no `/gmgivecash` in the driver report is BLOCKED (setup), not FAIL.
 
 ### ROW D2-3 grade
 

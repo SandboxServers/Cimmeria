@@ -8,7 +8,7 @@
 1. **Wave 1.** `ops` creates `ss-integration` (`pwsh tools/build-lane/mk-worktree.ps1 starter-uat-shops/integration ss-integration`) and commits these three campaign files into it. Then `ops` creates one worktree per packet **branched at the `ss-integration` head** (branch at SHA): `ss-01`, `ss-02`, `ss-04` first, in one message, in the background. When SS-01 is reviewed and merged into `ss-integration`, branch `ss-03a` and `ss-05` at the new head; when SS-03a is merged, branch `ss-03b`. Merge each packet back `--no-ff` (`merge-noff.ps1`) after its packet review passes.
 2. **Agents as defined, no model override:** SS-01 `items-systems-advisor`; SS-02, SS-03a, SS-03b `packet-coder`; SS-04, SS-05, SS-98, SS-99 `documentation-writer`; SS-20 to SS-23 `database-persistence`.
 3. **Lab waves (2 and 3b) are ASK-FIRST** (contract § C1). Ask the user before each wave and wait for a yes.
-4. **Lanes.** SS-D1 runs on instance `default` (Debug Area plaza). SS-D2 then SS-D3 run one after the other on `p2`: both use the stasis room, and two lanes never share a room.
+4. **Lanes.** SS-D1 runs on instance `default` (Debug Area plaza). SS-D2 runs on `p2` (account lab2); SS-D3 runs on `default` (account lab, character Bankone) and only after the SS-D1 verifier has returned, because both use instance `default`. SS-D3 also waits for the SS-D2 verifier: both use the stasis room, and two lanes never share a room.
 5. **Per drive packet:** as Praxis dispatch rule 5 (Haiku `lab-driver`, then the `general-purpose` verifier with the verify file, three attempts, then one Sonnet takeover). SS-D1 is a spec run, not a step brief: the contract § C8 sequence (one `plan_only` call, then one execute call with the ready rows, resumed with the same `run_dir` if it times out; see its section).
 6. **Results and issues:** as Praxis dispatch rules 6 and 7, with paths under `docs/analysis/starter-uat-shops/results/`.
 7. **Review loops** (campaign-packet skill § 4): the packet loop on every wave-1 and wave-3a packet, then the wave loop before each PR. Lab results are reviewed by their verifier.
@@ -148,7 +148,7 @@ Every packet: **LAB: ASK-FIRST** (contract § C1). Host: windows (the lab machin
 
 ### SS-D2 and SS-D3
 
-`lab-driver` with `briefs/SS-D2.md` then `briefs/SS-D3.md`, both on instance `p2`, one after the other. Verifier per contract § C3 with `verify/SS-D2.md` and `verify/SS-D3.md`.
+`lab-driver` with `briefs/SS-D2.md` then `briefs/SS-D3.md`, SS-D2 on instance `p2`, then SS-D3 on instance `default` after the SS-D1 verifier and the SS-D2 verifier have returned. Verifier per contract § C3 with `verify/SS-D2.md` and `verify/SS-D3.md`.
 
 The wave's results ship as one docs PR from `ss-integration`.
 

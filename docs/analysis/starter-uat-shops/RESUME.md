@@ -12,7 +12,7 @@
 1. [Campaign-packet § 0](../../../.claude/skills/campaign-packet/SKILL.md#0-make-sure-nobody-else-is-running-it): check no peer runs it; write `.claude/state/active-campaign`.
 2. `ops`: create `ss-integration` (branch `starter-uat-shops/integration`), commit the three campaign files.
 3. Wave 1: SS-01, SS-02, SS-04 at once; after SS-01 merges, SS-03a and SS-05; after SS-03a, SS-03b. Merge order SS-01, 02, 04, 03a, 03b, 05. Wave loop, both lane checks (dispatch rule 8), one PR.
-4. Wave 2 (ASK-FIRST): SS-D1 on `default` (plan, then execute; [contract § C8](../starter-uat-praxis/work-packets.md#c8-spec-runs-lab_uat_run)); SS-D2 then SS-D3 on `p2`. Server per D-SP2. Results PR.
+4. Wave 2 (ASK-FIRST): SS-D1 on `default` (plan, then execute; [contract § C8](../starter-uat-praxis/work-packets.md#c8-spec-runs-lab_uat_run)); SS-D2 on `p2`, then SS-D3 on `default` (after the SS-D1 and SS-D2 verifiers). Server per D-SP2. Results PR.
 5. D-SS1 answered (b) or (c): wave 3a SS-20..23 one at a time, one seed PR; then SS-D4 (ASK-FIRST). Answer (a): skip to wave 4.
 6. Wave 4: SS-98, SS-99, one PR.
 
