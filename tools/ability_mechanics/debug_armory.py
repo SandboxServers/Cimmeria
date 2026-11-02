@@ -583,10 +583,12 @@ def main(argv: List[str] | None = None) -> int:
     sv.add_argument("--stdout", action="store_true", help="print the catalog, write nothing")
     sv.add_argument("--cap", type=int, default=DEFAULT_CAP, help="rows per vendor (default %(default)s)")
     sub.add_parser("audit", help="exit 1 if a README F4 id block is already used")
-    sx = sub.add_parser("specs", help="the Armory's lab spec files (DR-07)")
+    sx = sub.add_parser("specs", help="the Armory's spec files: gear (DR-07) and abilities (DR-06)")
     sx_kind = sx.add_subparsers(dest="kind", required=True)
     sg = sx_kind.add_parser("gear", help="armory-gear-weapons and armory-gear-armor (DR-07)")
     sg.add_argument("--out-dir", required=True, type=Path, help="where the spec files go")
+    sa = sx_kind.add_parser("abilities", help="write one ability spec per archetype tree (DR-06)")
+    sa.add_argument("--out-dir", required=True, type=Path, help="repo-relative folder for the specs, e.g. docs/guides/uat-specs")
     sd = sub.add_parser("seed", help="the Armory's probe file and seed generator (DR-03a)")
     ss = sd.add_subparsers(dest="step", required=True)
     sp = ss.add_parser("probes", help="lay out one probe per vendor")
@@ -597,10 +599,6 @@ def main(argv: List[str] | None = None) -> int:
     se.add_argument("--probes", required=True, type=Path, help="the probe file that nav_inspect read")
     se.add_argument("--out-dir", required=True, type=Path, help="where the seed files go")
     se.add_argument("--cap", type=int, default=DEFAULT_CAP, help="rows per vendor (default %(default)s)")
-    sx = sub.add_parser("specs", help="the Debug Area armory's UAT specs (DR-06, DR-07)")
-    sxs = sx.add_subparsers(dest="kind", required=True)
-    sa = sxs.add_parser("abilities", help="write one ability spec per archetype tree (DR-06)")
-    sa.add_argument("--out-dir", required=True, type=Path, help="repo-relative folder for the specs, e.g. docs/guides/uat-specs")
     args = ap.parse_args(argv)
 
     if args.command == "specs":
@@ -608,20 +606,19 @@ def main(argv: List[str] | None = None) -> int:
             from debug_armory_gear import write_gear_specs  # lazy: that module imports this one
 
             return write_gear_specs(args.out_dir)
+        if args.kind == "abilities":
+            from debug_armory_specs import write_ability_specs  # lazy: that module imports this one
+
+            try:
+                return write_ability_specs(args.out_dir, REPO_ROOT)
+            except Stop as stop:
+                print(stop, file=sys.stderr)
+                return stop.code
         ap.error(f"unknown specs kind {args.kind}")
     if args.command == "audit":
         lines, code = audit(sorted((REPO_ROOT / SEEDS).rglob("*.sql")))
         print("\n".join(lines))
         return code
-
-    if args.command == "specs" and args.kind == "abilities":
-        from debug_armory_specs import write_ability_specs  # lazy: that module imports this one
-
-        try:
-            return write_ability_specs(args.out_dir, REPO_ROOT)
-        except Stop as stop:
-            print(stop, file=sys.stderr)
-            return stop.code
 
     if args.cap < 1:
         ap.error("--cap must be at least 1")
