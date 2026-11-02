@@ -352,6 +352,8 @@ def used_ids(files: Iterable[Path]) -> Dict[str, Dict[int, List[str]]]:
     """table -> id -> the file names that insert it, for each table of ``ID_BLOCKS``."""
     used: Dict[str, Dict[int, List[str]]] = defaultdict(lambda: defaultdict(list))
     for path in files:
+        if path.name.endswith("_debug_area_armory.sql"):
+            continue  # the Armory's own seed rows are not a collision
         text, _ = read_text(path)
         for _, table, col, _, _ in ID_BLOCKS:
             if f"INSERT INTO {table} (" not in text:
