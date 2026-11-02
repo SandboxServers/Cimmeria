@@ -1,8 +1,9 @@
-# Unified UAT, section "vendors" (starter-world shops, rows V1 to V7).
-# Campaign: docs/analysis/starter-uat-shops/README.md (packet SS-03a).
-# Scope: open, buy, sell, buyback and the refusal lines of the vendors a new
-# character meets first. The rows run in the Debug Area plaza (world 1300),
-# where the same templates stand, as the debug-area.toml rows do.
+# Unified UAT, section "vendors" (starter-world shops, rows V1 to V12).
+# Campaign: docs/analysis/starter-uat-shops/README.md (packets SS-03a and SS-03b).
+# Scope: open, buy, sell, buyback, repair, recharge, the trainer, the distance
+# check and the refusal lines of the vendors a new character meets first. The
+# rows run in the Debug Area plaza (world 1300), where the same templates
+# stand, as the debug-area.toml rows do.
 #
 # How a row is built: every row starts with the DA-U6 setup
 # (debug-area.toml:260-262): `.gotolocation DebugArea`, then wait for world
@@ -17,7 +18,7 @@
 # captured by item name, so a row never names a slot by hand.
 #
 # Seed citations sit above each row. Each was re-checked at SS-03a against
-# db/resources/. Vendor-row ids (V1 to V7) match the packet, not the seed.
+# db/resources/. Vendor-row ids (V1 to V12) match the packet, not the seed.
 #
 # Cash: read with `client_inventory` (`/cash`) before the action and compared
 # with `op = "delta"` after it. The server's own cash_before and cash_after are
@@ -364,9 +365,9 @@ min_rows = 1
 
 # ================================================================ Repair and recharge
 
-# Template 300 repairs from list 2 and template 1302 recharges from list 2
-# (entity_templates.sql:1011; repair and recharge lists are column 3 and 4 of
-# the same rows). Repair writes the action "repair" (paid_repair/mod.rs:49);
+# Template 300 repairs from list 2 and recharges from list 2
+# (entity_templates.sql:1011; the repair and recharge lists are columns 3 and
+# 4 of the same row). Repair writes the action "repair" (paid_repair/mod.rs:49);
 # recharge writes "recharge" (paid_recharge/mod.rs:49). store-paths.md section 3
 # finds no in-game or GM way to lower durability or drain charge, and
 # /gmrechargeitem only raises charge (docs/commands.md). So both rows are
@@ -403,9 +404,9 @@ min_rows = 1
 # DebugArea_Trainer, at spawnlist_debug_area_plaza.sql:43. The setup stands
 # where DA-U5 stands (debug-area.toml:229). A level-1 start has 1 training
 # point (crates/base/src/base/character_create/mod.rs:540), which V10 spends.
-# The ability name in the train step is the first node the read in step 3
-# lists that the character lacks. The name is unverified until the first lab
-# run, so the step carries <ability name> as a placeholder.
+# The step trains Quick Burst (598), Tab1 button 1, the Soldier's Automatic
+# Weapons root (archetype_ability_tree.sql, ledger row 43). It is unverified
+# until the first lab run.
 [[row]]
 id = "V10"
 title = "The Archetype Skills Trainer teaches one ability the character lacks"
@@ -419,7 +420,9 @@ step = [
   { tool = "@world_click", args = { name = "Archetype Skills Trainer", button = "right", expect = "window" }, label = "click" },
   { wait_ms = 2000 },
   { tool = "client_window_read", args = { window = "AbilityWin" }, label = "read-tree" },
-  { tool = "client_window_click", args = { text = "<ability name>", root = "AbilityWin" }, tier = "N1", label = "train" },
+  { tool = "client_window_click", args = { target = "Ability_Tab1" }, tier = "N1", label = "tab" },
+  { wait_ms = 600 },
+  { tool = "client_window_click", args = { target = "Ability_Button1" }, tier = "N1", label = "train" },
   { wait_ms = 2000 },
 ]
 [[row.expect]]
@@ -432,39 +435,27 @@ min_rows = 1
 id = "requested"
 text = "SigNoz: train_requested for the chosen ability"
 source = "signoz"
-filter = "event = 'train_requested'"
+filter = "event = 'train_requested' AND ability_id = 598"
 min_rows = 1
 [[row.expect]]
 id = "persisted"
 text = "SigNoz: train_persisted for the chosen ability"
 source = "signoz"
-filter = "event = 'train_persisted'"
+filter = "event = 'train_persisted' AND ability_id = 598"
 min_rows = 1
 
-# Same trainer, no training point left. V10 spends the only one, so this row
-# runs after V10 on the same character. The refusal is train_rejected with
-# reason not_enough_points (train.rs:289-302; reason string at
-# crates/cell-catalog/src/ability_tree/predicate.rs:128). The client gets
-# ErrorCodeID 35 as a popup (train_feedback.rs:41 and :69-70), not a chat line.
-# store-paths.md names no line for this refusal, so the popup is graded by a
-# human.
+# Same trainer, no training point left. The server refuses with train_rejected
+# reason not_enough_points (train.rs:289-302; predicate.rs:128) and the client
+# would get ErrorCodeID 35 (train_feedback.rs:41 and :69-70), but the stock client
+# filters a press on a greyed node, so no request reaches the server
+# (haiku-lab-uat ledger rows 44 and 49). Blocked until a way to send the request
+# exists.
 [[row]]
 id = "V11"
 title = "The trainer refuses an ability when the character has no training points"
 expected = "The train is refused with reason not_enough_points. No ability is granted, and the client shows the locked-node error."
 depends_on = ["V10"]
-setup = [
-  { chat = ".gotolocation DebugArea 257 7.2 -928", tier = "G" },
-  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
-  { wait_ms = 3000 },
-]
-step = [
-  { tool = "@world_click", args = { name = "Archetype Skills Trainer", button = "right", expect = "window" }, label = "click" },
-  { wait_ms = 2000 },
-  { tool = "client_window_read", args = { window = "AbilityWin" }, label = "read-tree" },
-  { tool = "client_window_click", args = { text = "<second ability name>", root = "AbilityWin" }, tier = "N1", label = "train" },
-  { wait_ms = 2000 },
-]
+blocked = "the client drops a press on a locked node, so a stock client never sends the train request that not_enough_points refuses (haiku-lab-uat ledger rows 44 and 49)"
 [[row.expect]]
 id = "refused"
 text = "SigNoz: train_rejected with reason not_enough_points"
