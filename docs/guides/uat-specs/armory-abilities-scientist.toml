@@ -26,6 +26,8 @@ title = "Scientist: the Debug Area, every tree ability, one hostile dummy"
 expected = "The character stands in the Debug Area with its tree and a hostile dummy."
 setup = [
   { chat = ".gotolocation DebugArea 246 6.6 -878", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
   { chat = "/gmgiveallabilities", tier = "G" },
   { tool = "@dummy", args = { disposition = "hostile" } },
 ]

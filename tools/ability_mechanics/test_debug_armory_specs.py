@@ -63,8 +63,10 @@ class SetupRowTest(unittest.TestCase):
         row = parse_row(specs.setup_row("Soldier"))
         self.assertEqual(row["id"], "Soldier-00")
         self.assertEqual(row["setup"][0]["chat"], specs.SETUP_LOCATION)
-        self.assertEqual(row["setup"][1]["chat"], "/gmgiveallabilities")
-        self.assertEqual(row["setup"][2], {"tool": "@dummy", "args": {"disposition": "hostile"}})
+        self.assertEqual(row["setup"][1]["tool"], "client_wait_for")
+        self.assertEqual(row["setup"][1]["args"]["lua_condition"], "getCurrentWorldID() == 1300")
+        self.assertEqual(row["setup"][3]["chat"], "/gmgiveallabilities")
+        self.assertEqual(row["setup"][4], {"tool": "@dummy", "args": {"disposition": "hostile"}})
         self.assertEqual(row["expect"][0]["pointer"], "/world_id")
         self.assertEqual(row["expect"][0]["value"], 1300)
 

@@ -604,7 +604,7 @@ def main(argv: List[str] | None = None) -> int:
         print("\n".join(lines))
         return code
 
-    if args.command == "specs":
+    if args.command == "specs" and args.kind == "abilities":
         from debug_armory_specs import write_ability_specs  # lazy: that module imports this one
 
         try:

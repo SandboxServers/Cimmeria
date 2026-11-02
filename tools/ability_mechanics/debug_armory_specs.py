@@ -175,6 +175,8 @@ def setup_row(arch: str) -> List[str]:
         "setup",
         [
             chat(SETUP_LOCATION),
+            call("client_wait_for", {"lua_condition": "getCurrentWorldID() == 1300", "timeout_ms": 60000}),
+            "{ wait_ms = 3000 }",
             chat("/gmgiveallabilities"),
             call("@dummy", {"disposition": "hostile"}),
         ],
