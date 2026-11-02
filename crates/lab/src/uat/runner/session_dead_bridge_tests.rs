@@ -163,6 +163,33 @@ async fn an_unreachable_bridge_is_restarted_and_never_logged_out() {
 }
 
 #[tokio::test]
+async fn a_client_still_booting_with_a_dead_heartbeat_is_logged_in_not_restarted() {
+    let root = tempfile::tempdir().unwrap();
+    let req = request(root.path());
+    let (_, run_dir) = first_runner(&req);
+    // Launched earlier, the bridge is not up yet: no screens, no restart.
+    let fake = base().answer(
+        "lab_client_status",
+        vec![status("not_started", "unreachable")],
+    );
+    let mut resumed = req;
+    resumed.run_dir = Some(run_dir);
+    Runner::new(&fake, None, resumed)
+        .unwrap()
+        .run_all()
+        .await
+        .unwrap();
+    let names = fake.names();
+    assert!(
+        !names.iter().any(|n| n == "lab_client_restart"),
+        "{names:?}"
+    );
+    let login = index(&names, "lab_login").expect("{names:?}");
+    let play = index(&names, "lab_play_character").expect("{names:?}");
+    assert!(login < play, "{names:?}");
+}
+
+#[tokio::test]
 async fn a_bridge_that_dies_on_the_name_read_is_restarted() {
     let root = tempfile::tempdir().unwrap();
     let req = request(root.path());

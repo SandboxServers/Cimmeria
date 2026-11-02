@@ -150,9 +150,9 @@ impl<I: ToolInvoker> Runner<'_, I> {
             }
             return Ok(());
         }
-        let hb_unreachable = status.pointer("/heartbeat/state").and_then(Value::as_str)
-            == Some("unreachable")
-            || login == "unresponsive";
+        let hb_unreachable = login == "unresponsive"
+            || (status.pointer("/heartbeat/state").and_then(Value::as_str) == Some("unreachable")
+                && matches!(login.as_str(), "in_world" | "character_select"));
         if !running {
             self.setup_call("lab_client_start", json!({}), ctx).await?;
             login = "not_started".into();
