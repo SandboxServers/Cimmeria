@@ -8,6 +8,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - CHARACTER: Bankone   (the BANK-R10 character; its preconditions are in step S2)
 - SERVER: BLOCKED: D-SP2 is undecided (the owner picks the colo or a local server at a recorded SHA; `docs/analysis/starter-uat-shops/README.md` decisions table). Do not start a lane until the coordinator writes the server name here.
 - LEASE OWNER: `ss-SS-D3`   (TTL 900 s)
+- SEQUENCING: run only after the SS-D1 verifier has returned (SS-D1 uses instance `default` and account `lab`, as this packet does); never overlap the two lanes.
 - HARD STOP: 28 tool calls.
 
 ## 0. Front-loaded gotchas (read all of them)
@@ -48,6 +49,8 @@ Replace `LINE ONE` with the exact line the step gives.
 
 **DIALOG - close an orphan dialog.** `client_batch` Lua `if DialogWin ~= nil and DialogWin:isVisible() then DialogMod.onDialogDoneClicked(DialogWin, DialogWin) return 'closed' end return 'none'`.
 
+**PROMPT - find and dismiss a modal prompt.** Read visible prompts with `client_window_read {"lease_id":L,"kind":"prompt"}`. If `state.prompts` is non-empty, read its title and message, then click the first enabled returned button using that button's `window` name; repeat the read until `state.prompts` is empty. The Server Message OK button is `Prompt1_SingleButton`. Never guess a button name.
+
 **STAGE - teleport to a stand point.** The CHATX line `.gotolocation Castle_CellBlock <x> <y> <z>`, then a 4000 ms wait in the same batch.
 
 **BUG - a timeline bookmark.** A step that says `BUG <text>` is the CHATX line `.bug SSD3 SS-D3 <text>`. Not optional.
@@ -58,27 +61,29 @@ Replace `LINE ONE` with the exact line the step gives.
 
 Source: [BANK-R10](../../haiku-lab-uat/briefs/bank/BANK-R10.md) (the step-10 re-brief), with its vendor-open steps replaced by the `store-paths.md` recipe (`docs/analysis/starter-uat-shops/evidence/store-paths.md`, Recipes rows "Open a vendor", "Sell one item (unverified)", "Buyback one item"). Its move command is `moveItem` (BANK-R10 step 8a), its move-rejected grade is BANK-C3 line 107.
 
-ROWS: D3-1 (open the Quartermaster, sell one Health Slappack), D3-2 (buyback tab, try to take the sold item out without paying). ESTIMATE: 20 tool calls.
+ROWS: D3-1 (open the Quartermaster, sell one Standard Pistol, design 55), D3-2 (buyback tab, try to take the sold item out without paying). ESTIMATE: 20 tool calls.
 
 Quartermaster stand point (4.0 m from spawn 400 at (-343.9, 73.472, -228.49), `db/resources/Worlds/Seed/spawnlist.sql:1107`): `.gotolocation Castle_CellBlock -340.26 73.47 -226.84`. Its id is found by name with `client_entity_find`. Expected distance 3.5 to 4.5 m. Do not click the Common Materials Components vendor (it is nearer from the teleport spot in BANK-R10; do not click it).
 
-Preconditions (S2 checks them): `Bankone` in Castle_CellBlock; Main has an Accessory (slot 1) and 4 Health Slappack TC1 (slot 2); cash about 894 (record the real value); no dialog open.
+Preconditions (S2 checks them): `Bankone` in Castle_CellBlock; Main has an Accessory (slot 1); cash about 894 (record the real value); no dialog open; the Standard Pistol (design 55) is granted in S2.
 
 ## Steps
 
 **S1.** L1, then L2 (2 calls). Record world_id and position.
 
-**S2 - resume probe and preconditions (1 call).** `client_inventory {"lease_id":L,"containers":["Main"],"fields":["cash","containers"],"snapshot":"d3a"}`. Record CASH_BEFORE, every item with its slot, and whether a Health Slappack TC1 is in Main. If a Health Slappack is already in the Buyback container (16), the sell is done: go straight to D3-2 and record that.
+**S2 - resume probe and preconditions (1 call).** `client_inventory {"lease_id":L,"containers":["Main"],"fields":["cash","containers"],"snapshot":"d3a"}`. Record CASH_BEFORE, every item with its slot, and whether a Standard Pistol (design 55) is in Main. If a Standard Pistol is already in the Buyback container (16), the sell is done: go straight to D3-2 and record that (no grant).
 
-### ROW D3-1 - sell one Health Slappack to the Quartermaster
+Grant (skip it when the sell is already done): one CHATX batch with the line `/gmgiveitem 55 1` (G tier, docs/commands.md:267; design 55 is Standard Pistol); then repeat the S2 `client_inventory` call (it has `"snapshot":"d3a"`) and record the Standard Pistol slot.
+
+### ROW D3-1 - sell one Standard Pistol (design 55) to the Quartermaster
 
 **D3-1.1 (1 call).** CHATX-style batch: DIALOG, BUG `D3-1 start`, STAGE `.gotolocation Castle_CellBlock -340.26 73.47 -226.84`, a 4000 ms wait, UTC.
 **D3-1.2 (1 call).** `client_entity_find {"lease_id":L,"name":"Quartermaster","fields":["matches"]}` -> record id Q and `distance_m`. If it is 5.0 or more, STAGE once more to the same point, then measure again.
 **D3-1.3 (1 call).** `client_camera {"lease_id":L,"face_entity_id":<Q>,"zoom_to":400}`, then SHOT `d3-before-click`.
 **D3-1.4 (1 call).** `client_world_click {"lease_id":L,"entity_id":<Q>,"button":"right","expect":"window","settle_ms":4000,"rotate_camera":false}`. Retry once on failure (screenshot, report path).
 **D3-1.5 (1 call).** `client_window_read {"lease_id":L,"kind":"vendor","include_nodes":true,"max_nodes":80,"fields":["state","open","primary","nodes"]}`. Record the window name (expected `VendorWin`) and the sell and buyback tab names and the buyback list.
-**D3-1.6 (1 call).** Sell one Health Slappack: `client_drag_drop {"lease_id":L,"from":{"container":"Main","slot":<Slappack slot as the tool prints it>},"to":{"window":"VendorWin"},"split":true,"wait_ms":4000}`. If the vendor refuses or nothing changes, retry once with the Accessory slot (wire slot 0) and no split. Then `client_inventory {"lease_id":L,"containers":["Main"],"diff_against":"d3a","fields":["cash","diff"]}` -> CASH_AFTER_SELL; and READ `{"cursor":"d31r","contains":"sell","max":20}`; UTC.
-Expected server effect: `transaction` with action `sell` (or `refused` `not_sellable`: sell list 2 holds only designs 21, 55 and 3437, `db/resources/Items/Seed/item_list_items.sql:11-15`). Record which one the chat or the client shows.
+**D3-1.6 (1 call).** Sell the Standard Pistol (design 55) from its slot, no split; no retry with another item: `client_drag_drop {"lease_id":L,"from":{"container":"Main","slot":<Standard Pistol slot as the tool prints it>},"to":{"window":"VendorWin"},"wait_ms":4000}`. Then `client_inventory {"lease_id":L,"containers":["Main"],"diff_against":"d3a","fields":["cash","diff"]}` -> CASH_AFTER_SELL; and READ `{"cursor":"d31r","contains":"sell","max":20}`; UTC.
+Expected: `transaction` action `sell` for design 55 (sell list 2 holds designs 21, 55 and 3437, `db/resources/Items/Seed/item_list_items.sql:11-15`). Record which one the chat or the client shows.
 If the item could not be sold (refusal or no change): step D3-1 is BLOCKED ("vendor will not buy"); record the chat line; go to S9 (do not run D3-2, it needs a sold item).
 **D3-1.7 (1 call).** SHOT `d3-after-sell`.
 
