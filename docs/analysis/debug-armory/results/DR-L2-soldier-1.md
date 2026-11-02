@@ -65,3 +65,50 @@ All 16 BLOCKED rows in the table above, reasons per row. Rerun after #1680 is fi
 ## Recipe
 
 SigNoz `signoz_search_logs`, filter `service.name = 'cimmeria-server' AND cimmeria.lab_run = 'dr-lab' AND scope_name = 'abilities' AND player_name CONTAINS 'Cgbqjzujpscktw'`, start 1793648361000, end 1793649540000. Seed facts from `resources.abilities` and `resources.effect_nvps` (read-only).
+
+## Rerun 2026-11-02 (post DR-07k)
+
+**Verified:** 2026-11-02, read-only (run bundle, SigNoz `cimmeria.lab_run = 'dr-lab'`, scope `abilities`). **Build:** `service.version` 6b50d9131417b8cf93feb61a7c640577398db567 (attest pending, see Attests).
+
+Run dir `C:\Users\Steve\AppData\Local\cimmeria-lab\uat-runs\2026-11-02-unknown-cgbqkzlpgajqrl`, window 20:08:16Z to 20:15:41Z, fresh character Cgbqkzlpgajqrlzf, 17 rows (setup plus 16). Runner counts: PASS 4 (incl. setup), FAIL 1 (+ `_session_end`), BLOCKED 11, plus 1456 runner PASS. Server-truth grading: PASS 4, FAIL 2, BLOCKED 11. The `_session_end` logout failure (bridge connect) is infra, issue #1680, not a row.
+
+| Row | Ability | Runner | Server evidence (SigNoz) | Rerun grade | Merged grade | Class |
+|---|---|---|---|---|---|---|
+| Soldier-00 | setup | PASS | world 1300 reached | PASS | PASS | |
+| Soldier-2419 | Launch Grenade: Single | BLOCKED | no server row | BLOCKED | BLOCKED | setup press ignored |
+| Soldier-808 | Cover Denial | BLOCKED | no server row | BLOCKED | BLOCKED | setup press ignored |
+| Soldier-2103 | Launch Grenade: Concussion | BLOCKED | no server row | BLOCKED | BLOCKED | setup press ignored |
+| Soldier-818 | Sustained Sweep | PASS | `ability_launched` 20:10:11.854 and 20:10:22.331 | PASS | PASS | first run BLOCKED (infra) |
+| Soldier-1882 | Launch Grenade: Tear Gas | BLOCKED | no server row | BLOCKED | BLOCKED | setup press ignored |
+| Soldier-2102 | Incinerate Ground | BLOCKED | no server row | BLOCKED | BLOCKED | setup press ignored |
+| Soldier-724 | Anti-Personnel Mortar | BLOCKED | no server row | BLOCKED | BLOCKED | setup press ignored |
+| Soldier-1885 | Launch Grenade: Shockwave | BLOCKED | no server row | BLOCKED | BLOCKED | setup press ignored |
+| Soldier-852 | High Explosive Mortar | FAIL | no server row (press ignored: `client_use_ability denied: ignored`, ability.sent 0) | FAIL | FAIL | lab/client defect, press never left the client |
+| Soldier-1889 | Incinerate Area | BLOCKED | no server row | BLOCKED | BLOCKED | setup press ignored |
+| Soldier-2143 | Intimidation Fire | PASS | `ability_launched` 20:12:27.034 and 20:12:37.616 | PASS | PASS | first run BLOCKED (infra) |
+| Soldier-1485 | Cluster Mortars | BLOCKED | no server row | BLOCKED | BLOCKED | setup press ignored |
+| Soldier-2105 | Launch Grenade: Barrage | BLOCKED | no server row | BLOCKED | BLOCKED | setup press ignored |
+| Soldier-1487 | Penetrating Barrage | BLOCKED | no server row | BLOCKED | BLOCKED | setup press ignored |
+| Soldier-1456 | Shock and Awe | PASS (applied clause FAILED) | `ability_refused no_mechanics` 20:13:33.436 and 20:13:42.264; `no_mechanics_refused effect_count 0` | FAIL | FAIL | seed gap (no effects), runner PASS refused by server |
+| Soldier-1486 | Rain of Steel | PASS | `ability_launched` 20:14:13.479 and 20:14:24.013 (`fire_target_skipped no_target`, client_target_id 0) | PASS | PASS | first run BLOCKED (infra) |
+
+Rerun totals: PASS 4, FAIL 2, BLOCKED 11 (17 rows).
+
+### Merged totals for the whole file (first run + rerun, 26 rows)
+
+PASS 11 (00, 612, 632, 851, 658, 819, 1883, 853, 818, 2143, 1486), FAIL 4 (656 and 1483 seed gap from the first run, 1456 seed gap, 852 press ignored), BLOCKED 11 (2419, 808, 2103, 1882, 2102, 724, 1885, 1889, 1485, 2105, 1487; all setup press ignored, no server row).
+
+### Findings
+
+1. The #1680 logout crash no longer blocked rows: 818, 2143, 1456, 1486 ran after batch boundaries (DR-07k effect). Only `_session_end` still fails (infra, #1680).
+2. The setup `client_use_ability denied: ignored` fault persists: 11 rows (10 setup-ignored plus 852's press) never reached the server. It is the main remaining blocker; root cause unknown.
+3. Soldier-1456 Shock and Awe has `effect_count 0`: a new seed gap in the same family as 656 and 1483 (needs an issue body via `seed-change`).
+4. Every launched ability shows `fire_target_skipped no_target` (client_target_id 0): launches proven, damage and targeting not examined.
+
+### Rerun list (11 BLOCKED plus 852)
+
+2419, 808, 2103, 1882, 2102, 724, 1885, 1889, 1485, 2105, 1487, 852: rerun only after the ignored-press cause is found. 656, 1483, 1456 after the seed fix.
+
+### Attests (pending)
+
+- `lab_uat_attest {server_version: 6b50d9131417b8cf93feb61a7c640577398db567}` for run_dir above (run.json `service_version` null). Not applied: read-only run, no lease acquired. No clause attests (no PENDING clauses).
