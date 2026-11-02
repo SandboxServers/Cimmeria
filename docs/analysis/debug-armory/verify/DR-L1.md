@@ -8,7 +8,7 @@ You grade one lab run. You read evidence; you do not drive the client.
 ## Rules
 
 1. **Grade only on server evidence**: a vendor log row (`target "vendor"`, events `store_opened`, `transaction`, `refused`), a read-only database query, or a packet-tap row. A clause seen only in a screenshot, the client UI or the driver's words is PARTIAL or NEEDS_HUMAN (contract § C5).
-2. **The server is local, so there are no SigNoz rows.** SigNoz holds nothing for a local server: every clause that needs SigNoz is **UNVERIFIED** (write that word, not FAIL). The local evidence sources are `server_log_tail`, `server_db_query` (read-only SQL) and the packet tap of the lab-server MCP, plus the server's own log file.
+2. **The local server can export to SigNoz.** When it was started with the OTLP env (service attribute `cimmeria.lab_run=dr-lab`), SigNoz rows may exist: read them first and filter on `cimmeria.lab_run`. A clause that needs SigNoz is **UNVERIFIED** (write that word, not FAIL) only when no SigNoz rows exist. The local evidence sources are `server_log_tail`, `server_db_query` (read-only SQL) and the packet tap of the lab-server MCP, plus the server's own log file.
 3. **Chat clauses cannot be attested.** A reply seen only in chat (for example "You do not have enough naquadah.") is recorded as a fact in `## Not run` with the reason "chat only"; it never carries a grade.
 4. **The driver is not evidence.** Read its report for times (the BUG lines) and screenshot paths, then check every claim against the server.
 5. **A fixture that cannot be set up makes the row BLOCKED, never FAIL.** A FAIL in L1-2 for a vendor that never opened does not turn L1-3 to L1-6 into FAIL: if the vendor needed by a later row did not open, those rows are BLOCKED.

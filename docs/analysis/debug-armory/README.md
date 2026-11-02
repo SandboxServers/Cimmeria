@@ -70,16 +70,16 @@ Full specs in [work-packets.md](work-packets.md). Status values: Ready, BlockedD
 
 | Wave | Packet | Agent | What | Depends on | Status |
 |---|---|---|---|---|---|
-| 1 | DR-01 | packet-coder | `tools/ability_mechanics/debug_armory.py survey` and `audit`: the representative catalog and the id-block audit, with unit tests | none | Ready |
-| 1 | DR-02 | game-archaeology-specialist | RE: the store window's row limit and paging, client-side equip checks, the Lua equip path for armor slots | none | Ready |
-| 1 | DR-03a | packet-coder | `debug_armory.py seed`: emits the three seed files, with tests (no seed written yet) | DR-01, DR-02 | BlockedDependency |
-| 2 | DR-03b | database-persistence | Run the generator, wire the seed into `db/database.sql`, place and nav-check the vendors | DR-03a | BlockedDependency |
-| 2 | DR-04 | packet-coder | `live_db_debug_area_armory.rs`: stock, prices and ability-weapon coverage | DR-03b | BlockedDependency |
-| 2 | DR-05 | documentation-writer | Armory section in `debug-area.md`, unified-uat rows | DR-03b | BlockedDependency |
-| 3 | DR-06 | packet-coder | `debug_armory.py specs abilities`: one `armory-abilities-<archetype>.toml` per archetype | DR-04 | BlockedDependency |
-| 3 | DR-07 | packet-coder | `debug_armory.py specs gear`: `armory-gear-weapons-1..3.toml`, `armory-gear-armor-1..2.toml` (split at 30, DR-07 ruling 1) | DR-04 | BlockedDependency |
-| 3 | DR-08 | documentation-writer | Brief and verify file for DR-L1 (a human-style walk of the Armory) | DR-05 | BlockedDependency |
-| 4 | DR-L1 | lab-driver + verifier | Walk the Armory: open each vendor, buy, equip, sell back. **ASK-FIRST** | wave 3 merged | BlockedDependency |
+| 1 | DR-01 | packet-coder | `tools/ability_mechanics/debug_armory.py survey` and `audit`: the representative catalog and the id-block audit, with unit tests | none | Done |
+| 1 | DR-02 | game-archaeology-specialist | RE: the store window's row limit and paging, client-side equip checks, the Lua equip path for armor slots | none | Done |
+| 1 | DR-03a | packet-coder | `debug_armory.py seed`: emits the three seed files, with tests (no seed written yet) | DR-01, DR-02 | Done |
+| 2 | DR-03b | database-persistence | Run the generator, wire the seed into `db/database.sql`, place and nav-check the vendors | DR-03a | Done |
+| 2 | DR-04 | packet-coder | `live_db_debug_area_armory.rs`: stock, prices and ability-weapon coverage | DR-03b | Done |
+| 2 | DR-05 | documentation-writer | Armory section in `debug-area.md`, unified-uat rows | DR-03b | Done |
+| 3 | DR-06 | packet-coder | `debug_armory.py specs abilities`: one `armory-abilities-<archetype>.toml` per archetype | DR-04 | Done |
+| 3 | DR-07 | packet-coder | `debug_armory.py specs gear`: `armory-gear-weapons-1..3.toml`, `armory-gear-armor-1..2.toml` (split at 30, DR-07 ruling 1) | DR-04 | Done |
+| 3 | DR-08 | documentation-writer | Brief and verify file for DR-L1 (a human-style walk of the Armory) | DR-05 | Done |
+| 4 | DR-L1 | lab-driver + verifier | Walk the Armory: open each vendor, buy, equip, sell back. **ASK-FIRST** | wave 3 merged | Done (graded) |
 | 4 | DR-L2 to DR-L5 | lab-driver (spec run) + verifier | Ability specs: Soldier, Commando, Scientist, Archeologist. **ASK-FIRST** | DR-L1 | BlockedDependency |
 | 5 | DR-L6 to DR-L8 | lab-driver (spec run) + verifier | Ability specs: Asgard, Goa'uld, Sholva. **ASK-FIRST** | wave 4 | BlockedDependency |
 | 5 | DR-L9, DR-L10 | lab-driver (spec run) + verifier | Gear specs: weapons, armor. **ASK-FIRST** | wave 4 | BlockedDependency |
@@ -98,4 +98,4 @@ Shipping: waves 1 and 2 ship as **one PR** from `dr-integration` (the Armory its
 
 ## Status
 
-Planned 2026-10-27; nothing dispatched. The lab-server MCP refused connections when this plan was written.
+DR-01 to DR-08 are done and merged (#2058, #2059, #2060). DR-L1 ran on the local server on 2026-11-02: L1-1 PASS, L1-2 PASS, L1-3 PASS, L1-4 PASS, L1-5 PARTIAL (the debug-kit pistol is out of ammo), L1-6 PASS; the human clauses are NEEDS_HUMAN. Per-row evidence: [results/DR-L1.md](results/DR-L1.md), [results/DR-L1-driver-reports.md](results/DR-L1-driver-reports.md). DR-L2 to DR-L10 have not run.

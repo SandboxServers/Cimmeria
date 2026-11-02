@@ -1,9 +1,9 @@
 # debug-armory: resume card
 
-> **Type:** reference. **Audience:** the orchestrator resuming this campaign. **Updated:** 2026-10-27
+> **Type:** reference. **Audience:** the orchestrator resuming this campaign. **Updated:** 2026-11-02
 > **Companions:** [ledger](README.md), [work packets](work-packets.md), [shared UAT contract](../starter-uat-praxis/work-packets.md#shared-uat-contract). Siblings: [praxis](../starter-uat-praxis/RESUME.md), [union](../starter-uat-union/RESUME.md), [shops](../starter-uat-shops/RESUME.md).
 
-**State (2026-10-27):** planned, nothing dispatched. The campaign files live on branch `lab-uat-plans` until ops commits them into `dr-integration`.
+**State (2026-11-02):** DR-01 to DR-08 are done and merged (#2058, #2059, #2060). DR-L1 ran on the local server (`dr-lab`): L1-1, L1-2, L1-3, L1-4 and L1-6 PASS, L1-5 PARTIAL (the debug-kit pistol has no ammo), human clauses NEEDS_HUMAN ([results/DR-L1.md](results/DR-L1.md)). DR-L2 to DR-L10 have not run. Next: DR-L2 to DR-L5 (ASK-FIRST, one spec run at a time), then waves 5 and 6.
 
 **Goal:** a Debug Area (world 1300) Armory: plaza vendors selling one representative of every weapon family and equipment slot per tier and quality; generated lab specs that equip and fire each one and cast every ability of the 7 archetype trees; graded lab runs; an issue per failure.
 
@@ -28,4 +28,4 @@
 
 **Open decisions:** D-DR4 (cross-archetype grant, DR-40), D-DR5 (`.removeitem` question), D-DR7 (sweep server), D-SP2 (shared).
 
-**Next ledger update:** when PR 1 opens.
+**Next ledger update:** when the next lab wave (DR-L2 to DR-L5) is graded.
