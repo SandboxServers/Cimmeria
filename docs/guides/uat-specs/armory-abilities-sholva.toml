@@ -210,12 +210,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 1482, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1482, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1482 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1482, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1482, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -445,12 +445,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 2026, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2026, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2026 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2026, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2026, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -485,12 +485,12 @@ id = "Sholva-1640"
 title = "Terror Stone (1640): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1640, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1640, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1640 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1640, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1640, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -517,12 +517,12 @@ id = "Sholva-1641"
 title = "Terror Pod (1641): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1641, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1641, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1641 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1641, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1641, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -549,12 +549,12 @@ id = "Sholva-2028"
 title = "Terror Urn (2028): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 2028, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2028, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2028 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2028, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2028, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -681,12 +681,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 2058, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2058, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2058 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2058, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2058, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -728,12 +728,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 2042, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2042, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2042 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2042, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2042, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -807,12 +807,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 2841, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2841, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2841 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2841, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2841, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1581,12 +1581,12 @@ id = "Sholva-2061"
 title = "Area Blast (2061): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 2061, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2061, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2061 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2061, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2061, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1613,12 +1613,12 @@ id = "Sholva-2062"
 title = "Area Cleanse (2062): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 2062, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2062, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2062 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2062, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2062, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1676,12 +1676,12 @@ id = "Sholva-2065"
 title = "Area of Destruction (2065): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 2065, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2065, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2065 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2065, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2065, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

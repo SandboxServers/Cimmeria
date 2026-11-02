@@ -46,6 +46,10 @@ SELECT_KEY = "F1"
 TARGET_SELF, TARGET_GROUND = 1, 3  # target_type_id values that have no target to apply to
 # Weapon-gated tree abilities with no shipped weapon (weapon-requirement audit FAIL, DR-04).
 KNOWN_UNCOVERED = (997, 1246, 1250, 1355)
+# A ground-targeted ability only opens its reticle on the press; client_use_ability's
+# `ground` point is left-clicked right after it (canary.md 2026-11-02). The point is in UE3
+# client space, about 8 m from the plaza the setup row places the character on.
+GROUND_POINT = {"x": -87000, "y": 24600, "z": 663, "space": "client"}
 UNCOVERED_MISMATCH = 1
 
 
@@ -59,6 +63,8 @@ def toml_value(value: object) -> str:
         return "true" if value else "false"
     if isinstance(value, int):
         return str(value)
+    if isinstance(value, dict):
+        return table(value)
     return tstr(str(value))
 
 
@@ -135,7 +141,9 @@ def ability_row(arch: str, aid: int, ability: dict, rep: Optional[int], items, m
             setup.append(call("@window_click", {"target": BAG_CLOSE}, label="close-bag", optional=True))
             setup.append(call("@key", {"key": SELECT_KEY}, label="select-slot1"))
             setup.append("{ wait_ms = 1500 }")
-    setup.append(call("@use_ability", {"ability_id": aid, "place": True}, label="place"))
+    # Both calls press the key, so both need the confirming ground click on a ground ability.
+    ground = {"ground": GROUND_POINT} if ability["target_type"] == TARGET_GROUND else {}
+    setup.append(call("@use_ability", {"ability_id": aid, "place": True, **ground}, label="place"))
     setup.append("{ wait_ms = 3000 }")
     setup.append(call("@cooldowns_reset", {"ability_id": aid}))
     gear = f" with {items[rep]['name']} equipped" if rep is not None and ability["item_monikers"] else ""
@@ -150,7 +158,7 @@ def ability_row(arch: str, aid: int, ability: dict, rep: Optional[int], items, m
     lines += list_block("setup", setup)
     lines += list_block(
         "step",
-        [call("@use_ability", {"ability_id": aid, "press": "key", "fallback": "none"}, label="press"), "{ wait_ms = 3000 }"],
+        [call("@use_ability", {"ability_id": aid, "press": "key", "fallback": "none", **ground}, label="press"), "{ wait_ms = 3000 }"],
     )
     lines += list_block(
         "teardown",

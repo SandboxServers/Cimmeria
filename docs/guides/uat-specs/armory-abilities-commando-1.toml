@@ -331,12 +331,12 @@ id = "Commando-880"
 title = "Sweep Detector (880): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 880, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 880, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 880 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 880, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 880, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

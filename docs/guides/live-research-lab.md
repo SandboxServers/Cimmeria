@@ -960,6 +960,8 @@ These tools drive combat the way a player does and say how they did it. Every re
 3. Not on the hotbar (default `fallback: window`): opens the Ability window with its bound key (N3 `AbilityMod.onToggleAbilityWin` when unbound), selects the tree tab, clicks `Ability_Button<i>` (N1), and closes the window again. An ability outside the trees (a GM `.giveability` grant) has no window button: use `place: true` or `fallback: lua`.
 4. `fallback: lua`: `useAbility(id, Unit.Target)`, N3.
 
+**Ground-targeted abilities** (`target_type_id` 3, area-of-effect reticles): the press only opens the reticle; the client sends `useAbilityOnGroundTarget` after a left click on the ground. Pass `ground: {x, y, z, space}` (a `client_world_click` `point`: `space` `server` metres by default, or `client` UE3 units) and the flow left-clicks it right after the press, before it observes; the click is the `ground_confirm` step and the `ground` field of the result. In a UAT spec it is `args = { ability_id = 724, press = "key", ground = { x = -87000, y = 24600, z = 663, space = "client" } }`. Without it a ground ability reads `nothing_observed` (`denied: ignored`).
+
 No slash command for abilities is known, so there is no N2 path. The result is read from the events that follow the press, for up to `observe_ms` (default 2500), from both generations of client telemetry: the `cme.event` / `net.out` names and the ability trace's `ability.*` rows ([client-telemetry.md § Ability telemetry](../architecture/client-telemetry.md#ability-telemetry-clientability)).
 
 | Signal | Events |

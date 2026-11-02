@@ -80,12 +80,12 @@ id = "Commando-523"
 title = "Concussive Grenade (523): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 523, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 523, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 523 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 523, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 523, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -144,12 +144,12 @@ id = "Commando-887"
 title = "Place C-4 Charge (887): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 887, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 887, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 887 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 887, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 887, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -176,12 +176,12 @@ id = "Commando-647"
 title = "C-4: Time Delay (647): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 647, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 647, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 647 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 647, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 647, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -240,12 +240,12 @@ id = "Commando-861"
 title = "High-Explosive Grenade (861): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 861, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 861, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 861 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 861, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 861, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -431,12 +431,12 @@ id = "Commando-1364"
 title = "Shockwave Grenade (1364): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1364, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1364, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1364 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1364, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1364, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -559,12 +559,12 @@ id = "Commando-2864"
 title = "EMP Grenade (2864): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 2864, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2864, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2864 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2864, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2864, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

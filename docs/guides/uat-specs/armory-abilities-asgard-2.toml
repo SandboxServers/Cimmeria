@@ -143,12 +143,12 @@ id = "Asgard-1549"
 title = "Science Protocol: Hologram: Humanoid (1549): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1549, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1549, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1549 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1549, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1549, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -175,12 +175,12 @@ id = "Asgard-1553"
 title = "Science Protocol: Hologram: Mechanical (1553): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1553, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1553, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1553 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1553, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1553, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -425,12 +425,12 @@ id = "Asgard-3245"
 title = "ScienceProtocol: Hologram:Self (3245): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3245, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3245, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3245 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3245, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3245, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -489,12 +489,12 @@ id = "Asgard-3177"
 title = "ScienceProtocol:InduceStasis (3177): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3177, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3177, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3177 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3177, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3177, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -553,12 +553,12 @@ id = "Asgard-3178"
 title = "ScienceProtocol: SynapticScrambleField (3178): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3178, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3178, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3178 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3178, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3178, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

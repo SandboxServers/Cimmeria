@@ -799,12 +799,12 @@ setup = [
   { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
   { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { wait_ms = 1500 },
-  { tool = "@use_ability", args = { ability_id = 1475, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1475, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1475 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1475, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1475, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

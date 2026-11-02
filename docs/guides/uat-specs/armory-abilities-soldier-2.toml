@@ -144,12 +144,12 @@ id = "Soldier-523"
 title = "Concussive Grenade (523): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 523, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 523, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 523 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 523, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 523, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -336,12 +336,12 @@ id = "Soldier-868"
 title = "Flashbang Grenade (868): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 868, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 868, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 868 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 868, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 868, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -432,12 +432,12 @@ id = "Soldier-861"
 title = "High-Explosive Grenade (861): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 861, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 861, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 861 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 861, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 861, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -528,12 +528,12 @@ id = "Soldier-854"
 title = "Smoke Grenade (854): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 854, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 854, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 854 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 854, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 854, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -656,12 +656,12 @@ id = "Soldier-1364"
 title = "Shockwave Grenade (1364): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1364, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1364, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1364 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1364, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1364, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -688,12 +688,12 @@ id = "Soldier-1329"
 title = "Incendiary Grenade (1329): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1329, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1329, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1329 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1329, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1329, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -751,12 +751,12 @@ id = "Soldier-2864"
 title = "EMP Grenade (2864): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 2864, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2864, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2864 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2864, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2864, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -783,12 +783,12 @@ id = "Soldier-1894"
 title = "Phase Grenade (1894): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1894, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1894, place = true, ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1894 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1894, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1894, press = "key", fallback = "none", ground = { x = -87000, y = 24600, z = 663, space = "client" } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

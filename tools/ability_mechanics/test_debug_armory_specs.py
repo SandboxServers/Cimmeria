@@ -78,6 +78,21 @@ class AbilityRowTest(unittest.TestCase):
         row = parse_row(specs.ability_row("Soldier", 1, ability(target=2), None, {}, {}))
         self.assertNotIn("required", row["expect"][1])
 
+    def test_a_ground_ability_passes_the_ground_point_on_both_presses(self):
+        row = parse_row(specs.ability_row("Soldier", 724, ability(target=3), None, {}, {}))
+        point = {"x": -87000, "y": 24600, "z": 663, "space": "client"}
+        self.assertEqual(row["setup"][0]["args"], {"ability_id": 724, "place": True, "ground": point})
+        self.assertEqual(row["step"][0]["args"], {"ability_id": 724, "press": "key", "fallback": "none", "ground": point})
+
+    def test_other_target_types_pass_no_ground_point(self):
+        for target in (1, 2):
+            row = parse_row(specs.ability_row("Soldier", 592, ability(target=target), None, {}, {}))
+            self.assertNotIn("ground", row["setup"][0]["args"])
+            self.assertNotIn("ground", row["step"][0]["args"])
+
+    def test_a_nested_table_renders_as_an_inline_table(self):
+        self.assertEqual(specs.table({"a": 1, "g": {"x": -2, "s": "client"}}), '{ a = 1, g = { x = -2, s = "client" } }')
+
     def test_the_sent_clause_matches_the_ability_id(self):
         row = parse_row(specs.ability_row("Soldier", 592, ability(), None, {}, {}))
         self.assertEqual(row["expect"][0]["event"], "client.ability.sent")

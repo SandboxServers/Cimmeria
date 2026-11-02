@@ -85,6 +85,7 @@ fn use_req(query: Query, fallback: Fallback, place: bool) -> UseAbilityRequest {
         place,
         fallback,
         observe: Duration::from_millis(2000),
+        ground: None,
     }
 }
 
