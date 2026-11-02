@@ -71,6 +71,9 @@
 //!   plaza chains and the munitions vendor's list.
 //! - [`live_db_vendor_arbitrage`]: live-DB guard that no buy list sells an
 //!   item for less than any sell list pays for it (DA-02 review F1).
+//! - [`live_db_starter_vendors`]: live-DB guard that every vendor and trainer
+//!   spawned in a starter world names a non-empty list of real items and
+//!   abilities.
 //! - [`live_db_debug_hub`]: live-DB guards for the Castle_CellBlock
 //!   stasis-room debug hub seed (templates 300-304, spawns 400-404): role
 //!   columns, placement (the Gate Mail Clerk's spawn 490 included), the
@@ -175,6 +178,7 @@ mod live_db_pet_summons;
 mod live_db_pet_trainer;
 mod live_db_seed_sequences;
 mod live_db_spawnlist_sequence;
+mod live_db_starter_vendors;
 mod live_db_union_omega_asgard_programs;
 mod live_db_union_omega_asgard_vendors;
 mod live_db_union_omega_consumables;

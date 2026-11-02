@@ -56,7 +56,7 @@ Contributor lomiada, 2026-10-27: *"all current develop effort should go in the s
 | D-SU5 | Free Jaffa characters are created by the stager with `lab_create_character` archetype 7, as CS-08 did. Only if that is refused does the brief add a NEEDS_HUMAN setup step for the user during the approved session. | Decided (architect) | Beta's fixtures.md asked for a hand-made character; CS-08 showed the lab can create one. |
 | D-SU6 | Vendor and trainer rows that a zone ledger already lists (UO-R5-S6, S12 to S14) run in this campaign. starter-uat-shops covers only what no ledger lists. | Decided (architect) | No row runs twice. |
 | D-SU7 | Rows that ask the tester for an opinion (DK-U2, DK-U19 no decline, DK-U24 plain click, DK-U27 fire loop, UB-U1b, UB-U3d) are graded on their server half and listed NEEDS_HUMAN in `signoff.md` for lomiada or the owner. | Decided (architect) | A driver cannot answer "is this acceptable". |
-| D-SP2, D-SP3 | Server target and project priority, as in [starter-uat-praxis](../starter-uat-praxis/README.md#decisions). | **BlockedDecision** (owner) | Shared. |
+| Shared | Server target and project priority: starter-uat-praxis [D-SP2 and D-SP3](../starter-uat-praxis/README.md#decisions). | **BlockedDecision** (owner) | Shared. |
 
 D-SP4 to D-SP7 (issues not fixes, ask first per wave, playthrough order, status docs once) apply here unchanged; the Union close-out SU-99 waits on nothing but SU-98.
 
