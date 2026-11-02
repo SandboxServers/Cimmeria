@@ -54,6 +54,7 @@ alignment = "sgu"
 archetype = "Soldier"
 gender = "male"
 first = "Uat"
+finish_intro = false
 """
 HEADER = """# Unified UAT, section "{section}" (Debug Area Armory gear, DR-07).
 # Written by: python tools/ability_mechanics/debug_armory.py specs gear --out-dir docs/guides/uat-specs

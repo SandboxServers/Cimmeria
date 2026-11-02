@@ -63,13 +63,22 @@ class SetupRowTest(unittest.TestCase):
     def test_the_section_setup_row_places_the_character_with_every_ability_and_a_dummy(self):
         row = parse_row(specs.setup_row("Soldier"))
         self.assertEqual(row["id"], "Soldier-00")
-        self.assertEqual(row["setup"][0]["chat"], specs.SETUP_LOCATION)
-        self.assertEqual(row["setup"][1]["tool"], "client_wait_for")
-        self.assertEqual(row["setup"][1]["args"]["lua_condition"], "getCurrentWorldID() == 1300")
-        self.assertEqual(row["setup"][3]["chat"], "/gmgiveallabilities")
-        self.assertEqual(row["setup"][4], {"tool": "@dummy", "args": {"disposition": "hostile"}})
+        self.assertEqual(row["setup"][0], {"wait_ms": 17000})
+        self.assertEqual(row["setup"][1]["chat"], specs.SETUP_LOCATION)
+        self.assertEqual(row["setup"][2]["tool"], "client_wait_for")
+        self.assertEqual(row["setup"][2]["args"]["lua_condition"], "getCurrentWorldID() == 1300")
+        self.assertEqual(row["setup"][4]["chat"], "/gmgiveallabilities")
+        self.assertEqual(row["setup"][5], {"tool": "@dummy", "args": {"disposition": "hostile"}})
         self.assertEqual(row["expect"][0]["pointer"], "/world_id")
         self.assertEqual(row["expect"][0]["value"], 1300)
+
+
+class SectionHeaderTest(unittest.TestCase):
+    def test_an_sgu_section_skips_the_intro_wait_and_a_praxis_section_keeps_it(self):
+        sgu = tomllib.loads("\n".join(specs.section_header("sgu", "Soldier", None)))["section"]["fresh"]
+        self.assertIs(sgu["finish_intro"], False)
+        praxis = tomllib.loads("\n".join(specs.section_header("praxis", "Goauld", None)))["section"]["fresh"]
+        self.assertNotIn("finish_intro", praxis)
 
 
 class ArchetypeFilesTest(unittest.TestCase):
@@ -122,6 +131,11 @@ class WriteAbilitySpecsTest(unittest.TestCase):
                 raw = path.read_bytes()
                 self.assertNotIn(b"\r", raw, path.name)
                 doc = tomllib.loads(raw.decode("utf-8"))
+                fresh = doc["section"]["fresh"]
+                if fresh["alignment"] == "sgu":
+                    self.assertIs(fresh.get("finish_intro"), False, path.name)
+                else:
+                    self.assertNotIn("finish_intro", fresh, path.name)
                 ids = [r["id"] for r in doc["row"]]
                 self.assertEqual(len(ids), len(set(ids)), path.name)
                 rows += len(ids)
