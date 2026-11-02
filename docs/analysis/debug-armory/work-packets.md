@@ -133,6 +133,17 @@ These agents skip CLAUDE.md; this list is their rule set.
   - Split either file at 30 rows (`-1`, `-2` ...): every row grants one item into the fresh character's 40-slot main bag ([inventory-system.md:118](../../gameplay/inventory-system.md)) and nothing removes it, so one file's grants must fit even if no equip succeeds (DR-07 ruling 1).
 - **Tests and check:** as DR-06.
 
+### DR-07h: select the granted weapon and isolate weapon rows (canary fix)
+
+- **Agent:** packet-coder. **Host:** windows. **Worktree:** `dr-lab`, branch `lab/dr-lab` (as DR-07d to DR-07g). **Commit:** `fix(uat): reset bandolier slot 1, select it with F1 and assert the active weapon in Armory weapon rows (DR-07h)`.
+- **Why:** an equip lands in the first empty bandolier slot and never moves the active slot, so the starter or the previous row's weapon stayed active (canary Soldier-717, GW-5680). This is a spec gap, not a server defect.
+- **Change:** every weapon row, in `debug_armory_specs.py` gated rows and `debug_armory_gear.py` weapon rows, makes the same four changes:
+  - it adds an optional `@item_action` unequip of Bandolier slot 1, plus an optional close of the `CharacterWin` sheet, before the give;
+  - after the equip it adds `@key F1`;
+  - it gains a required `armed` clause (`@player_state` `/ammo/weapon_item_id` `eq <item>`);
+  - lab-run-plan R5 is amended to give the verifier a short lease of its own for attests.
+- **Full spec:** the files, steps, tests, regen and checks are in [worknotes/ruling-weapon-select.md § DR-07h](worknotes/ruling-weapon-select.md#dr-07h-select-the-granted-weapon-and-isolate-weapon-rows). That section is authoritative.
+
 ### DR-08: brief for DR-L1
 
 - **Agent:** documentation-writer. **Host:** windows. **Worktree:** `dr-08`, branch `debug-armory/DR-08-brief`. **Commit:** `docs(debug-armory): DR-L1 brief (DR-08)`.
