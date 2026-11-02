@@ -7,7 +7,8 @@
 //!    (`getBindingKey('ActionButton<n>')`, a real `WM_KEYDOWN`/`UP`), or
 //!    click the button when it has no key the lab can post. N1.
 //! 2. **Not on the hotbar, `place: true`** — put it on the first visible
-//!    empty button the way the drop handler does
+//!    empty button the lab can press (else the last pressable ability button,
+//!    overwritten) the way the drop handler does
 //!    (`getUnusedAction` + `ActionProfileMod.setButtonCurrentAction` +
 //!    `setActionToAbility`: N3, because a CEGUI drag cannot be started from
 //!    posted mouse moves yet), then press that button's key or click it
@@ -250,6 +251,11 @@ impl Supervisor {
         if button.is_none() && req.place {
             let target = hotbar_now
                 .placement_target(req.press != Press::Click)
+                .or_else(|| {
+                    (req.press == Press::Auto)
+                        .then(|| hotbar_now.placement_target(false))
+                        .flatten()
+                })
                 .cloned()
                 .ok_or_else(|| {
                     run.fail(
@@ -290,6 +296,8 @@ impl Supervisor {
                     .await);
             }
             placed = json!({ "button": target.button, "action_id": r.get(1),
+                             "replaced_action_id": target.action_id,
+                             "replaced_name": target.name,
                              "native_level": NativeLevel::UiLuaCall.to_json() });
             run.record("place", tp, placed.clone());
         }
