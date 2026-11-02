@@ -64,7 +64,7 @@ For N = 0 to 6, one `store_opened` row with `vendor_template_id` = 1610 + N insi
 
 - Two `transaction` rows with `action` `sell`: `design_id` 55 and `design_id` 33, each `price` 0 (list 1349 pays 0), `cash_after` = `cash_before`, at an Armory vendor (`vendor_template_id` 1610 to 1616).
 - Cross-check: neither design is in the character's bag or equipment after the L1-6 window.
-- PASS: both sales and both items gone. PARTIAL: one. If the sell path refused with `reason = "not_sellable"` for either design, FAIL, because neither is Fists (2699, the one skipped design). If the driver could not start the sale (drag did nothing, rightclick did nothing) and the server shows no row: FAIL for the tool path, note "sell is unverified in store-paths.md line 71".
+- PASS: both sales and both items gone. PARTIAL: one. If the sell path refused with `reason = "not_sellable"` for either design, FAIL, because neither is Fists (2699, the one skipped design). If the driver could not start the sale (the Sell tab or the Sell button did nothing) and the server shows no row: FAIL for the tool path, note "sell recipe from the shops SS-D1 rerun (Sell tab, spinner, Vendor_SellButton)".
 - Sell-back at price 0 is the cleanup contract (F7): the cash must not change.
 
 ## Result file
@@ -75,7 +75,7 @@ Write `docs/analysis/debug-armory/results/DR-L1.md` in CRLF, following contract 
 | Row | Grade | Tier (N1/N2/N3/G) | Server evidence (query or log event, time) | Screenshot | Issue |
 ```
 
-Seven rows to grade L1-1, L1-2 (as seven sub-rows 2.0 to 2.6), L1-3 to L1-6. Then `## Not run` (each clause and why: chat-only clauses, SigNoz-only clauses as UNVERIFIED, the human screenshot questions), `## Resume hint` (what state a re-run starts from: the bag, the cash and the vendor last opened), `## Recipe` (the exact tool calls that worked, for the later spec runs).
+Six rows to grade (L1-1 to L1-6), with L1-2 as seven sub-rows 2.0 to 2.6. Then `## Not run` (each clause and why: chat-only clauses, SigNoz-only clauses as UNVERIFIED, the human screenshot questions), `## Resume hint` (what state a re-run starts from: the bag, the cash and the vendor last opened), `## Recipe` (the exact tool calls that worked, for the later spec runs).
 
 On any FAIL write an issue body to `docs/analysis/debug-armory/results/issues/DR-L1-<row>.md` with the failing step, the evidence row and the seed lines; do not file it (the orchestrator has `ops` file it, DR-30).
 

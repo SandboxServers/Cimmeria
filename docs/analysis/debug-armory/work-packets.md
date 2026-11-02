@@ -143,7 +143,7 @@ These agents skip CLAUDE.md; this list is their rule set.
 
 | Packet | Wave | Run | Expected length |
 |---|---|---|---|
-| DR-L1 | 4 | `lab-driver` with `briefs/DR-L1.md`, verifier `verify/DR-L1.md` | 28 calls |
+| DR-L1 | 4 | `lab-driver` with `briefs/DR-L1.md`, verifier `verify/DR-L1.md` | about 105 calls in three attempts |
 | DR-L2 to DR-L5 | 4 | `lab_uat_run` of `armory-abilities-soldier`, `-commando`, `-scientist`, `-archeologist` (each file or split) | about 60-80 min per archetype |
 | DR-L6 to DR-L8 | 5 | `armory-abilities-asgard`, `-goauld`, `-sholva`. Asgard: if character creation fails, grade the whole section BLOCKED citing F42 / HELD-B16 | as above |
 | DR-L9, DR-L10 | 5 | run `armory-gear-weapons-1` to `-3` and `armory-gear-armor-1` and `-2`, each file its own plan, execute and `run_dir` | about 30-40 min per file |
