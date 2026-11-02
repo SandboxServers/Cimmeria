@@ -282,6 +282,7 @@ id = "DA-U7"
 title = "Buy, sell back, repair and recharge at the plaza vendor"
 expected = "Each answers on the first press: the item lands in the bag and cash drops by its price; selling it back pays sell list 2's price; repair and recharge charge and restore."
 blocked = "the store window's buy, sell, repair and recharge buttons need @window_click_row (lab backlog L9); a tester runs this one by hand"
+notes = "Covered step by step by vendors.toml rows V2, V4, V8 and V9 (SS-03b). V8 and V9 are blocked under D-SS3, so this row stays blocked (it has no steps) and a tester runs it by hand."
 [[row.expect]]
 id = "transaction"
 text = "SigNoz: a vendor transaction row per action"
