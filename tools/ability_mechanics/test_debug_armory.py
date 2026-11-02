@@ -135,6 +135,10 @@ class AuditTest(unittest.TestCase):
         _, code = armory.audit([path])
         self.assertEqual(code, 1)
 
+    def test_the_committed_armory_seed_is_not_a_collision(self):
+        lines, code = armory.audit(sorted((armory.REPO_ROOT / armory.SEEDS).rglob("*.sql")))
+        self.assertEqual(code, 0, "\n".join(lines))
+
 
 HEIGHTS_OK = "  {n}  poly=1 component=1 h=0.00 m  dy=+3.00 m  ok\n"
 

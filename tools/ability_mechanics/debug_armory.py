@@ -352,6 +352,8 @@ def used_ids(files: Iterable[Path]) -> Dict[str, Dict[int, List[str]]]:
     """table -> id -> the file names that insert it, for each table of ``ID_BLOCKS``."""
     used: Dict[str, Dict[int, List[str]]] = defaultdict(lambda: defaultdict(list))
     for path in files:
+        if path.name.endswith("_debug_area_armory.sql"):
+            continue  # the Armory's own seed rows are not a collision
         text, _ = read_text(path)
         for _, table, col, _, _ in ID_BLOCKS:
             if f"INSERT INTO {table} (" not in text:
@@ -410,6 +412,8 @@ def world_spawns() -> List[Tuple[float, float]]:
     """The (x, z) of every world ``ARMORY_WORLD`` spawn in any spawnlist seed."""
     out: List[Tuple[float, float]] = []
     for path in sorted((REPO_ROOT / SEEDS).rglob("spawnlist*.sql")):
+        if path.name == "spawnlist_debug_area_armory.sql":
+            continue  # the Armory's own spawns must not block its probes
         text, _ = read_text(path)
         for r in sql_rows(text, "spawnlist"):
             if r["world_id"].text == str(ARMORY_WORLD):
