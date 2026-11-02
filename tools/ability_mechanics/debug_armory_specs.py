@@ -165,8 +165,8 @@ def ability_row(arch: str, aid: int, ability: dict, rep: Optional[int], items, m
     return lines
 
 
-def setup_row(arch: str) -> List[str]:
-    """The section's ``-00`` row: the first-login hold, the Debug Area, every tree ability, one hostile dummy."""
+def setup_row(arch: str, alignment: str) -> List[str]:
+    """The section's ``-00`` row: the first-login hold (SGU only), the Debug Area, every tree ability, one hostile dummy."""
     return [
         "[[row]]",
         f"id = {tstr(f'{arch}-00')}",
@@ -175,8 +175,8 @@ def setup_row(arch: str) -> List[str]:
     ] + list_block(
         "setup",
         [
-            # The first login holds the character for 16 s (aoi.cinematic_hold, reason=timeout); the teleport waits it out.
-            FIRST_LOGIN_HOLD,
+            # The first login holds the character for 16 s (aoi.cinematic_hold, reason=timeout); the teleport waits it out. SGU only.
+            *([FIRST_LOGIN_HOLD] if alignment == "sgu" else []),
             chat(SETUP_LOCATION),
             call("client_wait_for", {"lua_condition": "getCurrentWorldID() == 1300", "timeout_ms": 60000}),
             "{ wait_ms = 3000 }",
@@ -247,7 +247,7 @@ def archetype_files(
     files: Dict[str, str] = {}
     for part, entries in groups:
         stem = f"armory-abilities-{arch.lower()}" + (f"-{part}" if part is not None else "")
-        lines = section_header(alignment, arch, part) + setup_row(arch) + [""]
+        lines = section_header(alignment, arch, part) + setup_row(arch, alignment) + [""]
         for _, _, aid in entries:
             if aid not in abilities:
                 raise Stop(UNCOVERED_MISMATCH, f"{arch} tree ability {aid} is not in the abilities seed")

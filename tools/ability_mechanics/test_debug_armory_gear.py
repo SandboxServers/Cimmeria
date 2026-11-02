@@ -125,6 +125,13 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(data["row"][0]["expect"][0]["event"], "client.ability.sent")
         self.assertEqual(data["row"][2]["expect"][0]["source"], "human")
 
+    def test_section_skips_the_intro_wait_and_the_first_row_holds_the_login(self):
+        blocks = [gear.weapon_row(3753, "Cobra Staff", 584), gear.armor_row(77, "Test Helm", 5)]
+        data = _parse(gear.render("armory-gear-weapons-1", "weapons", blocks))
+        self.assertIs(data["section"]["fresh"]["finish_intro"], False)
+        self.assertEqual(data["row"][0]["setup"][0], {"wait_ms": 17000})
+        self.assertNotEqual(data["row"][1]["setup"][0], {"wait_ms": 17000})
+
 
 class CommittedFilesTest(unittest.TestCase):
     def test_committed_gear_files_parse_and_stay_lf(self):
@@ -135,6 +142,8 @@ class CommittedFilesTest(unittest.TestCase):
             self.assertNotIn(b"\r", raw, path.name)
             data = tomllib.loads(raw.decode("utf-8"))
             self.assertLessEqual(len(data["row"]), gear.ROWS_PER_FILE, path.name)
+            self.assertIs(data["section"]["fresh"]["finish_intro"], False, path.name)
+            self.assertEqual(data["row"][0]["setup"][0], {"wait_ms": 17000}, path.name)
 
     def test_each_generated_file_fits_the_main_bag(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -36,6 +36,8 @@ MAIN_BAG_SLOTS = 40
 ROWS_PER_FILE = 30
 # The L1 hostile training dummy (db/resources/Entities/Seed/entity_templates_debug_area_plaza.sql, 1310-1313).
 DUMMY_TEMPLATE = 1310
+# The first-login cinematic hold (the 16 s first-login hold, plus margin): each gear file's first row is a fresh character's first chat, so it waits this out before the give.
+FIRST_LOGIN_HOLD = "  { wait_ms = 17000 },"
 # The ability log's target and the event that names an unbound weapon (hostile_attack.rs, refuse_no_ranged_attack).
 UNBOUND_SCOPE = "abilities"
 SECTION_TAIL = """
@@ -234,7 +236,7 @@ def render(section: str, kind: str, blocks: List[str]) -> str:
         + note
         + SECTION_TAIL.format(section=section, kind=kind)
         + "\n"
-        + "\n".join(blocks)
+        + "\n".join([blocks[0].replace("setup = [\n", "setup = [\n" + FIRST_LOGIN_HOLD + "\n", 1), *blocks[1:]] if blocks else [])
     )
 
 

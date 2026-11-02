@@ -25,6 +25,7 @@ id = "GW-3128"
 title = "Test Weapon fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 559."
 setup = [
+  { wait_ms = 17000 },
   { chat = "/gmgiveitem 3128 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Test Weapon" } },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },

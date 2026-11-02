@@ -25,6 +25,7 @@ id = "GW-3753"
 title = "Cobra Staff fires its ranged ability on a right-click"
 expected = "The right-click leaves the client as ability 584."
 setup = [
+  { wait_ms = 17000 },
   { chat = "/gmgiveitem 3753 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Cobra Staff" } },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },

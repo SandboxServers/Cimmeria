@@ -61,7 +61,7 @@ class AbilityRowTest(unittest.TestCase):
 
 class SetupRowTest(unittest.TestCase):
     def test_the_section_setup_row_places_the_character_with_every_ability_and_a_dummy(self):
-        row = parse_row(specs.setup_row("Soldier"))
+        row = parse_row(specs.setup_row("Soldier", "sgu"))
         self.assertEqual(row["id"], "Soldier-00")
         self.assertEqual(row["setup"][0], {"wait_ms": 17000})
         self.assertEqual(row["setup"][1]["chat"], specs.SETUP_LOCATION)
@@ -71,6 +71,10 @@ class SetupRowTest(unittest.TestCase):
         self.assertEqual(row["setup"][5], {"tool": "@dummy", "args": {"disposition": "hostile"}})
         self.assertEqual(row["expect"][0]["pointer"], "/world_id")
         self.assertEqual(row["expect"][0]["value"], 1300)
+
+    def test_the_first_login_hold_is_sgu_only(self):
+        row = parse_row(specs.setup_row("Goauld", "praxis"))
+        self.assertEqual(row["setup"][0]["chat"], specs.SETUP_LOCATION)
 
 
 class SectionHeaderTest(unittest.TestCase):

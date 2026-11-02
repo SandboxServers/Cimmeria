@@ -25,6 +25,7 @@ id = "GW-5009"
 title = "GL 24 Grenade Launcher has no ranged binding (F8): the right-click is refused"
 expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
 setup = [
+  { wait_ms = 17000 },
   { wait_ms = 10500 },
   { chat = "/gmgiveitem 5009 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "GL 24 Grenade Launcher" } },

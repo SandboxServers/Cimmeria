@@ -26,6 +26,7 @@ id = "GA-7269"
 title = "Deployment Harness equips into its slot"
 expected = "The piece sits in equipment container 10 on the character sheet."
 setup = [
+  { wait_ms = 17000 },
   { chat = "/gmgiveitem 7269 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Deployment Harness" } },
   { wait_ms = 2000 },

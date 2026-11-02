@@ -26,6 +26,7 @@ id = "GA-33"
 title = "Aramid Fiber Ballistic Helmet equips into its slot"
 expected = "The piece sits in equipment container 4 on the character sheet."
 setup = [
+  { wait_ms = 17000 },
   { chat = "/gmgiveitem 33 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Aramid Fiber Ballistic Helmet" } },
   { wait_ms = 2000 },
