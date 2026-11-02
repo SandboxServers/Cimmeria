@@ -156,3 +156,27 @@ python tools/ability_mechanics/weapon_requirement_audit.py --stdout # print, wri
 ```
 
 `test_weapon_requirement_audit.py` pins the five Class Start starter cases against the seeds, the content-grant parsing, the new sections and the line-ending rule. Rerun the script when a seed changes an ability's `item_monikers`, an item's `moniker_ids`, or a player grant.
+
+## Debug armory (campaign debug-armory, DR-01)
+
+`debug_armory.py` is a read-only tool. It reads the seeds only, never a database. `survey` writes [`docs/analysis/debug-armory/catalog.md`](../../docs/analysis/debug-armory/catalog.md): one representative per weapon family, tier and quality, one per equipment slot, tier and quality, the archetype ability coverage, and the vendor count at a row cap. `audit` prints each free-id block the Armory needs (README F4) and exits 1 if an id in one is already used under `db/resources/`.
+
+```bash
+python tools/ability_mechanics/debug_armory.py survey           # rewrite the catalog
+python tools/ability_mechanics/debug_armory.py survey --check   # exit 1 if it drifted
+python tools/ability_mechanics/debug_armory.py survey --stdout  # print, write nothing
+python tools/ability_mechanics/debug_armory.py audit            # exit 1 on a collision
+```
+
+`test_debug_armory.py` pins the representative choice, the family and slot keys, the vendor count, the audit and the line-ending rule. Rerun `survey` when a seed changes an item's tier, quality, container or moniker.
+
+`seed probes --out <file>` lays out one vendor per group of `--cap` representatives (default 19), weapons first, then equipment, and writes a probe file (`NAME X Y Z`, vendors `DR<k>` at x 266.0, z -915.0 - 3.0 k). It exits 1 if a point is within 2.5 m of a world 1300 spawn. Above 39 vendors it drops `quality_id` from both keys and says so; if 39 is still exceeded it exits 1.
+
+`seed emit --heights <nav_inspect output> --probes <probe file> --out-dir <dir>` reads the grounded y per probe. A probe nav_inspect could not ground moves +2.0 in x, the probe file is rewritten, and the command exits 3: run nav_inspect on the new file and emit again. Each `DR<k>` gets three re-probes, counted in a `<probe file>.retries` file beside the probe file. A probe that fails after its third re-probe exits 4 (`ungroundable: DR<k> at x, z`), writes nothing and leaves the output directory untouched. Otherwise it writes `item_lists_debug_area_armory.sql` (buy lists from 1310, at most 1348, and the shared sell list 1349), `entity_templates_debug_area_armory.sql` (from 1610) and `spawnlist_debug_area_armory.sql` (from 14110, world 1300). An id outside the README F4 blocks exits 1.
+
+```bash
+python tools/ability_mechanics/debug_armory.py seed probes --out probes.txt
+python tools/ability_mechanics/debug_armory.py seed emit --heights heights.txt --probes probes.txt --out-dir out
+```
+
+`test_debug_armory.py` pins the layout spacing, the 2.5 m refusal, the +2.0 x re-probe, exit 4 with no SQL file, the 1349 sell list and the 1348 buy-list stop, the quality drop, the pricing, the cheaper-elsewhere skip, the id blocks and the emitted SQL parsing back with `sql_rows`.
