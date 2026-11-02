@@ -8,7 +8,7 @@
 1. **Wave 1.** `ops` creates `ss-integration` (`pwsh tools/build-lane/mk-worktree.ps1 starter-uat-shops/integration ss-integration`) and commits these three campaign files into it. Then `ops` creates one worktree per packet **branched at the `ss-integration` head** (branch at SHA): `ss-01`, `ss-02`, `ss-04` first, in one message, in the background. When SS-01 is reviewed and merged into `ss-integration`, branch `ss-03a` and `ss-05` at the new head; when SS-03a is merged, branch `ss-03b`. Merge each packet back `--no-ff` (`merge-noff.ps1`) after its packet review passes.
 2. **Agents as defined, no model override:** SS-01 `items-systems-advisor`; SS-02, SS-03a, SS-03b `packet-coder`; SS-04, SS-05, SS-98, SS-99 `documentation-writer`; SS-20 to SS-23 `database-persistence`.
 3. **Lab waves (2 and 3b) are ASK-FIRST** (contract § C1). Ask the user before each wave and wait for a yes.
-4. **Lanes.** SS-D1 runs on instance `default` (Debug Area plaza). SS-D2 then SS-D3 run one after the other on `p2`: both use the stasis room, and two lanes never share a room.
+4. **Lanes.** SS-D1 runs on instance `default` (Debug Area plaza). SS-D2 runs on `p2` (account lab2); SS-D3 runs on `default` (account lab, character Bankone) and only after the SS-D1 verifier has returned, because both use instance `default`. SS-D3 also waits for the SS-D2 verifier: both use the stasis room, and two lanes never share a room.
 5. **Per drive packet:** as Praxis dispatch rule 5 (Haiku `lab-driver`, then the `general-purpose` verifier with the verify file, three attempts, then one Sonnet takeover). SS-D1 is a spec run, not a step brief: the contract § C8 sequence (one `plan_only` call, then one execute call with the ready rows, resumed with the same `run_dir` if it times out; see its section).
 6. **Results and issues:** as Praxis dispatch rules 6 and 7, with paths under `docs/analysis/starter-uat-shops/results/`.
 7. **Review loops** (campaign-packet skill § 4): the packet loop on every wave-1 and wave-3a packet, then the wave loop before each PR. Lab results are reviewed by their verifier.
@@ -36,7 +36,7 @@ These agents skip CLAUDE.md; this list is their rule set.
 - **Questions to answer, each with file:line evidence:**
   1. Why did the stasis-room Quartermaster (template 300, spawn 400) open nothing on 2026-10-12? Inputs: [BANK-R10](../haiku-lab-uat/briefs/bank/BANK-R10.md), [haiku-lab-uat README](../haiku-lab-uat/README.md) bank step 10, the right-click popup (`interaction_type` 65536 on `entity_templates.sql:1011`), the vendor open path in `crates/base-methods/src/base/world_entry/methods/vendor/`, and `store_opened` in its `telemetry.rs`. Say which server log line would prove the store opened, and whether the failure was the click (popup item), the server or the window. If you need the client's Lua or a binary fact, follow the `re-lookup` skill (docs first).
   2. For sell, buyback, repair and recharge: the client Lua call or window control each button sends, the server method it reaches, and the lab tool that can press it (`client_window_click` on a named control, `client_drag_drop`, or a stock Lua call through `client_lua_eval`, which grades N3). See `docs/guides/live-research-lab.md` (tools table) and `.claude/agent-memory/` notes on `client_vendor_buy`.
-  3. Can any in-game action or GM command lower an item's durability or drain its charge today (`docs/commands.md`, the item code)? If not, write "none" (D-SS3 then applies).
+  3. Can any in-game action or GM command lower an item's durability or drain its charge today (`docs/commands.md`, the item code)? If not, write "none" (D-SH3 then applies).
   4. For the trainer (template 301): the client call behind "Train", and the server events (`train_requested` in `crates/cell-methods/src/cell/cell_methods/player/vendor/train.rs`, `train_persisted` in `crates/base-methods/src/base/world_entry/methods/progression/train_ability.rs`).
 - **Write** `docs/analysis/starter-uat-shops/evidence/store-paths.md` (CRLF): one section per question, then a `## Recipes` table `| Action | Tool call (exact args) | Tier | Server event that proves it |` that SS-03a, SS-03b and SS-05 copy.
 - **Rules:** contract § C7.
@@ -55,13 +55,13 @@ These agents skip CLAUDE.md; this list is their rule set.
 - **If a test finds a real miss in the seed:** the guard stays fail-closed: no allow-list, no skip, no `#[ignore]`. Do not fix the seed and do not commit a failing guard. Commit nothing, and report `blocked` with the printed miss list `(template_id, column, list_id, problem)`. The orchestrator files an issue and asks the architect for a ruling; the expected ruling is a `seed-change` packet that fixes the miss before SS-02 is re-run, all before the wave-1 PR.
 - **Rules:** § Rules above.
 
-### SS-04: vendor coverage map and the D-SS1 evidence
+### SS-04: vendor coverage map and the D-SH1 evidence
 
 - **Agent:** documentation-writer. **Host:** windows. **Worktree:** `ss-04`, branch `starter-uat-shops/SS-04-coverage`. **Commit:** `docs(starter-uat-shops): SS-04 vendor coverage map`.
 - **Write** `docs/analysis/starter-uat-shops/vendor-map.md` (CRLF):
-  - Table 1, every vendor or trainer spawn in worlds 12, 8, 57, 68, 69, 70, 19, 58, 61, 62, 18, 80, 23, 1300: `| World | Spawn | Tag | Template | Display name | Buy / sell / repair / recharge / trainer list | Buy rows | Covered by (campaign and row id) |`. Find them with `Select-String` over `db/resources/Worlds/Seed/*.sql` and `db/resources/Entities/Seed/*.sql` (a template is a vendor if any list column is non-null, a trainer if `trainer_ability_list_id` is non-null). "Covered by" uses README D-SS4: Castle hub S1-S5 to SP-DCA6; Omega to starter-uat-union UO-R5 (cite the row ids from `docs/analysis/union-zone-planning/omega-packets/UO-U1.md`); stasis hub and Debug Area to this campaign's SS-D1/SS-D2.
-  - Table 2, the D-SS1 evidence: for Tollana, SGC_W1, Dakara_E1, Beta Site E1 and Harset, `| World | Vendors today | Nearest vendor a player of that faction can reach (world, how) | Ledger mention of vendors (file:line, or "none") |`. Read the zone ledgers: [tollana-continuation](../tollana-continuation/README.md), [union-sgc-continuation](../union-sgc-continuation/README.md), [dakara-e1-rebuild](../dakara-e1-rebuild/README.md), [union-beta-e1-continuation](../union-beta-e1-continuation/README.md), [harset-continuation](../harset-continuation/README.md) (HA-15b/c, PU-08 draft).
-  - A one-paragraph note on OD-5 (D-SS2) with the citation.
+  - Table 1, every vendor or trainer spawn in worlds 12, 8, 57, 68, 69, 70, 19, 58, 61, 62, 18, 80, 23, 1300: `| World | Spawn | Tag | Template | Display name | Buy / sell / repair / recharge / trainer list | Buy rows | Covered by (campaign and row id) |`. Find them with `Select-String` over `db/resources/Worlds/Seed/*.sql` and `db/resources/Entities/Seed/*.sql` (a template is a vendor if any list column is non-null, a trainer if `trainer_ability_list_id` is non-null). "Covered by" uses README D-SH4: Castle hub S1-S5 to SP-DCA6; Omega to starter-uat-union UO-R5 (cite the row ids from `docs/analysis/union-zone-planning/omega-packets/UO-U1.md`); stasis hub and Debug Area to this campaign's SS-D1/SS-D2.
+  - Table 2, the D-SH1 evidence: for Tollana, SGC_W1, Dakara_E1, Beta Site E1 and Harset, `| World | Vendors today | Nearest vendor a player of that faction can reach (world, how) | Ledger mention of vendors (file:line, or "none") |`. Read the zone ledgers: [tollana-continuation](../tollana-continuation/README.md), [union-sgc-continuation](../union-sgc-continuation/README.md), [dakara-e1-rebuild](../dakara-e1-rebuild/README.md), [union-beta-e1-continuation](../union-beta-e1-continuation/README.md), [harset-continuation](../harset-continuation/README.md) (HA-15b/c, PU-08 draft).
+  - A one-paragraph note on OD-5 (D-SH2) with the citation.
 - **Checks:** CRLF; every spawn id in table 1 appears in the seed (`Select-String` each).
 - **Rules:** contract § C7.
 
@@ -110,8 +110,8 @@ These agents skip CLAUDE.md; this list is their rule set.
 
   | Row | Vendor | Does | Expect |
   |---|---|---|---|
-  | V8 | Quartermaster (300) | repair a worn item | `transaction` with the repair action. If `store-paths.md` question 3 is "none", `blocked = "no in-game way to wear an item (D-SS3)"` |
-  | V9 | Quartermaster (300) | recharge a drained item | `transaction` with the recharge action; same D-SS3 rule |
+  | V8 | Quartermaster (300) | repair a worn item | `transaction` with the repair action. If `store-paths.md` question 3 is "none", `blocked = "no in-game way to wear an item (D-SH3)"` |
+  | V9 | Quartermaster (300) | recharge a drained item | `transaction` with the recharge action; same D-SH3 rule |
   | V10 | Archetype Skills Trainer (301) | open, then train one ability the character lacks | `trainer_open` with `trainer_template_id = 301`, then `train_requested` and `train_persisted` |
   | V11 | Archetype Skills Trainer (301) | train with 0 training points | the refusal event and line `store-paths.md` names; if none exists, `blocked` naming the gap |
   | V12 | Quartermaster (300) | open the store, `client_move_to` 30 m away, buy | `refused` with the distance reason and the line "You are too far from the vendor." (cite the reason string from the vendor code) |
@@ -148,20 +148,20 @@ Every packet: **LAB: ASK-FIRST** (contract § C1). Host: windows (the lab machin
 
 ### SS-D2 and SS-D3
 
-`lab-driver` with `briefs/SS-D2.md` then `briefs/SS-D3.md`, both on instance `p2`, one after the other. Verifier per contract § C3 with `verify/SS-D2.md` and `verify/SS-D3.md`.
+`lab-driver` with `briefs/SS-D2.md` then `briefs/SS-D3.md`, SS-D2 on instance `p2`, then SS-D3 on instance `default` after the SS-D1 verifier and the SS-D2 verifier have returned. Verifier per contract § C3 with `verify/SS-D2.md` and `verify/SS-D3.md`.
 
 The wave's results ship as one docs PR from `ss-integration`.
 
-## Wave 3a: vendors for the worlds that have none (BlockedDecision D-SS1)
+## Wave 3a: vendors for the worlds that have none (BlockedDecision D-SH1)
 
-Runs only if the owner answers D-SS1 with (b) or (c). With (a), mark SS-20 to SS-23 and SS-D4 `Done (not needed)` and go to wave 4.
+Runs only if the owner answers D-SH1 with (b) or (c). With (a), mark SS-20 to SS-23 and SS-D4 `Done (not needed)` and go to wave 4.
 
 Each of SS-20 (Tollana, world 19), SS-21 (SGC_W1, 58), SS-22 (Dakara_E1, 61), SS-23 (Beta Site E1, 23):
 
 - **Agent:** database-persistence, with the `seed-change` skill. **Host:** windows. **Worktree:** `ss-2N`, branched at the `ss-integration` head after the previous one merged (they share no files, but one at a time keeps the id audit simple). **Commit:** `feat(seed): <world> vendor and trainer (starter-uat-shops SS-2N)`.
 - **Files:** `db/resources/Items/Seed/item_lists_starter_<world>.sql`, `db/resources/Entities/Seed/entity_templates_starter_<world>.sql`, `db/resources/Worlds/Seed/spawnlist_starter_<world>.sql`, the three `\ir` lines in `db/database.sql` next to the existing `*_union_omega.sql` lines, and one new test file `crates/cell-catalog/src/cell/spawner/tests/live_db_starter_<world>_vendor.rs` registered in that folder's `mod.rs`.
 - **Ids:** before writing, list used ids with `Select-String` over the seed folders and take the first free block of 10 templates, 10 spawns, 5 item lists and 100 list rows; write the chosen blocks in the commit body.
-- **Content (D-SS1 (b)):** one general-goods vendor (sell, repair and recharge list 2; a buy list of tier-1 and tier-2 consumables and that faction's starter weapons and armor) and one archetype trainer (`trainer_ability_list_id` 1, as template 301). With (c), the trainer only. Price every buy row with the D-UO29 rule in `live_db_union_omega_vendor_common.rs` (`expected_price`); never stock designs 21, 55 or 3437; no tier 3 or higher.
+- **Content (D-SH1 (b)):** one general-goods vendor (sell, repair and recharge list 2; a buy list of tier-1 and tier-2 consumables and that faction's starter weapons and armor) and one archetype trainer (`trainer_ability_list_id` 1, as template 301). With (c), the trainer only. Price every buy row with the D-UO29 rule in `live_db_union_omega_vendor_common.rs` (`expected_price`); never stock designs 21, 55 or 3437; no tier 3 or higher.
 - **Placement:** in the world's hub, next to an existing friendly NPC the zone ledger names; check the point on the world's navmesh with `Set-Location <worktree>; pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-navmesh-extractor --bin nav_inspect -- data/spaces/<world nav file> --probes <probe file>` (see `data/spaces/README.md`). Keep 2.5 m from every other NPC.
 - **Guard:** the new test asserts the template ids, their lists and prices with the Omega helpers (`assert_vendor_template`, `assert_list`), and SS-02's guard covers the world automatically. Revert proof: point the buy list at 999999 once, see it fail, restore.
 - **Check:** `Set-Location <worktree>; pwsh tools/build-lane/live-db-test.ps1 live_db_starter_`; `Set-Location <worktree>; pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-catalog --tests -- -D warnings`.
@@ -171,8 +171,8 @@ Each of SS-20 (Tollana, world 19), SS-21 (SGC_W1, 58), SS-22 (Dakara_E1, 61), SS
 
 The orchestrator dispatches `documentation-writer` to append row blocks to `vendors.toml` for what wave 3a seeded, each with a `.gotolocation <world> <x> <y> <z>` setup at the spawn (coordinates cited from the new `spawnlist_starter_<world>.sql`):
 
-- **Under D-SS1 (b)** (vendor and trainer): per world, `V-<world>-1` open the vendor, `V-<world>-2` buy one row, and `V-<world>-T1` open the trainer and train one ability (`trainer_open` for the new template, then `train_requested` and `train_persisted`, as V10).
-- **Under D-SS1 (c)** (trainer only): per world, `V-<world>-T1` only.
+- **Under D-SH1 (b)** (vendor and trainer): per world, `V-<world>-1` open the vendor, `V-<world>-2` buy one row, and `V-<world>-T1` open the trainer and train one ability (`trainer_open` for the new template, then `train_requested` and `train_persisted`, as V10).
+- **Under D-SH1 (c)** (trainer only): per world, `V-<world>-T1` only.
 
 Then it runs them exactly like SS-D1 (contract § C8) with `rows` limited to those ids.
 

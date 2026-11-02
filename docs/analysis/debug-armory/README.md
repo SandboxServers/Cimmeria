@@ -62,7 +62,7 @@ It needs no new opcode, no client patch and no new server code: seed rows, one P
 | D-DR5 | Cleanup. Armory sell list 1349 = the stocked designs at price 0 if the sell path accepts 0, else 1, except a design that another buy list sells at a lower price, which is left off (else buying it elsewhere and selling here would mint naquadah). The skipped designs are printed, recorded and documented (F7); DR-L1 never buys one. Question for the owner: also pull legacy P07 `.removeitem` into a later campaign? | **BlockedDecision** (owner; the seed half is decided, only the `.removeitem` question is open) |
 | D-DR6 | No level gating: the Armory sells every tier to any level. Equip has no level gate today (inventory-system.md:132). | Decided |
 | D-DR7 | Where the lab sweeps run: the local server, the colo after deploy, or both. The colo DB is rebuilt from seeds on each deploy, so the Armory reaches it only after a release. | **BlockedDecision** (owner) |
-| D-SP2 | Server target for every lab run (shared with the Praxis campaign). | **BlockedDecision** (shared) |
+| Shared | Server target for every lab run: starter-uat-praxis [D-SP2](../starter-uat-praxis/README.md#decisions). | **BlockedDecision** (shared) |
 
 ## Packets
 
