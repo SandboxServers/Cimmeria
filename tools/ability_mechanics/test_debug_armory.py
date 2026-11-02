@@ -3,7 +3,7 @@
 import io
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -136,7 +136,7 @@ class AuditTest(unittest.TestCase):
         self.assertEqual(code, 1)
 
 
-HEIGHTS_OK = "  {n}  poly=1 component=1 h=0.00 m  dy=-3.01 m  ok\n"
+HEIGHTS_OK = "  {n}  poly=1 component=1 h=0.00 m  dy=+3.00 m  ok\n"
 
 
 class SeedProbesTest(unittest.TestCase):
@@ -167,6 +167,14 @@ class SeedProbesTest(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 3)
         self.assertIn("DR0 268.0 10.0 -915.0", moved)
         self.assertEqual(retries, "DR0 1\n")
+
+    def test_a_new_probe_file_clears_a_stale_retries_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "probes.txt"
+            (Path(tmp) / "probes.txt.retries").write_text("DR0 3\n", encoding="utf-8")
+            code, _ = run_main(["seed", "probes", "--out", str(out)])
+            self.assertFalse((Path(tmp) / "probes.txt.retries").exists())
+        self.assertEqual(code, 0)
 
     def test_a_probe_out_of_retries_exits_4_and_writes_no_sql(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -202,6 +210,7 @@ class SeedProbesTest(unittest.TestCase):
         lists = [int(line.split("VALUES (")[1].split(",")[0]) for line in sql.splitlines() if line.startswith("INSERT INTO item_lists")]
         self.assertEqual(lists[:-1], list(range(1310, 1349)))
         self.assertEqual(lists[-1], 1349)
+        self.assertIn("item_lists_item_list_id_seq", sql)
 
     def test_emitted_seed_files_parse_back_and_stay_in_their_blocks(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -221,6 +230,39 @@ class SeedProbesTest(unittest.TestCase):
                 text, _ = armory.read_text(out_dir / name)
                 ids = [int(r[col].text) for r in armory.sql_rows(text, table)]
                 self.assertTrue(ids and all(lo <= i <= hi for i in ids), name)
+            text, _ = armory.read_text(out_dir / "spawnlist_debug_area_armory.sql")
+            self.assertEqual(float(armory.sql_rows(text, "spawnlist")[0]["y"].text), 7.0)  # probe y 10.0 less dy +3.00
+
+    def test_quality_is_dropped_when_it_brings_the_vendors_within_39(self):
+        # 200 families x 4 qualities: 800 keys need 43 vendors at 19 rows; without quality, 200 keys need 11.
+        qualities = ["ITEM_QUALITY_Normal", "ITEM_QUALITY_Good", "ITEM_QUALITY_Great", "ITEM_QUALITY_Fantastic"]
+        weapons = {((f"F{i}",), 1, q): (1000 * i + n, False) for i in range(200) for n, q in enumerate(qualities, 1)}
+        with self._stubbed_readers(weapons):
+            vendors, _items = armory.representatives(19)
+        self.assertLessEqual(len(vendors), 39)
+        # the kept representative of each family is its highest quality (Fantastic, n = 4)
+        self.assertEqual(sorted(i for v in vendors for i in v), [1000 * i + 4 for i in range(200)])
+
+    def test_representatives_stop_with_1_when_39_vendors_are_still_exceeded(self):
+        weapons = {((f"F{i}",), 1, "ITEM_QUALITY_Normal"): (1000 * i + 1, False) for i in range(1000)}
+        with self._stubbed_readers(weapons), self.assertRaises(armory.Stop) as ctx:
+            armory.representatives(19)
+        self.assertEqual(ctx.exception.code, 1)
+
+    def _stubbed_readers(self, weapons):
+        """Patch the data readers so ``representatives`` sees only the given weapon keys and no equipment."""
+        patches = [
+            mock.patch.object(armory, "load", lambda: ({}, {}, {}, [], [], [])),
+            mock.patch.object(armory, "item_attributes", lambda: {}),
+            mock.patch.object(armory, "weapon_keys", lambda *a: {}),
+            mock.patch.object(armory, "equipment_keys", lambda *a: {}),
+            mock.patch.object(armory, "pick_weapon_reps", lambda *a: weapons),
+            mock.patch.object(armory, "pick_equipment_reps", lambda *a: {}),
+        ]
+        stack = ExitStack()
+        for p in patches:
+            stack.enter_context(p)
+        return stack
 
 
 class LineEndingTest(unittest.TestCase):

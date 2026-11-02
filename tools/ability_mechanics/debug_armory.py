@@ -428,6 +428,7 @@ def cmd_probes(cap: int, out: Path) -> int:
         if near <= CLEAR_M:
             raise Stop(1, f"DR{k} at {x}, {z} is {near:.2f} m from a world {ARMORY_WORLD} spawn")
         probes[f"DR{k}"] = [f"{x:.1f}", f"{PROBE_Y:.1f}", f"{z:.1f}"]
+    retries_path(out).unlink(missing_ok=True)
     sys.stdout.write(write_probes(out, probes))
     print(f"wrote {out}: {len(vendors)} vendors at {cap} rows")
     return 0
@@ -478,6 +479,10 @@ def item_sql(buy: List[List[Tuple[int, int]]], sell: List[int], sell_price: int)
             )
             item_id += 1
     out.append(
+        "SELECT pg_catalog.setval('item_lists_item_list_id_seq', GREATEST((SELECT MAX(item_list_id) FROM item_lists), "
+        "(SELECT last_value FROM item_lists_item_list_id_seq)), true);"
+    )
+    out.append(
         "SELECT pg_catalog.setval('item_list_items_item_id_seq', GREATEST((SELECT MAX(item_id) FROM item_list_items), "
         "(SELECT last_value FROM item_list_items_item_id_seq)), true);"
     )
@@ -510,7 +515,7 @@ def spawn_sql(vendors: List[List[int]], probes: Dict[str, List[str]], grounded: 
         out.append(
             raw_row(
                 "spawnlist", text, row,
-                spawn_id=str(SPAWN_BASE + k), x=x, y=f"{PROBE_Y + grounded[f'DR{k}']:.2f}", z=z,
+                spawn_id=str(SPAWN_BASE + k), x=x, y=f"{float(probes[f'DR{k}'][1]) - grounded[f'DR{k}']:.2f}", z=z,
                 heading=str(HEADING), world_id=str(ARMORY_WORLD), template_id=str(TEMPLATE_BASE + k),
                 tag=sql_quote(f"DebugArea_Armory{k}"),
             )
