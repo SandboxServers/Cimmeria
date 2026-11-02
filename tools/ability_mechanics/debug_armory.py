@@ -583,6 +583,10 @@ def main(argv: List[str] | None = None) -> int:
     sv.add_argument("--stdout", action="store_true", help="print the catalog, write nothing")
     sv.add_argument("--cap", type=int, default=DEFAULT_CAP, help="rows per vendor (default %(default)s)")
     sub.add_parser("audit", help="exit 1 if a README F4 id block is already used")
+    sx = sub.add_parser("specs", help="the Armory's lab spec files (DR-07)")
+    sx_kind = sx.add_subparsers(dest="kind", required=True)
+    sg = sx_kind.add_parser("gear", help="armory-gear-weapons and armory-gear-armor (DR-07)")
+    sg.add_argument("--out-dir", required=True, type=Path, help="where the spec files go")
     sd = sub.add_parser("seed", help="the Armory's probe file and seed generator (DR-03a)")
     ss = sd.add_subparsers(dest="step", required=True)
     sp = ss.add_parser("probes", help="lay out one probe per vendor")
@@ -595,6 +599,10 @@ def main(argv: List[str] | None = None) -> int:
     se.add_argument("--cap", type=int, default=DEFAULT_CAP, help="rows per vendor (default %(default)s)")
     args = ap.parse_args(argv)
 
+    if args.command == "specs":
+        from debug_armory_gear import write_gear_specs  # lazy: that module imports this one
+
+        return write_gear_specs(args.out_dir)
     if args.command == "audit":
         lines, code = audit(sorted((REPO_ROOT / SEEDS).rglob("*.sql")))
         print("\n".join(lines))
