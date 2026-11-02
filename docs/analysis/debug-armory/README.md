@@ -77,7 +77,7 @@ Full specs in [work-packets.md](work-packets.md). Status values: Ready, BlockedD
 | 2 | DR-04 | packet-coder | `live_db_debug_area_armory.rs`: stock, prices and ability-weapon coverage | DR-03b | BlockedDependency |
 | 2 | DR-05 | documentation-writer | Armory section in `debug-area.md`, unified-uat rows | DR-03b | BlockedDependency |
 | 3 | DR-06 | packet-coder | `debug_armory.py specs abilities`: one `armory-abilities-<archetype>.toml` per archetype | DR-04 | BlockedDependency |
-| 3 | DR-07 | packet-coder | `debug_armory.py specs gear`: `armory-gear-weapons.toml`, `armory-gear-armor.toml` | DR-04 | BlockedDependency |
+| 3 | DR-07 | packet-coder | `debug_armory.py specs gear`: `armory-gear-weapons-1..3.toml`, `armory-gear-armor-1..2.toml` (split at 30, DR-07 ruling 1) | DR-04 | BlockedDependency |
 | 3 | DR-08 | documentation-writer | Brief and verify file for DR-L1 (a human-style walk of the Armory) | DR-05 | BlockedDependency |
 | 4 | DR-L1 | lab-driver + verifier | Walk the Armory: open each vendor, buy, equip, sell back. **ASK-FIRST** | wave 3 merged | BlockedDependency |
 | 4 | DR-L2 to DR-L5 | lab-driver (spec run) + verifier | Ability specs: Soldier, Commando, Scientist, Archeologist. **ASK-FIRST** | DR-L1 | BlockedDependency |
