@@ -1,11 +1,13 @@
-# Unified UAT, section "armory-gear-armor" (Debug Area Armory gear, DR-07).
+# Unified UAT, section "armory-gear-armor-1" (Debug Area Armory gear, DR-07).
 # Written by: python tools/ability_mechanics/debug_armory.py specs gear --out-dir docs/guides/uat-specs
 # Generated: do not hand-edit; rerun the command. Campaign: docs/analysis/debug-armory/README.md.
+# One file is one run on its own fresh character: at most 30 rows, so its grants fit the 40-slot main bag. Never merge split files into one run.
+# Armor rows have no server-side pass line except the optional DEBUG Inventory move persisted clause: the character sheet read and the human clause decide (DR-07).
 
 schema = 1
 
 [section]
-id = "armory-gear-armor"
+id = "armory-gear-armor-1"
 system = "Debug Area Armory gear (armor)"
 guide = "docs/guides/unified-uat.md#debug-area"
 ledger = "docs/analysis/debug-armory/README.md"
@@ -39,6 +41,13 @@ id = "sheet"
 text = "the character sheet shows Aramid Fiber Ballistic Helmet in equipment container 4"
 source = "human"
 question = "Does the character sheet show Aramid Fiber Ballistic Helmet equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Aramid Fiber Ballistic Helmet into container 4"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Aramid Fiber Ballistic Helmet' AND target_container_id = 4 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-2933"
@@ -61,6 +70,13 @@ id = "sheet"
 text = "the character sheet shows Boron-Carbide Ballistic Helmet in equipment container 4"
 source = "human"
 question = "Does the character sheet show Boron-Carbide Ballistic Helmet equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Boron-Carbide Ballistic Helmet into container 4"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Boron-Carbide Ballistic Helmet' AND target_container_id = 4 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-4074"
@@ -83,6 +99,13 @@ id = "sheet"
 text = "the character sheet shows Trinium Ablative Helmet in equipment container 4"
 source = "human"
 question = "Does the character sheet show Trinium Ablative Helmet equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Trinium Ablative Helmet into container 4"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Trinium Ablative Helmet' AND target_container_id = 4 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-4081"
@@ -105,6 +128,13 @@ id = "sheet"
 text = "the character sheet shows Tri-Naq Alloy Ablative Helmet in equipment container 4"
 source = "human"
 question = "Does the character sheet show Tri-Naq Alloy Ablative Helmet equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Tri-Naq Alloy Ablative Helmet into container 4"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Tri-Naq Alloy Ablative Helmet' AND target_container_id = 4 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-5326"
@@ -127,6 +157,13 @@ id = "sheet"
 text = "the character sheet shows Neutronium Ablative Helmet in equipment container 4"
 source = "human"
 question = "Does the character sheet show Neutronium Ablative Helmet equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Neutronium Ablative Helmet into container 4"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Neutronium Ablative Helmet' AND target_container_id = 4 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-3497"
@@ -149,6 +186,13 @@ id = "sheet"
 text = "the character sheet shows Eyeglasses in equipment container 5"
 source = "human"
 question = "Does the character sheet show Eyeglasses equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Eyeglasses into container 5"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Eyeglasses' AND target_container_id = 5 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-7361"
@@ -171,6 +215,13 @@ id = "sheet"
 text = "the character sheet shows Goggles in equipment container 5"
 source = "human"
 question = "Does the character sheet show Goggles equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Goggles into container 5"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Goggles' AND target_container_id = 5 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-7364"
@@ -193,6 +244,13 @@ id = "sheet"
 text = "the character sheet shows Goggles in equipment container 5"
 source = "human"
 question = "Does the character sheet show Goggles equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Goggles into container 5"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Goggles' AND target_container_id = 5 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-7367"
@@ -215,6 +273,13 @@ id = "sheet"
 text = "the character sheet shows Goggles in equipment container 5"
 source = "human"
 question = "Does the character sheet show Goggles equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Goggles into container 5"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Goggles' AND target_container_id = 5 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-7369"
@@ -237,6 +302,13 @@ id = "sheet"
 text = "the character sheet shows Goggles in equipment container 5"
 source = "human"
 question = "Does the character sheet show Goggles equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Goggles into container 5"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Goggles' AND target_container_id = 5 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-34"
@@ -259,6 +331,13 @@ id = "sheet"
 text = "the character sheet shows Aramid Fiber Ballistic Vest in equipment container 7"
 source = "human"
 question = "Does the character sheet show Aramid Fiber Ballistic Vest equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Aramid Fiber Ballistic Vest into container 7"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Aramid Fiber Ballistic Vest' AND target_container_id = 7 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-2891"
@@ -281,6 +360,13 @@ id = "sheet"
 text = "the character sheet shows Testing Ballistic Vest in equipment container 7"
 source = "human"
 question = "Does the character sheet show Testing Ballistic Vest equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Testing Ballistic Vest into container 7"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Testing Ballistic Vest' AND target_container_id = 7 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-2945"
@@ -303,6 +389,13 @@ id = "sheet"
 text = "the character sheet shows Boron-Carbide Ballistic Vest in equipment container 7"
 source = "human"
 question = "Does the character sheet show Boron-Carbide Ballistic Vest equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Boron-Carbide Ballistic Vest into container 7"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Boron-Carbide Ballistic Vest' AND target_container_id = 7 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-4114"
@@ -325,6 +418,13 @@ id = "sheet"
 text = "the character sheet shows Trinium Ballistic Vest in equipment container 7"
 source = "human"
 question = "Does the character sheet show Trinium Ballistic Vest equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Trinium Ballistic Vest into container 7"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Trinium Ballistic Vest' AND target_container_id = 7 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-4120"
@@ -347,6 +447,13 @@ id = "sheet"
 text = "the character sheet shows Tri-Naq Alloy Ballistic Vest in equipment container 7"
 source = "human"
 question = "Does the character sheet show Tri-Naq Alloy Ballistic Vest equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Tri-Naq Alloy Ballistic Vest into container 7"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Tri-Naq Alloy Ballistic Vest' AND target_container_id = 7 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-5323"
@@ -369,6 +476,13 @@ id = "sheet"
 text = "the character sheet shows Neutronium Ablative Vest in equipment container 7"
 source = "human"
 question = "Does the character sheet show Neutronium Ablative Vest equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Neutronium Ablative Vest into container 7"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Neutronium Ablative Vest' AND target_container_id = 7 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-2921"
@@ -391,6 +505,13 @@ id = "sheet"
 text = "the character sheet shows Test Gloves in equipment container 8"
 source = "human"
 question = "Does the character sheet show Test Gloves equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Test Gloves into container 8"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Test Gloves' AND target_container_id = 8 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-2980"
@@ -413,6 +534,13 @@ id = "sheet"
 text = "the character sheet shows Boron-Carbide Ballistic Gloves in equipment container 8"
 source = "human"
 question = "Does the character sheet show Boron-Carbide Ballistic Gloves equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Boron-Carbide Ballistic Gloves into container 8"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Boron-Carbide Ballistic Gloves' AND target_container_id = 8 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-4165"
@@ -435,6 +563,13 @@ id = "sheet"
 text = "the character sheet shows Trinium Ballistic Gloves in equipment container 8"
 source = "human"
 question = "Does the character sheet show Trinium Ballistic Gloves equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Trinium Ballistic Gloves into container 8"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Trinium Ballistic Gloves' AND target_container_id = 8 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-4172"
@@ -457,6 +592,13 @@ id = "sheet"
 text = "the character sheet shows Tri-Naq Alloy Ballistic Gloves in equipment container 8"
 source = "human"
 question = "Does the character sheet show Tri-Naq Alloy Ballistic Gloves equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Tri-Naq Alloy Ballistic Gloves into container 8"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Tri-Naq Alloy Ballistic Gloves' AND target_container_id = 8 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-5317"
@@ -479,6 +621,13 @@ id = "sheet"
 text = "the character sheet shows Neutronium Ablative Gloves in equipment container 8"
 source = "human"
 question = "Does the character sheet show Neutronium Ablative Gloves equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Neutronium Ablative Gloves into container 8"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Neutronium Ablative Gloves' AND target_container_id = 8 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-3632"
@@ -501,6 +650,13 @@ id = "sheet"
 text = "the character sheet shows Grenade Belt in equipment container 9"
 source = "human"
 question = "Does the character sheet show Grenade Belt equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Grenade Belt into container 9"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Grenade Belt' AND target_container_id = 9 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-7247"
@@ -523,6 +679,13 @@ id = "sheet"
 text = "the character sheet shows Deployment Belt in equipment container 9"
 source = "human"
 question = "Does the character sheet show Deployment Belt equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Deployment Belt into container 9"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Deployment Belt' AND target_container_id = 9 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-7250"
@@ -545,6 +708,13 @@ id = "sheet"
 text = "the character sheet shows Deployment Belt in equipment container 9"
 source = "human"
 question = "Does the character sheet show Deployment Belt equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Deployment Belt into container 9"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Deployment Belt' AND target_container_id = 9 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-7253"
@@ -567,6 +737,13 @@ id = "sheet"
 text = "the character sheet shows Deployment Belt in equipment container 9"
 source = "human"
 question = "Does the character sheet show Deployment Belt equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Deployment Belt into container 9"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Deployment Belt' AND target_container_id = 9 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-7255"
@@ -589,6 +766,13 @@ id = "sheet"
 text = "the character sheet shows Deployment Belt in equipment container 9"
 source = "human"
 question = "Does the character sheet show Deployment Belt equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Deployment Belt into container 9"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Deployment Belt' AND target_container_id = 9 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-7257"
@@ -611,6 +795,13 @@ id = "sheet"
 text = "the character sheet shows Deployment Harness in equipment container 10"
 source = "human"
 question = "Does the character sheet show Deployment Harness equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Deployment Harness into container 10"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Deployment Harness' AND target_container_id = 10 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-7261"
@@ -633,6 +824,13 @@ id = "sheet"
 text = "the character sheet shows Deployment Harness in equipment container 10"
 source = "human"
 question = "Does the character sheet show Deployment Harness equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Deployment Harness into container 10"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Deployment Harness' AND target_container_id = 10 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-7264"
@@ -655,6 +853,13 @@ id = "sheet"
 text = "the character sheet shows Deployment Harness in equipment container 10"
 source = "human"
 question = "Does the character sheet show Deployment Harness equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Deployment Harness into container 10"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Deployment Harness' AND target_container_id = 10 AND player_name CONTAINS '${character}'"
+min_rows = 1
 
 [[row]]
 id = "GA-7267"
@@ -677,245 +882,10 @@ id = "sheet"
 text = "the character sheet shows Deployment Harness in equipment container 10"
 source = "human"
 question = "Does the character sheet show Deployment Harness equipped (see the screenshot)?"
-
-[[row]]
-id = "GA-7269"
-title = "Deployment Harness equips into its slot"
-expected = "The piece sits in equipment container 10 on the character sheet."
-setup = [
-  { chat = "/gmgiveitem 7269 1", tier = "G" },
-  { tool = "@item_action", args = { action = "equip", name = "Deployment Harness" } },
-  { wait_ms = 2000 },
-]
-step = [
-  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
-  { tool = "@screenshot" },
-]
-teardown = [
-  { tool = "@cooldowns_reset" },
-]
 [[row.expect]]
-id = "sheet"
-text = "the character sheet shows Deployment Harness in equipment container 10"
-source = "human"
-question = "Does the character sheet show Deployment Harness equipped (see the screenshot)?"
-
-[[row]]
-id = "GA-2920"
-title = "Test Legs equips into its slot"
-expected = "The piece sits in equipment container 11 on the character sheet."
-setup = [
-  { chat = "/gmgiveitem 2920 1", tier = "G" },
-  { tool = "@item_action", args = { action = "equip", name = "Test Legs" } },
-  { wait_ms = 2000 },
-]
-step = [
-  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
-  { tool = "@screenshot" },
-]
-teardown = [
-  { tool = "@cooldowns_reset" },
-]
-[[row.expect]]
-id = "sheet"
-text = "the character sheet shows Test Legs in equipment container 11"
-source = "human"
-question = "Does the character sheet show Test Legs equipped (see the screenshot)?"
-
-[[row]]
-id = "GA-3007"
-title = "Boron-Carbide Ballistic Pants equips into its slot"
-expected = "The piece sits in equipment container 11 on the character sheet."
-setup = [
-  { chat = "/gmgiveitem 3007 1", tier = "G" },
-  { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Pants" } },
-  { wait_ms = 2000 },
-]
-step = [
-  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
-  { tool = "@screenshot" },
-]
-teardown = [
-  { tool = "@cooldowns_reset" },
-]
-[[row.expect]]
-id = "sheet"
-text = "the character sheet shows Boron-Carbide Ballistic Pants in equipment container 11"
-source = "human"
-question = "Does the character sheet show Boron-Carbide Ballistic Pants equipped (see the screenshot)?"
-
-[[row]]
-id = "GA-4132"
-title = "Trinium Ballistic Pants equips into its slot"
-expected = "The piece sits in equipment container 11 on the character sheet."
-setup = [
-  { chat = "/gmgiveitem 4132 1", tier = "G" },
-  { tool = "@item_action", args = { action = "equip", name = "Trinium Ballistic Pants" } },
-  { wait_ms = 2000 },
-]
-step = [
-  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
-  { tool = "@screenshot" },
-]
-teardown = [
-  { tool = "@cooldowns_reset" },
-]
-[[row.expect]]
-id = "sheet"
-text = "the character sheet shows Trinium Ballistic Pants in equipment container 11"
-source = "human"
-question = "Does the character sheet show Trinium Ballistic Pants equipped (see the screenshot)?"
-
-[[row]]
-id = "GA-4140"
-title = "Tri-Naq Alloy Ballistic Pants equips into its slot"
-expected = "The piece sits in equipment container 11 on the character sheet."
-setup = [
-  { chat = "/gmgiveitem 4140 1", tier = "G" },
-  { tool = "@item_action", args = { action = "equip", name = "Tri-Naq Alloy Ballistic Pants" } },
-  { wait_ms = 2000 },
-]
-step = [
-  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
-  { tool = "@screenshot" },
-]
-teardown = [
-  { tool = "@cooldowns_reset" },
-]
-[[row.expect]]
-id = "sheet"
-text = "the character sheet shows Tri-Naq Alloy Ballistic Pants in equipment container 11"
-source = "human"
-question = "Does the character sheet show Tri-Naq Alloy Ballistic Pants equipped (see the screenshot)?"
-
-[[row]]
-id = "GA-5329"
-title = "Neutronium Ablative Pants equips into its slot"
-expected = "The piece sits in equipment container 11 on the character sheet."
-setup = [
-  { chat = "/gmgiveitem 5329 1", tier = "G" },
-  { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Pants" } },
-  { wait_ms = 2000 },
-]
-step = [
-  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
-  { tool = "@screenshot" },
-]
-teardown = [
-  { tool = "@cooldowns_reset" },
-]
-[[row.expect]]
-id = "sheet"
-text = "the character sheet shows Neutronium Ablative Pants in equipment container 11"
-source = "human"
-question = "Does the character sheet show Neutronium Ablative Pants equipped (see the screenshot)?"
-
-[[row]]
-id = "GA-2922"
-title = "Test Boots equips into its slot"
-expected = "The piece sits in equipment container 12 on the character sheet."
-setup = [
-  { chat = "/gmgiveitem 2922 1", tier = "G" },
-  { tool = "@item_action", args = { action = "equip", name = "Test Boots" } },
-  { wait_ms = 2000 },
-]
-step = [
-  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
-  { tool = "@screenshot" },
-]
-teardown = [
-  { tool = "@cooldowns_reset" },
-]
-[[row.expect]]
-id = "sheet"
-text = "the character sheet shows Test Boots in equipment container 12"
-source = "human"
-question = "Does the character sheet show Test Boots equipped (see the screenshot)?"
-
-[[row]]
-id = "GA-2962"
-title = "Boron-Carbide Ballistic Boots equips into its slot"
-expected = "The piece sits in equipment container 12 on the character sheet."
-setup = [
-  { chat = "/gmgiveitem 2962 1", tier = "G" },
-  { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Boots" } },
-  { wait_ms = 2000 },
-]
-step = [
-  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
-  { tool = "@screenshot" },
-]
-teardown = [
-  { tool = "@cooldowns_reset" },
-]
-[[row.expect]]
-id = "sheet"
-text = "the character sheet shows Boron-Carbide Ballistic Boots in equipment container 12"
-source = "human"
-question = "Does the character sheet show Boron-Carbide Ballistic Boots equipped (see the screenshot)?"
-
-[[row]]
-id = "GA-4192"
-title = "Trinium Ballistic Boots equips into its slot"
-expected = "The piece sits in equipment container 12 on the character sheet."
-setup = [
-  { chat = "/gmgiveitem 4192 1", tier = "G" },
-  { tool = "@item_action", args = { action = "equip", name = "Trinium Ballistic Boots" } },
-  { wait_ms = 2000 },
-]
-step = [
-  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
-  { tool = "@screenshot" },
-]
-teardown = [
-  { tool = "@cooldowns_reset" },
-]
-[[row.expect]]
-id = "sheet"
-text = "the character sheet shows Trinium Ballistic Boots in equipment container 12"
-source = "human"
-question = "Does the character sheet show Trinium Ballistic Boots equipped (see the screenshot)?"
-
-[[row]]
-id = "GA-4206"
-title = "Tri-Naq AlloyBallistic Boots equips into its slot"
-expected = "The piece sits in equipment container 12 on the character sheet."
-setup = [
-  { chat = "/gmgiveitem 4206 1", tier = "G" },
-  { tool = "@item_action", args = { action = "equip", name = "Tri-Naq AlloyBallistic Boots" } },
-  { wait_ms = 2000 },
-]
-step = [
-  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
-  { tool = "@screenshot" },
-]
-teardown = [
-  { tool = "@cooldowns_reset" },
-]
-[[row.expect]]
-id = "sheet"
-text = "the character sheet shows Tri-Naq AlloyBallistic Boots in equipment container 12"
-source = "human"
-question = "Does the character sheet show Tri-Naq AlloyBallistic Boots equipped (see the screenshot)?"
-
-[[row]]
-id = "GA-5320"
-title = "Neutronium Ablative Boots equips into its slot"
-expected = "The piece sits in equipment container 12 on the character sheet."
-setup = [
-  { chat = "/gmgiveitem 5320 1", tier = "G" },
-  { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Boots" } },
-  { wait_ms = 2000 },
-]
-step = [
-  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
-  { tool = "@screenshot" },
-]
-teardown = [
-  { tool = "@cooldowns_reset" },
-]
-[[row.expect]]
-id = "sheet"
-text = "the character sheet shows Neutronium Ablative Boots in equipment container 12"
-source = "human"
-question = "Does the character sheet show Neutronium Ablative Boots equipped (see the screenshot)?"
+id = "moved"
+text = "SigNoz: Inventory move persisted for Deployment Harness into container 10"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Deployment Harness' AND target_container_id = 10 AND player_name CONTAINS '${character}'"
+min_rows = 1

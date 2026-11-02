@@ -129,8 +129,8 @@ These agents skip CLAUDE.md; this list is their rule set.
 - **Read first:** as DR-06, plus `crates/cell-methods/src/cell/cell_methods/player/interaction/hostile_attack.rs:130-180` (the `weapon_unbound` line) and the inventory move telemetry in `crates/base-methods/src/base/world_entry/methods/inventory/move_/` (find the accepted-move event and its fields; do not guess the name).
 - **`specs gear --out-dir docs/guides/uat-specs`** writes (LF, Soldier `sgu` fresh):
   - `armory-gear-weapons.toml`: one row per weapon representative: give, equip, `@target` the L1 dummy (template 1310), right-click it; a bound weapon expects its ranged ability's `client.ability.sent`; an `unbound` one expects `weapon_unbound` with `reason = 'no_ranged_attack'` in SigNoz and is graded PASS on that line (it measures the gap, F8).
-  - `armory-gear-armor.toml`: one row per equipment representative: give, equip, and expect the accepted move into its slot (the event you found) plus a `client_window_read` of the character sheet slot (`source = "human"` clause, screenshot).
-  - Split either file at 60 rows (`-1`, `-2` ...).
+  - `armory-gear-armor.toml`: one row per equipment representative: give, equip, and expect the DEBUG `Inventory move persisted` line (`after_commit.rs:80-95`) as a `required = false` clause, plus a `client_window_read` of the character sheet slot (`source = "human"` clause, screenshot).
+  - Split either file at 30 rows (`-1`, `-2` ...): every row grants one item into the fresh character's 40-slot main bag ([inventory-system.md:118](../../gameplay/inventory-system.md)) and nothing removes it, so one file's grants must fit even if no equip succeeds (DR-07 ruling 1).
 - **Tests and check:** as DR-06.
 
 ### DR-08: brief for DR-L1
@@ -146,7 +146,7 @@ These agents skip CLAUDE.md; this list is their rule set.
 | DR-L1 | 4 | `lab-driver` with `briefs/DR-L1.md`, verifier `verify/DR-L1.md` | 28 calls |
 | DR-L2 to DR-L5 | 4 | `lab_uat_run` of `armory-abilities-soldier`, `-commando`, `-scientist`, `-archeologist` (each file or split) | about 60-80 min per archetype |
 | DR-L6 to DR-L8 | 5 | `armory-abilities-asgard`, `-goauld`, `-sholva`. Asgard: if character creation fails, grade the whole section BLOCKED citing F42 / HELD-B16 | as above |
-| DR-L9, DR-L10 | 5 | `armory-gear-weapons`, `armory-gear-armor` | about 60 min each |
+| DR-L9, DR-L10 | 5 | run `armory-gear-weapons-1` to `-3` and `armory-gear-armor-1` and `-2`, each file its own plan, execute and `run_dir` | about 30-40 min per file |
 
 Each runs as dispatch rule 5 (contract § C8: plan, execute, resume with the same `run_dir`), one at a time on `default` (rule 6). If a run passes 90 minutes, resume it with the same `run_dir`; a section with split files runs each file as its own plan and execute, with its own `run_dir`. Each wave's results ship as one docs PR from `dr-integration`.
 

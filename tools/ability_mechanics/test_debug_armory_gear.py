@@ -1,4 +1,4 @@
-"""Tests for the Armory gear specs (DR-07): row shapes, the 60-row split, LF output and TOML validity."""
+"""Tests for the Armory gear specs (DR-07): row shapes, the 30-row split, LF output and TOML validity."""
 
 import sys
 import tempfile
@@ -43,7 +43,19 @@ class WeaponRowTest(unittest.TestCase):
         self.assertEqual(gear.DUMMY_TEMPLATE, 1310)
 
 
+class ThrottleTest(unittest.TestCase):
+    def test_unbound_row_waits_out_the_log_throttle(self):
+        self.assertIn("wait_ms = 10500", gear.weapon_row(1, "x", None))
+        self.assertNotIn("wait_ms = 10500", gear.weapon_row(1, "x", 584))
+
+
 class ArmorRowTest(unittest.TestCase):
+    def test_armor_row_has_an_optional_move_persisted_clause(self):
+        row = gear.armor_row(77, "Test Helm", 5)
+        self.assertIn("Inventory move persisted", row)
+        self.assertIn("required = false", row)
+        self.assertIn("target_container_id = 5", row)
+
     def test_armor_row_reads_the_sheet_with_a_human_clause(self):
         row = gear.armor_row(77, "Test Helm", 5)
         self.assertIn('source = "human"', row)
@@ -75,21 +87,23 @@ class BlocksTest(unittest.TestCase):
 
 
 class SplitTest(unittest.TestCase):
-    def test_forty_rows_stay_in_one_file(self):
-        parts = gear.split("armory-gear-armor", [str(i) for i in range(40)])
+    def test_twenty_rows_stay_in_one_file(self):
+        parts = gear.split("armory-gear-armor", [str(i) for i in range(20)])
         self.assertEqual([name for name, _ in parts], ["armory-gear-armor"])
-        self.assertEqual(len(parts[0][1]), 40)
+        self.assertEqual(len(parts[0][1]), 20)
 
-    def test_splits_at_sixty_rows(self):
-        parts = gear.split("armory-gear-weapons", [str(i) for i in range(130)])
+    def test_splits_at_thirty_rows(self):
+        parts = gear.split("armory-gear-weapons", [str(i) for i in range(73)])
         self.assertEqual(
             [(name, len(rows)) for name, rows in parts],
-            [("armory-gear-weapons-1", 60), ("armory-gear-weapons-2", 60), ("armory-gear-weapons-3", 10)],
+            [("armory-gear-weapons-1", 30), ("armory-gear-weapons-2", 30), ("armory-gear-weapons-3", 13)],
         )
 
-    def test_exactly_sixty_rows_is_one_file(self):
-        parts = gear.split("s", [str(i) for i in range(60)])
-        self.assertEqual(len(parts), 1)
+    def test_exactly_thirty_rows_is_one_file(self):
+        self.assertEqual(len(gear.split("s", [str(i) for i in range(30)])), 1)
+
+    def test_thirty_one_rows_split_in_two(self):
+        self.assertEqual(len(gear.split("s", [str(i) for i in range(31)])), 2)
 
 
 class RenderTest(unittest.TestCase):
@@ -120,7 +134,23 @@ class CommittedFilesTest(unittest.TestCase):
             raw = path.read_bytes()
             self.assertNotIn(b"\r", raw, path.name)
             data = tomllib.loads(raw.decode("utf-8"))
-            self.assertLessEqual(len(data["row"]), 60, path.name)
+            self.assertLessEqual(len(data["row"]), gear.ROWS_PER_FILE, path.name)
+
+    def test_each_generated_file_fits_the_main_bag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            gear.write_gear_specs(Path(tmp))
+            for path in Path(tmp).glob("*.toml"):
+                grants = path.read_text(encoding="utf-8").count("/gmgiveitem ")
+                self.assertLessEqual(grants, 30, path.name)
+                self.assertLess(grants, gear.MAIN_BAG_SLOTS, path.name)
+
+    def test_committed_files_match_the_generator(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            gear.write_gear_specs(Path(tmp))
+            names = {p.name for p in Path(tmp).glob("*.toml")}
+            self.assertEqual(names, {p.name for p in COMMITTED.glob("armory-gear-*.toml")})
+            for name in names:
+                self.assertEqual((Path(tmp) / name).read_bytes(), (COMMITTED / name).read_bytes(), name)
 
     def test_generator_writes_split_lf_files(self):
         with tempfile.TemporaryDirectory() as tmp:

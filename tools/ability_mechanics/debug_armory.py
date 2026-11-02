@@ -600,9 +600,11 @@ def main(argv: List[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     if args.command == "specs":
-        from debug_armory_gear import write_gear_specs  # lazy: that module imports this one
+        if args.kind == "gear":
+            from debug_armory_gear import write_gear_specs  # lazy: that module imports this one
 
-        return write_gear_specs(args.out_dir)
+            return write_gear_specs(args.out_dir)
+        ap.error(f"unknown specs kind {args.kind}")
     if args.command == "audit":
         lines, code = audit(sorted((REPO_ROOT / SEEDS).rglob("*.sql")))
         print("\n".join(lines))

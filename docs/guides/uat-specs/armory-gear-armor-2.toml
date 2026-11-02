@@ -1,0 +1,340 @@
+# Unified UAT, section "armory-gear-armor-2" (Debug Area Armory gear, DR-07).
+# Written by: python tools/ability_mechanics/debug_armory.py specs gear --out-dir docs/guides/uat-specs
+# Generated: do not hand-edit; rerun the command. Campaign: docs/analysis/debug-armory/README.md.
+# One file is one run on its own fresh character: at most 30 rows, so its grants fit the 40-slot main bag. Never merge split files into one run.
+# Armor rows have no server-side pass line except the optional DEBUG Inventory move persisted clause: the character sheet read and the human clause decide (DR-07).
+
+schema = 1
+
+[section]
+id = "armory-gear-armor-2"
+system = "Debug Area Armory gear (armor)"
+guide = "docs/guides/unified-uat.md#debug-area"
+ledger = "docs/analysis/debug-armory/README.md"
+account = "gm"
+character = "fresh"
+
+[section.fresh]
+alignment = "sgu"
+archetype = "Soldier"
+gender = "male"
+first = "Uat"
+
+[[row]]
+id = "GA-7269"
+title = "Deployment Harness equips into its slot"
+expected = "The piece sits in equipment container 10 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 7269 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Deployment Harness" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Deployment Harness in equipment container 10"
+source = "human"
+question = "Does the character sheet show Deployment Harness equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Deployment Harness into container 10"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Deployment Harness' AND target_container_id = 10 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GA-2920"
+title = "Test Legs equips into its slot"
+expected = "The piece sits in equipment container 11 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 2920 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Test Legs" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Test Legs in equipment container 11"
+source = "human"
+question = "Does the character sheet show Test Legs equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Test Legs into container 11"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Test Legs' AND target_container_id = 11 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GA-3007"
+title = "Boron-Carbide Ballistic Pants equips into its slot"
+expected = "The piece sits in equipment container 11 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 3007 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Pants" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Boron-Carbide Ballistic Pants in equipment container 11"
+source = "human"
+question = "Does the character sheet show Boron-Carbide Ballistic Pants equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Boron-Carbide Ballistic Pants into container 11"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Boron-Carbide Ballistic Pants' AND target_container_id = 11 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GA-4132"
+title = "Trinium Ballistic Pants equips into its slot"
+expected = "The piece sits in equipment container 11 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4132 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Trinium Ballistic Pants" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Trinium Ballistic Pants in equipment container 11"
+source = "human"
+question = "Does the character sheet show Trinium Ballistic Pants equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Trinium Ballistic Pants into container 11"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Trinium Ballistic Pants' AND target_container_id = 11 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GA-4140"
+title = "Tri-Naq Alloy Ballistic Pants equips into its slot"
+expected = "The piece sits in equipment container 11 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4140 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Tri-Naq Alloy Ballistic Pants" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Tri-Naq Alloy Ballistic Pants in equipment container 11"
+source = "human"
+question = "Does the character sheet show Tri-Naq Alloy Ballistic Pants equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Tri-Naq Alloy Ballistic Pants into container 11"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Tri-Naq Alloy Ballistic Pants' AND target_container_id = 11 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GA-5329"
+title = "Neutronium Ablative Pants equips into its slot"
+expected = "The piece sits in equipment container 11 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 5329 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Pants" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Neutronium Ablative Pants in equipment container 11"
+source = "human"
+question = "Does the character sheet show Neutronium Ablative Pants equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Neutronium Ablative Pants into container 11"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Neutronium Ablative Pants' AND target_container_id = 11 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GA-2922"
+title = "Test Boots equips into its slot"
+expected = "The piece sits in equipment container 12 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 2922 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Test Boots" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Test Boots in equipment container 12"
+source = "human"
+question = "Does the character sheet show Test Boots equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Test Boots into container 12"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Test Boots' AND target_container_id = 12 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GA-2962"
+title = "Boron-Carbide Ballistic Boots equips into its slot"
+expected = "The piece sits in equipment container 12 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 2962 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Boots" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Boron-Carbide Ballistic Boots in equipment container 12"
+source = "human"
+question = "Does the character sheet show Boron-Carbide Ballistic Boots equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Boron-Carbide Ballistic Boots into container 12"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Boron-Carbide Ballistic Boots' AND target_container_id = 12 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GA-4192"
+title = "Trinium Ballistic Boots equips into its slot"
+expected = "The piece sits in equipment container 12 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4192 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Trinium Ballistic Boots" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Trinium Ballistic Boots in equipment container 12"
+source = "human"
+question = "Does the character sheet show Trinium Ballistic Boots equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Trinium Ballistic Boots into container 12"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Trinium Ballistic Boots' AND target_container_id = 12 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GA-4206"
+title = "Tri-Naq AlloyBallistic Boots equips into its slot"
+expected = "The piece sits in equipment container 12 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 4206 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Tri-Naq AlloyBallistic Boots" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Tri-Naq AlloyBallistic Boots in equipment container 12"
+source = "human"
+question = "Does the character sheet show Tri-Naq AlloyBallistic Boots equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Tri-Naq AlloyBallistic Boots into container 12"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Tri-Naq AlloyBallistic Boots' AND target_container_id = 12 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GA-5320"
+title = "Neutronium Ablative Boots equips into its slot"
+expected = "The piece sits in equipment container 12 on the character sheet."
+setup = [
+  { chat = "/gmgiveitem 5320 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Boots" } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@window_read", args = { kind = "character" }, label = "sheet" },
+  { tool = "@screenshot" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sheet"
+text = "the character sheet shows Neutronium Ablative Boots in equipment container 12"
+source = "human"
+question = "Does the character sheet show Neutronium Ablative Boots equipped (see the screenshot)?"
+[[row.expect]]
+id = "moved"
+text = "SigNoz: Inventory move persisted for Neutronium Ablative Boots into container 12"
+source = "signoz"
+required = false
+filter = "body CONTAINS 'Inventory move persisted' AND item_name = 'Neutronium Ablative Boots' AND target_container_id = 12 AND player_name CONTAINS '${character}'"
+min_rows = 1

@@ -2,11 +2,11 @@
 
 ``debug_armory.py specs gear --out-dir docs/guides/uat-specs`` writes
 ``armory-gear-weapons.toml`` and ``armory-gear-armor.toml`` (LF, Soldier ``sgu``
-fresh), split at 60 rows as ``-1``, ``-2``. The representatives are the ones
+fresh), split at 30 rows (one file, one fresh character, at most 30 grants into the 40-slot main bag) as ``-1``, ``-2``. The representatives are the ones
 ``representatives()`` stocks. A weapon with a RANGED binding expects its
 ability's ``client.ability.sent``; an unbound one expects ``weapon_unbound``
 (F8: the gap is measured, not failed). An armor row equips its piece and reads
-the character sheet, because no server event marks a move into an equipment slot.
+the character sheet; the only server line is the DEBUG ``Inventory move persisted``, so that clause is optional.
 """
 
 from __future__ import annotations
@@ -31,7 +31,9 @@ from debug_armory import (  # noqa: E402
 )
 from weapon_requirement_audit import EVENT_RANGED, load  # noqa: E402
 
-ROWS_PER_FILE = 60
+# INV_Main capacity (docs/gameplay/inventory-system.md:118). Every row grants one item into it and nothing in a spec removes one; a split file runs on its own fresh character, so one file's grants must fit even if no equip succeeds. 30 leaves 10 slots of margin (DR-07 ruling 1).
+MAIN_BAG_SLOTS = 40
+ROWS_PER_FILE = 30
 # The L1 hostile training dummy (db/resources/Entities/Seed/entity_templates_debug_area_plaza.sql, 1310-1313).
 DUMMY_TEMPLATE = 1310
 # The ability log's target and the event that names an unbound weapon (hostile_attack.rs, refuse_no_ranged_attack).
@@ -56,6 +58,7 @@ first = "Uat"
 HEADER = """# Unified UAT, section "{section}" (Debug Area Armory gear, DR-07).
 # Written by: python tools/ability_mechanics/debug_armory.py specs gear --out-dir docs/guides/uat-specs
 # Generated: do not hand-edit; rerun the command. Campaign: docs/analysis/debug-armory/README.md.
+# One file is one run on its own fresh character: at most 30 rows, so its grants fit the 40-slot main bag. Never merge split files into one run.
 """
 
 
@@ -129,6 +132,8 @@ def weapon_row(item_id: int, name: str, ability_id: Optional[int]) -> str:
             f"match_fields = {_inline([('ability_id', str(ability_id))])}",
             'since = "press"',
         ]
+    # weapon_unbound is logged at most once per player per 10 s (NO_RANGED_ATTACK_LOG_INTERVAL), so wait it out.
+    throttle = ["  { wait_ms = 10500 },"] if ability_id is None else []
     return "\n".join(
         [
             "[[row]]",
@@ -136,6 +141,7 @@ def weapon_row(item_id: int, name: str, ability_id: Optional[int]) -> str:
             f"title = {_q(title)}",
             f"expected = {_q(expected)}",
             "setup = [",
+            *throttle,
             f"  {_chat(f'/gmgiveitem {item_id} 1')},",
             f"  {_tool('@item_action', [('action', _q('equip')), ('name', _q(name))])},",
             f"  {_tool('@dummy', [('disposition', _q('hostile')), ('template_id', str(DUMMY_TEMPLATE))])},",
@@ -182,6 +188,17 @@ def armor_row(item_id: int, name: str, slot: int) -> str:
             f"text = {_q(f'the character sheet shows {name} in equipment container {slot}')}",
             'source = "human"',
             f"question = {_q(f'Does the character sheet show {name} equipped (see the screenshot)?')}",
+            "[[row.expect]]",
+            'id = "moved"',
+            f"text = {_q(f'SigNoz: Inventory move persisted for {name} into container {slot}')}",
+            'source = "signoz"',
+            'required = false',
+            "filter = "
+            + _q(
+                f"body CONTAINS 'Inventory move persisted' AND item_name = '{name}' "
+                f"AND target_container_id = {slot} AND player_name CONTAINS '${{character}}'"
+            ),
+            "min_rows = 1",
             "",
         ]
     )
@@ -215,8 +232,14 @@ def split(stem: str, blocks: List[str]) -> List[Tuple[str, List[str]]]:
 
 def render(section: str, kind: str, blocks: List[str]) -> str:
     """A whole spec file in LF: header, section, rows."""
+    note = (
+        "# Armor rows have no server-side pass line except the optional DEBUG Inventory move persisted clause: the character sheet read and the human clause decide (DR-07).\n"
+        if kind == "armor"
+        else ""
+    )
     return (
         HEADER.format(section=section)
+        + note
         + SECTION_TAIL.format(section=section, kind=kind)
         + "\n"
         + "\n".join(blocks)
