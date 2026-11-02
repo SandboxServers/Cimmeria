@@ -40,6 +40,10 @@ DUMMY_TEMPLATE = 1310
 FIRST_LOGIN_HOLD = "  { wait_ms = 17000 },"
 # The ability log's target and the event that names an unbound weapon (hostile_attack.rs, refuse_no_ranged_attack).
 UNBOUND_SCOPE = "abilities"
+# The inventory bag's close button. Equip opens the bag with B and leaves it open; a world right-click under it hits the bag (DR-07g).
+BAG_CLOSE = "InventoryWin__auto_closebutton__"
+# The teardown clear. It fails in every gear row ("no rendered entity matches" for the player), so it is optional (DR-07g).
+CLEAR_EFFECTS = '{ tool = "@clear_effects", args = { name = "${character}" }, optional = true }'
 SECTION_TAIL = """
 schema = 1
 
@@ -138,16 +142,19 @@ def weapon_row(item_id: int, name: str, ability_id: Optional[int]) -> str:
             *throttle,
             f"  {chat(f'/gmgiveitem {item_id} 1')},",
             f"  {_tool('@item_action', [('action', tstr('equip')), ('name', tstr(name))])},",
+            f"  {_tool('@window_click', [('target', tstr(BAG_CLOSE))], 'close-bag')},",
             f"  {_tool('@dummy', [('disposition', tstr('hostile')), ('template_id', str(DUMMY_TEMPLATE))])},",
             "  { wait_ms = 2000 },",
             "]",
             "step = [",
+            f"  {_tool('@camera', [('face_entity_id', tstr('${dummy_id}')), ('zoom_to', '400')], 'face')},",
+            f"  {_tool('@camera', [('yaw_counts', '-300'), ('pitch_deg', '-15')], 'offset')},",
             f"  {_tool('@target', [('entity_id', tstr('${dummy_id}'))])},",
             f"  {_tool('@world_click', [('entity_id', tstr('${dummy_id}')), ('button', tstr('right'))], 'press')},",
             "  { wait_ms = 3000 },",
             "]",
             "teardown = [",
-            f"  {_tool('@clear_effects', [('name', tstr('${character}'))])},",
+            f"  {CLEAR_EFFECTS},",
             "  { tool = \"@cooldowns_reset\" },",
             f"  {_tool('@dummy', [('disposition', tstr('clear'))])},",
             "]",
@@ -168,6 +175,7 @@ def armor_row(item_id: int, name: str, slot: int) -> str:
             "setup = [",
             f"  {chat(f'/gmgiveitem {item_id} 1')},",
             f"  {_tool('@item_action', [('action', tstr('equip')), ('name', tstr(name))])},",
+            f"  {_tool('@window_click', [('target', tstr(BAG_CLOSE))], 'close-bag')},",
             "  { wait_ms = 2000 },",
             "]",
             "step = [",

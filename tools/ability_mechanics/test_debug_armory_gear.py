@@ -42,6 +42,24 @@ class WeaponRowTest(unittest.TestCase):
         self.assertIn(f"template_id = {gear.DUMMY_TEMPLATE}", row)
         self.assertEqual(gear.DUMMY_TEMPLATE, 1310)
 
+    def test_bag_closes_after_equip_and_before_the_target(self):
+        row = gear.weapon_row(3753, "Cobra Staff", 584)
+        self.assertLess(row.index("@item_action"), row.index(gear.BAG_CLOSE))
+        self.assertLess(row.index(gear.BAG_CLOSE), row.index("@target"))
+
+    def test_camera_faces_the_dummy_before_the_target(self):
+        row = gear.weapon_row(3753, "Cobra Staff", 584)
+        self.assertIn("face_entity_id", row)
+        self.assertLess(row.index("face_entity_id"), row.index("@target"))
+        self.assertLess(row.index("yaw_counts"), row.index("@target"))
+        self.assertLess(row.index("face_entity_id"), row.index("yaw_counts"))
+
+    def test_clear_effects_teardown_is_optional(self):
+        row = gear.weapon_row(3753, "Cobra Staff", 584)
+        self.assertIn(f"  {gear.CLEAR_EFFECTS},", row)
+        self.assertIn("optional = true", gear.CLEAR_EFFECTS)
+        self.assertNotIn('"@clear_effects", args = { name = "${character}" } },', row)
+
 
 class ThrottleTest(unittest.TestCase):
     def test_unbound_row_waits_out_the_log_throttle(self):
@@ -66,6 +84,11 @@ class ArmorRowTest(unittest.TestCase):
     def test_armor_equips_before_reading_the_sheet(self):
         row = gear.armor_row(77, "Test Helm", 5)
         self.assertLess(row.index("@item_action"), row.index("@window_read"))
+
+    def test_armor_closes_the_bag_after_equip_and_before_the_sheet(self):
+        row = gear.armor_row(77, "Test Helm", 5)
+        self.assertLess(row.index("@item_action"), row.index(gear.BAG_CLOSE))
+        self.assertLess(row.index(gear.BAG_CLOSE), row.index("@window_read"))
 
 
 class BlocksTest(unittest.TestCase):

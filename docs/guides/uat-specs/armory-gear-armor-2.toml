@@ -29,6 +29,7 @@ setup = [
   { wait_ms = 17000 },
   { chat = "/gmgiveitem 7269 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Deployment Harness" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -58,6 +59,7 @@ expected = "The piece sits in equipment container 11 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 2920 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Test Legs" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -87,6 +89,7 @@ expected = "The piece sits in equipment container 11 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 3007 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Pants" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -116,6 +119,7 @@ expected = "The piece sits in equipment container 11 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 4132 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Trinium Ballistic Pants" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -145,6 +149,7 @@ expected = "The piece sits in equipment container 11 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 4140 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Tri-Naq Alloy Ballistic Pants" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -174,6 +179,7 @@ expected = "The piece sits in equipment container 11 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 5329 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Pants" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -203,6 +209,7 @@ expected = "The piece sits in equipment container 12 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 2922 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Test Boots" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -232,6 +239,7 @@ expected = "The piece sits in equipment container 12 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 2962 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Boots" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -261,6 +269,7 @@ expected = "The piece sits in equipment container 12 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 4192 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Trinium Ballistic Boots" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -290,6 +299,7 @@ expected = "The piece sits in equipment container 12 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 4206 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Tri-Naq AlloyBallistic Boots" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -319,6 +329,7 @@ expected = "The piece sits in equipment container 12 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 5320 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Boots" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [

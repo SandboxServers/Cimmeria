@@ -28,16 +28,19 @@ setup = [
   { wait_ms = 17000 },
   { chat = "/gmgiveitem 3128 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Test Weapon" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -57,16 +60,19 @@ setup = [
   { wait_ms = 10500 },
   { chat = "/gmgiveitem 17 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "P-90 of the Whale 2" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -84,16 +90,19 @@ expected = "The right-click leaves the client as ability 1216."
 setup = [
   { chat = "/gmgiveitem 5680 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Rekkr Attack Program" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -112,16 +121,19 @@ expected = "The right-click leaves the client as ability 1216."
 setup = [
   { chat = "/gmgiveitem 5686 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Valkyrie Attack Program" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -140,16 +152,19 @@ expected = "The right-click leaves the client as ability 1216."
 setup = [
   { chat = "/gmgiveitem 5692 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Einherjar Attack Program" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -168,16 +183,19 @@ expected = "The right-click leaves the client as ability 1216."
 setup = [
   { chat = "/gmgiveitem 5695 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Mjolnir Attack Program" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -196,16 +214,19 @@ expected = "The right-click leaves the client as ability 559."
 setup = [
   { chat = "/gmgiveitem 3145 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "AR 21 Assault Rifle" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -224,16 +245,19 @@ expected = "The right-click leaves the client as ability 559."
 setup = [
   { chat = "/gmgiveitem 3169 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "AR 21A Assault Rifle" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -252,16 +276,19 @@ expected = "The right-click leaves the client as ability 559."
 setup = [
   { chat = "/gmgiveitem 4774 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "AR 21A TACMOD Assault Rifle" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -280,16 +307,19 @@ expected = "The right-click leaves the client as ability 559."
 setup = [
   { chat = "/gmgiveitem 4780 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "AR 200 Assault Rifle" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -308,16 +338,19 @@ expected = "The right-click leaves the client as ability 559."
 setup = [
   { chat = "/gmgiveitem 4783 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "ACR 200 Assault Rifle" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -336,16 +369,19 @@ expected = "The right-click leaves the client as ability 559."
 setup = [
   { chat = "/gmgiveitem 21 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SGHC 6 SMG" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -364,16 +400,19 @@ expected = "The right-click leaves the client as ability 559."
 setup = [
   { chat = "/gmgiveitem 3138 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SGHC 6 AP SMG" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -392,16 +431,19 @@ expected = "The right-click leaves the client as ability 559."
 setup = [
   { chat = "/gmgiveitem 4695 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SGHC 7 SMG" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -420,16 +462,19 @@ expected = "The right-click leaves the client as ability 559."
 setup = [
   { chat = "/gmgiveitem 4701 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SGHC X SMG" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -448,16 +493,19 @@ expected = "The right-click leaves the client as ability 559."
 setup = [
   { chat = "/gmgiveitem 4705 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SGHC Gauss SMG" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -476,16 +524,19 @@ expected = "The right-click leaves the client as ability 740."
 setup = [
   { chat = "/gmgiveitem 5094 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Rak'tel" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -505,16 +556,19 @@ setup = [
   { wait_ms = 10500 },
   { chat = "/gmgiveitem 3334 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Heavy Combat Knife" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -533,16 +587,19 @@ setup = [
   { wait_ms = 10500 },
   { chat = "/gmgiveitem 5077 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Composite Combat Knife" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -561,16 +618,19 @@ setup = [
   { wait_ms = 10500 },
   { chat = "/gmgiveitem 5083 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Microblade Combat Knife" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -589,16 +649,19 @@ setup = [
   { wait_ms = 10500 },
   { chat = "/gmgiveitem 5086 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Molecular Combat Knife" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -616,16 +679,19 @@ expected = "The right-click leaves the client as ability 1086."
 setup = [
   { chat = "/gmgiveitem 3584 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "CO2 Pistol Dartgun" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -644,16 +710,19 @@ expected = "The right-click leaves the client as ability 1086."
 setup = [
   { chat = "/gmgiveitem 3591 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "CO2 Rifle Dartgun" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -672,16 +741,19 @@ expected = "The right-click leaves the client as ability 1086."
 setup = [
   { chat = "/gmgiveitem 5025 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "CO2 Semi Auto Dartgun" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -700,16 +772,19 @@ expected = "The right-click leaves the client as ability 1086."
 setup = [
   { chat = "/gmgiveitem 5034 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "CO2 ACR Dartgun" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -728,16 +803,19 @@ expected = "The right-click leaves the client as ability 1086."
 setup = [
   { chat = "/gmgiveitem 5037 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Gauss Dartgun" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -757,16 +835,19 @@ setup = [
   { wait_ms = 10500 },
   { chat = "/gmgiveitem 2699 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Fists" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -785,16 +866,19 @@ setup = [
   { wait_ms = 10500 },
   { chat = "/gmgiveitem 4990 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "GL 21 Grenade Launcher" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -813,16 +897,19 @@ setup = [
   { wait_ms = 10500 },
   { chat = "/gmgiveitem 4997 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "GL 22 Grenade Launcher" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -841,16 +928,19 @@ setup = [
   { wait_ms = 10500 },
   { chat = "/gmgiveitem 5003 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "GL 23 Grenade Launcher" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
