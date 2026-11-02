@@ -39,6 +39,8 @@ BRIEF FIELDS (the coordinator fills these in before pasting):
 21. **Haiku drivers stayed within about 30 tool calls** per packet. Parts A to D are NOT sized for that: they need about 34, 24, 36 and 45 calls (stop at 56, gotcha 17). If part A or B stops early, its LAST_VENDOR sets the next FIRST_VENDOR; if part C or D stops early, the coordinator re-runs the same ATTEMPT and S2 shows what is left. The same part stopping twice is the cue for a Sonnet takeover.
 22. **Plaza space.** Another lane on world 1300 changes what you see. Only you are on the plaza (README dispatch rule 6).
 23. **Do NOT use `client_drag_drop` to VendorWin or `client_item_action rightclick` while a vendor window is open:** the first snaps back, the second equips the item (SS-D1 rerun).
+24. **You read no files.** `lab-driver` agents have no file tools, so the coordinator must paste this whole brief into your prompt, with the fields filled in. You also have no `client_combat_log` tool: L1-5.5 reads `client_chat_log`.
+25. **The `.bug` lines never came back in chat reads** (the READ-back in gotcha 5 finds nothing). The verifier does not rely on them: it locates each row window by UTC time in SigNoz (the local server now exports; filter attribute `cimmeria.lab_run`). Keep reporting the UTC time of every step.
 
 ## 1. Fixed macros (use them verbatim)
 
@@ -62,7 +64,7 @@ Replace `LINE ONE` with the exact line. Wait at least 1500 ms after each line. A
 
 **STAGE - teleport to a stand point.** A CHATX line `.gotolocation DebugArea <x> <y> <z>` with the coordinates the row gives, then a 4000 ms wait in the same batch.
 
-**OPEN - open a vendor (gotcha 10).** `client_entity_find {"lease_id":L,"name":"<vendor name>","fields":["matches"]}` -> id V and `distance_m` (expect 4.0 to 5.0); then the two `client_camera` calls; then `client_world_click`. Then `client_window_read {"lease_id":L,"kind":"vendor","include_nodes":true,"max_nodes":80,"fields":["state","open","primary","nodes"]}` and record the window name (expected `VendorWin`).
+**OPEN - open a vendor (gotcha 10).** `client_entity_find {"lease_id":L,"template_id":<1610 + N>,"fields":["matches"]}` -> id V and `distance_m` (expect 4.0 to 5.0); then the two `client_camera` calls; then `client_world_click`. Then `client_window_read {"lease_id":L,"kind":"vendor","include_nodes":true,"max_nodes":80,"fields":["state","open","primary","nodes"]}` and record the window name (expected `VendorWin`).
 
 **CLOSE.** `client_window_click {"lease_id":L,"target":"VendorWin__auto_closebutton__"}` (ignore an error if no window is open).
 
@@ -74,7 +76,7 @@ ROWS: L1-1 (look at the vendor line), L1-2 (open all seven), L1-3 (buy a weapon 
 
 ## The seven vendors
 
-Spawns: `db/resources/Worlds/Seed/spawnlist_debug_area_armory.sql` (spawn ids 14110-14116, tags `DebugArea_Armory<n>`); positions in [debug-area.md Armory table](../../../content/debug-area.md#vendors). The vendor entity is found by its template name (the stock label), for example "Armory 1". Stand points are 4.5 m west of the vendor (or 4.74 m between a pair), y copied from the spawn:
+Spawns: `db/resources/Worlds/Seed/spawnlist_debug_area_armory.sql` (spawn ids 14110-14116, tags `DebugArea_Armory<n>`); positions in [debug-area.md Armory table](../../../content/debug-area.md#vendors). All seven vendors render as "Consumables" in the client, so a name search finds nothing: find each vendor with `client_entity_find` and `template_id` 1610 + N (for example 1611 for Armory 1). Stand points are 4.5 m west of the vendor (or 4.74 m between a pair), y copied from the spawn:
 
 | Vendor | Template | Spawn x, y, z | Buy list (rows) | Stand point (x, y, z) |
 |---|---|---|---|---|
@@ -82,11 +84,11 @@ Spawns: `db/resources/Worlds/Seed/spawnlist_debug_area_armory.sql` (spawn ids 14
 | Armory 1 | 1611 | 268.0, 7.09, -918.0 | 1311 (19) | 263.5, 7.09, -916.5 |
 | Armory 2 | 1612 | 268.0, 7.13, -921.0 | 1312 (19) | 263.5, 7.13, -922.5 |
 | Armory 3 | 1613 | 268.0, 7.13, -924.0 | 1313 (16) | 263.5, 7.13, -922.5 |
-| Armory 4 | 1614 | 266.0, 7.02, -927.0 | 1314 (19) | 261.5, 7.02, -928.5 |
+| Armory 4 | 1614 | 266.0, 7.02, -927.0 | 1314 (19) | 261.5, 7.02, -926.0 |
 | Armory 5 | 1615 | 266.0, 7.09, -930.0 | 1315 (19) | 261.5, 7.09, -928.5 |
 | Armory 6 | 1616 | 266.0, 7.15, -933.0 | 1316 (3) | 261.5, 7.15, -933.0 |
 
-The stand y is the spawn y of the nearer vendor; the server places you on the ground. Armory 0 and 1 share a stand point (4.74 m from each), as do 2 and 3, and 4 and 5. Pairs are 4.74 m, inside the 5.0 m range; if `distance_m` reads above 5.0 for a vendor, move 0.5 m east (x + 0.5) and measure again.
+The stand y is the spawn y of the nearer vendor; the server places you on the ground. Armory 0 and 1 share a stand point (4.74 m from each), as do 2 and 3. Armory 4 stands alone at 261.5, 7.02, -926.0: the old point (261.5, 7.02, -928.5) is covered by the Archetype Skills Trainer (100226), and at the new point it is 4.61 m away. Armory 5 stands at 261.5, 7.09, -928.5. Pairs are 4.74 m, inside the 5.0 m range; if `distance_m` reads above 5.0 for a vendor, move 0.5 m east (x + 0.5) and measure again.
 
 Items the rows use (all traced to the seed, never one DR-03b lists as skipped; Fists 2699 is the skipped one):
 
@@ -97,7 +99,7 @@ Items the rows use (all traced to the seed, never one DR-03b lists as skipped; F
 
 Row numbers assume the window lists in item-id order; gotcha 14 says to read the window and buy by NAME.
 
-The L1 dummy: template 1310, spawn 13100, tag `DebugArea_Dummy_L1`, a Jaffa level 1 at (240.00, 7.08, -872.00) ([debug-area.md:997-1001](../../../content/debug-area.md)). Stand 5 m south of it at (240.0, 7.08, -877.0) (the z axis toward the vendors is negative).
+The L1 dummy: template 1310 (find it by `template_id` 1310; its entity id changes after a relog), spawn 13100, tag `DebugArea_Dummy_L1`, a Jaffa level 1 at (240.00, 7.08, -872.00) ([debug-area.md:997-1001](../../../content/debug-area.md)). Stand 5 m south of it at (240.0, 7.08, -877.0) (the z axis toward the vendors is negative).
 
 ## Steps
 
@@ -114,7 +116,7 @@ ATTEMPT 1 runs L1-1 and L1-2 vendors 0 to 3; ATTEMPT 2 runs L1-2 from FIRST_VEND
 **L1-1.1 (1 call).** DIALOG, then CHATX: BUG `L1-1 start`, STAGE `.gotolocation DebugArea 258.0 7.09 -922.0`, wait 4000 ms, UTC. (That is 10 m west of the middle of the line, looking east.)
 **L1-1.2 (1 call).** `client_camera {"lease_id":L,"face_point":{"x":268.0,"y":7.1,"z":-922.0},"zoom_to":400}` (face a point: the vendors are not one entity; if the schema rejects `face_point`, use the id from `client_entity_find` of "Armory 2" with `face_entity_id`).
 **L1-1.3 (1 call).** SHOT, label `L1-1-vendor-line`. Report the path. The human question for the looker (the verifier asks it, you do not): "a line of vendors east of the plaza vendors, none inside a wall".
-**L1-1.4 (1 call).** `client_entity_find {"lease_id":L,"name":"Armory","fields":["matches"]}`. Record every match: name, id, `distance_m`. Expected: 7 matches ("Armory 0" to "Armory 6").
+**L1-1.4 (1 call).** `client_entity_find {"lease_id":L,"template_id":<1610 + N>,"fields":["matches"]}` once for each template_id 1610 to 1616 (use `client_batch` if the tool allows). Record every match: name (it reads "Consumables"), id, `distance_m`. Expected: one match per template_id.
 
 ### ROW L1-2 - open each vendor in turn
 
@@ -135,7 +137,7 @@ If a vendor does not open after the unchanged retry: record FAIL for that vendor
 **L1-3.3.** OPEN "Armory 1" (stage at 263.5 7.09 -916.5, find, the two camera calls, the click). Before the window read, run `client_lua_eval {"lease_id":L,"chunk":"Vendor_Scrollbar:setProperty('ScrollPosition', '12')"}`. Then read the vendor window (gotcha 14) and record the screen row of "SI 3 9mm Pistol".
 **L1-3.4 (2 calls).** `client_vendor_buy {"lease_id":L,"row":<the screen row read after the scroll>,"quantity":1}`. Record the return value verbatim. Then `client_inventory {"lease_id":L,"containers":["Main"],"diff_against":"dl1a","fields":["cash","diff"],"snapshot":"dl1b"}` (a plain read if the snapshot name is new). Record cash after (expected cash minus 300) and the slot of the pistol.
 **L1-3.5 (1 call).** CLOSE.
-**L1-3.6.** OPEN "Armory 4" (stage at 261.5 7.02 -928.5). Before the window read, run `client_lua_eval {"lease_id":L,"chunk":"Vendor_Scrollbar:setProperty('ScrollPosition', '0')"}`. Then read the window; record the screen row of "Aramid Fiber Ballistic Helmet". `client_vendor_buy {"lease_id":L,"row":<the screen row read after the scroll>,"quantity":1}`. Record the return value, then the inventory diff against `dl1b`, cash after (expected minus 1), and the helmet slot. CLOSE.
+**L1-3.6.** OPEN "Armory 4" (template_id 1614; stage at 261.5 7.02 -926.0). Before the window read, run `client_lua_eval {"lease_id":L,"chunk":"Vendor_Scrollbar:setProperty('ScrollPosition', '0')"}`. Then read the window; record the screen row of "Aramid Fiber Ballistic Helmet". `client_vendor_buy {"lease_id":L,"row":<the screen row read after the scroll>,"quantity":1}`. Record the return value, then the inventory diff against `dl1b`, cash after (expected minus 1), and the helmet slot. CLOSE.
 If a buy returns `no_effect` or an error: gotcha 13, then continue with the next step. Do not buy a different item.
 
 ### ROW L1-4 - equip both
@@ -149,17 +151,17 @@ Expected server effect: item moves that put design 55 in container 3 (Bandolier)
 ### ROW L1-5 - fire the weapon at the L1 dummy
 
 **L1-5.1 (1 call).** CHATX: BUG `L1-5 start`, STAGE `.gotolocation DebugArea 240.0 7.08 -877.0`, wait 4000 ms, UTC.
-**L1-5.2 (1 call).** `client_entity_find {"lease_id":L,"name":"Jaffa","fields":["matches"]}`; pick the match at (240.00, 7.08, -872.00) (the L1 dummy; its level is 1). Record id D, `distance_m` and the level shown. Other dummies stand at x 246, 252, 258 and 234: do not click those.
+**L1-5.2 (1 call).** `client_entity_find {"lease_id":L,"template_id":1310,"fields":["matches"]}` (a name search for "Jaffa" is unsafe); pick the match at (240.00, 7.08, -872.00) (the L1 dummy; its level is 1). Record id D, `distance_m` and the level shown. Other dummies stand at x 246, 252, 258 and 234: do not click those.
 **L1-5.3 (2 calls).** `client_camera {"lease_id":L,"face_entity_id":<D>,"zoom_to":400}`, then the SHOT, label `L1-5-before-fire`.
 **L1-5.4 (1 call).** `client_world_click {"lease_id":L,"entity_id":<D>,"button":"right","rotate_camera":false,"expect":"none","settle_ms":3000}` (a right-click on a hostile starts the attack with the equipped weapon). The camera recipe does not apply: the dummy is 5 m away with nothing between.
-**L1-5.5 (1 call).** `client_combat_log {"lease_id":L,"max":20}` and READ `{"cursor":"l15a","contains":"weapon","max":20}` and the UTC step in one `client_batch` where the tool allows; otherwise the combat log alone. Record every line verbatim. If it says "This weapon has no ranged attack." record that sentence; do not click again.
+**L1-5.5 (up to 3 calls).** There is no `client_combat_log` tool for you. Read `client_chat_log` three times with a new cursor each time and `contains` set to `weapon`, `damage` and `ammo`, plus the UTC step. Record every line verbatim. If it says "This weapon has no ranged attack." record that sentence; do not click again.
 **L1-5.6 (1 call).** SHOT, label `L1-5-after-fire`. Then `/gmsetgodmode 1` is NOT used: the dummy does not hit back.
 Expected server effect: an attack or `weapon_unbound` row for the pistol (design 55 is bound, so expect an attack). The empty-pistol debug kit note ([character-creation.md:146](../../../gameplay/character-creation.md)) means ammo may be 0; record any "ammo" line verbatim and do not fix it.
 
 ### ROW L1-6 - sell both back
 
 **L1-6.1 (per item, pistol first).** Close the vendor window. If `client_inventory` shows the item equipped, run `client_item_action {"lease_id":L,"action":"unequip","name":"<item>"}` with NO vendor window open, close the bag if the tool opened it, then `client_inventory` and record the slot in Main (if the unequip fails, record the error, mark that item FAIL for the tool path and go on).
-**L1-6.2.** OPEN "Armory 1" for the pistol, "Armory 4" for the helmet (stage at the stand point).
+**L1-6.2.** OPEN "Armory 1" for the pistol, "Armory 4" for the helmet (stage at the stand point; Armory 4 is 261.5 7.02 -926.0).
 **L1-6.3 (2 calls).** `client_window_click {"lease_id":L,"target":"Vendor_SellTabInactive"}`, wait 800 ms, then `client_window_read {"lease_id":L,"kind":"vendor","include_nodes":true,"max_nodes":80}`; record which `Vendor_Item<N>` row shows the item NAME (list 1349 prices both items, so the pistol may not be row 1 while both are in the bag).
 **L1-6.4 (1 call).** `client_ui_sequence {"lease_id":L,"actions":[{"do":"click","window":"Vendor_Item<N>Quantity__auto_incbtn__"},{"do":"wait","ms":300},{"do":"click","window":"Vendor_SellButton"},{"do":"wait","ms":1500}]}` with `<N>` the row from L1-6.3; record the result verbatim.
 **L1-6.5.** `client_inventory` read (cash; the item gone from Main), then CLOSE. Repeat 6.1-6.5 for the helmet (Armory 4 is used because the helmet is its first row; any Armory vendor accepts it, shared sell list 1349).
