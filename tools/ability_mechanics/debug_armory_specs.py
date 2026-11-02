@@ -178,7 +178,18 @@ def setup_row(arch: str) -> List[str]:
             chat("/gmgiveallabilities"),
             call("@dummy", {"disposition": "hostile"}),
         ],
-    ) + ["step = [{ wait_ms = 1000 }]"]
+    ) + ["step = [{ wait_ms = 1000 }]"] + [
+        # A row with no expect clause must be blocked (spec_validate.rs), so the setup row
+        # grades the one thing it sets up: the world (the same clause debug-area.toml uses).
+        "[[row.expect]]",
+        'id = "world-1300"',
+        'text = "the character is in world 1300, the Debug Area"',
+        'source = "tool"',
+        'tool = "@player_state"',
+        'pointer = "/world_id"',
+        'op = "eq"',
+        "value = 1300",
+    ]
 
 
 def section_header(alignment: str, arch: str, part: Optional[int]) -> List[str]:

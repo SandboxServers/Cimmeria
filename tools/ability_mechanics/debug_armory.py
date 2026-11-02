@@ -593,12 +593,25 @@ def main(argv: List[str] | None = None) -> int:
     se.add_argument("--probes", required=True, type=Path, help="the probe file that nav_inspect read")
     se.add_argument("--out-dir", required=True, type=Path, help="where the seed files go")
     se.add_argument("--cap", type=int, default=DEFAULT_CAP, help="rows per vendor (default %(default)s)")
+    sx = sub.add_parser("specs", help="the Debug Area armory's UAT specs (DR-06, DR-07)")
+    sxs = sx.add_subparsers(dest="kind", required=True)
+    sa = sxs.add_parser("abilities", help="write one ability spec per archetype tree (DR-06)")
+    sa.add_argument("--out-dir", required=True, type=Path, help="repo-relative folder for the specs, e.g. docs/guides/uat-specs")
     args = ap.parse_args(argv)
 
     if args.command == "audit":
         lines, code = audit(sorted((REPO_ROOT / SEEDS).rglob("*.sql")))
         print("\n".join(lines))
         return code
+
+    if args.command == "specs":
+        from debug_armory_specs import write_ability_specs  # lazy: that module imports this one
+
+        try:
+            return write_ability_specs(args.out_dir, REPO_ROOT)
+        except Stop as stop:
+            print(stop, file=sys.stderr)
+            return stop.code
 
     if args.cap < 1:
         ap.error("--cap must be at least 1")
