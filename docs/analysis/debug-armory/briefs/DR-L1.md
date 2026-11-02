@@ -143,7 +143,7 @@ If a buy returns `no_effect` or an error: gotcha 13, then continue with the next
 **L1-4.1 (1 call).** `client_item_action {"lease_id":L,"action":"equip","name":"SI 3 9mm Pistol"}` (the same form as `first-session.toml:492`; it opens the bag, so close the bag after). Record the result verbatim.
 **L1-4.2 (1 call).** `client_item_action {"lease_id":L,"action":"equip","name":"Aramid Fiber Ballistic Helmet"}`. Record the result verbatim.
 **L1-4.3 (1 call).** `client_inventory {"lease_id":L,"containers":["Main","Bandolier","Head"],"fields":["containers"]}` (the container names the tool returns; if one name is rejected, read without `containers`). Record where each item sits now.
-**L1-4.4 (2 calls).** Close the bag (key `b`, `client_ui_sequence {"do":"key","key":"b"}` only if the bag is open: read with `client_window_read` first). Then `client_camera {"lease_id":L,"zoom_to":250}` and SHOT, label `L1-4-equipped`. The looker asks: "the character wears a helmet and holds a pistol".
+**L1-4.4 (up to 4 calls: bag check, key b, camera, SHOT).** Close the bag (key `b`, `client_ui_sequence {"do":"key","key":"b"}` only if the bag is open: read with `client_window_read` first). Then `client_camera {"lease_id":L,"zoom_to":250}` and SHOT, label `L1-4-equipped`. The looker asks: "the character wears a helmet and holds a pistol".
 Expected server effect: item moves that put design 55 in container 3 (Bandolier) and design 33 in container 4 (INV_Head).
 
 ### ROW L1-5 - fire the weapon at the L1 dummy
