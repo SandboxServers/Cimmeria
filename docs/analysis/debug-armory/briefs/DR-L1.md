@@ -11,7 +11,7 @@ BRIEF FIELDS (the coordinator fills these in before pasting):
 - CHARACTER: BLOCKED until the coordinator writes the name of a character that already exists on the GM account. `lab_ensure_in_world` needs a real name: a made-up name makes it fail. Do not pass `create`.
 - SERVER: the **local** server, per D-DR7 (the user authorised local lab use). The coordinator has checked, and you do not: the server runs with `DB_URL` (not `DATABASE_URL`) on a lab database seeded with the Armory seeds (templates 1610-1616, lists 1310-1316 and 1349), and `labd` was restarted after any spec-dir change. If `client_entity_find` cannot find "Armory" vendors in step L1-1, report BLOCKED with that text and stop.
 - LEASE OWNER: `dr-DR-L1`   (TTL 900 s)
-- HARD STOP: 60 tool calls. (The packet table planned 28 calls; the walk needs about 105, so it runs as three attempts of at most 60 calls each. Say so in the report.)
+- HARD STOP: 60 tool calls. (The packet table planned 28 calls; the walk needs about 135, so it runs as three attempts of at most 60 calls each. Say so in the report.)
 
 ## 0. Front-loaded gotchas (read all of them)
 
@@ -19,7 +19,7 @@ BRIEF FIELDS (the coordinator fills these in before pasting):
 2. **Never use `image: true`** on a screenshot. The tool saves a PNG and returns `image saved: <path>`. Report the path. Someone else looks at the picture.
 3. **Chat commands are GM commands.** Lines starting with `.` are server commands; lines starting with `/` are game commands. Close any open dialog first (DIALOG below): a chat line under an open dialog orphans it.
 4. **Teleport only with `.gotolocation DebugArea x y z`.** Never `.gotoxyz` (it moves your selected target). Coordinates are server metres (x, y up, z). Never `.gotolocation` onto an NPC or a dummy.
-5. **Read chat replies only with `client_chat_log`.** Pass a `cursor` name that is new for that read AND a `contains` or `channel` filter. Server replies are channel id `"9"`. **Chat lines cannot be attested**: record them verbatim, but the verifier never grades a clause on chat alone. If a reply is missing, send the command once more, read again, then record "no reply". Chat lines sent in the first 10 s after a world entry can be lost with no error: after S1 wait 10 s (`{"op":"wait","ms":10000}`) before the first CHATX, and after each BUG line read it back once with READ (`contains:"DRL1"`, a new cursor name each time) and send it again if it is missing.
+5. **Read chat replies only with `client_chat_log`.** Pass a `cursor` name that is new for that read AND a `contains` or `channel` filter. Server replies are channel id `"9"`. **Chat lines cannot be attested**: record them verbatim, but the verifier never grades a clause on chat alone. If a reply is missing, send the command once more, read again, then record "no reply". Chat lines sent in the first 10 s after a world entry can be lost with no error: after S1 wait 10 s (`{"op":"wait","ms":10000}`) before the first CHATX, and read the BUG lines back with READ (`contains:"DRL1"`, a new cursor name each time) once after the BUG of L1-1, L1-3 and L1-5, and once at the end of L1-2 (not after every vendor BUG); send a missing line again only for the L1-1, L1-3 and L1-5 ones.
 6. **Sticky chat channel.** Every chat macro resets it with `ChatMod.stickyCommand='/say '`. Do not remove that. No apostrophes inside the Lua text of a macro.
 7. **Never use `client_wait_for` on a world load** (#1677). Use `client_batch` waits (two of 20 s after a login).
 8. **Kill the screensaver first.** `Ribbons.scr` on the lab host makes the client hang or lose clicks ("crash loop after idle"). The coordinator closed it; if the client is unresponsive after an idle gap, report it and do not click on.
@@ -69,7 +69,7 @@ Replace `LINE ONE` with the exact line. Wait at least 1500 ms after each line. A
 
 # DR-L1: walk the Armory, world 1300 DebugArea
 
-ROWS: L1-1 (look at the vendor line), L1-2 (open all seven), L1-3 (buy a weapon and an armor piece), L1-4 (equip both), L1-5 (fire the weapon at the L1 dummy), L1-6 (sell both back). ESTIMATE: part A about 43, part B about 27, part C about 34 tool calls (lease release included in each); the packet table planned 28 for the whole walk. Runs alone on the plaza.
+ROWS: L1-1 (look at the vendor line), L1-2 (open all seven), L1-3 (buy a weapon and an armor piece), L1-4 (equip both), L1-5 (fire the weapon at the L1 dummy), L1-6 (sell both back). ESTIMATE: part A about 51, part B about 37, part C about 46 tool calls (lease release included in each); the packet table planned 28 for the whole walk. Runs alone on the plaza.
 
 ## The seven vendors
 
@@ -102,7 +102,7 @@ The L1 dummy: template 1310, spawn 13100, tag `DebugArea_Dummy_L1`, a Jaffa leve
 
 **S1.** L1, then L2 (2 calls). Record the character, `world_id` (expected 1300) and position. If the character is not in world 1300, STAGE to the Armory 0 stand point in the first row anyway (`.gotolocation DebugArea ...`; the character is a GM).
 
-**S2 - resume probe (1 call).** `client_batch {"lease_id":L,"stop_on_error":false,"steps":[{"op":"lua","id":"cash","chunk":"return getCash()"},{"op":"lua","id":"utc","chunk":"if os and os.date then return os.date('!%H:%M:%S') end return 'no-os'"},{"op":"player_state","fields":["world_id","position"]}]}`, then `client_inventory {"lease_id":L,"containers":["Main"],"fields":["cash","containers"],"snapshot":"dl1a"}` in the same call if the tool allows it, otherwise a second call. Record cash and every item in Main (name, slot). A successor decides what is done:
+**S2 - resume probe (1 call). Skip S2 when ATTEMPT is 1.** `client_batch {"lease_id":L,"stop_on_error":false,"steps":[{"op":"lua","id":"cash","chunk":"return getCash()"},{"op":"lua","id":"utc","chunk":"if os and os.date then return os.date('!%H:%M:%S') end return 'no-os'"},{"op":"player_state","fields":["world_id","position"]}]}`, then `client_inventory {"lease_id":L,"containers":["Main"],"fields":["cash","containers"],"snapshot":"dl1a"}` in the same call if the tool allows it, otherwise a second call. Record cash and every item in Main (name, slot). A successor decides what is done:
 - L1-3 is done when both SI 3 9mm Pistol and Aramid Fiber Ballistic Helmet are in Main or equipped. Then do not buy again.
 - L1-4 is done when `client_inventory` shows both on the character (the equipped slot, not Main).
 - L1-6 is done when neither is in Main or equipped.
@@ -122,9 +122,9 @@ For each vendor N from 0 to 6, in order, with the stand point from the table:
 **L1-2.N.a (1 call).** CHATX: BUG `L1-2 vendor N`, STAGE to the stand point (skip the STAGE for the second vendor of a pair, but still BUG), UTC.
 **L1-2.N.c (2 calls).** The two `client_camera` calls of gotcha 10.
 **L1-2.N.d (1 call).** The `client_world_click` of gotcha 10 with `entity_id` V, where V is the id of "Armory N" from the L1-1.4 match list (step L1-2.N.b is gone). Record the whole result, including `mouse_over_after`. If a click returns entity-not-found, call `client_entity_find` for that vendor once and use the new id.
-**L1-2.N.e (1 call).** `client_window_read {"lease_id":L,"kind":"vendor","include_nodes":true,"max_nodes":80,"fields":["state","open","primary","nodes"]}`; record the window name and the number of rows you can read, and the first and last NAME visible. CLOSE is folded into this step: send it in the same `client_batch` as the read. Do not make a separate CLOSE call.
+**L1-2.N.e (2 calls).** `client_window_read {"lease_id":L,"kind":"vendor","include_nodes":true,"max_nodes":80,"fields":["state","open","primary","nodes"]}`; record the window name and the number of rows you can read, and the first and last NAME visible. Then CLOSE (a separate call: `client_window_read` and `client_window_click` cannot share a `client_batch`).
 Expected server effect (the verifier reads it, you do not): `store_opened` for template 1610 + N with `buy_count` equal to the list size in the table.
-Part A (ATTEMPT 1) runs S1, S2, L1-1 and L1-2 for vendors 0 to 6 (about 43 calls). If you reach call 56 earlier, stop and write `PART_A_LAST_VENDOR` (the last vendor you finished; the resume probe cannot see a vendor open).
+Part A (ATTEMPT 1) runs S1, S2, L1-1 and L1-2 for vendors 0 to 6 (about 51 calls). If you reach call 56 earlier, stop and write `PART_A_LAST_VENDOR` (the last vendor you finished; the resume probe cannot see a vendor open).
 If a vendor does not open after the unchanged retry: record FAIL for that vendor and go to the next. One failed vendor does not stop the walk.
 
 ### ROW L1-3 - buy one weapon and one armor piece
@@ -134,7 +134,7 @@ If a vendor does not open after the unchanged retry: record FAIL for that vendor
 **L1-3.3.** OPEN "Armory 1" (stage at 263.5 7.09 -916.5, find, the two camera calls, the click). Before the window read, run `client_lua_eval {"lease_id":L,"chunk":"Vendor_Scrollbar:setProperty('ScrollPosition', '12')"}`. Then read the vendor window (gotcha 14) and record the screen row of "SI 3 9mm Pistol".
 **L1-3.4 (1 call).** `client_vendor_buy {"lease_id":L,"row":<the screen row read after the scroll>,"quantity":1}`. Record the return value verbatim. Then `client_inventory {"lease_id":L,"containers":["Main"],"diff_against":"dl1a","fields":["cash","diff"],"snapshot":"dl1b"}` (a plain read if the snapshot name is new) and the UTC step. Record cash after (expected cash minus 300) and the slot of the pistol.
 **L1-3.5 (1 call).** CLOSE.
-**L1-3.6.** OPEN "Armory 4" (stage at 261.5 7.02 -928.5). Before the window read, run `client_lua_eval {"lease_id":L,"chunk":"Vendor_Scrollbar:setProperty('ScrollPosition', '0')"}`. Then read the window; record the screen row of "Aramid Fiber Ballistic Helmet". `client_vendor_buy {"row":<the screen row read after the scroll>,"quantity":1}`. Record the return value, then the inventory diff against `dl1b`, cash after (expected minus 1), and the helmet slot. CLOSE.
+**L1-3.6.** OPEN "Armory 4" (stage at 261.5 7.02 -928.5). Before the window read, run `client_lua_eval {"lease_id":L,"chunk":"Vendor_Scrollbar:setProperty('ScrollPosition', '0')"}`. Then read the window; record the screen row of "Aramid Fiber Ballistic Helmet". `client_vendor_buy {"lease_id":L,"row":<the screen row read after the scroll>,"quantity":1}`. Record the return value, then the inventory diff against `dl1b`, cash after (expected minus 1), and the helmet slot. CLOSE.
 If a buy returns `no_effect` or an error: gotcha 13, then continue with the next step. Do not buy a different item.
 
 ### ROW L1-4 - equip both
@@ -159,7 +159,7 @@ Expected server effect: an attack or `weapon_unbound` row for the pistol (design
 
 **L1-6.1 (per item, pistol first).** Close the vendor window. If `client_inventory` shows the item equipped, run `client_item_action {"lease_id":L,"action":"unequip","name":"<item>"}` with NO vendor window open, close the bag if the tool opened it, then `client_inventory` and record the slot in Main (if the unequip fails, record the error, mark that item FAIL for the tool path and go on).
 **L1-6.2.** OPEN "Armory 1" for the pistol, "Armory 4" for the helmet (stage at the stand point).
-**L1-6.3 (1 call).** `client_window_click {"lease_id":L,"target":"Vendor_SellTabInactive"}`, wait 800 ms, then `client_window_read {"lease_id":L,"kind":"vendor","include_nodes":true,"max_nodes":80}`; record which `Vendor_Item<N>` row shows the item NAME (list 1349 prices both items, so the pistol may not be row 1 while both are in the bag).
+**L1-6.3 (2 calls).** `client_window_click {"lease_id":L,"target":"Vendor_SellTabInactive"}`, wait 800 ms, then `client_window_read {"lease_id":L,"kind":"vendor","include_nodes":true,"max_nodes":80}`; record which `Vendor_Item<N>` row shows the item NAME (list 1349 prices both items, so the pistol may not be row 1 while both are in the bag).
 **L1-6.4 (1 call).** `client_ui_sequence {"lease_id":L,"actions":[{"do":"click","window":"Vendor_Item<N>Quantity__auto_incbtn__"},{"do":"wait","ms":300},{"do":"click","window":"Vendor_SellButton"},{"do":"wait","ms":1500}]}` with `<N>` the row from L1-6.3; record the result verbatim.
 **L1-6.5.** `client_inventory` read (cash; the item gone from Main), then CLOSE. Repeat 6.1-6.5 for the helmet (Armory 4 is used because the helmet is its first row; any Armory vendor accepts it, shared sell list 1349).
 Expected server effect: `transaction` action `sell` for design 55 and for design 33, each with `price` 0.
