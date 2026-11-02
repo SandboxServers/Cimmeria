@@ -112,3 +112,75 @@ PASS 11 (00, 612, 632, 851, 658, 819, 1883, 853, 818, 2143, 1486), FAIL 4 (656 a
 ### Attests (pending)
 
 - `lab_uat_attest {server_version: 6b50d9131417b8cf93feb61a7c640577398db567}` for run_dir above (run.json `service_version` null). Not applied: read-only run, no lease acquired. No clause attests (no PENDING clauses).
+
+## Ground-row rerun 2026-11-02 (post DR-07l/m)
+
+**Verified:** 2026-11-02, read-only (run bundle, SigNoz `cimmeria.lab_run = 'dr-lab'` scope `abilities`, lab-server `server_db_query`). **Build:** `service.version` 6b50d9131417b8cf93feb61a7c640577398db567 (run.json `service_version` null; attest not applied, see Attests).
+
+Run dir `C:\Users\Steve\AppData\Local\cimmeria-lab\uat-runs\2026-11-02-unknown-cgbqmyhigfcmah`, window 21:05:32Z to 21:21:08Z, fresh character Cgbqmyhigfcmahzf, 13 rows plus `_session_end` (all PASS, 14 PASS by `lab_uat_report`). No client crash, no ignored press: the ground-click path (`use_ability_on_ground_recv`) reached the server for every row (DR-07l/m worked). Server-truth grading: PASS 11 (incl. setup), FAIL 2 (runner PASS refused by the server), BLOCKED 0.
+
+| Row | Ability | Runner | Server evidence (SigNoz) | Grade | Class |
+|---|---|---|---|---|---|
+| Soldier-00 | setup | PASS | world 1300 reached | PASS | |
+| Soldier-2419 | Launch Grenade: Single | PASS | `use_ability_on_ground_recv` + `ability_launched` 21:07:12.052, 21:07:38.534 | PASS | |
+| Soldier-808 | Cover Denial | PASS | `ability_launched` 21:08:20.936, 21:08:56.922 | PASS | |
+| Soldier-2103 | Launch Grenade: Concussion | PASS | `ability_launched` 21:09:45.846, 21:10:13.768 | PASS | |
+| Soldier-1882 | Launch Grenade: Tear Gas | PASS (applied clause FAILED) | `ability_refused no_mechanics` 21:11:07.765, 21:11:34.022; `no_mechanics_refused effect_count 0` | FAIL | seed gap: abilities.effect_ids empty, 0 effects |
+| Soldier-2102 | Incinerate Ground | PASS (applied clause FAILED) | `ability_refused no_mechanics` 21:12:24.296, 21:12:51.504; `effect_count 0` | FAIL | seed gap: abilities.effect_ids empty, 0 effects |
+| Soldier-724 | Anti-Personnel Mortar | PASS | `ability_launched` 21:13:30.877, 21:13:56.914 | PASS | |
+| Soldier-1885 | Launch Grenade: Shockwave | PASS | `ability_launched` 21:14:42.918, 21:15:08.496 | PASS | |
+| Soldier-852 | High Explosive Mortar | PASS | `ability_launched` 21:15:43.265, 21:16:12.363 | PASS | fixed (was ignored press) |
+| Soldier-1889 | Incinerate Area | PASS | `ability_launched` 21:16:55.648, 21:17:19.888; `effect_routed resolve_on_ability_user` x2 each | PASS | |
+| Soldier-1485 | Cluster Mortars | PASS | `ability_launched` 21:17:53.291, 21:18:21.084 (target_id 0); `fire_target_skipped no_target` | PASS | max_range 0, launched |
+| Soldier-2105 | Launch Grenade: Barrage | PASS | `ability_launched` 21:19:06.391, 21:19:33.683 | PASS | |
+| Soldier-1487 | Penetrating Barrage | PASS | `ability_launched` 21:20:15.584, 21:20:43.026 (target_id 0); `fire_target_skipped no_target` | PASS | max_range 0, launched |
+
+Note on 1485/1487: both have `max_range` 0 in the seed and launched with no target (`client_target_id 0`); launch proven, no QR roll or damage (`fire_target_skipped no_target`). Seed facts: 1485 has 4 effects/4 NVPs, 1487 has 2 effects/2 NVPs, 1882 and 2102 have none.
+
+### Merged final grade, all 26 soldier-1 rows (first run + reruns)
+
+PASS 21, FAIL 5, BLOCKED 0 of 26.
+
+| Row | Ability | Final | Source run |
+|---|---|---|---|
+| Soldier-00 | setup | PASS | ground rerun |
+| Soldier-612 | Area Burst | PASS | first run |
+| Soldier-632 | Long Burst | PASS | first run |
+| Soldier-851 | Brace | PASS | first run |
+| Soldier-658 | Heavy Suppression | PASS | first run |
+| Soldier-819 | Steady Aim | PASS | first run |
+| Soldier-656 | Sustained Bursts | FAIL | first run, seed gap (no NVPs, `no_mechanics`) |
+| Soldier-1883 | Incinerating Stream | PASS | first run |
+| Soldier-1483 | Steady Launch | FAIL | first run, seed gap (no NVPs, `no_mechanics`) |
+| Soldier-853 | Fire Zone | PASS | first run |
+| Soldier-2419 | Launch Grenade: Single | PASS | ground rerun |
+| Soldier-808 | Cover Denial | PASS | ground rerun |
+| Soldier-2103 | Launch Grenade: Concussion | PASS | ground rerun |
+| Soldier-818 | Sustained Sweep | PASS | rerun 1 (DR-07k) |
+| Soldier-1882 | Launch Grenade: Tear Gas | FAIL | ground rerun, seed gap (no effects) |
+| Soldier-2102 | Incinerate Ground | FAIL | ground rerun, seed gap (no effects) |
+| Soldier-724 | Anti-Personnel Mortar | PASS | ground rerun |
+| Soldier-1885 | Launch Grenade: Shockwave | PASS | ground rerun |
+| Soldier-852 | High Explosive Mortar | PASS | ground rerun (rerun 1 FAIL superseded) |
+| Soldier-1889 | Incinerate Area | PASS | ground rerun |
+| Soldier-2143 | Intimidation Fire | PASS | rerun 1 |
+| Soldier-1485 | Cluster Mortars | PASS | ground rerun |
+| Soldier-2105 | Launch Grenade: Barrage | PASS | ground rerun |
+| Soldier-1487 | Penetrating Barrage | PASS | ground rerun |
+| Soldier-1456 | Shock and Awe | FAIL | rerun 1, seed gap (no effects, `no_mechanics`) |
+| Soldier-1486 | Rain of Steel | PASS | rerun 1 |
+
+### Findings
+
+1. New real FAILs: 1882 Launch Grenade: Tear Gas and 2102 Incinerate Ground have empty `effect_ids` (0 effects) so the gate refuses them `no_mechanics`. The runner PASSed both because only the `sent` clause counts; its `applied` clause was [FAILED]. Same family as 656, 1483, 1456. Issue body: [issues/DR-L2-soldier-1-ground-no-effects.md](issues/DR-L2-soldier-1-ground-no-effects.md). Fix via `seed-change`.
+2. All 5 remaining FAILs are seed gaps (no effects or no NVPs): 656, 1483, 1456, 1882, 2102. No BLOCKED rows remain.
+3. Every launched ability shows `fire_target_skipped no_target` where logged (client_target_id 0): launch proven, damage and targeting not examined.
+4. Ground rows: the server logged `use_ability_on_ground_recv` before each outcome.
+
+### Attests (pending)
+
+`lab_uat_attest {server_version: 6b50d9131417b8cf93feb61a7c640577398db567}` for the run dir above. Not applied: read-only grading. No PENDING clauses.
+
+### Recipe
+
+SigNoz `signoz_search_logs`, filter `cimmeria.lab_run = 'dr-lab' AND scope_name = 'abilities' AND player_name CONTAINS 'Cgbqmyhigfcmah' AND event != 'warmup_pending' AND event EXISTS`, start 1793653500000, end 1793654300000, plus an unfiltered 400-row pull to 1793654500000 for 2105 and 1487. Seed: `resources.abilities` joined to `resources.effects` and `resources.effect_nvps`.
