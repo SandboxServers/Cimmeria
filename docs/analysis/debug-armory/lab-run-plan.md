@@ -81,7 +81,7 @@ A canary verifier (same verifier brief, packet `DR-L2-canary`) checks, and the o
 - each run created its fresh character and `run.json` names it (`fresh_characters`);
 - `Soldier-00` is PASS (world 1300 reached; the runner's own `client_wait_for` world wait works, #1677 is closed);
 - each row JSON has an `anchor` with a bookmark id (DR-L1 never saw a `.bug` reply in chat; a missing anchor is a flag, record it, not a stop);
-- every weapon row shows `client.ability.sent`, and SigNoz holds an `abilities` row (`ability_launched` or a refusal) for the fresh character;
+- every ability row shows `client.ability.sent`, and every ability and bound-weapon row has a SigNoz `abilities` `ability_launched` row (or, on GW-3128, a `wrong_weapon_refused` until the item gets its moniker, DR-99) for the fresh character; gear weapon rows never show `client.ability.sent` (the right-click is an `interact`);
 - the `GW-17` SigNoz clause attests to 1 row (`weapon_unbound`, reason `no_ranged_attack`, the spec's filter as written) and `GA-33`'s `moved` clause finds `Inventory move persisted`.
 
 Any miss: stop the session, write `worknotes/canary.md` (what failed, run dirs) and ask the architect for a ruling. The canary rows are graded again from the full runs; the canary results only go in `results/DR-L2.md § Canary`.
