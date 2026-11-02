@@ -135,8 +135,9 @@ at = "buy"
 # row 18 on screen row 6. The scroll units are inferred from vendor_buy.rs:219;
 # the first lab run confirms rows 13 to 19 are shown. A fresh character starts
 # with less than 1000 naquadah in this section. A start of 1000 or more fails
-# start-cash, and the row is then reported blocked: record the starting cash
-# and stop.
+# the start-cash clause, and the buy then really buys the SMG, so the refused
+# clause fails too; the row reads as FAIL, not blocked. Record the starting
+# cash from the start-cash evidence and treat the row as blocked by hand.
 [[row]]
 id = "V3"
 title = "The munitions vendor refuses an SMG the character cannot afford"
