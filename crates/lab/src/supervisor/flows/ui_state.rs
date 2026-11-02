@@ -138,6 +138,7 @@ pub fn ui_state_chunk(chat_lines: u32) -> String {
         .map(|b| widgets::lua_quote(b))
         .collect::<Vec<_>>()
         .join(", ");
+    let chat = super::ui_state_chat::chat_section_lua(chat_lines);
     format!(
         r#"local out = {{}}
 local function add(...) out[#out + 1] = table.concat({{...}}, "\t") end
@@ -179,11 +180,7 @@ sec("missions", function()
   end
 end)
 sec("chat", function()
-  local lb = Inst1Chat_TabOutput
-  if lb ~= nil then
-    local n = lb:getItemCount()
-    for i = math.max(0, n - {chat_lines}), n - 1 do add("chat", lb:getItemFromIndex(i):getText()) end
-  end
+  {chat}
 end)
 return unpack(out)"#
     )
@@ -197,6 +194,7 @@ pub fn parse_ui_state(lines: &[String]) -> Value {
     let mut prompts = Vec::new();
     let mut missions = Vec::new();
     let mut chat = Vec::new();
+    let mut chat_tab = Value::Null;
     let mut errors = Vec::new();
     for line in lines {
         let mut parts = line.splitn(4, '\t');
@@ -218,6 +216,7 @@ pub fn parse_ui_state(lines: &[String]) -> Value {
             "mission_step" => missions.push(json!({ "kind": "step", "text": a })),
             "mission_objective" => missions.push(json!({ "kind": "objective", "text": a })),
             "chat" => chat.push(a),
+            "chat_tab" => chat_tab = json!(a),
             "error" => errors.push(a),
             _ => errors.push(format!("unknown line {line:?}")),
         }
@@ -234,6 +233,7 @@ pub fn parse_ui_state(lines: &[String]) -> Value {
         "prompts": prompts,
         "mission_tracker": missions,
         "chat_tail": chat,
+        "chat_tab": chat_tab,
         "errors": errors,
     })
 }
