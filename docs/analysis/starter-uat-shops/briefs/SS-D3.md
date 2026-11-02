@@ -39,6 +39,8 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **L2 - in the world.** `lab_ensure_in_world {"lease_id":L,"character":"Bankone"}`. Expected: `in_world:true`, `character` = Bankone, world 12 (Castle_CellBlock). If it fails, retry once; if it fails again report BLOCKED with the error text.
 
+**WAIT17.** `client_batch {"lease_id":L,"steps":[{"op":"wait","ms":17000},{"op":"lua","id":"utc","chunk":"if os and os.date then return os.date('!%Y-%m-%d %H:%M:%S') end return 'no-os'"},{"op":"player_state","fields":["world_id","position"]}]}`. Only needed when the character was just created or just logged in. `client_entity_find` returning any NPC proves the hold is over.
+
 **CHATX - one line, sent with the chat box's own accept handler (N3, the standard way).**
 `client_batch {"lease_id":L,"stop_on_error":false,"steps":[ {"op":"lua","id":"c1","chunk":"ChatMod.stickyCommand='/say '; Inst1Chat_Input:setText('LINE ONE'); ChatMod.onTextAccepted(Inst1Chat_Input, Inst1Chat_Input); return 'sent'"}, {"op":"wait","ms":2000}, {"op":"lua","id":"utc","chunk":"if os and os.date then return os.date('!%H:%M:%S') end return 'no-os'"} ]}`
 Replace `LINE ONE` with the exact line the step gives.
@@ -61,7 +63,7 @@ Replace `LINE ONE` with the exact line the step gives.
 
 Source: [BANK-R10](../../haiku-lab-uat/briefs/bank/BANK-R10.md) (the step-10 re-brief), with its vendor-open steps replaced by the `store-paths.md` recipe (`docs/analysis/starter-uat-shops/evidence/store-paths.md`, Recipes rows "Open a vendor", "Sell one item (unverified)", "Buyback one item"). Its move command is `moveItem` (BANK-R10 step 8a), its move-rejected grade is BANK-C3 line 107.
 
-ROWS: D3-1 (open the Quartermaster, sell one Standard Pistol, design 55), D3-2 (buyback tab, try to take the sold item out without paying). ESTIMATE: 20 tool calls.
+ROWS: D3-1 (open the Quartermaster, sell one Standard Pistol, design 55), D3-2 (buyback tab, try to take the sold item out without paying). ESTIMATE: 21 tool calls.
 
 Quartermaster stand point (4.0 m from spawn 400 at (-343.9, 73.472, -228.49), `db/resources/Worlds/Seed/spawnlist.sql:1107`): `.gotolocation Castle_CellBlock -340.26 73.47 -226.84`. Its id is found by name with `client_entity_find`. Expected distance 3.5 to 4.5 m. Do not click the Common Materials Components vendor (it is nearer from the teleport spot in BANK-R10; do not click it).
 
@@ -69,7 +71,7 @@ Preconditions (S2 checks them): `Bankone` in Castle_CellBlock; Main has an Acces
 
 ## Steps
 
-**S1.** L1, then L2 (2 calls). Record world_id and position.
+**S1.** L1, then L2 (2 calls). Record world_id and position. If L2 logged the character in (it was not already in the world), run WAIT17 (1 call) before S2.
 
 **S2 - resume probe and preconditions (1 call).** `client_inventory {"lease_id":L,"containers":["Main"],"fields":["cash","containers"],"snapshot":"d3a"}`. Record CASH_BEFORE, every item with its slot, and whether a Standard Pistol (design 55) is in Main. If a Standard Pistol is already in the Buyback container (16), the sell is done: go straight to D3-2 and record that (no grant).
 

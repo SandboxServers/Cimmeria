@@ -8,7 +8,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - CHARACTER: Shopcmd   (a fresh Praxis Commando, first name `Uat`). BLOCKED: the create fields for a Praxis Commando (alignment, archetype, gender) are not traced in the repo (the starter-uat-praxis campaign names none, and no `create` example exists for a Commando). Until the coordinator pastes them, step L2 is BLOCKED: report it and stop. Use `lab_ensure_in_world` with `create` only after they are filled in.
 - SERVER: BLOCKED: D-SP2 is undecided (the owner picks the colo or a local server at a recorded SHA; `docs/analysis/starter-uat-shops/README.md` decisions table). Do not start a lane until the coordinator writes the server name here.
 - LEASE OWNER: `ss-SS-D2`   (TTL 900 s)
-- HARD STOP: 28 tool calls.
+- HARD STOP: 40 tool calls.
 
 ## 0. Front-loaded gotchas (read all of them)
 
@@ -25,7 +25,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 11. **Keys:** B opens the bag (not I). Q and E turn the avatar (about 110 degrees per second), W and S walk. To hold a key use `client_ui_sequence` with `{"do":"key","key":"w","hold_ms":2000}`.
 12. **Casting and pets use stock Lua.** `useAbility(<id>, Unit.Player)` casts on yourself, `useAbility(<id>, Unit.Target)` on your target. These are N3 (stock Lua) calls: say so in the report, do not hide it.
 13. **Do not restart or relaunch the client**, and do not call `lab_client_*` tools. If the client seems dead (`lab_client_status` says crashed, or every call fails), stop and report BLOCKED with the error text.
-14. **Your budget is 28 tool calls in total.** Count them. At call 26, stop doing rows, write the report from what you have, release the lease and finish. Never start a row you cannot finish. Fewer calls are better: put reads in one `client_batch`, UI steps in one `client_ui_sequence`.
+14. **Your budget is 40 tool calls in total.** Count them. At call 38, stop doing rows, write the report from what you have, release the lease and finish. Never start a row you cannot finish. Fewer calls are better: put reads in one `client_batch`, UI steps in one `client_ui_sequence`.
 15. **One retry per failed call, unchanged.** Then record the error text verbatim and continue.
 16. **An unexpected window, prompt or dialog**: read it once with `client_ui_state`, record it, close it with DIALOG or PROMPT below, and carry on. If you cannot, stop and report.
 17. **Never write IPs, passwords or account names** anywhere in your report.
@@ -67,7 +67,7 @@ Replace `LINE ONE` with the exact line the step gives. Wait at least 1500 ms aft
 
 # SS-D2: stasis-room hub, Castle_CellBlock world 12, fresh Praxis Commando
 
-ROWS: D2-1 (Quartermaster store open, the 2026-10-12 failure repro), D2-2 (buy at the supplies vendor), D2-3 (sell back to the Quartermaster), D2-4 (Archetype Skills Trainer), D2-5 (Goa'uld Advanced Skills pet trainer). ESTIMATE: 24 tool calls. Runs alone on instance `p2`; no other lane in Castle_CellBlock.
+ROWS: D2-1 (Quartermaster store open, the 2026-10-12 failure repro), D2-2 (buy at the supplies vendor), D2-3 (sell back to the Quartermaster), D2-4 (Archetype Skills Trainer), D2-5 (Goa'uld Advanced Skills pet trainer). ESTIMATE: 36 tool calls (the lease release included). Runs alone on instance `p2`; no other lane in Castle_CellBlock.
 
 The four NPCs and their spawn positions (all `is_stationary`; `db/resources/Worlds/Seed/spawnlist.sql`):
 
@@ -106,7 +106,7 @@ Expected server effect: the `interact` row, then `store_opened` for template 300
 **D2-2.1 (1 call).** CHATX: BUG `D2-2 start`, STAGE to the supplies stand point `.gotolocation Castle_CellBlock -337.69 73.47 -226.68`, then a 4000 ms wait, then the UTC step.
 **D2-2.2 (1 call).** `client_entity_find {"lease_id":L,"name":"Common Materials Components","fields":["matches"]}` -> record id S and `distance_m` (expect 3.5 to 4.5 m; `client_entity_find` by the vendor's name; the entity spawned as 414 is the supplies vendor).
 **D2-2.3 (1 call).** CAMERA on S, SHOT `D2-2-before-buy`, then `client_world_click {"lease_id":L,"entity_id":<S>,"button":"right","expect":"window","settle_ms":4000,"rotate_camera":false}`.
-**D2-2.4 (1 call).** `client_vendor_buy` (existing tool; its argument shape is in `crates/lab/src/supervisor/ui/vendor_buy.rs`, which store-paths.md section 2 names; call `client_vendor_buy {"lease_id":L,"row":1,"quantity":1}` (list 310 has one row, 3101, so the Steel Core is row 1; retry once unchanged on a transport error). Record its return value verbatim. The item is list 310 row 3101, design 5254, price 1 naquadah (`item_list_items.sql:27`). It is the buy that the 2026-10-12 round confirmed live (README row for Castle_CellBlock supplies).
+**D2-2.4 (1 call).** `client_vendor_buy {"lease_id":L,"row":1,"quantity":1}`. List 310 has one row (3101), so the Steel Core is row 1. The tool's argument shape is in `crates/lab/src/supervisor/ui/vendor_buy.rs`. On a transport error retry once unchanged. Record its return value verbatim. The item is list 310 row 3101, design 5254, price 1 naquadah (`item_list_items.sql:27`). It is the buy that the 2026-10-12 round confirmed live (README row for Castle_CellBlock supplies).
 **D2-2.5 (1 call).** One batch: `client_inventory {"lease_id":L,"containers":["Main"],"diff_against":"d22a","fields":["cash","diff"],"snapshot":"d23a"}` (or a plain read if the snapshot name is new), READ `{"cursor":"d22r","contains":"purchase","max":20}`, UTC step. Record the cash before and after and the Steel Core slot.
 **D2-2.6 (1 call).** Close the vendor (`VendorWin__auto_closebutton__`).
 
@@ -117,7 +117,7 @@ Expectation written from the data: sell list 2 holds only designs 21, 55 and 343
 **D2-3.1 (1 call).** CHATX: BUG `D2-3 start`, STAGE to the Quartermaster stand point again (`.gotolocation Castle_CellBlock -340.26 73.47 -226.84`), wait 4000 ms, UTC step.
 **D2-3.2 (1 call).** `client_entity_find` for "Basic Equipment Quartermaster" (id Q3), then CAMERA on Q3, then `client_world_click` right-click (as D2-1.4), then `client_window_read {"lease_id":L,"kind":"vendor","include_nodes":true,"max_nodes":80,"fields":["state","open","primary","nodes"]}` to read the vendor window name and its sell area. The Common Materials Components vendor stands 1.5 m from this point and nearer than the Quartermaster. Click only the entity id found by `client_entity_find` for the Quartermaster; if the SHOT shows the vendor covering the Quartermaster, record that and do not click.
 **D2-3.3 (1 call).** Sell the Steel Core (the SS-01 sell recipe, unverified): `client_drag_drop {"lease_id":L,"from":{"container":"Main","slot":<Steel Core slot from D2-2.5>},"to":{"window":"<vendor window name from D2-3.2>"},"wait_ms":4000}`. If the drag errors on the window name, record the error text and go on to D2-3.4 unchanged.
-**D2-3.4 (1 call).** One batch: READ `{"cursor":"d23r","contains":"sell","max":20}`, READ a second cursor `{"cursor":"d23x","contains":"refus","max":20}` (or the same read with `since_seq`), `client_inventory {"containers":["Main"],"diff_against":"d23a","fields":["cash","diff"]}`, SHOT `D2-3-after-sell`, UTC step. Record every chat line verbatim with `channel`, `colour`, `tabs`, `seq`.
+**D2-3.4 (1 call).** One batch: READ `{"cursor":"d23r","contains":"sell","max":20}`, READ a second cursor `{"cursor":"d23x","contains":"refus","max":20}` (or the same read with `since_seq`), `client_inventory {"lease_id":L,"containers":["Main"],"diff_against":"d23a","fields":["cash","diff"]}`, SHOT `D2-3-after-sell`, UTC step. Record every chat line verbatim with `channel`, `colour`, `tabs`, `seq`.
 Expected: the Steel Core is still in Main and cash is unchanged, with a refusal line (the text is unknown; record it).
 **D2-3.5 (1 call).** Close the vendor (`VendorWin__auto_closebutton__`).
 

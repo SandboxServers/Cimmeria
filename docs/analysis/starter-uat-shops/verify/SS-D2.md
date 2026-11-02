@@ -50,7 +50,7 @@ One line per row, then `FINDINGS:` (numbered; each with the row, the evidence an
 
 ## 6. When a row FAILs, or you find a bug
 
-Investigate before you file anything: read the code path the row exercises (`docs/analysis/starter-uat-shops/evidence/store-paths.md` names it), reproduce the reasoning with the server rows, and decide whether it is (a) a product bug, (b) a doc mismatch, (c) a lab or driver problem (a wrong click, a bad recipe, a missing tool argument: not a product bug), or (d) a known issue (`docs/guides/unified-uat.md` K1-K38: do not file). Only (a) and (b) get a GitHub issue; (c) goes in your report only, with the recipe the next driver needs.
+Investigate before you write any issue body: read the code path the row exercises (`docs/analysis/starter-uat-shops/evidence/store-paths.md` names it), reproduce the reasoning with the server rows, and decide whether it is (a) a product bug, (b) a doc mismatch, (c) a lab or driver problem (a wrong click, a bad recipe, a missing tool argument: not a product bug), or (d) a known issue (`docs/guides/unified-uat.md` K1-K38: do not file). Only (a) and (b) get an issue body file (never filed by you); (c) goes in your report only, with the recipe the next driver needs.
 
 D2-1 FAIL (the 2026-10-12 repro): if no `store_opened` for template 300 is in the server evidence, write the issue body to `docs/analysis/starter-uat-shops/results/issues/SS-D2-1.md` (CRLF) with the raw `interact`, `refused` or `failed` rows (or their absence), the driver's `lab_screenshot` and `client_window_read` quotes, and the store-paths.md section 1 answer (click, server or window). The verifier writes the issue body file per the rule below and does not file it.
 
