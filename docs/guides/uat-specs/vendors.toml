@@ -13,16 +13,15 @@
 # Sell and buyback use the recipes in
 # docs/analysis/starter-uat-shops/evidence/store-paths.md (section Recipes).
 # That evidence marks both as unverified (N1 until a lab round proves them).
-# Inventory slots are read with `client_inventory` and captured, so a row
-# never names a slot by hand.
+# Inventory slots are read with `client_inventory` (containers = ["Main"]) and
+# captured by item name, so a row never names a slot by hand.
 #
 # Seed citations sit above each row. Each was re-checked at SS-03a against
 # db/resources/. Vendor-row ids (V1 to V7) match the packet, not the seed.
 #
-# Cash: the packet's "cash unchanged" and "cash back down by 300" clauses
-# have no client read that returns naquadah in this repo, so they are human
-# clauses. The server's own cash_before and cash_after are on each
-# transaction row (vendor/telemetry.rs:17).
+# Cash: read with `client_inventory` (`/cash`) before the action and compared
+# with `op = "delta"` after it. The server's own cash_before and cash_after are
+# on each transaction row (vendor/telemetry.rs:17) as a cross-check.
 
 schema = 1
 
@@ -104,6 +103,7 @@ setup = [
 step = [
   { tool = "@world_click", args = { name = "Consumables", button = "right", expect = "window" }, label = "click" },
   { wait_ms = 2000 },
+  { capture = "tool", tool = "client_inventory", args = { containers = ["Main"] }, pointer = "/cash", var = "cash_before" },
   { tool = "client_vendor_buy", args = { row = 1, quantity = 1 }, label = "buy" },
   { wait_ms = 1000 },
 ]
@@ -118,16 +118,25 @@ value = 1
 [[row.expect]]
 id = "cash"
 text = "the naquadah count dropped by 1"
-source = "human"
-question = "In final.png, is the naquadah count exactly 1 lower than the count before the buy? Write both numbers in the answer."
+source = "tool"
+tool = "client_inventory"
+args = { containers = ["Main"] }
+pointer = "/cash"
+op = "delta"
+baseline = "${cash_before}"
+value = -1
+at = "buy"
 
 # The SGHC 6 SMG is design 21 at price 1000 (item_lists_debug_area_plaza.sql:44,
-# item 13018), and list 2 buys it back at 1000 (item_list_items.sql:11). Row
-# 18 is design 21 only if the window lists the 19 rows by item_id; CO2 dart
-# gun is the 19th. A fresh character starts with less than 1000 naquadah in
-# this section, and the row checks that in its human clause. If a fresh
-# character starts with 1000 or more, the row is blocked: record the starting
-# cash and stop.
+# item 13018), and list 2 buys it back at 1000 (item_list_items.sql:11). The
+# window lists the 19 rows of list 1300 by item_id, so list row 18 is design 21
+# (CO2 dart gun is the 19th). The window shows 7 rows, so the row scrolls
+# Vendor_Scrollbar to ScrollPosition 12, which shows list rows 13 to 19 and puts
+# row 18 on screen row 6. The scroll units are inferred from vendor_buy.rs:219;
+# the first lab run confirms rows 13 to 19 are shown. A fresh character starts
+# with less than 1000 naquadah in this section. A start of 1000 or more fails
+# start-cash, and the row is then reported blocked: record the starting cash
+# and stop.
 [[row]]
 id = "V3"
 title = "The munitions vendor refuses an SMG the character cannot afford"
@@ -140,7 +149,10 @@ setup = [
 step = [
   { tool = "@world_click", args = { name = "Consumables", button = "right", expect = "window" }, label = "click" },
   { wait_ms = 2000 },
-  { tool = "client_vendor_buy", args = { row = 18, quantity = 1, expect_change = false }, label = "buy" },
+  { tool = "client_lua_eval", args = { chunk = "Vendor_Scrollbar:setProperty('ScrollPosition', '12')" }, tier = "N3", label = "scroll" },
+  { wait_ms = 500 },
+  { capture = "tool", tool = "client_inventory", args = { containers = ["Main"] }, pointer = "/cash", var = "cash_before" },
+  { tool = "client_vendor_buy", args = { row = 6, quantity = 1, expect_change = false }, label = "buy" },
   { wait_ms = 1000 },
 ]
 [[row.expect]]
@@ -150,10 +162,26 @@ source = "signoz"
 filter = "scope_name = 'vendor' AND event = 'refused' AND vendor_template_id = 1302 AND reason = 'insufficient_cash'"
 min_rows = 1
 [[row.expect]]
+id = "cash"
+text = "naquadah unchanged"
+source = "tool"
+tool = "client_inventory"
+args = { containers = ["Main"] }
+pointer = "/cash"
+op = "delta"
+baseline = "${cash_before}"
+value = 0
+at = "buy"
+[[row.expect]]
 id = "start-cash"
 text = "the character started with less than 1000 naquadah"
-source = "human"
-question = "In final.png or the first client read, was the starting naquadah below 1000? Write the number in the answer."
+source = "tool"
+tool = "client_inventory"
+args = { containers = ["Main"] }
+pointer = "/cash"
+op = "lt"
+value = 1000
+at = "scroll"
 
 # ================================================================ Sell
 
@@ -161,9 +189,8 @@ question = "In final.png or the first client read, was the starting naquadah bel
 # Pistol) at 300 (item_list_items.sql:15, item 5) and design 21 at 1000
 # (item_list_items.sql:11). The pistol is bought from list 1300 at price 300
 # (item_lists_debug_area_plaza.sql:43, item 13017), so the setup can afford it
-# with /gmgivecash 300. The bought pistol is captured by design_id 55 from
-# client_inventory before the drag, so a starter-kit pistol in the bandolier
-# can be picked by mistake: check that the item_id is the bought one.
+# with /gmgivecash 300. The bought pistol is captured by name from the Main bag
+# only, so a starter-kit pistol elsewhere is not picked.
 [[row]]
 id = "V4"
 title = "Sell the bought pistol to the Quartermaster for 300"
@@ -175,7 +202,9 @@ setup = [
   { wait_ms = 3000 },
   { tool = "@world_click", args = { name = "Consumables", button = "right", expect = "window" }, label = "buy-open" },
   { wait_ms = 2000 },
-  { tool = "client_vendor_buy", args = { row = 17, quantity = 1 }, label = "buy-pistol" },
+  { tool = "client_lua_eval", args = { chunk = "Vendor_Scrollbar:setProperty('ScrollPosition', '12')" }, tier = "N3", label = "scroll" },
+  { wait_ms = 500 },
+  { tool = "client_vendor_buy", args = { row = 5, quantity = 1 }, label = "buy-pistol" },
   { wait_ms = 1000 },
   { chat = ".gotolocation DebugArea 259 7.2 -925", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
@@ -184,7 +213,8 @@ setup = [
 step = [
   { tool = "@world_click", args = { name = "Basic Equipment Quartermaster", button = "right", expect = "window" }, label = "click" },
   { wait_ms = 2000 },
-  { capture = "tool", tool = "client_inventory", args = { container = 1 }, pointer = "/items[design_id=55]/slot", var = "pistol_slot" },
+  { capture = "tool", tool = "client_inventory", args = { containers = ["Main"] }, pointer = "/cash", var = "cash_before" },
+  { capture = "tool", tool = "client_inventory", args = { containers = ["Main"] }, pointer = "/containers[name=Main]/slots[name=SI 3 9mm Pistol]/slot", var = "pistol_slot" },
   { tool = "client_drag_drop", args = { from = { container = "Main", slot = "${pistol_slot}" }, to = { window = "VendorWin" } }, tier = "N1", label = "sell" },
   { wait_ms = 1500 },
 ]
@@ -199,11 +229,19 @@ value = 300
 [[row.expect]]
 id = "cash"
 text = "the naquadah count rose by 300"
-source = "human"
-question = "In final.png, does the naquadah count read 300 more than before the sell?"
+source = "tool"
+tool = "client_inventory"
+args = { containers = ["Main"] }
+pointer = "/cash"
+op = "delta"
+baseline = "${cash_before}"
+value = 300
+at = "sell"
 
 # Buyback: the pistol sold in V4 comes back at the price sell list 2 paid
-# (300), so cash falls by 300. This row needs V4's character and state.
+# (300), so cash falls by 300. This row needs V4's character and state. The
+# Main slot is the first empty slot read from client_inventory. The container
+# name Buyback and slot 1 are unverified until SS-D1.
 [[row]]
 id = "V5"
 title = "Buy the pistol back from the Quartermaster's buyback"
@@ -219,7 +257,9 @@ step = [
   { wait_ms = 2000 },
   { tool = "client_window_click", args = { text = "Buyback", root = "VendorWin" }, tier = "N1", label = "tab" },
   { wait_ms = 1000 },
-  { tool = "client_drag_drop", args = { from = { container = "Buyback", slot = 0 }, to = { container = "Main" } }, tier = "N1", label = "buyback" },
+  { capture = "tool", tool = "client_inventory", args = { containers = ["Main"] }, pointer = "/cash", var = "cash_before" },
+  { capture = "tool", tool = "client_inventory", args = { containers = ["Main"], include_empty = true }, pointer = "/containers[name=Main]/slots[empty=true]/slot", var = "free_slot" },
+  { tool = "client_drag_drop", args = { from = { container = "Buyback", slot = 1 }, to = { container = "Main", slot = "${free_slot}" } }, tier = "N1", label = "buyback" },
   { wait_ms = 1500 },
 ]
 [[row.expect]]
@@ -233,8 +273,14 @@ value = 300
 [[row.expect]]
 id = "cash"
 text = "the naquadah count dropped by 300"
-source = "human"
-question = "In final.png, is the naquadah count 300 lower than before the buyback?"
+source = "tool"
+tool = "client_inventory"
+args = { containers = ["Main"] }
+pointer = "/cash"
+op = "delta"
+baseline = "${cash_before}"
+value = -300
+at = "buyback"
 
 # ================================================================ Refusals
 
@@ -242,7 +288,8 @@ question = "In final.png, is the naquadah count 300 lower than before the buybac
 # (Health Slappack TC1). item_list_items.sql has no 2893 row (checked
 # at SS-03a). The slappack is design 2893 at price 1 in list 1300
 # (item_lists_debug_area_plaza.sql:42, item 13016, stack of 5; the name is in
-# the list header at line 13). Row 16 buys it; the setup gives 10 naquadah.
+# the list header at line 13). List row 16 is on-screen row 4 after the scroll
+# to 12 (see V3), and the setup gives 10 naquadah.
 [[row]]
 id = "V6"
 title = "The Quartermaster refuses a Health Slappack, which sell list 2 does not buy"
@@ -254,7 +301,9 @@ setup = [
   { wait_ms = 3000 },
   { tool = "@world_click", args = { name = "Consumables", button = "right", expect = "window" }, label = "buy-open" },
   { wait_ms = 2000 },
-  { tool = "client_vendor_buy", args = { row = 16, quantity = 1 }, label = "buy-slappack" },
+  { tool = "client_lua_eval", args = { chunk = "Vendor_Scrollbar:setProperty('ScrollPosition', '12')" }, tier = "N3", label = "scroll" },
+  { wait_ms = 500 },
+  { tool = "client_vendor_buy", args = { row = 4, quantity = 1 }, label = "buy-slappack" },
   { wait_ms = 1000 },
   { chat = ".gotolocation DebugArea 259 7.2 -925", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
@@ -263,7 +312,7 @@ setup = [
 step = [
   { tool = "@world_click", args = { name = "Basic Equipment Quartermaster", button = "right", expect = "window" }, label = "click" },
   { wait_ms = 2000 },
-  { capture = "tool", tool = "client_inventory", args = { container = 1 }, pointer = "/items[design_id=2893]/slot", var = "slappack_slot" },
+  { capture = "tool", tool = "client_inventory", args = { containers = ["Main"] }, pointer = "/containers[name=Main]/slots[name=Health Slappack TC1]/slot", var = "slappack_slot" },
   { tool = "client_drag_drop", args = { from = { container = "Main", slot = "${slappack_slot}" }, to = { window = "VendorWin" } }, tier = "N1", label = "sell" },
   { wait_ms = 1500 },
 ]
@@ -301,7 +350,7 @@ setup = [
 step = [
   { tool = "@world_click", args = { name = "Common Materials Components", button = "right", expect = "window" }, label = "click" },
   { wait_ms = 2000 },
-  { capture = "tool", tool = "client_inventory", args = { container = 1 }, pointer = "/items[design_id=9000]/slot", var = "ammo_slot" },
+  { capture = "tool", tool = "client_inventory", args = { containers = ["Main"] }, pointer = "/containers[name=Main]/slots[name=Armor Piercing Rounds]/slot", var = "ammo_slot" },
   { tool = "client_drag_drop", args = { from = { container = "Main", slot = "${ammo_slot}" }, to = { window = "VendorWin" } }, tier = "N1", label = "sell" },
   { wait_ms = 1500 },
 ]
