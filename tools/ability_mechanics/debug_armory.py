@@ -410,6 +410,8 @@ def world_spawns() -> List[Tuple[float, float]]:
     """The (x, z) of every world ``ARMORY_WORLD`` spawn in any spawnlist seed."""
     out: List[Tuple[float, float]] = []
     for path in sorted((REPO_ROOT / SEEDS).rglob("spawnlist*.sql")):
+        if path.name == "spawnlist_debug_area_armory.sql":
+            continue  # the Armory's own spawns must not block its probes
         text, _ = read_text(path)
         for r in sql_rows(text, "spawnlist"):
             if r["world_id"].text == str(ARMORY_WORLD):
