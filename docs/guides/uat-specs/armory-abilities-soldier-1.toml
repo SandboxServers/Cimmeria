@@ -82,12 +82,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3260 before the press"
+text = "the active bandolier weapon is SK37 LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3260
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-632"
@@ -128,12 +128,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3260 before the press"
+text = "the active bandolier weapon is SK37 LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3260
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-851"
@@ -206,12 +206,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3260 before the press"
+text = "the active bandolier weapon is SK37 LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3260
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-819"
@@ -283,12 +283,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3260 before the press"
+text = "the active bandolier weapon is SK37 LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3260
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-2419"
@@ -330,12 +330,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4990 before the press"
+text = "the active bandolier weapon is GL 21 Grenade Launcher before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4990
+value = "GL 21 Grenade Launcher"
 
 [[row]]
 id = "Soldier-1883"
@@ -376,12 +376,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 6480 before the press"
+text = "the active bandolier weapon is Baby Mongoose Flamethrower before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 6480
+value = "Baby Mongoose Flamethrower"
 
 [[row]]
 id = "Soldier-808"
@@ -423,12 +423,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3260 before the press"
+text = "the active bandolier weapon is SK37 LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3260
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-2103"
@@ -470,12 +470,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4990 before the press"
+text = "the active bandolier weapon is GL 21 Grenade Launcher before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4990
+value = "GL 21 Grenade Launcher"
 
 [[row]]
 id = "Soldier-1483"
@@ -548,12 +548,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3260 before the press"
+text = "the active bandolier weapon is SK37 LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3260
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-1882"
@@ -595,12 +595,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4990 before the press"
+text = "the active bandolier weapon is GL 21 Grenade Launcher before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4990
+value = "GL 21 Grenade Launcher"
 
 [[row]]
 id = "Soldier-2102"
@@ -642,12 +642,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 6480 before the press"
+text = "the active bandolier weapon is Baby Mongoose Flamethrower before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 6480
+value = "Baby Mongoose Flamethrower"
 
 [[row]]
 id = "Soldier-853"
@@ -689,12 +689,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3260 before the press"
+text = "the active bandolier weapon is SK37 LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3260
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-724"
@@ -768,12 +768,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4990 before the press"
+text = "the active bandolier weapon is GL 21 Grenade Launcher before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4990
+value = "GL 21 Grenade Launcher"
 
 [[row]]
 id = "Soldier-852"
@@ -847,12 +847,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 6480 before the press"
+text = "the active bandolier weapon is Baby Mongoose Flamethrower before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 6480
+value = "Baby Mongoose Flamethrower"
 
 [[row]]
 id = "Soldier-2143"
@@ -893,12 +893,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3260 before the press"
+text = "the active bandolier weapon is SK37 LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3260
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-1485"
@@ -972,12 +972,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4990 before the press"
+text = "the active bandolier weapon is GL 21 Grenade Launcher before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4990
+value = "GL 21 Grenade Launcher"
 
 [[row]]
 id = "Soldier-1487"
@@ -1019,12 +1019,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3260 before the press"
+text = "the active bandolier weapon is SK37 LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3260
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-1456"
@@ -1098,9 +1098,9 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3260 before the press"
+text = "the active bandolier weapon is SK37 LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3260
+value = "SK37 LMG"

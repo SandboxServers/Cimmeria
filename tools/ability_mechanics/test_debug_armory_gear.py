@@ -95,8 +95,8 @@ class WeaponSelectTest(unittest.TestCase):
             expect = _parse(gear.weapon_row(item_id, name, ability_id))["row"][0]["expect"]
             armed = [e for e in expect if e["id"] == "armed"]
             self.assertEqual(len(armed), 1)
-            self.assertEqual(armed[0]["pointer"], "/ammo/weapon_item_id")
-            self.assertEqual(armed[0]["value"], item_id)
+            self.assertEqual(armed[0]["pointer"], "/ammo/weapon")
+            self.assertEqual(armed[0]["value"], name)
             self.assertIs(expect[-1], armed[0])
 
     def test_armor_rows_do_not_touch_the_bandolier(self):

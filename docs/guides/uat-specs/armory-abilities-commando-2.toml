@@ -82,12 +82,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3287 before the press"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3287
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-849"
@@ -191,12 +191,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3287 before the press"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3287
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-850"
@@ -238,12 +238,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3313 before the press"
+text = "the active bandolier weapon is Pump Shotgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3313
+value = "Pump Shotgun"
 
 [[row]]
 id = "Commando-848"
@@ -284,12 +284,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3287 before the press"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3287
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-855"
@@ -330,12 +330,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3287 before the press"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3287
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-857"
@@ -441,12 +441,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3313 before the press"
+text = "the active bandolier weapon is Pump Shotgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3313
+value = "Pump Shotgun"
 
 [[row]]
 id = "Commando-871"
@@ -519,12 +519,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3287 before the press"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3287
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-877"
@@ -629,12 +629,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3313 before the press"
+text = "the active bandolier weapon is Pump Shotgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3313
+value = "Pump Shotgun"
 
 [[row]]
 id = "Commando-1354"
@@ -675,12 +675,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3287 before the press"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3287
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-862"
@@ -753,12 +753,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3287 before the press"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3287
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-1359"
@@ -799,9 +799,9 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3287 before the press"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3287
+value = "SR1 .50-Cal Rifle"

@@ -82,12 +82,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-1734"
@@ -191,12 +191,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-1482"
@@ -238,12 +238,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-1735"
@@ -347,12 +347,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2008"
@@ -426,12 +426,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2026"
@@ -473,12 +473,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-1640"
@@ -615,12 +615,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2025"
@@ -662,12 +662,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2058"
@@ -709,12 +709,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2042"
@@ -756,12 +756,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2027"
@@ -835,12 +835,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2043"
@@ -881,12 +881,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2104"
@@ -1364,12 +1364,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 55 before the press"
+text = "the active bandolier weapon is SI 3 9mm Pistol before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 55
+value = "SI 3 9mm Pistol"
 
 [[row]]
 id = "Sholva-1626"
@@ -1410,12 +1410,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2072"

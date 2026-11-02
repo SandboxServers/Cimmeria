@@ -175,15 +175,16 @@ def ability_row(arch: str, aid: int, ability: dict, rep: Optional[int], items, m
         lines.append("required = false")
     if ability["item_monikers"] and rep is not None:
         # Last on purpose: expect[0] and expect[1] keep their meaning. A wrong active weapon fails here by name (DR-07h).
+        weapon = items[rep]["name"]
         lines += [
             "[[row.expect]]",
             'id = "armed"',
-            f"text = {tstr(f'the active bandolier weapon is item {rep} before the press')}",
+            f"text = {tstr(f'the active bandolier weapon is {weapon} before the press')}",
             'source = "tool"',
             'tool = "@player_state"',
-            'pointer = "/ammo/weapon_item_id"',
+            'pointer = "/ammo/weapon"',
             'op = "eq"',
-            f"value = {rep}",
+            f"value = {tstr(weapon)}",
         ]
     return lines
 

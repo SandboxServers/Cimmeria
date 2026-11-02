@@ -486,12 +486,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 55 before the press"
+text = "the active bandolier weapon is SI 3 9mm Pistol before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 55
+value = "SI 3 9mm Pistol"
 
 [[row]]
 id = "Archeologist-654"
@@ -532,12 +532,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3313 before the press"
+text = "the active bandolier weapon is Pump Shotgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3313
+value = "Pump Shotgun"
 
 [[row]]
 id = "Archeologist-598"
@@ -578,12 +578,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Archeologist-718"
@@ -624,12 +624,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Archeologist-1638"
@@ -670,12 +670,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3904 before the press"
+text = "the active bandolier weapon is Shriek Zat'ni'katel before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3904
+value = "Shriek Zat'ni'katel"
 
 [[row]]
 id = "Archeologist-2848"
@@ -716,12 +716,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 55 before the press"
+text = "the active bandolier weapon is SI 3 9mm Pistol before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 55
+value = "SI 3 9mm Pistol"
 
 [[row]]
 id = "Archeologist-777"

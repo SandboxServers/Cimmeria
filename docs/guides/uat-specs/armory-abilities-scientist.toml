@@ -144,12 +144,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3584 before the press"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3584
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-992"
@@ -190,12 +190,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3584 before the press"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3584
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-990"
@@ -268,12 +268,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3584 before the press"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3584
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-994"
@@ -410,12 +410,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3584 before the press"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3584
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-1220"
@@ -488,12 +488,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3584 before the press"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3584
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-1215"
@@ -598,12 +598,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3584 before the press"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3584
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-1217"
@@ -644,12 +644,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3584 before the press"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3584
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-1226"
@@ -754,12 +754,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3584 before the press"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3584
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-1223"
@@ -992,12 +992,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Scientist-1017"
@@ -1070,12 +1070,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Scientist-1015"
@@ -1180,12 +1180,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Scientist-1012"
@@ -1289,12 +1289,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Scientist-1236"
@@ -1367,12 +1367,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3145 before the press"
+text = "the active bandolier weapon is AR 21 Assault Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3145
+value = "AR 21 Assault Rifle"
 
 [[row]]
 id = "Scientist-1229"

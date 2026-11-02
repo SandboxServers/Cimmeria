@@ -47,9 +47,9 @@ class AbilityRowTest(unittest.TestCase):
         armed = row["expect"][-1]
         self.assertEqual(armed["id"], "armed")
         self.assertEqual(armed["tool"], "@player_state")
-        self.assertEqual(armed["pointer"], "/ammo/weapon_item_id")
+        self.assertEqual(armed["pointer"], "/ammo/weapon")
         self.assertEqual(armed["op"], "eq")
-        self.assertEqual(armed["value"], 42)
+        self.assertEqual(armed["value"], "Pistol")
         self.assertNotIn("required", armed)
 
     def test_an_ungated_row_neither_resets_nor_selects(self):

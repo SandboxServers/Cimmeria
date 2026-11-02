@@ -134,16 +134,16 @@ def weapon_row(item_id: int, name: str, ability_id: Optional[int]) -> str:
             f"match_fields = {_inline([('ability_id', str(ability_id))])}",
             'since = "press"',
         ]
-    # The active weapon must be this row's item before the press, so a wrong one fails here by name (DR-07h).
+    # The active weapon must be this row's weapon before the press, so a wrong one fails here by name (DR-07h).
     clause += [
         "[[row.expect]]",
         'id = "armed"',
-        f"text = {tstr(f'the active bandolier weapon is item {item_id} before the press')}",
+        f"text = {tstr(f'the active bandolier weapon is {name} before the press')}",
         'source = "tool"',
         'tool = "@player_state"',
-        'pointer = "/ammo/weapon_item_id"',
+        'pointer = "/ammo/weapon"',
         'op = "eq"',
-        f"value = {item_id}",
+        f"value = {tstr(name)}",
     ]
     # weapon_unbound is logged at most once per player per 10 s (NO_RANGED_ATTACK_LOG_INTERVAL), so wait it out.
     throttle = ["  { wait_ms = 10500 },"] if ability_id is None else []

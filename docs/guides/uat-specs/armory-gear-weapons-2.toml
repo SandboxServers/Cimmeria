@@ -56,12 +56,12 @@ filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no
 min_rows = 1
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 5009 before the press"
+text = "the active bandolier weapon is GL 24 Grenade Launcher before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 5009
+value = "GL 24 Grenade Launcher"
 
 [[row]]
 id = "GW-5012"
@@ -98,12 +98,12 @@ filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no
 min_rows = 1
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 5012 before the press"
+text = "the active bandolier weapon is GL 25 Grenade Launcher before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 5012
+value = "GL 25 Grenade Launcher"
 
 [[row]]
 id = "GW-3260"
@@ -140,12 +140,12 @@ match_fields = { ability_id = 582 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3260 before the press"
+text = "the active bandolier weapon is SK37 LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3260
+value = "SK37 LMG"
 
 [[row]]
 id = "GW-3268"
@@ -182,12 +182,12 @@ match_fields = { ability_id = 582 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3268 before the press"
+text = "the active bandolier weapon is SK37 B LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3268
+value = "SK37 B LMG"
 
 [[row]]
 id = "GW-4841"
@@ -224,12 +224,12 @@ match_fields = { ability_id = 582 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4841 before the press"
+text = "the active bandolier weapon is SK38 LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4841
+value = "SK38 LMG"
 
 [[row]]
 id = "GW-4849"
@@ -266,12 +266,12 @@ match_fields = { ability_id = 582 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4849 before the press"
+text = "the active bandolier weapon is SK38 X LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4849
+value = "SK38 X LMG"
 
 [[row]]
 id = "GW-4853"
@@ -308,12 +308,12 @@ match_fields = { ability_id = 582 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4853 before the press"
+text = "the active bandolier weapon is SK Gauss LMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4853
+value = "SK Gauss LMG"
 
 [[row]]
 id = "GW-55"
@@ -350,12 +350,12 @@ match_fields = { ability_id = 579 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 55 before the press"
+text = "the active bandolier weapon is SI 3 9mm Pistol before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 55
+value = "SI 3 9mm Pistol"
 
 [[row]]
 id = "GW-3243"
@@ -392,12 +392,12 @@ match_fields = { ability_id = 579 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3243 before the press"
+text = "the active bandolier weapon is SI 4 9mm Pistol before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3243
+value = "SI 4 9mm Pistol"
 
 [[row]]
 id = "GW-5481"
@@ -434,12 +434,12 @@ match_fields = { ability_id = 579 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 5481 before the press"
+text = "the active bandolier weapon is Crafted Pistol of the Whale before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 5481
+value = "Crafted Pistol of the Whale"
 
 [[row]]
 id = "GW-4885"
@@ -476,12 +476,12 @@ match_fields = { ability_id = 579 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4885 before the press"
+text = "the active bandolier weapon is SI 5 9mm Pistol before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4885
+value = "SI 5 9mm Pistol"
 
 [[row]]
 id = "GW-4891"
@@ -518,12 +518,12 @@ match_fields = { ability_id = 579 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4891 before the press"
+text = "the active bandolier weapon is SI-P 5 9mm Pistol before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4891
+value = "SI-P 5 9mm Pistol"
 
 [[row]]
 id = "GW-4894"
@@ -560,12 +560,12 @@ match_fields = { ability_id = 579 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4894 before the press"
+text = "the active bandolier weapon is SI-A 9mm Pistol before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4894
+value = "SI-A 9mm Pistol"
 
 [[row]]
 id = "GW-4458"
@@ -602,12 +602,12 @@ match_fields = { ability_id = 584 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4458 before the press"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4458
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "GW-4466"
@@ -644,12 +644,12 @@ match_fields = { ability_id = 584 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4466 before the press"
+text = "the active bandolier weapon is Spark Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4466
+value = "Spark Ribbon Device"
 
 [[row]]
 id = "GW-4472"
@@ -686,12 +686,12 @@ match_fields = { ability_id = 584 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4472 before the press"
+text = "the active bandolier weapon is Surge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4472
+value = "Surge Ribbon Device"
 
 [[row]]
 id = "GW-4478"
@@ -728,12 +728,12 @@ match_fields = { ability_id = 584 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4478 before the press"
+text = "the active bandolier weapon is Bolt Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4478
+value = "Bolt Ribbon Device"
 
 [[row]]
 id = "GW-8339"
@@ -770,12 +770,12 @@ match_fields = { ability_id = 584 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 8339 before the press"
+text = "the active bandolier weapon is Lightning Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 8339
+value = "Lightning Ribbon Device"
 
 [[row]]
 id = "GW-3287"
@@ -812,12 +812,12 @@ match_fields = { ability_id = 581 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3287 before the press"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3287
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "GW-3294"
@@ -854,12 +854,12 @@ match_fields = { ability_id = 581 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3294 before the press"
+text = "the active bandolier weapon is SR2 .50-Cal Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3294
+value = "SR2 .50-Cal Rifle"
 
 [[row]]
 id = "GW-4948"
@@ -896,12 +896,12 @@ match_fields = { ability_id = 581 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4948 before the press"
+text = "the active bandolier weapon is Nenz 25S Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4948
+value = "Nenz 25S Rifle"
 
 [[row]]
 id = "GW-4954"
@@ -938,12 +938,12 @@ match_fields = { ability_id = 581 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4954 before the press"
+text = "the active bandolier weapon is Nenz 25S-II Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4954
+value = "Nenz 25S-II Rifle"
 
 [[row]]
 id = "GW-4957"
@@ -980,12 +980,12 @@ match_fields = { ability_id = 581 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4957 before the press"
+text = "the active bandolier weapon is Nenz 2500 Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4957
+value = "Nenz 2500 Rifle"
 
 [[row]]
 id = "GW-3313"
@@ -1022,12 +1022,12 @@ match_fields = { ability_id = 583 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3313 before the press"
+text = "the active bandolier weapon is Pump Shotgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3313
+value = "Pump Shotgun"
 
 [[row]]
 id = "GW-3320"
@@ -1064,12 +1064,12 @@ match_fields = { ability_id = 583 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3320 before the press"
+text = "the active bandolier weapon is Semi Auto Shotgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3320
+value = "Semi Auto Shotgun"
 
 [[row]]
 id = "GW-4928"
@@ -1106,12 +1106,12 @@ match_fields = { ability_id = 583 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4928 before the press"
+text = "the active bandolier weapon is Combat Shotgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4928
+value = "Combat Shotgun"
 
 [[row]]
 id = "GW-4933"
@@ -1148,12 +1148,12 @@ match_fields = { ability_id = 583 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4933 before the press"
+text = "the active bandolier weapon is Assault Shotgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4933
+value = "Assault Shotgun"
 
 [[row]]
 id = "GW-4937"
@@ -1190,12 +1190,12 @@ match_fields = { ability_id = 583 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4937 before the press"
+text = "the active bandolier weapon is Strike Shotgun before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4937
+value = "Strike Shotgun"
 
 [[row]]
 id = "GW-2797"
@@ -1232,12 +1232,12 @@ match_fields = { ability_id = 584 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "GW-3478"
@@ -1274,9 +1274,9 @@ match_fields = { ability_id = 584 }
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3478 before the press"
+text = "the active bandolier weapon is Venom Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3478
+value = "Venom Staff"

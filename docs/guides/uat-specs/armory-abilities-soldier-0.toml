@@ -82,12 +82,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Soldier-717"
@@ -128,12 +128,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3145 before the press"
+text = "the active bandolier weapon is AR 21 Assault Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3145
+value = "AR 21 Assault Rifle"
 
 [[row]]
 id = "Soldier-715"
@@ -206,12 +206,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Soldier-714"
@@ -284,12 +284,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3145 before the press"
+text = "the active bandolier weapon is AR 21 Assault Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3145
+value = "AR 21 Assault Rifle"
 
 [[row]]
 id = "Soldier-719"
@@ -362,12 +362,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Soldier-718"
@@ -408,12 +408,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Soldier-720"
@@ -454,12 +454,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3145 before the press"
+text = "the active bandolier weapon is AR 21 Assault Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3145
+value = "AR 21 Assault Rifle"
 
 [[row]]
 id = "Soldier-713"
@@ -500,12 +500,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Soldier-723"
@@ -578,12 +578,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Soldier-1474"
@@ -624,12 +624,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3145 before the press"
+text = "the active bandolier weapon is AR 21 Assault Rifle before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3145
+value = "AR 21 Assault Rifle"
 
 [[row]]
 id = "Soldier-867"
@@ -702,12 +702,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Soldier-1879"
@@ -748,12 +748,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 55 before the press"
+text = "the active bandolier weapon is SI 3 9mm Pistol before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 55
+value = "SI 3 9mm Pistol"
 
 [[row]]
 id = "Soldier-1446"
@@ -827,12 +827,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Soldier-1445"
@@ -905,12 +905,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Soldier-1477"
@@ -951,9 +951,9 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 21 before the press"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 21
+value = "SGHC 6 SMG"

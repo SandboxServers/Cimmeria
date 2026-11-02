@@ -426,12 +426,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4458 before the press"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4458
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-2795"
@@ -472,12 +472,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4458 before the press"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4458
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-2823"
@@ -518,12 +518,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4458 before the press"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4458
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-2827"
@@ -564,12 +564,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4458 before the press"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4458
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-2846"
@@ -610,12 +610,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4458 before the press"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4458
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-2839"
@@ -687,12 +687,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3904 before the press"
+text = "the active bandolier weapon is Shriek Zat'ni'katel before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3904
+value = "Shriek Zat'ni'katel"
 
 [[row]]
 id = "Goauld-2069"
@@ -733,12 +733,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3904 before the press"
+text = "the active bandolier weapon is Shriek Zat'ni'katel before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3904
+value = "Shriek Zat'ni'katel"
 
 [[row]]
 id = "Goauld-2826"

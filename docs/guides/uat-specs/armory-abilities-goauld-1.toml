@@ -80,12 +80,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4458 before the press"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4458
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-1627"
@@ -126,12 +126,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4458 before the press"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4458
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-1629"
@@ -265,12 +265,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Goauld-1482"
@@ -312,12 +312,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Goauld-1626"
@@ -358,12 +358,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Goauld-2660"
@@ -594,12 +594,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4458 before the press"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4458
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-2717"
@@ -641,12 +641,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4458 before the press"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4458
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-2715"
@@ -688,12 +688,12 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 2797 before the press"
+text = "the active bandolier weapon is Serpent Staff before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 2797
+value = "Serpent Staff"
 
 [[row]]
 id = "Goauld-2694"
@@ -734,12 +734,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4458 before the press"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4458
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-2716"
@@ -845,9 +845,9 @@ since = "press"
 required = false
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4458 before the press"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4458
+value = "Discharge Ribbon Device"

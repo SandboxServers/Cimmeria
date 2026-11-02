@@ -176,12 +176,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3334 before the press"
+text = "the active bandolier weapon is Heavy Combat Knife before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3334
+value = "Heavy Combat Knife"
 
 [[row]]
 id = "Goauld-1625"
@@ -317,12 +317,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3334 before the press"
+text = "the active bandolier weapon is Heavy Combat Knife before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3334
+value = "Heavy Combat Knife"
 
 [[row]]
 id = "Goauld-2858"
@@ -363,12 +363,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3334 before the press"
+text = "the active bandolier weapon is Heavy Combat Knife before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3334
+value = "Heavy Combat Knife"
 
 [[row]]
 id = "Goauld-1621"
@@ -409,12 +409,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3334 before the press"
+text = "the active bandolier weapon is Heavy Combat Knife before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3334
+value = "Heavy Combat Knife"
 
 [[row]]
 id = "Goauld-2859"
@@ -519,12 +519,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3334 before the press"
+text = "the active bandolier weapon is Heavy Combat Knife before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3334
+value = "Heavy Combat Knife"
 
 [[row]]
 id = "Goauld-2857"
@@ -565,12 +565,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3334 before the press"
+text = "the active bandolier weapon is Heavy Combat Knife before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3334
+value = "Heavy Combat Knife"
 
 [[row]]
 id = "Goauld-2863"
@@ -675,12 +675,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3334 before the press"
+text = "the active bandolier weapon is Heavy Combat Knife before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3334
+value = "Heavy Combat Knife"
 
 [[row]]
 id = "Goauld-866"
@@ -753,12 +753,12 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 4458 before the press"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 4458
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-2868"
@@ -831,9 +831,9 @@ event = "client.ability.applied"
 since = "press"
 [[row.expect]]
 id = "armed"
-text = "the active bandolier weapon is item 3334 before the press"
+text = "the active bandolier weapon is Heavy Combat Knife before the press"
 source = "tool"
 tool = "@player_state"
-pointer = "/ammo/weapon_item_id"
+pointer = "/ammo/weapon"
 op = "eq"
-value = 3334
+value = "Heavy Combat Knife"
