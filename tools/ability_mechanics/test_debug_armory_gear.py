@@ -18,12 +18,21 @@ def _parse(text: str) -> dict:
 
 
 class WeaponRowTest(unittest.TestCase):
-    def test_bound_weapon_expects_its_ranged_send(self):
+    def test_bound_weapon_expects_its_ability_launched_in_signoz(self):
         row = gear.weapon_row(3753, "Cobra Staff", 584)
-        self.assertIn('event = "client.ability.sent"', row)
-        self.assertIn("match_fields = { ability_id = 584 }", row)
-        self.assertIn('since = "press"', row)
+        self.assertIn('source = "signoz"', row)
+        self.assertIn("event = 'ability_launched' AND ability_id = 584", row)
+        self.assertIn("player_name CONTAINS '${character}'", row)
+        self.assertIn("min_rows = 1", row)
         self.assertNotIn("weapon_unbound", row)
+
+    def test_bound_weapon_has_no_client_ability_sent_clause(self):
+        # Revert proof: the right-click is an interact, so a client_event sent clause can never pass (DR-L2 round 2).
+        row = gear.weapon_row(3753, "Cobra Staff", 584)
+        self.assertNotIn('source = "client_event"', row)
+        self.assertNotIn("client.ability.sent", row)
+        self.assertNotIn("match_fields", row)
+        self.assertNotIn('since = "press"', row)
 
     def test_unbound_weapon_expects_the_signoz_gap_line(self):
         row = gear.weapon_row(3754, "Plain Club", None)
@@ -183,7 +192,8 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(data["schema"], 1)
         self.assertEqual(data["section"]["id"], "armory-gear-test")
         self.assertEqual([r["id"] for r in data["row"]], ["GW-3753", "GW-3754", "GA-77"])
-        self.assertEqual(data["row"][0]["expect"][0]["event"], "client.ability.sent")
+        self.assertEqual(data["row"][0]["expect"][0]["source"], "signoz")
+        self.assertIn("ability_launched", data["row"][0]["expect"][0]["filter"])
         self.assertEqual(data["row"][2]["expect"][0]["source"], "human")
 
     def test_section_skips_the_intro_wait_and_the_first_row_holds_the_login(self):

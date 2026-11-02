@@ -23,7 +23,7 @@ finish_intro = false
 [[row]]
 id = "GW-3128"
 title = "Test Weapon fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 559."
+expected = "The right-click launches ability 559 on the server."
 setup = [
   { wait_ms = 17000 },
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
@@ -48,12 +48,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 559 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 559 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 559 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 559 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is Test Weapon before the press"
@@ -108,7 +107,7 @@ value = "P-90 of the Whale 2"
 [[row]]
 id = "GW-5680"
 title = "Rekkr Attack Program fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 1216."
+expected = "The right-click launches ability 1216 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -132,12 +131,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 1216 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 1216 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 1216 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 1216 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is Rekkr Attack Program before the press"
@@ -150,7 +148,7 @@ value = "Rekkr Attack Program"
 [[row]]
 id = "GW-5686"
 title = "Valkyrie Attack Program fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 1216."
+expected = "The right-click launches ability 1216 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -174,12 +172,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 1216 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 1216 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 1216 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 1216 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is Valkyrie Attack Program before the press"
@@ -192,7 +189,7 @@ value = "Valkyrie Attack Program"
 [[row]]
 id = "GW-5692"
 title = "Einherjar Attack Program fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 1216."
+expected = "The right-click launches ability 1216 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -216,12 +213,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 1216 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 1216 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 1216 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 1216 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is Einherjar Attack Program before the press"
@@ -234,7 +230,7 @@ value = "Einherjar Attack Program"
 [[row]]
 id = "GW-5695"
 title = "Mjolnir Attack Program fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 1216."
+expected = "The right-click launches ability 1216 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -258,12 +254,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 1216 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 1216 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 1216 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 1216 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is Mjolnir Attack Program before the press"
@@ -276,7 +271,7 @@ value = "Mjolnir Attack Program"
 [[row]]
 id = "GW-3145"
 title = "AR 21 Assault Rifle fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 559."
+expected = "The right-click launches ability 559 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -300,12 +295,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 559 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 559 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 559 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 559 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is AR 21 Assault Rifle before the press"
@@ -318,7 +312,7 @@ value = "AR 21 Assault Rifle"
 [[row]]
 id = "GW-3169"
 title = "AR 21A Assault Rifle fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 559."
+expected = "The right-click launches ability 559 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -342,12 +336,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 559 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 559 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 559 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 559 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is AR 21A Assault Rifle before the press"
@@ -360,7 +353,7 @@ value = "AR 21A Assault Rifle"
 [[row]]
 id = "GW-4774"
 title = "AR 21A TACMOD Assault Rifle fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 559."
+expected = "The right-click launches ability 559 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -384,12 +377,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 559 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 559 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 559 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 559 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is AR 21A TACMOD Assault Rifle before the press"
@@ -402,7 +394,7 @@ value = "AR 21A TACMOD Assault Rifle"
 [[row]]
 id = "GW-4780"
 title = "AR 200 Assault Rifle fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 559."
+expected = "The right-click launches ability 559 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -426,12 +418,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 559 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 559 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 559 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 559 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is AR 200 Assault Rifle before the press"
@@ -444,7 +435,7 @@ value = "AR 200 Assault Rifle"
 [[row]]
 id = "GW-4783"
 title = "ACR 200 Assault Rifle fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 559."
+expected = "The right-click launches ability 559 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -468,12 +459,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 559 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 559 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 559 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 559 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is ACR 200 Assault Rifle before the press"
@@ -486,7 +476,7 @@ value = "ACR 200 Assault Rifle"
 [[row]]
 id = "GW-21"
 title = "SGHC 6 SMG fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 559."
+expected = "The right-click launches ability 559 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -510,12 +500,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 559 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 559 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 559 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 559 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is SGHC 6 SMG before the press"
@@ -528,7 +517,7 @@ value = "SGHC 6 SMG"
 [[row]]
 id = "GW-3138"
 title = "SGHC 6 AP SMG fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 559."
+expected = "The right-click launches ability 559 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -552,12 +541,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 559 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 559 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 559 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 559 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is SGHC 6 AP SMG before the press"
@@ -570,7 +558,7 @@ value = "SGHC 6 AP SMG"
 [[row]]
 id = "GW-4695"
 title = "SGHC 7 SMG fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 559."
+expected = "The right-click launches ability 559 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -594,12 +582,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 559 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 559 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 559 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 559 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is SGHC 7 SMG before the press"
@@ -612,7 +599,7 @@ value = "SGHC 7 SMG"
 [[row]]
 id = "GW-4701"
 title = "SGHC X SMG fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 559."
+expected = "The right-click launches ability 559 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -636,12 +623,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 559 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 559 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 559 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 559 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is SGHC X SMG before the press"
@@ -654,7 +640,7 @@ value = "SGHC X SMG"
 [[row]]
 id = "GW-4705"
 title = "SGHC Gauss SMG fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 559."
+expected = "The right-click launches ability 559 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -678,12 +664,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 559 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 559 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 559 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 559 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is SGHC Gauss SMG before the press"
@@ -696,7 +681,7 @@ value = "SGHC Gauss SMG"
 [[row]]
 id = "GW-5094"
 title = "Rak'tel fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 740."
+expected = "The right-click launches ability 740 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -720,12 +705,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 740 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 740 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 740 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 740 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is Rak'tel before the press"
@@ -906,7 +890,7 @@ value = "Molecular Combat Knife"
 [[row]]
 id = "GW-3584"
 title = "CO2 Pistol Dartgun fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 1086."
+expected = "The right-click launches ability 1086 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -930,12 +914,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 1086 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 1086 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 1086 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 1086 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
@@ -948,7 +931,7 @@ value = "CO2 Pistol Dartgun"
 [[row]]
 id = "GW-3591"
 title = "CO2 Rifle Dartgun fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 1086."
+expected = "The right-click launches ability 1086 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -972,12 +955,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 1086 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 1086 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 1086 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 1086 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is CO2 Rifle Dartgun before the press"
@@ -990,7 +972,7 @@ value = "CO2 Rifle Dartgun"
 [[row]]
 id = "GW-5025"
 title = "CO2 Semi Auto Dartgun fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 1086."
+expected = "The right-click launches ability 1086 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -1014,12 +996,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 1086 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 1086 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 1086 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 1086 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is CO2 Semi Auto Dartgun before the press"
@@ -1032,7 +1013,7 @@ value = "CO2 Semi Auto Dartgun"
 [[row]]
 id = "GW-5034"
 title = "CO2 ACR Dartgun fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 1086."
+expected = "The right-click launches ability 1086 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -1056,12 +1037,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 1086 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 1086 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 1086 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 1086 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is CO2 ACR Dartgun before the press"
@@ -1074,7 +1054,7 @@ value = "CO2 ACR Dartgun"
 [[row]]
 id = "GW-5037"
 title = "Gauss Dartgun fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 1086."
+expected = "The right-click launches ability 1086 on the server."
 setup = [
   { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
   { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
@@ -1098,12 +1078,11 @@ teardown = [
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 1086 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 1086 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 1086 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 1086 AND player_name CONTAINS '${character}'"
+min_rows = 1
 [[row.expect]]
 id = "armed"
 text = "the active bandolier weapon is Gauss Dartgun before the press"

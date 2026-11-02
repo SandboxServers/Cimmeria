@@ -151,6 +151,10 @@ These agents skip CLAUDE.md; this list is their rule set.
 - **Change:** the `armed` pointer is `/ammo/weapon`, and its value and text use the item name, in `debug_armory_specs.py` `ability_row` and `debug_armory_gear.py` `weapon_row`; tests and 13 armory TOMLs regenerated.
 - **Full spec:** [worknotes/canary.md#c1b-armed-fails-on-598716717-because-it-compares-a-design-id-with-an-instance-id](worknotes/canary.md#c1b-armed-fails-on-598716717-because-it-compares-a-design-id-with-an-instance-id).
 
+### DR-07j: gear weapon rows grade the server (canary round 2 fix)
+
+- **Agent:** packet-coder. **Host:** windows. **Worktree:** `dr-lab`, branch `lab/dr-lab`. **Commit:** `fix(uat): grade bound gear weapon rows on SigNoz ability_launched, not client.ability.sent (DR-07j)`. **Why:** the right-click is an `interact`, never a `useAbility`, so `client.ability.sent` cannot match on a gear weapon (DR-L2 round 2). **Change:** `debug_armory_gear.py` `weapon_row` replaces the bound rows' `sent` clause with a SigNoz `ability_launched` clause for that ability; unbound rows keep `weapon_unbound`; tests and the gear TOMLs regenerated. **Full spec:** [results/DR-L2-canary.md § Round 2](results/DR-L2-canary.md).
+
 ### DR-08: brief for DR-L1
 
 - **Agent:** documentation-writer. **Host:** windows. **Worktree:** `dr-08`, branch `debug-armory/DR-08-brief`. **Commit:** `docs(debug-armory): DR-L1 brief (DR-08)`.

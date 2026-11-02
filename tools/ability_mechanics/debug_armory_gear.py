@@ -4,7 +4,7 @@
 ``armory-gear-weapons.toml`` and ``armory-gear-armor.toml`` (LF, Soldier ``sgu``
 fresh), split at 30 rows (one file, one fresh character, at most 30 grants into the 40-slot main bag) as ``-1``, ``-2``. The representatives are the ones
 ``representatives()`` stocks. A weapon with a RANGED binding expects its
-ability's ``client.ability.sent``; an unbound one expects ``weapon_unbound``
+ability's SigNoz ``ability_launched`` (the right-click is an ``interact``, never a ``useAbility``, so no ``client.ability.sent`` can match); an unbound one expects ``weapon_unbound``
 (F8: the gap is measured, not failed). A weapon row resets bandolier slot 1, equips into it, selects it with F1 and asserts the active weapon (`armed`, DR-07h). An armor row equips its piece and reads
 the character sheet; the only server line is the DEBUG ``Inventory move persisted``, so that clause is optional.
 """
@@ -40,8 +40,8 @@ ROWS_PER_FILE = 30
 DUMMY_TEMPLATE = 1310
 # The first-login cinematic hold (the 16 s first-login hold, plus margin): each gear file's first row is a fresh character's first chat, so it waits this out before the give.
 FIRST_LOGIN_HOLD = "  { wait_ms = 17000 },"
-# The ability log's target and the event that names an unbound weapon (hostile_attack.rs, refuse_no_ranged_attack).
-UNBOUND_SCOPE = "abilities"
+# The ability log's scope: the event that names an unbound weapon (hostile_attack.rs, refuse_no_ranged_attack) and the ability_launched a bound one emits.
+ABILITY_SCOPE = "abilities"
 # The teardown clear. It fails in every gear row ("no rendered entity matches" for the player), so it is optional (DR-07g).
 CLEAR_EFFECTS = '{ tool = "@clear_effects", args = { name = "${character}" }, optional = true }'
 SECTION_TAIL = """
@@ -117,22 +117,26 @@ def weapon_row(item_id: int, name: str, ability_id: Optional[int]) -> str:
             'source = "signoz"',
             "filter = "
             + tstr(
-                f"scope_name = '{UNBOUND_SCOPE}' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' "
+                f"scope_name = '{ABILITY_SCOPE}' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' "
                 f"AND item_type_id = {item_id} AND player_name CONTAINS '${{character}}'"
             ),
             "min_rows = 1",
         ]
     else:
         title = f"{name} fires its ranged ability on a right-click"
-        expected = f"The right-click leaves the client as ability {ability_id}."
+        expected = f"The right-click launches ability {ability_id} on the server."
+        # The right-click is an interact, so client.ability.sent never fires for it; the server's ability_launched is the proof.
         clause = [
             "[[row.expect]]",
-            'id = "sent"',
-            f"text = {tstr(f'the right-click sends ability {ability_id} (RANGED binding)')}",
-            'source = "client_event"',
-            'event = "client.ability.sent"',
-            f"match_fields = {_inline([('ability_id', str(ability_id))])}",
-            'since = "press"',
+            'id = "launched"',
+            f"text = {tstr(f'the right-click launches ability {ability_id} (RANGED binding)')}",
+            'source = "signoz"',
+            "filter = "
+            + tstr(
+                f"scope_name = '{ABILITY_SCOPE}' AND event = 'ability_launched' AND ability_id = {ability_id} "
+                f"AND player_name CONTAINS '${{character}}'"
+            ),
+            "min_rows = 1",
         ]
     # The active weapon must be this row's weapon before the press, so a wrong one fails here by name (DR-07h).
     clause += [
