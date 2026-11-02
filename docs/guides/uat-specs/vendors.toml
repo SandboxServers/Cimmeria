@@ -1,8 +1,9 @@
-# Unified UAT, section "vendors" (starter-world shops, rows V1 to V7).
-# Campaign: docs/analysis/starter-uat-shops/README.md (packet SS-03a).
-# Scope: open, buy, sell, buyback and the refusal lines of the vendors a new
-# character meets first. The rows run in the Debug Area plaza (world 1300),
-# where the same templates stand, as the debug-area.toml rows do.
+# Unified UAT, section "vendors" (starter-world shops, rows V1 to V12).
+# Campaign: docs/analysis/starter-uat-shops/README.md (packets SS-03a and SS-03b).
+# Scope: open, buy, sell, buyback, repair, recharge, the trainer, the distance
+# check and the refusal lines of the vendors a new character meets first. The
+# rows run in the Debug Area plaza (world 1300), where the same templates
+# stand, as the debug-area.toml rows do.
 #
 # How a row is built: every row starts with the DA-U6 setup
 # (debug-area.toml:260-262): `.gotolocation DebugArea`, then wait for world
@@ -17,7 +18,7 @@
 # captured by item name, so a row never names a slot by hand.
 #
 # Seed citations sit above each row. Each was re-checked at SS-03a against
-# db/resources/. Vendor-row ids (V1 to V7) match the packet, not the seed.
+# db/resources/. Vendor-row ids (V1 to V12) match the packet, not the seed.
 #
 # Cash: read with `client_inventory` (`/cash`) before the action and compared
 # with `op = "delta"` after it. The server's own cash_before and cash_after are
@@ -361,3 +362,149 @@ text = "SigNoz: refused with reason vendor_buys_nothing, template 314"
 source = "signoz"
 filter = "scope_name = 'vendor' AND event = 'refused' AND vendor_template_id = 314 AND reason = 'vendor_buys_nothing'"
 min_rows = 1
+
+# ================================================================ Repair and recharge
+
+# Template 300 repairs from list 2 and recharges from list 2
+# (entity_templates.sql:1011; the repair and recharge lists are columns 3 and
+# 4 of the same row). Repair writes the action "repair" (paid_repair/mod.rs:49);
+# recharge writes "recharge" (paid_recharge/mod.rs:49). store-paths.md section 3
+# finds no in-game or GM way to lower durability or drain charge, and
+# /gmrechargeitem only raises charge (docs/commands.md). So both rows are
+# blocked under D-SS3 and carry no steps. They stay written so they run once
+# a way to wear or drain an item exists.
+[[row]]
+id = "V8"
+title = "The Quartermaster repairs a worn item"
+expected = "The repair is paid and the server logs a repair transaction for template 300."
+blocked = "no in-game way to wear an item (D-SS3)"
+[[row.expect]]
+id = "transaction"
+text = "SigNoz: transaction action repair, template 300"
+source = "signoz"
+filter = "scope_name = 'vendor' AND event = 'transaction' AND vendor_template_id = 300 AND action = 'repair'"
+min_rows = 1
+
+[[row]]
+id = "V9"
+title = "The Quartermaster recharges a drained item"
+expected = "The recharge is paid and the server logs a recharge transaction for template 300."
+blocked = "no in-game way to drain an item's charge (D-SS3)"
+[[row.expect]]
+id = "transaction"
+text = "SigNoz: transaction action recharge, template 300"
+source = "signoz"
+filter = "scope_name = 'vendor' AND event = 'transaction' AND vendor_template_id = 300 AND action = 'recharge'"
+min_rows = 1
+
+# ================================================================ Trainer
+
+# Template 301, Archetype Skills Trainer: interaction_type 128 and
+# trainer_ability_list_id 1 (entity_templates.sql:1019). Plaza spawn 13002,
+# DebugArea_Trainer, at spawnlist_debug_area_plaza.sql:43. The setup stands
+# where DA-U5 stands (debug-area.toml:229). A level-1 start has 1 training
+# point (crates/base/src/base/character_create/mod.rs:540), which V10 spends.
+# The step trains Quick Burst (598), Tab1 button 1, the Soldier's Automatic
+# Weapons root (archetype_ability_tree.sql, ledger row 43). It is unverified
+# until the first lab run.
+[[row]]
+id = "V10"
+title = "The Archetype Skills Trainer teaches one ability the character lacks"
+expected = "The trainer window opens. Choosing an ability the character lacks spends one training point, and the server logs train_requested then train_persisted."
+setup = [
+  { chat = ".gotolocation DebugArea 257 7.2 -928", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Archetype Skills Trainer", button = "right", expect = "window" }, label = "click" },
+  { wait_ms = 2000 },
+  { tool = "client_window_read", args = { window = "AbilityWin" }, label = "read-tree" },
+  { tool = "client_window_click", args = { target = "Ability_Tab1" }, tier = "N1", label = "tab" },
+  { wait_ms = 600 },
+  { tool = "client_window_click", args = { target = "Ability_Button1" }, tier = "N1", label = "train" },
+  { wait_ms = 2000 },
+]
+[[row.expect]]
+id = "opened"
+text = "SigNoz: trainer_open for template 301"
+source = "signoz"
+filter = "event = 'trainer_open' AND trainer_template_id = 301"
+min_rows = 1
+[[row.expect]]
+id = "requested"
+text = "SigNoz: train_requested for the chosen ability"
+source = "signoz"
+filter = "event = 'train_requested' AND ability_id = 598"
+min_rows = 1
+[[row.expect]]
+id = "persisted"
+text = "SigNoz: train_persisted for the chosen ability"
+source = "signoz"
+filter = "event = 'train_persisted' AND ability_id = 598"
+min_rows = 1
+
+# Same trainer, no training point left. The server refuses with train_rejected
+# reason not_enough_points (train.rs:289-302; predicate.rs:128) and the client
+# would get ErrorCodeID 35 (train_feedback.rs:41 and :69-70), but the stock client
+# filters a press on a greyed node, so no request reaches the server
+# (haiku-lab-uat ledger rows 44 and 49). Blocked until a way to send the request
+# exists.
+[[row]]
+id = "V11"
+title = "The trainer refuses an ability when the character has no training points"
+expected = "The train is refused with reason not_enough_points. No ability is granted, and the client shows the locked-node error."
+depends_on = ["V10"]
+blocked = "the client drops a press on a locked node, so a stock client never sends the train request that not_enough_points refuses (haiku-lab-uat ledger rows 44 and 49)"
+[[row.expect]]
+id = "refused"
+text = "SigNoz: train_rejected with reason not_enough_points"
+source = "signoz"
+filter = "event = 'train_rejected' AND reason = 'not_enough_points'"
+min_rows = 1
+[[row.expect]]
+id = "popup"
+text = "the locked-node error popup is shown"
+source = "human"
+question = "In final.png, does the client show an error popup for the locked ability, and is the ability still not known?"
+
+# ================================================================ Distance
+
+# Template 300 at plaza spawn 13001, DebugArea_Vendor, at (262.14, 6.99,
+# -925.72) (spawnlist_debug_area_plaza.sql:45). The store opens from the stand
+# point (259, 7.2, -925), then the character walks 30 m east to (292.14, 7.2,
+# -925.72). The buy is refused by the cell's range check
+# (store_ops.rs:162-183: reason out_of_range at :175, the line
+# TOO_FAR_TEXT = "You are too far from the vendor." at store_ops.rs:28). The
+# range check runs before the price, so the row needs no cash. The walk target
+# is 30 m on from the spawn and is unverified: the first lab run confirms it is
+# walkable and that the store window stays open after the walk.
+[[row]]
+id = "V12"
+title = "The Quartermaster refuses a purchase from 30 m away"
+expected = "The buy is refused with reason out_of_range and the line 'You are too far from the vendor.'. Nothing is bought."
+setup = [
+  { chat = ".gotolocation DebugArea 259 7.2 -925", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 3000 },
+]
+step = [
+  { tool = "@world_click", args = { name = "Basic Equipment Quartermaster", button = "right", expect = "window" }, label = "click" },
+  { wait_ms = 2000 },
+  { tool = "client_move_to", args = { point = { x = 292.14, y = 7.2, z = -925.72 } }, tier = "N1", label = "walk" },
+  { wait_ms = 3000 },
+  { tool = "client_vendor_buy", args = { row = 1, quantity = 1 }, label = "buy" },
+  { wait_ms = 1500 },
+]
+[[row.expect]]
+id = "refused"
+text = "SigNoz: refused with reason out_of_range, action buy"
+source = "signoz"
+filter = "scope_name = 'vendor' AND event = 'refused' AND action = 'buy' AND reason = 'out_of_range'"
+min_rows = 1
+[[row.expect]]
+id = "line"
+text = "chat: 'You are too far from the vendor.'"
+source = "chat"
+since = "buy"
+matches = 'You are too far from the vendor\.'
