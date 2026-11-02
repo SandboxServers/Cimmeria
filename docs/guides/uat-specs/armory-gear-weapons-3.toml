@@ -1,0 +1,384 @@
+# Unified UAT, section "armory-gear-weapons-3" (Debug Area Armory gear, DR-07).
+# Written by: python tools/ability_mechanics/debug_armory.py specs gear --out-dir docs/guides/uat-specs
+# Generated: do not hand-edit; rerun the command. Campaign: docs/analysis/debug-armory/README.md.
+# One file is one run on its own fresh character: at most 30 rows, so its grants fit the 40-slot main bag. Never merge split files into one run.
+
+schema = 1
+
+[section]
+id = "armory-gear-weapons-3"
+system = "Debug Area Armory gear (weapons)"
+guide = "docs/guides/unified-uat.md#debug-area"
+ledger = "docs/analysis/debug-armory/README.md"
+account = "gm"
+character = "fresh"
+
+[section.fresh]
+alignment = "sgu"
+archetype = "Soldier"
+gender = "male"
+first = "Uat"
+
+[[row]]
+id = "GW-3753"
+title = "Cobra Staff fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 584."
+setup = [
+  { chat = "/gmgiveitem 3753 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Cobra Staff" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 584 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 584 }
+since = "press"
+
+[[row]]
+id = "GW-3760"
+title = "Asp Staff fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 584."
+setup = [
+  { chat = "/gmgiveitem 3760 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Asp Staff" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 584 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 584 }
+since = "press"
+
+[[row]]
+id = "GW-8342"
+title = "Lightning Staff Weapon fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 584."
+setup = [
+  { chat = "/gmgiveitem 8342 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Lightning Staff Weapon" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 584 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 584 }
+since = "press"
+
+[[row]]
+id = "GW-3904"
+title = "Shriek Zat'ni'katel fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1414."
+setup = [
+  { chat = "/gmgiveitem 3904 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Shriek Zat'ni'katel" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1414 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1414 }
+since = "press"
+
+[[row]]
+id = "GW-3916"
+title = "Clarion Zat'ni'katel fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1414."
+setup = [
+  { chat = "/gmgiveitem 3916 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Clarion Zat'ni'katel" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1414 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1414 }
+since = "press"
+
+[[row]]
+id = "GW-3924"
+title = "Stentorian Zat'ni'katel fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1414."
+setup = [
+  { chat = "/gmgiveitem 3924 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Stentorian Zat'ni'katel" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1414 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1414 }
+since = "press"
+
+[[row]]
+id = "GW-3937"
+title = "Bolt Zat'ni'katel fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1414."
+setup = [
+  { chat = "/gmgiveitem 3937 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Bolt Zat'ni'katel" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1414 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1414 }
+since = "press"
+
+[[row]]
+id = "GW-8345"
+title = "NO ITEM NAME fires its ranged ability on a right-click"
+expected = "The right-click leaves the client as ability 1414."
+setup = [
+  { chat = "/gmgiveitem 8345 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "NO ITEM NAME" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "sent"
+text = "the right-click sends ability 1414 (RANGED binding)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1414 }
+since = "press"
+
+[[row]]
+id = "GW-6480"
+title = "Baby Mongoose Flamethrower has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { wait_ms = 10500 },
+  { chat = "/gmgiveitem 6480 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Baby Mongoose Flamethrower" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 6480, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 6480 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-6482"
+title = "Mongoose Flamethrower has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { wait_ms = 10500 },
+  { chat = "/gmgiveitem 6482 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Mongoose Flamethrower" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 6482, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 6482 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-6514"
+title = "Papa Mongoose Flamethrower has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { wait_ms = 10500 },
+  { chat = "/gmgiveitem 6514 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Papa Mongoose Flamethrower" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 6514, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 6514 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-6520"
+title = "Polecat Flamethrower has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { wait_ms = 10500 },
+  { chat = "/gmgiveitem 6520 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Polecat Flamethrower" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 6520, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 6520 AND player_name CONTAINS '${character}'"
+min_rows = 1
+
+[[row]]
+id = "GW-6523"
+title = "Papa Polecat Flamethrower has no ranged binding (F8): the right-click is refused"
+expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
+setup = [
+  { wait_ms = 10500 },
+  { chat = "/gmgiveitem 6523 1", tier = "G" },
+  { tool = "@item_action", args = { action = "equip", name = "Papa Polecat Flamethrower" } },
+  { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" } },
+]
+[[row.expect]]
+id = "unbound"
+text = "SigNoz: weapon_unbound for item 6523, reason no_ranged_attack (a measured gap, PASS on this line)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 6523 AND player_name CONTAINS '${character}'"
+min_rows = 1

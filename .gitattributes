@@ -21,6 +21,8 @@ data/spaces/*.occ binary
 
 # Lab record golden (LR-05): the transform's exact output, compared byte for byte.
 crates/lab/src/uat/record/fixtures/*.toml text eol=lf
+# Generated Armory lab specs (DR-06, DR-07): the generators write LF and tests compare bytes.
+docs/guides/uat-specs/armory-*.toml text eol=lf
 
 # Append-only lists: PRs add rows and rarely edit one in place, so two PRs that both
 # append conflict only because they touch the same end of the file. `union` keeps

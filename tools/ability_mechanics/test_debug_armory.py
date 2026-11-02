@@ -314,5 +314,23 @@ class LineEndingTest(unittest.TestCase):
         self.assertEqual(code, 1)
 
 
+class SpecsDispatchTest(unittest.TestCase):
+    """The one ``specs`` parser dispatches ``abilities`` and ``gear`` to their own writers."""
+
+    def test_specs_abilities_writes_ability_specs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, err = run_main(["specs", "abilities", "--out-dir", tmp])
+            self.assertEqual(code, 0, err)
+            written = list(Path(tmp).glob("armory-abilities-*.toml"))
+            self.assertTrue(written)
+
+    def test_specs_gear_writes_gear_specs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, err = run_main(["specs", "gear", "--out-dir", tmp])
+            self.assertEqual(code, 0, err)
+            written = list(Path(tmp).glob("armory-gear-*.toml"))
+            self.assertTrue(written)
+
+
 if __name__ == "__main__":
     unittest.main()
