@@ -38,13 +38,11 @@ mod live_db {
     /// Tree abilities the weapon-requirement audit lists as FAIL (no shipped
     /// weapon fits; weapon-requirement-audit.md:327-339). None has an Armory
     /// carrier, so the test expects exactly these misses.
-    const KNOWN_UNCOVERED: [i32; 4] = [
-        // 997 Full Mag: Dart Pistol, needs ITEM_Dart_Rifle (3257416555).
-        997, // 1246 Stealthed Strike, needs ITEM_Melee (3756430796).
-        1246, // 1250 Escape, needs ITEM_Stealth_{Chest,Feet,Hands,Head,Legs} (armor).
-        1250, // 1355 Lethal Strike, needs ITEM_Melee (3756430796).
-        1355,
-    ];
+    // 997 Full Mag: Dart Pistol, needs ITEM_Dart_Rifle (3257416555).
+    // 1246 Stealthed Strike, needs ITEM_Melee (3756430796).
+    // 1250 Escape, needs ITEM_Stealth_{Chest,Feet,Hands,Head,Legs} (armor).
+    // 1355 Lethal Strike, needs ITEM_Melee (3756430796).
+    const KNOWN_UNCOVERED: [i32; 4] = [997, 1246, 1250, 1355];
 
     /// Every Armory template the seed defines is spawned exactly once in
     /// world 1300, inside spawns 14110-14299. At least one exists (control).
