@@ -35,6 +35,7 @@ The frontmatter of each `.claude/agents/*.md` file sets how the agent runs. `mod
 | combat-systems-advisor | sonnet | - | - | Advisor for the combat pipeline: damage math, QR hit/crit/miss, abilities, cooldowns, effects, threat and aggro, ammo, death transitions. |
 | database-persistence | sonnet | - | - | PostgreSQL schema, seed and query work: persistent data, entity (de)serialization, transactions, under db/sgw/, db/resources/ or db/scripts/. |
 | documentation-writer | sonnet | - | - | Diátaxis-aware writer for reference docs, READMEs, runbooks, ADRs and doc sweeps; owns the Cimmeria Bible's writing apparatus and reviews docs. |
+| frame-describer | haiku | low | 8 | Describes lab screenshots blind: given image paths and neutral questions, reports what is visibly on screen in a fixed shape. |
 | game-archaeology-specialist | opus | - | - | Reverse-engineers 2009 SGW binaries (Ghidra, wire tracing) for intent and Rust mapping. |
 | hands-on | opus | - | - | Escape hatch: a full-tool session for one-off direct work (`claude --agent hands-on`) |
 | items-systems-advisor | sonnet | - | - | Advisor for items: inventory move/equip/stack, bandolier, ammo, loot, vendors, items_event_sets and UseInventoryItem. |

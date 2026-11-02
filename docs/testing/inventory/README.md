@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 17,213 |
-| Files with tests | 2,837 |
-| Gated in CI (every crate but CI's exclude list) | 14,633 |
-| Live-DB tests (`require_db_or_skip!` in the body) | 2,789 |
-| Inventory threshold (5% of the tests) | 861 |
+| Tests (`#[test]` / `#[tokio::test]`) | 17,552 |
+| Files with tests | 2,892 |
+| Gated in CI (every crate but CI's exclude list) | 14,635 |
+| Live-DB tests (`require_db_or_skip!` in the body) | 2,791 |
+| Inventory threshold (5% of the tests) | 878 |
 
 <!-- /gen:tests-totals -->
 
@@ -85,11 +85,11 @@ with no file in this directory yet.
 
 | Crate | Package | Tests | Files | Live-DB | In CI | Catalogue |
 |---|---|---:|---:|---:|---|---|
+| `crates/lab` | `cimmeria-lab` | 1,916 | 274 | 0 | no | none |
 | `crates/cell-content` | `cimmeria-cell-content` | 1,695 | 287 | 1,229 | yes | none |
-| `crates/lab` | `cimmeria-lab` | 1,626 | 227 | 0 | no | none |
 | `crates/lab-cli` | `cimmeria-lab-cli` | 1,202 | 108 | 0 | yes | none |
 | `crates/cell-combat` | `cimmeria-cell-combat` | 942 | 172 | 51 | yes | none |
-| `crates/client-telemetry` | `cimmeria-client-telemetry` | 836 | 150 | 0 | no | none |
+| `crates/client-telemetry` | `cimmeria-client-telemetry` | 883 | 157 | 0 | no | none |
 | `crates/cell-world` | `cimmeria-cell-world` | 741 | 141 | 94 | yes | none |
 | `crates/cell` | `cimmeria-cell` | 702 | 166 | 27 | yes | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 685 | 149 | 481 | yes | none |
@@ -107,7 +107,7 @@ with no file in this directory yet.
 | `crates/base-crafting` | `cimmeria-base-crafting` | 323 | 59 | 142 | yes | none |
 | `crates/base-world-entry` | `cimmeria-base-world-entry` | 315 | 77 | 55 | yes | none |
 | `crates/base` | `cimmeria-base` | 306 | 63 | 20 | yes | none |
-| `crates/cell-catalog` | `cimmeria-cell-catalog` | 291 | 79 | 189 | yes | none |
+| `crates/cell-catalog` | `cimmeria-cell-catalog` | 293 | 80 | 191 | yes | none |
 | `crates/resources` | `cimmeria-resources` | 284 | 49 | 3 | yes | none |
 | `crates/identity` | `cimmeria-identity` | 248 | 51 | 106 | yes | none |
 | `crates/cell-interactions` | `cimmeria-cell-interactions` | 220 | 38 | 1 | yes | none |

@@ -38,52 +38,52 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,812<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
-| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Documentation files | <!-- gen:docs-md-count -->1,808<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,213<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,837<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,633<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->2,789<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,552<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,892<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,635<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,791<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,552<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,892<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,635<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,791<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,552<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,892<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,635<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,791<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,552<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,892<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,635<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,791<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,552<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,892<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,635<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,791<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,552<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,892<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,635<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,791<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,552<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,892<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,635<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,791<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,552<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,892<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,635<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,791<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,552<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,892<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,635<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,791<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,552<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,892<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,635<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,791<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,859<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->17,552<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,892<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->14,635<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,791<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
