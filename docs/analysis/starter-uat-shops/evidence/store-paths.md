@@ -48,7 +48,7 @@ None. A search of the non-test crates for durability or charge writes finds only
 - the recharge that sets `charges = ri.charges` (`vendor/paid_recharge/mod.rs:207`);
 - the grant that writes the initial values (`base-methods/.../inventory/grant/persist.rs`), and the lab fixture items.
 
-`/gmrechargeitem` (`docs/commands.md`) raises charge. The consumable use path removes one stack unit ("item used: one unit consumed" in the ledger), not charge. Combat (`cell-combat/.../damage/pipeline.rs`) does not touch durability. So nothing in-game or GM lowers durability or drains charge today. D-SS3 applies.
+`/gmrechargeitem` (`docs/commands.md`) raises charge. The consumable use path removes one stack unit ("item used: one unit consumed" in the ledger), not charge. Combat (`cell-combat/.../damage/pipeline.rs`) does not touch durability. So nothing in-game or GM lowers durability or drains charge today. D-SH3 applies.
 
 ## 4. Trainer (template 301)
 

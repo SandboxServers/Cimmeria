@@ -371,13 +371,13 @@ min_rows = 1
 # recharge writes "recharge" (paid_recharge/mod.rs:49). store-paths.md section 3
 # finds no in-game or GM way to lower durability or drain charge, and
 # /gmrechargeitem only raises charge (docs/commands.md). So both rows are
-# blocked under D-SS3 and carry no steps. They stay written so they run once
+# blocked under D-SH3 and carry no steps. They stay written so they run once
 # a way to wear or drain an item exists.
 [[row]]
 id = "V8"
 title = "The Quartermaster repairs a worn item"
 expected = "The repair is paid and the server logs a repair transaction for template 300."
-blocked = "no in-game way to wear an item (D-SS3)"
+blocked = "no in-game way to wear an item (D-SH3)"
 [[row.expect]]
 id = "transaction"
 text = "SigNoz: transaction action repair, template 300"
@@ -389,7 +389,7 @@ min_rows = 1
 id = "V9"
 title = "The Quartermaster recharges a drained item"
 expected = "The recharge is paid and the server logs a recharge transaction for template 300."
-blocked = "no in-game way to drain an item's charge (D-SS3)"
+blocked = "no in-game way to drain an item's charge (D-SH3)"
 [[row.expect]]
 id = "transaction"
 text = "SigNoz: transaction action recharge, template 300"

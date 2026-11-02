@@ -142,7 +142,7 @@ Expected server effect: `interact` then `trainer_open` for template 360.
 ## S9. Release and report
 
 Release the lease: `lab_lease_release {"lease_id":L}`, even after a failure or an early stop. Then write the report. Rows to report: D2-1, D2-2, D2-3, D2-4, D2-5, with the screenshot labels `D2-1-before-click`, `D2-1-after-click`, `D2-2-before-buy`, `D2-3-after-sell`, `D2-4-before-click`, `D2-4-after-click`, `D2-5-before-click`, `D2-5-after-click`.
-Not in this packet: the full-bags case, the buy of a second item, and any repair or recharge (the controls are unnamed: SS-01 section 2; graded BLOCKED by the verifier, D-SS3).
+Not in this packet: the full-bags case, the buy of a second item, and any repair or recharge (the controls are unnamed: SS-01 section 2; graded BLOCKED by the verifier, D-SH3).
 
 ---
 

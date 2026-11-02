@@ -1,6 +1,6 @@
 # Starter-world vendor coverage map (SS-04)
 
-> **Type:** campaign evidence (coverage map). **Audience:** the orchestrator, lomiada and the owner, who decide D-SS1.
+> **Type:** campaign evidence (coverage map). **Audience:** the orchestrator, lomiada and the owner, who decide D-SH1.
 > **Campaign:** [starter-uat-shops](README.md). **Packet:** SS-04. **Companions:** [work-packets.md](work-packets.md), [README.md](README.md), [contract § C7](../starter-uat-praxis/work-packets.md#c7-repo-rules-every-authoring-packet-carries).
 
 This map lists every vendor and trainer spawn in the fourteen starter worlds named by SS-04, and says which campaign row covers each one. It changes no seed and no spec. Counts come from the seed files, not from the client.
@@ -15,7 +15,7 @@ This map lists every vendor and trainer spawn in the fourteen starter worlds nam
 
 ## Table 1: every vendor and trainer spawn
 
-Lists are `buy / sell / repair / recharge` (list ids; `-` is NULL) and then `trainer list` where the template has one. Covered by uses README D-SS4: Castle hub to SP-DCA6; Omega to starter-uat-union UO-R5 (row ids from `docs/analysis/union-zone-planning/omega-packets/UO-U1.md`); stasis hub and Debug Area to this campaign's SS-D1 and SS-D2.
+Lists are `buy / sell / repair / recharge` (list ids; `-` is NULL) and then `trainer list` where the template has one. Covered by uses README D-SH4: Castle hub to SP-DCA6; Omega to starter-uat-union UO-R5 (row ids from `docs/analysis/union-zone-planning/omega-packets/UO-U1.md`); stasis hub and Debug Area to this campaign's SS-D1 and SS-D2.
 
 | World | Spawn | Tag | Template | Display name | Buy / sell / repair / recharge; trainer list | Buy rows | Covered by (campaign and row id) |
 |---|---|---|---|---|---|---|---|
@@ -93,9 +93,9 @@ Lists are `buy / sell / repair / recharge` (list ids; `-` is NULL) and then `tra
 
 Row ids in the Debug Area and stasis rows are this campaign's rows from [work-packets.md](work-packets.md): V1-V12 (SS-03a, SS-03b) run in SS-D1 at the plaza; SS-D2 runs the stasis hub. The Debug Area pet trainer (13007) and Tollana's trainer (19001) have no row yet.
 
-## Table 2: the D-SS1 evidence
+## Table 2: the D-SH1 evidence
 
-These worlds have no vendor in the seed. Table 2 records what a player could reach and what the zone ledgers say about vendors. Nothing here decides D-SS1; the owner does.
+These worlds have no vendor in the seed. Table 2 records what a player could reach and what the zone ledgers say about vendors. Nothing here decides D-SH1; the owner does.
 
 | World | Vendors today | Nearest vendor a player of that faction can reach (world, how) | Ledger mention of vendors (file:line, or "none") |
 |---|---|---|---|
@@ -105,6 +105,6 @@ These worlds have no vendor in the seed. Table 2 records what a player could rea
 | Beta Site E1 (23) | None (no spawn in world 23) | Not established. The ledger names no route from Beta Site E1 to a vendor world. | none. `union-beta-e1-continuation/uat/UB-U2.md:21` is the walk row for the Quartermaster area (Satterfield, template 2302, and Life_QM_1/2, template 2308); neither has a vendor list in the seed. `union-beta-e1-continuation/reward-proposal.md:37` is mission 381 "Closing Shop", a reward row, not a vendor |
 | Harset (57, 68, 69, 70) | None (no spawn in worlds 57, 68, 69 or 70) | Not built. Omega (18) is the stated reference for Harset vendors (`harset-continuation/lomiada-brief.md:31`, O18-04). No Harset route to Omega is in the ledger. | `harset-continuation/README.md:226-227` (PU-07 and PU-08, PROVISIONAL drafts, not merged) and `harset-continuation/work-packets.md:70` (HA-15b, BlockedDependency) |
 
-## D-SS2 and OD-5 (Castle hub Quartermaster)
+## D-SH2 and OD-5 (Castle hub Quartermaster)
 
 The Castle hub Quartermaster (template 415, spawn 13804, world 8) buys and sells from Debug Area list 1300, so a player pays 1 naquadah per special-ammo stack there. The castle ledger accepts this: "Accepted for now. Flag it for an economy pass before a public release" (`castle-continuation/README.md:66`, repeated at `castle-continuation/RESUME.md:29`). This map does not reopen it. The SP-DCA6 row that owns the hub is in `starter-uat-praxis/work-packets.md:92`; its citation comes from [README.md](README.md) line 39.
