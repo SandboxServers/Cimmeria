@@ -81,3 +81,104 @@ Does not block:
 6. Verifier lease: R5 should let the verifier use the orchestrator's lease_id (or the attest tool accept none) so SigNoz clauses can be attested.
 
 canary-verify fix-needed
+
+## Round 2
+
+**Verified:** 2026-11-02 18:40 UTC, read-only plus one short own lease (free at the time; acquired, attested, released, no driving). **Build:** `service.version` 6b50d9131417b8cf93feb61a7c640577398db567, attested for run `cgbqhrgysppyec`. Round 1's fix-needed items 1 and 2 (active weapon selection, row isolation) are fixed: every row now shows `armed` PASS with the right weapon name. Round 2 finds one remaining spec defect.
+
+### Runs (round 2)
+
+| Call | Spec or split file | plan_only | run_dir | Outcome |
+|---|---|---|---|---|
+| C1c | armory-abilities-soldier-0 (Soldier-00, 598, 717, 716) | no | 2026-11-02-unknown-cgbqhoifvzqqyr | PASS 5 (incl. _session_end), no FAIL. Weapons SGHC 6 SMG / AR 21 / SGHC 6 SMG. |
+| C2 | armory-gear-weapons-1 (GW-3128, GW-17, GW-5680) | no | 2026-11-02-unknown-cgbqhrgysppyec | After attest: PASS 2 (GW-17, _session_end), FAIL 2 (GW-3128, GW-5680). |
+| C3 | armory-gear-armor-1 (GA-33, GA-2933), old run before the close-bag change | no | 2026-11-02-unknown-cgbqgmvmfbwcex | NEEDS_HUMAN 2 after attest; the `moved` clause holds for both. |
+
+### Per-row grades (round 2)
+
+| Row | Runner | Server evidence (SigNoz, scope abilities, fresh character) | Grade | Class |
+|---|---|---|---|---|
+| Soldier-00 | PASS | `gmGiveAllAbilities` added 72 at 18:28:52.98 | PASS | |
+| Soldier-598 Quick Burst | PASS | `use_ability_recv`, `ability_launched` 18:29:07.076 and 18:29:17.560 (target 0, `fire_target_skipped no_target`) | PASS | no target resolved (DR-99) |
+| Soldier-717 Snare Shot | PASS | `ability_launched` 18:29:45.199 and 18:29:55.776 (AR 21 active; round 1 refused) | PASS | round-1 defect fixed |
+| Soldier-716 Wounding Shot | PASS | `ability_launched` 18:30:21.436 and 18:30:32.039, `warmup_complete` | PASS | no target resolved (DR-99) |
+| GW-5680 Rekkr Attack Program | FAIL (`sent` clause: 0 `client.ability.sent`) | `ability_launched` ability 1216 Drone Ranged AA, target 100942 (the row's dummy), 18:33:47.579 | FAIL by runner, server PASS | spec defect |
+| GW-3128 Test Weapon | FAIL (`sent` clause: 0 events) | `wrong_weapon_refused` and `ability_refused reason=wrong_weapon_type`, ability 559 Automatic Weapon Auto Attack, `active_item_id` 3128, required moniker ITEM_Automatic_Weapon, active item has none; client told "You need a different weapon to use that ability." 18:32:20.181 | FAIL | spec defect (clause) plus a real data finding |
+| GW-17 P-90 (unbound) | UNVERIFIED, now PASS | exactly 1 `weapon_unbound reason=no_ranged_attack item_type_id=17` in the row window (18:33:11.466, target 100941) | PASS (measured gap, F8) | |
+| GA-33 (armor) | NEEDS_HUMAN | `moved` holds: 1 `Inventory move persisted` Aramid Fiber Ballistic Helmet MAIN to HEAD (container 4) 17:57:41.166 | PASS (server clause); human clause NEEDS_HUMAN | `rows/armory-gear-armor-1/GA-33/action13.png` shows no sheet (HUD only, portrait without helmet) |
+| GA-2933 (armor) | NEEDS_HUMAN | `moved` holds: 1 row Boron-Carbide Ballistic Helmet MAIN to HEAD 17:57:53.298 (swapped out item 10340) | PASS (server clause); human clause NEEDS_HUMAN | `.../GA-2933/action7.png` shows no sheet; the portrait shows a helmet |
+
+Attested this round: GW-17 `unbound` (1 row), GA-33 `moved` (1), GA-2933 `moved` (1), `service.version`. Lease released.
+
+### GW-3128 and GW-5680: decision
+
+**The click reached the client and the server. The failure is in the spec, not the Armory or the lab tools.**
+
+- Client side: `client_target` and the right-click `client_world_click` both hit the Jaffa dummy at pixel (676,391), `hover_verified` true, `mouse_over_after` equal to `target_after` equal to the dummy id, 3.0 m (interact range 5.0 m), `InventoryWin` not open, `armed` PASS. Bundle: `rows/armory-gear-weapons-1/GW-3128.json` actions 16 to 19, `GW-5680.json` actions 10 to 13; final shots `GW-3128/final.png`, `GW-5680/final.png`. GW-5680 bookmark id 1793644403766 (GW-3128 has none).
+- Server side: the right-click is **not a `useAbility`**. It arrives as `wire_inbound cellMethod interact` (method 74, args = the target id, 18:32:20.172), then `interact: targeting hostile NPC for combat` (route `hostile_attack`), and the server resolves the weapon's RANGED binding itself. For GW-5680 that launched ability 1216. For GW-3128 it tried ability 559 and the weapon gate refused. There was never a `use_ability_recv` for either, and there cannot be.
+- `client.ability.sent` is emitted when `RouteOutgoingEntityRpc` reaches an allowlisted `start*Message` for an ability method (`crates/client-telemetry/src/hooks/ability_trace/mod.rs`). `interact` is not an ability method, so the clause `client.ability.sent ability_id 559/1216 since press` can never match on a right-click. `gap: false`, `suppressed: 0`, `upstream_dropped: 0` confirm a clean read, not a loss.
+- Classification: spec defect (the generator's `sent` clause assumes the wrong wire path). Round 1's reading (the right-click hit `weapon_unbound` for GW-5680) is superseded: with the round-1 fix the right weapon is active and 1216 launches.
+- Separate real finding for GW-3128 (Armory data, not a sweep blocker): item 3128 Test Weapon has a RANGED event binding to 559, but 559 requires the ITEM_Automatic_Weapon moniker and the item carries none, so the weapon can never fire its own binding. Triage under DR-99: add the moniker to the item, or drop the binding.
+
+### What fixes it (generator only; not applied)
+
+There is no way to produce `client.ability.sent` from a gear weapon: a hotbar key sends `useAbility`, but the weapon's auto-attack ability is not on the hotbar, and the right-click path is `interact` by design. Grade the server instead, as the unbound row already does.
+
+In `tools/ability_mechanics/debug_armory_gear.py` `weapon_row`, replace the `sent` clause (source `client_event`) with a SigNoz clause on bound rows: `scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = {ability} AND player_name CONTAINS '${character}'`, min_rows 1, text "the right-click launches ability {ability} (RANGED binding)", same window as the unbound row's clause. GW-3128 keeps the same clause; until the item gets its moniker it grades FAIL on the true defect (no `ability_launched`, a `wrong_weapon_refused`). Keep `armed` as is (it works). Update `test_debug_armory_gear.py` to assert the SigNoz clause and no `client_event` `sent` clause, regenerate the gear TOMLs (LF), run the spec guards. The verifier then attests the SigNoz clause per row (own lease), as for GW-17.
+
+Minor, not blocking: `.bug` bookmark replies still missing on some rows (GW-3128, GA-33 have no id); the `uat_clear_effects` teardown fails in every gear row ("no rendered entity matches" the own name) and is flagged only; GW-3128's optional `reset-slot1` fails with "Bandolier slot 1 is empty", as expected on a fresh character.
+
+### Canary checklist (round 2)
+
+| Check | Result | Evidence |
+|---|---|---|
+| C1 and C2 each created a fresh character | PASS | run.json: Cgbqhoifvzqqyrdj, Cgbqhrgysppyecij |
+| Soldier-00 PASS | PASS | row JSON, `gmGiveAllAbilities` 72 |
+| Every weapon row shows the right weapon armed | PASS | `armed` PASS in all rows |
+| Every ability row has a SigNoz `ability_launched` | PASS for 598, 717, 716, 5680; 3128 refused at the gate | above |
+| `client.ability.sent` on gear rows | MISS by design | right-click is `interact`; spec defect |
+| GW-17 SigNoz clause attested | PASS | 1 row |
+| GA-33 / GA-2933 `moved` attested | PASS | 1 row each |
+| Build version attested | PASS | 6b50d9131417b8cf93feb61a7c640577398db567 |
+| Every row JSON has an anchor bookmark id | partial (flag only) | 5680 and GW-17 have ids; 3128 and GA-33 do not |
+
+### Recommendation (round 2)
+
+**fix-needed, small, generator only:** replace the gear weapon rows' `client_event` `sent` clause with the SigNoz `ability_launched` clause before the sweep. The abilities files (C1c) are ready to run as they are. Armor files need only the already-planned close-bag step (the old C3 run predates it) and a screenshot of the open character sheet for the human clause. The Test Weapon moniker mismatch (item 3128, ability 559) goes on the DR-99 list and does not block the sweep.
+
+canary-verify-2 fix-needed
+
+## Round 3
+
+**Verified:** 2026-11-02 18:50 UTC, read-only plus one short own lease (free at the time; acquired, attested, released, no driving). **Build:** `service.version` 6b50d9131417b8cf93feb61a7c640577398db567, attested for run `cgbqiepaxidmrb`. The generator fix (SigNoz `ability_launched` clause on bound gear rows) is in: GW-5680 now carries a `launched` clause instead of the `client_event` `sent` clause.
+
+### Runs (round 3)
+
+| Call | Spec or split file | plan_only | run_dir | Outcome |
+|---|---|---|---|---|
+| C2 | armory-gear-weapons-1 (GW-17, GW-5680) | no | 2026-11-02-unknown-cgbqiepaxidmrb | Before attest: UNVERIFIED 2, PASS 1 (_session_end). After attest: PASS 3. Fresh character Cgbqiepaxidmrbij. |
+
+### Per-row grades (round 3)
+
+| Row | Runner | Server evidence (SigNoz, scope abilities) | Grade |
+|---|---|---|---|
+| GW-17 P-90 of the Whale 2 (unbound) | UNVERIFIED (`unbound` pending), `armed` PASS | Exactly 1 `weapon_unbound reason=no_ranged_attack item_type_id=17` in the window 18:46:00Z to 18:49:17Z: 18:47:13.511Z, target 100979 (the row's dummy), item P-90 of the Whale 2 | PASS (measured gap, F8), attested |
+| GW-5680 Rekkr Attack Program (bound) | UNVERIFIED (`launched` pending), `armed` PASS | 1 `ability_launched` ability 1216 Drone Ranged AA at 18:47:49.462Z, target 100980 (the row's dummy), window 18:47:14Z to 18:49:53Z; bookmark id 1793645245742 | PASS, attested |
+
+Round 2's decision stands: the right-click arrives as `interact`, so the server resolves the RANGED binding itself, which the SigNoz clause now measures. Flags only (not blocking): `uat_clear_effects` teardown fails ("no rendered entity matches"), GW-17 has no `.bug` bookmark id, `reset-slot1` on a fresh character is "empty" as expected.
+
+### Final canary checklist
+
+| Check | Status | Evidence |
+|---|---|---|
+| C1c Soldier rows (Soldier-00, 598, 717, 716) | PASS | Round 2, run cgbqhoifvzqqyr: 5 PASS, 717 reached `ability_launched` with the AR 21 active |
+| C2 gear weapons: GW-17 | PASS | above (round 3) |
+| C2 gear weapons: GW-5680 | PASS | above (round 3) |
+| C2 gear weapons: GW-3128 | Known data finding, not a blocker | `wrong_weapon_type` (ability 559 needs ITEM_Automatic_Weapon; item 3128 lacks the moniker). Recorded for DR-99: add the moniker or drop the binding. Not re-run in round 3 (spec fix gives the true-defect FAIL by design) |
+| C3 armor: GA-33, GA-2933 `moved` clauses | PASS (server clause) | Round 2 attests; the human clauses stay NEEDS_HUMAN (D-DR9) |
+| Armed weapon correct in every row | PASS | `armed` PASS in all rows |
+| Build version attested | PASS | 6b50d9131417b8cf93feb61a7c640577398db567 |
+
+**ALL canary checks now pass** (C1c, C2, C3), with GW-3128's `wrong_weapon_type` recorded as a known data finding and the armor human clauses left NEEDS_HUMAN per D-DR9. Nothing blocks the sweep.
+
+canary-verify-3 proceed
