@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use super::heartbeat::HeartbeatState;
 use super::instance;
 use super::process::{self, ProcessObservation};
-use super::{now_ms, Supervisor, SupervisorConfig};
+use super::{now_ms, LoginState, Supervisor, SupervisorConfig};
 
 /// Restore only the exact process this instance registered at launch.
 /// Legacy entries without creation identity remain readable to peers, but
@@ -101,12 +101,24 @@ impl Supervisor {
             Err(_) => (None, "unreachable", 0),
         };
 
+        // The cached login state is only as good as the bridge: while the
+        // heartbeat is unreachable on a live process, callers must not see
+        // `in_world` and try to log out through a dead bridge.
+        let login_state = if running
+            && hb_state == "unreachable"
+            && matches!(login, LoginState::InWorld | LoginState::CharSelect)
+        {
+            "unresponsive"
+        } else {
+            login.as_str()
+        };
+
         Ok(json!({
             "pid": pid,
             "running": running,
             "uptime_ms": uptime_ms,
             "uptime_state": uptime_state,
-            "login_state": login.as_str(),
+            "login_state": login_state,
             "crash_count_10min": crash_count,
             "persistent_hooks": persistent_hooks,
             "heartbeat": { "tick_count": hb_count, "state": hb_state, "age_ms": hb_age },
@@ -214,6 +226,33 @@ mod tests {
             panic!("legacy entry has no identity")
         });
         assert_eq!(legacy.client_pid().await, None);
+    }
+
+    #[tokio::test]
+    async fn login_state_is_unresponsive_while_the_bridge_is_unreachable() {
+        use crate::supervisor::LoginState;
+        // A bridge whose heartbeat fails, on a live process, cached in_world.
+        let dead: crate::supervisor::events::fake_bridge::Responder =
+            Arc::new(|_, _| Err("connect to bridge".into()));
+        let sup = fake_bridge::supervisor(dead).await;
+        record(&sup, 41, Some(ticks(10_000))).await;
+        sup.set_login_state(LoginState::InWorld).await;
+        let alive = |_| ProcessObservation::Alive(Some(ticks(10_000)));
+        let s = sup.status_with_process(50_000, alive).await.unwrap();
+        assert_eq!(s["heartbeat"]["state"], "unreachable");
+        assert_eq!(s["login_state"], "unresponsive");
+        // A dead process is reported by `running`, not rewritten here.
+        let s = sup
+            .status_with_process(50_000, |_| ProcessObservation::Exited)
+            .await
+            .unwrap();
+        assert_eq!(s["login_state"], "in_world");
+        // A reachable bridge keeps the cached state.
+        let ok = supervisor().await;
+        record(&ok, 41, Some(ticks(10_000))).await;
+        ok.set_login_state(LoginState::InWorld).await;
+        let s = ok.status_with_process(50_000, alive).await.unwrap();
+        assert_eq!(s["login_state"], "in_world");
     }
 
     #[tokio::test]

@@ -545,6 +545,8 @@ mod revocation_tests;
 #[cfg(test)]
 mod server_wait_tests;
 #[cfg(test)]
+mod session_dead_bridge_tests;
+#[cfg(test)]
 mod session_end_tests;
 #[cfg(test)]
 mod snapshot_mode_tests;
