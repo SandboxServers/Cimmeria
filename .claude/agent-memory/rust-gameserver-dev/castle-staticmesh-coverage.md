@@ -5,6 +5,8 @@ metadata:
   type: project
 ---
 
+INVALIDATED WHEN: the BSP floor decoder in `crates/navmesh-extractor/src/bsp/` is declared complete or the Interrogation Block floor coverage is re-measured. (Checked 2026-11-01: that module exists now; the numbers below predate it and are unverified.)
+
 Measured 2026-09-19 over all 144 `CookedPC/Maps/Castle` chunks with
 `crates/navmesh-extractor`'s `extract_map` CLI (branch
 `navmesh/castle-extract-cli`).

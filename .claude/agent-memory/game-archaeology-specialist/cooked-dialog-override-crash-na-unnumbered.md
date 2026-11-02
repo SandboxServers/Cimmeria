@@ -51,7 +51,7 @@ pre-session setup at all.
 
 **Original account (superseded by the headless-Ghidra workaround above, kept for context)**:
 Ghidra was not running at session start; launched mid-session against the existing project
-(`C:\Users\Steve\source\projects\SGW\Stargate Worlds-QA\Working\binaries\SGW.gpr`) via
+(`<client-tree>\Working\binaries\SGW.gpr`) via
 `Start-Process ghidraRun.bat <project.gpr>` — the GhidraMCP plugin auto-started on port 8100 (no
 manual "Start MCP Server" click needed; a prior session apparently left autostart configured) and
 `mcp__ghidra__connect_instance` succeeded, reporting `tools_registered: 195`. **But the 195
@@ -64,3 +64,6 @@ matches the tool's own docstring warning: "Clients that cache the initial tools/
 honor `tools/list_changed` must re-list tools after this call" — this harness is such a client. See
 also [[reference-mcp-servers]] for the general Ghidra MCP wiring notes (that memory predates this
 specific tools/list_changed gotcha).
+
+INVALIDATED WHEN: the dialog 100100/100101 crash root cause is found or the cooked-data cache layout changes
+checked: 2026-11-01

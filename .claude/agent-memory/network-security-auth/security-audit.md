@@ -1,3 +1,9 @@
+---
+name: security-audit
+description: STALE 2026-03-04 C++ vs Rust auth behavioral comparison; the C++ flow half is immutable evidence, the Rust half needs re-verification
+metadata:
+  type: project
+---
 # Security Audit: C++ vs Rust Auth Behavioral Comparison
 
 > [!WARNING] Confidence: STALE — verify against current `crates/services/src/auth/` and `base.rs`
@@ -61,3 +67,6 @@ Full audit performed 2026-03-04. See plan file for detailed findings.
 - INACTIVITY_TIMEOUT = 60s (hardcoded constant)
 - Checked in tick-sync loop: `last_recv.elapsed() > INACTIVITY_TIMEOUT`
 - Tick-sync itself serves as keepalive (every 100ms)
+
+INVALIDATED WHEN: crates/auth is re-read against the C++ flow and the comparison is redone
+checked: unverified 2026-11-01

@@ -83,5 +83,4 @@ cross-referenced to entity defs, Ghidra symbols, and Rust handler files.
    match. Comments in the def + handler should call this out by name.
 
 Links: [[reference_gm_auth_plumbing_gap]],
-[[reference_cell_method_entity_id_authority]],
-[[project_world_space_gate_audit_2026-05-31]].
+[[reference_cell_method_entity_id_authority]].

@@ -9,7 +9,7 @@ metadata:
 
 ## STATUS: UN-SUPERSEDED — this file's diagnosis is CORRECT, confirmed by independent Ghidra re-verification
 
-A prior team-lead override adopted `FUN_00D6CE00` + SSO structs as the "approved" registration path (see the superseded note that used to be here, and `bm-create-auction-dispatch-diagnosis.md`'s "FINAL LOCKED PLAN"/"FINAL ARCHITECTURE" sections). **That override was based on a misunderstanding and is wrong.** A 2026-07-25 read-only Ghidra research pass (triggered by a genuine contradiction between this file and `bm-create-auction-next-session-plan.md`) re-decompiled the entire chain from scratch and confirmed:
+A prior team-lead override adopted `FUN_00D6CE00` + SSO structs as the "approved" registration path (see the superseded note that used to be here, and `bm-create-auction-dispatch-diagnosis.md`'s "FINAL LOCKED PLAN"/"FINAL ARCHITECTURE" sections). **That override was based on a misunderstanding and is wrong.** A 2026-07-25 read-only Ghidra research pass (triggered by a genuine contradiction between this file and `bm-create-auction-next-session-plan.md` (removed in HT-15c; see git history)) re-decompiled the entire chain from scratch and confirmed:
 
 - `FUN_00D5A230` (called by `FUN_00D6CE00`) hardcodes `*this = SGWNetworkManager::EventHandler<class_Event_NetOut_SellItems>::vftable` directly in its own body, unconditionally, regardless of what entity/method strings are passed to `FUN_00D6CE00`.
 - `FUN_00D46F70` (reached via `FUN_00D4EBC0`) hardcodes `*this = CME::EventSignal::MemberCallback<NoSubject, EventHandler<Event_NetOut_SellItems>, ..., Event_NetOut_SellItems>::vftable` — confirmed via Ghidra's own recovered RTTI/template symbol names, not inferred from offsets.

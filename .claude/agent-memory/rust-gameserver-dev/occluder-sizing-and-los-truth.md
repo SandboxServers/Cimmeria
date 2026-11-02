@@ -23,3 +23,6 @@ NA27 (#784, D-NA13) ships a paged `data/spaces/<world>.occ` for all 23 client wo
 **Accuracy metrics**
 - NA16's "wrong given Blocked" counts rays grazing within 2-10 cm of a wall edge, and those dominate every grid's residual error. Report the per-truth rates, and a figure with grazing within 0.1 m excluded, alongside it.
 - On `main`'s `castle.nav` the navmesh ray calls 23% of truly blocked pairs clear, so it sees through walls.
+
+INVALIDATED WHEN: the occluder build or the data/spaces/*.occ files are regenerated with a different size budget
+checked: 2026-11-01

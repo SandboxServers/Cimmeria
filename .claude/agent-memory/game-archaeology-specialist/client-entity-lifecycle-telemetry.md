@@ -13,3 +13,6 @@ Finding doc: `docs/reverse-engineering/findings/client-entity-lifecycle.md`. Hoo
 - `Client_NetIn_EntityMethodDispatch 0x00c6f8f0` is hooked by the client-patches DLL and not chainable: never hook it from telemetry. It has exactly two callers (`onEntityMethod`, queue replay), so tag dispatches by hooking those.
 - Bash tool in this harness rejects some long `python - <<EOF` commands ("too complex to verify"); write the script with the Write tool and run `python <file>`. Also do not chain two `cd`s in one command.
 - Host x86_64 clippy of telemetry with `--features lab-bridge` has pre-existing bridge errors; only i686 is clean, and that is what the task asks for.
+
+INVALIDATED WHEN: the client binary changes or the entity_lifecycle hooks are rewritten
+checked: 2026-11-01

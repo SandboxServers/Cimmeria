@@ -21,10 +21,12 @@ AB-N1 (2026-10-04) put the in-game combat debug in `cimmeria-cell-world`
   `pulse_one`, both ground-cast functions after `apply_secondaries`. A new
   cast entry point with its own scope needs its own flush or its lines wait
   for the next cast in the cell.
-- **`damage_apply/mod.rs` is at ~689 lines** after AB-N1 extracted
-  `pulse_registration.rs`; the next addition there needs another seam.
+- **`damage_apply/mod.rs` sits near the 700-line hard cap** (670 lines on 2026-11-01, in `cell-combat`); the next addition there needs another seam.
 - **Tests:** `warmup_mgr`'s INSTANT_ABILITY (effect 500, HealthDamage 5)
   rolls a seeded QR, so the damage is 3 not 5. Read the NPC's health and
   build the expected text from it rather than pinning the number.
 
 Related: [[timed-effect-ledger-and-stat-routing]], [[damage-apply-miss-gate-and-seeded-rolls]].
+
+INVALIDATED WHEN: combat_debug::flush is renamed or the flush sites move
+checked: 2026-11-01

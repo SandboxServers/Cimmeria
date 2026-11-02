@@ -1,6 +1,6 @@
 ---
 name: project-mail-escrow-ss-m2
-description: SS-M2 gate-mail escrow + SS-M3 take/COD/return review (2026-09-27) — cleared shapes and the residual gaps (COD from deleted sender is a stuck sink)
+description: SS-M2 gate-mail escrow + SS-M3 take/COD/return review (2026-09-27) — cleared shapes and the residual gaps (buyback vs claim lock order, escrow cascade on recipient delete)
 metadata:
   type: project
 ---
@@ -17,12 +17,14 @@ advisory locks; every write conditional + rows_affected; COD price zeroed on pay
 return destination is stored sender_id, `returned` flag stops loops; client ContainerId/SlotId only logged.
 
 Residual after the final pass (2026-09-27): the sender-deleted COD is now cancelled on pay (buyer gets the item free,
-coordinator-approved) and `cod_paid` refuses returning a paid COD. Still open: `archiveMailMessage` (read.rs archive) ORs
-MAIL_ARCHIVE onto an unpaid COD with no check; archived mail cannot be returned, never expires (D-SS04) and cannot be
-deleted, so a buyer can lock the seller's item away for good. Vendor buyback locks its inventory rows and `sgw_player`
+coordinator-approved) and `cod_paid` refuses returning a paid COD. FIXED: archive is refused for an unpaid COD (mail/read.rs archive_unless_cod, :334); archived mail still never expires (D-SS04). Vendor buyback locks its inventory rows and `sgw_player`
 before the (player, INV_MAIN) advisory key, the reverse of claim.rs, so same-player buyback vs take-cash/pay-COD can
 deadlock (Postgres aborts one; no value loss). Escrow still cascades on recipient character delete.
 
 **Why:** SS-M4 expiry sweep reuses `return_tx`; it must skip archived mail but the archive path must first refuse unpaid COD.
-**How to apply:** on SS-M4 review, check the archive-COD gate landed and that the sweep takes the claim.rs lock order.
+**How to apply:** on mail/BM review, check the buyback-vs-claim.rs lock order (unchecked) and that any new archive/delete path keeps the unpaid-COD refusal.
 See [[project-mail-handlers-unimplemented]].
+
+checked: unverified 2026-11-01
+
+INVALIDATED WHEN: mail claim or archive handling changes

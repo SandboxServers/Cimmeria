@@ -1,3 +1,10 @@
+---
+name: reference_lab_login_foreground_lanes_2026_10_14
+description: "Concurrent lab logins share one Windows foreground; how credential entry is serialized and activation denial handled"
+metadata:
+  type: reference
+---
+
 # Shared foreground during concurrent lab login (2026-10-14)
 
 Source: `crates/lab/src/supervisor/flows/login.rs` and the concurrent fake-IO regression in `login_tests.rs`.

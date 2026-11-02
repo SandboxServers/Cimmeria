@@ -1,3 +1,9 @@
+---
+name: ring-transport-fsm
+description: Ring transport FSM traps and invariants: Idle-only destination selection, starvation, and unbounded waiting states
+metadata:
+  type: reference
+---
 # Ring transport FSM — traps and invariants
 
 `crates/cell-content/src/cell/ring_transport/`. Read before touching ring travel,

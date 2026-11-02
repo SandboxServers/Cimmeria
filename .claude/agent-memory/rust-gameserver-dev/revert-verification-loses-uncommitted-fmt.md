@@ -1,3 +1,9 @@
+---
+name: revert-verification-loses-uncommitted-fmt
+description: git checkout -- during revert proof silently discards an uncommitted cargo fmt done after the checkpoint
+metadata:
+  type: feedback
+---
 # Revert-verification workflow: `git checkout --` silently undoes an uncommitted `cargo fmt`
 
 When proving a regression guard by temporarily reverting the fix, the safe

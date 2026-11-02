@@ -1,3 +1,10 @@
+---
+name: reference_lab_dialog_close_2026_10_13
+description: "Lab dialog Done closure: lab_finish_dialog must read visibility after Done and fall back to the native close button"
+metadata:
+  type: reference
+---
+
 # Dialog Done closure
 
 Issue #1706 reproduced a one-page Cellblock pistol dialog whose visible Done button accepted a click without hiding `DialogWin`; the native `DialogWin__auto_closebutton__` closed it. `lab_finish_dialog` must read visibility after Done and after a native close fallback. A click acknowledgement alone does not establish that the dialog finished.

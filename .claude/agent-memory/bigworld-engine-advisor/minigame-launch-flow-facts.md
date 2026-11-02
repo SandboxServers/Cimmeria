@@ -25,3 +25,6 @@ Facts confirmed in MG-R7 (`docs/analysis/minigames/spec-launch-flow.md`):
 
 **Why:** these decide whether minigame launch work needs a client patch.
 **How to apply:** cite the spec before touching minigame launch or state flags.
+
+INVALIDATED WHEN: spec-launch-flow.md or the client StartMinigame.lua flow is revised
+checked: 2026-11-01

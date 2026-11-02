@@ -14,3 +14,6 @@ metadata:
 Revert-proof trap: mutating sources, running tests, then restoring from a backup with `shutil.copy2` (or `cp -p`) restores the OLD mtime, which is older than the mutated build's fingerprint, so cargo reuses the mutated binary and the "clean" rerun fails for no reason. `touch` the restored files (or restore with a plain write) before re-running.
 
 Same trap with plain `cp f f.bak; <mutate>; mv f.bak f` (SS-M1, 2026-09-27): the backup's mtime is the backup time, older than the mutated build, so the LAST mutated crate stays stale. It surfaced only when a later multi-crate `cargo test` run failed on a guard whose fix was in the tree (`MAX_MAIL_RECIPIENTS` still 11 in the binary). A per-crate rerun can look fine because any later edit to the same crate rebuilds it. Put `touch "$f"` after every restore in a proof script.
+
+INVALIDATED WHEN: ai_state becomes a public field again or set_ai_state/AiTransitionReason are renamed or removed
+checked: 2026-11-01

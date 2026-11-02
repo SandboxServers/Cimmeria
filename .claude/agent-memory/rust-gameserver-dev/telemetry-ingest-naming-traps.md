@@ -27,3 +27,6 @@ Learned on NT-40 (2026-10-04), naming client.native rows at ingest.
   `%LOCALAPPDATA%\cimmeria-build\logs\<worktree>\` works around it.
 
 Related: [[observability-test-and-throttle-traps]], [[tracing-span-fields-not-on-log-records]].
+
+INVALIDATED WHEN: the client.native replay or the upload routes are restructured
+checked: 2026-11-01

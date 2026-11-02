@@ -10,7 +10,7 @@ metadata:
 **PowerShell incantation that works on Windows 11:**
 
 ```powershell
-New-Item -ItemType Junction -Path "<worktree>\external" -Target "C:\Users\Steve\source\projects\Cimmeria\external"
+New-Item -ItemType Junction -Path "<worktree>\external" -Target "<main-checkout>\external"
 ```
 
 **Why not `cmd /c mklink /J`:** the cmd subshell output goes to stdout but the working-directory state is lost between Bash tool calls, so when I ran it inside the worktree I couldn't observe what happened. PowerShell's `New-Item -ItemType Junction` is the more reliable form.

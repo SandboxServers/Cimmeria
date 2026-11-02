@@ -9,12 +9,11 @@ Splitting `foo.rs` into `foo/mod.rs` can silently produce an **untracked,
 unstaged, never-pushed** directory, because the repo `.gitignore` carries
 unanchored directory rules that match at any depth.
 
-The one that bit CA04: line ~134 was a bare `server/`, intended for the
+The one that bit CA04 was a bare `server/` rule, intended for the
 root-level PostgreSQL runtime data directory. It matched
-`crates/services/src/minigame/server/` and can hide a whole split from
-`git add -A`. The current ignore still includes `server/` and the
-`!crates/server/` negation, so generic directory names need an explicit
-ignored-file check.
+`crates/services/src/minigame/server/` and hid a whole split from
+`git add -A`. That rule is gone from the current `.gitignore`, but generic
+directory names can hit any unanchored rule again, so check explicitly.
 
 **How to apply:** after any `foo.rs` → `foo/` split, or any new source
 directory whose basename is a generic word (`server`, `logs`, `data`,
@@ -34,3 +33,6 @@ These are Git Bash commands; in PowerShell, use `Select-String` in place of
 catches. If the only hit is your new directory, anchoring is safe.
 
 Related: [[build-environment]].
+
+INVALIDATED WHEN: never; the method holds while .gitignore has unanchored directory rules
+checked: 2026-11-01

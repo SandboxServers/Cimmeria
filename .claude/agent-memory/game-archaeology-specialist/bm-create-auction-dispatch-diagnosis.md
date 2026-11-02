@@ -7,7 +7,7 @@ metadata:
 
 # BM createAuction — FUN_00A372F0 Dispatch Architecture & Crash Diagnosis (2026-06-22)
 
-## CORRECTION 2026-07-25 (read-only Ghidra re-verification, triggered by a contradiction with bm-create-auction-next-session-plan.md)
+## CORRECTION 2026-07-25 (read-only Ghidra re-verification, triggered by a contradiction with bm-create-auction-next-session-plan.md (removed in HT-15c; see git history))
 
 This file's own final section ("EMULATOR-DERIVED FINAL VALUES", "BUCKET PRE-INIT — FINAL V2", "DO NOT USE (wrong values, archived)" near the end) is CORRECT and re-confirmed independently: hash constant `0x6DF41E32` (re-derived in Python matching `FUN_00A36F40`'s exact ldiv/imul arithmetic), bucket stride ×4, bucket index is hash-derived at runtime (not static). Keep using those values.
 
@@ -15,7 +15,7 @@ This file's own final section ("EMULATOR-DERIVED FINAL VALUES", "BUCKET PRE-INIT
 
 **Correction to my own first-pass note**: "FINAL ARCHITECTURE — vtable redirect IS required" (~line 822) and "FINAL LOCKED PLAN — OPTION B SYNTHESIZE (team-lead locked)" (~line 994) are NOT both wrong — re-reading the latter in full confirms it never calls `FUN_00D6CE00`; it builds a manual `callback_obj`/`fake_vtable` and calls `FUN_00A37790` directly, which is the architecturally correct approach. Only "FINAL ARCHITECTURE"'s own Phase-2 execution tail (not its vtable-redirect diagnosis) needed retracting. See the inline banner at each heading for the precise scope of what's kept vs. struck.
 
-Also corrected: the "BLOCKER" claim (elsewhere in this file and in bm-create-auction-next-session-plan.md) that `FUN_00C6EA70` throws on a first/empty-slot registration is backwards — disassembly-confirmed (not just decompiler pseudocode, ruling out a condition-flip artifact): it throws on DUPLICATE registration (`"...because a handler was already registered for it."`) and returns cleanly on a fresh insert. This is moot regardless, since `FUN_00C6EA70` registers into an unrelated per-entity-desc RPC map (keyed by ushort at entity_desc+0x1e), not the CME dispatch table — it has no call to `FUN_00A37790` anywhere in its body.
+Also corrected: the "BLOCKER" claim (elsewhere in this file and in bm-create-auction-next-session-plan.md (removed in HT-15c; see git history)) that `FUN_00C6EA70` throws on a first/empty-slot registration is backwards — disassembly-confirmed (not just decompiler pseudocode, ruling out a condition-flip artifact): it throws on DUPLICATE registration (`"...because a handler was already registered for it."`) and returns cleanly on a fresh insert. This is moot regardless, since `FUN_00C6EA70` registers into an unrelated per-entity-desc RPC map (keyed by ushort at entity_desc+0x1e), not the CME dispatch table — it has no call to `FUN_00A37790` anywhere in its body.
 
 **The correct plan going forward is the manual-callback_obj approach in `bm-create-auction-registration-key-bug.md`** (synthetic vtable with slot[2] returning BMCreateAuction's own TypeDescriptor, calling `FUN_00A37790` directly — bypassing `FUN_00D6CE00`/`FUN_00D5A230`/`FUN_00D4EBC0`/`FUN_00D46F70`/`FUN_00C6EA70` entirely for the CME subscription), combined with this file's confirmed hash constant/stride/rendezvous-check math.
 
@@ -1298,3 +1298,6 @@ This produces HEAD==TAIL==sentinel, matching what a freshly-initialized empty sl
 - `[ECX+0x08/0x14/0x20]` → all off by 0x1c from outer-table base
 - `SHL 3` → wrong; use `SHL 2` (stride is `slot*4` per disasm + ctor)
 - "SLOT 2 (static)" → wrong; slot is hash-derived at runtime from mask
+
+INVALIDATED WHEN: the registration-key-bug plan or the FUN_00A372F0 bucket math is re-derived
+checked: unverified 2026-11-01

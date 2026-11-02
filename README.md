@@ -181,9 +181,11 @@ Source: [campaign-metrics findings](docs/analysis/campaign-metrics/findings.md).
 |---|---|---|---|---|
 | SessionStart | (all) | `.claude/settings.json` | `mode_banner.sh` | SessionStart mode banner: tells the user and the model which persona this session runs as. |
 | SessionStart | (all) | `.claude/settings.json` | `agent-board` | Agent board: registers the session and shows unread board activity. External tool, skipped when it is not installed. |
-| SessionStart | compact | `.claude/settings.json` | `resume_card.py` | SessionStart hook for the "compact" matcher: re-reads the active campaign. |
+| SessionStart | compact | `.claude/settings.json` | `resume_card.py` | SessionStart hook for the "compact" matcher: re-reads this session's campaign. |
 | PreToolUse | Bash\|PowerShell | `.claude/settings.json` | `shell_guard.py` | PreToolUse guard for shell tool calls (Bash and PowerShell). |
+| SubagentStop | (all) | `.claude/settings.json` | `report_contract.py` | SubagentStop hook: blocks a subagent's stop until its return line and report match the contract. |
 | PreToolUse | Edit\|Write\|Read | `agent: orchestrator` | `orchestrator_guard.py` | PreToolUse guard for the orchestrator persona (Edit, Write and Read). |
+| PostToolUse | Read\|Grep\|Glob\|Edit\|Write\|MultiEdit\|PowerShell\|Bash | `agent: packet-coder` | `coder_context_note.py` | PostToolUse note for packet-coder: past 75k context, commit passing work before the cap denies every tool. |
 | SessionStart | (all) | `.codex/hooks.json` | `agent-board` | Agent board: registers the session and shows unread board activity. External tool, skipped when it is not installed. |
 | PreToolUse | Bash | `.codex/hooks.json` | `shell_guard.py` | PreToolUse guard for shell tool calls (Bash and PowerShell). |
 

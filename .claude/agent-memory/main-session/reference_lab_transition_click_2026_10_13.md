@@ -1,3 +1,10 @@
+---
+name: reference_lab_transition_click_2026_10_13
+description: "Report-only world click during a load: client_world_click with expect nothing confirms dispatch only"
+metadata:
+  type: reference
+---
+
 # Report-only world click during a load, 2026-10-13
 
 Source: `crates/lab/src/supervisor/world/click.rs`, the `report_only_click_survives_world_load_before_post_click_read` regression test, and the live SGU client check on 2026-10-13.

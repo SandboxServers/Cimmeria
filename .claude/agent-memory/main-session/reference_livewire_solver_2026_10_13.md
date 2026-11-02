@@ -1,3 +1,10 @@
+---
+name: reference_livewire_solver_2026_10_13
+description: Livewire solver split across lab and server
+metadata:
+  type: reference
+---
+
 # Livewire solver split across lab and server
 
 The server's `server_minigame_state` returns the ticket-free board and the

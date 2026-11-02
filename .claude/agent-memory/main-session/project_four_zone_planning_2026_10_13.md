@@ -1,5 +1,8 @@
 ---
+name: project_four_zone_planning_2026_10_13
 description: "2026-10-13 four-zone planning: final handoff ZIP evidence boundaries, prior-campaign reconciliation, and owner content decisions."
+metadata:
+  type: project
 ---
 
 - `SGW_FINAL_DEVELOPER_HANDOFF.zip` contains four-zone world dossiers and CSVs but omits the `SGW_FINAL_RE.sqlite` and `SGW_ALL_FINDINGS_ARCHIVE.sqlite` databases named by its master handoff. Build-scoped CSV relations are usable; missing joins must remain unresolved.
@@ -10,9 +13,12 @@ description: "2026-10-13 four-zone planning: final handoff ZIP evidence boundari
 - Owner targets about 5–8 authored side stories per large hub plus repeatables after restoration UAT; initial rewards are useful supplies and modest XP/currency. Cellblock remains an exception with no repeatables.
 - The 73-row Harset review classifies 29 current-core, 39 older-revision, 2 Tollana handoff and 3 offworld records. Owner chose to hold older revisions until build lineage proves a compatible arc.
 - Old Harset 36-row scope reconciles to 29 ZIP-linked current-core, four non-ZIP records (1360, 567, 1377, 1410), and three ZIP-linked offworld rows (1401, 1407, 1409) marked OUT in its audit; at most 33 active, with 567 conditional on item 2698 grant evidence.
-- Owner approved the up-to-33 Harset active set with mission 567 conditional on item 2698 grant; the existing campaign ledger still needs a status/dependency reset before dispatch.
-- The old Tollana shell assessment in `docs/content/zone-audit.md` predates `data/spaces/tollana.nav` and the final handoff's 51 Tollana-moniker mission rows. Current world-19 spawnlist has only a DHD and two rings; the handoff mission links do not establish playable chains or exact NPC positions.
+- Owner approved the up-to-33 Harset active set with mission 567 conditional on item 2698 grant; status lives in docs/analysis/harset-continuation/README.md.
+- The old Tollana shell assessment in `docs/content/zone-audit.md` predates `data/spaces/tollana.nav` and the final handoff's 51 Tollana-moniker mission rows. The handoff's Tollana mission links do not establish playable chains or exact NPC positions.
 - Local Claude history preserves the Dial the Gate oral-history research for episodes 398, 412, 430, 433, 442 and 459, including detailed timestamped notes; its temporary caption files are gone. `docs/analysis/four-zone-planning/story-research.md` distills it for authoring. Episode 430 narrates an early Brad Wright pitch deck, which diverges from shipped seed and does not establish four-zone quest order. Episode 459 directly supports an Op-CORE prisoner escaping the frozen Castle prison and identifies Colonel Marsh. Treat interview recollection as inspiration and explicit testimony, not as shipped mission proof.
 - Downloads also contains a Castle/Cellblock prop audit, ring-transport handoff, Castle status brief, seven historical Cellblock map packs, an earlier RE review bundle and a build overview export; `docs/analysis/four-zone-planning/downloads-evidence.md` records their use. The historical comparison worlds 1201–1207 are already seeded. The ring brief's direct-teleport defect remains in chain 1109, but `docs/analysis/ring-transport-cellblock-castle/` owns that repair.
 - Source verification exposed the old `crates/resources/src/base/resources/apply_overrides.rs::apply_mission_overrides` skip for IDs absent from `CookedDataMissions.pak`. CB-N05a's full-entry ResourceCache infrastructure has since merged to `main`; the first new authored quest still needs real-client journal/dialog/advance/relog proof before further authored quests are called Done.
 - Four active continuation branches follow `execution-contract.md`: one feature branch per zone, packet worktrees merged by wave, about 40k working tokens when a bounded Haiku packet fits, local CI and up to three independent fixer/fresh-reviewer rounds, then one remote PR for the entire zone campaign. The owner prioritizes the cheapest capable model per activity without sacrificing quality and has standing lab and merge approval within the 2026-10-14 decision register.
+
+INVALIDATED WHEN: docs/analysis/four-zone-planning owner decisions are superseded
+checked: 2026-11-01

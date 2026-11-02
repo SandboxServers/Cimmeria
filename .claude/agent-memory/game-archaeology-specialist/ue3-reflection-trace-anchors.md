@@ -34,3 +34,6 @@ Full write-up with raw values: `docs/analysis/lab-autopilot/ue3-backport-verifie
 
 **Why:** the lab-autopilot back-port needs native traces, by-name reflection and a reliable view point.
 **How to apply:** check the doc sections before re-deriving. Live probes need a user OK and the lab lease. Related: [[controller-mouse-input-model]], [[headless-ghidra-decompile-workaround]].
+
+INVALIDATED WHEN: the lab-autopilot ue3-backport-verified doc revises the trace or reflection anchors
+checked: 2026-11-01

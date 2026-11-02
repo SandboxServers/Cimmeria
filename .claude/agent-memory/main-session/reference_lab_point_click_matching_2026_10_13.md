@@ -1,3 +1,10 @@
+---
+name: reference_lab_point_click_matching_2026_10_13
+description: "Lab world point click matching: rendered entities within 0.05 m and the mouse-over re-read after moving"
+metadata:
+  type: reference
+---
+
 # Lab world point matching (2026-10-13)
 
 The Cellblock NID Guard corpse can be rendered at its server point while a point-only click hovers the player's avatar instead. A click by entity ID can find a different body pixel or camera view and succeeds. The lab now matches a world point to rendered entities within 0.05 m, reports multiple candidate IDs as ambiguous, and requires a matched ID on `Unit.MouseOver` before input. This is a lab client interaction rule; it does not change server interaction range or content.

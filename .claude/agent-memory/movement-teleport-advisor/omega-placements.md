@@ -14,3 +14,6 @@ Measured 2026-10-18 for UO-01 (worknote `docs/analysis/union-zone-planning/omega
 
 **Why:** later Omega seed packets copy coordinates from the worknote.
 **How to apply:** re-run the probes if either `.nav` is rebuilt; see [[omega-crossings]].
+
+INVALIDATED WHEN: either Omega .nav is rebuilt or the UO-01 placements worknote is revised
+checked: 2026-11-01

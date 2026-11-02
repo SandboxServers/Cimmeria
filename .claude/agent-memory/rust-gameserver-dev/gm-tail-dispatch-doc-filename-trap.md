@@ -1,3 +1,10 @@
+---
+name: gm-tail-dispatch-doc-filename-trap
+description: GM tail dispatch docs: similarly named files, offset counting, and validator-bypass is_finite gate
+metadata:
+  type: feedback
+---
+
 ## Two similarly-named protocol docs — don't confuse them
 
 `docs/protocol/` has both `client-method-dispatch-table.md` (SGWPlayer

@@ -19,3 +19,6 @@ Discord flood); the gate fixes the flood, not the lost uploads.
 **How to apply:** if someone asks why DLL events stop after ~8 h, the fix is on the
 launcher side (write the refreshed token into the file with `atomic_write`), not in
 the DLL. The DLL already picks up a different token from the file.
+
+INVALIDATED WHEN: a launcher starts rewriting current-session.json on token refresh
+checked: 2026-11-01

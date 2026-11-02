@@ -1,6 +1,6 @@
 ---
 name: npc-range-gate-and-weapon-range-columns
-description: Where NPC attack-range constants come from (resources.items melee/ranged range columns), the two places range is gated, and the layered-selector pattern that keeps existing tests unmodified
+description: Where NPC attack-range constants come from (resources.items melee/ranged range columns), the NPC and player range gates, and the layered-selector pattern that keeps existing tests unmodified
 metadata:
   type: project
 ---
@@ -31,15 +31,11 @@ Client-side corroboration for the same pair of columns (`MeleeRanges` /
 `RangeRanges` in the cooked item schema) is in
 `docs/reverse-engineering/findings/combat-formulas-client-evidence.md` E4.
 
-## Range is gated in TWO places, and only one knows about melee
+## NPC and player range gates
 
 1. `cell/service/npc_ai/ability_select.rs::effective_max_range` — melee-aware
    since H09. Used by `ability_ranges` and `choose_npc_ability_within_reach`.
-2. `cell/abilities/use_ability/handle.rs` (~line 239) — `def.max_range > 0 ?
-   def.max_range : 30.0`, **no `is_ranged` branch**. This is the gate the
-   *player* melee path goes through, so a player can still land a melee
-   auto-attack from 30 m. Fixing it is client-visible and needs its own
-   packet.
+2. Player launch and warmup re-check: `cell/abilities/use_ability/cast_range.rs` over `crates/entity/src/abilities/range.rs`, which chooses the melee or ranged `(min, max)` by the ability's `is_ranged` and the weapon's range columns, falling back to the 30 m default.
 
 Trap: 148 rows in `resources.abilities` have `is_ranged = false` **and** a
 non-zero `max_range` between 100 and 2500 — not metres. Any melee-reach rule
@@ -71,3 +67,6 @@ different guards; reverting the whole commit at once hides which guard tracks
 which arm. See [[npc-ai-fight-test-fixtures]].
 
 Related: [[stat-with-no-consumer-trap]], [[entity-template-seed-authoring]]
+
+INVALIDATED WHEN: the resources.items range columns or NPC_ATTACK_RANGE / NPC_MELEE_RANGE change, or crates/entity/src/abilities/range.rs stops choosing melee or ranged bounds by is_ranged
+checked: 2026-11-01

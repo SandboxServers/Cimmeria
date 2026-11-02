@@ -38,3 +38,6 @@ deferred-buffer flush. It passes on `main` and is revert-proven against
 per-(witness_id, entity_id) hold-duration evidence this investigation
 lacked. If a future report recurs, check `aoi.introduce` first before
 re-deriving the SpaceManager symmetry argument above.
+
+INVALIDATED WHEN: a two-client visibility report recurs with aoi.introduce rows, or the two_player_visibility test is removed
+checked: re-verified (test and both aoi.introduce outcomes exist) 2026-11-01

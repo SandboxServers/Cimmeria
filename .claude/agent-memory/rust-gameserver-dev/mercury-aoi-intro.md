@@ -1,3 +1,10 @@
+---
+name: mercury-aoi-intro
+description: First-login AoI intro packet shape
+metadata:
+  type: project
+---
+
 # First-login AoI intro packet shape
 
 Verified in the server composer, client receive-path finding and wire tests
@@ -33,3 +40,6 @@ the normal header-safe 1300-byte cut falls within that message's body. One
 logical cascade bundle, its message order and CH-07 Pack/Shift remain intact.
 Wire tests prove the first fragment has only cursor 1 and later fragments
 have no request footer; live-client acceptance of the short fragment is owed.
+
+INVALIDATED WHEN: the live client accepts or rejects the split intro packets (owed), or intro_bundles.rs / isolate_first_fragment_message change
+checked: 2026-11-01

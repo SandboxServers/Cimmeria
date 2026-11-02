@@ -1,3 +1,9 @@
+---
+name: legacy-command-parity-scoping-judgment
+description: Scoping judgment calls when porting a legacy Python dot command to Rust in the legacy-command-parity campaign
+metadata:
+  type: feedback
+---
 # legacy-command-parity campaign: scoping judgment calls (from P02)
 
 Working a packet in the Cimmeria `legacy-command-parity` campaign

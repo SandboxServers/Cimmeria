@@ -46,3 +46,6 @@ VLootables is the client-side loot window controller. Key facts:
 
 **Why:** Needed to document downstream loot pipeline after right-click-routing-on-corpse.md established the upstream half.
 **How to apply:** LootDisplay arrives with full item list inline (no separate container-open request). Cache_ElementReady<DBInvItem> subscription means loot window may delay rendering until item data loads.
+
+INVALIDATED WHEN: the client crafting, gate travel or loot class graph is re-analysed, or the chapters named in the note are promoted
+checked: 2026-11-01

@@ -49,3 +49,6 @@ of geometry. See
 [docs/analysis/npc-ai-restoration/worknotes/na36-extractor-mesh-actor-gap.md](../../../docs/analysis/npc-ai-restoration/worknotes/na36-extractor-mesh-actor-gap.md)
 and [docs/engine/navmesh-build-pipeline.md §11](../../../docs/engine/navmesh-build-pipeline.md#11-mesh-actor-class-gap-interpactor--kactor--fracturedstaticmeshactor-na36-2026-09-25)
 for the full evidence trail. Related: [[harset-zone-evidence]].
+
+INVALIDATED WHEN: the navmesh-extractor mesh-actor class filter changes or InterpActor becomes unconditional
+checked: unverified 2026-11-01

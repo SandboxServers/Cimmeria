@@ -13,3 +13,7 @@ Reviewed 2026-10-10 (worktree tg-vendor, commits 8daa63c87 + 095a8cdf6): cell `v
 - Real revert guard for CAT-E-01 is the `Option<i32>` -> `i32` type plus the cell happy-path tests asserting the session template; the no-session test and the two base live-DB "no repair/recharge list" tests pass on revert (old cell also refused no-session; the live-DB tests pass a template, exercising the pre-existing paid-path refusal).
 - Base `VendorLog::refused` only logs INFO; no player feedback for insufficient_cash / not_repairable / not_on_vendor_list etc. Now reachable from the stock UI.
 - CAT-E-02 still open: `vendor_context` checks neither proximity nor same space, and `vendor_entity` is never cleared; template is read from whatever entity now holds that id (see [[exploit-entity-id-recycling]]).
+
+checked: unverified 2026-11-01
+
+INVALIDATED WHEN: vendor_context gains proximity or space checks

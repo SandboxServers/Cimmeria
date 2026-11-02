@@ -35,7 +35,7 @@ parsing "body" value: ... The system cannot find the path specified`. Setting
 path, which is the opposite of what's needed.
 
 ```bash
-D="C:/Users/Steve/AppData/Local/Temp/.../bodies"   # Windows path, forward slashes
+D="<scratchpad>/bodies"   # Windows path, forward slashes
 MSYS_NO_PATHCONV=1 gh api -X POST "$R/$id/replies" -F "body=@$D/reply.md"
 ```
 

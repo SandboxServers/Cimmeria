@@ -454,3 +454,6 @@ See Finding 5.2 below for the wire MD5 provenance.
 4. **ServerConnection lifetime**: The object at `0xEEE2C100` is freed when the client disconnects. After-the-fact memory reads at the same address return reused heap data (a small `float 1.0` + various ints) — capture must happen during an active session.
 
 5. **`+0x190` is the InterfaceElement dispatch table sub-object**, not part of the digest. PMT writes a back-pointer at `*(this+0x190+0x38) = *(this+0x1C8) = this`. The 127-iteration loop registers msg_id handlers `0x80..0xFE`.
+
+INVALIDATED WHEN: spec.protocol.mercury-wire-format section 2 is promoted over this note or SGW.exe changes
+checked: 2026-11-01
