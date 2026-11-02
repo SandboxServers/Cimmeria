@@ -2,7 +2,7 @@
 title: "Debug Area"
 type: reference
 audience: engineers, testers
-last_updated: 2026-10-05
+last_updated: 2026-11-01
 ---
 
 # Debug Area
@@ -67,6 +67,7 @@ in their own seed files:
   `debug_area_minigames_chains.sql` (chains 24050-24057), with dialog 60120
   and screens 200020-200021, inside the block templates 1600-1609, spawns
   14100-14109, chains 24050-24069. See [Minigame terminals](#minigame-terminals).
+- DR-03b (the Armory, [debug-armory campaign](../analysis/debug-armory/README.md)): `entity_templates_debug_area_armory.sql` (templates 1610-1616), `spawnlist_debug_area_armory.sql` (spawns 14110-14116) and `item_lists_debug_area_armory.sql` (buy lists 1310-1316, sell list 1349), inside the free block templates 1610-1659, spawns 14110-14299, item lists 1310-1349. See [Armory](#armory).
 
 Heading 0 faces +Z and -1.5708 faces -X.
 
@@ -1229,6 +1230,56 @@ Right-click a hostile one to attack it, or target it and use any ability.
 | `base-session` `world_entry/gm_only_worlds.rs`, `base-world-entry` `gate_travel/tests/gm_only_world.rs`, `base-methods` `world_entry_db.rs` (`live_db_a_non_gm_saved_in_the_debug_area_logs_in_at_the_faction_start`) | A non-GM is refused world 1300 on a cross-world transfer and at login and arrives at the Praxis or SGU start with a line owed; a GM goes in |
 | `cell-catalog` `spawner/tests/live_db_vendor_arbitrage.rs` | No buy list in the seed sells an item for less than any sell list pays for it |
 | `content-engine` `loader/tests/action_conversion.rs`, `interact_tag_linter` | `gm_ability_bulk` converts for `grant_all` and `reset` and drops anything else; the plaza's interact chains are allowlisted (template-default cursor bits) |
+
+## Armory
+
+The Armory is seven vendors on the plaza of world 1300 `DebugArea`, built by DR-03b of the [debug-armory campaign](../analysis/debug-armory/README.md). Vendors 0 to 3 stock one representative per weapon family, tier and quality (73 weapons); vendors 4 to 6 stock one per armor slot, tier and quality (41 pieces). That is 114 designs, one buy row each. It is seed-only (D-DR1): it adds no command and no server code. The rest of the catalog stays reachable with `/gmgiveitem`. The representatives are listed in [catalog.md](../analysis/debug-armory/catalog.md).
+
+### Vendors
+
+Each vendor is a copy of the Munitions vendor template 1302 (see [Munitions vendor](#munitions-vendor-template-1302)), stationary, tagged `DebugArea_Armory<n>`. Its stock label is its template name. Every vendor sells to the shared sell list 1349.
+
+| Vendor | Template | Spawn | x, y, z | Stock label (template name) | Buy list (rows) |
+|---|---|---|---|---|---|
+| Armory 0 | 1610 | 14110 | 268.0, 7.05, -915.0 | Armory 0: Test Weapon to Composite Combat Knife | 1310 (19) |
+| Armory 1 | 1611 | 14111 | 268.0, 7.09, -918.0 | Armory 1: Microblade Combat Knife to SI 3 9mm Pistol | 1311 (19) |
+| Armory 2 | 1612 | 14112 | 268.0, 7.13, -921.0 | Armory 2: SI 4 9mm Pistol to Assault Shotgun | 1312 (19) |
+| Armory 3 | 1613 | 14113 | 268.0, 7.13, -924.0 | Armory 3: Strike Shotgun to Papa Polecat Flamethrower | 1313 (16) |
+| Armory 4 | 1614 | 14114 | 266.0, 7.02, -927.0 | Armory 4: Aramid Fiber Ballistic Helmet to Trinium Ballistic Gloves | 1314 (19) |
+| Armory 5 | 1615 | 14115 | 266.0, 7.09, -930.0 | Armory 5: Tri-Naq Alloy Ballistic Gloves to Boron-Carbide Ballistic Boots | 1315 (19) |
+| Armory 6 | 1616 | 14116 | 266.0, 7.15, -933.0 | Armory 6: Trinium Ballistic Boots to Neutronium Ablative Boots | 1316 (3) |
+
+Sources: `entity_templates_debug_area_armory.sql`, `spawnlist_debug_area_armory.sql` and `item_lists_debug_area_armory.sql`. Each buy row is quantity 1. 112 designs cost 1 naquadah, one costs 300 and one costs 1000. The sell list 1349 holds all 114 designs and pays 0 naquadah (the sell path accepts 0), so a sale removes the item from the bag.
+
+### Using it
+
+1. Get there with `.gotolocation DebugArea 266 <y> -915`, using the y from the table (the vendors stand from z -915 to -933).
+2. Give yourself naquadah with `/gmgivecash`.
+3. Buy: open a vendor and buy a design. Each row is one unit.
+4. Equip: from the bag, equip the weapon or armor piece.
+5. Fire: shoot the training dummies at z -872 (see [Training dummies](#training-dummies-templates-1310-1314)).
+6. Sell back: sell the design to any Armory vendor. It leaves the bag for 0 naquadah.
+
+### Not sold back
+
+None. DR-03b left no design off sell list 1349 (its commit body: "skipped from sell list: none"), so every stocked design sells back. If a later change leaves a design off the list, it stays in the bag until a `.removeitem` exists (D-DR5).
+
+### What it does not do
+
+- It does not give every item. Use `/gmgiveitem <id> <count>` for any item outside the 114 representatives (D-DR2).
+- It does not grant other archetypes' abilities. A cross-archetype grant is not built (D-DR4).
+- It has no level gate: every tier sells to any level (D-DR6).
+
+### Regenerate
+
+```
+python tools/ability_mechanics/debug_armory.py survey
+python tools/ability_mechanics/debug_armory.py audit
+python tools/ability_mechanics/debug_armory.py seed probes --out <probe file>
+python tools/ability_mechanics/debug_armory.py seed emit --heights <nav_inspect output> --probes <probe file> --out-dir <dir>
+```
+
+Run them from the repo root with stock Python 3. The probes are grounded with `nav_inspect` against `data/spaces/ihpet_crater_light.nav`. `seed emit` writes the three seed files to `--out-dir`; the committed copies belong in `db/resources/Entities/Seed/`, `db/resources/Items/Seed/` and `db/resources/Worlds/Seed/`. They are generated: change the generator and rerun it, never edit them by hand. Tests: `tools/ability_mechanics/test_debug_armory.py`.
 
 ## Stargate
 
