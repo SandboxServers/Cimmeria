@@ -72,3 +72,64 @@ No PENDING clauses. 1893 and 1894 were never pressed.
 ## Recipe
 
 SigNoz `signoz_search_logs`, filter `service.name = 'cimmeria-server' AND cimmeria.lab_run = 'dr-lab' AND scope_name = 'abilities' AND player_name CONTAINS 'Cgbqnmmsdfkvui' AND event EXISTS AND event != 'warmup_pending'`, start 1793654400000, end 1793655540000, limit 500 (374 rows). Seed: `resources.abilities` with `resources.effects` and `resources.effect_nvps` counts per ability.
+
+## Rerun 2026-11-02 (post DR-07l/m/n)
+
+Run `C:\Users\Steve\AppData\Local\cimmeria-lab\uat-runs\2026-11-02-unknown-cgbqokntohiosu`, window 21:48:38Z to 21:54:28Z, fresh character Cgbqokntohiosujp, rows Soldier-00, 1329, 856, 2864, 1894, 1893 plus `_session_end`. Runner: PASS 6 (setup, `_session_end`, 1329, 856, 1894, 1893), FAIL 1 (2864). `service.version` 6b50d9131417b8cf93feb61a7c640577398db567 attested for this run under a short lease (none was held), released. Server truth: SigNoz `service.name = 'cimmeria-server' AND cimmeria.lab_run = 'dr-lab' AND scope_name = 'abilities' AND player_name CONTAINS 'Cgbqokntohiosu' AND event EXISTS AND event != 'warmup_pending'`, 1793656080000 to 1793656500000 (32 rows). Seed from `resources.abilities` / `resources.effect_nvps` (`server_db_query`).
+
+The hotbar fix (DR-07n) worked: all five rows now reach the server, including 1894 and 1893, which were BLOCKED before. Every ground row sent `use_ability_on_ground_recv` (DR-07l/m), two presses each except 2864 (one).
+
+| Row | Ability | Runner | Server evidence | Grade | Class |
+|---|---|---|---|---|---|
+| Soldier-1329 | Incendiary Grenade | PASS ([FAILED] applied) | 2x `use_ability_on_ground_recv` + `ability_refused no_mechanics` (`effect_count 0`) 21:50:09, 21:50:34 | FAIL | seed gap (`effect_ids` empty); runner PASS refused by the server |
+| Soldier-856 | Takedown | PASS | 2x `use_ability_recv` + `ability_launched` (cast 1, 2) + `fire_target_skipped no_target` 21:50:57, 21:51:08 | PASS | launch proven; damage not examined (no target) |
+| Soldier-2864 | EMP Grenade | FAIL (`ground_confirm` `hover_timeout (10 s)`) | 1x `use_ability_on_ground_recv` + `ability_refused no_mechanics` (`effect_count 7`) 21:51:44 | FAIL | seed gap (7 effects 4200-4206, 0 NVPs); runner hover timeout on a later press is a lab flake |
+| Soldier-1894 | Phase Grenade | PASS ([FAILED] applied) | 2x `use_ability_on_ground_recv` + `ability_refused no_mechanics` (`effect_count 0`) 21:53:05, 21:53:29 | FAIL | seed gap (`effect_ids` empty); runner PASS refused |
+| Soldier-1893 | Stance: Commander | PASS ([FAILED] applied) | 2x `use_ability_recv` + `ability_refused no_mechanics` (`effect_count 2`) 21:53:52, 21:54:01 | FAIL | seed gap (2 effects, 0 NVPs); runner PASS refused |
+
+### Soldier-2864: ability or runner?
+
+Both, but the ability verdict stands on its own. The first press reached the server (ground recv at 250.049, 6.585, -870.954, the dummy spot, so that press had a good ground point) and the gate refused it `no_mechanics`: the seed row has 7 effects and no NVPs. The runner then failed at `ground_confirm` on a later press: it asked for a ground click at (-87107.18, 25000, 662.15), which is not a Debug Area coordinate, and the hover probe timed out at 10 s. That is a runner/ground-point flake (BLOCKED-infra for the second press: no second server row). It does not rescue the row: the ability is an ability issue (seed gap), so the grade is FAIL, and the FAIL would stay after a clean second press. No separate issue body for the flake (one occurrence); the rerun after the seed fix shows whether it repeats.
+
+## Findings (rerun)
+
+1. **Seed gap, 8 rows in all:** 854, 858, 1455, 1891, 1329, 2864 (first run) plus 1894 and 1893 (new, pressed for the first time). New issue body: [DR-L2-soldier-2-no-mechanics-stances.md](issues/DR-L2-soldier-2-no-mechanics-stances.md). 1329 and 2864 stay in [DR-L2-soldier-2-no-mechanics.md](issues/DR-L2-soldier-2-no-mechanics.md).
+2. **Resolved:** the unexplained "server logged a press despite the runner error" path from the first run is replaced by clean ground presses (two per row). 856 launches twice.
+3. **Lab flake:** 2864 `hover_timeout` with an out-of-world ground point, one occurrence.
+
+## Merged final grades (first run plus rerun)
+
+| Row | Ability | Final | Basis |
+|---|---|---|---|
+| Soldier-00 | setup | PASS | |
+| Soldier-1642 | Stance: Soldier | PASS | first run |
+| Soldier-637 | Aim | PASS | first run |
+| Soldier-1454 | Hunker Down | PASS | first run |
+| Soldier-523 | Concussive Grenade | PASS | first run |
+| Soldier-1452 | Duck and Cover | PASS | first run |
+| Soldier-858 | Leadership | FAIL | seed gap, first run |
+| Soldier-1455 | Quick Launch | FAIL | seed gap, first run |
+| Soldier-1619 | Combat Sprint | PASS | first run |
+| Soldier-1453 | Heroism | PASS | first run |
+| Soldier-868 | Flashbang Grenade | PASS | first run |
+| Soldier-1450 | Cover Penetration | PARTIAL | passive (design) |
+| Soldier-869 | Morale Boost | PASS | first run |
+| Soldier-861 | High-Explosive Grenade | PASS | first run |
+| Soldier-1891 | Stance: Rally | FAIL | seed gap, first run |
+| Soldier-1457 | Steadfast | PARTIAL | passive (design) |
+| Soldier-854 | Smoke Grenade | FAIL | seed gap, first run |
+| Soldier-1479 | Throw Mastery | PARTIAL | passive (design) |
+| Soldier-1451 | Cover Stance | PASS | first run |
+| Soldier-1458 | Stance: Ranged Specialist | PASS | first run |
+| Soldier-1364 | Shockwave Grenade | PASS | first run |
+| Soldier-1329 | Incendiary Grenade | FAIL | seed gap, rerun |
+| Soldier-856 | Takedown | PASS | rerun, 2 launches |
+| Soldier-2864 | EMP Grenade | FAIL | seed gap, rerun (runner hover flake on a later press) |
+| Soldier-1894 | Phase Grenade | FAIL | seed gap, rerun |
+| Soldier-1893 | Stance: Commander | FAIL | seed gap, rerun |
+
+**Merged totals soldier-2: PASS 15 (incl. setup), FAIL 8, PARTIAL 3, BLOCKED 0 (26 rows).**
+
+## Rerun list (after the rerun)
+
+Rerun only after the seed fix (`seed-change`): 854, 858, 1455, 1891, 1329, 2864, 1894, 1893. Nothing is BLOCKED any more.

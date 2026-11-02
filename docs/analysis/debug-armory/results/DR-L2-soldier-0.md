@@ -91,3 +91,44 @@ SigNoz via `signoz_search_logs` with `filter`, `start 1793647380000`, `end 17936
 Findings-only. Take the seed gap (finding 1) to a `seed-change` packet and re-run Soldier-718, 725, 1477 after it; re-run Soldier-1475 once; give the architect the passive-row `applied` clause observation.
 
 verify DR-L2-soldier-0 docs/analysis/debug-armory/results/DR-L2-soldier-0.md
+
+## Rerun 2026-11-02 (post DR-07l/m/n)
+
+Full-file rerun after the ground-click fix. Run `C:\Users\Steve\AppData\Local\cimmeria-lab\uat-runs\2026-11-02-unknown-cgbqoputibbuew`, window 21:54:34Z to 22:10:02Z, fresh character Cgbqoputibbuewdj, 23 rows plus `_session_end`, 4 `lab_uat_run` calls. Runner: PASS 21 (incl. setup and `_session_end`), FAIL 3 (718, 725, 1477). `service.version` 6b50d9131417b8cf93feb61a7c640577398db567 attested for this run under a short lease (none was held), released. Server truth: SigNoz `service.name = 'cimmeria-server' AND cimmeria.lab_run = 'dr-lab' AND scope_name = 'abilities' AND player_name CONTAINS 'Cgbqoputibbuew' AND event IN ('use_ability_recv','use_ability_on_ground_recv','ability_launched','ability_refused')`, grouped by `ability_id, event, reason`, 1793656440000 to 1793657460000. Every pressed row shows exactly 2 presses with identical outcomes.
+
+Changes against the first run: Soldier-1475 now presses (2x `use_ability_on_ground_recv`, 2x `ability_launched`) and is PASS; `_session_end` is PASS (no bridge blip). Everything else matches the first run.
+
+| Row | Ability | Runner | Server (2 presses) | Grade | Class |
+|---|---|---|---|---|---|
+| Soldier-00 | setup | PASS | world 1300 | PASS | |
+| Soldier-598 | Quick Burst | PASS | 2x `ability_launched` | PASS | |
+| Soldier-717 | Snare Shot | PASS | 2x `ability_launched` | PASS | |
+| Soldier-715 | Hollow Point Ammunition | PASS ([FAILED] applied) | 2x `ability_refused no_mechanics` | PARTIAL | passive (design) |
+| Soldier-716 | Wounding Shot | PASS | 2x `ability_launched` | PASS | |
+| Soldier-714 | Stance: Mobility | PASS | 2x `ability_launched` | PASS | |
+| Soldier-657 | Interrupting Shot | PASS | 2x `ability_launched` | PASS | |
+| Soldier-719 | Armor Piercing Ammunition | PASS | 2x `ability_launched` | PASS | |
+| Soldier-891 | Suppression Shot | PASS | 2x `ability_launched` | PASS | |
+| Soldier-718 | Selective Fire | FAIL (applied) | 2x `ability_refused no_mechanics` (1 effect, 0 NVPs) | FAIL | seed gap |
+| Soldier-720 | Cover Fire | PASS | 2x `ability_launched` | PASS | |
+| Soldier-713 | Draw Fire | PASS | 2x `ability_launched` | PASS | |
+| Soldier-723 | Incendiary Ammunition | PASS ([FAILED] applied) | 2x `ability_refused no_mechanics` | PARTIAL | passive (design) |
+| Soldier-725 | Sustained Fire | FAIL (applied) | 2x `ability_refused no_mechanics` (3 effects, 0 NVPs) | FAIL | seed gap |
+| Soldier-1474 | Pinning Fire | PASS | 2x `ability_launched` | PASS | |
+| Soldier-867 | Quickload | PASS ([FAILED] applied) | 2x `ability_refused no_mechanics` | PARTIAL | passive (design) |
+| Soldier-722 | Spray and Pray | PASS | 2x `ability_launched` | PASS | |
+| Soldier-1879 | Point Blank Shot | PASS | 2x `ability_launched` | PASS | |
+| Soldier-1446 | Explosive Ammunition | PASS ([FAILED] applied) | 2x `ability_refused no_mechanics` | PARTIAL | passive (design) |
+| Soldier-1475 | Flushing Fire | PASS (SGHC 6 SMG, applied ok) | 2x `use_ability_on_ground_recv` + 2x `ability_launched` | PASS | was BLOCKED; fixed by DR-07l/m |
+| Soldier-1445 | EMP Ammunition | PASS ([FAILED] applied) | 2x `ability_refused no_mechanics` | PARTIAL | passive (design) |
+| Soldier-1476 | No Rest for the Weary | PASS | 2x `ability_launched` | PASS | |
+| Soldier-1477 | All Out Assault | FAIL (applied) | 2x `ability_refused no_mechanics` (6 effects, 0 NVPs) | FAIL | seed gap |
+| _session_end | logout | PASS | n/a | PASS | the first run's bridge blip did not repeat |
+
+Notes. The five PASS rows with a FAILED `applied` clause (715, 723, 867, 1446, 1445) are the passives the server refuses by design (runner PASS, no launch: PARTIAL, as before). 718, 725, 1477 are the known seed gap (`server_db_query`: 0 `effect_nvps` rows for their effects), issue [DR-L2-soldier-0-damage-nvps-missing.md](issues/DR-L2-soldier-0-damage-nvps-missing.md); no new issue body. [DR-L2-soldier-0-flushing-fire-press-ignored.md](issues/DR-L2-soldier-0-flushing-fire-press-ignored.md) is resolved by the rerun (the press now reaches the server) and can be closed. [DR-L2-soldier-0-logout-bridge-connect.md](issues/DR-L2-soldier-0-logout-bridge-connect.md) did not repeat; keep it as a one-off lab flake.
+
+## Merged final grades
+
+The rerun covers all 23 rows and supersedes the first run (the first run's server evidence agrees on every row except 1475 and `_session_end`). Final grades are the Grade column above.
+
+**Merged totals soldier-0: PASS 15 (incl. setup), PARTIAL 5, FAIL 3, BLOCKED 0 (23 rows).** `_session_end` PASS.
