@@ -140,9 +140,16 @@ These agents skip CLAUDE.md; this list is their rule set.
 - **Change:** every weapon row, in `debug_armory_specs.py` gated rows and `debug_armory_gear.py` weapon rows, makes the same four changes:
   - it adds an optional `@item_action` unequip of Bandolier slot 1, plus an optional close of the `CharacterWin` sheet, before the give;
   - after the equip it adds `@key F1`;
-  - it gains a required `armed` clause (`@player_state` `/ammo/weapon_item_id` `eq <item>`);
+  - it gains a required `armed` clause (`@player_state` `/ammo/weapon_item_id` `eq <item>`; superseded by DR-07i, which compares `/ammo/weapon` with the item name);
   - lab-run-plan R5 is amended to give the verifier a short lease of its own for attests.
 - **Full spec:** the files, steps, tests, regen and checks are in [worknotes/ruling-weapon-select.md § DR-07h](worknotes/ruling-weapon-select.md#dr-07h-select-the-granted-weapon-and-isolate-weapon-rows). That section is authoritative.
+
+### DR-07i: armed clause compares the weapon name (canary fix)
+
+- **Agent:** packet-coder. **Host:** windows. **Worktree:** `dr-lab`, branch `lab/dr-lab`. **Commit:** `DR-07i: armed clause compares the active weapon name`.
+- **Why:** `getItemIDForSlot` returns the inventory instance id, not the design id, so `armed` failed on Soldier-598, Soldier-716 and Soldier-717 (canary C1b).
+- **Change:** the `armed` pointer is `/ammo/weapon`, and its value and text use the item name, in `debug_armory_specs.py` `ability_row` and `debug_armory_gear.py` `weapon_row`; tests and 13 armory TOMLs regenerated.
+- **Full spec:** [worknotes/canary.md#c1b-armed-fails-on-598716717-because-it-compares-a-design-id-with-an-instance-id](worknotes/canary.md#c1b-armed-fails-on-598716717-because-it-compares-a-design-id-with-an-instance-id).
 
 ### DR-08: brief for DR-L1
 
