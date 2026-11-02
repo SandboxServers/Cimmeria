@@ -18,6 +18,7 @@ struct Fake {
     view_error: Option<String>,
     reject: Box<dyn Fn(Vec3) -> Option<&'static str>>,
     clicks: Vec<PointArg>,
+    rotates: Vec<bool>,
 }
 
 impl Fake {
@@ -32,6 +33,7 @@ impl Fake {
             view_error: None,
             reject: Box::new(reject),
             clicks: vec![],
+            rotates: vec![],
         }
     }
 }
@@ -44,8 +46,9 @@ impl GroundClicker for Fake {
         }
     }
 
-    async fn click(&mut self, p: PointArg, _rotate: bool) -> Result<Value, ClickFail> {
+    async fn click(&mut self, p: PointArg, rotate: bool) -> Result<Value, ClickFail> {
         self.clicks.push(p);
+        self.rotates.push(rotate);
         match (self.reject)(Vec3::new(p.x, p.y, p.z)) {
             Some(step) => Err(ClickFail {
                 point: p,
@@ -74,8 +77,8 @@ fn the_first_offset_is_distance_metres_along_the_camera_yaw() {
     assert!((c.point.y - (player.y + 800.0)).abs() < 1e-6, "{c:?}");
     assert!((horizontal_m(player, c.point) - 8.0).abs() < 1e-9);
     assert!(
-        c.point.z < player.z,
-        "on the ground, not at the capsule centre"
+        (c.point.z - player.z).abs() < 1e-9,
+        "the pawn Location is the feet, which is ground level"
     );
 }
 
@@ -145,6 +148,7 @@ async fn a_covered_first_offset_is_retried_at_the_next_and_the_point_used_is_rep
     assert_eq!(out["distance_m"], 8.0);
     assert_eq!(out["refused"].as_array().unwrap().len(), 1);
     assert_eq!(out["refused"][0]["step"], "hover");
+    assert_eq!(fake.rotates, vec![false, false]);
     assert_eq!(out["point"]["space"], "client");
     assert_eq!(out["point"]["x"], fake.clicks[1].x);
 }
@@ -191,6 +195,7 @@ async fn an_absolute_point_is_clicked_as_given_and_never_replaced() {
     let out = confirm(&mut fake, abs).await.unwrap();
     assert_eq!(fake.clicks.len(), 1);
     assert_eq!(fake.clicks[0].x, -87000.0);
+    assert_eq!(fake.rotates, vec![true]);
     assert_eq!(out["point"]["x"], -87000.0);
 
     let mut covered = Fake::new(Vec3::new(0.0, 0.0, 0.0), 0.0, |_| Some("hover"));

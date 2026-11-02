@@ -1,12 +1,11 @@
 //! The confirming click of a ground-targeted ability, and where it lands.
 //!
-//! A UAT spec cannot name an absolute point: every `lab_uat_run` call logs in
-//! a character that spawns somewhere else, and a fixed point is then not a
-//! known distance from the avatar. Behind the avatar's own body (the camera
-//! sits behind it) it hovers as "your own avatar covers the point" and the
-//! click is refused (DR-L2 soldier-1 rerun, 2026-11-02). So the point is an
-//! offset from the live avatar, resolved when the click happens, and a point
-//! the hover rejects is retried at the next offset.
+//! A fixed point is fragile: on the Debug Area plaza the camera sits behind
+//! the avatar, and a point straight ahead of it hovers as "your own avatar
+//! covers the point" and the click is refused (DR-L2 soldier-1 rerun,
+//! 2026-11-02). So the point is an offset from the live avatar, resolved when
+//! the click happens, and a point the hover rejects is retried at the next
+//! offset.
 
 use rmcp::schemars;
 use serde_json::{json, Value};
@@ -24,10 +23,9 @@ const ALT_DISTANCES_M: [f64; 2] = [6.0, 10.0];
 const SIDE_DEG: f64 = 30.0;
 /// Each rejected try costs up to the hover budget (~12 s), so stop here.
 const MAX_TRIES: usize = 6;
-/// The pawn's `Location` is its capsule centre; the ground is about this far
-/// below it (UE3 units). Only shifts the projected pixel a little: the game
-/// resolves the click against the ground itself.
-const GROUND_DROP_UU: f64 = 50.0;
+/// Pawn `Location` is the feet (probe B-P2), so the ground point keeps the
+/// avatar's z.
+const GROUND_DROP_UU: f64 = 0.0;
 
 /// Where to left-click after a ground ability press. Give `x`, `y` and `z`
 /// for an absolute point (as `client_world_click`'s `point`), or leave them

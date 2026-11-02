@@ -48,9 +48,9 @@ TARGET_SELF, TARGET_GROUND = 1, 3  # target_type_id values that have no target t
 KNOWN_UNCOVERED = (997, 1246, 1250, 1355)
 # A ground-targeted ability only opens its reticle on the press; client_use_ability's
 # `ground` point is left-clicked right after it (canary.md 2026-11-02). It is an OFFSET from
-# the live avatar, not a map point: every lab_uat_run logs in a fresh character that spawns
-# elsewhere, and a fixed point landed under the avatar's own body (DR-07m). 30 degrees off the
-# camera's forward keeps it out from behind the avatar; the tool retries nearby offsets itself.
+# the live avatar, not a map point: the old fixed point, 8 m straight ahead of the camera, was
+# covered by the avatar's own body in every row (DR-07m). 30 degrees off the camera's forward
+# keeps it out from behind the avatar; the tool retries nearby offsets itself.
 GROUND_POINT = {"distance_m": 8, "bearing_deg": 30}
 UNCOVERED_MISMATCH = 1
 
