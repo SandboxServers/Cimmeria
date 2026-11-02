@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 import debug_armory as armory
 
@@ -133,6 +134,93 @@ class AuditTest(unittest.TestCase):
         path = self._seed("c.sql", "INSERT INTO item_lists (item_list_id, name) VALUES (1311, 'x');\n")
         _, code = armory.audit([path])
         self.assertEqual(code, 1)
+
+
+HEIGHTS_OK = "  {n}  poly=1 component=1 h=0.00 m  dy=-3.01 m  ok\n"
+
+
+class SeedProbesTest(unittest.TestCase):
+    def test_probes_are_spaced_three_metres_apart_from_the_fixed_origin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "probes.txt"
+            code, _ = run_main(["seed", "probes", "--out", str(out)])
+            lines = out.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(code, 0)
+        self.assertEqual(lines[0], "DR0 266.0 10.0 -915.0")
+        self.assertEqual(lines[1], "DR1 266.0 10.0 -918.0")
+        self.assertEqual(len(lines), 7)  # 73 weapon + 41 equipment representatives at 19 rows
+
+    def test_a_probe_within_2_5_metres_of_a_world_spawn_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(armory, "world_spawns", lambda: [(266.0, -916.0)]):
+            code, err = run_main(["seed", "probes", "--out", str(Path(tmp) / "p.txt")])
+        self.assertEqual(code, 1)
+        self.assertIn("DR0", err)
+
+    def test_an_ungrounded_probe_moves_2_metres_in_x_and_exits_3(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            probes = Path(tmp) / "probes.txt"
+            probes.write_text("DR0 266.0 10.0 -915.0\nDR1 266.0 10.0 -918.0\n", encoding="utf-8")
+            with self.assertRaises(armory.Stop) as ctx:
+                armory.check_heights(probes, HEIGHTS_OK.format(n="DR1"))
+            moved = probes.read_text(encoding="utf-8")
+            retries = (Path(tmp) / "probes.txt.retries").read_text(encoding="utf-8")
+        self.assertEqual(ctx.exception.code, 3)
+        self.assertIn("DR0 268.0 10.0 -915.0", moved)
+        self.assertEqual(retries, "DR0 1\n")
+
+    def test_a_probe_out_of_retries_exits_4_and_writes_no_sql(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            probes = Path(tmp) / "probes.txt"
+            probes.write_text("DR0 266.0 10.0 -915.0\n", encoding="utf-8")
+            (Path(tmp) / "probes.txt.retries").write_text("DR0 3\n", encoding="utf-8")
+            heights = Path(tmp) / "heights.txt"
+            heights.write_text("", encoding="utf-8")
+            out_dir = Path(tmp) / "out"
+            with mock.patch.object(armory, "representatives", lambda cap: ([[1]], {1: {"name": "x"}})):
+                code, err = run_main(["seed", "emit", "--heights", str(heights), "--probes", str(probes), "--out-dir", str(out_dir)])
+            self.assertFalse(out_dir.exists())
+        self.assertEqual(code, 4)
+        self.assertIn("ungroundable: DR0 at 266.0, -915.0", err)
+
+    def test_pricing_buys_at_the_highest_sell_price_or_one(self):
+        items = {1: {"name": "a"}, 2: {"name": "b"}}
+        with mock.patch.object(armory, "price_maps", lambda: ({1: 7}, {})):
+            buy, sell, skipped = armory.stock([[1, 2]], items, sell_price=0)
+        self.assertEqual(buy, [[(1, 7), (2, 1)]])
+        self.assertEqual(sell, [1, 2])
+        self.assertEqual(skipped, [])
+
+    def test_the_sell_list_skips_a_design_cheaper_on_another_list(self):
+        items = {1: {"name": "a"}, 2: {"name": "b"}}
+        with mock.patch.object(armory, "price_maps", lambda: ({1: 7, 2: 7}, {2: [(1400, 3)]})):
+            buy, sell, skipped = armory.stock([[1, 2]], items, sell_price=7)
+        self.assertEqual(sell, [1])
+        self.assertEqual(skipped, ["skipped from sell list: 2 b, cheaper on list 1400 at 3"])
+
+    def test_buy_lists_stop_at_1348_and_the_sell_list_is_1349(self):
+        sql = armory.item_sql([[(1, 1)]] * 39, [1], 0)
+        lists = [int(line.split("VALUES (")[1].split(",")[0]) for line in sql.splitlines() if line.startswith("INSERT INTO item_lists")]
+        self.assertEqual(lists[:-1], list(range(1310, 1349)))
+        self.assertEqual(lists[-1], 1349)
+
+    def test_emitted_seed_files_parse_back_and_stay_in_their_blocks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            probes = Path(tmp) / "probes.txt"
+            run_main(["seed", "probes", "--out", str(probes)])
+            names = [line.split()[0] for line in probes.read_text(encoding="utf-8").splitlines()]
+            heights = Path(tmp) / "heights.txt"
+            heights.write_text("".join(HEIGHTS_OK.format(n=n) for n in names), encoding="utf-8")
+            out_dir = Path(tmp) / "out"
+            code, _ = run_main(["seed", "emit", "--heights", str(heights), "--probes", str(probes), "--out-dir", str(out_dir)])
+            self.assertEqual(code, 0)
+            for name, table, col, lo, hi in (
+                ("item_lists_debug_area_armory.sql", "item_list_items", "item_id", 131000, 134999),
+                ("entity_templates_debug_area_armory.sql", "entity_templates", "template_id", 1610, 1659),
+                ("spawnlist_debug_area_armory.sql", "spawnlist", "spawn_id", 14110, 14299),
+            ):
+                text, _ = armory.read_text(out_dir / name)
+                ids = [int(r[col].text) for r in armory.sql_rows(text, table)]
+                self.assertTrue(ids and all(lo <= i <= hi for i in ids), name)
 
 
 class LineEndingTest(unittest.TestCase):
