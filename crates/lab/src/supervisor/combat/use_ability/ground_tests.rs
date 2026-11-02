@@ -8,12 +8,12 @@ use std::time::Duration;
 
 use serde_json::json;
 
+use super::ground::GroundArg;
 use super::{Fallback, Press, UseAbilityRequest};
 use crate::supervisor::combat::use_ability::resolve::Query;
 use crate::supervisor::events::fake_bridge::{
     self, empty_rings, events, is_ring_pump, lua_ok, Responder,
 };
-use super::ground::GroundArg;
 
 /// What the fake client saw: the press (Lua `useAbility`) and the click.
 #[derive(Debug, Default)]

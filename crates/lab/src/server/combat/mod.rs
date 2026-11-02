@@ -17,6 +17,7 @@ use crate::supervisor::combat::combat_log::CombatLogRequest;
 use crate::supervisor::combat::defeat::{
     DieRequest, Respawn, DEFAULT_DEFEAT_TIMEOUT, DEFAULT_RESPAWN_TIMEOUT,
 };
+use crate::supervisor::combat::use_ability::ground::GroundArg;
 use crate::supervisor::combat::use_ability::resolve::Query;
 use crate::supervisor::combat::use_ability::{
     Fallback, Press, UseAbilityRequest, DEFAULT_OBSERVE_MS, MAX_OBSERVE_MS,
@@ -26,7 +27,6 @@ use crate::supervisor::events::wait::{
     WaitRequest, DEFAULT_CURSOR, DEFAULT_POLL_MS, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS,
 };
 use crate::supervisor::flows::FlowError;
-use crate::supervisor::combat::use_ability::ground::GroundArg;
 
 /// Args for `client_hotbar`.
 #[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
