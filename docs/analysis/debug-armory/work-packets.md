@@ -186,3 +186,106 @@ The orchestrator has `ops` file each body under `results/issues/` (`gh issue cre
 ### DR-40: cross-archetype grant (stub, BlockedDecision D-DR4)
 
 Written as a full packet only if the owner wants it. Shape: a GM line `/gmgiveabilitytree <archetype>` under the `/gmgiveallabilities` handler, recorded as GM grants that `/gmresetabilities` removes; a live-DB test; a `commands.md` row. Needs `rust-gameserver-dev` and a server-authority review.
+
+## Wave S: seed gaps
+
+From [seed-gap-plan.md](seed-gap-plan.md). Only the EVIDENCED fixes that are fixable now get a packet. Every other gap is an owner decision (D-DR10 to D-DR17), and those abilities keep refusing.
+
+**Shipping:** the wave has one packet, so there is no wave loop. DR-S1 does not depend on the Armory or on any lab result. It ships as **its own PR from `origin/main`**:
+
+1. Packet review loop.
+2. `ship.ps1 pr -C <dr-s1>`.
+3. `ship.ps1 merge <PR> --retire dr-s1`.
+
+It can merge before or after any `dr-integration` PR in either order, because no other packet touches its three files. After it merges, a re-run of `armory-abilities-commando` grades 640 again.
+
+### DR-S1: Aimed Shot: Torso damage from effect 703's text
+
+- **Agent:** packet-coder.
+- **Host:** windows.
+- **Worktree:** `dr-s1`, created by `ops` with `pwsh tools/build-lane/mk-worktree.ps1 debug-armory/DR-S1-aimed-shot-torso dr-s1`, which bases it on `origin/main`.
+- **Commit:** `fix(seed): Aimed Shot: Torso damage NVPs from effect 703 text (DR-S1)`.
+- **Why:** ability 640 Aimed Shot: Torso is refused with `no_mechanics` ([DR-L3-commando-2](results/issues/DR-L3-commando-2-no-mechanics.md)). Its only effect, 703, has no `effect_nvps` rows, because the generator's damage grammar rejects the text "Target -800F / 80H" (`db/resources/Effects/Seed/effects.sql:7386`): the H term has no minus.
+- **Evidence (EVIDENCED; [seed-gap-plan.md § EVIDENCED](seed-gap-plan.md#evidenced)):** the 800 / 80 values are the effect's own text.
+  - The siblings in the same family carry generated rows from the same pattern: Arm, effect 1401, "-500F / -50H" at `effect_nvps.sql:426-427`; Leg, effect 916, at `effect_nvps.sql:344-345`.
+  - The effect text wins over the tooltip ("-400F / -40H", `abilities.sql:339`), as it does for both siblings.
+  - Reading "80H" as "-80H" is the one interpretation, and the plan records it.
+- **Rules for this packet:** the 9 rules in [§ Rules every packet-coder and database-persistence packet carries](#rules-every-packet-coder-and-database-persistence-packet-carries) apply.
+  - In particular: edit only the four files below. No `git stash`, no push, no `git worktree prune`. Every cargo call goes through the lane in the foreground: `Set-Location <dr-s1>; pwsh tools/build-lane/lane.ps1 ...`. At most 5 fix rounds per check.
+  - **Do not touch any `-- ability-mechanics generated ... begin/end` block.** The generator owns those. Hand rows go outside them.
+  - Do not edit the generator `effect_nvps_from_desc.py`.
+  - No `db/scripts/` migration.
+  - `effect_nvps.sql` keeps its existing line endings. Check with `[IO.File]::ReadAllText` whether it uses `\r\n` before writing, and write with the same.
+- **Files:**
+  1. **`db/resources/Effects/Seed/effect_nvps.sql`.** After the last minigames row (`... VALUES (25504, 2813, 'difficulty', '1');`) and before the blank line and `-- TOC entry 3313`, insert one blank line and then exactly:
+
+     ```sql
+     -- debug-armory hand-authored (25510-25519): DR-S1
+     -- 703 Aimed Shot: Torso "Target -800F / 80H" (effects.sql 703). The H term
+     -- lacks its minus; read as -80H like siblings 1401 Arm and 916 Leg
+     -- ("-500F / -50H"). The ability tooltip says -400F / -40H; the effect row is
+     -- what executes, as for both siblings.
+     INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25510, 703, 'FocusDamage', '800');
+     INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25511, 703, 'HealthDamage', '80');
+     ```
+
+     Prove first that 25510 and 25511 are free: `Select-String -Path <dr-s1>\db\resources\Effects\Seed\effect_nvps.sql -Pattern 'VALUES \(2551[0-9],'` must print nothing.
+     Prove that 703 has no rows yet: `-Pattern ', 703, '` prints nothing.
+     Leave the `setval` line alone.
+  2. **`tools/ability_mechanics/test_damage_family.py`.** In `CommittedDamageSeed.test_the_packet_effects_are_generated`, about line 226:
+     - Remove `703` from the tuple `(1604, 1609, 4200, 4202, 1559, 1560, 703)`.
+     - Add:
+
+       ```python
+       hand = {e.effect_id for e, _ in results[0].hand_authored}
+       self.assertIn(703, hand)  # DR-S1 hand rows, Aimed Shot: Torso
+       self.assertNotIn(703, unparsed)
+       ```
+
+       `run_family` moves an effect with hand rows of the family's names into `hand_authored` with the note "parser rejects: ...".
+  3. **`tools/ability_mechanics/reports/damage.txt`.** Regenerate:
+
+     `Set-Location <dr-s1>; python tools/ability_mechanics/effect_nvps_from_desc.py --report --family damage > tools/ability_mechanics/reports/damage.txt`
+
+     703 moves from the unparsed list (old line 258) to "hand-authored, left alone".
+     - Then `git diff --stat` must show `effect_nvps.sql` changed only by your seven lines. If `--report` rewrote a generated block, stop: report `blocked`.
+     - Keep the report's existing line endings.
+  4. **`crates/cell-combat/src/cell/abilities/use_ability/tests/no_mechanics_live_db.rs`.**
+     - Before editing, run the live-DB check below once and note the printed `AB-12: N of ...` count; `HAS_MECHANICS_TODAY` must equal N on your base.
+     - Set `HAS_MECHANICS_TODAY` to the new printed count. Expect N + 1, since only 640 gains a mechanic. Any other delta: stop and report `blocked` with both counts.
+     - Add "and DR-S1's Aimed Shot: Torso 640" to the doc comment's list.
+     - Add this test after `seeded_has_mechanics_count_live_db`:
+
+       ```rust
+       /// DR-S1: Aimed Shot: Torso (640) deals the damage its effect 703 text
+       /// states ("-800F / 80H", read as -80H), so it is no longer refused.
+       #[tokio::test]
+       async fn aimed_shot_torso_has_damage_live_db() {
+           let pool = require_db_or_skip!();
+           let mgr = seeded_manager(&pool).await;
+           let effect = mgr.effect_defs.get(&703).expect("effect 703 loads");
+           assert_eq!(effect.param_i32("FocusDamage"), 800, "703: -800F");
+           assert_eq!(effect.param_i32("HealthDamage"), 80, "703: -80H");
+           let def = mgr.ability_defs.get(&640).expect("ability 640 loads");
+           assert!(ability_has_mechanics(&mgr, def), "640 must not draw no_mechanics");
+       }
+       ```
+
+       `param_i32` is the `EffectDef` accessor that `crates/cell-catalog/src/cell/spawner/tests/live_db_deployables.rs:146` uses.
+     - The file stays under 200 lines.
+- **Checks, in order, from `<dr-s1>`, in the foreground:**
+  1. `Set-Location <dr-s1>; python tools/ability_mechanics/effect_nvps_from_desc.py --check`. It must print `ok: ...`. Never redirect `--check` into a report.
+  2. `Set-Location <dr-s1>; python -m unittest discover -s tools/ability_mechanics -p "test_*.py"`. It must be all green, including `test_the_committed_report_is_current` for damage, shield and cleanse.
+  3. `Set-Location <dr-s1>; pwsh tools/build-lane/reload-db.ps1`. A load error means a broken seed.
+  4. `Set-Location <dr-s1>; pwsh tools/build-lane/lane.ps1 cargo fmt -p cimmeria-cell-combat -- --check`.
+  5. `Set-Location <dr-s1>; pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-combat --tests -- -D warnings`.
+  6. `Set-Location <dr-s1>; pwsh tools/build-lane/live-db-test.ps1 no_mechanics_live_db`. All three tests must be green. Confirm that the log is under `logs/` for `dr-s1`, not the main checkout.
+- **Revert proof** (record both runs in the commit body):
+  1. Delete the two `INSERT` lines.
+  2. Rerun check 6: `aimed_shot_torso_has_damage_live_db` and `seeded_has_mechanics_count_live_db` fail.
+  3. Rerun check 2: the `assertIn(703, hand)` fails.
+  4. Restore the lines, then rerun checks 3 and 6 green.
+- **Docs owed:** none beyond this campaign's ledger, which the orchestrator updates. No status docs.
+- **Done when:**
+  - One local commit touches exactly the four files, and `git status` is clean.
+  - The report file and the one-line return follow the brief.

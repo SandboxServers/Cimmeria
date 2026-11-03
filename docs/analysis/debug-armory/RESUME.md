@@ -5,6 +5,13 @@
 
 **State (2026-11-02):** DR-01 to DR-08 are done and merged (#2058, #2059, #2060). DR-L1 ran on the local server (`dr-lab`): L1-1, L1-2, L1-3, L1-4 and L1-6 PASS, L1-5 PARTIAL (the debug-kit pistol has no ammo), human clauses NEEDS_HUMAN ([results/DR-L1.md](results/DR-L1.md)). DR-L2 to DR-L10 have not run. Next: DR-L2 to DR-L5 (ASK-FIRST, one spec run at a time), then waves 5 and 6.
 
+**Seed gaps (2026-11-02):** [seed-gap-plan.md](seed-gap-plan.md) classifies the DR-L2 to DR-L4 `no_mechanics` and moniker gaps as 3 EVIDENCED, 24 INFERRED and 46 UNKNOWN. **DR-S1** (640 Aimed Shot: Torso, effect 703 NVPs) is Ready:
+- `ops` makes `dr-s1` from `origin/main`.
+- A packet-coder runs it, followed by the packet review loop.
+- It ships as its own PR; there is no wave loop, and its order against `dr-integration` doesn't matter.
+
+Ask the owner D-DR10 to D-DR17; the abilities they cover keep refusing until then. DR-L5 (Archeologist) gaps are not classified yet; classify them the same way once the run is graded.
+
 **Goal:** a Debug Area (world 1300) Armory: plaza vendors selling one representative of every weapon family and equipment slot per tier and quality; generated lab specs that equip and fire each one and cast every ability of the 7 archetype trees; graded lab runs; an issue per failure.
 
 **Start here:**
@@ -26,6 +33,6 @@
 - Every Armory spec uses the plaza: one run at a time, never beside [starter-uat-shops SS-D1](../starter-uat-shops/work-packets.md#ss-d1-run-vendorstoml).
 - The lab-server MCP refused connections on 2026-10-27.
 
-**Open decisions:** D-DR4 (cross-archetype grant, DR-40), D-DR5 (`.removeitem` question), D-DR7 (sweep server), D-SP2 (shared).
+**Open decisions:** D-DR4 (cross-archetype grant, DR-40), D-DR5 (`.removeitem` question), D-DR7 (sweep server), D-SP2 (shared), D-DR10 to D-DR17 (seed gaps, [plan § Owner decisions](seed-gap-plan.md#owner-decisions)).
 
 **Next ledger update:** when the next lab wave (DR-L2 to DR-L5) is graded.
