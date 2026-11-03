@@ -5,8 +5,8 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - PACKET: SP-DCA5-p2
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
 - INSTANCE: p3   (the lab client you drive)
-- CHARACTER: Uat FxDca5j2   (a Jaffa at step 4456)
-- CHARACTER2: Uat FxDca5f1   (a fresh character)
+- CHARACTER: Uat FxDcafjc   (a Jaffa at step 4456)
+- CHARACTER2: Uat FxDcaffb   (a fresh character)
 - SERVER: the local lab server (D-SP2). Lab use on it is pre-authorized (D-SP5): never ask anyone for permission to drive. The coordinator staged the fixture before you started (see "COORD pre-step" in the part). If a fixture fact below is not true, record it and carry on; do not try to repair it yourself.
 - LEASE OWNER: sp-SP-DCA5-p2
 - START: fixture
@@ -79,8 +79,8 @@ The coordinator stages two offline characters with `server_stage_fixture` (schem
 
 | Role | Character (suggested) | Fixture |
 |---|---|---|
-| CHARACTER, a Jaffa at 4456 (S8) | `Uat FxDca5j2` | `{"character":"Uat FxDca5j2","world":"Castle","position":[356.0,70.18,900.5],"missions":[{"id":704,"state":"completed"},{"id":1521,"step":4456}]}` |
-| CHARACTER2, fresh (FZ-U1a) | `Uat FxDca5f1` | `{"character":"Uat FxDca5f1","world":"Castle","position":[352.7,70.3,957.0],"missions":[{"id":701,"state":"completed"},{"id":703,"state":"completed"},{"id":567,"state":"not_active"}]}` |
+| CHARACTER, a Jaffa at 4456 (S8) | `Uat FxDcafjc` | `{"character":"Uat FxDcafjc","world":"Castle","position":[356.0,70.18,900.5],"missions":[{"id":704,"state":"completed"},{"id":1521,"step":4456}]}` |
+| CHARACTER2, fresh (FZ-U1a) | `Uat FxDcaffb` | `{"character":"Uat FxDcaffb","world":"Castle","position":[352.7,70.3,957.0],"missions":[{"id":701,"state":"completed"},{"id":703,"state":"completed"},{"id":567,"state":"not_active"}]}` |
 
 The coordinator also creates the archetypes at character creation (`{"alignment":"sgu","archetype":"Jaffa",...}` for a Jaffa, Soldier for a Soldier) and confirms with `server_entity_get` that a Jaffa reads 8 and a Soldier reads at most 6. The chains test `archetype eq 8` for the offer (db/resources/Content/Seed/castle_symbiote_chains.sql:4, chain 1369). The Copplemann offer binding (chain 1395, a dialog set added on load) replays when the character logs in, so the fixture start is enough for FZ-U1a. Then:
 

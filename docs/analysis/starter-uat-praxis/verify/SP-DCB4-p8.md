@@ -1,6 +1,6 @@
 You are the Sonnet VERIFIER for one packet of the starter-world UAT (Praxis, Castle Cellblock). A cheap driver agent drove the real game client on the local lab server and wrote a report. You grade each row against SERVER evidence, never against what the driver says. You are read-only on the server and the database. Use PowerShell (no bash). You may read repo files. You never drive the game client and never take a lab lease. You never file an issue yourself (section 6).
 
-You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the list of screenshot paths the report names. Packet: SP-DCB4-p8. Character: `Dcb4j`.
+You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the list of screenshot paths the report names. Packet: SP-DCB4-p8. Character: `Dcbej`.
 
 ## 1. Rules of grading
 
@@ -49,7 +49,7 @@ Do not edit the repo (except the issue body file), the database or the server; d
 
 # Verify SP-DCB4-p8: T07b
 
-Character `Dcb4j`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB4-p4. If that part FAILed, grade these rows BLOCKED.
+Character `Dcbej`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB4-p4. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW T07b
 Sub-row scope: Jaffa T07 (dialog 5020) confirm. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.

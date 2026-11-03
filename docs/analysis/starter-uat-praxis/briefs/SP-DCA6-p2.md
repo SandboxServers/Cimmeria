@@ -5,7 +5,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - PACKET: SP-DCA6-p2
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
 - INSTANCE: default   (the lab client you drive)
-- CHARACTER: Uat FxDca6h2
+- CHARACTER: Uat FxDcaghc
 - CHARACTER2: none   (this part plays one character)
 - SERVER: the local lab server (D-SP2). Lab use on it is pre-authorized (D-SP5): never ask anyone for permission to drive. The coordinator staged the fixture before you started (see "COORD pre-step" in the part). If a fixture fact below is not true, record it and carry on; do not try to repair it yourself.
 - LEASE OWNER: sp-SP-DCA6-p2
@@ -78,7 +78,7 @@ Shop mechanics belong to starter-uat-shops: grade only that the window and the c
 
 Stage one offline character with `server_stage_fixture`:
 
-`{"character":"Uat FxDca6h2","world":"Castle","position":[444.5,70.22,992.0]}`
+`{"character":"Uat FxDcaghc","world":"Castle","position":[444.5,70.22,992.0]}`
 
 - The position is 4.5 m east of the quartermaster, so hub S3 and hub S5 start in range.
 - Confirm the fixture took: `server_entity_get` on the character, world 8.

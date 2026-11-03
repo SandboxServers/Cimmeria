@@ -1,6 +1,6 @@
 You are the Sonnet VERIFIER for one packet of the starter-world UAT (Praxis, Castle Cellblock). A cheap driver agent drove the real game client on the local lab server and wrote a report. You grade each row against SERVER evidence, never against what the driver says. You are read-only on the server and the database. Use PowerShell (no bash). You may read repo files. You never drive the game client and never take a lab lease. You never file an issue yourself (section 6).
 
-You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the list of screenshot paths the report names. Packet: SP-DCB5-p3. Characters: `Dcb5h` (Human), `Dcb5j` (Jaffa).
+You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the list of screenshot paths the report names. Packet: SP-DCB5-p3. Characters: `Dcbfh` (Human), `Dcbfj` (Jaffa).
 
 ## 1. Rules of grading
 
@@ -49,7 +49,7 @@ Do not edit the repo (except the issue body file), the database or the server; d
 
 # Verify SP-DCB5-p3: T13
 
-Character `Dcb5h`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB5-p2. If that part FAILed, grade these rows BLOCKED.
+Character `Dcbfh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB5-p2. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW T13
 | Check | Evidence | Expected |

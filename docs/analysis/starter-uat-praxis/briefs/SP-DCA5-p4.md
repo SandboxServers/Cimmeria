@@ -5,7 +5,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - PACKET: SP-DCA5-p4
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
 - INSTANCE: p3   (the lab client you drive)
-- CHARACTER: Uat FxDca5f1   (the same character as SP-DCA5-p3)
+- CHARACTER: Uat FxDcaffb   (the same character as SP-DCA5-p3)
 - CHARACTER2: none   (this part plays one character)
 - SERVER: the local lab server (D-SP2). Lab use on it is pre-authorized (D-SP5): never ask anyone for permission to drive. The coordinator staged the fixture before you started (see "COORD pre-step" in the part). If a fixture fact below is not true, record it and carry on; do not try to repair it yourself.
 - LEASE OWNER: sp-SP-DCA5-p4
@@ -70,12 +70,12 @@ Replace `LINE ONE` etc. with the exact lines the step gives. Wait at least 1500 
 
 ## PART SP-DCA5-p4 - the Castle gate crossing and the relog (FZ-U1c)
 
-ROWS: FZ-U1c (clauses U3 and U6 of FZ-U1). Start: carry-over from SP-DCA5-p3 (the same character `Uat FxDca5f1`, in the cabinet area, mission 567 at step 2012). If p3 left the character elsewhere, the first batch teleports anyway.
+ROWS: FZ-U1c (clauses U3 and U6 of FZ-U1). Start: carry-over from SP-DCA5-p3 (the same character `Uat FxDcaffb`, in the cabinet area, mission 567 at step 2012). If p3 left the character elsewhere, the first batch teleports anyway.
 ESTIMATE: 13 tool calls (planned success path; hard stop 28)
 
 ### COORD pre-step (the coordinator does this before the driver starts; the driver skips it)
 
-1. Dispatch only after the SP-DCA5-p3 verifier returned. CHARACTER = `Uat FxDca5f1`. No new fixture.
+1. Dispatch only after the SP-DCA5-p3 verifier returned. CHARACTER = `Uat FxDcaffb`. No new fixture.
 2. Sets `INSTANCE` = `p3` and the lease owner `sp-SP-DCA5-p4`.
 3. The turn-in leg is not driven: chain 6503 needs world 68 and no route to it exists (harset_opcore_chains.sql:363), so the verifier grades the turn-in BLOCKED. U2, U7 and U8 are not driven by this packet.
 
@@ -92,7 +92,7 @@ Source facts the rows rest on (background for the coordinator and the verifier; 
 
 ### ROW FZ-U1c - the crossing and the relog (clauses U3 and U6)
 
-Character: CHARACTER (`Uat FxDca5f1`). Expected: world id 57 after the crossing; 567 at step 4039; after the relog the mission survives.
+Character: CHARACTER (`Uat FxDcaffb`). Expected: world id 57 after the crossing; 567 at step 4039; after the relog the mission survives.
 
 - **c1 (1 call: client_batch).** One batch: DIALOG first, then CHATX lines `.bug SPU SP-DCA5-p4 FZ-U1c start`, `.gotolocation Castle 761.68 63.47 548.0` (3.7 m from the Castle gate) and `/gmdhd 3` (dials Harset), then wait 10000, then `player_state` (world_id, position), UTC.
 - **c2 (1 call: client_chat_log).** READ with `"channel":"9"` and `"contains":"dial"`. Record each line.

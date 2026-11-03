@@ -1,6 +1,6 @@
 You are the Sonnet VERIFIER for one packet of the starter-world UAT (Praxis, Castle Cellblock). A cheap driver agent drove the real game client on the local lab server and wrote a report. You grade each row against SERVER evidence, never against what the driver says. You are read-only on the server and the database. Use PowerShell (no bash). You may read repo files. You never drive the game client and never take a lab lease. You never file an issue yourself (section 6).
 
-You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the list of screenshot paths the report names. Packet: SP-DCB2-p2. Character: `Dcb2h`.
+You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the list of screenshot paths the report names. Packet: SP-DCB2-p2. Character: `Dcbch`.
 
 ## 1. Rules of grading
 
@@ -49,7 +49,7 @@ Do not edit the repo (except the issue body file), the database or the server; d
 
 # Verify SP-DCB2-p2: CB-U08b
 
-Character `Dcb2h`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB2-p1. If that part FAILed, grade these rows BLOCKED.
+Character `Dcbch`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB2-p1. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U08b
 Sub-row scope: Leave and re-enter, relog, then the pistol setup that CB-U05 needs (setup is not graded). Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.

@@ -1,6 +1,6 @@
 You are the Sonnet VERIFIER for one packet of the starter-world UAT (Praxis, Castle Cellblock). A cheap driver agent drove the real game client on the local lab server and wrote a report. You grade each row against SERVER evidence, never against what the driver says. You are read-only on the server and the database. Use PowerShell (no bash). You may read repo files. You never drive the game client and never take a lab lease. You never file an issue yourself (section 6).
 
-You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the list of screenshot paths the report names. Packet: SP-DCB3-p10. Character: `Dcb3k`.
+You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the list of screenshot paths the report names. Packet: SP-DCB3-p10. Character: `Dcbdk`.
 
 ## 1. Rules of grading
 
@@ -49,7 +49,7 @@ Do not edit the repo (except the issue body file), the database or the server; d
 
 # Verify SP-DCB3-p10: CB-U12b
 
-Character `Dcb3k`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p9. If that part FAILed, grade these rows BLOCKED.
+Character `Dcbdk`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p9. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U12b
 Sub-row scope: Accept 62060, dialog 60151, sabotage. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.
@@ -59,8 +59,8 @@ Sub-row scope: Accept 62060, dialog 60151, sabotage. Grade only the clauses this
 | Catalog | `mission_catalog_inserted` for 62060 | present |
 | No early offer | no `accepting mission` 62060 before 638 completes | yes |
 | Accept | `accepting mission` 62060 once; `displaying dialog` 60151 (client syntax error is known: not a fail); no item yet | yes |
-| Aid branch (`Dcb3h`) | `granting item` item 2893 count 2 once; mission complete; clicks after: nothing | one reward |
-| Sabotage branch (`Dcb3k`) | the same grant on the panel click; no 638 Livewire starts | one reward |
+| Aid branch (`Dcbdh`) | `granting item` item 2893 count 2 once; mission complete; clicks after: nothing | one reward |
+| Sabotage branch (`Dcbdk`) | the same grant on the panel click; no 638 Livewire starts | one reward |
 | Not both | no character has two reward rows | yes |
 | Relog | no second reward, no offer after completion | yes |
 | Full bag | INFO `grant_refused reason=container_full`; a mail row from Mission Rewards with 2893 x2; the chat line | optional; not run is allowed |

@@ -16,7 +16,7 @@ You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator u
 ## 2. Setup you do first (4 calls)
 
 1. Clock: `server_log_tail` with the last 5 lines and note the timestamp format and the timezone of the local server. Convert every time below to UTC.
-2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Uat FxDca7%'`. Call the results `$pid` (one per character the packet names).
+2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Uat FxDcah%'`. Call the results `$pid` (one per character the packet names).
 3. Row timeline from the driver's `.bug` bookmarks: `server_log_tail` with the filter `SPU SP-DCA7-p1` (or `playtest.bookmark`); print ONE row in full first to learn which field holds the note. Each `SPU SP-DCA7-p1 <row> start` gives that row's window start; the next `start` (or the packet end) gives its end. Pad every window by 5 s before and 20 s after. If the bookmarks are missing, say so and use the driver's UTC times.
 4. Sanity: `server_sessions` must show the character online during the window. If the local server log has nothing at all for the window, grade every server clause UNVERIFIED and stop.
 
@@ -52,13 +52,13 @@ Do not edit the repo, the database or the server; do not run the lab; do not dep
 
 # Verify SP-DCA7-p1: Infirmary barks (HB1, HB2)
 
-Characters: CHARACTER `Uat FxDca7a1` (Soldier, 1520 completed) and CHARACTER2 `Uat FxDca7b1` (Jaffa, 1521 completed, 1520 not_active). Rows HB1 and HB2. Bark chains: 10200 and 10201 (docs/analysis/castle-continuation/worknotes/CS-05S2b.md). Region box: x 344.9 to 371.0, z 880.2 to 904.6 (Events/Seed/point_set_points.sql:137-143).
+Characters: CHARACTER `Uat FxDcahab` (Soldier, 1520 completed) and CHARACTER2 `Uat FxDcahbb` (Jaffa, 1521 completed, 1520 not_active). Rows HB1 and HB2. Bark chains: 10200 and 10201 (docs/analysis/castle-continuation/worknotes/CS-05S2b.md). Region box: x 344.9 to 371.0, z 880.2 to 904.6 (Events/Seed/point_set_points.sql:137-143).
 
 ## ROW HB1 - Ogilvie says one line after 1520, no repeat
 
 | Check | Query | Expected |
 |---|---|---|
-| Gates held | `server_entity_get` for `Uat FxDca7a1` (archetype at most 6); the mission table (1520 completed) | both true |
+| Gates held | `server_entity_get` for `Uat FxDcahab` (archetype at most 6); the mission table (1520 completed) | both true |
 | The chain fired once | `server_log_tail` filter `10200` or `npc_bark` or `Ogilvie` in the HB1 window | one bark event for chain 10200 on the first entry; none on the second entry |
 | The client saw it | the driver's READ lines for `Ambernol` | one line with the B1 text ("The Ambernol run bought these people time, and I will not forget who made it. Keep your head down out there."), say channel; no second line after the second entry (`since_seq`) |
 | No dialog | the driver's DIALOG result | `none` |
@@ -70,7 +70,7 @@ Grade: PASS if the server fired 10200 once, the client read one B1 line and none
 
 | Check | Query | Expected |
 |---|---|---|
-| Gates held | `server_entity_get` for `Uat FxDca7b1` (archetype 8); the mission table (1521 completed, 1520 not_active) | both true |
+| Gates held | `server_entity_get` for `Uat FxDcahbb` (archetype 8); the mission table (1521 completed, 1520 not_active) | both true |
 | The chain fired | `server_log_tail` filter `10201` or `npc_bark` or `Castle Medic` in the HB2 window | one bark event for chain 10201 |
 | The client saw it | the driver's READ lines for `tank held` | one line with the B2 text ("The tank held, and so did the people who depend on it. Rest while you can; the Castle needs every warrior standing."); no dialog |
 | No Ambernol offer | the mission table after the window; the driver's `Ambernol` READ | 1520 still not_active; no offer dialog; no prompt |

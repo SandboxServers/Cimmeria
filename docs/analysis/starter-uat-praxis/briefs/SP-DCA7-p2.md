@@ -5,7 +5,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - PACKET: SP-DCA7-p2
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
 - INSTANCE: p2   (the lab client you drive)
-- CHARACTER: Uat FxDca7c1   (a Jaffa)
+- CHARACTER: Uat FxDcahcb   (a Jaffa)
 - CHARACTER2: none   (this part plays one character)
 - SERVER: the local lab server (D-SP2). Lab use on it is pre-authorized (D-SP5): never ask anyone for permission to drive. The coordinator staged the fixture before you started (see "COORD pre-step" in the part). If a fixture fact below is not true, record it and carry on; do not try to repair it yourself.
 - LEASE OWNER: sp-SP-DCA7-p2
@@ -77,7 +77,7 @@ ESTIMATE: 12 tool calls (planned success path; hard stop 28)
 
 Stage one offline character with `server_stage_fixture`:
 
-`{"character":"Uat FxDca7c1","world":"Harset","position":[-0.08,-67.27,34.0],"missions":[{"id":708,"state":"completed"},{"id":10320,"state":"not_active"}]}`
+`{"character":"Uat FxDcahcb","world":"Harset","position":[-0.08,-67.27,34.0],"missions":[{"id":708,"state":"completed"},{"id":10320,"state":"not_active"}]}`
 
 The coordinator creates it as a Jaffa (`{"alignment":"sgu","archetype":"Jaffa",...}`) and sets `INSTANCE` = `p2` and the lease owner `sp-SP-DCA7-p2`.
 

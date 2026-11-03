@@ -5,7 +5,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - PACKET: SP-DCA6-p1
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
 - INSTANCE: default   (the lab client you drive)
-- CHARACTER: Uat FxDca6h1
+- CHARACTER: Uat FxDcaghb
 - CHARACTER2: none   (this part plays one character)
 - SERVER: the local lab server (D-SP2). Lab use on it is pre-authorized (D-SP5): never ask anyone for permission to drive. The coordinator staged the fixture before you started (see "COORD pre-step" in the part). If a fixture fact below is not true, record it and carry on; do not try to repair it yourself.
 - LEASE OWNER: sp-SP-DCA6-p1
@@ -78,7 +78,7 @@ Shop mechanics belong to starter-uat-shops: grade only that the window and the c
 
 Stage one offline character with `server_stage_fixture`:
 
-`{"character":"Uat FxDca6h1","world":"Castle","position":[466.4,70.4,991.5],"items":[{"id":55,"count":1,"container":"main"}]}`
+`{"character":"Uat FxDcaghb","world":"Castle","position":[466.4,70.4,991.5],"items":[{"id":55,"count":1,"container":"main"}]}`
 
 - The position is the Armory respawner (component 250), 26 m east of the quartermaster. Item 55 stays in the fixture so the later sell leg can be added once a sell tool exists; this part does not use it.
 - Confirm the fixture took: `server_entity_get` on the character, world 8.

@@ -5,7 +5,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - PACKET: SP-DCB3-p13
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
 - INSTANCE: default   (the lab client you drive; account `lab`)
-- CHARACTER: `Dcb3j` (archetype Jaffa, Praxis, male, first name Uat)
+- CHARACTER: `Dcbdj` (archetype Jaffa, Praxis, male, first name Uat)
 - SERVER: local server at the recorded SHA (D-SP2). The lab is pre-authorized for this campaign (D-SP5): never ask anyone for permission, never wait for a human.
 - AREA: Castle_Cellblock (world 12) on the local server   (no other lane uses it at the same time; the plan runs these packets one after another on the default instance)
 
@@ -80,16 +80,16 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 # SP-DCB3-p13
 
-Start: carry-over from SP-DCB3-p12. Same character `Dcb3j`, same state. If SP-DCB3-p12 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
+Start: carry-over from SP-DCB3-p12. Same character `Dcbdj`, same state. If SP-DCB3-p12 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
 
 ROWS: CB-U12e.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
 ESTIMATE: 22 tool calls (planned success path; hard stop 28)
-CHARACTERS: `Dcb3j` (archetype Jaffa, Praxis, male, first name Uat), the same character as SP-DCB3-p12.
+CHARACTERS: `Dcbdj` (archetype Jaffa, Praxis, male, first name Uat), the same character as SP-DCB3-p12.
 
 ## Steps
 
-**S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, then L2 with last name `Dcb3j` and archetype `Jaffa` (Praxis, male, first name Uat), then WAIT. After WAIT, run PROMPT only if the WAIT output shows a window or prompt name (gotcha 11); otherwise skip it (no call).
+**S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, then L2 with last name `Dcbdj` and archetype `Jaffa` (Praxis, male, first name Uat), then WAIT. After WAIT, run PROMPT only if the WAIT output shows a window or prompt name (gotcha 11); otherwise skip it (no call).
 
 **S2 (1 call: client_batch).** Resume probe plus bookmark: one batch of the DIALOG op, `player_state` (`world_id`, `position`), UTC and the line `.bug SPU SP-DCB3-p13 CB-U12e start`. Report world and position. Facts: no fixture; the state comes from SP-DCB3-p12, so nothing needs replaying. If ATTEMPT is 2 or 3, continue at STOPPED AT; do not repeat DONE ROWS and do not repeat the bookmark.
 

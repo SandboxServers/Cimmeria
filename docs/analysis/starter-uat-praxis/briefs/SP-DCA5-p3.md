@@ -5,7 +5,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - PACKET: SP-DCA5-p3
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
 - INSTANCE: p3   (the lab client you drive)
-- CHARACTER: Uat FxDca5f1   (the same character as SP-DCA5-p2 CHARACTER2)
+- CHARACTER: Uat FxDcaffb   (the same character as SP-DCA5-p2 CHARACTER2)
 - CHARACTER2: none   (this part plays one character)
 - SERVER: the local lab server (D-SP2). Lab use on it is pre-authorized (D-SP5): never ask anyone for permission to drive. The coordinator staged the fixture before you started (see "COORD pre-step" in the part). If a fixture fact below is not true, record it and carry on; do not try to repair it yourself.
 - LEASE OWNER: sp-SP-DCA5-p3
@@ -70,12 +70,12 @@ Replace `LINE ONE` etc. with the exact lines the step gives. Wait at least 1500 
 
 ## PART SP-DCA5-p3 - the file cabinet next to Romney (FZ-U1b)
 
-ROWS: FZ-U1b (clauses U4 and U5 of FZ-U1). Start: carry-over from SP-DCA5-p2 (the same character `Uat FxDca5f1`, mission 567 active at step 2000, the Copplemann offer already accepted). If the p2 verifier graded FZ-U1a FAIL or BLOCKED, this part is BLOCKED and is not dispatched.
+ROWS: FZ-U1b (clauses U4 and U5 of FZ-U1). Start: carry-over from SP-DCA5-p2 (the same character `Uat FxDcaffb`, mission 567 active at step 2000, the Copplemann offer already accepted). If the p2 verifier graded FZ-U1a FAIL or BLOCKED, this part is BLOCKED and is not dispatched.
 ESTIMATE: 17 tool calls (planned success path; hard stop 28)
 
 ### COORD pre-step (the coordinator does this before the driver starts; the driver skips it)
 
-1. Dispatch only after the SP-DCA5-p2 verifier returned. The character is CHARACTER = `Uat FxDca5f1`, the one p2 used as CHARACTER2. No new fixture.
+1. Dispatch only after the SP-DCA5-p2 verifier returned. The character is CHARACTER = `Uat FxDcaffb`, the one p2 used as CHARACTER2. No new fixture.
 2. Confirm with `server_db_query` that mission 567 is active for it. If it is not, record `567 not active` and BLOCK this part.
 3. Sets `INSTANCE` = `p3` and the lease owner `sp-SP-DCA5-p3`.
 4. The character must be a GM: `.aggro off` is GM-gated (crates/cell-combat/src/cell/service/npc_ai/aggro_gates.rs:45-50). The verifier reads its `access_level` in setup.
@@ -93,7 +93,7 @@ Source facts the rows rest on (background for the coordinator and the verifier; 
 
 ### ROW FZ-U1b - the file cabinet (clauses U4 and U5)
 
-Character: CHARACTER (`Uat FxDca5f1`). Romney is 12 u from the cabinet, inside his 18 u aggro ring, so the proximity-aggro switch is turned off first. Never click, select or shoot `NID Interrogator Romney`.
+Character: CHARACTER (`Uat FxDcaffb`). Romney is 12 u from the cabinet, inside his 18 u aggro ring, so the proximity-aggro switch is turned off first. Never click, select or shoot `NID Interrogator Romney`.
 
 - **b1 (1 call: client_batch).** One batch: DIALOG first, then CHATX lines `.bug SPU SP-DCA5-p3 FZ-U1b start` and `.aggro off`.
 - **b2 (1 call: client_chat_log).** READ with `"channel":"9"` and `"contains":"proximity aggro OFF"`. Expected: a line starting `aggro set: proximity aggro OFF` or `aggro unchanged: proximity aggro OFF`. If no such line is there, send the batch of b1 once more (only the `.aggro off` line; one extra call, not counted) and read again. If there is still no such line, record `aggro switch not confirmed`, claim U4 and U5 BLOCKED, skip b3 to b13, and go to S9.

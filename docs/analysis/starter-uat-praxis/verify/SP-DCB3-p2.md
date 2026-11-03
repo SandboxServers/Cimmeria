@@ -1,6 +1,6 @@
 You are the Sonnet VERIFIER for one packet of the starter-world UAT (Praxis, Castle Cellblock). A cheap driver agent drove the real game client on the local lab server and wrote a report. You grade each row against SERVER evidence, never against what the driver says. You are read-only on the server and the database. Use PowerShell (no bash). You may read repo files. You never drive the game client and never take a lab lease. You never file an issue yourself (section 6).
 
-You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the list of screenshot paths the report names. Packet: SP-DCB3-p2. Character: `Dcb3h`.
+You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the list of screenshot paths the report names. Packet: SP-DCB3-p2. Character: `Dcbdh`.
 
 ## 1. Rules of grading
 
@@ -49,7 +49,7 @@ Do not edit the repo (except the issue body file), the database or the server; d
 
 # Verify SP-DCB3-p2: CB-U10a
 
-Character `Dcb3h`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p1. If that part FAILed, grade these rows BLOCKED.
+Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p1. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U10a
 Sub-row scope: Play 638, first 639 offer. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.
@@ -61,7 +61,7 @@ Sub-row scope: Play 638, first 639 offer. Grade only the clauses this part drove
 | Repeat click | no second accept or dialog | yes |
 | Relog | step B retained, no new offer (mission table) | yes |
 | Marsh | `displaying dialog` 4001 (Human) or 5022 (Jaffa); 62050 completes; core 1051, 1052, 1152 not lost | yes |
-| Abandon | `abandoning mission` 62050; offer returns; re-accept works | on `Dcb3k` |
+| Abandon | `abandoning mission` 62050; offer returns; re-accept works | on `Dcbdk` |
 | Skip | the core route reaches 688 | yes |
 
 Grade: blockers (blank dialog 60150, client crash, no first-press response, lost progress, changed core briefing) make the row FAIL; a blank dialog seen only in the driver's SHOT is NEEDS_HUMAN `H-CB-U10-1` unless the server shows the dialog displayed with no text. If the packet tap ran, record the cooked-sync heads `(3, 62050)` and `(5, 60150)`. Looker: 1. Is a dialog box with text visible? 2. Is a journal entry titled "The Remaining Pods" visible?

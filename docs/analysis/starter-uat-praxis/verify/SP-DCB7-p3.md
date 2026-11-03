@@ -1,6 +1,6 @@
 You are the Sonnet VERIFIER for one packet of the starter-world UAT (Praxis, Castle Cellblock). A cheap driver agent drove the real game client on the local lab server and wrote a report. You grade each row against SERVER evidence, never against what the driver says. You are read-only on the server and the database. Use PowerShell (no bash). You may read repo files. You never drive the game client and never take a lab lease. You never file an issue yourself (section 6).
 
-You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the list of screenshot paths the report names. Packet: SP-DCB7-p3. Character: `Dcb7c`.
+You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the list of screenshot paths the report names. Packet: SP-DCB7-p3. Character: `Dcbhc`.
 
 ## 1. Rules of grading
 
@@ -49,7 +49,7 @@ Do not edit the repo (except the issue body file), the database or the server; d
 
 # Verify SP-DCB7-p3: T15b.1
 
-Character `Dcb7c`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: fresh character, no fixture; start state by play or GM setup.
+Character `Dcbhc`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: fresh character, no fixture; start state by play or GM setup.
 
 ## ROW T15b.1
 Sub-row scope: Setup, then Guard2 and Hallway01 kills out of order. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.

@@ -5,8 +5,8 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - PACKET: SP-DCA7-p1
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
 - INSTANCE: p2   (the lab client you drive)
-- CHARACTER: Uat FxDca7a1   (the Soldier)
-- CHARACTER2: Uat FxDca7b1   (the Jaffa)
+- CHARACTER: Uat FxDcahab   (the Soldier)
+- CHARACTER2: Uat FxDcahbb   (the Jaffa)
 - SERVER: the local lab server (D-SP2). Lab use on it is pre-authorized (D-SP5): never ask anyone for permission to drive. The coordinator staged the fixture before you started (see "COORD pre-step" in the part). If a fixture fact below is not true, record it and carry on; do not try to repair it yourself.
 - LEASE OWNER: sp-SP-DCA7-p1
 - START: fixture
@@ -79,8 +79,8 @@ Stage two offline characters with `server_stage_fixture`:
 
 | Role | Character (suggested) | Fixture |
 |---|---|---|
-| CHARACTER, a non-Jaffa (HB1) | `Uat FxDca7a1` | `{"character":"Uat FxDca7a1","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1520,"state":"completed"},{"id":1521,"state":"not_active"}]}` |
-| CHARACTER2, a Jaffa (HB2) | `Uat FxDca7b1` | `{"character":"Uat FxDca7b1","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1520,"state":"not_active"},{"id":1521,"state":"completed"}]}` |
+| CHARACTER, a non-Jaffa (HB1) | `Uat FxDcahab` | `{"character":"Uat FxDcahab","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1520,"state":"completed"},{"id":1521,"state":"not_active"}]}` |
+| CHARACTER2, a Jaffa (HB2) | `Uat FxDcahbb` | `{"character":"Uat FxDcahbb","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1520,"state":"not_active"},{"id":1521,"state":"completed"}]}` |
 
 The coordinator also creates the archetypes: Soldier for CHARACTER, Jaffa for CHARACTER2 (`{"alignment":"sgu","archetype":"Jaffa",...}`), and confirms with `server_entity_get` (a Jaffa reads 8; the Soldier reads at most 6). It sets `INSTANCE` = `p2` and the lease owner `sp-SP-DCA7-p1`.
 

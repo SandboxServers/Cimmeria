@@ -5,8 +5,8 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - PACKET: SP-DCA5-p1
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
 - INSTANCE: p3   (the lab client you drive)
-- CHARACTER: Uat FxDca5s1   (the Soldier)
-- CHARACTER2: Uat FxDca5j1   (the Jaffa)
+- CHARACTER: Uat FxDcafsb   (the Soldier)
+- CHARACTER2: Uat FxDcafjb   (the Jaffa)
 - SERVER: the local lab server (D-SP2). Lab use on it is pre-authorized (D-SP5): never ask anyone for permission to drive. The coordinator staged the fixture before you started (see "COORD pre-step" in the part). If a fixture fact below is not true, record it and carry on; do not try to repair it yourself.
 - LEASE OWNER: sp-SP-DCA5-p1
 - START: fixture
@@ -79,8 +79,8 @@ The lab-driver has no fixture tools, so the coordinator stages two offline chara
 
 | Role | Character (suggested) | Fixture |
 |---|---|---|
-| CHARACTER, a non-Jaffa (S6) | `Uat FxDca5s1` | `{"character":"Uat FxDca5s1","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1521,"state":"not_active"}]}` |
-| CHARACTER2, a Jaffa (S7) | `Uat FxDca5j1` | `{"character":"Uat FxDca5j1","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1521,"state":"not_active"}]}` |
+| CHARACTER, a non-Jaffa (S6) | `Uat FxDcafsb` | `{"character":"Uat FxDcafsb","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1521,"state":"not_active"}]}` |
+| CHARACTER2, a Jaffa (S7) | `Uat FxDcafjb` | `{"character":"Uat FxDcafjb","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1521,"state":"not_active"}]}` |
 
 The coordinator also creates the archetypes at character creation (`{"alignment":"sgu","archetype":"Jaffa",...}` for a Jaffa, Soldier for a Soldier) and confirms with `server_entity_get` that a Jaffa reads 8 and a Soldier reads at most 6. The chains test `archetype eq 8` for the offer (db/resources/Content/Seed/castle_symbiote_chains.sql:4, chain 1369). Then:
 
