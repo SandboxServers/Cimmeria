@@ -88,7 +88,8 @@ fn served_dialog_overrides_have_no_digit_after_whitespace() {
     }
     assert!(
         failures.is_empty(),
-        "the client markup parser rejects whitespace followed by a digit; spell the \
+        "authored dialog text has whitespace followed by a digit; the lab client rejected \
+         that shape on 60150, 60151 and 60110 (rule inferred, lexer not read); spell the \
          number out:\n{}",
         failures.join("\n")
     );
@@ -137,7 +138,7 @@ fn authored_dialog_seed_screens_have_no_digit_after_whitespace() {
     );
     assert!(
         failures.is_empty(),
-        "authored dialog seed text has whitespace followed by a digit:\n{}",
+        "authored dialog seed text has whitespace followed by a digit (rule inferred, lexer not read; spell the number out):\n{}",
         failures.join("\n")
     );
 }

@@ -1744,7 +1744,7 @@ The launcher-cache-presync campaign ([ledger](../analysis/launcher-cache-presync
 | LP-U3 | Stop the local server, press **Reset client cache**, then **Play**. Then start the server and press **Retry**. | First press: "Starting…" at once, then a failure naming the step (checking with the server), the server's `host:port` and the connection error, and why; the game does not start; the button reads **Retry**. Retry: "Starting…" at once, the sync runs and the game starts. The launcher log (or SigNoz) shows `cooked_presync_finished` outcome `failed` reason `connect_failed` with `launch_not_started` reason `cooked_presync_failed`, then outcome `synced`. | Ledger row is canonical. |
 | LP-U4 | Start the local server with `CIMMERIA_COOKED_PRESYNC_DISABLED=1`, press **Reset client cache**, then **Play**. | The note says the server turned off the game data check, the game starts, and character select shows the old resync. The server logs `cooked_presync.refused` reason `disabled`. | Ledger row is canonical. |
 
-Known issue: served dialog 60110 shows a markup parse error after "I can add" (seed text, not cache; candidate owner issue).
+Fixed in seed and overrides by dlg-parse-fix (dialogs 60150, 60151, 60110, 60104 spell numbers out; rule inferred, see docs/engine/cooked-data-pak-format.md "Authoring Dialog Text"). Lab re-check of CB-U10a and the K3 Banker visit pending.
 
 ## Lab CLI (`lab.exe`)
 

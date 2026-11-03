@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use super::overrides_cellblock::PRISONER_CHOICE_DIALOG;
 use super::{generate_dialog_xml, DIALOG_OVERRIDES};
 
-/// The 406 bytes F3 freezes. No newline anywhere.
+/// The 406 bytes F3 froze, re-frozen by dlg-parse-fix (F3 first recorded 392 bytes). No newline anywhere.
 const EXPECTED: &[u8] = br#"<?xml version="1.0" encoding="UTF-8"?><COOKED_DIALOG DialogFlags="0" DialogID="60151" KismetEventSetID="0" UIScreenType="2"><Screens SpeakerID="0" ScreenID="96111" Text="The two prisoners are too weak to run, and the patrol is coming back. There is time for one thing: help them hide, or jam the cell-door panel by Prisoner three twenty-nine so the guards cannot seal the block."></Screens></COOKED_DIALOG>"#;
 
 /// The dialog id this packet serves.
@@ -44,7 +44,7 @@ fn sql_text(s: &str) -> String {
 #[test]
 fn prisoner_choice_dialog_emits_the_frozen_bytes() {
     let bytes = generate_dialog_xml(&PRISONER_CHOICE_DIALOG);
-    assert_eq!(bytes.len(), 406, "F3 freezes 406 bytes");
+    assert_eq!(bytes.len(), 406, "re-frozen at 406 bytes");
     assert_eq!(bytes.as_slice(), EXPECTED);
     assert!(!bytes.contains(&b'\n'), "F3 has no newline anywhere");
 }
