@@ -19,12 +19,14 @@ alignment = "sgu"
 archetype = "Commando"
 gender = "male"
 first = "Uat"
+finish_intro = false
 
 [[row]]
 id = "Commando-00"
 title = "Commando: the Debug Area, every tree ability, one hostile dummy"
 expected = "The character stands in the Debug Area with its tree and a hostile dummy."
 setup = [
+  { wait_ms = 17000 },
   { chat = ".gotolocation DebugArea 246 6.6 -878", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
   { wait_ms = 3000 },
@@ -46,8 +48,13 @@ id = "Commando-655"
 title = "Snap Shot (655): press it from the bar with SR1 .50-Cal Rifle equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3287 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SR1 .50-Cal Rifle" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 655, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 655 } },
@@ -73,6 +80,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-849"
@@ -142,8 +157,13 @@ id = "Commando-640"
 title = "Aimed Shot: Torso (640): press it from the bar with SR1 .50-Cal Rifle equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3287 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SR1 .50-Cal Rifle" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 640, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 640 } },
@@ -169,14 +189,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-850"
 title = "Scattershot (850): press it from the bar with Pump Shotgun equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3313 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Pump Shotgun" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 850, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 850 } },
@@ -203,14 +236,27 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Pump Shotgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Pump Shotgun"
 
 [[row]]
 id = "Commando-848"
 title = "Repeated Fire (848): press it from the bar with SR1 .50-Cal Rifle equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3287 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SR1 .50-Cal Rifle" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 848, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 848 } },
@@ -236,14 +282,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-855"
 title = "Aimed Shot: Leg (855): press it from the bar with SR1 .50-Cal Rifle equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3287 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SR1 .50-Cal Rifle" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 855, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 855 } },
@@ -269,6 +328,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-857"
@@ -339,8 +406,13 @@ id = "Commando-1332"
 title = "Point Blank Fire (1332): press it from the bar with Pump Shotgun equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3313 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Pump Shotgun" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1332, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1332 } },
@@ -367,6 +439,14 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Pump Shotgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Pump Shotgun"
 
 [[row]]
 id = "Commando-871"
@@ -405,8 +485,13 @@ id = "Commando-1242"
 title = "Aimed Shot: Arm (1242): press it from the bar with SR1 .50-Cal Rifle equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3287 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SR1 .50-Cal Rifle" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1242, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1242 } },
@@ -432,18 +517,26 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-877"
 title = "Forward Observer (877): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 877, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 877, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 877 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 877, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 877, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -502,8 +595,13 @@ id = "Commando-1331"
 title = "Multi Pump (1331): press it from the bar with Pump Shotgun equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3313 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Pump Shotgun" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1331, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1331 } },
@@ -529,14 +627,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Pump Shotgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Pump Shotgun"
 
 [[row]]
 id = "Commando-1354"
 title = "Disabling Shot (1354): press it from the bar with SR1 .50-Cal Rifle equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3287 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SR1 .50-Cal Rifle" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1354, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1354 } },
@@ -562,6 +673,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-862"
@@ -600,8 +719,13 @@ id = "Commando-1358"
 title = "Lethal Shot (1358): press it from the bar with SR1 .50-Cal Rifle equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3287 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SR1 .50-Cal Rifle" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1358, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1358 } },
@@ -627,14 +751,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "Commando-1359"
 title = "Red Mist (1359): press it from the bar with SR1 .50-Cal Rifle equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3287 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SR1 .50-Cal Rifle" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1359, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1359 } },
@@ -660,3 +797,11 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SR1 .50-Cal Rifle"

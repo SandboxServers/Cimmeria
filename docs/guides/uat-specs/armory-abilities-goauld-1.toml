@@ -46,8 +46,13 @@ id = "Goauld-1639"
 title = "Ribbon Device:Destruction Beam (1639): press it from the bar with Discharge Ribbon Device equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4458 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Discharge Ribbon Device" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1639, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1639 } },
@@ -73,14 +78,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-1627"
 title = "Ribbon Device:Disruption Beam (1627): press it from the bar with Discharge Ribbon Device equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4458 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Discharge Ribbon Device" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1627, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1627 } },
@@ -106,6 +124,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-1629"
@@ -205,8 +231,13 @@ id = "Goauld-1481"
 title = "Rapid Blasts (1481): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1481, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1481 } },
@@ -232,20 +263,33 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Goauld-1482"
 title = "Ground Blast (1482): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 1482, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 1482, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1482 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1482, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1482, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -266,14 +310,27 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Goauld-1626"
 title = "Suppression Blast (1626): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1626, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1626 } },
@@ -299,6 +356,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Goauld-2660"
@@ -401,12 +466,12 @@ id = "Goauld-2719"
 title = "Lord's Command (2719): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 2719, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2719, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2719 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2719, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2719, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -495,8 +560,13 @@ id = "Goauld-1628"
 title = "Ribbon Device:Disruption Stream (1628): press it from the bar with Discharge Ribbon Device equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4458 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Discharge Ribbon Device" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1628, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1628 } },
@@ -522,20 +592,33 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-2717"
 title = "Fist of an Angry God (2717): press it from the bar with Discharge Ribbon Device equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4458 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Discharge Ribbon Device" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 2717, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 2717, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2717 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2717, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2717, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -556,20 +639,33 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-2715"
 title = "Dominance Blast (2715): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 2715, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 2715, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2715 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2715, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2715, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -590,14 +686,27 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Goauld-2694"
 title = "Annihilation Beam (2694): press it from the bar with Discharge Ribbon Device equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4458 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Discharge Ribbon Device" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 2694, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2694 } },
@@ -623,6 +732,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "Goauld-2716"
@@ -693,14 +810,19 @@ id = "Goauld-2718"
 title = "Wrath of God (2718): press it from the bar with Discharge Ribbon Device equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4458 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Discharge Ribbon Device" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 2718, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 2718, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2718 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2718, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2718, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -721,3 +843,11 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Discharge Ribbon Device"

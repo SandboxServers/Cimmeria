@@ -19,12 +19,14 @@ alignment = "sgu"
 archetype = "Sholva"
 gender = "male"
 first = "Uat"
+finish_intro = false
 
 [[row]]
 id = "Sholva-00"
 title = "Sholva: the Debug Area, every tree ability, one hostile dummy"
 expected = "The character stands in the Debug Area with its tree and a hostile dummy."
 setup = [
+  { wait_ms = 17000 },
   { chat = ".gotolocation DebugArea 246 6.6 -878", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
   { wait_ms = 3000 },
@@ -46,8 +48,13 @@ id = "Sholva-1984"
 title = "Staff Swing (1984): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1984, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1984 } },
@@ -73,6 +80,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-1734"
@@ -142,8 +157,13 @@ id = "Sholva-1481"
 title = "Rapid Blasts (1481): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1481, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1481 } },
@@ -169,20 +189,33 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-1482"
 title = "Ground Blast (1482): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 1482, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 1482, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1482 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1482, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1482, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -203,6 +236,14 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-1735"
@@ -272,8 +313,13 @@ id = "Sholva-2001"
 title = "Arc of Fury (2001): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 2001, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2001 } },
@@ -299,6 +345,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2008"
@@ -337,8 +391,13 @@ id = "Sholva-2029"
 title = "Bewilderment (2029): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 2029, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2029 } },
@@ -365,20 +424,33 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2026"
 title = "Starburst (2026): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 2026, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 2026, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2026 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2026, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2026, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -399,18 +471,26 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-1640"
 title = "Terror Stone (1640): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1640, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1640, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1640 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1640, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1640, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -437,12 +517,12 @@ id = "Sholva-1641"
 title = "Terror Pod (1641): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1641, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1641, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1641 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1641, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1641, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -469,12 +549,12 @@ id = "Sholva-2028"
 title = "Terror Urn (2028): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 2028, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2028, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2028 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2028, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2028, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -501,8 +581,13 @@ id = "Sholva-1905"
 title = "Radiated Blasts (1905): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1905, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1905 } },
@@ -528,14 +613,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2025"
 title = "Whirlwind (2025): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 2025, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2025 } },
@@ -562,20 +660,33 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2058"
 title = "Devastating Blast (2058): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 2058, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 2058, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2058 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2058, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2058, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -596,20 +707,33 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2042"
 title = "Maximum Blast (2042): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 2042, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 2042, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2042 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2042, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2042, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -630,6 +754,14 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2027"
@@ -668,14 +800,19 @@ id = "Sholva-2841"
 title = "Destruction Pulse (2841): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 2841, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 2841, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2841 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2841, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2841, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -696,14 +833,27 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2043"
 title = "Weapon of Terror (2043): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 2043, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2043 } },
@@ -729,6 +879,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2104"
@@ -1172,8 +1330,13 @@ id = "Sholva-1736"
 title = "Blinding Shot (1736): press it from the bar with SI 3 9mm Pistol equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 55 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SI 3 9mm Pistol" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1736, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1736 } },
@@ -1199,14 +1362,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SI 3 9mm Pistol before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SI 3 9mm Pistol"
 
 [[row]]
 id = "Sholva-1626"
 title = "Suppression Blast (1626): press it from the bar with Serpent Staff equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1626, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1626 } },
@@ -1232,6 +1408,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "Sholva-2072"
@@ -1397,12 +1581,12 @@ id = "Sholva-2061"
 title = "Area Blast (2061): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 2061, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2061, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2061 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2061, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2061, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1429,12 +1613,12 @@ id = "Sholva-2062"
 title = "Area Cleanse (2062): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 2062, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2062, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2062 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2062, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2062, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1492,12 +1676,12 @@ id = "Sholva-2065"
 title = "Area of Destruction (2065): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 2065, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 2065, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2065 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2065, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2065, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

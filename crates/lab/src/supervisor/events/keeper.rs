@@ -259,6 +259,7 @@ mod tests {
         }
         for s in [
             LoginState::NotStarted,
+            LoginState::LoginScreen,
             LoginState::Failed,
             LoginState::InWorld,
         ] {

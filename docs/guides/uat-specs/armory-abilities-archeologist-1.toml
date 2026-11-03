@@ -19,12 +19,14 @@ alignment = "sgu"
 archetype = "Archeologist"
 gender = "male"
 first = "Uat"
+finish_intro = false
 
 [[row]]
 id = "Archeologist-00"
 title = "Archeologist: the Debug Area, every tree ability, one hostile dummy"
 expected = "The character stands in the Debug Area with its tree and a hostile dummy."
 setup = [
+  { wait_ms = 17000 },
   { chat = ".gotolocation DebugArea 246 6.6 -878", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
   { wait_ms = 3000 },
@@ -450,8 +452,13 @@ id = "Archeologist-706"
 title = "Half Mag (706): press it from the bar with SI 3 9mm Pistol equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 55 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SI 3 9mm Pistol" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 706, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 706 } },
@@ -477,14 +484,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SI 3 9mm Pistol before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SI 3 9mm Pistol"
 
 [[row]]
 id = "Archeologist-654"
 title = "Single Pump (654): press it from the bar with Pump Shotgun equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3313 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Pump Shotgun" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 654, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 654 } },
@@ -510,14 +530,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Pump Shotgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Pump Shotgun"
 
 [[row]]
 id = "Archeologist-598"
 title = "Quick Burst (598): press it from the bar with SGHC 6 SMG equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 21 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SGHC 6 SMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 598, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 598 } },
@@ -543,14 +576,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Archeologist-718"
 title = "Selective Fire (718): press it from the bar with SGHC 6 SMG equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 21 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SGHC 6 SMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 718, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 718 } },
@@ -576,14 +622,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Archeologist-1638"
 title = "Destruction Shot (1638): press it from the bar with Shriek Zat'ni'katel equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3904 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Shriek Zat'ni'katel" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1638, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1638 } },
@@ -609,14 +668,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Shriek Zat'ni'katel before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Shriek Zat'ni'katel"
 
 [[row]]
 id = "Archeologist-2848"
 title = "Submit to your Lord (2848): press it from the bar with SI 3 9mm Pistol equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 55 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SI 3 9mm Pistol" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 2848, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2848 } },
@@ -642,6 +714,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SI 3 9mm Pistol before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SI 3 9mm Pistol"
 
 [[row]]
 id = "Archeologist-777"

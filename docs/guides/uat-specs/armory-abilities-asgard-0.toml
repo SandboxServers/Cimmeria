@@ -19,12 +19,14 @@ alignment = "sgu"
 archetype = "Asgard"
 gender = "male"
 first = "Uat"
+finish_intro = false
 
 [[row]]
 id = "Asgard-00"
 title = "Asgard: the Debug Area, every tree ability, one hostile dummy"
 expected = "The character stands in the Debug Area with its tree and a hostile dummy."
 setup = [
+  { wait_ms = 17000 },
   { chat = ".gotolocation DebugArea 246 6.6 -878", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
   { wait_ms = 3000 },
@@ -577,12 +579,12 @@ id = "Asgard-3166"
 title = "Attack Protocol: PhaseMatter (3166): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3166, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3166, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3166 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3166, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3166, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -640,12 +642,12 @@ id = "Asgard-3161"
 title = "Attack Protocol: SuppressMultipletargets (3161): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3161, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3161, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3161 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3161, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3161, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -703,12 +705,12 @@ id = "Asgard-3170"
 title = "Attack Protocol: Contaminate Area (3170): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3170, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3170, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3170 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3170, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3170, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -766,12 +768,12 @@ id = "Asgard-3173"
 title = "AttackProtocol:TeleportationStrike (3173): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3173, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3173, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3173 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3173, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3173, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

@@ -19,12 +19,14 @@ alignment = "sgu"
 archetype = "Asgard"
 gender = "male"
 first = "Uat"
+finish_intro = false
 
 [[row]]
 id = "Asgard-00"
 title = "Asgard: the Debug Area, every tree ability, one hostile dummy"
 expected = "The character stands in the Debug Area with its tree and a hostile dummy."
 setup = [
+  { wait_ms = 17000 },
   { chat = ".gotolocation DebugArea 246 6.6 -878", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
   { wait_ms = 3000 },
@@ -141,12 +143,12 @@ id = "Asgard-1549"
 title = "Science Protocol: Hologram: Humanoid (1549): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1549, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1549, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1549 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1549, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1549, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -173,12 +175,12 @@ id = "Asgard-1553"
 title = "Science Protocol: Hologram: Mechanical (1553): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1553, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1553, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1553 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1553, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1553, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -423,12 +425,12 @@ id = "Asgard-3245"
 title = "ScienceProtocol: Hologram:Self (3245): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3245, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3245, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3245 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3245, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3245, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -487,12 +489,12 @@ id = "Asgard-3177"
 title = "ScienceProtocol:InduceStasis (3177): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3177, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3177, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3177 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3177, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3177, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -551,12 +553,12 @@ id = "Asgard-3178"
 title = "ScienceProtocol: SynapticScrambleField (3178): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 3178, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 3178, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 3178 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 3178, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 3178, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

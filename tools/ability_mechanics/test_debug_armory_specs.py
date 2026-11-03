@@ -28,12 +28,37 @@ class AbilityRowTest(unittest.TestCase):
         row = parse_row(specs.ability_row("Soldier", 592, ability(monikers=[5]), 42, items, monikers))
         self.assertEqual(row["id"], "Soldier-592")
         setup = row["setup"]
-        self.assertEqual(setup[0], {"chat": "/gmgiveitem 42 1", "tier": "G"})
-        self.assertEqual(setup[1]["tool"], "@item_action")
-        self.assertEqual(setup[1]["args"], {"action": "equip", "name": "Pistol"})
-        self.assertEqual(setup[2]["tool"], "@use_ability")
-        self.assertEqual(setup[2]["args"], {"ability_id": 592, "place": True})
+        self.assertEqual(setup[0], {"tool": "@item_action", "args": {"action": "unequip", "container": "Bandolier", "slot": 1}, "label": "reset-slot1", "optional": True})
+        self.assertEqual(setup[1], {"tool": "@window_click", "args": {"target": specs.SHEET_CLOSE}, "label": "close-sheet", "optional": True})
+        self.assertEqual(setup[2], {"chat": "/gmgiveitem 42 1", "tier": "G"})
+        self.assertEqual(setup[3]["tool"], "@item_action")
+        self.assertEqual(setup[3]["args"], {"action": "equip", "name": "Pistol"})
+        self.assertEqual(setup[4], {"tool": "@window_click", "args": {"target": specs.BAG_CLOSE}, "label": "close-bag", "optional": True})
+        self.assertEqual(setup[5], {"tool": "@key", "args": {"key": "F1"}, "label": "select-slot1"})
+        self.assertEqual(setup[6], {"wait_ms": 1500})
+        self.assertEqual(setup[7]["tool"], "@use_ability")
+        self.assertEqual(setup[7]["args"], {"ability_id": 592, "place": True})
         self.assertNotIn("blocked", row)
+
+    def test_a_gated_row_asserts_the_active_weapon(self):
+        items = {42: {"name": "Pistol"}}
+        monikers = {5: "ITEM_PISTOL"}
+        row = parse_row(specs.ability_row("Soldier", 592, ability(monikers=[5]), 42, items, monikers))
+        armed = row["expect"][-1]
+        self.assertEqual(armed["id"], "armed")
+        self.assertEqual(armed["tool"], "@player_state")
+        self.assertEqual(armed["pointer"], "/ammo/weapon")
+        self.assertEqual(armed["op"], "eq")
+        self.assertEqual(armed["value"], "Pistol")
+        self.assertNotIn("required", armed)
+
+    def test_an_ungated_row_neither_resets_nor_selects(self):
+        ungated = parse_row(specs.ability_row("Soldier", 592, ability(), None, {}, {}))
+        blocked = parse_row(specs.ability_row("Soldier", 997, ability(monikers=[9]), None, {}, {9: "ITEM_RIFLE"}))
+        for row in (ungated, blocked):
+            self.assertFalse(any(a.get("tool") == "@key" for a in row["setup"] if isinstance(a, dict)))
+            self.assertFalse(any(a.get("args", {}).get("action") == "unequip" for a in row["setup"] if isinstance(a, dict)))
+            self.assertFalse(any(e["id"] == "armed" for e in row["expect"]))
 
     def test_the_step_presses_the_key_and_is_not_in_setup(self):
         row = parse_row(specs.ability_row("Soldier", 592, ability(), None, {}, {}))
@@ -53,6 +78,21 @@ class AbilityRowTest(unittest.TestCase):
         row = parse_row(specs.ability_row("Soldier", 1, ability(target=2), None, {}, {}))
         self.assertNotIn("required", row["expect"][1])
 
+    def test_a_ground_ability_passes_the_ground_point_on_both_presses(self):
+        row = parse_row(specs.ability_row("Soldier", 724, ability(target=3), None, {}, {}))
+        point = {"distance_m": 8, "bearing_deg": 30}
+        self.assertEqual(row["setup"][0]["args"], {"ability_id": 724, "place": True, "ground": point})
+        self.assertEqual(row["step"][0]["args"], {"ability_id": 724, "press": "key", "fallback": "none", "ground": point})
+
+    def test_other_target_types_pass_no_ground_point(self):
+        for target in (1, 2):
+            row = parse_row(specs.ability_row("Soldier", 592, ability(target=target), None, {}, {}))
+            self.assertNotIn("ground", row["setup"][0]["args"])
+            self.assertNotIn("ground", row["step"][0]["args"])
+
+    def test_a_nested_table_renders_as_an_inline_table(self):
+        self.assertEqual(specs.table({"a": 1, "g": {"x": -2, "s": "client"}}), '{ a = 1, g = { x = -2, s = "client" } }')
+
     def test_the_sent_clause_matches_the_ability_id(self):
         row = parse_row(specs.ability_row("Soldier", 592, ability(), None, {}, {}))
         self.assertEqual(row["expect"][0]["event"], "client.ability.sent")
@@ -61,15 +101,28 @@ class AbilityRowTest(unittest.TestCase):
 
 class SetupRowTest(unittest.TestCase):
     def test_the_section_setup_row_places_the_character_with_every_ability_and_a_dummy(self):
-        row = parse_row(specs.setup_row("Soldier"))
+        row = parse_row(specs.setup_row("Soldier", "sgu"))
         self.assertEqual(row["id"], "Soldier-00")
-        self.assertEqual(row["setup"][0]["chat"], specs.SETUP_LOCATION)
-        self.assertEqual(row["setup"][1]["tool"], "client_wait_for")
-        self.assertEqual(row["setup"][1]["args"]["lua_condition"], "getCurrentWorldID() == 1300")
-        self.assertEqual(row["setup"][3]["chat"], "/gmgiveallabilities")
-        self.assertEqual(row["setup"][4], {"tool": "@dummy", "args": {"disposition": "hostile"}})
+        self.assertEqual(row["setup"][0], {"wait_ms": 17000})
+        self.assertEqual(row["setup"][1]["chat"], specs.SETUP_LOCATION)
+        self.assertEqual(row["setup"][2]["tool"], "client_wait_for")
+        self.assertEqual(row["setup"][2]["args"]["lua_condition"], "getCurrentWorldID() == 1300")
+        self.assertEqual(row["setup"][4]["chat"], "/gmgiveallabilities")
+        self.assertEqual(row["setup"][5], {"tool": "@dummy", "args": {"disposition": "hostile"}})
         self.assertEqual(row["expect"][0]["pointer"], "/world_id")
         self.assertEqual(row["expect"][0]["value"], 1300)
+
+    def test_the_first_login_hold_is_sgu_only(self):
+        row = parse_row(specs.setup_row("Goauld", "praxis"))
+        self.assertEqual(row["setup"][0]["chat"], specs.SETUP_LOCATION)
+
+
+class SectionHeaderTest(unittest.TestCase):
+    def test_an_sgu_section_skips_the_intro_wait_and_a_praxis_section_keeps_it(self):
+        sgu = tomllib.loads("\n".join(specs.section_header("sgu", "Soldier", None)))["section"]["fresh"]
+        self.assertIs(sgu["finish_intro"], False)
+        praxis = tomllib.loads("\n".join(specs.section_header("praxis", "Goauld", None)))["section"]["fresh"]
+        self.assertNotIn("finish_intro", praxis)
 
 
 class ArchetypeFilesTest(unittest.TestCase):
@@ -122,6 +175,11 @@ class WriteAbilitySpecsTest(unittest.TestCase):
                 raw = path.read_bytes()
                 self.assertNotIn(b"\r", raw, path.name)
                 doc = tomllib.loads(raw.decode("utf-8"))
+                fresh = doc["section"]["fresh"]
+                if fresh["alignment"] == "sgu":
+                    self.assertIs(fresh.get("finish_intro"), False, path.name)
+                else:
+                    self.assertNotIn("finish_intro", fresh, path.name)
                 ids = [r["id"] for r in doc["row"]]
                 self.assertEqual(len(ids), len(set(ids)), path.name)
                 rows += len(ids)

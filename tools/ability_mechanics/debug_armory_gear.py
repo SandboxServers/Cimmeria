@@ -4,8 +4,8 @@
 ``armory-gear-weapons.toml`` and ``armory-gear-armor.toml`` (LF, Soldier ``sgu``
 fresh), split at 30 rows (one file, one fresh character, at most 30 grants into the 40-slot main bag) as ``-1``, ``-2``. The representatives are the ones
 ``representatives()`` stocks. A weapon with a RANGED binding expects its
-ability's ``client.ability.sent``; an unbound one expects ``weapon_unbound``
-(F8: the gap is measured, not failed). An armor row equips its piece and reads
+ability's SigNoz ``ability_launched`` (the right-click is an ``interact``, never a ``useAbility``, so no ``client.ability.sent`` can match); an unbound one expects ``weapon_unbound``
+(F8: the gap is measured, not failed). A weapon row resets bandolier slot 1, equips into it, selects it with F1 and asserts the active weapon (`armed`, DR-07h). An armor row equips its piece and reads
 the character sheet; the only server line is the DEBUG ``Inventory move persisted``, so that clause is optional.
 """
 
@@ -28,7 +28,9 @@ from debug_armory import (  # noqa: E402
     vendor_count,
     weapon_keys,
 )
-from debug_armory_specs import chat, tstr  # noqa: E402
+# The inventory bag's close button (DR-07g) and the sheet and select-slot-1 constants (DR-07h), all from debug_armory_specs.
+# Equip opens the bag with B and leaves it open; a world right-click under it hits the bag (DR-07g).
+from debug_armory_specs import BAG_CLOSE, SELECT_KEY, SHEET_CLOSE, chat, tstr  # noqa: E402
 from weapon_requirement_audit import EVENT_RANGED, load  # noqa: E402
 
 # INV_Main capacity (docs/gameplay/inventory-system.md:118). Every row grants one item into it and nothing in a spec removes one; a split file runs on its own fresh character, so one file's grants must fit even if no equip succeeds. 30 leaves 10 slots of margin (DR-07 ruling 1).
@@ -36,8 +38,12 @@ MAIN_BAG_SLOTS = 40
 ROWS_PER_FILE = 30
 # The L1 hostile training dummy (db/resources/Entities/Seed/entity_templates_debug_area_plaza.sql, 1310-1313).
 DUMMY_TEMPLATE = 1310
-# The ability log's target and the event that names an unbound weapon (hostile_attack.rs, refuse_no_ranged_attack).
-UNBOUND_SCOPE = "abilities"
+# The first-login cinematic hold (the 16 s first-login hold, plus margin): each gear file's first row is a fresh character's first chat, so it waits this out before the give.
+FIRST_LOGIN_HOLD = "  { wait_ms = 17000 },"
+# The ability log's scope: the event that names an unbound weapon (hostile_attack.rs, refuse_no_ranged_attack) and the ability_launched a bound one emits.
+ABILITY_SCOPE = "abilities"
+# The teardown clear. It fails in every gear row ("no rendered entity matches" for the player), so it is optional (DR-07g).
+CLEAR_EFFECTS = '{ tool = "@clear_effects", args = { name = "${character}" }, optional = true }'
 SECTION_TAIL = """
 schema = 1
 
@@ -54,6 +60,7 @@ alignment = "sgu"
 archetype = "Soldier"
 gender = "male"
 first = "Uat"
+finish_intro = false
 """
 HEADER = """# Unified UAT, section "{section}" (Debug Area Armory gear, DR-07).
 # Written by: python tools/ability_mechanics/debug_armory.py specs gear --out-dir docs/guides/uat-specs
@@ -67,12 +74,16 @@ def _inline(pairs: List[Tuple[str, str]]) -> str:
     return "{ " + ", ".join(f"{k} = {v}" for k, v in pairs) + " }"
 
 
-def _tool(alias: str, args: Optional[List[Tuple[str, str]]] = None, label: Optional[str] = None) -> str:
+def _tool(
+    alias: str, args: Optional[List[Tuple[str, str]]] = None, label: Optional[str] = None, optional: bool = False
+) -> str:
     pairs = [("tool", tstr(alias))]
     if args is not None:
         pairs.append(("args", _inline(args)))
     if label is not None:
         pairs.append(("label", tstr(label)))
+    if optional:
+        pairs.append(("optional", "true"))
     return _inline(pairs)
 
 
@@ -106,23 +117,38 @@ def weapon_row(item_id: int, name: str, ability_id: Optional[int]) -> str:
             'source = "signoz"',
             "filter = "
             + tstr(
-                f"scope_name = '{UNBOUND_SCOPE}' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' "
+                f"scope_name = '{ABILITY_SCOPE}' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' "
                 f"AND item_type_id = {item_id} AND player_name CONTAINS '${{character}}'"
             ),
             "min_rows = 1",
         ]
     else:
         title = f"{name} fires its ranged ability on a right-click"
-        expected = f"The right-click leaves the client as ability {ability_id}."
+        expected = f"The right-click launches ability {ability_id} on the server."
+        # The right-click is an interact, so client.ability.sent never fires for it; the server's ability_launched is the proof.
         clause = [
             "[[row.expect]]",
-            'id = "sent"',
-            f"text = {tstr(f'the right-click sends ability {ability_id} (RANGED binding)')}",
-            'source = "client_event"',
-            'event = "client.ability.sent"',
-            f"match_fields = {_inline([('ability_id', str(ability_id))])}",
-            'since = "press"',
+            'id = "launched"',
+            f"text = {tstr(f'the right-click launches ability {ability_id} (RANGED binding)')}",
+            'source = "signoz"',
+            "filter = "
+            + tstr(
+                f"scope_name = '{ABILITY_SCOPE}' AND event = 'ability_launched' AND ability_id = {ability_id} "
+                f"AND player_name CONTAINS '${{character}}'"
+            ),
+            "min_rows = 1",
         ]
+    # The active weapon must be this row's weapon before the press, so a wrong one fails here by name (DR-07h).
+    clause += [
+        "[[row.expect]]",
+        'id = "armed"',
+        f"text = {tstr(f'the active bandolier weapon is {name} before the press')}",
+        'source = "tool"',
+        'tool = "@player_state"',
+        'pointer = "/ammo/weapon"',
+        'op = "eq"',
+        f"value = {tstr(name)}",
+    ]
     # weapon_unbound is logged at most once per player per 10 s (NO_RANGED_ATTACK_LOG_INTERVAL), so wait it out.
     throttle = ["  { wait_ms = 10500 },"] if ability_id is None else []
     return "\n".join(
@@ -133,18 +159,25 @@ def weapon_row(item_id: int, name: str, ability_id: Optional[int]) -> str:
             f"expected = {tstr(expected)}",
             "setup = [",
             *throttle,
+            # Reset slot 1 (the starter or the previous row's weapon), then equip into it and select it with F1 (DR-07h).
+            f"  {_tool('@item_action', [('action', tstr('unequip')), ('container', tstr('Bandolier')), ('slot', '1')], 'reset-slot1', optional=True)},",
+            f"  {_tool('@window_click', [('target', tstr(SHEET_CLOSE))], 'close-sheet', optional=True)},",
             f"  {chat(f'/gmgiveitem {item_id} 1')},",
             f"  {_tool('@item_action', [('action', tstr('equip')), ('name', tstr(name))])},",
+            f"  {_tool('@window_click', [('target', tstr(BAG_CLOSE))], 'close-bag')},",
+            f"  {_tool('@key', [('key', tstr(SELECT_KEY))], 'select-slot1')},",
             f"  {_tool('@dummy', [('disposition', tstr('hostile')), ('template_id', str(DUMMY_TEMPLATE))])},",
             "  { wait_ms = 2000 },",
             "]",
             "step = [",
+            f"  {_tool('@camera', [('face_entity_id', tstr('${dummy_id}')), ('zoom_to', '400')], 'face')},",
+            f"  {_tool('@camera', [('yaw_counts', '-300'), ('pitch_deg', '-15')], 'offset')},",
             f"  {_tool('@target', [('entity_id', tstr('${dummy_id}'))])},",
             f"  {_tool('@world_click', [('entity_id', tstr('${dummy_id}')), ('button', tstr('right'))], 'press')},",
             "  { wait_ms = 3000 },",
             "]",
             "teardown = [",
-            f"  {_tool('@clear_effects', [('name', tstr('${character}'))])},",
+            f"  {CLEAR_EFFECTS},",
             "  { tool = \"@cooldowns_reset\" },",
             f"  {_tool('@dummy', [('disposition', tstr('clear'))])},",
             "]",
@@ -165,6 +198,7 @@ def armor_row(item_id: int, name: str, slot: int) -> str:
             "setup = [",
             f"  {chat(f'/gmgiveitem {item_id} 1')},",
             f"  {_tool('@item_action', [('action', tstr('equip')), ('name', tstr(name))])},",
+            f"  {_tool('@window_click', [('target', tstr(BAG_CLOSE))], 'close-bag')},",
             "  { wait_ms = 2000 },",
             "]",
             "step = [",
@@ -233,7 +267,7 @@ def render(section: str, kind: str, blocks: List[str]) -> str:
         + note
         + SECTION_TAIL.format(section=section, kind=kind)
         + "\n"
-        + "\n".join(blocks)
+        + "\n".join([blocks[0].replace("setup = [\n", "setup = [\n" + FIRST_LOGIN_HOLD + "\n", 1), *blocks[1:]] if blocks else [])
     )
 
 

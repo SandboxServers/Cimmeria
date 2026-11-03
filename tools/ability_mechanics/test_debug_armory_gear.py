@@ -18,12 +18,21 @@ def _parse(text: str) -> dict:
 
 
 class WeaponRowTest(unittest.TestCase):
-    def test_bound_weapon_expects_its_ranged_send(self):
+    def test_bound_weapon_expects_its_ability_launched_in_signoz(self):
         row = gear.weapon_row(3753, "Cobra Staff", 584)
-        self.assertIn('event = "client.ability.sent"', row)
-        self.assertIn("match_fields = { ability_id = 584 }", row)
-        self.assertIn('since = "press"', row)
+        self.assertIn('source = "signoz"', row)
+        self.assertIn("event = 'ability_launched' AND ability_id = 584", row)
+        self.assertIn("player_name CONTAINS '${character}'", row)
+        self.assertIn("min_rows = 1", row)
         self.assertNotIn("weapon_unbound", row)
+
+    def test_bound_weapon_has_no_client_ability_sent_clause(self):
+        # Revert proof: the right-click is an interact, so a client_event sent clause can never pass (DR-L2 round 2).
+        row = gear.weapon_row(3753, "Cobra Staff", 584)
+        self.assertNotIn('source = "client_event"', row)
+        self.assertNotIn("client.ability.sent", row)
+        self.assertNotIn("match_fields", row)
+        self.assertNotIn('since = "press"', row)
 
     def test_unbound_weapon_expects_the_signoz_gap_line(self):
         row = gear.weapon_row(3754, "Plain Club", None)
@@ -42,11 +51,67 @@ class WeaponRowTest(unittest.TestCase):
         self.assertIn(f"template_id = {gear.DUMMY_TEMPLATE}", row)
         self.assertEqual(gear.DUMMY_TEMPLATE, 1310)
 
+    def test_bag_closes_after_equip_and_before_the_target(self):
+        row = gear.weapon_row(3753, "Cobra Staff", 584)
+        self.assertLess(row.index("@item_action"), row.index(gear.BAG_CLOSE))
+        self.assertLess(row.index(gear.BAG_CLOSE), row.index("@target"))
+
+    def test_camera_faces_the_dummy_before_the_target(self):
+        row = gear.weapon_row(3753, "Cobra Staff", 584)
+        self.assertIn("face_entity_id", row)
+        self.assertLess(row.index("face_entity_id"), row.index("@target"))
+        self.assertLess(row.index("yaw_counts"), row.index("@target"))
+        self.assertLess(row.index("face_entity_id"), row.index("yaw_counts"))
+
+    def test_clear_effects_teardown_is_optional(self):
+        row = gear.weapon_row(3753, "Cobra Staff", 584)
+        self.assertIn(f"  {gear.CLEAR_EFFECTS},", row)
+        self.assertIn("optional = true", gear.CLEAR_EFFECTS)
+        self.assertNotIn('"@clear_effects", args = { name = "${character}" } },', row)
+
 
 class ThrottleTest(unittest.TestCase):
     def test_unbound_row_waits_out_the_log_throttle(self):
         self.assertIn("wait_ms = 10500", gear.weapon_row(1, "x", None))
         self.assertNotIn("wait_ms = 10500", gear.weapon_row(1, "x", 584))
+
+
+class WeaponSelectTest(unittest.TestCase):
+    def test_weapon_row_resets_slot_one_then_equips_then_selects_it(self):
+        setup = _parse(gear.weapon_row(3753, "Cobra Staff", 584))["row"][0]["setup"]
+        steps = {}
+        for index, action in enumerate(setup):
+            if "chat" in action:
+                steps.setdefault("give", index)
+            elif action.get("args", {}).get("action") == "equip":
+                steps.setdefault("equip", index)
+            elif action.get("tool") == "@dummy":
+                steps.setdefault("dummy", index)
+            elif "label" in action:
+                steps.setdefault(action["label"], index)
+        self.assertLess(steps["reset-slot1"], steps["give"])
+        self.assertLess(steps["give"], steps["equip"])
+        self.assertLess(steps["equip"], steps["close-bag"])
+        self.assertLess(steps["close-bag"], steps["select-slot1"])
+        self.assertLess(steps["select-slot1"], steps["dummy"])
+        by_label = {a["label"]: a for a in setup if "label" in a}
+        self.assertIs(by_label["reset-slot1"]["optional"], True)
+        self.assertIs(by_label["close-sheet"]["optional"], True)
+        self.assertNotIn("optional", by_label["select-slot1"])
+
+    def test_both_weapon_kinds_assert_the_active_weapon(self):
+        for item_id, name, ability_id in ((3753, "Cobra Staff", 584), (3754, "Plain Club", None)):
+            expect = _parse(gear.weapon_row(item_id, name, ability_id))["row"][0]["expect"]
+            armed = [e for e in expect if e["id"] == "armed"]
+            self.assertEqual(len(armed), 1)
+            self.assertEqual(armed[0]["pointer"], "/ammo/weapon")
+            self.assertEqual(armed[0]["value"], name)
+            self.assertIs(expect[-1], armed[0])
+
+    def test_armor_rows_do_not_touch_the_bandolier(self):
+        row = gear.armor_row(77, "Test Helm", 5)
+        self.assertNotIn("unequip", row)
+        self.assertNotIn("@key", row)
 
 
 class ArmorRowTest(unittest.TestCase):
@@ -66,6 +131,11 @@ class ArmorRowTest(unittest.TestCase):
     def test_armor_equips_before_reading_the_sheet(self):
         row = gear.armor_row(77, "Test Helm", 5)
         self.assertLess(row.index("@item_action"), row.index("@window_read"))
+
+    def test_armor_closes_the_bag_after_equip_and_before_the_sheet(self):
+        row = gear.armor_row(77, "Test Helm", 5)
+        self.assertLess(row.index("@item_action"), row.index(gear.BAG_CLOSE))
+        self.assertLess(row.index(gear.BAG_CLOSE), row.index("@window_read"))
 
 
 class BlocksTest(unittest.TestCase):
@@ -122,8 +192,16 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(data["schema"], 1)
         self.assertEqual(data["section"]["id"], "armory-gear-test")
         self.assertEqual([r["id"] for r in data["row"]], ["GW-3753", "GW-3754", "GA-77"])
-        self.assertEqual(data["row"][0]["expect"][0]["event"], "client.ability.sent")
+        self.assertEqual(data["row"][0]["expect"][0]["source"], "signoz")
+        self.assertIn("ability_launched", data["row"][0]["expect"][0]["filter"])
         self.assertEqual(data["row"][2]["expect"][0]["source"], "human")
+
+    def test_section_skips_the_intro_wait_and_the_first_row_holds_the_login(self):
+        blocks = [gear.weapon_row(3753, "Cobra Staff", 584), gear.armor_row(77, "Test Helm", 5)]
+        data = _parse(gear.render("armory-gear-weapons-1", "weapons", blocks))
+        self.assertIs(data["section"]["fresh"]["finish_intro"], False)
+        self.assertEqual(data["row"][0]["setup"][0], {"wait_ms": 17000})
+        self.assertNotEqual(data["row"][1]["setup"][0], {"wait_ms": 17000})
 
 
 class CommittedFilesTest(unittest.TestCase):
@@ -135,6 +213,8 @@ class CommittedFilesTest(unittest.TestCase):
             self.assertNotIn(b"\r", raw, path.name)
             data = tomllib.loads(raw.decode("utf-8"))
             self.assertLessEqual(len(data["row"]), gear.ROWS_PER_FILE, path.name)
+            self.assertIs(data["section"]["fresh"]["finish_intro"], False, path.name)
+            self.assertEqual(data["row"][0]["setup"][0], {"wait_ms": 17000}, path.name)
 
     def test_each_generated_file_fits_the_main_bag(self):
         with tempfile.TemporaryDirectory() as tmp:

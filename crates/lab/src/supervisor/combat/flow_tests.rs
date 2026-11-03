@@ -85,6 +85,7 @@ fn use_req(query: Query, fallback: Fallback, place: bool) -> UseAbilityRequest {
         place,
         fallback,
         observe: Duration::from_millis(2000),
+        ground: None,
     }
 }
 
@@ -135,8 +136,9 @@ async fn an_ability_outside_the_bar_and_trees_needs_place_or_lua() {
 /// (2026-10-04): all 100 buttons registered and empty (`action_id` 0, no
 /// action type), buttons 1 to 10 visible, starting with
 /// `ActionButtons_1Button`. The bound-only read lists none of them. Once
-/// the placement chunk has run, button 1 holds the ability.
-fn empty_bar_fake(placed: Arc<Mutex<bool>>) -> Responder {
+/// the placement chunk has run, button 1 holds the ability. With `bound`
+/// false the visible buttons carry no key either (a remapped profile).
+fn empty_bar_fake(placed: Arc<Mutex<bool>>, bound: bool) -> Responder {
     Arc::new(move |method, params| {
         let c = chunk(params);
         match method {
@@ -152,7 +154,7 @@ fn empty_bar_fake(placed: Arc<Mutex<bool>>) -> Responder {
                 let mut lines = vec!["profile\t1\t1".to_string()];
                 for i in 1..=100u32 {
                     let vis = if i <= 10 { "1" } else { "0" };
-                    let key = if i <= 10 {
+                    let key = if bound && i <= 10 {
                         format!("key={}\u{1f}vkeyShortText={}", 48 + i % 10, i % 10)
                     } else {
                         String::new()
@@ -183,7 +185,7 @@ fn empty_bar_fake(placed: Arc<Mutex<bool>>) -> Responder {
 #[tokio::test]
 async fn place_finds_an_empty_button_on_a_fresh_characters_bar() {
     let placed = Arc::new(Mutex::new(false));
-    let sup = fake_bridge::supervisor(empty_bar_fake(placed.clone())).await;
+    let sup = fake_bridge::supervisor(empty_bar_fake(placed.clone(), true)).await;
     // `client_hotbar include_empty=true` lists the bar the way it did live.
     let bar = sup.hotbar(true).await.unwrap();
     assert_eq!(bar["buttons"].as_array().unwrap().len(), 100);
@@ -207,6 +209,28 @@ async fn place_finds_an_empty_button_on_a_fresh_characters_bar() {
         .unwrap_or_else(|| panic!("no place step: {:?}", e.steps));
     assert_eq!(place["detail"]["button"], 1);
     assert_eq!(place["detail"]["native_level"]["tier"], "N3");
+    assert_eq!(place["detail"]["replaced_action_id"], 0);
+}
+
+#[tokio::test]
+async fn auto_place_falls_back_to_an_unbound_empty_button() {
+    // No visible button carries a key the lab can press: Auto must still
+    // place on the first visible empty button (and then click it), not
+    // fail at "place".
+    let placed = Arc::new(Mutex::new(false));
+    let sup = fake_bridge::supervisor(empty_bar_fake(placed.clone(), false)).await;
+    let e = sup
+        .use_ability_flow(use_req(Query::Id(1100), Fallback::None, true))
+        .await
+        .unwrap_err();
+    assert_eq!(e.step, "focus", "{}", e.summary());
+    assert!(*placed.lock().unwrap(), "the placement chunk ran");
+    let place = e
+        .steps
+        .iter()
+        .find(|s| s["step"] == "place")
+        .unwrap_or_else(|| panic!("no place step: {:?}", e.steps));
+    assert_eq!(place["detail"]["button"], 1);
 }
 
 #[tokio::test]

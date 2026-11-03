@@ -36,9 +36,22 @@ ARCHETYPES: Sequence[Tuple[str, str]] = (
 TREE_PREFIX = "ARCHETYPE_"  # archetype_ability_tree.archetype is e.g. ARCHETYPE_Soldier
 SPLIT_ROWS = 60  # a tree with more rows than this writes one file per tree_index
 SETUP_LOCATION = ".gotolocation DebugArea 246 6.6 -878"  # the Debug Area dummy plaza
+FIRST_LOGIN_HOLD = "{ wait_ms = 17000 }"  # the 16 s first-login cinematic hold, plus margin
+# Equip lands in the first empty bandolier slot and never moves the active slot
+# (use_instance.rs resolve_auto_equip_target), so a weapon row empties slot 1,
+# equips into it and selects it with F1 (BandolierMod.ActivateBandolierSlot1) (DR-07h).
+BAG_CLOSE = "InventoryWin__auto_closebutton__"
+SHEET_CLOSE = "CharacterWin__auto_closebutton__"
+SELECT_KEY = "F1"
 TARGET_SELF, TARGET_GROUND = 1, 3  # target_type_id values that have no target to apply to
 # Weapon-gated tree abilities with no shipped weapon (weapon-requirement audit FAIL, DR-04).
 KNOWN_UNCOVERED = (997, 1246, 1250, 1355)
+# A ground-targeted ability only opens its reticle on the press; client_use_ability's
+# `ground` point is left-clicked right after it (canary.md 2026-11-02). It is an OFFSET from
+# the live avatar, not a map point: the old fixed point, 8 m straight ahead of the camera, was
+# covered by the avatar's own body in every row (DR-07m). 30 degrees off the camera's forward
+# keeps it out from behind the avatar; the tool retries nearby offsets itself.
+GROUND_POINT = {"distance_m": 8, "bearing_deg": 30}
 UNCOVERED_MISMATCH = 1
 
 
@@ -52,6 +65,8 @@ def toml_value(value: object) -> str:
         return "true" if value else "false"
     if isinstance(value, int):
         return str(value)
+    if isinstance(value, dict):
+        return table(value)
     return tstr(str(value))
 
 
@@ -121,9 +136,16 @@ def ability_row(arch: str, aid: int, ability: dict, rep: Optional[int], items, m
         if rep is None:
             blocked = f"no shipped weapon carries {_label_monikers(ability['item_monikers'], monikers)} (weapon-requirement audit FAIL)"
         else:
+            setup.append(call("@item_action", {"action": "unequip", "container": "Bandolier", "slot": 1}, label="reset-slot1", optional=True))
+            setup.append(call("@window_click", {"target": SHEET_CLOSE}, label="close-sheet", optional=True))
             setup.append(chat(f"/gmgiveitem {rep} 1"))
             setup.append(call("@item_action", {"action": "equip", "name": items[rep]["name"]}, label="equip"))
-    setup.append(call("@use_ability", {"ability_id": aid, "place": True}, label="place"))
+            setup.append(call("@window_click", {"target": BAG_CLOSE}, label="close-bag", optional=True))
+            setup.append(call("@key", {"key": SELECT_KEY}, label="select-slot1"))
+            setup.append("{ wait_ms = 1500 }")
+    # Both calls press the key, so both need the confirming ground click on a ground ability.
+    ground = {"ground": GROUND_POINT} if ability["target_type"] == TARGET_GROUND else {}
+    setup.append(call("@use_ability", {"ability_id": aid, "place": True, **ground}, label="place"))
     setup.append("{ wait_ms = 3000 }")
     setup.append(call("@cooldowns_reset", {"ability_id": aid}))
     gear = f" with {items[rep]['name']} equipped" if rep is not None and ability["item_monikers"] else ""
@@ -138,7 +160,7 @@ def ability_row(arch: str, aid: int, ability: dict, rep: Optional[int], items, m
     lines += list_block("setup", setup)
     lines += list_block(
         "step",
-        [call("@use_ability", {"ability_id": aid, "press": "key", "fallback": "none"}, label="press"), "{ wait_ms = 3000 }"],
+        [call("@use_ability", {"ability_id": aid, "press": "key", "fallback": "none", **ground}, label="press"), "{ wait_ms = 3000 }"],
     )
     lines += list_block(
         "teardown",
@@ -161,11 +183,24 @@ def ability_row(arch: str, aid: int, ability: dict, rep: Optional[int], items, m
     ]
     if self_or_ground:
         lines.append("required = false")
+    if ability["item_monikers"] and rep is not None:
+        # Last on purpose: expect[0] and expect[1] keep their meaning. A wrong active weapon fails here by name (DR-07h).
+        weapon = items[rep]["name"]
+        lines += [
+            "[[row.expect]]",
+            'id = "armed"',
+            f"text = {tstr(f'the active bandolier weapon is {weapon} before the press')}",
+            'source = "tool"',
+            'tool = "@player_state"',
+            'pointer = "/ammo/weapon"',
+            'op = "eq"',
+            f"value = {tstr(weapon)}",
+        ]
     return lines
 
 
-def setup_row(arch: str) -> List[str]:
-    """The section's ``-00`` row: the Debug Area, every tree ability, one hostile dummy."""
+def setup_row(arch: str, alignment: str) -> List[str]:
+    """The section's ``-00`` row: the first-login hold (SGU only), the Debug Area, every tree ability, one hostile dummy."""
     return [
         "[[row]]",
         f"id = {tstr(f'{arch}-00')}",
@@ -174,6 +209,8 @@ def setup_row(arch: str) -> List[str]:
     ] + list_block(
         "setup",
         [
+            # The first login holds the character for 16 s (aoi.cinematic_hold, reason=timeout); the teleport waits it out. SGU only.
+            *([FIRST_LOGIN_HOLD] if alignment == "sgu" else []),
             chat(SETUP_LOCATION),
             call("client_wait_for", {"lua_condition": "getCurrentWorldID() == 1300", "timeout_ms": 60000}),
             "{ wait_ms = 3000 }",
@@ -197,7 +234,7 @@ def setup_row(arch: str) -> List[str]:
 def section_header(alignment: str, arch: str, part: Optional[int]) -> List[str]:
     stem = f"armory-abilities-{arch.lower()}" + (f"-{part}" if part is not None else "")
     title = f"{arch} abilities" + (f", tree {part}" if part is not None else "")
-    return [
+    lines = [
         f"# Debug Area armory: {title} (campaign debug-armory, DR-06).",
         "# Generated by tools/ability_mechanics/debug_armory.py specs abilities; do not edit it by hand.",
         "# Where it runs: the Debug Area (world 1300) with a fresh character per run. Every row",
@@ -219,8 +256,11 @@ def section_header(alignment: str, arch: str, part: Optional[int]) -> List[str]:
         f"archetype = {tstr(arch)}",
         'gender = "male"',
         'first = "Uat"',
-        "",
     ]
+    if alignment == "sgu":
+        # An SGU start gets no auto intro dialog (dialog 5354 needs a Hammond right-click), so the default wait would block.
+        lines.append("finish_intro = false")
+    return lines + [""]
 
 
 def archetype_files(
@@ -241,7 +281,7 @@ def archetype_files(
     files: Dict[str, str] = {}
     for part, entries in groups:
         stem = f"armory-abilities-{arch.lower()}" + (f"-{part}" if part is not None else "")
-        lines = section_header(alignment, arch, part) + setup_row(arch) + [""]
+        lines = section_header(alignment, arch, part) + setup_row(arch, alignment) + [""]
         for _, _, aid in entries:
             if aid not in abilities:
                 raise Stop(UNCOVERED_MISMATCH, f"{arch} tree ability {aid} is not in the abilities seed")

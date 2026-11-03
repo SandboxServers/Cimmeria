@@ -19,14 +19,17 @@ alignment = "sgu"
 archetype = "Soldier"
 gender = "male"
 first = "Uat"
+finish_intro = false
 
 [[row]]
 id = "GA-33"
 title = "Aramid Fiber Ballistic Helmet equips into its slot"
 expected = "The piece sits in equipment container 4 on the character sheet."
 setup = [
+  { wait_ms = 17000 },
   { chat = "/gmgiveitem 33 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Aramid Fiber Ballistic Helmet" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -56,6 +59,7 @@ expected = "The piece sits in equipment container 4 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 2933 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Helmet" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -85,6 +89,7 @@ expected = "The piece sits in equipment container 4 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 4074 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Trinium Ablative Helmet" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -114,6 +119,7 @@ expected = "The piece sits in equipment container 4 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 4081 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Tri-Naq Alloy Ablative Helmet" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -143,6 +149,7 @@ expected = "The piece sits in equipment container 4 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 5326 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Helmet" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -172,6 +179,7 @@ expected = "The piece sits in equipment container 5 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 3497 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Eyeglasses" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -201,6 +209,7 @@ expected = "The piece sits in equipment container 5 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 7361 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Goggles" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -230,6 +239,7 @@ expected = "The piece sits in equipment container 5 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 7364 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Goggles" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -259,6 +269,7 @@ expected = "The piece sits in equipment container 5 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 7367 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Goggles" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -288,6 +299,7 @@ expected = "The piece sits in equipment container 5 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 7369 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Goggles" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -317,6 +329,7 @@ expected = "The piece sits in equipment container 7 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 34 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Aramid Fiber Ballistic Vest" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -346,6 +359,7 @@ expected = "The piece sits in equipment container 7 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 2891 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Testing Ballistic Vest" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -375,6 +389,7 @@ expected = "The piece sits in equipment container 7 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 2945 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Vest" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -404,6 +419,7 @@ expected = "The piece sits in equipment container 7 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 4114 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Trinium Ballistic Vest" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -433,6 +449,7 @@ expected = "The piece sits in equipment container 7 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 4120 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Tri-Naq Alloy Ballistic Vest" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -462,6 +479,7 @@ expected = "The piece sits in equipment container 7 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 5323 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Vest" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -491,6 +509,7 @@ expected = "The piece sits in equipment container 8 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 2921 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Test Gloves" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -520,6 +539,7 @@ expected = "The piece sits in equipment container 8 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 2980 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Boron-Carbide Ballistic Gloves" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -549,6 +569,7 @@ expected = "The piece sits in equipment container 8 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 4165 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Trinium Ballistic Gloves" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -578,6 +599,7 @@ expected = "The piece sits in equipment container 8 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 4172 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Tri-Naq Alloy Ballistic Gloves" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -607,6 +629,7 @@ expected = "The piece sits in equipment container 8 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 5317 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Neutronium Ablative Gloves" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -636,6 +659,7 @@ expected = "The piece sits in equipment container 9 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 3632 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Grenade Belt" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -665,6 +689,7 @@ expected = "The piece sits in equipment container 9 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 7247 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Deployment Belt" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -694,6 +719,7 @@ expected = "The piece sits in equipment container 9 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 7250 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Deployment Belt" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -723,6 +749,7 @@ expected = "The piece sits in equipment container 9 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 7253 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Deployment Belt" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -752,6 +779,7 @@ expected = "The piece sits in equipment container 9 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 7255 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Deployment Belt" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -781,6 +809,7 @@ expected = "The piece sits in equipment container 10 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 7257 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Deployment Harness" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -810,6 +839,7 @@ expected = "The piece sits in equipment container 10 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 7261 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Deployment Harness" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -839,6 +869,7 @@ expected = "The piece sits in equipment container 10 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 7264 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Deployment Harness" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [
@@ -868,6 +899,7 @@ expected = "The piece sits in equipment container 10 on the character sheet."
 setup = [
   { chat = "/gmgiveitem 7267 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Deployment Harness" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
   { wait_ms = 2000 },
 ]
 step = [

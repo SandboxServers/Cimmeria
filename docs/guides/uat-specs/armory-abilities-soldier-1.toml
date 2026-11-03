@@ -19,12 +19,14 @@ alignment = "sgu"
 archetype = "Soldier"
 gender = "male"
 first = "Uat"
+finish_intro = false
 
 [[row]]
 id = "Soldier-00"
 title = "Soldier: the Debug Area, every tree ability, one hostile dummy"
 expected = "The character stands in the Debug Area with its tree and a hostile dummy."
 setup = [
+  { wait_ms = 17000 },
   { chat = ".gotolocation DebugArea 246 6.6 -878", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
   { wait_ms = 3000 },
@@ -46,8 +48,13 @@ id = "Soldier-612"
 title = "Area Burst (612): press it from the bar with SK37 LMG equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3260 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 LMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 612, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 612 } },
@@ -73,14 +80,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK37 LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-632"
 title = "Long Burst (632): press it from the bar with SK37 LMG equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3260 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 LMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 632, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 632 } },
@@ -106,6 +126,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK37 LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-851"
@@ -144,8 +172,13 @@ id = "Soldier-658"
 title = "Heavy Suppression (658): press it from the bar with SK37 LMG equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3260 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 LMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 658, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 658 } },
@@ -171,6 +204,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK37 LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-819"
@@ -208,8 +249,13 @@ id = "Soldier-656"
 title = "Sustained Bursts (656): press it from the bar with SK37 LMG equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3260 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 LMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 656, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 656 } },
@@ -235,20 +281,33 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK37 LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-2419"
 title = "Launch Grenade: Single (2419): press it from the bar with GL 21 Grenade Launcher equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4990 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "GL 21 Grenade Launcher" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 2419, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 2419, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2419 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2419, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2419, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -269,14 +328,27 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is GL 21 Grenade Launcher before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "GL 21 Grenade Launcher"
 
 [[row]]
 id = "Soldier-1883"
 title = "Incinerating Stream (1883): press it from the bar with Baby Mongoose Flamethrower equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 6480 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Baby Mongoose Flamethrower" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1883, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1883 } },
@@ -302,20 +374,33 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Baby Mongoose Flamethrower before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Baby Mongoose Flamethrower"
 
 [[row]]
 id = "Soldier-808"
 title = "Cover Denial (808): press it from the bar with SK37 LMG equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3260 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 LMG" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 808, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 808, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 808 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 808, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 808, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -336,20 +421,33 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK37 LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-2103"
 title = "Launch Grenade: Concussion (2103): press it from the bar with GL 21 Grenade Launcher equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4990 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "GL 21 Grenade Launcher" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 2103, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 2103, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2103 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2103, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2103, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -370,6 +468,14 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is GL 21 Grenade Launcher before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "GL 21 Grenade Launcher"
 
 [[row]]
 id = "Soldier-1483"
@@ -408,8 +514,13 @@ id = "Soldier-818"
 title = "Sustained Sweep (818): press it from the bar with SK37 LMG equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3260 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 LMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 818, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 818 } },
@@ -435,20 +546,33 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK37 LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-1882"
 title = "Launch Grenade: Tear Gas (1882): press it from the bar with GL 21 Grenade Launcher equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4990 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "GL 21 Grenade Launcher" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 1882, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 1882, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1882 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1882, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1882, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -469,20 +593,33 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is GL 21 Grenade Launcher before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "GL 21 Grenade Launcher"
 
 [[row]]
 id = "Soldier-2102"
 title = "Incinerate Ground (2102): press it from the bar with Baby Mongoose Flamethrower equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 6480 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Baby Mongoose Flamethrower" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 2102, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 2102, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2102 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2102, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2102, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -503,14 +640,27 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Baby Mongoose Flamethrower before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Baby Mongoose Flamethrower"
 
 [[row]]
 id = "Soldier-853"
 title = "Fire Zone (853): press it from the bar with SK37 LMG equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3260 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 LMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 853, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 853 } },
@@ -537,18 +687,26 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK37 LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-724"
 title = "Anti-Personnel Mortar (724): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 724, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 724, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 724 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 724, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 724, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -575,14 +733,19 @@ id = "Soldier-1885"
 title = "Launch Grenade: Shockwave (1885): press it from the bar with GL 21 Grenade Launcher equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4990 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "GL 21 Grenade Launcher" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 1885, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 1885, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1885 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1885, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1885, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -603,18 +766,26 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is GL 21 Grenade Launcher before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "GL 21 Grenade Launcher"
 
 [[row]]
 id = "Soldier-852"
 title = "High Explosive Mortar (852): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 852, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 852, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 852 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 852, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 852, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -641,14 +812,19 @@ id = "Soldier-1889"
 title = "Incinerate Area (1889): press it from the bar with Baby Mongoose Flamethrower equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 6480 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Baby Mongoose Flamethrower" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 1889, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 1889, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1889 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1889, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1889, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -669,14 +845,27 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Baby Mongoose Flamethrower before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Baby Mongoose Flamethrower"
 
 [[row]]
 id = "Soldier-2143"
 title = "Intimidation Fire (2143): press it from the bar with SK37 LMG equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3260 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 LMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 2143, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2143 } },
@@ -702,18 +891,26 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK37 LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-1485"
 title = "Cluster Mortars (1485): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1485, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1485, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1485 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1485, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1485, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -740,14 +937,19 @@ id = "Soldier-2105"
 title = "Launch Grenade: Barrage (2105): press it from the bar with GL 21 Grenade Launcher equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4990 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "GL 21 Grenade Launcher" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 2105, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 2105, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 2105 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 2105, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 2105, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -768,20 +970,33 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is GL 21 Grenade Launcher before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "GL 21 Grenade Launcher"
 
 [[row]]
 id = "Soldier-1487"
 title = "Penetrating Barrage (1487): press it from the bar with SK37 LMG equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3260 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 LMG" }, label = "equip" },
-  { tool = "@use_ability", args = { ability_id = 1487, place = true }, label = "place" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
+  { tool = "@use_ability", args = { ability_id = 1487, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1487 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1487, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1487, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -802,6 +1017,14 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK37 LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK37 LMG"
 
 [[row]]
 id = "Soldier-1456"
@@ -840,8 +1063,13 @@ id = "Soldier-1486"
 title = "Rain of Steel (1486): press it from the bar with SK37 LMG equipped"
 expected = "The press leaves the client."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3260 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 LMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1486, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1486 } },
@@ -868,3 +1096,11 @@ source = "client_event"
 event = "client.ability.applied"
 since = "press"
 required = false
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK37 LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK37 LMG"

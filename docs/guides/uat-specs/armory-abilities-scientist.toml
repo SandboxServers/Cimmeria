@@ -19,12 +19,14 @@ alignment = "sgu"
 archetype = "Scientist"
 gender = "male"
 first = "Uat"
+finish_intro = false
 
 [[row]]
 id = "Scientist-00"
 title = "Scientist: the Debug Area, every tree ability, one hostile dummy"
 expected = "The character stands in the Debug Area with its tree and a hostile dummy."
 setup = [
+  { wait_ms = 17000 },
   { chat = ".gotolocation DebugArea 246 6.6 -878", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
   { wait_ms = 3000 },
@@ -108,8 +110,13 @@ id = "Scientist-988"
 title = "Dart Pistol: Precision Shot (988): press it from the bar with CO2 Pistol Dartgun equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3584 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "CO2 Pistol Dartgun" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 988, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 988 } },
@@ -135,14 +142,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-992"
 title = "Dart Type: Beneficial: Stim (992): press it from the bar with CO2 Pistol Dartgun equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3584 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "CO2 Pistol Dartgun" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 992, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 992 } },
@@ -168,6 +188,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-990"
@@ -206,8 +234,13 @@ id = "Scientist-989"
 title = "Dart Pistol: Aimed Shot (989): press it from the bar with CO2 Pistol Dartgun equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3584 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "CO2 Pistol Dartgun" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 989, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 989 } },
@@ -233,6 +266,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-994"
@@ -335,8 +376,13 @@ id = "Scientist-993"
 title = "Dart Pistol: Half Magazine (993): press it from the bar with CO2 Pistol Dartgun equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3584 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "CO2 Pistol Dartgun" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 993, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 993 } },
@@ -362,6 +408,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-1220"
@@ -400,8 +454,13 @@ id = "Scientist-1228"
 title = "Dart Type: Beneficial: Antidote (1228): press it from the bar with CO2 Pistol Dartgun equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3584 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "CO2 Pistol Dartgun" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1228, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1228 } },
@@ -427,6 +486,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-1215"
@@ -497,8 +564,13 @@ id = "Scientist-1000"
 title = "Dart Rifle: Multi-Shot (1000): press it from the bar with CO2 Pistol Dartgun equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3584 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "CO2 Pistol Dartgun" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1000, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1000 } },
@@ -524,14 +596,27 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-1217"
 title = "Dart Rifle: Dart Cone (1217): press it from the bar with CO2 Pistol Dartgun equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3584 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "CO2 Pistol Dartgun" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1217, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1217 } },
@@ -557,6 +642,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-1226"
@@ -627,8 +720,13 @@ id = "Scientist-1952"
 title = "Dart Rifle: Continuous (1952): press it from the bar with CO2 Pistol Dartgun equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3584 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "CO2 Pistol Dartgun" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1952, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1952 } },
@@ -654,18 +752,26 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is CO2 Pistol Dartgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "CO2 Pistol Dartgun"
 
 [[row]]
 id = "Scientist-1223"
 title = "Deployable: Focus Regen (1223): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1223, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1223, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1223 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1223, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1223, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -724,12 +830,12 @@ id = "Scientist-1224"
 title = "Deployable: Med Station (1224): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1224, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1224, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1224 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1224, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1224, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -852,8 +958,13 @@ id = "Scientist-598"
 title = "Quick Burst (598): press it from the bar with SGHC 6 SMG equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 21 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SGHC 6 SMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 598, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 598 } },
@@ -879,6 +990,14 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Scientist-1017"
@@ -917,8 +1036,13 @@ id = "Scientist-713"
 title = "Draw Fire (713): press it from the bar with SGHC 6 SMG equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 21 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SGHC 6 SMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 713, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 713 } },
@@ -944,18 +1068,26 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Scientist-1015"
 title = "Deployable: Gravity Well (1015): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1015, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1015, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1015 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1015, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1015, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1014,8 +1146,13 @@ id = "Scientist-1005"
 title = "Aimed Burst (1005): press it from the bar with SGHC 6 SMG equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 21 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SGHC 6 SMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1005, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1005 } },
@@ -1041,18 +1178,26 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Scientist-1012"
 title = "Deployable: Microwave Emitter (1012): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1012, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1012, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1012 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1012, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1012, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1110,8 +1255,13 @@ id = "Scientist-891"
 title = "Suppression Shot (891): press it from the bar with SGHC 6 SMG equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 21 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SGHC 6 SMG" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 891, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 891 } },
@@ -1137,18 +1287,26 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SGHC 6 SMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SGHC 6 SMG"
 
 [[row]]
 id = "Scientist-1236"
 title = "Deployable: Aggression Inducer (1236): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1236, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1236, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1236 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1236, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1236, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1175,8 +1333,13 @@ id = "Scientist-1474"
 title = "Pinning Fire (1474): press it from the bar with AR 21 Assault Rifle equipped"
 expected = "The press leaves the client and the client applies the ability."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3145 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "AR 21 Assault Rifle" }, label = "equip" },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag", optional = true },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
+  { wait_ms = 1500 },
   { tool = "@use_ability", args = { ability_id = 1474, place = true }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1474 } },
@@ -1202,18 +1365,26 @@ text = "the client applies the ability after the press"
 source = "client_event"
 event = "client.ability.applied"
 since = "press"
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is AR 21 Assault Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "AR 21 Assault Rifle"
 
 [[row]]
 id = "Scientist-1229"
 title = "Strike: Incendiary (1229): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1229, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1229, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1229 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1229, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1229, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1272,12 +1443,12 @@ id = "Scientist-1230"
 title = "Strike: Gamma (1230): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 1230, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 1230, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 1230 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 1230, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 1230, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1400,12 +1571,12 @@ id = "Scientist-962"
 title = "Summon Turret: Prototype (962): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 962, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 962, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 962 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 962, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 962, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1463,12 +1634,12 @@ id = "Scientist-963"
 title = "Summon Turret: Offensive (963): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 963, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 963, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 963 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 963, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 963, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1526,12 +1697,12 @@ id = "Scientist-964"
 title = "Summon Turret: Defensive (964): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 964, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 964, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 964 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 964, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 964, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
@@ -1714,12 +1885,12 @@ id = "Scientist-966"
 title = "Summon Turret: Advanced (966): press it from the bar"
 expected = "The press leaves the client."
 setup = [
-  { tool = "@use_ability", args = { ability_id = 966, place = true }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 966, place = true, ground = { distance_m = 8, bearing_deg = 30 } }, label = "place" },
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 966 } },
 ]
 step = [
-  { tool = "@use_ability", args = { ability_id = 966, press = "key", fallback = "none" }, label = "press" },
+  { tool = "@use_ability", args = { ability_id = 966, press = "key", fallback = "none", ground = { distance_m = 8, bearing_deg = 30 } }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [

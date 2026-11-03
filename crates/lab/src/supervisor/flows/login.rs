@@ -439,6 +439,9 @@ impl Supervisor {
     pub async fn disconnect_flow(&self) -> Result<Value, FlowError> {
         let mut run = FlowRun::new(self, "lab_disconnect");
         if run.visible("check", LOGIN_WIN).await? {
+            // The status may still say character_select (a stale state from
+            // before a server kick or an earlier disconnect).
+            self.set_login_state(LoginState::LoginScreen).await;
             return Ok(run.finish(json!({ "at": "login", "already": true })));
         }
         if !run.visible("check", CHAR_SELECT_WIN).await? {
@@ -455,6 +458,7 @@ impl Supervisor {
             SERVER_TIMEOUT,
         )
         .await?;
+        self.set_login_state(LoginState::LoginScreen).await;
         settle(1000).await;
         Ok(run.finish(json!({ "at": "login" })))
     }

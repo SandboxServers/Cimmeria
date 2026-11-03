@@ -104,6 +104,25 @@ impl<I: ToolInvoker> Runner<'_, I> {
         self.setup_call_on(Who::P1, tool, args, ctx).await
     }
 
+    /// A character-select call that survives a stale `login_state`: when the
+    /// client reports it is not at character select (a server kick or a
+    /// timeout back to the login screen the supervisor never saw), log in once
+    /// and retry. The error text is the flow tool's own.
+    async fn char_select_call(
+        &mut self,
+        tool: &str,
+        args: Value,
+        ctx: &mut RowCtx,
+    ) -> Result<Value, String> {
+        match self.setup_call(tool, args.clone(), ctx).await {
+            Err(e) if e.contains("not at character select") => {
+                self.setup_call("lab_login", json!({}), ctx).await?;
+                self.setup_call(tool, args, ctx).await
+            }
+            other => other,
+        }
+    }
+
     /// Bring the client to `state`. Uses the flows by name, so a missing
     /// flow tool BLOCKs the row with its name.
     pub(crate) async fn ensure_state(
@@ -131,10 +150,17 @@ impl<I: ToolInvoker> Runner<'_, I> {
             }
             return Ok(());
         }
+        let hb_unreachable = login == "unresponsive"
+            || (status.pointer("/heartbeat/state").and_then(Value::as_str) == Some("unreachable")
+                && matches!(login.as_str(), "in_world" | "character_select"));
         if !running {
             self.setup_call("lab_client_start", json!({}), ctx).await?;
             login = "not_started".into();
             self.in_world_as = None;
+        } else if hb_unreachable {
+            // A dead bridge cannot log out (the call burns 2 to 56 s and
+            // fails): restart the client once and take the normal path.
+            login = self.revive_dead_client(ctx).await?;
         }
         if !matches!(login.as_str(), "character_select" | "in_world") {
             self.setup_call("lab_login", json!({}), ctx).await?;
@@ -149,14 +175,40 @@ impl<I: ToolInvoker> Runner<'_, I> {
             return Ok(());
         }
         // in_world as the right character.
+        // With no record of who is in world (every `lab_uat_run` call starts
+        // a new runner), ask the client. Logging out to "switch" to the
+        // character that is already in world crashes SGW.exe (#1680).
+        let mut observed: Option<String> = None;
+        if login == "in_world"
+            && self.in_world_as.is_none()
+            && self.on(Who::P1).has_tool("client_player_state")
+        {
+            match self.setup_call("client_player_state", json!({}), ctx).await {
+                Ok(v) => {
+                    observed = v.get("name").and_then(Value::as_str).map(str::to_string);
+                }
+                Err(e) if is_dead_bridge(&e) => {
+                    login = self.revive_dead_client(ctx).await?;
+                }
+                // Unreadable for another reason: fall back to the assumption.
+                Err(_) => {}
+            }
+        }
         if login == "in_world" {
-            // Caveat (FX-06 deviation 3): with no record of who is in world,
-            // this assumes the lab character. A client someone left in world
-            // as another character on the same account passes as the lab
-            // character here, and `auto` may then chain from it.
+            if let (Some(seen), Some(w)) = (observed.as_deref(), want.as_deref()) {
+                if name_matches(seen, w) {
+                    self.in_world_as = want.clone();
+                    return Ok(());
+                }
+            }
+            // Caveat (FX-06 deviation 3): with no record and no readable
+            // name, this assumes the lab character. A client someone left
+            // in world as another character on the same account passes as
+            // the lab character here, and `auto` may then chain from it.
             let current = self
                 .in_world_as
                 .clone()
+                .or(observed)
                 .or_else(|| self.req.lab_character.clone());
             if current.is_some() && current == want {
                 // Remember who is in world even when the run found the client
@@ -175,7 +227,9 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 .fresh
                 .clone()
                 .ok_or("character = fresh without [section.fresh]")?;
-            let list = self.setup_call("lab_characters", json!({}), ctx).await?;
+            let list = self
+                .char_select_call("lab_characters", json!({}), ctx)
+                .await?;
             let listed = list
                 .get("characters")
                 .and_then(Value::as_array)
@@ -225,7 +279,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
             }
         }
         let played = self
-            .setup_call("lab_play_character", json!({ "name": name }), ctx)
+            .char_select_call("lab_play_character", json!({ "name": name }), ctx)
             .await?;
         self.in_world_as = Some(name);
         let intro_pending = spec.section.fresh.as_ref().is_some_and(|f| f.finish_intro)
@@ -279,6 +333,16 @@ impl<I: ToolInvoker> Runner<'_, I> {
             self.setup_call("lab_finish_dialog", json!({}), ctx).await?;
         }
         Ok(())
+    }
+
+    /// The client's bridge is dead: restart it (once per call site), forget
+    /// who was in world and log in. Returns the new `login_state`.
+    async fn revive_dead_client(&mut self, ctx: &mut RowCtx) -> Result<String, String> {
+        self.setup_call("lab_client_restart", json!({}), ctx)
+            .await?;
+        self.in_world_as = None;
+        self.setup_call("lab_login", json!({}), ctx).await?;
+        Ok("character_select".into())
     }
 
     /// Type `.bug uat <row>` and read the bookmark reply: its id is the
@@ -375,6 +439,21 @@ impl<I: ToolInvoker> Runner<'_, I> {
         self.in_world_as = None;
         Some(ev)
     }
+}
+
+/// A tool error that means the client's bridge is gone, not that the call
+/// was refused.
+fn is_dead_bridge(err: &str) -> bool {
+    err.contains("connect to bridge") || err.contains("dispatch timeout")
+}
+
+/// A character name read from the client against the section's name; the
+/// list shows fixture and fresh characters as `<first> <last>`.
+fn name_matches(seen: &str, want: &str) -> bool {
+    seen.eq_ignore_ascii_case(want)
+        || seen
+            .split_whitespace()
+            .any(|part| part.eq_ignore_ascii_case(want))
 }
 
 /// The row id the end of a run is recorded under (TG-PIPE-08).

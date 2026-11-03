@@ -545,11 +545,15 @@ mod revocation_tests;
 #[cfg(test)]
 mod server_wait_tests;
 #[cfg(test)]
+mod session_dead_bridge_tests;
+#[cfg(test)]
 mod session_end_tests;
 #[cfg(test)]
 mod snapshot_mode_tests;
 #[cfg(test)]
 mod snapshot_tests;
+#[cfg(test)]
+mod stale_login_tests;
 #[cfg(test)]
 mod targets_tests;
 #[cfg(test)]

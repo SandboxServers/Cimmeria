@@ -459,6 +459,28 @@ async fn disconnect_flow_clicks_back() {
     assert!(e.message.contains(CHAR_SELECT_BACK), "{}", e.message);
 }
 
+/// DR-07f: the client is already at the login screen but the status still
+/// says character_select (left by `lab_logout`). `lab_disconnect` must
+/// correct it, or the next run skips `lab_login` and BLOCKs every row.
+#[tokio::test]
+async fn disconnect_flow_already_at_login_marks_the_login_screen() {
+    let sup = fake_bridge::supervisor(Arc::new(|method: &str, p: &Value| {
+        if method != "lua_eval" {
+            return Err(format!("no native path in the fake: {method}"));
+        }
+        let chunk = p["chunk"].as_str().unwrap_or_default();
+        if chunk.contains(LOGIN_WIN) {
+            return Ok(fake_bridge::lua_ok(&["true"]));
+        }
+        Ok(fake_bridge::lua_ok(&["false"]))
+    }))
+    .await;
+    sup.set_login_state(LoginState::CharSelect).await;
+    let out = sup.disconnect_flow().await.unwrap();
+    assert_eq!(out["already"], true);
+    assert_eq!(sup.state.lock().await.login, LoginState::LoginScreen);
+}
+
 #[test]
 fn server_select_chunk_quotes_the_name_and_lists_on_a_miss() {
     let c = select_server_chunk("Cimmeria \"colo\"");

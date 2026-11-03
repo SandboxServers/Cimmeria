@@ -205,6 +205,10 @@ pub enum LoginState {
     LoggingIn,
     /// At character select (after `lab_login` or `lab_logout`).
     CharSelect,
+    /// At the login screen after `lab_disconnect`; the account is logged
+    /// off. Without this value the state stayed `CharSelect` and the next
+    /// `lab_uat_run` skipped `lab_login` and BLOCKed every row.
+    LoginScreen,
     InWorld,
     Failed,
     Crashed,
@@ -216,6 +220,7 @@ impl LoginState {
             LoginState::NotStarted => "not_started",
             LoginState::LoggingIn => "logging_in",
             LoginState::CharSelect => "character_select",
+            LoginState::LoginScreen => "login_screen",
             LoginState::InWorld => "in_world",
             LoginState::Failed => "failed",
             LoginState::Crashed => "crashed",
@@ -655,5 +660,6 @@ mod tests {
     fn login_state_strings_are_stable() {
         assert_eq!(LoginState::InWorld.as_str(), "in_world");
         assert_eq!(LoginState::Crashed.as_str(), "crashed");
+        assert_eq!(LoginState::LoginScreen.as_str(), "login_screen");
     }
 }

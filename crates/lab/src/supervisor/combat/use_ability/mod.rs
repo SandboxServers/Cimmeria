@@ -7,7 +7,8 @@
 //!    (`getBindingKey('ActionButton<n>')`, a real `WM_KEYDOWN`/`UP`), or
 //!    click the button when it has no key the lab can post. N1.
 //! 2. **Not on the hotbar, `place: true`** — put it on the first visible
-//!    empty button the way the drop handler does
+//!    empty button the lab can press (else the last pressable ability button,
+//!    overwritten) the way the drop handler does
 //!    (`getUnusedAction` + `ActionProfileMod.setButtonCurrentAction` +
 //!    `setActionToAbility`: N3, because a CEGUI drag cannot be started from
 //!    posted mouse moves yet), then press that button's key or click it
@@ -30,6 +31,12 @@ pub mod proof;
 pub mod resolve;
 pub mod window;
 
+pub mod ground;
+#[cfg(test)]
+mod ground_offset_tests;
+#[cfg(test)]
+mod ground_tests;
+
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
@@ -38,7 +45,9 @@ use super::hotbar::{Hotbar, HotbarButton};
 use super::NativeLevel;
 use crate::supervisor::flows::{settle, FlowError, FlowRun};
 use crate::supervisor::ui::click_expect::ClickExpect;
+use crate::supervisor::world::io::LiveWorld;
 use crate::supervisor::{now_ms, Supervisor};
+use ground::{GroundArg, LiveGround};
 use outcome::classify;
 use proof::ability_evidence;
 use resolve::{known_chunk, parse_known, resolve, Query};
@@ -50,6 +59,8 @@ const OBSERVE_POLL: Duration = Duration::from_millis(250);
 /// After the first settling event, keep reading this long for stragglers
 /// (the cooldown timer usually lands right after the effect).
 const STRAGGLE: Duration = Duration::from_millis(400);
+/// Let the reticle open after the press before the ground click lands.
+const GROUND_RETICLE_MS: u64 = 250;
 
 /// How to press a hotbar button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +89,11 @@ pub struct UseAbilityRequest {
     pub place: bool,
     pub fallback: Fallback,
     pub observe: Duration,
+    /// A ground-targeted ability (`target_type_id = 3`) only opens its
+    /// reticle on the press; the client sends `useAbilityOnGroundTarget`
+    /// after a left click on the ground. When set, the flow left-clicks this
+    /// point between the press and the observe loop.
+    pub ground: Option<GroundArg>,
 }
 
 impl Press {
@@ -177,7 +193,29 @@ impl Supervisor {
     }
 
     pub async fn use_ability_flow(&self, req: UseAbilityRequest) -> Result<Value, FlowError> {
+        self.use_ability_flow_with(req, |p| async move {
+            let mut io = LiveGround(LiveWorld::new(self));
+            ground::confirm(&mut io, p).await
+        })
+        .await
+    }
+
+    /// The flow with the ground click injected: the live click needs the
+    /// game window, which the fake bridge tests have none of.
+    pub(crate) async fn use_ability_flow_with<G, Fut>(
+        &self,
+        req: UseAbilityRequest,
+        ground_click: G,
+    ) -> Result<Value, FlowError>
+    where
+        G: FnOnce(GroundArg) -> Fut,
+        Fut: std::future::Future<Output = Result<Value, String>>,
+    {
         let mut run = FlowRun::new(self, "client_use_ability");
+        // Bad ground arguments fail before the press opens a reticle.
+        if let Some(g) = &req.ground {
+            g.validate().map_err(|e| run.fail("ground_args", e))?;
+        }
         // Baseline pump: installs the combat/chat rings and fixes the seq
         // the outcome is read from.
         let pump = self
@@ -215,17 +253,25 @@ impl Supervisor {
             .and_then(|n| hotbar_now.buttons.iter().find(|b| b.button == *n))
             .cloned();
         if button.is_none() && req.place {
-            let target = hotbar_now.first_empty_visible().cloned().ok_or_else(|| {
-                run.fail(
-                    "place",
-                    format!(
-                        "no visible empty hotbar button to place the ability on \
+            let target = hotbar_now
+                .placement_target(req.press != Press::Click)
+                .or_else(|| {
+                    (req.press == Press::Auto)
+                        .then(|| hotbar_now.placement_target(false))
+                        .flatten()
+                })
+                .cloned()
+                .ok_or_else(|| {
+                    run.fail(
+                        "place",
+                        format!(
+                            "no visible empty hotbar button to place the ability on \
                          ({} buttons read, {} visible)",
-                        hotbar_now.buttons.len(),
-                        hotbar_now.buttons.iter().filter(|b| b.visible).count()
-                    ),
-                )
-            })?;
+                            hotbar_now.buttons.len(),
+                            hotbar_now.buttons.iter().filter(|b| b.visible).count()
+                        ),
+                    )
+                })?;
             let tp = Instant::now();
             let r = run
                 .lua("place", &place_chunk(target.button, ability.id))
@@ -254,6 +300,8 @@ impl Supervisor {
                     .await);
             }
             placed = json!({ "button": target.button, "action_id": r.get(1),
+                             "replaced_action_id": target.action_id,
+                             "replaced_name": target.name,
                              "native_level": NativeLevel::UiLuaCall.to_json() });
             run.record("place", tp, placed.clone());
         }
@@ -303,6 +351,20 @@ impl Supervisor {
             }
         };
 
+        // Ground-targeted: the press only opened the reticle. Confirm it
+        // with a left click on the ground, or the client sends nothing and
+        // the press reads `denied: ignored` (canary.md 2026-11-02).
+        let mut ground_detail = Value::Null;
+        if let Some(p) = req.ground {
+            let tg = Instant::now();
+            settle(GROUND_RETICLE_MS).await;
+            let click = ground_click(p)
+                .await
+                .map_err(|e| run.fail("ground_confirm", e))?;
+            ground_detail = click;
+            run.record("ground_confirm", tg, ground_detail.clone());
+        }
+
         // Observe.
         let tobs = Instant::now();
         let mut settled_at: Option<Instant> = None;
@@ -351,6 +413,7 @@ impl Supervisor {
             "native_level": level.to_json(),
             "press": press_detail,
             "placed": placed,
+            "ground": ground_detail,
             "was_on_cooldown": cooldown_before,
             "target_before": { "name": before.target, "hostility": before.target_hostility },
             "result": out.to_json(),

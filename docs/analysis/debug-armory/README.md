@@ -50,6 +50,12 @@ It needs no new opcode, no client patch and no new server code: seed rows, one P
 - **F6. Abilities by archetype.** `archetype_ability_tree` has 439 rows in **7 trees** on 2026-10-27: Soldier 72, Asgard 66, Archeologist 65, Commando 64, Goa'uld 62, Scientist 59, Sholva 51. `ARCHETYPE_Jaffa` can be created (2 `char_creation` rows) but has no tree and no trainer rows by design: the Free Jaffa tree is Sholva's ([ability-trees D-AT04](../ability-trees/README.md)). A fresh character of each archetype takes `/gmgiveallabilities`, so one spec per archetype needs no cross-archetype grant. Asgard may be unplayable (F42 / HELD-B16, as Union D-SU3); its rows are BLOCKED if creation fails.
 - **F7. No cleanup.** With no `.removeitem`, a tester's bags fill. Selling back to the Armory is the cleanup: sell list 1349 holds every stocked design except those another buy list sells for less (D-DR5) or that the sell path refuses (`items.flags` without CanBeSold 1024, e.g. Fists 2699). DR-03a prints the designs it leaves off, DR-03b lists them in its commit body, DR-05 documents them as "not sold back", and DR-L1 buys only items on the sell list.
 - **F8. Many weapons cannot fire.** The audit counts 269 bandolier weapons with no RANGED binding (`items_event_sets` event 7): right-clicking a hostile with one logs `weapon_unbound` `reason = "no_ranged_attack"` and shows "This weapon has no ranged attack." (`crates/cell-methods/src/cell/cell_methods/player/interaction/hostile_attack.rs:138-147`). The representative rule prefers an item with a RANGED binding, and the gear spec grades an unbound representative on that line, so the run measures the gap instead of failing on it.
+- **F9. Most no-mechanics refusals have no evidence-based fix.** The DR-L2 to DR-L4 runs left 72 abilities refused with `no_mechanics`, or blocked by a moniker that no item carries, plus one gear row (item 3128). [seed-gap-plan.md](seed-gap-plan.md) classifies each one under the owner's rule:
+  - **3 EVIDENCED.** 640 Aimed Shot: Torso is fixable now (**DR-S1**). 858 Leadership and 860 Marked Prey have evidenced values but wait on the server mechanisms AB-05 and AB-11.
+  - **24 INFERRED.**
+  - **46 UNKNOWN.**
+
+  The client effect XML has no NVPs, so designer text is the only source of numbers. Every client `EffectIds` list matches the seed's, so no ability is missing an effect link. The INFERRED and UNKNOWN abilities keep refusing (D-DR10 to D-DR17).
 
 ## Decisions
 
@@ -62,6 +68,14 @@ It needs no new opcode, no client patch and no new server code: seed rows, one P
 | D-DR5 | Cleanup. Armory sell list 1349 = the stocked designs at price 0 if the sell path accepts 0, else 1, except a design that another buy list sells at a lower price, which is left off (else buying it elsewhere and selling here would mint naquadah). The skipped designs are printed, recorded and documented (F7); DR-L1 never buys one. Question for the owner: also pull legacy P07 `.removeitem` into a later campaign? | **BlockedDecision** (owner; the seed half is decided, only the `.removeitem` question is open) |
 | D-DR6 | No level gating: the Armory sells every tier to any level. Equip has no level gate today (inventory-system.md:132). | Decided |
 | D-DR7 | Where the lab sweeps run: the local server, the colo after deploy, or both. The colo DB is rebuilt from seeds on each deploy, so the Armory reaches it only after a release. | **BlockedDecision** (owner) |
+| D-DR10 | Channel and pulse shape: may tick counts come from the effect text when the client row says PulseCount 1? When text and tooltip totals disagree, which wins? (718, 725, 1477, 656) [seed-gap-plan](seed-gap-plan.md#owner-decisions) | **BlockedDecision** (owner) |
+| D-DR11 | Percent units for resistance (D-AB09), conditions such as "with missiles", and toggles on Target abilities (1483, 1019, 1231, 1232) | **BlockedDecision** (owner) |
+| D-DR12 | Write server-only effects from tooltips for effectless abilities, or pull in the out-of-scope systems (stealth, mines, C-4, turrets, Conversation: Mechanical)? Default no (1882, 1329, 1894, 854 and the 46 UNKNOWN rows) | **BlockedDecision** (owner) |
+| D-DR13 | Conditional and sequenced damage: the EMP target split, the Sticky Bomb timer, per-charge Detonate (2864, 1259, 3358) | **BlockedDecision** (owner) |
+| D-DR14 | Group, aura and deployable-heal routing under D-AB12; Rally 10% vs 15%, Commander attack speed (1891, 1893, 1231, 1232, 994, 1225, 1015) | **BlockedDecision** (owner) |
+| D-DR15 | Reopen OD-CS16 to retag 997 to ITEM_DartPistol and 1246 and 1355 to ITEM_Blade? Default no; 1250 stays with stealth | **BlockedDecision** (owner) |
+| D-DR16 | GW-3128 binds 559 and 595 without ITEM_Automatic_Weapon: add the moniker, drop the bindings, or keep it as the client has it (default)? | **BlockedDecision** (owner) |
+| D-DR17 | Priority of AB-05 (regen model; D-AB03 and D-AB04) and AB-11 (the clear-on-damage hook), which unblock 858 and 860 | **BlockedDecision** (owner) |
 | Shared | Server target for every lab run: starter-uat-praxis [D-SP2](../starter-uat-praxis/README.md#decisions). | **BlockedDecision** (shared) |
 
 ## Packets
@@ -80,22 +94,23 @@ Full specs in [work-packets.md](work-packets.md). Status values: Ready, BlockedD
 | 3 | DR-07 | packet-coder | `debug_armory.py specs gear`: `armory-gear-weapons-1..3.toml`, `armory-gear-armor-1..2.toml` (split at 30, DR-07 ruling 1) | DR-04 | Done |
 | 3 | DR-08 | documentation-writer | Brief and verify file for DR-L1 (a human-style walk of the Armory) | DR-05 | Done |
 | 4 | DR-L1 | lab-driver + verifier | Walk the Armory: open each vendor, buy, equip, sell back. **ASK-FIRST** | wave 3 merged | Done (graded) |
-| 4 | DR-L2 to DR-L5 | lab-driver (spec run) + verifier | Ability specs: Soldier, Commando, Scientist, Archeologist. **ASK-FIRST** | DR-L1 | BlockedDependency |
+| 4 | DR-L2 to DR-L5 | lab-driver (spec run) + verifier | Ability specs: Soldier, Commando, Scientist, Archeologist. **ASK-FIRST** | DR-L1 | Done (graded; reruns wait on the seed fixes, F9) |
 | 5 | DR-L6 to DR-L8 | lab-driver (spec run) + verifier | Ability specs: Asgard, Goa'uld, Sholva. **ASK-FIRST** | wave 4 | BlockedDependency |
 | 5 | DR-L9, DR-L10 | lab-driver (spec run) + verifier | Gear specs: weapons, armor. **ASK-FIRST** | wave 4 | BlockedDependency |
 | 6 | DR-30 | orchestrator + ops | File the issues the lab waves wrote | waves 4-5 | BlockedDependency |
 | 6 | DR-99 | documentation-writer | Close-out: results summary, debug-area.md and unified-uat statuses, status docs once | DR-30 | BlockedDependency |
 | - | DR-40 | (stub) | Cross-archetype grant command | D-DR4 | BlockedDecision |
+| S | DR-S1 | packet-coder | Effect 703 damage NVPs (800 / 80) so 640 Aimed Shot: Torso stops refusing; a live-DB guard | none | Ready |
 
-Shipping: waves 1 and 2 ship as **one PR** from `dr-integration` (the Armory itself), merge order DR-01, DR-02, DR-03a, DR-03b, DR-04, DR-05. Wave 3 ships as a second PR from the same integration branch after the first merges, order DR-06, DR-07, DR-08. Waves 4 and 5 ship their results as one docs PR each. Wave 6 is one PR, DR-30 then DR-99.
+Shipping: waves 1 and 2 ship as **one PR** from `dr-integration` (the Armory itself), merge order DR-01, DR-02, DR-03a, DR-03b, DR-04, DR-05. Wave 3 ships as a second PR from the same integration branch after the first merges, order DR-06, DR-07, DR-08. Waves 4 and 5 ship their results as one docs PR each. Wave 6 is one PR, DR-30 then DR-99. Wave S (DR-S1) ships as its own PR from `origin/main`, with no wave loop. Its merge order against the `dr-integration` PRs doesn't matter.
 
 ## Not in this campaign
 
 - Vendor mechanics (sell, buyback, repair, recharge, refusals): [starter-uat-shops](../starter-uat-shops/README.md).
-- Ability *mechanics* (damage numbers, effects, QR): the [ability-mechanics](../ability-mechanics/) AB-U rows. These specs only prove each ability casts with the right weapon.
+- Ability *mechanics* (damage numbers, effects, QR): the [ability-mechanics](../ability-mechanics/) AB-U rows. These specs only prove each ability casts with the right weapon. The one exception is DR-S1, an EVIDENCED seed fix the lab found (F9).
 - A cross-archetype grant command (DR-40, D-DR4), a `.removeitem` command (D-DR5), or a `/gmsetlevel`.
 - Abilities that come only from items or content grants (D-DR3).
 
 ## Status
 
-DR-01 to DR-08 are done and merged (#2058, #2059, #2060). DR-L1 ran on the local server on 2026-11-02: L1-1 PASS, L1-2 PASS, L1-3 PASS, L1-4 PASS, L1-5 PARTIAL (the debug-kit pistol is out of ammo), L1-6 PASS; the human clauses are NEEDS_HUMAN. Per-row evidence: [results/DR-L1.md](results/DR-L1.md), [results/DR-L1-driver-reports.md](results/DR-L1-driver-reports.md). DR-L2 to DR-L10 have not run.
+DR-01 to DR-08 are done and merged (#2058, #2059, #2060). DR-L1 ran on the local server on 2026-11-02: L1-1 PASS, L1-2 PASS, L1-3 PASS, L1-4 PASS, L1-5 PARTIAL (the debug-kit pistol is out of ammo), L1-6 PASS; the human clauses are NEEDS_HUMAN. Per-row evidence: [results/DR-L1.md](results/DR-L1.md), [results/DR-L1-driver-reports.md](results/DR-L1-driver-reports.md). DR-L2 to DR-L5 have run on the local server (canary, Soldier 0 to 2, Commando 0 to 2, Scientist, Archeologist 0 to 2; results in [results/](results/)); DR-L6 to DR-L10 have not. The seed-gap plan (2026-11-02) covers the Soldier, Commando and Scientist refusals from the lab issue notes: DR-S1 is Ready, and D-DR10 to D-DR17 await the owner (F9).

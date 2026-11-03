@@ -18,25 +18,33 @@ alignment = "sgu"
 archetype = "Soldier"
 gender = "male"
 first = "Uat"
+finish_intro = false
 
 [[row]]
 id = "GW-5009"
 title = "GL 24 Grenade Launcher has no ranged binding (F8): the right-click is refused"
 expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
 setup = [
+  { wait_ms = 17000 },
   { wait_ms = 10500 },
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 5009 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "GL 24 Grenade Launcher" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -46,6 +54,14 @@ text = "SigNoz: weapon_unbound for item 5009, reason no_ranged_attack (a measure
 source = "signoz"
 filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 5009 AND player_name CONTAINS '${character}'"
 min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is GL 24 Grenade Launcher before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "GL 24 Grenade Launcher"
 
 [[row]]
 id = "GW-5012"
@@ -53,18 +69,24 @@ title = "GL 25 Grenade Launcher has no ranged binding (F8): the right-click is r
 expected = "The right-click gets the no-ranged-attack line and the server logs weapon_unbound."
 setup = [
   { wait_ms = 10500 },
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 5012 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "GL 25 Grenade Launcher" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
@@ -74,787 +96,1159 @@ text = "SigNoz: weapon_unbound for item 5012, reason no_ranged_attack (a measure
 source = "signoz"
 filter = "scope_name = 'abilities' AND event = 'weapon_unbound' AND reason = 'no_ranged_attack' AND item_type_id = 5012 AND player_name CONTAINS '${character}'"
 min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is GL 25 Grenade Launcher before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "GL 25 Grenade Launcher"
 
 [[row]]
 id = "GW-3260"
 title = "SK37 LMG fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 582."
+expected = "The right-click launches ability 582 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3260 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 LMG" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 582 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 582 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 582 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 582 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK37 LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK37 LMG"
 
 [[row]]
 id = "GW-3268"
 title = "SK37 B LMG fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 582."
+expected = "The right-click launches ability 582 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3268 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK37 B LMG" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 582 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 582 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 582 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 582 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK37 B LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK37 B LMG"
 
 [[row]]
 id = "GW-4841"
 title = "SK38 LMG fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 582."
+expected = "The right-click launches ability 582 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4841 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK38 LMG" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 582 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 582 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 582 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 582 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK38 LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK38 LMG"
 
 [[row]]
 id = "GW-4849"
 title = "SK38 X LMG fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 582."
+expected = "The right-click launches ability 582 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4849 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK38 X LMG" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 582 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 582 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 582 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 582 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK38 X LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK38 X LMG"
 
 [[row]]
 id = "GW-4853"
 title = "SK Gauss LMG fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 582."
+expected = "The right-click launches ability 582 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4853 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SK Gauss LMG" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 582 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 582 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 582 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 582 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SK Gauss LMG before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SK Gauss LMG"
 
 [[row]]
 id = "GW-55"
 title = "SI 3 9mm Pistol fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 579."
+expected = "The right-click launches ability 579 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 55 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SI 3 9mm Pistol" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 579 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 579 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 579 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 579 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SI 3 9mm Pistol before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SI 3 9mm Pistol"
 
 [[row]]
 id = "GW-3243"
 title = "SI 4 9mm Pistol fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 579."
+expected = "The right-click launches ability 579 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3243 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SI 4 9mm Pistol" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 579 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 579 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 579 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 579 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SI 4 9mm Pistol before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SI 4 9mm Pistol"
 
 [[row]]
 id = "GW-5481"
 title = "Crafted Pistol of the Whale fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 579."
+expected = "The right-click launches ability 579 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 5481 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Crafted Pistol of the Whale" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 579 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 579 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 579 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 579 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Crafted Pistol of the Whale before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Crafted Pistol of the Whale"
 
 [[row]]
 id = "GW-4885"
 title = "SI 5 9mm Pistol fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 579."
+expected = "The right-click launches ability 579 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4885 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SI 5 9mm Pistol" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 579 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 579 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 579 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 579 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SI 5 9mm Pistol before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SI 5 9mm Pistol"
 
 [[row]]
 id = "GW-4891"
 title = "SI-P 5 9mm Pistol fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 579."
+expected = "The right-click launches ability 579 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4891 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SI-P 5 9mm Pistol" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 579 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 579 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 579 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 579 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SI-P 5 9mm Pistol before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SI-P 5 9mm Pistol"
 
 [[row]]
 id = "GW-4894"
 title = "SI-A 9mm Pistol fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 579."
+expected = "The right-click launches ability 579 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4894 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SI-A 9mm Pistol" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 579 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 579 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 579 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 579 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SI-A 9mm Pistol before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SI-A 9mm Pistol"
 
 [[row]]
 id = "GW-4458"
 title = "Discharge Ribbon Device fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 584."
+expected = "The right-click launches ability 584 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4458 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Discharge Ribbon Device" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 584 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 584 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 584 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 584 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Discharge Ribbon Device before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Discharge Ribbon Device"
 
 [[row]]
 id = "GW-4466"
 title = "Spark Ribbon Device fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 584."
+expected = "The right-click launches ability 584 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4466 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Spark Ribbon Device" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 584 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 584 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 584 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 584 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Spark Ribbon Device before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Spark Ribbon Device"
 
 [[row]]
 id = "GW-4472"
 title = "Surge Ribbon Device fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 584."
+expected = "The right-click launches ability 584 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4472 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Surge Ribbon Device" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 584 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 584 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 584 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 584 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Surge Ribbon Device before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Surge Ribbon Device"
 
 [[row]]
 id = "GW-4478"
 title = "Bolt Ribbon Device fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 584."
+expected = "The right-click launches ability 584 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4478 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Bolt Ribbon Device" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 584 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 584 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 584 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 584 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Bolt Ribbon Device before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Bolt Ribbon Device"
 
 [[row]]
 id = "GW-8339"
 title = "Lightning Ribbon Device fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 584."
+expected = "The right-click launches ability 584 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 8339 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Lightning Ribbon Device" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 584 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 584 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 584 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 584 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Lightning Ribbon Device before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Lightning Ribbon Device"
 
 [[row]]
 id = "GW-3287"
 title = "SR1 .50-Cal Rifle fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 581."
+expected = "The right-click launches ability 581 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3287 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SR1 .50-Cal Rifle" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 581 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 581 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 581 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 581 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SR1 .50-Cal Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SR1 .50-Cal Rifle"
 
 [[row]]
 id = "GW-3294"
 title = "SR2 .50-Cal Rifle fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 581."
+expected = "The right-click launches ability 581 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3294 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "SR2 .50-Cal Rifle" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 581 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 581 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 581 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 581 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is SR2 .50-Cal Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "SR2 .50-Cal Rifle"
 
 [[row]]
 id = "GW-4948"
 title = "Nenz 25S Rifle fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 581."
+expected = "The right-click launches ability 581 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4948 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Nenz 25S Rifle" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 581 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 581 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 581 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 581 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Nenz 25S Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Nenz 25S Rifle"
 
 [[row]]
 id = "GW-4954"
 title = "Nenz 25S-II Rifle fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 581."
+expected = "The right-click launches ability 581 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4954 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Nenz 25S-II Rifle" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 581 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 581 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 581 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 581 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Nenz 25S-II Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Nenz 25S-II Rifle"
 
 [[row]]
 id = "GW-4957"
 title = "Nenz 2500 Rifle fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 581."
+expected = "The right-click launches ability 581 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4957 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Nenz 2500 Rifle" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 581 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 581 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 581 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 581 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Nenz 2500 Rifle before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Nenz 2500 Rifle"
 
 [[row]]
 id = "GW-3313"
 title = "Pump Shotgun fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 583."
+expected = "The right-click launches ability 583 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3313 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Pump Shotgun" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 583 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 583 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 583 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 583 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Pump Shotgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Pump Shotgun"
 
 [[row]]
 id = "GW-3320"
 title = "Semi Auto Shotgun fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 583."
+expected = "The right-click launches ability 583 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3320 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Semi Auto Shotgun" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 583 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 583 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 583 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 583 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Semi Auto Shotgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Semi Auto Shotgun"
 
 [[row]]
 id = "GW-4928"
 title = "Combat Shotgun fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 583."
+expected = "The right-click launches ability 583 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4928 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Combat Shotgun" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 583 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 583 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 583 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 583 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Combat Shotgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Combat Shotgun"
 
 [[row]]
 id = "GW-4933"
 title = "Assault Shotgun fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 583."
+expected = "The right-click launches ability 583 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4933 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Assault Shotgun" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 583 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 583 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 583 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 583 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Assault Shotgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Assault Shotgun"
 
 [[row]]
 id = "GW-4937"
 title = "Strike Shotgun fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 583."
+expected = "The right-click launches ability 583 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 4937 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Strike Shotgun" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 583 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 583 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 583 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 583 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Strike Shotgun before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Strike Shotgun"
 
 [[row]]
 id = "GW-2797"
 title = "Serpent Staff fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 584."
+expected = "The right-click launches ability 584 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 2797 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Serpent Staff" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 584 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 584 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 584 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 584 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Serpent Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Serpent Staff"
 
 [[row]]
 id = "GW-3478"
 title = "Venom Staff fires its ranged ability on a right-click"
-expected = "The right-click leaves the client as ability 584."
+expected = "The right-click launches ability 584 on the server."
 setup = [
+  { tool = "@item_action", args = { action = "unequip", container = "Bandolier", slot = 1 }, label = "reset-slot1", optional = true },
+  { tool = "@window_click", args = { target = "CharacterWin__auto_closebutton__" }, label = "close-sheet", optional = true },
   { chat = "/gmgiveitem 3478 1", tier = "G" },
   { tool = "@item_action", args = { action = "equip", name = "Venom Staff" } },
+  { tool = "@window_click", args = { target = "InventoryWin__auto_closebutton__" }, label = "close-bag" },
+  { tool = "@key", args = { key = "F1" }, label = "select-slot1" },
   { tool = "@dummy", args = { disposition = "hostile", template_id = 1310 } },
   { wait_ms = 2000 },
 ]
 step = [
+  { tool = "@camera", args = { face_entity_id = "${dummy_id}", zoom_to = 400 }, label = "face" },
+  { tool = "@camera", args = { yaw_counts = -300, pitch_deg = -15 }, label = "offset" },
   { tool = "@target", args = { entity_id = "${dummy_id}" } },
   { tool = "@world_click", args = { entity_id = "${dummy_id}", button = "right" }, label = "press" },
   { wait_ms = 3000 },
 ]
 teardown = [
-  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
   { tool = "@dummy", args = { disposition = "clear" } },
 ]
 [[row.expect]]
-id = "sent"
-text = "the right-click sends ability 584 (RANGED binding)"
-source = "client_event"
-event = "client.ability.sent"
-match_fields = { ability_id = 584 }
-since = "press"
+id = "launched"
+text = "the right-click launches ability 584 (RANGED binding)"
+source = "signoz"
+filter = "scope_name = 'abilities' AND event = 'ability_launched' AND ability_id = 584 AND player_name CONTAINS '${character}'"
+min_rows = 1
+[[row.expect]]
+id = "armed"
+text = "the active bandolier weapon is Venom Staff before the press"
+source = "tool"
+tool = "@player_state"
+pointer = "/ammo/weapon"
+op = "eq"
+value = "Venom Staff"
