@@ -6,7 +6,7 @@
 > **Last updated:** 2026-10-18
 > **Companions:** [Ledger](README.md), [W1 packets](w1-packets.md), [W1 frozen literals](w1-frozen.md)
 
-Branch `content/tollana-campaign` in `.claude\worktrees\zone-tollana`, tip `1052e739c`. **Local only: no PR and no push yet.** No agent uses the lab (user directive, 2026-10-17).
+Branch `content/tollana-campaign` in `.claude\worktrees\zone-tollana`, tip `1052e739c`. **Merged to main in #1948.** No agent uses the lab (user directive, 2026-10-17).
 
 ## W1 status
 

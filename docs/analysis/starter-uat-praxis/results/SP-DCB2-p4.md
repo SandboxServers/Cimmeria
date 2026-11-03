@@ -1,0 +1,18 @@
+PACKET SP-DCB2-p4 VERIFIED 2026-11-03 by Sonnet; driver attempts: 1; server evidence window 09:05:09Z-09:06:55Z (SigNoz, lab_run dr-lab)
+
+| Row | Result | Tier | Server evidence | Client evidence | Looker | Notes |
+|---|---|---|---|---|---|---|
+| CB-U05b | PARTIAL (flank not exercised; + NEEDS_HUMAN 1) | G setup, N3 target, N1 shot | 09:05:37.187 INFO `Mission accepted` 686 step 2353 (gmMissionAssign) before the shot. 09:06:10.945 `setTargetID`. 09:06:16.899 `use_ability_recv` ability 592, wire_target 102621 (NID Guard, tag Hallway05_Guard1), then `ammo_consumed` (ammo_remaining 14); no `use_ability_no_ammo`. Cover holds: `NPC AI: holding cover slot` decisions every 2 s to 09:06:54 (slots 1200044 and 1200049). NO `cover_released_flanked`, NO `fire_player_flanked_npc`; every `cover.flank_check` seen has flanked=false (player at -96.1,24.67,-47.6, only 4.7 m from the start point, still inside the arc). Bookmark end: mission 686 objectives 2730 and 2731 both status 0, no complete objective. No `complete mission` 686, no `play_sequence` 1751, no `accepting mission` 687. Entities now: 102621 (-99.04,24.8,-36.7) and 102622 (-101.8,24.8,-52.6) both Fighting, 250/250, in the corridor. | shot hit_type 1 effect_applied; guards unmoved | 3 of 4 answered; see sheet | Shot, cover and no-scene clauses held. 2731 not completed because the sidestep never took the player out of the guards' defensive arc. Setup note: Dcbch held pistol item 55 and abilities 592/594/597/1218 via tier-G GM grant (guard body not interactable, results/issues/SP-DCB2-p2-1.md). Guard ids were 102621/102622, not the brief's 102425/102426 (relog respawn; tags match Hallway05_Guard1/2). `/gmsethealth 760 0` was refused (WARN `GM cmd: target id out of u32 range`, target_raw -1, 09:05:35.6): setup-only, health was already full. |
+
+SIGN-OFF SHEET (NEEDS_HUMAN):
+- CB-U05b, cover posture (H-CB-U05-1): C:\Users\Steve\AppData\Local\cimmeria-lab\screenshots\lab_screenshot-20261103-030630.869.png. Driver did not open it. Looker: 3D scene YES; guard visible UNSURE (target frame portrait only); guard behind cover NO (no guard figure in scene); pistol visible NO. The cover-posture clause cannot be confirmed from this shot. The shot is at 09:06:30, 14 s after the pistol shot.
+
+FINDINGS:
+1. CB-U05b WARN `npc_ai ... stuck` (hold_no_repath, los blocked) for npc 102617, tag MessHall_Guard2, at 09:05:48 and 09:06:04, at (-130,39.6,-89) and (-65,35.5,-71), 51 m and 28 m from the player. A leftover SP-DCB2-p3 Mess Hall guard still chasing Dcbch from far away. Unexpected in this window; designed stuck diagnostic, so no issue body written. Mess Hall guard should be dead or reset before p4/p5.
+2. Flank release is unproven on this build, not contradicted: no issue file (case c, driver problem).
+
+NOT RUN / BLOCKED:
+- Flank clauses (`cover_released_flanked`, `fire_player_flanked_npc`) and objective 2731 (chain 1142): driver problem, not a product bug. The player never left the arc.
+
+RESUME HINT:
+- Next attempt: keep the same state (686 active at step 2353, guards alive, Hallway05_Guard1 at (-99.04,-36.7), Guard2 at (-101.8,-52.6) in cover slots 1200049/1200044). Shoot one guard with 592 (N1), then move well outside the defensive arc: Guard2's node faces yaw 2.404 rad at (-101.0,-53.0), Guard1's node faces 4.719 rad at (-99.0,-37.5). Move to the side or behind each node, at least 8-10 m laterally, and confirm `cover.flank_check` flanked=true. Then expect `cover_released_flanked` and `complete objective` 2731. Kill no guard; send no GM kill. Verify target with client_target first; do not use `/gmsethealth` (it sends target -1).
