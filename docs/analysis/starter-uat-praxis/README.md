@@ -65,18 +65,41 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 
 | Wave | Packet | What | Agent | Lab | Status |
 |---|---|---|---|---|---|
-| 0 | SP-00 | Row inventory `rows.md`; fix the stale Tollana RESUME line | documentation-writer | no | InProgress (documentation-writer, `sp-integration`) |
-| 1 | SP-01 | Cellblock driver and verify briefs (SP-DCB1 to DCB7) | documentation-writer | no | BlockedDependency (SP-00) |
-| 1 | SP-02a | Castle briefs part 1 (SP-DCA1 to DCA4) | documentation-writer | no | BlockedDependency (SP-00) |
-| 1 | SP-02b | Castle briefs part 2 (SP-DCA5 to DCA24; DCA8 to DCA24 added by SP-00, see rows.md) | documentation-writer | no | BlockedDependency (SP-00) |
-| 1 | SP-03a | Harset briefs part 1 (SP-DHA1, DHA2) | documentation-writer | no | BlockedDependency (SP-00) |
-| 1 | SP-03b | Harset briefs part 2: the FZ-U2 split (SP-DHA3 to DHA5) | documentation-writer | no | BlockedDependency (SP-00) |
-| 1 | SP-04 | Tollana briefs (SP-DTO1 to DTO4) | documentation-writer | no | BlockedDependency (SP-00) |
-| 1 | SP-05 | Hand-off leg briefs (SP-DL1 to DL3) | documentation-writer | no | BlockedDependency (SP-00) |
-| 2 | SP-DCB1, DCB2, DCB3, SP-DL1, SP-DCA1, SP-DCA2 | Cellblock, ring to Castle, Castle part 1 | lab-driver + verifier | **ASK-FIRST** | BlockedDependency (briefs); D-SP1, D-SP2 decided |
-| 3 | SP-DCA3 to DCA7, SP-DL2 | Castle part 2, Castle→Harset with Frost's Letter | lab-driver + verifier | **ASK-FIRST** | BlockedDependency (briefs); D-SP1, D-SP2 decided |
-| 4 | SP-DHA1 to DHA5, SP-DL3 | Harset (DHA3, DHA4, DHA5 one after another on `p3`), Harset→Tollana | lab-driver + verifier | **ASK-FIRST** | BlockedDependency (briefs); D-SP1, D-SP2 decided |
-| 5 | SP-DTO1 to DTO4, retries | Tollana, one packet at a time on `default`; the two-player packet last, alone; any attempt-4 takeovers | lab-driver + verifier | **ASK-FIRST** | BlockedDependency (briefs); D-SP1, D-SP2 decided |
+| 0 | SP-00 | Row inventory `rows.md`; fix the stale Tollana RESUME line | documentation-writer | no | Integrated (`sp-integration`) |
+| 1 | SP-01 | Cellblock driver and verify briefs (SP-DCB1 to DCB7) | documentation-writer | no | Integrated (`sp-integration`, merged `--no-ff`) |
+| 1 | SP-02a | Castle briefs part 1 (SP-DCA1 to DCA4) | documentation-writer | no | Integrated (`sp-integration`, merged `--no-ff`) |
+| 1 | SP-02b | Castle briefs part 2 (SP-DCA5 to DCA7; DCA8 to DCA24 were added by SP-00 and have no brief, see rows.md) | documentation-writer | no | Integrated (`sp-integration`, merged `--no-ff`) |
+| 1 | SP-03a | Harset briefs part 1 (SP-DHA1, DHA2) | documentation-writer | no | Integrated (`sp-integration`, merged `--no-ff`) |
+| 1 | SP-03b | Harset briefs part 2: the FZ-U2 split (SP-DHA3 to DHA5) | documentation-writer | no | Integrated (`sp-integration`, merged `--no-ff`) |
+| 1 | SP-04 | Tollana briefs (SP-DTO1 to DTO4) | documentation-writer | no | Integrated (`sp-integration`, merged `--no-ff`) |
+| 1 | SP-05 | Hand-off leg briefs (SP-DL1 to DL3) | documentation-writer | no | Integrated (`sp-integration`, merged `--no-ff`) |
+| 2 | SP-DCB1 | 11 parts (SP-DCB1-p1 to p11), 212 planned calls; rows CB-U01 to CB-U04 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DCB2 | 7 parts (SP-DCB2-p1 to p7), 135 planned calls; rows CB-U05 to CB-U08 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DCB3 | 13 parts (SP-DCB3-p1 to p13), 243 planned calls; rows CB-U09 to T01/T02 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DCB4 | 8 parts (SP-DCB4-p1 to p8), 142 planned calls; rows T03/T04 to T10 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DCB5 | 9 parts (SP-DCB5-p1 to p9), 153 planned calls; rows T11/T12 to T15c | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DCB6 | 3 parts (SP-DCB6-p1 to p3), 57 planned calls; rows T16/T17 to T21/T22 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DCB7 | 9 parts (SP-DCB7-p1 to p9), 178 planned calls; rows T08 to T23 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DL1 | 1 part (SP-DL1), 22 planned calls; row LEG-1 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DCA1 | 2 parts (SP-DCA1-p1 to p2), 33 planned calls; rows A1 to A5 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DCA2 | 2 parts (SP-DCA2-p1 to p2), 41 planned calls; rows D1 to D4 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 3 | SP-DCA3 | 3 parts (SP-DCA3-p1 to p3), 53 planned calls; rows D5 to D7 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 3 | SP-DCA4 | 3 parts (SP-DCA4-p1 to p3), 50 planned calls; rows S1 to S5 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 3 | SP-DCA5 | 4 parts (SP-DCA5-p1 to p4), 65 planned calls; rows S6 to FZ-U1 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 3 | SP-DCA6 | 2 parts (SP-DCA6-p1 to p2), 37 planned calls; rows hub S1 to hub S5 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 3 | SP-DCA7 | 3 parts (SP-DCA7-p1 to p3), 46 planned calls; rows HB1 to RQ-R1-Mohkatan | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 3 | SP-DL2 | 1 part (SP-DL2), 19 planned calls; row LEG-2 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 4 | SP-DHA1 | 8 parts (SP-DHA1-p1 to p8), 146 planned calls; rows H20 to H41 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 4 | SP-DHA2 | 4 parts (SP-DHA2-p1 to p4), 61 planned calls; rows HA-1360a to HA-1360b | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 4 | SP-DHA3 | 3 parts (SP-DHA3-p1 to p3), 59 planned calls; rows FZ-U2a to FZ-U2c | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 4 | SP-DHA4 | 4 parts (SP-DHA4-p1 to p4), 65 planned calls; rows FZ-U2d to FZ-U2h | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 4 | SP-DHA5 | 3 parts (SP-DHA5-p1 to p3), 62 planned calls; rows FZ-U2e to FZ-U2g | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 4 | SP-DL3 | 2 parts (SP-DL3-p1 to p2), 29 planned calls; row LEG-3 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 5 | SP-DTO1 | 2 parts (SP-DTO1-p1 to p2), 38 planned calls; rows P1 to P5 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 5 | SP-DTO2 | 2 parts (SP-DTO2-p1 to p2), 30 planned calls; rows P6 to P10 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 5 | SP-DTO3 | 4 parts (SP-DTO3-p1 to p4), 77 planned calls; rows U1 to U4 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 5 | SP-DTO4 | 3 parts (SP-DTO4-p1 to p3), 53 planned calls; rows U5 to T18 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2-5 | SP-DCA8 to SP-DCA24 | 81 end-uat rows with no brief or verify file | none yet | n/a | BlockedDependency (needs a brief packet; documentation debt) |
 | 6 | SP-91 | TOML specs for passed Cellblock and Castle rows | packet-coder | no | BlockedDependency (waves 2-3) |
 | 6 | SP-92 | TOML specs for passed Harset, Tollana and leg rows | packet-coder | no | BlockedDependency (waves 4-5) |
 | 6 | SP-98 | Issue roll-up and sign-off sheet | documentation-writer | no | BlockedDependency (waves 2-5) |
@@ -84,7 +107,7 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 
 ## Shipping
 
-- **Wave 0 and wave 1** ship as **one docs PR** from the integration worktree `sp-integration` (branch `starter-uat-praxis/integration`). Merge order into it: SP-00, then SP-01, SP-02a, SP-02b, SP-03a, SP-03b, SP-04, SP-05 (any order; each writes only its own brief files and its own `rows.md` lane column cells are already fixed by SP-00).
+- **Wave 0 and wave 1** ship as **one docs PR** from the integration worktree `sp-integration` (branch `starter-uat-praxis/integration`). Merge order into it: SP-00, then SP-01, SP-02a, SP-02b, SP-03a, SP-03b, SP-04, SP-05 (done; head `10a2ef530`). Each wave-1 packet wrote only its own brief and verify files. SP-L1 then synced this README, `rows.md` and the contract to the briefs on disk.
 - **Each lab wave** ends with one docs PR from `sp-integration` carrying the wave's results: `results/<packet>.md` files, the README status rows, and the `rows.md` grade column. Lab waves write no code.
 - **Wave 6** ships as one PR: SP-91 and SP-92 (spec files), then SP-98, then SP-99 last.
 
