@@ -115,6 +115,15 @@ async fn write_letter_mission(
     row: &MissionRow,
     db: &Option<Arc<PgPool>>,
 ) -> Result<(), String> {
+    // The reset below is a raw DELETE, so it skips the persist's TG-DB-12
+    // refusal: check the lock first, or a locked player's saved row is lost
+    // while the A write is refused afterwards.
+    if super::super::methods::missions::state_lock::is_locked(player_id) {
+        return Err(format!(
+            "mission {} was not written: the saved missions of player {player_id} are locked",
+            row.mission_id
+        ));
+    }
     sqlx::query("DELETE FROM sgw_mission WHERE player_id = $1 AND mission_id = $2")
         .bind(player_id)
         .bind(row.mission_id)
@@ -199,6 +208,14 @@ async fn build_row(pool: &PgPool, m: &StagedMission) -> Result<MissionRow, Strin
             })
         }
         StagedMissionState::Completed => {
+            // Refused here, before any write: the letter persist takes only
+            // the active steps, so a completed 1360 would delete the row and
+            // then fail the read-back.
+            if m.mission_id == LETTER_MISSION {
+                return Err(format!(
+                    "mission {LETTER_MISSION} cannot be staged as completed: its persist accepts only the active steps 4037 and 4038"
+                ));
+            }
             let steps = ordered_steps(pool, m.mission_id).await?;
             if steps.is_empty() {
                 return Err(format!(
