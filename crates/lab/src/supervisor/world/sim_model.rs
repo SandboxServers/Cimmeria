@@ -69,6 +69,7 @@ impl Sim {
             look_never_returns: false,
             fail_cursor_restore: false,
             unhoverable: Vec::new(),
+            real_sleep: false,
             live_pitch_clamp: false,
             pitch_inverted: false,
             avatar_hides: None,

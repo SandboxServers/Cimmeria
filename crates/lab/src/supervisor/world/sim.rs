@@ -141,6 +141,8 @@ pub struct Sim {
     /// Entities mouse-over never reports (rendered, but the client's trace
     /// does not hit them).
     pub unhoverable: Vec<u32>,
+    /// Also sleep on the tokio clock; for start_paused tests of time budgets.
+    pub real_sleep: bool,
     /// Pitch turns behave like the live camera: clamped to +-78.75 deg
     /// (`memory::clamped_pitch_counts`), and a push into the limit is no call.
     pub live_pitch_clamp: bool,
@@ -191,6 +193,9 @@ impl WorldIo for Sim {
 
     async fn sleep(&mut self, ms: u64) {
         self.advance(ms);
+        if self.real_sleep {
+            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+        }
         if let Some(f) = self.frames.as_mut() {
             *f += (ms / 16).max(1);
         }

@@ -104,6 +104,8 @@ pub(super) struct ScanOutcome {
 /// cursor placement as `hover_once`. A pixel under the own avatar or another
 /// entity is skipped, never taken. The deadline ends the scan quietly (the
 /// caller reports a deadline); a read failure is an error as in `hover_once`.
+/// The scan budget is checked only between candidates; a read in flight uses
+/// the outer hover deadline.
 pub(super) async fn scan_for_prop<W: WorldIo>(
     io: &mut W,
     steps: &mut Steps,
@@ -115,7 +117,7 @@ pub(super) async fn scan_for_prop<W: WorldIo>(
     attempted_pixel: &mut Option<(i32, i32)>,
 ) -> Result<ScanOutcome, WorldError> {
     let base = aim.position(io).await;
-    let deadline = {
+    let scan_end = {
         let cap = tokio::time::Instant::now() + std::time::Duration::from_millis(SCAN_BUDGET_MS);
         Some(deadline.map_or(cap, |d| d.min(cap)))
     };
@@ -147,7 +149,7 @@ pub(super) async fn scan_for_prop<W: WorldIo>(
     let (mut own, mut other, mut empty) = (0u32, 0u32, 0u32);
     let mut hit = None;
     for c in &cands {
-        if deadline.is_some_and(|d| tokio::time::Instant::now() >= d) {
+        if scan_end.is_some_and(|d| tokio::time::Instant::now() >= d) {
             break;
         }
         let (x, y) = (c.px.0.round() as i32, c.px.1.round() as i32);
