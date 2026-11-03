@@ -223,8 +223,11 @@ class CommittedDamageSeed(unittest.TestCase):
         for eid, rows in want.items():
             self.assertEqual(got.get(eid), rows, eid)
         unparsed = {x.effect.effect_id for x in results[0].rejected}
-        for eid in (1604, 1609, 4200, 4202, 1559, 1560, 703):
+        for eid in (1604, 1609, 4200, 4202, 1559, 1560):
             self.assertIn(eid, unparsed, eid)
+        hand = {e.effect_id for e, _ in results[0].hand_authored}
+        self.assertIn(703, hand)  # DR-S1 hand rows, Aimed Shot: Torso
+        self.assertNotIn(703, unparsed)
 
     def test_the_committed_report_is_current(self):
         # tools/ability_mechanics/reports/damage.txt is the reviewed list of
