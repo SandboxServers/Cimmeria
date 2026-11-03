@@ -23,7 +23,7 @@
 - The wave plan is long: wave 2 65 parts, about 780 minutes, wave 3 16 parts, about 192 minutes, wave 4 24 parts, about 288 minutes, wave 5 11 parts, about 132 minutes.
 - The lab-server MCP refused connections on 2026-10-27; verifiers need it or ClickHouse over ssh.
 - A fresh client logging straight into Castle hangs (#756): fixtures land at character select, then Play.
-- Never `client_wait_for` on a world load (#1677); lanes never share a plaza (dispatch rule 4); Tollana runs one packet at a time.
+- Never `client_wait_for` on a world load (#1677); one sequential lane, one client at a time (dispatch rule 4); Tollana runs one packet at a time.
 - Status docs change only in SP-99, after FZ-99 (D-SP7).
 - Other campaigns' uncommitted folders in the main checkout are not ours; never commit from the root.
 

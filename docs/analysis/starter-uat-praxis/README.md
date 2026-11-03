@@ -76,7 +76,7 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 | 2 | SP-DCB1 | 11 parts (SP-DCB1-p1 to p11), 212 planned calls; rows CB-U01 to CB-U04 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 2 | SP-DCB2 | 7 parts (SP-DCB2-p1 to p7), 135 planned calls; rows CB-U05 to CB-U08 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 2 | SP-DCB3 | 13 parts (SP-DCB3-p1 to p13), 243 planned calls; rows CB-U09 to T01/T02 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
-| 2 | SP-DCB4 | 8 parts (SP-DCB4-p1 to p8), 142 planned calls; rows T03/T04 to T10 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DCB4 | 8 parts (SP-DCB4-p1 to p8), 142 planned calls; rows T03/T04a, T03/T04b, T05/T06a, T03/T04c, T05/T06b, T07, T09, T10, T07b | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 2 | SP-DCB5 | 9 parts (SP-DCB5-p1 to p9), 153 planned calls; rows T11/T12 to T15c | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 2 | SP-DCB6 | 3 parts (SP-DCB6-p1 to p3), 57 planned calls; rows T16/T17 to T21/T22 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 2 | SP-DCB7 | 9 parts (SP-DCB7-p1 to p9), 178 planned calls; rows T08 to T23 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
@@ -92,7 +92,7 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 | 4 | SP-DHA1 | 8 parts (SP-DHA1-p1 to p8), 146 planned calls; rows H20 to H41 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 4 | SP-DHA2 | 4 parts (SP-DHA2-p1 to p4), 61 planned calls; rows HA-1360a to HA-1360b | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 4 | SP-DHA3 | 3 parts (SP-DHA3-p1 to p3), 59 planned calls; rows FZ-U2a to FZ-U2c | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
-| 4 | SP-DHA4 | 4 parts (SP-DHA4-p1 to p4), 65 planned calls; rows FZ-U2d to FZ-U2h | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 4 | SP-DHA4 | 4 parts (SP-DHA4-p1 to p4), 65 planned calls; rows FZ-U2d, FZ-U2h part h1, FZ-U2h part h2, FZ-U2h part h3 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 4 | SP-DHA5 | 3 parts (SP-DHA5-p1 to p3), 62 planned calls; rows FZ-U2e to FZ-U2g | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 4 | SP-DL3 | 2 parts (SP-DL3-p1 to p2), 29 planned calls; row LEG-3 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 5 | SP-DTO1 | 2 parts (SP-DTO1-p1 to p2), 38 planned calls; rows P1 to P5 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |

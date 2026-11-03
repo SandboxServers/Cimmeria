@@ -44,7 +44,7 @@ Set by the SP-02a ruling (review 1, D1). Every drive brief follows it, and so do
 - **No schema-read steps.** The author writes the exact JSON inline, citing `file:line` in `crates/lab/src/server/`. A Haiku never improvises arguments.
 - **Macro costs:** L1 = 1; L2 = 1; WAIT = 1; CHATX = 1, whatever the number of lines; CHAT1 = 3; READ = 1; SHOT = 1; JOURNAL = 1; PROMPT = 1 plus 1 per button clicked; DIALOG = 0 when it is the first `lua` op of a `client_batch` the step already makes, otherwise 1; BUG = 0 inside a CHATX, otherwise 1.
 - **Folds.** `client_batch` (at most 64 steps) runs `lua`, `wait`, `player_state`, `window_text`, `mem_read` and `call_native` in one call. `client_ui_sequence` (at most 32 actions) runs CEGUI `click`, `key`, `type`, `drag`, `wait_window` and `wait` in one call. Never folded: `client_world_click`, `client_entity_find`, `client_chat_log`, `client_window_read`, `client_window_click`, `client_ui_clickables`, `client_ui_state`, `lab_screenshot`, `lab_logout`, `lab_ensure_in_world`, `lab_livewire_plan`, `client_minigame_play`.
-- **Gotcha 11 (covering window, #1676), as the briefs state it.** Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name. On a dead click the order is SHOT, then PROMPT only if the SHOT shows a window or prompt name, then one unchanged retry. If a click still does nothing, read `client_ui_state` once and record the top window.
+- **Gotcha 11 (covering window, #1676), as the briefs state it.** Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name; if it shows none, skip PROMPT (no call). On a dead click the order is SHOT, then PROMPT only if the SHOT shows a window or prompt name, then one unchanged retry. If a click still does nothing, read `client_ui_state` once and record the top window.
 - **Split parts.** A part starts from a fixture of its own when the start state is expressible (`missions` with `step`, `position`, `items`), so a FAIL in part 1 does not block part 2. A part that needs a chain binding the fixture does not replay (a dialog set added on `mission_accepted`, a glyph or interact binding) runs **carry-over** instead: same character, after the previous part's verifier returns, and a part-1 FAIL makes its rows BLOCKED (§ C5). A brief header says `Start: fixture` or `Start: carry-over from -p<n>`. Three attempts and the takeover are counted per part.
 - **Check, per brief file** (absolute path, PowerShell): `$t=[IO.File]::ReadAllText('<brief>'); $l=[regex]::Matches($t,'\((\d+) calls?: ([^)]+)\)'); $bad=@($l|?{[int]$_.Groups[1].Value -ne ($_.Groups[2].Value -split ',').Count}).Count; $sum=($l|%{[int]$_.Groups[1].Value}|Measure-Object -Sum).Sum; $est=[regex]::Match($t,'ESTIMATE: (\d+) tool calls').Groups[1].Value; "sum=$sum estimate=$est bad=$bad"`. It passes when `sum` equals `estimate`, `estimate` ≤ 22 and `bad` = 0.
 
@@ -148,8 +148,8 @@ Each packet below: **Agent** documentation-writer, **Host** windows, worktree `s
 
 ### SP-02a: Castle briefs part 1 (SP-DCA1 to DCA4)
 
-- **Read first:** [castle-continuation/uat/end-uat.md](../castle-continuation/uat/end-uat.md), [castle-continuation/placements.md](../castle-continuation/placements.md), [CS-01-walk.md](../castle-continuation/uat/CS-01-walk.md) (the paused walk: "walking was blocked by lab input"; copy its working parts).
-- **Character:** fixture `world = Castle`, position from placements.md; never log a fresh client straight into Castle (#756): the fixture lands at character select, then Play.
+- **Read first:** [castle-continuation/uat/end-uat.md](../castle-continuation/uat/end-uat.md), [CS-01-walk.md](../castle-continuation/uat/CS-01-walk.md) (the paused walk: "walking was blocked by lab input"; copy its working parts).
+- **Character:** fixture `world = Castle`, position in the packet's START line; never log a fresh client straight into Castle (#756): the fixture lands at character select, then Play.
 - **Gotchas:** K20 (friendly NPCs give no kill credit), interior/exterior navmesh not connected (use GM teleport between them, tier G).
 
 ### SP-02b: Castle briefs part 2 (SP-DCA5 to DCA7)
@@ -158,7 +158,7 @@ Same reads, character rule and gotchas as SP-02a. FZ-U1 (mission 567) is in SP-D
 
 ### SP-03a: Harset briefs part 1 (SP-DHA1, DHA2)
 
-- **Read first:** [harset-continuation README](../harset-continuation/README.md), [route-baseline.md](../harset-continuation/route-baseline.md), [owner-lab-checklist.md](../harset-continuation/owner-lab-checklist.md), [evidence-matrix.md](../harset-continuation/evidence-matrix.md), the O14-16/17/19 rows of [owner-decisions-2026-10-14.md](../four-zone-planning/owner-decisions-2026-10-14.md).
+- **Read first:** [harset-continuation README](../harset-continuation/README.md), [placements.md](../harset-continuation/placements.md), [uat.md](../harset-continuation/uat.md), the O14-16/17/19 rows of [owner-decisions-2026-10-14.md](../four-zone-planning/owner-decisions-2026-10-14.md).
 - **Character:** fixture `world = Harset` (57) or the interior world the row needs; SP-DHA2 needs item 3730 in the fixture `items` for the hand-in rows and **not** for the refusal row.
 - **Gotchas:** Market has no navmesh (teleport, tier G); door pairs unplaced (a door row that cannot be reached is BLOCKED, not FAIL). Each brief's § 0 names the area its rows use (dispatch rule 4).
 

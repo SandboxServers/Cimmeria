@@ -106,7 +106,7 @@ CHARACTERS: `Dcb2h` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U08b.5 (1 call: client_chat_log).** READ cursor `d3`, channel "9".
 
-**CB-U08b.6 (no call).** NOT-RUN: the second-client AoI check needs a second client; record BLOCKED no second client.
+**CB-U08b.6 (no call).** NOT-RUN: the AoI side is graded from the server packet tap, not from this client; record BLOCKED no packet tap.
 
 **CB-U08b.7 (1 call: client_batch).** GOTO `-325.5 73.47 -213.0`. Frost (spawn 19) is at (-328.30, 73.47, -210.27), 3.9 m away; the Guard body (spawn 15) is at (-322.51, 73.47, -209.83), 4.4 m away.
 
