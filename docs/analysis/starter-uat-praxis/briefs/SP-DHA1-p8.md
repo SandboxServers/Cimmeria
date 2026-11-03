@@ -8,7 +8,7 @@ BRIEF FIELDS (the coordinator filled the open ones in before pasting; this file 
 - SERVER: local server built from origin/main at e8973395f (D-SP2)
 - ROW: H41b   (this file runs only this row)
 - START LEG: 3   (the first leg to run; a successor sets it from the fixture table below)
-- CHARACTER: `Uat Fxdhagoauldb` (the fixture character the coordinator staged with `server_stage_fixture` immediately before pasting; the fixture is applied when you press Play inside L2 and expires 10 minutes after staging)
+- CHARACTER: `Uat Fxdhagoauldb` (the same character as SP-DHA1-p7, left in the state that part ended in; the coordinator stages NO new fixture for this part)
 - START: carry-over from SP-DHA1-p7: the same character, run after the p7 verifier returns. Why not a fixture: chain 6103 (`item_use 2819`) lights the three baskets with `set_interaction_type` on tags FirstBug, SecondBug and ThirdBug, and a fixture fires no item-use chain, so a fixture at step 2504 leaves the baskets dead. If p7 is FAIL or BLOCKED, grade this part BLOCKED (verifier rule C5). The 2820 stack is the one staged for p7.
 
 ## 0. Front-loaded gotchas (read all of them)
@@ -25,7 +25,7 @@ Area: this packet uses **Harset (world 57)** and the **Harset Command Center (wo
 8. **No apostrophes** inside the Lua text of a chat macro. You select NPCs by `template_id`, never by name.
 9. **Stand 3.5 to 4.5 m from an NPC** (server range is 5.0 m); the stand points below are already that far away. A right-click beyond 5 m is denied (`out_of_range`): record it, TP to the stand point again and retry once. Entity ids change after a world change: select by `template_id`.
 10. **Face a point, not an entity, when the click misses.** If `client_world_click` reports the entity is not under the cursor, call `client_camera` with `face_point` at the NPC's position, then retry the click once. (Failure path: not in ESTIMATE.)
-11. **A covering window swallows native clicks (#1676).** Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT after every L2 or WAIT17, after any step whose expected effect is a Server Message, and when a click opens nothing (then PROMPT, SHOT, one unchanged retry: gotcha 10). If a click still does nothing, read `client_ui_state` once and record the top window. The Server Message OK button is `Prompt1_SingleButton`.
+11. **A covering window swallows native clicks (#1676).** Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name; if it shows none, skip PROMPT (no call). A click that opens nothing then runs PROMPT, SHOT, one unchanged retry: gotcha 10. If a click still does nothing, read `client_ui_state` once and record the top window. The Server Message OK button is `Prompt1_SingleButton`.
 12. **`lab_ensure_in_world` can mis-read the character name (#1680).** After L2 compare `character` with the CHARACTER field; if it differs, record both, do not create anything, and report BLOCKED.
 13. **Keys:** B opens the bag. Q and E turn the avatar, W and S walk. Hold a key with `client_ui_sequence` `{"do":"key","key":"w","hold_ms":2000}`.
 14. **Do not restart or relaunch the client**, and do not call `lab_client_*` tools. If the client looks dead, stop and report BLOCKED with the error text.
