@@ -11,6 +11,7 @@ Cause from the code: the fixture goes through the generic mission update. For mi
 - Server log, player 108 (Fxdlone): WARN `Mission 1360 generic update refused ... invalid_or_stale_snapshot` and ERROR `lab fixture not applied` at 14:16:55Z and 14:18:05Z on 2026-11-03. Same pair for player 109 at 14:22:57Z.
 - `missions_restored` at 14:18:48Z after the 688-only fixture: active `622:2113,689:68900h,688:80688`, no 1360.
 - Fixture call args: `missions: [{id:688, step:80688}, {id:1360, step:4037}], items: [{container:mission, id:3730, count:1}], position [-54.88,26.08,-159.84], world Castle_CellBlock`.
+- 2026-11-03 15:39:59Z, player 107 (Fxdcafour), fixture `1360@4038` with 3730 in "mission": ERROR `lab fixture not applied`, `mission 1360 was not written: stored None, wanted Some((1, Some(4038), [4037], [4650], 0))`. The step-B shape is refused the same way; SP-DHA2-p1 and p2 are BLOCKED by it.
 - Driver reports: `.claude/reports/starter-uat-praxis/drv-SP-DL1-a1.md`, `-a2.md`, `-a3.md`. No screenshots relevant.
 
 ## Acceptance criteria
