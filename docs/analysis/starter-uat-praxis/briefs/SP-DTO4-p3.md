@@ -29,13 +29,13 @@ The coordinator stages the fixture while the character is at character select, s
 7. **Sticky chat channel.** Every chat macro below resets it with `ChatMod.stickyCommand='/say '`. Do not remove that.
 8. **No apostrophes** inside the Lua text of a chat macro. Use the lines exactly as written.
 9. **Stand 3.5 to 4.5 m from an NPC or prop** before right-clicking it (server range `MAX_INTERACT_DISTANCE` 5.0 m). Entity ids change after a relog or zone change: look an entity up by name with `client_entity_find` right before you use its id.
-10. **If a click opens nothing**, call `lab_screenshot` once, record the path, retry the click once unchanged, then the point-click fallback in the CLICK macro, then record FAIL for that step and go on to the next independent step. Never improvise a workaround this brief does not give.
+10. **If a click opens nothing**, call `lab_screenshot` once and record the path; run PROMPT only if that screenshot shows a window or prompt name (gotcha 16); retry the click once unchanged, then the point-click fallback in the CLICK macro, then record FAIL for that step and go on to the next independent step. Never improvise a workaround this brief does not give.
 11. **The fixture applies once, at the next Play.** The coordinator staged it before you started (see STAGING in this brief). `lab_ensure_in_world` is that Play. Do not log out and back in unless a step says RELOG: a second Play applies nothing. You start at Tollana gate 4 (211.045, 0.606, -547.644), never the west gallery.
 12. **Do not restart or relaunch the client**, and do not call `lab_client_*` tools (except in mode CREATE). If the client seems dead (`lab_client_status` says crashed, or every call fails), stop and report BLOCKED with the error text.
 13. **Your hard stop is 28 tool calls in total.** This brief plans 17 on the success path (the ESTIMATE line in the packet body); the rest is headroom for retries. Count them. At call 26, stop doing rows, write the report from what you have, release the lease and finish. Never start a row you cannot finish. Put reads in one `client_batch`, UI steps in one `client_ui_sequence`.
 14. **One retry per failed call, unchanged.** Then record the error text verbatim and continue.
 15. **An unexpected window, prompt or dialog**: read it once with `client_ui_state`, record it, close it with DIALOG or PROMPT, and carry on. If you cannot, stop and report.
-16. **A covering window swallows native clicks** (#1676). Before every world click, the batch that precedes it runs DIALOG as its first op (except where a step says the dialog stays open). Run PROMPT after every L2 and WAIT, after any step whose expected effect is a Server Message, and when a click opens nothing (then PROMPT, SHOT, one unchanged retry: gotcha 10). If a click still does nothing, read `client_ui_state` once and record the top window.
+16. **A covering window swallows native clicks** (#1676). Before every world click, the batch that precedes it runs DIALOG as its first op (except where a step says the dialog stays open). Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name; if it shows none, skip PROMPT (no call). On a dead click the order is SHOT, then PROMPT only if the SHOT shows a window or prompt name, then one unchanged retry. If a click still does nothing, read `client_ui_state` once and record the top window.
 17. **NEEDS_HUMAN never blocks the lane.** A row that only a person can judge (look and feel: a glyph, a facing, a model on the floor) is not a stop. Take the screenshot the step names (`lab_screenshot`, saved path recorded), record in words what you saw, write the row as `CLAIM: NEEDS_HUMAN` with the shot path, and go on to the next step. Never ask the user, never wait for an answer.
 18. **Never write IPs, passwords or account names** anywhere in your report.
 19. **Area.** Tollana gate 4 plaza (x 190 to 240, z -575 to -530). Everything in this brief happens inside it; do not walk out of it.
@@ -101,7 +101,7 @@ Macros for this packet.
 
 ## Steps
 
-**S1 (4 calls: lab_lease_acquire, lab_ensure_in_world, client_batch, client_window_read).** L1, L2, WAIT, PROMPT. Record the character, `world_id` (expect 19) and position. If `world_id` is not 19, `.gotolocation Tollana 211.045 0.606 -547.644` and record it (failure path, not counted).
+**S1 (4 calls: lab_lease_acquire, lab_ensure_in_world, client_batch, client_window_read).** L1, L2, WAIT, then PROMPT only per gotcha 16 (counted in the label as the maximum). Record the character, `world_id` (expect 19) and position. If `world_id` is not 19, `.gotolocation Tollana 211.045 0.606 -547.644` and record it (failure path, not counted).
 
 **S2 - resume probe (ATTEMPT 2 or 3 only).** The coordinator pastes your predecessor's report under `PREDECESSOR`. Skip every row it reports as DONE or NEEDS_HUMAN with a shot path. Start at the first row it did not finish; do S1 first. A first attempt skips S2.
 
