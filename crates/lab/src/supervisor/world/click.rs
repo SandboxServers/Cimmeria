@@ -93,8 +93,8 @@ pub struct ClickRequest {
     /// Small props (a vial, a switch): when no body height hovers the entity,
     /// scan a bounded box (about 15 cm sideways, 0 to 40 cm up) around its
     /// origin for a pixel the client's own pick resolves to it, and click
-    /// there. At most 60 reads, inside the hover deadline. Off by default so
-    /// NPC clicks are unchanged. Entity aims only.
+    /// there. At most 60 reads and about 4 s, first view only, inside the
+    /// hover deadline. Off by default so NPC clicks are unchanged. Entity aims only.
     #[serde(default)]
     pub prop_scan: bool,
     /// client_target only: fall back to the stock `targetUnit` (N3).
@@ -449,7 +449,7 @@ pub async fn run<W: WorldIo>(
                 req.force && req.point.is_none(),
                 Some(hover_deadline),
                 &mut attempted_pixel,
-                req.prop_scan,
+                req.prop_scan && i == 0,
             )
         )?;
         saw_own |= t.iter().any(|h| h["hover"] == "own_avatar");
@@ -514,7 +514,7 @@ pub async fn run<W: WorldIo>(
                     req.force && req.point.is_none(),
                     Some(hover_deadline),
                     &mut attempted_pixel,
-                    req.prop_scan,
+                    false,
                 )
             )?;
             hover_detail["tried_after_restore"] = json!(t);

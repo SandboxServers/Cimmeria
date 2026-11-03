@@ -397,3 +397,30 @@ async fn a_click_with_prop_scan_finds_a_shape_above_the_origin() {
     let tried = detail["tried"].as_array().unwrap();
     assert!(tried.last().unwrap().get("scan").is_some(), "{detail}");
 }
+
+/// A prop the client never hovers: the scan misses inside its own budget,
+/// and the call falls back to the `Nothing` candidate and still clicks.
+#[tokio::test]
+async fn a_scan_miss_falls_back_to_the_nothing_candidate() {
+    let mut sim = Sim::new().with_entity(11, "Ambernol Vial", Vec3::new(400.0, 0.0, 0.0));
+    sim.unhoverable.push(11);
+    let out = click::run(
+        &mut sim,
+        "client_world_click",
+        ClickRequest {
+            entity_id: Some(11),
+            expect: Some(Expect::Nothing),
+            prop_scan: true,
+            rotate_camera: Some(false),
+            settle_ms: Some(300),
+            ..ClickRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    let detail = hover_detail(out["steps"].as_array().unwrap());
+    let tried = detail["tried"].as_array().unwrap();
+    assert_eq!(tried.last().unwrap()["hover"], "scan_miss", "{detail}");
+    assert_eq!(sim.buttons, vec![(1, true), (1, false)]);
+}

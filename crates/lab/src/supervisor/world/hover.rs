@@ -52,8 +52,8 @@ pub struct HoverRequest {
     #[serde(default)]
     pub jitter_px: Option<u32>,
     /// Entity aim only: when no body height hovers the entity, scan a bounded
-    /// box around its origin for a pixel that does (small props). The centre
-    /// pixel is then the scan hit.
+    /// box around its origin for a pixel that does (small props), at most 60
+    /// reads and about 4 s. The centre pixel is then the scan hit.
     #[serde(default)]
     pub prop_scan: bool,
 }

@@ -26,6 +26,9 @@ pub const SCAN_DZ: [f64; 5] = [0.0, 10.0, 20.0, 30.0, 40.0];
 pub const SCAN_MIN_SEPARATION_PX: f64 = 3.0;
 /// Hard cap on cursor placements plus mouse-over reads (about 7 s at 120 ms).
 pub const SCAN_MAX_READS: usize = 60;
+/// Wall-clock cap on one scan, so a miss leaves room for the `Nothing`
+/// fallback and the view retries.
+pub const SCAN_BUDGET_MS: u64 = 4_000;
 
 /// One projected scan point.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -112,6 +115,10 @@ pub(super) async fn scan_for_prop<W: WorldIo>(
     attempted_pixel: &mut Option<(i32, i32)>,
 ) -> Result<ScanOutcome, WorldError> {
     let base = aim.position(io).await;
+    let deadline = {
+        let cap = tokio::time::Instant::now() + std::time::Duration::from_millis(SCAN_BUDGET_MS);
+        Some(deadline.map_or(cap, |d| d.min(cap)))
+    };
     let cells = scan_box(base);
     let world: Vec<Vec3> = cells.iter().map(|c| c.0).collect();
     let dzs: Vec<f64> = cells.iter().map(|c| c.1).collect();
@@ -206,5 +213,16 @@ mod tests {
         assert_eq!(px, [100.0, 104.0, 110.0]);
         let capped = pick_candidates(&pts, &dzs, |p| p.0 < 1000.0, (100.0, 100.0), 2);
         assert_eq!(capped.len(), 2);
+    }
+
+    #[test]
+    fn the_cap_limits_candidates() {
+        // Ten pixels apart, so none is thinned away: only the cap can cut them.
+        let pts: Vec<Option<(f64, f64)>> =
+            (0..200).map(|i| Some((f64::from(i) * 10.0, 0.0))).collect();
+        let dzs = vec![0.0; 200];
+        let got = pick_candidates(&pts, &dzs, |_| true, (0.0, 0.0), SCAN_MAX_READS);
+        // The literal 60 is the promised bound, so raising the constant fails here.
+        assert_eq!(got.len(), 60);
     }
 }

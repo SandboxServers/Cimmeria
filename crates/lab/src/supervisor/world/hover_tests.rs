@@ -435,6 +435,7 @@ async fn the_scan_gives_up_inside_its_read_cap() {
     assert_eq!(scan["hover"], "scan_miss", "{scan}");
     let reads = scan["scan"]["reads"].as_u64().unwrap();
     assert!((1..=60).contains(&reads), "{scan}");
+    assert!(scan["scan"]["candidates"].as_u64().unwrap() <= 60, "{scan}");
     assert!(sim.buttons.is_empty());
 }
 
