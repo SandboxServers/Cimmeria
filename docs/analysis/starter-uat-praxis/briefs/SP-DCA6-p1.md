@@ -22,7 +22,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 7. **Sticky chat channel.** The chat box remembers the last `/yell`, `/emote` or `/tell`. Every macro below resets it with `ChatMod.stickyCommand='/say '`. Do not remove that.
 8. **No apostrophes** inside the Lua text of a chat macro (they end the Lua string). Use the lines exactly as written.
 9. **Stand 4 to 6 m from an NPC** before right-clicking it (the server range is 5.0 m, closer than 3.5 m puts the camera inside the avatar). Teleport next to it, then click. Entity ids change after a relog or zone change: look an entity up by name with `client_entity_find` right before you use its id.
-10. **If a click opens nothing**, call `lab_screenshot` once, record the path, retry the click once unchanged, then record FAIL for that step and go on to the next independent step. Never improvise a workaround this brief does not give. A covering window (a tutorial, a dialog, a prompt) swallows clicks (#1676). Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT after every L2 and WAIT, after any step whose expected effect is a Server Message, and when a click opens nothing (then PROMPT, SHOT, one unchanged retry, as above). If a click still does nothing, read `client_ui_state` once and record the top window.
+10. **If a click opens nothing**, call `lab_screenshot` once, record the path, retry the click once unchanged, then record FAIL for that step and go on to the next independent step. Never improvise a workaround this brief does not give. A covering window (a tutorial, a dialog, a prompt) swallows clicks (#1676). Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name; if it shows none, skip PROMPT (no call). On a dead click the order is SHOT, then PROMPT only if the SHOT shows a window or prompt name, then one unchanged retry. If a click still does nothing, read `client_ui_state` once and record the top window.
 11. **Keys:** B opens the bag (not I). Q and E turn the avatar, W and S walk. To hold a key use `client_ui_sequence` with `{"do":"key","key":"w","hold_ms":2000}`.
 12. **Stock Lua calls are N3.** Anything you do with a Lua function instead of a real click or key is tier N3; say so in the report, never hide it. A GM command typed or submitted as the step itself is tier G.
 13. **Do not restart or relaunch the client**, and do not call `lab_client_*` tools. If the client seems dead (`lab_client_status` says crashed, or every call fails), stop and report BLOCKED with the error text.
@@ -36,7 +36,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 ## 1. Fixed macros (use them verbatim)
 
-Each macro shows its call cost. A call is one MCP tool invocation. Costs: L1 = 1; L2 = 1; WAIT = 1; CHATX = 1 whatever the number of lines; READ = 1; SHOT = 1; PROMPT = 1 plus 1 per button clicked; DIALOG = 0 as the first `lua` op of a batch the step already makes (otherwise 1); BUG = 0 inside a CHATX; POS = 0 inside a batch (1 alone); a `client_move_to` reply already carries `arrived` and `end`, so it needs no POS.
+Each macro shows its call cost. A call is one MCP tool invocation. Costs: L1 = 1; L2 = 1; WAIT = 1; CHATX = 1 whatever the number of lines; READ = 1; SHOT = 1; PROMPT = 1 plus 1 per button clicked, and only when gotcha 10 allows it (never counted in ESTIMATE); DIALOG = 0 as the first `lua` op of a batch the step already makes (otherwise 1); BUG = 0 inside a CHATX; POS = 0 inside a batch (1 alone); a `client_move_to` reply already carries `arrived` and `end`, so it needs no POS.
 
 **L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA6-p1","purpose":"starter UAT praxis SP-DCA6-p1","instance":"default","ttl_s":900}` -> keep `lease_id` (call it L). If it is refused: call `lab_lease_status {"instance":"default"}`. If the holder's owner is exactly `sp-SP-DCA6-p1` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA6-p1 attempt <ATTEMPT>"`. Any other holder: report it and stop.
 
@@ -71,7 +71,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. Wait at least 1500 
 ## PART SP-DCA6-p1 - Castle hub quartermaster, walk and buy (hub S1, hub S2)
 
 ROWS: hub S1, hub S2 (buy leg only). Start: fixture.
-ESTIMATE: 18 tool calls (planned success path; hard stop 28)
+ESTIMATE: 17 tool calls (planned success path; hard stop 28)
 Shop mechanics belong to starter-uat-shops: grade only that the window and the cash feedback work.
 
 ### COORD pre-step (the coordinator does this before the driver starts; the driver skips it)
@@ -95,7 +95,7 @@ Source facts the rows rest on (background for the coordinator and the verifier; 
 
 ### Steps
 
-**S1 (4 calls: lab_lease_acquire, lab_ensure_in_world, client_batch, client_window_read).** L1 with owner `sp-SP-DCA6-p1`. L2 with CHARACTER. WAIT. PROMPT. The WAIT output is your resume probe: if ATTEMPT is 2 or 3, read its world and position, decide from your predecessor's report (the coordinator pastes it) which rows are done, and skip them.
+**S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1 with owner `sp-SP-DCA6-p1`. L2 with CHARACTER. WAIT. PROMPT only if the WAIT output shows a window or prompt name (gotcha 10); not counted. The WAIT output is your resume probe: if ATTEMPT is 2 or 3, read its world and position, decide from your predecessor's report (the coordinator pastes it) which rows are done, and skip them.
 
 ### ROW hub S1 - walk to the quartermaster and open the vendor window
 
@@ -113,9 +113,9 @@ Expected: a store window opens with 19 rows.
 
 The store window from hub S1 is still open. Expected: buying row 13001 costs 1 naq and the stack lands in the main bag.
 
-- **2.1 (1 call: client_batch).** One batch: BUG `hubS2 start`, then `player_state` with fields `["naquadah"]`, UTC. Record CASH0. If the `naquadah` field is absent, record `no cash field` and rely on the verifier's database read.
+- **2.1 (1 call: client_batch).** One batch: BUG `hubS2 start`, then `player_state` with fields `["cash"]`, UTC. Record CASH0. If the `cash` field is absent, record `no cash field` and rely on the verifier's database read.
 - **2.2 (1 call: client_vendor_buy).** `client_vendor_buy {"lease_id":L,"row":1,"quantity":1}` (row 1 on screen is design 9000, Armor Piercing Rounds, 100 rounds). If the tool rejects the arguments, record the error text verbatim, grade the row NEEDS_HUMAN and carry on. Record the reply.
-- **2.3 (1 call: client_batch).** One batch: `player_state` with fields `["naquadah"]` (CASH1, expected CASH0 minus 1).
+- **2.3 (1 call: client_batch).** One batch: `player_state` with fields `["cash"]` (CASH1, expected CASH0 minus 1).
 - **2.4 (1 call: client_inventory).** `client_inventory {"lease_id":L}` (expected a stack of 100 of design 9000).
 - **2.5 (1 call: lab_screenshot).** SHOT `hubS2-bought`.
 - **2.6 (1 call: client_chat_log).** READ with `contains` `naq` (no channel filter); record each line with `channel`, `colour`, `seq`. A missing cash line is a finding, not a failure of the step.

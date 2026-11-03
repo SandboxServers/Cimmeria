@@ -22,7 +22,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 7. **Sticky chat channel.** The chat box remembers the last `/yell`, `/emote` or `/tell`. Every macro below resets it with `ChatMod.stickyCommand='/say '`. Do not remove that.
 8. **No apostrophes** inside the Lua text of a chat macro (they end the Lua string). Use the lines exactly as written.
 9. **Stand 4 to 6 m from an NPC** before right-clicking it (the server range is 5.0 m, closer than 3.5 m puts the camera inside the avatar). Teleport next to it, then click. Entity ids change after a relog or zone change: look an entity up by name with `client_entity_find` right before you use its id.
-10. **If a click opens nothing**, call `lab_screenshot` once, record the path, retry the click once unchanged, then record FAIL for that step and go on to the next independent step. Never improvise a workaround this brief does not give. A covering window (a tutorial, a dialog, a prompt) swallows clicks (#1676). Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT after every L2 and WAIT, after any step whose expected effect is a Server Message, and when a click opens nothing (then PROMPT, SHOT, one unchanged retry, as above). If a click still does nothing, read `client_ui_state` once and record the top window.
+10. **If a click opens nothing**, call `lab_screenshot` once, record the path, retry the click once unchanged, then record FAIL for that step and go on to the next independent step. Never improvise a workaround this brief does not give. A covering window (a tutorial, a dialog, a prompt) swallows clicks (#1676). Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name; if it shows none, skip PROMPT (no call). On a dead click the order is SHOT, then PROMPT only if the SHOT shows a window or prompt name, then one unchanged retry. If a click still does nothing, read `client_ui_state` once and record the top window.
 11. **Keys:** B opens the bag (not I). Q and E turn the avatar, W and S walk. To hold a key use `client_ui_sequence` with `{"do":"key","key":"w","hold_ms":2000}`.
 12. **Stock Lua calls are N3.** Anything you do with a Lua function instead of a real click or key is tier N3; say so in the report, never hide it. A GM command typed or submitted as the step itself is tier G.
 13. **Do not restart or relaunch the client**, and do not call `lab_client_*` tools. If the client seems dead (`lab_client_status` says crashed, or every call fails), stop and report BLOCKED with the error text.
@@ -36,7 +36,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 ## 1. Fixed macros (use them verbatim)
 
-Each macro shows its call cost. A call is one MCP tool invocation. Costs: L1 = 1; L2 = 1; WAIT = 1; CHATX = 1 whatever the number of lines; READ = 1; SHOT = 1; PROMPT = 1 plus 1 per button clicked; DIALOG = 0 as the first `lua` op of a batch the step already makes (otherwise 1); BUG = 0 inside a CHATX; POS = 0 inside a batch (1 alone); a `client_move_to` reply already carries `arrived` and `end`, so it needs no POS.
+Each macro shows its call cost. A call is one MCP tool invocation. Costs: L1 = 1; L2 = 1; WAIT = 1; CHATX = 1 whatever the number of lines; READ = 1; SHOT = 1; PROMPT = 1 plus 1 per button clicked, and only when gotcha 10 allows it (never counted in ESTIMATE); DIALOG = 0 as the first `lua` op of a batch the step already makes (otherwise 1); BUG = 0 inside a CHATX; POS = 0 inside a batch (1 alone); a `client_move_to` reply already carries `arrived` and `end`, so it needs no POS.
 
 **L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA5-p1","purpose":"starter UAT praxis SP-DCA5-p1","instance":"p3","ttl_s":900}` -> keep `lease_id` (call it L). If it is refused: call `lab_lease_status {"instance":"p3"}`. If the holder's owner is exactly `sp-SP-DCA5-p1` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA5-p1 attempt <ATTEMPT>"`. Any other holder: report it and stop.
 
@@ -71,7 +71,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. Wait at least 1500 
 ## PART SP-DCA5-p1 - symbiote tank gates S6 and S7
 
 ROWS: S6, S7. Start: fixture.
-ESTIMATE: 19 tool calls (planned success path; hard stop 28)
+ESTIMATE: 17 tool calls (planned success path; hard stop 28)
 
 ### COORD pre-step (the coordinator does this before the driver starts; the driver skips it)
 
@@ -95,7 +95,7 @@ Source facts the rows rest on (background for the coordinator and the verifier; 
 
 ### Steps
 
-**S1 (4 calls: lab_lease_acquire, lab_ensure_in_world, client_batch, client_window_read).** L1 with owner `sp-SP-DCA5-p1`. L2 with CHARACTER (the Soldier, for S6). WAIT. PROMPT. The WAIT output is your resume probe: if ATTEMPT is 2 or 3, read its world and position, decide from your predecessor's report (the coordinator pastes it) which rows are done, and skip them.
+**S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1 with owner `sp-SP-DCA5-p1`. L2 with CHARACTER (the Soldier, for S6). WAIT. PROMPT only if the WAIT output shows a window or prompt name (gotcha 10); not counted. The WAIT output is your resume probe: if ATTEMPT is 2 or 3, read its world and position, decide from your predecessor's report (the coordinator pastes it) which rows are done, and skip them.
 
 ### ROW S6 - a non-Jaffa never receives the 1521 offer
 
@@ -108,7 +108,7 @@ Character: CHARACTER (Soldier). Expected: no mission 1521 appears; no offer line
 
 Claim DONE when you stood inside the box (z between 880.2 and 904.6, x between 344.9 and 371.0). Record any dialog, line or marker you saw. If you saw an offer dialog for mission 1521, record it verbatim: that is the contradiction the verifier needs.
 
-**S6.5 (3 calls: lab_ensure_in_world, client_batch, client_window_read).** L2 with CHARACTER2 (the Jaffa), then WAIT, then PROMPT. The WAIT output gives the new character's world and position.
+**S6.5 (2 calls: lab_ensure_in_world, client_batch).** L2 with CHARACTER2 (the Jaffa), then WAIT, then PROMPT only if the WAIT output shows a window or prompt name (gotcha 10). The WAIT output gives the new character's world and position.
 
 ### ROW S7 - the tank is reachable on foot
 

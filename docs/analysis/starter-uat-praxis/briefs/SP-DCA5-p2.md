@@ -22,7 +22,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 7. **Sticky chat channel.** The chat box remembers the last `/yell`, `/emote` or `/tell`. Every macro below resets it with `ChatMod.stickyCommand='/say '`. Do not remove that.
 8. **No apostrophes** inside the Lua text of a chat macro (they end the Lua string). Use the lines exactly as written.
 9. **Stand 4 to 6 m from an NPC** before right-clicking it (the server range is 5.0 m, closer than 3.5 m puts the camera inside the avatar). Teleport next to it, then click. Entity ids change after a relog or zone change: look an entity up by name with `client_entity_find` right before you use its id.
-10. **If a click opens nothing**, call `lab_screenshot` once, record the path, retry the click once unchanged, then record FAIL for that step and go on to the next independent step. Never improvise a workaround this brief does not give. A covering window (a tutorial, a dialog, a prompt) swallows clicks (#1676). Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT after every L2 and WAIT, after any step whose expected effect is a Server Message, and when a click opens nothing (then PROMPT, SHOT, one unchanged retry, as above). If a click still does nothing, read `client_ui_state` once and record the top window.
+10. **If a click opens nothing**, call `lab_screenshot` once, record the path, retry the click once unchanged, then record FAIL for that step and go on to the next independent step. Never improvise a workaround this brief does not give. A covering window (a tutorial, a dialog, a prompt) swallows clicks (#1676). Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name; if it shows none, skip PROMPT (no call). On a dead click the order is SHOT, then PROMPT only if the SHOT shows a window or prompt name, then one unchanged retry. If a click still does nothing, read `client_ui_state` once and record the top window.
 11. **Keys:** B opens the bag (not I). Q and E turn the avatar, W and S walk. To hold a key use `client_ui_sequence` with `{"do":"key","key":"w","hold_ms":2000}`.
 12. **Stock Lua calls are N3.** Anything you do with a Lua function instead of a real click or key is tier N3; say so in the report, never hide it. A GM command typed or submitted as the step itself is tier G.
 13. **Do not restart or relaunch the client**, and do not call `lab_client_*` tools. If the client seems dead (`lab_client_status` says crashed, or every call fails), stop and report BLOCKED with the error text.
@@ -36,7 +36,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 ## 1. Fixed macros (use them verbatim)
 
-Each macro shows its call cost. A call is one MCP tool invocation. Costs: L1 = 1; L2 = 1; WAIT = 1; CHATX = 1 whatever the number of lines; READ = 1; SHOT = 1; PROMPT = 1 plus 1 per button clicked; DIALOG = 0 as the first `lua` op of a batch the step already makes (otherwise 1); BUG = 0 inside a CHATX; POS = 0 inside a batch (1 alone); a `client_move_to` reply already carries `arrived` and `end`, so it needs no POS.
+Each macro shows its call cost. A call is one MCP tool invocation. Costs: L1 = 1; L2 = 1; WAIT = 1; CHATX = 1 whatever the number of lines; READ = 1; SHOT = 1; PROMPT = 1 plus 1 per button clicked, and only when gotcha 10 allows it (never counted in ESTIMATE); DIALOG = 0 as the first `lua` op of a batch the step already makes (otherwise 1); BUG = 0 inside a CHATX; POS = 0 inside a batch (1 alone); a `client_move_to` reply already carries `arrived` and `end`, so it needs no POS.
 
 **L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA5-p2","purpose":"starter UAT praxis SP-DCA5-p2","instance":"p3","ttl_s":900}` -> keep `lease_id` (call it L). If it is refused: call `lab_lease_status {"instance":"p3"}`. If the holder's owner is exactly `sp-SP-DCA5-p2` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA5-p2 attempt <ATTEMPT>"`. Any other holder: report it and stop.
 
@@ -71,7 +71,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. Wait at least 1500 
 ## PART SP-DCA5-p2 - relog at step 4456 (S8) and the Copplemann offer (FZ-U1a)
 
 ROWS: S8, FZ-U1a (the offer and accept clauses of FZ-U1). Start: fixture.
-ESTIMATE: 21 tool calls (planned success path; hard stop 28)
+ESTIMATE: 18 tool calls (planned success path; hard stop 28)
 
 ### COORD pre-step (the coordinator does this before the driver starts; the driver skips it)
 
@@ -100,7 +100,7 @@ Source facts the rows rest on (background for the coordinator and the verifier; 
 
 ### Steps
 
-**S1 (4 calls: lab_lease_acquire, lab_ensure_in_world, client_batch, client_window_read).** L1 with owner `sp-SP-DCA5-p2`. L2 with CHARACTER (the Jaffa, for S8). WAIT. PROMPT. The WAIT output is your resume probe: if ATTEMPT is 2 or 3, read its world and position, decide from your predecessor's report (the coordinator pastes it) which rows are done, and skip them.
+**S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1 with owner `sp-SP-DCA5-p2`. L2 with CHARACTER (the Jaffa, for S8). WAIT. PROMPT only if the WAIT output shows a window or prompt name (gotcha 10); not counted. The WAIT output is your resume probe: if ATTEMPT is 2 or 3, read its world and position, decide from your predecessor's report (the coordinator pastes it) which rows are done, and skip them.
 
 ### ROW S8 - never relog at step 4458; relog at 4456 is fine (graded by observing)
 
@@ -110,12 +110,12 @@ DO NOT click the tank. DO NOT drive the mission past step 4457. This row is a on
 - **S8.2 (1 call: lab_logout).** `lab_logout {"lease_id":L}` logs out to character select (it takes no other argument; crates/lab/src/server/flows.rs:197). Record the reply.
 - **S8.3 (1 call: lab_ensure_in_world).** L2 with CHARACTER: it plays the character again from character select.
 - **S8.4 (1 call: client_batch).** WAIT, with one more final op in the same batch: BUG `S8 end`. Record the world id and position it reports.
-- **S8.5 (1 call: client_window_read).** PROMPT.
+- **S8.5 (no calls).** PROMPT only if the preceding output shows a window or prompt name (gotcha 10); not counted.
 - **S8.6 (1 call: lab_screenshot).** SHOT labelled `S8-after-relog`.
 
 Claim DONE when you were back in the world after the relog. Tell the verifier plainly that you did not reach step 4458.
 
-**S8.7 (3 calls: lab_ensure_in_world, client_batch, client_window_read).** L2 with CHARACTER2 (the fresh character), then WAIT, then PROMPT. The WAIT output gives the new character's world and position.
+**S8.7 (2 calls: lab_ensure_in_world, client_batch).** L2 with CHARACTER2 (the fresh character), then WAIT, then PROMPT only if the WAIT output shows a window or prompt name (gotcha 10). The WAIT output gives the new character's world and position.
 
 ### ROW FZ-U1a - mission 567 offer and accept (clause U1 of FZ-U1)
 
