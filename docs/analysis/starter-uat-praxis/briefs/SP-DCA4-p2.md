@@ -19,8 +19,8 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 7. **Sticky chat channel.** Every chat macro below resets it with `ChatMod.stickyCommand='/say '`. Do not remove that.
 8. **No apostrophes** inside the Lua text of a chat macro (they end the Lua string). Use the lines exactly as written.
 9. **Stand 4 to 6 m from a target** before clicking it (server interact range 5.0 m; the Castle rows give the exact standing point). Teleport next to it, then click. Entity ids change after a relog or zone change: call `client_entity_find` by name right before you use an id.
-10. **A click that opens nothing:** `lab_screenshot` once, record the path, retry the click once unchanged, then record FAIL for that step and go on to the next independent step. Never improvise.
-11. **A covering window swallows native clicks (#1676).** Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT after every L2/WAIT, after any step whose expected effect is a Server Message, and when a click opens nothing (then PROMPT, SHOT, one unchanged retry: gotcha 10). If a click still does nothing, read `client_ui_state` once and record the top window. In this brief the PROMPT after S1 is made only if the S1 WAIT result shows no `world_id` 8; it is a failure-path call and not counted.
+10. **A click that opens nothing:** `lab_screenshot` once and record the path; run PROMPT only if that SHOT shows a window or prompt name (otherwise skip it, no call); retry the click once unchanged; then record FAIL for that step and go on to the next independent step. Never improvise.
+11. **A covering window swallows native clicks (#1676).** Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name; if it shows none, skip PROMPT (no call). On a dead click the order is SHOT, then PROMPT only if the SHOT shows a window or prompt name, then one unchanged retry. If a click still does nothing, read `client_ui_state` once and record the top window.
 12. **The Server Message OK button is `Prompt1_SingleButton`.** Use PROMPT; never guess a button name.
 13. **No `client_wait_for` on a world load (#1677).** After `lab_logout` + `lab_ensure_in_world` use WAIT (two `client_batch` waits of 20 s). After a death, `lab_ensure_in_world` can misread the character name (#1680): re-check `player_state` before trusting it.
 14. **Friendly NPCs give no kill credit (K20).** Never `.givexp` or fight to advance a row unless the row says so. Level, cash and ability changes use `.givexp`, `/gmgivecash`, `/gmgiveability` (tier G); say so in the report.
@@ -67,7 +67,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 # SP-DCA4-p2: mission 1521 Livewire victory and dialog 4990 (S2b, S3)
 
 ROWS: S2b, S3. Run order: S2b, S3. S1 and S2a are `SP-DCA4-p1`; S4 and S5 are `SP-DCA4-p3`. ESTIMATE: 16 tool calls (planned success path; hard stop 28)
-Start: fixture. The coordinator staged it with `server_stage_fixture` (C4): `world = Castle`, `position = `[356.0, 70.18, 900.5]` (the tank standing point)`, `missions = `[{"id":704,"state":"completed"},{"id":1521,"step":4456}]``, a Jaffa profile (archetype 8). Fixture failure makes the rows BLOCKED, never FAIL. The mission is seeded active at step 4456; no Infirmary entry is needed.
+Start: fixture. The coordinator staged it with `server_stage_fixture` (C4): `world = Castle`, `position = [356.0, 70.18, 900.5]` (the tank standing point), `missions = [{"id":704,"state":"completed"},{"id":1521,"step":4456}]`, a Jaffa profile (archetype 8). Fixture failure makes the rows BLOCKED, never FAIL. The mission is seeded active at step 4456; no Infirmary entry is needed.
 
 Facts this brief relies on (traced from the seed in this worktree):
 
@@ -87,7 +87,7 @@ Facts this brief relies on (traced from the seed in this worktree):
 
 ### ROW S2b - victory returns to the chain
 
-**2b.1 (4 calls: client_batch, client_window_read, client_entity_find, client_world_click).** One batch: the DIALOG op first, then the CHATX line `.bug SPU SP-DCA4-p2 s2b start` and the UTC op. Then PROMPT. Then FIND (the tank by its name `Symbiote`, and the player id; PLAYER_ID). Then `client_world_click {"lease_id":L,"entity_id":<tank id>,"expect":"window"}` (N1; if it opens nothing, gotcha 10, then PROMPT, failure path).
+**2b.1 (4 calls: client_batch, client_window_read, client_entity_find, client_world_click).** One batch: the DIALOG op first, then the CHATX line `.bug SPU SP-DCA4-p2 s2b start` and the UTC op. Then PROMPT only if the batch output shows a window or prompt name (otherwise skip, no call). Then FIND (the tank by its name `Symbiote`, and the player id; PLAYER_ID). Then `client_world_click {"lease_id":L,"entity_id":<tank id>,"expect":"window"}` (N1; if it opens nothing, gotcha 10, then PROMPT, failure path).
 **2b.2 (2 calls: lab_screenshot, client_minigame_play).** SHOT label `S2b-livewire-open`, then WIN. Record the raw result verbatim.
 **2b.3 (2 calls: client_chat_log, client_window_read).** READ `{"cursor":"s2b","contains":"ission","max":20}` and the mission read: expect step text "Implant a symbiote in your pouch." (`mission_steps.sql:2063`).
 
