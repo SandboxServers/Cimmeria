@@ -1,0 +1,27 @@
+PACKET SP-DCB3-p2 VERIFIED 2026-11-03 by Sonnet; driver attempts: 2; server evidence window 10:20:29Z-10:23:35Z (bookmarks CB-U10a start 10:20:34.415Z, end 10:23:14.914Z; SigNoz cimmeria-server, lab_run dr-lab)
+
+Attempt 1 (10:15-10:18Z): BLOCKED. Mission 638 was never accepted, because the brief never enters Castle_Cellblock.Region2, and the 638 accept and the 329 dialog set are bound on Region2 entry (chains 1011/1012). Attempt 2 added a coordinator-approved deviation: a prepend `.gotolocation` into Region2 (-265 65.45 -135) before the cell GOTO. The row is graded with that deviation (setup tier G).
+
+| Row | Result | Tier | Server evidence (time, scope, event, key fields) | Client evidence | Looker | Notes |
+|---|---|---|---|---|---|---|
+| CB-U10a | PARTIAL (+ NEEDS_HUMAN 1) | G for Region2 entry (deviation) and the door GOTO; N1 for both Prisoner 329 clicks; N3 for the door button | Start bookmark: 622 step 2113 + 689 done, offered_dialog_ids []. 10:20:44.847Z `accepting mission` 638 (chain 1011, Region2 entry) with AddDialogSet. Bookmark recent_events: 1015 AdvanceStep, 638 step 2114->2115 (~10:21:44Z); 1016 StartMinigame; 1017, 638 2115->2116 (~10:22:27Z); 10:22:53.313Z `displaying dialog` 2299 (chain 1021, npc Prisoner 329); 10:22:54.579Z `displaying dialog` 2298 + `accepting mission` 639 (chain 1019) + CompleteMission 638 + RemoveDialogSet; 10:23:06.644Z `accepting mission` 62050 "The Remaining Pods" (chain 11003, once); 10:23:06.647Z `displaying dialog` 60150 (chain 11004, once); 62050 step 62051->62054, 11000/11030 AddDialogSet before. End bookmark: 638 status 2 (steps 2114, 2115, 2116 complete), 639 active step 2117, 62050 active step 62054, 622 unchanged at 2113, 689 done. No WARN or ERROR rows in the window. | Driver: dialogs on 329 opened and finished; the door button needed a client_target fallback and the Livewire won (smartfox_victory). On the third click DialogWin read "Dcbdh" with the text "PrisonerERROR: syntax error, unexpected SGW_WHITESPACE, expecting SGW_CHARACTER or SGW_COLON". | H-CB-U10-1 (lab_screenshot-20261103-042311.658.png): Q1 YES, a dialog shows "PrisonerERROR: syntax error ...". Q2 YES, "The Remaining Pods" is in the right-hand mission list. | 638 -> 639 -> 62050 offer chain held on the server. The 60150 text renders as a parse error in the client, though the seed holds the full sentence (finding 1). Clauses not driven: repeat click, relog, Marsh turn-in, abandon on Dcbdh, skip. The startup catalog check (`mission_catalog_inserted` 62050) was outside the window and was not checked. Packet-tap heads (3,62050) and (5,60150) not recorded; the tap was not run. |
+
+SIGN-OFF SHEET (NEEDS_HUMAN):
+- CB-U10a / H-CB-U10-1 / C:\Users\Steve\AppData\Local\cimmeria-lab\screenshots\lab_screenshot-20261103-042311.658.png / the driver saw DialogWin open with the parser-error text and a tracker holding "Arm Yourself!" and "Find Ambernol"; the looker saw a dialog with the error text and "The Remaining Pods" in the journal. The person should confirm that no readable report text appears.
+
+FINDINGS:
+1. CB-U10a, dialog 60150 (the row's own first-offer dialog) shows the client error "ERROR: syntax error, unexpected SGW_WHITESPACE, expecting SGW_CHARACTER or SGW_COLON" in place of its text. The server displayed it once with seed text. This is the same class as the 60151 and 60110 reports, but 60150 is not covered by the known-issue exemption, which names only 60151. Issue body: docs/analysis/starter-uat-praxis/results/issues/SP-DCB3-p2-1.md. The coordinator can regrade the row to FAIL if an unreadable dialog counts as the "blank 60150" blocker.
+
+NOT RUN / BLOCKED:
+- Repeat click, relog retention, Marsh turn-in (4001/5022; core 1051/1052/1152), abandon and re-accept on `Dcbdk`, and the skip route to 688 were not driven. This packet's 14 steps never reach them.
+- The catalog clause was not checked (see the row notes).
+
+BRIEF DEFECTS:
+- Header, S2 and CB-U10a.1: the brief never enters Castle_Cellblock.Region2, and the 638 accept is bound to that entry. Add a Region2 GOTO (-265 65.45 -135) before CB-U10a.1 (confirmed to work by attempt 2); the SP-DCB3-p1 carry-over does not set up 638.
+- CB-U10a.3/.4: the text "ACCEPT accepts mission 638 (step 2115)" is wrong. 638 is accepted on region entry (step 2114); the first dialog click is the "Talk to Prisoner" topic (2300/5021), which advances to step 2115.
+- CB-U10a.5/.6: the RCLICK on the door button fails at read_mouse_over. Give the recipe client_target with allow_fallback, then /interact, then client_minigame_play. The step labels .4/.6/.7/.8 should be re-derived from chains 1011-1021.
+- CB-U10a.7: the first RCLICK on 329 fails with "off screen and rotate_camera is false". Add rotate_camera:true to the recipe or give a position with the prisoner on screen.
+- CB-U10a.9 to .10: the third click on 329 triggers the 62050 accept (chain 11003) and dialog 60150 itself. The brief treats it as a "first offer" read. The header and the 14 steps do not cover the catalog, repeat, relog, Marsh, abandon and skip clauses in the row table.
+- The brief gives no instruction for the tool-call count when GOTOs are repeated; the driver ran the prisoner GOTO twice.
+
+RESUME HINT: For the remaining clauses (repeat click on 329 after 62050, relog retention, Marsh turn-in, abandon on Dcbdk, skip) start a new part from the end state of Dcbdh (62050 active step 62054, 639 active, 638 done); the Region2 GOTO is not needed again. Before re-running CB-U10a, fix the 60150 text (finding 1).

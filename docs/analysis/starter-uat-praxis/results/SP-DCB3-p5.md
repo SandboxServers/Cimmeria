@@ -1,0 +1,18 @@
+PACKET SP-DCB3-p5 VERIFIED 2026-11-03 by Sonnet; driver attempts: 1; server evidence window 10:47:06Z-10:49:10Z (SigNoz, service cimmeria-server, lab_run dr-lab)
+
+| Row | Result | Tier | Server evidence (time, scope, event, key fields) | Client evidence | Looker | Notes |
+|---|---|---|---|---|---|---|
+| CB-U12d (Aid branch, Dcbdh) | BLOCKED (precondition unmet; brief/predecessor defect, not a product bug) | N1 (native click on Prisoner 329 hit target) | Bookmarks `start` 10:47:11Z (entity 60), `end` 10:48:50Z (entity 61, after relog), player 102. Click 10:47:32Z: `interact` (entity 60, target 103042 Prisoner 329), `interact: target resolved interaction_type=None`, `no per-player interactions for template`, `target has no static interaction type`. No `accepting mission` 62060, no `displaying dialog` 60151, no `granting item`, no `mission_catalog` rows in the SigNoz retention (catalog clause UNVERIFIED). Snapshot at start and end: 638 done (status 2), 639 step 2145, 641 status 1 step 2121 (active), 62050 step 62054; `offered_dialog_ids []`; 62060 absent. No WARN/ERROR in window. | Driver: no dialog, finish_dialog "no dialog open". | Screenshot: Q1 dialog with text: NO (only Info chat visible); Q2 "Before the Patrol Returns" in journal: NO (list shows Arm Yourself!, The Remaining Pods, Find Ambernol, Preparation) | All 62060 entry points (chains 11030, 11031, 11033, 11034 in db/resources/Content/Seed/castle_cellblock_chains.sql) require `mission_status 641 = not_active`. The carried state has 641 active (accepted at Marsh in SP-DCB3-p4 via chain 1051, which removed dialog set 3862 via chain 11040). The offer was therefore never present and the server correctly ignored the click. The clause "Skip: prisoners stop offering after 641 accepted" is in effect observed as held; Catalog, Accept, Aid, Not both, Relog, Full bag clauses not reachable. |
+
+SIGN-OFF SHEET (NEEDS_HUMAN): H-CB-U12-4 (aid state shown?), C:\Users\Steve\AppData\Local\cimmeria-lab\screenshots\lab_screenshot-20261103-044845.202.png. Driver: not viewed, taken after relog. Looker: no dialog, journal shows four missions, no "Before the Patrol Returns". Moot: no aid state could exist.
+
+FINDINGS: none filed. No issue bodies written. (Side note repeated from SP-DCB3-p4: Marsh chain 1051 lets 641 be accepted with 639/640 incomplete, which closes the 62060 offer; treated as an intended sequence break, mention to the mission advisor if wanted.)
+
+NOT RUN / BLOCKED (case c, brief defects):
+- BD-1 S1/CB-U12d.1-.5: brief says "carry-over from SP-DCB3-p4" but p4 left 641 active, 639 stuck at 2145 (vial never picked up in p3), 62050 at 62054. Brief states no precondition that 62060 needs 638 done AND 641 not_active.
+- BD-2 CB-U12d.1-.3: the clicks assume the 62060 offer exists on Prisoner 329; the offer needs chain 11030/11031 to have fired with 641 not_active.
+- BD-3 CB-U12d.9-.10: aid-state screenshot is only meaningful after 62060 accept and the aid click.
+- BD-4 Catalog clause: `mission_catalog_inserted` 62060 not found in SigNoz retention; coordinator should grep the startup server.log.
+- Sabotage branch (Dcbdk), Not both, Full bag: other parts / not driven.
+
+RESUME HINT: do not re-run on Dcbdh; its state cannot reach the row (641 active). Use a fresh character (Dcbdk or new Praxis Commando): finish 638 (GM-advance if needed), do NOT accept 641 at Marsh, log in (chain 11031 re-adds the offer) or complete 638 in-world (chain 11030), then RCLICK Prisoner 329 (spawn 520/521 tags Cellblock_Ambient_Prisoner1/2), expect `accepting mission` 62060 and dialog 60151, then click the prisoner again for the aid branch and expect `granting item` 2893 x2 once. Use camera/target recipe if the hover fails.
