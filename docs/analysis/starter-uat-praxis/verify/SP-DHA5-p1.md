@@ -1,12 +1,12 @@
-# SP-DHA5 verify brief
+# SP-DHA5-p1 verify brief
 
 > **Type:** how-to (runbook). **Audience:** a Sonnet verifier agent. **Last updated:** 2026-11-02.
-> **Rows:** FZ-U2e, FZ-U2f, FZ-U2g. **Companions:** [work-packets.md](../work-packets.md) (contracts C1-C8), [rows.md](../rows.md), [unified-uat.md FZ-U2 row](../../../guides/unified-uat.md#harset), [hub-pass HP-M1 template](../../hub-pass-uat/briefs/HP-M1.md), [the driver brief](../briefs/SP-DHA5.md).
+> **Rows:** FZ-U2e. **Start:** fixture (1664 at step 5224, Harset gate). **Companions:** [work-packets.md](../work-packets.md) (contracts C1-C8), [rows.md](../rows.md), [unified-uat.md FZ-U2 row](../../../guides/unified-uat.md#harset), [hub-pass HP-M1 template](../../hub-pass-uat/briefs/HP-M1.md), [the driver brief](../briefs/SP-DHA5-p1.md). Sibling parts: SP-DHA5-p1 (FZ-U2e), SP-DHA5-p2 (FZ-U2f), SP-DHA5-p3 (FZ-U2g).
 > NEEDS_HUMAN rule for this packet: a look-and-feel clause (name plate, facing, a mission cue, a use cursor, a journal or tracker line) never blocks the lane. The driver takes a `lab_screenshot` (path recorded), writes one line of what the tool results showed, marks the step NEEDS_HUMAN and moves on. The screenshot goes on the sign-off sheet for the user to review at the end. Lab use is pre-authorized on the local server (D-SP5); the brief never tells a driver to ask the user.
 
-You are the Sonnet VERIFIER for one packet of the starter-uat-praxis UAT. A cheap driver agent drove the real game client on the local server and wrote a report. You grade each row against SERVER evidence, never against what the driver says. You are read-only. Use PowerShell (no bash). You may read repo files. You may run `gh` to file issues (section 6). You never drive the game client, never take a lab lease and never call the lab-server tools that change state (`server_console_exec`, `server_stage_fixture`, `server_content_reload`).
+You are the Sonnet VERIFIER for one part of the starter-uat-praxis UAT. A cheap driver agent drove the real game client on the local server and wrote a report. You grade each row against SERVER evidence, never against what the driver says. You are read-only. Use PowerShell (no bash). You may read repo files. You may run `gh` to file issues (section 6). You never drive the game client, never take a lab lease and never call the lab-server tools that change state (`server_console_exec`, `server_stage_fixture`, `server_content_reload`).
 
-You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` (one report per run: one run per row); (3) the screenshot paths the report names. Packet: SP-DHA5. Server: local, at the recorded SHA (D-SP2), so evidence comes from the lab-server MCP, not from colo ssh.
+You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` (one report: one run of this part on one character); (3) the screenshot paths the report names. Packet: SP-DHA5-p1. Server: local, at the recorded SHA (D-SP2), so evidence comes from the lab-server MCP, not from colo ssh. Start: fixture (1664 at step 5224, Harset gate).
 
 ## 1. Rules of grading
 
@@ -16,12 +16,13 @@ You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator u
 - A driver claim with no matching server row is not evidence. A row for the wrong player or outside the row window does not count.
 - Any WARN or ERROR in a relevant target inside the window that the row does not expect is a **finding**.
 - Dialog text is provisional (D-FZ15): grade that the right line (screen id) appeared, not its wording.
+- The server prints no mission step text. The driver's `gmMissionList` entries carry step ids (`#1664 active step 5225 obj 0/2`); grade the step id, never a step name.
 
 ## 2. Setup you do first (4 calls)
 
 1. Clock and buffer: `server_log_tail {"limit":1}` and note `newest_ms`. The log buffer is in memory and finite: grade right after the driver run, and say so if a window has rolled out (grade that clause UNVERIFIED and the row at best PARTIAL).
-2. Ids: `server_db_query` `SELECT player_id, account_id, player_name FROM public.sgw_player WHERE player_name ILIKE '%FxDhaFive%'`. Call the result `$pid` (one per character; the names are in the driver report).
-3. Row timeline from the driver bookmarks: `server_log_tail {"contains":"SPU SP-DHA5","limit":200}`. Print ONE entry in full first to learn how the note is carried (message or field). Each `SPU SP-DHA5 <row> start` opens that row's window; the next `start` or the packet end closes it. Pad 5 s before, 20 s after. Convert `timestamp_ms` programmatically (PowerShell `[DateTimeOffset]::FromUnixTimeMilliseconds`).
+2. Ids: `server_db_query` `SELECT player_id, account_id, player_name FROM public.sgw_player WHERE player_name ILIKE '%FxDhaFiveA%'`. Call the result `$pid`. The name is `Uat FxDhaFiveA`.
+3. Row timeline from the driver bookmarks: `server_log_tail {"contains":"SPU SP-DHA5-p1","limit":200}`. Print ONE entry in full first to learn how the note is carried (message or field). Each `SPU SP-DHA5-p1 <row> start` opens that row's window; the next `start`, an `end` or the report end closes it. Pad 5 s before, 20 s after. Convert `timestamp_ms` programmatically (PowerShell `[DateTimeOffset]::FromUnixTimeMilliseconds`).
 4. If the buffer holds no `mission.` lines at all for the window, grade every server clause UNVERIFIED and stop. DEBUG lines may be filtered: say so and use INFO lines and the DB.
 
 ## 3. Evidence methods
@@ -39,7 +40,7 @@ For each screenshot the report names, start a Haiku looker: Agent tool, `subagen
 ## 5. Report format (your final message)
 
 ```text
-PACKET SP-DHA5 VERIFIED <UTC now> by Sonnet; driver attempts: <n>; server evidence window <t0>-<t1>
+PACKET SP-DHA5-p1 VERIFIED <UTC now> by Sonnet; driver attempts: <n>; server evidence window <t0>-<t1>
 | Row | Result | Tier | Server evidence (time, event or query, key fields) | Client evidence | Looker | Notes |
 ```
 
@@ -47,9 +48,11 @@ One line per row, then `FINDINGS:` (numbered), `NOT RUN / BLOCKED:` with reasons
 
 `SIGN-OFF SHEET:` one line per NEEDS_HUMAN screenshot: `<row> | <LABEL> | <path> | what the row wants the user to look for | looker pre-screen`. The coordinator copies it to the end-of-run sign-off sheet.
 
+Also write the same table to `docs/analysis/starter-uat-praxis/results/SP-DHA5-p1.md` in the `sp-integration` worktree (contract C6) and return one line.
+
 ## 6. When a row FAILs, or you find a bug
 
-Investigate before you file: read the chain or handler the row exercises (the file:line in the row), reproduce the reasoning with the server rows, and decide whether it is (a) a product bug, (b) a doc mismatch, (c) a lab or driver problem (a wrong click, a bad stand position, a placeholder spawn: report only, with the recipe the next driver needs), or (d) a known issue (unified-uat.md K1-K33, or the D-PU6 placeholder door position: do not file). Only (a) and (b) get a GitHub issue: `gh issue create` from PowerShell with `--body-file`. Title `<system>: <what is wrong> (starter-uat-praxis SP-DHA5)`. Labels `bug`; add `needs-triage` only if it exists. Never label `ready-for-agent`. The body follows docs/agents/issue-tracker.md: `## Problem`, `## Evidence`, `## Acceptance criteria`, `## Test type`, `## Docs to update`, `## Client impact`, `## Domain advisor`, `## Needs a human for`, `## Implementation plan`. Mention `@Cadacious`. Search first (`gh issue list --search "<words>" --state all`) and comment on an existing issue instead of filing a duplicate.
+Investigate before you file: read the chain or handler the row exercises (the file:line in the row), reproduce the reasoning with the server rows, and decide whether it is (a) a product bug, (b) a doc mismatch, (c) a lab or driver problem (a wrong click, a bad stand position, a placeholder spawn: report only, with the recipe the next driver needs), or (d) a known issue (unified-uat.md K1-K33, or the D-PU6 placeholder door position: do not file). Only (a) and (b) get a GitHub issue: `gh issue create` from PowerShell with `--body-file`. Title `<system>: <what is wrong> (starter-uat-praxis SP-DHA5-p1)`. Labels `bug`; add `needs-triage` only if it exists. Never label `ready-for-agent`. The body follows docs/agents/issue-tracker.md: `## Problem`, `## Evidence`, `## Acceptance criteria`, `## Test type`, `## Docs to update`, `## Client impact`, `## Domain advisor`, `## Needs a human for`, `## Implementation plan`. Mention `@Cadacious`. Search first (`gh issue list --search "<words>" --state all`) and comment on an existing issue instead of filing a duplicate.
 
 ## 7. Do not
 
@@ -57,9 +60,11 @@ Do not edit the repo, the database or the server; do not run the lab; do not cal
 
 ---
 
-# Verify SP-DHA5: abandon 1664 at each step (characters `Uat FxDhaFiveA` to `C`)
+# Verify SP-DHA5-p1: abandon at the Kaerlia step (character `Uat FxDhaFiveA`)
 
-Option P0 (O18-02a): abandon is final. If the owner has since chosen P3 (a re-offer, chain 6020 reserved in `db/resources/Content/Seed/harset_1664_chains.sql:19`), grade the "not offered again" clause against the current docs and say which you used. Common server clauses for all three rows, from chain 6016 (`db/resources/Content/Seed/harset_1664_chains.sql:148-160`):
+Start: fixture. Row windows come from `SPU SP-DHA5-p1 FZ-U2e start|abandon`.
+
+Option P0 (O18-02a): abandon is final. If the owner has since chosen P3 (a re-offer, chain 6020 reserved in `db/resources/Content/Seed/harset_1664_chains.sql:19`), grade the "not offered again" clause against the current docs and say which you used. Common server clauses, from chain 6016 (`db/resources/Content/Seed/harset_1664_chains.sql:148-160`):
 
 | Check | Query | Expected |
 |---|---|---|
@@ -71,19 +76,10 @@ Option P0 (O18-02a): abandon is final. If the owner has since chosen P3 (a re-of
 
 ## Row FZ-U2e - abandon at the Kaerlia step (5224)
 
-Common clauses plus: the fixture MLIST showed 1664 at "Speak to Sgt. Kaerlia" before the abandon; after the relog chain 6014 did NOT run. Cues gone before and after the relog: NEEDS_HUMAN (`E-KAERLIA-CUE`, `E-KAERLIA-AFTER`, `E-RELOG`). PASS on every server clause; FAIL if 1664 is still active or Kaerlia opened dialog 6169.
-
-## Row FZ-U2f - abandon at the door-control step (5225)
-
-Common clauses plus: the fixture MLIST showed "Make your way to the Command Center"; after the relog chain 6015 did NOT run. The door control is the D-PU6 placeholder: if the driver could not see it, say so in Notes; the server clauses decide the grade. NEEDS_HUMAN: `F-DOOR-CUE`, `F-DOOR-AFTER`, `F-KAERLIA`, `F-RELOG`. FAIL if chain 6012 ran after the abandon or the door cue is restored on the relog.
-
-## Row FZ-U2g - abandon at 5226 after one report (Command Center)
-
-Common clauses plus: one `mission.complete_objective` 6061 (Marsh's report) BEFORE the abandon and none after; chain 6016 dropped dsm 120302 (slot 10) and 120303 (slot 54); the driver's abandon was typed while in world 68. Chain 6511 runs on this `mission_abandoned` (`db/resources/Content/Seed/harset_opcore_chains.sql:594-599`): a Praxis "?" on Marsh is expected and is not a finding. The Kaerlia clauses are read after the driver teleports to world 57. NEEDS_HUMAN: `G-MARSH-CUE`, `G-KATAN-CUE`, `G-KATAN-AFTER`, `G-MARSH-AFTER`, `G-KAERLIA`. FAIL if 1664 is still active, a second objective was credited, or a debrief cue chain (6033/6034) ran after the abandon.
-Looker for the `*-AFTER` and `*-CUE` shots: 1. Is a "?" or marker over the NPC? No WARN or ERROR in a mission or content target in the window that the row does not expect.
+Common clauses plus: the fixture MLIST showed the 1664 entry at step 5224 before the abandon; after the relog chain 6014 did NOT run. Cues gone before and after the relog: NEEDS_HUMAN (`E-KAERLIA-CUE`, `E-KAERLIA-AFTER`, `E-RELOG`). PASS on every server clause; FAIL if 1664 is still active or Kaerlia opened dialog 6169.
 
 ---
 
 ## DRIVER REPORT
 
-(The coordinator pastes each driver report here in turn, with the screenshot paths.)
+(The coordinator pastes the driver's final report here, with the screenshot paths.)
