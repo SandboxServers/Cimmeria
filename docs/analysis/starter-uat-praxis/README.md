@@ -51,11 +51,11 @@ The Goa'uld branch through Castle mission 1520 is held BlockedEvidence (CS-02) a
 
 | ID | Decision | Status | Reason |
 |---|---|---|---|
-| D-SP1 | May agent lab drivers run the client rows that D-CA11, D-CC13 and D-T009 reserved for the owner ("no lab until the end", owner runs every row), with the user's OK per lab session? | **BlockedDecision** (owner) | Those decisions were the owner's. The user framed this plan as lab UAT, but only the owner can lift his own reservation. Default if yes: drivers run every row; rows that need a human eye are graded NEEDS_HUMAN and listed in the sign-off sheet. If no: SP-01 to SP-05 still ship and the briefs become the owner's checklist. |
-| D-SP2 | Which server the lab plays against: the colo after a release that contains #1948/#1950/#1952, or a local server built from `origin/main` at a recorded SHA. | **BlockedDecision** (owner) | A colo deploy needs a release, and the colo DB is rebuilt from seeds on every deploy (good for fresh characters). A local server needs no release but its telemetry lands only locally. Architect default: local server at a recorded SHA, so the campaign does not wait on a release. |
-| D-SP3 | Does lomiada's direction ("all current develop effort should go in the starting worlds") become the project's priority, pausing unrelated campaigns? | **BlockedDecision** (owner) | lomiada is a contributor, not the owner. This campaign does not depend on the answer; its scheduling does. |
+| D-SP1 | May agent lab drivers run the client rows that D-CA11, D-CC13 and D-T009 reserved for the owner ("no lab until the end", owner runs every row), with the user's OK per lab session? | **Decided: yes** (Set by user instruction 2026-11-02, owner may override.) | Those decisions were the owner's. The user framed this plan as lab UAT, but only the owner can lift his own reservation. Default if yes: drivers run every row; rows that need a human eye are graded NEEDS_HUMAN and listed in the sign-off sheet. If no: SP-01 to SP-05 still ship and the briefs become the owner's checklist. |
+| D-SP2 | Which server the lab plays against: the colo after a release that contains #1948/#1950/#1952, or a local server built from `origin/main` at a recorded SHA. | **Decided: local server at a recorded SHA** (Set by user instruction 2026-11-02, owner may override. Recorded SHA: `origin/main` `e8973395f`; `git merge-base --is-ancestor` confirms #1948 `ca52713b6`, #1950 `4b3ef86db` and #1952 `5079be48f` are all in it) | A colo deploy needs a release, and the colo DB is rebuilt from seeds on every deploy (good for fresh characters). A local server needs no release but its telemetry lands only locally. Architect default: local server at a recorded SHA, so the campaign does not wait on a release. |
+| D-SP3 | Does lomiada's direction ("all current develop effort should go in the starting worlds") become the project's priority, pausing unrelated campaigns? | **Decided: yes, scheduling only** (Set by user instruction 2026-11-02, owner may override.) | lomiada is a contributor, not the owner. This campaign does not depend on the answer; its scheduling does. |
 | D-SP4 | Product bugs found here are filed as issues, not fixed in this campaign. | Decided (architect) | Keeps every packet docs-only and inside the 40k budget; a fix campaign is sliced from the issues afterwards. |
-| D-SP5 | Each lab wave asks the user first, every time. The four-zone standing approval O14-08 does not cover this campaign. | Decided (architect, from the lab-uat skill and `feedback_ask_before_lab`) | O14-08 was granted to the four zone sessions, which have closed. |
+| D-SP5 | The user gave blanket lab authorization on 2026-11-02 for this campaign, local server only. The per-wave ask in the lab-uat skill is satisfied by it; the four-zone standing approval O14-08 still does not cover it. | Decided (user instruction 2026-11-02, owner may override) | Supersedes the architect's ask-every-time default. A colo run would need a fresh authorization. |
 | D-SP6 | Rows are run in playthrough order (Cellblock, Castle, Harset, Tollana), so a blocker early in the chain is found before later rows depend on it. | Decided (architect) | |
 | D-SP7 | Status docs (`docs/project-status.md`, `docs/gap-analysis*`) change once, in SP-99, and only after the four-zone FZ-99 close-out has landed its own lines. | Decided (architect) | FZ-99 still owes the Praxis rows; two packets must not write them. |
 
@@ -65,18 +65,18 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 
 | Wave | Packet | What | Agent | Lab | Status |
 |---|---|---|---|---|---|
-| 0 | SP-00 | Row inventory `rows.md`; fix the stale Tollana RESUME line | documentation-writer | no | Ready |
-| 1 | SP-01 | Cellblock driver and verify briefs (SP-DCB1 to DCB3) | documentation-writer | no | BlockedDependency (SP-00) |
+| 0 | SP-00 | Row inventory `rows.md`; fix the stale Tollana RESUME line | documentation-writer | no | InProgress (documentation-writer, `sp-integration`) |
+| 1 | SP-01 | Cellblock driver and verify briefs (SP-DCB1 to DCB6) | documentation-writer | no | BlockedDependency (SP-00) |
 | 1 | SP-02a | Castle briefs part 1 (SP-DCA1 to DCA4) | documentation-writer | no | BlockedDependency (SP-00) |
-| 1 | SP-02b | Castle briefs part 2 (SP-DCA5 to DCA7) | documentation-writer | no | BlockedDependency (SP-00) |
+| 1 | SP-02b | Castle briefs part 2 (SP-DCA5 to DCA24; DCA8 to DCA24 added by SP-00, see rows.md) | documentation-writer | no | BlockedDependency (SP-00) |
 | 1 | SP-03a | Harset briefs part 1 (SP-DHA1, DHA2) | documentation-writer | no | BlockedDependency (SP-00) |
 | 1 | SP-03b | Harset briefs part 2: the FZ-U2 split (SP-DHA3 to DHA5) | documentation-writer | no | BlockedDependency (SP-00) |
 | 1 | SP-04 | Tollana briefs (SP-DTO1 to DTO4) | documentation-writer | no | BlockedDependency (SP-00) |
 | 1 | SP-05 | Hand-off leg briefs (SP-DL1 to DL3) | documentation-writer | no | BlockedDependency (SP-00) |
-| 2 | SP-DCB1, DCB2, DCB3, SP-DL1, SP-DCA1, SP-DCA2 | Cellblock, ring to Castle, Castle part 1 | lab-driver + verifier | **ASK-FIRST** | BlockedDecision (D-SP1, D-SP2) |
-| 3 | SP-DCA3 to DCA7, SP-DL2 | Castle part 2, Castle→Harset with Frost's Letter | lab-driver + verifier | **ASK-FIRST** | BlockedDecision (D-SP1, D-SP2) |
-| 4 | SP-DHA1 to DHA5, SP-DL3 | Harset (DHA3, DHA4, DHA5 one after another on `p3`), Harset→Tollana | lab-driver + verifier | **ASK-FIRST** | BlockedDecision (D-SP1, D-SP2) |
-| 5 | SP-DTO1 to DTO4, retries | Tollana, one packet at a time on `default`; the two-player packet last, alone; any attempt-4 takeovers | lab-driver + verifier | **ASK-FIRST** | BlockedDecision (D-SP1, D-SP2) |
+| 2 | SP-DCB1, DCB2, DCB3, SP-DL1, SP-DCA1, SP-DCA2 | Cellblock, ring to Castle, Castle part 1 | lab-driver + verifier | **ASK-FIRST** | BlockedDependency (briefs); D-SP1, D-SP2 decided |
+| 3 | SP-DCA3 to DCA7, SP-DL2 | Castle part 2, Castle→Harset with Frost's Letter | lab-driver + verifier | **ASK-FIRST** | BlockedDependency (briefs); D-SP1, D-SP2 decided |
+| 4 | SP-DHA1 to DHA5, SP-DL3 | Harset (DHA3, DHA4, DHA5 one after another on `p3`), Harset→Tollana | lab-driver + verifier | **ASK-FIRST** | BlockedDependency (briefs); D-SP1, D-SP2 decided |
+| 5 | SP-DTO1 to DTO4, retries | Tollana, one packet at a time on `default`; the two-player packet last, alone; any attempt-4 takeovers | lab-driver + verifier | **ASK-FIRST** | BlockedDependency (briefs); D-SP1, D-SP2 decided |
 | 6 | SP-91 | TOML specs for passed Cellblock and Castle rows | packet-coder | no | BlockedDependency (waves 2-3) |
 | 6 | SP-92 | TOML specs for passed Harset, Tollana and leg rows | packet-coder | no | BlockedDependency (waves 4-5) |
 | 6 | SP-98 | Issue roll-up and sign-off sheet | documentation-writer | no | BlockedDependency (waves 2-5) |
