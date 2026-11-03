@@ -123,7 +123,7 @@ This part, h1: before and after 1664 ends.
 
 **h1.1 (2 calls: client_batch, lab_screenshot).** CHATX `.bug SPU SP-DHA4-p2 FZ-U2h1 start`, `.gotolocation Harset_CmdCenter -49.5 -0.59 -18`. SHOT `H1-BEFORE` (NEEDS_HUMAN: Marsh shows the 1664 debrief cue, not the Praxis "?").
 
-**h1.2 (3 calls: client_world_click, client_chat_log, client_ui_state).** TALK `Marsh`, `expect:"nothing"` (a Marsh click on 5226 is the 1664 report, so no dialog 4457). READ `{"cursor":"h1a","contains":"Report received","max":10}`. Read `client_ui_state` once and record whether any dialog is open (expect none).
+**h1.2 (3 calls: client_world_click, client_chat_log, client_ui_state).** TALK `Marsh`, `expect:"nothing"` (a Marsh click on 5226 is the 1664 report, so no dialog 4457). READ `{"cursor":"h1a","contains":"Report received","max":10}`. Call `client_ui_state {"lease_id":L,"chat_lines":0}` once and record whether any dialog is open (expect none).
 
 **h1.3 (3 calls: client_batch, client_world_click, client_chat_log).** CHATX `.gotolocation Harset_CmdCenter -5 0.37 -12`. TALK `katan`, `expect:"nothing"` (the second report completes 1664). READ `{"cursor":"h1b","contains":"filed","max":10}`.
 
