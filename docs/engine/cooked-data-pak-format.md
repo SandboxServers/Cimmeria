@@ -270,6 +270,22 @@ the Server Build has MORE entries than QA.
 
 ---
 
+## Authoring Dialog Text
+
+The client runs a dialog screen's `Text` through a markup parser. On the lab
+client (2026-11-03) three authored dialogs (60150, 60151, 60110) drew their
+text up to a space and then printed `ERROR: syntax error, unexpected
+SGW_WHITESPACE, expecting SGW_CHARACTER or SGW_COLON`. In every case the
+failing space was followed by a digit run ("Prisoner 329", "add 10 slots").
+Spell numbers out in text Cimmeria authors ("Prisoner three twenty-nine").
+
+This rule is **inferred** from those three renders; the lexer itself has not
+been read, and stock dialogs with the same shape (5357 "Level 16.") have not
+been seen to fail or pass. The test
+`dialog_overrides::client_markup_lint` in `cimmeria-resources` enforces it
+over every served override and over the seeded rows for ids 60000-65535.
+Whether the rewritten texts render clean on the client is pending a lab run.
+
 ## Entry-Level Identity Analysis
 
 ### File-Level Hash Comparison

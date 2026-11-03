@@ -11,9 +11,9 @@ use crate::mercury::{FRAG_FIRST, FRAG_FIRST_AND_LAST, FRAG_LAST};
 const EXPECTED: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <COOKED_MISSION xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:CookedData1="SGW" AwardXP="false" ShowFactionChangeIcon="false" ShowInstanceIcon="false" ShowPVPIcon="false" IsShareable="false" NumRepeats="0" CanAbandon="true" CanRepeatOnFail="false" CanFail="false" Level="1" IsHidden="false" IsOverrideMission="false" IsEnabled="true" IsAStory="true" Difficulty="1" MissionLabel="General" MissionDefn="The Remaining Pods" MissionID="62050"><HistoryText>Prisoner 329 heard other captives in nearby pods. Tell Col. Marsh so they are not left behind.</HistoryText><Steps StepEnabled="false" StepID="62051" AwardXP="false" Difficulty="1"><StepDisplayLogText>Ask Prisoner 329 about the other pods.</StepDisplayLogText><Objectives IsOptional="false" ObjectiveID="62052" AwardXP="false" IsHidden="false" IsEnabled="false" Difficulty="1"><DisplayLogText>Speak to Prisoner 329.</DisplayLogText><Tasks TaskType="1" TaskID="62053" AwardXP="false" IsEnabled="true" Difficulty="1"></Tasks></Objectives></Steps><Steps StepEnabled="false" StepID="62054" AwardXP="false" Difficulty="1"><StepDisplayLogText>Tell Col. Marsh there may be prisoners in the other pods.</StepDisplayLogText><Objectives IsOptional="false" ObjectiveID="62055" AwardXP="false" IsHidden="false" IsEnabled="false" Difficulty="1"><DisplayLogText>Warn Col. Marsh.</DisplayLogText><Tasks TaskType="1" TaskID="62056" AwardXP="false" IsEnabled="true" Difficulty="1"></Tasks></Objectives></Steps></COOKED_MISSION>"#;
 
-/// Dialog 60150 emitted bytes, copied from w3-frozen.md (F3): 305 bytes,
+/// Dialog 60150 emitted bytes, re-frozen by dlg-parse-fix (w3-frozen.md F3 recorded 305 bytes before the digits were spelled out): 319 bytes,
 /// one fragment.
-const EXPECTED_DIALOG: &str = r#"<?xml version="1.0" encoding="UTF-8"?><COOKED_DIALOG DialogFlags="0" DialogID="60150" KismetEventSetID="0" UIScreenType="2"><Screens SpeakerID="0" ScreenID="96110" Text="Prisoner 329 says there are still people in the other pods. Tell Col. Marsh to check them before you leave."></Screens></COOKED_DIALOG>"#;
+const EXPECTED_DIALOG: &str = r#"<?xml version="1.0" encoding="UTF-8"?><COOKED_DIALOG DialogFlags="0" DialogID="60150" KismetEventSetID="0" UIScreenType="2"><Screens SpeakerID="0" ScreenID="96110" Text="Prisoner three twenty-nine says there are still people in the other pods. Tell Col. Marsh to check them before you leave."></Screens></COOKED_DIALOG>"#;
 
 /// A stock client asks for category 3 (the shipped table at its metadata):
 /// the server resyncs it, and mission 62050 arrives as one two-fragment
@@ -141,7 +141,7 @@ async fn remaining_pods_dialog_reaches_a_stock_client() {
     let Sent::Fragment { flags, body, .. } = heads[0] else {
         unreachable!()
     };
-    assert_eq!(*flags, FRAG_FIRST_AND_LAST, "305 bytes is one fragment");
+    assert_eq!(*flags, FRAG_FIRST_AND_LAST, "319 bytes is one fragment");
     assert!(
         body.as_slice() == EXPECTED_DIALOG.as_bytes(),
         "dialog 60150 body differs from the frozen F3 bytes"

@@ -61,6 +61,8 @@ mod patches_castle;
 mod patches_cellblock;
 
 #[cfg(test)]
+mod client_markup_lint;
+#[cfg(test)]
 mod override_seed_agreement_castle_10700;
 #[cfg(test)]
 mod override_seed_agreement_castle_10709;

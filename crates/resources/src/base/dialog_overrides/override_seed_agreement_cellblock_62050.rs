@@ -11,8 +11,8 @@ use std::path::PathBuf;
 use super::overrides_cellblock::REMAINING_PODS_DIALOG;
 use super::{generate_dialog_xml, DIALOG_OVERRIDES};
 
-/// The 305 bytes F3 freezes. No newline anywhere.
-const EXPECTED: &[u8] = br#"<?xml version="1.0" encoding="UTF-8"?><COOKED_DIALOG DialogFlags="0" DialogID="60150" KismetEventSetID="0" UIScreenType="2"><Screens SpeakerID="0" ScreenID="96110" Text="Prisoner 329 says there are still people in the other pods. Tell Col. Marsh to check them before you leave."></Screens></COOKED_DIALOG>"#;
+/// The 319 bytes F3 froze, re-frozen by dlg-parse-fix (F3 first recorded 305 bytes). No newline anywhere.
+const EXPECTED: &[u8] = br#"<?xml version="1.0" encoding="UTF-8"?><COOKED_DIALOG DialogFlags="0" DialogID="60150" KismetEventSetID="0" UIScreenType="2"><Screens SpeakerID="0" ScreenID="96110" Text="Prisoner three twenty-nine says there are still people in the other pods. Tell Col. Marsh to check them before you leave."></Screens></COOKED_DIALOG>"#;
 
 /// The dialog id this packet serves.
 const DIALOG_ID: u32 = 60150;
@@ -37,12 +37,12 @@ fn sql_text(s: &str) -> String {
     s.replace('\'', "''")
 }
 
-/// The emitted XML is the frozen 305 bytes, and the override is the one
+/// The emitted XML is the frozen 319 bytes, and the override is the one
 /// the cache serves for 60150.
 #[test]
 fn remaining_pods_dialog_emits_the_frozen_bytes() {
     let bytes = generate_dialog_xml(&REMAINING_PODS_DIALOG);
-    assert_eq!(bytes.len(), 305, "F3 freezes 305 bytes");
+    assert_eq!(bytes.len(), 319, "re-frozen at 319 bytes");
     assert_eq!(bytes.as_slice(), EXPECTED);
     assert!(!bytes.contains(&b'\n'), "F3 has no newline anywhere");
 }

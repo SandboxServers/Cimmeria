@@ -18,7 +18,7 @@ pub(super) const REMAINING_PODS_DIALOG: DialogOverride = DialogOverride {
     screens: &[DialogScreen {
         screen_id: 96110,
         speaker_id: 0,
-        text: "Prisoner 329 says there are still people in the other pods. Tell Col. Marsh to check them before you leave.",
+        text: "Prisoner three twenty-nine says there are still people in the other pods. Tell Col. Marsh to check them before you leave.",
         buttons: &[],
     }],
 };
@@ -34,7 +34,7 @@ pub(super) const PRISONER_CHOICE_DIALOG: DialogOverride = DialogOverride {
     screens: &[DialogScreen {
         screen_id: 96111,
         speaker_id: 0,
-        text: "The two prisoners are too weak to run, and the patrol is coming back. There is time for one thing: help them hide, or jam the cell-door panel by Prisoner 329 so the guards cannot seal the block.",
+        text: "The two prisoners are too weak to run, and the patrol is coming back. There is time for one thing: help them hide, or jam the cell-door panel by Prisoner three twenty-nine so the guards cannot seal the block.",
         buttons: &[],
     }],
 };

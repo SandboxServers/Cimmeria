@@ -22,8 +22,8 @@ pub(super) const VAULT_EXPAND_DIALOG: DialogOverride = DialogOverride {
     screens: &[DialogScreen {
         screen_id: 200010,
         speaker_id: 0,
-        text: "Vault expansion. I can add 10 slots to your vault, up to 100 in all. The \
-               price of the next 10 slots is in your chat window.",
+        text: "Vault expansion. I can add ten slots to your vault, up to one hundred in all. The \
+               price of the next ten slots is in your chat window.",
         buttons: &[DialogButton {
             button_type: 4,
             button_id: 8,

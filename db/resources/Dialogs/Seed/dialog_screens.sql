@@ -28636,14 +28636,14 @@ INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUE
 -- Social-systems campaign, SS-U3: the Gate Mail Clerk's one screen, spoken by
 -- speaker 843 (Sgt. Harriman, template 390's speaker), so the server binds the
 -- NPC and not the player.
-INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60104, 200005, 'Gate Mail. I can send you a test mail with a stack of Health Slappacks and 50 naquadah. Open your mail afterwards to take them. One mail every 10 minutes.', 843, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60104, 200005, 'Gate Mail. I can send you a test mail with a stack of Health Slappacks and fifty naquadah. Open your mail afterwards to take them. One mail every ten minutes.', 843, 0);
 
 -- Bank and Vault campaign, BV-05: the Expand vault offer's one screen. The
 -- bank owns screen ids 200010-200019. Speaker 0: the same dialog is spoken
 -- by any Banker, and by the GM's own entity after .bank. The price is not
 -- in the text because it lives in bank_expansion_price; the offer's chat
 -- line names it.
-INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60110, 200010, 'Vault expansion. I can add 10 slots to your vault, up to 100 in all. The price of the next 10 slots is in your chat window.', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60110, 200010, 'Vault expansion. I can add ten slots to your vault, up to one hundred in all. The price of the next ten slots is in your chat window.', 0, 0);
 
 -- Minigames campaign, MG-74: the Debug Area minigame terminals' result lines, spoken by `npc_bark` (chains 24056-24057). Owns screen ids 200020-200029.
 INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60120, 200020, 'Minigame round trip complete: the server recorded your win.', 0, 0);
@@ -28662,10 +28662,10 @@ INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUE
 INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60170, 200181, 'Your report is filed.', 0, 1);
 
 -- Cellblock continuation CB-N05: dialog 60150's only screen (CIMMERIA_AUTHORING).
-INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60150, 96110, 'Prisoner 329 says there are still people in the other pods. Tell Col. Marsh to check them before you leave.', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60150, 96110, 'Prisoner three twenty-nine says there are still people in the other pods. Tell Col. Marsh to check them before you leave.', 0, 0);
 
 -- Cellblock continuation CB-N06: dialog 60151's only screen (CIMMERIA_AUTHORING).
-INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60151, 96111, 'The two prisoners are too weak to run, and the patrol is coming back. There is time for one thing: help them hide, or jam the cell-door panel by Prisoner 329 so the guards cannot seal the block.', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60151, 96111, 'The two prisoners are too weak to run, and the patrol is coming back. There is time for one thing: help them hide, or jam the cell-door panel by Prisoner three twenty-nine so the guards cannot seal the block.', 0, 0);
 
 --
 -- TOC entry 3309 (class 0 OID 0)
