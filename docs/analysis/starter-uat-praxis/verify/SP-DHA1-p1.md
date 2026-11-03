@@ -14,7 +14,7 @@ You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator u
 
 1. Log source: the starter UAT runs on the LOCAL lab server (D-SP2). First check which SigNoz you reach: the helper below queries the colo ClickHouse, so if the local lab telemetry is not there, read the local server log with the lab-server MCP `server_log_tail` and filter by the same words, and say which you used. If the timezone is not UTC, convert every time below.
 2. Ids (lab-server MCP `server_db_query`; `resources.` prefix for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%%Fxdha%%'`. Call the result for this part's character `$pid`.
-3. Row timeline from the driver's `.bug` bookmarks: run `ch` (below) with `$where = "scope_name LIKE 'playtest.bookmark%' AND (body LIKE '%SPU SP-DHA1-p1%' OR attributes_string['note'] LIKE '%SPU SP-DHA1-p1%')"`. Print ONE row in full first to learn which field holds the note. This part's bookmarks: `h20 start`, `h20 abandon`, `h20 a end`. Pad every window by 5 s before and 20 s after.
+3. Row timeline from the driver's `.bug` bookmarks: run `ch` (below) with `$where = "scope_name LIKE 'playtest.bookmark%' AND (body LIKE '%SPU SP-DHA1-p1%' OR attributes_string['note'] LIKE '%SPU SP-DHA1-p1%')"`. Print ONE row in full first to learn which field holds the note. This part's bookmarks: `h20 start`, `h20 a end` (no `h20 abandon`: leg 2 is not run). Pad every window by 5 s before and 20 s after.
 4. State, any time: `SELECT column_name FROM information_schema.columns WHERE table_name ILIKE '%mission%' AND table_schema='public'` to find the per-player mission table, then read the row for `$pid` and the mission id. Use it to confirm the step and status at the end of each leg.
 5. If neither ClickHouse nor `server_log_tail` returns the driver's `.bug` bookmarks, grade every row BLOCKED (no server evidence) and stop.
 
@@ -71,10 +71,10 @@ Shorthand: `$P` as above. Chains are in `db/resources/Content/Seed/`. Start: fix
 | Offer bound at load | `ch ... "$P AND body LIKE '%6301%'"` or `Content: adding dialog set` with dialog set 5149 | chain 6301 fired on the world-68 load; `add_dialog_set 5149` for slot 54 (Moh'katan) |
 | Accept | chain 6303: `accept_mission 1324`, `display_dialog 4358`, `remove_dialog_set 5149`, `add_dialog_set 5151` slot 42 | one pass at the first accept; mission 1324 `active` at step 3953 |
 | Click range | the driver's `RCLICK` `range` | at most 5.0 m, and no `interaction.out_of_range` WARN for the leg |
-| Abandon | chain 6308 `mission_abandoned '1324'`: removes 5151 and 120001, `add_dialog_set 5149` slot 54 | one pass; mission no longer active; the next Moh'katan click shows the offer again (client-read: dialog title) |
+| Abandon (leg 2) | BLOCKED-known: `/gmmissionclear` reaches the cell with an empty mission argument (issue SP-DHA1-p1-1), so leg 2 is not run; grade it `BLOCKED-known (SP-DHA1-p1-1)`, never FAIL, and do not file a new issue. Reference only: chain 6308 `mission_abandoned '1324'`: removes 5151 and 120001, `add_dialog_set 5149` slot 54 | one pass; mission no longer active; the next Moh'katan click shows the offer again (client-read: dialog title) |
 | No stray chain | WARN/ERROR in scopes `content` or `interaction` in the window | none |
 
-The abandon is sent as `/gmmissionclear 1324` (tier G, setup). Grade as the tail below. Known gap, not a finding: the 1324 level gate (level 6) is not in the chains; the fixture does not set a level. Chain 6302 is intentionally absent.
+The abandon is not sent (SP-DHA1-p1-1). The offer window for Moh'katan is a BlurbWin accepted with `Blurb_AcceptButton`; the follow-up 4358 is a DialogWin. Grade leg 1 on the server rows; the part is PARTIAL while leg 2 is BLOCKED-known. Known gap, not a finding: the 1324 level gate (level 6) is not in the chains; the fixture does not set a level. Chain 6302 is intentionally absent.
 Grade: PASS if every clause of the part's rows holds and the clicks were N1. FAIL if a chain does not fire for an in-range click, or the mission state contradicts. BLOCKED if the fixture could not be staged.
 Looker `H20-moh-offer`: 1. Is there a "?" or yellow icon over an NPC? 2. Is an NPC standing near the player? Looker `H20-offer-dialog`: 1. Is a dialog window open? 2. Is there an Accept button?
 

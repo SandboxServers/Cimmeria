@@ -68,7 +68,7 @@ Shorthand: `$P` as above. Chains are in `db/resources/Content/Seed/`. Start: fix
 
 | Check | Query | Expected |
 |---|---|---|
-| Re-accept | chain 6303 (the first action of leg 3) | step 3953 active |
+| Re-accept | chain 6303 (the first action of leg 3; the offer is a BlurbWin, accepted with `Blurb_AcceptButton`; a reused fixture character name is fine) | step 3953 active |
 | Ba'al | chain 6304 `interact_tag CmdCenter_Baal` at step 3953: `display_dialog 4363`, `advance_step 1324 3954`, remove 5151, add dsm 120001 slot 54 | one pass, step 3954 |
 | Turn in | chain 6305 `interact_tag CmdCenter_Mohkatan` at 3954: `display_dialog 4365`, remove 120001, `complete_mission 1324` | one pass; mission completed (mission table) |
 | Positions | `server_entity_query` or `server_entity_get` for template 54 and 42 in world 68 | Moh'katan at about (-5, 0.37, -8), Ba'al at about (2, 1.95, 88) (placements.md spawns 343 and 340) |

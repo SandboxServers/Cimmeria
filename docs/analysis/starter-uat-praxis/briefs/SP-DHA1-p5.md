@@ -4,7 +4,7 @@ BRIEF FIELDS (the coordinator filled the open ones in before pasting; this file 
 
 - PACKET: SP-DHA1-p5
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do S2, the resume probe, and skip what is already done)
-- INSTANCE: default   (the lab client you drive; account `lab`)
+- INSTANCE: <INSTANCE>   (any single lab client; the coordinator writes its name here; account `lab`)
 - SERVER: local server built from origin/main at e8973395f (D-SP2)
 - ROW: H40a   (this file runs only this row)
 - START LEG: 1   (the first leg to run; a successor sets it from the fixture table below)
@@ -15,7 +15,7 @@ BRIEF FIELDS (the coordinator filled the open ones in before pasting; this file 
 
 Area: this packet uses **Harset (world 57)** and the **Harset Command Center (world 68)**: the Command Center NPCs (Moh'katan, Ba'al, Marsh, Anat, Royal Guard), Hansen and Petbe's quarters in Harset. No other lane may be in these two worlds while you run (dispatch rule 4); if you see another player there, record it and go on.
 
-1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "default"` (a screenshot without it shows the wrong client).
+1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "<INSTANCE>"` (a screenshot without it shows the wrong client).
 2. **Never use `image: true`** on a screenshot. The tool saves a PNG and returns `image saved: <path>`. Report the path.
 3. **Chat commands are GM commands.** Your account is a GM. Lines starting with `.` are server commands; lines starting with `/` are game commands. Every CHATX batch starts with the DIALOG op, because a chat line under an open dialog orphans it.
 4. **Teleport only with `.gotolocation <World> x y z`** (TP and CROSS, below). World names: `Harset` and `Harset_CmdCenter`. Never `.gotoxyz`. Coordinates are server metres (x, y up, z). Never teleport onto a hostile NPC and never use `client_move_to` in a hub.
@@ -36,12 +36,20 @@ Area: this packet uses **Harset (world 57)** and the **Harset Command Center (wo
 19. **Fixtures set missions and items only.** A fixture has no level, cash or ability fields. This packet needs none of them.
 20. **Never write IPs, passwords or account names** anywhere in your report.
 21. **Nothing outside the call list.** Do not read a tool schema, do not use a tool this brief does not name, and do not run a step that is not in this file. Every argument you need is written out here.
+22. **Tool names and arguments.** The window-click tool is `client_window_click` with a `target` argument; `client_ui_click` is not in your tool set. Pass no `fields` argument to any tool unless this brief writes it out: invented field names are rejected and waste a call.
+23. **Offer windows differ per NPC; each step says which.** A BlurbWin offer (Moh'katan in p1 and p2): RCLICK, then `client_window_click {"lease_id":L,"target":"Blurb_AcceptButton"}`; the follow-up screens are a DialogWin that FINISH pages. A DialogWin offer (Marsh): `lab_finish_dialog {"lease_id":L,"accept":true}`. Click and target failures while a BlurbWin is open are swallowed by it: accept it first.
+24. **Choice buttons are not on page 1** (unless a step says so). Use CHOICE: page one at a time with `client_ui_sequence` `Dialog_NextButton` and click `Dialog_GenericButton1` (the non-Next button) when it appears; never close with Done before the last page.
+25. **You cannot read files.** The coordinator pastes this brief into your prompt, steps inline, and does not pass `fields` arguments.
+26. **Fixtures cannot be restaged while the character is online.** The coordinator logs out, stages, releases its lease, then you acquire yours. If the fixture looks stale, report BLOCKED; do not restage.
+27. **Abandon is BLOCKED-known.** `/gmmissionclear` does not work (issue SP-DHA1-p1-1); never send it. Mark abandon steps `BLOCKED-known (SP-DHA1-p1-1)`.
+28. **Marsh stand point is `-47 -0.59 -11`**, then `client_camera` with `face_point` at Marsh (-49.5, -0.59, -14) before RCLICK; the older point `-45.5 -0.59 -14` fails on_screen.
+29. **Mission 1360 cannot be staged** (issue SP-DL1-1); this packet does not need it, never try.
 
 ## 1. Fixed macros (use them verbatim)
 
-Macro costs (calls): L1 = 1; L2 = 1; WAIT17 = 1; CHATX = 1, whatever the number of lines; TP = 1; CROSS = 2; RELOG = 4; READ = 1; SHOT = 1; PROMPT = 1, plus 1 per button clicked; DIALOG = 0 as the first op of a batch the step already makes, otherwise 1; BUG = 0 inside a CHATX, otherwise 1; FIND = 1; RCLICK = 1; FINISH = 1; INV = 1. The step labels below list the real tool of every call; the label is the count.
+Macro costs (calls): L1 = 1; CHOICE = 1 per page; L2 = 1; WAIT17 = 1; CHATX = 1, whatever the number of lines; TP = 1; CROSS = 2; RELOG = 4; READ = 1; SHOT = 1; PROMPT = 1, plus 1 per button clicked; DIALOG = 0 as the first op of a batch the step already makes, otherwise 1; BUG = 0 inside a CHATX, otherwise 1; FIND = 1; RCLICK = 1; FINISH = 1; INV = 1. The step labels below list the real tool of every call; the label is the count.
 
-**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DHA1-p5","purpose":"starter UAT SP-DHA1-p5","instance":"default","ttl_s":900}` -> keep `lease_id` (call it L). If refused: `lab_lease_status {"instance":"default"}`. If the holder's owner is exactly `sp-SP-DHA1-p5` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: acquire again with the same arguments plus `"force":true,"reason":"resume sp-SP-DHA1-p5 attempt <ATTEMPT>"`. Any other holder: report it and stop.
+**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DHA1-p5","purpose":"starter UAT SP-DHA1-p5","instance":"<INSTANCE>","ttl_s":900}` -> keep `lease_id` (call it L). If refused: `lab_lease_status {"instance":"<INSTANCE>"}`. If the holder's owner is exactly `sp-SP-DHA1-p5` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: acquire again with the same arguments plus `"force":true,"reason":"resume sp-SP-DHA1-p5 attempt <ATTEMPT>"`. Any other holder: report it and stop.
 
 **L2 - in the world.** `lab_ensure_in_world {"lease_id":L,"character":"<CHARACTER>"}`. The character already exists (created by the coordinator); this plays it, which applies the staged fixture (first time only), and closes the intro dialog. Expected `in_world:true`, `character` = CHARACTER. If it fails, retry once, then report BLOCKED with the error text. If it succeeds but `world_id` is not the fixture world, record that and go on.
 
@@ -55,31 +63,31 @@ Macro costs (calls): L1 = 1; L2 = 1; WAIT17 = 1; CHATX = 1, whatever the number 
 
 **READ - chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","channel":"9","max":20}`; when a step says `contains <word>`, use `"contains":"<word>"` instead of the channel. Record every line verbatim with `channel`, `colour`, `tabs`, `seq`. From the second read on add `"since_seq": <LASTSEQ>`.
 
-**SHOT.** `lab_screenshot {"lease_id":L,"instance":"default"}`. Report the path with the LABEL the step gives.
+**SHOT.** `lab_screenshot {"lease_id":L,"instance":"<INSTANCE>"}`. Report the path with the LABEL the step gives.
 
 **DIALOG - close an orphan dialog.** It is the first op (`d0`) of every CHATX and WAIT17 batch, so a step that sends a CHATX closes any open dialog for free. A tutorial window on top: `client_window_click {"lease_id":L,"target":"TutorialWin__auto_closebutton__"}` (failure path: not in ESTIMATE).
 
 **PROMPT.** `client_window_read {"lease_id":L,"kind":"prompt"}`. If `state.prompts` is non-empty, read title and message and click the first enabled returned button using its `window` name (normally `Prompt1_SingleButton`); repeat until empty. Never guess a button name.
 
-**FIND <T>.** `client_entity_find {"lease_id":L,"template_id":<T>,"fields":["id","name","position","distance","rendered","targetable"]}`. Record the id, position and distance.
+**FIND <T>.** `client_entity_find {"lease_id":L,"template_id":<T>}` (no `fields` argument). Record the id, position and distance.
 
 **RCLICK <T>.** `client_world_click {"lease_id":L,"template_id":<T>,"button":"right","expect":"window"}`. This is a real click (N1). Record `range`, `native_level`, `evidence` and the window it reports. If it reports `out_of_range`, see gotcha 9.
 
 **INV.** `client_inventory {"lease_id":L,"fields":["containers"]}` with no container filter. Record every container name, and every item with its id, slot and count.
 
-**FINISH.** `lab_finish_dialog {"lease_id":L}` turns the pages and presses Done. For an offer (Accept, no Done) use `{"lease_id":L,"accept":true}` only where a step says so. Record title and pages. If the dialog has a choice button (a button that is neither Next, Done nor Accept), do not use FINISH: use CHOICE.
+**FINISH.** `lab_finish_dialog {"lease_id":L}` turns the pages and presses Done. Use it only on a DialogWin with no choice ahead, or for the last pages after a CHOICE. A DialogWin offer (Marsh) is accepted with `{"lease_id":L,"accept":true}` where a step says so. A BlurbWin offer (Moh'katan in p1 and p2) is NOT accepted by FINISH: click `client_window_click {"lease_id":L,"target":"Blurb_AcceptButton"}` (the tool is `client_window_click` with `target`; `client_ui_click` is not in your tool set). Record title and pages. Never close a dialog with Done before its last page: if a step says CHOICE, use CHOICE, not FINISH.
 
-**CHOICE <button text>.** (2 calls) `client_ui_state {"lease_id":L}` and record the window and button names it returns. Then `client_ui_sequence {"lease_id":L,"actions":[{"do":"click","window":"<name>"}]}` (argument `actions`: `crates/lab/src/server/composite.rs:76`), where `<name>` is the name `client_ui_state` returned for the button whose text matches. Never guess a name. A step that says CHOICE then FINISH runs FINISH after the click for the remaining pages.
+**CHOICE <button text>.** (1 call per page, no `client_ui_state` per page) Dialog choice buttons are NOT on page 1 unless the step says so. Go one page at a time: `client_ui_sequence {"lease_id":L,"actions":[{"do":"click","window":"Dialog_NextButton"}]}`. After each call look at the result: when a non-Next, non-Done button is offered (normally `Dialog_GenericButton1`), click it the same way: `{"do":"click","window":"Dialog_GenericButton1"}`. Never close with Done before the last page. Record the page number the choice appeared on and its button text. The click may report posted_only or inconclusive: expected, the server chain row is the proof, do not retry it. Then FINISH for any remaining pages. If 8 pages pass with no choice button, record that and FINISH.
 
 **BUG - a timeline bookmark.** A step that says `BUG <text>` is the CHATX line `.bug SPU SP-DHA1-p5 <text>`. The verifier reads these on the server to find your timing. They are not optional.
 
-**ABANDON <id> - abandon a mission.** CHATX line `/gmmissionclear <id>` (tier G; `docs/commands.md:371`; the console path fires the mission-abandoned event, `crates/cell-console/src/cell/console/gm/missions.rs:213`), then READ with `contains abandon` and record the reply. If the reply says the mission is not active on you, record it. Only when 8 or more calls remain, try the journal route instead (ToggleJournal key J, then L; `client_ui_state`, click the mission, click Abandon) and report tier N1 for it.
+**ABANDON <id> - abandon a mission. BLOCKED-known.** `/gmmissionclear <id>` reaches the cell with an empty mission argument (issue SP-DHA1-p1-1), so no abandon route works and the J key opens no journal. Do NOT send `/gmmissionclear` and do not try the journal. A step that says ABANDON is marked `BLOCKED-known (SP-DHA1-p1-1)` in the report and skipped, no calls spent.
 
 ---
 
 # SP-DHA1-p5: Harset mission 1200, part 1 (arrival accept, abandon, re-entry)
 
-ROWS: H40a. ESTIMATE: 17 tool calls (planned success path; hard stop 28). Seed facts the verifier checks (you do not need them): chains 6121-6127 for mission 1200. This part is legs 1 and 2 of row H40; SP-DHA1-p6 runs legs 3 and 4 on a fresh fixture. The optional Ba'al objective (dialog 5436) is dropped from this packet.
+ROWS: H40a. ESTIMATE: 6 tool calls (planned success path; hard stop 28). Seed facts the verifier checks (you do not need them): chains 6121-6127 for mission 1200. This part is legs 1 and 2 of row H40; SP-DHA1-p6 runs legs 3 and 4 on a fresh fixture. The optional Ba'al objective (dialog 5436) is dropped from this packet.
 
 | NPC | template_id | Position (x, y, z) | Stand point (x, y, z) |
 |---|---|---|---|
@@ -97,8 +105,8 @@ CHARACTER `Uat Fxdhagoauld` (Praxis Goauld). Fixture: world `Harset`, position `
 **S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, then L2, then WAIT17. Record the character, world_id and position. Compare with the fixture world and position below. If `world_id` is not the fixture world, record it and go on.
 **S2 (1 call: client_inventory) - resume probe (ATTEMPT 2 or 3 only).** INV with no container filter; record every item id with its container and count. The coordinator has already set START LEG; skip the legs before it.
 
-**40.1 (3 calls: client_batch, client_chat_log, lab_screenshot) (leg 1).** CHATX with BUG `h40 start`. READ `{"cursor":"h40a","channel":"9","max":20}` (the accept notice). SHOT label `H40-arrival`. Record the chat lines verbatim.
-**40.2 (9 calls: client_batch, client_batch, client_batch, client_chat_log, client_batch, client_batch, client_chat_log, lab_screenshot, client_batch) (leg 2).** CROSS `Harset_CmdCenter 58.5 1.75 73.1`. ABANDON 1200 (a CHATX with BUG `h40 abandon` and the line `/gmmissionclear 1200`, then READ `contains abandon`). CROSS `Harset -0.08 -67.27 38.01`. READ `{"cursor":"h40b","channel":"9","max":20}`: record whether a new accept notice appeared. The policy for an abandoned 1200 is open: record what happened, do not judge it. SHOT label `H40-after-reenter`. Last, a CHATX with BUG `h40 a end`.
+**40.1 (2 calls: client_batch, lab_screenshot) (leg 1).** CHATX with BUG `h40 start`. SHOT label `H40-arrival`. The accept notice is not a chat line on channel 9: do not READ chat for it; the verifier grades on the server rows. Record what the screenshot shows.
+**40.2 (1 call: client_batch) (leg 2).** BLOCKED-known (SP-DHA1-p1-1): the abandon (`/gmmissionclear 1200`) cannot run, so the re-entry policy stays untested. Do not send it. Report leg 2 as `BLOCKED-known (SP-DHA1-p1-1)`. Only send a CHATX with BUG `h40 a end`.
 
 **S9 (1 call: lab_lease_release).** Release the lease and write the report.
 

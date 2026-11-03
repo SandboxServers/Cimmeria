@@ -74,6 +74,8 @@ Shorthand: `$P` as above. Chains are in `db/resources/Content/Seed/`. Start: fix
 
 Also check: (a) **enablement tied to 6007**: the 6511 offer exists for a non-Jaffa, non-Goa'uld Praxis character in world 68 with 1360 not at 4038 and 1664 not at 5226 (the fixture); the chain conditions are `archetype neq 8`, `neq 6`; (b) **disjointness from 1360**: this character has 1360 `not_active`, so check only that chain 6501/6502 did NOT fire for it (`ch ... "$P AND (body LIKE '%6501%' OR body LIKE '%6502%')"` returns nothing) and say the 4038 half is graded by SP-DHA2-p1 to SP-DHA2-p4. Step 6517 is intentionally absent.
 
+Marsh's offer is a DialogWin (accept via `lab_finish_dialog accept:true`); the stand point is `-47 -0.59 -11` with `client_camera` facing Marsh. The leg 3 choice ("Convince Hansen") is on page 1; a driver that closes with Done before clicking it leaves 6518 unfired, which is a driver miss (report, not a product FAIL).
+
 Grade: PASS if every leg the driver ran shows its chain and the step in the mission table; PARTIAL if some legs are NOT-RUN (budget) but every run leg held; FAIL on a missing chain pass or a wrong step. NEEDS_HUMAN: the icon over Marsh (listed, not graded).
 Looker `H31-marsh-offer`: 1. Is there a "?" icon over an NPC? 2. Is the player close to an NPC? Looker `H31-offer-dialog`: 1. Is a dialog window open? 2. Is there an Accept button?
 

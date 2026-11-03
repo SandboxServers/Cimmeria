@@ -72,7 +72,7 @@ Shorthand: `$P` as above. Chains are in `db/resources/Content/Seed/`. Start: fix
 | Royal Guard | chain 6122 `dialog_choice 4452` at 3584: removes dsm 4817 slot 209, `advance_step 1200 3585`, adds dsm 4751 slot 43 and 6360 slot 42 |
 | Anat | chain 6123 `dialog_choice 5435` at 3585: removes 4751 and 6360, `complete_mission 1200` |
 
-The Royal Guard (template 209, spawn 341) and the Anat spawn (222) must be present in world 68 (`server_entity_query`). Chain 6124 (optional Ba'al objective) is NOT-RUN. Grade as H31a. Looker `H40-guard`: 1. Is a dialog window visible? 2. Is an armoured NPC visible? Looker `H40-complete`: 1. Is a dialog window closed? 2. Is any mission notice visible?
+The Royal Guard (template 209, spawn 341) and the Anat spawn (222) must be present in world 68 (`server_entity_query`). Chain 6124 (optional Ba'al objective) is NOT-RUN. The Royal Guard choice (4452) appears only after paging (page 5) and the Anat choice (5435) on page 2; choice clicks report posted_only or inconclusive, the chain rows 6122 and 6123 are the proof. The driver call cap is 36; if FINISH, the `h40 end` bookmark or the `H40-complete` shot is missing, record that as a driver-budget miss. Grade as H31a. Looker `H40-guard`: 1. Is a dialog window visible? 2. Is an armoured NPC visible? Looker `H40-complete`: 1. Is a dialog window closed? 2. Is any mission notice visible?
 
 
 ---

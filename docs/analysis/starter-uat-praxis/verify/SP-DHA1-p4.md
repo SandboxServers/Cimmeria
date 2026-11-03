@@ -76,6 +76,8 @@ Shorthand: `$P` as above. Chains are in `db/resources/Content/Seed/`. Start: fix
 
 Also check: the 57-to-68 return crossing of the old leg 4 is not exercised here; the restore bind 6519 stands in for it. If Moh'katan opened no dialog and 6519 did not fire, grade leg 4 BLOCKED (not FAIL) and say so. Restore binds 6514, 6521, 6523 and 6526 are only checked if the driver relogged, which this packet does not: list them under NOT RUN. Steps 6517 and 6524 are intentionally absent.
 
+Marsh's stand point is `-47 -0.59 -11` plus `client_camera` facing Marsh (the old `-45.5 -0.59 -14` fails on_screen). The Anat choice (leg 6) is not on page 1: a driver that closes without clicking it leaves 6525 unfired, which is a driver miss (report, not a product FAIL). Choice clicks report posted_only or inconclusive; the chain row is the proof.
+
 Grade as H31a. NEEDS_HUMAN: none required.
 Looker `H31-complete`: 1. Is any mission-complete text or window visible? 2. Is an NPC visible?
 

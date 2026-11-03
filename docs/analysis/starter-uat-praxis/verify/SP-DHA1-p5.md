@@ -69,7 +69,9 @@ Shorthand: `$P` as above. Chains are in `db/resources/Content/Seed/`. Start: fix
 | Check | Expected |
 |---|---|
 | Arrival accept | chain 6121 `player_loaded 'Harset'` for archetype 6 with 1200 `not_active`: `accept_mission 1200`; mission table shows 1200 active at step 3584 |
-| Abandon and re-entry (policy open) | after the driver's abandon (`/gmmissionclear 1200`, tier G), `Mission abandoned` for 1200 and, on re-entering world 57, whether chain 6121 fired again. **Record both outcomes; either is PASS for this clause** (the re-accept policy is an open decision). Say which happened. |
+| Abandon and re-entry (policy open) | BLOCKED-known: `/gmmissionclear` reaches the cell with an empty mission argument (issue SP-DHA1-p1-1), so leg 2 is not run; grade it `BLOCKED-known (SP-DHA1-p1-1)`, never FAIL, no new issue; the re-accept policy stays untested. Reference only, if it ever runs: after the driver's abandon (`/gmmissionclear 1200`, tier G), `Mission abandoned` for 1200 and, on re-entering world 57, whether chain 6121 fired again. **Record both outcomes; either is PASS for this clause** (the re-accept policy is an open decision). Say which happened. |
+
+The accept notice is not a chat line: grade the arrival accept on the server rows (chain 6121, mission table), not on chat. Bookmarks: `h40 start`, `h40 a end` (no `h40 abandon`).
 
 Chain 6124 (the optional Ba'al objective, dialog 5436) is dropped from this packet: record it as NOT-RUN. Grade as H31a. Looker `H40-arrival`: 1. Is any mission notice or text visible? 2. Is the player outdoors in a stone city?
 
