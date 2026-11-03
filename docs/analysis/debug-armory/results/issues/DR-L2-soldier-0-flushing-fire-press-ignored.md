@@ -9,7 +9,7 @@ Expected: `@use_ability place` puts ability 1475 on the bar, the press on key `0
 
 Observed: the setup `place` call (action 9) placed the ability on button 10 (key `0`), then the press returned `denied: ignored: The game read the input but nothing changed` (`ability_sent 0`, `verdict nothing_observed`). The preceding `select-slot1` F1 key and both window clicks were `posted_only`. SigNoz scope `abilities`, `player_name CONTAINS 'Cgbqjljvxcsrgh'`, 19:35:54Z to 19:36:08Z: no `use_ability_recv` for 1475, no refusal. The previous row (1446) ended 19:35:34 and the next (1445) pressed fine at 19:36:11.
 
-Repro: `lab_uat_run {sections: ["armory-abilities-soldier-0"], rows: ["Soldier-00", "Soldier-1475"], specs_dir: "C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\dr-lab\docs\guides\uat-specs"}`. Re-run alone first: it may be a one-off (UI focus), in which case close this.
+Repro (first run, historical): `lab_uat_run {sections: ["armory-abilities-soldier-0"], rows: ["Soldier-00", "Soldier-1475"], specs_dir: "docs/guides/uat-specs"}`. The rerun passes it, so this note is closed.
 
 Area: unknown (lab tool or the row's select-slot / place steps).
 Labels: lab (see docs/agents/).

@@ -157,6 +157,30 @@ async fn a_failed_ground_click_is_a_named_flow_failure() {
     assert!(e.message.contains("off screen"), "{}", e.message);
 }
 
+#[tokio::test]
+async fn bad_ground_args_fail_before_the_press() {
+    let seen = Arc::new(Mutex::new(Seen::default()));
+    let sup = fake_bridge::supervisor(ground_fake(seen.clone())).await;
+    let bad = GroundArg {
+        distance_m: Some(99.0),
+        ..GroundArg::default()
+    };
+    let e = sup
+        .use_ability_flow_with(req(Some(bad)), |_| async {
+            panic!("no click for bad args");
+            #[allow(unreachable_code)]
+            Ok(json!({}))
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(e.step, "ground_args");
+    assert!(e.message.contains("distance_m"), "{}", e.message);
+    assert!(
+        !seen.lock().unwrap().pressed,
+        "nothing is pressed for bad args"
+    );
+}
+
 #[test]
 fn ground_args_are_validated_before_any_press() {
     assert!(GroundArg::default().validate().is_ok());

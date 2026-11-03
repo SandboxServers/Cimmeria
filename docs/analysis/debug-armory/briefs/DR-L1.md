@@ -114,7 +114,7 @@ ATTEMPT 1 runs L1-1 and L1-2 vendors 0 to 3; ATTEMPT 2 runs L1-2 from FIRST_VEND
 ### ROW L1-1 - the line of vendors
 
 **L1-1.1 (1 call).** DIALOG, then CHATX: BUG `L1-1 start`, STAGE `.gotolocation DebugArea 258.0 7.09 -922.0`, wait 4000 ms, UTC. (That is 10 m west of the middle of the line, looking east.)
-**L1-1.2 (1 call).** `client_camera {"lease_id":L,"face_point":{"x":268.0,"y":7.1,"z":-922.0},"zoom_to":400}` (face a point: the vendors are not one entity; if the schema rejects `face_point`, use the id from `client_entity_find` of "Armory 2" with `face_entity_id`).
+**L1-1.2 (1 call).** `client_camera {"lease_id":L,"face_point":{"x":268.0,"y":7.1,"z":-922.0},"zoom_to":400}` (face a point: the vendors are not one entity; if the schema rejects `face_point`, use the id from `client_entity_find` with `template_id` 1612 (Armory 2) with `face_entity_id`).
 **L1-1.3 (1 call).** SHOT, label `L1-1-vendor-line`. Report the path. The human question for the looker (the verifier asks it, you do not): "a line of vendors east of the plaza vendors, none inside a wall".
 **L1-1.4 (1 call).** `client_entity_find {"lease_id":L,"template_id":<1610 + N>,"fields":["matches"]}` once for each template_id 1610 to 1616 (use `client_batch` if the tool allows). Record every match: name (it reads "Consumables"), id, `distance_m`. Expected: one match per template_id.
 
