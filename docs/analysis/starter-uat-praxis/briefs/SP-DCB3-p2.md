@@ -114,9 +114,9 @@ CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U10a.7 (2 calls: client_target, client_batch).** INTERACT Prisoner 329 (`rotate_camera` true is part of the macro). Agree topic (dialog 2299 Tau'ri, 5020 Jaffa).
 
-**CB-U10a.8 (1 call: lab_finish_dialog).** ACCEPT the open dialog topic. Mission 638 completes and 639 is accepted. Record the tracker text in your notes.
+**CB-U10a.8 (1 call: lab_finish_dialog).** ACCEPT the open dialog topic. Mission 638 completes and 639 is accepted. The lab_finish_dialog chain can also fire the 62050 accept (chain 11003) and dialog 60150 here, before the .9 click (re-drive: 62050 accepted before the logged .9 interact). Record the UTC of .8 and .9 and the tracker text in your notes.
 
-**CB-U10a.9 (2 calls: client_target, client_batch).** INTERACT Prisoner 329 (the third click). This click triggers mission 62050 (The Remaining Pods): the offer is accepted and dialog 60150 is shown once. It is not a "first offer" of 639.
+**CB-U10a.9 (2 calls: client_target, client_batch).** INTERACT Prisoner 329 (the third click). Mission 62050 (The Remaining Pods) is accepted and dialog 60150 is shown once, by this click or already by the .8 ACCEPT chain; the verifier grades "once" over the whole window. It is not a "first offer" of 639. The door button runs at N3, so the best grade for the row is NATIVE_SHORTFALL.
 
 **CB-U10a.10 (1 call: client_window_read).** DLG (read the dialog window). Dialog 60150. Record the text verbatim, including any parser error text: the 'Prisoner 329' sentence renders as a client syntax error (known finding, issue SP-DCB3-p2-1). Claim NEEDS_HUMAN for the text, not FAIL.
 

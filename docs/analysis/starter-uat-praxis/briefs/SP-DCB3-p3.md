@@ -82,11 +82,11 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 # SP-DCB3-p3
 
-Start: carry-over from SP-DCB3-p2. Same character `Dcbdh`, same state: 638 done, 639 at step 2145 (the vial step), 62050 accepted. This part covers the repeat click, the relog, the vial (tier G route) and the ring switch only. If SP-DCB3-p2 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
+Start: carry-over from SP-DCB3-p2. Same character `Dcbdh`, same state: 638 done, 639 at step 2117 (not 2145: 2117 to 2145 is a region trigger that this part does not drive; step .6 advances 639 to the vial step 2343), 62050 accepted. This part covers the repeat click, the relog, the vial (tier G route) and the ring switch only. If SP-DCB3-p2 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
 
 ROWS: CB-U10b.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
-ESTIMATE: 22 tool calls (planned success path; hard stop 28)
+ESTIMATE: 25 tool calls (planned success path; hard stop 28)
 CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same character as SP-DCB3-p2.
 
 ## Steps
@@ -98,7 +98,7 @@ CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same
 
 ### ROW CB-U10b
 
-**CB-U10b.1 (2 calls: client_target, client_batch).** INTERACT Prisoner 329. Repeat click. The offer is already consumed, so "does it re-offer" is a server check (no second accept, no second dialog), not a click result.
+**CB-U10b.1 (3 calls: client_entity_find, client_target, client_batch).** FIND first (`max_distance_m` 6; pick Prisoner 329 within 1.5 m of (-289.81, 65.47, -113.14); if it is not listed, GOTO `-287 65.5 -113` and FIND again), then INTERACT it with that id. Never reuse an entity id from an earlier run or from verify-click-recipe.md: ids change per session (102307 in that file is stale; the re-drive found 103140). Repeat click. The offer is already consumed, so "does it re-offer" is a server check (no second accept, no second dialog), not a click result.
 
 **CB-U10b.2 (1 call: client_window_read).** DLG (read the dialog window). Does it re-offer?
 
@@ -110,7 +110,7 @@ CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U10b.6 (1 call: client_batch).** Tier G, replaces the vial click (the small prop cannot be hovered or targeted by the lab: issue SP-DCB3-p3-1). CHATX with these lines in order: `/gmgiveitem 19 1` (the Ambernol vial; a mission-only item is routed to the Mission bag), then `/gmmissionadvance 639 2343` (puts 639 on the use-vial step). Label the vial row tier G.
 
-**CB-U10b.7 (1 call: client_inventory).** INV with the `Mission` container added. Record the item name and id; item id 19 must be present. Use that exact name in .8.
+**CB-U10b.7 (1 call: client_inventory).** INV with the `Mission` container added. Record the item name and id. Item 19 is the item TYPE id; the client instance id differs (re-drive: 10599), so match by the name INV shows. Use that exact name in .8.
 
 **CB-U10b.8 (1 call: client_item_action).** USE the vial from the Mission inventory: `client_item_action {"lease_id":L,"action":"use","name":"<name INV showed for id 19>"}` (inferred name: Ambernol vial). Chain 1034 fires: 639 completes, 640 is accepted and the rings switch gets its Livewire bit. Tier G (the vial arrived by GM).
 
@@ -120,11 +120,15 @@ CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U10b.11 (1 call: client_entity_find).** FIND, `max_distance_m` 6. Pick the rings switch by position (within 1.5 m of (-218.08, 67.04, -122.72)).
 
-**CB-U10b.12 (2 calls: client_target, client_batch).** INTERACT the rings switch (spawn 23). Small props have not been hoverable in earlier drives, and no GM command fires the switch's interact or the ring transport that completes 640 (`/gmgotoxyz` does not raise `teleport_in`), so this step has no substitute. Make the one attempt; if the server shows no `interact` for it, record the claim `BLOCKED (harness)` (NATIVE_SHORTFALL class) with this reason and retry only once, unchanged.
+**CB-U10b.12 (2 calls: client_target, client_batch).** INTERACT the rings switch (spawn 23). The re-drive reached the Livewire this way at N3 (StartMinigame, win, 640 advanced to step 2215); a native right click on a small prop still does not hover. Make the one attempt; if the server shows no `interact` for it, record the claim `BLOCKED (harness)` (NATIVE_SHORTFALL class) with this reason and retry only once, unchanged.
 
 **CB-U10b.13 (1 call: client_minigame_play).** MG (play the open Livewire once; `entity_id` = your own id from the last FIND). Only if .12 opened a Livewire; otherwise NOT-RUN ('no Livewire opened'). If 640 does not complete in this part, SP-DCB3-p4 records its 62050 clause as C5-BLOCKED.
 
-**CB-U10b.14 (1 call: client_batch).** Bookmark: one batch with only the DIALOG op and the end line, nothing else. Also add the line `.bug SPU SP-DCB3-p3 CB-U10b end` as the last line of this step's `client_batch`.
+**CB-U10b.14 (1 call: client_batch).** Tier G, INFERRED. After the ring Livewire has advanced 640 to step 2215, GOTO `-265 65.45 -135` (the Region2 entry point that SP-DCB3-p1 uses to accept 638). Chain 1044 completes 640 on `teleport_in` region 2, and chain 11005 in SP-DCB3-p4 needs 640 completed. No GM command fires the ring transporter, so a teleport into the region is the substitute; it is not proven that `.gotolocation` raises `teleport_in` (an earlier note says `/gmgotoxyz` does not). Skip if .12 and .13 did not advance 640 to 2215. Record the position.
+
+**CB-U10b.15 (1 call: client_ui_state).** UIS (read `client_ui_state`). Record whether 640 is gone from the tracker (completed) and whether 641 is listed.
+
+**CB-U10b.16 (1 call: client_batch).** Bookmark: one batch with only the DIALOG op and the end line, nothing else. Also add the line `.bug SPU SP-DCB3-p3 CB-U10b end` as the last line of this step's `client_batch`.
 
 
 ---

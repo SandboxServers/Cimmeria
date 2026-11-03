@@ -59,9 +59,9 @@ Sub-row scope: the 638 flow and the first 62050 offer. Repeat click and relog ar
 | Precondition | `accepting mission` 638 on the Region2 entry (SP-DCB3-p1), mission table step 2114 | present; 638 is not accepted by a Prisoner click |
 | Catalog | startup `cooked_data.mission_catalog_inserted` with `mission_id` 62050 (grep the startup server.log if the SigNoz window is too short); no `cooked_data.mission_catalog_rejected` | present / absent |
 | 638 flow | 638 advances and completes after the door Livewire and the Prisoner agree topic; `accepting mission` 639 | yes |
-| Third click, offer | the third Prisoner click: `adding dialog set` for 329, `accepting mission` 62050 once, `displaying dialog` 60150 once | one each |
+| Third click, offer | `adding dialog set` for 329, `accepting mission` 62050 once, `displaying dialog` 60150 once, in the .8 to .9 window (the .8 ACCEPT chain can fire them before the .9 interact; do not fail on that order) | one each |
 
-Grade: blockers (client crash, no first-press response, lost progress, changed core briefing) make the row FAIL. Dialog 60150 renders as a client parser syntax error on the 'Prisoner 329' sentence: that is a known finding (issue SP-DCB3-p2-1), so grade the text NEEDS_HUMAN `H-CB-U10-1` and do not FAIL the row for it unless the server shows the dialog displayed with no text. If the packet tap ran, record the cooked-sync heads `(3, 62050)` and `(5, 60150)`. Looker: 1. Is a dialog box with text visible? 2. Is a journal entry titled "The Remaining Pods" visible?
+Grade: the door button and Livewire run at N3 (the native door-button click is a known harness gap), so a row whose server clauses all hold is NATIVE_SHORTFALL, not PASS. Blockers (client crash, no first-press response, lost progress, changed core briefing) make the row FAIL. Dialog 60150 renders as a client parser syntax error on the 'Prisoner 329' sentence: that is a known finding (issue SP-DCB3-p2-1), so grade the text NEEDS_HUMAN `H-CB-U10-1` and do not FAIL the row for it unless the server shows the dialog displayed with no text. If the packet tap ran, record the cooked-sync heads `(3, 62050)` and `(5, 60150)`. Looker: 1. Is a dialog box with text visible? 2. Is a journal entry titled "The Remaining Pods" visible?
 
 ---
 

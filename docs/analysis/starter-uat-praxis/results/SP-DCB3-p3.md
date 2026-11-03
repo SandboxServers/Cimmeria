@@ -1,31 +1,29 @@
-PACKET SP-DCB3-p3 VERIFIED 2026-11-03 ~10:50Z by Sonnet; driver attempts: 2 (combined grade); server evidence window 10:29:18Z-10:38:16Z (SigNoz, service cimmeria-server, lab_run dr-lab, plus lab-server DB)
-
-Attempt-1 note (window 10:29-10:34Z): rows .1-.7 driven (Prisoner target + `/interact`, relog, journal key, GOTO, FIND); vial and rings clicks timed out at `read_mouse_over`; no SHOTs. Attempt 2 (window 10:35-10:38Z) resumed at .8 and repeated only the vial, rings and MG steps. Attempt-1 detail is summarised in the combined table below.
+PACKET SP-DCB3-p3 VERIFIED 2026-11-03 by Sonnet; driver attempts: 1; grade NATIVE_SHORTFALL
+Re-drive with repaired briefs (runner-DCB3-b, local lab, character Dcbdh). Grades are the verifier grades per part; the runner report does not itemise server timestamps, so rows without a time say so.
 
 | Row | Result | Tier | Server evidence (time, scope, event, key fields) | Client evidence | Looker | Notes |
 |---|---|---|---|---|---|---|
-| CB-U10b (sub-row: repeat click, relog, journal, vial, rings) | PARTIAL; vial and rings clicks BLOCKED (harness) | N1 (Prisoner target, attempt 1) / G (`/interact`) | Bookmarks: `start` 10:29:23Z (entity 58), `end` 10:33:23Z (entity 59, attempt 1), and a second `end` 10:37:56Z (entity 59, attempt 2). Player 102. Attempt 2 end snapshot: 62050 status 1 step 62054 (objective 62052 done), 638 status 2, **639 still at step 2145** (obj 2458 done, 2483 open), 689 status 2, `offered_dialog_ids []`. DB `sgw_mission` agrees. Window 10:35-10:38Z: only server rows are `interact` + `interact: target entity not found` (entity 59, target_entity_id 0) at 10:36:43Z (the `/interact` with no target set); no `interact_tag` fire, no `granting item`, no `advancing step`, no `add_item`, no WARN/ERROR. Both vial and rings right-clicks sent nothing to the server. Attempt 1 (10:29-10:33Z): no second `accepting mission`, no `displaying dialog` 60150, no `adding dialog set` for 329; relog restored only chains 1006/11031 dialog sets; 62050 retained at step B. | Driver: vial 102998 and switch 103005 both in interact range (3.85 m, 3.16 m) but `mouse_over_after 0`, `target_after 0`; `client_target` fallback also failed; `client_minigame_play`: "MinigameWin did not become visible". | none (no SHOTs) | Held: Repeat click (no second accept/dialog), Relog (step B retained, no new offer). Blocked/unreached: vial pickup (.8, .9), rings switch (.12), Livewire (.13): all BLOCKED (harness): the lab's synthetic hover/click cannot pick the vial or the Ring Transport Controls switch, and the server never saw the interaction, so there is no product verdict (the owner confirms the path works for a human player). Journal (.4) UI-only, UNVERIFIED. Catalog `mission_catalog_inserted` 62050 UNVERIFIED (outside SigNoz window). .1-.7, .10, .11, .14 steps executed. |
+| CB-U10b repeat click | PASS | N3 | no second `accepting mission` 62050 and no second `displaying dialog` 60150 | n/a | n/a | |
+| CB-U10b relog | PASS | n/a | 62050 step retained, no new offer | n/a | n/a | |
+| CB-U10b vial (tier G) | PASS | G | `/gmgiveitem 19 1` then `/gmmissionadvance 639 2343`, then the item use: chain 1034 completes 639 and accepts 640 | n/a | n/a | Tier G route; the native vial click is not drivable (issue SP-DCB3-p3-1) |
+| CB-U10b ring switch | NATIVE_SHORTFALL | N3 | switch interact fell back to N3: StartMinigame, Livewire win, 640 advanced to step 2215 | `client_minigame_play` read `server_unreachable` on the win; the server recorded the victory | n/a | The harness shortfall was expected to block, but the INTERACT recipe worked at N3 |
+| CB-U10b 640 completes | NOT-RUN | n/a | 640 not completed: chain 1044 (`teleport_in` region 2) not driven | n/a | n/a | The brief now adds a G-tier GOTO into Region2 (.14, INFERRED: not proven that `.gotolocation` raises `teleport_in`) |
 
-Per-step grade (combined): .1-.3 PASS-server-side (repeat click, relog); .4 UNVERIFIED; .5 not gradable; .6/.7 GOTO + FIND OK (vial 102998 within 3.7 m, switch 103005 at 3.16 m; server teleport + Region11/Region14 events present); .8 BLOCKED (harness) (N1 click does not reach the server); .9 NOT-RUN (brief defect, below); .10/.11 PASS (N3 GOTO, N1 FIND); .12 BLOCKED (harness); .13 BLOCKED (see reachability); .14 PASS (second `end` bookmark 10:37:56Z).
+Row grade: CB-U10b NATIVE_SHORTFALL. Repeat click, relog and vial held; the ring switch ran at N3; 640 stayed at step 2215.
 
-REACHABILITY (server states are reachable; only the client route is not):
-- 639 step 2145 is active and persisted (DB `current_step_id 2145`), so vial interaction is available. Chain 1032 "639 - Interact vial: pick up ambernol, trigger guard" (trigger `interact_tag` `ArmYourself_AmbernolVial`): `add_item` item **19** qty 1 (not 2893), `destroy_entity`, `set_aggression`, `generate_threat`, `display_dialog` 2297, `play_sequence` 10001, `advance_step` 639. Chain 1036 restores the interact bit (mask 0x40000000) on `player_loaded`, so it survives relog. Chain 1034 (item 19 `item_use`) completes 639 and accepts 640.
-- Ring switch (`HackTheRings_Switch`) only does anything for mission 640: chain 1041 starts the Livewire, 1042 advances to 2215, 1043 (post-hack) triggers the transporter, 1044 completes 640 on teleport_in region 2. With 639 at step 2145 and 640 not accepted, there is no chain for the switch; a right click on it, even if it landed, would do nothing. So .12/.13 are blocked behind the vial pickup, not independent.
-- `Preparation_RingSwitch` (chain 1071) belongs to mission 680, not this area.
-
-GM-ROUTE DEVIATION (would need; record as deviation, never a pass): the console list (lab-server `server_console_list`, entity 59) has no command that fires an `interact_tag`, grants an item or advances a mission step (found only `.interactiontype`, `.missionfail`, `.missionrewards` and an available_interactions editor). A deviation therefore needs one of: (a) an item grant of item 19 plus a step/mission advance that exists as a console command (none found), (b) a new GM command or test hook to fire an interact tag on an entity (e.g. `.interact <entity>`), which is a product/tooling change needing a maintainer decision, or (c) a fixture via `server_stage_fixture` (only offline fixture characters). Without one of these the lane cannot reach 640. Even then it is G tier, not a PASS for CB-U10b.8.
-
-SIGN-OFF SHEET (NEEDS_HUMAN): none (no SHOTs).
+SIGN-OFF SHEET (NEEDS_HUMAN): none (the minigame images are not graded; see SP-DCB3-p1).
 
 FINDINGS:
-1. Small-prop right-click untargetable by hover (vial 102998, rings switch 103005; earlier SP-DCB1-p7/p8, SP-DCB2). Class (c) harness/lab gap (BLOCKED (harness), not a product defect or owner decision), already documented in verify-click-recipe.md as unsolved, not a product bug. Two attempts here, including the "move aside, face north" recipe, did not fix it: probe reports `AttackDirectionQuartersWin` (known pass-through false positive), 0 of 8 jitter hits, `avatar_px` 9. Issue body written for the coordinator to decide: results/issues/SP-DCB3-p3-1.md (harness issue). No product/doc bug found.
+(none new) The native-hover gap on small props (vial, ring switch) stays as the harness issue in docs/analysis/starter-uat-praxis/results/issues/SP-DCB3-p3-1.md.
 
-NOT RUN / BLOCKED (case c, brief defects with step ids):
-- CB-U10b.1: brief gives only RCLICK; proven route is `client_camera` reset, `client_target {allow_fallback:true, rotate_camera:false}`, `/interact` (verify-click-recipe.md). 329's offer is already consumed, so "does it re-offer" is a server check, not a click.
-- CB-U10b.4: JOURNAL `j` is `posted_only`; no state read and no SHOT; journal title "The Remaining Pods" is not checked. Add `client_ui_state`/`client_window_read` plus a SHOT.
-- CB-U10b.8: RCLICK on a small prop cannot work with `client_world_click` (see finding 1); brief should say `Known unsolved: use GM-route deviation`.
-- CB-U10b.9: `loot_all` is wrong for a world prop (no loot window). Also the brief names item 2893 Health Slappack; chain 1032 grants **item 19**. Fix the expected item.
-- CB-U10b.12/.13: the ring switch is the mission 640 Livewire, available only after the vial is picked up and ambernol (item 19) is used (chain 1034 accepts 640). The brief orders these steps without that dependency, and `client_minigame_play` has no Livewire to play before 640 step 2120. Remove .12/.13 from this packet or move them behind a 640 fixture.
-- Catalog clause (`mission_catalog_inserted` 62050) cannot be checked from SigNoz 12 h window; ask the coordinator to grep the startup log.
+NOT RUN / BLOCKED:
+- 640 completion (chain 1044). SP-DCB3-p4 therefore records the "62050 completes" clause as C5-BLOCKED.
 
-RESUME HINT: do not send a third driver at .8/.12. If the lane must go on, pick a GM route first (a console command or fixture that fires `ArmYourself_AmbernolVial` interact or grants item 19 and advances 639) and mark the rows as deviation. Otherwise grade CB-U10b PARTIAL as above and move to the next packet. Do not repeat .1-.7, .10, .11.
+BRIEF DEFECTS (fixed in this change):
+- .1: the recipe entity id (102307) is stale; the brief now FINDs Prisoner 329 first (the re-drive found 103140).
+- Start state is 639 at step 2117, not 2145. The `/gmmissionadvance 639 2343` in .6 still works.
+- .7: item 19 is a type id; the client instance id is 10599 (match by name).
+- .13: the Livewire win reads `server_unreachable` although the server records victory; grade from the server.
+- New .14 (INFERRED): GOTO -265 65.45 -135 so chain 1044 completes 640; the end bookmark is now .16.
+
+RESUME HINT: Rerun only the new .14 GOTO if you need 640 completed; do not repeat .1 to .13.

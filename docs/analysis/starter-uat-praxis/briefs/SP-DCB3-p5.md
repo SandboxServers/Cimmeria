@@ -82,29 +82,29 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 # SP-DCB3-p5
 
-Start: carry-over from SP-DCB3-p4. Same character `Dcbdh`, same state. **Preconditions: mission 638 is completed and mission 641 is NOT active.** The 62060 offer chains (11000 to 11003, 11030) require `641 not_active`, so the offer closes by design once 641 is accepted at Marsh. If SP-DCB3-p4 accepted 641, record BLOCKED ('641 active: offer closed by design'), not FAIL. Ways to meet it: run this part before the Marsh accept of SP-DCB3-p4, or abandon 641 with the GM clear/abandon command (inferred: the GM console has one; look its name up with `server_console_list`, do not guess). Marsh accepting 641 with 640 incomplete is intended (order is enforced by interaction bit 8388608, set after 640), not a defect. If SP-DCB3-p4 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
+Start: carry-over from SP-DCB3-p3. This part runs BEFORE SP-DCB3-p4 (waves-table order): the Marsh accept in p4 makes 641 active and closes the 62060 offer. Same character `Dcbdh`, same state. **Preconditions: mission 638 is completed and mission 641 is NOT active.** The 62060 offer chains (11000 to 11003, 11030) require `641 not_active`, so the offer closes by design once 641 is accepted at Marsh. If SP-DCB3-p4 accepted 641, record BLOCKED ('641 active: offer closed by design'), not FAIL. Ways to meet it: run this part before the Marsh accept of SP-DCB3-p4, or abandon 641 with the GM clear/abandon command (inferred: the GM console has one; look its name up with `server_console_list`, do not guess). Marsh accepting 641 with 640 incomplete is intended (order is enforced by interaction bit 8388608, set after 640), not a defect. If SP-DCB3-p4 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
 
 ROWS: CB-U12d.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
-ESTIMATE: 20 tool calls (planned success path; hard stop 28)
-CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same character as SP-DCB3-p4.
+ESTIMATE: 21 tool calls (planned success path; hard stop 28)
+CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same character as SP-DCB3-p3.
 
 ## Steps
 
 **S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, then L2 with last name `Dcbdh` and archetype `Commando` (Praxis, male, first name Uat), then WAIT. After WAIT, run PROMPT only if the WAIT output shows a window or prompt name (gotcha 11); otherwise skip it (no call).
 
-**S2 (1 call: client_batch).** Resume probe plus bookmark: one batch of the DIALOG op, `player_state` (`world_id`, `position`), UTC and the line `.bug SPU SP-DCB3-p5 CB-U12d start`. Report world and position. Facts: no fixture; the state comes from SP-DCB3-p4, so nothing needs replaying. If ATTEMPT is 2 or 3, continue at STOPPED AT; do not repeat DONE ROWS and do not repeat the bookmark.
+**S2 (1 call: client_batch).** Resume probe plus bookmark: one batch of the DIALOG op, `player_state` (`world_id`, `position`), UTC and the line `.bug SPU SP-DCB3-p5 CB-U12d start`. Report world and position. Facts: no fixture; the state comes from SP-DCB3-p3, so nothing needs replaying. If ATTEMPT is 2 or 3, continue at STOPPED AT; do not repeat DONE ROWS and do not repeat the bookmark.
 
 **S3 (1 call: client_ui_state).** UIS. Record whether 638 is done and whether 641 is in the tracker. If 641 is active, apply the precondition note above before CB-U12d.1.
 
 
 ### ROW CB-U12d
 
-**CB-U12d.1 (1 call: client_batch).** GOTO `-287 65.5 -113`. Prisoner 329 is at (-289.81, 65.47, -113.14), 2.8 m away.
+**CB-U12d.1 (1 call: client_batch).** GOTO `-271 65.45 -135`. The 62060 giver is NOT Prisoner 329 (329 only carries 62050). It is an ambient prisoner (template 176, tags `Cellblock_Ambient_Prisoner1`/`2`, spawns 520/521, shown client-side as "Op-CORE Soldier"); the re-drive found entity 103285 near this point.
 
-**CB-U12d.2 (1 call: client_entity_find).** FIND, `max_distance_m` 6. Pick Prisoner 329 (within 1.5 m of (-289.81, 65.47, -113.14)) and your own entry.
+**CB-U12d.2 (1 call: client_entity_find).** FIND, `max_distance_m` 8, no name filter. Pick the ambient prisoner (name "Op-CORE Soldier", template 176; if several match, record all and take the nearest) and your own entry. Entity ids change per session: use the id from this FIND.
 
-**CB-U12d.3 (2 calls: client_target, client_batch).** INTERACT Prisoner 329.
+**CB-U12d.3 (2 calls: client_target, client_batch).** INTERACT the ambient prisoner from .2. The aid click is a plain `/interact` on the same prisoner.
 
 **CB-U12d.4 (1 call: client_window_read).** DLG (read the dialog window).
 
@@ -116,7 +116,7 @@ CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U12d.8 (3 calls: lab_logout, lab_ensure_in_world, client_batch).** RELOG (same character; the third call is the WAIT batch). 
 
-**CB-U12d.9 (1 call: client_ui_state).** UIS (read `client_ui_state`).
+**CB-U12d.9 (2 calls: client_ui_state, client_inventory).** UIS (read `client_ui_state`), then INV: reread the inventory after the relog (item 2893 is shown client-side as "Health Slappack TC1", instance 10600; record the count).
 
 **CB-U12d.10 (1 call: lab_screenshot).** SHOT-H `H-CB-U12-4`. Is the aid state shown? Take it only if .4 or .6 showed the 62060 offer; otherwise record 'no offer, no shot' and skip (a shot without 62060 is meaningless).
 

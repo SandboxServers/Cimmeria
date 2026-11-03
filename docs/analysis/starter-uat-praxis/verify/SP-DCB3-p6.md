@@ -15,7 +15,7 @@ You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator u
 
 1. Server tools (the lab-server MCP; load them with ToolSearch if they are deferred): `server_db_query` (read-only SQL), `server_log_tail`, `server_packet_tap_start`/`_read`/`_stop`, `server_sessions`, `server_entity_get`. The server is local (D-SP2), at the SHA recorded in `docs/analysis/starter-uat-praxis/README.md`.
 2. Discover names first, never guess them: `SELECT table_name FROM information_schema.tables WHERE table_schema IN ('public','resources') AND (table_name ILIKE '%mission%' OR table_name ILIKE '%player%' OR table_name ILIKE '%inventory%' OR table_name ILIKE '%mail%')`, then `SELECT column_name FROM information_schema.columns WHERE table_name='<t>'`. The `resources.` prefix is required for seed tables.
-3. Ids: `SELECT player_id, account_id, player_name FROM public.sgw_player WHERE player_name ILIKE '%<last name>%'` for each character in the report. Call the result `$pid`. This part runs carry-over: `$pid` is the same character as SP-DCB3-p5's.
+3. Ids: `SELECT player_id, account_id, player_name FROM public.sgw_player WHERE player_name ILIKE '%<last name>%'` for each character in the report. Call the result `$pid`. This part runs carry-over: `$pid` is the same character as SP-DCB3-p4's.
 4. Row timeline: `server_log_tail` filtered to `SPU SP-DCB3-p6` finds the driver's `.bug` bookmarks (`SPU SP-DCB3-p6 <row> start` / `end`). Print one in full first to learn the fields. Each row's window is start minus 5 s to end plus 20 s. If `server_log_tail` cannot filter that far back, use the SigNoz MCP `signoz_search_logs` (service `cimmeria-server`) with the same text. If neither returns anything, grade every server clause UNVERIFIED (PARTIAL at best) and say so.
 5. Mission flow in the log: bodies `Content: accepting mission`, `Content: advancing step`, `Content: complete objective`, `Content: completing mission`, `Content: abandoning mission`; dialogs `Content: adding dialog set`, `Content: removing dialog set`, `Content: displaying dialog`; barks `Content: npc bark` with `chain_id`; grants `Content: granting item`. The row sections below name more.
 
@@ -49,7 +49,7 @@ Do not edit the repo (except the issue body file), the database or the server; d
 
 # Verify SP-DCB3-p6: CB-U11a
 
-Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p5. If that part FAILed, grade these rows BLOCKED.
+Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p4 (the waves table runs p5 before p4). If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U11a
 Sub-row scope: Barracks entry bark, crate search, re-entry, relog. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.

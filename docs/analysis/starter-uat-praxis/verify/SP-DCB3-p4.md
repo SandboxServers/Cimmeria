@@ -49,14 +49,14 @@ Do not edit the repo (except the issue body file), the database or the server; d
 
 # Verify SP-DCB3-p4: CB-U10c
 
-Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p3. If that part FAILed, grade these rows BLOCKED.
+Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p5, which runs before this part (p3 sets up 640, p5 needs 641 not active). If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U10c
 Sub-row scope: Marsh talk, relog, 329 gives no new offer. Abandon and skip are NOT-RUN. Grade only the clauses this part drove.
 
 | Check | Evidence | Expected |
 |---|---|---|
-| Precondition | `sgw_mission` 640 `status` completed (chain 1044 on `teleport_in` region 2) | if 640 is not completed, the '62050 completes' clause is C5-BLOCKED (chain 11005 requires 640 completed); say so, do not FAIL |
+| Precondition | `sgw_mission` 640 `status` completed (chain 1044 on `teleport_in` region 2, driven by the inferred SP-DCB3-p3 .14 GOTO) | if 640 is not completed, the '62050 completes' clause is C5-BLOCKED (chain 11005 requires 640 completed); say so, do not FAIL |
 | Marsh | `displaying dialog` 4001 (Human) or 5022 (Jaffa); `accepting mission` 641 | yes. Chain 1051 gates on 641 not active only; the order is enforced by interaction bit 8388608 (set after 640 completes), so reaching Marsh with 640 incomplete is not a defect |
 | 62050 completes | `completing mission` 62050 on the 641 accept (chain 11005) | only with 640 completed; core 1051, 1052, 1152 not lost |
 | Relog | no new offer (mission table, no `adding dialog set` for 329) | yes |

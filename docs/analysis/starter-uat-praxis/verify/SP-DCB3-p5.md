@@ -49,7 +49,7 @@ Do not edit the repo (except the issue body file), the database or the server; d
 
 # Verify SP-DCB3-p5: CB-U12d
 
-Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p4. If that part FAILed, grade these rows BLOCKED.
+Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p3; this part runs before SP-DCB3-p4. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U12d
 Precondition (graded first): mission 638 completed and mission 641 NOT active at the start of the part (`sgw_mission`). The 62060 offer chains require `641 not_active`; if 641 is active (SP-DCB3-p4 accepted it at Marsh), grade every clause BLOCKED (case c, brief or carry-over: offer closed by design) and do not FAIL. Marsh chain 1051 accepting 641 with 640 incomplete is intended (order is enforced by interaction bit 8388608), not a defect.
@@ -60,13 +60,13 @@ Sub-row scope: Aid branch. Grade only the clauses this part drove; the other cla
 |---|---|---|
 | Catalog | `mission_catalog_inserted` for 62060 | present |
 | No early offer | no `accepting mission` 62060 before 638 completes | yes |
-| Accept | `accepting mission` 62060 once; `displaying dialog` 60151 (client syntax error is known: not a fail); no item yet | yes |
-| Aid branch (`Dcbdh`) | `granting item` item 2893 count 2 once; mission complete; clicks after: nothing | one reward |
+| Accept | the giver is an ambient prisoner (template 176, spawns 520/521), not Prisoner 329; `accepting mission` 62060 once; `displaying dialog` 60151 (client syntax error is known: not a fail); no item yet | yes |
+| Aid branch (`Dcbdh`) | `granting item` item 2893 count 2 once (client-side name "Health Slappack TC1", instance 10600; read the inventory again after the relog); mission complete; clicks after: nothing | one reward |
 | Sabotage branch (`Dcbdk`) | the same grant on the panel click; no 638 Livewire starts | one reward |
 | Not both | no character has two reward rows | yes |
 | Relog | no second reward, no offer after completion | yes |
 | Full bag | INFO `grant_refused reason=container_full`; a mail row from Mission Rewards with 2893 x2; the chat line | optional; not run is allowed |
-| Skip | the prisoners stop offering after 641 is accepted | yes |
+| Skip | the prisoners stop offering after 641 is accepted | yes (only PARTIAL here: 641 is accepted in SP-DCB3-p4, after this part) |
 
 Grade: FAIL on a doubled reward, both branches paying, a reward missing from both bag and mail, or a changed core route. Dialog 60151: known syntax error; SHOT-H `H-CB-U12-1`. Looker: 1. Is a dialog with text visible? 2. Is the journal entry "Before the Patrol Returns" visible?
 

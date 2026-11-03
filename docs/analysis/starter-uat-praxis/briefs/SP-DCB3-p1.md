@@ -84,21 +84,21 @@ Start: fresh character `Dcbdh` (no fixture; the start state is reached by play o
 
 ROWS: T01/T02.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
-ESTIMATE: 20 tool calls (planned success path; hard stop 28)
+ESTIMATE: 19 tool calls (planned success path; hard stop 28)
 CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat).
 
 ## Steps
 
 **S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, then L2 with last name `Dcbdh` and archetype `Commando` (Praxis, male, first name Uat), then WAIT. After WAIT, run PROMPT only if the WAIT output shows a window or prompt name (gotcha 11); otherwise skip it (no call).
 
-**S2 (1 call: client_batch).** Resume probe plus bookmark: one batch of the DIALOG op, `player_state` (`world_id`, `position`), UTC and the line `.bug SPU SP-DCB3-p1 T01/T02 start`. Report world and position. Facts: no fixture is used; the start state comes from play or GM setup only, and every chain binding is replayed for real. If ATTEMPT is 2 or 3, continue at STOPPED AT; do not repeat DONE ROWS and do not repeat the bookmark.
+**S2 (1 call: client_batch).** On attempt 1 run S2 after T01/T02.3, not before: its DIALOG op closes dialog 2982, and the first run then read an empty dialog window. On attempt 2 or 3 run it first. Resume probe plus bookmark: one batch of the DIALOG op, `player_state` (`world_id`, `position`), UTC and the line `.bug SPU SP-DCB3-p1 T01/T02 start`. Report world and position. Facts: no fixture is used; the start state comes from play or GM setup only, and every chain binding is replayed for real. If ATTEMPT is 2 or 3, continue at STOPPED AT; do not repeat DONE ROWS and do not repeat the bookmark.
 
 
 ### ROW T01/T02
 
-**T01/T02.1 (1 call: client_window_read).** DLG (read the dialog window). Dialog 2982 at arrival.
+**T01/T02.1 (1 call: client_window_read).** Run this right after S1 (WAIT), before S2 and before any batch that starts with DIALOG: the DIALOG op closes dialog 2982 (the first run read an empty window because S2 had already closed it). DLG (read the dialog window). Dialog 2982 at arrival. If the window is empty, record that and carry on. On attempt 2 or 3 skip .1 to .3 (the dialog is gone).
 
-**T01/T02.2 (1 call: lab_screenshot).** SHOT-H `H-T01-1`. What does the dialog show?
+**T01/T02.2 (1 call: lab_screenshot).** SHOT-H `H-T01-1`, taken at world entry while the dialog is still open. What does the dialog show?
 
 **T01/T02.3 (1 call: lab_finish_dialog).** ACCEPT the open dialog topic.
 
@@ -110,7 +110,7 @@ CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat).
 
 **T01/T02.7 (1 call: client_ui_state).** UIS (read `client_ui_state`).
 
-**T01/T02.8 (1 call: client_entity_find).** FIND, `max_distance_m` 8. Pick Cpl. Frost and the Guard body by position.
+**T01/T02.8 (0 calls: dropped).** The Frost and Guard corpses are not within 8 m of the spawn and are not live to `client_entity_find` (the first run and the re-drive both found nothing). The verifier reads the searchable state from the seeds (see the verify file), not from entity flags. Do not FIND them.
 
 **T01/T02.9 (1 call: client_chat_log).** READ cursor `e1`, channel "9".
 

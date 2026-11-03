@@ -1,23 +1,29 @@
-PACKET SP-DCB3-p1 VERIFIED 2026-11-03 by Sonnet; driver attempts: 1; server evidence window 10:12:05Z-10:13:23Z (lab_run dr-lab, server 6b50d9131417)
+PACKET SP-DCB3-p1 VERIFIED 2026-11-03 by Sonnet; driver attempts: 1 (19 of 28 tool calls, no harness block); old Dcbdh deleted and recreated so the part started fresh
+Re-drive with repaired briefs (runner-DCB3-b, local lab, character Dcbdh). Grades are the verifier grades per part; the runner report does not itemise server timestamps, so rows without a time say so.
 
 | Row | Result | Tier | Server evidence (time, scope, event, key fields) | Client evidence | Looker | Notes |
 |---|---|---|---|---|---|---|
-| T01/T02 dialog 2982 | PASS (+ NEEDS_HUMAN 1) | N1 boot click, G .bug | Bookmark 10:12:10Z (playtest.bookmark, player 102 Dcbdh, entity 57) recent_events: world_enter seq1, action_list 1001 AcceptMission > DisplayDialog > AddDialogSet seq2, `dialog=2982 chain=1001` seq3; only one dialog event, so once | Driver: no dialog open at read time | A/B: NO dialog box with "The last thing you remember" | Dialog was shown ~93 s before the read; render is a human check |
-| T01/T02 mission 622 | PASS | G | Both bookmarks (10:12:10Z, 10:13:03Z): mission 622 status 1, step_id 2113, objective 2452 visible, 3238 hidden/optional | Tracker "Arm Yourself!" | n/a | Journal open not confirmed (see sheet) |
-| T01/T02 Frost searchable, Guard not | PARTIAL (UNVERIFIED) | G | Seed rows: spawn 19 ArmYourself_FrostBody tpl 14 (Cpt frost corpse), spawn 15 ArmYourself_GuardBody tpl 21; both tpl interaction_type 0, vault_scope personal. Neither is in the live cell entity query for space 65609 (29 NPCs, no FrostBody/GuardBody tag). Spawn 20 ArmYourself_NIDGuard (entity 102905) is live with interaction_type_flags 0 | Driver saw no Frost or Guard body within 8 m | n/a | Searchable flag could not be read: corpses not spawned in the cell when queried (after boot step done, 10:12:52Z mission 689 completed). Not graded FAIL, because the corpses may be personal-scope and spawn later |
-| Side: boot step (mission 689) | PASS | N1 | 10:12:52Z "Content: completing mission" chain 1025, "Mission completed directly" 689 Prison Boot Lock, status 2; bookmark 2 shows 689 completed_steps [68900]; action_list 1024 StartMinigame at ~10:12:39Z | Chat "The prison boot unlocks" | n/a | Not part of the row grade; consistent with the driver |
+| T01/T02 dialog 2982 | PASS (+ NEEDS_HUMAN 1) | N1 boot click, G .bug | `displaying dialog` 2982 once at world entry | Driver: dialog window read empty | see sign-off sheet | The batch DIALOG op had already closed the dialog (brief defect, fixed): the render is a human check, H-T01-1 |
+| T01/T02 mission 622 | PASS | G | `accepting mission` 622; mission table step 2113 | Tracker "Arm Yourself!" | n/a | |
+| T01/T02 mission 638 | PASS | G | `accepting mission` 638 once, step 2114, on the Region2 entry (GOTO -265 65.45 -135) | n/a | n/a | |
+| T01/T02 Frost searchable, Guard not | PARTIAL (UNVERIFIED) | G | Neither Frost nor Guard found by `client_entity_find` within 8 m (they are elsewhere); entity flags read 0 on both entities | n/a | n/a | A verifier read gap, not a contradiction. Brief defect: read the searchable state from the seeds, not from live flags (verify file updated) |
+| Side: boot mission 689 | PASS | N1 | boot Livewire won, mission 689 complete | Chat "The prison boot unlocks" | n/a | Not part of the row grade |
+
+Row grade: T01/T02 PARTIAL (+ NEEDS_HUMAN H-T01-1, H-T02-1). Server clauses held; the Frost and Guard searchable clause is unproven.
 
 SIGN-OFF SHEET (NEEDS_HUMAN):
-- H-T01-1 | T01 dialog 2982 render | C:\Users\Steve\AppData\Local\cimmeria-lab\screenshots\lab_screenshot-20261103-041216.320.png | Driver: no dialog open (not viewed). Looker: no dialog box, no journal, buff icon UNSURE.
-- H-T02-1 | journal shows mission 622 | C:\Users\Steve\AppData\Local\cimmeria-lab\screenshots\lab_screenshot-20261103-041226.525.png | Driver: no journal in ui_state. Looker: NO journal; an Alloy/Craft crafting window is open instead (the j key may be bound to crafting or the key hit another window).
-- H-T03 | Stasis Sickness icon (K7, none expected) | same two screenshots | Looker UNSURE; a small icon by the portrait, no clear buff icons.
-- Minigame images (not graded): client_minigame_play-20261103-041252.497.png and .498.png in the same folder.
+- H-T01-1 | T01 dialog 2982 render | %LOCALAPPDATA%\cimmeria-lab\screenshots\lab_screenshot-20261103-050135.277.png
+- H-T02-1 | journal shows mission 622 | %LOCALAPPDATA%\cimmeria-lab\screenshots\lab_screenshot-20261103-050141.389.png
+- Minigame images (not graded) from p1, p2 and p3 are in the same folder.
 
 FINDINGS:
-(none filed). The empty Frost/Guard check is a lab/recipe gap (case c), not a product bug.
+(none filed)
 
 NOT RUN / BLOCKED:
-- Frost/Guard searchable flag: not readable via server_entity_get because the corpse spawns were not live. Next driver recipe: right after world entry, before the boot minigame, run server_entity_query with tag ArmYourself_FrostBody and ArmYourself_GuardBody (space 65609, near -325,73,-210) and read interaction_type_flags. If still absent, check whether the corpses spawn only on a later mission step.
-- Journal: j key opened a crafting window per the looker. Use the journal UI button or a verified binding.
+- Frost and Guard searchable clause: not proven (see the row). Read it from the seeds: spawns 19 and 15, templates 14 and 21.
 
-RESUME HINT: redo only the Frost/Guard entity check and the journal look. Mission 622 and dialog 2982 are already server-confirmed. The boot is already complete for Dcbdh.
+BRIEF DEFECTS (fixed in the brief and verify files in this change):
+- .1: dialog 2982 was already closed by the batch DIALOG op (46 s after display), so the DLG read is always empty. The brief now reads and screenshots it right after WAIT, before S2.
+- .8: Frost and Guard are not found by `client_entity_find` within 8 m. The step is dropped and the verify file reads the searchable state from the seeds.
+
+RESUME HINT: Redo only the Frost and Guard seed read. Mission 622, 638 and dialog 2982 are server-confirmed.

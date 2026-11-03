@@ -49,7 +49,7 @@ Do not edit the repo (except the issue body file), the database or the server; d
 
 # Verify SP-DCB3-p3: CB-U10b
 
-Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p2 (638 done, 639 at step 2145, 62050 accepted). If that part FAILed, grade these rows BLOCKED.
+Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p2 (638 done, 639 at step 2117, 62050 accepted). If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U10b
 Sub-row scope: repeat click, relog, the vial (tier G route) and the ring switch. The journal is not driven (the `j` key opens crafting). Abandon and skip are NOT-RUN. Grade only the clauses this part drove.
@@ -59,9 +59,10 @@ Sub-row scope: repeat click, relog, the vial (tier G route) and the ring switch.
 | Repeat click | no second `accepting mission` 62050 and no second `displaying dialog` 60150 after the repeat Prisoner click | yes |
 | Relog | step B retained (mission table, 62050 still at its step), no new offer | yes |
 | Vial (tier G) | `granting item` 19 (Mission bag) from `/gmgiveitem 19 1`; `/gmmissionadvance 639 2343`; then the item use: chain 1034 logs `completing mission` 639 and `accepting mission` 640 | all present; label the row tier G |
-| Ring switch | `interact` on the switch (spawn 23), then the mission 640 Livewire; 640 completes only via chain 1044 on `teleport_in` region 2 | BLOCKED (harness) / NATIVE_SHORTFALL when there is no server verdict: no GM substitute exists for this step; reason: small props cannot be hovered or targeted (issue SP-DCB3-p3-1) |
+| Ring switch | `interact` on the switch (spawn 23) at N3, chains 1041 (StartMinigame) and 1042 (640 to step 2215) | NATIVE_SHORTFALL when the server shows them; BLOCKED (harness) when it shows no `interact` (small props cannot be hovered natively: issue SP-DCB3-p3-1) |
+| 640 completes (.14, INFERRED) | after a G-tier `.gotolocation` to `-265 65.45 -135`: chain 1044 `completing mission` 640 on `teleport_in` region 2; `sgw_mission` 640 status completed | present; if the teleport does not raise `teleport_in`, record that (the .14 recipe is unproven) and C5-BLOCK the 62050 clause in SP-DCB3-p4 |
 
-Grade: PARTIAL is the expected best grade when the ring switch cannot be reached; record its reason and do not FAIL the product. Looker: none required.
+Grade: the vial is a G-tier route and the ring switch an N3 route, so the best row grade is NATIVE_SHORTFALL; PARTIAL when the ring switch cannot be reached; record its reason and do not FAIL the product. Looker: none required.
 
 ---
 

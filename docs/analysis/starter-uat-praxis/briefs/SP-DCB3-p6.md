@@ -80,7 +80,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 # SP-DCB3-p6
 
-Start: carry-over from SP-DCB3-p5. Same character `Dcbdh`, same state. If SP-DCB3-p5 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
+Start: carry-over from SP-DCB3-p4 (the waves table runs p5 before p4, so p4 is the last of the three). Same character `Dcbdh`, same state. If SP-DCB3-p5 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
 
 ROWS: CB-U11a.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
@@ -91,7 +91,7 @@ CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same
 
 **S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, then L2 with last name `Dcbdh` and archetype `Commando` (Praxis, male, first name Uat), then WAIT. After WAIT, run PROMPT only if the WAIT output shows a window or prompt name (gotcha 11); otherwise skip it (no call).
 
-**S2 (1 call: client_batch).** Resume probe plus bookmark: one batch of the DIALOG op, `player_state` (`world_id`, `position`), UTC and the line `.bug SPU SP-DCB3-p6 CB-U11a start`. Report world and position. Facts: no fixture; the state comes from SP-DCB3-p5, so nothing needs replaying. If ATTEMPT is 2 or 3, continue at STOPPED AT; do not repeat DONE ROWS and do not repeat the bookmark.
+**S2 (1 call: client_batch).** Resume probe plus bookmark: one batch of the DIALOG op, `player_state` (`world_id`, `position`), UTC and the line `.bug SPU SP-DCB3-p6 CB-U11a start`. Report world and position. Facts: no fixture; the state comes from SP-DCB3-p4, so nothing needs replaying. If ATTEMPT is 2 or 3, continue at STOPPED AT; do not repeat DONE ROWS and do not repeat the bookmark.
 
 
 ### ROW CB-U11a

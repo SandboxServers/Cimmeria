@@ -1,0 +1,22 @@
+PACKET SP-DCA2-p1 VERIFIED 2026-11-03 by Sonnet; driver attempts: 1; server evidence window 11:59:06Z-12:01:30Z (dr-lab `logs\server.log`, UTC; player_id 106, Fxdcathree, entity 71, driver ran instance p2 / account lab2 because p3 character creation was blocked)
+
+| Row | Result | Tier | Server evidence (time, scope, event, key fields) | Client evidence | Looker | Notes |
+|---|---|---|---|---|---|---|
+| D1 | PASS (server) + NEEDS_HUMAN (glyph); other-view clause NOT-RUN | N3 chat (`.bug`, `.gotolocation`) | Bookmark `d1 start` 11:59:11.433Z. `Content: accepting mission` 11:59:13.254Z, mission 1520, chain 1367. `Mission accepted` 11:59:13.254Z (step 4452, prior_repeats 0). `fire_mission_accepted: matched` actions 1. `Content: adding dialog set` 11:59:13.255Z: set 5827, template 179 Castle_Ogilvie, chain 1380, dialog 4983, interaction_flags 16777216 (INT_AStoryMissionActive, bit 24), added for player 106 only (per-player content action). Chain 1368 credits objective 5171 at 11:59:13.257Z. | Chat "New Mission: Secure a supply of Ambernol..."; tracker shows Infirmary mission; Ogilvie in range 4.5 m (client-read only) | not run | Setup was an N3 `.gotolocation` into the Infirmary, which is the step itself, so no downgrade. Nobody-else's-view needs a second client. `server_entity_get` on Ogilvie after the fact not taken; the per-player bit comes from the log row. |
+| D2 | PASS (server) + NEEDS_HUMAN (portrait) | N1 right-click on Ogilvie (2 harness failures first, not graded) | `interact: per-player dialog set -> onDialogDisplay` 12:00:43.477Z, target Castle_Ogilvie (100102), dialog 4983. `dialogButtonChoice` 12:00:51.668Z dialog 4983 button -1. `fire_dialog_choice: matched` 12:00:51.669Z actions 3 (chain 1378). `Content: advancing step` and `Mission step advanced` 12:00:51.670Z, mission 1520, 4452 -> 4453 "Hack the Med Dispenser...". DB sgw_mission 1520: status 1, current_step_id 4453, completed_step_ids [4452], completed_objective_ids [5171, 5172], active [5173]. Fixture mission 704 status 2 (completed). | Dialog text "What's going on out there?..."; tracker and chat "Mission Advance: Hack the Med Dispenser..." (client-read only) | not run | Close was a Lua DIALOG close (button -1) not a button click; matches chain 1378. Dialogs 60150/60151 not seen (known filed defect). |
+| D3 | PARTIAL (server PASS; glow NEEDS_HUMAN; others-cannot-click NOT-RUN) | N3 chat | Gate: `resources.content_chains` 1367, 1371, 1372, 1378, 1380 all enabled=true. `Content: adding dialog set` 12:00:51.672Z: set 5828, template 412 Castle_MedDispenser, chain 1378, interaction_flags 1073741824 (INT_MissionWorldObject, bit 30), after the 4453 advance, player 106. Dispenser entity 100387 tag Castle_MedDispenser live at (356, 70.18, 892). Bookmark `d3 start` 12:01:01.525Z. | Med Dispenser found, 4.5 m, `on_screen:false` at the check (client-read only) | not run | Entity-level flag is 0 (global); the glow is the per-player dialog-set flag. "Not glowing at 4452" and other-player click need a second character. |
+
+FINDINGS:
+1. No WARN or ERROR for player 106 between 11:58 and 12:03Z. No product defect found; no issue files written.
+2. Driver deviation: instance p2 not p3. Harness gaps (world_click read_mouse_over timeout, hover_timeout; client spawned at far-off position after the world load) are lab problems, not graded.
+3. DEBUG rows (`chain matched`) are absent; graded from INFO rows and the DB.
+
+NOT RUN / BLOCKED: Looker not run (screenshots unviewed by driver). Other-player-view clauses (D1, D3) need a second client. `mission` journal probe skipped by driver.
+RESUME HINT: none for server clauses. A human answers the sheet; the other-view clauses need a two-client run.
+
+SIGN-OFF SHEET (NEEDS_HUMAN):
+| row | clause | screenshot path | driver note | looker answer |
+|---|---|---|---|---|
+| D1 | yellow/gold `!` glyph over Ogilvie | C:\Users\Steve\AppData\Local\cimmeria-lab\screenshots\lab_screenshot-20261103-055933.041.png | Ogilvie targetable, rendered, 4.5 m; screenshot not viewed | looker not run |
+| D2 | dialog 4983 open with a portrait image | C:\Users\Steve\AppData\Local\cimmeria-lab\screenshots\lab_screenshot-20261103-060048.240.png | dialog text visible; buttons had empty labels; portrait not viewed | looker not run |
+| D3 | Med Dispenser glows at step 4453 | C:\Users\Steve\AppData\Local\cimmeria-lab\screenshots\lab_screenshot-20261103-060110.028.png | dispenser found, on_screen false; glow not viewed | looker not run |

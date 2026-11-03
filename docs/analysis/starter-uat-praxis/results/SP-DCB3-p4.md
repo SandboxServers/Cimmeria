@@ -1,23 +1,27 @@
-PACKET SP-DCB3-p4 VERIFIED 2026-11-03 by Sonnet; driver attempts: 1; server evidence window 10:40:44Z-10:44:40Z (SigNoz, service cimmeria-server, lab_run dr-lab, plus lab-server DB)
+PACKET SP-DCB3-p4 VERIFIED 2026-11-03 by Sonnet; driver attempts: 1 (run after p5); grade PARTIAL
+Re-drive with repaired briefs (runner-DCB3-b, local lab, character Dcbdh). Grades are the verifier grades per part; the runner report does not itemise server timestamps, so rows without a time say so.
 
 | Row | Result | Tier | Server evidence (time, scope, event, key fields) | Client evidence | Looker | Notes |
 |---|---|---|---|---|---|---|
-| CB-U10c (sub-row: Marsh talk, relog, 329 no new offer) | PARTIAL | N1 (Marsh right-click after one retry); 329: fallback target + `/interact` (G/N2, native click failed) | Bookmarks `start` 10:40:49Z (entity 59), `end` 10:44:17Z (entity 60). Player 102. Marsh: 10:41:33Z `interact` (102994, Colonel Marsh), `fire_interact_tag: matched` Preparation_ColMarsh, `displaying dialog` 4001 via chain 1051 (once). 10:41:43Z (after driver pressed Next x4 + Done): `accepting mission` 641 (chain 1053), `displaying dialog` 4000 (chain 1152), `removing dialog set` 3862 (chain 11040), SMG-1A interaction bit set. No `completing mission`/`complete objective` 62050 anywhere. End snapshot and DB `sgw_mission`: 62050 status 1 step 62054 (obj 62055 open, obj 62052 done), 638 done, 639 step 2145, 641 status 1 step 2121, 689 done, 622 step 2113; `offered_dialog_ids []`. Relog (entity 60, ~10:42:06Z): only chains 1006/1036/1062/1112 restore dialog sets, interaction bits and Stasis Sickness; no `accepting mission`, no `adding dialog set` for 329. 329 click at 10:43:39Z and 10:44:07Z (entity 60, target 103042): `interact: target has no static interaction type`, `no per-player interactions for template`, `fire_interact_tag/template: no chains matched`; no dialog, no accept. No WARN/ERROR in window. | Driver: Marsh dialog "Colonel Marsh" text read, 4 Next then Done; relog reached character select and world 12; 329 native click failed (`mouse_over_after 103042, target_after 0`), recipe target succeeded. | none (no SHOTs) | Held: Relog (step B retained, no new offer), Repeat/no-new-offer on 329, Marsh 4001 shown, core 1051 and 1152 fired, nothing lost. NOT held: "62050 completes" did not happen. Cause below is a precondition, not a product bug. Catalog `mission_catalog_inserted` 62050 UNVERIFIED (outside SigNoz window). Abandon and Skip clauses belong to other parts (Dcbdk / core route), not driven. Packet tap not run, cooked-sync heads (3,62050), (5,60150) not recorded. |
+| CB-U10c Marsh | PASS | N1 (one retry) | Marsh dialog 4001 via chain 1051; `accepting mission` 641 "Preparation"; blurb 4000 | Marsh dialog read | n/a | The first Marsh click timed out at `read_mouse_over`; an unchanged retry worked |
+| CB-U10c 62050 completes | C5-BLOCKED | n/a | 640 still active at step 2215 (not completed), so chain 11005 (needs 640 completed) cannot fire | n/a | n/a | Precondition from SP-DCB3-p3 (640 completion) not met; not a product bug |
+| CB-U10c relog + 329 no re-offer | BLOCKED (harness) | n/a | not exercised | `client_target` on Prisoner 329 failed `on_screen` (camera pitch clamp 78.8 degrees) | n/a | Unexercised, not proven. The brief now resets the camera to -10 pitch first |
 
-PRECONDITION CHECK (why 62050 did not complete): chain 11005 ("interact Col. Marsh during 62054: complete objective 62055", db/resources/Content/Seed/castle_cellblock_chains.sql line 3584) requires `mission_status 640 = completed` AND step 62054 active. The character had 639 stuck at step 2145 (ambernol vial never picked up, SP-DCB3-p3 could not click it) so 640 was never accepted, let alone completed. Chain 11005 therefore correctly did not fire; the Marsh click instead matched chain 1051 (641 not_active), which showed 4001 and accepted 641. The row's "62050 completes" clause is unreachable from this carried state: brief/predecessor defect.
+Row grade: CB-U10c PARTIAL. Marsh held; the two other clauses are blocked and unproven.
 
-Side observation (not filed): Marsh can accept 641 with 640 incomplete (chain 1051 gates only on 641 not_active). It looks like a sequence-break the seed comment treats as intended, so no issue was written. Mention to the mission advisor if wanted.
+One WARN `movement.validation_reject` (teleport) at 11:26:43Z: a GOTO from the earlier position, not a row clause; not filed.
 
-SIGN-OFF SHEET (NEEDS_HUMAN): none (no SHOTs).
+SIGN-OFF SHEET (NEEDS_HUMAN): none.
 
-FINDINGS: none. No product or doc bug; no issue bodies written in results/issues/.
+FINDINGS: none. Marsh chain 1051 lets 641 be accepted with 640 incomplete; the seed treats that as intended (order enforced by interaction bit 8388608), so it is not filed.
 
-NOT RUN / BLOCKED (case c, brief and predecessor defects):
-- CB-U10c.3-.5 (Marsh turn-in of 62050): blocked by predecessor SP-DCB3-p3 never finishing 639/640 (vial pickup .8/.9, rings/Livewire .12/.13 failed at the client-click layer, see SP-DCB3-p3 result). The brief does not state that 640 must be completed before Marsh completes 62050. Add a precondition line or a 639/640 fixture.
-- CB-U10c.3: first RCLICK on Marsh timed out at `read_mouse_over` 175 ms; unchanged retry worked. Known harness flakiness, not a product bug.
-- CB-U10c.9: native RCLICK on Prisoner 329 does not target; brief should give the proven recipe (client_camera face_entity, client_target allow_fallback, `/interact`). Also 329's offer was consumed, so the expected result is the server's "no chains matched".
-- CB-U10c.10: DLG read after the 329 click is a UI check only; server confirms no dialog.
-- Catalog clause: ask the coordinator to grep the startup server.log for `mission_catalog_inserted` 62050 and absence of `mission_catalog_rejected`.
-- Abandon (`Dcbdk`) and Skip (core route reaches 688): not in this part.
+NOT RUN / BLOCKED:
+- 62050 completes: needs 640 completed (SP-DCB3-p3 .14, inferred).
+- Relog and 329 no re-offer: harness.
+- Abandon and skip: not in this part.
 
-RESUME HINT: do not re-run .1-.11 on Dcbdh; the 329/relog clauses are done. To grade "62050 completes", first reach 640 completed on a character (needs the vial pickup GM route or fixture decided in SP-DCB3-p3 resume hint: fire `ArmYourself_AmbernolVial`, grant item 19, use it, win the ring Livewire, 640 completes on teleport_in region 2), then RCLICK Marsh (use camera/target/`/interact` recipe if the hover fails) and expect `complete objective` 62055 from chain 11005. Otherwise grade CB-U10c PARTIAL as above and move on.
+BRIEF DEFECTS (fixed in this change):
+- .3 and .9: the INTERACT recipe needs a camera reset to -10 pitch first; the macro now carries it.
+- 640 completion (chain 1044 on teleport_in region 2) was not reachable from p3's own setup; p3 now has the GOTO (.14), and p4's precondition names it.
+
+RESUME HINT: To grade "62050 completes", reach 640 completed (p3 .14), then click Marsh and expect `complete objective` 62055 from chain 11005. Re-drive the 329 relog check with the camera reset.

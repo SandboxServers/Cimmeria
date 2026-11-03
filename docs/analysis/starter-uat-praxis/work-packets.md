@@ -205,10 +205,10 @@ Every drive packet: **LAB: ASK-FIRST** (§ C1). Agent `lab-driver` (brief) then 
 | 2 | 18 | [SP-DCB2-p7](briefs/SP-DCB2-p7.md), [verify](verify/SP-DCB2-p7.md) | default | after verify of SP-DCB2-p6 | 17 | SP-01 |
 | 2 | 19 | [SP-DCB3-p1](briefs/SP-DCB3-p1.md), [verify](verify/SP-DCB3-p1.md) | default | after lease of SP-DCB2-p7 | 19 | SP-01 |
 | 2 | 20 | [SP-DCB3-p2](briefs/SP-DCB3-p2.md), [verify](verify/SP-DCB3-p2.md) | default | after verify of SP-DCB3-p1 | 19 | SP-01 |
-| 2 | 21 | [SP-DCB3-p3](briefs/SP-DCB3-p3.md), [verify](verify/SP-DCB3-p3.md) | default | after verify of SP-DCB3-p2 | 21 | SP-01 |
-| 2 | 22 | [SP-DCB3-p4](briefs/SP-DCB3-p4.md), [verify](verify/SP-DCB3-p4.md) | default | after verify of SP-DCB3-p3 | 18 | SP-01 |
-| 2 | 23 | [SP-DCB3-p5](briefs/SP-DCB3-p5.md), [verify](verify/SP-DCB3-p5.md) | default | after verify of SP-DCB3-p4 | 18 | SP-01 |
-| 2 | 24 | [SP-DCB3-p6](briefs/SP-DCB3-p6.md), [verify](verify/SP-DCB3-p6.md) | default | after verify of SP-DCB3-p5 | 21 | SP-01 |
+| 2 | 21 | [SP-DCB3-p3](briefs/SP-DCB3-p3.md), [verify](verify/SP-DCB3-p3.md) | default | after verify of SP-DCB3-p2 | 25 | SP-01 |
+| 2 | 22 | [SP-DCB3-p5](briefs/SP-DCB3-p5.md), [verify](verify/SP-DCB3-p5.md) | default | after verify of SP-DCB3-p3 (runs before p4: the Marsh accept in p4 closes the 62060 offer) | 21 | SP-01 |
+| 2 | 23 | [SP-DCB3-p4](briefs/SP-DCB3-p4.md), [verify](verify/SP-DCB3-p4.md) | default | after verify of SP-DCB3-p5 | 23 | SP-01 |
+| 2 | 24 | [SP-DCB3-p6](briefs/SP-DCB3-p6.md), [verify](verify/SP-DCB3-p6.md) | default | after verify of SP-DCB3-p4 | 21 | SP-01 |
 | 2 | 25 | [SP-DCB3-p7](briefs/SP-DCB3-p7.md), [verify](verify/SP-DCB3-p7.md) | default | after verify of SP-DCB3-p6 | 16 | SP-01 |
 | 2 | 26 | [SP-DCB3-p8](briefs/SP-DCB3-p8.md), [verify](verify/SP-DCB3-p8.md) | default | after verify of SP-DCB3-p7 | 22 | SP-01 |
 | 2 | 27 | [SP-DCB3-p9](briefs/SP-DCB3-p9.md), [verify](verify/SP-DCB3-p9.md) | default | after verify of SP-DCB3-p8 | 14 | SP-01 |

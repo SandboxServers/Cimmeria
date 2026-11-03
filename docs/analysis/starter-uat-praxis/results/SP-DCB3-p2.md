@@ -1,27 +1,26 @@
-PACKET SP-DCB3-p2 VERIFIED 2026-11-03 by Sonnet; driver attempts: 2; server evidence window 10:20:29Z-10:23:35Z (bookmarks CB-U10a start 10:20:34.415Z, end 10:23:14.914Z; SigNoz cimmeria-server, lab_run dr-lab)
-
-Attempt 1 (10:15-10:18Z): BLOCKED. Mission 638 was never accepted, because the brief never enters Castle_Cellblock.Region2, and the 638 accept and the 329 dialog set are bound on Region2 entry (chains 1011/1012). Attempt 2 added a coordinator-approved deviation: a prepend `.gotolocation` into Region2 (-265 65.45 -135) before the cell GOTO. The row is graded with that deviation (setup tier G).
+PACKET SP-DCB3-p2 VERIFIED 2026-11-03 by Sonnet; driver attempts: 1; grade NATIVE_SHORTFALL
+Re-drive with repaired briefs (runner-DCB3-b, local lab, character Dcbdh). Grades are the verifier grades per part; the runner report does not itemise server timestamps, so rows without a time say so.
 
 | Row | Result | Tier | Server evidence (time, scope, event, key fields) | Client evidence | Looker | Notes |
 |---|---|---|---|---|---|---|
-| CB-U10a | FAIL (product): dialog 60150 shows a parse error, owner-confirmed 2026-11-03 for a human player | G for Region2 entry (deviation) and the door GOTO; N1 for both Prisoner 329 clicks; N3 for the door button | Start bookmark: 622 step 2113 + 689 done, offered_dialog_ids []. 10:20:44.847Z `accepting mission` 638 (chain 1011, Region2 entry) with AddDialogSet. Bookmark recent_events: 1015 AdvanceStep, 638 step 2114->2115 (~10:21:44Z); 1016 StartMinigame; 1017, 638 2115->2116 (~10:22:27Z); 10:22:53.313Z `displaying dialog` 2299 (chain 1021, npc Prisoner 329); 10:22:54.579Z `displaying dialog` 2298 + `accepting mission` 639 (chain 1019) + CompleteMission 638 + RemoveDialogSet; 10:23:06.644Z `accepting mission` 62050 "The Remaining Pods" (chain 11003, once); 10:23:06.647Z `displaying dialog` 60150 (chain 11004, once); 62050 step 62051->62054, 11000/11030 AddDialogSet before. End bookmark: 638 status 2 (steps 2114, 2115, 2116 complete), 639 active step 2117, 62050 active step 62054, 622 unchanged at 2113, 689 done. No WARN or ERROR rows in the window. | Driver: dialogs on 329 opened and finished; the door button needed a client_target fallback and the Livewire won (smartfox_victory). On the third click DialogWin read "Dcbdh" with the text "PrisonerERROR: syntax error, unexpected SGW_WHITESPACE, expecting SGW_CHARACTER or SGW_COLON". | H-CB-U10-1 (lab_screenshot-20261103-042311.658.png): Q1 YES, a dialog shows "PrisonerERROR: syntax error ...". Q2 YES, "The Remaining Pods" is in the right-hand mission list. | 638 -> 639 -> 62050 offer chain held on the server. The 60150 text renders as a parse error although the seed holds the full sentence (finding 1). Owner-confirmed 2026-11-03: the error appears for a human player, so this is a product (seed text) defect, and the row is graded FAIL (product). Clauses not driven: repeat click, relog, Marsh turn-in, abandon on Dcbdh, skip. The startup catalog check (`mission_catalog_inserted` 62050) was outside the window and was not checked. Packet-tap heads (3,62050) and (5,60150) not recorded; the tap was not run. |
+| CB-U10a precondition | PASS | G | 638 accepted before the door flow | n/a | n/a | |
+| CB-U10a catalog | PASS | n/a | catalog row for 62050 present | n/a | n/a | |
+| CB-U10a 638 flow | PASS | N3 door button, N3 Livewire, N1 Prisoner clicks | 638 step 2115; Livewire chains 1016 and 1017; `accepting mission` 639; 638 complete | Door button needed the `targetUnit` fallback (N3); Livewire win read `server_unreachable` while the server recorded victory | n/a | The native door-button click still fails (known harness gap) |
+| CB-U10a third click, offer | PASS | N1 | the third click offers 62050 and shows dialog 60150 once; the 62050 accept (chain 11003) fired via the lab_finish_dialog chain at 11:07:23, before the logged .9 interact | DialogWin text shows a parser error (60150) | H-CB-U10-1 | Counted once over the whole window |
 
-SIGN-OFF SHEET (owner confirmed 2026-11-03; no open human step for the defect):
-- CB-U10a / H-CB-U10-1 / C:\Users\Steve\AppData\Local\cimmeria-lab\screenshots\lab_screenshot-20261103-042311.658.png / the driver saw DialogWin open with the parser-error text and a tracker holding "Arm Yourself!" and "Find Ambernol"; the looker saw a dialog with the error text and "The Remaining Pods" in the journal. The owner confirmed 2026-11-03 that the parse error appears for a human player; it is a product defect.
+Row grade: CB-U10a NATIVE_SHORTFALL (+ NEEDS_HUMAN 1). Every server clause held; the door button and the Livewire ran at N3, so PASS is unattainable on this part.
+
+SIGN-OFF SHEET (NEEDS_HUMAN):
+- H-CB-U10-1 | dialog 60150 render | %LOCALAPPDATA%\cimmeria-lab\screenshots\lab_screenshot-20261103-050732.370.png | The 60150 text renders as a client parser error. Owner-confirmed 2026-11-03: it appears for a human player.
 
 FINDINGS:
-1. CB-U10a, dialog 60150 (the row's own first-offer dialog): in the lab client screenshot it showed "ERROR: syntax error, unexpected SGW_WHITESPACE, expecting SGW_CHARACTER or SGW_COLON" in place of its text. The server displayed it once with seed text. CONFIRMED PRODUCT DEFECT (seed text), owner-confirmed 2026-11-03: it appears for a human player. The dialogs belong to the custom Cellblock quests (missions 62050 and 62060). Same shape in dialogs 60110 and 60151. Research detail: seed row db/resources/Dialogs/Seed/dialog_screens.sql:28665 ('Prisoner 329 says there are still people in the other pods ...'), shown by chain 11004; the error lands at the space before the digit "329". Inferred cause (not proven): the client markup lexer rejects whitespace followed by a digit. Safe fix: a seed text edit. Issue body: docs/analysis/starter-uat-praxis/results/issues/SP-DCB3-p2-1.md.
+1. Dialog 60150 parser error (same shape in 60110 and 60151): the owner-confirmed product defect, a seed text defect, not re-filed here. Issue body: docs/analysis/starter-uat-praxis/results/issues/SP-DCB3-p2-1.md. PR #2066 merged a text fix; the lab render has not been re-verified, so the human check above still stands.
 
 NOT RUN / BLOCKED:
-- Repeat click, relog retention, Marsh turn-in (4001/5022; core 1051/1052/1152), abandon and re-accept on `Dcbdk`, and the skip route to 688 were not driven. This packet's 14 steps never reach them.
-- The catalog clause was not checked (see the row notes).
+- Repeat click, relog, Marsh turn-in, abandon and skip: other parts or not driven.
 
-BRIEF DEFECTS:
-- Header, S2 and CB-U10a.1: the brief never enters Castle_Cellblock.Region2, and the 638 accept is bound to that entry. Add a Region2 GOTO (-265 65.45 -135) before CB-U10a.1 (confirmed to work by attempt 2); the SP-DCB3-p1 carry-over does not set up 638.
-- CB-U10a.3/.4: the text "ACCEPT accepts mission 638 (step 2115)" is wrong. 638 is accepted on region entry (step 2114); the first dialog click is the "Talk to Prisoner" topic (2300/5021), which advances to step 2115.
-- CB-U10a.5/.6: the RCLICK on the door button fails at read_mouse_over. Give the recipe client_target with allow_fallback, then /interact, then client_minigame_play. The step labels .4/.6/.7/.8 should be re-derived from chains 1011-1021.
-- CB-U10a.7: the first RCLICK on 329 fails with "off screen and rotate_camera is false". Add rotate_camera:true to the recipe or give a position with the prisoner on screen.
-- CB-U10a.9 to .10: the third click on 329 triggers the 62050 accept (chain 11003) and dialog 60150 itself. The brief treats it as a "first offer" read. The header and the 14 steps do not cover the catalog, repeat, relog, Marsh, abandon and skip clauses in the row table.
-- The brief gives no instruction for the tool-call count when GOTOs are repeated; the driver ran the prisoner GOTO twice.
+BRIEF DEFECTS (fixed in this change unless marked):
+- .5: the door button still fails the native click (known harness gap; recipe: INTERACT with `client_target` fallback). Not fixable in the brief.
+- .9: the "third click" actually happens via the lab_finish_dialog chain (62050 accepted at 11:07:23, before the logged .9 interact). The brief and verify now say the accept can fire at .8 and grade "once" over the window, and that the tier cap makes NATIVE_SHORTFALL the best grade.
 
-RESUME HINT: For the remaining clauses (repeat click on 329 after 62050, relog retention, Marsh turn-in, abandon on Dcbdk, skip) start a new part from the end state of Dcbdh (62050 active step 62054, 639 active, 638 done); the Region2 GOTO is not needed again. Fix the seed text for 60150, 60110 and 60151 (finding 1) before re-running CB-U10a.
+RESUME HINT: none; the part is complete. Re-check the 60150 render in the lab after PR #2066 ships.

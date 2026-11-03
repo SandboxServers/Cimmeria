@@ -11,6 +11,8 @@ Tested live on 2026-11-03 against the local lab server and the default lab clien
 | p8 drone (102310) | `client_target` failed at `on_screen` (pitch stuck at -78.75°) | targets after a camera reset | `setTargetID 102310`. `/gmkilltarget` did **not** kill it (still 250 hp); not pursued |
 | p8 Ambernol vial `ArmYourself_AmbernolVial` (102312) | fails at `observe`, `mouse_over_after 0` | **does not work** | the `targetUnit` fallback sent `setTargetID 0`. `/interact 102312` sent `interact` with target 0. A point-aimed right click at (512,508) sent nothing. Step 2145 is still open |
 
+Entity ids in the table above (102307, 102310, 102312, 102318) come from one session and go stale: read the id with `client_entity_find` every run (a later run found Prisoner 329 as 103140).
+
 Step 2117 → 2145 of mission 639 ("go to the drone") completed by itself. It is a region trigger (`triggerClientHintedGenericRegion`) and fired on the teleport to the drone spot; no click was needed.
 
 ## Why native clicks fail
