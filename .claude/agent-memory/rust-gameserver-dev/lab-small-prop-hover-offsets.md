@@ -11,3 +11,5 @@ metadata:
 
 INVALIDATED WHEN: crates/lab/src/supervisor/world/click_hover.rs changes its probe heights or drops the origin fallback
 checked: 2026-11-01
+
+2026-11-03 (fix/lab-prop-pick): `prop_scan` (opt-in on `client_world_click`/`client_hover_probe`) adds a bounded scan in `world/prop_scan.rs` after the dz ladder: 7x7 x/y (+-15 cm) by dz 0..40, one `project`, thinned to 3 px, nearest the origin pixel first, 60 reads max. The hover probe skips mouse-pass-through/disabled windows (Lua `isMousePassThroughEnabled`/`isDisabled`; names unverified live, a missing binding fails open) and always reports raw `mouse_over`.

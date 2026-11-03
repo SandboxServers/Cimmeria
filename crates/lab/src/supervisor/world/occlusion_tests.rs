@@ -363,3 +363,112 @@ async fn a_far_target_that_hovers_nothing_is_clicked_without_retries() {
     assert_eq!(sim.buttons, vec![(1, true), (1, false)]);
     assert!(hover_detail(&e.steps)["view_retries"].is_null());
 }
+
+/// With `prop_scan`, a prop whose pick shape sits above its origin is found
+/// and clicked at the scan pixel; without it the hover stays unverified.
+#[tokio::test]
+async fn a_click_with_prop_scan_finds_a_shape_above_the_origin() {
+    let make = || {
+        let mut sim = Sim::new().with_entity(11, "Ambernol Vial", Vec3::new(400.0, 0.0, 0.0));
+        sim.entities[0].window = Some("VialWin".into());
+        sim.body_dz = vec![30.0];
+        sim
+    };
+    let req = |prop_scan| ClickRequest {
+        entity_id: Some(11),
+        expect: Some(Expect::Window),
+        prop_scan,
+        ..ClickRequest::default()
+    };
+    let mut plain = make();
+    let out = click::run(&mut plain, "client_world_click", req(false), None).await;
+    assert!(
+        out.as_ref().map_or(true, |o| o["hover_verified"] != true),
+        "{out:?}"
+    );
+
+    let mut sim = make();
+    let out = click::run(&mut sim, "client_world_click", req(true), None)
+        .await
+        .unwrap();
+    assert_eq!(out["hover_verified"], true, "{out}");
+    assert_eq!(out["result"]["windows_opened"][0], "VialWin");
+    let detail = hover_detail(out["steps"].as_array().unwrap());
+    let tried = detail["tried"].as_array().unwrap();
+    assert!(tried.last().unwrap().get("scan").is_some(), "{detail}");
+}
+
+/// A prop the client never hovers: the scan misses inside its own budget,
+/// and the call falls back to the `Nothing` candidate and still clicks.
+#[tokio::test(start_paused = true)]
+async fn a_scan_miss_falls_back_to_the_nothing_candidate() {
+    let mut sim = Sim::new().with_entity(11, "Ambernol Vial", Vec3::new(400.0, 0.0, 0.0));
+    sim.unhoverable.push(11);
+    sim.real_sleep = true;
+    let out = click::run(
+        &mut sim,
+        "client_world_click",
+        ClickRequest {
+            entity_id: Some(11),
+            expect: Some(Expect::Nothing),
+            prop_scan: true,
+            rotate_camera: Some(false),
+            settle_ms: Some(300),
+            ..ClickRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    let detail = hover_detail(out["steps"].as_array().unwrap());
+    let tried = detail["tried"].as_array().unwrap();
+    assert_eq!(tried.last().unwrap()["hover"], "scan_miss", "{detail}");
+    let reads = tried.last().unwrap()["scan"]["reads"].as_u64().unwrap();
+    assert!(reads <= 34, "{detail}");
+    assert_eq!(sim.buttons, vec![(1, true), (1, false)]);
+}
+
+/// A near prop that never answers mouse-over, with the view allowed to change:
+/// only the first view pass scans, the retries and the restore do not.
+#[tokio::test(start_paused = true)]
+async fn a_scan_runs_on_the_first_view_pass_only() {
+    let mut sim = Sim::new().with_entity(11, "Corpse", Vec3::new(400.0, 0.0, 0.0));
+    sim.unhoverable.push(11);
+    let e = click::run(
+        &mut sim,
+        "client_world_click",
+        ClickRequest {
+            entity_id: Some(11),
+            expect: Some(Expect::Target),
+            prop_scan: true,
+            rotate_camera: Some(true),
+            settle_ms: Some(300),
+            ..ClickRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap_err();
+    let detail = hover_detail(&e.steps);
+    assert!(
+        detail["view_retries"]
+            .as_array()
+            .is_some_and(|r| !r.is_empty()),
+        "{detail}"
+    );
+    let scans = detail["tried"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(
+            detail["tried_after_restore"]
+                .as_array()
+                .into_iter()
+                .flatten(),
+        )
+        .filter(|t| t.get("scan").is_some())
+        .count();
+    // `tried` holds only the last view pass, so the first pass's scan is not
+    // visible here; a scan on a retry or the restore would show up as an entry.
+    assert_eq!(scans, 0, "{detail}");
+}

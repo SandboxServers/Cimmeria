@@ -51,6 +51,11 @@ pub struct HoverRequest {
     /// Jitter ring radius, px (default 12).
     #[serde(default)]
     pub jitter_px: Option<u32>,
+    /// Entity aim only: when no body height hovers the entity, scan a bounded
+    /// box around its origin for a pixel that does (small props), at most 60
+    /// reads and about 4 s. The centre pixel is then the scan hit.
+    #[serde(default)]
+    pub prop_scan: bool,
 }
 
 /// What the aim accepts under the cursor.
@@ -258,6 +263,7 @@ async fn probe<W: WorldIo>(
                 false,
                 None,
                 &mut attempted_pixel,
+                req.prop_scan,
             )
             .await?;
             steps.used(NativeLevel::RealInput);
@@ -273,7 +279,7 @@ async fn probe<W: WorldIo>(
 
     // 4. Score the centre and the ring.
     let t_score = io.now_ms();
-    let (ok, hover) = score_at(io, steps, kind, units, &rects, (x, y)).await?;
+    let (ok, hover, centre_mo) = score_at(io, steps, kind, units, &rects, (x, y)).await?;
     let radius = f64::from(req.jitter_px.unwrap_or(DEFAULT_JITTER_PX));
     let mut ring = Vec::new();
     let mut hits = 0u32;
@@ -288,15 +294,15 @@ async fn probe<W: WorldIo>(
             ring.push(json!({ "at": [jx, jy], "hover": "off_screen" }));
             continue;
         }
-        let (jok, jhover) = score_at(io, steps, kind, units, &rects, (jx, jy)).await?;
+        let (jok, jhover, jmo) = score_at(io, steps, kind, units, &rects, (jx, jy)).await?;
         hits += u32::from(jok);
-        ring.push(json!({ "at": [jx, jy], "hover": jhover, "ok": jok }));
+        ring.push(json!({ "at": [jx, jy], "hover": jhover, "mouse_over": jmo, "ok": jok }));
     }
     steps.record(
         "score",
         t_score,
         io.now_ms(),
-        json!({ "centre": hover, "ring": ring }),
+        json!({ "centre": hover, "mouse_over": centre_mo, "ring": ring }),
     );
 
     // 5. Distances from the avatar and the screen edge. `avatar_px` null
@@ -330,6 +336,9 @@ async fn probe<W: WorldIo>(
         "verdict": if ok { json!("ok") } else { hover.clone() },
         "pixel": [x, y],
         "hover": hover,
+        // The client's raw `Unit.MouseOver` at the centre, whatever the
+        // verdict says: a `ui` verdict used to hide whether the pick matched.
+        "mouse_over": centre_mo,
         "jitter_hits": hits,
         "jitter": JITTER_POINTS,
         "avatar_px": avatar_px,
@@ -351,7 +360,7 @@ async fn score_at<W: WorldIo>(
     units: UnitSlots,
     rects: &[(String, [f64; 4])],
     (x, y): (i32, i32),
-) -> Result<(bool, Value), WorldError> {
+) -> Result<(bool, Value, u32), WorldError> {
     io.place_cursor(x, y, true)
         .await
         .map_err(|e| steps.fail(io.now_ms(), "cursor", e))?;
@@ -360,7 +369,8 @@ async fn score_at<W: WorldIo>(
     let slots = read_mouse_over(io, steps, (x, y), None).await?;
     let mo = slot_entity(&slots, units.mouse_over);
     let player = slot_entity(&slots, units.player);
-    Ok(classify(kind, mo, player, window_at(rects, x, y)))
+    let (ok, hover) = classify(kind, mo, player, window_at(rects, x, y));
+    Ok((ok, hover, mo))
 }
 
 /// The first window whose rect contains the pixel.
