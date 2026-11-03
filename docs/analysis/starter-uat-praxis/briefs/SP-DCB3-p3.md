@@ -22,7 +22,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 9. **Never `client_wait_for` across a world load** (#1677): use the two 20 s waits of WAIT. Entity ids change after a relog or zone change: run FIND again right before you use an id.
 10. **If a click opens nothing**, take one SHOT, run PROMPT only if the SHOT shows a window or prompt name (gotcha 11), retry the click once unchanged, then record FAIL for that step and go to the next independent step. Never improvise a workaround this brief does not give.
 11. **Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name; if it shows none, skip PROMPT (no call). On a dead click the order is SHOT, then PROMPT only if the SHOT shows a window or prompt name, then one unchanged retry.** If a click still does nothing, read `client_ui_state` once and record the top window.
-12. **Known issues (record, do not fail the row for them unless the row is about them):** #1667 (first-guard pistol: a miss and heavy incoming damage are possible; the zero-Focus warning does not mean the shot was refused); the LMG effect 644 is inert; dialog 60151 raises a client syntax error (record the text, SHOT, continue); K5 (a corpse or NPC can stay invisible until relog: type `.bug invisible <what>`, relog, say whether it appeared); K7 (no Stasis Sickness icon is expected).
+12. **Known issues (record, do not fail the row for them unless the row is about them):** #1667 (first-guard pistol: a miss and heavy incoming damage are possible; the zero-Focus warning does not mean the shot was refused); the LMG effect 644 is inert; dialog 60151 and dialog 60150 raise a client parser syntax error in the dialog text (record the text, SHOT-H, continue; issue SP-DCB3-p2-1 covers 60150; never FAIL a row for the error itself, claim NEEDS_HUMAN); K5 (a corpse or NPC can stay invisible until relog: type `.bug invisible <what>`, relog, say whether it appeared); K7 (no Stasis Sickness icon is expected).
 13. **Livewire stalls:** `client_minigame_play` or `lab_screenshot` once failed to return for two minutes on this map. Call each once; if it does not return, record that and move on to the next step (the verifier grades the server side). Never call it twice in a row.
 14. **Do not restart the client** and do not call `lab_client_*` tools. If the client seems dead (every call fails), stop and report BLOCKED with the error text.
 15. **Your budget is 28 tool calls in total** (the hard stop). The ESTIMATE below is the planned count, and the labels in each step are its parts. At call 26 stop doing rows, write the report from what you have, release the lease and finish. Never start a row you cannot finish.
@@ -60,6 +60,8 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **RCLICK / TCLICK.** Cost 1. `client_world_click {"lease_id":L,"entity_id":<id>,"button":"right"}` interacts; `"button":"left"` (TCLICK) targets. See gotcha 20.
 
+**INTERACT.** Cost 2. Click an NPC or world prop that a plain RCLICK cannot hit (the native click often fails at `on_screen` / `read_mouse_over`). 1. `client_target {"lease_id":L,"entity_id":<id>,"allow_fallback":true,"rotate_camera":true}`; record `target_after`, it must equal the id. 2. CHATX with the single line `/interact` and a 2500 ms wait. Tier N3 (fallback target plus a typed slash command). Use it wherever a step says INTERACT.
+
 **BOOT.** Cost 4. Release the boot once per fresh character. 1. FIND with `max_distance_m` 5 and no filter: the Prison Boot Control prop is spawn 284, tag `Cellblock_PrisonBootControl`, template 1250, at (-333.03, 73.47, -227.32), about 1.4 m from where you spawn at (-334.23, 73.47, -228.03). Pick it by that position; record id, name, position. If none: BLOCKED 'prop not found' and stop the part. 2. Do NOT teleport (the boot snaps you back). RCLICK it from the spawn point. 3. `client_minigame_play {"lease_id":L,"entity_id":OWN}`; on a loss RCLICK again and replay once (failure path, not counted). 4. READ channel "9" `contains` `unlocks`: the line is `The prison boot unlocks. You can move again.` If it does not appear: BLOCKED 'boot not released' and stop the part.
 
 **DLG.** Cost 1. `client_window_read {"lease_id":L,"kind":"dialog"}`; record the topic list and text. **ACCEPT.** Cost 1. `lab_finish_dialog {"lease_id":L,"accept":true}`.
@@ -80,11 +82,11 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 # SP-DCB3-p3
 
-Start: carry-over from SP-DCB3-p2. Same character `Dcbdh`, same state. If SP-DCB3-p2 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
+Start: carry-over from SP-DCB3-p2. Same character `Dcbdh`, same state: 638 done, 639 at step 2145 (the vial step), 62050 accepted. This part covers the repeat click, the relog, the vial (tier G route) and the ring switch only. If SP-DCB3-p2 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
 
 ROWS: CB-U10b.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
-ESTIMATE: 21 tool calls (planned success path; hard stop 28)
+ESTIMATE: 22 tool calls (planned success path; hard stop 28)
 CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same character as SP-DCB3-p2.
 
 ## Steps
@@ -96,31 +98,31 @@ CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same
 
 ### ROW CB-U10b
 
-**CB-U10b.1 (1 call: client_world_click).** RCLICK Prisoner 329. Repeat click.
+**CB-U10b.1 (2 calls: client_target, client_batch).** INTERACT Prisoner 329. Repeat click. The offer is already consumed, so "does it re-offer" is a server check (no second accept, no second dialog), not a click result.
 
 **CB-U10b.2 (1 call: client_window_read).** DLG (read the dialog window). Does it re-offer?
 
 **CB-U10b.3 (3 calls: lab_logout, lab_ensure_in_world, client_batch).** RELOG (same character; the third call is the WAIT batch). 
 
-**CB-U10b.4 (1 call: client_ui_sequence).** JOURNAL: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"j"}]}`.
+**CB-U10b.4 (0 calls: dropped).** JOURNAL dropped. The `j` key opens the crafting window, not the journal, and posts no readable state. Do not press `j`. The tracker text comes from UIS in .5.
 
-**CB-U10b.5 (1 call: client_ui_state).** UIS (read `client_ui_state`).
+**CB-U10b.5 (1 call: client_ui_state).** UIS (read `client_ui_state`). Record the tracker text (mission 62050 and 639).
 
-**CB-U10b.6 (1 call: client_batch).** GOTO `-231 66.5 -124`. The vial (spawn 12) is at (-234.04, 66.52, -124.70).
+**CB-U10b.6 (1 call: client_batch).** Tier G, replaces the vial click (the small prop cannot be hovered or targeted by the lab: issue SP-DCB3-p3-1). CHATX with these lines in order: `/gmgiveitem 19 1` (the Ambernol vial; a mission-only item is routed to the Mission bag), then `/gmmissionadvance 639 2343` (puts 639 on the use-vial step). Label the vial row tier G.
 
-**CB-U10b.7 (1 call: client_entity_find).** FIND, `max_distance_m` 6. Pick the vial by position (within 1.5 m of (-234.04, 66.52, -124.70)).
+**CB-U10b.7 (1 call: client_inventory).** INV with the `Mission` container added. Record the item name and id; item id 19 must be present. Use that exact name in .8.
 
-**CB-U10b.8 (1 call: client_world_click).** RCLICK the vial.
+**CB-U10b.8 (1 call: client_item_action).** USE the vial from the Mission inventory: `client_item_action {"lease_id":L,"action":"use","name":"<name INV showed for id 19>"}` (inferred name: Ambernol vial). Chain 1034 fires: 639 completes, 640 is accepted and the rings switch gets its Livewire bit. Tier G (the vial arrived by GM).
 
-**CB-U10b.9 (1 call: client_item_action).** LOOT_ALL. Pick up the vial (item 2893 Health Slappack).
+**CB-U10b.9 (1 call: client_ui_state).** UIS (read `client_ui_state`). Record whether 640 is in the tracker and 639 is gone.
 
 **CB-U10b.10 (1 call: client_batch).** GOTO `-215 67 -122`. The rings switch (spawn 23) is at (-218.08, 67.04, -122.72).
 
 **CB-U10b.11 (1 call: client_entity_find).** FIND, `max_distance_m` 6. Pick the rings switch by position (within 1.5 m of (-218.08, 67.04, -122.72)).
 
-**CB-U10b.12 (1 call: client_world_click).** RCLICK the rings switch.
+**CB-U10b.12 (2 calls: client_target, client_batch).** INTERACT the rings switch (spawn 23). Small props have not been hoverable in earlier drives, and no GM command fires the switch's interact or the ring transport that completes 640 (`/gmgotoxyz` does not raise `teleport_in`), so this step has no substitute. Make the one attempt; if the server shows no `interact` for it, record the claim `BLOCKED (harness)` (NATIVE_SHORTFALL class) with this reason and retry only once, unchanged.
 
-**CB-U10b.13 (1 call: client_minigame_play).** MG (play the open Livewire once; `entity_id` = your own id from the last FIND).
+**CB-U10b.13 (1 call: client_minigame_play).** MG (play the open Livewire once; `entity_id` = your own id from the last FIND). Only if .12 opened a Livewire; otherwise NOT-RUN ('no Livewire opened'). If 640 does not complete in this part, SP-DCB3-p4 records its 62050 clause as C5-BLOCKED.
 
 **CB-U10b.14 (1 call: client_batch).** Bookmark: one batch with only the DIALOG op and the end line, nothing else. Also add the line `.bug SPU SP-DCB3-p3 CB-U10b end` as the last line of this step's `client_batch`.
 

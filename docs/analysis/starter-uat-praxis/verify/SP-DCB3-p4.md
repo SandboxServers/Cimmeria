@@ -38,7 +38,7 @@ The sheet is the list of every NEEDS_HUMAN clause with its saved screenshot path
 
 ## 6. When a row FAILs, or you find a bug
 
-Investigate before you conclude: read the code path the row exercises (the doc named in the row), reproduce the reasoning with the server rows, and decide whether it is (a) a product bug, (b) a doc mismatch, (c) a lab or driver problem (a wrong click, a bad recipe, a harness gap: not a product bug) or (d) a known issue (unified-uat.md K1-K33, #1667, the LMG effect 644, dialog 60151, K5-K8: do not file). For (a) and (b) write the issue body to `docs/analysis/starter-uat-praxis/results/issues/SP-DCB3-p4-<n>.md` (D-SP4: bugs are filed, not fixed). A verifier never files the issue itself: the coordinator does. The body follows docs/agents/issue-tracker.md: `## Problem`, `## Evidence`, `## Acceptance criteria`, `## Test type`, `## Docs to update`, `## Client impact`, `## Domain advisor`, `## Needs a human for`, `## Implementation plan`. Mention `@Cadacious`. Case (c) goes in `NOT RUN / BLOCKED` with the recipe the next driver needs.
+Investigate before you conclude: read the code path the row exercises (the doc named in the row), reproduce the reasoning with the server rows, and decide whether it is (a) a product bug, (b) a doc mismatch, (c) a lab or driver problem (a wrong click, a bad recipe, a harness gap: not a product bug) or (d) a known issue (unified-uat.md K1-K33, #1667, the LMG effect 644, dialog 60151, dialog 60150 (issue SP-DCB3-p2-1 exists), K5-K8: do not file). For (a) and (b) write the issue body to `docs/analysis/starter-uat-praxis/results/issues/SP-DCB3-p4-<n>.md` (D-SP4: bugs are filed, not fixed). A verifier never files the issue itself: the coordinator does. The body follows docs/agents/issue-tracker.md: `## Problem`, `## Evidence`, `## Acceptance criteria`, `## Test type`, `## Docs to update`, `## Client impact`, `## Domain advisor`, `## Needs a human for`, `## Implementation plan`. Mention `@Cadacious`. Case (c) goes in `NOT RUN / BLOCKED` with the recipe the next driver needs.
 
 ## 7. Do not
 
@@ -52,19 +52,17 @@ Do not edit the repo (except the issue body file), the database or the server; d
 Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p3. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U10c
-Sub-row scope: Marsh talk, relog, 329 gives no new offer. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.
+Sub-row scope: Marsh talk, relog, 329 gives no new offer. Abandon and skip are NOT-RUN. Grade only the clauses this part drove.
 
 | Check | Evidence | Expected |
 |---|---|---|
-| Catalog | startup `cooked_data.mission_catalog_inserted` with `mission_id` 62050; no `cooked_data.mission_catalog_rejected` | present / absent |
-| First offer, accept | `adding dialog set` for 329 after 638; `accepting mission` 62050 once; `displaying dialog` 60150 | one each |
-| Repeat click | no second accept or dialog | yes |
-| Relog | step B retained, no new offer (mission table) | yes |
-| Marsh | `displaying dialog` 4001 (Human) or 5022 (Jaffa); 62050 completes; core 1051, 1052, 1152 not lost | yes |
-| Abandon | `abandoning mission` 62050; offer returns; re-accept works | on `Dcbdk` |
-| Skip | the core route reaches 688 | yes |
+| Precondition | `sgw_mission` 640 `status` completed (chain 1044 on `teleport_in` region 2) | if 640 is not completed, the '62050 completes' clause is C5-BLOCKED (chain 11005 requires 640 completed); say so, do not FAIL |
+| Marsh | `displaying dialog` 4001 (Human) or 5022 (Jaffa); `accepting mission` 641 | yes. Chain 1051 gates on 641 not active only; the order is enforced by interaction bit 8388608 (set after 640 completes), so reaching Marsh with 640 incomplete is not a defect |
+| 62050 completes | `completing mission` 62050 on the 641 accept (chain 11005) | only with 640 completed; core 1051, 1052, 1152 not lost |
+| Relog | no new offer (mission table, no `adding dialog set` for 329) | yes |
+| 329 no re-offer | no `displaying dialog` / `accepting mission` 62050 for the 329 click after the relog | yes |
 
-Grade: blockers (blank dialog 60150, client crash, no first-press response, lost progress, changed core briefing) make the row FAIL; a blank dialog seen only in the driver's SHOT is NEEDS_HUMAN `H-CB-U10-1` unless the server shows the dialog displayed with no text. If the packet tap ran, record the cooked-sync heads `(3, 62050)` and `(5, 60150)`. Looker: 1. Is a dialog box with text visible? 2. Is a journal entry titled "The Remaining Pods" visible?
+Grade: FAIL on lost progress or a changed core briefing. Dialog 60150 parser error is a known finding (SP-DCB3-p2-1): NEEDS_HUMAN, not FAIL. Looker: 1. Is a dialog box with text visible? 2. Is a journal entry titled "The Remaining Pods" visible?
 
 ---
 

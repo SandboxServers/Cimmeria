@@ -22,7 +22,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 9. **Never `client_wait_for` across a world load** (#1677): use the two 20 s waits of WAIT. Entity ids change after a relog or zone change: run FIND again right before you use an id.
 10. **If a click opens nothing**, take one SHOT, run PROMPT only if the SHOT shows a window or prompt name (gotcha 11), retry the click once unchanged, then record FAIL for that step and go to the next independent step. Never improvise a workaround this brief does not give.
 11. **Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name; if it shows none, skip PROMPT (no call). On a dead click the order is SHOT, then PROMPT only if the SHOT shows a window or prompt name, then one unchanged retry.** If a click still does nothing, read `client_ui_state` once and record the top window.
-12. **Known issues (record, do not fail the row for them unless the row is about them):** #1667 (first-guard pistol: a miss and heavy incoming damage are possible; the zero-Focus warning does not mean the shot was refused); the LMG effect 644 is inert; dialog 60151 raises a client syntax error (record the text, SHOT, continue); K5 (a corpse or NPC can stay invisible until relog: type `.bug invisible <what>`, relog, say whether it appeared); K7 (no Stasis Sickness icon is expected).
+12. **Known issues (record, do not fail the row for them unless the row is about them):** #1667 (first-guard pistol: a miss and heavy incoming damage are possible; the zero-Focus warning does not mean the shot was refused); the LMG effect 644 is inert; dialog 60151 and dialog 60150 raise a client parser syntax error in the dialog text (record the text, SHOT-H, continue; issue SP-DCB3-p2-1 covers 60150; never FAIL a row for the error itself, claim NEEDS_HUMAN); K5 (a corpse or NPC can stay invisible until relog: type `.bug invisible <what>`, relog, say whether it appeared); K7 (no Stasis Sickness icon is expected).
 13. **Livewire stalls:** `client_minigame_play` or `lab_screenshot` once failed to return for two minutes on this map. Call each once; if it does not return, record that and move on to the next step (the verifier grades the server side). Never call it twice in a row.
 14. **Do not restart the client** and do not call `lab_client_*` tools. If the client seems dead (every call fails), stop and report BLOCKED with the error text.
 15. **Your budget is 28 tool calls in total** (the hard stop). The ESTIMATE below is the planned count, and the labels in each step are its parts. At call 26 stop doing rows, write the report from what you have, release the lease and finish. Never start a row you cannot finish.
@@ -60,6 +60,8 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **RCLICK / TCLICK.** Cost 1. `client_world_click {"lease_id":L,"entity_id":<id>,"button":"right"}` interacts; `"button":"left"` (TCLICK) targets. See gotcha 20.
 
+**INTERACT.** Cost 2. Click an NPC or world prop that a plain RCLICK cannot hit (the native click often fails at `on_screen` / `read_mouse_over`). 1. `client_target {"lease_id":L,"entity_id":<id>,"allow_fallback":true,"rotate_camera":true}`; record `target_after`, it must equal the id. 2. CHATX with the single line `/interact` and a 2500 ms wait. Tier N3 (fallback target plus a typed slash command). Use it wherever a step says INTERACT.
+
 **BOOT.** Cost 4. Release the boot once per fresh character. 1. FIND with `max_distance_m` 5 and no filter: the Prison Boot Control prop is spawn 284, tag `Cellblock_PrisonBootControl`, template 1250, at (-333.03, 73.47, -227.32), about 1.4 m from where you spawn at (-334.23, 73.47, -228.03). Pick it by that position; record id, name, position. If none: BLOCKED 'prop not found' and stop the part. 2. Do NOT teleport (the boot snaps you back). RCLICK it from the spawn point. 3. `client_minigame_play {"lease_id":L,"entity_id":OWN}`; on a loss RCLICK again and replay once (failure path, not counted). 4. READ channel "9" `contains` `unlocks`: the line is `The prison boot unlocks. You can move again.` If it does not appear: BLOCKED 'boot not released' and stop the part.
 
 **DLG.** Cost 1. `client_window_read {"lease_id":L,"kind":"dialog"}`; record the topic list and text. **ACCEPT.** Cost 1. `lab_finish_dialog {"lease_id":L,"accept":true}`.
@@ -80,11 +82,11 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 # SP-DCB3-p2
 
-Start: carry-over from SP-DCB3-p1. Same character `Dcbdh`, same state. If SP-DCB3-p1 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
+Start: carry-over from SP-DCB3-p1. Same character `Dcbdh`, same state: standing in Region2, mission 638 accepted at step 2114 on the region entry (it is NOT accepted by a Prisoner click). This part covers the 638 flow and the first 62050 offer only; the repeat click and relog are SP-DCB3-p3, Marsh and the no-new-offer check are SP-DCB3-p4, and abandon and skip are not driven by any DCB3 part (NOT-RUN). If SP-DCB3-p1 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
 
 ROWS: CB-U10a.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
-ESTIMATE: 19 tool calls (planned success path; hard stop 28)
+ESTIMATE: 24 tool calls (planned success path; hard stop 28)
 CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same character as SP-DCB3-p1.
 
 ## Steps
@@ -93,6 +95,8 @@ CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same
 
 **S2 (1 call: client_batch).** Resume probe plus bookmark: one batch of the DIALOG op, `player_state` (`world_id`, `position`), UTC and the line `.bug SPU SP-DCB3-p2 CB-U10a start`. Report world and position. Facts: no fixture; the state comes from SP-DCB3-p1, so nothing needs replaying. If ATTEMPT is 2 or 3, continue at STOPPED AT; do not repeat DONE ROWS and do not repeat the bookmark.
 
+**CB-U10a.0 (1 call: client_ui_state).** Precondition. UIS. Mission 638 must be in the tracker (accepted at 2114 by SP-DCB3-p1). If it is not listed, run the failure path (not counted): GOTO `-265 65.45 -135` (Region2 entry; step out and re-enter if the first drive does not accept it, inferred) and read UIS again. If 638 is still absent, record BLOCKED ('638 not accepted') and stop the part.
+
 
 ### ROW CB-U10a
 
@@ -100,27 +104,27 @@ CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U10a.2 (1 call: client_entity_find).** FIND, `max_distance_m` 6. Pick Prisoner 329 by position (within 1.5 m of (-289.81, 65.47, -113.14)), the door button (within 1.5 m of (-287.29, 67.26, -115.04)), and your own entry.
 
-**CB-U10a.3 (1 call: client_world_click).** RCLICK Prisoner 329.
+**CB-U10a.3 (2 calls: client_target, client_batch).** INTERACT Prisoner 329 (first click). 638 is already active at step 2114, so this click opens the Prisoner dialog for the 638 flow; it is not the accept of 638.
 
-**CB-U10a.4 (1 call: lab_finish_dialog).** ACCEPT the open dialog topic. This accepts mission 638 (step 2115).
+**CB-U10a.4 (1 call: lab_finish_dialog).** ACCEPT the open dialog topic. Record the tracker text and step after it; do not assume a step number (the verifier reads the 638 steps from the mission table).
 
-**CB-U10a.5 (1 call: client_world_click).** RCLICK the door button.
+**CB-U10a.5 (2 calls: client_target, client_batch).** INTERACT the door button `329_CellDoorButton` (a plain RCLICK on it fails at the client layer).
 
-**CB-U10a.6 (1 call: client_minigame_play).** MG (play the open Livewire once; `entity_id` = your own id from the last FIND). Livewire on the cell-door button; step 2116.
+**CB-U10a.6 (1 call: client_minigame_play).** MG (play the open Livewire once; `entity_id` = your own id from the last FIND). Livewire on the cell-door button; record the step the server reports. The tool may answer `server_unreachable` on a win: decide from the chat and the tracker.
 
-**CB-U10a.7 (1 call: client_world_click).** RCLICK Prisoner 329. Agree topic (dialog 2299 Tau'ri, 5020 Jaffa).
+**CB-U10a.7 (2 calls: client_target, client_batch).** INTERACT Prisoner 329 (`rotate_camera` true is part of the macro). Agree topic (dialog 2299 Tau'ri, 5020 Jaffa).
 
 **CB-U10a.8 (1 call: lab_finish_dialog).** ACCEPT the open dialog topic. Mission 638 completes and 639 is accepted. Record the tracker text in your notes.
 
-**CB-U10a.9 (1 call: client_world_click).** RCLICK Prisoner 329.
+**CB-U10a.9 (2 calls: client_target, client_batch).** INTERACT Prisoner 329 (the third click). This click triggers mission 62050 (The Remaining Pods): the offer is accepted and dialog 60150 is shown once. It is not a "first offer" of 639.
 
-**CB-U10a.10 (1 call: client_window_read).** DLG (read the dialog window). First offer.
+**CB-U10a.10 (1 call: client_window_read).** DLG (read the dialog window). Dialog 60150. Record the text verbatim, including any parser error text: the 'Prisoner 329' sentence renders as a client syntax error (known finding, issue SP-DCB3-p2-1). Claim NEEDS_HUMAN for the text, not FAIL.
 
 **CB-U10a.11 (1 call: client_ui_state).** UIS (read `client_ui_state`).
 
 **CB-U10a.12 (1 call: client_chat_log).** READ cursor `e2`, channel "9".
 
-**CB-U10a.13 (1 call: lab_screenshot).** SHOT-H `H-CB-U10-1`. Is the offer window shown?
+**CB-U10a.13 (1 call: lab_screenshot).** SHOT-H `H-CB-U10-1`. Is the offer window shown? Say what the text area shows (60150 is expected to show the parser error).
 
 **CB-U10a.14 (1 call: client_batch).** Bookmark: one batch with only the DIALOG op and the end line, nothing else. Also add the line `.bug SPU SP-DCB3-p2 CB-U10a end` as the last line of this step's `client_batch`.
 

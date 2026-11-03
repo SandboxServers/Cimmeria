@@ -38,7 +38,7 @@ The sheet is the list of every NEEDS_HUMAN clause with its saved screenshot path
 
 ## 6. When a row FAILs, or you find a bug
 
-Investigate before you conclude: read the code path the row exercises (the doc named in the row), reproduce the reasoning with the server rows, and decide whether it is (a) a product bug, (b) a doc mismatch, (c) a lab or driver problem (a wrong click, a bad recipe, a harness gap: not a product bug) or (d) a known issue (unified-uat.md K1-K33, #1667, the LMG effect 644, dialog 60151, K5-K8: do not file). For (a) and (b) write the issue body to `docs/analysis/starter-uat-praxis/results/issues/SP-DCB3-p3-<n>.md` (D-SP4: bugs are filed, not fixed). A verifier never files the issue itself: the coordinator does. The body follows docs/agents/issue-tracker.md: `## Problem`, `## Evidence`, `## Acceptance criteria`, `## Test type`, `## Docs to update`, `## Client impact`, `## Domain advisor`, `## Needs a human for`, `## Implementation plan`. Mention `@Cadacious`. Case (c) goes in `NOT RUN / BLOCKED` with the recipe the next driver needs.
+Investigate before you conclude: read the code path the row exercises (the doc named in the row), reproduce the reasoning with the server rows, and decide whether it is (a) a product bug, (b) a doc mismatch, (c) a lab or driver problem (a wrong click, a bad recipe, a harness gap: not a product bug) or (d) a known issue (unified-uat.md K1-K33, #1667, the LMG effect 644, dialog 60151, dialog 60150 (issue SP-DCB3-p2-1 exists), K5-K8: do not file). For (a) and (b) write the issue body to `docs/analysis/starter-uat-praxis/results/issues/SP-DCB3-p3-<n>.md` (D-SP4: bugs are filed, not fixed). A verifier never files the issue itself: the coordinator does. The body follows docs/agents/issue-tracker.md: `## Problem`, `## Evidence`, `## Acceptance criteria`, `## Test type`, `## Docs to update`, `## Client impact`, `## Domain advisor`, `## Needs a human for`, `## Implementation plan`. Mention `@Cadacious`. Case (c) goes in `NOT RUN / BLOCKED` with the recipe the next driver needs.
 
 ## 7. Do not
 
@@ -49,22 +49,19 @@ Do not edit the repo (except the issue body file), the database or the server; d
 
 # Verify SP-DCB3-p3: CB-U10b
 
-Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p2. If that part FAILed, grade these rows BLOCKED.
+Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p2 (638 done, 639 at step 2145, 62050 accepted). If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U10b
-Sub-row scope: Repeat click, relog, journal, vial, rings. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.
+Sub-row scope: repeat click, relog, the vial (tier G route) and the ring switch. The journal is not driven (the `j` key opens crafting). Abandon and skip are NOT-RUN. Grade only the clauses this part drove.
 
 | Check | Evidence | Expected |
 |---|---|---|
-| Catalog | startup `cooked_data.mission_catalog_inserted` with `mission_id` 62050; no `cooked_data.mission_catalog_rejected` | present / absent |
-| First offer, accept | `adding dialog set` for 329 after 638; `accepting mission` 62050 once; `displaying dialog` 60150 | one each |
-| Repeat click | no second accept or dialog | yes |
-| Relog | step B retained, no new offer (mission table) | yes |
-| Marsh | `displaying dialog` 4001 (Human) or 5022 (Jaffa); 62050 completes; core 1051, 1052, 1152 not lost | yes |
-| Abandon | `abandoning mission` 62050; offer returns; re-accept works | on `Dcbdk` |
-| Skip | the core route reaches 688 | yes |
+| Repeat click | no second `accepting mission` 62050 and no second `displaying dialog` 60150 after the repeat Prisoner click | yes |
+| Relog | step B retained (mission table, 62050 still at its step), no new offer | yes |
+| Vial (tier G) | `granting item` 19 (Mission bag) from `/gmgiveitem 19 1`; `/gmmissionadvance 639 2343`; then the item use: chain 1034 logs `completing mission` 639 and `accepting mission` 640 | all present; label the row tier G |
+| Ring switch | `interact` on the switch (spawn 23), then the mission 640 Livewire; 640 completes only via chain 1044 on `teleport_in` region 2 | BLOCKED (harness) / NATIVE_SHORTFALL when there is no server verdict: no GM substitute exists for this step; reason: small props cannot be hovered or targeted (issue SP-DCB3-p3-1) |
 
-Grade: blockers (blank dialog 60150, client crash, no first-press response, lost progress, changed core briefing) make the row FAIL; a blank dialog seen only in the driver's SHOT is NEEDS_HUMAN `H-CB-U10-1` unless the server shows the dialog displayed with no text. If the packet tap ran, record the cooked-sync heads `(3, 62050)` and `(5, 60150)`. Looker: 1. Is a dialog box with text visible? 2. Is a journal entry titled "The Remaining Pods" visible?
+Grade: PARTIAL is the expected best grade when the ring switch cannot be reached; record its reason and do not FAIL the product. Looker: none required.
 
 ---
 

@@ -33,7 +33,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 19. **Every new character spawns boot-locked** (mission 689, chain 1023 holds movement inside a 1.0 m radius and snaps you back). Winning the Prison Boot Control Livewire releases it for good; BOOT does that. A relog does not lock it again after the win.
 20. **Unverified tool arguments.** `client_world_click` takes `entity_id` and `button` (`"right"` interacts, `"left"` targets); the repo does not show the accepted `button` strings, so if a click is rejected with an argument error, retry once with the same call without `button` and record the error text.
 21. **Judge a Livewire by the server, not the tool.** `client_minigame_play` may answer `inconclusive` or `server_unreachable` even when the win reached the server. Record the tool text verbatim, do not retry, do not claim FAIL for it, and go on. The verifier grades from `smartfox_victory`, `server_minigame_state` and the mission row.
-22. **GM setup commands (tier G).** `/gmheal` does not exist. The real ones are `/gmsetgodmode <0|1>`, `/gmsethealth <amount> <targetId>` (use `/gmsethealth 760 0`), `/gmgiveitem <designId> <qty>`, `/gmmissionassign <missionId> <popup>` and `/gmkilltarget <entityId>`. `/gmkilltarget 0` works with the NPC selected. A bare `/gm...` line with missing arguments answers "Not enough parameters" and the server never sees it. Never send a GM line while dead. God mode resets on a relog.
+22. **GM setup commands (tier G).** `/gmheal` does not exist. The real ones are `/gmsetgodmode <0|1>`, `/gmsethealth` (always fails with "target id out of u32 range"; do not send it, god mode is enough), `/gmgiveitem <designId> <qty>`, `/gmmissionassign <missionId> <popup>` and `/gmkilltarget <entityId>`. `/gmkilltarget 0` works with the NPC selected. A bare `/gm...` line with missing arguments answers "Not enough parameters" and the server never sees it. Never send a GM line while dead. God mode resets on a relog.
 
 ## 1. Fixed macros (use them verbatim; the cost is the number of calls)
 
@@ -109,9 +109,9 @@ CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U06.1 (1 call: client_ui_state).** UIS. Record the mission tracker. If mission 686 is not listed, run the failure path (not counted): CHATX `/gmmissionassign 686 1` (tier G), then UIS once more.
 
-**CB-U06.2 (1 call: client_batch).** GOTO `-100.8 24.67 -47.6` (the middle of the two Hallway05 guards, 3.7 m from each, derived from the spawnlist). Put these CHATX lines before the `.gotolocation` line: `/gmsetgodmode 1` and `/gmsethealth 760 0` (tier G; god mode resets on a relog, so it must be sent again in this run).
+**CB-U06.2 (1 call: client_batch).** GOTO `-100.8 24.67 -47.6` (the middle of the two Hallway05 guards, 3.7 m from each, derived from the spawnlist). Put these CHATX lines before the `.gotolocation` line: `/gmsetgodmode 1` (tier G; god mode resets on a relog, so it must be sent again in this run).
 
-**CB-U06.3 (1 call: client_entity_find).** FIND, `max_distance_m` 12. Pick Hallway05_Guard2 by position (within 1.5 m of (-101.5, 24.67, -51.3)); keep its id. If it is missing, pick Hallway05_Guard1 (within 1.5 m of (-100.16, 24.67, -43.90)). Both guards are needed, so also keep the other guard's id; do not pick just one.
+**CB-U06.3 (1 call: client_entity_find).** FIND, `max_distance_m` 12, and look up the current guard ids and positions with `server_entity_query` (Hallway05_Guard1 and Hallway05_Guard2). The spawn positions (Guard2 (-101.5, 24.67, -51.3), Guard1 (-100.16, 24.67, -43.90)) are stale and the ids change every server start: pick both guards by the `server_entity_query` positions (within 1.5 m) and keep both ids; do not pick just one.
 
 **CB-U06.4 (1 call: client_camera).** `client_camera {"lease_id":L,"pitch_deg":-10,"face_entity_id":<guard id>}`.
 
@@ -119,7 +119,9 @@ CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U06.6 (up to 12 calls: client_use_ability, client_batch, client_target).** Kill Hallway05_Guard2 with real shots: `client_use_ability {"lease_id":L,"ability_id":592,"place":true}` at the target, reload with the R key when dry, repeat until `client_entity_find` shows it dead. Then `client_target` Hallway05_Guard1 and do the same. In the batch that follows the second kill, add the line `.bug SPU SP-DCB2-p5 CB-U06 kill`; the second death triggers the Straegis scene and is t=0 (inferred: the evidence does not say which death fires chain 1188, so read the `Content: complete mission` 686 row for t=0). Do not use `/gmkilltarget`: it never raises `entity_dead_tag`, so the scene cannot play (issue SP-DCB2-p5-1). If you must fall back to it, say tier G and expect a FAIL (product) grade, not a brief defect.
 
-**CB-U06.7 (1 call: lab_screenshot).** SHOT-H `H-T16-1`. What is on screen at the kill?
+**CB-U06.7 (1 call: lab_screenshot).** SHOT-H `H-T16-1`. What is on screen at the kill? Take it in the first seconds after the second kill, DURING the 10 s scene (before dialog 2516 at about +10 s), not after it.
+
+**CB-U06.7a (1 call: lab_screenshot).** SHOT-H `H-CB-U06-1`, still DURING the 10 s scene (within 10 s of t=0, before the .8 wait). Describe the camera and the scene (readable interval, Marsh visible or not).
 
 **CB-U06.8 (1 call: client_batch).** One batch: DIALOG first, then `wait` 5000 ms, then UTC. Time the scene.
 
@@ -129,7 +131,7 @@ CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U06.11 (1 call: client_ui_state).** UIS (read `client_ui_state`). Blurb 5859.
 
-**CB-U06.12 (1 call: lab_screenshot).** SHOT-H `H-CB-U06-2`. Is the blurb 5859 on screen?
+**CB-U06.12 (1 call: lab_screenshot).** SHOT-H `H-CB-U06-2`. Is the blurb 5859 on screen? Take it only when UTC minus t=0 is at least 24 s (blurb 5859 arrived at +26 s in the SP-DCB2 runs); if earlier, run one DIALOG plus `wait` batch first. A shot before the blurb shows nothing.
 
 **CB-U06.13 (1 call: client_entity_find).** FIND, `max_distance_m` 10. Pick Marsh.
 

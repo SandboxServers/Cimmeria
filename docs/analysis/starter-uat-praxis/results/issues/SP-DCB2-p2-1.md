@@ -1,6 +1,6 @@
-# SP-DCB2-p2-1: Guard body (template 21) cannot be targeted or interacted with by the native client
+# SP-DCB2-p2-1: Lab harness gap: synthetic hover/click cannot pick the Guard body (template 21)
 
-Rows: CB-U08b.15 to .19. Attempt 4 takeover, local lab, character Dcbch (server entity 52, player_id 100).
+Rows: CB-U08b.15 to .19. Class: lab HARNESS gap, not a product defect. The owner confirms the Cellblock progression works when a human plays it, so a human player can pick and use the Guard body. The failure is that the lab's synthetic hover and click input cannot select this entity. Attempt 4 takeover, local lab, character Dcbch (server entity 52, player_id 100).
 
 ## Repro
 1. Dcbch at (-324.80, 73.47, -212.25), Castle_Cellblock; mission 622 current_step_id 80623 (Frost already searched; item 3730 in Mission inventory).
@@ -17,7 +17,7 @@ Rows: CB-U08b.15 to .19. Attempt 4 takeover, local lab, character Dcbch (server 
 - Inventory now: Main = "Accessory" 10579 only; Mission = Frost's Letter 10580. No pistol 55. sgw_player_ability_grants: 0 rows for player 100.
 
 ## Classification
-Client-side targeting limit of a non-Unit (spawnable) entity, with the product choice that the Guard body is a spawnable prop: left click and targetUnit cannot select it, and the right-click prop path does not fire in the lab input route. Not a server data problem (chain/dialog/step conditions are met). The proven recipe works only for Unit-class entities (Frost, Prisoner 329, door panel via targetUnit when the prop is a Unit), not for spawnable props (same as the Ambernol vial in verify-click-recipe.md).
+Lab harness gap (BLOCKED (harness)), not a product defect and not an owner decision. Per the owner, the product path works for a human player. The lab's synthetic hover and click cannot pick the Guard body: left click and targetUnit cannot select it, and the right-click path does not fire in the lab input route. The data observations above (template 21 is class "spawnable" with no name_id, no Unit to target) describe what the harness runs into; they are not evidence that a human cannot target it, and they are not a request to change the template. Server data is fine (chain/dialog/step conditions are met). The proven recipe works for Unit-class entities (Frost, Prisoner 329, door panel via targetUnit) but not for this prop, the same harness class as the Ambernol vial in verify-click-recipe.md.
 
-## Suggested next step (not done here)
-Either make template 21 a targetable class like template 14 ("being", with name_id) so the recipe works, or give the lab a server-side route (server_stage_fixture / grant) for the pistol and abilities, recorded as a deviation. Do not grant by GM command from the driver.
+## Suggested next step (harness side, not done here)
+Give the lab a way to pick this entity: a point-aimed click on the projected pixel with pass-through windows ignored, or a lab tool op that sends `interact` with an explicit entity id. Failing that, a server-side route (server_stage_fixture / grant) for the pistol and abilities, recorded as a deviation tier. Do not grant by GM command from the driver. No product change is proposed.

@@ -52,7 +52,7 @@ Do not edit the repo (except the issue body file), the database or the server; d
 Character `Dcbch`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB2-p3. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U05b
-Sub-row scope: Hallway05 guard flank. No Hallway05 guard may die in this part: with mission 686 active, either death completes 686 and plays the Straegis scene (chains 1092 to 1094, 1161), and CB-U06 (SP-DCB2-p5) needs that scene in its own run. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows. Setup (not graded, tier G): `/gmsetgodmode 1`, `/gmsethealth 760 0`, and `/gmmissionassign 686 1` because the 681 to 686 controller chain was never run for this character; reload by the R key; stand point (-100.8, 24.67, -47.6), the midpoint of the two spawns.
+Sub-row scope: Hallway05 guard flank. No Hallway05 guard may die in this part: with mission 686 active, either death completes 686 and plays the Straegis scene (chains 1092 to 1094, 1161), and CB-U06 (SP-DCB2-p5) needs that scene in its own run. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows. Setup (not graded, tier G): `/gmsetgodmode 1` and `/gmmissionassign 686 1` because the 681 to 686 controller chain was never run for this character; reload by the R key; stand point (-100.8, 24.67, -47.6), the midpoint of the two spawns.
 
 | Check | Evidence | Expected |
 |---|---|---|
@@ -63,7 +63,7 @@ Sub-row scope: Hallway05 guard flank. No Hallway05 guard may die in this part: w
 | No scene | no `Content: complete mission` 686, no `play_sequence` 1751, no `accepting mission` 687 in this window | none |
 | Negatives | `server_entity_query` for the two Hallway05 guards (look up the current ids by tag or position; they change every server start): alive, positions inside the corridor, no WARN (a `teleport_dest_off_mesh` WARN on the stand point is a setup note; record it) | no guard through a wall, none frozen with no target |
 
-Grade: PASS if the shot reached the server, cover and flank rows exist, 2731 completed and no scene started; PARTIAL if the guards never took cover (`flank not exercisable`); FAIL if a guard left the corridor, a guard died, or an objective completed with no flank. Visual (cover posture): NEEDS_HUMAN `H-CB-U05-1`.
+Grade: PASS if the shot reached the server, cover and flank rows exist, 2731 completed and no scene started; PARTIAL if the guards never took cover (`flank not exercisable`); FAIL if a guard left the corridor, a guard died, or an objective completed with no flank. Visual (cover posture, shot taken during cover): NEEDS_HUMAN `H-CB-U05-1`.
 
 ---
 

@@ -33,7 +33,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 19. **Every new character spawns boot-locked** (mission 689, chain 1023 holds movement inside a 1.0 m radius and snaps you back). Winning the Prison Boot Control Livewire releases it for good; BOOT does that. A relog does not lock it again after the win.
 20. **Unverified tool arguments.** `client_world_click` takes `entity_id` and `button` (`"right"` interacts, `"left"` targets); the repo does not show the accepted `button` strings, so if a click is rejected with an argument error, retry once with the same call without `button` and record the error text.
 21. **Judge a Livewire by the server, not the tool.** `client_minigame_play` may answer `inconclusive` or `server_unreachable` even when the win reached the server. Record the tool text verbatim, do not retry, do not claim FAIL for it, and go on. The verifier grades from `smartfox_victory`, `server_minigame_state` and the mission row.
-22. **GM setup commands (tier G).** `/gmheal` does not exist. The real ones are `/gmsetgodmode <0|1>`, `/gmsethealth <amount> <targetId>` (use `/gmsethealth 760 0`), `/gmgiveitem <designId> <qty>`, `/gmmissionassign <missionId> <popup>` and `/gmkilltarget <entityId>`. `/gmkilltarget 0` works with the NPC selected. A bare `/gm...` line with missing arguments answers "Not enough parameters" and the server never sees it. Never send a GM line while dead. God mode resets on a relog.
+22. **GM setup commands (tier G).** `/gmheal` does not exist. The real ones are `/gmsetgodmode <0|1>`, `/gmsethealth` (always fails with "target id out of u32 range"; do not send it, god mode is enough), `/gmgiveitem <designId> <qty>`, `/gmmissionassign <missionId> <popup>` and `/gmkilltarget <entityId>`. `/gmkilltarget 0` works with the NPC selected. A bare `/gm...` line with missing arguments answers "Not enough parameters" and the server never sees it. Never send a GM line while dead. God mode resets on a relog.
 
 ## 1. Fixed macros (use them verbatim; the cost is the number of calls)
 
@@ -109,11 +109,11 @@ CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U05b.1 (2 calls: client_ui_sequence, client_batch).** RELOAD in the Mess Hall, where nothing is hostile any more, so the pistol holds rounds when the fight starts. Ammo: the pistol held 0 rounds in the first drives (`use_ability_no_ammo`). Before the shot read `client_inventory` and confirm the pistol shows rounds after the R reload; if it still reads empty, record the text and give ammo by GM (tier G): look up the pistol's ammo design id with `server_db_query` (inferred: the id is not in the evidence) and send `/gmgiveitem <ammo id> <qty>`, then reload again.
 
-**CB-U05b.2 (1 call: client_batch).** GOTO `-100.8 24.67 -47.6`. Put these CHATX lines before the `.gotolocation` line, in this order: `/gmsetgodmode 1`, `/gmsethealth 760 0`, `/gmmissionassign 686 1` (tier G setup: the 681 to 686 controller chain was not run, and this makes 686 active so objective 2731 can be credited). The point is the middle of the two Hallway05 spawns, 3.7 m from Hallway05_Guard1 (-100.16, 24.67, -43.90) and 3.7 m from Hallway05_Guard2 (-101.5, 24.67, -51.30); both spawns are on the navmesh and the corridor is straight between them. The old point (-101, 24.7, -30) is off the mesh. Read the position the batch returns and record it.
+**CB-U05b.2 (1 call: client_batch).** GOTO `-100.8 24.67 -47.6`. Put these CHATX lines before the `.gotolocation` line, in this order: `/gmsetgodmode 1`, `/gmmissionassign 686 1` (tier G setup: the 681 to 686 controller chain was not run, and this makes 686 active so objective 2731 can be credited). The point is the middle of the two Hallway05 spawns (spawn positions Hallway05_Guard1 (-100.16, 24.67, -43.90) and Hallway05_Guard2 (-101.5, 24.67, -51.30); the live positions drift, e.g. Guard1 was seen at (-103.49, 24.8, -38.2)); both spawns are on the navmesh and the corridor is straight between them. The old point (-101, 24.7, -30) is off the mesh. Read the position the batch returns and record it.
 
 **CB-U05b.3 (1 call: client_ui_state).** UIS. Record the mission tracker; 686 should be listed.
 
-**CB-U05b.4 (1 call: client_entity_find).** FIND, `max_distance_m` 12. Pick the two guards by position (within 1.5 m of (-100.16, 24.67, -43.90) and (-101.5, 24.67, -51.3)); keep both ids. Record every entry.
+**CB-U05b.4 (1 call: client_entity_find).** FIND, `max_distance_m` 12, and look up the current guard ids and positions with `server_entity_query` (Hallway05_Guard1 and Hallway05_Guard2). The spawn positions above are stale and the ids change every server start: pick the guards by the `server_entity_query` positions (within 1.5 m) and keep both ids. Record every entry.
 
 **CB-U05b.5 (1 call: client_camera).** `client_camera {"lease_id":L,"pitch_deg":-10,"face_entity_id":<guard 1 id>}`.
 
@@ -123,13 +123,15 @@ CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U05b.8 (1 call: client_batch).** One batch: DIALOG first, then `wait` 3000 ms, then UTC. Let the guards close and take cover.
 
+**CB-U05b.8a (1 call: lab_screenshot).** SHOT-H `H-CB-U05-1`, taken now, DURING the cover posture (right after the 3000 ms wait, before the sidestep). Are the guards crouched or standing in the open?
+
 **CB-U05b.9 (1 call: client_ui_sequence).** Sidestep: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"a","hold_ms":800}]}`. The first drives' 800 ms hold moved the player about 4.7 m, which stays inside the guards' defensive arc, so no flank release fired. Repeat the 800 ms `a` hold up to three times in total, with one FIND between holds to record the player and guard positions (inferred: the lateral distance that leaves the arc was not measured); stop early at a wall or when the server logs `cover_released_flanked`. The sidestep back (.10) then holds `d` for 1600 ms times the number of `a` holds you made (inferred).
 
 **CB-U05b.10 (1 call: client_ui_sequence).** Sidestep back: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"d","hold_ms":1600}]}`.
 
 **CB-U05b.11 (1 call: client_entity_find).** FIND, `max_distance_m` 12. Second snapshot of both guards (names, positions, ids).
 
-**CB-U05b.12 (1 call: lab_screenshot).** SHOT-H `H-CB-U05-1`. Are the guards crouched or standing in the open?
+**CB-U05b.12 (0 calls: moved).** The `H-CB-U05-1` shot is taken in .8a, during cover; after the sidestep back the guards are no longer in cover posture. Do not take another.
 
 **CB-U05b.13 (1 call: client_batch).** Bookmark: one batch with only the DIALOG op and the end line, nothing else. Also add the line `.bug SPU SP-DCB2-p4 CB-U05b end` as the last line of this step's `client_batch`.
 

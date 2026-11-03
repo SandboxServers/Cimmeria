@@ -38,7 +38,7 @@ The sheet is the list of every NEEDS_HUMAN clause with its saved screenshot path
 
 ## 6. When a row FAILs, or you find a bug
 
-Investigate before you conclude: read the code path the row exercises (the doc named in the row), reproduce the reasoning with the server rows, and decide whether it is (a) a product bug, (b) a doc mismatch, (c) a lab or driver problem (a wrong click, a bad recipe, a harness gap: not a product bug) or (d) a known issue (unified-uat.md K1-K33, #1667, the LMG effect 644, dialog 60151, K5-K8: do not file). For (a) and (b) write the issue body to `docs/analysis/starter-uat-praxis/results/issues/SP-DCB3-p5-<n>.md` (D-SP4: bugs are filed, not fixed). A verifier never files the issue itself: the coordinator does. The body follows docs/agents/issue-tracker.md: `## Problem`, `## Evidence`, `## Acceptance criteria`, `## Test type`, `## Docs to update`, `## Client impact`, `## Domain advisor`, `## Needs a human for`, `## Implementation plan`. Mention `@Cadacious`. Case (c) goes in `NOT RUN / BLOCKED` with the recipe the next driver needs.
+Investigate before you conclude: read the code path the row exercises (the doc named in the row), reproduce the reasoning with the server rows, and decide whether it is (a) a product bug, (b) a doc mismatch, (c) a lab or driver problem (a wrong click, a bad recipe, a harness gap: not a product bug) or (d) a known issue (unified-uat.md K1-K33, #1667, the LMG effect 644, dialog 60151, dialog 60150 (issue SP-DCB3-p2-1 exists), K5-K8: do not file). For (a) and (b) write the issue body to `docs/analysis/starter-uat-praxis/results/issues/SP-DCB3-p5-<n>.md` (D-SP4: bugs are filed, not fixed). A verifier never files the issue itself: the coordinator does. The body follows docs/agents/issue-tracker.md: `## Problem`, `## Evidence`, `## Acceptance criteria`, `## Test type`, `## Docs to update`, `## Client impact`, `## Domain advisor`, `## Needs a human for`, `## Implementation plan`. Mention `@Cadacious`. Case (c) goes in `NOT RUN / BLOCKED` with the recipe the next driver needs.
 
 ## 7. Do not
 
@@ -52,6 +52,8 @@ Do not edit the repo (except the issue body file), the database or the server; d
 Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB3-p4. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U12d
+Precondition (graded first): mission 638 completed and mission 641 NOT active at the start of the part (`sgw_mission`). The 62060 offer chains require `641 not_active`; if 641 is active (SP-DCB3-p4 accepted it at Marsh), grade every clause BLOCKED (case c, brief or carry-over: offer closed by design) and do not FAIL. Marsh chain 1051 accepting 641 with 640 incomplete is intended (order is enforced by interaction bit 8388608), not a defect.
+
 Sub-row scope: Aid branch. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.
 
 | Check | Evidence | Expected |

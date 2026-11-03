@@ -56,9 +56,10 @@ Character `Dcbdh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castl
 |---|---|---|
 | Dialog 2982 | `displaying dialog` 2982 at world entry for `$P` | once |
 | Mission 622 | `accepting mission` 622; mission table row at step 2113 | yes |
-| Frost searchable, Guard not | `server_entity_get` for spawns 19 and 15 (searchable flag) | Frost yes, Guard no |
+| Mission 638 | `accepting mission` 638 on the Region2 entry (GOTO -265 65.45 -135), mission table step 2114 | yes, once |
+| Frost searchable, Guard not | `server_entity_get` for spawns 19 and 15 (searchable flag) | Frost yes, Guard no; if the corpses are not live to query, PARTIAL with the reason |
 
-Grade: PASS on the three server clauses. Journal, dialog render and the Stasis Sickness icon (K7, none expected): NEEDS_HUMAN `H-T01-1/2/3`. Looker: 1. Is a dialog box with the words "The last thing you remember" visible? 2. Is a journal window open? 3. Is any status icon visible on the buff bar?
+Grade: PASS on the server clauses. The journal is not driven (the `j` key opens the crafting window); dialog render and the Stasis Sickness icon (K7, none expected): NEEDS_HUMAN `H-T01-1/2/3`. The Livewire win may read `server_unreachable` in the tool result: grade the boot from the `unlocks` chat line and the server rows. Looker: 1. Is a dialog box with the words "The last thing you remember" visible? 2. Is a crafting window or a journal window open? 3. Is any status icon visible on the buff bar?
 
 ---
 

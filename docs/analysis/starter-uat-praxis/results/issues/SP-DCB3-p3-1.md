@@ -1,6 +1,6 @@
 ## Problem
 
-The lab harness cannot interact with small world props (Ambernol vial `ArmYourself_AmbernolVial` 102998 / 102312 in other runs, rings switch `HackTheRings_Switch` 103005) through `client_world_click` / `client_target`. Props in interact range (3.2 to 3.9 m) never hover (`mouse_over_after 0`), `client_target` allow_fallback sends `setTargetID 0`, and `/interact` sends `overrideTarget` 0. Starter-UAT rows CB-U10b.8, .9, .12 and .13 cannot run, and the Cellblock 639 -> 640 chain cannot be driven natively. Class: harness gap (case c), not a product bug. @Cadacious
+The lab harness cannot interact with small world props (Ambernol vial `ArmYourself_AmbernolVial` 102998 / 102312 in other runs, rings switch `HackTheRings_Switch` 103005) through `client_world_click` / `client_target`. Props in interact range (3.2 to 3.9 m) never hover (`mouse_over_after 0`), `client_target` allow_fallback sends `setTargetID 0`, and `/interact` sends `overrideTarget` 0. Starter-UAT rows CB-U10b.8, .9, .12 and .13 cannot run, and the Cellblock 639 -> 640 chain cannot be driven natively. Class: lab HARNESS gap (case c), not a product defect and not an owner decision. The owner confirms Cellblock progression works when a human plays it; the lab's synthetic hover and click cannot pick these entities (the Ambernol vial and the Ring Transport Controls switch). @Cadacious
 
 ## Evidence
 
@@ -24,7 +24,7 @@ docs/analysis/starter-uat-praxis/verify-click-recipe.md; docs/guides/automated-u
 
 ## Client impact
 
-None expected (harness side). A server GM `interact <entity>` hook would be a maintainer decision.
+None expected (harness side). None for the product. A lab-only server GM `interact <entity>` hook, if chosen as the harness route, would be a maintainer decision on tooling.
 
 ## Domain advisor
 
@@ -32,7 +32,7 @@ mission-systems-advisor (chains 1032-1044); lab tooling owner.
 
 ## Needs a human for
 
-Deciding between a harness fix and a GM command/fixture deviation.
+Nothing about the product: the product path works for a human player per the owner. A maintainer only chooses between a harness fix and a GM command/fixture deviation for the lab.
 
 ## Implementation plan
 

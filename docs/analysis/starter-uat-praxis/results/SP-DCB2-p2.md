@@ -9,7 +9,7 @@ Character Dcbch (NEW, created 2026-11-03 ~09:29Z), player_id 101 (account 10), e
 | CB-U08b WARN absent | PASS | - | `severity_text IN (WARN, ERROR)` over 09:35:20-09:39:50Z, service cimmeria-server, lab_run dr-lab: 0 rows. | none | n/a | `screen_not_cached`, `empty_text`, `actor_not_player` not seen. |
 | CB-U08b Second client | PARTIAL (BLOCKED no packet tap) | - | witness_count 0 on both NPCs at query time; no second client. | none | n/a | Needs `server_packet_tap_start` and a second client. |
 | CB-U08b Setup .12 Frost (not graded) | server rows present | driver N1/N2 | 09:37:50.763Z `interact` entity 56; `interact: per-player dialog set` dialog 3995; chain 1003 `advancing step` mission 622 step 80623; `Content: granting item` item 3730 (Frost's Letter, MISSION container, slot 0); chain 1003 `adding dialog set` 3996; chain 1121 accepting mission 1360 (already held). | - | n/a | Item and step match the row. No loot window, as designed. |
-| CB-U08b Setup .15 Guard body native (not graded) | BLOCKED / NEEDS_OWNER | N1 | No `interact`, no dialog 3996 display, no chain 1005 row after 09:37:50Z. Bookmark end: last_interaction_target 102806 (Frost), target_id 102806, offered_dialog_ids []. | `client_world_click` observe failed, target_after 102806 | n/a | Same class of cause as the existing issue (template 21 class `spawnable`). Issue file reused: `results/issues/SP-DCB2-p2-1.md`. Not duplicated. |
+| CB-U08b Setup .15 Guard body native (not graded) | BLOCKED (harness) | N1 | No `interact`, no dialog 3996 display, no chain 1005 row after 09:37:50Z. Bookmark end: last_interaction_target 102806 (Frost), target_id 102806, offered_dialog_ids []. | `client_world_click` observe failed, target_after 102806 | n/a | Lab harness gap: synthetic hover/click cannot pick this entity; per the owner the product path works for a human player. Issue file reused: `results/issues/SP-DCB2-p2-1.md`. Not duplicated. |
 | CB-U08b Setup .15G fallback (not graded) | PASS | G | 09:38:39.880Z INFO `gmGiveItem: granting item to GM` item 55; `Item granted to player` item 55 MAIN slot 1 (SI 3 9mm Pistol). `GmGrantAbility: persisted` (persisted true) plus `GmAbilityGranted: cell mirrored`: 592 Pistol Shot 09:38:41.383Z, 594 Strike 09:38:42.892Z, 597 Heal Focus 09:38:44.424Z, 1218 Medical Attention: Recuperation 09:38:45.932Z. | - | n/a | Tier G only; never turns .15 into PASS. Ability 596 (Reload) not granted, as expected. |
 | CB-U08b Setup .16 dialog 3996 (not graded) | BLOCKED (follows .15) | - | No dialog 3996 display or chain 1005 row. | DIALOG `none` | n/a | The driver's PASS (G) was a skipped-path claim; no server row backs it. |
 | CB-U08b Setup .17/.18 equip (not graded) | server rows present | N1 (.18) | 09:38:52.137Z `fire_item_equipped: no chains matched` item 55; 09:38:52.138Z `weapon_ability_swap` added [579, 708], slot 0; `SyncBandolierItems: equip-display decision` drew_weapon true, active_bandolier_slot 0; active weapon visual `WP-Human.WP_Pistol_1A`. | - | n/a | Pistol in bandolier slot 1 (active slot 0). |
@@ -20,17 +20,17 @@ SIGN-OFF SHEET (NEEDS_HUMAN):
 - H-CB-U08-1 (name plate `Op-CORE Soldier` above the two corridor NPCs): this part takes no screenshot; carried to SP-DCB2-p1.
 
 FINDINGS:
-1. CB-U08b.15 native Guard-body click (BLOCKED / NEEDS_OWNER): reproduces the known template 21 targeting gap. No new issue. Existing body: `docs/analysis/starter-uat-praxis/results/issues/SP-DCB2-p2-1.md` (reused, entity ids there are from an earlier run). This run adds: guard body id 102803, `target_after` stayed 102806 (Frost), no interact row.
+1. CB-U08b.15 native Guard-body click (BLOCKED (harness)): reproduces the known lab harness gap (synthetic hover/click cannot pick template 21); not a product defect and not an owner decision. No new issue. Existing body: `docs/analysis/starter-uat-praxis/results/issues/SP-DCB2-p2-1.md` (reused, entity ids there are from an earlier run). This run adds: guard body id 102803, `target_after` stayed 102806 (Frost), no interact row.
 2. Note, not a finding: the driver's `.16` PASS and the batch `.1`/`.2` parallel send were driver-side slips. They did not change the server result.
 
 NOT RUN / BLOCKED:
 - Second client / AoI witness clause: no packet tap, no second client.
 - .9 packet tap: BLOCKED by design.
 - .13 loot window: NOT-RUN by design.
-- .15 / .16 native Guard body: BLOCKED / NEEDS_OWNER (issue SP-DCB2-p2-1).
+- .15 / .16 native Guard body: BLOCKED (harness) (issue SP-DCB2-p2-1).
 
-RESUME HINT: Nothing to redo for graded rows. The native .15 waits for the owner decision on template 21. Optional: a second client plus `server_packet_tap_start` for the AoI clause.
+RESUME HINT: Nothing to redo for graded rows. The native .15 waits for a harness route that can pick the Guard body (no owner decision involved). Optional: a second client plus `server_packet_tap_start` for the AoI clause.
 
-GRADE COUNTS: PASS 3 (Cast, Bark, WARN absent), PARTIAL 1 (second client), BLOCKED/NEEDS_OWNER 1 (.15 native), setup .15G PASS (tier G).
+GRADE COUNTS: PASS 3 (Cast, Bark, WARN absent), PARTIAL 1 (second client), BLOCKED (harness) 1 (.15 native), setup .15G PASS (tier G).
 
 CHARACTER STATE AFTER: Dcbch entity 56, player 101, Castle_Cellblock at (-324.8, 73.47, -212.25). Mission 622 active at step 80623 (objective 90623); mission 639 at step 2145; mission 1360 at step 4037; mission 638 complete; mission 689 complete (hidden). Items: Frost's Letter (3730, MISSION), SI 3 9mm Pistol (55) in bandolier slot 1. Granted abilities: 592, 594, 597, 1218 (plus 579, 708 from the weapon). Ability 596 not granted.

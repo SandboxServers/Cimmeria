@@ -80,11 +80,11 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 # SP-DCB3-p1
 
-Start: fresh character `Dcbdh` (no fixture; the start state is reached by play or by the GM setup the steps name).
+Start: fresh character `Dcbdh` (no fixture; the start state is reached by play or by the GM setup the steps name). This part ends standing in Region2 with mission 638 accepted at step 2114, so SP-DCB3-p2 to p5 carry on from there (the DCB3 chain is self-contained: no fixture, no coordinator prefix).
 
 ROWS: T01/T02.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
-ESTIMATE: 19 tool calls (planned success path; hard stop 28)
+ESTIMATE: 20 tool calls (planned success path; hard stop 28)
 CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat).
 
 ## Steps
@@ -102,11 +102,11 @@ CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat).
 
 **T01/T02.3 (1 call: lab_finish_dialog).** ACCEPT the open dialog topic.
 
-**T01/T02.4 (1 call: client_ui_sequence).** JOURNAL: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"j"}]}`.
+**T01/T02.4 (0 calls: dropped).** JOURNAL dropped. The `j` key opens the crafting window, not the journal (SP-DCB3-p1 run). Do not press `j`. The mission tracker text comes from UIS in .7.
 
 **T01/T02.5 (1 call: client_batch).** One batch: DIALOG first, then `wait` 500 ms, then UTC. Settle.
 
-**T01/T02.6 (1 call: lab_screenshot).** SHOT-H `H-T02-1`. Is the journal open?
+**T01/T02.6 (1 call: lab_screenshot).** SHOT-H `H-T02-1`. What window or tracker is on screen? (The journal key is not driven in this packet; record only what is visible.)
 
 **T01/T02.7 (1 call: client_ui_state).** UIS (read `client_ui_state`).
 
@@ -114,9 +114,13 @@ CHARACTERS: `Dcbdh` (archetype Commando, Praxis, male, first name Uat).
 
 **T01/T02.9 (1 call: client_chat_log).** READ cursor `e1`, channel "9".
 
-**T01/T02.10 (4 calls: client_entity_find, client_world_click, client_minigame_play, client_chat_log).** BOOT (find the prop, right-click it, play, read the unlock line).
+**T01/T02.10 (4 calls: client_entity_find, client_world_click, client_minigame_play, client_chat_log).** BOOT (find the prop, right-click it, play, read the unlock line). `client_minigame_play` has reported `server_unreachable` on a win in earlier runs while the server confirmed the victory: record the tool text and decide the win from the unlock chat line, not from the tool result.
 
-**T01/T02.11 (1 call: client_batch).** Bookmark: one batch with only the DIALOG op and the end line, nothing else. Also add the line `.bug SPU SP-DCB3-p1 T01/T02 end` as the last line of this step's `client_batch`.
+**T01/T02.11 (1 call: client_batch).** Enter Region2: GOTO `-265 65.45 -135` (the boot is released, so the teleport holds). Mission 638 is accepted at step 2114 on this entry (SP-DCB3-p1 run: 638 accepted at 2114 on region entry); there is no Prisoner click for it.
+
+**T01/T02.12 (1 call: client_ui_state).** UIS (read `client_ui_state`). Record whether the tracker lists mission 638. If it does not, run the failure path (not counted): step out and re-enter with a second GOTO to the same point (inferred from the Region9 re-entry in SP-DCB2-p3).
+
+**T01/T02.13 (1 call: client_batch).** Bookmark: one batch with only the DIALOG op and the end line, nothing else. Also add the line `.bug SPU SP-DCB3-p1 T01/T02 end` as the last line of this step's `client_batch`.
 
 
 ---
