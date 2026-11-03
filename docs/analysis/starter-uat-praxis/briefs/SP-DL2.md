@@ -22,7 +22,7 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 8. **Never `client_wait_for` on a world load** (#1677). Wait for a world change with two `client_batch` waits of 20 000 ms, then read `player_state`.
 9. **`lab_ensure_in_world` can mis-read the character name** (#1680). If it fails or reports the wrong character, call `lab_client_restart` once and `lab_ensure_in_world` again. This is the only time you may call a `lab_client_*` tool.
 10. **A modal "Server Message" prompt** has the OK button `Prompt1_SingleButton`. Use PROMPT below.
-11. **A covering window swallows native clicks** (#1676). If a click does nothing, read `client_ui_state`, close the window on top (DIALOG or PROMPT), and retry once.
+11. **A covering window swallows native clicks** (#1676). Before every world click, the step's CHATX batch runs DIALOG as its first op. Run PROMPT when a step's expected effect is a Server Message, when the L2, WAIT17, WAITW or a screenshot output shows a window on top, and when a click opens nothing (then PROMPT, SHOT, one unchanged retry: gotcha 16). If a click still does nothing, read `client_ui_state` once and record the top window.
 12. **Sticky chat channel.** Every chat macro resets it with `ChatMod.stickyCommand='/say '`. Do not remove that. No apostrophes inside the Lua text of a chat macro.
 13. **`client_camera` has a stale schema.** Do not call it.
 14. **Stand 3.5 to 4.5 m from an object** before right-clicking it (server range 5.0 m). Entity ids change after a relog or a zone change: look one up right before you use it.
@@ -43,7 +43,7 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 
 **WAITW - wait for a world change (3 calls).** `client_batch {"lease_id":L,"steps":[{"op":"wait","ms":20000}]}` twice, then `client_batch {"lease_id":L,"steps":[{"op":"player_state","fields":["world_id","position"]},{"op":"lua","id":"utc","chunk":"if os and os.date then return os.date('!%H:%M:%S') end return 'no-os'"}]}`.
 
-**CHATX - several chat lines in ONE call.** `client_batch {"lease_id":L,"stop_on_error":false,"steps":[{"op":"lua","id":"c1","chunk":"ChatMod.stickyCommand='/say '; Inst1Chat_Input:setText('LINE ONE'); ChatMod.onTextAccepted(Inst1Chat_Input, Inst1Chat_Input); return 'sent'"},{"op":"wait","ms":1500},{"op":"lua","id":"utc","chunk":"if os and os.date then return os.date('!%H:%M:%S') end return 'no-os'"}]}`. Replace `LINE ONE` with the exact line; add more lua/wait pairs for more lines. Wait at least 1500 ms after each. This is N3 (the chat box's own accept handler); for a step that IS a GM or slash command it counts as G.
+**CHATX - several chat lines in ONE call.** `client_batch {"lease_id":L,"stop_on_error":false,"steps":[{"op":"lua","id":"dlg","chunk":"if DialogWin ~= nil and DialogWin:isVisible() then DialogMod.onDialogDoneClicked(DialogWin, DialogWin) return 'closed' end return 'none'"},{"op":"lua","id":"c1","chunk":"ChatMod.stickyCommand='/say '; Inst1Chat_Input:setText('LINE ONE'); ChatMod.onTextAccepted(Inst1Chat_Input, Inst1Chat_Input); return 'sent'"},{"op":"wait","ms":1500},{"op":"lua","id":"utc","chunk":"if os and os.date then return os.date('!%H:%M:%S') end return 'no-os'"}]}`. The first op is DIALOG (closes an open dialog first, no extra call). Replace `LINE ONE` with the exact line; add more lua/wait pairs for more lines. Wait at least 1500 ms after each. This is N3 (the chat box's own accept handler); for a step that IS a GM or slash command it counts as G.
 
 **READ - chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word>","max":20}`. Record each line verbatim with `channel`, `colour`, `tabs`, `seq`. Keep LASTSEQ = highest `seq` seen; from your second read add `"since_seq": LASTSEQ`.
 
@@ -59,11 +59,13 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 
 **RELOG (2 calls).** `lab_logout {"lease_id":L,"instance":"p3"}` then L2 again. Record `world_id` and `pos` from the L2 result.
 
+**Call count (read this).** A call is one MCP tool invocation: every `client_batch`, read, click and screenshot is one call whatever it holds, and so is `lab_lease_release`. Every step that makes calls carries a label `(<N> calls: <tool>, <tool>, ...)` with one tool name per call, in order; the ESTIMATE line is the sum of the labels. Steps marked `failure path` (retries, fallbacks, PROMPT after a click that opened nothing) are not counted: the headroom between the ESTIMATE (at most 22) and the hard stop of 28 is for them. Macro costs: L1 = 1; L2 = 1; WAIT17 = 1; WAITW = 3; CHATX = 1 whatever the number of lines; READ = 1; SHOT = 1; PROMPT = 1 plus 1 per button clicked; DIALOG = 0 (it is the first `lua` op of every CHATX); BUG = 0 (it is a line of a CHATX or of the WAIT17 batch); STATE = 3; STATE-lite = 2; RELOG = 2.
+
 ---
 
 # SP-DL2: LEG-2, Castle (8) to Harset (57) through the Stargate crossing
 
-ROWS: LEG-2. ESTIMATE: 25 tool calls. Runs on instance `p3` after SP-DCA5 (wave 3). This packet grades the crossing itself (chain 1366); HA-1360b grades the Harset side. The address route is a GM dial (G tier, said in the row): the real route is to win the Castle DHD Livewire, which chain 1357 answers with `grant_address 3` (`db/resources/Content/Seed/castle_706_708_chains.sql`, chain 1357 on `Castle_DHD`), and that route belongs to the Castle B19 rows, not to this packet.
+ROWS: LEG-2. ESTIMATE: 19 tool calls (planned success path; hard stop 28). Runs on instance `p3` after SP-DCA5 (wave 3). This packet grades the crossing itself (chain 1366); HA-1360b grades the Harset side. The address route is a GM dial (G tier, said in the row): the real route is to win the Castle DHD Livewire, which chain 1357 answers with `grant_address 3` (`db/resources/Content/Seed/castle_706_708_chains.sql`, chain 1357 on `Castle_DHD`), and that route belongs to the Castle B19 rows, not to this packet.
 
 FIXTURE (staged by the coordinator, `server_stage_fixture`): `{"character":"Fxdltwo","world":"Castle","position":[466.365,70.397,991.466],"missions":[{"id":1360,"step":4037}],"items":[{"id":3730,"count":1,"container":"mission"}]}`.
 Where it comes from: the position is Castle respawner 4 'Armory Respawn', the arrival platform of the Cellblock ring (`db/resources/Worlds/Seed/respawners.sql:63`, chain 1109), so the character starts exactly where LEG-1 ends. Chain 1366 (`db/resources/Content/Seed/castle_carry_in_chains.sql`, scope mission 1360, trigger `stargate_crossed` key `'Harset'`) needs `world eq 8`, `mission_status 1360 active` and `step_status 1360 '4037' active`, then runs `advance_step 1360 '4038'`. Step 4037 is 'Find a way to get Cpl. Frost's Letter to his family.' (`mission_steps.sql:1108`); step 4038 is 'Give Cpl. Frost's Letter to Col. Marsh.' (`mission_steps.sql:1110`). Item 3730 is Cpl. Frost's Letter (`items.sql:11947`). The Castle gate is stargate 2 at (761.677, 63.466, 551.716); Harset is stargate 3, address 21,17,24,31,10,30, in world 57 with its gate at (-0.076, -67.274, 38.011) (`db/resources/Worlds/Seed/stargates.sql:107` and `:65`). A created character holds no gate address (`known_stargates` is empty), so the dial uses `/gmdhd 3` ("gmDHD" tops the caller's session book up and dials stargate 3; `crates/cell-console/src/cell/console/gm/travel/dhd.rs:88-141`; the client needs patch 012, unified-uat DA-U45). If the character did not land in world 8 with 1360 at 4037, row LEG-2 is `BLOCKED: fixture not applied`.
@@ -74,27 +76,25 @@ Where it comes from: the position is Castle respawner 4 'Armory Respawn', the ar
 
 ## Steps
 
-**S1.** L1, L2, WAIT17 (3 calls). Expected: `world_id` 8, position near (466.4, 70.4, 991.5).
-
-**S2 - resume probe (1 call).** `client_batch` `player_state`. If `world_id` is 57 you already crossed: skip to 2.6 and note `resumed after the crossing`.
+**S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, L2, WAIT17. Expected: `world_id` 8, position near (466.4, 70.4, 991.5). Resume probe (no extra call): if WAIT17 says `world_id` 57 you already crossed: skip to 2.6 and note `resumed after the crossing`.
 
 ### ROW LEG-2 - the Castle gate carries mission 1360 and the letter to Harset
 
-**2.1 STATE-before (2 calls, STATE-lite).** Expected: 1360 active at 'Find a way to get Cpl. Frost's Letter to his family.'; item 3730 x1 in the Mission container. Record verbatim.
+**2.1 STATE-before (2 calls: client_inventory, client_window_read).** STATE-lite. Expected: 1360 active at 'Find a way to get Cpl. Frost's Letter to his family.'; item 3730 x1 in the Mission container. Record verbatim.
 
-**2.2 Dial, then enter (1 call, G tier).** Close any dialog first with DIALOG (one call, only if a dialog is open). One CHATX: `.bug SPU SP-DL2 leg2 start`, then `/gmdhd 3` (you stand on the arrival platform, far from the gate), wait 8000 (the gate opens about 4 s after the dial), then `.gotolocation Castle 761.677 63.466 551.716` (this enters the open gate), then the UTC step.
+**2.2 Dial, then enter (1 call: client_batch).** G tier. ONE CHATX (its first op is DIALOG, so no separate dialog call): `.bug SPU SP-DL2 leg2 start`, then `/gmdhd 3` (you stand on the arrival platform, far from the gate), wait 8000 (the gate opens about 4 s after the dial), then `.gotolocation Castle 761.677 63.466 551.716` (this enters the open gate), then the UTC step.
 
-**2.3 READ (1 call).** `{"cursor":"d2a","contains":"gmDHD","max":10}`. Expected: `gmDHD: dialing gate address 3` (`dhd.rs:133`). The refusal text is `gmDHD: gate address 3 refused - unknown address, same world, or no standable arrival on the destination (see server log)`. Record the line verbatim with `channel` and `seq`. If the reply is "Invalid command", or there is no reply after one resend, record it verbatim and report row LEG-2 BLOCKED: /gmdhd needs client patch 012.
+**2.3 READ (1 call: client_chat_log).** `{"cursor":"d2a","contains":"gmDHD","max":10}`. Expected: `gmDHD: dialing gate address 3` (`dhd.rs:133`). The refusal text is `gmDHD: gate address 3 refused - unknown address, same world, or no standable arrival on the destination (see server log)`. Record the line verbatim with `channel` and `seq`. If the reply is "Invalid command", or there is no reply after one resend, record it verbatim and report row LEG-2 BLOCKED: /gmdhd needs client patch 012.
 
-**2.4 WAITW (3 calls).** Expected within about 40 s of the dial: `world_id` 57 and a position near (-0.08, -67.27, 38.01) (the Harset gate dais; unified-uat Harset C4.4). Record world, position and UTC. If `world_id` is still 8: do 2.4b once.
+**2.4 WAITW (3 calls: client_batch, client_batch, client_batch).** Expected within about 40 s of the dial: `world_id` 57 and a position near (-0.08, -67.27, 38.01) (the Harset gate dais; unified-uat Harset C4.4). Record world, position and UTC. If `world_id` is still 8: do 2.4b once.
 
-**2.4b Re-enter (2 calls, only if still in Castle).** CHATX `.gotolocation Castle 466.365 70.397 991.466`, wait 3000 (leaves the volume); then CHATX `.gotolocation Castle 761.677 63.466 551.716` (enters again); then WAITW (3 calls). If still in Castle, record `no crossing` and go to 2.7; do not retry again.
+**2.4b Re-enter (failure path, not counted; if taken: client_batch, client_batch, client_batch, client_batch, client_batch).** Only if still in Castle. CHATX `.gotolocation Castle 466.365 70.397 991.466`, wait 3000 (leaves the volume); then CHATX `.gotolocation Castle 761.677 63.466 551.716` (enters again); then WAITW (3 calls). If still in Castle, record `no crossing` and go to 2.7; do not retry again.
 
-**2.5 Arrival look (1 call).** SHOT-HUMAN, label `L2-harset-arrival`. One line: floor under the avatar or falling, anything on screen that looks wrong. The crossing animation and the 4 s gate timing are human checks (unified-uat B19); the verifier grades them NEEDS_HUMAN.
+**2.5 Arrival look (1 call: lab_screenshot).** SHOT-HUMAN, label `L2-harset-arrival`. One line: floor under the avatar or falling, anything on screen that looks wrong. The crossing animation and the 4 s gate timing are human checks (unified-uat B19); the verifier grades them NEEDS_HUMAN.
 
-**2.6 STATE-after (2 calls, STATE-lite).** Expected: 1360 active at 'Give Cpl. Frost's Letter to Col. Marsh.'; item 3730 x1 in the Mission container. Record verbatim.
+**2.6 STATE-after (2 calls: client_inventory, client_window_read).** STATE-lite. Expected: 1360 active at 'Give Cpl. Frost's Letter to Col. Marsh.'; item 3730 x1 in the Mission container. Record verbatim.
 
-**2.7 Relog (2 calls, RELOG).** Expected: in world as Fxdltwo in world 57 (or 8 if the crossing did not happen). Then WAIT17 (1 call) right after L2. Then STATE-lite (2 calls). Expected: identical to 2.6 (Harset side: the Marsh rebind on `player_loaded Harset_CmdCenter` is HA-1360b's, do not look for it). Then CHATX `.bug SPU SP-DL2 leg2 end` (skip it if the budget is at call 26).
+**2.7 Relog, reread and the end bookmark (5 calls: lab_logout, lab_ensure_in_world, client_batch, client_inventory, client_window_read).** `lab_logout` then L2. Expected: in world as Fxdltwo in world 57 (or 8 if the crossing did not happen). The third call is ONE `client_batch`: the WAIT17 steps (the character is deaf for 16 s after login), then the CHATX lines of `.bug SPU SP-DL2 leg2 end` (DIALOG first). Then STATE-lite (`client_inventory`, `client_window_read`). Expected: identical to 2.6 (Harset side: the Marsh rebind on `player_loaded Harset_CmdCenter` is HA-1360b's, do not look for it).
 
 Not in this packet: handing the letter to Marsh, mission 1361, the real DHD Livewire route, and the Harset to Tollana gate (SP-DL3).
 
@@ -108,4 +108,4 @@ Then one block per row: `ROW LEG-2 | CLAIM: DONE / FAIL / BLOCKED / NOT-RUN / NE
 
 ## 3. Always end like this
 
-Release the lease: `lab_lease_release {"lease_id":L}`, even after a failure or early stop. Then write the report.
+Release the lease (1 call: lab_lease_release): `lab_lease_release {"lease_id":L}`, even after a failure or early stop. Then write the report.

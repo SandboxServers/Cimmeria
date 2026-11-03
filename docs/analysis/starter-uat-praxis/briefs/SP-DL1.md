@@ -22,7 +22,7 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 8. **Never `client_wait_for` on a world load** (#1677). Wait for a world change with two `client_batch` waits of 20 000 ms, then read `player_state`.
 9. **`lab_ensure_in_world` can mis-read the character name** (#1680). If it fails or reports the wrong character, call `lab_client_restart` once and `lab_ensure_in_world` again. This is the only time you may call a `lab_client_*` tool.
 10. **A modal "Server Message" prompt** has the OK button `Prompt1_SingleButton`. Use PROMPT below.
-11. **A covering window swallows native clicks** (#1676). If a click does nothing, read `client_ui_state`, close the window on top (DIALOG or PROMPT), and retry once.
+11. **A covering window swallows native clicks** (#1676). Before every world click, the step's CHATX batch runs DIALOG as its first op. Run PROMPT when a step's expected effect is a Server Message, when the L2, WAIT17, WAITW or a screenshot output shows a window on top, and when a click opens nothing (then PROMPT, SHOT, one unchanged retry: gotcha 16). If a click still does nothing, read `client_ui_state` once and record the top window.
 12. **Sticky chat channel.** Every chat macro resets it with `ChatMod.stickyCommand='/say '`. Do not remove that. No apostrophes inside the Lua text of a chat macro.
 13. **`client_camera` has a stale schema.** Do not call it.
 14. **Stand 3.5 to 4.5 m from an object** before right-clicking it (server range 5.0 m). Entity ids change after a relog or a zone change: look one up right before you use it.
@@ -43,7 +43,7 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 
 **WAITW - wait for a world change (3 calls).** `client_batch {"lease_id":L,"steps":[{"op":"wait","ms":20000}]}` twice, then `client_batch {"lease_id":L,"steps":[{"op":"player_state","fields":["world_id","position"]},{"op":"lua","id":"utc","chunk":"if os and os.date then return os.date('!%H:%M:%S') end return 'no-os'"}]}`.
 
-**CHATX - several chat lines in ONE call.** `client_batch {"lease_id":L,"stop_on_error":false,"steps":[{"op":"lua","id":"c1","chunk":"ChatMod.stickyCommand='/say '; Inst1Chat_Input:setText('LINE ONE'); ChatMod.onTextAccepted(Inst1Chat_Input, Inst1Chat_Input); return 'sent'"},{"op":"wait","ms":1500},{"op":"lua","id":"utc","chunk":"if os and os.date then return os.date('!%H:%M:%S') end return 'no-os'"}]}`. Replace `LINE ONE` with the exact line; add more lua/wait pairs for more lines. Wait at least 1500 ms after each. This is N3 (the chat box's own accept handler); for a step that IS a GM or slash command it counts as G.
+**CHATX - several chat lines in ONE call.** `client_batch {"lease_id":L,"stop_on_error":false,"steps":[{"op":"lua","id":"dlg","chunk":"if DialogWin ~= nil and DialogWin:isVisible() then DialogMod.onDialogDoneClicked(DialogWin, DialogWin) return 'closed' end return 'none'"},{"op":"lua","id":"c1","chunk":"ChatMod.stickyCommand='/say '; Inst1Chat_Input:setText('LINE ONE'); ChatMod.onTextAccepted(Inst1Chat_Input, Inst1Chat_Input); return 'sent'"},{"op":"wait","ms":1500},{"op":"lua","id":"utc","chunk":"if os and os.date then return os.date('!%H:%M:%S') end return 'no-os'"}]}`. The first op is DIALOG (closes an open dialog first, no extra call). Replace `LINE ONE` with the exact line; add more lua/wait pairs for more lines. Wait at least 1500 ms after each. This is N3 (the chat box's own accept handler); for a step that IS a GM or slash command it counts as G.
 
 **READ - chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word>","max":20}`. Record each line verbatim with `channel`, `colour`, `tabs`, `seq`. Keep LASTSEQ = highest `seq` seen; from your second read add `"since_seq": LASTSEQ`.
 
@@ -59,11 +59,13 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 
 **RELOG (2 calls).** `lab_logout {"lease_id":L,"instance":"default"}` then L2 again. Record `world_id` and `pos` from the L2 result.
 
+**Call count (read this).** A call is one MCP tool invocation: every `client_batch`, read, click and screenshot is one call whatever it holds, and so is `lab_lease_release`. Every step that makes calls carries a label `(<N> calls: <tool>, <tool>, ...)` with one tool name per call, in order; the ESTIMATE line is the sum of the labels. Steps marked `failure path` (retries, fallbacks, PROMPT after a click that opened nothing) are not counted: the headroom between the ESTIMATE (at most 22) and the hard stop of 28 is for them. Macro costs: L1 = 1; L2 = 1; WAIT17 = 1; WAITW = 3; CHATX = 1 whatever the number of lines; READ = 1; SHOT = 1; PROMPT = 1 plus 1 per button clicked; DIALOG = 0 (it is the first `lua` op of every CHATX); BUG = 0 (it is a line of a CHATX or of the WAIT17 batch); STATE = 3; STATE-lite = 2; RELOG = 2.
+
 ---
 
 # SP-DL1: LEG-1, Castle_CellBlock (12) to Castle (8) through the Cellblock exit ring
 
-ROWS: LEG-1. ESTIMATE: 22 tool calls. Runs on instance `default` after SP-DCB1 (wave 2). The ring leg grades the server-side transfer only: there is no ring animation without the client patch (ring-transport README); the exit is a direct teleport (chain 1109, `db/resources/Content/Seed/castle_cellblock_chains.sql:2690-2708`, trigger `interact_tag Cellblock_ArmoryRingSwitch`, condition `step_status 688 '80688' eq active`, actions `complete_mission 688` then `cross_world_teleport 'Castle' {"x": 466.365, "y": 70.397, "z": 991.466}`).
+ROWS: LEG-1. ESTIMATE: 22 tool calls (planned success path; hard stop 28). Runs on instance `default` after SP-DCB1 (wave 2). The ring leg grades the server-side transfer only: there is no ring animation without the client patch (ring-transport README); the exit is a direct teleport (chain 1109, `db/resources/Content/Seed/castle_cellblock_chains.sql:2690-2708`, trigger `interact_tag Cellblock_ArmoryRingSwitch`, condition `step_status 688 '80688' eq active`, actions `complete_mission 688` then `cross_world_teleport 'Castle' {"x": 466.365, "y": 70.397, "z": 991.466}`).
 
 FIXTURE (staged by the coordinator, `server_stage_fixture`): `{"character":"Fxdlone","world":"Castle_CellBlock","position":[-54.88,26.08,-159.84],"missions":[{"id":688,"step":80688},{"id":1360,"step":4037}],"items":[{"id":3730,"count":1,"container":"mission"}]}`.
 Where it comes from: ring switch spawn 79 `Cellblock_ArmoryRingSwitch` at world 12 (-54.88, 26.08, -163.84) (`db/resources/Worlds/Seed/spawnlist.sql:99`), so the fixture stands 4 m from it on the z axis (a 4 m offset is not traced to the navmesh; if the first read puts you elsewhere, record it). Step 80688 'Use the ring transport to escape.' is the step the terminal chain 1107 advances 688 to (`mission_steps.sql:5953`); the fixture skips the terminal, and `player_loaded Castle_CellBlock` with 80688 active (chain 1111, `castle_cellblock_chains.sql:2730-2741`) restores the switch highlight when the character loads. Step 4037 is 'Find a way to get Cpl. Frost's Letter to his family.' (`mission_steps.sql:1108`); item 3730 is Cpl. Frost's Letter (`db/resources/Items/Seed/items.sql:11947`, `harset-continuation/uat.md:55`). The ring region is `ring_transport_regions.sql:72` (region 33, world 12, `required_mission_id 688`); it plays no part in the exit.
@@ -75,29 +77,27 @@ If the fixture was refused or the character did not land in world 12, row LEG-1 
 
 ## Steps
 
-**S1.** L1, L2, WAIT17 (3 calls). Expected: `world_id` 12, position within about 1 m of (-54.88, 26.08, -159.84). Record both.
-
-**S2 - resume probe (1 call).** `client_batch` `player_state` `world_id`. If it says 8 you are already in Castle: skip to step 1.6 and note `resumed after the ring press`.
+**S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, L2, WAIT17. Expected: `world_id` 12, position within about 1 m of (-54.88, 26.08, -159.84). Record both. Resume probe (no extra call): if WAIT17 says `world_id` 8 you are already in Castle: skip to step 1.6 and note `resumed after the ring press`.
 
 ### ROW LEG-1 - the Cellblock exit ring carries the state to Castle
 
-**1.1 STATE-before (3 calls, macro STATE).** Expected: mission 1360 active with the step text 'Find a way to get Cpl. Frost's Letter to his family.'; mission 688 active with 'Use the ring transport to escape.'; item 3730 x1 in the Mission container. Record all of it verbatim.
+**1.1 STATE-before (3 calls: client_batch, client_inventory, client_window_read).** Expected: mission 1360 active with the step text 'Find a way to get Cpl. Frost's Letter to his family.'; mission 688 active with 'Use the ring transport to escape.'; item 3730 x1 in the Mission container. Record all of it verbatim.
 
-**1.2 Find the switch (1 call).** `client_entity_table` for entities near you; write down the entity (id, name, position) that stands within 1.5 m of (-54.88, 26.08, -163.84). That is `Cellblock_ArmoryRingSwitch`. Expected: it is highlighted (a mission-object glow). If no entity is there, record `no entity` and report row LEG-1 as BLOCKED.
+**1.2 Find the switch (1 call: client_entity_table).** `client_entity_table` for entities near you; write down the entity (id, name, position) that stands within 1.5 m of (-54.88, 26.08, -163.84). That is `Cellblock_ArmoryRingSwitch`. Expected: it is highlighted (a mission-object glow). If no entity is there, record `no entity` and report row LEG-1 as BLOCKED.
 
-**1.3 Mark and look (2 calls).** CHATX `.bug SPU SP-DL1 leg1 start`; then SHOT, label `L1-before-press`.
+**1.3 Mark and look (2 calls: client_batch, lab_screenshot).** CHATX `.bug SPU SP-DL1 leg1 start` (its first op is DIALOG); then SHOT, label `L1-before-press`.
 
-**1.4 The first press (1 call).** Stand 3.5 to 4.5 m from the switch (you are at 4 m). Press it once with a real world click: `client_world_click {"lease_id":L,"entity_id":<id from 1.2>,"button":"right","expect":"nothing","settle_ms":3500}` (N1). If the tool answers `has no pose`, press it once by point instead: `client_world_click {"lease_id":L,"point":{"x":-54.88,"y":26.08,"z":-163.84},"button":"right","expect":"nothing","settle_ms":3500,"rotate_camera":true}`. Press at most once successfully; do not click again whatever the screen shows. If the tool refuses the call, record the error verbatim, retry once unchanged, then report row LEG-1 as BLOCKED with that text (the exact click recipe for this prop is not traced in this brief; do not invent another).
+**1.4 The first press (1 call: client_world_click).** Stand 3.5 to 4.5 m from the switch (you are at 4 m). Press it once with a real world click: `client_world_click {"lease_id":L,"entity_id":<id from 1.2>,"button":"right","expect":"nothing","settle_ms":3500}` (N1). Press at most once successfully; do not click again whatever the screen shows. Failure path (not counted): if the tool answers `has no pose`, press it once by point instead with the same tool: `client_world_click {"lease_id":L,"point":{"x":-54.88,"y":26.08,"z":-163.84},"button":"right","expect":"nothing","settle_ms":3500,"rotate_camera":true}`. If the tool refuses the call, record the error verbatim, retry once unchanged, then report row LEG-1 as BLOCKED with that text (the exact click recipe for this prop is not traced in this brief; do not invent another).
 
-**1.5 WAITW (3 calls).** Expected within about 40 s: `world_id` 8 and a position near (466.4, 70.4, 991.5), the Castle arrival platform (`respawners.sql:63`, 'Armory Respawn'; chain 1109). Record the world, the position, the UTC time and whether a Server Message prompt appeared (PROMPT if so; record its text).
+**1.5 WAITW (3 calls: client_batch, client_batch, client_batch).** Expected within about 40 s: `world_id` 8 and a position near (466.4, 70.4, 991.5), the Castle arrival platform (`respawners.sql:63`, 'Armory Respawn'; chain 1109). Record the world, the position, the UTC time and whether a Server Message prompt appeared. Failure path (not counted): if one appeared, PROMPT (`client_window_read`, plus one click per button); record its text.
 
-**1.6 Arrival look (1 call).** SHOT-HUMAN, label `L1-arrival-castle`. Write one line: are you standing on a floor or falling, and does the character model look normal (no stretched or missing limbs)? Appearance is a human check (unified-uat T21); the verifier grades it NEEDS_HUMAN. Nobody is asked anything.
+**1.6 Arrival look (1 call: lab_screenshot).** SHOT-HUMAN, label `L1-arrival-castle`. Write one line: are you standing on a floor or falling, and does the character model look normal (no stretched or missing limbs)? Appearance is a human check (unified-uat T21); the verifier grades it NEEDS_HUMAN. Nobody is asked anything.
 
-**1.7 STATE-after (2 calls).** `client_inventory` (Main and Mission) and `client_window_read {"kind":"mission"}`. Expected: item 3730 x1 in the Mission container; 1360 still active at 'Find a way to get Cpl. Frost's Letter to his family.'; 688 gone from the active list (completed). Record verbatim.
+**1.7 STATE-after (2 calls: client_inventory, client_window_read).** `client_inventory` (Main and Mission) and `client_window_read {"kind":"mission"}`. Expected: item 3730 x1 in the Mission container; 1360 still active at 'Find a way to get Cpl. Frost's Letter to his family.'; 688 gone from the active list (completed). Record verbatim.
 
-**1.8 Relog (2 calls).** `lab_logout {"lease_id":L,"instance":"default"}` then L2 again. Expected: in world as Fxdlone in world 8. Record `world_id` and `pos` from the L2 result. If L2 fails, gotcha 9.
+**1.8 Relog (2 calls: lab_logout, lab_ensure_in_world).** `lab_logout {"lease_id":L,"instance":"default"}` then L2 again. Expected: in world as Fxdlone in world 8. Record `world_id` and `pos` from the L2 result. If L2 fails, gotcha 9.
 
-**1.9 STATE after relog (2 calls).** Same two reads as 1.7. Expected: identical to 1.7. Then BUG: CHATX `.bug SPU SP-DL1 leg1 end` (wait 17 s first with WAIT17 if chat is swallowed; if the bug line is not echoed, write `bug line not sent`).
+**1.9 State after relog and the end bookmark (3 calls: client_batch, client_inventory, client_window_read).** The first call is ONE `client_batch`: the WAIT17 steps (the character is deaf for 16 s after login), then the CHATX lines of `.bug SPU SP-DL1 leg1 end` (DIALOG first); if the bug line is not echoed, write `bug line not sent`. Then the same two reads as 1.7. Expected: identical to 1.7.
 
 Not in this packet: the ring animation (client patch, the row grades the transfer only) and the Castle side of mission 1360 (SP-DL2).
 
@@ -111,4 +111,4 @@ Then one block per row: `ROW LEG-1 | CLAIM: DONE / FAIL / BLOCKED / NOT-RUN / NE
 
 ## 3. Always end like this
 
-Release the lease: `lab_lease_release {"lease_id":L}`, even after a failure or early stop. Then write the report.
+Release the lease (1 call: lab_lease_release): `lab_lease_release {"lease_id":L}`, even after a failure or early stop. Then write the report.
