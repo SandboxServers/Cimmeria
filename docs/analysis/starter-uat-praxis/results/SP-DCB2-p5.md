@@ -1,0 +1,30 @@
+PACKET SP-DCB2-p5 VERIFIED 2026-11-03 by Sonnet; driver attempts: 1; server evidence window 08:05:28Z-08:08:52Z (bookmarks CB-U06 start 1793693133017 and end 1793693312295; SigNoz lab_run dr-lab plus dr-lab logs\server.log; Dcbch player_id 99)
+
+| Row | Result | Tier | Server evidence (time, scope, event, key fields) | Client evidence | Looker | Notes |
+|---|---|---|---|---|---|---|
+| CB-U06 Scene (Matinee 1751, Marsh despawn) | BLOCKED (case c, brief/carry-over defect) | G (`/gmkilltarget`) | 08:05:56.006Z `gmKillTarget` authorized; 08:05:56.012Z `gmKillTarget: killing NPC` 102426 (tag Hallway05_Guard2, spawn 33, template 24 NID Guard); 08:05:56.014Z `NPC death: respawn not scheduled`. No `Content:` row at all, no `play_sequence` 1751, no `destroy_entity` Preparation_ColMarsh. Start bookmark (08:05:33Z) missions: 681 ACTIVE at step 2348 (objectives 2724, 2725 not complete); 682-686 never accepted; 687 absent. Chain 1161 triggers only on `mission_completed 686`. The Hallway05 kill chains 1092/1093/1094 all require `mission_status 686 = active`, so they could not match. | driver kill reply only | n/a | The kill worked and 102426 is a Hallway05 guard, but the precondition is missing: the 681 to 686 controller chain (1087-1091) was never run in p3/p4, so 686 was never active. |
+| CB-U06 Dialog 2516 | BLOCKED | n/a | No `displaying dialog` 2516 anywhere in 08:05-08:08. Chain 1161 (display_dialog 2516 at +10100 ms) never fired. | DLG open:false | Both screenshots: dialog box present but it is the "Combat" tutorial (5883, offered_dialog_ids [5883] in the start bookmark), not 2516 | No timing to grade. |
+| CB-U06 Blurb 5859 | BLOCKED | n/a | No 5859 row. Chain 1172 needs GC1 Marsh-death state, not reached. | no blurb | n/a | |
+| CB-U06 687 accepted once | BLOCKED | n/a | No `accepting mission` 687 in window. 687 absent from `sgw_mission` for player 99. Chain 1094 never matched. | tracker: Frost's Letter, Speak to Prisoner 329 | n/a | |
+| CB-U06 Relog and late entry | PARTIAL (negative clauses trivially hold) | n/a | Relog 08:07:39Z `fire_player_loaded` matched, 4 actions (chains 1002, 1009, 1026, 1112 only). No 1751, 2516, 5859 after relog. Chain 1162 (Marsh re-despawn) did not match, since 686 is not completed, so Marsh is present by seed. | 10 m find after relog: only the player (driver). Server did not verify that Marsh is absent, and by seed he should be present. | n/a | "None after relog" holds only because nothing ever played; it proves nothing about replay protection. The "Marsh absent" clause is contradicted in spirit: Marsh was never despawned. |
+| CB-U06 WARN/ERROR scan | PASS | n/a | SigNoz WARN/ERROR 08:05:25Z-08:08:55Z: 0 rows; server.log scan: none. | n/a | n/a | |
+| CB-U06 H-CB-U06-1 look | NEEDS_HUMAN (nothing to look at) | n/a | | H-T16-1 (08:05:57) and H-CB-U06-2 (~08:06:18) | Q1 cinematic/odd camera: NO, NO. Q2 dialog with text: YES, YES ("Combat" tutorial window with Next button) | Not the scene. |
+| .10 die_and_respawn | n/a (driver harness) | | Not graded. wait_defeat timed out at 60 s, nothing damages the player. | | | Do not use die_and_respawn here. |
+
+SIGN-OFF SHEET (NEEDS_HUMAN):
+- H-CB-U06-1 (scene readable interval, camera, look): no scene played. Screenshots C:\Users\Steve\AppData\Local\cimmeria-lab\screenshots\lab_screenshot-20261103-020557.796.png and ...020618.100.png show normal third-person view plus the "Combat" tutorial window (looker: no cinematic; dialog yes). Open, re-run needed.
+
+FINDINGS:
+none. No product bug (case a or b); no issue bodies written. Classification of the failure to trigger:
+- Brief defect (c), carry-over: p3/p4 never really killed the Mess Hall and Hallway01-04 guards (GM or otherwise), so mission 681 stayed active at step 2348 and 682-686 were never accepted. The brief's "last kill" then does nothing by design. Chain 1094 needs 686 active and `hallway05_kills >= 1`; chain 1161 needs `mission_completed 686`.
+- Guard choice was not the problem: seed has only two Hallway05 guards (Guard1 -100.16,-43.9, entity 102425; Guard2 -101.5,-51.3, entity 102426 tag Hallway05_Guard2). Either guard completes 686 once 686 is active (counter gte 1 on either dead tag; chain 1092/1093 increment, 1094 completes on either). 102426 is a valid trigger. Objective 2731 (flank, non-gating) is not needed.
+- Open question, not evidenced and not filed: whether `gmKillTarget` raises the `entity_dead_tag` event that chains 1087-1094 listen on. The log shows no Content row after the kill, which is what you would expect with 686 inactive, so the run cannot answer it. The re-run will show it: if 686 is active and the GM kill still yields no `Content: complete mission 686`, file a bug (case a) then.
+
+NOT RUN / BLOCKED:
+- All CB-U06 server clauses: BLOCKED by missing 681 to 686 chain state (case c). Driver/harness notes: `lab_ensure_in_world` "name did not read" is expected; die_and_respawn is useless here.
+
+RESUME HINT:
+- Fixture first, do not start at Hallway05. In order, each with a server row check: kill the Mess Hall guards (MessHall_Guard1 or 2, tag entity_dead_tag; expect `Content: complete mission` 681 then `accepting mission` 682, counter messhall_kills >= 1), then Hallway01_Guard, Hallway02_Guard, Hallway03_Guard, Hallway04_Guard in order (each completes the active mission and accepts the next; 685 to 686 on Hallway04). Real kills or `/gmkilltarget 0` at tier G with server `Content: complete mission` check after each. Confirm 686 `status=1` in `sgw_mission` before the last step.
+- Then kill Hallway05_Guard1 and Hallway05_Guard2 (both, to be safe; either alone should satisfy chain 1094 counter gte 1). Bookmark `CB-U06 start` at the killing blow of the last kill; t=0 is its `Content: complete mission` 686 row.
+- Expect: 686 completed, `Content: playing sequence` 1751 at t=0, `destroy_entity` Preparation_ColMarsh at t=0, `displaying dialog` 2516 at about +10.1 s, 5859 at +26.1 s (chain 1172, may need GC1 state), `accepting mission` 687 once. Then relog and confirm no 1751/2516/5859 and chain 1162 re-despawns Marsh.
+- Screenshot at +1 s, +11 s and +27 s for the looker/sign-off sheet.

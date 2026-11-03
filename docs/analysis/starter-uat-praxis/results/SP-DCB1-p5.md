@@ -1,0 +1,25 @@
+PACKET SP-DCB1-p5 VERIFIED 2026-11-03T07:1xZ by Sonnet; driver attempts: 3 (this is attempt 3, 06:55:57Z-06:57:26Z); server evidence window 06:55:52Z-06:57:47Z (SigNoz cimmeria-server, lab_run dr-lab; player 98 Dcbbh; entity 42, entity 43 after relog)
+
+| Row | Result | Tier | Server evidence (time, scope, event, key fields) | Client evidence | Looker | Notes |
+|---|---|---|---|---|---|---|
+| CB-U02b Equip | PASS | N1 (driver: native_cegui drag Main to Bandolier) | 06:56:00.420Z `fire_item_equipped: no chains matched` item_type 55 (no chain expected); 06:56:00.424Z `weapon_ability_swap` item 55 "SI 3 9mm Pistol" slot 0 added [579, 708] removed [], new_known_count 6; `SyncBandolierItems` "active slot gained weapon". Held once (single swap row in the window). | driver: item 10567 Main slot 2 to Bandolier slot 1 | n/a | 592 was not in the added set. |
+| CB-U02b Reload (R key) | PASS | N1 (R key) | 06:56:01.739Z `requestReload` entity 42; 06:56:01.742Z `Weapon reload started` old 0, target 15, warmup 2 s. No separate completion row found, but the first shot at 06:56:22.5Z reports ammo_remaining 14, so the magazine was 15 after the reload. | driver: key R "posted_only, inconclusive"; inventory read 15 of 15 | n/a | The R key reached the server (the driver's own verdict was inconclusive). |
+| CB-U02b Two shots (592) | PASS | N1 (hotbar button press; the placement was N3 setup) | 06:56:22.518Z `use_ability_recv` ab=592 target 101974 (Cellblock Guard), 22.520Z `ability_launched` cast 1 by Dcbbh, `ammo_consumed` remaining 14; guard absorbed it with Focus (`ranged_physical_damage` focus_damage 150, health_damage_applied 0). 06:56:24.586Z `use_ability_recv`, 24.593Z `ability_launched` cast 2, `ammo_consumed` remaining 13; `ranged_physical_damage` health_damage_applied 48, `damage_script_hit` health_delta -48 on the guard. | driver: hits, feedback "Your Pistol Shot hits Cellblock Guard for 48 Health damage."; ammo 13 of 15 | n/a | Two launches, ammo 15 to 13, guard HP down by 48 on shot 2 (shot 1 hit Focus only). Final DB: item 10567 ammo 13; ability stat 49 cur 13. Guard at 5.81 m per driver. |
+| CB-U02b Focus | PASS | server | Start bookmark 06:55:57Z: focus 1570/1570. Player damage_taken rows from the guard's 579 show focus 770-870 at the time of the shots; never 0 before the first press. | n/a | n/a | 592 costs 150 Focus; ok. |
+| CB-U02b No duplicate on relog | PASS | G (relog) | DB `sgw_inventory` character 98 after relog: exactly one type_id 55 (item 10567, container 3, ammo 13). 06:56:41.125Z world-entry `weapon_ability_swap` (origin world_entry) added [708, 579] removed []; no grant events for 55, 592, 594, 597 or 1218 anywhere in the window. | driver INV after relog: pistol in Bandolier, ammo 13 of 15 | n/a | The ability list itself could not be read back (sgw_player.abilities is `{}` and ability_state shows stats only), so the ability-once check rests on the absence of any grant event plus the world-entry swap row. |
+| CB-U02b Visual H-CB-U02-1 | NEEDS_HUMAN | N1 | n/a | screenshot taken, not read by the driver | Q1 firearm in hand: UNSURE (hand not clearly visible, only a hotbar weapon icon). Q2 hostile NPC in view: YES (red "Cellblock Guard" nameplates). | See sheet. |
+
+SIGN-OFF SHEET (NEEDS_HUMAN):
+- CB-U02b, H-CB-U02-1 (fire, recoil, muzzle effect): C:\Users\Steve\AppData\Local\cimmeria-lab\screenshots\lab_screenshot-20261103-005627.662.png. The driver gave no sentence about it. Looker: firearm in hand UNSURE, hostile NPC in view YES.
+
+FINDINGS:
+1. No product bug found, no issue body written. Unexpected WARN or ERROR in the window: none returned.
+2. Observation (lab, not a bug): the Cellblock Guard (101974, then 102023 after the relog) attacks the player with Pistol Auto Attack (579) throughout. The player's Focus drained, and at the end bookmark health is 525/760 and the player is in combat. After the relog the guard kept firing every 2 s until at least 06:57:44Z. The driver's next part must expect an in-combat state.
+3. Observation: the 06:56:41Z `Stasis Sickness - Stage 1` content launch (chain 1112, D-CB04) after the relog is expected world-entry content, not a finding.
+
+NOT RUN / BLOCKED:
+- Visual clause H-CB-U02-1 is left to a human.
+- Earlier attempts: attempt 1 (06:48:48-06:50:45Z) toggled the already-equipped pistol off, so equip, reload and shots were not exercised (lab/state problem, class c, graded FAIL-as-driven in the previous result file, now replaced). Attempt 2 was blocked at login (wedged client, restarted by the coordinator). No older p5 issue body files existed (the results/issues directory does not exist), so nothing was deleted.
+
+RESUME HINT:
+- None for this row. Packet is complete. The pistol is now equipped in the Bandolier with 13 of 15 rounds and the player is in combat with the guard; a later part that depends on a calm state should wait or reset.
