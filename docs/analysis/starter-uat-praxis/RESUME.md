@@ -1,9 +1,9 @@
 # starter-uat-praxis: resume card
 
-> **Type:** reference. **Audience:** the orchestrator resuming this campaign. **Updated:** 2026-10-27
+> **Type:** reference. **Audience:** the orchestrator resuming this campaign. **Updated:** 2026-11-02
 > **Companions:** [ledger](README.md), [work packets](work-packets.md). Siblings: [union](../starter-uat-union/RESUME.md), [shops](../starter-uat-shops/RESUME.md), [debug-armory](../debug-armory/RESUME.md).
 
-**State (2026-11-02):** SP-00 (row inventory) in progress in `C:/Users/Steve/source/projects/Cimmeria/.claude/worktrees/sp-integration` (branch `starter-uat-praxis/integration`, based on `origin/main` `e8973395f`). Wave 1 not dispatched.
+**State (2026-11-02):** SP-00 (row inventory) in progress in `.claude/worktrees/sp-integration` (branch `starter-uat-praxis/integration`, based on `origin/main` `e8973395f`). Wave 1 not dispatched.
 
 **Goal:** a graded lab playthrough of every owed client row from Castle_CellBlock to Tollana, an issue per failure, and a TOML spec per pass.
 
