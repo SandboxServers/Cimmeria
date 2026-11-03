@@ -523,7 +523,7 @@ A profile's character is `<first> Fx<key><instance>`: `Fx`, the key, then up to 
 | `character` | A `[section.profiles]` key. Required |
 | `world` | The character's saved world, a `resources.worlds` name with no whitespace. Without `position` the saved coordinates are kept, so give both when the character may have been saved in another world |
 | `position` | `[x, y, z]` in server metres, as `/gmgotoxyz` takes them. Leave it out when the row positions itself in setup (see the rules below) |
-| `missions` | `{ id, step }` makes the mission active on that step. `{ id, state = "not_active" }` removes it. `{ id, state = "completed" }` completes it once. `state = "active"` needs a `step`, and a `step` with any other state is an error |
+| `missions` | `{ id, step }` makes the mission active on that step. `{ id, state = "not_active" }` removes it. `{ id, state = "completed" }` completes it once. `state = "active"` needs a `step`, and a `step` with any other state is an errorMission 1360 (Frost's Letter) stages at 4037 or 4038 only: the fixture resets its row, writes 4037 with objective 4650 and, for 4038, advances it (completed 4037/4650, active 4651), because the letter mission refuses any other snapshot |
 | `items` | `{ id, count, container }`: exactly `count` (0 to 10) of that item design carried afterwards, in `container` `main` (the backpack, the default) or `mission` (the mission bag) |
 | `tutorials_unseen` | Tutorial ids the character forgets, so the row sees them shown again |
 
