@@ -284,6 +284,10 @@ local function kids(p, depth)
       local r = __jcall(function() return w:getUnclippedPixelRect() end)
       if r then
         local e = {{ name = __jcall(function() return w:getName() end), rect = {{ r.left, r.top, r.right, r.bottom }} }}
+        -- A pass-through or disabled window never takes the mouse, so the 3D
+        -- pick below it still runs (AttackDirectionQuartersWin, SplashHackWin).
+        if __jcall(function() return w:isMousePassThroughEnabled() end) == true then e.passThrough = true end
+        if __jcall(function() return w:isDisabled() end) == true then e.disabled = true end
         local a = math.max(r.right - r.left, 0) * math.max(r.bottom - r.top, 0)
         if depth < {WINDOW_RECT_DEPTH} and full > 0 and a >= {BACKDROP_AREA_SHARE} * full then e.children = kids(w, depth + 1) end
         out[#out + 1] = e
@@ -305,7 +309,8 @@ pub const BACKDROP_AREA_SHARE: f64 = 0.9;
 pub const WINDOW_RECT_DEPTH: u32 = 4;
 
 /// The window rects from [`window_rects_chunk`]'s JSON, without backdrops
-/// but with the windows nested under them.
+/// but with the windows nested under them, and without windows that are
+/// mouse pass-through or disabled (they never take the cursor).
 pub fn parse_window_rects(v: &Value) -> Result<Vec<(String, [f64; 4])>, String> {
     if let Some(e) = v.get("error").and_then(Value::as_str) {
         return Err(e.to_string());
@@ -337,6 +342,9 @@ fn collect_rects(list: &Value, full: f64, depth: u32, out: &mut Vec<(String, [f6
             continue;
         };
         if full <= 0.0 || rect_area(r) < BACKDROP_AREA_SHARE * full {
+            if w["passThrough"].as_bool() == Some(true) || w["disabled"].as_bool() == Some(true) {
+                continue;
+            }
             let name = w["name"].as_str().unwrap_or("?").to_string();
             out.push((name, r));
         } else if depth < WINDOW_RECT_DEPTH {
@@ -415,6 +423,28 @@ mod tests {
         let none = serde_json::json!({ "error": "no Root window" });
         assert_eq!(parse_window_rects(&none).unwrap_err(), "no Root window");
         assert!(window_rects_chunk().contains("getUnclippedPixelRect"));
+    }
+
+    /// Pass-through and disabled windows are not HUD cover.
+    #[test]
+    fn window_rects_skip_pass_through_and_disabled_windows() {
+        let v = serde_json::json!({
+            "root": [0, 0, 1000, 800],
+            "windows": [
+                { "name": "SplashHackWin", "rect": [307, 230, 717, 537], "passThrough": true },
+                { "name": "Greyed", "rect": [0, 0, 50, 50], "disabled": true },
+                { "name": "QuickBar", "rect": [300, 700, 700, 780], "passThrough": false },
+            ],
+        });
+        let names: Vec<String> = parse_window_rects(&v)
+            .unwrap()
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        assert_eq!(names, ["QuickBar"]);
+        let chunk = window_rects_chunk();
+        assert!(chunk.contains("isMousePassThroughEnabled"));
+        assert!(chunk.contains("isDisabled"));
     }
 
     /// A HUD parented under a full-screen container still counts; the walk

@@ -363,3 +363,37 @@ async fn a_far_target_that_hovers_nothing_is_clicked_without_retries() {
     assert_eq!(sim.buttons, vec![(1, true), (1, false)]);
     assert!(hover_detail(&e.steps)["view_retries"].is_null());
 }
+
+/// With `prop_scan`, a prop whose pick shape sits above its origin is found
+/// and clicked at the scan pixel; without it the hover stays unverified.
+#[tokio::test]
+async fn a_click_with_prop_scan_finds_a_shape_above_the_origin() {
+    let make = || {
+        let mut sim = Sim::new().with_entity(11, "Ambernol Vial", Vec3::new(400.0, 0.0, 0.0));
+        sim.entities[0].window = Some("VialWin".into());
+        sim.body_dz = vec![30.0];
+        sim
+    };
+    let req = |prop_scan| ClickRequest {
+        entity_id: Some(11),
+        expect: Some(Expect::Window),
+        prop_scan,
+        ..ClickRequest::default()
+    };
+    let mut plain = make();
+    let out = click::run(&mut plain, "client_world_click", req(false), None).await;
+    assert!(
+        out.as_ref().map_or(true, |o| o["hover_verified"] != true),
+        "{out:?}"
+    );
+
+    let mut sim = make();
+    let out = click::run(&mut sim, "client_world_click", req(true), None)
+        .await
+        .unwrap();
+    assert_eq!(out["hover_verified"], true, "{out}");
+    assert_eq!(out["result"]["windows_opened"][0], "VialWin");
+    let detail = hover_detail(out["steps"].as_array().unwrap());
+    let tried = detail["tried"].as_array().unwrap();
+    assert!(tried.last().unwrap().get("scan").is_some(), "{detail}");
+}

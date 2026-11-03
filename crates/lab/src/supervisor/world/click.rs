@@ -90,6 +90,13 @@ pub struct ClickRequest {
     /// the cursor. Point clicks never force through occlusion.
     #[serde(default)]
     pub force: bool,
+    /// Small props (a vial, a switch): when no body height hovers the entity,
+    /// scan a bounded box (about 15 cm sideways, 0 to 40 cm up) around its
+    /// origin for a pixel the client's own pick resolves to it, and click
+    /// there. At most 60 reads, inside the hover deadline. Off by default so
+    /// NPC clicks are unchanged. Entity aims only.
+    #[serde(default)]
+    pub prop_scan: bool,
     /// client_target only: fall back to the stock `targetUnit` (N3).
     #[serde(default)]
     pub allow_fallback: bool,
@@ -442,6 +449,7 @@ pub async fn run<W: WorldIo>(
                 req.force && req.point.is_none(),
                 Some(hover_deadline),
                 &mut attempted_pixel,
+                req.prop_scan,
             )
         )?;
         saw_own |= t.iter().any(|h| h["hover"] == "own_avatar");
@@ -506,6 +514,7 @@ pub async fn run<W: WorldIo>(
                     req.force && req.point.is_none(),
                     Some(hover_deadline),
                     &mut attempted_pixel,
+                    req.prop_scan,
                 )
             )?;
             hover_detail["tried_after_restore"] = json!(t);

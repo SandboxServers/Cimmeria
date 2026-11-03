@@ -9,6 +9,7 @@ use super::find::CLICK_MARGIN_PX;
 use super::geometry::Vec3;
 use super::io::WorldIo;
 use super::memory::slot_entity;
+use super::prop_scan::scan_for_prop;
 use super::{Steps, WorldError};
 
 /// Humanoid heights above actor `Location`, which is the feet (probe B-P2).
@@ -105,6 +106,7 @@ pub(super) async fn hover_once<W: WorldIo>(
     force: bool,
     deadline: Option<tokio::time::Instant>,
     attempted_pixel: &mut Option<(i32, i32)>,
+    prop_scan: bool,
 ) -> Result<(Option<((f64, f64), Hover)>, Vec<Value>), WorldError> {
     let base = aim.position(io).await;
     let points: Vec<Vec3> = match entity {
@@ -197,6 +199,32 @@ pub(super) async fn hover_once<W: WorldIo>(
             }
             Hover::Other(o) if force && chosen.is_none() => chosen = Some((p, Hover::Other(o))),
             _ => {}
+        }
+    }
+    // Small props: no height hovered the entity, so look for a pixel the
+    // client's own pick resolves to it (opt-in; see `prop_scan`).
+    if let (true, Some(e)) = (prop_scan, entity) {
+        if !matches!(chosen, Some((_, Hover::Matched))) {
+            let out = scan_for_prop(
+                io,
+                steps,
+                aim,
+                e,
+                mo_slot,
+                player_slot,
+                deadline,
+                attempted_pixel,
+            )
+            .await?;
+            match out.hit {
+                Some((p, dz)) => {
+                    let at = [p.0.round() as i32, p.1.round() as i32];
+                    tried
+                        .push(json!({ "scan": out.detail, "dz": dz, "at": at, "hover": "entity" }));
+                    chosen = Some((p, Hover::Matched));
+                }
+                None => tried.push(json!({ "scan": out.detail, "hover": "scan_miss" })),
+            }
         }
     }
     Ok((chosen, tried))

@@ -354,3 +354,106 @@ async fn the_aim_must_be_one_entity_or_one_point() {
     assert_eq!(expect_on_entity.step, "arguments");
     assert!(sim.buttons.is_empty());
 }
+
+/// A vial whose hit shape sits 30 units above its actor origin: every body
+/// height misses it (the nearest, dz 60, is 30 units above the shape) and so
+/// does the origin (37 px away at 4 m, past the sim's 25 px pick radius).
+fn shape_above_origin() -> Sim {
+    let mut sim = Sim::new().with_entity(10, "Ambernol Vial", Vec3::new(400.0, 0.0, 0.0));
+    sim.body_dz = vec![30.0];
+    sim.cursor = (3, 4);
+    sim
+}
+
+fn scan_step(out: &serde_json::Value) -> serde_json::Value {
+    let step = out["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["step"] == "centre")
+        .expect("centre step");
+    step["detail"]["tried"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t.get("scan").is_some())
+        .cloned()
+        .unwrap_or(serde_json::Value::Null)
+}
+
+#[tokio::test]
+async fn a_prop_whose_shape_is_off_the_origin_needs_the_scan() {
+    let mut off = shape_above_origin();
+    let out = run(
+        &mut off,
+        HoverRequest {
+            entity_id: Some(10),
+            ..HoverRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_ne!(out["verdict"], "ok", "{out}");
+    assert!(scan_step(&out).is_null(), "no scan unless asked: {out}");
+
+    let mut sim = shape_above_origin();
+    let out = run(
+        &mut sim,
+        HoverRequest {
+            entity_id: Some(10),
+            prop_scan: true,
+            ..HoverRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["verdict"], "ok", "{out}");
+    assert_eq!(out["mouse_over"], 10, "{out}");
+    let scan = scan_step(&out);
+    assert_eq!(scan["hover"], "entity", "{scan}");
+    assert!(scan["scan"]["reads"].as_u64().unwrap() <= 60, "{scan}");
+    assert!(sim.buttons.is_empty());
+    assert_eq!(sim.cursor, (3, 4));
+}
+
+#[tokio::test]
+async fn the_scan_gives_up_inside_its_read_cap() {
+    let mut sim = shape_above_origin();
+    sim.unhoverable.push(10);
+    let out = run(
+        &mut sim,
+        HoverRequest {
+            entity_id: Some(10),
+            prop_scan: true,
+            ..HoverRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_ne!(out["verdict"], "ok", "{out}");
+    let scan = scan_step(&out);
+    assert_eq!(scan["hover"], "scan_miss", "{scan}");
+    let reads = scan["scan"]["reads"].as_u64().unwrap();
+    assert!((1..=60).contains(&reads), "{scan}");
+    assert!(sim.buttons.is_empty());
+}
+
+/// A pass-through window over the pixel (the always-visible
+/// `AttackDirectionQuartersWin`) used to turn every central pixel into a `ui`
+/// miss. A real window still wins, and either way the raw mouse-over shows.
+#[tokio::test]
+async fn a_ui_verdict_still_reports_the_raw_mouse_over() {
+    let mut sim = guard_ahead();
+    sim.window_rects = vec![("QuickBar".into(), [400.0, 350.0, 600.0, 500.0])];
+    let out = run(
+        &mut sim,
+        HoverRequest {
+            entity_id: Some(10),
+            ..HoverRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["verdict"], json!({ "ui": "QuickBar" }), "{out}");
+    assert_eq!(out["mouse_over"], 10, "{out}");
+}

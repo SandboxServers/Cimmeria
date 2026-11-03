@@ -46,6 +46,7 @@ pub mod memory;
 mod move_probe;
 mod move_proof;
 pub mod movement;
+mod prop_scan;
 pub mod routes;
 pub mod steer;
 mod trace_io;
