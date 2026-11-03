@@ -61,7 +61,7 @@ Sub-row scope: Hallway05 guard flank. No Hallway05 guard may die in this part: w
 | Cover and flank | log `cover.hold` or `spawn_reserved`; `cover_released_flanked`; `fire_player_flanked_npc` in the fight window | at least one cover hold, one release when flanked |
 | Objective 2731 | `complete objective` for 2731 (mission 686) after the flank (chain 1142); no `complete objective` for 2725 here (the Mess Hall objective belongs to SP-DCB2-p3) | once, with no kill |
 | No scene | no `Content: complete mission` 686, no `play_sequence` 1751, no `accepting mission` 687 in this window | none |
-| Negatives | `server_entity_query` guards 102425 and 102426: alive, positions inside the corridor, no WARN (a `teleport_dest_off_mesh` WARN on the stand point is a setup note; record it) | no guard through a wall, none frozen with no target |
+| Negatives | `server_entity_query` for the two Hallway05 guards (look up the current ids by tag or position; they change every server start): alive, positions inside the corridor, no WARN (a `teleport_dest_off_mesh` WARN on the stand point is a setup note; record it) | no guard through a wall, none frozen with no target |
 
 Grade: PASS if the shot reached the server, cover and flank rows exist, 2731 completed and no scene started; PARTIAL if the guards never took cover (`flank not exercisable`); FAIL if a guard left the corridor, a guard died, or an objective completed with no flank. Visual (cover posture): NEEDS_HUMAN `H-CB-U05-1`.
 

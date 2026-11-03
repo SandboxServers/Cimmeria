@@ -105,19 +105,19 @@ CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same
 
 ### ROW CB-U06
 
-**The scene needs mission 686 active.** The kill chains 1092 to 1094 only match while 686 is active; the 681 to 686 controller chain was never run for this character, so SP-DCB2-p4 assigned 686 by GM. Do not use `client_die_and_respawn` in this part: it waits for a defeat that nothing causes and times out.
+**The scene needs mission 686 active.** The kill chains 1092 to 1094 only match while 686 is active; the 681 to 686 controller chain was never run for this character, so SP-DCB2-p4 assigned 686 by GM. Do not use `client_die_and_respawn` in this part: it waits for a defeat that nothing causes and times out. Both Hallway05 guards (Hallway05_Guard1 and Hallway05_Guard2) must die by real pistol shots (ability 592): `/gmkilltarget` does not fire the content engine's `entity_death`, so `entity_dead_tag` never fires and chains 1092 to 1094 never run (issue SP-DCB2-p5-1; the first drive killed both guards by GM and 686 stayed active). If SP-DCB2-p4 was skipped, 686 must still be assigned (step .1).
 
 **CB-U06.1 (1 call: client_ui_state).** UIS. Record the mission tracker. If mission 686 is not listed, run the failure path (not counted): CHATX `/gmmissionassign 686 1` (tier G), then UIS once more.
 
 **CB-U06.2 (1 call: client_batch).** GOTO `-100.8 24.67 -47.6` (the middle of the two Hallway05 guards, 3.7 m from each, derived from the spawnlist). Put these CHATX lines before the `.gotolocation` line: `/gmsetgodmode 1` and `/gmsethealth 760 0` (tier G; god mode resets on a relog, so it must be sent again in this run).
 
-**CB-U06.3 (1 call: client_entity_find).** FIND, `max_distance_m` 12. Pick Hallway05_Guard2 by position (within 1.5 m of (-101.5, 24.67, -51.3)); keep its id. If it is missing, pick Hallway05_Guard1 (within 1.5 m of (-100.16, 24.67, -43.90)).
+**CB-U06.3 (1 call: client_entity_find).** FIND, `max_distance_m` 12. Pick Hallway05_Guard2 by position (within 1.5 m of (-101.5, 24.67, -51.3)); keep its id. If it is missing, pick Hallway05_Guard1 (within 1.5 m of (-100.16, 24.67, -43.90)). Both guards are needed, so also keep the other guard's id; do not pick just one.
 
 **CB-U06.4 (1 call: client_camera).** `client_camera {"lease_id":L,"pitch_deg":-10,"face_entity_id":<guard id>}`.
 
-**CB-U06.5 (1 call: client_target).** `client_target {"lease_id":L,"entity_id":<guard id>,"allow_fallback":true,"rotate_camera":false}`. Record `target_after`; it must be the guard's id.
+**CB-U06.5 (1 call: client_target).** `client_target {"lease_id":L,"entity_id":<guard id>,"allow_fallback":true,"rotate_camera":false}`. Record `target_after`; it must be the guard's id. Ammo: the pistol held 0 rounds in the first drives (`use_ability_no_ammo`). Before the shot read `client_inventory` and confirm the pistol shows rounds after the R reload; if it still reads empty, record the text and give ammo by GM (tier G): look up the pistol's ammo design id with `server_db_query` (inferred: the id is not in the evidence) and send `/gmgiveitem <ammo id> <qty>`, then reload again.
 
-**CB-U06.6 (1 call: client_batch).** CHATX: `/gmkilltarget 0` (tier G, say so; the argument is mandatory, the selected NPC is the target), then in the same batch the line `.bug SPU SP-DCB2-p5 CB-U06 kill`. The kill triggers the Straegis scene; this is t=0.
+**CB-U06.6 (up to 12 calls: client_use_ability, client_batch, client_target).** Kill Hallway05_Guard2 with real shots: `client_use_ability {"lease_id":L,"ability_id":592,"place":true}` at the target, reload with the R key when dry, repeat until `client_entity_find` shows it dead. Then `client_target` Hallway05_Guard1 and do the same. In the batch that follows the second kill, add the line `.bug SPU SP-DCB2-p5 CB-U06 kill`; the second death triggers the Straegis scene and is t=0 (inferred: the evidence does not say which death fires chain 1188, so read the `Content: complete mission` 686 row for t=0). Do not use `/gmkilltarget`: it never raises `entity_dead_tag`, so the scene cannot play (issue SP-DCB2-p5-1). If you must fall back to it, say tier G and expect a FAIL (product) grade, not a brief defect.
 
 **CB-U06.7 (1 call: lab_screenshot).** SHOT-H `H-T16-1`. What is on screen at the kill?
 

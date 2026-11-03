@@ -107,7 +107,7 @@ CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same
 
 **Do not kill a Hallway05 guard in this part.** With mission 686 active, the death of either Hallway05 guard completes 686 and plays the Straegis scene (chains 1092 to 1094, 1161). SP-DCB2-p5 needs that scene to start in its own run. This part only provokes the guards, makes them take cover and flanks them, and fires one shot. Objective 2731 (flank) completes without a kill (chain 1142).
 
-**CB-U05b.1 (2 calls: client_ui_sequence, client_batch).** RELOAD in the Mess Hall, where nothing is hostile any more, so the pistol holds rounds when the fight starts.
+**CB-U05b.1 (2 calls: client_ui_sequence, client_batch).** RELOAD in the Mess Hall, where nothing is hostile any more, so the pistol holds rounds when the fight starts. Ammo: the pistol held 0 rounds in the first drives (`use_ability_no_ammo`). Before the shot read `client_inventory` and confirm the pistol shows rounds after the R reload; if it still reads empty, record the text and give ammo by GM (tier G): look up the pistol's ammo design id with `server_db_query` (inferred: the id is not in the evidence) and send `/gmgiveitem <ammo id> <qty>`, then reload again.
 
 **CB-U05b.2 (1 call: client_batch).** GOTO `-100.8 24.67 -47.6`. Put these CHATX lines before the `.gotolocation` line, in this order: `/gmsetgodmode 1`, `/gmsethealth 760 0`, `/gmmissionassign 686 1` (tier G setup: the 681 to 686 controller chain was not run, and this makes 686 active so objective 2731 can be credited). The point is the middle of the two Hallway05 spawns, 3.7 m from Hallway05_Guard1 (-100.16, 24.67, -43.90) and 3.7 m from Hallway05_Guard2 (-101.5, 24.67, -51.30); both spawns are on the navmesh and the corridor is straight between them. The old point (-101, 24.7, -30) is off the mesh. Read the position the batch returns and record it.
 
@@ -117,13 +117,13 @@ CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U05b.5 (1 call: client_camera).** `client_camera {"lease_id":L,"pitch_deg":-10,"face_entity_id":<guard 1 id>}`.
 
-**CB-U05b.6 (1 call: client_target).** `client_target {"lease_id":L,"entity_id":<guard 1 id>,"allow_fallback":true,"rotate_camera":false}`. Record `target_after`; it must be the guard's id. The shot fires at the current target (the first drive sent target 0).
+**CB-U05b.6 (1 call: client_target).** `client_target {"lease_id":L,"entity_id":<guard 1 id>,"allow_fallback":true,"rotate_camera":false}`. Record `target_after`; it must be the guard's id. The shot fires at the current target (the first drive sent target 0). Objective 2731 is credited by the flank (chain 1142), never by `/gmkilltarget`: `gmKillTarget` never credits quest kills (it skips the content engine's `entity_death`; issue SP-DCB2-p5-1), so objectives that depend on a kill must come from real pistol shots (ability 592), never from `/gmkilltarget`.
 
 **CB-U05b.7 (1 call: client_use_ability).** SHOOT `client_use_ability {"lease_id":L,"ability_id":592,"place":true}` once. Never fire a second shot.
 
 **CB-U05b.8 (1 call: client_batch).** One batch: DIALOG first, then `wait` 3000 ms, then UTC. Let the guards close and take cover.
 
-**CB-U05b.9 (1 call: client_ui_sequence).** Sidestep: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"a","hold_ms":800}]}`.
+**CB-U05b.9 (1 call: client_ui_sequence).** Sidestep: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"a","hold_ms":800}]}`. The first drives' 800 ms hold moved the player about 4.7 m, which stays inside the guards' defensive arc, so no flank release fired. Repeat the 800 ms `a` hold up to three times in total, with one FIND between holds to record the player and guard positions (inferred: the lateral distance that leaves the arc was not measured); stop early at a wall or when the server logs `cover_released_flanked`. The sidestep back (.10) then holds `d` for 1600 ms times the number of `a` holds you made (inferred).
 
 **CB-U05b.10 (1 call: client_ui_sequence).** Sidestep back: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"d","hold_ms":1600}]}`.
 

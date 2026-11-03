@@ -60,7 +60,7 @@ Sub-row scope: Mess Hall guard flank. Grade only the clauses this part drove; th
 | Pull | `useAbility` 592 by the player with a non-zero target (`setTargetID` on a guard before it); no `no_ammo` refusal; the guards did not aggro before the shot (`NPC AI: proximity auto-aggro` absent before the cast, the stand point is 20 m away) | shot reaches the server |
 | Cover and flank | log `cover.hold` or `spawn_reserved`; `cover_released_flanked`; `fire_player_flanked_npc` in the fight window | at least one cover hold, one release when flanked |
 | Objectives | `complete objective` for 2725 (Mess Hall, mission 681; chain 1141 on a flank, or the kill chain 1087) after the flank or the kills | once |
-| GM kills | `gmKillTarget: killing NPC` for 102421 and 102422 | both rows present; the player alive at both |
+| GM kills | `gmKillTarget: killing NPC` for the two MessHall guard ids (look up the current ids with `server_entity_query`; they change every server start) | both rows present; the player alive at both. A GM kill never credits 2725 (no `entity_death`; issue SP-DCB2-p5-1), so do not expect the objective from it |
 | Negatives | `server_entity_query` guards: positions inside the room bounds; no WARN other than the two expected ones | no guard through a wall, none frozen with no target |
 
 Grade: PASS if objective 2725 completed, the pull reached the server and cover and flank rows exist; PARTIAL if the guards never took cover (`flank not exercisable`); FAIL if a guard left the room or an objective completed with no flank and no kill. Objective 2731 belongs to SP-DCB2-p4 (Hallway05). Visual (cover posture): NEEDS_HUMAN `H-SK-1`.

@@ -105,9 +105,9 @@ CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same
 
 ### ROW CB-U05a
 
-**Why the order matters.** Mission 681 (objectives 2724, 2725) only exists after you enter Region9: chain 1073 fires on `enter_region Castle_Cellblock.Region9` and accepts it. The two Mess Hall guards (MessHall_Guard1 102422 at (-96.25, 34.59, -91.59) and MessHall_Guard2 102421 at (-95.89, 34.59, -98.81)) aggro on a player within 18 m, so you arrive out of that radius. Never send a `/gm...` line while dead (gotcha 22).
+**Why the order matters.** Mission 681 (objectives 2724, 2725) only exists after you enter Region9: chain 1073 fires on `enter_region Castle_Cellblock.Region9` and accepts it. The two Mess Hall guards (MessHall_Guard1 at (-96.25, 34.59, -91.59) and MessHall_Guard2 at (-95.89, 34.59, -98.81); entity ids change on every server start, so look up the current ids with `server_entity_query` by tag or position and never trust a number from an earlier run) aggro on a player within 18 m, so you arrive out of that radius. Never send a `/gm...` line while dead (gotcha 22).
 
-**CB-U05a.1 (1 call: client_batch).** GOTO `-77 46.2 -161` (inside Region9, the corridor waypoint the scenario map uses). Put these CHATX lines before the `.gotolocation` line, in this order: `/gmsetgodmode 1` and `/gmsethealth 760 0` (tier G setup, so the guards cannot kill you). Chain 1073 fires on arrival and accepts 681. The server writes two WARNs for it (`complete_mission_direct: mission not found` for 680 and `send_mission_update: no live mission instance`) because this character never held mission 680; they are expected, not a failure.
+**CB-U05a.1 (1 call: client_batch).** GOTO `-77 46.2 -161` (inside Region9, the corridor waypoint the scenario map uses). Put these CHATX lines before the `.gotolocation` line, in this order: `/gmsetgodmode 1` and `/gmsethealth 760 0` (tier G setup, so the guards cannot kill you). Chain 1073 fires on arrival and accepts 681. The server writes two WARNs for it (`complete_mission_direct: mission not found` for 680 and `send_mission_update: no live mission instance`) because this character never held mission 680; they are expected, not a failure. If step .2 does not list 681 (the client was already inside Region9, or the chain did not fire), step out of Region9 and enter it again with a second GOTO to the same point: the first drive got 681 only on a re-entry. Never stand closer than 19 m to a guard before the shot: a stand point 14.6 m away (-110, 34.6, -95) is inside the aggro radius and the player was killed in about 20 s.
 
 **CB-U05a.2 (1 call: client_ui_state).** UIS. Record the mission tracker; 681 should be listed.
 
@@ -115,21 +115,21 @@ CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U05a.4 (1 call: client_entity_find).** FIND, `max_distance_m` 30. Pick the two guards by position (within 1.5 m of (-96.25, 34.59, -91.59) and (-95.89, 34.59, -98.81)); keep both ids.
 
-**CB-U05a.5 (2 calls: client_ui_sequence, client_batch).** RELOAD (the pistol must hold rounds before the pull).
+**CB-U05a.5 (2 calls: client_ui_sequence, client_batch).** RELOAD (the pistol must hold rounds before the pull). Ammo: the pistol held 0 rounds in the first drives (`use_ability_no_ammo`). Before the shot read `client_inventory` and confirm the pistol shows rounds after the R reload; if it still reads empty, record the text and give ammo by GM (tier G): look up the pistol's ammo design id with `server_db_query` (inferred: the id is not in the evidence) and send `/gmgiveitem <ammo id> <qty>`, then reload again.
 
 **CB-U05a.6 (1 call: client_camera).** `client_camera {"lease_id":L,"pitch_deg":-10,"face_entity_id":<guard 1 id>}`.
 
 **CB-U05a.7 (1 call: client_target).** `client_target {"lease_id":L,"entity_id":<guard 1 id>,"allow_fallback":true,"rotate_camera":false}`. Record `target_after`; it must be the guard's id. Ability 592 fires at the current target, so this comes before the shot.
 
-**CB-U05a.8 (1 call: client_use_ability).** SHOOT `client_use_ability {"lease_id":L,"ability_id":592,"place":true}`. Pistol Shot is a kit ability and is not on the hotbar, so the first cast must pass `place:true`. Fire once. If it answers with a range or line-of-sight refusal, record the text, run GOTO `-82 34.59 -95` (13 m from the guards) as a failure-path step (not counted) and fire once more.
+**CB-U05a.8 (1 call: client_use_ability).** SHOOT `client_use_ability {"lease_id":L,"ability_id":592,"place":true}`. Pistol Shot is a kit ability and is not on the hotbar, so the first cast must pass `place:true`. Fire once. If it answers with a range or line-of-sight refusal, record the text, run GOTO `-82 34.59 -95` (13 m from the guards) as a failure-path step (not counted) and fire once more. The failure-path point (13 m) is inside the 18 m aggro radius: god mode is on, so go there, but the 'no proximity auto-aggro before the shot' clause then no longer holds; record it.
 
 **CB-U05a.9 (1 call: client_batch).** One batch: DIALOG first, then `wait` 3000 ms, then UTC. Let the guards close and take cover.
 
-**CB-U05a.10 (1 call: client_ui_sequence).** Sidestep: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"a","hold_ms":800}]}`.
+**CB-U05a.10 (1 call: client_ui_sequence).** Sidestep: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"a","hold_ms":800}]}`. The first drives' 800 ms hold moved the player about 4.7 m, which stays inside the guards' defensive arc, so no flank release fired. Repeat the 800 ms `a` hold up to three times in total, with one FIND between holds to record the player and guard positions (inferred: the lateral distance that leaves the arc was not measured); stop early at a wall or when the server logs `cover_released_flanked`.
 
 **CB-U05a.11 (1 call: client_target).** `client_target {"lease_id":L,"entity_id":<guard 1 id>,"allow_fallback":true,"rotate_camera":false}` (select guard 1 again; this is tier N3).
 
-**CB-U05a.12 (1 call: client_batch).** CHATX: `/gmkilltarget 0` (tier G, say so). The argument is mandatory and the selected NPC is the target; a bare `/gmkilltarget` reaches no server.
+**CB-U05a.12 (1 call: client_batch).** CHATX: `/gmkilltarget 0` (tier G, say so). The argument is mandatory and the selected NPC is the target; a bare `/gmkilltarget` reaches no server. `gmKillTarget` never credits quest kills (it skips the content engine's `entity_death`; issue SP-DCB2-p5-1), so objectives that depend on a kill must come from real pistol shots (ability 592), never from `/gmkilltarget`. Objective 2725 comes from the flank release (chain 1141) or from real shots that kill (chain 1087). Use `/gmkilltarget` here only to clear the room after you have read the objective state, and expect no 2725 from it.
 
 **CB-U05a.13 (1 call: client_target).** `client_target {"lease_id":L,"entity_id":<guard 2 id>,"allow_fallback":true,"rotate_camera":false}`.
 

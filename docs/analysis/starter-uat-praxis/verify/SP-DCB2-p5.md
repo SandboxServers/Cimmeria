@@ -52,7 +52,7 @@ Do not edit the repo (except the issue body file), the database or the server; d
 Character `Dcbch`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB2-p4. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U06
-Precondition (graded first): mission 686 is active at the kill. The check is the `accepting mission` 686 row from SP-DCB2-p4's GM assign (or the defensive re-assign in step .1 of this part) and `status=1` for 686 in `sgw_mission`. If 686 is not active, grade the clauses below BLOCKED (case c, brief or carry-over) and say so. The kill is `/gmkilltarget 0` (tier G) on a Hallway05 guard. If 686 is active and the kill still yields no `Content: complete mission` 686, check whether `gmKillTarget` raises the `entity_dead_tag` event the chains listen on; that is a product question (case a), file it then.
+Precondition (graded first): mission 686 is active at the kill. The check is the `accepting mission` 686 row from SP-DCB2-p4's GM assign (or the defensive re-assign in step .1 of this part) and `status=1` for 686 in `sgw_mission`. If 686 is not active, grade the clauses below BLOCKED (case c, brief or carry-over) and say so. Both Hallway05 guards die by real pistol shots (`useAbility` 592 with a guard target, then the death rows). A `/gmkilltarget` kill is tier G and known to raise no `entity_dead_tag` (`gmKillTarget` goes through `kill_npc_out_of_band` and never calls `entity_death`; issue SP-DCB2-p5-1), so with a GM kill and no `Content: complete mission` 686 grade FAIL (product) and cite that issue instead of filing again.
 
 | Check | Evidence | Expected |
 |---|---|---|
