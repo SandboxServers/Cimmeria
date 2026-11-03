@@ -55,6 +55,7 @@ Items, death and raw input:
 
 Windows:
 - For modal prompts, read `client_window_read {"lease_id":L,"kind":"prompt"}` and click a visible enabled entry from `state.prompts[].buttons` using its returned `window` name. A one-button prompt uses `SingleButton`; never infer the button name from the prompt number.
+- A minigame step (BOOT, Livewire) the brief names: one `client_minigame_play` call with exactly the brief's arguments and your lease; report its result verbatim.
 - Escape does not close Flash windows (minigames). Read the window with `client_window_read` (`include_nodes`), `client_input_mouse {button: 0, x, y}` at the close button's centre (it moves the cursor first), then read again to confirm it closed.
 - `client_ui_sequence` `click` and `client_window_click` both take CEGUI window names, auto children included (`TutorialWin__auto_closebutton__`, `Vendor_Item1Quantity__auto_incbtn__`).
 - Both click tools refuse a covered point with `covered-target` and name the window receiving it. In mail, close the Create or Read window before clicking Inbox Take; retry only after checking that the covering window is gone.
