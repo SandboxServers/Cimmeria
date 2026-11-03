@@ -29,6 +29,7 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 15. **Your budget is 28 tool calls in total** (lease and report included). At call 26 stop doing rows, write the report from what you have, release the lease and finish. Put reads in one `client_batch`. A Haiku driver gets three attempts; the coordinator then hands the packet to a Sonnet driver.
 16. **One retry per failed call, unchanged.** Then record the error text verbatim and go on. An unexpected window or prompt: read it once with `client_ui_state`, record it, close it, carry on.
 17. **Never write IPs, passwords or account names** in your report.
+18. **Area.** The Castle arrival platform at (466.365, 70.397, 991.466) and the Castle gate at (761.677, 63.466, 551.716), then the Harset gate dais at (-0.076, -67.274, 38.011).
 
 ## 1. Fixed macros (use them verbatim)
 
@@ -81,19 +82,19 @@ Where it comes from: the position is Castle respawner 4 'Armory Respawn', the ar
 
 **2.1 STATE-before (2 calls, STATE-lite).** Expected: 1360 active at 'Find a way to get Cpl. Frost's Letter to his family.'; item 3730 x1 in the Mission container. Record verbatim.
 
-**2.2 Dial and enter (1 call, G tier).** One CHATX: `.bug SPU SP-DL2 leg2 start`, then `.gotolocation Castle 761.677 63.466 551.716` (stand in the Castle gate volume), wait 3000, then `/gmdhd 3`, then wait 8000 (the gate opens about 4 s after the dial), then the UTC step. Close any dialog first with DIALOG (one call, only if a dialog is open).
+**2.2 Dial, then enter (1 call, G tier).** Close any dialog first with DIALOG (one call, only if a dialog is open). One CHATX: `.bug SPU SP-DL2 leg2 start`, then `/gmdhd 3` (you stand on the arrival platform, far from the gate), wait 8000 (the gate opens about 4 s after the dial), then `.gotolocation Castle 761.677 63.466 551.716` (this enters the open gate), then the UTC step.
 
-**2.3 READ (1 call).** `{"cursor":"d2a","contains":"gmDHD","max":10}`. Expected: `gmDHD: dialing gate address 3` (`dhd.rs:133`). The refusal text is `gmDHD: gate address 3 refused - unknown address, same world, or no standable arrival on the destination (see server log)`. Record the line verbatim with `channel` and `seq`.
+**2.3 READ (1 call).** `{"cursor":"d2a","contains":"gmDHD","max":10}`. Expected: `gmDHD: dialing gate address 3` (`dhd.rs:133`). The refusal text is `gmDHD: gate address 3 refused - unknown address, same world, or no standable arrival on the destination (see server log)`. Record the line verbatim with `channel` and `seq`. If the reply is "Invalid command", or there is no reply after one resend, record it verbatim and report row LEG-2 BLOCKED: /gmdhd needs client patch 012.
 
 **2.4 WAITW (3 calls).** Expected within about 40 s of the dial: `world_id` 57 and a position near (-0.08, -67.27, 38.01) (the Harset gate dais; unified-uat Harset C4.4). Record world, position and UTC. If `world_id` is still 8: do 2.4b once.
 
-**2.4b Re-enter (1 call, only if still in Castle).** CHATX `.gotolocation Castle 761.677 63.466 551.716` once more (a second entry into the open gate), then WAITW (3 calls). If still in Castle, record `no crossing` and go to 2.7; do not retry again.
+**2.4b Re-enter (2 calls, only if still in Castle).** CHATX `.gotolocation Castle 466.365 70.397 991.466`, wait 3000 (leaves the volume); then CHATX `.gotolocation Castle 761.677 63.466 551.716` (enters again); then WAITW (3 calls). If still in Castle, record `no crossing` and go to 2.7; do not retry again.
 
 **2.5 Arrival look (1 call).** SHOT-HUMAN, label `L2-harset-arrival`. One line: floor under the avatar or falling, anything on screen that looks wrong. The crossing animation and the 4 s gate timing are human checks (unified-uat B19); the verifier grades them NEEDS_HUMAN.
 
 **2.6 STATE-after (2 calls, STATE-lite).** Expected: 1360 active at 'Give Cpl. Frost's Letter to Col. Marsh.'; item 3730 x1 in the Mission container. Record verbatim.
 
-**2.7 Relog (2 calls, RELOG).** Expected: in world as Fxdltwo in world 57 (or 8 if the crossing did not happen). Then STATE-lite (2 calls). Expected: identical to 2.6 (Harset side: the Marsh rebind on `player_loaded Harset_CmdCenter` is HA-1360b's, do not look for it). Then CHATX `.bug SPU SP-DL2 leg2 end` (skip it if the budget is at call 26).
+**2.7 Relog (2 calls, RELOG).** Expected: in world as Fxdltwo in world 57 (or 8 if the crossing did not happen). Then WAIT17 (1 call) right after L2. Then STATE-lite (2 calls). Expected: identical to 2.6 (Harset side: the Marsh rebind on `player_loaded Harset_CmdCenter` is HA-1360b's, do not look for it). Then CHATX `.bug SPU SP-DL2 leg2 end` (skip it if the budget is at call 26).
 
 Not in this packet: handing the letter to Marsh, mission 1361, the real DHD Livewire route, and the Harset to Tollana gate (SP-DL3).
 
@@ -102,7 +103,7 @@ Not in this packet: handing the letter to Marsh, mission 1361, the real DHD Live
 ## 2. Report format (your last message, nothing else)
 
 Header: `PACKET SP-DL2 ATTEMPT <n> | lease released: yes/no | tool calls used: <n> | stopped early: no / <why>`.
-Then one block per row: `ROW LEG-2 | CLAIM: DONE / FAIL / BLOCKED / NOT-RUN / NEEDS_HUMAN-EVIDENCE | UTC <start>-<end> | tier: N1/N2/N3/G (the lowest you used; the dial and the entry here are G) | raw: <numbers, fields and lines, verbatim, in quotes> | shots: <LABEL>=<path>, ...`.
+Then one block per row: `ROW LEG-2 | CLAIM: DONE / FAIL / BLOCKED / NOT-RUN / NEEDS_HUMAN-EVIDENCE | UTC <start>-<end> | tier: N1/N2/N3/G (the lowest you used; the dial and the entry here are G) | raw: <numbers, fields and lines, verbatim, in quotes> | shots: <LABEL>=<path>, ...`. In `raw:` prefix every item with its step number, for example `1.1 world=12 ...; 1.4 UTC 10:02:11 ...; 1.5 ...`, and put the UTC of each press, dial and read next to it.
 "DONE" means you performed the step and saw something; the verifier decides the grade. End with `UNEXPECTED: <anything odd, or none>`. Do not interpret, advise or apologise.
 
 ## 3. Always end like this

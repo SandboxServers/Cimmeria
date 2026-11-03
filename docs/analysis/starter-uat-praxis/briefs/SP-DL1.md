@@ -29,6 +29,7 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 15. **Your budget is 28 tool calls in total** (lease and report included). At call 26 stop doing rows, write the report from what you have, release the lease and finish. Put reads in one `client_batch`. A Haiku driver gets three attempts; the coordinator then hands the packet to a Sonnet driver.
 16. **One retry per failed call, unchanged.** Then record the error text verbatim and go on. An unexpected window or prompt: read it once with `client_ui_state`, record it, close it, carry on.
 17. **Never write IPs, passwords or account names** in your report.
+18. **Area.** Castle_CellBlock armory ring platform at (-54.88, 26.08, -163.84), then the Castle arrival platform at (466.365, 70.397, 991.466).
 
 ## 1. Fixed macros (use them verbatim)
 
@@ -62,7 +63,7 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 
 # SP-DL1: LEG-1, Castle_CellBlock (12) to Castle (8) through the Cellblock exit ring
 
-ROWS: LEG-1. ESTIMATE: 22 tool calls. Runs on instance `default` after SP-DCB1 (wave 2). The ring leg grades the server-side transfer only: there is no ring animation without the client patch ([ring-transport README](../../ring-transport-cellblock-castle/README.md)); the exit is a direct teleport (chain 1109, `db/resources/Content/Seed/castle_cellblock_chains.sql:2690-2708`, trigger `interact_tag Cellblock_ArmoryRingSwitch`, condition `step_status 688 '80688' eq active`, actions `complete_mission 688` then `cross_world_teleport 'Castle' {"x": 466.365, "y": 70.397, "z": 991.466}`).
+ROWS: LEG-1. ESTIMATE: 22 tool calls. Runs on instance `default` after SP-DCB1 (wave 2). The ring leg grades the server-side transfer only: there is no ring animation without the client patch (ring-transport README); the exit is a direct teleport (chain 1109, `db/resources/Content/Seed/castle_cellblock_chains.sql:2690-2708`, trigger `interact_tag Cellblock_ArmoryRingSwitch`, condition `step_status 688 '80688' eq active`, actions `complete_mission 688` then `cross_world_teleport 'Castle' {"x": 466.365, "y": 70.397, "z": 991.466}`).
 
 FIXTURE (staged by the coordinator, `server_stage_fixture`): `{"character":"Fxdlone","world":"Castle_CellBlock","position":[-54.88,26.08,-159.84],"missions":[{"id":688,"step":80688},{"id":1360,"step":4037}],"items":[{"id":3730,"count":1,"container":"mission"}]}`.
 Where it comes from: ring switch spawn 79 `Cellblock_ArmoryRingSwitch` at world 12 (-54.88, 26.08, -163.84) (`db/resources/Worlds/Seed/spawnlist.sql:99`), so the fixture stands 4 m from it on the z axis (a 4 m offset is not traced to the navmesh; if the first read puts you elsewhere, record it). Step 80688 'Use the ring transport to escape.' is the step the terminal chain 1107 advances 688 to (`mission_steps.sql:5953`); the fixture skips the terminal, and `player_loaded Castle_CellBlock` with 80688 active (chain 1111, `castle_cellblock_chains.sql:2730-2741`) restores the switch highlight when the character loads. Step 4037 is 'Find a way to get Cpl. Frost's Letter to his family.' (`mission_steps.sql:1108`); item 3730 is Cpl. Frost's Letter (`db/resources/Items/Seed/items.sql:11947`, `harset-continuation/uat.md:55`). The ring region is `ring_transport_regions.sql:72` (region 33, world 12, `required_mission_id 688`); it plays no part in the exit.
@@ -86,7 +87,7 @@ If the fixture was refused or the character did not land in world 12, row LEG-1 
 
 **1.3 Mark and look (2 calls).** CHATX `.bug SPU SP-DL1 leg1 start`; then SHOT, label `L1-before-press`.
 
-**1.4 The first press (1 call).** Stand 3.5 to 4.5 m from the switch (you are at 4 m). Press it once with a real world click: `client_world_click` on its entity id from 1.2 (N1). Press it exactly once and do not click again whatever the screen shows. If the tool refuses the call, record the error verbatim, retry once unchanged, then report row LEG-1 as BLOCKED with that text (the exact click recipe for this prop is not traced in this brief; do not invent another).
+**1.4 The first press (1 call).** Stand 3.5 to 4.5 m from the switch (you are at 4 m). Press it once with a real world click: `client_world_click {"lease_id":L,"entity_id":<id from 1.2>,"button":"right","expect":"nothing","settle_ms":3500}` (N1). If the tool answers `has no pose`, press it once by point instead: `client_world_click {"lease_id":L,"point":{"x":-54.88,"y":26.08,"z":-163.84},"button":"right","expect":"nothing","settle_ms":3500,"rotate_camera":true}`. Press at most once successfully; do not click again whatever the screen shows. If the tool refuses the call, record the error verbatim, retry once unchanged, then report row LEG-1 as BLOCKED with that text (the exact click recipe for this prop is not traced in this brief; do not invent another).
 
 **1.5 WAITW (3 calls).** Expected within about 40 s: `world_id` 8 and a position near (466.4, 70.4, 991.5), the Castle arrival platform (`respawners.sql:63`, 'Armory Respawn'; chain 1109). Record the world, the position, the UTC time and whether a Server Message prompt appeared (PROMPT if so; record its text).
 
@@ -105,7 +106,7 @@ Not in this packet: the ring animation (client patch, the row grades the transfe
 ## 2. Report format (your last message, nothing else)
 
 Header: `PACKET SP-DL1 ATTEMPT <n> | lease released: yes/no | tool calls used: <n> | stopped early: no / <why>`.
-Then one block per row: `ROW LEG-1 | CLAIM: DONE / FAIL / BLOCKED / NOT-RUN / NEEDS_HUMAN-EVIDENCE | UTC <start>-<end> | tier: N1/N2/N3/G (the lowest you used; the click in 1.4 is N1) | raw: <numbers, fields and lines, verbatim, in quotes> | shots: <LABEL>=<path>, ...`.
+Then one block per row: `ROW LEG-1 | CLAIM: DONE / FAIL / BLOCKED / NOT-RUN / NEEDS_HUMAN-EVIDENCE | UTC <start>-<end> | tier: N1/N2/N3/G (the lowest you used; the click in 1.4 is N1) | raw: <numbers, fields and lines, verbatim, in quotes> | shots: <LABEL>=<path>, ...`. In `raw:` prefix every item with its step number, for example `1.1 world=12 ...; 1.4 UTC 10:02:11 ...; 1.5 ...`, and put the UTC of each press, dial and read next to it.
 "DONE" means you performed the step and saw something; the verifier decides the grade. End with `UNEXPECTED: <anything odd, or none>`. Do not interpret, advise or apologise.
 
 ## 3. Always end like this

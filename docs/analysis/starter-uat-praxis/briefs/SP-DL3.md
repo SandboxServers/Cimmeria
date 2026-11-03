@@ -29,6 +29,7 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 15. **Your budget is 28 tool calls in total** (lease and report included). At call 26 stop doing rows, write the report from what you have, release the lease and finish. Put reads in one `client_batch`. A Haiku driver gets three attempts; the coordinator then hands the packet to a Sonnet driver.
 16. **One retry per failed call, unchanged.** Then record the error text verbatim and go on. An unexpected window or prompt: read it once with `client_ui_state`, record it, close it, carry on.
 17. **Never write IPs, passwords or account names** in your report.
+18. **Area.** The Harset DHD plaza (DHD at (4.407, -68.957, 31.525)) and the Harset gate dais at (-0.076, -67.274, 38.011), then the Tollana gate at (211.045, 0.606, -547.644).
 
 ## 1. Fixed macros (use them verbatim)
 
@@ -62,7 +63,7 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 
 # SP-DL3: LEG-3, Harset (57) to Tollana (19)
 
-ROWS: LEG-3. ESTIMATE: 26 tool calls. Runs on instance `default` after SP-DHA1 (wave 4). No hand-off mission is playable from Harset to Tollana: the Tollana recipient graphs for missions 618 and 621 are BlockedEvidence and tasks T-05 to T-10 are held ([harset-continuation README, HA-D06 and Tollana recipient tags](../../harset-continuation/README.md); [tollana-continuation T-01](../../tollana-continuation/evidence/T-01-offline-placement.md)). The only known entry to Tollana is the gate (stargate 4) or a GM same-world jump. This packet therefore proves two things and keeps them apart: (A) whether Tollana can be dialled from the Harset DHD by a player who holds no address, and (B) whether the gate transfer itself carries state and lands on the navmesh when the address is supplied by a GM.
+ROWS: LEG-3. ESTIMATE: 26 tool calls. Runs on instance `default` after SP-DHA1 (wave 4). No hand-off mission is playable from Harset to Tollana: the Tollana recipient graphs for missions 618 and 621 are BlockedEvidence and tasks T-05 to T-10 are held (harset-continuation README, HA-D06 and Tollana recipient tags; tollana-continuation T-01). The only known entry to Tollana is the gate (stargate 4) or a GM same-world jump. This packet therefore proves two things and keeps them apart: (A) whether Tollana can be dialled from the Harset DHD by a player who holds no address, and (B) whether the gate transfer itself carries state and lands on the navmesh when the address is supplied by a GM.
 
 FIXTURE (staged by the coordinator, `server_stage_fixture`): `{"character":"Fxdlthree","world":"Harset","position":[-0.08,-67.27,38.01],"missions":[{"id":1360,"step":4038}],"items":[{"id":3730,"count":1,"container":"mission"}]}`.
 Where it comes from: the Harset gate dais is where LEG-2 ends, stargate 3 at (-0.076, -67.274, 38.011) in world 57 (`db/resources/Worlds/Seed/stargates.sql:65`; unified-uat Harset C4.4); mission 1360 at 4038 'Give Cpl. Frost's Letter to Col. Marsh.' (`mission_steps.sql:1110`) with Frost's Letter 3730 (`items.sql:11947`) is the state the character carries out of the Castle. Tollana is stargate 4, address 4,29,8,22,18,25, origin 9, world 19, gate at (211.045, 0.606, -547.644) (`stargates.sql:37`). The Harset DHD is spawn 37 `Harset_DHD` at (4.407, -68.957, 31.525) (`spawnlist.sql:203`); the Tollana DHD is spawn 39 `Tollana_DHD` at (209.748, -1.008, -552.898) (`spawnlist.sql:281`). If the character is not in world 57 with 1360 at 4038, row LEG-3 is `BLOCKED: fixture not applied`.
@@ -82,19 +83,19 @@ DO NOT click Col. Marsh: it would consume the letter. DO NOT use the west galler
 
 **3.1 STATE-before (2 calls, STATE-lite).** Expected: 1360 active at 'Give Cpl. Frost's Letter to Col. Marsh.'; item 3730 x1 in the Mission container.
 
-**3.2 Part A, the real DHD (3 calls).** CHATX `.bug SPU SP-DL3 leg3 start` and `.gotolocation Harset 4.407 -64.957 31.525` (4 m from the Harset DHD; wait 3000). Find the entity within 1.5 m of (4.407, -68.957, 31.525) with `client_entity_table` and right-click it once with `client_world_click` (N1). Then `client_ui_clickables {"lease_id":L}` and record verbatim every gate name listed. Expected by design: this character holds no Tollana address, so Tollana is NOT listed (a created character's address book is empty; addresses come from content chains or a GM). Record whether Tollana is listed, either way. If the click opens nothing, SHOT once, record `no window`, and go on.
+**3.2 Part A, the real DHD (4 calls).** CHATX `.bug SPU SP-DL3 leg3 start` and `.gotolocation Harset 8 -68.95 36` (4.6 m from the Harset DHD, outside the gate volume; wait 3000). Find the entity within 1.5 m of (4.407, -68.957, 31.525) with `client_entity_table`, then press it once with a real world click: `client_world_click {"lease_id":L,"entity_id":<id from client_entity_table>,"button":"right","expect":"window","settle_ms":5000}` (N1). If the tool answers `has no pose`, press it once by point instead: `client_world_click {"lease_id":L,"point":{"x":4.407,"y":-68.957,"z":31.525},"button":"right","expect":"window","settle_ms":5000,"rotate_camera":true}`. Press at most once successfully; do not click again whatever the screen shows. Then `client_ui_clickables {"lease_id":L}` and record verbatim every gate name listed. Expected by design: this character holds no Tollana address, so Tollana is NOT listed (a created character's address book is empty; addresses come from content chains or a GM). Record whether Tollana is listed, either way. If the click opens nothing, SHOT once, record `no window`, and go on.
 
 **3.3 SHOT-HUMAN (1 call).** Label `L3-harset-dhd-list`: what the dialling window shows (names, none Unknown).
 
-**3.4 Part B, the GM dial (2 calls, G tier).** DIALOG if a dialog is open. One CHATX: `.gotolocation Harset -0.08 -67.27 38.01` (stand on the gate dais), wait 3000, `/gmdhd 4`, wait 8000, UTC step. Then READ `{"cursor":"d3a","contains":"gmDHD","max":10}`. Expected `gmDHD: dialing gate address 4` (`crates/cell-console/src/cell/console/gm/travel/dhd.rs:133`); the refusal text is `gmDHD: gate address 4 refused - unknown address, same world, or no standable arrival on the destination (see server log)`. Record verbatim.
+**3.4 Part B, the GM dial (2 calls, G tier).** DIALOG if a dialog is open. One CHATX: `/gmdhd 4` (you stand 8 m from the gate), wait 8000, `.gotolocation Harset -0.08 -67.27 38.01` (enter the open gate), UTC step. Then READ `{"cursor":"d3a","contains":"gmDHD","max":10}`. Expected `gmDHD: dialing gate address 4` (`crates/cell-console/src/cell/console/gm/travel/dhd.rs:133`); the refusal text is `gmDHD: gate address 4 refused - unknown address, same world, or no standable arrival on the destination (see server log)`. Record verbatim. If the reply is `Invalid command`, or there is no reply after one resend, record it and report part B BLOCKED: /gmdhd needs client patch 012.
 
-**3.5 WAITW (3 calls).** Expected within about 40 s of the dial: `world_id` 19 and a position near (211.0, 0.6, -547.6), the Tollana gate (`stargates.sql:37`). If still on Harset: one more CHATX `.gotolocation Harset -0.08 -67.27 38.01` and WAITW again; then if still on Harset record `no crossing` and go to 3.7.
+**3.5 WAITW (3 calls).** Expected within about 40 s of the dial: `world_id` 19 and a position near (211.0, 0.6, -547.6), the Tollana gate (`stargates.sql:37`). If still on Harset: one CHATX `.gotolocation Harset 8 -68.95 36`, wait 3000, `.gotolocation Harset -0.08 -67.27 38.01` (leave and re-enter), then WAITW again; then if still on Harset record `no crossing` and go to 3.7.
 
 **3.6 Arrival look (1 call).** SHOT-HUMAN, label `L3-tollana-arrival`. One line: standing on a floor or falling; is Copplemann visible within about 7 m, is the Tollana DHD clickable, is the ring console reachable (T-01 in-client checks, UATPending)? Describe only what the picture shows. Nothing is asked of anyone.
 
 **3.7 STATE-after (2 calls, STATE-lite).** Expected: 1360 active at 'Give Cpl. Frost's Letter to Col. Marsh.'; item 3730 x1 in the Mission container.
 
-**3.8 Relog (2 calls, RELOG) then STATE-lite (2 calls).** Expected: world 19 (or 57 if no crossing), same mission and item as 3.7. Then CHATX `.bug SPU SP-DL3 leg3 end` only if the budget is below call 26.
+**3.8 Relog (2 calls, RELOG), WAIT17 (1 call) right after L2, then STATE-lite (2 calls).** Expected: world 19 (or 57 if no crossing), same mission and item as 3.7. Then CHATX `.bug SPU SP-DL3 leg3 end` (skip it if the budget is at call 26).
 
 Not in this packet: any Tollana mission, the Marsh letter turn-in (HA-1360a, blocked), the Castle crossing (SP-DL2).
 
@@ -103,7 +104,7 @@ Not in this packet: any Tollana mission, the Marsh letter turn-in (HA-1360a, blo
 ## 2. Report format (your last message, nothing else)
 
 Header: `PACKET SP-DL3 ATTEMPT <n> | lease released: yes/no | tool calls used: <n> | stopped early: no / <why>`.
-Then one block per part: `ROW LEG-3 part A` and `ROW LEG-3 part B`, each `CLAIM: DONE / FAIL / BLOCKED / NOT-RUN / NEEDS_HUMAN-EVIDENCE | UTC <start>-<end> | tier: N1/N2/N3/G (part A click is N1; part B is G) | raw: <numbers, fields and lines, verbatim, in quotes> | shots: <LABEL>=<path>, ...`.
+Then one block per part: `ROW LEG-3 part A` and `ROW LEG-3 part B`, each `CLAIM: DONE / FAIL / BLOCKED / NOT-RUN / NEEDS_HUMAN-EVIDENCE | UTC <start>-<end> | tier: N1/N2/N3/G (part A click is N1; part B is G) | raw: <numbers, fields and lines, verbatim, in quotes> | shots: <LABEL>=<path>, ...`. In `raw:` prefix every item with its step number, for example `1.1 world=12 ...; 1.4 UTC 10:02:11 ...; 1.5 ...`, and put the UTC of each press, dial and read next to it.
 "DONE" means you performed the step and saw something; the verifier decides the grade. End with `UNEXPECTED: <anything odd, or none>`. Do not interpret, advise or apologise.
 
 ## 3. Always end like this

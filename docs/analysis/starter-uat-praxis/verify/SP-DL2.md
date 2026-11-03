@@ -79,7 +79,7 @@ Shorthand: `$P` = `toInt64(attributes_number['player_id'])=$pid`. Window from `S
 | Relog keeps both | `player_loaded` row for world 57 after the relog, and the same tables | 1360 still 4038, 3730 x1, player in world 57 |
 | Client agrees | the driver's `2.6` and `2.7` reads | the same journal line and item count; client-read only |
 
-How the entry was made: the Castle gate was entered by `.gotolocation` to the gate coordinates (G tier), because the stock walk-in needs a real approach on the navmesh that this packet does not trace. If the crossing fired only after the driver's second entry (2.4b), PASS still stands; say so in Notes.
+How the entry was made: the Castle gate was entered by `.gotolocation` to the gate coordinates after the dial (G tier), because the stock walk-in needs a real approach on the navmesh that this packet does not trace. If the crossing fired only after the driver's second entry (2.4b), PASS still stands; say so in Notes.
 
 Grade: PASS if the dial row, one `stargate_crossed 'Harset'`, one chain 1366 firing, the arrival within 1 m of the dais with no off-mesh row, 1360 at 4038 and 3730 x1 all hold, and the relog matched. NATIVE_SHORTFALL is not used for the dial and entry (they are G by design); use PARTIAL with the note `G-route only` when the server did everything but the relog read is missing. FAIL if the crossing fired with 1360 left at 4037, the item was lost, the player landed off-mesh, or the player was sent back. BLOCKED if the fixture was not applied or the dial was refused. If `no crossing` is reported with no `stargate_crossed` row, grade BLOCKED when the server shows the gate never opened (no `stargate_dialed` row) and FAIL only when the gate opened and entry produced no `stargate_crossed`.
 
