@@ -52,7 +52,7 @@ Do not edit the repo (except the issue body file), the database or the server; d
 Character `Dcbbj`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: fresh character, no fixture; start state by play or GM setup.
 
 ## ROW CB-U01c
-Sub-row scope: Jaffa variant (fresh character `Dcbbj`). Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.
+Sub-row scope: Jaffa variant (fresh character `Dcbbj`). **BLOCKED(harness gap: Jaffa create form)**: `lab_create_character` cannot fill the Jaffa create form (a single Name box plus Suffix, no first or last name), so `Dcbbj` is never created and no driver step may be tried again. Grade the row BLOCKED(harness gap: Jaffa create form), not FAIL and not PARTIAL; no server evidence is expected. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.
 
 | Check | Evidence | Expected |
 |---|---|---|
@@ -62,7 +62,7 @@ Sub-row scope: Jaffa variant (fresh character `Dcbbj`). Grade only the clauses t
 | After the win nothing holds | no `hold_snap` after the win; after the second relog no hold start; mission 689 completes (query the mission table for 689) | none after |
 | Jaffa variant | same rows for `Dcbbj` | as for the Human; BLOCKED if the Jaffa never reached world 12 |
 
-Grade: PASS if the hold, the win and the release are in server rows for the Human and the Jaffa and the driver's step was N1 (right-click on the prop, `client_minigame_play`). NATIVE_SHORTFALL if the Livewire was played through Lua only. PARTIAL if the Jaffa variant did not run. Visual clauses (the glow on the Prison Boot Control prop, the notice text rendering): NEEDS_HUMAN via `H-CB-U01-1/2`. Looker: 1. Is a prop with a glow or highlight visible near the character? 2. Is chat text visible?
+Grade: BLOCKED(harness gap: Jaffa create form) while the harness gap stands (the table below is the plan for after it closes). Then: PASS if the hold, the win and the release are in server rows for the Human and the Jaffa and the driver's step was N1 (right-click on the prop, `client_minigame_play`). NATIVE_SHORTFALL if the Livewire was played through Lua only. PARTIAL if the Jaffa variant did not run. Visual clauses (the glow on the Prison Boot Control prop, the notice text rendering): NEEDS_HUMAN via `H-CB-U01-1/2`. Looker: 1. Is a prop with a glow or highlight visible near the character? 2. Is chat text visible?
 
 ---
 

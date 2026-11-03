@@ -31,6 +31,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 18. **Never write IPs, passwords or account names** in your report.
 19. **Every new character spawns boot-locked** (mission 689, chain 1023 holds movement inside a 1.0 m radius and snaps you back). Winning the Prison Boot Control Livewire releases it for good; BOOT does that. A relog does not lock it again after the win.
 20. **Unverified tool arguments.** `client_world_click` takes `entity_id` and `button` (`"right"` interacts, `"left"` targets); the repo does not show the accepted `button` strings, so if a click is rejected with an argument error, retry once with the same call without `button` and record the error text.
+21. **Guard-body, guard and prisoner clicks time out on the first try on this map.** `client_world_click` can fail on its first call with a `read_mouse_over` timeout (the client's mouse-over slot read is cut off after 1 s, `crates/lab/src/supervisor/world/click_hover.rs:25`), and a target nearer than 8 m also makes it retry from other camera views (`click_hover.rs:28`, `click_hover.rs:46-52`). The first drive saw the timeout on the first click of every such step. So the first click of each such step is labelled 2 calls: send it; if it returns a `read_mouse_over` timeout, send the SAME call once more, unchanged (same arguments, no camera move, no other tool in between); if it answered, do not send the second call. If the second also times out, follow gotcha 10 from its SHOT onward (the unchanged retry it names is the one you already made). Stand on the spot the step gives (3.5 to 4.5 m) with the target in front of the camera and do not call `client_hover_probe`. The label counts the second call, so the ESTIMATE is the worst case.
 
 ## 1. Fixed macros (use them verbatim; the cost is the number of calls)
 
@@ -84,7 +85,7 @@ Start: carry-over from SP-DCB1-p4. Same character `Dcbbh`, same state. If SP-DCB
 
 ROWS: CB-U02b.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
-ESTIMATE: 20 tool calls (planned success path; hard stop 28)
+ESTIMATE: 21 tool calls (planned success path; hard stop 28)
 CHARACTERS: `Dcbbh` (archetype Commando, Praxis, male, first name Uat), the same character as SP-DCB1-p4.
 
 ## Steps
@@ -96,27 +97,29 @@ CHARACTERS: `Dcbbh` (archetype Commando, Praxis, male, first name Uat), the same
 
 ### ROW CB-U02b
 
-**CB-U02b.1 (1 call: client_item_action).** EQUIP `SI 3 9mm Pistol`.
+Ids, traced (use these and no others). Equipping item 55 grants **579 Pistol Auto Attack** and **708 Pistol Melee AA** through the weapon swap, not 592 (`crates/cell-combat/src/cell/cell_methods/inventory/bandolier/weapon_abilities.rs:45-46`, log event `weapon_ability_swap` at `:121`; seed rows `db/resources/Abilities/Seed/abilities.sql:5160` and `:5111`). The pistol attack this row fires is **592 Pistol Shot** (`abilities.sql:5149`: 1 ammo, cooldown 0, 150 Focus). It is a kit ability from chain 1005 (`db/resources/Archetypes/Seed/char_creation_abilities.sql:5`) and is **not on the hotbar**, so its first cast needs `"place":true` (`crates/lab/src/supervisor/combat/use_ability/mod.rs:9-14`, placement at `:217`). Reload is ability **596** `Reload` (`abilities.sql:296`, `ABILITY_RELOAD_WEAPON` at `crates/cell-combat/src/cell/cell_methods/player/world/reload.rs:11`), but 596 is not in the player's kit (592/594/597/1218 plus 708/579 after the equip), so `client_use_ability` with the name "Reload" finds nothing. The manual reload is the `R` key, which sends `requestReload` (`crates/cell-combat/src/cell/abilities/use_ability/auto_reload.rs:5-6`, handler `reload.rs:74`).
 
-**CB-U02b.2 (1 call: client_use_ability).** Reload: `client_use_ability {"lease_id":L,"name":"Reload"}`. Record the result text.
+**CB-U02b.1 (1 call: client_item_action).** EQUIP `SI 3 9mm Pistol`. Server side: `fire_item_equipped` for item 55 and `weapon_ability_swap` adding [708, 579].
 
-**CB-U02b.3 (1 call: client_inventory).** INV. Look at the ammo count.
+**CB-U02b.2 (1 call: client_ui_sequence).** RELOAD: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"r","hold_ms":100},{"do":"wait","ms":3500}]}`. The wait covers the draw (1 s, `reload.rs:25`) and the reload warmup (about 2 s, `docs/gameplay/weapon-ammo-reload.md:309`). The `R` binding is read from source and was not seen live: record the result text. Do not retry it and do not call `client_use_ability` for 596 or for the name "Reload".
 
-**CB-U02b.4 (1 call: client_batch).** GOTO `-285 68.5 -158`. The hostile NID guard (spawn 20, not the Guard body) is at (-289.46, 68.54, -154.28), 4.8 m away.
+**CB-U02b.3 (1 call: client_inventory).** INV. Record the pistol's ammo (0 before the reload; 15 after it).
+
+**CB-U02b.4 (1 call: client_batch).** GOTO `-285 68.5 -158`. The hostile NID guard (spawn 20, not the Guard body) is at (-289.46, 68.54, -154.28), 4.8 m away. It attacks as soon as you arrive (player health 760 to 482 in the first drive): do not wait, go straight on.
 
 **CB-U02b.5 (1 call: client_entity_find).** FIND, `max_distance_m` 8. Pick the guard by position (within 1.5 m of (-289.46, 68.54, -154.28)).
 
-**CB-U02b.6 (1 call: client_world_click).** TCLICK the NID guard.
+**CB-U02b.6 (2 calls: client_world_click, client_world_click).** TCLICK the NID guard (gotcha 21: the second call only after a `read_mouse_over` timeout, unchanged).
 
-**CB-U02b.7 (1 call: client_use_ability).** SHOOT `client_use_ability {"lease_id":L,"ability_id":592}` (it fires at your current target). First shot.
+**CB-U02b.7 (1 call: client_use_ability).** SHOOT, first shot: `client_use_ability {"lease_id":L,"ability_id":592,"place":true}`. It places 592 on the first empty visible hotbar button and presses it; it fires at your current target. Record the whole result text (`place`, `press`, native level).
 
-**CB-U02b.8 (1 call: client_use_ability).** SHOOT `client_use_ability {"lease_id":L,"ability_id":592}` (it fires at your current target). Second shot.
+**CB-U02b.8 (1 call: client_use_ability).** SHOOT, second shot: `client_use_ability {"lease_id":L,"ability_id":592}` (592 is on the hotbar now).
 
-**CB-U02b.9 (1 call: client_inventory).** INV. Ammo after the shots.
+**CB-U02b.9 (1 call: client_inventory).** INV. Ammo after the shots (15 before; 13 if both shots fired).
 
 **CB-U02b.10 (1 call: lab_screenshot).** SHOT-H `H-CB-U02-1`. Is the guard hit or dead?
 
-**CB-U02b.11 (3 calls: lab_logout, lab_ensure_in_world, client_batch).** RELOG (same character; the third call is the WAIT batch). 
+**CB-U02b.11 (3 calls: lab_logout, lab_ensure_in_world, client_batch).** RELOG (same character; the third call is the WAIT batch).
 
 **CB-U02b.12 (1 call: client_inventory).** INV. Pistol and abilities after the relog.
 

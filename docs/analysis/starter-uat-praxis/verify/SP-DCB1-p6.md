@@ -56,12 +56,15 @@ Sub-row scope: Steps 1-2: prisoner offer, relog restores the 638 chain. Grade on
 
 | Check | Evidence | Expected |
 |---|---|---|
+| Region2 entry | `fire_enter_region` for `Castle_CellBlock.Region2` and `Content: accepting mission` 638 shortly before the first press (the driver walked in; a `.gotolocation` does not fire it, gotcha 22 of the brief) | 638 accepted by the walk, once |
 | Restore chain 2114 | log `Content: adding dialog set` for 329 (chains 1026 Human, 1027 Jaffa) after each relog | one dialog set, one topic; `Content: displaying dialog` 2300 (Human) or 5021 (Jaffa) on the first press |
 | 638 accepted once | `Content: accepting mission` 638 count | 1 |
 | Step 2115 | the door panel answers: a Livewire start row on the first press (chain 1028) | yes |
 | Step 2116 | dialogs 2299 / 5020; 639 accepted | yes |
 | Step 2144 | drone armed (chain 1037) and killed | `complete objective` rows |
 | Step 2145 | vial pickup (chain 1036) | a pickup row on the first press |
+
+If 638 was never accepted, grade BLOCKED (fixture) and put the cause in NOT RUN / BLOCKED: did the driver reach z below -115 at x about -289.8 (the Region2 volume), and did `client_move_to` end "stuck"? Never enter Region9 to retry. A click that needed the second, unchanged call (gotcha 21) is not a finding.
 
 Grade: PASS if every object answered on the first press after the relog (server row at the first press time, not the second). PARTIAL if one object needed two presses (list which). FAIL if a verified click reached the server without a dialog or a topic appeared twice. Visual (the med-station area): NEEDS_HUMAN `H-CB-U03-1`.
 

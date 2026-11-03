@@ -31,6 +31,8 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 18. **Never write IPs, passwords or account names** in your report.
 19. **Every new character spawns boot-locked** (mission 689, chain 1023 holds movement inside a 1.0 m radius and snaps you back). Winning the Prison Boot Control Livewire releases it for good; BOOT does that. A relog does not lock it again after the win.
 20. **Unverified tool arguments.** `client_world_click` takes `entity_id` and `button` (`"right"` interacts, `"left"` targets); the repo does not show the accepted `button` strings, so if a click is rejected with an argument error, retry once with the same call without `button` and record the error text.
+21. **Guard-body, guard and prisoner clicks time out on the first try on this map.** `client_world_click` can fail on its first call with a `read_mouse_over` timeout (the client's mouse-over slot read is cut off after 1 s, `crates/lab/src/supervisor/world/click_hover.rs:25`), and a target nearer than 8 m also makes it retry from other camera views (`click_hover.rs:28`, `click_hover.rs:46-52`). The first drive saw the timeout on the first click of every such step. So the first click of each such step is labelled 2 calls: send it; if it returns a `read_mouse_over` timeout, send the SAME call once more, unchanged (same arguments, no camera move, no other tool in between); if it answered, do not send the second call. If the second also times out, follow gotcha 10 from its SHOT onward (the unchanged retry it names is the one you already made). Stand on the spot the step gives (3.5 to 4.5 m) with the target in front of the camera and do not call `client_hover_probe`. The label counts the second call, so the ESTIMATE is the worst case.
+22. **Mission 638 is accepted by walking into Castle_Cellblock Region2, not by a teleport.** The space script accepts 638 when the player enters Region2 (`docs/content/mission-chains.md:187`), and a `.gotolocation` teleport skips that entry: in the first drive no `accepting mission` 638 row appeared and Prisoner 329 had no dialog set, so the row was BLOCKED. Region2 is x -311..-242, y 65-75, z -141..-115 (`docs/analysis/cellblock-autoplay/scenario-map.md:109`); the prisoner stands at z -113.14, just outside it. This part therefore teleports to a point north of the region and WALKS in. Never go to Region9 (x -85..-70, z -170..-153, `scenario-map.md:115`): entering it completes 680 and accepts 681 (chain 1073), and the first drive's character already holds 681 active.
 
 ## 1. Fixed macros (use them verbatim; the cost is the number of calls)
 
@@ -84,7 +86,7 @@ Start: carry-over from SP-DCB1-p5. Same character `Dcbbh`, same state. If SP-DCB
 
 ROWS: CB-U03a.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
-ESTIMATE: 18 tool calls (planned success path; hard stop 28)
+ESTIMATE: 22 tool calls (planned success path; hard stop 28)
 CHARACTERS: `Dcbbh` (archetype Commando, Praxis, male, first name Uat), the same character as SP-DCB1-p5.
 
 ## Steps
@@ -96,27 +98,33 @@ CHARACTERS: `Dcbbh` (archetype Commando, Praxis, male, first name Uat), the same
 
 ### ROW CB-U03a
 
-**CB-U03a.1 (1 call: client_batch).** GOTO `-287 65.5 -113`. Prisoner 329 is at (-289.81, 65.47, -113.14), 2.8 m away.
+Recipe, traced. Mission 638 exists only after a walk into Region2 (gotcha 22). The first drive teleported to z -113 (outside the region, which spans z -141..-115) and never entered it. This part teleports just north of the region and walks south into it with a real move (`client_move_to` takes `point`, `crates/lab/src/supervisor/world/movement.rs:69`; the route file starts the same corridor at (-289.7, 65.6, -115.0), `docs/guides/uat-specs/routes/castle-cellblock.toml:10`). Walking south leaves the prisoner behind the camera, so the part turns round before it clicks (the 180 degree turn recipe from `docs/analysis/hub-pass-uat/briefs/HP-P6.md:71`).
 
-**CB-U03a.2 (1 call: client_entity_find).** FIND, `max_distance_m` 6. Pick Prisoner 329 (within 1.5 m of (-289.81, 65.47, -113.14)) and your own entry.
+**CB-U03a.1 (1 call: client_batch).** GOTO `-289.7 65.6 -111.0`. This is north of Region2 and 2.2 m from Prisoner 329 at (-289.81, 65.47, -113.14). Do not GOTO anywhere else in this part.
 
-**CB-U03a.3 (1 call: client_world_click).** RCLICK Prisoner 329.
+**CB-U03a.2 (1 call: client_move_to).** ENTER Region2 on foot: `client_move_to {"lease_id":L,"point":{"x":-289.8,"y":65.47,"z":-117.0},"arrival_m":1.0,"timeout_ms":20000}`. Mission 638 is accepted on the way in. Record the result (arrived, level, final position). Nothing else may be tried if it ends "stuck".
 
-**CB-U03a.4 (1 call: client_window_read).** DLG (read the dialog window).
+**CB-U03a.3 (1 call: client_ui_sequence).** TURN round to face the prisoner (he is now about 3.9 m behind you): `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"e","hold_ms":1650},{"do":"wait","ms":600}]}`.
 
-**CB-U03a.5 (3 calls: lab_logout, lab_ensure_in_world, client_batch).** RELOG (same character; the third call is the WAIT batch). 
+**CB-U03a.4 (1 call: client_entity_find).** FIND, `max_distance_m` 6. Pick Prisoner 329 (within 1.5 m of (-289.81, 65.47, -113.14)) and your own entry.
 
-**CB-U03a.6 (1 call: client_entity_find).** FIND, `max_distance_m` 6. Pick Prisoner 329 again (ids change after a relog).
+**CB-U03a.5 (2 calls: client_world_click, client_world_click).** RCLICK Prisoner 329 (gotcha 21: the second call only after a `read_mouse_over` timeout, unchanged).
 
-**CB-U03a.7 (1 call: client_world_click).** RCLICK Prisoner 329.
+**CB-U03a.6 (1 call: client_window_read).** DLG (read the dialog window).
 
-**CB-U03a.8 (1 call: client_window_read).** DLG (read the dialog window). Same topic again?
+**CB-U03a.7 (3 calls: lab_logout, lab_ensure_in_world, client_batch).** RELOG (same character; the third call is the WAIT batch).
 
-**CB-U03a.9 (1 call: client_ui_state).** UIS (read `client_ui_state`). Tracker after the relog.
+**CB-U03a.8 (1 call: client_entity_find).** FIND, `max_distance_m` 6. Pick Prisoner 329 again (ids change after a relog).
 
-**CB-U03a.10 (1 call: client_chat_log).** READ cursor `c6`, channel "9".
+**CB-U03a.9 (2 calls: client_world_click, client_world_click).** RCLICK Prisoner 329 (gotcha 21: the second call only after a `read_mouse_over` timeout, unchanged).
 
-**CB-U03a.11 (1 call: client_batch).** Bookmark: one batch with only the DIALOG op and the end line, nothing else. Also add the line `.bug SPU SP-DCB1-p6 CB-U03a end` as the last line of this step's `client_batch`.
+**CB-U03a.10 (1 call: client_window_read).** DLG (read the dialog window). Same topic again?
+
+**CB-U03a.11 (1 call: client_ui_state).** UIS (read `client_ui_state`). Tracker after the relog: look for mission 638 "Speak to Prisoner 329".
+
+**CB-U03a.12 (1 call: client_chat_log).** READ cursor `c6`, channel "9".
+
+**CB-U03a.13 (1 call: client_batch).** Bookmark: one batch with only the DIALOG op and the end line, nothing else. Also add the line `.bug SPU SP-DCB1-p6 CB-U03a end` as the last line of this step's `client_batch`.
 
 
 ---

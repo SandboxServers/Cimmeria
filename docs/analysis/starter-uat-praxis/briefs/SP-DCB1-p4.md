@@ -31,6 +31,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 18. **Never write IPs, passwords or account names** in your report.
 19. **Every new character spawns boot-locked** (mission 689, chain 1023 holds movement inside a 1.0 m radius and snaps you back). Winning the Prison Boot Control Livewire releases it for good; BOOT does that. A relog does not lock it again after the win.
 20. **Unverified tool arguments.** `client_world_click` takes `entity_id` and `button` (`"right"` interacts, `"left"` targets); the repo does not show the accepted `button` strings, so if a click is rejected with an argument error, retry once with the same call without `button` and record the error text.
+21. **Guard-body, guard and prisoner clicks time out on the first try on this map.** `client_world_click` can fail on its first call with a `read_mouse_over` timeout (the client's mouse-over slot read is cut off after 1 s, `crates/lab/src/supervisor/world/click_hover.rs:25`), and a target nearer than 8 m also makes it retry from other camera views (`click_hover.rs:28`, `click_hover.rs:46-52`). The first drive saw the timeout on the first click of every such step. So the first click of each such step is labelled 2 calls: send it; if it returns a `read_mouse_over` timeout, send the SAME call once more, unchanged (same arguments, no camera move, no other tool in between); if it answered, do not send the second call. If the second also times out, follow gotcha 10 from its SHOT onward (the unchanged retry it names is the one you already made). Stand on the spot the step gives (3.5 to 4.5 m) with the target in front of the camera and do not call `client_hover_probe`. The label counts the second call, so the ESTIMATE is the worst case.
 
 ## 1. Fixed macros (use them verbatim; the cost is the number of calls)
 
@@ -82,9 +83,9 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 Start: carry-over from SP-DCB1-p2. Same character `Dcbbh`, same state. If SP-DCB1-p2 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
 
-ROWS: CB-U02a.
+ROWS: CB-U02a. This part stops at the inventory read by design: equip, reload, the two shots, Focus before the first shot and the relog duplicate check are the clauses of SP-DCB1-p5 (CB-U02b), not NOT-RUN gaps here.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
-ESTIMATE: 16 tool calls (planned success path; hard stop 28)
+ESTIMATE: 18 tool calls (planned success path; hard stop 28)
 CHARACTERS: `Dcbbh` (archetype Commando, Praxis, male, first name Uat), the same character as SP-DCB1-p2.
 
 ## Steps
@@ -100,11 +101,11 @@ CHARACTERS: `Dcbbh` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U02a.2 (1 call: client_entity_find).** FIND, `max_distance_m` 6. Pick Cpl. Frost by position (within 1.5 m of (-328.30, 73.47, -210.27)) and the Guard body (within 1.5 m of (-322.51, 73.47, -209.83)).
 
-**CB-U02a.3 (1 call: client_world_click).** RCLICK Cpl. Frost. Search him: chain 1003 advances mission 622 to step 80623.
+**CB-U02a.3 (2 calls: client_world_click, client_world_click).** RCLICK Cpl. Frost (gotcha 21: the second call only after a `read_mouse_over` timeout, unchanged). Search him: chain 1003 advances mission 622 to step 80623.
 
 **CB-U02a.4 (1 call: client_item_action).** LOOT_ALL. Frost loot window.
 
-**CB-U02a.5 (1 call: client_world_click).** RCLICK the Guard body. Dialog 3996 opens; chain 1005 grants pistol item 55 and abilities 592/594/597/1218; tutorial 5882 shows after it.
+**CB-U02a.5 (2 calls: client_world_click, client_world_click).** RCLICK the Guard body (gotcha 21: the second call only after a `read_mouse_over` timeout, unchanged). Dialog 3996 opens; chain 1005 grants pistol item 55 and abilities 592/594/597/1218; tutorial 5882 shows after it.
 
 **CB-U02a.6 (1 call: client_batch).** CHATX: no chat line (this batch only runs DIALOG and UTC, which closes dialog 3996).
 

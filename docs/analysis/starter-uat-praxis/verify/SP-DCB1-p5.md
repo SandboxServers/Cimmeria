@@ -52,17 +52,19 @@ Do not edit the repo (except the issue body file), the database or the server; d
 Character `Dcbbh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB1-p4. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U02b
-Sub-row scope: Equip, reload, shoot, relog restores the pistol (known issue #1667 applies). Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.
+Sub-row scope: Equip, reload, shoot, relog restores the pistol (known issue #1667 applies). Grade only the clauses this part drove; the grant of item 55 and abilities 592/594/597/1218 is SP-DCB1-p4's (CB-U02a) and is only re-read here for the duplicate check.
+
+Ids: equipping item 55 grants 579 Pistol Auto Attack and 708 Pistol Melee AA (`weapon_ability_swap`), never 592; the shots fire 592 Pistol Shot (kit ability, cast with `place:true`); the manual reload is the `R` key to `requestReload` (ability 596 is not in the kit). See the brief's ROW block for the file:line citations.
 
 | Check | Evidence | Expected |
 |---|---|---|
-| Grant, once | `Content: granting item` with item 55 and the ability grant 592 (chain 1005); `SELECT` the inventory rows for item 55 | exactly one item 55; no second grant after the relog |
-| Equip and reload | `server_ability_state` / inventory rows: magazine 0 to 15; packet tap if started | loaded after the reload |
-| Two shots | combat rows (ability 592) at about 3-4 m: ammo down by 2, guard HP down | two launches, `ammo` decreasing; a miss is allowed (#1667) |
-| Focus | player Focus before the first shot | not 0 |
-| No duplicate on relog | inventory and ability list after the relog | unchanged |
+| Equip | `fire_item_equipped` item 55; `weapon_ability_swap` added [708, 579] | held once |
+| Reload | inventory ammo 0 to 15 (`sgw_inventory` ammo for item 55 or `server_ability_state`); reload-completion row; packet tap if started | loaded after the `R` key |
+| Two shots | `useAbility` launched ab=592 by the player at the NID guard (spawn 20) at about 4.8 m: ammo down by 2 (15 to 13), guard HP down | two launches, ammo decreasing; a miss is allowed (#1667) |
+| Focus | player Focus before the first shot | not 0 (592 costs 150) |
+| No duplicate on relog | inventory (one item 55) and ability list after the relog | unchanged from p4: one item 55, 592/594/597/1218 once, 708/579 re-added by the world-entry swap |
 
-Grade: PASS if the grant is single, the shots consumed ammo and no duplicate was granted; NATIVE_SHORTFALL for a Lua-only equip or cast; PARTIAL if only one shot fired; FAIL if item 55 or ability 592 was granted twice. A zero-Focus warning alone is not a refusal. Visual (fire, recoil, muzzle effect): NEEDS_HUMAN `H-CB-U02-1`. Looker: 1. Is a firearm visible in the character's hand? 2. Is a hostile NPC in view?
+Grade: PASS if the reload filled the magazine, both shots consumed ammo and nothing was granted twice; NATIVE_SHORTFALL for a Lua-only equip or cast; PARTIAL if only one shot fired or the reload could not be confirmed (say which); FAIL if item 55 or ability 592 was granted twice. A zero-Focus warning alone is not a refusal. A first click that needed the second, unchanged call (gotcha 21) is not a finding. If the `R` key did nothing, say so as a reload-key finding candidate (lab or product), do not grade the shot clauses down for it. Visual (fire, recoil, muzzle effect): NEEDS_HUMAN `H-CB-U02-1`. Looker: 1. Is a firearm visible in the character's hand? 2. Is a hostile NPC in view?
 
 ---
 

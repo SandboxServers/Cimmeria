@@ -188,9 +188,9 @@ Every drive packet: **LAB: ASK-FIRST** (§ C1). Agent `lab-driver` (brief) then 
 | 2 | 1 | [SP-DCB1-p1](briefs/SP-DCB1-p1.md), [verify](verify/SP-DCB1-p1.md) | default | wave start | 16 | SP-01 |
 | 2 | 2 | [SP-DCB1-p2](briefs/SP-DCB1-p2.md), [verify](verify/SP-DCB1-p2.md) | default | after verify of SP-DCB1-p1 | 19 | SP-01 |
 | 2 | 3 | [SP-DCB1-p3](briefs/SP-DCB1-p3.md), [verify](verify/SP-DCB1-p3.md) | default | after verify of SP-DCB1-p2 | 20 | SP-01 |
-| 2 | 4 | [SP-DCB1-p4](briefs/SP-DCB1-p4.md), [verify](verify/SP-DCB1-p4.md) | default | after verify of SP-DCB1-p3 | 16 | SP-01 |
-| 2 | 5 | [SP-DCB1-p5](briefs/SP-DCB1-p5.md), [verify](verify/SP-DCB1-p5.md) | default | after verify of SP-DCB1-p4 | 20 | SP-01 |
-| 2 | 6 | [SP-DCB1-p6](briefs/SP-DCB1-p6.md), [verify](verify/SP-DCB1-p6.md) | default | after verify of SP-DCB1-p5 | 18 | SP-01 |
+| 2 | 4 | [SP-DCB1-p4](briefs/SP-DCB1-p4.md), [verify](verify/SP-DCB1-p4.md) | default | after verify of SP-DCB1-p3 | 18 | SP-01 |
+| 2 | 5 | [SP-DCB1-p5](briefs/SP-DCB1-p5.md), [verify](verify/SP-DCB1-p5.md) | default | after verify of SP-DCB1-p4 | 21 | SP-01 |
+| 2 | 6 | [SP-DCB1-p6](briefs/SP-DCB1-p6.md), [verify](verify/SP-DCB1-p6.md) | default | after verify of SP-DCB1-p5 | 22 | SP-01 |
 | 2 | 7 | [SP-DCB1-p7](briefs/SP-DCB1-p7.md), [verify](verify/SP-DCB1-p7.md) | default | after verify of SP-DCB1-p6 | 22 | SP-01 |
 | 2 | 8 | [SP-DCB1-p8](briefs/SP-DCB1-p8.md), [verify](verify/SP-DCB1-p8.md) | default | after verify of SP-DCB1-p7 | 22 | SP-01 |
 | 2 | 9 | [SP-DCB1-p9](briefs/SP-DCB1-p9.md), [verify](verify/SP-DCB1-p9.md) | default | after verify of SP-DCB1-p8 | 19 | SP-01 |

@@ -80,9 +80,11 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 # SP-DCB1-p3
 
+**STATUS: BLOCKED(harness gap: Jaffa create form).** `lab_create_character` fills a first name box (`CharCreate_Name1Edit`) and a last name box, and the Jaffa create screen has a single Name box plus Suffix. Creating the Praxis Jaffa `Dcbbj` therefore fails at `first_name` with `CharCreate_Name1Edit is not visible`. The first drive hit it three times (twice in the attempts, once by a direct call after `lab_login` with a free slot) and the failed create leaves the client stuck on CharCreateWin until `lab_client_restart` (`docs/analysis/starter-uat-praxis/results/SP-DCB1-p3.md`). **This step must not be tried again**: do not run S1, L2 with `create`, a second create, `lab_ensure_character_slot` or any other create path. Claim every row of this part `BLOCKED(harness gap: Jaffa create form)` and run no tool call at all; the coordinator does not dispatch this part until the harness gap is closed. The steps below are kept as the plan to run once it is.
+
 Start: fresh character `Dcbbj` (no fixture; the start state is reached by play or by the GM setup the steps name).
 
-ROWS: CB-U01c.
+ROWS: CB-U01c (BLOCKED(harness gap: Jaffa create form)).
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
 ESTIMATE: 20 tool calls (planned success path; hard stop 28)
 CHARACTERS: `Dcbbj` (archetype Jaffa, Praxis, male, first name Uat).

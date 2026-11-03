@@ -52,17 +52,17 @@ Do not edit the repo (except the issue body file), the database or the server; d
 Character `Dcbbh`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB1-p2. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U02a
-Sub-row scope: Frost search, Guard body dialog 3996, pistol grant. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.
+Sub-row scope: Frost search, Guard body dialog 3996, pistol grant. Grade only the clauses this part drove. The brief stops at the inventory read, so the equip, reload, shot, Focus and relog clauses belong to SP-DCB1-p5 (CB-U02b) and are listed below as NOT-RUN here, never graded in this part.
 
 | Check | Evidence | Expected |
 |---|---|---|
-| Grant, once | `Content: granting item` with item 55 and the ability grant 592 (chain 1005); `SELECT` the inventory rows for item 55 | exactly one item 55; no second grant after the relog |
-| Equip and reload | `server_ability_state` / inventory rows: magazine 0 to 15; packet tap if started | loaded after the reload |
-| Two shots | combat rows (ability 592) at about 3-4 m: ammo down by 2, guard HP down | two launches, `ammo` decreasing; a miss is allowed (#1667) |
-| Focus | player Focus before the first shot | not 0 |
-| No duplicate on relog | inventory and ability list after the relog | unchanged |
+| Frost search | `interact` on Cpl. Frost (spawn 19) opens dialog 3995; `Content: advancing step` mission 622 to step 80623 | one search |
+| Guard body dialog | `interact` on the Guard body (template 21, spawn 15) opens dialog 3996; mission 622 step 80623 to 80622 "Equip the pistol from your inventory." | one dialog, once |
+| Grant, once | `Content: granting item` item 55 and `content_grant_ability` for 592, 594, 597, 1218 (chain 1005); `SELECT` the inventory rows for item 55 | exactly one item 55 and one grant of each ability |
 
-Grade: PASS if the grant is single, the shots consumed ammo and no duplicate was granted; NATIVE_SHORTFALL for a Lua-only equip or cast; PARTIAL if only one shot fired; FAIL if item 55 or ability 592 was granted twice. A zero-Focus warning alone is not a refusal. Visual (fire, recoil, muzzle effect): NEEDS_HUMAN `H-CB-U02-1`. Looker: 1. Is a firearm visible in the character's hand? 2. Is a hostile NPC in view?
+Grade: PASS if the Frost search, the dialog and the single grant are in server rows; PARTIAL if one of them could not be seen; FAIL if item 55 or any of the four abilities was granted twice. A click that needed the second, unchanged call (gotcha 21) is not a finding. Visual (tutorial 5882 on screen): NEEDS_HUMAN `H-CB-U02-0`. Looker: 1. Is a tutorial window on screen? 2. Is a dialog window still open?
+
+NOT-RUN here (moved to SP-DCB1-p5, CB-U02b): equip, reload (magazine 0 to 15), two shots of ability 592 with ammo down by 2 and guard HP down, Focus before the first shot, no duplicate on relog, `H-CB-U02-1` (fire, recoil, muzzle). Say "NOT-RUN here, see SP-DCB1-p5" for these and do not count them against this part.
 
 ---
 
