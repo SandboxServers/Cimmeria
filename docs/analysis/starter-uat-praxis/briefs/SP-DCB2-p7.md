@@ -81,10 +81,11 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 # SP-DCB2-p7
 
 Start: carry-over from SP-DCB2-p6. Same character `Dcbch`, same state. If SP-DCB2-p6 FAILed or its character is gone, every row here is BLOCKED ('previous part failed') and you stop after S2.
+Precondition inherited from p6: mission 687 is complete (the three Barracks_Guard1/2/3 killed with real shots, p6 steps CB-U07a.5a-5e) and 688 "Secure the Armory" is accepted and its terminal step done. S2 also reads `client_ui_state` once; if the tracker does not list 688, every row here is BLOCKED ('688 not reached'), never FAIL. Do not use `/gmkilltarget` or `/gmmissionadvance` to get there (they fire no quest chains).
 
 ROWS: CB-U07b.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
-ESTIMATE: 17 tool calls (planned success path; hard stop 28)
+ESTIMATE: 18 tool calls (planned success path; hard stop 28) (inferred: 17 plus the S2 tracker read)
 CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same character as SP-DCB2-p6.
 
 ## Steps

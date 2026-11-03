@@ -56,7 +56,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **BUG - timeline bookmark.** `BUG <text>` is the CHATX line `.bug SPU SP-DCA1-p2 <text>`. The coordinator reads these on the server to find your row timing. Not optional. Cost: 0 inside a CHATX, otherwise 1.
 
-**JOURNAL - read the journal.** `client_window_read {"lease_id":L,"kind":"mission"}` and record the mission names and step text it returns verbatim. If it returns nothing, open the journal with a real key (`L`), run it again, and record the error text if it still returns nothing. Never invent a Lua journal call. Cost: 1 (client_window_read); the key-and-reread fallback is a failure-path call.
+**JOURNAL - read the journal.** `client_ui_state {"lease_id":L,"chat_lines":10}` and record the mission tracker text (mission names and step text) verbatim, plus the top window. `client_window_read` has no `mission` kind (it is an invalid argument): never call it that way. The tracker has no history text; for the journal window itself open it with a real key (`L`, inferred binding) and take the SHOT the step names (history and layout are NEEDS_HUMAN). A `client_lua_eval` journal read is allowed only if the coordinator pastes the exact chunk into the brief; never invent one. Cost: 1 (client_ui_state); the key-and-reread fallback is a failure-path call.
 
 ---
 
@@ -77,7 +77,7 @@ Facts this brief relies on (every one traced from the seed in this worktree):
 
 **S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, L2, WAIT. Record the character, world_id and position (expect 8 and about 466, 70, 991).
 
-**S2 resume probe (1 call: client_window_read).** `client_window_read {"lease_id":L,"kind":"mission"}`. If the journal shows no active `medical_q1` (10300) the courtyard step already ran: skip to S9. Otherwise run ROW A4, even on ATTEMPT 2 or 3 (a second relog is harmless).
+**S2 resume probe (1 call: client_ui_state).** `client_ui_state {"lease_id":L,"chat_lines":10}`. If the tracker shows no active "Triage Rounds" (`medical_q1`, 10300) the courtyard step already ran: skip to S9. Otherwise run ROW A4, even on ATTEMPT 2 or 3 (a second relog is harmless).
 
 ### ROW A4 - relog restores mission, step and hidden state
 
@@ -85,15 +85,16 @@ Run this before ROW A3: a relog at step 10341 proves the step is restored.
 **4.1 (2 calls: client_batch, lab_logout).** One batch with the DIALOG op first, then the CHATX line `.bug SPU SP-DCA1-p2 a4 start` and the UTC op. Then `lab_logout {"lease_id":L}`.
 **4.2 (1 call: lab_ensure_in_world).** L2.
 **4.3 (1 call: client_batch).** WAIT (17 s hold plus world load). Record the `player_state` position it returns.
-**4.4 (2 calls: client_window_read, lab_screenshot).** JOURNAL, SHOT label `A4-after-relog`. Record the mission name and step text.
+**4.4 (2 calls: client_ui_state, lab_screenshot).** JOURNAL, SHOT label `A4-after-relog`. Record the mission name and step text.
 **4.5 (1 call: client_entity_find).** `client_entity_find {"lease_id":L,"name":"Medic"}`. Record whether it is found and its position. The medic must no longer show the offer glyph (chain 10004 removed dialog set 1000001); the glyph look is NEEDS_HUMAN.
 
 ### ROW A3 - completing the objective advances the step; no skip
 
-**3.1 (1 call: client_batch).** One batch with the DIALOG op first, then the CHATX line `.bug SPU SP-DCA1-p2 a3 start`, then `.gotolocation Castle 490.0 28.5 650.0` (inside the courtyard box; a tier G jump, because the interior and exterior navmesh are not connected), a wait of 3000, and the UTC op. Expected: chain 10005 fires.
-**3.2 (2 calls: client_window_read, lab_screenshot).** JOURNAL, SHOT label `A3-after-courtyard`. Expected: the entry is completed or gone from the active list with no intermediate step skipped (the journal showed 10341 after the relog).
+**3.1 (1 call: client_batch).** One batch with the DIALOG op first, then the CHATX line `.bug SPU SP-DCA1-p2 a3 start`, then `.gotolocation Castle 505.0 36.2 668.0` (inside the courtyard box x 468.94-510.25, z 631.82-674.42, near the NE corner at the box top y 36.2; a tier G jump, because the interior and exterior navmesh are not connected). Do NOT use Castle 490 28.5 650: the avatar fell there (no client collision) in the first drive. The new point is (inferred): the coordinator should confirm client floor there with `client_trace_line` before the run; if the avatar still falls (y below 20), record it and do not retry a third point, a wait of 3000, and the UTC op. Expected: chain 10005 fires.
+**3.2 (2 calls: client_ui_state, lab_screenshot).** JOURNAL, SHOT label `A3-after-courtyard`. Expected: the entry is completed or gone from the active list with no intermediate step skipped (the journal showed 10341 after the relog).
 **3.3 (1 call: client_chat_log).** READ `{"cursor":"a3","contains":"ission","max":20}`.
-If the teleport leaves the avatar falling or unmoving (position y below 20), record it, SHOT, and carry on. The verifier grades the chain 10005 effect from the server log, not from your feel.
+If the teleport leaves the avatar falling or unmoving (position y below 20), record it, SHOT, and carry on. The verifier grades the chain 10005 effect from the server log, not from your feel. Do not use a `player_state` read taken seconds after a fall as a position check (the z column read -4005 in the first drive).
+Expected server noise if the avatar does fall: three ERROR `movement.correction_suppressed` rows ("correction budget exhausted with no safe position") and warn-only `movement.speed_warning` rows. These are a lab/GM-target gap (the GM jump lands where the client has no floor), not a mission defect.
 
 **S9 (1 call: lab_lease_release).** Release the lease (section 3) and write the report. Rows: A4, A3, with screenshot labels `A4-after-relog`, `A3-after-courtyard`.
 

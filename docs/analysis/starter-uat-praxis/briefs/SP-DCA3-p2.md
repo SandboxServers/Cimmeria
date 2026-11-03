@@ -57,7 +57,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **BUG - timeline bookmark.** `BUG <text>` is the CHATX line `.bug SPU SP-DCA3-p2 <text>`. The coordinator reads these on the server to find your row timing. Not optional. Cost: 0 inside a CHATX, otherwise 1.
 
-**JOURNAL - read the journal.** `client_window_read {"lease_id":L,"kind":"mission"}` and record the mission names and step text it returns verbatim. If it returns nothing, open the journal with a real key (`L`), run it again, and record the error text if it still returns nothing. Never invent a Lua journal call. Cost: 1 (client_window_read); the key-and-reread fallback is a failure-path call.
+**JOURNAL - read the journal.** `client_ui_state {"lease_id":L,"chat_lines":10}` and record the mission names and step text it returns verbatim. If it returns nothing, open the journal with a real key (`L`), run it again, and record the error text if it still returns nothing. Never invent a Lua journal call. Cost: 1 (client_ui_state); the key-and-reread fallback is a failure-path call.
 
 ---
 
@@ -77,7 +77,7 @@ Facts this brief relies on (traced from the seed in this worktree):
 
 **S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, L2, WAIT. Record world_id and position.
 
-**S2 resume probe (1 call: client_window_read).** `client_window_read {"lease_id":L,"kind":"mission"}`. This read is the D6c evidence: record the mission names and step text it returns verbatim (expect 1520 completed or absent from the active list, and no radio-call step).
+**S2 resume probe (1 call: client_ui_state).** `client_ui_state {"lease_id":L,"chat_lines":10}`. This read is the D6c evidence: record the mission names and step text it returns verbatim (expect 1520 completed or absent from the active list, and no radio-call step).
 
 ### ROW D6c - login at 4454 auto-completes (the radio call cannot be shown)
 

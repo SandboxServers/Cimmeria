@@ -57,7 +57,8 @@ Sub-row scope: Class crate and terminal. Grade only the clauses this part drove;
 | Check | Evidence | Expected |
 |---|---|---|
 | Crate once | `Content: granting item` for the Commando set (dialog 3942, six stealth-suit items, Stealth I); second search "empty" | one reward; none after the relog |
-| Terminal | blurb 2518 once; step 80688; 688 not complete | yes |
+| Guards (precondition, p6 steps CB-U07a.5a-5e) | three `entity_dead_tag` raises for `Barracks_Guard1/2/3` (chains 1100-1103), `Content: completing mission` 687 and `Content: accepting mission` 688 (chain 1105) at step 2356, after the crate and before the first terminal `interact`; the kills were real shots, not `/gmkilltarget` (a GM kill fires no chain) | yes; if absent the Terminal row is BLOCKED (precondition), not FAIL |
+| Terminal | blurb 2518 once; step 80688; 688 not complete. A terminal click that fails in the lab (`on_screen`, `observe`, `read_mouse_over`, `hover_timeout`) is BLOCKED harness; the `client_target` plus `/interact` fallback is N2 | yes |
 | Exit | chain 1109 `completing mission` 688 and a world change to 8 (`server_sessions`) | arrival in Castle |
 | 1360 and Frost's Letter | mission 1360 active after the transfer and after the relog; item 3730 in the mission inventory; no second reward row | yes |
 

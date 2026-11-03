@@ -8,6 +8,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - CHARACTER: `Dcbch` (archetype Commando, Praxis, male, first name Uat)
 - SERVER: local server at the recorded SHA (D-SP2). The lab is pre-authorized for this campaign (D-SP5): never ask anyone for permission, never wait for a human.
 - AREA: Castle_Cellblock (world 12) on the local server   (no other lane uses it at the same time; the plan runs these packets one after another on the default instance)
+- GUARD IDS: <the coordinator pastes the current entity ids of Barracks_Guard1/2/3 (spawns 25/26/36) from `server_entity_query`, or `none`>   (ids change on every server start)
 
 ## 0. Front-loaded gotchas (read all of them)
 
@@ -84,7 +85,7 @@ Start: carry-over from SP-DCB2-p5. Same character `Dcbch`, same state. If SP-DCB
 
 ROWS: CB-U07a.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
-ESTIMATE: 17 tool calls (planned success path; hard stop 28)
+ESTIMATE: 17 tool calls for the crate and terminal plus about 24 for the three guard kills = about 41 (inferred), hard stop 28 per attempt: plan two attempts. Attempt 1 should stop after CB-U07a.5e (STOPPED AT `CB-U07a.6`), attempt 2 resumes there (DONE ROWS stays empty because CB-U07a is one row)
 CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same character as SP-DCB2-p5.
 
 ## Steps
@@ -106,11 +107,27 @@ CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same
 
 **CB-U07a.5 (1 call: client_inventory).** INV. Class item.
 
-**CB-U07a.6 (1 call: client_batch).** GOTO `-55 25.7 -148`. Terminal `Cellblock_TerminalX` (spawn 34) at (-52.66, 25.76, -151.13).
+### Guards (precondition for the terminal): kill Barracks_Guard1, 2 and 3 with real shots
 
-**CB-U07a.7 (1 call: client_entity_find).** FIND, `max_distance_m` 6. Pick the terminal by position (within 1.5 m of (-52.66, 25.76, -151.13)).
+Mission 687 completes only after the three `Barracks_Guard1/2/3` deaths (step 2355, chains 1100-1103); chain 1105 then accepts mission 688 "Secure the Armory" at step 2356, and only a 688 at step 2356 makes the terminal respond (chain 1106 marks `Cellblock_TerminalX`, chain 1107 needs 688/2356 active). Without these kills the terminal does nothing, whatever you click. The kills must raise `entity_dead_tag`: **do not use `/gmkilltarget` or `/gmmissionadvance`** (a GM kill never fires quest chains, and `/gmmissionadvance 687 2355` / `688 2356` return OK but leave 687 at status 1 and create no 688 row; issue SP-DCB2-p5-1). `/gmkilltarget` also kills whatever is targeted: in the first drive it killed the Terminal (id 103407) once. Never send it here.
 
-**CB-U07a.8 (1 call: client_world_click).** RCLICK the terminal.
+Guard ids change on every server start, so the coordinator pastes them into the brief field `GUARD IDS` before the run (looked up with `server_entity_query` by tag `Barracks_Guard1/2/3`; you cannot query the server). If the field is empty, use FIND (`max_distance_m` 12) and pick each guard by its position within 1.5 m of the spawn position given below (inferred: guards leave their spawn when they fight, so widen to 4 m and record every entry). The standing points are (inferred) points 5 m off each guard inside the barracks (Region12, x -149 to -115, z -147 to -94); they were derived from the spawn positions, not walked.
+
+**CB-U07a.5a (1 call: client_batch).** CHATX with the DIALOG op first, then `/gmsetgodmode 1` (tier G; it resets on a relog, so send it again after any relog), then the line `.bug SPU SP-DCB2-p6 CB-U07a guards start`.
+
+**CB-U07a.5b (up to 11 calls: client_batch, client_entity_find, client_camera, client_target, client_use_ability, client_batch).** Barracks_Guard1 (spawn 25 at -118.41, 24.67, -118.35). (1) GOTO `-118.4 24.67 -123.0` (5 m off the guard; for Guard1 this is the GOTO of step 5a). (2) FIND `max_distance_m` 12; keep the guard id (from `GUARD IDS` or the entry within 1.5 m of the spawn). (3) `client_camera {"lease_id":L,"pitch_deg":-10,"face_entity_id":<guard id>}`. (4) `client_target {"lease_id":L,"entity_id":<guard id>,"allow_fallback":true,"rotate_camera":false}`; record `target_after` (it must be the guard id; if `on_screen` or `read_mouse_over` times out, record BLOCKED harness and do the camera reset: `client_camera` reset, then the same `client_target` once more). (5) Real shots exactly as CB-U06.6 in SP-DCB2-p5: `client_use_ability {"lease_id":L,"ability_id":592,"place":true}` at the target; reload with the R key when dry (RELOAD macro of SP-DCB2-p5, ammo as its CB-U06.5 note); repeat until `client_entity_find` shows the guard dead (a miss and heavy incoming damage are possible, #1667). In the batch after the last shot add `.bug SPU SP-DCB2-p6 CB-U07a guard1 dead`. Tier N1/N2 (real ability use).
+
+**CB-U07a.5c (up to 11 calls: client_batch, client_entity_find, client_camera, client_target, client_use_ability, client_batch).** Barracks_Guard2 (spawn 26 at -131.48, 24.67, -116.97). (1) GOTO `-131.5 24.67 -122.0` (5 m off the guard; for Guard1 this is the GOTO of step 5a). (2) FIND `max_distance_m` 12; keep the guard id (from `GUARD IDS` or the entry within 1.5 m of the spawn). (3) `client_camera {"lease_id":L,"pitch_deg":-10,"face_entity_id":<guard id>}`. (4) `client_target {"lease_id":L,"entity_id":<guard id>,"allow_fallback":true,"rotate_camera":false}`; record `target_after` (it must be the guard id; if `on_screen` or `read_mouse_over` times out, record BLOCKED harness and do the camera reset: `client_camera` reset, then the same `client_target` once more). (5) Real shots exactly as CB-U06.6 in SP-DCB2-p5: `client_use_ability {"lease_id":L,"ability_id":592,"place":true}` at the target; reload with the R key when dry (RELOAD macro of SP-DCB2-p5, ammo as its CB-U06.5 note); repeat until `client_entity_find` shows the guard dead (a miss and heavy incoming damage are possible, #1667). In the batch after the last shot add `.bug SPU SP-DCB2-p6 CB-U07a guard2 dead`. Tier N1/N2 (real ability use).
+
+**CB-U07a.5d (up to 11 calls: client_batch, client_entity_find, client_camera, client_target, client_use_ability, client_batch).** Barracks_Guard3 (spawn 36 at -136.38, 24.67, -135.67). (1) GOTO `-136.4 24.67 -141.0` (5 m off the guard; for Guard1 this is the GOTO of step 5a). (2) FIND `max_distance_m` 12; keep the guard id (from `GUARD IDS` or the entry within 1.5 m of the spawn). (3) `client_camera {"lease_id":L,"pitch_deg":-10,"face_entity_id":<guard id>}`. (4) `client_target {"lease_id":L,"entity_id":<guard id>,"allow_fallback":true,"rotate_camera":false}`; record `target_after` (it must be the guard id; if `on_screen` or `read_mouse_over` times out, record BLOCKED harness and do the camera reset: `client_camera` reset, then the same `client_target` once more). (5) Real shots exactly as CB-U06.6 in SP-DCB2-p5: `client_use_ability {"lease_id":L,"ability_id":592,"place":true}` at the target; reload with the R key when dry (RELOAD macro of SP-DCB2-p5, ammo as its CB-U06.5 note); repeat until `client_entity_find` shows the guard dead (a miss and heavy incoming damage are possible, #1667). In the batch after the last shot add `.bug SPU SP-DCB2-p6 CB-U07a guard3 dead`. Tier N1/N2 (real ability use).
+
+**CB-U07a.5e (1 call: client_ui_state).** UIS. Record the mission tracker. Expected: mission 687 gone or completed and "Secure the Armory" (688) listed at its first step. If 688 is not listed after the third kill, wait one batch of 5000 ms and read once more; if still absent record BLOCKED '688 not accepted' and **skip CB-U07a.6 to .12** (the terminal cannot respond). Do not use a GM command to force it.
+
+**CB-U07a.6 (1 call: client_batch).** Only after CB-U07a.5e shows 688 listed. GOTO `-55 25.7 -148`. Terminal `Cellblock_TerminalX` (spawn 34) at (-52.66, 25.76, -151.13).
+
+**CB-U07a.7 (1 call: client_entity_find).** FIND, `max_distance_m` 6. Pick the terminal by position (within 1.5 m of (-52.66, 25.76, -151.13)). If it is absent, record the full list: the Terminal (id 103407 in the first drive) was killed once by a stray `/gmkilltarget` and may stay dead until a server restart or respawn (inferred); the coordinator decides, you stop at BLOCKED 'terminal missing'.
+
+**CB-U07a.8 (1 call: client_world_click).** RCLICK the terminal. If the click fails (`on_screen`, `observe`, `read_mouse_over` or `hover_timeout`), record it as BLOCKED harness (a lab harness gap, not a product defect; never FAIL) and use the fallback of `verify-click-recipe.md` (failure path, not counted): `client_target {"lease_id":L,"entity_id":<terminal id>,"allow_fallback":true,"rotate_camera":false}`, then CHATX `/interact` (tier N2). Record which route reached the terminal; the terminal responds only if 688 is at step 2356.
 
 **CB-U07a.9 (1 call: client_minigame_play).** MG (play the open Livewire once; `entity_id` = your own id from the last FIND).
 

@@ -56,7 +56,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **BUG - timeline bookmark.** `BUG <text>` is the CHATX line `.bug SPU SP-DCA3-p1 <text>`. The coordinator reads these on the server to find your row timing. Not optional. Cost: 0 inside a CHATX, otherwise 1.
 
-**JOURNAL - read the journal.** `client_window_read {"lease_id":L,"kind":"mission"}` and record the mission names and step text it returns verbatim. If it returns nothing, open the journal with a real key (`L`), run it again, and record the error text if it still returns nothing. Never invent a Lua journal call. Cost: 1 (client_window_read); the key-and-reread fallback is a failure-path call.
+**JOURNAL - read the journal.** `client_ui_state {"lease_id":L,"chat_lines":10}` and record the mission names and step text it returns verbatim. If it returns nothing, open the journal with a real key (`L`), run it again, and record the error text if it still returns nothing. Never invent a Lua journal call. Cost: 1 (client_ui_state); the key-and-reread fallback is a failure-path call.
 
 ---
 
@@ -76,11 +76,11 @@ Facts this brief relies on (traced from the seed in this worktree):
 
 **S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, L2, WAIT. Record world_id and position.
 
-**S2 resume probe (1 call: client_window_read).** `client_window_read {"lease_id":L,"kind":"mission"}`. Record the step text. Never start a row that is already past its precondition: step text "Hack the Med Dispenser..." means D6a is done, go to ROW D6b step 6b.1.
+**S2 resume probe (1 call: client_ui_state).** `client_ui_state {"lease_id":L,"chat_lines":10}`. Record the step text. Never start a row that is already past its precondition: step text "Hack the Med Dispenser..." means D6a is done, go to ROW D6b step 6b.1.
 
 ### ROW D6a - login at 4452 rebinds Ogilvie; the click opens 4983; the close advances to 4453
 
-**6a.1 (6 calls: client_batch, client_entity_find, client_window_read, lab_screenshot, client_world_click, client_window_read).** One batch: the DIALOG op first, then the CHATX lines `.bug SPU SP-DCA3-p1 d6a start` and `.gotolocation Castle 362.0 70.18 890.5` with a wait of 3500 after the move, then the UTC op. Then `client_entity_find {"lease_id":L,"name":"Ogilvie"}`; the mission read (`client_window_read {"lease_id":L,"kind":"mission"}`); SHOT label `D6a-ogilvie-at-4452` (record whether Ogilvie is found; the glyph look is NEEDS_HUMAN). Then `client_world_click {"lease_id":L,"entity_id":<Ogilvie id>,"expect":"window"}` (N1; if it opens nothing, gotcha 10 then PROMPT, failure path) and `client_window_read {"lease_id":L,"kind":"dialog"}`: record that dialog 4983 opened (this proves the rebind worked).
+**6a.1 (6 calls: client_batch, client_entity_find, client_ui_state, lab_screenshot, client_world_click, client_ui_state).** One batch: the DIALOG op first, then the CHATX lines `.bug SPU SP-DCA3-p1 d6a start` and `.gotolocation Castle 362.0 70.18 890.5` with a wait of 3500 after the move, then the UTC op. Then `client_entity_find {"lease_id":L,"name":"Ogilvie"}`; the mission read (`client_ui_state {"lease_id":L,"chat_lines":10}`); SHOT label `D6a-ogilvie-at-4452` (record whether Ogilvie is found; the glyph look is NEEDS_HUMAN). Then `client_world_click {"lease_id":L,"entity_id":<Ogilvie id>,"expect":"window"}` (N1; if it opens nothing, gotcha 10 then PROMPT, failure path) and `client_ui_state {"lease_id":L,"kind":"dialog"}`: record that dialog 4983 opened (this proves the rebind worked).
 **6a.2 (2 calls: client_batch, client_window_read).** Close it: one batch with the DIALOG op first, a wait of 2500 and the UTC op. Then the mission read: expect step text "Hack the Med Dispenser..." (`mission_steps.sql:2054`).
 
 ### ROW D6b - relog at 4453 rebinds the dispenser; the click starts Livewire

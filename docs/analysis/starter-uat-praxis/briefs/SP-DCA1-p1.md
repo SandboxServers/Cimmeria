@@ -56,13 +56,13 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **BUG - timeline bookmark.** `BUG <text>` is the CHATX line `.bug SPU SP-DCA1-p1 <text>`. The coordinator reads these on the server to find your row timing. Not optional. Cost: 0 inside a CHATX, otherwise 1.
 
-**JOURNAL - read the journal.** `client_window_read {"lease_id":L,"kind":"mission"}` and record the mission names and step text it returns verbatim. If it returns nothing, open the journal with a real key (`L`), run it again, and record the error text if it still returns nothing. Never invent a Lua journal call. Cost: 1 (client_window_read); the key-and-reread fallback is a failure-path call.
+**JOURNAL - read the journal.** `client_ui_state {"lease_id":L,"chat_lines":10}` and record the mission tracker text (mission names and step text) verbatim, plus the top window. `client_window_read` has no `mission` kind (it is an invalid argument): never call it that way. The tracker has no history text; for the journal window itself open it with a real key (`L`, inferred binding) and take the SHOT the step names (history and layout are NEEDS_HUMAN). A `client_lua_eval` journal read is allowed only if the coordinator pastes the exact chunk into the brief; never invent one. Cost: 1 (client_ui_state); the key-and-reread fallback is a failure-path call.
 
 ---
 
-# SP-DCA1-p1: first authored Castle quest `medical_q1` (mission 10300), accept and journal (CS-00B client proof, part 1)
+# SP-DCA1-p1: first authored Castle quest `medical_q1` (mission 10300; journal name "Triage Rounds"), accept and journal (CS-00B client proof, part 1)
 
-ROWS: A2, A1, A5. Run order: A2, A1, A5. Part 2 (`SP-DCA1-p2`) holds A4 and A3. ESTIMATE: 17 tool calls (planned success path; hard stop 28)
+ROWS: A2, A1, A5. Run order: A2, A1, A5. Part 2 (`SP-DCA1-p2`) holds A4 and A3. ESTIMATE: 14 tool calls (planned success path; hard stop 28) (inferred: 17 minus the removed Accept step)
 Start: fixture. The coordinator staged it with `server_stage_fixture` (C4): `world = Castle`, `position = [466.365, 70.397, 991.466]` (the ring landing, outside the Infirmary), `missions = [{"id":704,"state":"completed"}]`, a Praxis Soldier profile (archetype 1).
 
 Facts this brief relies on (every one traced from the seed in this worktree):
@@ -72,33 +72,36 @@ Facts this brief relies on (every one traced from the seed in this worktree):
 - Chains (all `enabled = true`, `db/resources/Content/Seed/castle_side_stories_chains.sql`; included from `db/database.sql`): 10000 triggers on `mission_completed 704` and binds dialog set 1000001 slot 177 (lines 2-5); 10001 is the `player_loaded Castle` rebind of the same offer (7-10); 10002 abandon rebind (12-15); 10003 `interact_tag Castle_Pop_Infirmary_Medic1` runs `accept_mission 10300` (17-20); 10004 `mission_accepted`: `advance_step 10341`, `remove_dialog_set 1000001`, `display_dialog 10700` (22-25); 10005 enters `Castle.CastleFrontCourtyard` at step 10341 and runs `complete_objective 10461` (27-30); 10006 login stuck at 10340 advances to 10341 (32-35). Offer conditions: world 8 and mission 704 completed and 10300 not_active (line 4).
 - Region `Castle.CastleFrontCourtyard` (point set 2050, a bounding box): x 468.94-510.25, y 28.18-36.25, z 631.82-674.42: `db/resources/Events/Seed/point_sets.sql:45`, `point_set_points.sql:129-135`.
 - If the coordinator reports the fixture failed, every row is BLOCKED, never FAIL. Standing point for the medic: (349.0, 70.18, 888.0), 4.2 m off.
+- **There is no Accept screen.** Chains 10003 and 10004 accept the mission on the medic click and open dialog 10700 directly (Done button only). Do not look for an Accept button. Owner may decide whether an Accept screen should exist; until then this part grades the click-accepts behaviour as authored (seeds: `castle_side_stories_chains.sql`, chains 10003-10004).
+- **The journal name is "Triage Rounds"**, not `medical_q1` (that is the seed key). Expect "Triage Rounds" in the tracker, not `medical_q1`.
+- **Side effect of the `.gotolocation` into the Infirmary:** chain 1367 (region enter `Castle.Infirmary`) accepts mission 1520 "Infirmary" at the same moment. Expect two entries in the tracker ("Triage Rounds" 10300 and "Infirmary" 1520, plus "Arm Yourself!" 622 restored at login). This is real content, not a fixture fault; record it and carry on.
 
 ## Steps
 
 **S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, L2, WAIT. Record the character, world_id and position (expect 8 and about 466, 70, 991).
 
-**S2 resume probe (1 call: client_window_read).** `client_window_read {"lease_id":L,"kind":"mission"}`. Row A2 is already done when the journal lists `medical_q1` (10300) or a completed entry for it. If 10300 is already active at step 10341, skip to ROW A1 step 1.1. Never accept twice.
+**S2 resume probe (1 call: client_ui_state).** `client_ui_state {"lease_id":L,"chat_lines":10}`. Row A2 is already done when the tracker lists "Triage Rounds" (10300) or a completed entry for it. If 10300 is already active at step 10341, skip to ROW A1 step 1.1. Never accept twice.
 
-### ROW A2 - the offer dialog and Accept
+### ROW A2 - the medic click accepts the mission and opens dialog 10700 (no Accept screen)
 
-**2.1 (1 call: client_batch).** One batch: first the DIALOG op, then the CHATX lines `.bug SPU SP-DCA1-p1 a2 start` and `.gotolocation Castle 349.0 70.18 888.0` with a wait of 3000 after the move, then the UTC op (the offer was bound at the fixture login by chain 10001; the move only brings the medic into view).
+**2.1 (1 call: client_batch).** One batch: first the DIALOG op, then the CHATX lines `.bug SPU SP-DCA1-p1 a2 start` and `.gotolocation Castle 349.0 70.18 888.0` with a wait of 3000 after the move, then the UTC op (the offer was bound at the fixture login by chain 10001; the move only brings the medic into view; it also enters `Castle.Infirmary`, which side-accepts mission 1520 through chain 1367, see the Facts).
 **2.2 (1 call: client_entity_find).** `client_entity_find {"lease_id":L,"name":"Medic"}`. Record the entity id and position. If no medic is found after one retry and a 5 s wait, record BLOCKED: `medic not visible` and go to ROW A5.
-**2.3 (1 call: client_world_click).** `client_world_click {"lease_id":L,"entity_id":<medic id>,"expect":"window"}`. Tier N1. If it opens nothing, gotcha 10 then PROMPT (failure path).
-**2.4 (2 calls: client_window_read, lab_screenshot).** `client_window_read {"lease_id":L,"kind":"dialog"}`: record the dialog speaker, the body text and every button with its `window` name verbatim. SHOT label `A2-offer`. This look (the authored screens) is NEEDS_HUMAN: record what you saw and move on.
-**2.5 (4 calls: client_window_click, client_window_read, lab_screenshot, client_batch).** `client_window_click {"lease_id":L,"target":"<window name of the button whose text is Accept>"}`. Then `client_window_read {"lease_id":L,"kind":"dialog"}`: if a dialog 10700 opened (post-accept), record it as in 2.4; SHOT label `A2-after-accept`. Then one batch with the DIALOG op first (closes 10700) and the UTC op. If no dialog 10700 opened, still make all four calls and record `no post-accept dialog`.
+**2.3 (1 call: client_world_click).** `client_world_click {"lease_id":L,"entity_id":<medic id>,"expect":"window"}`. Tier N1. The click itself accepts mission 10300 (chain 10003) and opens dialog 10700. If it opens nothing, gotcha 10 then PROMPT (failure path). `hover_timeout` or `read_mouse_over` timeouts are a lab harness gap (record BLOCKED harness, not FAIL): run `client_camera` reset, then retry the click once (inferred from the DCA1-p1 drive: the reset-then-retry recovered).
+**2.4 (2 calls: client_window_read, lab_screenshot).** `client_window_read {"lease_id":L,"kind":"dialog"}`: record the dialog speaker, the body text and every button with its `window` name verbatim. Expected: dialog 10700 with a Done button and no Accept button. SHOT label `A2-dialog-10700`. This look (the authored screens) is NEEDS_HUMAN: record what you saw and move on.
+**2.5 (1 call: client_batch).** One batch with the DIALOG op first (closes 10700) and the UTC op.
 **2.6 (1 call: client_chat_log).** READ `{"cursor":"a2","contains":"ission","max":20}`. Record every line.
-Server-visible expected: log `Mission accepted` for 10300, then `Mission step advanced` to 10341 (chain 10004), `sgw_mission` row for 10300 active at step 10341.
+Server-visible expected: log `Content: accepting mission` 10300 (chain 10003 on the click), `Mission accepted` for 10300, then `Mission step advanced` to 10341 (chain 10004), `sgw_mission` row for 10300 active at step 10341.
 
 ### ROW A1 - the mission appears in the journal with history and step text
 
-**1.1 (2 calls: client_window_read, lab_screenshot).** JOURNAL, then SHOT label `A1-journal`. Record the mission name, the step text and any history text verbatim. Expected on screen: `medical_q1` listed with step text "Check the Castle front courtyard for wounded." (`mission_steps.sql:7330`). The on-screen wording and layout is NEEDS_HUMAN; the server fact (the mission is active at 10341) is graded from the DB by the verifier.
+**1.1 (2 calls: client_ui_state, lab_screenshot).** JOURNAL, then SHOT label `A1-journal`. Record the mission name, the step text and any history text verbatim. Expected on screen: "Triage Rounds" (10300) listed with step text "Check the Castle front courtyard for wounded." (`mission_steps.sql:7330`). The on-screen wording and layout is NEEDS_HUMAN; the server fact (the mission is active at 10341) is graded from the DB by the verifier.
 
 ### ROW A5 - an old cached mission category resyncs (metadata bump)
 
 The driver cannot plant a stale client cache. What this lane can show: the lab client started with whatever mission-category cache it had, and the journal lists the new entry.
 **5.1 (no calls).** Make no new call and no new screenshot: cite the `A1-journal` read and screenshot path from step 1.1 as this row's evidence. Grade is NEEDS_HUMAN (the stale-cache history of this client is unknown to you); the server half is the startup log `Cimmeria mission overrides applied; metadata bumped` (fields `bump`, `bumped_metadata`; `crates/resources/src/base/resources/apply_overrides.rs:324-330`), which the verifier reads.
 
-**S9 (1 call: lab_lease_release).** Release the lease (section 3) and write the report. Rows: A2, A1, A5, with screenshot labels `A2-offer`, `A2-after-accept`, `A1-journal`.
+**S9 (1 call: lab_lease_release).** Release the lease (section 3) and write the report. Rows: A2, A1, A5, with screenshot labels `A2-dialog-10700`, `A1-journal`.
 
 ---
 

@@ -73,11 +73,11 @@ Shorthand: `$P` = `toInt64(attributes_number['player_id'])=$pid`. Start: fixture
 |---|---|---|
 | Mission active in the DB | the mission state query, `mission_id=10300` | one row, `current_step_id`=10341 after the accept (10340 only before it) |
 | Server accepted it | `ch $t0 $t1 "$P AND body LIKE '%Mission accepted%' AND toInt64(attributes_number['mission_id'])=10300"` | one row in the A2 window |
-| Client read | driver `client_window_read kind=mission` | lists the mission name and the 10341 step text verbatim (client-read only) |
+| Client read | driver `client_ui_state` tracker (`client_window_read` has no `mission` kind) | lists "Triage Rounds" and the 10341 step text verbatim (client-read only); also "Infirmary" (1520, side-accepted by chain 1367 on the Infirmary enter) |
 
-Looker for `A1-journal`: 1. Is a quest journal window open? 2. Does it list a quest about the Castle infirmary or medic? 3. Is the text "Check the Castle front courtyard for wounded" (or close) visible? Result: PASS if the DB and log hold; the on-screen history and wording go on the sign-off sheet (NEEDS_HUMAN).
+Looker for `A1-journal`: 1. Is a quest journal window open? 2. Does it list "Triage Rounds" (a quest about the Castle infirmary or medic)? 3. Is the text "Check the Castle front courtyard for wounded" (or close) visible? Result: PASS if the DB and log hold; the on-screen history and wording go on the sign-off sheet (NEEDS_HUMAN).
 
-## Row A2 - offer dialog with the authored screens; Accept starts the mission
+## Row A2 - the medic click accepts 10300 and opens dialog 10700 (no Accept screen)
 
 | Check | Query | Expected |
 |---|---|---|
@@ -86,7 +86,7 @@ Looker for `A1-journal`: 1. Is a quest journal window open? 2. Does it list a qu
 | Accept | `ch $t0 $t1 "$P AND body LIKE '%Mission accepted%' AND toInt64(attributes_number['mission_id'])=10300"` | one row for mission 10300 |
 | Post-accept chain | `ch $t0 $t1 "$P AND ((body LIKE '%Mission step advanced%' AND toInt64(attributes_number['mission_id'])=10300 AND toInt64(attributes_number['new_step_id'])=10341) OR body LIKE '%10700%')"` | step advanced to 10341; dialog 10700 displayed |
 
-Looker for `A2-offer` / `A2-after-accept`: 1. Is a dialog window with an NPC and an Accept button visible? 2. Is there body text? Result: PASS when accept and advance rows exist; the offer screens' wording and look are NEEDS_HUMAN (sheet). If the driver could not find the medic, BLOCKED (the grade is never FAIL on a missing entity unless `ch` shows the bind chain firing).
+Looker for `A2-dialog-10700`: 1. Is a dialog window with an NPC and a Done button visible? 2. Is there body text? 3. Is there NO Accept button? (Chains 10003/10004 accept on the click; an Accept screen does not exist by design. Owner may decide whether one should.) Result: PASS when accept and advance rows exist (the click is the accept); the dialog's wording and look are NEEDS_HUMAN (sheet). A second Infirmary entry (1520) in the tracker is expected, not a finding. If the driver could not find the medic, BLOCKED (the grade is never FAIL on a missing entity unless `ch` shows the bind chain firing).
 
 ## Row A5 - an old cached mission category resyncs (metadata bump)
 

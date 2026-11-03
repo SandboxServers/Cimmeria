@@ -75,7 +75,7 @@ Shorthand: `$P` = `toInt64(attributes_number['player_id'])=$pid`. Start: fixture
 | State unchanged | the mission state query before and after (compare to the pre-relog row) | `current_step_id` 10341 and `active_objective_ids` unchanged |
 | Medic unbound | `ch $t0 $t1 "$P AND body LIKE '%10001%'"` | chain 10001 (login rebind) NOT matched at step 10341: its condition needs 10300 `not_active` |
 
-Looker for `A4-after-relog`: 1. Is the journal showing the same quest and step as before? Result: PASS on the DB and log; the missing offer glyph over the medic is NEEDS_HUMAN (sheet).
+Looker for `A4-after-relog`: 1. Is the journal showing the same quest ("Triage Rounds") and step as before? Result: PASS on the DB and log; the missing offer glyph over the medic is NEEDS_HUMAN (sheet).
 
 ## Row A3 - completing the objective advances the step; journal updates with no skip
 
@@ -85,7 +85,7 @@ Looker for `A4-after-relog`: 1. Is the journal showing the same quest and step a
 | No step skipped | the mission state query | `completed_step_ids` contains 10341 (and 10340 if the fixture recorded it) with no other ids; `completed_objective_ids` contains 10461 (and 10460 if recorded) |
 | Completion | `ch $t0 $t1 "$P AND body LIKE '%Mission completed%' AND toInt64(attributes_number['mission_id'])=10300"` | one row for 10300 if 10341 was the last step |
 
-Looker for `A3-after-courtyard`: 1. Is the quest journal showing the quest as completed or absent from the active list? 2. Is the avatar standing (not falling)? Result: PASS on the three server checks. A jump that leaves the avatar falling is a driver-or-lab note, and the row is PARTIAL if chain 10005 did not fire because of it.
+Looker for `A3-after-courtyard`: 1. Is the quest journal showing the quest as completed or absent from the active list? 2. Is the avatar standing (not falling)? Result: PASS on the three server checks. A jump that leaves the avatar falling is a driver-or-lab note, and the row is PARTIAL if chain 10005 did not fire because of it. If the avatar falls, expect three ERROR `movement.correction_suppressed` rows (correction budget exhausted, no safe position) after the bounds layer rejects the fall (first drive: 11:52:27/38/55Z) plus warn-only `movement.speed_warning` rows: classify them as a lab/GM-target gap (no client floor at the jump target), not a finding against 10300, and say so. The brief's jump target is now `Castle 505.0 36.2 668.0` (inferred, unverified for client floor).
 
 ---
 

@@ -55,7 +55,7 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 
 **BUG - timeline bookmark.** `BUG <text>` is the CHATX line `.bug SPU SP-DL1 <text>`. Not optional: the verifier reads them on the server to find your row timing.
 
-**STATE - the carried-state read (3 calls).** (a) `client_batch` with `{"op":"player_state","fields":["world_id","position"]}` and the UTC step; (b) `client_inventory {"lease_id":L,"containers":["Main","Mission"],"fields":["containers"]}`; (c) `client_window_read {"lease_id":L,"kind":"mission"}`. Record the world, position, every item id and count in both containers, and the journal text and step line for every mission the packet names. A step may say STATE-lite: only (b) and (c).
+**STATE - the carried-state read (3 calls).** (a) `client_batch` with `{"op":"player_state","fields":["world_id","position"]}` and the UTC step; (b) `client_inventory {"lease_id":L,"containers":["Main","Mission"],"fields":["containers"]}`; (c) `client_ui_state {"lease_id":L,"chat_lines":10}`. Record the world, position, every item id and count in both containers, and the journal text and step line for every mission the packet names. A step may say STATE-lite: only (b) and (c).
 
 **RELOG (2 calls).** `lab_logout {"lease_id":L,"instance":"default"}` then L2 again. Record `world_id` and `pos` from the L2 result.
 
@@ -93,7 +93,7 @@ If the fixture was refused or the character did not land in world 12, row LEG-1 
 
 **1.6 Arrival look (1 call: lab_screenshot).** SHOT-HUMAN, label `L1-arrival-castle`. Write one line: are you standing on a floor or falling, and does the character model look normal (no stretched or missing limbs)? Appearance is a human check (unified-uat T21); the verifier grades it NEEDS_HUMAN. Nobody is asked anything.
 
-**1.7 STATE-after (2 calls: client_inventory, client_window_read).** `client_inventory` (Main and Mission) and `client_window_read {"kind":"mission"}`. Expected: item 3730 x1 in the Mission container; 1360 still active at 'Find a way to get Cpl. Frost's Letter to his family.'; 688 gone from the active list (completed). Record verbatim.
+**1.7 STATE-after (2 calls: client_inventory, client_ui_state).** `client_inventory` (Main and Mission) and `client_ui_state {"chat_lines":10}`. Expected: item 3730 x1 in the Mission container; 1360 still active at 'Find a way to get Cpl. Frost's Letter to his family.'; 688 gone from the active list (completed). Record verbatim.
 
 **1.8 Relog (2 calls: lab_logout, lab_ensure_in_world).** `lab_logout {"lease_id":L,"instance":"default"}` then L2 again. Expected: in world as Fxdlone in world 8. Record `world_id` and `pos` from the L2 result. If L2 fails, gotcha 9.
 

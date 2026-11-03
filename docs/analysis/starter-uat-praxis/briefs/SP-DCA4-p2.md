@@ -56,7 +56,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **BUG - timeline bookmark.** `BUG <text>` is the CHATX line `.bug SPU SP-DCA4-p2 <text>`. The coordinator reads these on the server to find your row timing. Not optional. Cost: 0 inside a CHATX, otherwise 1.
 
-**JOURNAL - read the journal.** `client_window_read {"lease_id":L,"kind":"mission"}` and record the mission names and step text it returns verbatim. If it returns nothing, open the journal with a real key (`L`), run it again, and record the error text if it still returns nothing. Never invent a Lua journal call. Cost: 1 (client_window_read); the key-and-reread fallback is a failure-path call.
+**JOURNAL - read the journal.** `client_ui_state {"lease_id":L,"chat_lines":10}` and record the mission names and step text it returns verbatim. If it returns nothing, open the journal with a real key (`L`), run it again, and record the error text if it still returns nothing. Never invent a Lua journal call. Cost: 1 (client_ui_state); the key-and-reread fallback is a failure-path call.
 
 **FIND - entity ids.** `client_entity_find {"lease_id":L,"include_player":true,"max_distance_m":10,"limit":10}` lists the nearest entities with `id`, `name` and `position` (arguments: `docs/guides/live-research-lab.md` line 885). Record the target by its name and the player by the row whose name is the CHARACTER (PLAYER_ID). If no row carries the CHARACTER name, record `player id not returned` and run once `client_entity_find {"lease_id":L,"name":"<FIXTURE-NAME>","exact":true,"include_player":true}` (failure-path call). Cost: 1 (client_entity_find).
 
@@ -83,7 +83,7 @@ Facts this brief relies on (traced from the seed in this worktree):
 
 **S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, L2, WAIT. Record world_id and position.
 
-**S2 resume probe (1 call: client_window_read).** `client_window_read {"lease_id":L,"kind":"mission"}` + UTC. Record the step text (expect "Bypass the security protocols on the Symbiote Storage tank."). If the step text is "Implant a symbiote in your pouch.", victory is already done: skip ROW S2b, go to 3.1.
+**S2 resume probe (1 call: client_ui_state).** `client_ui_state {"lease_id":L,"chat_lines":10}` + UTC. Record the step text (expect "Bypass the security protocols on the Symbiote Storage tank."). If the step text is "Implant a symbiote in your pouch.", victory is already done: skip ROW S2b, go to 3.1.
 
 ### ROW S2b - victory returns to the chain
 

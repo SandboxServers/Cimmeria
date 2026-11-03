@@ -55,7 +55,7 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 
 **BUG - timeline bookmark.** `BUG <text>` is the CHATX line `.bug SPU SP-DL3-p2 <text>`. Not optional: the verifier reads them on the server to find your row timing.
 
-**STATE - the carried-state read (3 calls).** (a) `client_batch` with `{"op":"player_state","fields":["world_id","position"]}` and the UTC step; (b) `client_inventory {"lease_id":L,"containers":["Main","Mission"],"fields":["containers"]}`; (c) `client_window_read {"lease_id":L,"kind":"mission"}`. Record the world, position, every item id and count in both containers, and the journal text and step line for every mission the packet names. A step may say STATE-lite: only (b) and (c).
+**STATE - the carried-state read (3 calls).** (a) `client_batch` with `{"op":"player_state","fields":["world_id","position"]}` and the UTC step; (b) `client_inventory {"lease_id":L,"containers":["Main","Mission"],"fields":["containers"]}`; (c) `client_ui_state {"lease_id":L,"chat_lines":10}`. Record the world, position, every item id and count in both containers, and the journal text and step line for every mission the packet names. A step may say STATE-lite: only (b) and (c).
 
 **RELOG (2 calls).** `lab_logout {"lease_id":L,"instance":"default"}` then L2 again. Record `world_id` and `pos` from the L2 result.
 
