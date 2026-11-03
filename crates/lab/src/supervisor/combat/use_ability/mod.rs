@@ -212,6 +212,10 @@ impl Supervisor {
         Fut: std::future::Future<Output = Result<Value, String>>,
     {
         let mut run = FlowRun::new(self, "client_use_ability");
+        // Bad ground arguments fail before the press opens a reticle.
+        if let Some(g) = &req.ground {
+            g.validate().map_err(|e| run.fail("ground_args", e))?;
+        }
         // Baseline pump: installs the combat/chat rings and fixes the seq
         // the outcome is read from.
         let pump = self

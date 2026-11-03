@@ -156,3 +156,23 @@ async fn a_failed_ground_click_is_a_named_flow_failure() {
     assert_eq!(e.step, "ground_confirm");
     assert!(e.message.contains("off screen"), "{}", e.message);
 }
+
+#[test]
+fn ground_args_are_validated_before_any_press() {
+    assert!(GroundArg::default().validate().is_ok());
+    let far = GroundArg {
+        distance_m: Some(99.0),
+        ..Default::default()
+    };
+    assert!(far.validate().unwrap_err().contains("distance_m"));
+    let half = GroundArg {
+        x: Some(1.0),
+        ..Default::default()
+    };
+    assert!(half.validate().unwrap_err().contains("together"));
+    let nan = GroundArg {
+        bearing_deg: Some(f64::NAN),
+        ..Default::default()
+    };
+    assert!(nan.validate().unwrap_err().contains("bearing_deg"));
+}

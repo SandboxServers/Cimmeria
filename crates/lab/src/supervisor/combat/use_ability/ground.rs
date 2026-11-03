@@ -70,6 +70,24 @@ impl GroundArg {
             ),
         }
     }
+
+    /// Reject bad arguments before the flow presses anything, so a typo does
+    /// not leave a ground reticle open on the client.
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(p) = self.absolute()? {
+            if !(p.x.is_finite() && p.y.is_finite() && p.z.is_finite()) {
+                return Err("ground x, y and z must be numbers".into());
+            }
+        }
+        let d = self.distance_m.unwrap_or(DEFAULT_DISTANCE_M);
+        if !d.is_finite() || !(1.0..=30.0).contains(&d) {
+            return Err(format!("ground distance_m must be 1 to 30, not {d}"));
+        }
+        if !self.bearing_deg.unwrap_or(0.0).is_finite() {
+            return Err("ground bearing_deg must be a number".into());
+        }
+        Ok(())
+    }
 }
 
 /// One offset from the avatar and the client-space point it resolves to.

@@ -106,8 +106,10 @@ impl Supervisor {
         // `in_world` and try to log out through a dead bridge.
         let login_state = if running
             && hb_state == "unreachable"
-            && matches!(login, LoginState::InWorld | LoginState::CharSelect)
-        {
+            && matches!(
+                login,
+                LoginState::InWorld | LoginState::CharSelect | LoginState::LoginScreen
+            ) {
             "unresponsive"
         } else {
             login.as_str()
@@ -241,6 +243,11 @@ mod tests {
         let s = sup.status_with_process(50_000, alive).await.unwrap();
         assert_eq!(s["heartbeat"]["state"], "unreachable");
         assert_eq!(s["login_state"], "unresponsive");
+        // A dead bridge at the login screen is unresponsive too.
+        sup.set_login_state(LoginState::LoginScreen).await;
+        let s = sup.status_with_process(50_000, alive).await.unwrap();
+        assert_eq!(s["login_state"], "unresponsive");
+        sup.set_login_state(LoginState::InWorld).await;
         // A dead process is reported by `running`, not rewritten here.
         let s = sup
             .status_with_process(50_000, |_| ProcessObservation::Exited)
