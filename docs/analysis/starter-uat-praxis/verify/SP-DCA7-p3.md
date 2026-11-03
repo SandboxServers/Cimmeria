@@ -16,7 +16,7 @@ You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator u
 ## 2. Setup you do first (4 calls)
 
 1. Clock: `server_log_tail` with the last 5 lines and note the timestamp format and the timezone of the local server. Convert every time below to UTC.
-2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Uat FxDcah%'`. Call the results `$pid` (one per character the packet names).
+2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Fxdca%'`. Call the results `$pid` (one per character the packet names).
 3. Row timeline from the driver's `.bug` bookmarks: `server_log_tail` with the filter `SPU SP-DCA7-p3` (or `playtest.bookmark`); print ONE row in full first to learn which field holds the note. Each `SPU SP-DCA7-p3 <row> start` gives that row's window start; the next `start` (or the packet end) gives its end. Pad every window by 5 s before and 20 s after. If the bookmarks are missing, say so and use the driver's UTC times.
 4. Sanity: `server_sessions` must show the character online during the window. If the local server log has nothing at all for the window, grade every server clause UNVERIFIED and stop.
 
@@ -52,13 +52,13 @@ Do not edit the repo, the database or the server; do not run the lab; do not dep
 
 # Verify SP-DCA7-p3: nav_path legs A, B and C (RQ-R1-Marsh, RQ-R1-Mohkatan)
 
-Character `Uat FxDcahcd`, a Jaffa fixture at the Castle gate arrival (761.68,63.47,551.72), 708 completed, 10320 not_active. Rows RQ-R1-Marsh and RQ-R1-Mohkatan. Return chains: db/resources/Content/Seed/castle_side_stories_chains.sql (10130 at line 166 through 10145). A value of `@@LEGA@@`, `@@LEGB@@` or `@@LEGC@@` in the report means the coordinator never pasted that leg.
+Character `Fxdcafour`, a Jaffa fixture at the Castle gate arrival (761.68,63.47,551.72), 708 completed, 10320 not_active. Rows RQ-R1-Marsh and RQ-R1-Mohkatan. Return chains: db/resources/Content/Seed/castle_side_stories_chains.sql (10130 at line 166 through 10145). The coordinator fills each leg with a space-65537 path (leg A in hops of at most 20 m); the entity names are `Moh'Katan` and `DHD_Frost`. A value of `@@LEGA@@`, `@@LEGB@@` or `@@LEGC@@` in the report means the coordinator never pasted that leg.
 
 ## ROW RQ-R1-Marsh - nav_path leg A and the walk
 
 | Check | Query | Expected |
 |---|---|---|
-| A route | `server_nav_path {space_id: 8}` from (761.68,63.47,551.72) to (808.3,55.2,518.7); the coordinator's pasted `LEGA` | a route with waypoints; repeat the call yourself and compare |
+| A route | `server_nav_path {space_id: 65537}` from (761.68,63.47,551.72) to (808.3,55.2,518.7); the coordinator's pasted `LEGA` | a route with waypoints; repeat the call yourself and compare |
 | The walk followed it | the driver's POS after each hop vs the waypoints | each hop ended within 3 m of its waypoint or made progress toward the next |
 | The end | the player's position and distance to Marsh (810.73,55.20,515.01) | 3 to 6 m |
 | Not a fallback | the driver's `fallback:` flag | absent |
@@ -69,7 +69,7 @@ Grade: PASS if a route exists, the hops followed it and the end is in range. PAR
 
 | Check | Query | Expected |
 |---|---|---|
-| Leg B route | `server_nav_path {space_id: 8}` from the Marsh stand point (808.3,55.2,518.7), where the Marsh row ends, to Moh'katan (807.48,55.21,515.40) | a route; the NPCs are about 3.3 m apart |
+| Leg B route | `server_nav_path {space_id: 65537}` from the Marsh stand point (808.3,55.2,518.7), where the Marsh row ends, to Moh'katan (807.48,55.21,515.40) | a route; the NPCs are about 3.3 m apart |
 | Leg C route | `server_nav_path` from Moh'katan to the DHD (806.27,55.10,517.24) | a route (about 2.2 m) |
 | The walks | the driver's POS lines | each leg ended within 6 m of its target |
 | Not a fallback | the driver's `fallback:` flag | absent |

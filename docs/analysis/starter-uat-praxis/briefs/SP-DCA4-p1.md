@@ -4,13 +4,14 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 - PACKET: SP-DCA4-p1
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
-- INSTANCE: p2   (the lab client you drive; account `the lab account of that instance`)
+- INSTANCE: <INSTANCE>   (any single lab client; the coordinator fills in the one it uses, p2 in the first run)
+- RUN RULES (from the first runs): (a) pass `"instance":"<INSTANCE>"` on every `client_ui_state` call, because without it the call reads the wrong client's bridge; (b) a staged fixture expires after 600 s: the coordinator stages it just before this driver starts, and a driver that finds the character gone reports BLOCKED (fixture TTL expired); (c) fixtures give no cash: any step that opens a vendor window needs `/gmgivecash` first; (d) the navmesh space is 65537, never 8; (e) fixture characters are the existing Fx characters `Fxdcatwo`, `Fxdcathree` and `Fxdcafour` (`Fxdcafour` is the only Jaffa); (f) the `lab-driver` agent has no `client_target` and no `client_combat_log` tool: where a step names one, skip it, record `tool missing` and carry on; (g) every `client_chat_log` and `client_events_read` after the first read passes `since_seq`; (h) a `.bug ... end` bookmark is sent after the wait that finishes the row, never before it.
 - CHARACTER: <FIXTURE-NAME>   (the coordinator replaces this with the exact character name `server_stage_fixture` returned, before pasting)
 - SERVER: the local lab server. Lab use is pre-authorized. Never ask the user anything.
 
 ## 0. Front-loaded gotchas (read all of them)
 
-1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "p2"` (a screenshot without it shows the wrong client).
+1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "<INSTANCE>"` (a screenshot without it shows the wrong client).
 2. **Never use `image: true`** on a screenshot. The tool saves a PNG and returns `image saved: <path>`. Report the path. Someone else looks at the picture.
 3. **Chat commands are GM commands.** Your account is a GM. Lines starting with `.` are server commands; lines starting with `/` are game commands. Close any open dialog first (see DIALOG below), because a chat line under an open dialog orphans it.
 4. **Teleport only with `.gotolocation <World> x y z`.** Never `.gotoxyz` (it moves your selected target, not you). Coordinates are server metres (x, y up, z). Never teleport onto a hostile NPC and never use `client_move_to` in a hub. The Castle interior and exterior navmesh are not connected: move between them only with a `.gotolocation` (tier G).
@@ -34,7 +35,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **Counting (read once).** A call is one MCP tool invocation, whatever the tool: a `client_batch` of 12 steps is 1 call, two tools in one step are 2 calls, and a tool-schema or tool-search lookup is a call too. The label on each step lists one tool per call, in order. ESTIMATE is the sum of the labels on the planned success path (L1 to the lease release). Failure-path calls are not counted and use the headroom to the hard stop of 28: gotcha 10 SHOT and retry, gotcha 17 retries, a lease refusal, PROMPT after a click that opened nothing, the JOURNAL key-and-reread fallback. Macro costs: L1 = 1; L2 = 1; WAIT = 1; CHATX = 1 whatever the number of lines; CHAT1 = 3; READ = 1; SHOT = 1; JOURNAL = 1; PROMPT = 1 plus 1 per button clicked; DIALOG = 0 as the first `lua` op of a `client_batch` the step already makes, otherwise 1; BUG = 0 inside a CHATX, otherwise 1. Never read a tool schema: every tool argument you need is written out below.
 
-**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA4-p1","purpose":"starter UAT SP-DCA4-p1","instance":"p2","ttl_s":900}` -> keep `lease_id` (L). If refused: `lab_lease_status {"instance":"p2"}`. If the holder owner is exactly `sp-SP-DCA4-p1` AND ATTEMPT is 2 or 3, call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA4-p1 attempt <ATTEMPT>"`. Any other holder: report it and stop. Cost: 1 (lab_lease_acquire).
+**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA4-p1","purpose":"starter UAT SP-DCA4-p1","instance":"<INSTANCE>","ttl_s":900}` -> keep `lease_id` (L). If refused: `lab_lease_status {"instance":"<INSTANCE>"}`. If the holder owner is exactly `sp-SP-DCA4-p1` AND ATTEMPT is 2 or 3, call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA4-p1 attempt <ATTEMPT>"`. Any other holder: report it and stop. Cost: 1 (lab_lease_acquire).
 
 **L2 - in the world.** `lab_ensure_in_world {"lease_id":L,"character":"<FIXTURE-NAME>"}` (the character exists already; do not pass `create`; `<FIXTURE-NAME>` is the CHARACTER field above, copied exactly). Expected `in_world:true`, `world_id` 8 (Castle). If it fails, retry once; then BLOCKED with the error text. Cost: 1 (lab_ensure_in_world).
 
@@ -48,7 +49,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **READ - chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word>","max":20}`. Record every line verbatim with `channel`, `colour`, `tabs`, `seq`. Keep LASTSEQ = highest `seq` returned so far; from the second read add `"since_seq": LASTSEQ`. Cost: 1 (client_chat_log).
 
-**SHOT.** `lab_screenshot {"lease_id":L,"instance":"p2"}`; report the path next to the LABEL the step gives. Cost: 1 (lab_screenshot).
+**SHOT.** `lab_screenshot {"lease_id":L,"instance":"<INSTANCE>"}`; report the path next to the LABEL the step gives. Cost: 1 (lab_screenshot).
 
 **DIALOG - close an orphan dialog.** `client_batch` Lua `if DialogWin ~= nil and DialogWin:isVisible() then DialogMod.onDialogDoneClicked(DialogWin, DialogWin) return 'closed' end return 'none'`. A tutorial window on top: `client_window_click {"lease_id":L,"target":"TutorialWin__auto_closebutton__"}`. Cost: 0 as the first `lua` op of a `client_batch` the step already makes, otherwise 1.
 
@@ -56,11 +57,11 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **BUG - timeline bookmark.** `BUG <text>` is the CHATX line `.bug SPU SP-DCA4-p1 <text>`. The coordinator reads these on the server to find your row timing. Not optional. Cost: 0 inside a CHATX, otherwise 1.
 
-**JOURNAL - read the journal.** `client_ui_state {"lease_id":L,"chat_lines":10}` and record the mission names and step text it returns verbatim. If it returns nothing, open the journal with a real key (`L`), run it again, and record the error text if it still returns nothing. Never invent a Lua journal call. Cost: 1 (client_ui_state); the key-and-reread fallback is a failure-path call.
+**JOURNAL - read the journal.** `client_ui_state {"lease_id":L,"instance":"<INSTANCE>","chat_lines":10}` and record the mission names and step text it returns verbatim. If it returns nothing, open the journal with a real key (`L`), run it again, and record the error text if it still returns nothing. Never invent a Lua journal call. Cost: 1 (client_ui_state); the key-and-reread fallback is a failure-path call.
 
 **FIND - entity ids.** `client_entity_find {"lease_id":L,"include_player":true,"max_distance_m":10,"limit":10}` lists the nearest entities with `id`, `name` and `position` (arguments: `docs/guides/live-research-lab.md` line 885). Record the target by its name and the player by the row whose name is the CHARACTER (PLAYER_ID). If no row carries the CHARACTER name, record `player id not returned` and run once `client_entity_find {"lease_id":L,"name":"<FIXTURE-NAME>","exact":true,"include_player":true}` (failure-path call). Cost: 1 (client_entity_find).
 
-**CLOSEMG - close the minigame window without solving it (the defeat path).** (a) `client_ui_clickables {"lease_id":L,"root":"MinigameWin"}` (`MinigameWin` is the window global: `crates/lab/src/supervisor/minigame_play.rs` line 416; arguments: `crates/lab/src/server/ui/mod.rs` lines 146-160). Pick the visible, enabled entry whose full name contains `close` (case-insensitive). If there is none, record `defeat path: no close control found` and skip (b) to (d). (b) `client_ui_sequence {"lease_id":L,"actions":[{"do":"click","window":"<the full name>"},{"do":"wait","ms":1500}]}` (arguments: `crates/lab/src/server/composite.rs` lines 68-79). (c) `client_batch` with DIALOG as its only op. (d) `client_world_click` the same entity again with `"expect":"window"`; a re-opened minigame window is the retry proof. Cost: 4 (client_ui_clickables, client_ui_sequence, client_batch, client_world_click).
+**CLOSEMG - close the minigame window without solving it (the defeat path).** (a) `client_ui_clickables {"lease_id":L,"root":"MinigameWin"}` (`MinigameWin` is the window global: `crates/lab/src/supervisor/minigame_play.rs` line 416; arguments: `crates/lab/src/server/ui/mod.rs` lines 146-160). Pick the visible, enabled entry whose full name contains `close` (case-insensitive). If there is none, record `defeat path: no close control found` and skip (b) to (d). (b) `client_ui_sequence {"lease_id":L,"actions":[{"do":"click","window":"<the full name>"},{"do":"wait","ms":1500}]}` (the close click can report `posted_only` even when the window did close; record the field verbatim and judge the close by step (d), not by that field) (arguments: `crates/lab/src/server/composite.rs` lines 68-79). (c) `client_batch` with DIALOG as its only op. (d) `client_world_click` the same entity again with `"expect":"window"`; a re-opened minigame window is the retry proof. Cost: 4 (client_ui_clickables, client_ui_sequence, client_batch, client_world_click).
 
 ---
 
@@ -83,7 +84,7 @@ Facts this brief relies on (traced from the seed in this worktree):
 
 **S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, L2, WAIT. Record world_id and position.
 
-**S2 resume probe (1 call: client_ui_state).** `client_ui_state {"lease_id":L,"chat_lines":10}` + UTC. If 1521 is listed, record its step text and jump to the row for that step (4456 text: step 1.2 onward). Never accept twice.
+**S2 resume probe (1 call: client_ui_state).** `client_ui_state {"lease_id":L,"instance":"<INSTANCE>","chat_lines":10}` + UTC. If 1521 is listed, record its step text and jump to the row for that step (4456 text: step 1.2 onward). Never accept twice.
 
 ### ROW S1 - tank visible and clickable; highlight at 4456; static hack cursor shows to all
 
@@ -94,7 +95,7 @@ Facts this brief relies on (traced from the seed in this worktree):
 
 ### ROW S2a - Livewire window opens; defeat allows a re-click
 
-**2.1 (2 calls: lab_screenshot, client_ui_state).** SHOT label `S2-livewire-open`; `client_ui_state` top window name.
+**2.1 (2 calls: lab_screenshot, client_ui_state).** SHOT label `S2-livewire-open`; `client_ui_state {"lease_id":L,"instance":"<INSTANCE>"}` top window name.
 **2.2 (4 calls: client_ui_clickables, client_ui_sequence, client_batch, client_world_click).** CLOSEMG on the tank id. A re-opened window is the retry proof. Leave the re-opened window as it is; if the defeat path is `no close control found`, record `defeat path: no close control found`.
 
 **S9 (1 call: lab_lease_release).** Release the lease and write the report. Rows: S1, S2a; screenshot labels `S1-tank-at-4456`, `S2-livewire-open`.

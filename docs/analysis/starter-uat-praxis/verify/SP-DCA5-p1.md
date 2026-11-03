@@ -16,7 +16,7 @@ You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator u
 ## 2. Setup you do first (4 calls)
 
 1. Clock: `server_log_tail` with the last 5 lines and note the timestamp format and the timezone of the local server. Convert every time below to UTC.
-2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Uat FxDcaf%'`. Call the results `$pid` (one per character the packet names).
+2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Fxdca%'`. Call the results `$pid` (one per character the packet names).
 3. Row timeline from the driver's `.bug` bookmarks: `server_log_tail` with the filter `SPU SP-DCA5-p1` (or `playtest.bookmark`); print ONE row in full first to learn which field holds the note. Each `SPU SP-DCA5-p1 <row> start` gives that row's window start; the next `start` (or the packet end) gives its end. Pad every window by 5 s before and 20 s after. If the bookmarks are missing, say so and use the driver's UTC times.
 4. Sanity: `server_sessions` must show the character online during the window. If the local server log has nothing at all for the window, grade every server clause UNVERIFIED and stop.
 
@@ -52,15 +52,15 @@ Do not edit the repo, the database or the server; do not run the lab; do not dep
 
 # Verify SP-DCA5-p1: symbiote tank gates (S6, S7)
 
-Characters: CHARACTER2 `Uat FxDcafjb` (Jaffa) and CHARACTER `Uat FxDcafsb` (Soldier). Both start from fixtures at (358.0,70.2,912.0), 704 completed, 1521 not_active. Rows S6 and S7. Mission rows: first find the mission table (setup), then read mission 1521 (`mission_id`/`step` columns) for each character. Chain source: db/resources/Content/Seed/castle_symbiote_chains.sql (1369-1386). Region box: x 344.9 to 371.0, z 880.2 to 904.6 (Events/Seed/point_set_points.sql:137-143).
+Characters: CHARACTER2 `Fxdcafour` (Jaffa) and CHARACTER `Fxdcatwo` (Soldier). Both start from fixtures at (358.0,70.2,912.0), 704 completed, 1521 not_active. Rows S6 and S7. Mission rows: first find the mission table (setup), then read mission 1521 (`mission_id`/`step` columns) for each character. Chain source: db/resources/Content/Seed/castle_symbiote_chains.sql (1369-1386). Region box: x 344.9 to 371.0, z 880.2 to 904.6 (Events/Seed/point_set_points.sql:137-143).
 
 ## ROW S6 - a non-Jaffa never receives the offer
 
 | Check | Query | Expected |
 |---|---|---|
-| The character is a non-Jaffa | `server_entity_get` for `Uat FxDcafsb`, the archetype property | a value other than 8, at most 6 (chain 1369 tests `archetype eq 8`) |
+| The character is a non-Jaffa | `server_entity_get` for `Fxdcatwo`, the archetype property | a value other than 8, at most 6 (chain 1369 tests `archetype eq 8`) |
 | It entered the region | `server_entity_query` / `server_log_tail` for the player's position in the S6 window; chain trace rows for `enter_region` and `Castle.Infirmary` | a position inside the box in the window, or an `enter_region Castle.Infirmary` event for this player |
-| The offer did not fire | `server_log_tail` filter `1369` and `accept_mission` in the window; the mission table for `Uat FxDcafsb` and mission 1521 | no row for 1521 as active, no `accept_mission 1521` for this player, mission 1521 still not_active |
+| The offer did not fire | `server_log_tail` filter `1369` and `accept_mission` in the window; the mission table for `Fxdcatwo` and mission 1521 | no row for 1521 as active, no `accept_mission 1521` for this player, mission 1521 still not_active |
 | No refusal noise | WARN/ERROR in the window for this player | none |
 
 Grade: PASS if the character entered the box and 1521 stayed not_active with no accept event. PARTIAL if it never entered the box (the driver stayed outside or the position fell back and no region event is visible): the absence of the offer then proves nothing. FAIL if 1521 is active for this character. Tier: G or N2 hop movement counts as setup. Looker `S6-infirmary`: 1. Does the picture show a game world with an avatar inside a building? 2. Is any dialog window open?
@@ -69,8 +69,8 @@ Grade: PASS if the character entered the box and 1521 stayed not_active with no 
 
 | Check | Query | Expected |
 |---|---|---|
-| The Jaffa got the offer | mission table for `Uat FxDcafjb`, 1521; `server_log_tail` filter `accept_mission` | 1521 active at step 4456 within the S7 window (chains 1369 then 1370) |
-| The route exists | `server_nav_path {space_id: 8}` from the fixture position (358.0,70.2,912.0) to (356.0,70.18,900.5) | a route (the coordinator's pre-step answer must match) |
+| The Jaffa got the offer | mission table for `Fxdcafour`, 1521; `server_log_tail` filter `accept_mission` | 1521 active at step 4456 within the S7 window (chains 1369 then 1370) |
+| The route exists | `server_nav_path {space_id: 65537}` from the fixture position (358.0,70.2,912.0) to (356.0,70.18,900.5) | a route (the coordinator's pre-step answer must match) |
 | The client walked it | the `client_move_to` reply (`arrived`, `end`, `legs`) and the driver's batch `player_state`, matched with the server positions (`server_entity_query`) | each leg moved the avatar at most 20 m toward the next waypoint; the last position is within 5.5 m of the tank (356.0,70.18,896.0) |
 | It was not a fallback | the driver's `fallback:` flag | absent |
 | The click did something | `server_log_tail` filter `Castle_SymbioteTank` or `start_minigame` and `Livewire` in the window; `server_minigame_state` | a tank interact or a Livewire session started for this player |

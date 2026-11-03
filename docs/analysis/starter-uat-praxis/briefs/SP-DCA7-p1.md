@@ -4,16 +4,17 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 - PACKET: SP-DCA7-p1
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
-- INSTANCE: p2   (the lab client you drive)
-- CHARACTER: Uat FxDcahab   (the Soldier)
-- CHARACTER2: Uat FxDcahbb   (the Jaffa)
+- INSTANCE: <INSTANCE>   (any single lab client; the coordinator fills in the one it uses, p2 in the first run)
+- RUN RULES (from the first runs): (a) pass `"instance":"<INSTANCE>"` on every `client_ui_state` call, because without it the call reads the wrong client's bridge; (b) a staged fixture expires after 600 s: the coordinator stages it just before this driver starts, and a driver that finds the character gone reports BLOCKED (fixture TTL expired); (c) fixtures give no cash: any step that opens a vendor window needs `/gmgivecash` first; (d) the navmesh space is 65537, never 8; (e) fixture characters are the existing Fx characters `Fxdcatwo`, `Fxdcathree` and `Fxdcafour` (`Fxdcafour` is the only Jaffa); (f) the `lab-driver` agent has no `client_target` and no `client_combat_log` tool: where a step names one, skip it, record `tool missing` and carry on; (g) every `client_chat_log` and `client_events_read` after the first read passes `since_seq`; (h) a `.bug ... end` bookmark is sent after the wait that finishes the row, never before it.
+- CHARACTER: Fxdcatwo   (the Soldier)
+- CHARACTER2: Fxdcafour   (the Jaffa)
 - SERVER: the local lab server (D-SP2). Lab use on it is pre-authorized (D-SP5): never ask anyone for permission to drive. The coordinator staged the fixture before you started (see "COORD pre-step" in the part). If a fixture fact below is not true, record it and carry on; do not try to repair it yourself.
 - LEASE OWNER: sp-SP-DCA7-p1
 - START: fixture
 
 ## 0. Front-loaded gotchas (read all of them)
 
-1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "p2"` (a screenshot without it shows the wrong client).
+1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "<INSTANCE>"` (a screenshot without it shows the wrong client).
 2. **Never use `image: true`** on a screenshot. The tool saves a PNG and returns `image saved: <path>`. Report the path. Someone else looks at the picture.
 3. **Chat commands are GM commands.** Your account is a GM. Lines starting with `.` are server commands; lines starting with `/` are game commands. Always close any open dialog first (DIALOG below), because a chat line under an open dialog orphans it.
 4. **Teleport only with `.gotolocation <World> x y z`.** Never `.gotoxyz` (it moves your selected target, not you). Coordinates are server metres (x, y up, z). Never teleport onto or next to a hostile NPC.
@@ -38,7 +39,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 Each macro shows its call cost. A call is one MCP tool invocation. Costs: L1 = 1; L2 = 1; WAIT = 1; CHATX = 1 whatever the number of lines; READ = 1; SHOT = 1; PROMPT = 1 plus 1 per button clicked, and only when gotcha 10 allows it (never counted in ESTIMATE); DIALOG = 0 as the first `lua` op of a batch the step already makes (otherwise 1); BUG = 0 inside a CHATX; POS = 0 inside a batch (1 alone); a `client_move_to` reply already carries `arrived` and `end`, so it needs no POS.
 
-**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA7-p1","purpose":"starter UAT praxis SP-DCA7-p1","instance":"p2","ttl_s":900}` -> keep `lease_id` (call it L). If it is refused: call `lab_lease_status {"instance":"p2"}`. If the holder's owner is exactly `sp-SP-DCA7-p1` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA7-p1 attempt <ATTEMPT>"`. Any other holder: report it and stop.
+**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA7-p1","purpose":"starter UAT praxis SP-DCA7-p1","instance":"<INSTANCE>","ttl_s":900}` -> keep `lease_id` (call it L). If it is refused: call `lab_lease_status {"instance":"<INSTANCE>"}`. If the holder's owner is exactly `sp-SP-DCA7-p1` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA7-p1 attempt <ATTEMPT>"`. Any other holder: report it and stop.
 
 **L2 - in the world.** `lab_ensure_in_world {"lease_id":L,"character":"<NAME>"}`. Replace `<NAME>` with the character the step names: CHARACTER, CHARACTER2 or CHARACTER3 from the BRIEF FIELDS. The character already exists (the coordinator staged it as a fixture while it was offline), so L2 starts the client if needed, logs in, plays it from character select (this is the #756 workaround: the client is past login before the Castle loads) and closes the intro dialog. Expected: `in_world:true`, `character` equal to the name you passed, `world_id` 8 (Castle) unless the part says otherwise. If it fails, retry once; if it fails again report BLOCKED with the error text.
 
@@ -52,7 +53,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. Wait at least 1500 
 
 **READ - read chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word from the expected reply>","max":20}` (add `"channel":"9"` for GM command replies). Record every returned line verbatim with its `channel`, `colour` and `tabs` fields and `seq`. Keep LASTSEQ = the highest `seq` any read has returned; from your second read on add `"since_seq": <LASTSEQ>`. If a read returns `more: true`, read again once with the new LASTSEQ.
 
-**SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"p2"}`. Report the path next to the LABEL the step gives it.
+**SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"<INSTANCE>"}`. Report the path next to the LABEL the step gives it.
 
 **DIALOG - close an orphan dialog.** A `client_batch` Lua op, first in the batch: `if DialogWin ~= nil and DialogWin:isVisible() then DialogMod.onDialogDoneClicked(DialogWin, DialogWin) return 'closed' end return 'none'`. A tutorial window on top: `client_window_click {"lease_id":L,"target":"TutorialWin__auto_closebutton__"}` (1 call, only when one is open).
 
@@ -79,10 +80,10 @@ Stage two offline characters with `server_stage_fixture`:
 
 | Role | Character (suggested) | Fixture |
 |---|---|---|
-| CHARACTER, a non-Jaffa (HB1) | `Uat FxDcahab` | `{"character":"Uat FxDcahab","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1520,"state":"completed"},{"id":1521,"state":"not_active"}]}` |
-| CHARACTER2, a Jaffa (HB2) | `Uat FxDcahbb` | `{"character":"Uat FxDcahbb","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1520,"state":"not_active"},{"id":1521,"state":"completed"}]}` |
+| CHARACTER, a non-Jaffa (HB1) | `Fxdcatwo` | `{"character":"Fxdcatwo","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1520,"state":"completed"},{"id":1521,"state":"not_active"}]}` |
+| CHARACTER2, a Jaffa (HB2) | `Fxdcafour` | `{"character":"Fxdcafour","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1520,"state":"not_active"},{"id":1521,"state":"completed"}]}` |
 
-The coordinator also creates the archetypes: Soldier for CHARACTER, Jaffa for CHARACTER2 (`{"alignment":"sgu","archetype":"Jaffa",...}`), and confirms with `server_entity_get` (a Jaffa reads 8; the Soldier reads at most 6). It sets `INSTANCE` = `p2` and the lease owner `sp-SP-DCA7-p1`.
+The coordinator also creates the archetypes: Soldier for CHARACTER, Jaffa for CHARACTER2 (`{"alignment":"sgu","archetype":"Jaffa",...}`), and confirms with `server_entity_get` (a Jaffa reads 8; the Soldier reads at most 6). It sets `INSTANCE` to the one lab client it uses (any single client; p2 in the first run) and the lease owner `sp-SP-DCA7-p1`, and stages the fixtures just before the driver starts (the stage expires after 600 s).
 
 Source facts the rows rest on (background for the coordinator and the verifier; the driver acts only on the Steps below and never opens these files):
 
@@ -105,7 +106,7 @@ Character: CHARACTER (non-Jaffa, 1520 completed). Expected: one chat line with t
 - **1.4 (1 call: client_chat_log).** READ with `contains` `Ambernol`, no channel filter, cursor `hb1a`. Record each line verbatim with `channel`, `colour`, `tabs`, `seq`. Set LASTSEQ.
 - **1.5 (1 call: lab_screenshot).** SHOT `HB1-entry-1`.
 - **1.6 (1 call: client_move_to).** Leave and re-enter in one move: `client_move_to {"lease_id":L,"waypoints":[{"x":358.0,"y":70.2,"z":912.0}],"point":{"x":358.0,"y":70.2,"z":893.0}}`. Record `arrived` and `end`.
-- **1.7 (1 call: client_batch).** One batch: wait 5000, `player_state` (world_id, position), UTC, BUG `HB1 end`.
+- **1.7 (1 call: client_batch).** One batch, in this order: wait 5000, `player_state` (world_id, position), UTC, and only then, as the last op, BUG `HB1 end` (the end bookmark must come after the wait finishes).
 - **1.8 (1 call: client_chat_log).** READ again with `contains` `Ambernol`, `since_seq` LASTSEQ and a new cursor `hb1b`. Expected: no new line.
 
 Look-and-feel (channel colour, speaker label) is a NEEDS_HUMAN clause: write one plain sentence of what you saw in `HB1-entry-1`, mark it NEEDS_HUMAN, move on.
@@ -118,9 +119,9 @@ Character: CHARACTER2 (Jaffa, 1521 completed, 1520 not_active).
 
 - **2.1 (1 call: client_batch).** One batch: DIALOG first, then BUG `HB2 start`.
 - **2.2 (1 call: client_move_to).** Hop in to (358.0,70.2,893.0) as in step 1.2 (fallback `.gotolocation`, `fallback: true`).
-- **2.3 (1 call: client_batch).** One batch: wait 5000, DIALOG (record whether a dialog was open), `player_state` (world_id, position), UTC, BUG `HB2 end`.
-- **2.4 (1 call: client_chat_log).** READ with `contains` `tank held`, no channel filter, cursor `hb2a`. Record each line verbatim with `channel`, `colour`, `tabs`, `seq`.
-- **2.5 (1 call: client_chat_log).** READ with `contains` `Ambernol`, new cursor `hb2b`. Expected: no line.
+- **2.3 (1 call: client_batch).** One batch, in this order: wait 5000, DIALOG (record whether a dialog was open), `player_state` (world_id, position), UTC, and only then, as the last op, BUG `HB2 end`.
+- **2.4 (1 call: client_chat_log).** READ with `contains` `tank held`, no channel filter, cursor `hb2a` and `"since_seq": LASTSEQ` (HB1's highest seq; a read without it can return HB1's old Ambernol line). Record each line verbatim with `channel`, `colour`, `tabs`, `seq`.
+- **2.5 (1 call: client_chat_log).** READ with `contains` `Ambernol`, new cursor `hb2b` and `"since_seq"` = the highest seq read so far (LASTSEQ, raised to the highest seq step 2.4 returned); without it the read starts at the oldest line in the ring and shows HB1's line. Expected: no line.
 - **2.6 (1 call: lab_screenshot).** SHOT `HB2-entry`. If a window or prompt looks open in the picture, say so in the report.
 
 Expected: no offer dialog, no prompt. The verifier checks mission 1520 stays not_active.

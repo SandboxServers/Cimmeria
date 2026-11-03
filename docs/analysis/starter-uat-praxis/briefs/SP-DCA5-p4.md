@@ -4,8 +4,9 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 - PACKET: SP-DCA5-p4
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
-- INSTANCE: p3   (the lab client you drive)
-- CHARACTER: Uat FxDcaffb   (the same character as SP-DCA5-p3)
+- INSTANCE: <INSTANCE>   (any single lab client; the coordinator fills in the one it uses, p2 in the first run)
+- RUN RULES (from the first runs): (a) pass `"instance":"<INSTANCE>"` on every `client_ui_state` call, because without it the call reads the wrong client's bridge; (b) a staged fixture expires after 600 s: the coordinator stages it just before this driver starts, and a driver that finds the character gone reports BLOCKED (fixture TTL expired); (c) fixtures give no cash: any step that opens a vendor window needs `/gmgivecash` first; (d) the navmesh space is 65537, never 8; (e) fixture characters are the existing Fx characters `Fxdcatwo`, `Fxdcathree` and `Fxdcafour` (`Fxdcafour` is the only Jaffa); (f) the `lab-driver` agent has no `client_target` and no `client_combat_log` tool: where a step names one, skip it, record `tool missing` and carry on; (g) every `client_chat_log` and `client_events_read` after the first read passes `since_seq`; (h) a `.bug ... end` bookmark is sent after the wait that finishes the row, never before it.
+- CHARACTER: Fxdcathree   (the same character as SP-DCA5-p3)
 - CHARACTER2: none   (this part plays one character)
 - SERVER: the local lab server (D-SP2). Lab use on it is pre-authorized (D-SP5): never ask anyone for permission to drive. The coordinator staged the fixture before you started (see "COORD pre-step" in the part). If a fixture fact below is not true, record it and carry on; do not try to repair it yourself.
 - LEASE OWNER: sp-SP-DCA5-p4
@@ -13,7 +14,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 ## 0. Front-loaded gotchas (read all of them)
 
-1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "p3"` (a screenshot without it shows the wrong client).
+1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "<INSTANCE>"` (a screenshot without it shows the wrong client).
 2. **Never use `image: true`** on a screenshot. The tool saves a PNG and returns `image saved: <path>`. Report the path. Someone else looks at the picture.
 3. **Chat commands are GM commands.** Your account is a GM. Lines starting with `.` are server commands; lines starting with `/` are game commands. Always close any open dialog first (DIALOG below), because a chat line under an open dialog orphans it.
 4. **Teleport only with `.gotolocation <World> x y z`.** Never `.gotoxyz` (it moves your selected target, not you). Coordinates are server metres (x, y up, z). Never teleport onto or next to a hostile NPC.
@@ -38,7 +39,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 Each macro shows its call cost. A call is one MCP tool invocation. Costs: L1 = 1; L2 = 1; WAIT = 1; CHATX = 1 whatever the number of lines; READ = 1; SHOT = 1; PROMPT = 1 plus 1 per button clicked, and only when gotcha 10 allows it (never counted in ESTIMATE); DIALOG = 0 as the first `lua` op of a batch the step already makes (otherwise 1); BUG = 0 inside a CHATX; POS = 0 inside a batch (1 alone); a `client_move_to` reply already carries `arrived` and `end`, so it needs no POS.
 
-**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA5-p4","purpose":"starter UAT praxis SP-DCA5-p4","instance":"p3","ttl_s":900}` -> keep `lease_id` (call it L). If it is refused: call `lab_lease_status {"instance":"p3"}`. If the holder's owner is exactly `sp-SP-DCA5-p4` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA5-p4 attempt <ATTEMPT>"`. Any other holder: report it and stop.
+**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA5-p4","purpose":"starter UAT praxis SP-DCA5-p4","instance":"<INSTANCE>","ttl_s":900}` -> keep `lease_id` (call it L). If it is refused: call `lab_lease_status {"instance":"<INSTANCE>"}`. If the holder's owner is exactly `sp-SP-DCA5-p4` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA5-p4 attempt <ATTEMPT>"`. Any other holder: report it and stop.
 
 **L2 - in the world.** `lab_ensure_in_world {"lease_id":L,"character":"<NAME>"}`. Replace `<NAME>` with the character the step names: CHARACTER, CHARACTER2 or CHARACTER3 from the BRIEF FIELDS. The character already exists (the coordinator staged it as a fixture while it was offline), so L2 starts the client if needed, logs in, plays it from character select (this is the #756 workaround: the client is past login before the Castle loads) and closes the intro dialog. Expected: `in_world:true`, `character` equal to the name you passed, `world_id` 8 (Castle) unless the part says otherwise. If it fails, retry once; if it fails again report BLOCKED with the error text.
 
@@ -52,7 +53,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. Wait at least 1500 
 
 **READ - read chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word from the expected reply>","max":20}` (add `"channel":"9"` for GM command replies). Record every returned line verbatim with its `channel`, `colour` and `tabs` fields and `seq`. Keep LASTSEQ = the highest `seq` any read has returned; from your second read on add `"since_seq": <LASTSEQ>`. If a read returns `more: true`, read again once with the new LASTSEQ.
 
-**SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"p3"}`. Report the path next to the LABEL the step gives it.
+**SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"<INSTANCE>"}`. Report the path next to the LABEL the step gives it.
 
 **DIALOG - close an orphan dialog.** A `client_batch` Lua op, first in the batch: `if DialogWin ~= nil and DialogWin:isVisible() then DialogMod.onDialogDoneClicked(DialogWin, DialogWin) return 'closed' end return 'none'`. A tutorial window on top: `client_window_click {"lease_id":L,"target":"TutorialWin__auto_closebutton__"}` (1 call, only when one is open).
 
@@ -70,18 +71,18 @@ Replace `LINE ONE` etc. with the exact lines the step gives. Wait at least 1500 
 
 ## PART SP-DCA5-p4 - the Castle gate crossing and the relog (FZ-U1c)
 
-ROWS: FZ-U1c (clauses U3 and U6 of FZ-U1). Start: carry-over from SP-DCA5-p3 (the same character `Uat FxDcaffb`, in the cabinet area, mission 567 at step 2012). If p3 left the character elsewhere, the first batch teleports anyway.
+ROWS: FZ-U1c (clauses U3 and U6 of FZ-U1). Start: carry-over from SP-DCA5-p3 (the same character `Fxdcathree`, in the cabinet area, mission 567 at step 2012). If p3 left the character elsewhere, the first batch teleports anyway.
 ESTIMATE: 13 tool calls (planned success path; hard stop 28)
 
 ### COORD pre-step (the coordinator does this before the driver starts; the driver skips it)
 
-1. Dispatch only after the SP-DCA5-p3 verifier returned. CHARACTER = `Uat FxDcaffb`. No new fixture.
+1. Dispatch only after the SP-DCA5-p3 verifier returned. CHARACTER = `Fxdcathree`. No new fixture.
 2. Sets `INSTANCE` = `p3` and the lease owner `sp-SP-DCA5-p4`.
 3. The turn-in leg is not driven: chain 6503 needs world 68 and no route to it exists (harset_opcore_chains.sql:363), so the verifier grades the turn-in BLOCKED. U2, U7 and U8 are not driven by this packet.
 
 Source facts the rows rest on (background for the coordinator and the verifier; the driver acts only on the Steps below and never opens these files):
 
-- Copplemann: spawn 87, template 48, (352.69,70.27,952.32) (spawnlist.sql:201). File cabinet: spawn 13805, template 416, tag `Castle_FileCabinet`, (232.0,66.79,1036.0), full name `Romney's File Cabinet` (spawnlist.sql:633). Romney: spawn 240, template 169, (244.0,66.79,1036.0), aggro 18 u (spawnlist.sql:506).
+- Copplemann: spawn 87, template 48, (352.69,70.27,952.32) (spawnlist.sql:201). File cabinet: spawn 13805, template 416, tag `Castle_FileCabinet`, (227.5,66.79,1036.0), full name `Romney's File Cabinet` (spawnlist.sql:633). Romney: spawn 240, template 169, (244.0,66.79,1036.0), aggro 18 u (spawnlist.sql:506).
 - Chains for 567: 1394/1395 bind the Copplemann offer (dialog set 1000018, slot 48); 1396 on dialog 2043 accepts 567; 1397 (cabinet click, step 2000) gives item 2698, step 2012, dialog 10733; 1400 (second click) shows dialog 10734; 10241 (`stargate_crossed Harset`, step 2012) advances to 4039; 6503 turn-in shows dialog 2044 (harset_opcore_chains.sql:363); 6504 rebinds the turn-in after a relog at 4039 (harset_opcore_chains.sql:398).
 - Gates: Castle stargate_id 2 at (761.677,63.466,551.716) and Harset stargate_id 3 at (-0.076,-67.274,38.011) (db/resources/Worlds/Seed/stargates.sql:107 and :65). `/gmdhd <gateAddress>` dials by number (docs/commands.md:339).
 - `.aggro off` and `.aggro on` are a shipped GM command (docs/commands.md:605; crates/cell-console/src/cell/console/aggro.rs:25-84). It stops proximity aggro only, is keyed by character, and survives a relog until a server restart. A click or a shot at Romney still starts a fight.
@@ -92,7 +93,7 @@ Source facts the rows rest on (background for the coordinator and the verifier; 
 
 ### ROW FZ-U1c - the crossing and the relog (clauses U3 and U6)
 
-Character: CHARACTER (`Uat FxDcaffb`). Expected: world id 57 after the crossing; 567 at step 4039; after the relog the mission survives.
+Character: CHARACTER (`Fxdcathree`). Expected: world id 57 after the crossing; 567 at step 4039; after the relog the mission survives.
 
 - **c1 (1 call: client_batch).** One batch: DIALOG first, then CHATX lines `.bug SPU SP-DCA5-p4 FZ-U1c start`, `.gotolocation Castle 761.68 63.47 548.0` (3.7 m from the Castle gate) and `/gmdhd 3` (dials Harset), then wait 10000, then `player_state` (world_id, position), UTC.
 - **c2 (1 call: client_chat_log).** READ with `"channel":"9"` and `"contains":"dial"`. Record each line.

@@ -16,7 +16,7 @@ You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator u
 ## 2. Setup you do first (4 calls)
 
 1. Clock: `server_log_tail` with the last 5 lines and note the timestamp format and the timezone of the local server. Convert every time below to UTC.
-2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Uat FxDcaf%'`. Call the results `$pid` (one per character the packet names).
+2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Fxdca%'`. Call the results `$pid` (one per character the packet names).
 3. Row timeline from the driver's `.bug` bookmarks: `server_log_tail` with the filter `SPU SP-DCA5-p4` (or `playtest.bookmark`); print ONE row in full first to learn which field holds the note. Each `SPU SP-DCA5-p4 <row> start` gives that row's window start; the next `start` (or the packet end) gives its end. Pad every window by 5 s before and 20 s after. If the bookmarks are missing, say so and use the driver's UTC times.
 4. Sanity: `server_sessions` must show the character online during the window. If the local server log has nothing at all for the window, grade every server clause UNVERIFIED and stop.
 
@@ -52,20 +52,20 @@ Do not edit the repo, the database or the server; do not run the lab; do not dep
 
 # Verify SP-DCA5-p4: the gate crossing and the relog (FZ-U1c)
 
-Character `Uat FxDcaffb`, carried over from SP-DCA5-p3 (`$pid` is the same character). Row FZ-U1c. Chain sources: db/resources/Content/Seed/castle_567_chains.sql (1394-10243) and harset_opcore_chains.sql (6503, 6504). The part sends `.aggro on` at its end.
+Character `Fxdcathree`, carried over from SP-DCA5-p3 (`$pid` is the same character). Row FZ-U1c. Chain sources: db/resources/Content/Seed/castle_567_chains.sql (1394-10243) and harset_opcore_chains.sql (6503, 6504). The part sends `.aggro on` at its end.
 
 ## ROW FZ-U1c - the crossing and the relog (clauses U3 and U6 of FZ-U1)
 
-Character `Uat FxDcaffb` (the same character as SP-DCA5-p3; `$pid` is the same row). Carry-over start: 567 should be at step 2012 (after the cabinet click).
+Character `Fxdcathree` (the same character as SP-DCA5-p3; `$pid` is the same row). Carry-over start: 567 should be at step 2012 (after the cabinet click).
 
 | Clause | Check | Expected |
 |---|---|---|
 | U2 X-close | the driver did not run the X-close | NOT-RUN (list it) |
-| U3 relog restores | the final relog at 4039 | 567 at step 4039 after the relog; `6504` rebinds the turn-in |
+| U3 relog restores | the final relog at 4039 | 567 at step 4039 after the relog (`missions_restored`); `6504` rebinds the turn-in, but that rebind writes no log row, so its absence is a note, not a grade change |
 | U6 crossing | log filter `10241` and `stargate_crossed` and `Harset`; mission table | 567 at step 4039 within the crossing window; world 57 |
 | U7, U8 abandon loop | not driven by this brief | NOT-RUN (list them) |
 | Turn-in | log filter `6503` and `2044` | BLOCKED: the turn-in needs world 68 and no route to it exists; the brief makes no calls for it |
-| Aggro switch | log filter `gm_toggle` for `Uat FxDcaffb` at the row end | an `aggro_off=false` toggle after the relog; a missing one is a note, not a grade change (tier G setup) |
+| Aggro switch | log filter `gm_toggle` for `Fxdcathree` at the row end | an `aggro_off=false` toggle after the relog; a missing one is a note, not a grade change (tier G setup) |
 
 Grade: PASS for the row only if U3 and U6 held. PARTIAL if one held and the other is BLOCKED (for example the crossing failed and the relog restored 2012), or when only the turn-in is BLOCKED beside both held (the turn-in is always BLOCKED, so list it and do not let it lower PASS). FAIL if a driven clause is contradicted (567 not advancing at the crossing). Parent row FZ-U1 (U1 to U8 across p2, p3 and p4) is aggregated by the ledger from FZ-U1a, FZ-U1b and FZ-U1c. Looker `FZ-crossed`: 1. Is a stargate or an unfamiliar world in view? 2. Is a dialog window open?
 

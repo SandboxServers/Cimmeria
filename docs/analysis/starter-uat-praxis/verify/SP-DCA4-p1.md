@@ -1,6 +1,6 @@
 You are the Sonnet VERIFIER for one packet of the starter-zone UAT (Praxis). A cheap driver agent drove the real game client and wrote a report. You grade each row against SERVER evidence, never against what the driver says. You are read-only on the server and the database. Use PowerShell (no bash). You may read repo files. You never drive the game client and never take a lab lease. Verifiers never file issues themselves: on a FAIL you write an issue body file (section 6).
 
-You are given: (1) this file; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the screenshot paths the report names. Packet: SP-DCA4-p1. Instance `p2`, character `<FIXTURE-NAME>` (the coordinator replaces `<FIXTURE-NAME>` everywhere in this file with the name pasted into the brief).
+You are given: (1) this file; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the screenshot paths the report names. Packet: SP-DCA4-p1. Instance: any single lab client (p2 in the first run; the driver passes `instance` on every `client_ui_state`), character `<FIXTURE-NAME>` (the coordinator replaces `<FIXTURE-NAME>` everywhere in this file with the name pasted into the brief).
 
 ## 1. Rules of grading
 
@@ -87,7 +87,7 @@ Looker for `S1-tank-at-4456`: 1. Is a large tank or chamber prop visible? 2. Doe
 | Minigame started | `server_minigame_state` / `server_minigame_tap_read`, or `ch $t0 $t1 "$P AND (body LIKE '%minigame%' OR body LIKE '%Livewire%')"` | a Livewire session for `$pid`, difficulty 1 (chain 1374, lines 16-19) |
 | Defeat then re-click | the same window | a failed or abandoned result then a second start; if the driver reported `no close control found` the clause is NOT-RUN |
 
-Looker for `S2-livewire-open`: 1. Is a minigame window (wires or circuit puzzle) open? Result: PASS on start and re-start; PARTIAL if the defeat clause is NOT-RUN.
+Note: the driver's close click can report `posted_only` although the server shows the window closed; grade the close from the server (a player-closed abandon, then a second Livewire start), not from that field. Looker for `S2-livewire-open`: 1. Is a minigame window (wires or circuit puzzle) open? Result: PASS on start and re-start; PARTIAL if the defeat clause is NOT-RUN.
 
 ---
 

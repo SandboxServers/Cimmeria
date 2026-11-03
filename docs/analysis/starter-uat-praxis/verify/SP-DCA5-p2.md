@@ -16,7 +16,7 @@ You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator u
 ## 2. Setup you do first (4 calls)
 
 1. Clock: `server_log_tail` with the last 5 lines and note the timestamp format and the timezone of the local server. Convert every time below to UTC.
-2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Uat FxDcaf%'`. Call the results `$pid` (one per character the packet names).
+2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Fxdca%'`. Call the results `$pid` (one per character the packet names).
 3. Row timeline from the driver's `.bug` bookmarks: `server_log_tail` with the filter `SPU SP-DCA5-p2` (or `playtest.bookmark`); print ONE row in full first to learn which field holds the note. Each `SPU SP-DCA5-p2 <row> start` gives that row's window start; the next `start` (or the packet end) gives its end. Pad every window by 5 s before and 20 s after. If the bookmarks are missing, say so and use the driver's UTC times.
 4. Sanity: `server_sessions` must show the character online during the window. If the local server log has nothing at all for the window, grade every server clause UNVERIFIED and stop.
 
@@ -52,13 +52,13 @@ Do not edit the repo, the database or the server; do not run the lab; do not dep
 
 # Verify SP-DCA5-p2: relog at 4456 and the Copplemann offer (S8, FZ-U1a)
 
-Characters: CHARACTER `Uat FxDcafjc` (Jaffa, fixture with 1521 at step 4456) and CHARACTER2 `Uat FxDcaffb` (fresh, 701 and 703 done, 567 not_active). Rows S8 and FZ-U1a. Chain sources: db/resources/Content/Seed/castle_symbiote_chains.sql (1369-1386) and castle_567_chains.sql (1394-10243). Region box: x 344.9 to 371.0, z 880.2 to 904.6 (Events/Seed/point_set_points.sql:137-143).
+Positions in the driver report may be in client units rather than server metres (for example 51300,80000,5521): convert before comparing with seed metres, and grade from the server rows. Characters: CHARACTER `Fxdcafour` (Jaffa, fixture with 1521 at step 4456) and CHARACTER2 `Fxdcathree` (fresh, 701 and 703 done, 567 not_active). Rows S8 and FZ-U1a. Chain sources: db/resources/Content/Seed/castle_symbiote_chains.sql (1369-1386) and castle_567_chains.sql (1394-10243). Region box: x 344.9 to 371.0, z 880.2 to 904.6 (Events/Seed/point_set_points.sql:137-143).
 
 ## ROW S8 - no relog at 4458; relog at 4456 is fine (graded by observing)
 
 | Check | Query | Expected |
 |---|---|---|
-| The step at the relog | mission table, 1521 for `Uat FxDcafjc`, at the S8 start and end bookmarks | step 4456 at the relog (the fixture put it there), the same step 4456 after it (the mission survives) |
+| The step at the relog | mission table, 1521 for `Fxdcafour`, at the S8 start and end bookmarks | step 4456 at the relog (the fixture put it there), the same step 4456 after it (the mission survives) |
 | The dead end was not entered | `server_log_tail` filter `4458` and `4991` in the window | no `advance_step 1521 4458`, no dialog 4991 |
 | The relog happened | `server_sessions` / log: a logout and a login for the character inside the S8 window | exactly one logout and one login (the driver ran `lab_logout` then `lab_ensure_in_world`) |
 | No warnings | WARN/ERROR in the window | none |
@@ -67,11 +67,11 @@ Grade: PASS if the mission stayed at 4456 across the relog, there is no 4458 or 
 
 ## ROW FZ-U1a - mission 567 offer and accept (clause U1 of FZ-U1)
 
-Character `Uat FxDcaffb`. This row covers clause U1 only; U2 to U8 are in the next parts or NOT-RUN.
+Character `Fxdcathree`. This row covers clause U1 only; U2 to U8 are in the next parts or NOT-RUN.
 
 | Clause | Check | Expected |
 |---|---|---|
-| U1 offer and accept | log filter `1395` / `1396` / `2043`; the mission table for `Uat FxDcaffb`, 567 | the Copplemann dialog set bound at load (chain 1395), dialog 2043 accepted, 567 active at step 2000 |
+| U1 offer and accept | log filter `1395` / `1396` / `2043`; the mission table for `Fxdcathree`, 567 | the Copplemann dialog set bound at load (chain 1395), dialog 2043 accepted, 567 active at step 2000 |
 
 Grade: PASS if U1 held. FAIL if the offer never bound after 701 and 703 (a product finding) or the accept left 567 not active. A FAIL or BLOCKED here makes SP-DCA5-p3 and SP-DCA5-p4 BLOCKED (they run carry-over). The dialog layout is NEEDS_HUMAN: put `FZ-offer` on the sign-off sheet. Looker `FZ-offer`: 1. Is a dialog window with text and at least one choice button open?
 

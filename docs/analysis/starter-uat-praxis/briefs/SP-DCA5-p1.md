@@ -4,16 +4,17 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 - PACKET: SP-DCA5-p1
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
-- INSTANCE: p3   (the lab client you drive)
-- CHARACTER: Uat FxDcafsb   (the Soldier)
-- CHARACTER2: Uat FxDcafjb   (the Jaffa)
+- INSTANCE: <INSTANCE>   (any single lab client; the coordinator fills in the one it uses, p2 in the first run)
+- RUN RULES (from the first runs): (a) pass `"instance":"<INSTANCE>"` on every `client_ui_state` call, because without it the call reads the wrong client's bridge; (b) a staged fixture expires after 600 s: the coordinator stages it just before this driver starts, and a driver that finds the character gone reports BLOCKED (fixture TTL expired); (c) fixtures give no cash: any step that opens a vendor window needs `/gmgivecash` first; (d) the navmesh space is 65537, never 8; (e) fixture characters are the existing Fx characters `Fxdcatwo`, `Fxdcathree` and `Fxdcafour` (`Fxdcafour` is the only Jaffa); (f) the `lab-driver` agent has no `client_target` and no `client_combat_log` tool: where a step names one, skip it, record `tool missing` and carry on; (g) every `client_chat_log` and `client_events_read` after the first read passes `since_seq`; (h) a `.bug ... end` bookmark is sent after the wait that finishes the row, never before it.
+- CHARACTER: Fxdcatwo   (the Soldier)
+- CHARACTER2: Fxdcafour   (the Jaffa)
 - SERVER: the local lab server (D-SP2). Lab use on it is pre-authorized (D-SP5): never ask anyone for permission to drive. The coordinator staged the fixture before you started (see "COORD pre-step" in the part). If a fixture fact below is not true, record it and carry on; do not try to repair it yourself.
 - LEASE OWNER: sp-SP-DCA5-p1
 - START: fixture
 
 ## 0. Front-loaded gotchas (read all of them)
 
-1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "p3"` (a screenshot without it shows the wrong client).
+1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "<INSTANCE>"` (a screenshot without it shows the wrong client).
 2. **Never use `image: true`** on a screenshot. The tool saves a PNG and returns `image saved: <path>`. Report the path. Someone else looks at the picture.
 3. **Chat commands are GM commands.** Your account is a GM. Lines starting with `.` are server commands; lines starting with `/` are game commands. Always close any open dialog first (DIALOG below), because a chat line under an open dialog orphans it.
 4. **Teleport only with `.gotolocation <World> x y z`.** Never `.gotoxyz` (it moves your selected target, not you). Coordinates are server metres (x, y up, z). Never teleport onto or next to a hostile NPC.
@@ -38,7 +39,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 Each macro shows its call cost. A call is one MCP tool invocation. Costs: L1 = 1; L2 = 1; WAIT = 1; CHATX = 1 whatever the number of lines; READ = 1; SHOT = 1; PROMPT = 1 plus 1 per button clicked, and only when gotcha 10 allows it (never counted in ESTIMATE); DIALOG = 0 as the first `lua` op of a batch the step already makes (otherwise 1); BUG = 0 inside a CHATX; POS = 0 inside a batch (1 alone); a `client_move_to` reply already carries `arrived` and `end`, so it needs no POS.
 
-**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA5-p1","purpose":"starter UAT praxis SP-DCA5-p1","instance":"p3","ttl_s":900}` -> keep `lease_id` (call it L). If it is refused: call `lab_lease_status {"instance":"p3"}`. If the holder's owner is exactly `sp-SP-DCA5-p1` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA5-p1 attempt <ATTEMPT>"`. Any other holder: report it and stop.
+**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA5-p1","purpose":"starter UAT praxis SP-DCA5-p1","instance":"<INSTANCE>","ttl_s":900}` -> keep `lease_id` (call it L). If it is refused: call `lab_lease_status {"instance":"<INSTANCE>"}`. If the holder's owner is exactly `sp-SP-DCA5-p1` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA5-p1 attempt <ATTEMPT>"`. Any other holder: report it and stop.
 
 **L2 - in the world.** `lab_ensure_in_world {"lease_id":L,"character":"<NAME>"}`. Replace `<NAME>` with the character the step names: CHARACTER, CHARACTER2 or CHARACTER3 from the BRIEF FIELDS. The character already exists (the coordinator staged it as a fixture while it was offline), so L2 starts the client if needed, logs in, plays it from character select (this is the #756 workaround: the client is past login before the Castle loads) and closes the intro dialog. Expected: `in_world:true`, `character` equal to the name you passed, `world_id` 8 (Castle) unless the part says otherwise. If it fails, retry once; if it fails again report BLOCKED with the error text.
 
@@ -52,7 +53,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. Wait at least 1500 
 
 **READ - read chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word from the expected reply>","max":20}` (add `"channel":"9"` for GM command replies). Record every returned line verbatim with its `channel`, `colour` and `tabs` fields and `seq`. Keep LASTSEQ = the highest `seq` any read has returned; from your second read on add `"since_seq": <LASTSEQ>`. If a read returns `more: true`, read again once with the new LASTSEQ.
 
-**SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"p3"}`. Report the path next to the LABEL the step gives it.
+**SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"<INSTANCE>"}`. Report the path next to the LABEL the step gives it.
 
 **DIALOG - close an orphan dialog.** A `client_batch` Lua op, first in the batch: `if DialogWin ~= nil and DialogWin:isVisible() then DialogMod.onDialogDoneClicked(DialogWin, DialogWin) return 'closed' end return 'none'`. A tutorial window on top: `client_window_click {"lease_id":L,"target":"TutorialWin__auto_closebutton__"}` (1 call, only when one is open).
 
@@ -79,13 +80,13 @@ The lab-driver has no fixture tools, so the coordinator stages two offline chara
 
 | Role | Character (suggested) | Fixture |
 |---|---|---|
-| CHARACTER, a non-Jaffa (S6) | `Uat FxDcafsb` | `{"character":"Uat FxDcafsb","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1521,"state":"not_active"}]}` |
-| CHARACTER2, a Jaffa (S7) | `Uat FxDcafjb` | `{"character":"Uat FxDcafjb","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1521,"state":"not_active"}]}` |
+| CHARACTER, a non-Jaffa (S6) | `Fxdcatwo` | `{"character":"Fxdcatwo","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1521,"state":"not_active"}]}` |
+| CHARACTER2, a Jaffa (S7) | `Fxdcafour` | `{"character":"Fxdcafour","world":"Castle","position":[358.0,70.2,912.0],"missions":[{"id":704,"state":"completed"},{"id":1521,"state":"not_active"}]}` |
 
 The coordinator also creates the archetypes at character creation (`{"alignment":"sgu","archetype":"Jaffa",...}` for a Jaffa, Soldier for a Soldier) and confirms with `server_entity_get` that a Jaffa reads 8 and a Soldier reads at most 6. The chains test `archetype eq 8` for the offer (db/resources/Content/Seed/castle_symbiote_chains.sql:4, chain 1369). Then:
 
-1. Runs `server_nav_path` from the fixture position (358.0,70.2,912.0) to the tank stand point (356.0,70.18,900.5) and pastes the returned waypoints into WP1 to WP4 below (S7). Each leg must be at most 20 m: split a longer one. If it returns no route, S7 is BLOCKED by nav (record `nav_path: no route`).
-2. Sets `INSTANCE` = `p3` and the lease owner `sp-SP-DCA5-p1`.
+1. Runs `server_nav_path {"space_id":65537,"from":...,"to":...}` (the navmesh space is 65537, not 8) from the fixture position (358.0,70.2,912.0) to the tank stand point (356.0,70.18,900.5) and pastes the returned waypoints into WP1 to WP4 below (S7). Each leg must be at most 20 m: split a longer one. If it returns no route, S7 is BLOCKED by nav (record `nav_path: no route`).
+2. Sets `INSTANCE` to the one lab client it uses (any single client; p2 in the first run) and the lease owner `sp-SP-DCA5-p1`. The coordinator must fill `@@WP1@@` to `@@WP4@@` below with the space-65537 waypoints before dispatch, and stages the fixtures just before the driver starts (the stage lives 600 s).
 
 Source facts the rows rest on (background for the coordinator and the verifier; the driver acts only on the Steps below and never opens these files):
 

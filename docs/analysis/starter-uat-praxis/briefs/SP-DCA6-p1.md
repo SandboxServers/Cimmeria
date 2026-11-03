@@ -4,8 +4,9 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 - PACKET: SP-DCA6-p1
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
-- INSTANCE: default   (the lab client you drive)
-- CHARACTER: Uat FxDcaghb
+- INSTANCE: <INSTANCE>   (any single lab client; the coordinator fills in the one it uses, p2 in the first run)
+- RUN RULES (from the first runs): (a) pass `"instance":"<INSTANCE>"` on every `client_ui_state` call, because without it the call reads the wrong client's bridge; (b) a staged fixture expires after 600 s: the coordinator stages it just before this driver starts, and a driver that finds the character gone reports BLOCKED (fixture TTL expired); (c) fixtures give no cash: any step that opens a vendor window needs `/gmgivecash` first; (d) the navmesh space is 65537, never 8; (e) fixture characters are the existing Fx characters `Fxdcatwo`, `Fxdcathree` and `Fxdcafour` (`Fxdcafour` is the only Jaffa); (f) the `lab-driver` agent has no `client_target` and no `client_combat_log` tool: where a step names one, skip it, record `tool missing` and carry on; (g) every `client_chat_log` and `client_events_read` after the first read passes `since_seq`; (h) a `.bug ... end` bookmark is sent after the wait that finishes the row, never before it.
+- CHARACTER: Fxdcatwo
 - CHARACTER2: none   (this part plays one character)
 - SERVER: the local lab server (D-SP2). Lab use on it is pre-authorized (D-SP5): never ask anyone for permission to drive. The coordinator staged the fixture before you started (see "COORD pre-step" in the part). If a fixture fact below is not true, record it and carry on; do not try to repair it yourself.
 - LEASE OWNER: sp-SP-DCA6-p1
@@ -13,7 +14,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 ## 0. Front-loaded gotchas (read all of them)
 
-1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "default"` (a screenshot without it shows the wrong client).
+1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "<INSTANCE>"` (a screenshot without it shows the wrong client).
 2. **Never use `image: true`** on a screenshot. The tool saves a PNG and returns `image saved: <path>`. Report the path. Someone else looks at the picture.
 3. **Chat commands are GM commands.** Your account is a GM. Lines starting with `.` are server commands; lines starting with `/` are game commands. Always close any open dialog first (DIALOG below), because a chat line under an open dialog orphans it.
 4. **Teleport only with `.gotolocation <World> x y z`.** Never `.gotoxyz` (it moves your selected target, not you). Coordinates are server metres (x, y up, z). Never teleport onto or next to a hostile NPC.
@@ -38,7 +39,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 Each macro shows its call cost. A call is one MCP tool invocation. Costs: L1 = 1; L2 = 1; WAIT = 1; CHATX = 1 whatever the number of lines; READ = 1; SHOT = 1; PROMPT = 1 plus 1 per button clicked, and only when gotcha 10 allows it (never counted in ESTIMATE); DIALOG = 0 as the first `lua` op of a batch the step already makes (otherwise 1); BUG = 0 inside a CHATX; POS = 0 inside a batch (1 alone); a `client_move_to` reply already carries `arrived` and `end`, so it needs no POS.
 
-**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA6-p1","purpose":"starter UAT praxis SP-DCA6-p1","instance":"default","ttl_s":900}` -> keep `lease_id` (call it L). If it is refused: call `lab_lease_status {"instance":"default"}`. If the holder's owner is exactly `sp-SP-DCA6-p1` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA6-p1 attempt <ATTEMPT>"`. Any other holder: report it and stop.
+**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA6-p1","purpose":"starter UAT praxis SP-DCA6-p1","instance":"<INSTANCE>","ttl_s":900}` -> keep `lease_id` (call it L). If it is refused: call `lab_lease_status {"instance":"<INSTANCE>"}`. If the holder's owner is exactly `sp-SP-DCA6-p1` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA6-p1 attempt <ATTEMPT>"`. Any other holder: report it and stop.
 
 **L2 - in the world.** `lab_ensure_in_world {"lease_id":L,"character":"<NAME>"}`. Replace `<NAME>` with the character the step names: CHARACTER, CHARACTER2 or CHARACTER3 from the BRIEF FIELDS. The character already exists (the coordinator staged it as a fixture while it was offline), so L2 starts the client if needed, logs in, plays it from character select (this is the #756 workaround: the client is past login before the Castle loads) and closes the intro dialog. Expected: `in_world:true`, `character` equal to the name you passed, `world_id` 8 (Castle) unless the part says otherwise. If it fails, retry once; if it fails again report BLOCKED with the error text.
 
@@ -52,7 +53,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. Wait at least 1500 
 
 **READ - read chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word from the expected reply>","max":20}` (add `"channel":"9"` for GM command replies). Record every returned line verbatim with its `channel`, `colour` and `tabs` fields and `seq`. Keep LASTSEQ = the highest `seq` any read has returned; from your second read on add `"since_seq": <LASTSEQ>`. If a read returns `more: true`, read again once with the new LASTSEQ.
 
-**SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"default"}`. Report the path next to the LABEL the step gives it.
+**SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"<INSTANCE>"}`. Report the path next to the LABEL the step gives it.
 
 **DIALOG - close an orphan dialog.** A `client_batch` Lua op, first in the batch: `if DialogWin ~= nil and DialogWin:isVisible() then DialogMod.onDialogDoneClicked(DialogWin, DialogWin) return 'closed' end return 'none'`. A tutorial window on top: `client_window_click {"lease_id":L,"target":"TutorialWin__auto_closebutton__"}` (1 call, only when one is open).
 
@@ -71,19 +72,19 @@ Replace `LINE ONE` etc. with the exact lines the step gives. Wait at least 1500 
 ## PART SP-DCA6-p1 - Castle hub quartermaster, walk and buy (hub S1, hub S2)
 
 ROWS: hub S1, hub S2 (buy leg only). Start: fixture.
-ESTIMATE: 17 tool calls (planned success path; hard stop 28)
+ESTIMATE: 18 tool calls (planned success path; hard stop 28)
 Shop mechanics belong to starter-uat-shops: grade only that the window and the cash feedback work.
 
 ### COORD pre-step (the coordinator does this before the driver starts; the driver skips it)
 
 Stage one offline character with `server_stage_fixture`:
 
-`{"character":"Uat FxDcaghb","world":"Castle","position":[466.4,70.4,991.5],"items":[{"id":55,"count":1,"container":"main"}]}`
+`{"character":"Fxdcatwo","world":"Castle","position":[466.4,70.4,991.5],"items":[{"id":55,"count":1,"container":"main"}]}`
 
 - The position is the Armory respawner (component 250), 26 m east of the quartermaster. Item 55 stays in the fixture so the later sell leg can be added once a sell tool exists; this part does not use it.
 - Confirm the fixture took: `server_entity_get` on the character, world 8.
-- Set `INSTANCE` = `default` and the lease owner `sp-SP-DCA6-p1`.
-- Run `server_nav_path` and record the answer in the sign-off sheet: (a) from the Armory respawner (466.4,70.4,991.5) to the quartermaster stand point (444.5,70.22,992.0): expected a route. The coordinator owns this call; it is the evidence for hub S1.
+- Set `INSTANCE` to the one lab client it uses (any single client; p2 in the first run) and the lease owner `sp-SP-DCA6-p1`. Stage the fixture just before the driver starts: the stage expires after 600 s. The fixture gives no cash; the driver sends `/gmgivecash 5` (step 1.4b) before it opens the store.
+- Run `server_nav_path {"space_id":65537,"from":...,"to":...}` (space 65537, not 8) and record the answer in the sign-off sheet: (a) from the Armory respawner (466.4,70.4,991.5) to the quartermaster stand point (444.5,70.22,992.0): expected a route. The coordinator owns this call; it is the evidence for hub S1.
 
 Source facts the rows rest on (background for the coordinator and the verifier; the driver acts only on the Steps below and never opens these files):
 
@@ -105,6 +106,7 @@ Expected: a store window opens with 19 rows.
 - **1.2 (1 call: client_move_to).** `client_move_to {"lease_id":L,"waypoints":[{"x":447.0,"y":70.3,"z":992.0}],"point":{"x":444.5,"y":70.22,"z":992.0}}` (19.4 m west, then 2.5 m). Record `arrived` and `end`. If `end` is not within 3 to 6 m of x 440.0, retry once; if it still fails use the fallback and mark `fallback: true`: CHATX `.gotolocation Castle 444.5 70.22 992.0` (one extra call, not counted).
 - **1.3 (1 call: client_entity_find).** FIND `Quartermaster`. If that name finds nothing, run `client_entity_table` once (not counted), record every entity within 10 m of (440.0,70.22,992.0) and use the one whose position is closest to it. Record id and distance.
 - **1.4 (1 call: client_batch).** One batch: DIALOG, `player_state` (world_id, position), UTC.
+- **1.4b (1 call: client_batch).** Fixtures give no cash and the store opens with max 0 buyable. One batch: CHATX line `/gmgivecash 5` (tier G), wait 1500, `player_state` with fields `["cash"]` (record CASH0), UTC. Do this before opening the store window.
 - **1.5 (1 call: client_world_click).** CLICK the quartermaster.
 - **1.6 (1 call: client_window_read).** `client_window_read {"lease_id":L,"kind":"vendor"}`; if that kind is refused, use `client_ui_state` once (not counted). Record the window name and the number of item rows (expected 19) with the first and last row names.
 - **1.7 (1 call: lab_screenshot).** SHOT labelled `hubS1-store`.
@@ -113,7 +115,7 @@ Expected: a store window opens with 19 rows.
 
 The store window from hub S1 is still open. Expected: buying row 13001 costs 1 naq and the stack lands in the main bag.
 
-- **2.1 (1 call: client_batch).** One batch: BUG `hubS2 start`, then `player_state` with fields `["cash"]`, UTC. Record CASH0. If the `cash` field is absent, record `no cash field` and rely on the verifier's database read.
+- **2.1 (1 call: client_batch).** One batch: BUG `hubS2 start`, then `player_state` with fields `["cash"]`, UTC. Record CASH0 (it must be at least 1 after step 1.4b). If the `cash` field is absent, record `no cash field` and rely on the verifier's database read.
 - **2.2 (1 call: client_vendor_buy).** `client_vendor_buy {"lease_id":L,"row":1,"quantity":1}` (row 1 on screen is design 9000, Armor Piercing Rounds, 100 rounds). If the tool rejects the arguments, record the error text verbatim, grade the row NEEDS_HUMAN and carry on. Record the reply.
 - **2.3 (1 call: client_batch).** One batch: `player_state` with fields `["cash"]` (CASH1, expected CASH0 minus 1).
 - **2.4 (1 call: client_inventory).** `client_inventory {"lease_id":L}` (expected a stack of 100 of design 9000).

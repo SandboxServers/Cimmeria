@@ -16,7 +16,7 @@ You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator u
 ## 2. Setup you do first (4 calls)
 
 1. Clock: `server_log_tail` with the last 5 lines and note the timestamp format and the timezone of the local server. Convert every time below to UTC.
-2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Uat FxDcah%'`. Call the results `$pid` (one per character the packet names).
+2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Fxdca%'`. Call the results `$pid` (one per character the packet names).
 3. Row timeline from the driver's `.bug` bookmarks: `server_log_tail` with the filter `SPU SP-DCA7-p2` (or `playtest.bookmark`); print ONE row in full first to learn which field holds the note. Each `SPU SP-DCA7-p2 <row> start` gives that row's window start; the next `start` (or the packet end) gives its end. Pad every window by 5 s before and 20 s after. If the bookmarks are missing, say so and use the driver's UTC times.
 4. Sanity: `server_sessions` must show the character online during the window. If the local server log has nothing at all for the window, grade every server clause UNVERIFIED and stop.
 
@@ -52,7 +52,7 @@ Do not edit the repo, the database or the server; do not run the lab; do not dep
 
 # Verify SP-DCA7-p2: the Harset to Castle crossing (RQ-R2)
 
-Character `Uat FxDcahcb`, a Jaffa fixture in Harset (world 57) at (-0.08,-67.27,34.0), 708 completed, 10320 not_active. Row RQ-R2. Return chains: db/resources/Content/Seed/castle_side_stories_chains.sql (10130 at line 166 through 10145).
+Character `Fxdcafour`, a Jaffa fixture in Harset (world 57) at (-0.08,-67.27,34.0), 708 completed, 10320 not_active. Row RQ-R2. Return chains: db/resources/Content/Seed/castle_side_stories_chains.sql (10130 at line 166 through 10145).
 
 ## ROW RQ-R2 - the Harset to Castle crossing lands at the gate, no snap-back
 

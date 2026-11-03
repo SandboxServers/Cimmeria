@@ -4,8 +4,9 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 - PACKET: SP-DCA6-p2
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
-- INSTANCE: default   (the lab client you drive)
-- CHARACTER: Uat FxDcaghc
+- INSTANCE: <INSTANCE>   (any single lab client; the coordinator fills in the one it uses, p2 in the first run)
+- RUN RULES (from the first runs): (a) pass `"instance":"<INSTANCE>"` on every `client_ui_state` call, because without it the call reads the wrong client's bridge; (b) a staged fixture expires after 600 s: the coordinator stages it just before this driver starts, and a driver that finds the character gone reports BLOCKED (fixture TTL expired); (c) fixtures give no cash: any step that opens a vendor window needs `/gmgivecash` first; (d) the navmesh space is 65537, never 8; (e) fixture characters are the existing Fx characters `Fxdcatwo`, `Fxdcathree` and `Fxdcafour` (`Fxdcafour` is the only Jaffa); (f) the `lab-driver` agent has no `client_target` and no `client_combat_log` tool: where a step names one, skip it, record `tool missing` and carry on; (g) every `client_chat_log` and `client_events_read` after the first read passes `since_seq`; (h) a `.bug ... end` bookmark is sent after the wait that finishes the row, never before it.
+- CHARACTER: Fxdcatwo
 - CHARACTER2: none   (this part plays one character)
 - SERVER: the local lab server (D-SP2). Lab use on it is pre-authorized (D-SP5): never ask anyone for permission to drive. The coordinator staged the fixture before you started (see "COORD pre-step" in the part). If a fixture fact below is not true, record it and carry on; do not try to repair it yourself.
 - LEASE OWNER: sp-SP-DCA6-p2
@@ -13,7 +14,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 ## 0. Front-loaded gotchas (read all of them)
 
-1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "default"` (a screenshot without it shows the wrong client).
+1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "<INSTANCE>"` (a screenshot without it shows the wrong client).
 2. **Never use `image: true`** on a screenshot. The tool saves a PNG and returns `image saved: <path>`. Report the path. Someone else looks at the picture.
 3. **Chat commands are GM commands.** Your account is a GM. Lines starting with `.` are server commands; lines starting with `/` are game commands. Always close any open dialog first (DIALOG below), because a chat line under an open dialog orphans it.
 4. **Teleport only with `.gotolocation <World> x y z`.** Never `.gotoxyz` (it moves your selected target, not you). Coordinates are server metres (x, y up, z). Never teleport onto or next to a hostile NPC.
@@ -38,7 +39,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 Each macro shows its call cost. A call is one MCP tool invocation. Costs: L1 = 1; L2 = 1; WAIT = 1; CHATX = 1 whatever the number of lines; READ = 1; SHOT = 1; PROMPT = 1 plus 1 per button clicked, and only when gotcha 10 allows it (never counted in ESTIMATE); DIALOG = 0 as the first `lua` op of a batch the step already makes (otherwise 1); BUG = 0 inside a CHATX; POS = 0 inside a batch (1 alone); a `client_move_to` reply already carries `arrived` and `end`, so it needs no POS.
 
-**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA6-p2","purpose":"starter UAT praxis SP-DCA6-p2","instance":"default","ttl_s":900}` -> keep `lease_id` (call it L). If it is refused: call `lab_lease_status {"instance":"default"}`. If the holder's owner is exactly `sp-SP-DCA6-p2` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA6-p2 attempt <ATTEMPT>"`. Any other holder: report it and stop.
+**L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DCA6-p2","purpose":"starter UAT praxis SP-DCA6-p2","instance":"<INSTANCE>","ttl_s":900}` -> keep `lease_id` (call it L). If it is refused: call `lab_lease_status {"instance":"<INSTANCE>"}`. If the holder's owner is exactly `sp-SP-DCA6-p2` AND ATTEMPT is 2 or 3, the holder is your dead predecessor: call `lab_lease_acquire` again with the same arguments plus `"force":true,"reason":"resume sp-SP-DCA6-p2 attempt <ATTEMPT>"`. Any other holder: report it and stop.
 
 **L2 - in the world.** `lab_ensure_in_world {"lease_id":L,"character":"<NAME>"}`. Replace `<NAME>` with the character the step names: CHARACTER, CHARACTER2 or CHARACTER3 from the BRIEF FIELDS. The character already exists (the coordinator staged it as a fixture while it was offline), so L2 starts the client if needed, logs in, plays it from character select (this is the #756 workaround: the client is past login before the Castle loads) and closes the intro dialog. Expected: `in_world:true`, `character` equal to the name you passed, `world_id` 8 (Castle) unless the part says otherwise. If it fails, retry once; if it fails again report BLOCKED with the error text.
 
@@ -52,7 +53,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. Wait at least 1500 
 
 **READ - read chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word from the expected reply>","max":20}` (add `"channel":"9"` for GM command replies). Record every returned line verbatim with its `channel`, `colour` and `tabs` fields and `seq`. Keep LASTSEQ = the highest `seq` any read has returned; from your second read on add `"since_seq": <LASTSEQ>`. If a read returns `more: true`, read again once with the new LASTSEQ.
 
-**SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"default"}`. Report the path next to the LABEL the step gives it.
+**SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"<INSTANCE>"}`. Report the path next to the LABEL the step gives it.
 
 **DIALOG - close an orphan dialog.** A `client_batch` Lua op, first in the batch: `if DialogWin ~= nil and DialogWin:isVisible() then DialogMod.onDialogDoneClicked(DialogWin, DialogWin) return 'closed' end return 'none'`. A tutorial window on top: `client_window_click {"lease_id":L,"target":"TutorialWin__auto_closebutton__"}` (1 call, only when one is open).
 
@@ -78,12 +79,13 @@ Shop mechanics belong to starter-uat-shops: grade only that the window and the c
 
 Stage one offline character with `server_stage_fixture`:
 
-`{"character":"Uat FxDcaghc","world":"Castle","position":[444.5,70.22,992.0]}`
+`{"character":"Fxdcatwo","world":"Castle","position":[444.5,70.22,992.0]}`
 
 - The position is 4.5 m east of the quartermaster, so hub S3 and hub S5 start in range.
 - Confirm the fixture took: `server_entity_get` on the character, world 8.
-- Set `INSTANCE` = `default` and the lease owner `sp-SP-DCA6-p2`.
-- Run `server_nav_path` and record the answer in the sign-off sheet: (b) from the DHD (806.27,55.10,517.24) to the quartermaster (440.0,70.22,992.0): expected NO route (components 116 and 250 differ). The coordinator owns this call; it is the evidence for hub S4.
+- Set `INSTANCE` to the one lab client it uses (any single client; p2 in the first run) and the lease owner `sp-SP-DCA6-p2`. Stage the fixture just before the driver starts: the stage expires after 600 s. The fixture gives no cash; hub S5 sends `/gmgivecash 5` first.
+- The `lab-driver` agent has no `client_target` and no `client_combat_log`. The coordinator covers steps 3.3 and 3.5 itself: it reads the quartermaster with `server_entity_get` and the combat rows with `server_log_tail` over the 20 s wait, and records `client_target` / `client_combat_log` replies only if it can call them.
+- Run `server_nav_path {"space_id":65537,"from":...,"to":...}` (space 65537, not 8) and record the answer in the sign-off sheet: (b) from the DHD (806.27,55.10,517.24) to the quartermaster (440.0,70.22,992.0): expected NO route (components 116 and 250 differ). The coordinator owns this call; it is the evidence for hub S4.
 - Check whether the CS-05R1 range gate is in the running server build (the refusal text is `TOO_FAR_TEXT` at crates/cell-methods/src/cell/cell_methods/player/vendor/store_ops.rs:28). Tell the verifier which build it is. Hub S5 depends on it.
 
 Source facts the rows rest on (background for the coordinator and the verifier; the driver acts only on the Steps below and never opens these files):
@@ -104,16 +106,16 @@ Expected: the quartermaster takes no damage and no hostile approaches in 20 s.
 
 - **3.1 (1 call: client_batch).** One batch: DIALOG first, then BUG `hubS3 start`.
 - **3.2 (1 call: client_entity_find).** FIND `Quartermaster` (if empty, `client_entity_table` once, not counted: the entity closest to (440.0,70.22,992.0)). Record id and distance.
-- **3.3 (1 call: client_target).** `client_target {"lease_id":L,"entity_id":<id>}` the quartermaster, where <id> is the entity id read in the previous step. Record the reply (a refusal to target is evidence).
+- **3.3 (optional, 1 call: client_target; skip if the tool is missing and record `tool missing`).** `client_target {"lease_id":L,"entity_id":<id>}` the quartermaster, where <id> is the entity id read in the previous step. Record the reply (a refusal to target is evidence).
 - **3.4 (1 call: client_batch).** One batch: wait 20000, `player_state` (world_id, position), UTC.
-- **3.5 (1 call: client_combat_log).** `client_combat_log {"lease_id":L}` once; record every line. Do not attack anything.
+- **3.5 (optional, 1 call: client_combat_log; skip if the tool is missing and record `tool missing`).** `client_combat_log {"lease_id":L}` once; record every line. Do not attack anything.
 - **3.6 (1 call: lab_screenshot).** SHOT `hubS3-wait`.
 
 ### ROW hub S5 - walk 30 u away after the window was opened and buy: refused
 
 Run this before hub S4.
 
-- **5.1 (1 call: client_batch).** One batch: DIALOG first, then BUG `hubS5 start`.
+- **5.1 (1 call: client_batch).** One batch: DIALOG first, then BUG `hubS5 start`, then CHATX line `/gmgivecash 5` (tier G; fixtures give no cash and the refusal must be tested with cash in hand), wait 1500, `player_state` with fields `["cash"]` (record CASH3).
 - **5.2 (1 call: client_world_click).** CLICK the quartermaster (the entity id from 3.2) to open the store window; do not buy yet.
 - **5.3 (1 call: client_move_to).** Walk 30 u away, to x 410: `client_move_to {"lease_id":L,"waypoints":[{"x":425.0,"y":70.3,"z":992.0}],"point":{"x":410.0,"y":70.3,"z":992.0}}` (19.5 m, then 15 m). Record `end`. If it did not arrive, retry once; then the fallback `.gotolocation Castle 410.0 70.22 992.0` with `fallback: true` (one extra call, not counted). Record the distance (x 440 minus your x).
 - **5.4 (1 call: client_vendor_buy).** `client_vendor_buy {"lease_id":L,"row":1,"quantity":1,"expect_change":false}` (design 9000 is row 1; `expect_change` is false because a refusal is the expected result). Record the reply.

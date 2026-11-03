@@ -16,7 +16,7 @@ You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator u
 ## 2. Setup you do first (4 calls)
 
 1. Clock: `server_log_tail` with the last 5 lines and note the timestamp format and the timezone of the local server. Convert every time below to UTC.
-2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Uat FxDcag%'`. Call the results `$pid` (one per character the packet names).
+2. Ids (the lab-server MCP `server_db_query`, read-only; the `resources.` prefix is required for seed tables): `SELECT player_id, account_id, player_name, access_level FROM public.sgw_player WHERE player_name ILIKE '%Fxdca%'`. Call the results `$pid` (one per character the packet names).
 3. Row timeline from the driver's `.bug` bookmarks: `server_log_tail` with the filter `SPU SP-DCA6-p2` (or `playtest.bookmark`); print ONE row in full first to learn which field holds the note. Each `SPU SP-DCA6-p2 <row> start` gives that row's window start; the next `start` (or the packet end) gives its end. Pad every window by 5 s before and 20 s after. If the bookmarks are missing, say so and use the driver's UTC times.
 4. Sanity: `server_sessions` must show the character online during the window. If the local server log has nothing at all for the window, grade every server clause UNVERIFIED and stop.
 
@@ -52,7 +52,7 @@ Do not edit the repo, the database or the server; do not run the lab; do not dep
 
 # Verify SP-DCA6-p2: Castle hub quartermaster, no damage, out of range, the DHD (hub S3, S5, S4)
 
-Character `Uat FxDcaghc`, fixture (444.5,70.22,992.0), no items. Quartermaster as in SP-DCA6-p1 (spawn 13804, (440.0,70.22,992.0)). Rows hub S3, hub S5, hub S4 (S4 last, it teleports away). Which server build runs (with or without CS-05R1) is in the coordinator note.
+Character `Fxdcatwo`, fixture (444.5,70.22,992.0), no items. Quartermaster as in SP-DCA6-p1 (spawn 13804, (440.0,70.22,992.0)). Rows hub S3, hub S5, hub S4 (S4 last, it teleports away). Which server build runs (with or without CS-05R1) is in the coordinator note.
 
 ## ROW hub S3 - the quartermaster cannot be damaged; no hostile pulls
 
@@ -60,7 +60,7 @@ Character `Uat FxDcaghc`, fixture (444.5,70.22,992.0), no items. Quartermaster a
 |---|---|---|
 | No damage | `server_entity_get` for the quartermaster: health and flags; `server_log_tail` filter damage events against spawn 13804 in the S3 window | health unchanged; an invulnerable or non-attackable flag if the entity exposes one; no damage event |
 | No hostile pull | `server_entity_query` for hostile entities within 25 u of (440.0,70.22,992.0) in the window | none (the nearest hostile is 58.4 u away; aggro radius 18 u) |
-| The client could not hurt it | the driver's `client_target` reply and combat log | no combat line against the quartermaster; a refusal to target is fine |
+| The client could not hurt it | the coordinator's `server_entity_get` on the quartermaster and `server_log_tail` over the 20 s wait (the lab-driver has no `client_target` or `client_combat_log`; a driver reply is optional extra evidence) | no combat line against the quartermaster; a refusal to target is fine |
 
 Grade: PASS if no damage event and no hostile within 25 u appeared. FAIL if the quartermaster lost health or a hostile closed within 18 u of the spot. PARTIAL if the entity state could not be read. Looker `hubS3-wait`: 1. Is any enemy visible near the player? 2. Is the quartermaster NPC visible?
 
@@ -78,7 +78,7 @@ Grade: PASS if refused with the visible line and cash unchanged. PARTIAL if the 
 
 | Check | Query | Expected |
 |---|---|---|
-| No route | `server_nav_path {space_id: 8}` from (806.27,55.10,517.24) to (440.0,70.22,992.0); the coordinator's pre-step answer (b) | no route (the DHD is component 116, the hub component 250) |
+| No route | `server_nav_path {space_id: 65537}` from (806.27,55.10,517.24) to (440.0,70.22,992.0); the coordinator's pre-step answer (b) | no route (the DHD is component 116, the hub component 250) |
 | The landing | the player position after the `.gotolocation` | within 2 m of the DHD; the driver's hop moved at most 20 m and did not reach the hub |
 | The reverse | `server_nav_path` from the hub to the DHD | note it; no grade |
 
