@@ -12,9 +12,9 @@ use crate::mercury::FRAG_FIRST_AND_LAST;
 const EXPECTED: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <COOKED_MISSION xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:CookedData1="SGW" AwardXP="false" ShowFactionChangeIcon="false" ShowInstanceIcon="false" ShowPVPIcon="false" IsShareable="false" NumRepeats="0" CanAbandon="true" CanRepeatOnFail="false" CanFail="false" Level="1" IsHidden="false" IsOverrideMission="false" IsEnabled="true" IsAStory="true" Difficulty="1" MissionLabel="General" MissionDefn="Before the Patrol Returns" MissionID="62060"><HistoryText>Two prisoners in the cell block are too weak to escape with you. Before the patrol returns there is time for one thing: help them hide, or jam the cell-door panel so the guards cannot seal the block.</HistoryText><Steps StepEnabled="false" StepID="62061" AwardXP="false" Difficulty="1"><StepDisplayLogText>Help the prisoners hide, or jam the cell-door panel.</StepDisplayLogText><Objectives IsOptional="false" ObjectiveID="62062" AwardXP="false" IsHidden="false" IsEnabled="false" Difficulty="1"><DisplayLogText>Help the prisoners or jam the panel.</DisplayLogText><Tasks TaskType="1" TaskID="62063" AwardXP="false" IsEnabled="true" Difficulty="1"></Tasks></Objectives></Steps></COOKED_MISSION>"#;
 
-/// Dialog 60151 emitted bytes, copied from w5-frozen.md (F3): 392 bytes,
+/// Dialog 60151 emitted bytes, copied from w5-frozen.md (F3): 406 bytes,
 /// one fragment.
-const EXPECTED_DIALOG: &str = r#"<?xml version="1.0" encoding="UTF-8"?><COOKED_DIALOG DialogFlags="0" DialogID="60151" KismetEventSetID="0" UIScreenType="2"><Screens SpeakerID="0" ScreenID="96111" Text="The two prisoners are too weak to run, and the patrol is coming back. There is time for one thing: help them hide, or jam the cell-door panel by Prisoner 329 so the guards cannot seal the block."></Screens></COOKED_DIALOG>"#;
+const EXPECTED_DIALOG: &str = r#"<?xml version="1.0" encoding="UTF-8"?><COOKED_DIALOG DialogFlags="0" DialogID="60151" KismetEventSetID="0" UIScreenType="2"><Screens SpeakerID="0" ScreenID="96111" Text="The two prisoners are too weak to run, and the patrol is coming back. There is time for one thing: help them hide, or jam the cell-door panel by Prisoner three twenty-nine so the guards cannot seal the block."></Screens></COOKED_DIALOG>"#;
 
 /// A stock client asks for category 3 (the shipped table at its metadata):
 /// the server resyncs it, and mission 62060 arrives as one fragment whose
@@ -109,7 +109,7 @@ async fn prisoner_choice_dialog_reaches_a_stock_client() {
     let Sent::Fragment { flags, body, .. } = heads[0] else {
         unreachable!()
     };
-    assert_eq!(*flags, FRAG_FIRST_AND_LAST, "392 bytes is one fragment");
+    assert_eq!(*flags, FRAG_FIRST_AND_LAST, "406 bytes is one fragment");
     assert!(
         body.as_slice() == EXPECTED_DIALOG.as_bytes(),
         "dialog 60151 body differs from the frozen F3 bytes"

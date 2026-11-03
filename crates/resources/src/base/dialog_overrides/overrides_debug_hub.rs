@@ -71,8 +71,8 @@ pub(super) const MAIL_CLERK_DIALOG: DialogOverride = DialogOverride {
         screen_id: 200005,
         speaker_id: 843,
         text: "Gate Mail. I can send you a test mail with a stack of Health Slappacks \
-               and 50 naquadah. Open your mail afterwards to take them. One mail every \
-               10 minutes.",
+               and fifty naquadah. Open your mail afterwards to take them. One mail every \
+               ten minutes.",
         buttons: &[DialogButton {
             button_type: 4,
             button_id: 8,
