@@ -1,6 +1,6 @@
 You are the Sonnet VERIFIER for one packet of the starter-zone UAT (Praxis). A cheap driver agent drove the real game client and wrote a report. You grade each row against SERVER evidence, never against what the driver says. You are read-only on the server and the database. Use PowerShell (no bash). You may read repo files. You never drive the game client and never take a lab lease. Verifiers never file issues themselves: on a FAIL you write an issue body file (section 6).
 
-You are given: (1) this file; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the screenshot paths the report names. Packet: SP-DCA4. Instance `p2`, character `the Jaffa fixture character (a name of the form `Uat Fx...`) staged by the coordinator`.
+You are given: (1) this file; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the screenshot paths the report names. Packet: SP-DCA4-p2. Instance `p2`, character `<FIXTURE-NAME>` (the coordinator replaces `<FIXTURE-NAME>` everywhere in this file with the name pasted into the brief).
 
 ## 1. Rules of grading
 
@@ -15,8 +15,8 @@ You are given: (1) this file; (2) the DRIVER REPORT pasted by the coordinator un
 ## 2. Setup you do first (4 calls)
 
 1. Clock: `ssh cimmeria-colo 'docker exec -i signoz-clickhouse clickhouse-client -q "SELECT timezone(), now()"'`. Convert times to UTC if the zone is not UTC. For the local lab server use `server_log_tail` (lab-server MCP) in place of ClickHouse and say so.
-2. Ids (`server_db_query`, read-only; seed tables need the `resources.` prefix): `SELECT player_id, account_id, player_name, level FROM public.sgw_player WHERE player_name ILIKE '%the Jaffa fixture character (a name of the form `Uat Fx...`) staged by the coordinator%'`. Call the result `$pid` / `$acc`.
-3. Row timeline from the driver's bookmarks: run `ch` (below) with `$where = "scope_name LIKE 'playtest.bookmark%' AND (body LIKE '%SPU SP-DCA4%' OR attributes_string['note'] LIKE '%SPU SP-DCA4%')"`. Print ONE row in full first to learn which field holds the note. Each `SPU SP-DCA4 <row> start` gives that row's window start. Pad every window by 5 s before and 20 s after.
+2. Ids (`server_db_query`, read-only; seed tables need the `resources.` prefix): `SELECT player_id, account_id, player_name, level FROM public.sgw_player WHERE player_name ILIKE '%<FIXTURE-NAME>%'`. Call the result `$pid` / `$acc`.
+3. Row timeline from the driver's bookmarks: run `ch` (below) with `$where = "scope_name LIKE 'playtest.bookmark%' AND (body LIKE '%SPU SP-DCA4-p2%' OR attributes_string['note'] LIKE '%SPU SP-DCA4-p2%')"`. Print ONE row in full first to learn which field holds the note. Each `SPU SP-DCA4-p2 <row> start` gives that row's window start. Pad every window by 5 s before and 20 s after.
 4. If SigNoz returns nothing for the window: `SELECT count() FROM signoz_logs.distributed_logs_v2 WHERE timestamp > now() - INTERVAL 1 HOUR AND resources_string['service.name']='cimmeria-server'`. If zero, grade every server clause UNVERIFIED and use `server_log_tail`. DEBUG rows (`resolve_event: chain matched`, `fire_dialog_choice: matched`) may be dropped by the log filter: say so and grade from INFO rows (`Mission accepted`, `Mission step advanced`, `Mission completed!`) plus the DB.
 
 ## 3. The ClickHouse helper (paste once per session)
@@ -38,6 +38,8 @@ Times are `'YYYY-MM-DD HH:MM:SS'` UTC. Player filter `toInt64(attributes_number[
 
 Mission state query (read-only): `SELECT mission_id, current_step_id, status, completed_step_ids, completed_objective_ids, active_objective_ids FROM public.sgw_mission WHERE player_id=$pid ORDER BY mission_id`. Print the row and read what `status` values mean in `crates/` before grading (do not assume).
 
+Chain and dialog ids may sit in attributes, not in body; if a body filter on an id returns nothing, rerun with only the player filter and the event text and read the id from the `a` / `n` columns. Mission events carry `mission_id`, `old_step_id` and `new_step_id` as numeric attributes (the body is only the constant text, `crates/cell-content/src/cell/missions/progression.rs` lines 238-245).
+
 ## 4. The looker (visual checks)
 
 For each screenshot the report names, start a Haiku looker: Agent tool, `subagent_type: general-purpose`, `model: haiku`, prompt = `Read the image file <PATH> (use the Read tool). Answer each question with YES, NO or UNSURE and at most 12 words of what you see. Do not guess beyond what is visible. Questions: ...` using the questions listed for that screenshot below. Record the answers verbatim. A NO or UNSURE makes the row at best PARTIAL (visual) or NEEDS_HUMAN, never FAIL by itself. A black or missing PNG is reported as such.
@@ -45,15 +47,15 @@ For each screenshot the report names, start a Haiku looker: Agent tool, `subagen
 ## 5. Report format (your final message) and the results file (C6)
 
 ```text
-PACKET SP-DCA4 VERIFIED <UTC now> by Sonnet; driver attempts: <n>; server evidence window <t0>-<t1>
+PACKET SP-DCA4-p2 VERIFIED <UTC now> by Sonnet; driver attempts: <n>; server evidence window <t0>-<t1>
 | Row | Result | Tier | Server evidence (time, scope, event, key fields) | Client evidence | Looker | Notes |
 ```
 
-One line per row, then `FINDINGS:` (numbered), `NOT RUN / BLOCKED:` with the reason, `SIGN-OFF SHEET (NEEDS_HUMAN):` as described in section 1, and `RESUME HINT:`. Also write the results file `docs/analysis/starter-uat-praxis/results/SP-DCA4.md` (C6): the same table, the sign-off sheet and the screenshot paths, nothing else.
+One line per row, then `FINDINGS:` (numbered), `NOT RUN / BLOCKED:` with the reason, `SIGN-OFF SHEET (NEEDS_HUMAN):` as described in section 1, and `RESUME HINT:`. Also write the results file `docs/analysis/starter-uat-praxis/results/SP-DCA4-p2.md` (C6): the same table, the sign-off sheet and the screenshot paths, nothing else.
 
 ## 6. When a row FAILs
 
-Investigate before you write anything: read the code path the row exercises and reproduce the reasoning with the server rows. Only a product bug or a doc mismatch gets an issue body; a driver or lab problem (wrong click, harness gap) goes in your report only. Write the body to `docs/analysis/starter-uat-praxis/results/issues/SP-DCA4-<row>.md` with the ticket contract headings of docs/agents/issue-tracker.md (`## Problem`, `## Evidence`, `## Acceptance criteria`, `## Test type`, `## Docs to update`, `## Client impact`, `## Domain advisor`, `## Needs a human for`, `## Implementation plan`). Do NOT run `gh issue create`: the coordinator files it.
+Investigate before you write anything: read the code path the row exercises and reproduce the reasoning with the server rows. Only a product bug or a doc mismatch gets an issue body; a driver or lab problem (wrong click, harness gap) goes in your report only. Write the body to `docs/analysis/starter-uat-praxis/results/issues/SP-DCA4-p2-<row>.md` with the ticket contract headings of docs/agents/issue-tracker.md (`## Problem`, `## Evidence`, `## Acceptance criteria`, `## Test type`, `## Docs to update`, `## Client impact`, `## Domain advisor`, `## Needs a human for`, `## Implementation plan`). Do NOT run `gh issue create`: the coordinator files it.
 
 ## 7. Do not
 
@@ -61,32 +63,19 @@ Do not edit the repo (except the two result paths above), the database or the se
 
 ---
 
+# Verify SP-DCA4-p2: mission 1521 Livewire victory and dialog 4990 (S2b, S3)
 
-# Verify SP-DCA4: mission 1521 "Symbiote Tank", Jaffa character (S1-S5)
+Shorthand: `$P` = `toInt64(attributes_number['player_id'])=$pid`. Start: fixture (character `<FIXTURE-NAME>`, Jaffa), mission 1521 seeded active at step 4456. Row window from `SPU SP-DCA4-p2 s2b start`; S3 has none: use the time of the victory step advance. The fixture seed may not record earlier steps in `completed_step_ids`; grade 4456 only if it is present. Seed facts: steps 4455-4458 (`db/resources/Missions/Seed/mission_steps.sql:2058-2064`), chains 1369-1377 (`db/resources/Content/Seed/castle_symbiote_chains.sql`, lines cited per row), tank spawn 13802 (`db/resources/Worlds/Seed/spawnlist.sql:629`), template 413 (`db/resources/Entities/Seed/entity_templates.sql:1096`), dialogs 4990 and 4991 (`db/resources/Dialogs/Seed/dialogs.sql:8345-8347`). Not in this part: S6-S8 (SP-DCA5) and any relog at 4458.
 
-Shorthand: `$P` = `toInt64(attributes_number['player_id'])=$pid`. Row windows come from `SPU SP-DCA4 s1 start` and `s4 start`; S2, S3 and S5 have none: use the `Mission step advanced` times. Seed facts: steps 4455-4458 (`db/resources/Missions/Seed/mission_steps.sql:2058-2064`), chains 1369-1377 (`db/resources/Content/Seed/castle_symbiote_chains.sql`, lines cited per row), tank spawn 13802 (`db/resources/Worlds/Seed/spawnlist.sql:629`), template 413 (`db/resources/Entities/Seed/entity_templates.sql:1096`), dialogs 4990 and 4991 (`db/resources/Dialogs/Seed/dialogs.sql:8345-8347`). Not in this packet: S6-S8 (SP-DCA5) and any relog at 4458.
-
-## Row S1 - tank visible and clickable; highlight at 4456 and 4457; static hack cursor to all
-
-| Check | Query | Expected |
-|---|---|---|
-| Archetype gate | `server_db_query` `SELECT player_id, archetype FROM public.sgw_player WHERE player_id=$pid` (read real column names from one `SELECT *`) | archetype 8 (Jaffa). Anything else: BLOCKED (wrong fixture), not FAIL |
-| Auto-accept + advance | `ch $t0 $t1 "$P AND body LIKE '%Mission accepted%' AND body LIKE '%1521%'"` then `body LIKE '%Mission step advanced%' AND body LIKE '%4456%'` | chains 1369 and 1370 (lines 4-13) |
-| Tank entity | `server_entity_get` on tag `Castle_SymbioteTank` | present at about (356.0, 70.18, 896.0) with `interaction_type` 256 (static hack cursor; template 413) |
-| Click resolved | `ch $t0 $t1 "$P AND (body LIKE '%Castle_SymbioteTank%' OR body LIKE '%1374%')"` | chain 1374 matched on the first click |
-| Shown to everyone | needs a second client | NOT-RUN clause |
-
-Looker for `S1-tank-at-4456`: 1. Is a large tank or chamber prop visible? 2. Does it have a glow or highlight? 3. Is a hack or hand cursor visible? Result: PASS on the server rows; the look clauses are NEEDS_HUMAN (sheet); the to-everyone clause is NOT-RUN, so the row is PARTIAL.
-
-## Row S2 - Livewire window opens; victory returns to the chain; defeat allows a re-click
+## Row S2b - victory returns to the chain
 
 | Check | Query | Expected |
 |---|---|---|
 | Minigame started | `server_minigame_state` / `server_minigame_tap_read`, or `ch $t0 $t1 "$P AND (body LIKE '%minigame%' OR body LIKE '%Livewire%')"` | a Livewire session for `$pid`, difficulty 1 (chain 1374, lines 16-19) |
-| Defeat then re-click | the same window | a failed result then a second start; if the driver reported `no close control found` the clause is NOT-RUN |
-| Victory chain | `ch $t0 $t1 "$P AND (body LIKE '%1375%' OR body LIKE '%4457%' OR body LIKE '%4990%')"` | chain 1375 (lines 22-24): objective 5176 credited, step 4457, dialog 4990 displayed; DB `current_step_id`=4457 |
+| Victory chain | `ch $t0 $t1 "$P AND body LIKE '%Mission step advanced%' AND toInt64(attributes_number['mission_id'])=1521 AND toInt64(attributes_number['new_step_id'])=4457"` | one row (chain 1375, lines 22-24); DB `current_step_id`=4457 |
+| Objective 5176 | the mission state query: `completed_objective_ids` | record it; no seed action credits 5176 (chain 1375 only advances and displays), so absence is a NOTE, not a FAIL |
 
-Looker for `S2-livewire-open`: 1. Is a minigame window (wires or circuit puzzle) open? Result: PASS on start and victory; PARTIAL if the defeat clause is NOT-RUN.
+Looker for `S2b-livewire-open`: 1. Is a minigame window (wires or circuit puzzle) open? Result: PASS on start and victory chain.
 
 ## Row S3 - dialog 4990 appears as the player's own narration
 
@@ -96,24 +85,6 @@ Looker for `S2-livewire-open`: 1. Is a minigame window (wires or circuit puzzle)
 | Dialog row | `server_db_query` `SELECT * FROM resources.dialogs WHERE dialog_id=4990` | exists (`db/resources/Dialogs/Seed/dialogs.sql:8345`) |
 
 Looker for `S3-dialog-4990`: 1. Is a dialog window open? 2. Does its speaker name match the player character or is there no NPC portrait? Result: PASS on the display row; the "as the player's own narration" look is NEEDS_HUMAN (sheet).
-
-## Row S4 - dialog 4991 opens on the second click; the speaker label is acceptable
-
-| Check | Query | Expected |
-|---|---|---|
-| Second click resolved | `ch $t0 $t1 "$P AND (body LIKE '%1376%' OR body LIKE '%4458%' OR body LIKE '%4991%')"` | chain 1376 (lines 27-30): step 4458, dialog 4991 displayed; DB `current_step_id`=4458 (checked before the close) |
-| Close completes | `ch $t0 $t1 "$P AND body LIKE '%Mission completed!%'"` | one row for 1521 after the close (chain 1377, lines 33-36) |
-
-Looker for `S4-dialog-4991`: 1. Is a dialog window open? 2. What speaker name is shown (quote it)? Result: PASS on the server rows; whether the speaker label is acceptable is NEEDS_HUMAN (sheet).
-
-## Row S5 - journal text for steps 4456-4458 reads sensibly, no implant mechanic
-
-| Check | Query | Expected |
-|---|---|---|
-| Step texts in the seed | `server_db_query` `SELECT step_id, step_display_log_text FROM resources.mission_steps WHERE step_id IN (4456,4457,4458) ORDER BY step_id` | "Bypass the security protocols on the Symbiote Storage tank." / "Implant a symbiote in your pouch." / "Use the Tau'ri radio to report to Moh'katan." (`mission_steps.sql:2060-2064`) |
-| Driver recorded the same text | the three step texts the driver recorded (1.2, 2.4, 4.2) | match the seed (client-read only) |
-
-Looker for `S5-journal-final`: 1. Is the quest journal open? Result: server half PASS when the seed text equals the driver-read text; whether the wording reads sensibly is NEEDS_HUMAN (sheet).
 
 ---
 
