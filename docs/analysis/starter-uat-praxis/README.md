@@ -74,7 +74,7 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 | 1 | SP-04 | Tollana briefs (SP-DTO1 to DTO4) | documentation-writer | no | Integrated (`sp-integration`, merged `--no-ff`) |
 | 1 | SP-05 | Hand-off leg briefs (SP-DL1 to DL3) | documentation-writer | no | Integrated (`sp-integration`, merged `--no-ff`) |
 | 2 | SP-DCB1 | 11 parts (SP-DCB1-p1 to p11), 212 planned calls; rows CB-U01 to CB-U04 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
-| 2 | SP-DCB2 | 7 parts (SP-DCB2-p1 to p7), 135 planned calls; rows CB-U05 to CB-U08 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DCB2 | 7 parts (SP-DCB2-p1 to p7), 157 planned calls; rows CB-U05 to CB-U08 | p1-p5: general-purpose Sonnet driver, cap 70 (the proven click recipe costs 3 calls per click); p6-p7: lab-driver; plus verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 2 | SP-DCB3 | 13 parts (SP-DCB3-p1 to p13), 243 planned calls; rows CB-U09 to T01/T02 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 2 | SP-DCB4 | 8 parts (SP-DCB4-p1 to p8), 142 planned calls; rows T03/T04a, T03/T04b, T05/T06a, T03/T04c, T05/T06b, T07, T09, T10, T07b | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 2 | SP-DCB5 | 9 parts (SP-DCB5-p1 to p9), 153 planned calls; rows T11/T12a, T11/T12b, T13, T14, T15.1, T15.2, T15.3, T15c, T11/T12c, T11/T12d | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |

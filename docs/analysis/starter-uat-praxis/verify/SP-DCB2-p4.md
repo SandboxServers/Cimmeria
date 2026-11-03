@@ -52,15 +52,18 @@ Do not edit the repo (except the issue body file), the database or the server; d
 Character `Dcbch`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB2-p3. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U05b
-Sub-row scope: Hallway05 guard flank. Leave the last guard alive if the step says so; CB-U06 needs it. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.
+Sub-row scope: Hallway05 guard flank. No Hallway05 guard may die in this part: with mission 686 active, either death completes 686 and plays the Straegis scene (chains 1092 to 1094, 1161), and CB-U06 (SP-DCB2-p5) needs that scene in its own run. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows. Setup (not graded, tier G): `/gmsetgodmode 1`, `/gmsethealth 760 0`, and `/gmmissionassign 686 1` because the 681 to 686 controller chain was never run for this character; reload by the R key; stand point (-100.8, 24.67, -47.6), the midpoint of the two spawns.
 
 | Check | Evidence | Expected |
 |---|---|---|
+| 686 assigned | INFO `accepting mission` 686 from the GM assign, before the shot | present; in the mission tracker |
+| Pull | `setTargetID` on a Hallway05 guard, then one `useAbility` 592 with that target and no `no_ammo` refusal (`use_ability_no_ammo` absent) | shot reaches the server |
 | Cover and flank | log `cover.hold` or `spawn_reserved`; `cover_released_flanked`; `fire_player_flanked_npc` in the fight window | at least one cover hold, one release when flanked |
-| Objectives | `complete objective` for 2725 (Mess Hall) and 2731 (Hallway05) after the kills | both, once |
-| Negatives | `server_entity_query` guards: positions inside the room bounds; no WARN | no guard through a wall, none frozen with no target |
+| Objective 2731 | `complete objective` for 2731 (mission 686) after the flank (chain 1142); no `complete objective` for 2725 here (the Mess Hall objective belongs to SP-DCB2-p3) | once, with no kill |
+| No scene | no `Content: complete mission` 686, no `play_sequence` 1751, no `accepting mission` 687 in this window | none |
+| Negatives | `server_entity_query` guards 102425 and 102426: alive, positions inside the corridor, no WARN (a `teleport_dest_off_mesh` WARN on the stand point is a setup note; record it) | no guard through a wall, none frozen with no target |
 
-Grade: PASS if both objectives completed from the kills and cover and flank rows exist; PARTIAL if the guards never took cover (`flank not exercisable`); FAIL if a guard left the room or an objective completed without a kill. Visual (cover posture): NEEDS_HUMAN `H-CB-U05-1`.
+Grade: PASS if the shot reached the server, cover and flank rows exist, 2731 completed and no scene started; PARTIAL if the guards never took cover (`flank not exercisable`); FAIL if a guard left the corridor, a guard died, or an objective completed with no flank. Visual (cover posture): NEEDS_HUMAN `H-CB-U05-1`.
 
 ---
 

@@ -196,11 +196,11 @@ Every drive packet: **LAB: ASK-FIRST** (§ C1). Agent `lab-driver` (brief) then 
 | 2 | 9 | [SP-DCB1-p9](briefs/SP-DCB1-p9.md), [verify](verify/SP-DCB1-p9.md) | default | after verify of SP-DCB1-p8 | 19 | SP-01 |
 | 2 | 10 | [SP-DCB1-p10](briefs/SP-DCB1-p10.md), [verify](verify/SP-DCB1-p10.md) | default | after verify of SP-DCB1-p9 | 20 | SP-01 |
 | 2 | 11 | [SP-DCB1-p11](briefs/SP-DCB1-p11.md), [verify](verify/SP-DCB1-p11.md) | default | after verify of SP-DCB1-p10 | 20 | SP-01 |
-| 2 | 12 | [SP-DCB2-p1](briefs/SP-DCB2-p1.md), [verify](verify/SP-DCB2-p1.md) | default | after lease of SP-DCB1-p11 | 22 | SP-01 |
-| 2 | 13 | [SP-DCB2-p2](briefs/SP-DCB2-p2.md), [verify](verify/SP-DCB2-p2.md) | default | after verify of SP-DCB2-p1 | 22 | SP-01 |
-| 2 | 14 | [SP-DCB2-p3](briefs/SP-DCB2-p3.md), [verify](verify/SP-DCB2-p3.md) | default | after verify of SP-DCB2-p2 | 18 | SP-01 |
-| 2 | 15 | [SP-DCB2-p4](briefs/SP-DCB2-p4.md), [verify](verify/SP-DCB2-p4.md) | default | after verify of SP-DCB2-p3 | 18 | SP-01 |
-| 2 | 16 | [SP-DCB2-p5](briefs/SP-DCB2-p5.md), [verify](verify/SP-DCB2-p5.md) | default | after verify of SP-DCB2-p4 | 21 | SP-01 |
+| 2 | 12 | [SP-DCB2-p1](briefs/SP-DCB2-p1.md), [verify](verify/SP-DCB2-p1.md) | default | after lease of SP-DCB1-p11 | 29 | SP-01 |
+| 2 | 13 | [SP-DCB2-p2](briefs/SP-DCB2-p2.md), [verify](verify/SP-DCB2-p2.md) | default | after verify of SP-DCB2-p1 | 29 | SP-01 |
+| 2 | 14 | [SP-DCB2-p3](briefs/SP-DCB2-p3.md), [verify](verify/SP-DCB2-p3.md) | default | after verify of SP-DCB2-p2 | 22 | SP-01 |
+| 2 | 15 | [SP-DCB2-p4](briefs/SP-DCB2-p4.md), [verify](verify/SP-DCB2-p4.md) | default | after verify of SP-DCB2-p3 | 19 | SP-01 |
+| 2 | 16 | [SP-DCB2-p5](briefs/SP-DCB2-p5.md), [verify](verify/SP-DCB2-p5.md) | default | after verify of SP-DCB2-p4 | 24 | SP-01 |
 | 2 | 17 | [SP-DCB2-p6](briefs/SP-DCB2-p6.md), [verify](verify/SP-DCB2-p6.md) | default | after verify of SP-DCB2-p5 | 17 | SP-01 |
 | 2 | 18 | [SP-DCB2-p7](briefs/SP-DCB2-p7.md), [verify](verify/SP-DCB2-p7.md) | default | after verify of SP-DCB2-p6 | 17 | SP-01 |
 | 2 | 19 | [SP-DCB3-p1](briefs/SP-DCB3-p1.md), [verify](verify/SP-DCB3-p1.md) | default | after lease of SP-DCB2-p7 | 19 | SP-01 |

@@ -52,16 +52,20 @@ Do not edit the repo (except the issue body file), the database or the server; d
 Character `Dcbch`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: fresh character, no fixture; start state by play or GM setup.
 
 ## ROW CB-U08a
-Sub-row scope: Cast appears after mission 638 completes. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.
+Sub-row scope: Region2 crossing, Prisoner 329 and the door Livewire, then the cast. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows. The driver crosses Region2 first (step .2), so mission 638 must be accepted before the Prisoner step.
 
 | Check | Evidence | Expected |
 |---|---|---|
+| 638 accepted on the first crossing | INFO `Content: accepting mission` 638 (chain 1011), step 2114, and `adding dialog set` "Free Prisoner 329", both before any `interact` row for the Prisoner | once, before the Prisoner dialog |
+| Prisoner and door | `interact` rows for the Prisoner (102307) and the door panel (102318) after `setTargetID`; the Livewire win is graded from the server (`smartfox_victory`, `server_minigame_state`, mission 638 steps 2115 and 2116), not from the driver's `client_minigame_play` text, which can read `inconclusive` / `server_unreachable` on a win | 638 completes, 639 accepted at step 2117 |
 | Cast | `server_entity_query` for spawns 520 and 521 (`Cellblock_Ambient_%`): positions near (-271, 65.45, -135) and (-254, 65.45, -135), friendly; DEBUG `Spawned instance NPC from DB`; INFO `instance_populated` | both present, stationary, friendly |
-| Bark | span `content.npc_bark`, INFO `Content: npc bark` `chain_id` 11010 `screen_id` 200160 | once for the crossing player; none on re-entry; at most one more after the relog; none after step 2145 |
+| Bark | span `content.npc_bark`, INFO `Content: npc bark` `chain_id` 11010 `screen_id` 200160; the chain is gated on a Region2 entry while mission 639 is at step 2117 (`castle_cellblock_chains.sql:3471`), which is the second crossing (step .11) | once for the crossing player, on the second crossing; none on the first |
 | WARN absent | `screen_not_cached`, `empty_text`, `actor_not_player` | none |
 | Second client | `server_witnesses` for both NPCs lists both players; the bark goes to the crossing player only | yes |
 
-Grade: PASS if placement, once-only bark and AoI hold; BLOCKED `no packet tap` leaves the AoI clause PARTIAL. Visual (name plate `Op-CORE Soldier`): NEEDS_HUMAN `H-CB-U08-1`. Looker: 1. Are two NPCs standing in a corridor? 2. Is a name plate visible above them?
+Open question, not a clause: the cast spawns at world load (49 of 49 instance NPCs) and is not gated on mission 638. Record when spawns 520 and 521 appeared next to the 638 completion time and flag it for the coordinator as a product or doc question; do not grade it.
+
+Grade: PASS if 638 was accepted on the crossing, placement and the once-only bark hold; BLOCKED `no packet tap` leaves the AoI clause PARTIAL. Visual (name plate `Op-CORE Soldier`): NEEDS_HUMAN `H-CB-U08-1`. Looker: 1. Are two NPCs standing in a corridor? 2. Is a name plate visible above them?
 
 ---
 

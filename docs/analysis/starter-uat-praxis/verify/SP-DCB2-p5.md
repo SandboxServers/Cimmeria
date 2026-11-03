@@ -52,15 +52,17 @@ Do not edit the repo (except the issue body file), the database or the server; d
 Character `Dcbch`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB2-p4. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U06
+Precondition (graded first): mission 686 is active at the kill. The check is the `accepting mission` 686 row from SP-DCB2-p4's GM assign (or the defensive re-assign in step .1 of this part) and `status=1` for 686 in `sgw_mission`. If 686 is not active, grade the clauses below BLOCKED (case c, brief or carry-over) and say so. The kill is `/gmkilltarget 0` (tier G) on a Hallway05 guard. If 686 is active and the kill still yields no `Content: complete mission` 686, check whether `gmKillTarget` raises the `entity_dead_tag` event the chains listen on; that is a product question (case a), file it then.
+
 | Check | Evidence | Expected |
 |---|---|---|
-| Scene | Matinee 1751 start row; Marsh despawn | at t=0 of the last kill |
+| Scene | Matinee 1751 start row; Marsh despawn (`destroy_entity` Preparation_ColMarsh) | at t=0 of the kill (the `Content: complete mission` 686 row) |
 | Dialog 2516 | `displaying dialog` 2516, time delta from t=0 | about 10.1 s (accept 8-13 s) |
-| Blurb 5859 | log row for blurb 5859, delta | about 26.1 s (accept 23-29 s) |
+| Blurb 5859 | log row for blurb 5859 (chain 1172), delta | about 26.1 s (accept 23-29 s) |
 | 687 accepted | `accepting mission` 687 | once |
-| Relog and late entry | no 1751, 2516 or 5859 after the relog; Marsh absent | none |
+| Relog and late entry | no 1751, 2516 or 5859 after the relog; chain 1162 re-despawns Marsh; Marsh absent | none; the "Marsh absent" clause now means a real despawn, since the scene played |
 
-Grade: PASS needs the server timings inside the windows and no replay. The readable interval, camera and the scene's look: NEEDS_HUMAN `H-CB-U06-1`. Looker: 1. Is a cinematic or an unusual camera angle visible? 2. Is there a dialog box with text?
+Grade: PASS needs the server timings inside the windows and no replay. The readable interval, camera and the scene's look: NEEDS_HUMAN `H-CB-U06-1`. Looker: 1. Is a cinematic or an unusual camera angle visible? 2. Is there a dialog box with text? The die-and-respawn check was dropped (`client_die_and_respawn` times out at the defeat wait); the relog covers late entry.
 
 ---
 

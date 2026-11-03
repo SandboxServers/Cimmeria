@@ -266,7 +266,7 @@ Generated from the `ROWS:` and `ESTIMATE:` lines of the briefs on disk (SP-L1). 
 | SP-DCA6 | 2: SP-DCA6-p1 to p2 | 37 |
 | SP-DCA7 | 3: SP-DCA7-p1 to p3 | 46 |
 | SP-DCB1 | 11: SP-DCB1-p1 to p11 | 212 |
-| SP-DCB2 | 7: SP-DCB2-p1 to p7 | 135 |
+| SP-DCB2 | 7: SP-DCB2-p1 to p7 | 157 |
 | SP-DCB3 | 13: SP-DCB3-p1 to p13 | 243 |
 | SP-DCB4 | 8: SP-DCB4-p1 to p8 | 142 |
 | SP-DCB5 | 9: SP-DCB5-p1 to p9 | 153 |

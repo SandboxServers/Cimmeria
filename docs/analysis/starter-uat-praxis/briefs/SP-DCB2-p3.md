@@ -1,4 +1,4 @@
-You are a `lab-driver` agent. You drive one live Stargate Worlds game client through the cimmeria-lab tools and report raw facts. You do not diagnose, judge, fix, edit files or query databases. You can read nothing except tool results. You have never seen this game: do exactly what this brief says, in order, and nothing else.
+You are a lab-driver (a general-purpose Sonnet agent) and use the cimmeria-lab tools only. You drive one live Stargate Worlds game client through the cimmeria-lab tools and report raw facts. You do not diagnose, judge, fix, edit files or query databases. You can read nothing except tool results. You have never seen this game: do exactly what this brief says, in order, and nothing else.
 
 BRIEF FIELDS (the coordinator filled these in before pasting):
 
@@ -8,6 +8,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - CHARACTER: `Dcbch` (archetype Commando, Praxis, male, first name Uat)
 - SERVER: local server at the recorded SHA (D-SP2). The lab is pre-authorized for this campaign (D-SP5): never ask anyone for permission, never wait for a human.
 - AREA: Castle_Cellblock (world 12) on the local server   (no other lane uses it at the same time; the plan runs these packets one after another on the default instance)
+- Driver: general-purpose Sonnet, cap 70   (raised from the lab-driver default of 22: this part plans 22 calls, because the proven click recipe costs 3 calls per NPC, prop or panel click)
 
 ## 0. Front-loaded gotchas (read all of them)
 
@@ -25,12 +26,14 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 12. **Known issues (record, do not fail the row for them unless the row is about them):** #1667 (first-guard pistol: a miss and heavy incoming damage are possible; the zero-Focus warning does not mean the shot was refused); the LMG effect 644 is inert; dialog 60151 raises a client syntax error (record the text, SHOT, continue); K5 (a corpse or NPC can stay invisible until relog: type `.bug invisible <what>`, relog, say whether it appeared); K7 (no Stasis Sickness icon is expected).
 13. **Livewire stalls:** `client_minigame_play` or `lab_screenshot` once failed to return for two minutes on this map. Call each once; if it does not return, record that and move on to the next step (the verifier grades the server side). Never call it twice in a row.
 14. **Do not restart the client** and do not call `lab_client_*` tools. If the client seems dead (every call fails), stop and report BLOCKED with the error text.
-15. **Your budget is 28 tool calls in total** (the hard stop). The ESTIMATE below is the planned count, and the labels in each step are its parts. At call 26 stop doing rows, write the report from what you have, release the lease and finish. Never start a row you cannot finish.
+15. **Your budget is 70 tool calls in total** (the hard stop). The ESTIMATE below is the planned count, and the labels in each step are its parts. At call 68 stop doing rows, write the report from what you have, release the lease and finish. Never start a row you cannot finish.
 16. **One retry per failed call, unchanged.** Then record the error text verbatim and continue.
 17. **An unexpected window, prompt or dialog:** read it once with `client_ui_state`, record it, close it with DIALOG or PROMPT, carry on.
 18. **Never write IPs, passwords or account names** in your report.
 19. **Every new character spawns boot-locked** (mission 689, chain 1023 holds movement inside a 1.0 m radius and snaps you back). Winning the Prison Boot Control Livewire releases it for good; BOOT does that. A relog does not lock it again after the win.
 20. **Unverified tool arguments.** `client_world_click` takes `entity_id` and `button` (`"right"` interacts, `"left"` targets); the repo does not show the accepted `button` strings, so if a click is rejected with an argument error, retry once with the same call without `button` and record the error text.
+21. **Judge a Livewire by the server, not the tool.** `client_minigame_play` may answer `inconclusive` or `server_unreachable` even when the win reached the server. Record the tool text verbatim, do not retry, do not claim FAIL for it, and go on. The verifier grades from `smartfox_victory`, `server_minigame_state` and the mission row.
+22. **GM setup commands (tier G).** `/gmheal` does not exist. The real ones are `/gmsetgodmode <0|1>`, `/gmsethealth <amount> <targetId>` (use `/gmsethealth 760 0`), `/gmgiveitem <designId> <qty>`, `/gmmissionassign <missionId> <popup>` and `/gmkilltarget <entityId>`. `/gmkilltarget 0` works with the NPC selected. A bare `/gm...` line with missing arguments answers "Not enough parameters" and the server never sees it. Never send a GM line while dead. God mode resets on a relog.
 
 ## 1. Fixed macros (use them verbatim; the cost is the number of calls)
 
@@ -74,7 +77,13 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **RELOG.** Cost 3. `lab_logout {"lease_id":L}`, then `lab_ensure_in_world` with the same character (L2), then WAIT. Read nothing from before the relog as still true.
 
-**KILL.** Cost 2. TCLICK the target, then CHATX with `/gmkilltarget` (tier G, say so).
+**KILL.** Cost 3 (tier G, say so). TGT the target (2 calls; `target_after` must equal the id), then CHATX with `/gmkilltarget 0`. A bare `/gmkilltarget` answers "Not enough parameters." and reaches no server. Never send it while dead.
+
+**TGT.** Cost 2. Target an NPC, prop or panel by id. `client_camera {"lease_id":L,"pitch_deg":-10,"face_entity_id":<id>}`, then `client_target {"lease_id":L,"entity_id":<id>,"allow_fallback":true,"rotate_camera":false}`. Record `target_after`; it must equal the id. If it does not, repeat both calls once and record the result.
+
+**RC - right-click by the proven recipe.** Cost 3 (tier N2). Stand 3 to 4.5 m from the target. The first two calls are TGT. The third call is `client_batch {"lease_id":L,"stop_on_error":false,"steps":[ DIALOG, {"op":"lua","id":"c1","chunk":"ChatMod.stickyCommand='/say '; Inst1Chat_Input:setText('/interact'); ChatMod.onTextAccepted(Inst1Chat_Input, Inst1Chat_Input); return 'sent'"}, {"op":"wait","ms":2500}, {"op":"lua","id":"vis","chunk":"return tostring(DialogWin ~= nil and DialogWin:isVisible())"}, UTC ]}`. Record `target_after` and `vis`. RC replaces a plain RCLICK on an NPC, prop or panel (a plain `client_world_click` opened nothing in the first drive). Failure path: one unchanged retry of the third call, then record FAIL.
+
+**RELOAD.** Cost 2. The pistol must be equipped. `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"r","hold_ms":150}]}`, then `client_batch {"lease_id":L,"steps":[ DIALOG, {"op":"wait","ms":3500}, UTC ]}`. Do not call `client_use_ability` with "Reload": ability 596 is not in the tutorial kit. The R key binding is read from source and was not seen live: record what happens.
 
 ---
 
@@ -84,7 +93,7 @@ Start: carry-over from SP-DCB2-p2. Same character `Dcbch`, same state. If SP-DCB
 
 ROWS: CB-U05a.
 DONE ROWS: none on attempt 1. On attempt 2 or 3 the coordinator pastes the DONE ROWS and STOPPED AT line here; skip those and start at S2.
-ESTIMATE: 18 tool calls (planned success path; hard stop 28)
+ESTIMATE: 22 tool calls (planned success path; hard stop 70)
 CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same character as SP-DCB2-p2.
 
 ## Steps
@@ -96,31 +105,39 @@ CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same
 
 ### ROW CB-U05a
 
-**CB-U05a.1 (1 call: client_batch).** GOTO `-110 34.6 -95`. Put these CHATX lines before the `.gotolocation` line: `/gmheal`, a tier G health top-up (if the reply is unknown command, record it and go on).
+**Why the order matters.** Mission 681 (objectives 2724, 2725) only exists after you enter Region9: chain 1073 fires on `enter_region Castle_Cellblock.Region9` and accepts it. The two Mess Hall guards (MessHall_Guard1 102422 at (-96.25, 34.59, -91.59) and MessHall_Guard2 102421 at (-95.89, 34.59, -98.81)) aggro on a player within 18 m, so you arrive out of that radius. Never send a `/gm...` line while dead (gotcha 22).
 
-**CB-U05a.2 (1 call: client_entity_find).** FIND, `max_distance_m` 12. List every entry; record names and positions.
+**CB-U05a.1 (1 call: client_batch).** GOTO `-77 46.2 -161` (inside Region9, the corridor waypoint the scenario map uses). Put these CHATX lines before the `.gotolocation` line, in this order: `/gmsetgodmode 1` and `/gmsethealth 760 0` (tier G setup, so the guards cannot kill you). Chain 1073 fires on arrival and accepts 681. The server writes two WARNs for it (`complete_mission_direct: mission not found` for 680 and `send_mission_update: no live mission instance`) because this character never held mission 680; they are expected, not a failure.
 
-**CB-U05a.3 (1 call: client_entity_find).** FIND, `max_distance_m` 12. Second snapshot.
+**CB-U05a.2 (1 call: client_ui_state).** UIS. Record the mission tracker; 681 should be listed.
 
-**CB-U05a.4 (1 call: client_entity_find).** FIND, `max_distance_m` 12. Third snapshot.
+**CB-U05a.3 (1 call: client_batch).** GOTO `-76 34.59 -95`, inside Region3 (the Mess Hall, x -107..-72) and 20.3 m from MessHall_Guard2 and 20.6 m from MessHall_Guard1, outside the 18 m aggro radius. Whether this point is on the navmesh was not checked against a loaded space; read the position the batch returns and record it. If the server snapped you (the distance to either guard is now under 19 m), carry on: god mode is on.
 
-**CB-U05a.5 (1 call: client_use_ability).** SHOOT `client_use_ability {"lease_id":L,"ability_id":592}` (it fires at your current target). Pull ability.
+**CB-U05a.4 (1 call: client_entity_find).** FIND, `max_distance_m` 30. Pick the two guards by position (within 1.5 m of (-96.25, 34.59, -91.59) and (-95.89, 34.59, -98.81)); keep both ids.
 
-**CB-U05a.6 (1 call: client_batch).** One batch: DIALOG first, then `wait` 3000 ms, then UTC. Let the guards close.
+**CB-U05a.5 (2 calls: client_ui_sequence, client_batch).** RELOAD (the pistol must hold rounds before the pull).
 
-**CB-U05a.7 (1 call: client_ui_sequence).** Sidestep: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"a","hold_ms":800}]}`.
+**CB-U05a.6 (1 call: client_camera).** `client_camera {"lease_id":L,"pitch_deg":-10,"face_entity_id":<guard 1 id>}`.
 
-**CB-U05a.8 (1 call: client_world_click).** TCLICK Mess Hall guard 1 at (-96.25, 34.59, -91.59). (left-click target)
+**CB-U05a.7 (1 call: client_target).** `client_target {"lease_id":L,"entity_id":<guard 1 id>,"allow_fallback":true,"rotate_camera":false}`. Record `target_after`; it must be the guard's id. Ability 592 fires at the current target, so this comes before the shot.
 
-**CB-U05a.9 (1 call: client_batch).** CHATX: `/gmkilltarget` (tier G, say so).
+**CB-U05a.8 (1 call: client_use_ability).** SHOOT `client_use_ability {"lease_id":L,"ability_id":592,"place":true}`. Pistol Shot is a kit ability and is not on the hotbar, so the first cast must pass `place:true`. Fire once. If it answers with a range or line-of-sight refusal, record the text, run GOTO `-82 34.59 -95` (13 m from the guards) as a failure-path step (not counted) and fire once more.
 
-**CB-U05a.10 (1 call: client_world_click).** TCLICK Mess Hall guard 2 at (-95.89, 34.59, -98.81). (left-click target)
+**CB-U05a.9 (1 call: client_batch).** One batch: DIALOG first, then `wait` 3000 ms, then UTC. Let the guards close and take cover.
 
-**CB-U05a.11 (1 call: client_batch).** CHATX: `/gmkilltarget` (tier G, say so).
+**CB-U05a.10 (1 call: client_ui_sequence).** Sidestep: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"a","hold_ms":800}]}`.
 
-**CB-U05a.12 (1 call: lab_screenshot).** SHOT-H `H-SK-1`. Where do the guards lie?
+**CB-U05a.11 (1 call: client_target).** `client_target {"lease_id":L,"entity_id":<guard 1 id>,"allow_fallback":true,"rotate_camera":false}` (select guard 1 again; this is tier N3).
 
-**CB-U05a.13 (1 call: client_batch).** Bookmark: one batch with only the DIALOG op and the end line, nothing else. Also add the line `.bug SPU SP-DCB2-p3 CB-U05a end` as the last line of this step's `client_batch`.
+**CB-U05a.12 (1 call: client_batch).** CHATX: `/gmkilltarget 0` (tier G, say so). The argument is mandatory and the selected NPC is the target; a bare `/gmkilltarget` reaches no server.
+
+**CB-U05a.13 (1 call: client_target).** `client_target {"lease_id":L,"entity_id":<guard 2 id>,"allow_fallback":true,"rotate_camera":false}`.
+
+**CB-U05a.14 (1 call: client_batch).** CHATX: `/gmkilltarget 0` (tier G, say so).
+
+**CB-U05a.15 (1 call: lab_screenshot).** SHOT-H `H-SK-1`. Where do the guards lie?
+
+**CB-U05a.16 (1 call: client_batch).** Bookmark: one batch with only the DIALOG op and the end line, nothing else. Also add the line `.bug SPU SP-DCB2-p3 CB-U05a end` as the last line of this step's `client_batch`.
 
 
 ---
@@ -128,7 +145,7 @@ CHARACTERS: `Dcbch` (archetype Commando, Praxis, male, first name Uat), the same
 ## 2. Report format (your final message, nothing else)
 
 ```text
-PACKET SP-DCB2-p3 DRIVER REPORT attempt <n>; client default; first UTC <t>; last UTC <t>; tool calls used <n>/28
+PACKET SP-DCB2-p3 DRIVER REPORT attempt <n>; client default; first UTC <t>; last UTC <t>; tool calls used <n>/70
 | Row | Claim | Tier | UTC start-end | Ids and positions read | Chat lines (seq, channel, text) | SHOT paths | Notes (raw, no diagnosis) |
 ```
 

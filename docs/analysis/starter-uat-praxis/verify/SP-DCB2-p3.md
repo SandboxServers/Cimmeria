@@ -52,15 +52,18 @@ Do not edit the repo (except the issue body file), the database or the server; d
 Character `Dcbch`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB2-p2. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U05a
-Sub-row scope: Mess Hall guard flank. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.
+Sub-row scope: Mess Hall guard flank. Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows. Setup (not graded): `/gmsetgodmode 1` and `/gmsethealth 760 0` (tier G); a Region9 entry that accepts mission 681 (chain 1073); a stand point 20 m from both guards; reload; the pull with ability 592 placed on the hotbar.
 
 | Check | Evidence | Expected |
 |---|---|---|
+| Region9 and 681 | INFO `Content: accepting mission` 681 (chain 1073) before the first shot. The character never held 680, so chain 1073 also logs two WARNs (`complete_mission_direct: mission not found` and `send_mission_update: no live mission instance`) | 681 accepted at step 2348; those two WARNs are expected and are not a failure |
+| Pull | `useAbility` 592 by the player with a non-zero target (`setTargetID` on a guard before it); no `no_ammo` refusal; the guards did not aggro before the shot (`NPC AI: proximity auto-aggro` absent before the cast, the stand point is 20 m away) | shot reaches the server |
 | Cover and flank | log `cover.hold` or `spawn_reserved`; `cover_released_flanked`; `fire_player_flanked_npc` in the fight window | at least one cover hold, one release when flanked |
-| Objectives | `complete objective` for 2725 (Mess Hall) and 2731 (Hallway05) after the kills | both, once |
-| Negatives | `server_entity_query` guards: positions inside the room bounds; no WARN | no guard through a wall, none frozen with no target |
+| Objectives | `complete objective` for 2725 (Mess Hall, mission 681; chain 1141 on a flank, or the kill chain 1087) after the flank or the kills | once |
+| GM kills | `gmKillTarget: killing NPC` for 102421 and 102422 | both rows present; the player alive at both |
+| Negatives | `server_entity_query` guards: positions inside the room bounds; no WARN other than the two expected ones | no guard through a wall, none frozen with no target |
 
-Grade: PASS if both objectives completed from the kills and cover and flank rows exist; PARTIAL if the guards never took cover (`flank not exercisable`); FAIL if a guard left the room or an objective completed without a kill. Visual (cover posture): NEEDS_HUMAN `H-CB-U05-1`.
+Grade: PASS if objective 2725 completed, the pull reached the server and cover and flank rows exist; PARTIAL if the guards never took cover (`flank not exercisable`); FAIL if a guard left the room or an objective completed with no flank and no kill. Objective 2731 belongs to SP-DCB2-p4 (Hallway05). Visual (cover posture): NEEDS_HUMAN `H-SK-1`.
 
 ---
 

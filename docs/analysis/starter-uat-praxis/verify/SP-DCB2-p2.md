@@ -52,16 +52,17 @@ Do not edit the repo (except the issue body file), the database or the server; d
 Character `Dcbch`. Source: [unified-uat.md](../../../guides/unified-uat.md#castle-cellblock-tutorial). Start: carry-over from SP-DCB2-p1. If that part FAILed, grade these rows BLOCKED.
 
 ## ROW CB-U08b
-Sub-row scope: Leave and re-enter, relog, then the pistol setup that CB-U05 needs (setup is not graded). Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows.
+Sub-row scope: Leave and re-enter, relog, then the pistol setup that CB-U05 needs (setup is not graded). Grade only the clauses this part drove; the other clauses belong to the sibling sub-rows. The chat hook is empty after the relog; the driver installs it with one throwaway read (step .5) and re-enters Region2 afterwards (steps .6 and .7), so the "after relog" bark clause can be read.
 
 | Check | Evidence | Expected |
 |---|---|---|
-| Cast | `server_entity_query` for spawns 520 and 521 (`Cellblock_Ambient_%`): positions near (-271, 65.45, -135) and (-254, 65.45, -135), friendly; DEBUG `Spawned instance NPC from DB`; INFO `instance_populated` | both present, stationary, friendly |
-| Bark | span `content.npc_bark`, INFO `Content: npc bark` `chain_id` 11010 `screen_id` 200160 | once for the crossing player; none on re-entry; at most one more after the relog; none after step 2145 |
+| Cast | `server_entity_query` for spawns 520 and 521 (`Cellblock_Ambient_%`): positions near (-271, 65.45, -135) and (-254, 65.45, -135), friendly; DEBUG `Spawned instance NPC from DB`; INFO `Spawned instance NPCs` (not `instance_populated` after a relog) | both present, stationary, friendly |
+| Bark | span `content.npc_bark`, INFO `Content: npc bark` `chain_id` 11010 `screen_id` 200160 | none on re-entry; at most one more after the relog; none after step 2145. "Exactly once at the crossing" belongs to SP-DCB2-p1 and is not graded here |
 | WARN absent | `screen_not_cached`, `empty_text`, `actor_not_player` | none |
-| Second client | `server_witnesses` for both NPCs lists both players; the bark goes to the crossing player only | yes |
+| Second client | `server_witnesses` for both NPCs lists both players; the bark goes to the crossing player only | BLOCKED `no packet tap`; needs `server_packet_tap_start` and a second client, so the clause stays PARTIAL |
+| Setup (not graded) | Frost: `interact: per-player dialog set` dialog 3995 then mission 622 step 80623 and item 3730 added by chain 1003 (no loot window exists); Guard body: `interact` 102411, dialog 3996, `granting item` 55 and abilities 592, 594, 597, 1218 by chain 1005; equip; reload | server rows present; ability 596 (Reload) is not granted and not expected |
 
-Grade: PASS if placement, once-only bark and AoI hold; BLOCKED `no packet tap` leaves the AoI clause PARTIAL. Visual (name plate `Op-CORE Soldier`): NEEDS_HUMAN `H-CB-U08-1`. Looker: 1. Are two NPCs standing in a corridor? 2. Is a name plate visible above them?
+Grade: PASS if placement and the re-entry and relog bark clauses hold; AoI stays PARTIAL without a packet tap. Visual (name plate `Op-CORE Soldier`): NEEDS_HUMAN `H-CB-U08-1` (this part takes no screenshot; carry it to SP-DCB2-p1). Looker: 1. Are two NPCs standing in a corridor? 2. Is a name plate visible above them?
 
 ---
 
