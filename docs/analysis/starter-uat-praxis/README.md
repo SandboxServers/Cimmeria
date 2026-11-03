@@ -77,9 +77,9 @@ Statuses: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integ
 | 2 | SP-DCB2 | 7 parts (SP-DCB2-p1 to p7), 135 planned calls; rows CB-U05 to CB-U08 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 2 | SP-DCB3 | 13 parts (SP-DCB3-p1 to p13), 243 planned calls; rows CB-U09 to T01/T02 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 2 | SP-DCB4 | 8 parts (SP-DCB4-p1 to p8), 142 planned calls; rows T03/T04a, T03/T04b, T05/T06a, T03/T04c, T05/T06b, T07, T09, T10, T07b | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
-| 2 | SP-DCB5 | 9 parts (SP-DCB5-p1 to p9), 153 planned calls; rows T11/T12 to T15c | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
-| 2 | SP-DCB6 | 3 parts (SP-DCB6-p1 to p3), 57 planned calls; rows T16/T17 to T21/T22 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
-| 2 | SP-DCB7 | 9 parts (SP-DCB7-p1 to p9), 178 planned calls; rows T08 to T23 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DCB5 | 9 parts (SP-DCB5-p1 to p9), 153 planned calls; rows T11/T12a, T11/T12b, T13, T14, T15.1, T15.2, T15.3, T15c, T11/T12c, T11/T12d | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DCB6 | 3 parts (SP-DCB6-p1 to p3), 57 planned calls; rows T16/T17a, T16/T17b, T20, T21/T22 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
+| 2 | SP-DCB7 | 9 parts (SP-DCB7-p1 to p9), 178 planned calls; rows T08a, T08b, T15b.1, T15b.2, T23a, T23b, T23c, T23d, T23e | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 2 | SP-DL1 | 1 part (SP-DL1), 22 planned calls; row LEG-1 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 2 | SP-DCA1 | 2 parts (SP-DCA1-p1 to p2), 33 planned calls; rows A1 to A5 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |
 | 2 | SP-DCA2 | 2 parts (SP-DCA2-p1 to p2), 41 planned calls; rows D1 to D4 | lab-driver + verifier | **ASK-FIRST** (D-SP5 covers it) | Ready (briefs integrated) |

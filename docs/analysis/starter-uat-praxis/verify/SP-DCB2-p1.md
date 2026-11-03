@@ -61,7 +61,7 @@ Sub-row scope: Cast appears after mission 638 completes. Grade only the clauses 
 | WARN absent | `screen_not_cached`, `empty_text`, `actor_not_player` | none |
 | Second client | `server_witnesses` for both NPCs lists both players; the bark goes to the crossing player only | yes |
 
-Grade: PASS if placement, once-only bark and AoI hold; BLOCKED `no second client` leaves the AoI clause PARTIAL. Visual (name plate `Op-CORE Soldier`): NEEDS_HUMAN `H-CB-U08-1`. Looker: 1. Are two NPCs standing in a corridor? 2. Is a name plate visible above them?
+Grade: PASS if placement, once-only bark and AoI hold; BLOCKED `no packet tap` leaves the AoI clause PARTIAL. Visual (name plate `Op-CORE Soldier`): NEEDS_HUMAN `H-CB-U08-1`. Looker: 1. Are two NPCs standing in a corridor? 2. Is a name plate visible above them?
 
 ---
 
