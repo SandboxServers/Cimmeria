@@ -1646,6 +1646,14 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25502, 1643, 'd
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25503, 2813, 'minigame_type', 'ConverseBasicHumanoid');
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25504, 2813, 'difficulty', '1');
 
+-- debug-armory hand-authored (25510-25519): DR-S1
+-- 703 Aimed Shot: Torso "Target -800F / 80H" (effects.sql 703). The H term
+-- lacks its minus; read as -80H like siblings 1401 Arm and 916 Leg
+-- ("-500F / -50H"). The ability tooltip says -400F / -40H; the effect row is
+-- what executes, as for both siblings.
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25510, 703, 'FocusDamage', '800');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25511, 703, 'HealthDamage', '80');
+
 --
 -- TOC entry 3313 (class 0 OID 0)
 -- Dependencies: 305
