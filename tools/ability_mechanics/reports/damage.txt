@@ -249,13 +249,13 @@ generated: 178 effects
    5141 -           FocusDamage 200, HealthDamage 20 "F-200 H-20\n5 Energy per target"
         note: "5 Energy per target" is a cost; no ability cost is modelled (B-04)
    5147 -           FocusDamage 150, HealthDamage 15 "F-150\nH-15"
-hand-authored, left alone: 3
+hand-authored, left alone: 4
     654 "Single Target\n-150F\n-15H" (parser agrees)
     656 "-100F -10H" (parser agrees)
+    703 "Single Target\nTarget -800F / 80H" (parser rejects: grammar: an amount with no minus sign in "Target -800F / 80H")
    5066 "Medium Radius AE\nSecondary -100F" (parser agrees)
-unparsed: 54
-  by category: conditional 15, sequenced 14, targeting 5, pulse shape 15, scope 2, grammar 3
-    703 (ability 640) "Single Target\nTarget -800F / 80H": grammar: an amount with no minus sign in "Target -800F / 80H"
+unparsed: 53
+  by category: conditional 15, sequenced 14, targeting 5, pulse shape 15, scope 2, grammar 2
     721 (ability 656) "Single Target Channeled: 50 ticks\n-150F / -15H per tick\n-5 Ammo per tick": pulse shape: the text says 50 ticks but pulse_count is 1
     757 (ability 725) "Single Target Channeled: 5 ticks\n-200F / -20H": pulse shape: the text says 5 ticks but pulse_count is 1
     758 (ability 725) "Single Target Channeled: 5 ticks\n-400F / -40H": pulse shape: the text says 5 ticks but pulse_count is 1

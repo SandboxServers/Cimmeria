@@ -22,9 +22,10 @@ use crate::test_support::require_db_or_skip;
 /// that all had a damage effect already; AB-10 adds Personal Shield 1013, the mitigation
 /// toggles 1016, 1017, 1018, 1235 and the purges 2027, 2099, 2865), plus the
 /// minigames scripts: MG-62's Converse launchers 1327 and 2089 and MG-63b's Prison
-/// Boot hold 1597 and its release 1598. The one number to update when a packet
+/// Boot hold 1597 and its release 1598, and DR-S1's Aimed Shot: Torso 640 (its
+/// effect 703 now has the numbers its text states). The one number to update when a packet
 /// lights up more abilities.
-const HAS_MECHANICS_TODAY: usize = 288;
+const HAS_MECHANICS_TODAY: usize = 289;
 
 /// The archetype starters every new character holds: Pistol Shot, Strike,
 /// Heal Focus, Health Heal, Recuperation.
@@ -89,6 +90,22 @@ async fn seeded_has_mechanics_count_live_db() {
         HAS_MECHANICS_TODAY,
         "the has-mechanics count moved; if a packet just gave abilities their \
          numbers or scripts, update HAS_MECHANICS_TODAY to the printed count"
+    );
+}
+
+/// DR-S1: Aimed Shot: Torso (640) deals the damage its effect 703 text
+/// states ("-800F / 80H", read as -80H), so it is no longer refused.
+#[tokio::test]
+async fn aimed_shot_torso_has_damage_live_db() {
+    let pool = require_db_or_skip!();
+    let mgr = seeded_manager(&pool).await;
+    let effect = mgr.effect_defs.get(&703).expect("effect 703 loads");
+    assert_eq!(effect.param_i32("FocusDamage"), 800, "703: -800F");
+    assert_eq!(effect.param_i32("HealthDamage"), 80, "703: -80H");
+    let def = mgr.ability_defs.get(&640).expect("ability 640 loads");
+    assert!(
+        ability_has_mechanics(&mgr, def),
+        "640 must not draw no_mechanics"
     );
 }
 

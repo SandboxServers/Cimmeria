@@ -8,9 +8,9 @@
 1. **Wave 0, then wave 1.** `ops` creates `sp-integration` (`pwsh tools/build-lane/mk-worktree.ps1 starter-uat-praxis/integration sp-integration`) and commits these three campaign files into it first. SP-00 runs alone in it. When SP-00 is reviewed and committed there, `ops` creates one worktree per wave-1 packet **branched at the `sp-integration` head** (branch at SHA, so `rows.md` is present), and the orchestrator dispatches SP-01, SP-02a, SP-02b, SP-03a, SP-03b, SP-04 and SP-05 in one message, in the background. Each is merged back `--no-ff` (`merge-noff.ps1`) after its packet review passes.
 2. **Authoring packets** go to `documentation-writer` as defined (no model override). They write Markdown only and run no cargo, except SP-91 and SP-92, which go to `packet-coder`.
 3. **Lab waves (2 to 5) are ASK-FIRST** (contract § C1). The orchestrator asks the user before each lab wave and waits for a yes. Without one, the wave stays as it is.
-4. **One lab lane per lab instance.** Instances `default` (account `lab`), `p2` (`lab2`), `p3` (`lab3`). A wave runs at most three drive packets at once, one per instance, and never two lanes on the same plaza or room (hub-pass lesson: lanes must not share a plaza). Each brief's § 0 names the area (room, plaza or hub) its rows use. Two lanes in the same world run at once only when their areas differ; otherwise the later packet waits and runs on the same instance after the earlier one. "A then B" in the waves table means B starts on that instance only after A's verifier has returned.
-5. **Per drive packet:** `lab-driver` as defined (Haiku), prompt = the packet's brief file pasted verbatim with `ATTEMPT:` set. On its report, start the verifier: `general-purpose`, no model override, prompt = the packet's verify file pasted verbatim with the driver's report under `## DRIVER REPORT`. Three driver attempts, then one Sonnet takeover (`general-purpose`, the takeover paragraph in [hub-pass work-packets § Sonnet takeover](../hub-pass-uat/work-packets.md#sonnet-takeover), `ATTEMPT: 4`).
-6. **Results on disk.** The verifier writes `docs/analysis/starter-uat-praxis/results/<packet>.md` in the `sp-integration` worktree (contract § C6) and returns one line. The orchestrator updates the README status row and the grade column of `rows.md`.
+4. **One lab lane, one client at a time.** Drive packets run one at a time, in the waves-table order, with one client process running at a time. Before a part starts on its instance, the orchestrator stops every other instance's client (`lab_client_stop`) and checks with `lab_client_status` (no other instance `running`). Reason: concurrent clients fight over the desktop foreground (12 of 12 rows blocked in this campaign's two-client run; `reference_lab_login_foreground_lanes_2026_10_14`). The only concurrent run is the wave 5 two-client part, SP-DTO2-p1 (the SP-04 spec called that two-player case PH-01a/b): it runs alone, on `default` + `p2`, after every other wave 5 part, with no other client open. "After lease of A" means start once A's driver has released its lease; "after verify of A" means start once A's verifier has returned (used when two parts share an area or spawn, and between the parts of one split packet). Each brief's `AREA:` header line names the area its rows use, so a plan to bring parallel lanes back can check overlap. A split packet takes its parent's slot and its parts run in order. Attempt-4 takeovers run at the end of their wave, on the failed part's instance (rule 5).
+5. **Per drive packet** (a packet split into parts, `SP-DCB1-p1`, `SP-DCB1-p2`, and so on, is one drive packet per part, each with its own brief, verify file, result file and attempt count): `lab-driver` as defined (Haiku), prompt = the part's brief file pasted verbatim with `ATTEMPT:` set. On its report, start the verifier: `general-purpose`, no model override, prompt = the part's verify file pasted verbatim with the driver's report under `## DRIVER REPORT`. **Three driver attempts, then one Sonnet takeover.** The `ATTEMPT:` field is the count: `ATTEMPT: 1` is the first driver; `ATTEMPT: 2` and `ATTEMPT: 3` are successors of a driver that ran out of context (the brief's resume probe skips the finished rows), and each of them **spends one of the three attempts**, so a part re-run with `ATTEMPT: 2` has two attempts left, not three. The takeover is `general-purpose`, the takeover paragraph in [hub-pass work-packets § Sonnet takeover](../hub-pass-uat/work-packets.md#sonnet-takeover), `ATTEMPT: 4`.
+6. **Results on disk.** The verifier writes `docs/analysis/starter-uat-praxis/results/<packet>.md` (`<packet>` is the part id, for example `SP-DCB1-p1`) in the `sp-integration` worktree (contract § C6) and returns one line. The orchestrator updates the README status row and the grade column of `rows.md`.
 7. **Issues.** A verifier never files an issue itself. It writes an issue body file under `results/issues/<packet>-<n>.md`; `ops` files it (`issue create` from a file) and the orchestrator writes the number back into the result file.
 8. **Between packets** check `lab_client_status` (`crash_count_10min`, `login_state`). Two crashes in ten minutes: stop the lane and diagnose before another attempt (screensaver, a build on the lane, disk full).
 9. **Review loops** (campaign-packet skill § 4) run on the authoring packets (packet loop, then the wave-1 loop) and on SP-91/92. Lab results are reviewed by their verifier, not by `packet-reviewer`.
@@ -27,11 +27,26 @@ Every drive packet in starter-uat-praxis, starter-uat-union, starter-uat-shops a
 
 Copy the structure of [hub-pass briefs/HP-M1.md](../hub-pass-uat/briefs/HP-M1.md) exactly:
 
-- Header lines: `PACKET:`, `ATTEMPT: 1`, `INSTANCE:`, `CHARACTER:`, `SERVER:` (from D-SP2), lease owner `<campaign-prefix>-<packet>` (for example `sp-SP-DCB1`), TTL 900 s, hard stop at 28 tool calls.
+- Header lines: `PACKET:`, `ATTEMPT: 1`, `INSTANCE:`, `CHARACTER:`, `SERVER:` (from D-SP2), lease owner `<campaign-prefix>-<packet>` (for example `sp-SP-DCB1`), TTL 900 s, hard stop at 28 tool calls; ESTIMATE ≤ 22, counted per § C2a. `AREA:` names the room, plaza or hub the rows use (dispatch rule 4). A brief whose planned count is over 22 is split into part files `briefs/<packet>-p<n>.md` and `verify/<packet>-p<n>.md`, cut at row boundaries; a sub-row carries a letter (`CB-U03a`).
 - `§ 0 Front-loaded gotchas`: copy the 10 hub-pass lessons ([hub-pass README § Lessons](../hub-pass-uat/README.md#lessons-for-the-next-lab-campaign)) and add the zone's own (positions to stand at, 4 to 6 m off targets, dialogs to clear first, known issue ids the row may hit).
-- `§ 1 Fixed macros`: lease, ensure-in-world, WAIT (two `client_batch` waits of 20 s, never `client_wait_for` on a world load, #1677), CHAT (filter server replies by channel id `"9"`), READ, SHOT, DIALOG, PROMPT (`Prompt1_SingleButton`), BUG.
+- `§ 1 Fixed macros`, each with its cost: L1 (lease), L2 (ensure-in-world), WAIT (two `client_batch` waits of 20 s, never `client_wait_for` on a world load, #1677), CHATX and CHAT1 (filter server replies by channel id `"9"`), READ, SHOT, JOURNAL, DIALOG, PROMPT (`Prompt1_SingleButton`), BUG. Costs and the call-count rule: § C2a.
 - `# <packet>`: `ROWS:`, `ESTIMATE:` (tool calls), then `## Steps`: S1 lease and ensure in world, S2 the **resume probe** (what the driver reads to see which rows are already done), then one `### ROW <id>` block per row, each with exact tool calls, exact ids, positions and expected server-visible effect.
 - `§ 2 Report format` and `§ 3 Always end like this` (release the lease; raw facts only, no diagnosis).
+
+### C2a. Call-count rule
+
+Set by the SP-02a ruling (review 1, D1). Every drive brief follows it, and so does every later brief that links this contract (Union, shops, debug-armory).
+
+- **A call is one MCP tool invocation**, whatever the tool: `lab_lease_acquire`, every `client_batch`, every `client_ui_sequence`, every read, click and screenshot, `lab_lease_release`, and any tool-schema or tool-search lookup. A `client_batch` with 12 steps is 1 call. Two tools in one step are 2 calls.
+- **ESTIMATE = the planned success path**, from L1 to `lab_lease_release` inclusive. A conditional call the brief makes routine counts at its maximum. Failure-path calls do not count (gotcha 10 SHOT and retry, a lease refusal, PROMPT after a click that opened nothing, the JOURNAL key-and-reread fallback): the headroom of 6 is for them.
+- **ESTIMATE ≤ 22 per brief file; the hard stop stays at 28.** The cap exists for the Haiku driver's context, not for lab stability, so it is not raised. A split costs about 5 calls (lease, ensure, WAIT, resume probe, release) and one more verifier run; running out of context mid-row costs a whole attempt.
+- **Label format.** Every step that makes calls carries `(<N> call[s]: <tool>, <tool>, ...)`, one tool name per call, in order, so N equals the number of names. The ESTIMATE line is the sum of the labels: `ESTIMATE: <sum> tool calls (planned success path; hard stop 28)`.
+- **No schema-read steps.** The author writes the exact JSON inline, citing `file:line` in `crates/lab/src/server/`. A Haiku never improvises arguments.
+- **Macro costs:** L1 = 1; L2 = 1; WAIT = 1; CHATX = 1, whatever the number of lines; CHAT1 = 3; READ = 1; SHOT = 1; JOURNAL = 1; PROMPT = 1 plus 1 per button clicked; DIALOG = 0 when it is the first `lua` op of a `client_batch` the step already makes, otherwise 1; BUG = 0 inside a CHATX, otherwise 1.
+- **Folds.** `client_batch` (at most 64 steps) runs `lua`, `wait`, `player_state`, `window_text`, `mem_read` and `call_native` in one call. `client_ui_sequence` (at most 32 actions) runs CEGUI `click`, `key`, `type`, `drag`, `wait_window` and `wait` in one call. Never folded: `client_world_click`, `client_entity_find`, `client_chat_log`, `client_window_read`, `client_window_click`, `client_ui_clickables`, `client_ui_state`, `lab_screenshot`, `lab_logout`, `lab_ensure_in_world`, `lab_livewire_plan`, `client_minigame_play`.
+- **Gotcha 11 (covering window, #1676), as the briefs state it.** Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name; if it shows none, skip PROMPT (no call). On a dead click the order is SHOT, then PROMPT only if the SHOT shows a window or prompt name, then one unchanged retry. If a click still does nothing, read `client_ui_state` once and record the top window.
+- **Split parts.** A part starts from a fixture of its own when the start state is expressible (`missions` with `step`, `position`, `items`), so a FAIL in part 1 does not block part 2. A part that needs a chain binding the fixture does not replay (a dialog set added on `mission_accepted`, a glyph or interact binding) runs **carry-over** instead: same character, after the previous part's verifier returns, and a part-1 FAIL makes its rows BLOCKED (§ C5). A brief header says `Start: fixture` or `Start: carry-over from -p<n>`. Three attempts and the takeover are counted per part.
+- **Check, per brief file** (absolute path, PowerShell): `$t=[IO.File]::ReadAllText('<brief>'); $l=[regex]::Matches($t,'\((\d+) calls?: ([^)]+)\)'); $bad=@($l|?{[int]$_.Groups[1].Value -ne ($_.Groups[2].Value -split ',').Count}).Count; $sum=($l|%{[int]$_.Groups[1].Value}|Measure-Object -Sum).Sum; $est=[regex]::Match($t,'ESTIMATE: (\d+) tool calls').Groups[1].Value; "sum=$sum estimate=$est bad=$bad"`. It passes when `sum` equals `estimate`, `estimate` ≤ 22 and `bad` = 0.
 
 ### C3. Verify brief template
 
@@ -42,7 +57,7 @@ Copy [hub-pass verify/HP-M1.md](../hub-pass-uat/verify/HP-M1.md): rules (grade o
 - A row that starts after Cellblock uses a fixture: `server_stage_fixture` with `world`, `position`, `missions` and `items` (fields in `crates/lab/src/uat/spec_fixture.rs`; at most 10 items). Characters are created as `Uat Fx<key><n>` on the GM account.
 - Fixtures have no level, cash or ability fields. Setup uses `.givexp <n>`, `/gmgivecash <n>` and `/gmgiveability <id>` (G tier) and says so in the row.
 - A fixture that cannot be set up makes the row BLOCKED, never FAIL.
-- A brief never uses `.gotolocation` onto hostile NPCs; it never uses `client_move_to` in a hub.
+- A brief never uses `.gotolocation` onto or next to a hostile NPC, unless the row first sends `.aggro off`, reads its `proximity aggro OFF` reply, and sends `.aggro on` at the row's end (`docs/commands.md`, `.aggro`); it never uses `client_move_to` in a hub.
 
 ### C5. Grades
 
@@ -50,7 +65,7 @@ PASS, PARTIAL, FAIL, BLOCKED, NOT-RUN, NEEDS_HUMAN, NATIVE_SHORTFALL (server cor
 
 ### C6. Result file
 
-`results/<packet>.md`, CRLF, one table: `| Row | Grade | Tier (N1/N2/N3/G) | Server evidence (query or log event, time) | Screenshot | Issue |`, then `## Not run` (each clause and why), then `## Resume hint` (state a re-run would start from), then `## Recipe` (exact tool calls that worked, for SP-91/92).
+`results/<packet>.md` (the part id when the packet is split), CRLF, one table: `| Row | Grade | Tier (N1/N2/N3/G) | Server evidence (query or log event, time) | Screenshot | Issue |`, then `## Not run` (each clause and why), then `## Resume hint` (state a re-run would start from), then `## Recipe` (exact tool calls that worked, for SP-91/92).
 
 ### C7. Repo rules every authoring packet carries
 
@@ -123,7 +138,7 @@ Any packet that runs a committed TOML spec instead of a step brief (starter-uat-
 
 ## Wave 1: briefs (docs only, one PR from `sp-integration`)
 
-Each packet below: **Agent** documentation-writer, **Host** windows, worktree `sp-<packet>` on branch `starter-uat-praxis/<packet>-briefs`, commit `docs(starter-uat-praxis): <packet> briefs`. It writes, for each drive packet it owns, `docs/analysis/starter-uat-praxis/briefs/<drive>.md` (§ C2) and `docs/analysis/starter-uat-praxis/verify/<drive>.md` (§ C3), using the rows `rows.md` assigns. Rules § C7. Checks: CRLF; each brief ≤ 500 lines; each row in `rows.md` for its drive packets has a `### ROW` block in the brief and a grading section in the verify file (`Select-String` count equal).
+Each packet below: **Agent** documentation-writer, **Host** windows, worktree `sp-<packet>` on branch `starter-uat-praxis/<packet>-briefs`, commit `docs(starter-uat-praxis): <packet> briefs`. It writes, for each drive packet it owns, `docs/analysis/starter-uat-praxis/briefs/<drive>.md` (§ C2) and `docs/analysis/starter-uat-praxis/verify/<drive>.md` (§ C3); a packet over the call cap is written as parts `<drive>-p<n>` (§ C2a), using the rows `rows.md` assigns. Rules § C7. Checks: CRLF; each brief ≤ 500 lines; each row in `rows.md` for its drive packets has a `### ROW` block in the brief and a grading section in the verify file (`Select-String` count equal).
 
 ### SP-01: Cellblock briefs (SP-DCB1, DCB2, DCB3)
 
@@ -133,8 +148,8 @@ Each packet below: **Agent** documentation-writer, **Host** windows, worktree `s
 
 ### SP-02a: Castle briefs part 1 (SP-DCA1 to DCA4)
 
-- **Read first:** [castle-continuation/uat/end-uat.md](../castle-continuation/uat/end-uat.md), [castle-continuation/placements.md](../castle-continuation/placements.md), [CS-01-walk.md](../castle-continuation/uat/CS-01-walk.md) (the paused walk: "walking was blocked by lab input"; copy its working parts).
-- **Character:** fixture `world = Castle`, position from placements.md; never log a fresh client straight into Castle (#756): the fixture lands at character select, then Play.
+- **Read first:** [castle-continuation/uat/end-uat.md](../castle-continuation/uat/end-uat.md), [CS-01-walk.md](../castle-continuation/uat/CS-01-walk.md) (the paused walk: "walking was blocked by lab input"; copy its working parts).
+- **Character:** fixture `world = Castle`, position in the packet's START line; never log a fresh client straight into Castle (#756): the fixture lands at character select, then Play.
 - **Gotchas:** K20 (friendly NPCs give no kill credit), interior/exterior navmesh not connected (use GM teleport between them, tier G).
 
 ### SP-02b: Castle briefs part 2 (SP-DCA5 to DCA7)
@@ -143,7 +158,7 @@ Same reads, character rule and gotchas as SP-02a. FZ-U1 (mission 567) is in SP-D
 
 ### SP-03a: Harset briefs part 1 (SP-DHA1, DHA2)
 
-- **Read first:** [harset-continuation README](../harset-continuation/README.md), [route-baseline.md](../harset-continuation/route-baseline.md), [owner-lab-checklist.md](../harset-continuation/owner-lab-checklist.md), [evidence-matrix.md](../harset-continuation/evidence-matrix.md), the O14-16/17/19 rows of [owner-decisions-2026-10-14.md](../four-zone-planning/owner-decisions-2026-10-14.md).
+- **Read first:** [harset-continuation README](../harset-continuation/README.md), [placements.md](../harset-continuation/placements.md), [uat.md](../harset-continuation/uat.md), the O14-16/17/19 rows of [owner-decisions-2026-10-14.md](../four-zone-planning/owner-decisions-2026-10-14.md).
 - **Character:** fixture `world = Harset` (57) or the interior world the row needs; SP-DHA2 needs item 3730 in the fixture `items` for the hand-in rows and **not** for the refusal row.
 - **Gotchas:** Market has no navmesh (teleport, tier G); door pairs unplaced (a door row that cannot be reached is BLOCKED, not FAIL). Each brief's § 0 names the area its rows use (dispatch rule 4).
 
@@ -156,7 +171,7 @@ Same reads, character rule and gotchas as SP-02a. FZ-U1 (mission 567) is in SP-D
 ### SP-04: Tollana briefs (SP-DTO1 to DTO4)
 
 - **Read first:** [tollana-continuation README](../tollana-continuation/README.md), [T-03a-568-chain-spec.md](../tollana-continuation/evidence/T-03a-568-chain-spec.md), [phasing.md](../tollana-continuation/evidence/phasing.md), [tollana-568-spec.md](../../../.claude/agent-memory/mission-systems-advisor/tollana-568-spec.md) (the accept-on-close wart and one-shot chain gate) and [interact-dialog-routing-traps.md](../../../.claude/agent-memory/mission-systems-advisor/interact-dialog-routing-traps.md).
-- **Character:** fixture `world = Tollana` (19). Phasing rows (PH-01a/b, mission 621) need two players: lanes `default` and `p2` together, so SP-DTO3 or DTO4 (whichever holds them) is a two-instance packet; say so in its header. It runs alone, after the other Tollana packets (waves table).
+- **Character:** fixture `world = Tollana` (19). Phasing rows (PH-01a/b, mission 621) need two players: lanes `default` and `p2` together. That part is SP-DTO2-p1, a two-instance part; its header says so. It runs alone, after the other Tollana parts (waves table, rule 4).
 - **Gotchas:** the zero-button accept-on-close wart on mission 568 (expected), the Decline button on dialog 2153 (owner decision pending; record what it does).
 
 ### SP-05: hand-off leg briefs (SP-DL1, DL2, DL3)
@@ -166,27 +181,131 @@ Same reads, character rule and gotchas as SP-02a. FZ-U1 (mission 567) is in SP-D
 
 ## Waves 2 to 5: lab drive packets (ASK-FIRST)
 
-Every drive packet: **LAB: ASK-FIRST** (§ C1). Agent `lab-driver` (brief) then verifier (`general-purpose`, verify file). Host: windows (the lab machine). Lease owner `sp-<packet>`. Writes only `results/<packet>.md` and `results/issues/` through the verifier (§ C6). Depends on its brief being integrated and on D-SP1 and D-SP2.
+Every drive packet: **LAB: ASK-FIRST** (§ C1). Agent `lab-driver` (brief) then verifier (`general-purpose`, verify file). Host: windows (the lab machine). Lease owner `sp-<packet>`. Writes only `results/<packet>.md` and `results/issues/` through the verifier (§ C6). Depends on its brief being integrated (all seven wave-1 packets are merged into `sp-integration`) and on D-SP1 and D-SP2. A split packet's parts are separate drive packets named `<packet>-p<n>`.
 
-| Wave | Packet | Brief / verify | Instance | Depends on |
-|---|---|---|---|---|
-| 2 | SP-DCB1 | briefs/SP-DCB1.md, verify/SP-DCB1.md | default | SP-01 |
-| 2 | SP-DCB2 | SP-DCB2 | p2 | SP-01 |
-| 2 | SP-DCB3 | SP-DCB3 | p3 | SP-01 |
-| 2 | SP-DL1 | SP-DL1 | default (after DCB1) | SP-05 |
-| 2 | SP-DCA1 | SP-DCA1 | p2 (after DCB2) | SP-02a |
-| 2 | SP-DCA2 | SP-DCA2 | p3 (after DCB3) | SP-02a |
-| 3 | SP-DCA3 then SP-DCA6 | | default | SP-02a, SP-02b |
-| 3 | SP-DCA4 then SP-DCA7 | | p2 | SP-02a, SP-02b |
-| 3 | SP-DCA5 then SP-DL2 | | p3 | SP-02b, SP-05 |
-| 4 | SP-DHA1 then SP-DL3 | | default | SP-03a, SP-05 |
-| 4 | SP-DHA2 | | p2 | SP-03a |
-| 4 | SP-DHA3 then SP-DHA4 then SP-DHA5 | | p3 | SP-03b |
-| 5 | SP-DTO1 then SP-DTO2 then the one-instance packet of SP-DTO3/DTO4 | | default | SP-04 |
-| 5 | the two-instance packet of SP-DTO3/DTO4 (PH-01a/b) | | default + p2, alone, after the default chain | SP-04 |
-| 2-5 | attempt-4 takeovers | | the failed packet's instance, after that instance's chain in the same wave | the three Haiku attempts |
+| Wave | Order | Part (brief, verify) | Instance | Starts | Calls | Depends on |
+|---|---|---|---|---|---|---|
+| 2 | 1 | [SP-DCB1-p1](briefs/SP-DCB1-p1.md), [verify](verify/SP-DCB1-p1.md) | default | wave start | 16 | SP-01 |
+| 2 | 2 | [SP-DCB1-p2](briefs/SP-DCB1-p2.md), [verify](verify/SP-DCB1-p2.md) | default | after verify of SP-DCB1-p1 | 19 | SP-01 |
+| 2 | 3 | [SP-DCB1-p3](briefs/SP-DCB1-p3.md), [verify](verify/SP-DCB1-p3.md) | default | after verify of SP-DCB1-p2 | 20 | SP-01 |
+| 2 | 4 | [SP-DCB1-p4](briefs/SP-DCB1-p4.md), [verify](verify/SP-DCB1-p4.md) | default | after verify of SP-DCB1-p3 | 18 | SP-01 |
+| 2 | 5 | [SP-DCB1-p5](briefs/SP-DCB1-p5.md), [verify](verify/SP-DCB1-p5.md) | default | after verify of SP-DCB1-p4 | 21 | SP-01 |
+| 2 | 6 | [SP-DCB1-p6](briefs/SP-DCB1-p6.md), [verify](verify/SP-DCB1-p6.md) | default | after verify of SP-DCB1-p5 | 22 | SP-01 |
+| 2 | 7 | [SP-DCB1-p7](briefs/SP-DCB1-p7.md), [verify](verify/SP-DCB1-p7.md) | default | after verify of SP-DCB1-p6 | 22 | SP-01 |
+| 2 | 8 | [SP-DCB1-p8](briefs/SP-DCB1-p8.md), [verify](verify/SP-DCB1-p8.md) | default | after verify of SP-DCB1-p7 | 22 | SP-01 |
+| 2 | 9 | [SP-DCB1-p9](briefs/SP-DCB1-p9.md), [verify](verify/SP-DCB1-p9.md) | default | after verify of SP-DCB1-p8 | 19 | SP-01 |
+| 2 | 10 | [SP-DCB1-p10](briefs/SP-DCB1-p10.md), [verify](verify/SP-DCB1-p10.md) | default | after verify of SP-DCB1-p9 | 20 | SP-01 |
+| 2 | 11 | [SP-DCB1-p11](briefs/SP-DCB1-p11.md), [verify](verify/SP-DCB1-p11.md) | default | after verify of SP-DCB1-p10 | 20 | SP-01 |
+| 2 | 12 | [SP-DCB2-p1](briefs/SP-DCB2-p1.md), [verify](verify/SP-DCB2-p1.md) | default | after lease of SP-DCB1-p11 | 29 | SP-01 |
+| 2 | 13 | [SP-DCB2-p2](briefs/SP-DCB2-p2.md), [verify](verify/SP-DCB2-p2.md) | default | after verify of SP-DCB2-p1 | 29 | SP-01 |
+| 2 | 14 | [SP-DCB2-p3](briefs/SP-DCB2-p3.md), [verify](verify/SP-DCB2-p3.md) | default | after verify of SP-DCB2-p2 | 22 | SP-01 |
+| 2 | 15 | [SP-DCB2-p4](briefs/SP-DCB2-p4.md), [verify](verify/SP-DCB2-p4.md) | default | after verify of SP-DCB2-p3 | 19 | SP-01 |
+| 2 | 16 | [SP-DCB2-p5](briefs/SP-DCB2-p5.md), [verify](verify/SP-DCB2-p5.md) | default | after verify of SP-DCB2-p4 | 24 | SP-01 |
+| 2 | 17 | [SP-DCB2-p6](briefs/SP-DCB2-p6.md), [verify](verify/SP-DCB2-p6.md) | default | after verify of SP-DCB2-p5 | 17 | SP-01 |
+| 2 | 18 | [SP-DCB2-p7](briefs/SP-DCB2-p7.md), [verify](verify/SP-DCB2-p7.md) | default | after verify of SP-DCB2-p6 | 17 | SP-01 |
+| 2 | 19 | [SP-DCB3-p1](briefs/SP-DCB3-p1.md), [verify](verify/SP-DCB3-p1.md) | default | after lease of SP-DCB2-p7 | 19 | SP-01 |
+| 2 | 20 | [SP-DCB3-p2](briefs/SP-DCB3-p2.md), [verify](verify/SP-DCB3-p2.md) | default | after verify of SP-DCB3-p1 | 19 | SP-01 |
+| 2 | 21 | [SP-DCB3-p3](briefs/SP-DCB3-p3.md), [verify](verify/SP-DCB3-p3.md) | default | after verify of SP-DCB3-p2 | 21 | SP-01 |
+| 2 | 22 | [SP-DCB3-p4](briefs/SP-DCB3-p4.md), [verify](verify/SP-DCB3-p4.md) | default | after verify of SP-DCB3-p3 | 18 | SP-01 |
+| 2 | 23 | [SP-DCB3-p5](briefs/SP-DCB3-p5.md), [verify](verify/SP-DCB3-p5.md) | default | after verify of SP-DCB3-p4 | 18 | SP-01 |
+| 2 | 24 | [SP-DCB3-p6](briefs/SP-DCB3-p6.md), [verify](verify/SP-DCB3-p6.md) | default | after verify of SP-DCB3-p5 | 21 | SP-01 |
+| 2 | 25 | [SP-DCB3-p7](briefs/SP-DCB3-p7.md), [verify](verify/SP-DCB3-p7.md) | default | after verify of SP-DCB3-p6 | 16 | SP-01 |
+| 2 | 26 | [SP-DCB3-p8](briefs/SP-DCB3-p8.md), [verify](verify/SP-DCB3-p8.md) | default | after verify of SP-DCB3-p7 | 22 | SP-01 |
+| 2 | 27 | [SP-DCB3-p9](briefs/SP-DCB3-p9.md), [verify](verify/SP-DCB3-p9.md) | default | after verify of SP-DCB3-p8 | 14 | SP-01 |
+| 2 | 28 | [SP-DCB3-p10](briefs/SP-DCB3-p10.md), [verify](verify/SP-DCB3-p10.md) | default | after verify of SP-DCB3-p9 | 18 | SP-01 |
+| 2 | 29 | [SP-DCB3-p11](briefs/SP-DCB3-p11.md), [verify](verify/SP-DCB3-p11.md) | default | after verify of SP-DCB3-p10 | 13 | SP-01 |
+| 2 | 30 | [SP-DCB3-p12](briefs/SP-DCB3-p12.md), [verify](verify/SP-DCB3-p12.md) | default | after verify of SP-DCB3-p11 | 22 | SP-01 |
+| 2 | 31 | [SP-DCB3-p13](briefs/SP-DCB3-p13.md), [verify](verify/SP-DCB3-p13.md) | default | after verify of SP-DCB3-p12 | 22 | SP-01 |
+| 2 | 32 | [SP-DCB4-p1](briefs/SP-DCB4-p1.md), [verify](verify/SP-DCB4-p1.md) | default | after lease of SP-DCB3-p13 | 20 | SP-01 |
+| 2 | 33 | [SP-DCB4-p2](briefs/SP-DCB4-p2.md), [verify](verify/SP-DCB4-p2.md) | default | after verify of SP-DCB4-p1 | 22 | SP-01 |
+| 2 | 34 | [SP-DCB4-p3](briefs/SP-DCB4-p3.md), [verify](verify/SP-DCB4-p3.md) | default | after verify of SP-DCB4-p2 | 20 | SP-01 |
+| 2 | 35 | [SP-DCB4-p4](briefs/SP-DCB4-p4.md), [verify](verify/SP-DCB4-p4.md) | default | after verify of SP-DCB4-p3 | 17 | SP-01 |
+| 2 | 36 | [SP-DCB4-p5](briefs/SP-DCB4-p5.md), [verify](verify/SP-DCB4-p5.md) | default | after verify of SP-DCB4-p4 | 16 | SP-01 |
+| 2 | 37 | [SP-DCB4-p6](briefs/SP-DCB4-p6.md), [verify](verify/SP-DCB4-p6.md) | default | after verify of SP-DCB4-p5 | 20 | SP-01 |
+| 2 | 38 | [SP-DCB4-p7](briefs/SP-DCB4-p7.md), [verify](verify/SP-DCB4-p7.md) | default | after verify of SP-DCB4-p6 | 14 | SP-01 |
+| 2 | 39 | [SP-DCB4-p8](briefs/SP-DCB4-p8.md), [verify](verify/SP-DCB4-p8.md) | default | after verify of SP-DCB4-p7 | 13 | SP-01 |
+| 2 | 40 | [SP-DCB5-p1](briefs/SP-DCB5-p1.md), [verify](verify/SP-DCB5-p1.md) | default | after lease of SP-DCB4-p8 | 18 | SP-01 |
+| 2 | 41 | [SP-DCB5-p2](briefs/SP-DCB5-p2.md), [verify](verify/SP-DCB5-p2.md) | default | after verify of SP-DCB5-p1 | 18 | SP-01 |
+| 2 | 42 | [SP-DCB5-p3](briefs/SP-DCB5-p3.md), [verify](verify/SP-DCB5-p3.md) | default | after verify of SP-DCB5-p2 | 14 | SP-01 |
+| 2 | 43 | [SP-DCB5-p4](briefs/SP-DCB5-p4.md), [verify](verify/SP-DCB5-p4.md) | default | after verify of SP-DCB5-p3 | 19 | SP-01 |
+| 2 | 44 | [SP-DCB5-p5](briefs/SP-DCB5-p5.md), [verify](verify/SP-DCB5-p5.md) | default | after verify of SP-DCB5-p4 | 15 | SP-01 |
+| 2 | 45 | [SP-DCB5-p6](briefs/SP-DCB5-p6.md), [verify](verify/SP-DCB5-p6.md) | default | after verify of SP-DCB5-p5 | 15 | SP-01 |
+| 2 | 46 | [SP-DCB5-p7](briefs/SP-DCB5-p7.md), [verify](verify/SP-DCB5-p7.md) | default | after verify of SP-DCB5-p6 | 18 | SP-01 |
+| 2 | 47 | [SP-DCB5-p8](briefs/SP-DCB5-p8.md), [verify](verify/SP-DCB5-p8.md) | default | after verify of SP-DCB5-p7 | 18 | SP-01 |
+| 2 | 48 | [SP-DCB5-p9](briefs/SP-DCB5-p9.md), [verify](verify/SP-DCB5-p9.md) | default | after verify of SP-DCB5-p8 | 18 | SP-01 |
+| 2 | 49 | [SP-DCB6-p1](briefs/SP-DCB6-p1.md), [verify](verify/SP-DCB6-p1.md) | default | after lease of SP-DCB5-p9 | 20 | SP-01 |
+| 2 | 50 | [SP-DCB6-p2](briefs/SP-DCB6-p2.md), [verify](verify/SP-DCB6-p2.md) | default | after verify of SP-DCB6-p1 | 22 | SP-01 |
+| 2 | 51 | [SP-DCB6-p3](briefs/SP-DCB6-p3.md), [verify](verify/SP-DCB6-p3.md) | default | after verify of SP-DCB6-p2 | 15 | SP-01 |
+| 2 | 52 | [SP-DCB7-p1](briefs/SP-DCB7-p1.md), [verify](verify/SP-DCB7-p1.md) | default | after lease of SP-DCB6-p3 | 19 | SP-01 |
+| 2 | 53 | [SP-DCB7-p2](briefs/SP-DCB7-p2.md), [verify](verify/SP-DCB7-p2.md) | default | after verify of SP-DCB7-p1 | 21 | SP-01 |
+| 2 | 54 | [SP-DCB7-p3](briefs/SP-DCB7-p3.md), [verify](verify/SP-DCB7-p3.md) | default | after verify of SP-DCB7-p2 | 20 | SP-01 |
+| 2 | 55 | [SP-DCB7-p4](briefs/SP-DCB7-p4.md), [verify](verify/SP-DCB7-p4.md) | default | after verify of SP-DCB7-p3 | 13 | SP-01 |
+| 2 | 56 | [SP-DCB7-p5](briefs/SP-DCB7-p5.md), [verify](verify/SP-DCB7-p5.md) | default | after verify of SP-DCB7-p4 | 21 | SP-01 |
+| 2 | 57 | [SP-DCB7-p6](briefs/SP-DCB7-p6.md), [verify](verify/SP-DCB7-p6.md) | default | after verify of SP-DCB7-p5 | 21 | SP-01 |
+| 2 | 58 | [SP-DCB7-p7](briefs/SP-DCB7-p7.md), [verify](verify/SP-DCB7-p7.md) | default | after verify of SP-DCB7-p6 | 21 | SP-01 |
+| 2 | 59 | [SP-DCB7-p8](briefs/SP-DCB7-p8.md), [verify](verify/SP-DCB7-p8.md) | default | after verify of SP-DCB7-p7 | 21 | SP-01 |
+| 2 | 60 | [SP-DCB7-p9](briefs/SP-DCB7-p9.md), [verify](verify/SP-DCB7-p9.md) | default | after verify of SP-DCB7-p8 | 21 | SP-01 |
+| 2 | 61 | [SP-DL1](briefs/SP-DL1.md), [verify](verify/SP-DL1.md) | default | after verify of SP-DCB1-p11 and after lease of SP-DCB7-p9 | 22 | SP-05 |
+| 2 | 62 | [SP-DCA1-p1](briefs/SP-DCA1-p1.md), [verify](verify/SP-DCA1-p1.md) | p2 | after lease of SP-DL1 | 17 | SP-02a |
+| 2 | 63 | [SP-DCA1-p2](briefs/SP-DCA1-p2.md), [verify](verify/SP-DCA1-p2.md) | p2 | after verify of SP-DCA1-p1 | 16 | SP-02a |
+| 2 | 64 | [SP-DCA2-p1](briefs/SP-DCA2-p1.md), [verify](verify/SP-DCA2-p1.md) | p3 | after lease of SP-DCA1-p2 | 19 | SP-02a |
+| 2 | 65 | [SP-DCA2-p2](briefs/SP-DCA2-p2.md), [verify](verify/SP-DCA2-p2.md) | p3 | after verify of SP-DCA2-p1 | 22 | SP-02a |
+| 3 | 1 | [SP-DCA3-p1](briefs/SP-DCA3-p1.md), [verify](verify/SP-DCA3-p1.md) | default | wave start | 22 | SP-02a |
+| 3 | 2 | [SP-DCA3-p2](briefs/SP-DCA3-p2.md), [verify](verify/SP-DCA3-p2.md) | default | after verify of SP-DCA3-p1 | 10 | SP-02a |
+| 3 | 3 | [SP-DCA3-p3](briefs/SP-DCA3-p3.md), [verify](verify/SP-DCA3-p3.md) | default | after verify of SP-DCA3-p2 | 21 | SP-02a |
+| 3 | 4 | [SP-DCA4-p1](briefs/SP-DCA4-p1.md), [verify](verify/SP-DCA4-p1.md) | p2 | after lease of SP-DCA3-p3 | 18 | SP-02a |
+| 3 | 5 | [SP-DCA4-p2](briefs/SP-DCA4-p2.md), [verify](verify/SP-DCA4-p2.md) | p2 | after verify of SP-DCA4-p1 | 16 | SP-02a |
+| 3 | 6 | [SP-DCA4-p3](briefs/SP-DCA4-p3.md), [verify](verify/SP-DCA4-p3.md) | p2 | after verify of SP-DCA4-p2 | 16 | SP-02a |
+| 3 | 7 | [SP-DCA5-p1](briefs/SP-DCA5-p1.md), [verify](verify/SP-DCA5-p1.md) | p3 | after verify of SP-DCA4-p3 (same tank 13802 and Infirmary) | 17 | SP-02b |
+| 3 | 8 | [SP-DCA5-p2](briefs/SP-DCA5-p2.md), [verify](verify/SP-DCA5-p2.md) | p3 | after verify of SP-DCA5-p1 | 18 | SP-02b |
+| 3 | 9 | [SP-DCA5-p3](briefs/SP-DCA5-p3.md), [verify](verify/SP-DCA5-p3.md) | p3 | after verify of SP-DCA5-p2 | 17 | SP-02b |
+| 3 | 10 | [SP-DCA5-p4](briefs/SP-DCA5-p4.md), [verify](verify/SP-DCA5-p4.md) | p3 | after verify of SP-DCA5-p3 | 13 | SP-02b |
+| 3 | 11 | [SP-DCA6-p1](briefs/SP-DCA6-p1.md), [verify](verify/SP-DCA6-p1.md) | default | after verify of SP-DCA3-p3 and after lease of SP-DCA5-p4 | 17 | SP-02b |
+| 3 | 12 | [SP-DCA6-p2](briefs/SP-DCA6-p2.md), [verify](verify/SP-DCA6-p2.md) | default | after verify of SP-DCA6-p1 | 20 | SP-02b |
+| 3 | 13 | [SP-DCA7-p1](briefs/SP-DCA7-p1.md), [verify](verify/SP-DCA7-p1.md) | p2 | after verify of SP-DCA5-p4 (same Infirmary) | 20 | SP-02b |
+| 3 | 14 | [SP-DCA7-p2](briefs/SP-DCA7-p2.md), [verify](verify/SP-DCA7-p2.md) | p2 | after verify of SP-DCA7-p1 | 12 | SP-02b |
+| 3 | 15 | [SP-DCA7-p3](briefs/SP-DCA7-p3.md), [verify](verify/SP-DCA7-p3.md) | p2 | after verify of SP-DCA7-p2 | 14 | SP-02b |
+| 3 | 16 | [SP-DL2](briefs/SP-DL2.md), [verify](verify/SP-DL2.md) | p3 | after lease of SP-DCA7-p3 | 19 | SP-05 |
+| 4 | 1 | [SP-DHA1-p1](briefs/SP-DHA1-p1.md), [verify](verify/SP-DHA1-p1.md) | default | wave start | 16 | SP-03a |
+| 4 | 2 | [SP-DHA1-p2](briefs/SP-DHA1-p2.md), [verify](verify/SP-DHA1-p2.md) | default | after verify of SP-DHA1-p1 | 19 | SP-03a |
+| 4 | 3 | [SP-DHA1-p3](briefs/SP-DHA1-p3.md), [verify](verify/SP-DHA1-p3.md) | default | after verify of SP-DHA1-p2 | 20 | SP-03a |
+| 4 | 4 | [SP-DHA1-p4](briefs/SP-DHA1-p4.md), [verify](verify/SP-DHA1-p4.md) | default | after verify of SP-DHA1-p3 | 21 | SP-03a |
+| 4 | 5 | [SP-DHA1-p5](briefs/SP-DHA1-p5.md), [verify](verify/SP-DHA1-p5.md) | default | after verify of SP-DHA1-p4 | 17 | SP-03a |
+| 4 | 6 | [SP-DHA1-p6](briefs/SP-DHA1-p6.md), [verify](verify/SP-DHA1-p6.md) | default | after verify of SP-DHA1-p5 | 18 | SP-03a |
+| 4 | 7 | [SP-DHA1-p7](briefs/SP-DHA1-p7.md), [verify](verify/SP-DHA1-p7.md) | default | after verify of SP-DHA1-p6 | 15 | SP-03a |
+| 4 | 8 | [SP-DHA1-p8](briefs/SP-DHA1-p8.md), [verify](verify/SP-DHA1-p8.md) | default | after verify of SP-DHA1-p7 | 20 | SP-03a |
+| 4 | 9 | [SP-DHA2-p1](briefs/SP-DHA2-p1.md), [verify](verify/SP-DHA2-p1.md) | p2 | after lease of SP-DHA1-p8 | 18 | SP-03a |
+| 4 | 10 | [SP-DHA2-p2](briefs/SP-DHA2-p2.md), [verify](verify/SP-DHA2-p2.md) | p2 | after verify of SP-DHA2-p1 | 19 | SP-03a |
+| 4 | 11 | [SP-DHA2-p3](briefs/SP-DHA2-p3.md), [verify](verify/SP-DHA2-p3.md) | p2 | after verify of SP-DHA2-p2 | 10 | SP-03a |
+| 4 | 12 | [SP-DHA2-p4](briefs/SP-DHA2-p4.md), [verify](verify/SP-DHA2-p4.md) | p2 | after verify of SP-DHA2-p3 | 14 | SP-03a |
+| 4 | 13 | [SP-DHA3-p1](briefs/SP-DHA3-p1.md), [verify](verify/SP-DHA3-p1.md) | p3 | after lease of SP-DHA2-p4 | 17 | SP-03b |
+| 4 | 14 | [SP-DHA3-p2](briefs/SP-DHA3-p2.md), [verify](verify/SP-DHA3-p2.md) | p3 | after verify of SP-DHA3-p1 | 20 | SP-03b |
+| 4 | 15 | [SP-DHA3-p3](briefs/SP-DHA3-p3.md), [verify](verify/SP-DHA3-p3.md) | p3 | after verify of SP-DHA3-p2 | 22 | SP-03b |
+| 4 | 16 | [SP-DHA4-p1](briefs/SP-DHA4-p1.md), [verify](verify/SP-DHA4-p1.md) | p3 | after lease of SP-DHA3-p3 | 21 | SP-03b |
+| 4 | 17 | [SP-DHA4-p2](briefs/SP-DHA4-p2.md), [verify](verify/SP-DHA4-p2.md) | p3 | after verify of SP-DHA4-p1 | 18 | SP-03b |
+| 4 | 18 | [SP-DHA4-p3](briefs/SP-DHA4-p3.md), [verify](verify/SP-DHA4-p3.md) | p3 | after verify of SP-DHA4-p2 | 11 | SP-03b |
+| 4 | 19 | [SP-DHA4-p4](briefs/SP-DHA4-p4.md), [verify](verify/SP-DHA4-p4.md) | p3 | after verify of SP-DHA4-p3 | 15 | SP-03b |
+| 4 | 20 | [SP-DHA5-p1](briefs/SP-DHA5-p1.md), [verify](verify/SP-DHA5-p1.md) | p3 | after lease of SP-DHA4-p4 | 19 | SP-03b |
+| 4 | 21 | [SP-DHA5-p2](briefs/SP-DHA5-p2.md), [verify](verify/SP-DHA5-p2.md) | p3 | after verify of SP-DHA5-p1 | 22 | SP-03b |
+| 4 | 22 | [SP-DHA5-p3](briefs/SP-DHA5-p3.md), [verify](verify/SP-DHA5-p3.md) | p3 | after verify of SP-DHA5-p2 | 21 | SP-03b |
+| 4 | 23 | [SP-DL3-p1](briefs/SP-DL3-p1.md), [verify](verify/SP-DL3-p1.md) | default | after verify of SP-DHA1-p8 and after lease of SP-DHA5-p3 | 10 | SP-05 |
+| 4 | 24 | [SP-DL3-p2](briefs/SP-DL3-p2.md), [verify](verify/SP-DL3-p2.md) | default | after verify of SP-DL3-p1 | 19 | SP-05 |
+| 5 | 1 | [SP-DTO1-p1](briefs/SP-DTO1-p1.md), [verify](verify/SP-DTO1-p1.md) | default | wave start | 17 | SP-04 |
+| 5 | 2 | [SP-DTO1-p2](briefs/SP-DTO1-p2.md), [verify](verify/SP-DTO1-p2.md) | default | after verify of SP-DTO1-p1 | 21 | SP-04 |
+| 5 | 3 | [SP-DTO2-p2](briefs/SP-DTO2-p2.md), [verify](verify/SP-DTO2-p2.md) | default | after verify of SP-DTO1-p2 | 11 | SP-04 |
+| 5 | 4 | [SP-DTO3-p1](briefs/SP-DTO3-p1.md), [verify](verify/SP-DTO3-p1.md) | default | after verify of SP-DTO2-p2 | 22 | SP-04 |
+| 5 | 5 | [SP-DTO3-p2](briefs/SP-DTO3-p2.md), [verify](verify/SP-DTO3-p2.md) | default | after verify of SP-DTO3-p1 | 19 | SP-04 |
+| 5 | 6 | [SP-DTO3-p3](briefs/SP-DTO3-p3.md), [verify](verify/SP-DTO3-p3.md) | default | after verify of SP-DTO3-p2 | 19 | SP-04 |
+| 5 | 7 | [SP-DTO3-p4](briefs/SP-DTO3-p4.md), [verify](verify/SP-DTO3-p4.md) | default | after verify of SP-DTO3-p3 | 17 | SP-04 |
+| 5 | 8 | [SP-DTO4-p1](briefs/SP-DTO4-p1.md), [verify](verify/SP-DTO4-p1.md) | default | after verify of SP-DTO3-p4 | 14 | SP-04 |
+| 5 | 9 | [SP-DTO4-p2](briefs/SP-DTO4-p2.md), [verify](verify/SP-DTO4-p2.md) | default | after verify of SP-DTO4-p1 | 22 | SP-04 |
+| 5 | 10 | [SP-DTO4-p3](briefs/SP-DTO4-p3.md), [verify](verify/SP-DTO4-p3.md) | default | after verify of SP-DTO4-p2 | 17 | SP-04 |
+| 5 | 11 | [SP-DTO2-p1](briefs/SP-DTO2-p1.md), [verify](verify/SP-DTO2-p1.md) | default + p2 | after verify of SP-DTO4-p3; the only concurrent run (lanes `default` + `p2`), no other client open | 19 | SP-04 |
+| 2-5 | last | attempt-4 takeovers | the failed part's instance | after the wave's last part | | the three Haiku attempts |
 
-Wave 3 and wave 4 lanes share a world (Castle, Harset); dispatch rule 4 still applies, so if two concurrent briefs name the same area in § 0, the orchestrator moves the later one to the end of the other's chain. Tollana is one small hub, so wave 5 runs its packets one at a time on `default`, and the two-player packet runs last with no other lane open.
+One sequential lane (rule 4): the table order is the run order, and the "Starts" column is each part's start condition. The table lists the 116 parts that have a brief and a verify file on disk. At about 12 minutes a part (hub-pass figure) plus attempt retries that is wave 2 65 parts, about 780 minutes, wave 3 16 parts, about 192 minutes, wave 4 24 parts, about 288 minutes, wave 5 11 parts, about 132 minutes. Tollana is one small hub, so wave 5 runs one part at a time on `default`, and the two-client part SP-DTO2-p1 runs last with no other client open. Wave 3's tank (spawn 13802) and Infirmary parts wait on each other's verifier.
+
+**No brief yet:** SP-DCA8 to SP-DCA24 (81 end-uat rows, `rows.md` § Split changes) have no brief or verify file, so they are in no wave. That is documentation debt for a follow-up brief packet; until then those rows stay `NOT-RUN`.
 
 A wave's results ship as one docs PR from `sp-integration` (README rows, `rows.md` grades, `results/`).
 
@@ -207,7 +326,7 @@ A wave's results ship as one docs PR from `sp-integration` (README rows, `rows.m
 ### SP-92: TOML specs for passed Harset, Tollana and leg rows
 
 - **Agent:** packet-coder. **Host:** windows. **Worktree:** `sp-92`, branch `starter-uat-praxis/SP-92-specs`. **Commit:** `docs(uat-specs): Praxis Harset and Tollana rows from starter-uat-praxis`.
-- **Input:** `results/SP-DHA*.md`, `results/SP-DTO*.md`, `results/SP-DL2.md`, `results/SP-DL3.md` § Recipe, with the same PASS or NATIVE_SHORTFALL filter as SP-91.
+- **Input:** `results/SP-DHA*.md`, `results/SP-DTO*.md`, `results/SP-DL2.md`, `results/SP-DL3-p*.md` § Recipe, with the same PASS or NATIVE_SHORTFALL filter as SP-91.
 - **Write:** new `docs/guides/uat-specs/harset.toml` (section id `harset`) and `docs/guides/uat-specs/tollana.toml` (section id `tollana`), in the SP-91 row shape and id prefix. The FZ-U2 sub-rows keep their letters (`SP-FZ-U2c`).
 - **Checks, in this order:** the same two as SP-91, run from `sp-92`: `Set-Location <sp-92 worktree>; pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-lab committed_specs_parse_and_validate every_committed_spec_tag_is_seeded`, then the `git diff --name-only` check. Fix rounds ≤ 5.
 - **Rules:** as SP-91.
