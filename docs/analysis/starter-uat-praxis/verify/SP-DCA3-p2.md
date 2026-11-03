@@ -73,14 +73,15 @@ Shorthand: `$P` = `toInt64(attributes_number['player_id'])=$pid`. Start: fixture
 |---|---|---|
 | 4454 login auto-complete | `ch <fixture login minus 30 s> <fixture login plus 60 s> "$P AND (body LIKE '%1383%' OR body LIKE '%Mission completed%')"` | chain 1383 matched on the fixture login; `Mission completed!` for mission 1520 (check `toInt64(attributes_number['mission_id'])=1520`) with NO dialog 4985 display |
 | DB | the mission state query | 1520 completed |
-| Client read | the driver's S2 mission read | 1520 completed or absent from the active list (client-read only) |
+| Client read (optional) | the driver's S2 mission read and 6c.1 chat read | optional, client-read only. Login-time chat lines are not captured, and the tracker can show stale step text; do not grade the row on it. The "completed" proof is the server evidence above (chain 1383 completed mission 1520 at the login) plus the DB |
 
-Looker for `D6c-after-login-at-4454`: 1. Is the journal showing the quest completed? 2. Is any dialog window open? Result: PASS when chain 1383 matched and the mission is completed; a missed chain 1383 is FAIL. The relog-with-4984-open case is not covered by this part (note it in the report).
+Looker for `D6c-after-login-at-4454`: 1. Is the journal showing the quest completed? 2. Is any dialog window open? Result: PASS when chain 1383 matched and the mission is completed (server and DB); a client tracker or chat read that disagrees is a harness finding, not a FAIL. A missed chain 1383 is FAIL. The relog-with-4984-open case is not covered by this part (note it in the report).
 
 ## Row D7 - optional: mesh swap to `Em-Props.EM-MedicalBox00`
 
 | Check | Query | Expected |
 |---|---|---|
+| Precondition: staged by the coordinator | the brief's D7 field | the coordinator changes template 412's mesh in the seed, reloads content and writes D7 STAGED; the driver cannot stage it. If the field says NOT STAGED, grade NOT-RUN without further checks |
 | Mesh in the live DB | `server_db_query` `SELECT template_id, mesh FROM resources.entity_templates WHERE template_id=412` (read the real column names from one `SELECT *` first) | `Ga-Props.GA-PuzzleStation00` means the swap was not staged: grade NOT-RUN. `Em-Props.EM-MedicalBox00` means staged: continue |
 | Renders | driver `D7-dispenser-mesh` | the prop is visible |
 

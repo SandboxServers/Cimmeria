@@ -4,7 +4,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 - PACKET: SP-DCA3-p1
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
-- INSTANCE: default   (the lab client you drive; account `the lab account of that instance`)
+- INSTANCE: default   (the lab client you drive; account `the lab account of that instance`). Any available client is fine, the default or p2, one at a time: if the default client is down, use p2 and pass `"instance":"p2"` on `lab_lease_acquire` and `lab_screenshot` in place of `default`; never run two clients at once. Record which one you used.
 - CHARACTER: <FIXTURE-NAME>   (the coordinator replaces this with the exact character name `server_stage_fixture` returned, before pasting)
 - SERVER: the local lab server. Lab use is pre-authorized. Never ask the user anything.
 
@@ -56,7 +56,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **BUG - timeline bookmark.** `BUG <text>` is the CHATX line `.bug SPU SP-DCA3-p1 <text>`. The coordinator reads these on the server to find your row timing. Not optional. Cost: 0 inside a CHATX, otherwise 1.
 
-**JOURNAL - read the journal.** `client_ui_state {"lease_id":L,"chat_lines":10}` and record the mission names and step text it returns verbatim. If it returns nothing, open the journal with a real key (`L`), run it again, and record the error text if it still returns nothing. Never invent a Lua journal call. Cost: 1 (client_ui_state); the key-and-reread fallback is a failure-path call.
+**JOURNAL - read the journal.** `client_ui_state {"lease_id":L,"chat_lines":10}` and record the mission tracker text (mission names and step text) verbatim, plus the top window. `client_window_read` has no `mission` kind (it is an invalid argument): never call it that way. If it returns nothing, open the journal with a real key (`L`, inferred binding), run it again, and record the error text if it still returns nothing. A `client_lua_eval` journal read is allowed only if the coordinator pastes the exact chunk into the brief; never invent one. Cost: 1 (client_ui_state); the key-and-reread fallback is a failure-path call.
 
 ---
 
@@ -80,15 +80,15 @@ Facts this brief relies on (traced from the seed in this worktree):
 
 ### ROW D6a - login at 4452 rebinds Ogilvie; the click opens 4983; the close advances to 4453
 
-**6a.1 (6 calls: client_batch, client_entity_find, client_ui_state, lab_screenshot, client_world_click, client_ui_state).** One batch: the DIALOG op first, then the CHATX lines `.bug SPU SP-DCA3-p1 d6a start` and `.gotolocation Castle 362.0 70.18 890.5` with a wait of 3500 after the move, then the UTC op. Then `client_entity_find {"lease_id":L,"name":"Ogilvie"}`; the mission read (`client_ui_state {"lease_id":L,"chat_lines":10}`); SHOT label `D6a-ogilvie-at-4452` (record whether Ogilvie is found; the glyph look is NEEDS_HUMAN). Then `client_world_click {"lease_id":L,"entity_id":<Ogilvie id>,"expect":"window"}` (N1; if it opens nothing, gotcha 10 then PROMPT, failure path) and `client_ui_state {"lease_id":L,"kind":"dialog"}`: record that dialog 4983 opened (this proves the rebind worked).
-**6a.2 (2 calls: client_batch, client_window_read).** Close it: one batch with the DIALOG op first, a wait of 2500 and the UTC op. Then the mission read: expect step text "Hack the Med Dispenser..." (`mission_steps.sql:2054`).
+**6a.1 (6 calls: client_batch, client_entity_find, client_ui_state, lab_screenshot, client_world_click, client_window_read).** One batch: the DIALOG op first, then the CHATX lines `.bug SPU SP-DCA3-p1 d6a start` and `.gotolocation Castle 362.0 70.18 890.5` with a wait of 3500 after the move, then the UTC op. Then `client_entity_find {"lease_id":L,"name":"Ogilvie"}`; the mission read (`client_ui_state {"lease_id":L,"chat_lines":10}`); SHOT label `D6a-ogilvie-at-4452` (record whether Ogilvie is found; the glyph look is NEEDS_HUMAN). Then `client_world_click {"lease_id":L,"entity_id":<Ogilvie id>,"expect":"window"}` (N1; if it opens nothing, gotcha 10 then PROMPT, failure path) and `client_window_read {"lease_id":L,"kind":"dialog"}`: record that dialog 4983 opened (this proves the rebind worked).
+**6a.2 (2 calls: client_batch, client_ui_state).** Close it: one batch with the DIALOG op first, a wait of 2500 and the UTC op. Then the mission read (JOURNAL, `client_ui_state`): expect step text "Hack the Med Dispenser..." (`mission_steps.sql:2054`).
 
 ### ROW D6b - relog at 4453 rebinds the dispenser; the click starts Livewire
 
 **6b.1 (2 calls: client_batch, lab_logout).** One batch with the DIALOG op first, the CHATX line `.bug SPU SP-DCA3-p1 d6b start` and the UTC op. Then `lab_logout {"lease_id":L}`.
 **6b.2 (1 call: lab_ensure_in_world).** L2.
 **6b.3 (1 call: client_batch).** WAIT (17 s hold plus world load).
-**6b.4 (5 calls: client_batch, client_entity_find, client_window_read, lab_screenshot, client_world_click).** One batch: the DIALOG op first, then `.gotolocation Castle 356.0 70.18 887.5` with a wait of 3000 and the UTC op. Then `client_entity_find {"lease_id":L,"name":"Dispenser"}` (tag `Castle_MedDispenser`; if nothing is found, run once `client_entity_find {"lease_id":L,"max_distance_m":10,"limit":10}` as a failure-path call and pick the entity whose name contains `Dispenser` or `Med`); the mission read; SHOT label `D6b-dispenser-at-4453` (the glow look is NEEDS_HUMAN). Then click the dispenser: `client_world_click {"lease_id":L,"entity_id":<dispenser id>,"expect":"window"}` (N1); record that a Livewire window opens (this proves chain 1382 rebound it). Do not play the minigame; leave the window open and go to S9.
+**6b.4 (5 calls: client_batch, client_entity_find, client_ui_state, lab_screenshot, client_world_click).** One batch: the DIALOG op first, then `.gotolocation Castle 356.0 70.18 887.5` with a wait of 3000 and the UTC op. Then `client_entity_find {"lease_id":L,"name":"Dispenser"}` (tag `Castle_MedDispenser`; if nothing is found, run once `client_entity_find {"lease_id":L,"max_distance_m":10,"limit":10}` as a failure-path call and pick the entity whose name contains `Dispenser` or `Med`); the mission read (JOURNAL, `client_ui_state`); SHOT label `D6b-dispenser-at-4453` (the glow look is NEEDS_HUMAN). Then click the dispenser: `client_world_click {"lease_id":L,"entity_id":<dispenser id>,"expect":"window"}` (N1); record that a Livewire window opens (this proves chain 1382 rebound it). Do not play the minigame; leave the window open and go to S9.
 
 **S9 (1 call: lab_lease_release).** Release the lease and write the report. Rows: D6a, D6b; screenshot labels `D6a-ogilvie-at-4452`, `D6b-dispenser-at-4453`.
 

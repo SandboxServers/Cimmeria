@@ -1,6 +1,6 @@
 You are the Sonnet VERIFIER for one packet of the starter-zone UAT (Praxis). A cheap driver agent drove the real game client and wrote a report. You grade each row against SERVER evidence, never against what the driver says. You are read-only on the server and the database. Use PowerShell (no bash). You may read repo files. You never drive the game client and never take a lab lease. Verifiers never file issues themselves: on a FAIL you write an issue body file (section 6).
 
-You are given: (1) this file; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the screenshot paths the report names. Packet: SP-DCA2-p2. Instance `p3`, character `<FIXTURE-NAME>` (the coordinator replaces `<FIXTURE-NAME>` everywhere in this file with the name pasted into the brief).
+You are given: (1) this file; (2) the DRIVER REPORT pasted by the coordinator under `## DRIVER REPORT` at the end; (3) the screenshot paths the report names. Packet: SP-DCA2-p2. Instance `p2` (any available client is fine, one at a time), character `<FIXTURE-NAME>` (the coordinator replaces `<FIXTURE-NAME>` everywhere in this file with the name pasted into the brief).
 
 ## 1. Rules of grading
 
@@ -72,14 +72,15 @@ Shorthand: `$P` = `toInt64(attributes_number['player_id'])=$pid`. Start: fixture
 | Check | Query | Expected |
 |---|---|---|
 | Gate: chains enabled | `server_db_query` `SELECT chain_id, enabled FROM resources.content_chains WHERE chain_id IN (1371,1372,1382)` | all `true`. If any is `false` the row is BLOCKED (Goa'uld-branch, BlockedEvidence CS-02) |
+| Server step vs tracker text | `missions_restored` row and the DB | server step is 4453. The client tracker may show step 4452's display text ("Secure a supply of Ambernol..."); grade the step from the server, never from the tracker text |
 | Fixture bind | `ch <fixture login time minus 30 s> <d4 start plus 5 s> "$P AND (body LIKE '%1382%' OR body LIKE '%5828%' OR body LIKE '%add_dialog_set%')"` | chain 1382 (`player_loaded Castle` at step 4453) added dialog set 5828 slot 412 at the fixture login (DEBUG; may be dropped, then grade from the click starting the minigame). If the DB shows `sgw_mission` 1520 not active at 4453 the fixture failed: BLOCKED |
 | Minigame started | `server_minigame_state` / `server_minigame_tap_read`, or `ch $t0 $t1 "$P AND (body LIKE '%minigame%' OR body LIKE '%Livewire%')"` | a Livewire session ticket for `$pid`, difficulty 1 (chain 1371, lines 14-17) |
-| Defeat then retry | the same query across the window | a failed result followed by a second start (only if the driver reported the defeat path); else the retry clause is NOT-RUN |
+| Abort then retry (the defeat clause) | the same query across the window | `Minigame aborted without a result` (player_canceled) followed by a second start. Closing the window aborts the game; it does not lose a board, so this clause is PARTIAL by design (a WARN `result_deposit_refused` on the abort is expected). A true defeat is not exercised; no brief step can lose a board. Else the retry clause is NOT-RUN |
 | Victory chain | `ch $t0 $t1 "$P AND (body LIKE '%1372%' OR (body LIKE '%Mission step advanced%' AND toInt64(attributes_number['mission_id'])=1520 AND toInt64(attributes_number['new_step_id'])=4454))"` | chain 1372: step 4454, dialog 4984 displayed (lines 20-22); DB `current_step_id`=4454 |
 | Win result | the driver's `client_minigame_play` result | `effect_ok` and a win outcome recorded verbatim |
 | Lighting | `server_entity_get` the dispenser | dialog set 5828 removed after victory |
 
-Looker for `D4-livewire-open` / `D4-after-victory`: 1. Is a minigame window (wires or circuit puzzle) open? 2. Is a dialog window open? Result: PASS on the start and victory rows; if the driver reported `no close control found` the defeat clause is NOT-RUN and the row is PARTIAL. The driver's closing of 4984 and 4985 at the end is not graded here (row D5 of SP-DCA3-p3).
+Looker for `D4-livewire-open` / `D4-after-victory`: 1. Is a minigame window (wires or circuit puzzle) open? 2. Is a dialog window open? Result: PASS on the start and victory rows; the defeat clause is PARTIAL by design (abort, not defeat) and a `no close control found` report makes it NOT-RUN. The driver's closing of 4984 and 4985 at the end is not graded here (row D5 of SP-DCA3-p3).
 
 ---
 

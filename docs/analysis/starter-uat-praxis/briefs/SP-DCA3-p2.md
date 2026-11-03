@@ -4,9 +4,9 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 - PACKET: SP-DCA3-p2
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the RESUME PROBE and skip what is already done)
-- INSTANCE: default   (the lab client you drive; account `the lab account of that instance`)
+- INSTANCE: default   (the lab client you drive; account `the lab account of that instance`). Any available client is fine, the default or p2, one at a time: if the default client is down, use p2 and pass `"instance":"p2"` on `lab_lease_acquire` and `lab_screenshot` in place of `default`; never run two clients at once. Record which one you used.
 - CHARACTER: <FIXTURE-NAME>   (the coordinator replaces this with the exact character name `server_stage_fixture` returned, before pasting)
-- D7: NOT STAGED   (the coordinator writes D7 STAGED here only when the mesh swap is in the live DB)
+- D7: NOT STAGED   (precondition: D7 runs only if the coordinator changes template 412's mesh to `Em-Props.EM-MedicalBox00` in the seed, reloads the content and then writes D7 STAGED here; the driver cannot stage it. The first run did not record what staging needs beyond that)
 - SERVER: the local lab server. Lab use is pre-authorized. Never ask the user anything.
 
 ## 0. Front-loaded gotchas (read all of them)
@@ -57,7 +57,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **BUG - timeline bookmark.** `BUG <text>` is the CHATX line `.bug SPU SP-DCA3-p2 <text>`. The coordinator reads these on the server to find your row timing. Not optional. Cost: 0 inside a CHATX, otherwise 1.
 
-**JOURNAL - read the journal.** `client_ui_state {"lease_id":L,"chat_lines":10}` and record the mission names and step text it returns verbatim. If it returns nothing, open the journal with a real key (`L`), run it again, and record the error text if it still returns nothing. Never invent a Lua journal call. Cost: 1 (client_ui_state); the key-and-reread fallback is a failure-path call.
+**JOURNAL - read the journal.** `client_ui_state {"lease_id":L,"chat_lines":10}` and record the mission tracker text (mission names and step text) verbatim, plus the top window. `client_window_read` has no `mission` kind (it is an invalid argument): never call it that way. If it returns nothing, open the journal with a real key (`L`, inferred binding), run it again, and record the error text if it still returns nothing. A `client_lua_eval` journal read is allowed only if the coordinator pastes the exact chunk into the brief; never invent one. Cost: 1 (client_ui_state); the key-and-reread fallback is a failure-path call.
 
 ---
 
@@ -77,11 +77,11 @@ Facts this brief relies on (traced from the seed in this worktree):
 
 **S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, L2, WAIT. Record world_id and position.
 
-**S2 resume probe (1 call: client_ui_state).** `client_ui_state {"lease_id":L,"chat_lines":10}`. This read is the D6c evidence: record the mission names and step text it returns verbatim (expect 1520 completed or absent from the active list, and no radio-call step).
+**S2 resume probe (1 call: client_ui_state).** `client_ui_state {"lease_id":L,"chat_lines":10}`. Record the mission names and step text it returns verbatim. This client read is optional and secondary: the login-time "completed" chat line is not captured (chat capture gap) and the tracker can hold stale text from an earlier session of the character, so a tracker that still lists 1520 is not a failure here. The D6c evidence is on the server: chain 1383 completed mission 1520 at the fixture login and the DB shows status 2 (the verifier grades it).
 
 ### ROW D6c - login at 4454 auto-completes (the radio call cannot be shown)
 
-**6c.1 (2 calls: lab_screenshot, client_chat_log).** SHOT label `D6c-after-login-at-4454`; READ `{"cursor":"d6c","contains":"ission","max":20}`. Record the lines. Expected (chain 1383): 1520 is completed and no dialog is open.
+**6c.1 (2 calls: lab_screenshot, client_chat_log).** SHOT label `D6c-after-login-at-4454`; READ `{"cursor":"d6c","contains":"ission","max":20}`. Record the lines, or "no lines" (the chat capture does not hold login-time lines, so an empty read is expected and optional). Expected (chain 1383): 1520 is completed on the server and no dialog is open.
 
 ### ROW D7 - optional: mesh swap to `Em-Props.EM-MedicalBox00`
 
