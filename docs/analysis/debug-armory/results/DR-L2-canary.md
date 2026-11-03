@@ -179,6 +179,6 @@ Round 2's decision stands: the right-click arrives as `interact`, so the server 
 | Armed weapon correct in every row | PASS | `armed` PASS in all rows |
 | Build version attested | PASS | 6b50d9131417b8cf93feb61a7c640577398db567 |
 
-**ALL canary checks now pass** (C1c, C2, C3), with GW-3128's `wrong_weapon_type` recorded as a known data finding and the armor human clauses left NEEDS_HUMAN per D-DR9. Nothing blocks the sweep.
+**All automated and server canary checks now pass** (C1c, C2, C3); the armor human clauses stay NEEDS_HUMAN, so the human checks are still pending (D-DR9). GW-3128's `wrong_weapon_type` is recorded as a known data finding. Nothing blocks the sweep.
 
 canary-verify-3 proceed

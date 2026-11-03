@@ -1,8 +1,8 @@
 # DR-L2-soldier-1: Soldier abilities, tree 1 (armory-abilities-soldier-1)
 
-> **Type:** results. **Audience:** the orchestrator and architect. **Verified:** 2026-11-02, read-only (run bundle, `lab_uat_report`, SigNoz `cimmeria.lab_run = 'dr-lab'`, lab-server `server_db_query`). **Build:** `service.version` 6b50d9131417b8cf93feb61a7c640577398db567 (attested). Method: [lab-run-plan.md ง Verifier steps](../lab-run-plan.md), [DR-L2-soldier-0.md](DR-L2-soldier-0.md), [canary.md](../worknotes/canary.md).
+> **Type:** results. **Audience:** the orchestrator and architect. **Verified:** 2026-11-02, read-only (run bundle, `lab_uat_report`, SigNoz `cimmeria.lab_run = 'dr-lab'`, lab-server `server_db_query`). **Build:** `service.version` 6b50d9131417b8cf93feb61a7c640577398db567 (attested). Method: [lab-run-plan.md ยง Verifier steps](../lab-run-plan.md), [DR-L2-soldier-0.md](DR-L2-soldier-0.md), [canary.md](../worknotes/canary.md).
 
-**Recommendation: rerun needed.** Only 10 of 26 rows reached a verdict. 16 rows are BLOCKED by infrastructure (SGW.exe crash on every runner logout, issue #1680, and a separate ignored-press fault), not by Armory defects. Two rows are real seed gaps.
+**Recommendation (final, after the reruns): findings.** Merged totals: PASS 21, FAIL 5, BLOCKED 0 of 26 rows (see Merged final grade below). The FAIL rows are seed gaps except 852, an ignored press (a lab fault, not an Armory defect). First run (superseded): only 10 of 26 rows reached a verdict and 16 rows were BLOCKED by infrastructure (SGW.exe crash on every runner logout, issue #1680, and a separate ignored-press fault), not by Armory defects. Two rows are real seed gaps.
 
 ## Runs
 

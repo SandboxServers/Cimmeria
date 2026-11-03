@@ -197,7 +197,7 @@ From [seed-gap-plan.md](seed-gap-plan.md). Only the EVIDENCED fixes that are fix
 2. `ship.ps1 pr -C <dr-s1>`.
 3. `ship.ps1 merge <PR> --retire dr-s1`.
 
-It can merge before or after any `dr-integration` PR in either order, because no other packet touches its three files. After it merges, a re-run of `armory-abilities-commando` grades 640 again.
+It can merge before or after any `dr-integration` PR in either order, because no other packet touches its four files. After it merges, a re-run of `armory-abilities-commando` grades 640 again.
 
 ### DR-S1: Aimed Shot: Torso damage from effect 703's text
 
@@ -248,7 +248,7 @@ It can merge before or after any `dr-integration` PR in either order, because no
      `Set-Location <dr-s1>; python tools/ability_mechanics/effect_nvps_from_desc.py --report --family damage > tools/ability_mechanics/reports/damage.txt`
 
      703 moves from the unparsed list (old line 258) to "hand-authored, left alone".
-     - Then `git diff --stat` must show `effect_nvps.sql` changed only by your seven lines. If `--report` rewrote a generated block, stop: report `blocked`.
+     - Then `git diff --stat` must show `effect_nvps.sql` changed only by your eight insertions (the blank line plus the seven lines below it). If `--report` rewrote a generated block, stop: report `blocked`.
      - Keep the report's existing line endings.
   4. **`crates/cell-combat/src/cell/abilities/use_ability/tests/no_mechanics_live_db.rs`.**
      - Before editing, run the live-DB check below once and note the printed `AB-12: N of ...` count; `HAS_MECHANICS_TODAY` must equal N on your base.

@@ -2,7 +2,7 @@
 
 > **Type:** results. **Audience:** the orchestrator and architect. **Verified:** 2026-11-02, read-only (run bundle, `lab_uat_report`, SigNoz `cimmeria.lab_run = 'dr-lab'`, lab-server `server_db_query`). **Build:** `service.version` 6b50d9131417b8cf93feb61a7c640577398db567 (read from SigNoz; not attested, see Pending attests). Method: [lab-run-plan.md § Verifier steps](../lab-run-plan.md), contract C5/C6/C8, [DR-L2-canary.md](DR-L2-canary.md).
 
-**Recommendation: findings-only, no lab defect blocks the next file.** Of the 5 non-passing rows, 3 are a seed gap (three damage abilities whose effects carry no damage NVPs, so the server refuses them as `no_mechanics`), 1 is an unexplained client-side press miss, 1 is a session-end bridge blip; 5 more PASS rows are passive abilities the server refuses by design and need PARTIAL.
+**Recommendation (final, after the rerun): findings only, no lab defect blocks the next file.** Merged totals: PASS 15 (incl. setup), PARTIAL 5, FAIL 3, BLOCKED 0. The 3 FAIL rows are a seed gap (three damage abilities whose effects carry no damage NVPs, so the server refuses them as `no_mechanics`); the 5 PARTIAL rows are passive abilities the server refuses by design. First run (superseded): 5 non-passing rows, of which 1 was an unexplained client-side press miss (1475, passes in the rerun after DR-07l/m) and 1 a session-end bridge blip (`_session_end` passes in the rerun).
 
 ## Runs
 
@@ -78,7 +78,7 @@ Server side the ability is sound: `ABILITY_TYPE_DD`, effect 1767 with `FocusDama
 
 The lab lease was held at verification time (owner `lab_uat_run`, purpose "UAT run, sections armory-abilities-soldier-1, ...", renewed 19:39:28Z), so no lease was taken (R5). One attest is pending, for the orchestrator's gap between runs:
 
-- `lab_uat_attest {run_dir: "C:\Users\Steve\AppData\Local\cimmeria-lab\uat-runs\2026-11-02-unknown-cgbqjljvxcsrgh", server_version: "6b50d9131417b8cf93feb61a7c640577398db567"}` (with the then-current lease). Evidence query (SigNoz logs, window 2026-11-02T19:23:07Z to 19:38:59Z): `service.name = 'cimmeria-server' AND cimmeria.lab_run = 'dr-lab' AND scope_name = 'abilities' AND player_name CONTAINS 'Cgbqjljvxcsrgh'` and read resource `service.version` (209 rows, all one version).
+- `lab_uat_attest {run_dir: "%LOCALAPPDATA%\cimmeria-lab\uat-runs\2026-11-02-unknown-cgbqjljvxcsrgh", server_version: "6b50d9131417b8cf93feb61a7c640577398db567"}` (with the then-current lease). Evidence query (SigNoz logs, window 2026-11-02T19:23:07Z to 19:38:59Z): `service.name = 'cimmeria-server' AND cimmeria.lab_run = 'dr-lab' AND scope_name = 'abilities' AND player_name CONTAINS 'Cgbqjljvxcsrgh'` and read resource `service.version` (209 rows, all one version).
 - No clause attests: the file has no PENDING clause.
 - Row grades above come from this server query, run over the window: `scope_name = 'abilities' AND player_name CONTAINS 'Cgbqjljvxcsrgh'`, events `use_ability_recv`, `ability_launched`, `ability_refused`.
 
@@ -94,7 +94,7 @@ verify DR-L2-soldier-0 docs/analysis/debug-armory/results/DR-L2-soldier-0.md
 
 ## Rerun 2026-11-02 (post DR-07l/m/n)
 
-Full-file rerun after the ground-click fix. Run `C:\Users\Steve\AppData\Local\cimmeria-lab\uat-runs\2026-11-02-unknown-cgbqoputibbuew`, window 21:54:34Z to 22:10:02Z, fresh character Cgbqoputibbuewdj, 23 rows plus `_session_end`, 4 `lab_uat_run` calls. Runner: PASS 21 (incl. setup and `_session_end`), FAIL 3 (718, 725, 1477). `service.version` 6b50d9131417b8cf93feb61a7c640577398db567 attested for this run under a short lease (none was held), released. Server truth: SigNoz `service.name = 'cimmeria-server' AND cimmeria.lab_run = 'dr-lab' AND scope_name = 'abilities' AND player_name CONTAINS 'Cgbqoputibbuew' AND event IN ('use_ability_recv','use_ability_on_ground_recv','ability_launched','ability_refused')`, grouped by `ability_id, event, reason`, 1793656440000 to 1793657460000. Every pressed row shows exactly 2 presses with identical outcomes.
+Full-file rerun after the ground-click fix. Run `%LOCALAPPDATA%\cimmeria-lab\uat-runs\2026-11-02-unknown-cgbqoputibbuew`, window 21:54:34Z to 22:10:02Z, fresh character Cgbqoputibbuewdj, 23 rows plus `_session_end`, 4 `lab_uat_run` calls. Runner: PASS 21 (incl. setup and `_session_end`), FAIL 3 (718, 725, 1477). `service.version` 6b50d9131417b8cf93feb61a7c640577398db567 attested for this run under a short lease (none was held), released. Server truth: SigNoz `service.name = 'cimmeria-server' AND cimmeria.lab_run = 'dr-lab' AND scope_name = 'abilities' AND player_name CONTAINS 'Cgbqoputibbuew' AND event IN ('use_ability_recv','use_ability_on_ground_recv','ability_launched','ability_refused')`, grouped by `ability_id, event, reason`, 1793656440000 to 1793657460000. Every pressed row shows exactly 2 presses with identical outcomes.
 
 Changes against the first run: Soldier-1475 now presses (2x `use_ability_on_ground_recv`, 2x `ability_launched`) and is PASS; `_session_end` is PASS (no bridge blip). Everything else matches the first run.
 

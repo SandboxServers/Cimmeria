@@ -22,7 +22,7 @@ An equip into a free, non-active bandolier slot leaves the active slot where it 
    - `CharacterWin` is a `ComplexFrame_2`, the same type as `InventoryWin` (`Character.layout:4`, `Inventory.layout:4`), so its close button follows the same verified naming.
 3. The existing give and equip. Slot 1 is now the first empty slot, so the weapon lands there. Then close the bag (optional in ability rows).
 4. `@key { key = "F1" }`. This is `client_input_key`, tier N1, `tools.rs:60`. It makes slot 1 active, and is a no-op if slot 1 already is.
-5. A required clause `armed`: `@player_state` `/ammo/weapon_item_id` `eq <item id>`. This is the DA-U39 pattern (`debug-area.toml:1499-1506`), and `player_state.rs:86-98` reads `getItemIDForSlot` on the active slot. A wrong active weapon then grades FAIL with a named reason, instead of an opaque `wrong_weapon_type` or `weapon_unbound`.
+5. A required clause `armed`: `@player_state` `/ammo/weapon_item_id` `eq <item id>`. This is the DA-U39 pattern (`debug-area.toml:1499-1506`), and `player_state.rs:86-98` reads `getItemIDForSlot` on the active slot. A wrong active weapon then grades FAIL with a named reason, instead of an opaque `wrong_weapon_type` or `weapon_unbound`. **Superseded by DR-07i:** the shipped clause reads `/ammo/weapon` and compares the weapon name; the `/ammo/weapon_item_id` pointers and item-id values below are the original ruling.
 
 **Alternatives rejected:**
 

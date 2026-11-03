@@ -78,7 +78,7 @@ Nothing to resume. Archeologist files 0, 1, 2 are all graded.
 
 ## Attests
 
-DONE 2026-11-03 03:36Z under lease `dr-verify-archeologist-2` on instance p2 (no lease was held), released at once: `lab_uat_attest {server_version: 6b50d9131417b8cf93feb61a7c640577398db567}` for this run dir. Returned the version. Only p2 touched. No clause attests pending. `lab_uat_report` was not run (counts here are from the ledger and my own grading).
+DONE 2026-11-03 03:36Z under lease `dr-verify-archeologist-2` on instance p2 (no lease was held), released at once: `lab_uat_attest {server_version: 6b50d9131417b8cf93feb61a7c640577398db567}` for this run dir. Returned the version. Only p2 touched. No clause attests pending. `lab_uat_report` (`ledger: true`) was not run, so the counts here are from the ledger and my own grading and are not cross-checked against the runner's report (incomplete).
 
 ## Recipe
 

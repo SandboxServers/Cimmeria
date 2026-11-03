@@ -86,11 +86,11 @@ Nothing to resume. Next file in this packet: armory-abilities-archeologist-1 (dr
 
 ## Attests
 
-PENDING. `lab_uat_attest {server_version: 6b50d9131417b8cf93feb61a7c640577398db567}` for `C:\Users\Steve\AppData\Local\cimmeria-lab\uat-runs\2026-11-03-unknown-cgbqyvjnrgvlvq`. Not run here: a driver was running archeologist-1 (R5). No clause attests pending (no PENDING SigNoz clauses in this file).
+DONE 2026-11-03 03:22Z. Not run in this file (a driver was running archeologist-1, R5); the archeologist-1 verifier ran `lab_uat_attest {server_version: 6b50d9131417b8cf93feb61a7c640577398db567}` for `%LOCALAPPDATA%\cimmeria-lab\uat-runs\2026-11-03-unknown-cgbqyvjnrgvlvq` under lease `dr-verify-archeologist-1` and it returned the version ([DR-L5-archeologist-1.md](DR-L5-archeologist-1.md#attests)). No clause attests pending (no PENDING SigNoz clauses in this file).
 
 ## Recipe
 
-SigNoz `signoz_aggregate_logs`, filter `service.name = 'cimmeria-server' AND cimmeria.lab_run = 'dr-lab' AND scope_name = 'abilities' AND player_name CONTAINS 'Cgbqyvjnrgvlvqsi' AND event EXISTS AND event != 'warmup_pending'`, start 1793674400000, end 1793675250000, count grouped by ability_id, event, reason. Seed: `server_db_query` on `resources.abilities` (`effect_ids`, `passive_yn`, `target_type_id`, `required_ammo`) with a count of `resources.effect_nvps` whose `effect_id` is in `effect_ids`, then `resources.effects` (`name`, `script_name`, `target_collection_method`, `pulse_count`) with its NVPs aggregated. `service.version` was taken from the Scientist run (same build); not re-read from SigNoz.
+SigNoz `signoz_aggregate_logs`, filter `service.name = 'cimmeria-server' AND cimmeria.lab_run = 'dr-lab' AND scope_name = 'abilities' AND player_name CONTAINS 'Cgbqyvjnrgvlvqsi' AND event EXISTS AND event != 'warmup_pending'`, start 1793674400000, end 1793675250000, count grouped by ability_id, event, reason. Seed: `server_db_query` on `resources.abilities` (`effect_ids`, `passive_yn`, `target_type_id`, `required_ammo`) with a count of `resources.effect_nvps` whose `effect_id` is in `effect_ids`, then `resources.effects` (`name`, `script_name`, `target_collection_method`, `pulse_count`) with its NVPs aggregated. `service.version` was not read from SigNoz for this run's window; the attest above returned the same build for this run dir, and that is the only evidence for it here.
 
 ## Driver reports
 

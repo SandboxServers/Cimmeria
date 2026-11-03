@@ -2,7 +2,7 @@
 
 > **Type:** results. **Audience:** the orchestrator and architect. **Verified:** 2026-11-02, read-only (run bundle, SigNoz `cimmeria.lab_run = 'dr-lab'`, lab-server `server_db_query`). **Build:** `service.version` 6b50d9131417b8cf93feb61a7c640577398db567 (attested under a short lease, released). Method: [lab-run-plan.md, Verifier steps](../lab-run-plan.md), [DR-L2-soldier-1.md](DR-L2-soldier-1.md), [canary.md](../worknotes/canary.md).
 
-**Recommendation: findings plus a small rerun.** 14 of 26 rows PASS on server truth. 6 are real seed gaps (the gate refuses them `no_mechanics`), 4 are PARTIAL (3 passives refused by design, 1 unexplained press path), 2 are BLOCKED by hotbar capacity.
+**Recommendation (final, after the rerun): findings; rerun only after the seed fix.** Merged totals: PASS 15 (incl. setup), FAIL 8, PARTIAL 3, BLOCKED 0 of 26 rows. First run (superseded): 14 of 26 rows PASS on server truth, 6 real seed gaps (the gate refuses them `no_mechanics`), 4 PARTIAL (3 passives refused by design, 1 unexplained press path), 2 BLOCKED by hotbar capacity.
 
 ## Runs
 

@@ -94,7 +94,7 @@ Full specs in [work-packets.md](work-packets.md). Status values: Ready, BlockedD
 | 3 | DR-07 | packet-coder | `debug_armory.py specs gear`: `armory-gear-weapons-1..3.toml`, `armory-gear-armor-1..2.toml` (split at 30, DR-07 ruling 1) | DR-04 | Done |
 | 3 | DR-08 | documentation-writer | Brief and verify file for DR-L1 (a human-style walk of the Armory) | DR-05 | Done |
 | 4 | DR-L1 | lab-driver + verifier | Walk the Armory: open each vendor, buy, equip, sell back. **ASK-FIRST** | wave 3 merged | Done (graded) |
-| 4 | DR-L2 to DR-L5 | lab-driver (spec run) + verifier | Ability specs: Soldier, Commando, Scientist, Archeologist. **ASK-FIRST** | DR-L1 | BlockedDependency |
+| 4 | DR-L2 to DR-L5 | lab-driver (spec run) + verifier | Ability specs: Soldier, Commando, Scientist, Archeologist. **ASK-FIRST** | DR-L1 | Done (graded; reruns wait on the seed fixes, F9) |
 | 5 | DR-L6 to DR-L8 | lab-driver (spec run) + verifier | Ability specs: Asgard, Goa'uld, Sholva. **ASK-FIRST** | wave 4 | BlockedDependency |
 | 5 | DR-L9, DR-L10 | lab-driver (spec run) + verifier | Gear specs: weapons, armor. **ASK-FIRST** | wave 4 | BlockedDependency |
 | 6 | DR-30 | orchestrator + ops | File the issues the lab waves wrote | waves 4-5 | BlockedDependency |
@@ -113,4 +113,4 @@ Shipping: waves 1 and 2 ship as **one PR** from `dr-integration` (the Armory its
 
 ## Status
 
-DR-01 to DR-08 are done and merged (#2058, #2059, #2060). DR-L1 ran on the local server on 2026-11-02: L1-1 PASS, L1-2 PASS, L1-3 PASS, L1-4 PASS, L1-5 PARTIAL (the debug-kit pistol is out of ammo), L1-6 PASS; the human clauses are NEEDS_HUMAN. Per-row evidence: [results/DR-L1.md](results/DR-L1.md), [results/DR-L1-driver-reports.md](results/DR-L1-driver-reports.md). DR-L2 to DR-L10 have not run. The seed-gap plan (2026-11-02) covers the Soldier, Commando and Scientist refusals from the lab issue notes: DR-S1 is Ready, and D-DR10 to D-DR17 await the owner (F9).
+DR-01 to DR-08 are done and merged (#2058, #2059, #2060). DR-L1 ran on the local server on 2026-11-02: L1-1 PASS, L1-2 PASS, L1-3 PASS, L1-4 PASS, L1-5 PARTIAL (the debug-kit pistol is out of ammo), L1-6 PASS; the human clauses are NEEDS_HUMAN. Per-row evidence: [results/DR-L1.md](results/DR-L1.md), [results/DR-L1-driver-reports.md](results/DR-L1-driver-reports.md). DR-L2 to DR-L5 have run on the local server (canary, Soldier 0 to 2, Commando 0 to 2, Scientist, Archeologist 0 to 2; results in [results/](results/)); DR-L6 to DR-L10 have not. The seed-gap plan (2026-11-02) covers the Soldier, Commando and Scientist refusals from the lab issue notes: DR-S1 is Ready, and D-DR10 to D-DR17 await the owner (F9).

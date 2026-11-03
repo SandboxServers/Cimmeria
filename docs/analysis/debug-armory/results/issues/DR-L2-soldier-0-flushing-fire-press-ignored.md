@@ -1,7 +1,9 @@
 # Soldier-1475 Flushing Fire: hotbar press ignored by the client, nothing reaches the server (lab, cause unclassified)
 
+Status: resolved. The full-file rerun after DR-07l/m passes Soldier-1475 (two presses reach the server, two `ability_launched`); see [DR-L2-soldier-0.md](../DR-L2-soldier-0.md#merged-final-grades). Kept as the record of the first run.
+
 Rows: `armory-abilities-soldier-0`: Soldier-1475.
-Runs: `C:\Users\Steve\AppData\Local\cimmeria-lab\uat-runs\2026-11-02-unknown-cgbqjljvxcsrgh` (row JSON `rows/armory-abilities-soldier-0/Soldier-1475.json`).
+Runs: `%LOCALAPPDATA%\cimmeria-lab\uat-runs\2026-11-02-unknown-cgbqjljvxcsrgh` (row JSON `rows/armory-abilities-soldier-0/Soldier-1475.json`).
 
 Expected: `@use_ability place` puts ability 1475 on the bar, the press on key `0` leaves the client (`client.ability.sent`) and the server launches it. The ability is sound on the server side: DD, effect 1767 with `FocusDamage 100`/`HealthDamage 10`, moniker 728213066 (shared with 713, 716, 722 which launched with the same SMG).
 
