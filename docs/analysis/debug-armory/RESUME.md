@@ -1,28 +1,27 @@
 # debug-armory: resume card
 
-> **Type:** reference. **Audience:** the orchestrator resuming this campaign. **Updated:** 2026-11-02
+> **Type:** reference. **Audience:** the orchestrator resuming this campaign. **Updated:** 2026-11-03
 > **Companions:** [ledger](README.md), [work packets](work-packets.md), [shared UAT contract](../starter-uat-praxis/work-packets.md#shared-uat-contract). Siblings: [praxis](../starter-uat-praxis/RESUME.md), [union](../starter-uat-union/RESUME.md), [shops](../starter-uat-shops/RESUME.md).
 
-**State (2026-11-02):** DR-01 to DR-08 are done and merged (#2058, #2059, #2060). DR-L1 ran on the local server (`dr-lab`): L1-1, L1-2, L1-3, L1-4 and L1-6 PASS, L1-5 PARTIAL (the debug-kit pistol has no ammo), human clauses NEEDS_HUMAN ([results/DR-L1.md](results/DR-L1.md)). DR-L2 to DR-L10 have not run. Next: DR-L2 to DR-L5 (ASK-FIRST, one spec run at a time), then waves 5 and 6.
+**State (2026-11-03):** DR-01 to DR-08 are done and merged (#2058, #2059, #2060). DR-L1 ran on the local server (`dr-lab`): L1-1, L1-2, L1-3, L1-4 and L1-6 PASS, L1-5 PARTIAL (the debug-kit pistol has no ammo), human clauses NEEDS_HUMAN ([results/DR-L1.md](results/DR-L1.md)). DR-L2 to DR-L10 have not run. The DR-L2 to DR-L5 ability sweep ran partly (see [results/](results/)) and was stopped by the user; it is not to be resumed without new instructions. Remaining: DR-S1, owner decisions, static-scan leftovers.
 
-**Seed gaps (2026-11-02):** [seed-gap-plan.md](seed-gap-plan.md) classifies the DR-L2 to DR-L4 `no_mechanics` and moniker gaps as 3 EVIDENCED, 24 INFERRED and 46 UNKNOWN. **DR-S1** (640 Aimed Shot: Torso, effect 703 NVPs) is Ready:
+**Seed gaps (2026-11-03):** [seed-gap-plan.md](seed-gap-plan.md) classifies the DR-L2 to DR-L4 `no_mechanics` and moniker gaps as 3 EVIDENCED, 24 INFERRED and 46 UNKNOWN. **DR-S1** (640 Aimed Shot: Torso, effect 703 NVPs) is Ready:
 - `ops` makes `dr-s1` from `origin/main`.
 - A packet-coder runs it, followed by the packet review loop.
-- It ships as its own PR; there is no wave loop, and its order against `dr-integration` doesn't matter.
+- It ships as its own PR; there is no wave loop, and `dr-integration` is gone, so order does not matter.
 
 Ask the owner D-DR10 to D-DR17; the abilities they cover keep refusing until then. DR-L5 (Archeologist) gaps are not classified yet; classify them the same way once the run is graded.
 
 **Goal:** a Debug Area (world 1300) Armory: plaza vendors selling one representative of every weapon family and equipment slot per tier and quality; generated lab specs that equip and fire each one and cast every ability of the 7 archetype trees; graded lab runs; an issue per failure.
 
-**Start here:**
+**Start here (remaining work only):**
 
-1. [Campaign-packet § 0](../../../.claude/skills/campaign-packet/SKILL.md#0-make-sure-nobody-else-is-running-it): check no peer runs it; write `.claude/state/active-campaign`.
-2. `ops`: create `dr-integration` (branch `debug-armory/integration`), commit the three campaign files.
-3. Wave 1: DR-01 and DR-02 at once; then DR-03a. Wave 2: DR-03b, then DR-04 and DR-05 at once. Wave loop, the pre-PR checks ([dispatch rule 7](work-packets.md#dispatch-rules)), PR 1. Merge order DR-01, 02, 03a, 03b, 04, 05.
-4. After PR 1 merges: rebase `dr-integration`; wave 3 DR-06 and DR-07 at once, then DR-08; wave loop, PR 2.
-5. Waves 4 and 5 (ASK-FIRST, D-SP2 and D-DR7 answered first): DR-L1, then one spec run at a time on `default` ([contract § C8](../starter-uat-praxis/work-packets.md#c8-spec-runs-lab_uat_run)). Results PR per wave.
-6. Wave 6: DR-30 (issues), DR-99 close-out.
-
+1. [Campaign-packet § 0](../../../.claude/skills/campaign-packet/SKILL.md#0-make-sure-nobody-else-is-running-it): check no peer runs it; write `.claude/state/active-campaign`. There is no `dr-integration` to create: waves 1 to 3 (DR-01 to DR-08) merged as #2058, #2059 and #2060.
+2. **DR-S1 (Ready).** `ops` makes `dr-s1` from `origin/main`; a packet-coder runs it ([work-packets § DR-S1](work-packets.md#dr-s1-aimed-shot-torso-damage-from-effect-703s-text)), then the packet review loop; it ships as its own PR.
+3. **Owner decisions.** D-DR10 to D-DR17 stay open ([README](README.md), [plan § Owner decisions](seed-gap-plan.md#owner-decisions)); the abilities they cover keep refusing until answered. Do not implement any of them without an answer.
+4. **Ability sweep: do not resume.** The user stopped the DR-L2 to DR-L5 ability sweep. Its results are kept under [results/](results/). Do not start DR-L2 to DR-L10, or any other lab run, without new instructions from the user (and ASK-FIRST still applies).
+5. **Static-scan leftovers.** The issue notes under [results/issues/](results/issues/) that the seed-gap plan does not classify (DR-L5 Archeologist `no_mechanics`, the ground-press and flushing-fire press-ignored notes, the melee data gap) need a static read of the seeds and client data to classify, with no lab run. Classify them the way the plan does (EVIDENCED, INFERRED, UNKNOWN) and update the plan.
+6. Wave 6 (DR-30 issues, DR-99 close-out) waits on a decision about whether the sweep resumes.
 **Hazards:**
 
 - Id blocks 1300-1609 / 13000-14109 are taken; use only templates 1610-1659, spawns 14110-14299, buy lists 1310-1348 with sell list 1349 (at most 39 vendors), list rows 131000-134999, and re-run `debug_armory.py audit` first.
@@ -35,4 +34,4 @@ Ask the owner D-DR10 to D-DR17; the abilities they cover keep refusing until the
 
 **Open decisions:** D-DR4 (cross-archetype grant, DR-40), D-DR5 (`.removeitem` question), D-DR7 (sweep server), D-SP2 (shared), D-DR10 to D-DR17 (seed gaps, [plan § Owner decisions](seed-gap-plan.md#owner-decisions)).
 
-**Next ledger update:** when the next lab wave (DR-L2 to DR-L5) is graded.
+**Next ledger update:** when DR-S1 merges, an owner decision lands, or the user restarts the sweep.
