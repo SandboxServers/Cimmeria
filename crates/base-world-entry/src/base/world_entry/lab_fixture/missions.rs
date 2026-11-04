@@ -32,8 +32,19 @@ pub(crate) struct MissionRow {
     current_step_id: Option<i32>,
     completed_step_ids: Vec<i32>,
     completed_objective_ids: Vec<i32>,
+    /// Empty except for the letter mission, whose persist only accepts a
+    /// snapshot that names its active objective (see [`LETTER_MISSION`]).
+    active_objective_ids: Vec<i32>,
     repeats: i32,
 }
+
+/// Mission 1360 (Frost's Letter) has its own persist
+/// (`persist_active_letter_mission`) that accepts only the two exact active
+/// snapshots, step A (4037, objective 4650) and step B (4038, objective
+/// 4651, reachable only from A). It refuses an empty-objective row, so a
+/// generic fixture row would never land.
+const LETTER_MISSION: i32 = 1360;
+const LETTER_STEP_A: i32 = 4037;
 
 /// Check every mission of the fixture against the seed and build its row,
 /// writing nothing: the apply's precheck, so a bad step anywhere in the
@@ -63,20 +74,11 @@ pub(crate) async fn write_missions(
     // clone is a handle to the same pool.
     let db = Some(Arc::new(pool.clone()));
     for row in rows {
-        handle_mission_update(
-            player_id,
-            row.mission_id,
-            row.status,
-            row.current_step_id,
-            &row.completed_step_ids,
-            &row.completed_objective_ids,
-            // Hydration rebuilds the current step's roster from the step.
-            &[],
-            &[],
-            row.repeats,
-            &db,
-        )
-        .await;
+        if row.mission_id == LETTER_MISSION {
+            write_letter_mission(pool, player_id, row, &db).await?;
+            continue;
+        }
+        persist_row(player_id, row, &db).await;
         // The persist logs a failure and returns nothing, and refuses the
         // write outright for a player whose saved missions are locked
         // (TG-DB-12 `refuse_persist_if_locked`); read the row back so either
@@ -84,6 +86,69 @@ pub(crate) async fn write_missions(
         confirm_written(pool, player_id, row).await?;
     }
     Ok(rows.len())
+}
+
+async fn persist_row(player_id: i32, row: &MissionRow, db: &Option<Arc<PgPool>>) {
+    handle_mission_update(
+        player_id,
+        row.mission_id,
+        row.status,
+        row.current_step_id,
+        &row.completed_step_ids,
+        &row.completed_objective_ids,
+        // Hydration rebuilds the current step's roster from the step; the
+        // letter mission is the one row that must carry it.
+        &row.active_objective_ids,
+        &[],
+        row.repeats,
+        db,
+    )
+    .await;
+}
+
+/// Stage mission 1360. Its persist is a state machine (first write only at
+/// A, B only from A), so a fixture clears the row, writes A, then B when
+/// asked for it; whatever the character held before no longer matters.
+async fn write_letter_mission(
+    pool: &PgPool,
+    player_id: i32,
+    row: &MissionRow,
+    db: &Option<Arc<PgPool>>,
+) -> Result<(), String> {
+    // The reset below is a raw DELETE, so it skips the persist's TG-DB-12
+    // refusal: check the lock first, or a locked player's saved row is lost
+    // while the A write is refused afterwards.
+    if super::super::methods::missions::state_lock::is_locked(player_id) {
+        return Err(format!(
+            "mission {} was not written: the saved missions of player {player_id} are locked",
+            row.mission_id
+        ));
+    }
+    sqlx::query("DELETE FROM sgw_mission WHERE player_id = $1 AND mission_id = $2")
+        .bind(player_id)
+        .bind(row.mission_id)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("mission {} reset failed: {e}", row.mission_id))?;
+    if row.status != MISSION_ACTIVE {
+        // Not active: the reset is the whole write.
+        return confirm_written(pool, player_id, row).await;
+    }
+    if row.current_step_id != Some(LETTER_STEP_A) {
+        let a = MissionRow {
+            mission_id: row.mission_id,
+            status: MISSION_ACTIVE,
+            current_step_id: Some(LETTER_STEP_A),
+            completed_step_ids: Vec::new(),
+            completed_objective_ids: Vec::new(),
+            active_objective_ids: objectives_of(pool, &[LETTER_STEP_A]).await?,
+            repeats: 0,
+        };
+        persist_row(player_id, &a, db).await;
+        confirm_written(pool, player_id, &a).await?;
+    }
+    persist_row(player_id, row, db).await;
+    confirm_written(pool, player_id, row).await
 }
 
 /// Check `m` against the seed and build its row.
@@ -95,6 +160,7 @@ async fn build_row(pool: &PgPool, m: &StagedMission) -> Result<MissionRow, Strin
             current_step_id: None,
             completed_step_ids: Vec::new(),
             completed_objective_ids: Vec::new(),
+            active_objective_ids: Vec::new(),
             // With no completed run, the persist deletes the row: the
             // mission loads as never taken.
             repeats: 0,
@@ -123,10 +189,16 @@ async fn build_row(pool: &PgPool, m: &StagedMission) -> Result<MissionRow, Strin
                 .copied()
                 .take_while(|&s| s != step_id)
                 .collect();
+            let active_objective_ids = if m.mission_id == LETTER_MISSION {
+                objectives_of(pool, &[step_id]).await?
+            } else {
+                Vec::new()
+            };
             Ok(MissionRow {
                 mission_id: m.mission_id,
                 status: MISSION_ACTIVE,
                 current_step_id: Some(step_id),
+                active_objective_ids,
                 completed_objective_ids: objectives_of(pool, &before).await?,
                 completed_step_ids: before,
                 // A fixture puts the mission back to a first run, whatever
@@ -136,6 +208,14 @@ async fn build_row(pool: &PgPool, m: &StagedMission) -> Result<MissionRow, Strin
             })
         }
         StagedMissionState::Completed => {
+            // Refused here, before any write: the letter persist takes only
+            // the active steps, so a completed 1360 would delete the row and
+            // then fail the read-back.
+            if m.mission_id == LETTER_MISSION {
+                return Err(format!(
+                    "mission {LETTER_MISSION} cannot be staged as completed: its persist accepts only the active steps 4037 and 4038"
+                ));
+            }
             let steps = ordered_steps(pool, m.mission_id).await?;
             if steps.is_empty() {
                 return Err(format!(
@@ -149,6 +229,7 @@ async fn build_row(pool: &PgPool, m: &StagedMission) -> Result<MissionRow, Strin
                 // `MissionInstance::complete` takes the step.
                 current_step_id: None,
                 completed_objective_ids: objectives_of(pool, &steps).await?,
+                active_objective_ids: Vec::new(),
                 completed_step_ids: steps,
                 // What `MissionInstance::complete` leaves after a first
                 // completion: it bumps `repeats` from 0 to 1.

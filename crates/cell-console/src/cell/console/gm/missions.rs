@@ -61,6 +61,11 @@ fn parse_mission_id(
                 entity_id,
                 entity_name = space_mgr.entity_label(entity_id),
                 mission_arg = %design_id_str,
+                // The raw bytes decide whether the client sent no argument
+                // (SP-DHA1-p1: `/gmmissionclear 1324` arrived empty) or the
+                // server mis-read one; a packet tap is not always running.
+                args_len = args.len(),
+                args_hex = %args.iter().take(32).map(|b| format!("{b:02x}")).collect::<String>(),
                 cmd,
                 "GM mission cmd: DesignID is not a positive numeric mission id — \
                  name resolution is not wired in the cell; rejecting",
