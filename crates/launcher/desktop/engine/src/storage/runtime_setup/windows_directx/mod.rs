@@ -26,6 +26,20 @@ impl Detection {
 pub trait Probe {
     fn x86_directory(&self) -> Option<PathBuf>;
 }
+/// The system-directory buffer, in UTF-16 units. `GetSystemWow64Directory2W`
+/// keeps the size in bytes as a 16-bit count, so 32768 units (65536 bytes)
+/// wraps to zero: it then writes nothing and returns the size it needs.
+#[cfg_attr(not(windows), allow(dead_code))]
+const SYSTEM_DIRECTORY_CHARS: usize = 32767;
+
+/// The path a system-directory call wrote, or `None` when the returned length
+/// is not a string it wrote: zero, too large, or covering an unwritten NUL.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn written_path(buffer: &[u16], len: u32) -> Option<&[u16]> {
+    let path = buffer.get(..usize::try_from(len).ok()?)?;
+    (!path.is_empty() && len as usize != buffer.len() && !path.contains(&0)).then_some(path)
+}
+
 pub fn detect(probe: &dyn Probe, game: Option<&Path>) -> Detection {
     let system = probe.x86_directory();
     Detection {

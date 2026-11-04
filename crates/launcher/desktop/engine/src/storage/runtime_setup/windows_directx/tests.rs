@@ -238,3 +238,28 @@ fn detection_decides_readiness_whatever_the_web_installer_exits_with() {
         InstallResult::StartFailed { win32_error: 5 }
     );
 }
+#[test]
+fn a_reported_length_over_an_unwritten_buffer_is_not_a_system_directory() {
+    // GetSystemWow64Directory2W given 32768 units writes nothing and returns
+    // the size it needs (20), which once read as twenty NULs: every library
+    // then looked missing although SysWOW64 held both.
+    let unwritten = [0u16; SYSTEM_DIRECTORY_CHARS];
+    assert_eq!(written_path(&unwritten, 20), None);
+    assert_eq!(written_path(&unwritten, 0), None);
+    let mut buffer = [0u16; SYSTEM_DIRECTORY_CHARS];
+    let path: Vec<u16> = r"C:\WINDOWS\SysWOW64".encode_utf16().collect();
+    buffer[..path.len()].copy_from_slice(&path);
+    assert_eq!(written_path(&buffer, path.len() as u32), Some(&path[..]));
+    assert_eq!(written_path(&buffer, path.len() as u32 + 1), None);
+    assert_eq!(written_path(&buffer, SYSTEM_DIRECTORY_CHARS as u32), None);
+    assert_eq!(written_path(&buffer, u32::MAX), None);
+}
+#[cfg(windows)]
+#[test]
+fn the_native_probe_names_the_real_x86_system_directory() {
+    let directory = native::System
+        .x86_directory()
+        .expect("x86 system directory");
+    assert!(directory.is_absolute(), "{directory:?}");
+    assert!(directory.join("kernel32.dll").is_file(), "{directory:?}");
+}

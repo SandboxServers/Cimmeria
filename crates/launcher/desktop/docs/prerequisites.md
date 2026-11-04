@@ -527,10 +527,14 @@ in [Original client evidence](#original-client-evidence). Each must be an x86
 PE DLL in the selected game's binaries directory or the explicit x86 Windows
 system directory. The native resolver requests `IMAGE_FILE_MACHINE_I386`
 through `GetSystemWow64Directory2W`, including on Windows ARM64; it does not
-infer x86 compatibility from an ARM64 or x64 system directory. Header inspection
-checks the DOS and PE signatures, i386 machine and DLL characteristic without
-loading library code into the launcher. This is a file and architecture check,
-not a loadability, graphics or full dependency test.
+infer x86 compatibility from an ARM64 or x64 system directory. Its buffer is
+32,767 UTF-16 units: at 32,768 the call keeps the byte size in 16 bits, writes
+nothing and returns the size it needs, which once read as an empty path and
+reported both libraries missing although they were present. A returned length
+that covers an unwritten NUL is refused, not read as a directory. Header
+inspection checks the DOS and PE signatures, i386 machine and DLL
+characteristic without loading library code into the launcher. This is a file
+and architecture check, not a loadability, graphics or full dependency test.
 
 **DirectX setup.** An explicit **Install DirectX** press downloads Microsoft's
 Download Center item 35 web installer from this fixed HTTPS address:
