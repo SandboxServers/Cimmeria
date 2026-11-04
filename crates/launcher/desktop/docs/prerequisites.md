@@ -546,8 +546,14 @@ while running it. The pinned download had a valid Microsoft Authenticode
 signature when inspected on 2026-10-23; this records package provenance, not
 an additional runtime signature-verification claim. Vendor UI, license consent
 and Windows elevation remain interactive. This web installer needs internet
-access to obtain runtime components. After it exits, detection runs again;
-exit code zero without the required files does not mean readiness.
+access to obtain runtime components. After it exits, detection runs again,
+and detection alone decides readiness: exit code zero without the required
+files does not mean readiness, and any other exit code with the files present
+does. The web installer does not keep to MSI exit codes; when the components
+are already installed it reports "a newer or equivalent version" and exits with
+`0xAA000000` (2852126720), which reads as `installed`. Exit code 1602 without
+the files reads as `cancelled_in_installer`, 0 or 3010 without them as
+`not_detected`, and any other code without them as `failed`.
 
 **Shared admission.** DirectX and PhysX setup hold the same native mutation
 lease for the vendor installer lifetime. Play, install, adoption and update
