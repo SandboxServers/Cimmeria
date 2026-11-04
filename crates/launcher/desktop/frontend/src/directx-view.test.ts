@@ -46,6 +46,13 @@ test('cancel, download refusal and uncertain replies remain retryable without re
  const p=await mounted(async command=>status({last_result:command==='install'?{state:'cancelled_at_uac'}:null}));
  try{p.press();await p.app.settled();assert.match(p.get('directx-status').textContent!,/cancelled/);assert.equal(p.get('install-directx').disabled,false);}finally{await p.app.dispose();}
 });
+test('a failed installer run blames the missing components, not the already-verified download',async()=>{
+ const p=await mounted(async command=>status({last_result:command==='install'?{state:'failed',exit_code:2852126720}:null}));
+ try{
+  p.press();await p.app.settled();const text=p.get('directx-status').textContent!;
+  assert.match(text,/exit code 2852126720/);assert.match(text,/still missing/);assert.doesNotMatch(text,/internet/);
+ }finally{await p.app.dispose();}
+});
 test('off Windows the DirectX panel is hidden',async()=>{
  const p=await mounted(async()=>status({supported:false,missing:[]}));
  try{assert.equal(p.get('directx-panel').hidden,true);}finally{await p.app.dispose();}

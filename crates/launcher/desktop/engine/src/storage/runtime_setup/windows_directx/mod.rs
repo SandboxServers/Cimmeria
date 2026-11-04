@@ -69,6 +69,32 @@ fn x86_dll(path: &Path) -> bool {
     .unwrap_or(false)
 }
 
+/// Map the web installer's end, and what detection finds afterwards, to a result.
+///
+/// `dxwebsetup.exe` does not keep to MSI exit codes: when the components are
+/// already present it finishes with "a newer or equivalent version is already
+/// installed" and exits with values such as `0xAA000000`. Detection decides
+/// readiness, so any exit is a success once the libraries are found.
+pub fn outcome(
+    code: Result<u32, super::windows_physx::ElevateError>,
+    after: &Detection,
+) -> super::windows_physx::InstallResult {
+    use super::windows_physx::{ElevateError, InstallResult};
+    const SUCCESS: u32 = 0;
+    const USER_EXIT: u32 = 1602;
+    const REBOOT_REQUIRED: u32 = 3010;
+    match code {
+        Err(ElevateError::Cancelled) => InstallResult::CancelledAtUac {},
+        Err(ElevateError::Win32(win32_error)) => InstallResult::StartFailed { win32_error },
+        Ok(exit_code) if after.installed() => InstallResult::Installed {
+            restart_required: exit_code == REBOOT_REQUIRED,
+        },
+        Ok(USER_EXIT) => InstallResult::CancelledInInstaller {},
+        Ok(exit_code @ (SUCCESS | REBOOT_REQUIRED)) => InstallResult::NotDetected { exit_code },
+        Ok(exit_code) => InstallResult::Failed { exit_code },
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {

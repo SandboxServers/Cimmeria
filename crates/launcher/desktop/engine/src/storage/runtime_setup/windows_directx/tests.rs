@@ -194,3 +194,47 @@ async fn a_progressing_vendor_download_outlives_the_inactivity_limit_but_a_stall
     drop(release);
     thread.join().unwrap();
 }
+
+#[test]
+fn detection_decides_readiness_whatever_the_web_installer_exits_with() {
+    use super::super::windows_physx::{ElevateError, InstallResult};
+    let present = Detection { missing: vec![] };
+    let absent = Detection {
+        missing: COMPONENTS.to_vec(),
+    };
+    // dxwebsetup's "newer or equivalent version already installed" exit.
+    assert_eq!(
+        outcome(Ok(0xAA00_0000), &present),
+        InstallResult::Installed {
+            restart_required: false
+        }
+    );
+    assert_eq!(
+        outcome(Ok(0xAA00_0000), &absent),
+        InstallResult::Failed {
+            exit_code: 0xAA00_0000
+        }
+    );
+    assert_eq!(
+        outcome(Ok(3010), &present),
+        InstallResult::Installed {
+            restart_required: true
+        }
+    );
+    assert_eq!(
+        outcome(Ok(0), &absent),
+        InstallResult::NotDetected { exit_code: 0 }
+    );
+    assert_eq!(
+        outcome(Ok(1602), &absent),
+        InstallResult::CancelledInInstaller {}
+    );
+    assert_eq!(
+        outcome(Err(ElevateError::Cancelled), &present),
+        InstallResult::CancelledAtUac {}
+    );
+    assert_eq!(
+        outcome(Err(ElevateError::Win32(5)), &present),
+        InstallResult::StartFailed { win32_error: 5 }
+    );
+}

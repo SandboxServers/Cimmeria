@@ -149,23 +149,7 @@ impl NativeHost {
         // Close the deny-delete guard before TempPath removes the authenticated installer.
         drop(guard);
         drop(path);
-        let result = match exit {
-            Err(px::ElevateError::Cancelled) => px::InstallResult::CancelledAtUac {},
-            Err(px::ElevateError::Win32(win32_error)) => {
-                px::InstallResult::StartFailed { win32_error }
-            }
-            Ok(code @ (0 | 3010)) => {
-                if dx::detect(&dx::native::System, None).installed() {
-                    px::InstallResult::Installed {
-                        restart_required: code == 3010,
-                    }
-                } else {
-                    px::InstallResult::NotDetected { exit_code: code }
-                }
-            }
-            Ok(1602) => px::InstallResult::CancelledInInstaller {},
-            Ok(exit_code) => px::InstallResult::Failed { exit_code },
-        };
+        let result = dx::outcome(exit, &dx::detect(&dx::native::System, None));
         tracing::info!(target:"launcher.install",event="directx_finished",outcome=?result,"DirectX installer finished; detection determines readiness");
         Ok(result)
     }
