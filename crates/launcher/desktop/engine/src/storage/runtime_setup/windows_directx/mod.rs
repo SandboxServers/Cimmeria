@@ -26,6 +26,20 @@ impl Detection {
 pub trait Probe {
     fn x86_directory(&self) -> Option<PathBuf>;
 }
+/// The system-directory buffer, in UTF-16 units. `GetSystemWow64Directory2W`
+/// keeps the size in bytes as a 16-bit count, so 32768 units (65536 bytes)
+/// wraps to zero: it then writes nothing and returns the size it needs.
+#[cfg_attr(not(windows), allow(dead_code))]
+const SYSTEM_DIRECTORY_CHARS: usize = 32767;
+
+/// The path a system-directory call wrote, or `None` when the returned length
+/// is not a string it wrote: zero, too large, or covering an unwritten NUL.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn written_path(buffer: &[u16], len: u32) -> Option<&[u16]> {
+    let path = buffer.get(..usize::try_from(len).ok()?)?;
+    (!path.is_empty() && len as usize != buffer.len() && !path.contains(&0)).then_some(path)
+}
+
 pub fn detect(probe: &dyn Probe, game: Option<&Path>) -> Detection {
     let system = probe.x86_directory();
     Detection {
@@ -67,6 +81,32 @@ fn x86_dll(path: &Path) -> bool {
             && u16::from_le_bytes([pe[22], pe[23]]) & 0x2000 != 0)
     })()
     .unwrap_or(false)
+}
+
+/// Map the web installer's end, and what detection finds afterwards, to a result.
+///
+/// `dxwebsetup.exe` does not keep to MSI exit codes: when the components are
+/// already present it finishes with "a newer or equivalent version is already
+/// installed" and exits with values such as `0xAA000000`. Detection decides
+/// readiness, so any exit is a success once the libraries are found.
+pub fn outcome(
+    code: Result<u32, super::windows_physx::ElevateError>,
+    after: &Detection,
+) -> super::windows_physx::InstallResult {
+    use super::windows_physx::{ElevateError, InstallResult};
+    const SUCCESS: u32 = 0;
+    const USER_EXIT: u32 = 1602;
+    const REBOOT_REQUIRED: u32 = 3010;
+    match code {
+        Err(ElevateError::Cancelled) => InstallResult::CancelledAtUac {},
+        Err(ElevateError::Win32(win32_error)) => InstallResult::StartFailed { win32_error },
+        Ok(exit_code) if after.installed() => InstallResult::Installed {
+            restart_required: exit_code == REBOOT_REQUIRED,
+        },
+        Ok(USER_EXIT) => InstallResult::CancelledInInstaller {},
+        Ok(exit_code @ (SUCCESS | REBOOT_REQUIRED)) => InstallResult::NotDetected { exit_code },
+        Ok(exit_code) => InstallResult::Failed { exit_code },
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

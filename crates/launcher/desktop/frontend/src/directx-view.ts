@@ -9,7 +9,7 @@ export function directxResultText(result:PhysxResult):string {
   case 'installed':return result.restart_required?'DirectX components installed. Restart Windows before playing.':'Required DirectX components are installed.';
   case 'cancelled_at_uac':return 'DirectX setup cancelled at the Windows permission prompt.';
   case 'cancelled_in_installer':return 'DirectX setup was cancelled. The required components are still missing.';
-  case 'failed':return `DirectX setup failed (exit code ${result.exit_code}). Check your internet connection and try again.`;
+  case 'failed':return `DirectX setup ended with exit code ${result.exit_code} and the required 32-bit components are still missing. Try again, or restart Windows and recheck.`;
   case 'not_detected':return 'DirectX setup finished, but the required 32-bit components are still missing. Recheck after restarting Windows.';
   case 'start_failed':return `Windows could not start DirectX setup (error ${result.win32_error}).`;
   case 'other_version_blocks':return 'Another installer blocked DirectX setup. Finish it, then try again.';

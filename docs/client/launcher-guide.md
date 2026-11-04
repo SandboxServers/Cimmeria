@@ -237,7 +237,8 @@ registered when a prerequisite is missing, but Play waits until both checks pass
 1. Click **Install DirectX** if DirectX is missing. The launcher downloads and verifies
    Microsoft's legacy DirectX web installer. Follow the vendor wizard, accept its license if you
    agree, and approve any Windows permission prompt. Internet access is needed for the web
-   installer to obtain the runtime files.
+   installer to obtain the runtime files. If the wizard says a newer or equivalent version is
+   already installed, that's fine: the launcher checks the files itself and clears the warning.
 2. Click **Install legacy PhysX…** if PhysX is missing. The launcher shows progress while it
    downloads and verifies NVIDIA's legacy 9.13.0604 installer. Accept the Windows permission
    prompt, read the vendor license and finish the installer. Nothing installs automatically when

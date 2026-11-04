@@ -194,3 +194,72 @@ async fn a_progressing_vendor_download_outlives_the_inactivity_limit_but_a_stall
     drop(release);
     thread.join().unwrap();
 }
+
+#[test]
+fn detection_decides_readiness_whatever_the_web_installer_exits_with() {
+    use super::super::windows_physx::{ElevateError, InstallResult};
+    let present = Detection { missing: vec![] };
+    let absent = Detection {
+        missing: COMPONENTS.to_vec(),
+    };
+    // dxwebsetup's "newer or equivalent version already installed" exit.
+    assert_eq!(
+        outcome(Ok(0xAA00_0000), &present),
+        InstallResult::Installed {
+            restart_required: false
+        }
+    );
+    assert_eq!(
+        outcome(Ok(0xAA00_0000), &absent),
+        InstallResult::Failed {
+            exit_code: 0xAA00_0000
+        }
+    );
+    assert_eq!(
+        outcome(Ok(3010), &present),
+        InstallResult::Installed {
+            restart_required: true
+        }
+    );
+    assert_eq!(
+        outcome(Ok(0), &absent),
+        InstallResult::NotDetected { exit_code: 0 }
+    );
+    assert_eq!(
+        outcome(Ok(1602), &absent),
+        InstallResult::CancelledInInstaller {}
+    );
+    assert_eq!(
+        outcome(Err(ElevateError::Cancelled), &present),
+        InstallResult::CancelledAtUac {}
+    );
+    assert_eq!(
+        outcome(Err(ElevateError::Win32(5)), &present),
+        InstallResult::StartFailed { win32_error: 5 }
+    );
+}
+#[test]
+fn a_reported_length_over_an_unwritten_buffer_is_not_a_system_directory() {
+    // GetSystemWow64Directory2W given 32768 units writes nothing and returns
+    // the size it needs (20), which once read as twenty NULs: every library
+    // then looked missing although SysWOW64 held both.
+    let unwritten = [0u16; SYSTEM_DIRECTORY_CHARS];
+    assert_eq!(written_path(&unwritten, 20), None);
+    assert_eq!(written_path(&unwritten, 0), None);
+    let mut buffer = [0u16; SYSTEM_DIRECTORY_CHARS];
+    let path: Vec<u16> = r"C:\WINDOWS\SysWOW64".encode_utf16().collect();
+    buffer[..path.len()].copy_from_slice(&path);
+    assert_eq!(written_path(&buffer, path.len() as u32), Some(&path[..]));
+    assert_eq!(written_path(&buffer, path.len() as u32 + 1), None);
+    assert_eq!(written_path(&buffer, SYSTEM_DIRECTORY_CHARS as u32), None);
+    assert_eq!(written_path(&buffer, u32::MAX), None);
+}
+#[cfg(windows)]
+#[test]
+fn the_native_probe_names_the_real_x86_system_directory() {
+    let directory = native::System
+        .x86_directory()
+        .expect("x86 system directory");
+    assert!(directory.is_absolute(), "{directory:?}");
+    assert!(directory.join("kernel32.dll").is_file(), "{directory:?}");
+}
