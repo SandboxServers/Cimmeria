@@ -188,9 +188,7 @@ pub(super) async fn handle_kill_target(
     // combat HUD, so there is no reticle on the GM to drop.
     // `grant_xp: false` — an admin command must not mint levels.
     // Read the tag before the kill: the death path may clear entity state.
-    let target_tag = space_mgr
-        .get_entity(target_eid)
-        .and_then(|t| t.tag.clone());
+    let target_tag = space_mgr.get_entity(target_eid).and_then(|t| t.tag.clone());
     let killed = crate::cell::abilities::kill_npc_out_of_band(
         target_eid, entity_id, false, false, tx, space_mgr,
     )

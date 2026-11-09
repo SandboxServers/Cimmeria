@@ -594,7 +594,17 @@ async fn gm_kill_target_fires_dead_tag_chain_for_the_gm() {
     });
     let (tx, _rx) = mpsc::channel(64);
 
-    assert!(dispatch(1, GM_KILL_TARGET, &2i64.to_le_bytes(), &tx, &mut mgr, &engine).await);
+    assert!(
+        dispatch(
+            1,
+            GM_KILL_TARGET,
+            &2i64.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &engine
+        )
+        .await
+    );
     let count = |mgr: &SpaceManager| {
         mgr.get_entity(1)
             .unwrap()
@@ -606,6 +616,16 @@ async fn gm_kill_target_fires_dead_tag_chain_for_the_gm() {
     assert_eq!(count(&mgr), 1, "tagged GM kill must credit the GM once");
 
     // A tagless NPC dies without raising anything.
-    assert!(dispatch(1, GM_KILL_TARGET, &3i64.to_le_bytes(), &tx, &mut mgr, &engine).await);
+    assert!(
+        dispatch(
+            1,
+            GM_KILL_TARGET,
+            &3i64.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &engine
+        )
+        .await
+    );
     assert_eq!(count(&mgr), 1, "a tagless kill fires no dead-tag chain");
 }
