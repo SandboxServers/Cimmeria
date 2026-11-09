@@ -250,12 +250,15 @@ RUN set -eux; \
         arm64) s6_arch=aarch64; arch_sha="${S6_OVERLAY_ARM64_SHA256}" ;; \
         *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
-    curl -sL --retry 3 \
+    # --fail: without it a GitHub 5xx/HTML error body is saved as the
+    # "tarball" and surfaces as a misleading sha256 mismatch (issue #2072).
+    # --retry-all-errors retries those transient failures instead.
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 \
         -o /tmp/s6-noarch.tar.xz \
         "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz"; \
     echo "${S6_OVERLAY_NOARCH_SHA256}  /tmp/s6-noarch.tar.xz" | sha256sum -c -; \
     tar -C / -Jxpf /tmp/s6-noarch.tar.xz; \
-    curl -sL --retry 3 \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 \
         -o /tmp/s6-arch.tar.xz \
         "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${s6_arch}.tar.xz"; \
     echo "${arch_sha}  /tmp/s6-arch.tar.xz" | sha256sum -c -; \
