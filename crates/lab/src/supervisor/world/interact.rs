@@ -2,7 +2,7 @@
 //!
 //! The stock right-click path is `FUN_00e84b20` (mouse handler) -> resolver
 //! `FUN_00e84860` (screen pick -> entity id) -> firer `FUN_00def4b0`. The
-//! firer is `__cdecl(uint32 entity_id)`: it builds `Event_NetOut_Interact`
+//! firer is `__stdcall(uint32 entity_id)`: it builds `Event_NetOut_Interact`
 //! with the "OverrideTarget" property and sends it. Calling it directly with
 //! an entity id therefore sends exactly the packet a right-click would, for
 //! targets whose pixels the hover search cannot hit (a prop behind scenery,
@@ -34,13 +34,13 @@ pub struct InteractRequest {
     pub entity_id: u32,
 }
 
-/// `call_native` params for the firer: `cdecl`, one word argument. The
-/// decompiler narrows the parameter to `char`, but the stock caller pushes the
-/// full 32-bit id, so the full word is passed here too.
+/// `call_native` params for the firer: `stdcall`, one word argument (the callee
+/// pops it, `ret 4`). The decompiler narrows the parameter to `char`, but the
+/// stock caller pushes the full 32-bit id, so the full word is passed here too.
 pub fn interact_params(slide: i64, entity_id: u32) -> Value {
     json!({
         "addr": format!("{:#x}", rebase(INTERACT_FIRER_VA, slide)),
-        "conv": "cdecl",
+        "conv": "stdcall",
         "args": [format!("{entity_id:#x}")],
         "ret": "void",
     })
@@ -117,6 +117,17 @@ pub async fn run<W: WorldIo>(io: &mut W, a: InteractRequest) -> Result<Value, Wo
         io.now_ms(),
         json!({ "actor": entity.actor, "rendered": entity.rendered_flag, "range": range_json(range_m) }),
     );
+    // Beyond the server's range it ignores the packet, so do not fire at all.
+    if range_m.is_some_and(|d| d > INTERACT_RANGE_M) {
+        steps.judged(Evidence::judge(checks(range_m)));
+        let out = json!({
+            "entity_id": a.entity_id,
+            "fired": false,
+            "range": range_json(range_m),
+            "note": "not fired: beyond the server's interact range; stand within 5 m first (client_move_to)",
+        });
+        return Ok(steps.finish(io.now_ms(), out));
+    }
     // 2. Fire the interact.
     let t1 = io.now_ms();
     steps.used(NativeLevel::NativeCall);

@@ -17,9 +17,9 @@ fn vial_at(x: f64) -> Sim {
 }
 
 #[test]
-fn params_are_a_cdecl_call_of_the_rebased_firer_with_the_full_id_word() {
+fn params_are_a_stdcall_call_of_the_rebased_firer_with_the_full_id_word() {
     let p = interact_params(0x10_0000, 0x1234_5678);
-    assert_eq!(p["conv"], "cdecl");
+    assert_eq!(p["conv"], "stdcall");
     assert_eq!(p["ret"], "void");
     assert_eq!(p["addr"], format!("{:#x}", INTERACT_FIRER_VA + 0x10_0000));
     assert_eq!(p["args"], json!(["0x12345678"]));
@@ -59,6 +59,8 @@ async fn beyond_the_interact_range_the_verdict_is_denied_out_of_range() {
     assert_eq!(out["evidence"]["verdict"], "denied", "{out}");
     assert_eq!(out["evidence"]["why"], "out_of_range", "{out}");
     assert_eq!(out["range"]["distance_m"], 20.0, "{out}");
+    assert!(sim.interact_calls.is_empty(), "{out}");
+    assert_eq!(out["fired"], false, "{out}");
 }
 
 #[tokio::test]

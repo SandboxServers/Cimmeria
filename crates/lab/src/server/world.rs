@@ -60,7 +60,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Interact with an entity by client entity_id with no screen pick: calls the client's own interact function (the one a right-click reaches after its pick) with that id, for NPCs and props whose pixels the hover search cannot hit. Requires the lease. The entity must be in the client's entity map and not the player. Native level native_call (N3), never a native pass. Returns evidence: always inconclusive (the server's reaction is graded separately from the server log or packet tap), or denied (out_of_range) when the avatar is beyond the server's 5 m interact range. Stand within 5 m first (client_move_to)."
+        description = "Interact with an entity by client entity_id with no screen pick: calls the client's own interact function (the one a right-click reaches after its pick) with that id, for NPCs and props whose pixels the hover search cannot hit. Requires the lease. The entity must be in the client's entity map and not the player. Native level native_call (N3), never a native pass. Returns evidence: always inconclusive (the server's reaction is graded separately from the server log or packet tap), or denied (out_of_range) when the avatar is beyond the server's 5 m interact range, and then does not fire. Stand within 5 m first (client_move_to)."
     )]
     async fn client_interact(
         &self,

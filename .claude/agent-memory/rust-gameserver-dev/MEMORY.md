@@ -58,7 +58,7 @@ One line per topic file; a sub-index's files are also named on its "Files" line.
 ## Lab supervisor
 
 - lab-small-prop-hover-offsets.md — entity hover search tries actor origin last for small props; avatar proximity stays on humanoid heights.
-- client-interact-firer-by-id.md — `FUN_00def4b0` cdecl(entity_id) fires interact; lab `client_interact` calls it (N3), live wire unverified.
+- client-interact-firer-by-id.md — `FUN_00def4b0` stdcall(entity_id) fires interact; lab `client_interact` calls it (N3), live wire unverified.
 
 - lab-template-id-mismatch.md — `unitMobId` is not the server template id; join server entity snapshots to the client map by entity id for template and life-state selectors
 
