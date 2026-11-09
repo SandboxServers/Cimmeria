@@ -17,6 +17,7 @@ You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator u
 - Any WARN or ERROR in a relevant target inside the window that the row does not expect is a **finding**.
 - Dialog text is provisional (D-FZ15): grade that the right line (screen id) appeared, not its wording.
 - The server prints no mission step text. The driver's `gmMissionList` entries carry step ids (`#1664 active step 5225 obj 0/2`); grade the step id, never a step name.
+- Grade chat and ring line counts ("filed", "Report received") from the server chain logs, not from the driver's READ: a fresh cursor returns old history from earlier runs. The staged fixture takes the name without the `Uat ` prefix and also sets mission 1361 not_active; the driver runs on instance p2. `lab_screenshot` takes no label, so match screenshots to labels by call order. `/abandonmission <id>` prints no chat reply: grade it from server evidence only.
 
 ## 2. Setup you do first (4 calls)
 

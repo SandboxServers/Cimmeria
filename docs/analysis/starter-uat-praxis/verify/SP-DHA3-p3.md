@@ -17,6 +17,7 @@ You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator u
 - Any WARN or ERROR in a relevant target inside the window that the row does not expect is a **finding**.
 - Dialog text is provisional (D-FZ15): grade that the right line (screen id) appeared, not its wording.
 - The server prints no mission step text. The driver's `gmMissionList` entries carry step ids (`#1664 active step 5225 obj 0/2`); grade the step id, never a step name.
+- Grade chat and ring line counts ("filed", "Report received") from the server chain logs, not from the driver's READ: a fresh cursor returns old history from earlier runs. The staged fixture takes the name without the `Uat ` prefix and also sets mission 1361 not_active; the driver runs on instance p2. `lab_screenshot` takes no label, so match screenshots to labels by call order. `/abandonmission <id>` prints no chat reply: grade it from server evidence only.
 
 ## 2. Setup you do first (4 calls)
 
@@ -68,7 +69,7 @@ Start: fixture. Row windows come from `SPU SP-DHA3-p3 FZ-U2c start` and `FZ-U2c 
 
 | Check | Query | Expected |
 |---|---|---|
-| Fixture applied | the first driver MLIST (S2) | `#1664 active step 5226 obj 0/2` |
+| Fixture applied | the first driver MLIST (S2) | `#1664 active step 5226`, step id only (a reused character may read `obj 3/5` from leftover objectives; 6061 and 6062 uncredited) |
 | Marsh report | chain 6018 logs and `mission.complete_objective` | objective 6061, once; bark screen 200180 |
 | Re-click | chain-id and `mission.` logs after the second Marsh click | no second `complete_objective` 6061; no chain 6512 `display_dialog 4457` |
 | Relog restore | 6033 and 6034 logs after the relog | 6034 ran (Moh'katan cue); 6033 did NOT run (6061 already credited) |
