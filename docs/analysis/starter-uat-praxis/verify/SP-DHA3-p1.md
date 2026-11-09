@@ -15,6 +15,7 @@ You are given: (1) this brief; (2) the DRIVER REPORT pasted by the coordinator u
 - **NEEDS_HUMAN never blocks the lane.** Name plates, facing, cues, use cursors and journal lines cannot be graded from server data. When every server clause of a row holds and only such look-and-feel clauses remain, grade the row **NEEDS_HUMAN** and write "server clauses PASS" in Notes; the screenshots go on the SIGN-OFF SHEET (section 5) for the user. A server clause that fails is FAIL whatever the pictures show. Never ask the user a question; never wait.
 - A driver claim with no matching server row is not evidence. A row for the wrong player or outside the row window does not count.
 - Any WARN or ERROR in a relevant target inside the window that the row does not expect is a **finding**.
+- A Kaerlia `hover_timeout` (with `client_target` also failing) is a harness gap, cause (c): grade the click BLOCKED and note the camera recipe, not FAIL.
 - Dialog text is provisional (D-FZ15): grade that the right line (screen id) appeared, not its wording.
 - The server prints no mission step text. The driver's `gmMissionList` entries carry step ids (`#1664 active step 5225 obj 0/2`); grade the step id, never a step name.
 

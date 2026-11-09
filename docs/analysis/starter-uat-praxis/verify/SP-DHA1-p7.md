@@ -62,7 +62,7 @@ Do not edit the repo beyond the results file and issue files, the database or th
 
 # Verify SP-DHA1-p7: Harset mission 742, part 1 (legs 1 and 2)
 
-Shorthand: `$P` as above. Chains are in `db/resources/Content/Seed/`. Start: fixture (world 57, 742 at step 2502, three 2820 items staged; 1200 `completed`). The 2820 container ("main" or "mission") is a guess; a fixture that could not be staged is BLOCKED.
+Shorthand: `$P` as above. Chains are in `db/resources/Content/Seed/`. Start: fixture (world 57, 742 at step 2502, three 2820 items staged; 1200 `completed`). Item 2820 is staged in container "mission" ("main" is refused); a fixture that could not be staged is BLOCKED. Petbe's dialog 2638 has no choice button: the disguise 2819 is granted when the dialog is closed with Done, so grade leg 1 on the close, not on a choice click.
 
 ## Row H41a - mission 742 *Giving the Walls Ears* (Goa'uld; chains 6101-6103, 6112), legs 1 and 2
 

@@ -28,7 +28,7 @@ Area: this packet uses **Harset (world 57)** and the **Harset Command Center (wo
 11. **A covering window swallows native clicks (#1676).** Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name; if it shows none, skip PROMPT (no call). On a dead click the order is SHOT, then PROMPT only if the SHOT shows a window or prompt name, then one unchanged retry. If a click still does nothing, read `client_ui_state` once and record the top window. The Server Message OK button is `Prompt1_SingleButton`.
 12. **`lab_ensure_in_world` can mis-read the character name (#1680).** After L2 compare `character` with the CHARACTER field; if it differs, record both, do not create anything, and report BLOCKED.
 13. **Keys:** B opens the bag. Q and E turn the avatar, W and S walk. Hold a key with `client_ui_sequence` `{"do":"key","key":"w","hold_ms":2000}`.
-14. **Do not restart or relaunch the client**, and do not call `lab_client_*` tools. If the client looks dead, stop and report BLOCKED with the error text.
+14. **Do not restart or relaunch the client**, and do not call `lab_client_*` tools. If the client looks dead, stop and report BLOCKED with the error text. **Caps Lock must be off before `lab_login`** (L2 calls it): with Caps Lock on it types the account name in capitals and fails with a misleading "holds 4 characters ... expected 4" error; toggle Caps Lock off and retry.
 15. **Your hard stop is 28 tool calls in total.** Count them. The planned path (ESTIMATE, below) is at most 22; the rest is headroom for retries. At call 26 stop doing legs, write the report, release the lease. Never start a leg you cannot finish; list unfinished legs as NOT-RUN with the leg number.
 16. **One retry per failed call, unchanged.** Then record the error text verbatim and continue.
 17. **An unexpected window, prompt or dialog:** read it once with `client_ui_state`, record it, close it with DIALOG or PROMPT, carry on.
@@ -61,7 +61,7 @@ Macro costs (calls): L1 = 1; L2 = 1; WAIT17 = 1; CHATX = 1, whatever the number 
 
 **PROMPT.** `client_window_read {"lease_id":L,"kind":"prompt"}`. If `state.prompts` is non-empty, read title and message and click the first enabled returned button using its `window` name (normally `Prompt1_SingleButton`); repeat until empty. Never guess a button name.
 
-**FIND <T>.** `client_entity_find {"lease_id":L,"template_id":<T>,"fields":["id","name","position","distance","rendered","targetable"]}`. Record the id, position and distance.
+**FIND <T>.** `client_entity_find {"lease_id":L,"template_id":<T>}` (no `fields` argument: the tool rejects it). Record the id, position and distance.
 
 **RCLICK <T>.** `client_world_click {"lease_id":L,"template_id":<T>,"button":"right","expect":"window"}`. This is a real click (N1). Record `range`, `native_level`, `evidence` and the window it reports. If it reports `out_of_range`, see gotcha 9.
 
@@ -73,7 +73,7 @@ Macro costs (calls): L1 = 1; L2 = 1; WAIT17 = 1; CHATX = 1, whatever the number 
 
 **BUG - a timeline bookmark.** A step that says `BUG <text>` is the CHATX line `.bug SPU SP-DHA1-p7 <text>`. The verifier reads these on the server to find your timing. They are not optional.
 
-**ABANDON <id> - abandon a mission.** CHATX line `/gmmissionclear <id>` (tier G; `docs/commands.md:371`; the console path fires the mission-abandoned event, `crates/cell-console/src/cell/console/gm/missions.rs:213`), then READ with `contains abandon` and record the reply. If the reply says the mission is not active on you, record it. Only when 8 or more calls remain, try the journal route instead (ToggleJournal key J, then L; `client_ui_state`, click the mission, click Abandon) and report tier N1 for it.
+**ABANDON <id> - abandon a mission.** BLOCKED-known SP-DHA1-p1-1: `/gmmissionclear` does not abandon on the local lab (see results/issues/SP-DHA1-p1-1.md); record BLOCKED citing it. If calls remain, also try `/gmmissionabandon <id>` as an alternative and record its reply verbatim (not yet run: unknown whether it works). CHATX line `/gmmissionclear <id>` (tier G; `docs/commands.md:371`; the console path fires the mission-abandoned event, `crates/cell-console/src/cell/console/gm/missions.rs:213`), then READ with `contains abandon` and record the reply. If the reply says the mission is not active on you, record it. Only when 8 or more calls remain, try the journal route instead (ToggleJournal key J, then L; `client_ui_state`, click the mission, click Abandon) and report tier N1 for it.
 
 ---
 
@@ -87,18 +87,18 @@ ROWS: H41a. ESTIMATE: 15 tool calls (planned success path; hard stop 28). Seed f
 
 ### ROW H41a - mission 742 *Giving the Walls Ears* (Goa'uld), legs 1 and 2
 
-CHARACTER `Uat Fxdhagoauldb` (Praxis Goauld). Fixture: world `Harset`, position `[-165.5, -41.27, 95.4]`, missions `[{"id":1200,"state":"completed"},{"id":742,"step":2502}]`, items `[{"id":2820,"count":3,"container":"main"}]`.
-Container for item 2820 is a best guess ("main"); if the stage call is refused, the coordinator tries "mission". A fixture that cannot be staged makes the row BLOCKED, never FAIL.
+CHARACTER `Uat Fxdhagoauldb` (Praxis Goauld). Fixture: world `Harset`, position `[-165.5, -41.27, 95.4]`, missions `[{"id":1200,"state":"completed"},{"id":742,"step":2502}]`, items `[{"id":2820,"count":3,"container":"mission"}]`.
+Item 2820 goes in container "mission": the stage call refuses it in "main" (a coordinator fixture error in attempt 1). A fixture that cannot be staged makes the row BLOCKED, never FAIL.
 
 | Leg | What | Fixture to restart here (successor) |
 |---|---|---|
 | 1 | Petbe dialog (2638), disguise granted, step 2503 | the fixture above |
-| 2 | use the disguise, step 2504, baskets light | missions `[{"id":1200,"state":"completed"},{"id":742,"step":2503}]`, items `[{"id":2819,"count":1,"container":"main"},{"id":2820,"count":3,"container":"main"}]`, same position |
+| 2 | use the disguise, step 2504, baskets light | missions `[{"id":1200,"state":"completed"},{"id":742,"step":2503}]`, items `[{"id":2819,"count":1,"container":"main"},{"id":2820,"count":3,"container":"mission"}]`, same position |
 
 **S1 (3 calls: lab_lease_acquire, lab_ensure_in_world, client_batch).** L1, then L2, then WAIT17. Record the character, world_id and position. Compare with the fixture world and position below. If `world_id` is not the fixture world, record it and go on.
 **S2 (1 call: client_inventory) - resume probe (ATTEMPT 2 or 3 only).** INV with no container filter; record every item id with its container and count. The coordinator has already set START LEG; skip the legs before it.
 
-**41.1 (6 calls: client_batch, lab_screenshot, client_world_click, client_ui_state, client_ui_sequence, lab_finish_dialog) (leg 1).** CHATX with BUG `h41 start`. SHOT label `H41-petbe`. RCLICK 163. Dialog 2638 has a choice: CHOICE, then FINISH. Record the window names.
+**41.1 (5 calls: client_batch, lab_screenshot, client_world_click, client_ui_state, lab_finish_dialog) (leg 1).** CHATX with BUG `h41 start`. SHOT label `H41-petbe`. RCLICK 163. Dialog 2638 has no choice button: read `client_ui_state` to confirm that, then FINISH (Done). The Jaffa Disguise (2819) is granted when the dialog is closed with Done, not by a choice. Record the window names.
 **41.2 (4 calls: client_inventory, client_item_action, client_chat_log, client_batch) (leg 2).** INV: find the Jaffa Disguise (item 2819, granted in leg 1) and the Scarab devices (item 2820, expect 3). Use the disguise with `client_item_action {"lease_id":L,"action":"rightclick","name":"Disguise","wait_ms":3000}` (arguments: `crates/lab/src/server/ui/args.rs:170`; one real right-click on the slot: `crates/lab/src/supervisor/ui/item_action.rs:4-8`). Record `native_level`, the effect fields and any window it opens (dialog 2637). Then READ `{"cursor":"h41a","channel":"9","max":20}`. Last, a CHATX with BUG `h41 a end` (its `d0` op closes dialog 2637).
 
 **S9 (1 call: lab_lease_release).** Release the lease and write the report.

@@ -55,7 +55,7 @@ SOURCES (every id below is traced; `rows.md` assigns the rows):
 10. **If a click opens nothing**, take one SHOT, retry the click once unchanged, then record FAIL for that step and go on to the next independent step. Never improvise a workaround.
 11. **Never use `client_wait_for` on a world load** (#1677). Use WAIT (two `client_batch` waits of 20 s).
 12. **A covering window swallows native clicks (#1676).** Before a world click, the step's batch runs DIALOG as its first op where a dialog can be open. Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name; if it shows none, skip PROMPT (no call). On a dead click the order is SHOT, then PROMPT only if the SHOT shows a window or prompt name, then one unchanged retry. The Server Message OK button is `Prompt1_SingleButton`. If a click still does nothing, read `client_ui_state` once and record the top window.
-13. **Do not restart the client** and do not call `lab_client_*` tools. If the client is dead (every call fails), stop and report BLOCKED with the error text. `lab_logout` can crash the client (#1680): if RELOG fails, record the error, mark the rest of that relog check BLOCKED and carry on.
+13. **Do not restart the client** and do not call `lab_client_*` tools. If the client is dead (every call fails), stop and report BLOCKED with the error text. `lab_logout` can crash the client (#1680): if RELOG fails, record the error, mark the rest of that relog check BLOCKED and carry on. **Caps Lock must be off before `lab_login`** (L2 calls it): with Caps Lock on it types the account name in capitals and fails with a misleading "holds 4 characters ... expected 4" error; toggle Caps Lock off and retry.
 14. **Budget: 28 tool calls per attempt, counted by tool invocation.** Every `client_batch` is one call, whatever its length. The ESTIMATE below is the planned success path and is at most 22; the other calls are headroom for gotchas 10, 12 and 15. Count your calls. At call 26 stop starting steps, write the report from what you have, release the lease and finish. Never start a step you cannot finish. Never look up a tool schema: every argument is written out in this brief.
 15. **One retry per failed call, unchanged.** Then record the error text verbatim and continue.
 16. **An unexpected window, prompt or dialog**: read it once with `client_ui_state`, record it, close it with DIALOG or PROMPT, and carry on.
@@ -86,7 +86,7 @@ Replace LINE ONE and LINE TWO with the exact lines the step gives; add one lua o
 
 **SHOT.** Cost: 1 call. `lab_screenshot {"lease_id":L,"instance":"p3"}`. Report the path next to the LABEL the step gives it.
 
-**FIND.** Cost: 1 call. `client_entity_find {"lease_id":L,"name":"<name>","max_distance_m":12,"fields":["matches"]}`. Record id, name, distance_m and position of every match.
+**FIND.** Cost: 1 call. `client_entity_find {"lease_id":L,"name":"<name>","max_distance_m":12}`. Record id, name, distance_m and position of every match.
 
 **TALK.** Cost: 1 call. `client_world_click {"lease_id":L,"name":"<name>","button":"right","expect":"<window|nothing>","settle_ms":2500}` (right = interact). Use `expect:"window"` where the step says a dialog opens, `expect:"nothing"` where the reply is a chat line only. Record every result field (`hover`, `range`, `native_level`, `evidence`, any `error`).
 
@@ -121,7 +121,7 @@ Server facts: chain 6008 (`db/resources/Content/Seed/harset_1664_chains.sql:42-5
 
 **a1 (2 calls: client_batch, lab_screenshot).** CHATX: `.bug SPU SP-DHA3-p1 FZ-U2a start`, `.gotolocation Harset -5 -68.95 34`. SHOT `A-KAERLIA-BEFORE`. NEEDS_HUMAN: a name plate over her, her facing toward you or the plaza, a mission cue (the "?" or a use cursor). Write "no tool result for this" as the tool-result line, then go on.
 
-**a2 (2 calls: client_world_click, lab_screenshot).** TALK `Kaerlia` with `expect:"window"`. Record every field (`hover` is the cursor kind, `range` must be at most 5.0). SHOT `A-DIALOG` (NEEDS_HUMAN for the wording; screen 117162 at index 4 reads "Ah, right. Make sure you report in at the command center ... I'll upload a path to your PDA.", `db/resources/Dialogs/Seed/dialog_screens.sql:27659`).
+**a2 (2 calls: client_world_click, lab_screenshot).** TALK `Kaerlia` with `expect:"window"`. Known harness gap on p2: the Kaerlia click fails with `hover_timeout` and `client_target` also failed. Try the camera recipe first (`client_camera {"lease_id":L,"pitch_deg":-10,"face_entity_id":<Kaerlia id from FIND>}` before the click); if it still fails, record BLOCKED as a harness gap, not a product defect. Record every field (`hover` is the cursor kind, `range` must be at most 5.0). SHOT `A-DIALOG` (NEEDS_HUMAN for the wording; screen 117162 at index 4 reads "Ah, right. Make sure you report in at the command center ... I'll upload a path to your PDA.", `db/resources/Dialogs/Seed/dialog_screens.sql:27659`).
 
 **a3 (2 calls: client_batch, client_chat_log).** CHATX with DIALOG as its FIRST op, then the lines `.bug SPU SP-DHA3-p1 FZ-U2a clicked` and `/gmmissionlist`. READ `{"cursor":"a3","contains":"gmMissionList","max":10}`. Expect the whole `#1664 ...` entry to show step 5225. Record the whole entry.
 

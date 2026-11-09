@@ -27,7 +27,7 @@ Area: this packet uses the **Harset Command Center (world 68)**, and only Colone
 10. **Face a point, not an entity, when the click misses.** If `client_world_click` reports the entity is not under the cursor, call `client_camera` with `face_point` at the NPC's position, then retry the click once. (Failure path: not in ESTIMATE.)
 11. **A covering window swallows native clicks (#1676).** Before every world click, the step's batch runs DIALOG as its first op. Run PROMPT only when the preceding L2, WAIT, WAITW or screenshot output shows a window or prompt name; if it shows none, skip PROMPT (no call). On a dead click the order is SHOT, then PROMPT only if the SHOT shows a window or prompt name, then one unchanged retry. If a click still does nothing, read `client_ui_state` once and record the top window. The Server Message OK button is `Prompt1_SingleButton`.
 12. **`lab_ensure_in_world` can mis-read the character name (#1680).** After L2 compare `character` with the CHARACTER field; if it differs, record both, do not create anything, and report BLOCKED.
-13. **Do not restart or relaunch the client**, and do not call `lab_client_*` tools. A relog in this brief is RELOG (`lab_disconnect`, L2, two waits), nothing more.
+13. **Do not restart or relaunch the client**, and do not call `lab_client_*` tools. A relog in this brief is RELOG (`lab_logout`, L2, two waits), nothing more. **Caps Lock must be off before `lab_login`** (L2 calls it): with Caps Lock on it types the account name in capitals and fails with a misleading "holds 4 characters ... expected 4" error; toggle Caps Lock off and retry.
 14. **If the client looks dead,** stop and report BLOCKED with the error text.
 15. **Your hard stop is 28 tool calls in total.** Count them. The planned path (ESTIMATE, below) is at most 22; the rest is headroom for retries. At call 26 stop doing legs, write the report, release the lease. Never start a leg you cannot finish; list unfinished legs as NOT-RUN with the leg number.
 16. **One retry per failed call, unchanged.** Then record the error text verbatim and continue. The exception is the hand-in click (legs a1 and a2) and the repeat click: those are one press each, never retried.
@@ -51,7 +51,7 @@ Macro costs (calls): L1 = 1; L2 = 1; WAIT17 = 1; CHATX = 1, whatever the number 
 
 **TP Harset_CmdCenter x y z - same-world teleport (1 call).** CHATX with the line `.gotolocation Harset_CmdCenter x y z`, then `{"op":"wait","ms":3000}` and `{"op":"player_state","fields":["world_id","position"]}` at the end of the batch. Any BUG line the step names goes in the same batch, before the teleport line.
 
-**RELOG (4 calls).** (1) `lab_disconnect {"lease_id":L}`. (2) L2 again. (3) `client_batch {"lease_id":L,"steps":[{"op":"wait","ms":20000}]}`. (4) `client_batch {"lease_id":L,"stop_on_error":false,"steps":[{"op":"wait","ms":20000}, <the BUG lines the step names, each as a CHATX lua+wait pair>, {"op":"player_state","fields":["world_id","position"]}]}`. Do NOT click anything during a RELOG.
+**RELOG (4 calls).** (1) `lab_logout {"lease_id":L}` (not `lab_disconnect`: it works only at login or character select and is not in the lab-driver tool set). (2) L2 again. (3) `client_batch {"lease_id":L,"steps":[{"op":"wait","ms":20000}]}`. (4) `client_batch {"lease_id":L,"stop_on_error":false,"steps":[{"op":"wait","ms":20000}, <the BUG lines the step names, each as a CHATX lua+wait pair>, {"op":"player_state","fields":["world_id","position"]}]}`. Do NOT click anything during a RELOG.
 
 **READ - chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","channel":"9","max":20}`; when a step says `contains <word>`, use `"contains":"<word>"` instead of the channel. Record every line verbatim with `channel`, `colour`, `tabs`, `seq`. From the second read on add `"since_seq": <LASTSEQ>`.
 
@@ -61,9 +61,9 @@ Macro costs (calls): L1 = 1; L2 = 1; WAIT17 = 1; CHATX = 1, whatever the number 
 
 **PROMPT.** `client_window_read {"lease_id":L,"kind":"prompt"}`. If `state.prompts` is non-empty, read title and message and click the first enabled returned button using its `window` name (normally `Prompt1_SingleButton`); repeat until empty. Never guess a button name.
 
-**FIND-MARSH.** `client_entity_find {"lease_id":L,"template_id":10,"fields":["id","name","position","distance","rendered","targetable"]}`.
+**FIND-MARSH.** `client_entity_find {"lease_id":L,"template_id":10}` (no `fields` argument: the tool rejects it).
 
-**RCLICK-MARSH.** `client_world_click {"lease_id":L,"template_id":10,"button":"right","expect":"window"}`. A real click (N1). Record `range`, `native_level`, `evidence` and the window it reports.
+**RCLICK-MARSH.** First `client_camera {"lease_id":L,"pitch_deg":-10,"face_entity_id":100199}` (1 extra call before the first click of a session; without it the click fails with `hover_timeout` when Marsh is off screen), then `client_world_click {"lease_id":L,"template_id":10,"button":"right","expect":"window"}`. A real click (N1). Record `range`, `native_level`, `evidence` and the window it reports.
 
 **INV.** `client_inventory {"lease_id":L,"fields":["containers"]}` with no container filter. Record every container name, and every item with its id, slot and count; say how many items of id 3730 you see and in which container.
 
@@ -81,9 +81,9 @@ ROWS: HA-1360b (b1) and HA-1360a (a1). ESTIMATE: 18 tool calls (planned success 
 
 | CHARACTER | Archetype | Fixture | Purpose |
 |---|---|---|---|
-| `Uat Fxdhaletterd` | Soldier (any archetype except Goauld and Jaffa) | world `Harset_CmdCenter`, position `[-45.5, -0.59, -14]`, missions `[{"id":1360,"step":4038}]`, items `[{"id":3730,"count":1,"container":"mission"}]` | relog rebind (b1), then the hand-in (a1) |
+| `Uat Fxdhaletterd` | Soldier (create with archetype Soldier; never Jaffa or Goauld: the 1361 offer cannot appear for a Jaffa. Fxdcafour is a Jaffa and must not be used) | world `Harset_CmdCenter`, position `[-45.5, -0.59, -14]`, missions `[{"id":1360,"step":4038}]`, items `[{"id":3730,"count":1,"container":"mission"}]` | relog rebind (b1), then the hand-in (a1) |
 
-If the coordinator could not stage 3730 as `"mission"` it used `"main"`; the INV step tells you where the letter sits. A fixture that cannot be staged makes the run BLOCKED (verifier rule), never FAIL.
+If the coordinator could not stage 3730 as `"mission"` it used `"main"`; the INV step tells you where the letter sits. A fixture that cannot be staged makes the run BLOCKED (verifier rule), never FAIL. 1360 stages at both 4037 and 4038 (PR 2068 merged). A `mission 1360 was not written` refusal is therefore a fixture error: report it as BLOCKED with the log line, not as a known block.
 
 ## Steps
 
@@ -92,7 +92,7 @@ If the coordinator could not stage 3730 as `"mission"` it used `"main"`; the INV
 
 ### ROW HA-1360b - receiving graph, Harset side (leg b1)
 
-**b1 (6 calls: lab_disconnect, lab_ensure_in_world, client_batch, client_batch, client_entity_find, lab_screenshot) - relog keeps Marsh's rebind (A1.4), BEFORE the hand-in.** RELOG with BUG `b1 end` in its last batch (the bookmark is sent after the second 20000 ms wait). Do NOT click Marsh. FIND-MARSH, then SHOT label `HA1360-marsh-after-relog`. NEEDS_HUMAN: does Marsh show a "!" icon over his head after the relog? Record what you see with the screenshot (gotcha 18). The server side (chain 6502 re-binding DSM 120101 slot 10) is graded from the log.
+**b1 (6 calls: lab_logout, lab_ensure_in_world, client_batch, client_batch, client_entity_find, lab_screenshot) - relog keeps Marsh's rebind (A1.4), BEFORE the hand-in.** RELOG with BUG `b1 end` in its last batch (the bookmark is sent after the second 20000 ms wait). Do NOT click Marsh. FIND-MARSH, then SHOT label `HA1360-marsh-after-relog`. NEEDS_HUMAN: does Marsh show a "!" icon over his head after the relog? Record what you see with the screenshot (gotcha 18). The server side (chain 6502 re-binding DSM 120101 slot 10) is graded from the log.
 
 ### ROW HA-1360a - the letter hand-in (leg a1)
 
