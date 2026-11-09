@@ -83,6 +83,8 @@ impl Sim {
             floor_end_x: None,
             trace_error: None,
             trace_calls: 0,
+            interact_calls: Vec::new(),
+            interact_error: None,
         }
     }
 

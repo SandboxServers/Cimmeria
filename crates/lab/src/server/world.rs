@@ -14,9 +14,10 @@ use crate::supervisor::world::camera::CameraRequest;
 use crate::supervisor::world::click::{ClickRequest, Expect};
 use crate::supervisor::world::find::FindRequest;
 use crate::supervisor::world::hover::HoverRequest;
+use crate::supervisor::world::interact::InteractRequest;
 use crate::supervisor::world::io::LiveWorld;
 use crate::supervisor::world::movement::MoveRequest;
-use crate::supervisor::world::{camera, click, find, hover, movement, WorldError};
+use crate::supervisor::world::{camera, click, find, hover, interact, movement, WorldError};
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 struct RouteName {
@@ -56,6 +57,17 @@ impl LabServer {
     ) -> Result<CallToolResult, McpError> {
         let mut io = LiveWorld::new(&self.supervisor);
         world_result(click::run(&mut io, "client_target", a, Some((0, Expect::Target))).await)
+    }
+
+    #[tool(
+        description = "Interact with an entity by client entity_id with no screen pick: calls the client's own interact function (the one a right-click reaches after its pick) with that id, for NPCs and props whose pixels the hover search cannot hit. Requires the lease. The entity must be in the client's entity map and not the player. Native level native_call (N3), never a native pass. Returns evidence: always inconclusive (the server's reaction is graded separately from the server log or packet tap), or denied (out_of_range) when the avatar is beyond the server's 5 m interact range. Stand within 5 m first (client_move_to)."
+    )]
+    async fn client_interact(
+        &self,
+        Parameters(a): Parameters<InteractRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut io = LiveWorld::new(&self.supervisor);
+        world_result(interact::run(&mut io, a).await)
     }
 
     #[tool(
@@ -245,6 +257,7 @@ mod tests {
             "client_entity_find",
             "client_world_click",
             "client_target",
+            "client_interact",
             "client_move_to",
             "lab_route_record",
             "lab_route_stop",

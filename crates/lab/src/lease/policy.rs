@@ -134,6 +134,8 @@ pub const LEASED: &[&str] = &[
     // World and combat actions.
     "client_world_click",
     "client_target",
+    // Fires the stock interact by entity id (N3, no screen pick).
+    "client_interact",
     "client_move_to",
     "lab_route_record",
     "lab_route_stop",
@@ -201,6 +203,9 @@ mod tests {
         assert_eq!(gate("client_inventory"), Gate::Lease);
         // Moves the cursor (no button), so it drives the client.
         assert_eq!(gate("client_hover_probe"), Gate::Lease);
+        // Sends a real interact packet, so it drives the client.
+        assert_eq!(gate("client_interact"), Gate::Lease);
+        assert!(LEASED.contains(&"client_interact"));
     }
 
     #[test]

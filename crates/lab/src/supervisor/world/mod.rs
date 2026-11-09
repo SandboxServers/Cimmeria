@@ -18,6 +18,9 @@
 //!   point and on a ring around it, without clicking, and score the pose:
 //!   the client's mouse-over, HUD windows, distance from the avatar and the
 //!   screen edge. For calibrating spec poses.
+//! - `client_interact` ([`interact`]): fire the stock interact for an entity
+//!   id with no screen pick (N3 `native_call`), for targets the hover search
+//!   cannot hit.
 //!
 //! **Native level.** Every result carries `native_level` so a UAT runner
 //! can refuse shortcuts: `real_input` (N1: keys, mouse-look, clicks) >
@@ -39,6 +42,7 @@ pub mod fresh_wait;
 pub mod geometry;
 pub mod hover;
 pub(in crate::supervisor) mod ignored_input;
+pub mod interact;
 pub mod io;
 pub mod ledge;
 pub mod lua;
@@ -113,6 +117,10 @@ pub enum NativeLevel {
     NativeCamera,
     /// N3: a stock UI Lua call (the same code a button runs).
     UiLua,
+    /// N3: a client function called directly with the arguments a pick would
+    /// have produced (`client_interact` calls the interact firer by entity
+    /// id). Skips the input path entirely, so it is never a native pass.
+    NativeCall,
 }
 
 impl NativeLevel {
@@ -122,6 +130,7 @@ impl NativeLevel {
             NativeLevel::RealInput => "real_input",
             NativeLevel::NativeCamera => "native_camera",
             NativeLevel::UiLua => "ui_lua",
+            NativeLevel::NativeCall => "native_call",
         }
     }
 
@@ -130,7 +139,7 @@ impl NativeLevel {
         match self {
             NativeLevel::Read => "-",
             NativeLevel::RealInput | NativeLevel::NativeCamera => "N1",
-            NativeLevel::UiLua => "N3",
+            NativeLevel::UiLua | NativeLevel::NativeCall => "N3",
         }
     }
 

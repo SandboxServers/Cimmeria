@@ -20,6 +20,7 @@ pub enum Claim {
 pub const JUDGED: &[&str] = &[
     "client_world_click",
     "client_target",
+    "client_interact",
     "client_move_to",
     "client_camera",
     "client_window_click",
