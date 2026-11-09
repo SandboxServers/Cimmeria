@@ -24,6 +24,8 @@ mod tutorials;
 #[cfg(test)]
 mod items_live_db_tests;
 #[cfg(test)]
+mod letter_mission_live_db_tests;
+#[cfg(test)]
 mod play_character_live_db_tests;
 #[cfg(test)]
 mod refusal_live_db_tests;
