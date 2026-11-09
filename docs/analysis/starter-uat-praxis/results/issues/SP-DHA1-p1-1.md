@@ -36,3 +36,9 @@ Maintainer decision if the fix needs a client patch change; otherwise none.
 2. If method 110 arrives with a zero-length string, compare the client's argument packing for single-String commands against two-parameter ones (re-lookup skill; docs/protocol/cell-method-dispatch-table.md:540 first, then Ghidra on the slash dispatcher).
 3. Fix at the faulty layer (patch XML/TOML, a server-tolerant fallback if a second string arrives, or a documented quoting form), add the test, and update the docs above.
 4. Until then, the starter UAT abandon uses a journal/tracker UI route or a console route (see the packet resume hint).
+
+## Abandon probe (runner-DCA-q, 2026-11-09, local lab, character Fxdcatwo, player 105)
+
+Typed `/gmmissionabandon 568` through the chat box accept handler on an active mission 568 (fixture step 1965). It WORKS: at 08:16:08Z the server logged INFO `GM-gated cell method authorized` (method 120, `gmMissionAbandon`), then `gmMissionClear: abandoning mission` with `mission_id` 568, then `Mission abandoned` (`mission_abandoned`, `mission.abandon` span) and `fire_mission_abandoned: matched` actions 3. The chat reply was `gmMissionClear: abandoned mission 568` (channel 9). The argument arrived non-empty.
+
+Diagnosis supported: the commands that deliver their argument (`/gmmissionabandon`, `/gmmissionassign`, `/gmmissiondetails`) declare `ParamName="MissionDesignId"`, while the failing `/gmmissionclear` declares `ParamName="DesignID"` (`data/client-patches/012-gm-slash-commands/InternalSlashCommands.xml:9`). The client appears to bind the typed argument by the parameter name it knows (`MissionDesignId`). Suggested fix: rename the `/gmmissionclear` ParamName to `MissionDesignId` in the XML and `commands.toml`, then retest; until then the starter UAT abandon route is `/gmmissionabandon <id>`.

@@ -34,3 +34,7 @@ mission-systems-advisor
 ## Needs a human for
 
 Nothing; a lab packet-tap capture decides it.
+
+
+## Update (runner-DCA-q, 2026-11-09)
+See SP-DHA1-p1-1.md abandon probe: `/gmmissionabandon 568` works from the same chat path (ParamName MissionDesignId); `/gmmissionclear` (ParamName DesignID) is the only failing one. Attach to SP-DHA1-p1-1 rather than filing a duplicate.

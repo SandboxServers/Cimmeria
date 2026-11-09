@@ -1,3 +1,31 @@
+# SP-DTO4-p2 result: Tollana mission 568 abandon rows U5a and U5b (re-drive, runner-DCA-q)
+
+Re-drive 2026-11-09 08:17-08:19Z, instance p2, character Fxdcatwo (player 105), abandon route `/gmmissionabandon 568` typed via the chat accept handler (see results/issues/SP-DHA1-p1-1.md, abandon probe). Verified by the coordinator against `dr-lab` server.log (UTC); bookmarks `SPU SP-DTO4-q`. Screenshots were not viewed (Haiku driver cannot view them).
+
+| Row | Grade | Tier | Server evidence | Screenshot | Issue |
+|---|---|---|---|---|---|
+| U5a | PASS (server) +NEEDS_HUMAN (offer mark) | N3 chat, N1 click | Fixture step 1965 applied. 08:18:03.5Z `gmMissionAbandon` authorized, `gmMissionClear: abandoning mission` 568, `Mission abandoned`, chain 9010: `removing dialog set` 4959 and 6393, `adding dialog set` 2656 (repaint). Chat reply `gmMissionClear: abandoned mission 568` (seq 4764329). Click on Copplemann showed the offer ("Welcome to what's left of Tollana..."); DIALOG close at 08:18:25.9Z: chain 9004 `removing dialog set` 2656, `Content: accepting mission`, `Mission accepted`, `adding dialog set` 4959 (chain 9006), `advancing step` 1964. | lab_screenshot-20261109-021812.327.png (not viewed) | none |
+| U5b | PASS (server) +NEEDS_HUMAN (offer mark, no turn-in mark) | N1 Core click (second try), N3 chat | Core click 08:18:47.17Z: step 1965 then 1966 (chain 9011), 4959 removed, 6393 added. Abandon 08:18:55.5Z: `Mission abandoned`, chain 9010 removes 4959 and 6393, adds 2656. Chat reply seq 4765710. Re-accept 08:19:19.3Z: chain 9004, `Mission accepted`, 4959 added, step 1964. The click showed the offer, not the 2154 turn-in. | lab_screenshot-20261109-021907.127.png (not viewed) | none |
+
+No WARN/ERROR in the window. The first Core click failed at `on_screen` (camera turn); the unchanged retry worked.
+
+## Earlier attempt (runner-DCA-p, 2026-11-09 08:04-08:08Z): both rows BLOCKED
+`/gmmissionclear 568` arrived with an empty DesignID (`mission_arg=""`); the DIALOG at 5b.5 closed turn-in dialog 2154 and completed the mission (brief hazard). See results/issues/SP-DTO4-p2-1.md. The full earlier notes are kept below.
+
+## Brief defects (fixed here)
+- Abandon route: use `/gmmissionabandon 568`, not `/gmmissionclear 568`.
+- Step 5b.5 is safe only when the abandon succeeded (dialog is then offer 2153); guard on the dialog first line.
+
+## Sign-off sheet
+| Row | What to look at | Screenshot | Your read |
+|---|---|---|---|
+| U5a | Offer mark back above Copplemann after abandon | lab_screenshot-20261109-021812.327.png | server repaint 2656 confirmed; mark visible? |
+| U5b | Offer mark, no turn-in mark, after abandon from 1966 | lab_screenshot-20261109-021907.127.png | same |
+| U5a/U5b | Journal Abandon button (cell method 52) | none | untested |
+
+---
+# Earlier attempt notes (kept)
+
 # SP-DTO4-p2 result: Tollana mission 568 abandon rows U5a and U5b
 
 Verifier: server evidence only (local dr-lab `logs/server.log`, UTC, character Fxdcatwo, player 105; the packet ran on instance p2 with this reused character, per the run note). No screenshots were viewed and no looker was run: the abandon never happened, so the after-abandon marks have nothing to grade. No DB read was taken; the log lines below carry the state changes.
