@@ -127,6 +127,12 @@ pub trait WorldIo {
     /// Make sure the game reads the lab's input (virtual focus).
     async fn ensure_focus(&mut self) -> Result<(), String>;
 
+    /// Fire the stock interact for `entity_id` with no screen pick (N3,
+    /// [`super::interact`]).
+    async fn fire_interact(&mut self, _entity_id: u32) -> Result<(), String> {
+        Err("fire_interact unsupported".into())
+    }
+
     /// The `(left, right)` lab key names the client binds to turn the pawn
     /// (default Q and E).
     async fn turn_keys(&mut self) -> Result<(String, String), String> {
@@ -646,6 +652,11 @@ impl WorldIo for LiveWorld<'_> {
 
     async fn ensure_focus(&mut self) -> Result<(), String> {
         self.sup.input_focus(true).await.map(|_| ())
+    }
+
+    async fn fire_interact(&mut self, entity_id: u32) -> Result<(), String> {
+        let slide = self.slide().await?;
+        super::interact::live_fire(self.sup, slide, entity_id).await
     }
 
     async fn turn_keys(&mut self) -> Result<(String, String), String> {

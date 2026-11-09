@@ -179,6 +179,10 @@ pub struct Sim {
     pub trace_error: Option<String>,
     /// How many `trace_line` calls the walk made.
     pub trace_calls: u32,
+    /// Entity ids `fire_interact` was called with.
+    pub interact_calls: Vec<u32>,
+    /// Makes `fire_interact` fail with this error.
+    pub interact_error: Option<String>,
 }
 
 #[path = "sim_model.rs"]
@@ -535,6 +539,14 @@ impl WorldIo for Sim {
     }
 
     async fn ensure_focus(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn fire_interact(&mut self, entity_id: u32) -> Result<(), String> {
+        if let Some(e) = &self.interact_error {
+            return Err(e.clone());
+        }
+        self.interact_calls.push(entity_id);
         Ok(())
     }
 
