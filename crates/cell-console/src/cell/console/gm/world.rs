@@ -4,6 +4,7 @@
 //! `handle_respawn`, and the `current_target_id` write + `onTargetUpdate`
 //! fanout).
 
+use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::stats::HEALTH;
 use tokio::sync::mpsc;
 
@@ -21,11 +22,19 @@ use crate::mercury::read_wstring;
 /// the GM's own space, and run the kill through the canonical death sequence
 /// ([`crate::cell::abilities::kill_npc_out_of_band`]) so loot, threat fanout, and the
 /// dead-state flip land in protocol order.
+///
+/// Kill credit (SP-DCB2-p5-1): a tagged NPC's death also raises the content
+/// engine's `entity_dead_tag` event, credited to the invoking GM and with no
+/// XP, so kill-count mission chains advance exactly as for a combat kill.
+/// Deviation from the combat path: the GM is credited directly (no pet/owner
+/// resolution) and `grant_xp` stays false -- an admin command must not mint
+/// levels, but a lab/QA kill must be able to stand in for a real one.
 pub(super) async fn handle_kill_target(
     entity_id: u32,
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) -> bool {
     let target_i64 = match read_i64(args, 0) {
         Some(v) => v,
@@ -178,11 +187,25 @@ pub(super) async fn handle_kill_target(
     // `attacker_is_player: false` — a GM `.kill` never went through the
     // combat HUD, so there is no reticle on the GM to drop.
     // `grant_xp: false` — an admin command must not mint levels.
+    // Read the tag before the kill: the death path may clear entity state.
+    let target_tag = space_mgr.get_entity(target_eid).and_then(|t| t.tag.clone());
     let killed = crate::cell::abilities::kill_npc_out_of_band(
         target_eid, entity_id, false, false, tx, space_mgr,
     )
     .await;
     if killed {
+        // The same hook combat's kill-credit wrappers call. A tagless NPC has
+        // no chain to advance, so it stays silent.
+        if let Some(tag) = target_tag {
+            let player_id = space_mgr
+                .get_entity(entity_id)
+                .and_then(|e| e.player_id)
+                .unwrap_or(0);
+            crate::cell::content::fire_entity_death(
+                entity_id, player_id, &tag, engine, tx, space_mgr,
+            )
+            .await;
+        }
         send_gm_feedback(
             entity_id,
             &format!("gmKillTarget: killed npc {target_eid}"),

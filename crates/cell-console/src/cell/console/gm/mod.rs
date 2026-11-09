@@ -345,7 +345,7 @@ pub async fn dispatch(
         GM_DHD => travel::handle_dhd(entity_id, args, tx, space_mgr, engine).await,
         // -- world / entity ops --
         GM_SET_TARGET => world::handle_set_target(entity_id, args, tx, space_mgr).await,
-        GM_KILL_TARGET => world::handle_kill_target(entity_id, args, tx, space_mgr).await,
+        GM_KILL_TARGET => world::handle_kill_target(entity_id, args, tx, space_mgr, engine).await,
         GM_DESPAWN_BY_CMD | DESPAWN_MOB => {
             world::handle_despawn(entity_id, args, tx, space_mgr).await
         }

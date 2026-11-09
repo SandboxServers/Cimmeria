@@ -560,3 +560,72 @@ async fn set_target_rejects_malformed_and_non_numeric() {
         "malformed gmSetTarget must feed back a rejection"
     );
 }
+
+/// SP-DCB2-p5-1: a GM kill of a tagged NPC raises `entity_dead_tag` for the
+/// invoking GM, so kill-count chains advance. Reverting the
+/// `fire_entity_death` call in `handle_kill_target` leaves the counter at 0.
+#[tokio::test]
+async fn gm_kill_target_fires_dead_tag_chain_for_the_gm() {
+    use cimmeria_content_engine::actions::Action;
+    use cimmeria_content_engine::chain::Chain;
+    use cimmeria_content_engine::triggers::Trigger;
+
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.get_entity_mut(2).unwrap().tag = Some("Hallway05_Guard1".to_string());
+    mgr.create_entity(3, "Castle", [0.0; 3], [0.0; 3]).unwrap(); // tagless
+    let mut engine = test_engine();
+    engine.register_chain(Chain {
+        id: 0x7005_5001,
+        name: "test: guard dead tag".to_string(),
+        enabled: true,
+        trigger: Trigger::OnEntityDeath {
+            entity_type: None,
+            entity_tag: Some("Hallway05_Guard1".to_string()),
+        },
+        conditions: vec![],
+        actions: vec![Action::IncrementCounter {
+            counter_name: "guards_dead".to_string(),
+            amount: 1,
+        }],
+        action_delays: Vec::new(),
+        priority: 0,
+        once: false,
+    });
+    let (tx, _rx) = mpsc::channel(64);
+
+    assert!(
+        dispatch(
+            1,
+            GM_KILL_TARGET,
+            &2i64.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &engine
+        )
+        .await
+    );
+    let count = |mgr: &SpaceManager| {
+        mgr.get_entity(1)
+            .unwrap()
+            .counters
+            .get("guards_dead")
+            .copied()
+            .unwrap_or(0)
+    };
+    assert_eq!(count(&mgr), 1, "tagged GM kill must credit the GM once");
+
+    // A tagless NPC dies without raising anything.
+    assert!(
+        dispatch(
+            1,
+            GM_KILL_TARGET,
+            &3i64.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &engine
+        )
+        .await
+    );
+    assert_eq!(count(&mgr), 1, "a tagless kill fires no dead-tag chain");
+}
