@@ -43,7 +43,7 @@ SOURCES (every id below is traced; `rows.md` assigns the rows):
 
 ## 0. Front-loaded gotchas (read all of them)
 
-1. **Lease first.** Every driving tool needs the `lease_id` from L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "p3"`.
+1. **Lease first.** Every driving tool needs the `lease_id` from L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "p3"`. `client_window_read` takes `window` OR `kind`, never both.
 2. **Never use `image: true`** on a screenshot. The tool saves a PNG and returns `image saved: <path>`. Report the path.
 3. **Chat commands are GM commands.** Lines starting with `.` or `/gm` are server commands. Close any open dialog first (DIALOG), because a chat line under an open dialog orphans it.
 4. **Teleport only with `.gotolocation <World> x y z`** (server metres, y up). Never `.gotoxyz`. Never `client_move_to` in a hub. World names: `Harset` (world 57) and `Harset_CmdCenter` (world 68). A teleport into another world reloads the world: run WAIT after it.
@@ -93,6 +93,8 @@ Replace LINE ONE and LINE TWO with the exact lines the step gives; add one lua o
 **DIALOG - close an orphan dialog.** Cost: 0 calls when it is the first lua op of a `client_batch` the step already makes (the step says so), otherwise 1 call. The op: `{"op":"lua","id":"dlg","chunk":"if DialogWin ~= nil and DialogWin:isVisible() then DialogMod.onDialogDoneClicked(DialogWin, DialogWin) return 'closed' end return 'none'"}`. On its own: `client_batch {"lease_id":L,"steps":[<the op>]}`.
 
 **PROMPT (only when gotcha 12 allows).** Cost: 1 call, plus 1 per button clicked. `client_window_read {"lease_id":L,"kind":"prompt"}`; if `state.prompts` is non-empty click its first enabled button by the returned `window` name (`Prompt1_SingleButton` for Server Message); repeat until empty.
+
+**Bridge timeouts.** `lab_ensure_in_world` and `lab_logout` can hit bridge dispatch timeouts (-32603) although the action applied: check `lab_client_status` before retrying.
 
 **RELOG.** Cost: 3 calls: (1) `lab_logout {"lease_id":L}`; (2) L2 with the same character; (3) WAIT, or WAITM where the step says so. The server restores cues at login (chains 6014, 6015, 6033, 6034), so the first thing after a RELOG is a SHOT of the NPC the step names.
 

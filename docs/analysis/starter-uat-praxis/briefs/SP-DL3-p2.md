@@ -5,10 +5,10 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - PACKET: SP-DL3-p2
 - ATTEMPT: 1   (1 = first try. 2 or 3 = you are the successor of a driver that ran out of context: do the resume probe and skip what is already done)
 - INSTANCE: default   (the lab client you drive)
-- CHARACTER: Fxdlthrb   (a Praxis Commando, male, first name `Uat`, a lab fixture character)
+- CHARACTER: Fxdltwo   (a Praxis Commando, male, first name `Uat`, a lab fixture character)
 - SERVER: local lab server (D-SP5: lab use on the local server is pre-authorized; never ask anyone for permission)
 
-COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do them): create the character with `lab_create_character` (alignment `praxis`, archetype `Commando`, gender `male`, first `Uat`, last `Fxdlthrb`), then call the lab-server `server_stage_fixture` exactly as the `FIXTURE` line of the packet below says. The server applies it once, at the character's next Play, within 10 minutes.
+COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do them): create the character with `lab_create_character` (alignment `praxis`, archetype `Commando`, gender `male`, first `Uat`, last `Fxdltwo`), then call the lab-server `server_stage_fixture` exactly as the `FIXTURE` line of the packet below says. The server applies it once, at the character's next Play, within 10 minutes.
 
 ## 0. Front-loaded gotchas (read all of them)
 
@@ -35,7 +35,7 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 
 **L1 - lease.** `lab_lease_acquire {"owner":"sp-SP-DL3-p2","purpose":"starter UAT praxis SP-DL3-p2","instance":"default","ttl_s":900}` -> keep `lease_id` (call it L). If refused: `lab_lease_status {"instance":"default"}`. If the holder's owner is exactly `sp-SP-DL3-p2` AND ATTEMPT is 2 or 3, it is your dead predecessor: acquire again with the same arguments plus `"force":true,"reason":"resume sp-SP-DL3-p2 attempt <ATTEMPT>"`. Any other holder: report it and stop.
 
-**L2 - in the world.** `lab_ensure_in_world {"lease_id":L,"instance":"default","character":"Fxdlthrb"}`. It starts the client if needed, logs in, plays the character (the staged fixture applies now) and closes an intro dialog. Expected: `in_world:true`, `character` = Fxdlthrb, and the `world_id` and `pos` the packet's FIXTURE line names. If the world or position differs, record it and carry on: the row grades BLOCKED later, not FAIL. On failure see gotcha 9.
+**L2 - in the world.** `lab_ensure_in_world {"lease_id":L,"instance":"default","character":"Fxdltwo"}`. It starts the client if needed, logs in, plays the character (the staged fixture applies now) and closes an intro dialog. Expected: `in_world:true`, `character` = Fxdltwo, and the `world_id` and `pos` the packet's FIXTURE line names. If the world or position differs, record it and carry on: the row grades BLOCKED later, not FAIL. On failure see gotcha 9.
 
 **WAIT17.** `client_batch {"lease_id":L,"steps":[{"op":"wait","ms":17000},{"op":"lua","id":"utc","chunk":"if os and os.date then return os.date('!%Y-%m-%d %H:%M:%S') end return 'no-os'"},{"op":"player_state","fields":["world_id","position"]}]}`.
 
@@ -67,7 +67,7 @@ COORDINATOR PRE-STEPS (done before this brief is pasted; the driver does not do 
 
 ROWS: LEG-3b. ESTIMATE: 19 tool calls (planned success path; hard stop 28). Start: fixture. Runs on instance `default` after SP-DHA1 (wave 4); it follows SP-DL3-p1 on the same instance and does not depend on it (own character, own fixture). No hand-off mission is playable from Harset to Tollana (618 and 621 recipient graphs are BlockedEvidence, T-05 to T-10 held; harset-continuation README, HA-D06 and Tollana recipient tags; tollana-continuation T-01). This part proves (B): whether the gate transfer itself carries state and lands on the navmesh when the address is supplied by a GM. Whether a player can dial Tollana is SP-DL3-p1.
 
-FIXTURE (staged by the coordinator, `server_stage_fixture`): `{"character":"Fxdlthrb","world":"Harset","position":[-0.08,-67.27,38.01],"missions":[{"id":1360,"step":4038}],"items":[{"id":3730,"count":1,"container":"mission"}]}`.
+FIXTURE (staged by the coordinator, `server_stage_fixture`): `{"character":"Fxdltwo","world":"Harset","position":[-0.08,-67.27,38.01],"missions":[{"id":1360,"step":4038}],"items":[{"id":3730,"count":1,"container":"mission"}]}`.
 Where it comes from: the Harset gate dais is where LEG-2 ends, stargate 3 at (-0.076, -67.274, 38.011) in world 57 (`db/resources/Worlds/Seed/stargates.sql:65`; unified-uat Harset C4.4); mission 1360 at 4038 'Give Cpl. Frost's Letter to Col. Marsh.' (`mission_steps.sql:1110`) with Frost's Letter 3730 (`items.sql:11947`) is the state the character carries out of the Castle. The fixture replays no dialog set or chain binding, and this part needs none. Tollana is stargate 4, address 4,29,8,22,18,25, origin 9, world 19, gate at (211.045, 0.606, -547.644) (`stargates.sql:37`). The Tollana DHD is spawn 39 `Tollana_DHD` at (209.748, -1.008, -552.898) (`spawnlist.sql:281`). If the character is not in world 57 with 1360 at 4038, row LEG-3b is `BLOCKED: fixture not applied`.
 DO NOT click Col. Marsh: it would consume the letter. DO NOT use the west gallery in Tollana (T-01 evidence). Never teleport onto hostile NPCs.
 
@@ -81,17 +81,17 @@ DO NOT click Col. Marsh: it would consume the letter. DO NOT use the west galler
 
 ### ROW LEG-3b - the Harset gate carries the state to Tollana
 
-**3.1 STATE-before (2 calls: client_inventory, client_window_read).** STATE-lite. Expected: 1360 active at 'Give Cpl. Frost's Letter to Col. Marsh.'; item 3730 x1 in the Mission container.
+**3.1 STATE-before (2 calls: client_inventory, client_window_read).** STATE-lite. Expected: 1360 active at 'Give Cpl. Frost's Letter to Col. Marsh.'; item type_id 3730 x1 (the client sees item_id 10668) in the Mission container.
 
-**3.4 Part B, the GM dial (2 calls: client_batch, client_chat_log).** G tier. ONE CHATX (DIALOG first, so no separate dialog call): `.bug SPU SP-DL3-p2 leg3b start`, `.gotolocation Harset 8 -68.95 36` (8 m from the gate, outside the gate volume; wait 3000), `/gmdhd 4`, wait 8000, `.gotolocation Harset -0.08 -67.27 38.01` (enter the open gate), UTC step. Then READ `{"cursor":"d3a","contains":"gmDHD","max":10}`. Expected `gmDHD: dialing gate address 4` (`crates/cell-console/src/cell/console/gm/travel/dhd.rs:133`); the refusal text is `gmDHD: gate address 4 refused - unknown address, same world, or no standable arrival on the destination (see server log)`. Record verbatim. If the reply is `Invalid command`, or there is no reply after one resend, record it and report row LEG-3b BLOCKED: /gmdhd needs client patch 012.
+**3.4 Part B, the GM dial (2 calls: client_batch, client_chat_log).** G tier. ONE CHATX (DIALOG first, so no separate dialog call): `.bug SPU SP-DL3-p2 leg3b start`, `.gotolocation Harset 8 -68.95 36` (8 m from the gate, outside the gate volume; wait 3000), `/gmdhd 4`, wait 8000, `.gotolocation Harset -0.08 -67.27 38.01` (enter the open gate), UTC step, then BOOKMARK right after the crossing (pre-relog position sample). Then READ `{"cursor":"d3a","contains":"gmDHD","max":10}`. Expected `gmDHD: dialing gate address 4` (`crates/cell-console/src/cell/console/gm/travel/dhd.rs:133`); the refusal text is `gmDHD: gate address 4 refused - unknown address, same world, or no standable arrival on the destination (see server log)`. Record verbatim. If the reply is `Invalid command`, or there is no reply after one resend, record it and report row LEG-3b BLOCKED: /gmdhd needs client patch 012.
 
 **3.5 WAITW (3 calls: client_batch, client_batch, client_batch).** Expected within about 40 s of the dial: `world_id` 19 and a position near (211.0, 0.6, -547.6), the Tollana gate (`stargates.sql:37`). Failure path (not counted; if taken: client_batch, client_batch, client_batch, client_batch): if still on Harset, one CHATX `.gotolocation Harset 8 -68.95 36`, wait 3000, `.gotolocation Harset -0.08 -67.27 38.01` (leave and re-enter), then WAITW again (3 calls); then if still on Harset record `no crossing` and go to 3.7.
 
 **3.6 Arrival look (1 call: lab_screenshot).** SHOT-HUMAN, label `L3-tollana-arrival`. One line: standing on a floor or falling; is Copplemann visible within about 7 m, is the Tollana DHD clickable, is the ring console reachable (T-01 in-client checks, UATPending)? Describe only what the picture shows. Nothing is asked of anyone.
 
-**3.7 STATE-after (2 calls: client_inventory, client_window_read).** STATE-lite. Expected: 1360 active at 'Give Cpl. Frost's Letter to Col. Marsh.'; item 3730 x1 in the Mission container.
+**3.7 STATE-after (2 calls: client_inventory, client_window_read).** STATE-lite. Expected: 1360 active at 'Give Cpl. Frost's Letter to Col. Marsh.'; item type_id 3730 x1 (the client sees item_id 10668) in the Mission container.
 
-**3.8 Relog, reread and the end bookmark (5 calls: lab_logout, lab_ensure_in_world, client_batch, client_inventory, client_window_read).** `lab_logout` then L2. The third call is ONE `client_batch`: the WAIT17 steps (the character is deaf for 16 s after login), then the CHATX lines of `.bug SPU SP-DL3-p2 leg3b end` (DIALOG first). Then STATE-lite (`client_inventory`, `client_window_read`). Expected: world 19 (or 57 if no crossing), same mission and item as 3.7.
+**3.8 Relog, reread and the end bookmark (5 calls: lab_logout, lab_ensure_in_world, client_batch, client_inventory, client_window_read).** `lab_logout` then L2. The third call is ONE `client_batch`: the WAIT17 steps (the character is deaf for 16 s after login), then the CHATX lines of `.bug SPU SP-DL3-p2 leg3b end` (DIALOG first). Then STATE-lite (`client_inventory`, `client_window_read` (give `window` OR `kind`, never both)). Expected: world 19 (or 57 if no crossing), same mission and item as 3.7.
 
 Not in this packet: whether a player can dial Tollana from the real DHD (SP-DL3-p1), any Tollana mission, the Marsh letter turn-in (HA-1360a, blocked), the Castle crossing (SP-DL2).
 

@@ -15,7 +15,7 @@ BRIEF FIELDS (the coordinator filled the open ones in before pasting; this file 
 
 Area: this packet uses **Harset (world 57)** and the **Harset Command Center (world 68)**: the Command Center NPCs (Moh'katan, Ba'al, Marsh, Anat, Royal Guard), Hansen and Petbe's quarters in Harset. No other lane may be in these two worlds while you run (dispatch rule 4); if you see another player there, record it and go on.
 
-1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "<INSTANCE>"` (a screenshot without it shows the wrong client).
+1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "<INSTANCE>"` (a screenshot without it shows the wrong client). `client_window_read` takes `window` OR `kind`, never both.
 2. **Never use `image: true`** on a screenshot. The tool saves a PNG and returns `image saved: <path>`. Report the path.
 3. **Chat commands are GM commands.** Your account is a GM. Lines starting with `.` are server commands; lines starting with `/` are game commands. Every CHATX batch starts with the DIALOG op, because a chat line under an open dialog orphans it.
 4. **Teleport only with `.gotolocation <World> x y z`** (TP and CROSS, below). World names: `Harset` and `Harset_CmdCenter`. Never `.gotoxyz`. Coordinates are server metres (x, y up, z). Never teleport onto a hostile NPC and never use `client_move_to` in a hub.

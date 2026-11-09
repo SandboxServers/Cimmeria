@@ -94,7 +94,7 @@ Where it comes from: the position is Castle respawner 4 'Armory Respawn', the ar
 
 **2.6 STATE-after (2 calls: client_inventory, client_window_read).** STATE-lite. Expected: 1360 active at 'Give Cpl. Frost's Letter to Col. Marsh.'; item 3730 x1 in the Mission container. Record verbatim.
 
-**2.7 Relog, reread and the end bookmark (5 calls: lab_logout, lab_ensure_in_world, client_batch, client_inventory, client_window_read).** `lab_logout` then L2. Expected: in world as Fxdltwo in world 57 (or 8 if the crossing did not happen). The third call is ONE `client_batch`: the WAIT17 steps (the character is deaf for 16 s after login), then the CHATX lines of `.bug SPU SP-DL2 leg2 end` (DIALOG first). Then STATE-lite (`client_inventory`, `client_window_read`). Expected: identical to 2.6 (Harset side: the Marsh rebind on `player_loaded Harset_CmdCenter` is HA-1360b's, do not look for it).
+**2.7 Relog, reread and the end bookmark (5 calls: lab_logout, lab_ensure_in_world, client_batch, client_inventory, client_window_read).** `lab_logout` then L2. Expected: in world as Fxdltwo in world 57 (or 8 if the crossing did not happen). The third call is ONE `client_batch`: the WAIT17 steps (the character is deaf for 16 s after login), then the CHATX lines of `.bug SPU SP-DL2 leg2 end` (DIALOG first). Then STATE-lite (`client_inventory`, `client_window_read` (give `window` OR `kind`, never both)). Expected: identical to 2.6 (Harset side: the Marsh rebind on `player_loaded Harset_CmdCenter` is HA-1360b's, do not look for it).
 
 Not in this packet: handing the letter to Marsh, mission 1361, the real DHD Livewire route, and the Harset to Tollana gate (SP-DL3).
 

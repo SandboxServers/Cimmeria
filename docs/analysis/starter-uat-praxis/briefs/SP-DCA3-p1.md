@@ -56,7 +56,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 **BUG - timeline bookmark.** `BUG <text>` is the CHATX line `.bug SPU SP-DCA3-p1 <text>`. The coordinator reads these on the server to find your row timing. Not optional. Cost: 0 inside a CHATX, otherwise 1.
 
-**JOURNAL - read the journal.** `client_ui_state {"lease_id":L,"chat_lines":10}` and record the mission tracker text (mission names and step text) verbatim, plus the top window. `client_window_read` has no `mission` kind (it is an invalid argument): never call it that way. If it returns nothing, open the journal with a real key (`L`, inferred binding), run it again, and record the error text if it still returns nothing. A `client_lua_eval` journal read is allowed only if the coordinator pastes the exact chunk into the brief; never invent one. Cost: 1 (client_ui_state); the key-and-reread fallback is a failure-path call.
+**JOURNAL - read the journal.** `client_ui_state {"lease_id":L,"chat_lines":10}` and record the mission tracker text (mission names and step text) verbatim, plus the top window. `client_window_read` (give `window` OR `kind`, never both) has no `mission` kind (it is an invalid argument): never call it that way. If it returns nothing, open the journal with a real key (`L`, inferred binding), run it again, and record the error text if it still returns nothing. A `client_lua_eval` journal read is allowed only if the coordinator pastes the exact chunk into the brief; never invent one. Cost: 1 (client_ui_state); the key-and-reread fallback is a failure-path call.
 
 ---
 

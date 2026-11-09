@@ -43,7 +43,7 @@ SOURCES (every id below is traced; `rows.md` assigns the rows):
 
 ## 0. Front-loaded gotchas (read all of them)
 
-1. **Lease first.** Every driving tool needs the `lease_id` from L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "p3"`.
+1. **Lease first.** Every driving tool needs the `lease_id` from L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "p3"`. `client_window_read` takes `window` OR `kind`, never both.
 2. **Never use `image: true`** on a screenshot. The tool saves a PNG and returns `image saved: <path>`. Report the path.
 3. **Chat commands are GM commands.** Lines starting with `.` or `/gm` are server commands. Close any open dialog first (DIALOG), because a chat line under an open dialog orphans it.
 4. **Teleport only with `.gotolocation <World> x y z`** (server metres, y up). Never `.gotoxyz`. Never `client_move_to` in a hub. World names: `Harset` (world 57) and `Harset_CmdCenter` (world 68). A teleport into another world reloads the world: run WAIT after it.
@@ -111,7 +111,7 @@ ESTIMATE: 18 tool calls (planned success path; hard stop 28)
 
 ### S2 - RESUME PROBE
 
-**S2 (1 call: client_chat_log).** READ `{"cursor":"s2","contains":"gmMissionList","max":10}`. Record the world_id and position from the WAITM and the `#1664 ...` entry.
+**S2 (1 call: client_chat_log).** READ `{"cursor":"s2","contains":"gmMissionList","max":10}`. Record the world_id and position from the WAITM and the `#1664 ...` entry. On a reused character accept leftover objectives 6059/6060/6063; do not require obj 0/2.
 
 On ATTEMPT 1 only: the entry must read `#1664 active step 5226`; grade the step id only, not the `obj n/m` counter. A reused character keeps objectives credited by earlier runs (6059/6060/6063 carry, so it can read `obj 3/5`), and the fixture does not reset them; require only that objectives 6061 and 6062 are uncredited. Anything else means the fixture did not apply: record BLOCKED for the row (gotcha 19), skip the steps and go to the end. On ATTEMPT 2 or 3 the coordinator re-staged the character first (see the pre-step), so the same entry is expected; if it is not, record BLOCKED the same way.
 

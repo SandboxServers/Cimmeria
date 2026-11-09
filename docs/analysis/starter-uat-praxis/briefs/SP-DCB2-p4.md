@@ -12,7 +12,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 
 ## 0. Front-loaded gotchas (read all of them)
 
-1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "default"` (a screenshot without it shows the wrong client).
+1. **Lease first.** Every driving tool needs the `lease_id` from step L1. Pass it as `lease_id` on every call. On `lab_screenshot` also pass `"instance": "default"` (a screenshot without it shows the wrong client). `client_window_read` takes `window` OR `kind`, never both.
 2. **Never use `image: true`** on a screenshot. The tool saves a PNG and returns `image saved: <path>`. Report the path. Someone else looks at the picture.
 3. **NEEDS_HUMAN never blocks the lane.** When a clause can only be judged by eye (a render, a camera, a glow, a name plate, a sound) you do NOT stop and you do NOT ask anyone. Take one SHOT, record the saved path, write in one sentence what you saw (colours, text, window names, nothing interpreted), claim `NEEDS_HUMAN` for that clause, and go on to the next step. The verifier lists the path on the sign-off sheet for the user to review at the end.
 4. **Chat commands are GM commands.** Your account is a GM. Lines starting with `.` are server commands; lines starting with `/` are game commands. Every batch you send starts with the DIALOG op, because a chat line under an open dialog orphans it.
