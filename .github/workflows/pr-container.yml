@@ -112,14 +112,23 @@ jobs:
         id: proxy
         if: runner.environment == 'self-hosted'
         run: |
+          # BuildKit RUN containers do not use the compose DNS, so the name
+          # `egress` does not resolve there; hand them the IP instead.
+          ip=$(getent ahostsv4 egress | awk 'NR==1{print $1}')
+          if [ -z "$ip" ]; then
+            echo "::error::cannot resolve the egress proxy host 'egress' to an IPv4 address on this runner"
+            exit 1
+          fi
+          proxy="http://${ip}:3128"
+          noproxy="localhost,127.0.0.1,buildkitd,cache,egress,${ip}"
           {
             echo 'args<<EOF'
-            echo 'HTTP_PROXY=http://egress:3128'
-            echo 'HTTPS_PROXY=http://egress:3128'
-            echo 'http_proxy=http://egress:3128'
-            echo 'https_proxy=http://egress:3128'
-            echo 'NO_PROXY=localhost,127.0.0.1,buildkitd,cache,egress'
-            echo 'no_proxy=localhost,127.0.0.1,buildkitd,cache,egress'
+            echo "HTTP_PROXY=${proxy}"
+            echo "HTTPS_PROXY=${proxy}"
+            echo "http_proxy=${proxy}"
+            echo "https_proxy=${proxy}"
+            echo "NO_PROXY=${noproxy}"
+            echo "no_proxy=${noproxy}"
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 

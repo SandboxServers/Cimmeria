@@ -50,7 +50,10 @@ The workaround is a detour for that one block:
 - The shared `buildkitd` is a separate container and does not inherit those variables,
   so `pr-container.yml` passes the proxy as `--build-arg`s (`HTTP(S)_PROXY`,
   `NO_PROXY`, both cases) only when `runner.environment == 'self-hosted'`; without
-  them `RUN curl` of GitHub release assets 504s on the Azure-backed redirect.
+  them `RUN curl` of GitHub release assets 504s on the Azure-backed redirect. The step resolves the `egress` IPv4
+  address at job time (`getent ahostsv4`) and passes `http://<ip>:3128`, because
+  BuildKit `RUN` containers cannot resolve the compose name; it fails if the name
+  does not resolve.
 - The exit proxy (`egress_proxy.py`, exit role, `start-exit.ps1`) runs in Docker on
   the operator's workstation, published only on its colo-VPN address. It only
   connects to those ranges. A Windows firewall rule on the VPN adapter admits only the
