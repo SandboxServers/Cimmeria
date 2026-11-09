@@ -1,4 +1,18 @@
-PACKET SP-DCB3-p8 RUN 2026-11-09 by runner-DCA-u (Haiku driver a1 + coordinator takeover; no Sonnet verify); grade BLOCKED/PARTIAL
+PACKET SP-DCB3-p8 RERUN 2026-11-09 by runner-DCA-w (Haiku drivers A-E + coordinator targeting steps + Sonnet verifier); grade PASS-with-shortfall (replaces the earlier BLOCKED grade; earlier notes kept below)
+Local lab p2, Fxdcathree, fixture 689 completed, 638/639/62050/62060 not_active, staged at (-287,65.5,-109.8); driver file .claude/reports/starter-uat-praxis/drv-SP-DCB3-p8-a2.md.
+
+| Row | Grade | Tier | Evidence | Issue |
+|---|---|---|---|---|
+| CB-U12a 638 accepted on Region2 entry | PASS | G (.gotolocation -287 65.5 -125) | 09:27:54 accepting mission 638, chain 1011 "Region2 entry: accept", dialog set 2794 added; tracker "Speak to Prisoner 329" | none |
+| Prisoner dialog, step advance | PASS | N1 (client_target left + right-click by coordinator/Haiku) | 09:28:53 advancing step 2115; DialogWin opened | none |
+| Door panel Livewire | NATIVE_SHORTFALL | N2 | N1 right-click on panel 101121 opened nothing (mouse_over 0, panel targeted by targetUnit fallback N3); typed /interact started the Livewire (09:30:15, chain 1016); client_minigame_play N1 won it (09:30:22 Minigame victory, step 2116) | none (known panel click limit, verify-click-recipe.md) |
+| Agree dialog, 638 complete, 639 accept | PASS | N1 | 09:31:06 accepting mission 639 and completing mission 638 (chain 1019); DB 638 status 2 (2114/2115/2116 done), 639 status 1 step 2117 | none |
+| No early 62060 accept | PASS | | no 62060 accepting row in window | |
+No WARN/ERROR in the window except a harness DB-query error. 62060 reward rows remain NOT-RUN (belong to p10).
+
+Brief fix: briefs/SP-DCB3-p8.md CB-U12a.2 now walks the player into Region2 first. Coordinator-driven (labeled): camera face and client_target steps, /interact, client_minigame_play.
+
+--- earlier notes (runner-DCA-u, runner-DCA-v) ---PACKET SP-DCB3-p8 RUN 2026-11-09 by runner-DCA-u (Haiku driver a1 + coordinator takeover; no Sonnet verify); grade BLOCKED/PARTIAL
 Local lab p2, Fxdcathree (Soldier), staged Castle_CellBlock (-287,65.5,-113), 689 completed, 638/639/62050/62060 not_active.
 
 | Row | Grade | Tier | Evidence | Issue |

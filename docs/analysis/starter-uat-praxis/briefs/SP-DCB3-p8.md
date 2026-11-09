@@ -98,7 +98,7 @@ CHARACTERS: `Dcbdk` (archetype Commando, Praxis, male, first name Uat).
 
 **CB-U12a.1 (4 calls: client_entity_find, client_world_click, client_minigame_play, client_chat_log).** BOOT (find the prop, right-click it, play, read the unlock line).
 
-**CB-U12a.2 (1 call: client_batch).** GOTO `-287 65.5 -113`. Prisoner 329 is at (-289.81, 65.47, -113.14), 2.8 m away.
+**CB-U12a.2 (2 calls: client_batch, client_batch).** Mission 638 is accepted by the chain on `enter_region Castle_Cellblock.Region2` (box x -311.19..-241.99, z -141.13..-115.19). The point (-287, 65.5, -113) and Prisoner 329 at (-289.81, 65.47, -113.14) are 2 m OUTSIDE it (z -113 is greater than -115.19), and a fixture stage fires no enter event, so the player must walk into the box. First GOTO `-287 65.5 -125` (inside Region2), wait 3 s, and confirm 638 is accepted (UIS or DLG-free check: tracker shows the 638 text). Then GOTO `-289.8 65.5 -109.8` (3.3 m north of the prisoner, so the avatar does not cover it); a prisoner dialog set is added by the same chain. Steps CB-U12a.3 to CB-U12a.5 then run from this point.
 
 **CB-U12a.3 (1 call: client_entity_find).** FIND, `max_distance_m` 6. Pick Prisoner 329 (within 1.5 m of (-289.81, 65.47, -113.14)) and your own entry.
 
