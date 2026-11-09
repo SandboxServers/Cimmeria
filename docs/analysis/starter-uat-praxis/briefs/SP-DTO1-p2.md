@@ -8,6 +8,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - INSTANCE: default   (the lab client you drive)
 - CHARACTER: Uat Fxtolonedefa   (the fixture character; `Uat` is the first name, `Fxtolonedefa` the last name)
 - SERVER: local (D-SP2). Lab use is pre-authorized (D-SP5). Never ask the user anything.
+- RUN NOTE (2026-11-09): runs use instance p2 (not default), and the account is at the 8-character cap, so reuse the existing fixture character Fxdltwo (DTO1), not a freshly created Fxtol* one; skip the CREATE run. The coordinator leases and calls lab_ensure_in_world; the driver must not.
 
 ## C. Create-only mode (MODE: CREATE; otherwise skip this section)
 
@@ -121,8 +122,8 @@ Mission 568 is `not_active` here, so the three prop clicks only show a prop dial
 **5.1 (1 call: client_batch).** Batch whose first step is DIALOG, then CHATX `.bug SPU SP-DTO1-p2 P5 start`, then `.gotolocation Tollana 207.5 -0.6 -555.5` with a 2500 ms wait, then the POS step (at DHD35).
 **5.2 (1 call: client_entity_find).** `client_entity_find {"lease_id":L,"max_distance_m":6,"limit":10}`. Record every entity (id, name, position). The DHD is the one near (209.75, -553.0): call its id DHD_ID. If none is near, record `DHD not found` and skip 5.3 and 5.4.
 **5.3 (1 call: client_world_click).** CLICK on DHD_ID. Record whether a window opened and its title.
-**5.4 (2 calls: client_ui_state, lab_screenshot).** `client_ui_state {"lease_id":L}` once (names of the open windows and their buttons), then SHOT, label `DTO1-P5-dhd`. The brief names no gate address, so you do NOT dial; write `dial: NOT-RUN (no address named in this brief; SP-05 proves the Tollana address)`. If the DHD window stays open and later reads show it covering something, press Escape (failure path, not counted).
-**5.5 (1 call: client_batch).** CHATX `.gotolocation Tollana 232.0 -0.8 -568.5` with a 2500 ms wait, then the POS step (at RING4).
+**5.4 (2 calls: client_ui_state, lab_screenshot).** `client_ui_state {"lease_id":L}` once (names of the open windows and their buttons), then SHOT, label `DTO1-P5-dhd`. The brief names no gate address, so you do NOT dial; write `dial: NOT-RUN (no address named in this brief; SP-05 proves the Tollana address)`. If the DHD window stays open and later reads show it covering something, close it by clicking its close button (Escape does not close DHDWin) (failure path, not counted).
+**5.5 (1 call: client_batch).** Batch whose first step is DIALOG, then CHATX `.gotolocation Tollana 232.0 -0.8 -568.5` with a 2500 ms wait, then the POS step (at RING4).
 **5.6 (1 call: client_entity_find).** `client_entity_find {"lease_id":L,"max_distance_m":8,"limit":10}`. Record every entity. The ring console is the one near (235.24, -571.31): record its id, distance and `targetable`. Whether Copplemann blocks the DHD click or camera: you clicked the DHD at 5.3 from 3.4 m with Copplemann 10.6 m away; NEEDS_HUMAN with the `DTO1-P5-dhd` shot.
 
 **S9 (1 call: lab_lease_release).** Release the lease and write the report. Rows: P4, P5 and the shot label `DTO1-P5-dhd`.

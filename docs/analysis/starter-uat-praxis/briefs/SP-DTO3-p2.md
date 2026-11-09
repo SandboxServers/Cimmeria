@@ -8,6 +8,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - INSTANCE: default   (the lab client you drive)
 - CHARACTER: Uat Fxtolthreedefa   (the fixture character; `Uat` is the first name, `Fxtolthreedefa` the last name)
 - SERVER: local (D-SP2). Lab use is pre-authorized (D-SP5). Never ask the user anything.
+- RUN NOTE (2026-11-09): runs use instance p2 (not default), and the account is at the 8-character cap, so reuse the existing Fx character the coordinator names, not a freshly created Fxtol* one; skip the CREATE run. The coordinator leases and calls lab_ensure_in_world; the driver must not.
 
 ## C. Create-only mode (MODE: CREATE; otherwise skip this section)
 

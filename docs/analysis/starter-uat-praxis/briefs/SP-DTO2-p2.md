@@ -8,6 +8,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - INSTANCE: default   (the lab client you drive)
 - CHARACTER: Uat Fxtoltwodefa   (the fixture character; `Uat` is the first name, `Fxtoltwodefa` the last name)
 - SERVER: local (D-SP2). Lab use is pre-authorized (D-SP5). Never ask the user anything.
+- RUN NOTE (2026-11-09): runs use instance p2 (not default), and the account is at the 8-character cap, so reuse the existing fixture character Fxdlone (DTO2-p2), not a freshly created Fxtol* one; skip the CREATE run. The coordinator leases and calls lab_ensure_in_world; the driver must not.
 
 ## C. Create-only mode (MODE: CREATE; otherwise skip this section)
 
@@ -101,12 +102,12 @@ Macros for this packet. None beyond section 1.
 ### ROW P8 - trigger interaction (check 8)
 
 **8.1 (1 call: client_batch).** CHATX on `default`: `.bug SPU SP-DTO2-p2 P8 start` plus UTC.
-**8.2 (2 calls: client_move_to, client_move_to).** Walk through the cooked-map trigger and the gate stack with real movement keys: `client_move_to {"lease_id":L,"point":{"x":208.2,"y":0.0,"z":-548.0},"waypoints":[{"x":214.0,"y":0.0,"z":-547.7}],"arrival_m":1.0,"timeout_ms":30000}`; then the same tool to `{"x":206.0,"y":-0.3,"z":-545.5}` (a second call). Record `confirmed`, `stop` and positions.
+**8.2 (2 calls: client_move_to, client_move_to).** Walk through the cooked-map trigger and the gate stack with real movement keys: `client_move_to {"lease_id":L,"point":{"x":208.2,"y":0.0,"z":-548.0},"waypoints":[{"x":214.0,"y":0.0,"z":-547.7}],"arrival_m":1.0,"timeout_ms":30000}`; then the same tool to `{"x":206.0,"y":-0.3,"z":-545.5}` (a second call). Record `confirmed`, `stop` and positions. Note: the P8 waypoint (214.0, -547.7) has no server trace, so the walk is PARTIAL by construction.
 **8.3 (1 call: client_entity_find).** `client_entity_find {"lease_id":L,"max_distance_m":30,"limit":10}`. Record every entity (id, name, position, `rendered`). Expected: Copplemann and the three props are at the seed positions listed in the traced facts (within 0.5 m) and `rendered:true` (the triggers must not move or hide actors). This part has no earlier read, so the comparison is against the seed.
 
 ### ROW P10 - template 421 mesh (D-TW7 observation, not a pass/fail gate)
 
-**10.1 (1 call: client_batch).** CHATX on `default`: `.bug SPU SP-DTO2-p2 P10 start`, then `.gotolocation Tollana 201.5 -0.8 -541.5` (4 m from Core), wait 2500 ms, POS step.
+**10.1 (1 call: client_batch).** CHATX on `default`: `.bug SPU SP-DTO2-p2 P10 start`, then `.gotolocation Tollana 201.5 -0.8 -541.5` (4 m from Core), wait 2500 ms, POS step. Then aim the camera at the prop: `client_camera` with `face_entity_id` = the Core id (FIND it first), so the shot shows the prop and not the player's back.
 **10.2 (1 call: lab_screenshot).** SHOT, label `DTO2-P10-prop-mesh`, lane `default`. `CLAIM: NEEDS_HUMAN`: say in words what object the prop looks like (a screen? a machine? a plain box?), its colour, and whether it sits on the floor. Do not judge whether it is "better".
 
 **S9 (1 call: lab_lease_release).** Release the lease and write the report. Rows: P8, P10 and the shot label `DTO2-P10-prop-mesh`.

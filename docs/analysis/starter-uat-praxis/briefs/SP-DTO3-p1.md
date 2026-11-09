@@ -8,6 +8,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 - INSTANCE: default   (the lab client you drive)
 - CHARACTER: Uat Fxtolthreedefa   (the fixture character; `Uat` is the first name, `Fxtolthreedefa` the last name)
 - SERVER: local (D-SP2). Lab use is pre-authorized (D-SP5). Never ask the user anything.
+- RUN NOTE (2026-11-09): runs use instance p2 (not default), and the account is at the 8-character cap, so reuse the existing fixture character Fxdcatwo (DTO3), not a freshly created Fxtol* one; skip the CREATE run. The coordinator leases and calls lab_ensure_in_world; the driver must not.
 
 ## C. Create-only mode (MODE: CREATE; otherwise skip this section)
 
@@ -111,16 +112,16 @@ Macros for this packet.
 ### ROW U1 - offer glyph and dialog 2153 (state not_active)
 
 **1.1 (1 call: client_batch).** Batch whose first step is DIALOG, then CHATX `.bug SPU SP-DTO3-p1 U1 start`, the UTC step, `.gotolocation Tollana 209.5 0.0 -545.0` with a 2500 ms wait, then the POS step (at COP4).
-**1.2 (2 calls: client_entity_find, lab_screenshot).** COPGLYPH, label `DTO3-U1-offer-glyph`. Expected: a mission-offer mark above Copplemann. The FIND gives the Copplemann id for 1.3.
+**1.2 (2 calls: client_entity_find, lab_screenshot).** COPGLYPH, label `DTO3-U1-offer-glyph`. Expected: a mission-offer mark above Copplemann. The FIND gives the Copplemann id for 1.3. Copplemann is off screen (x -7) from COP4: before the shot aim the camera with `client_camera` `face_entity_id` = his id.
 **1.3 (1 call: client_world_click).** CLICK on Copplemann with `expect:"any"`. Record `range` (expect about 4.0), `native_level` and whether a window opened.
-**1.4 (2 calls: client_ui_state, lab_screenshot).** DLG, then SHOT, label `DTO3-U1-dialog-2153`. Expected: dialog 2153, first screen text beginning "Welcome to what's left of Tollana", no buttons. Click through the screens only if a Next control is listed in the DLG result; record each screen's text and the speaker name shown above each Copplemann screen. Do NOT close the dialog yet. NEEDS_HUMAN for the layout.
+**1.4 (2 calls: client_ui_state, lab_screenshot).** DLG, then SHOT, label `DTO3-U1-dialog-2153`. Expected: dialog 2153, first screen text beginning "Welcome to what's left of Tollana", no buttons. Click through the screens only if a Next control is listed in the DLG result; record each screen's text and the speaker name shown above each Copplemann screen. Do NOT close the dialog yet. Page one screen at a time (one Next click, then DLG) until the dialog shows Done; never batch Next clicks. After a relog the dialog reopens at page 4, so the 4a.3 text is the page-4 line. NEEDS_HUMAN for the layout.
 **1.5 (1 call: client_batch).** Batch whose first step is DIALOG: it closes 2153 and so ACCEPTS the mission (zero-button accept-on-close). Record the DIALOG answer. Then in the same batch CHATX `.bug SPU SP-DTO3-p1 U1 accepted`, the UTC step and `.bug SPU SP-DTO3-p1 U4a start`.
 **1.6 (1 call: client_chat_log).** READ: `client_chat_log {"lease_id":L,"cursor":"u1","contains":"ission","max":10}`. Write any lines verbatim (a mission-accepted notice may show); none is fine.
 
 ### ROW U4a - relog while accepted at step 1964
 
 **4a.1 (4 calls: lab_logout, lab_ensure_in_world, client_batch, client_window_read).** RELOG.
-**4a.2 (2 calls: client_entity_find, lab_screenshot).** COPGLYPH, label `DTO3-U4a-1964`. Expected: the progress mark (a mission is active), not the offer mark. NEEDS_HUMAN for the look; record `rendered`.
+**4a.2 (2 calls: client_entity_find, lab_screenshot).** COPGLYPH, label `DTO3-U4a-1964`. Expected: the progress mark (a mission is active), not the offer mark. NEEDS_HUMAN for the look; record `rendered`. Copplemann is off screen (x -7) from COP4: before the shot aim the camera with `client_camera` `face_entity_id` = his id.
 **4a.3 (3 calls: client_world_click, client_ui_state, client_batch).** CLICK on Copplemann (use the id from 4a.2; if `out_of_range`, the closing batch of the next step is not available, so stop and write `4a.3: out_of_range`). Expected: the in-progress behaviour is dialog 2153 shown again (W3), not a new offer. DLG: record the dialog id and first text. Then a batch whose first step is DIALOG (a second close is a no-op for the mission).
 
 **S9 (1 call: lab_lease_release).** Release the lease and write the report. Rows: U1, U4a and the shot labels `DTO3-U1-offer-glyph`, `DTO3-U1-dialog-2153`, `DTO3-U4a-1964`.
