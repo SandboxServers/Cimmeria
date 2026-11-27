@@ -54,7 +54,7 @@ The guard and lieutenant share the set: 584 (Staff Auto Attack, the ranged bolt)
 (Staff Melee AA, the staff swing), faction 10, a 20 s respawn. Templates 1380 and 1381
 copy 1371 and are byte-identical to it. The staff in hand is the existing look;
 NC-22 adds the staff to 159 and 160 only (D-NC3), not to these pens. The
-melee damage rides effect 736 (NC-12, hand effects 470 to 473).
+melee damage rides effect 736 (NC-12, hand NVP rows 470 and 471).
 
 | Row | Step | Expected client presentation | Expected server evidence | Pass / fail | Class target |
 |---|---|---|---|---|---|
