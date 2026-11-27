@@ -4,13 +4,13 @@
 > **Date**: 2026-11-27
 > **Sources**: the owner's QA client at `..\SGW\Stargate Worlds-QA\Working`, read-only. Packages under `SGWGame\CookedPC\Packages\`, cooked data under `SGWGame\SourceCache.en-us\`, audio under `SGWGame\Content\audio\mobs\`. No client file was copied into the repo.
 > **Tools**: `upk_info` (`crates/upk`, `--imports --names --exports --properties N`), Python `zipfile` over the cooked `.pak` files (they are ZIP archives of XML, [cooked-data-pipeline.md](../../engine/cooked-data-pipeline.md)), and a whole-tree byte search for the ScavDog and `mob_scav` strings.
-> **Related**: [being-eye-heights.md](being-eye-heights.md) (ScavDog mesh bounds), [../../client/audio-voice-inventory.md](../../client/audio-voice-inventory.md) §7 (mob FEV projects).
+> **Related**: [being-eye-heights.md](being-eye-heights.md) (ScavDog mesh bounds), [../../client/audio-voice-inventory.md](../../client/audio-voice-inventory.md) §7 (mob FEV projects). [ability-animation-links.md](ability-animation-links.md) (the client has no ability-keyed animation lookup; 983 and 1433 -> 300 is its Tier 3 reconstruction).
 
 ## Summary
 
 The ScavDog is a small asset set. `MOB_ScavDog.upk` holds one skeletal mesh, one AnimSet with eight sequences, one AnimTree, one BodySet, one PhysicsAsset and four local Kismet hooks. It has **one** attack animation, `sAttack1` (1.133 s). No sequence carries an AnimNotify, the package imports no AnimNotify or sound class, and `BodySounds` is empty. Nothing in the cooked client names the `mob_scav.fev` events, so which code plays them is still unknown. The package's Kismet hooks cover death and the five hit reactions only; none covers an attack.
 
-The cooked ability catalogue has no event-set field. The `1433 Mob Strike → event set 300` link exists only in the seed, and the seed gives 983 Bite the same set 300. Neither link can be confirmed or refuted from client files. Nothing in the client ties 983 Bite, or 1433, to the ScavDog. The ScavDog's own stance data sets `MeleeDistance` to 0, and both abilities have `MinRange="0" MaxRange="0"`, so no client asset states an attack reach.
+The cooked ability catalogue has no event-set field. The `1433 Mob Strike → event set 300` link exists only in the seed (set 300 was added by PR #822 as a RECONSTRUCTION, not legacy data), and the seed gives 983 Bite the same set 300. Neither link can be confirmed or refuted from client files. Nothing in the client ties 983 Bite, or 1433, to the ScavDog. The ScavDog's own stance data sets `MeleeDistance` to 0, and both abilities have `MinRange="0" MaxRange="0"`, so no client asset states an attack reach.
 
 ## Evidence classes
 
@@ -30,7 +30,7 @@ Every row below carries one of the six classes from the campaign spec: ORIGINAL 
 | SkeletalMesh `MOB_ScavDog` | 173 | Bip01 biped-derived rig plus `Bip01_Tail`/`Tail1`/`Tail2`, `L/R_HorseLink`, `Bone_AllFur`, `Bone_L/R_Ear`; textures `Scavenger_Ice_Dog00_*`, `Tol-Scavenger_Dog00_*` | ORIGINAL CLIENT VERIFIED |
 | SkeletalMesh `MOB_Pitbull` | 172 | A second mesh in the same package (`Pitbull_*` textures, socket export 174). `MOB_ScavDog_00.CompositeMeshes[0].SkelMesh` is ref 174 = export 173 `MOB_ScavDog`, so the Pitbull mesh is not on the ScavDog body | ORIGINAL CLIENT VERIFIED |
 | ObjectRedirector `ScavDog` | 34 | Redirector inside the package | ORIGINAL CLIENT VERIFIED |
-| `GLB_Components.upk` import 15 | — | `MOB_ScavDog.BS_MOB_ScavDog`: the global component list is the only other cooked package that names the ScavDog | ORIGINAL CLIENT VERIFIED |
+| `GLB_Components.upk` import 15 | — | `MOB_ScavDog.BS_MOB_ScavDog`: the global component list is one of only two cooked packages outside `MOB_ScavDog.upk` that name the ScavDog; the other is `VFX-ScavDog.upk`, which carries the name `MOB_ScavDog` in its name table only | ORIGINAL CLIENT VERIFIED |
 
 `VFX-ScavDog.upk` (488,807 B; 157 names, 50 imports, 328 exports) holds three ParticleSystems and their mesh: `VFX-Attack` (export 321), `VFX-Idle1Drool` (322), `VFX-Idle2Drool` (323) and StaticMesh `Par-Scavdog00` (324). It imports particle classes only: no AnimNotify, no SoundCue, no Kismet class. **ORIGINAL CLIENT VERIFIED.** No cooked file references `VFX-ScavDog` or `VFX-Attack` from outside that package, and `MOB_ScavDog_00.BodyParticles` is empty, so how `VFX-Attack` gets spawned is **UNRESOLVED**.
 
@@ -99,24 +99,24 @@ There is no mouth, jaw or weapon socket. `Buff` and `Center` are the socket name
 | 81 | `Bip01_Spine` | 28.94 / 33.62 / 29.87 | ORIGINAL CLIENT VERIFIED |
 | 70 | `Bip01_Pelvis` | 21.38 / 34.17 / 25.76 | ORIGINAL CLIENT VERIFIED |
 
-The head box offset in bone space is (-2.67, 13.99, 0) UU. Reading X/Y/Z as full edge lengths follows stock UE3 `KBoxElem` and is **STRONGLY INFERRED** for this licensee build. Turning the head box into a world-space snout position needs the mesh reference pose, which was not decoded.
+The head box offset in bone space is (-2.67, 13.99, 0) UU. Reading X/Y/Z as full edge lengths follows stock UE3 `KBoxElem` and is **STRONGLY INFERRED** for this licensee build. Turning the head box into a world-space snout position needs the mesh reference pose, which was not decoded. The head box is nearly as large as the whole mesh height (113.5 UU), which suggests the KBoxElem values are not plain edge lengths in this build.
 
 ## 5. `mob_scav.fev` ownership
 
 `Content\audio\mobs\mob_scav.fev` defines **five** events under `characters`: `attack`, `breathe`, `death`, `hit`, `shake`. `attack` is **one** event with five wave variants (`m_mob_scav_stance_attack1.wav` … `attack5.wav`), not five events. `breathe` has 2 variants, `death` 3, `hit` 5, `shake` 3. **ORIGINAL CLIENT VERIFIED** (strings in the FEV).
 
-A byte search of the whole client tree for `mob_scav` finds it in only three places: the FEV and FSB themselves, and `Engine\Config\GameplayEngine.ini` (`mob_scav=mobs\mob_scav.fev`, the project registration). Every `mob_scav` hit inside a `.upk` is part of `MOB_ScavDog`. Cooked packages here are uncompressed (`GLB_Components.upk` header: compression 0), so a byte search reaches their name tables.
+A case-insensitive byte search of the whole client tree for `mob_scav` hits the FEV, the FSB and `Engine\Config\GameplayEngine.ini` (`mob_scav=mobs\mob_scav.fev`, the project registration). It also hits `MOB_ScavDog.upk`, `VFX-ScavDog.upk` and `GLB_Components.upk`, only as the prefix of the object name `MOB_ScavDog`. No cooked file holds the string `mob_scav` as an event path. Cooked packages here are uncompressed (`GLB_Components.upk` header: compression 0), so a byte search reaches their name tables.
 
-| Event | Referenced by a ScavDog notify? | Referenced anywhere in cooked data? | Class |
+| Event | Referenced by a ScavDog notify? | Literal mob_scav string in cooked data? | Class |
 |---|---|---|---|
-| `attack` (5 variants) | No: no notify exists | No | ORIGINAL CLIENT VERIFIED (absence) |
-| `breathe` | No | No | ORIGINAL CLIENT VERIFIED (absence) |
-| `death` | No | No | ORIGINAL CLIENT VERIFIED (absence) |
-| `hit` | No | No | ORIGINAL CLIENT VERIFIED (absence) |
-| `shake` | No | No | ORIGINAL CLIENT VERIFIED (absence) |
+| `attack` (5 variants) | No: no notify exists | No literal reference | ORIGINAL CLIENT VERIFIED (no literal string); a runtime-built path is UNRESOLVED |
+| `breathe` | No | No literal reference | ORIGINAL CLIENT VERIFIED (no literal string); a runtime-built path is UNRESOLVED |
+| `death` | No | No literal reference | ORIGINAL CLIENT VERIFIED (no literal string); a runtime-built path is UNRESOLVED |
+| `hit` | No | No literal reference | ORIGINAL CLIENT VERIFIED (no literal string); a runtime-built path is UNRESOLVED |
+| `shake` | No | No literal reference | ORIGINAL CLIENT VERIFIED (no literal string); a runtime-built path is UNRESOLVED |
 | Who plays them | — | — | UNRESOLVED |
 
-The event path is presumably built at run time, for example by `KD_MOBs` Kismet or code that joins a project key with an event name, but that is a guess. Settling it means tracing the FMOD event-get call sites in `SGW.exe` or decompiling `KD_MOBs`. This contradicts [audio-voice-inventory.md](../../client/audio-voice-inventory.md) §7 ("Referenced: Yes — mob animation notifies trigger these. Confidence: High") for `mob_scav`; that row should be downgraded.
+The event path is presumably built at run time, for example by code that joins a project key with an event name, but that is a guess. Settling it means tracing the FMOD event-get call sites in `SGW.exe` in Ghidra. This contradicts [audio-voice-inventory.md](../../client/audio-voice-inventory.md) §7 ("Referenced: Yes — mob animation notifies trigger these. Confidence: High") for `mob_scav`; that row should be downgraded.
 
 ## 6. Abilities 1433 and 983 in cooked data
 
@@ -134,13 +134,13 @@ Id collisions in other cooked categories are unrelated namespaces: `CookedDataKi
 
 Cooked event set 300 (`CookedDataKismetSetEvent.pak` `_300`) = `KIS-abilities_human.KIS-SA_Melee_Source` (EventID 1001, seq 346) plus `KIS-abilities_human.KIS-SA_Effect_Source` (EventID 1002, seq 2959, `sfx1 = abil_hum/statecast/interupt`). **ORIGINAL CLIENT VERIFIED.** It is a generic source-side melee set with no creature or ScavDog content.
 
-The seeds give both abilities `event_set_id = 300` (`db/resources/Abilities/Seed/abilities.sql`, rows 1433 and 983; set 300 is named "Generic melee weapon source" in `db/resources/Events/Seed/event_sets.sql`). **EARLIEST LEGACY DATA.**
+The seeds give both abilities `event_set_id = 300` (`db/resources/Abilities/Seed/abilities.sql`, rows 1433 and 983; set 300 is named "Generic melee weapon source" in `db/resources/Events/Seed/event_sets.sql`). **CURRENT CIMMERIA IMPLEMENTATION** (not legacy data: both rows were NULL before PR #822 added 300 as a Tier-3 judgement call, [ability-animation-links.md](ability-animation-links.md) § Tier 3, label RECONSTRUCTION).
 
 ## 7. Answers to the packet questions
 
-1. **Is 1433 → event set 300 supported, contradicted or unknown?** **Unknown from the client.** The cooked ability carries no event-set field, so the client neither supports nor contradicts it. The link exists only in the seed (EARLIEST LEGACY DATA). Event set 300 is a generic melee source set and is internally consistent with a melee ability, which is the most the client can show.
+1. **Is 1433 → event set 300 supported, contradicted or unknown?** **Unknown from the client.** The cooked ability carries no event-set field, so the client neither supports nor contradicts it. The link exists only in the seed (CURRENT CIMMERIA IMPLEMENTATION, a RECONSTRUCTION since PR #822). Before PR #822 the seed had NULL for both. Event set 300 is a generic melee source set and is internally consistent with a melee ability, which is the most the client can show.
 2. **Is 983 Bite tied to ScavDog?** **No client evidence.** No cooked record or package links 983 to the ScavDog. The ScavDog has a single generic attack animation and no bite-specific sequence, VFX or sound. Pairing them stays RECONSTRUCTED at best.
-3. **Physical attack reach in metres?** **Not derivable from client assets.** `BodyStances[0].MeleeDistance = 0` and both abilities have `MinRange=0 MaxRange=0` (ORIGINAL CLIENT VERIFIED). The only physical bounds are the collision boxes (head box 103.49 UU long, about 1.03 m at 100 UU per metre) and the mesh height (0.3-113.5 UU, [being-eye-heights.md](being-eye-heights.md)). Neither is a reach. Any reach value the server uses is RECONSTRUCTED.
+3. **Physical attack reach in metres?** **Not derivable from client assets.** `BodyStances[0].MeleeDistance = 0` and both abilities have `MinRange=0 MaxRange=0` (ORIGINAL CLIENT VERIFIED). The only physical bounds are the collision boxes (the head box's largest raw dimension is 103.49 UU; reading it as an edge length of about 1.03 m is STRONGLY INFERRED and implausible for a mesh 113.5 UU tall, so treat it as unresolved) and the mesh height (0.3-113.5 UU, [being-eye-heights.md](being-eye-heights.md)). Neither is a reach. Any reach value the server uses is RECONSTRUCTED.
 
 ## 8. Corrections to existing docs
 
@@ -151,6 +151,6 @@ Neither file is in NC-05's edit set; the corrections are left to their owners.
 
 ## Open questions
 
-- Which code plays `mob_scav/characters/*` events: `KD_MOBs` Kismet, a hard-coded path in `SGW.exe`, or the stance `Weapon`/`Combat` bytes? Next step: decompile the `KD_MOBs` package and trace FMOD `getEvent` callers in Ghidra.
+- Which code plays `mob_scav/characters/*` events: `KD_MOBs` Kismet, a hard-coded path in `SGW.exe`, or the stance `Weapon`/`Combat` bytes? Next step: trace FMOD event-get callers and the `GameplayEngine.ini` project-key lookup in `SGW.exe` in Ghidra (`KD_MOBs.upk` is a 2.4 kB stub with only the six `MOB-*` hit and death sequence names and no sound reference).
 - What triggers `VFX-ScavDog.VFX-Attack`?
 - What `SGW.exe` does with `BodyStance.MeleeDistance` and whether 0 means "use a default".
