@@ -5,14 +5,12 @@
 
 mod live_db {
     use super::super::super::live_db::{fight_space, pass, set_pools, spawn};
+    use super::super::super::PLAYER;
     use cimmeria_entity::stats::{FOCUS, HEALTH};
     use tokio::sync::mpsc;
 
     use crate::cell::spawner::{load_effect_defs, load_spawn_templates};
     use crate::test_support::require_db_or_skip;
-
-    /// The player's entity id in `fight_space`.
-    const PLAYER: u32 = 1;
 
     /// Effect 736 (Staff Melee AA) and 1717 (Mob Strike): the script is
     /// `MeleePhysicalDamage` (as effect 656 has) and the NVPs are

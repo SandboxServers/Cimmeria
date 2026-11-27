@@ -8,8 +8,7 @@ metadata:
 Review: `docs/analysis/telemetry-gaps/reviews/combat.md` (packets TG-CMB-01..10). The remaining bullets are the 2026-10-10 report and were not re-checked; verify before acting.
 
 - FIXED since 2026-10-10: `player.respawn=debug` is now in the OTEL filter (`crates/server/src/logging/filters.rs`) and `target_scan_tests::strip_test_module` keeps code after a `mod tests;` declaration (test `strip_test_module_keeps_code_after_a_test_mod_declaration`).
-- Ability 710 Staff Melee AA / effect 736 Strike Damage plans `path=skipped reason=no_script`, so the
-  Praxis Jaffa Guard's melee does nothing (DEBUG only).
+- FIXED 2026-11-27 (NC-12): ability 710 / effect 736 and ability 1433 / effect 1717 are bound to `MeleePhysicalDamage` with reconstructed NVPs, so they no longer log `no_script` skips.
 - `effect_script_unregistered` startup WARN fires every boot on the pinned known set (`""`/2907, Reload/658).
 - 97% of `useAbility: launched` INFO rows are NPC casts (Debug Area sparring).
 
