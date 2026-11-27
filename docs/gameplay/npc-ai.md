@@ -275,6 +275,40 @@ This let scripted events change a mob's stance for a while (for example, a frien
 
 ## Ability Selection (Combat AI)
 
+### Combat profile and the Pistol Shot placeholder
+
+`combat_profile` (`crates/cell-world/src/cell/combat/combat_profile/`) resolves
+which abilities a spawned NPC gets. Spawning and the AI share the rule: an
+explicit `ability_ids` set always wins, and an empty set takes the placeholder
+that the policy allows.
+
+| `ability_ids` | Policy | Components | Abilities | Source |
+|---|---|---|---|---|
+| non-empty | any | any | the set, in order | `ExplicitSet` |
+| empty | `Legacy` | any | `[592]` | `LegacyPlaceholder` |
+| empty | `RequireWeaponEvidence` | a `WP-Human.*` component | `[592]` | `LegacyPlaceholder` |
+| empty | `RequireWeaponEvidence` | otherwise | `[]` | `Unresolved` |
+
+592 Pistol Shot is a Giza/Python placeholder for an NPC with no ability set
+(`spawn.rs:314-317` before NC-10), not Cimmeria behaviour, and it is a human
+firearm. Production runs `PLACEHOLDER_POLICY = Legacy`, so behaviour is
+unchanged. Decision D-NC1 is pending: if it is taken, NC-30 flips the policy,
+so only a human with a `WP-Human.*` component keeps 592 and an NPC with no
+ability set idles.
+
+Two diagnostics log on target `npc.combat_profile`, at most once per template
+id per process:
+
+- `combat_profile_placeholder` (INFO): the template got the 592 placeholder.
+  Fields: `template_id`, `template_name`, `body_set`, `weapon_component`
+  (or `none`), `ability_id`, `ability_name`.
+- `combat_profile_unresolved` (WARN): the template has no ability set and no
+  weapon evidence, so it holds fire. Fields: as above, without `ability_id`.
+
+An explicit set logs nothing. In the AI, an NPC that knows no ability falls
+back to `placeholder_ability(policy)`: 592 under `Legacy`, none under
+`RequireWeaponEvidence`.
+
 ### Classification
 
 `classifyHostileAbility(target, ability)` evaluates a single ability and returns one of:

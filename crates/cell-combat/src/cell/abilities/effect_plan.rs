@@ -359,9 +359,10 @@ mod tests {
     use super::{PlanIds, PlannedEffect, EVENT_EFFECT_INERT};
     use crate::test_support::{Captured, LogCapture};
 
-    /// A plan of `effect_id` in `ability_id` that has no script: the live
-    /// case is ability 710 / effect 736. Tests use their own ids so the
-    /// process-wide throttle never sees another test's keys.
+    /// A plan of `effect_id` in `ability_id` that has no script and no NVP
+    /// damage (ids invented by each test; no seeded effect is left in this
+    /// state now that NC-12 gave 736 and 1717 damage). Tests use their own ids
+    /// so the process-wide throttle never sees another test's keys.
     fn no_script_plan(ability_id: i32, effect_id: i32) -> (PlannedEffect, PlanIds) {
         let effect = EffectDef {
             effect_id,

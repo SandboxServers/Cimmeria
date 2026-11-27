@@ -311,18 +311,27 @@ impl SpaceManager {
         // NA14. `None` means the server default (10 u).
         e.aggro.assist_radius_override = record.assist_radius;
 
-        // Per-template ability bucket. Empty `ability_ids` (template has
-        // no `ability_set_id`) falls back to `NPC_DEFAULT_ABILITY` so
-        // unspecified mobs still have something to fire. Matches the
-        // Python convention where un-assigned NPCs default to Pistol Shot.
-        if record.ability_ids.is_empty() {
-            e.abilities
-                .add_ability(super::super::combat::NPC_DEFAULT_ABILITY);
-        } else {
-            for &ability_id in &record.ability_ids {
-                e.abilities.add_ability(ability_id);
-            }
+        // Per-template ability bucket. `combat_profile` owns the rule: an
+        // explicit `ability_ids` set is kept as-is, and an empty one takes
+        // the placeholder the policy allows. The choice is reported once per
+        // template (`npc.combat_profile` rows).
+        use super::super::combat::combat_profile::{
+            report_profile, resolve_npc_combat_profile, PLACEHOLDER_POLICY,
+        };
+        let profile = resolve_npc_combat_profile(
+            &record.ability_ids,
+            record.components.as_deref(),
+            PLACEHOLDER_POLICY,
+        );
+        for &ability_id in &profile.abilities {
+            e.abilities.add_ability(ability_id);
         }
+        report_profile(
+            record.template_id,
+            &record.template_name,
+            &record.body_set,
+            &profile,
+        );
         // Initialize NPC health based on level (simple scaling)
         use cimmeria_entity::stats::{FOCUS, HEALTH};
         let hp = 200 + (e.level as i32 * 50);
