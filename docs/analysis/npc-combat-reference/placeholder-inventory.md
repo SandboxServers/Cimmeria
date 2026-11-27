@@ -12,7 +12,7 @@ changes. `PLACEHOLDER_POLICY` stays `Legacy` until D-NC1 (NC-30).
   `RequireWeaponEvidence`; the other 470 would hold fire.
 - Production callers of `SpaceManager::spawn_npc`: 0.
   All 278 call sites sit behind a `#[cfg(test)]` module or fn, or in a test file.
-- Tests that spawn an NPC and mention 592 or `NPC_DEFAULT_ABILITY`: 40 candidates (4 cell-world, 5 cell-combat, 31 other). Of these, 2 need an NC-21 fix (1 cell-world, 1 other), 10 are unaffected and 28 need no fix.
+- Tests that spawn an NPC and mention 592 or `NPC_DEFAULT_ABILITY`: 40 candidates (4 cell-world, 5 cell-combat, 31 other). Of these, 2 need an NC-21 fix (1 cell-world, 1 other), 6 are unaffected and 32 need no fix.
 
 ## Method
 
@@ -608,8 +608,8 @@ confirm it per test when NC-21 lands. `add_ability(` of 592 or `NPC_DEFAULT_ABIL
 | cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_target_inside_min_range_schedules_backup_waypoint | 47 | already explicit | none |
 | cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_missing_ability_def_falls_back_to_npc_attack_range | 33 | already explicit | none |
 | cell | cell/src/cell/service/tests/npc_ai/ability_range.rs | npc_ai_fight_stationary_does_not_back_off_inside_min_range | 31 | already explicit | none |
-| cell | cell/src/cell/service/tests/npc_ai/lab_dummy.rs | ab_l2_a_lab_dummy_never_attacks_its_threat_target | 29 | unaffected (spawn_npc or direct fixture) | none |
-| cell | cell/src/cell/service/tests/npc_ai/lab_dummy.rs | ab_l2_a_caster_lab_dummy_gets_no_ai_turn_either | 10 | unaffected (spawn_npc or direct fixture) | none |
+| cell | cell/src/cell/service/tests/npc_ai/lab_dummy.rs | ab_l2_a_lab_dummy_never_attacks_its_threat_target | 29 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/lab_dummy.rs | ab_l2_a_caster_lab_dummy_gets_no_ai_turn_either | 10 | already explicit | none |
 | cell | cell/src/cell/service/tests/npc_ai/npc_vs_npc.rs | an_npc_only_kill_through_the_tick_pays_nothing | 81 | unaffected (spawn_npc or direct fixture) | none |
 | cell | cell/src/cell/service/tests/npc_ai/npc_vs_npc.rs | an_npc_killed_by_another_npc_gets_no_turn_that_tick | 69 | unaffected (spawn_npc or direct fixture) | none |
 | cell | cell/src/cell/service/tests/npc_ai/occluder_los.rs | the_drone_sees_over_the_med_station_desk_and_fires_on_the_occluder | 37 | already explicit | none |
@@ -620,8 +620,8 @@ confirm it per test when NC-21 lands. `add_ability(` of 592 or `NPC_DEFAULT_ABIL
 | cell | cell/src/cell/service/tests/npc_ai/selector.rs | selector_picks_ammo_bearing_ability_for_npc | 36 | unaffected (spawn_npc or direct fixture) | none |
 | cell | cell/src/cell/service/tests/npc_ai/state_machine.rs | npc_ai_leashing_snaps_to_spawn_restores_health_and_idles | 46 | unaffected (spawn_npc or direct fixture) | none |
 | cell | cell/src/cell/service/tests/npc_ai/state_machine.rs | npc_ai_leashing_with_follow_target_skips_spawn_snap | 54 | unaffected (spawn_npc or direct fixture) | none |
-| cell | cell/src/cell/service/tests/npc_ai/stationary_los.rs | the_stationary_drone_fires_across_the_med_station_desk | 41 | unaffected (spawn_npc or direct fixture) | none |
-| cell | cell/src/cell/service/tests/npc_ai/stationary_los.rs | a_mobile_npc_still_walks_around_the_desk_instead_of_firing | 27 | unaffected (spawn_npc or direct fixture) | none |
+| cell | cell/src/cell/service/tests/npc_ai/stationary_los.rs | the_stationary_drone_fires_across_the_med_station_desk | 41 | already explicit | none |
+| cell | cell/src/cell/service/tests/npc_ai/stationary_los.rs | a_mobile_npc_still_walks_around_the_desk_instead_of_firing | 27 | already explicit | none |
 | cell | cell/src/cell/service/tests/npc_ai/step_back.rs | a_melee_npc_never_steps_back | 20 | already explicit | none |
 | cell | cell/src/cell/service/tests/npc_ai/step_back.rs | a_dead_zone_during_the_cooldown_holds_fire | 17 | already explicit | none |
 | cell | cell/src/cell/service/tests/npc_ai/training_dummy.rs | a_seeded_training_dummy_never_attacks_its_threat_target | 32 | needs fix (record, empty ability_ids) | `592` in `ability_ids` |
@@ -639,7 +639,7 @@ Counts cover `needs fix` rows only. `Unaffected` counts the rows NC-21 leaves al
 |---|---|---|---|---|
 | cell-world | 1 | 1 | 67 | 0 |
 | cell-combat | 0 | 0 | 0 | 0 |
-| other | 1 | 1 | 32 | 10 |
+| other | 1 | 1 | 32 | 6 |
 
 `ability_select*` files under `crates/cell-combat/src/cell/service/npc_ai/`: flagged for NC-20.
 Hits: `crates/cell-combat/src/cell/service/npc_ai/ability_select.rs` (no fallback test in it;
