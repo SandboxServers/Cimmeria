@@ -1,32 +1,40 @@
 # RESUME: npc-combat-reference (NC)
 
-Ledger: README.md. Packets: work-packets.md, work-packets-w1-w2.md, work-packets-w3-w5.md. Rulings: worknotes/wave0.md.
+Ledger: README.md. Packets: work-packets.md, work-packets-w1-w2.md, work-packets-w3-w5.md. Rulings: worknotes/.
 
 ## State (2026-11-27)
 
-- W0 (NC-01..07) and plan docs merged (#2081..#2088). W1 merged as #2089 (fix 7b1d353e9).
-- W2 (NC-13, 20, 21a-c, 23, 24): all `ship`; wave review `ship` (pass 2).
-- Full cell-world, cell-combat and cell nextest and live-DB green on the integration tree.
-- W2 ships as one PR from worktree nc-w2 (branch npc-combat-reference/W2-integration).
-- Decided: D-NC1, D-NC2, D-NC4, D-NC5, D-NC9.
-- Open: D-NC3 (gates NC-22), D-NC6, D-NC7 (gates W4), D-NC8 (record only).
+- W0 merged (#2081..#2088), W1 merged (#2089), W2 ships as one PR from nc-w2 (ask ops whether it has merged; W3 branches sit on it).
+- Decided: D-NC1..D-NC9, D-NC11 (split: 559 gets new effect 5310, 621 unchanged); D-NC10 record only.
+- Open: D-NC12 (the split still changes every 559 user: players' SMG/AR and all 29 set-3 templates; recommend (a) accept). Gates NC-25.
+
+## Wave 3 in flight (one PR from integration branch `npc-combat-reference/W3-integration`, worktree nc-w3)
+
+| Packet | Worktree | State |
+|---|---|---|
+| NC-22 | nc-22 | Writing; stopped on disk full on B: |
+| NC-30 | nc-30 | Writing; two `ability_range.rs` tests and the revert proof (worknotes/NC-30.md) |
+| NC-31 | nc-31 | Review (fix pass 1 committed) |
+| NC-33 | nc-33 | Review (fix passes committed) |
+| NC-34 | nc-34 | Review |
+| NC-25 | nc-25 (not cut) | BlockedDecision D-NC12; then cut from the nc-w3 head after NC-31 and NC-33 merge into it |
+
+Gate: each packet `ship`, then `merge-noff` into nc-w3 in order NC-22, NC-31, NC-33, NC-34, NC-25, NC-30 last; one wave review `ship` over nc-w3; green exclusive workspace nextest on nc-w3; then the wave PR.
 
 ## Next action
 
-1. Open the W2 PR from nc-w2. After merge, retire with `rm-worktree.ps1 --merged-into <PR>`: nc-13, nc-20, nc-21a, nc-21b, nc-21c, nc-23, nc-24, nc-w2.
-2. W3 = NC-22, 30, 31, 33, 34. Ask D-NC3 before NC-22.
-3. NC-31 carries: the README F5/F6/F3 rewrite (ruling note 16); stale "mob notifies" rows; MeleeDistance wording; the note that NC-12 closed effects 736 and 1717; deferred D1, a shared `template_components()` helper in `reference/mod.rs` (with `world_records()` components), so NC-14's weapon-evidence assert can fail.
-4. W4 (lab NC-40..44) waits on D-NC7. Ask before any lab run.
-5. Leftovers, retire only with user approval: worktree nc-10, branch npc-combat-reference/NC-04-seed-trace, DB sgw_nc_04_seed_trace, orphan targets.
-6. Commit or stash the owner's MEMORY.md edit in main before pulling.
+1. Ops cuts nc-w3 from `origin/main` (W2 merged) or W2 head 2a1887107. Free disk on B:, then continue NC-22 and the NC-33 TOML lint.
+2. Continue NC-30 from its worknote (item 1: the ability_range seam; item 2: close the sgw_nc_30 session, revert proof).
+3. Finish the NC-31/33/34 review loops; merge each into nc-w3.
+4. Ask the owner D-NC12. On (a), ops cuts nc-25 from nc-w3 and dispatches NC-25; on (b)-(d), the architect re-specs it.
+5. W4 (lab NC-40..44, NC-32) after the W3 PR merges; ask before every lab run.
+6. Leftovers, retire only with user approval: worktree nc-10, branch NC-04-seed-trace, DB sgw_nc_04_seed_trace; retire W2 worktrees with `rm-worktree.ps1 --merged-into <W2 PR>`.
 
 ## Waves
 
 | Wave | Packets | Gate |
 |---|---|---|
-| W0 | NC-01..07 | merged |
-| W1 | NC-10, 11, 12, 14, 15 | merged (#2089) |
-| W2 | NC-13, 20, 21a-c, 23, 24 | ship; PR pending |
-| W3 | NC-22, 30, 31, 33, 34 | D-NC3 |
-| W4 | NC-40..44 (D-NC7), NC-32 | W3 merged |
+| W0-W2 | NC-01..07, 10..15, 13, 20, 21a-c, 23, 24 | merged or shipped |
+| W3 | NC-22, 25, 30, 31, 33, 34 | above |
+| W4 | NC-40..44, NC-32 | W3 merged, D-NC7 per run |
 | W5 | NC-50, NC-51 | W4 |

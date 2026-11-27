@@ -143,6 +143,9 @@ says yes. NC-05 upgrades or contradicts it later.
 | D-NC7 | Live-client UAT in the lab | Ask first, per run. Use Haiku lab-drivers at Z12, verified against the server log | Decided (owner, 2026-11-27): lab approved in principle, ask before each run |
 | D-NC8 | 559's tooltip (-100F/-10H) against effect 621 (-200F/-20H) | No change. The effect row executes; record it as UNRESOLVED in the registry | Decided (owner, 2026-11-27): follow the 559 tooltip; effect 621 is rewritten to match, RECONSTRUCTED. A follow-up packet implements it |
 | D-NC9 | NC-03 blocked: C3's spawns 14110-14129 belong to the DR-03b Armory (14110-14299, rows 14110-14116). Where does Z12 go? | Spawns 14300-14319 (14300-14304 used), footer floor 14319; templates 1380/1381 stand. Checked against `origin/main` 3a20a96a0: no spawnlist row from 14117 to 15799 and no doc reserves 14300+. The coder's 13700-13719 was rejected: it lies in DA-04's block, and `debug_area/reach.rs` `the_reach_guards_see_da04_rows` counts every 13600-13799 row against `spawnlist_debug_area_combat.sql` alone, so a separate reference file breaks it. C3, C4 and NC-03 are re-specced; re-dispatch NC-03 | Decided (architect ruling, 2026-11-27) |
+| D-NC10 | The 559 tooltip says `1 Ammo`, but the ability row has `required_ammo` 3 | No change in this campaign. NPCs have no ammo gate, so only players see it; leave it to an items or ammo campaign | Record only (2026-11-27): no change here; does not gate NC-25 |
+| D-NC11 | How does 559 follow its tooltip (D-NC8): rewrite effect 621 in place, or give 559 its own effect row? | Rewrite 621 in place: it is the same row and the same tooltip | Decided (owner, 2026-11-27): split. Ability 559 gets its own new effect row, 5310, with the tooltip's 10H/100F, RECONSTRUCTED; effect 621 stays unchanged. This replaces D-NC8's "effect 621 is rewritten". NC-25 implements it once D-NC12 is decided |
+| D-NC12 | The split does not isolate the NID. 559's damage resolves only through `abilities.effect_ids`, and no other ability uses 621, so repointing 559 to 5310 changes the NID Guard, all 29 templates on set 3 (the Z9 lethal squad 1376 among them) and the player SMG and assault-rifle auto attack (`items_event_sets` event 7) alike, and leaves 621 unused. Which outcome? | (a) Accept it: everything that fires 559 follows its own tooltip, which is also the tooltip players read on their weapon; NC-25 as written, with the Z9 re-measure. (b) NID only, through a new server-only ability on a new set for template 24: the new ability id reaches the client in `onEffectResults`, and unknown cooked ids have crashed it before (#938), so it needs a lab probe and a re-spec. (c) NID only, through a new server-side per-set effect override (559 unchanged on the wire): a schema column and resolver code, about two packets. (d) No change: 621 executes for everyone and O1 stays UNRESOLVED. Recommend (a) | BlockedDecision (gates NC-25 dispatch) |
 
 ## Packets
 
@@ -167,11 +170,12 @@ says yes. NC-05 upgrades or contradicts it later.
 | NC-21c | 2 | packet-coder | Make 592 explicit in tests, other crates | NC-15 | Integrated (W2 PR) |
 | NC-23 | 2 | packet-coder | Regression: tutorial and CellBlock combat unchanged | NC-10, NC-12 | Integrated (W2 PR) |
 | NC-24 | 2 | packet-coder | Regression: Harset Jaffa and Jaffa pets | NC-12 | Integrated (W2 PR) |
-| NC-22 | 3 | packet-coder | Staff component on 159/160 in place | NC-12, NC-20, D-NC3 | BlockedDecision |
-| NC-30 | 3 | packet-coder | Flip to `RequireWeaponEvidence` | NC-10, NC-21a-c, NC-11..14, D-NC1 | BlockedDecision |
-| NC-31 | 3 | documentation-writer | Fill the evidence registry and the unresolved list | NC-02, NC-04..07, NC-11..14 | BlockedDependency |
-| NC-33 | 3 | packet-coder | Live UAT checklist and debug-area.toml rows | NC-03, NC-11..14 | BlockedDependency |
-| NC-34 | 3 | documentation-writer | Roster follow-up spec (Carnosaur, Horden, Rhinolion, AMBRat, Lenny, Unas) | NC-15, NC-31 | BlockedDependency |
+| NC-22 | 3 | packet-coder | Staff component on 159/160 in place | NC-12, NC-20, D-NC3 | Writing (stopped: disk full on B:) |
+| NC-30 | 3 | packet-coder | Flip to `RequireWeaponEvidence` | NC-10, NC-21a-c, NC-11..14, D-NC1 | Writing (stopped: two `ability_range.rs` tests and the revert proof, worknotes/NC-30.md) |
+| NC-31 | 3 | documentation-writer | Fill the evidence registry and the unresolved list | NC-02, NC-04..07, NC-11..14 | Review |
+| NC-33 | 3 | packet-coder | Live UAT checklist and debug-area.toml rows | NC-03, NC-11..14 | Review |
+| NC-34 | 3 | documentation-writer | Roster follow-up spec (Carnosaur, Horden, Rhinolion, AMBRat, Lenny, Unas) | NC-15, NC-31 | Review |
+| NC-25 | 3 | packet-coder | Ability 559 uses its own tooltip effect 5310 (10H/100F, RECONSTRUCTED); effect 621 kept | NC-11, NC-31, NC-33, D-NC8, D-NC11, D-NC12 | BlockedDecision (D-NC12); then cut from the W3 integration head once NC-31 and NC-33 are merged into it |
 | NC-40 | 4 | orchestrator + lab-driver | Live UAT: NID at Z12 | W3, D-NC7 | BlockedDecision |
 | NC-41 | 4 | orchestrator + lab-driver | Live UAT: Jaffa at Z12 | W3, D-NC7 | BlockedDecision |
 | NC-42 | 4 | orchestrator + lab-driver | Live UAT: ScavDog at Z12 | W3, D-NC7 | BlockedDecision |
@@ -194,6 +198,7 @@ W0  NC-01 ──┬─────────────► NC-10 ────
             └─► NC-20
     NC-02, NC-04, NC-05*, NC-06*, NC-07 ──► NC-31 ──► NC-34
     NC-11..14 ──► NC-33          NC-30 + NC-31 ──► NC-32 (W4, no lab)
+    NC-11 + NC-31 + NC-33 ──► NC-25 (D-NC8, D-NC11, D-NC12)
     W3 done ──► W4 NC-40..44 (D-NC7, lab, *client) ──► NC-50 ──► NC-51
     (* needs the owner's client copy)
 ```
@@ -205,7 +210,7 @@ W0  NC-01 ──┬─────────────► NC-10 ────
 | 0 | 7 (widest fan-out, with W2) | One PR per packet; file sets are disjoint | NC-01, NC-03, NC-07, NC-04, NC-02, NC-05, NC-06 |
 | 1 | 5 | One PR per packet | NC-10, NC-15, NC-11, NC-14, NC-12 |
 | 2 | 7 | One PR per packet | NC-21a, NC-21b, NC-21c, NC-13, NC-20, NC-23, NC-24 |
-| 3 | 5 | One PR per packet | NC-22, NC-30 (after a green workspace nextest), NC-31, NC-33, NC-34 |
+| 3 | 6 | One PR from the W3 integration branch (`nc-w3`); each packet merges into it with `merge-noff`; NC-25 is cut from it after NC-31 and NC-33 | NC-22, NC-31, NC-33, NC-34, NC-25, NC-30 last (after a green workspace nextest) |
 | 4 | 5 lab sessions + NC-32 | The lab sessions have no code; their rows are attested by one docs PR (`nc-uat`). NC-32 is its own PR | NC-32, then the attestation PR |
 | 5 | 2 | The campaign-review fix PR, then the close-out PR | NC-50, NC-51 |
 

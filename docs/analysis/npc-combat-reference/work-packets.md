@@ -45,7 +45,9 @@ prefix: `npc-combat-reference/`. Worktree names: `nc-<id>` (for example
 - **R5** Files have a soft cap of 500 lines and a hard cap of 700. If a file
   would pass 500, split it along a natural seam.
 - **R6** Files under `docs/` are CRLF. After writing one, normalise it:
-  `$p='<absolute path>'; $t=[IO.File]::ReadAllText($p) -replace "\r?\n","\r\n"; [IO.File]::WriteAllText($p,$t)`.
+  `$p='<absolute path>'; $nl=[string][char]13+[char]10; $t=[IO.File]::ReadAllText($p) -replace '\r?\n',$nl; [IO.File]::WriteAllText($p,$t)`.
+  (Fixed 2026-11-27: the old `"\r\n"` replacement wrote the four literal
+  characters, since `-replace` does not expand `\r\n` in its replacement.)
   Never hand-edit a `<!-- gen:NAME -->` block.
 - **R7** A behaviour change needs a test that fails when the change is
   reverted. Live-DB tests are gated with `require_db_or_skip!`, have
