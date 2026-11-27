@@ -141,3 +141,4 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 - [controller-mouse-input-model.md](controller-mouse-input-model.md) — PC mouse handlers, button/mode bits, drag/click classes, DI pump (static 2026-10-22)
 - [client-display-knobs](client-display-knobs.md) — SavedSystemOptions windowedMode wins over the ini and args for display mode
 - [client-mouse-lock-pd38](client-mouse-lock-pd38.md) — the client never clips the cursor in game; engine mode global addresses
+- [ScavDog combat assets (NC-05)](scavdog-combat-assets-nc05.md) — one attack anim, no notifies, no notify or literal mob_scav event path, player unresolved, cooked abilities lack event sets
